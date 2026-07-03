@@ -1853,7 +1853,9 @@ fn extract_route_context(path: &str, params: &HashMap<String, Value>) -> Value {
     if page_type == "platform" {
         if let Some(platform) = segments.get(1).or(segments.first()) {
             let platform_lower = platform.to_lowercase();
-            if ["bilibili", "steam", "github", "netease"].contains(&platform_lower.as_str()) {
+            if ["bilibili", "bangumi", "steam", "github", "netease"]
+                .contains(&platform_lower.as_str())
+            {
                 context["platform"] = json!(platform_lower);
             }
         }
@@ -2064,10 +2066,8 @@ async fn execute_music_playlist(params: &HashMap<String, Value>) -> Result<Value
             }
         } else if let Some(n) = v.as_i64() {
             Some(n.to_string())
-        } else if let Some(n) = v.as_u64() {
-            Some(n.to_string())
         } else {
-            None
+            v.as_u64().map(|n| n.to_string())
         }
     });
 

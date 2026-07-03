@@ -2,6 +2,8 @@
  * 处理器模块索引
  */
 
+export { registerFederationHandlers } from '../../FederationBridge'
+
 export {
   registerAdvancedHandlers,
   registerAnimationHandlers,
@@ -12,10 +14,7 @@ export {
   registerSpeechHandlers,
 } from './advancedHandlers'
 
-export {
-  registerAIHandlers,
-  registerReportHandlers,
-} from './aiHandlers'
+export { registerAIHandlers, registerReportHandlers } from './aiHandlers'
 
 export {
   registerFileHandlers,
@@ -26,15 +25,11 @@ export {
 } from './baseHandlers'
 
 export {
-  registerPlatformHandlers,
-  registerWidgetHandlers,
-} from './platformHandlers'
-
-export {
   registerBrewListHandlers,
   registerTappListHandlers,
 } from './contentHandlers'
 
 export {
-  registerFederationHandlers,
-} from '../../FederationBridge'
+  registerPlatformHandlers,
+  registerWidgetHandlers,
+} from './platformHandlers'

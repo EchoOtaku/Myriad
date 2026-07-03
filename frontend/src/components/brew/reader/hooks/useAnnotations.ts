@@ -23,7 +23,7 @@ export interface UseAnnotationsReturn {
   selectedAnnotation: AnnotationItem | null
   showBrewliaPanel: boolean
   hoveredAnnotation: AnnotationItem | null
-  tooltipPosition: { x: number, y: number }
+  tooltipPosition: { x: number; y: number }
 
   // 操作
   setAnnotations: (annotations: AnnotationItem[]) => void
@@ -31,15 +31,19 @@ export interface UseAnnotationsReturn {
   setSelectedAnnotation: (annotation: AnnotationItem | null) => void
   setShowBrewliaPanel: (show: boolean) => void
   setHoveredAnnotation: (annotation: AnnotationItem | null) => void
-  setTooltipPosition: (position: { x: number, y: number }) => void
+  setTooltipPosition: (position: { x: number; y: number }) => void
   loadAnnotations: () => Promise<void>
   regenerateAnnotations: () => Promise<void>
   toggleAnnotations: () => void
-  scrollToAnnotation: (annotation: AnnotationItem, contentRef: React.RefObject<HTMLDivElement>, articleRef: React.RefObject<HTMLElement>) => void
+  scrollToAnnotation: (
+    annotation: AnnotationItem,
+    contentRef: React.RefObject<HTMLDivElement | null>,
+    articleRef: React.RefObject<HTMLElement | null>,
+  ) => void
 
   // Refs
-  hoverTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
-  annotationsLoadingRef: React.MutableRefObject<boolean>
+  hoverTimeoutRef: React.RefObject<ReturnType<typeof setTimeout> | null>
+  annotationsLoadingRef: React.RefObject<boolean>
 }
 
 export function useAnnotations({
@@ -53,9 +57,11 @@ export function useAnnotations({
   const [annotationsLoading, setAnnotationsLoading] = useState(false)
   const [annotationsError, setAnnotationsError] = useState<string | null>(null)
   const [showAnnotations, setShowAnnotations] = useState(false)
-  const [selectedAnnotation, setSelectedAnnotation] = useState<AnnotationItem | null>(null)
+  const [selectedAnnotation, setSelectedAnnotation] =
+    useState<AnnotationItem | null>(null)
   const [showBrewliaPanel, setShowBrewliaPanel] = useState(false)
-  const [hoveredAnnotation, setHoveredAnnotation] = useState<AnnotationItem | null>(null)
+  const [hoveredAnnotation, setHoveredAnnotation] =
+    useState<AnnotationItem | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
 
   // Refs
@@ -64,8 +70,7 @@ export function useAnnotations({
 
   // 加载注释
   const loadAnnotations = useCallback(async () => {
-    if (!isBrewlia || annotationsLoadingRef.current)
-      return
+    if (!isBrewlia || annotationsLoadingRef.current) return
 
     // 如果已有注释，直接显示
     if (annotations.length > 0) {
@@ -84,17 +89,18 @@ export function useAnnotations({
         setAnnotations(response.annotations)
         setShowAnnotations(true)
         const cacheHint = response.from_cache ? t.brew.fromCache : ''
-        showToastMessage(`${t.brew.foundAnnotations.replace('{count}', String(response.annotations.length))}${cacheHint}`)
-      }
-      else {
+        showToastMessage(
+          `${t.brew.foundAnnotations.replace('{count}', String(response.annotations.length))}${cacheHint}`,
+        )
+      } else {
         setAnnotationsError(response.error || t.brew.fetchAnnotationFailed)
       }
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to load annotations:', err)
-      setAnnotationsError(err instanceof Error ? err.message : t.brew.fetchAnnotationFailed)
-    }
-    finally {
+      setAnnotationsError(
+        err instanceof Error ? err.message : t.brew.fetchAnnotationFailed,
+      )
+    } finally {
       setAnnotationsLoading(false)
       annotationsLoadingRef.current = false
     }
@@ -102,8 +108,7 @@ export function useAnnotations({
 
   // 重新生成注释
   const regenerateAnnotations = useCallback(async () => {
-    if (!isBrewlia || annotationsLoading)
-      return
+    if (!isBrewlia || annotationsLoading) return
 
     setAnnotationsLoading(true)
     setAnnotationsError(null)
@@ -114,17 +119,21 @@ export function useAnnotations({
       if (response.success) {
         setAnnotations(response.annotations)
         setShowAnnotations(true)
-        showToastMessage(t.brew.regeneratedAnnotations.replace('{count}', String(response.annotations.length)))
-      }
-      else {
+        showToastMessage(
+          t.brew.regeneratedAnnotations.replace(
+            '{count}',
+            String(response.annotations.length),
+          ),
+        )
+      } else {
         setAnnotationsError(response.error || t.brew.regenerateFailed)
       }
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to regenerate annotations:', err)
-      setAnnotationsError(err instanceof Error ? err.message : t.brew.regenerateFailed)
-    }
-    finally {
+      setAnnotationsError(
+        err instanceof Error ? err.message : t.brew.regenerateFailed,
+      )
+    } finally {
       setAnnotationsLoading(false)
     }
   }, [isBrewlia, annotationsLoading, itemId, showToastMessage, t])
@@ -133,39 +142,46 @@ export function useAnnotations({
   const toggleAnnotations = useCallback(() => {
     if (annotations.length === 0) {
       loadAnnotations()
-    }
-    else {
-      setShowAnnotations(prev => !prev)
+    } else {
+      setShowAnnotations((prev) => !prev)
     }
   }, [annotations.length, loadAnnotations])
 
   // 跳转到注释位置
-  const scrollToAnnotation = useCallback((
-    annotation: AnnotationItem,
-    contentRef: React.RefObject<HTMLDivElement>,
-    articleRef: React.RefObject<HTMLElement>,
-  ) => {
-    const annotationId = annotation.id || `${annotation.type}-${annotations.indexOf(annotation) + 1}`
-    const mark = contentRef.current?.querySelector(`mark[data-annotation-id="${annotationId}"]`)
+  const scrollToAnnotation = useCallback(
+    (
+      annotation: AnnotationItem,
+      contentRef: React.RefObject<HTMLDivElement | null>,
+      articleRef: React.RefObject<HTMLElement | null>,
+    ) => {
+      const annotationId =
+        annotation.id ||
+        `${annotation.type}-${annotations.indexOf(annotation) + 1}`
+      const mark = contentRef.current?.querySelector(
+        `mark[data-annotation-id="${annotationId}"]`,
+      )
 
-    if (mark && articleRef.current) {
-      const articleRect = articleRef.current.getBoundingClientRect()
-      const markRect = mark.getBoundingClientRect()
-      const scrollTop = articleRef.current.scrollTop + markRect.top - articleRect.top - 150
+      if (mark && articleRef.current) {
+        const articleRect = articleRef.current.getBoundingClientRect()
+        const markRect = mark.getBoundingClientRect()
+        const scrollTop =
+          articleRef.current.scrollTop + markRect.top - articleRect.top - 150
 
-      articleRef.current.scrollTo({
-        top: scrollTop,
-        behavior: 'smooth',
-      })
+        articleRef.current.scrollTo({
+          top: scrollTop,
+          behavior: 'smooth',
+        })
 
-      // 高亮闪烁效果
-      mark.classList.add('brewlia-highlight-flash')
-      setTimeout(() => mark.classList.remove('brewlia-highlight-flash'), 1500)
+        // 高亮闪烁效果
+        mark.classList.add('brewlia-highlight-flash')
+        setTimeout(() => mark.classList.remove('brewlia-highlight-flash'), 1500)
 
-      // 关闭面板
-      setShowBrewliaPanel(false)
-    }
-  }, [annotations])
+        // 关闭面板
+        setShowBrewliaPanel(false)
+      }
+    },
+    [annotations],
+  )
 
   return {
     // 状态

@@ -3,13 +3,13 @@
  * 预设组合：使用 NumberGroupItem 卡片式渲染配额输入
  */
 
-import './presets.css'
+import type { NumberGroupOption } from '../items/NumberGroupItem'
+
+import type { QuotaGroupConfig } from '../types'
 
 import React, { useCallback, useMemo } from 'react'
-
 import { NumberGroupItem } from '../items/NumberGroupItem'
-import type { NumberGroupOption } from '../items/NumberGroupItem'
-import type { QuotaGroupConfig } from '../types'
+import './presets.css'
 
 export interface QuotaGroupProps extends QuotaGroupConfig {}
 
@@ -21,21 +21,25 @@ export const QuotaGroup: React.FC<QuotaGroupProps> = ({
   onChange,
   disabled = false,
 }) => {
-  const handleChange = useCallback((key: string, value: number) => {
-    onChange(key, value)
-  }, [onChange])
+  const handleChange = useCallback(
+    (key: string, value: number) => {
+      onChange(key, value)
+    },
+    [onChange],
+  )
 
-  const options: NumberGroupOption[] = useMemo(() =>
-    quotas.map(quota => ({
-      key: quota.key,
-      label: quota.label,
-      description: quota.hint,
-      value: values[quota.key] ?? 0,
-      min: quota.min,
-      max: quota.max,
-      step: quota.step,
-      unit: quota.unit,
-    })),
+  const options: NumberGroupOption[] = useMemo(
+    () =>
+      quotas.map((quota) => ({
+        key: quota.key,
+        label: quota.label,
+        description: quota.hint,
+        value: values[quota.key] ?? 0,
+        min: quota.min,
+        max: quota.max,
+        step: quota.step,
+        unit: quota.unit,
+      })),
     [quotas, values],
   )
 

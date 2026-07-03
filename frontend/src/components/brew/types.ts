@@ -3,7 +3,13 @@
  */
 
 import type { ReactNode } from 'react'
-import type { BrewItem, BrewSource, CardSize, FeedType, SourceType } from '../../types/brew'
+import type {
+  BrewItem,
+  BrewSource,
+  CardSize,
+  FeedType,
+  SourceType,
+} from '../../types/brew'
 
 // ==================== 排序类型 ====================
 
@@ -26,12 +32,18 @@ export interface SourceCardProps {
   onEdit?: () => void
   onDelete?: () => void
   // 尺寸调整
-  onResizeStart?: (e: React.MouseEvent | React.TouchEvent, sourceId: number) => void
+  onResizeStart?: (
+    e: React.MouseEvent | React.TouchEvent,
+    sourceId: number,
+  ) => void
   previewSize?: CardSize
   // 拖拽排序
   isDragging?: boolean
   isDragOver?: boolean
-  onDragStart?: (e: React.MouseEvent | React.TouchEvent, sourceId: number) => void
+  onDragStart?: (
+    e: React.MouseEvent | React.TouchEvent,
+    sourceId: number,
+  ) => void
   sortMode?: SortMode
 }
 
@@ -98,16 +110,16 @@ export interface CardSkeletonProps {
 // ==================== 管理组件类型 ====================
 
 /** 控制岛模式 */
-export type ControlMode
-  = | 'default'
-    | 'search'
-    | 'edit'
-    | 'keyboard'
-    | 'add'
-    | 'feed'
-    | 'category-feed'
-    | 'starred'
-    | 'starred-edit'
+export type ControlMode =
+  | 'default'
+  | 'search'
+  | 'edit'
+  | 'keyboard'
+  | 'add'
+  | 'feed'
+  | 'category-feed'
+  | 'starred'
+  | 'starred-edit'
 
 /** 动态提示信息 */
 export interface DynamicTip {
@@ -170,7 +182,13 @@ export interface ControlIslandProps {
   isDeleting?: boolean
   isRefreshing?: boolean
   // 添加
-  onAddSource?: (url: string, name?: string, category?: string, icon?: string, sourceType?: SourceType) => Promise<void>
+  onAddSource?: (
+    url: string,
+    name?: string,
+    category?: string,
+    icon?: string,
+    sourceType?: SourceType,
+  ) => Promise<void>
   onSourcesChange?: () => void
   // 排序
   sortMode?: SortMode

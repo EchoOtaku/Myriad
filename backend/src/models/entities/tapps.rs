@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 /// Tapp 状态
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum TappStatus {
     #[sea_orm(string_value = "installed")]
+    #[default]
     Installed,
     #[sea_orm(string_value = "running")]
     Running,
@@ -15,12 +17,6 @@ pub enum TappStatus {
     Suspended,
     #[sea_orm(string_value = "error")]
     Error,
-}
-
-impl Default for TappStatus {
-    fn default() -> Self {
-        Self::Installed
-    }
 }
 
 /// Tapp 应用实体

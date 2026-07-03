@@ -77,12 +77,13 @@ async function apiRequest<T>(
 ): Promise<T> {
   // 只有非 GET 请求才需要 CSRF token
   const method = (options.method || 'GET').toUpperCase()
-  const needsCsrf = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
-  const csrfToken = needsCsrf ? (await getCSRFToken() || '') : ''
+  const needsCsrf =
+    method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
+  const csrfToken = needsCsrf ? (await getCSRFToken()) || '' : ''
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers as Record<string, string>,
+    ...(options.headers as Record<string, string>),
   }
 
   // 只在需要时添加 CSRF token
@@ -99,7 +100,10 @@ async function apiRequest<T>(
   // 如果 CSRF Token 无效，尝试刷新后重试一次
   if (response.status === 403 && retryOnCsrf) {
     const errorData = await response.json().catch(() => ({}))
-    if (errorData.error?.includes('CSRF') || errorData.error?.includes('csrf')) {
+    if (
+      errorData.error?.includes('CSRF') ||
+      errorData.error?.includes('csrf')
+    ) {
       // 强制刷新 CSRF Token
       await getCSRFToken(true)
       // 重试请求（不再重试）
@@ -109,7 +113,9 @@ async function apiRequest<T>(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
-    throw new Error(errorData.message || errorData.error || `API Error: ${response.status}`)
+    throw new Error(
+      errorData.message || errorData.error || `API Error: ${response.status}`,
+    )
   }
 
   const result = await response.json()
@@ -158,7 +164,9 @@ export interface RecentTappItem {
  * @param limit 返回的最大数量，默认 10
  * @returns 最近使用的 Tapp 列表（按最后运行时间降序）
  */
-export async function getRecentTapps(limit: number = 10): Promise<RecentTappItem[]> {
+export async function getRecentTapps(
+  limit: number = 10,
+): Promise<RecentTappItem[]> {
   return apiRequest(`/api/tapps/recent?limit=${limit}`)
 }
 
@@ -202,19 +210,23 @@ export async function installTapp(
 ): Promise<TappListItem> {
   // 有 pageModules 时，main.js 只存 widget 相关代码（模块化的页面代码已在 pageModules 中）
   // 无 pageModules 时，main.js 存完整合并代码（core + widget + page 单体回退）
-  const hasPageModules = code.pageModules && Object.keys(code.pageModules).length > 0
+  const hasPageModules =
+    code.pageModules && Object.keys(code.pageModules).length > 0
   let jsCode: string
   if (hasPageModules) {
     // 模块化模式：main.js 仅保留 widget 部分（如果有的话）
     jsCode = [
       code.widget ? `// ========== Widget Code ==========\n${code.widget}` : '',
-    ].filter(Boolean).join('\n')
-  }
-  else {
+    ]
+      .filter(Boolean)
+      .join('\n')
+  } else {
     // 单体模式：合并所有代码
     jsCode = [
       code.core,
-      code.widget ? `\n// ========== Widget Code ==========\n${code.widget}` : '',
+      code.widget
+        ? `\n// ========== Widget Code ==========\n${code.widget}`
+        : '',
       code.page ? `\n// ========== Page Code ==========\n${code.page}` : '',
     ].join('')
   }
@@ -268,7 +280,10 @@ export async function installTapp(
  *
  * 🎯 自动生成分离式预编译 Tailwind CSS（widget.css 和 page.css）
  */
-export async function installFromCode(manifest: TappManifest, code: TappCodeStructure): Promise<TappListItem> {
+export async function installFromCode(
+  manifest: TappManifest,
+  code: TappCodeStructure,
+): Promise<TappListItem> {
   // 🎯 生成 Widget 专用 CSS
   const widgetSources = [
     code.widgetHtml || '',
@@ -295,8 +310,7 @@ export async function installFromCode(manifest: TappManifest, code: TappCodeStru
   if (result && result.id) {
     try {
       await updateSeparatedCSS(result.id, { widgetCss, pageCss })
-    }
-    catch (cssError) {
+    } catch (cssError) {
       console.warn('Failed to update separated CSS:', cssError)
     }
   }
@@ -311,14 +325,17 @@ export async function installFromCode(manifest: TappManifest, code: TappCodeStru
  * @param permissions 授权的权限列表（可选）
  * @returns 安装后的 Tapp 信息
  */
-export async function installTappFile(file: File, permissions?: string[]): Promise<TappListItem> {
+export async function installTappFile(
+  file: File,
+  permissions?: string[],
+): Promise<TappListItem> {
   const formData = new FormData()
   formData.append('file', file)
   if (permissions) {
     formData.append('permissions', JSON.stringify(permissions))
   }
 
-  const csrfToken = await getCSRFToken() || ''
+  const csrfToken = (await getCSRFToken()) || ''
 
   const response = await fetch(`${API_URL}/api/tapps/install-file`, {
     method: 'POST',
@@ -331,7 +348,11 @@ export async function installTappFile(file: File, permissions?: string[]): Promi
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
-    throw new Error(errorData.message || errorData.error || `Install failed: ${response.status}`)
+    throw new Error(
+      errorData.message ||
+        errorData.error ||
+        `Install failed: ${response.status}`,
+    )
   }
 
   const result = await response.json()
@@ -361,7 +382,9 @@ export interface InstallFromStoreRequest {
  * @param request 安装请求
  * @returns 安装后的 Tapp 信息
  */
-export async function installFromStore(request: InstallFromStoreRequest): Promise<TappListItem> {
+export async function installFromStore(
+  request: InstallFromStoreRequest,
+): Promise<TappListItem> {
   return apiRequest('/api/tapps/install', {
     method: 'POST',
     body: JSON.stringify({
@@ -385,10 +408,13 @@ export async function getTapp(tappId: string): Promise<TappDetail> {
  */
 export async function getTappCode(tappId: string): Promise<string> {
   // GET 请求不需要 CSRF Token
-  const response = await fetch(`${API_URL}/api/tapps/${encodeURIComponent(tappId)}/code`, {
-    method: 'GET',
-    credentials: 'include',
-  })
+  const response = await fetch(
+    `${API_URL}/api/tapps/${encodeURIComponent(tappId)}/code`,
+    {
+      method: 'GET',
+      credentials: 'include',
+    },
+  )
   if (!response.ok) {
     throw new Error(`Failed to get Tapp code: ${response.status}`)
   }
@@ -446,10 +472,13 @@ interface TappResourcesRaw {
  * 支持混合渲染模式
  */
 export async function getTappResources(tappId: string): Promise<TappResources> {
-  const response = await fetch(`${API_URL}/api/tapps/${encodeURIComponent(tappId)}/resources`, {
-    method: 'GET',
-    credentials: 'include',
-  })
+  const response = await fetch(
+    `${API_URL}/api/tapps/${encodeURIComponent(tappId)}/resources`,
+    {
+      method: 'GET',
+      credentials: 'include',
+    },
+  )
   if (!response.ok) {
     // 如果新 API 不存在，回退到只获取代码
     if (response.status === 404) {
@@ -492,7 +521,10 @@ export interface SeparatedCSSRequest {
  * 更新 Tapp 的分离式 CSS
  * 分别更新 widget.css 和 page.css
  */
-export async function updateSeparatedCSS(tappId: string, css: SeparatedCSSRequest): Promise<void> {
+export async function updateSeparatedCSS(
+  tappId: string,
+  css: SeparatedCSSRequest,
+): Promise<void> {
   return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/separated-css`, {
     method: 'POST',
     body: JSON.stringify(css),
@@ -530,7 +562,10 @@ export interface UninstallOptions {
  * @param tappId Tapp ID
  * @param options 卸载选项
  */
-export async function uninstallTapp(tappId: string, options?: UninstallOptions): Promise<void> {
+export async function uninstallTapp(
+  tappId: string,
+  options?: UninstallOptions,
+): Promise<void> {
   const params = new URLSearchParams()
   if (options?.keepData) {
     params.set('keep_data', 'true')
@@ -562,7 +597,10 @@ export interface UpdateTappFromStoreRequest {
  * @param request - 更新请求参数
  * @returns 更新后的 Tapp 信息
  */
-export async function updateTappFromStore(tappId: string, request: UpdateTappFromStoreRequest): Promise<TappListItem> {
+export async function updateTappFromStore(
+  tappId: string,
+  request: UpdateTappFromStoreRequest,
+): Promise<TappListItem> {
   return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/update`, {
     method: 'POST',
     body: JSON.stringify({
@@ -626,7 +664,9 @@ export async function cleanupTemporaryTapps(): Promise<number> {
 /**
  * 获取 Tapp 注册的小组件列表
  */
-export async function listTappWidgets(tappId: string): Promise<RegisteredWidget[]> {
+export async function listTappWidgets(
+  tappId: string,
+): Promise<RegisteredWidget[]> {
   return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/widgets`)
 }
 
@@ -639,8 +679,7 @@ export async function getAllWidgets(): Promise<RegisteredWidget[]> {
     // 使用新的单一接口获取所有小组件
     const widgets = await apiRequest<RegisteredWidget[]>('/api/tapps/widgets')
     return widgets
-  }
-  catch {
+  } catch {
     // 回退到旧方式（遍历每个 Tapp）
     const tapps = await listTapps()
     const widgets: RegisteredWidget[] = []
@@ -651,8 +690,7 @@ export async function getAllWidgets(): Promise<RegisteredWidget[]> {
         try {
           const tappWidgets = await listTappWidgets(tapp.id)
           widgets.push(...tappWidgets)
-        }
-        catch {
+        } catch {
           // 静默失败
         }
       }
@@ -665,7 +703,10 @@ export async function getAllWidgets(): Promise<RegisteredWidget[]> {
 /**
  * 注册小组件到后端
  */
-export async function registerTappWidget(tappId: string, config: WidgetRegistration): Promise<RegisteredWidget> {
+export async function registerTappWidget(
+  tappId: string,
+  config: WidgetRegistration,
+): Promise<RegisteredWidget> {
   const requestBody = {
     id: config.id,
     name: config.name,
@@ -677,20 +718,29 @@ export async function registerTappWidget(tappId: string, config: WidgetRegistrat
     config: config.configSchema || {},
   }
 
-  const result = await apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/widgets`, {
-    method: 'POST',
-    body: JSON.stringify(requestBody),
-  })
+  const result = await apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/widgets`,
+    {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    },
+  )
   return result as RegisteredWidget
 }
 
 /**
  * 注销小组件
  */
-export async function unregisterTappWidget(tappId: string, widgetId: string): Promise<void> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/widgets/${encodeURIComponent(widgetId)}`, {
-    method: 'DELETE',
-  })
+export async function unregisterTappWidget(
+  tappId: string,
+  widgetId: string,
+): Promise<void> {
+  return apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/widgets/${encodeURIComponent(widgetId)}`,
+    {
+      method: 'DELETE',
+    },
+  )
 }
 
 // ============ Tapp 存储 API ============
@@ -698,27 +748,45 @@ export async function unregisterTappWidget(tappId: string, widgetId: string): Pr
 /**
  * 获取存储值
  */
-export async function getStorage(tappId: string, key: string): Promise<unknown> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/storage/${encodeURIComponent(key)}`)
+export async function getStorage(
+  tappId: string,
+  key: string,
+): Promise<unknown> {
+  return apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/storage/${encodeURIComponent(key)}`,
+  )
 }
 
 /**
  * 设置存储值
  */
-export async function setStorage(tappId: string, key: string, value: unknown): Promise<void> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/storage/${encodeURIComponent(key)}`, {
-    method: 'POST',
-    body: JSON.stringify(value),
-  })
+export async function setStorage(
+  tappId: string,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  return apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/storage/${encodeURIComponent(key)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(value),
+    },
+  )
 }
 
 /**
  * 删除存储值
  */
-export async function removeStorage(tappId: string, key: string): Promise<void> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/storage/${encodeURIComponent(key)}`, {
-    method: 'DELETE',
-  })
+export async function removeStorage(
+  tappId: string,
+  key: string,
+): Promise<void> {
+  return apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/storage/${encodeURIComponent(key)}`,
+    {
+      method: 'DELETE',
+    },
+  )
 }
 
 /**
@@ -744,7 +812,7 @@ export async function clearStorage(tappId: string): Promise<void> {
  */
 export async function listEnabledPlatforms(): Promise<PlatformInfo[]> {
   const data = await apiRequest<{ platforms: PlatformInfo[] }>('/api/platforms')
-  return data.platforms.filter(p => p.enabled)
+  return data.platforms.filter((p) => p.enabled)
 }
 
 /**
@@ -763,12 +831,9 @@ export async function getPlatformData(
   platform: string
 }> {
   const params = new URLSearchParams()
-  if (options?.limit)
-    params.set('limit', String(options.limit))
-  if (options?.offset)
-    params.set('offset', String(options.offset))
-  if (options?.filter)
-    params.set('filter', JSON.stringify(options.filter))
+  if (options?.limit) params.set('limit', String(options.limit))
+  if (options?.offset) params.set('offset', String(options.offset))
+  if (options?.filter) params.set('filter', JSON.stringify(options.filter))
 
   return apiRequest(`/api/tapp/platform/${platform}/data?${params}`)
 }
@@ -780,7 +845,7 @@ export async function getPlatformStats(platform: string): Promise<{
   platform: string
   total: number
   distribution: Record<string, number>
-  recentActivity: { date: string, count: number }[]
+  recentActivity: { date: string; count: number }[]
 }> {
   return apiRequest(`/api/tapp/platform/${platform}/stats`)
 }
@@ -791,7 +856,7 @@ export async function getPlatformStats(platform: string): Promise<{
 export async function getPlatformDistribution(
   platform: string,
   dimension: string,
-): Promise<{ dimension: string, data: { label: string, value: number }[] }> {
+): Promise<{ dimension: string; data: { label: string; value: number }[] }> {
   return apiRequest(`/api/tapp/platform/${platform}/distribution/${dimension}`)
 }
 
@@ -817,7 +882,7 @@ export async function addPlatformItem(
 export async function addPlatformItems(
   tappId: string,
   items: NewPlatformItem[],
-): Promise<{ success: boolean, results: PlatformItemResult[] }> {
+): Promise<{ success: boolean; results: PlatformItemResult[] }> {
   return apiRequest('/api/tapp/platform/items/batch', {
     method: 'POST',
     body: JSON.stringify({
@@ -977,8 +1042,7 @@ export async function getPlatformReport(platform: string): Promise<{
 } | null> {
   try {
     return await apiRequest(`/api/reports/platform/${platform}`)
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -1052,27 +1116,30 @@ export default {
 // ============ P0: Data Transform API ============
 
 /** 数据输入源 */
-export type DataInput
-  = | { source: 'platform', platform: string }
-    | { source: 'storage', key: string }
-    | { source: 'inline', data: unknown }
+export type DataInput =
+  | { source: 'platform'; platform: string }
+  | { source: 'storage'; key: string }
+  | { source: 'inline'; data: unknown }
 
 /** 数据输出目标 */
-export type DataOutput
-  = | { target: 'platform', platform: string }
-    | { target: 'storage', key: string }
+export type DataOutput =
+  { target: 'platform'; platform: string } | { target: 'storage'; key: string }
 
 /** 处理步骤 */
-export type ProcessStep
-  = | { type: 'filter', field: string, operator: string, value: unknown }
-    | { type: 'sort', field: string, order?: 'asc' | 'desc' }
-    | { type: 'limit', count: number }
-    | { type: 'offset', count: number }
-    | { type: 'select', fields: string[] }
-    | { type: 'group', by: string }
-    | { type: 'aggregate', operation: 'count' | 'sum' | 'avg' | 'min' | 'max', field?: string }
-    | { type: 'dedupe', key: string }
-    | { type: 'map', expression: string }
+export type ProcessStep =
+  | { type: 'filter'; field: string; operator: string; value: unknown }
+  | { type: 'sort'; field: string; order?: 'asc' | 'desc' }
+  | { type: 'limit'; count: number }
+  | { type: 'offset'; count: number }
+  | { type: 'select'; fields: string[] }
+  | { type: 'group'; by: string }
+  | {
+      type: 'aggregate'
+      operation: 'count' | 'sum' | 'avg' | 'min' | 'max'
+      field?: string
+    }
+  | { type: 'dedupe'; key: string }
+  | { type: 'map'; expression: string }
 
 /** 数据转换请求 */
 export interface DataTransformRequest {
@@ -1092,7 +1159,9 @@ export interface DataTransformResponse {
 /**
  * 执行数据转换管道
  */
-export async function dataTransform(request: DataTransformRequest): Promise<DataTransformResponse> {
+export async function dataTransform(
+  request: DataTransformRequest,
+): Promise<DataTransformResponse> {
   return apiRequest('/api/tapp/data/transform', {
     method: 'POST',
     body: JSON.stringify({
@@ -1246,7 +1315,9 @@ export interface GeoContext {
  * 这是一个公开 API，所有用户（包括游客）都可以调用
  */
 export async function getContextGeo(): Promise<GeoContext> {
-  const result = await apiRequest<{ success: boolean, data: GeoContext }>('/api/tapp/context/geo')
+  const result = await apiRequest<{ success: boolean; data: GeoContext }>(
+    '/api/tapp/context/geo',
+  )
   if (result.success && result.data) {
     return result.data
   }
@@ -1302,17 +1373,20 @@ export async function executeTappApi(
 ): Promise<TappApiExecuteResponse> {
   // 不使用 apiRequest 因为它会自动解包 data 字段
   // 这里需要返回完整的 { success, data, error, cached } 响应
-  const csrfToken = await getCSRFToken() || ''
+  const csrfToken = (await getCSRFToken()) || ''
 
-  const response = await fetch(`${API_URL}/api/tapp/${encodeURIComponent(tappId)}/api/${encodeURIComponent(apiName)}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRF-Token': csrfToken,
+  const response = await fetch(
+    `${API_URL}/api/tapp/${encodeURIComponent(tappId)}/api/${encodeURIComponent(apiName)}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken,
+      },
+      body: JSON.stringify({ params }),
+      credentials: 'include',
     },
-    body: JSON.stringify({ params }),
-    credentials: 'include',
-  })
+  )
 
   const result = await response.json()
 
@@ -1332,7 +1406,7 @@ export async function executeTappApi(
  * @returns API 列表
  */
 export async function listTappApis(tappId: string): Promise<TappApiInfo[]> {
-  const result = await apiRequest<{ success: boolean, apis: TappApiInfo[] }>(
+  const result = await apiRequest<{ success: boolean; apis: TappApiInfo[] }>(
     `/api/tapp/${encodeURIComponent(tappId)}/apis`,
   )
   return result.apis || []
@@ -1423,7 +1497,9 @@ export interface TappReport {
 /**
  * 创建报告
  */
-export async function createTappReport(request: CreateReportRequest): Promise<{ success: boolean, report: TappReport }> {
+export async function createTappReport(
+  request: CreateReportRequest,
+): Promise<{ success: boolean; report: TappReport }> {
   return apiRequest('/api/tapp/reports', {
     method: 'POST',
     body: JSON.stringify({
@@ -1439,15 +1515,22 @@ export async function createTappReport(request: CreateReportRequest): Promise<{ 
 /**
  * 获取 Tapp 报告列表
  */
-export async function listTappReports(tappId: string): Promise<{ success: boolean, reports: TappReport[] }> {
+export async function listTappReports(
+  tappId: string,
+): Promise<{ success: boolean; reports: TappReport[] }> {
   return apiRequest(`/api/tapp/reports/tapp/${encodeURIComponent(tappId)}`)
 }
 
 /**
  * 获取报告详情
  */
-export async function getTappReport(tappId: string, reportId: string): Promise<{ success: boolean, report: TappReport }> {
-  return apiRequest(`/api/tapp/reports/${encodeURIComponent(tappId)}/${encodeURIComponent(reportId)}`)
+export async function getTappReport(
+  tappId: string,
+  reportId: string,
+): Promise<{ success: boolean; report: TappReport }> {
+  return apiRequest(
+    `/api/tapp/reports/${encodeURIComponent(tappId)}/${encodeURIComponent(reportId)}`,
+  )
 }
 
 /**
@@ -1456,21 +1539,30 @@ export async function getTappReport(tappId: string, reportId: string): Promise<{
 export async function updateTappReport(
   tappId: string,
   reportId: string,
-  updates: { title?: string, content?: unknown, metadata?: unknown },
-): Promise<{ success: boolean, report: TappReport }> {
-  return apiRequest(`/api/tapp/reports/${encodeURIComponent(tappId)}/${encodeURIComponent(reportId)}`, {
-    method: 'PUT',
-    body: JSON.stringify(updates),
-  })
+  updates: { title?: string; content?: unknown; metadata?: unknown },
+): Promise<{ success: boolean; report: TappReport }> {
+  return apiRequest(
+    `/api/tapp/reports/${encodeURIComponent(tappId)}/${encodeURIComponent(reportId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    },
+  )
 }
 
 /**
  * 删除报告
  */
-export async function deleteTappReport(tappId: string, reportId: string): Promise<{ success: boolean, deleted: string }> {
-  return apiRequest(`/api/tapp/reports/${encodeURIComponent(tappId)}/${encodeURIComponent(reportId)}`, {
-    method: 'DELETE',
-  })
+export async function deleteTappReport(
+  tappId: string,
+  reportId: string,
+): Promise<{ success: boolean; deleted: string }> {
+  return apiRequest(
+    `/api/tapp/reports/${encodeURIComponent(tappId)}/${encodeURIComponent(reportId)}`,
+    {
+      method: 'DELETE',
+    },
+  )
 }
 
 // ============ P1: Media Control API ============
@@ -1478,7 +1570,16 @@ export async function deleteTappReport(tappId: string, reportId: string): Promis
 /** 媒体控制请求 */
 export interface MediaControlRequest {
   tappId: string
-  action: 'play' | 'pause' | 'next' | 'prev' | 'seek' | 'volume' | 'mode' | 'mute' | 'unmute'
+  action:
+    | 'play'
+    | 'pause'
+    | 'next'
+    | 'prev'
+    | 'seek'
+    | 'volume'
+    | 'mode'
+    | 'mute'
+    | 'unmute'
   value?: unknown
 }
 
@@ -1513,7 +1614,9 @@ export interface MediaStatus {
 /**
  * 媒体控制
  */
-export async function mediaControl(request: MediaControlRequest): Promise<{ success: boolean, action: string, value?: unknown }> {
+export async function mediaControl(
+  request: MediaControlRequest,
+): Promise<{ success: boolean; action: string; value?: unknown }> {
   return apiRequest('/api/tapp/media/control', {
     method: 'POST',
     body: JSON.stringify({
@@ -1527,7 +1630,10 @@ export async function mediaControl(request: MediaControlRequest): Promise<{ succ
 /**
  * 获取媒体状态
  */
-export async function mediaStatus(): Promise<{ success: boolean, status: MediaStatus }> {
+export async function mediaStatus(): Promise<{
+  success: boolean
+  status: MediaStatus
+}> {
   return apiRequest('/api/tapp/media/status')
 }
 
@@ -1582,7 +1688,7 @@ export async function registerComponent(
   tappId: string,
   componentType: ComponentType,
   config: ComponentConfig,
-): Promise<{ success: boolean, component: RegisteredComponent }> {
+): Promise<{ success: boolean; component: RegisteredComponent }> {
   return apiRequest('/api/tapp/components/register', {
     method: 'POST',
     body: JSON.stringify({
@@ -1600,10 +1706,16 @@ export async function unregisterComponent(
   tappId: string,
   componentType: ComponentType,
   componentId: string,
-): Promise<{ success: boolean, unregistered: { id: string, type: string, tappId: string } }> {
-  return apiRequest(`/api/tapp/components/${encodeURIComponent(tappId)}/${componentType}/${encodeURIComponent(componentId)}`, {
-    method: 'DELETE',
-  })
+): Promise<{
+  success: boolean
+  unregistered: { id: string; type: string; tappId: string }
+}> {
+  return apiRequest(
+    `/api/tapp/components/${encodeURIComponent(tappId)}/${componentType}/${encodeURIComponent(componentId)}`,
+    {
+      method: 'DELETE',
+    },
+  )
 }
 
 /**
@@ -1612,7 +1724,7 @@ export async function unregisterComponent(
 export async function listComponents(
   tappId: string,
   type?: ComponentType,
-): Promise<{ success: boolean, components: RegisteredComponent[] }> {
+): Promise<{ success: boolean; components: RegisteredComponent[] }> {
   const url = type
     ? `/api/tapp/components/${encodeURIComponent(tappId)}?type=${type}`
     : `/api/tapp/components/${encodeURIComponent(tappId)}`
@@ -1624,7 +1736,11 @@ export async function listComponents(
  */
 export async function listAllComponentsByType(
   componentType: ComponentType,
-): Promise<{ success: boolean, type: string, components: RegisteredComponent[] }> {
+): Promise<{
+  success: boolean
+  type: string
+  components: RegisteredComponent[]
+}> {
   return apiRequest(`/api/tapp/components/all/${componentType}`)
 }
 
@@ -1657,7 +1773,7 @@ export interface RegisteredShortcut {
 export async function registerShortcut(
   tappId: string,
   config: ShortcutConfig,
-): Promise<{ success: boolean, shortcut: RegisteredShortcut }> {
+): Promise<{ success: boolean; shortcut: RegisteredShortcut }> {
   return apiRequest('/api/tapp/shortcuts/register', {
     method: 'POST',
     body: JSON.stringify({
@@ -1677,10 +1793,13 @@ export async function registerShortcut(
 export async function unregisterShortcut(
   tappId: string,
   shortcutId: string,
-): Promise<{ success: boolean, unregistered: string }> {
-  return apiRequest(`/api/tapp/shortcuts/${encodeURIComponent(tappId)}/${encodeURIComponent(shortcutId)}`, {
-    method: 'DELETE',
-  })
+): Promise<{ success: boolean; unregistered: string }> {
+  return apiRequest(
+    `/api/tapp/shortcuts/${encodeURIComponent(tappId)}/${encodeURIComponent(shortcutId)}`,
+    {
+      method: 'DELETE',
+    },
+  )
 }
 
 /**
@@ -1688,8 +1807,10 @@ export async function unregisterShortcut(
  */
 export async function listShortcuts(
   tappId?: string,
-): Promise<{ success: boolean, shortcuts: RegisteredShortcut[] }> {
-  const url = tappId ? `/api/tapp/shortcuts?tapp_id=${encodeURIComponent(tappId)}` : '/api/tapp/shortcuts'
+): Promise<{ success: boolean; shortcuts: RegisteredShortcut[] }> {
+  const url = tappId
+    ? `/api/tapp/shortcuts?tapp_id=${encodeURIComponent(tappId)}`
+    : '/api/tapp/shortcuts'
   return apiRequest(url)
 }
 
@@ -1717,7 +1838,7 @@ export interface PublishedEvent {
  */
 export async function publishEvent(
   request: PublishEventRequest,
-): Promise<{ success: boolean, event: PublishedEvent }> {
+): Promise<{ success: boolean; event: PublishedEvent }> {
   return apiRequest('/api/tapp/events/publish', {
     method: 'POST',
     body: JSON.stringify({
@@ -1734,8 +1855,10 @@ export async function publishEvent(
  */
 export async function getEventSubscriptions(
   tappId: string,
-): Promise<{ success: boolean, tappId: string, subscriptions: string[] }> {
-  return apiRequest(`/api/tapp/events/subscriptions/${encodeURIComponent(tappId)}`)
+): Promise<{ success: boolean; tappId: string; subscriptions: string[] }> {
+  return apiRequest(
+    `/api/tapp/events/subscriptions/${encodeURIComponent(tappId)}`,
+  )
 }
 
 /**
@@ -1744,9 +1867,12 @@ export async function getEventSubscriptions(
 export async function updateEventSubscriptions(
   tappId: string,
   subscriptions: string[],
-): Promise<{ success: boolean, tappId: string, subscriptions: string[] }> {
-  return apiRequest(`/api/tapp/events/subscriptions/${encodeURIComponent(tappId)}`, {
-    method: 'PUT',
-    body: JSON.stringify({ subscriptions }),
-  })
+): Promise<{ success: boolean; tappId: string; subscriptions: string[] }> {
+  return apiRequest(
+    `/api/tapp/events/subscriptions/${encodeURIComponent(tappId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ subscriptions }),
+    },
+  )
 }

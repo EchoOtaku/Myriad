@@ -20,7 +20,10 @@
  */
 
 import { useLayoutEffect, useRef, useState } from 'react'
-import { isPageVisible, observeResizeAtomic as observeResize } from '../../hooks/animation'
+import {
+  isPageVisible,
+  observeResizeAtomic as observeResize,
+} from '../../hooks/animation'
 
 /** iframe 容器尺寸信息 */
 export interface IframeDimensions {
@@ -77,7 +80,8 @@ function calculateDimensions(width: number, height: number): IframeDimensions {
 
   // 字体缩放：clamp(0.6, 0.2 + scale * 0.8, 1.2)
   const rawFontScale = 0.2 + scale * 0.8
-  const fontScale = rawFontScale < 0.6 ? 0.6 : rawFontScale > 1.2 ? 1.2 : rawFontScale
+  const fontScale =
+    rawFontScale < 0.6 ? 0.6 : rawFontScale > 1.2 ? 1.2 : rawFontScale
 
   return {
     width,
@@ -115,7 +119,8 @@ export function useIframeResize<T extends HTMLElement = HTMLDivElement>(): {
   dimensions: IframeDimensions
 } {
   const containerRef = useRef<T>(null!)
-  const [dimensions, setDimensions] = useState<IframeDimensions>(DEFAULT_DIMENSIONS)
+  const [dimensions, setDimensions] =
+    useState<IframeDimensions>(DEFAULT_DIMENSIONS)
 
   // 用于追踪是否已经完成初始化，避免 F12 等微小变化触发更新
   const initializedRef = useRef(false)
@@ -125,8 +130,7 @@ export function useIframeResize<T extends HTMLElement = HTMLDivElement>(): {
   // 这样可以确保 ref 已经绑定到元素
   useLayoutEffect(() => {
     const element = containerRef.current
-    if (!element)
-      return
+    if (!element) return
 
     // 立即计算初始尺寸
     // 注意：页面入场动画期间 getBoundingClientRect 可能返回动画中间状态的尺寸
@@ -142,14 +146,12 @@ export function useIframeResize<T extends HTMLElement = HTMLDivElement>(): {
     // 设置 ResizeObserver 监听后续变化
     const unsubscribe = observeResize(element, (entry: ResizeObserverEntry) => {
       // 页面不可见时跳过更新
-      if (!isPageVisible())
-        return
+      if (!isPageVisible()) return
 
       const { width, height } = entry.contentRect
 
       // 跳过无效尺寸
-      if (width === 0 && height === 0)
-        return
+      if (width === 0 && height === 0) return
 
       const prev = lastDimensionsRef.current
 
@@ -191,25 +193,25 @@ export function sendResizeMessage(
   iframe: HTMLIFrameElement | null,
   dimensions: IframeDimensions,
 ): void {
-  if (!iframe?.contentWindow)
-    return
+  if (!iframe?.contentWindow) return
 
   // 消息去重：包含尺寸和安全区域信息
   // 使用字符串 key 确保所有相关属性都被考虑
   const key = `${dimensions.width | 0},${dimensions.height | 0},${dimensions.safeInsetTop || 0},${dimensions.safeInsetRight || 0},${dimensions.safeInsetBottom || 0},${dimensions.safeInsetLeft || 0}`
   const lastKey = lastSentDimensions.get(iframe)
-  if (lastKey === key)
-    return
+  if (lastKey === key) return
   lastSentDimensions.set(iframe, key)
 
   try {
-    iframe.contentWindow.postMessage({
-      type: 'event',
-      action: 'container:resize',
-      payload: dimensions,
-    }, '*')
-  }
-  catch {
+    iframe.contentWindow.postMessage(
+      {
+        type: 'event',
+        action: 'container:resize',
+        payload: dimensions,
+      },
+      '*',
+    )
+  } catch {
     // iframe 可能未加载完成或已销毁
   }
 }

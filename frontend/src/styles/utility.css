@@ -9,9 +9,11 @@
   100% {
     transform: translate3d(0, 0, 0) scale(1);
   }
+
   33% {
     transform: translate3d(30px, -50px, 0) scale(1.1);
   }
+
   66% {
     transform: translate3d(-20px, 20px, 0) scale(0.9);
   }
@@ -23,12 +25,15 @@
   100% {
     transform: translate3d(0, 0, 0) scale(1);
   }
+
   25% {
     transform: translate3d(40px, -60px, 0) scale(1.15);
   }
+
   50% {
     transform: translate3d(-30px, 30px, 0) scale(0.85);
   }
+
   75% {
     transform: translate3d(20px, 40px, 0) scale(1.1);
   }
@@ -39,10 +44,12 @@
     background-position: 0% 50%;
     filter: hue-rotate(0deg) brightness(1.1);
   }
+
   50% {
     background-position: 100% 50%;
     filter: hue-rotate(60deg) brightness(1.15);
   }
+
   100% {
     background-position: 0% 50%;
     filter: hue-rotate(0deg) brightness(1.1);
@@ -51,10 +58,12 @@
 
 .animate-blob {
   animation: blob 7s infinite;
+
   /* GPU加速优化 */
   will-change: transform;
   backface-visibility: hidden;
   transform-style: preserve-3d;
+
   /* 强制提升为独立合成层 */
   isolation: isolate;
 }
@@ -170,6 +179,7 @@
 .cv-animated {
   content-visibility: auto;
   contain-intrinsic-size: auto 200px;
+
   /* 当元素离开视口时自动暂停渲染计算 */
 }
 
@@ -220,6 +230,7 @@
 .anim-waiting {
   opacity: 0;
   visibility: hidden;
+
   /* 不设置 will-change，节省资源 */
 }
 
@@ -243,6 +254,7 @@
 .placeholder-stable {
   /* 使用 min-height 保持空间 */
   min-height: var(--placeholder-height, 100px);
+
   /* 禁止尺寸收缩 */
   flex-shrink: 0;
 }
@@ -250,6 +262,7 @@
 /* 内容替换容器 - 平滑切换内容 */
 .content-swap {
   position: relative;
+
   /* 使用 contain 隔离布局影响 */
   contain: layout style;
 }
@@ -408,10 +421,10 @@
 
 /* 高性能滚动容器 */
 .scroll-container {
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+
   /* 使用 transform 创建独立层 */
   transform: translateZ(0);
   will-change: scroll-position;
@@ -510,11 +523,10 @@
 }
 
 /* 移动端禁用选择 */
-@media (max-width: 767px) {
+@media (width <= 767px) {
   .nav-item,
   .dynamic-island,
   button {
-    -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
   }

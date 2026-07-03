@@ -158,7 +158,7 @@ impl Agent {
                     response_type: AgentResponseType::Answer,
                     message: planner_output
                         .chat_reply
-                        .unwrap_or_else(|| response_agent::greeting()),
+                        .unwrap_or_else(response_agent::greeting),
                     data: Some(json!({ "type": "chat" })),
                     data_display: None,
                     suggestions: vec![],
@@ -194,7 +194,7 @@ impl Agent {
             PlannerStatus::Unsupported => {
                 let reason = planner_output
                     .unsupported_reason
-                    .unwrap_or_else(|| response_agent::unsupported_operation());
+                    .unwrap_or_else(response_agent::unsupported_operation);
 
                 // 记录能力缺口
                 if let Some(evo) = skill_evolution::get_skill_evolution() {
@@ -448,7 +448,7 @@ impl Agent {
             PlannerStatus::Chat => {
                 let planner_reply = planner_output
                     .chat_reply
-                    .unwrap_or_else(|| response_agent::greeting());
+                    .unwrap_or_else(response_agent::greeting);
 
                 // 尝试真正的流式 AI 回复（token-by-token from model）
                 let reply = self
@@ -504,7 +504,7 @@ impl Agent {
             PlannerStatus::Unsupported => {
                 let reason = planner_output
                     .unsupported_reason
-                    .unwrap_or_else(|| response_agent::unsupported_operation());
+                    .unwrap_or_else(response_agent::unsupported_operation);
 
                 // 记录能力缺口
                 if let Some(evo) = skill_evolution::get_skill_evolution() {
@@ -649,7 +649,7 @@ impl Agent {
         let step_descs: Vec<String> = recipe
             .steps
             .iter()
-            .map(|s| capability::get_step_description(s))
+            .map(capability::get_step_description)
             .collect();
         let _ = progress_tx
             .send(AgentProgressEvent::TaskCreated {
@@ -885,7 +885,7 @@ impl Agent {
                             replan_output
                                 .reasoning
                                 .clone()
-                                .unwrap_or_else(|| response_agent::escalation_retry()),
+                                .unwrap_or_else(response_agent::escalation_retry),
                             original_request,
                         );
 
@@ -1345,7 +1345,7 @@ impl Agent {
                                 .params
                                 .get(param_name.as_str())
                                 .map(|v: &serde_json::Value| {
-                                    !v.is_null() && v.as_str().map_or(true, |s| !s.is_empty())
+                                    !v.is_null() && v.as_str().is_none_or(|s| !s.is_empty())
                                 })
                                 .unwrap_or(false);
                             // xxxFrom 引用（如 dataFrom: "step_1"）在执行时会解析为实际值
@@ -1373,7 +1373,7 @@ impl Agent {
                             let has_value = step
                                 .params
                                 .get(param_name)
-                                .map(|v| !v.is_null() && v.as_str().map_or(true, |s| !s.is_empty()))
+                                .map(|v| !v.is_null() && v.as_str().is_none_or(|s| !s.is_empty()))
                                 .unwrap_or(false);
                             // xxxFrom 引用（如 promptFrom: "step_3"）在执行时会解析为实际值
                             let has_from = step.params.contains_key(&format!("{}From", param_name));
@@ -1419,7 +1419,7 @@ impl Agent {
             types::UserQuestion {
                 question_id: format!("pre_param_{}", param_name),
                 question_type: types::QuestionType::FreeText,
-                question: response_agent::ask_single_param(&desc),
+                question: response_agent::ask_single_param(desc),
                 context: String::new(),
                 options: None,
                 required: true,
@@ -1716,11 +1716,7 @@ impl Agent {
         progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
     ) -> String {
         if task_state.status == TaskStatus::Failed {
-            let err = task_state
-                .error
-                .as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or("未知错误");
+            let err = task_state.error.as_deref().unwrap_or("未知错误");
             return response_agent::error_message(err);
         }
 
@@ -2083,8 +2079,6 @@ impl Agent {
         Ok(AgentResponse {
             response_type: if task_state.status == TaskStatus::Failed {
                 AgentResponseType::Error
-            } else if task_state.status == TaskStatus::WaitingForInput {
-                AgentResponseType::Answer
             } else {
                 AgentResponseType::Answer
             },
@@ -2592,7 +2586,7 @@ async fn record_execution_memory(params: MemoryRecordParams<'_>) {
                 .step_results
                 .and_then(|sr| sr.get(&s.id))
                 .and_then(|r| r.output.as_ref())
-                .map(|v| memory::summarize_value_for_memory(v));
+                .map(memory::summarize_value_for_memory);
             let step_success = params
                 .step_results
                 .and_then(|sr| sr.get(&s.id))
@@ -2721,6 +2715,7 @@ pub async fn get_user_permissions(
         "platform:read",
         "steam:read",
         "bilibili:read",
+        "bangumi:read",
         "github:read",
         "netease:read",
         "ai:analyze",

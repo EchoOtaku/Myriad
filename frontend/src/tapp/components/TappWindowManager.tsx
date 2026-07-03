@@ -23,8 +23,13 @@ import {
   FaTrash,
 } from '@lib/icons'
 
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+// API 配置
+import { API_URL as CONFIG_API_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 // 统一动画调度器
@@ -32,8 +37,6 @@ import { isPageVisible, scheduleIdle, startPage } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 // CSRF 防护
 import { getCSRFToken } from '../../utils/csrf'
-// API 配置
-import { API_URL as CONFIG_API_URL } from '../../config'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
 import { useWindowAgentHandler } from '../hooks/useWindowAgentHandler'
 import { getTappRuntime } from '../runtime'
@@ -59,9 +62,9 @@ export interface TappWindow {
   /** 错误信息 */
   error: string | null
   /** 窗口位置 */
-  position: { x: number, y: number }
+  position: { x: number; y: number }
   /** 窗口尺寸 */
-  size: { width: number, height: number }
+  size: { width: number; height: number }
   /** 是否最大化 */
   isMaximized: boolean
   /** 层级 */
@@ -87,8 +90,8 @@ const DEFAULT_WINDOW_SIZE = { width: 600, height: 500 }
 /** 窗口方案中的窗口配置 */
 interface WindowSchemeItem {
   tappId: string
-  position: { x: number, y: number }
-  size: { width: number, height: number }
+  position: { x: number; y: number }
+  size: { width: number; height: number }
 }
 
 /** 保存的窗口方案 */
@@ -106,13 +109,13 @@ const MIN_WINDOW_SIZE = { width: 320, height: 240 }
  * 生成唯一窗口ID
  */
 function generateWindowId(): string {
-  return `window-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  return `window-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
 /**
  * 计算新窗口的初始位置（级联效果）
  */
-function getInitialPosition(windowCount: number): { x: number, y: number } {
+function getInitialPosition(windowCount: number): { x: number; y: number } {
   const offset = windowCount * 30
   return {
     x: 100 + offset,
@@ -129,434 +132,519 @@ interface TappWindowComponentProps {
   isActive: boolean
   onClose: (windowId: string) => void
   onFocus: (windowId: string) => void
-  onMove: (windowId: string, position: { x: number, y: number }) => void
-  onResize: (windowId: string, size: { width: number, height: number }) => void
+  onMove: (windowId: string, position: { x: number; y: number }) => void
+  onResize: (windowId: string, size: { width: number; height: number }) => void
   onNotification?: (options: TappNotificationOptions) => void
-  containerBounds: { width: number, height: number }
+  containerBounds: { width: number; height: number }
 }
 
-const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(({
-  window,
-  isActive,
-  onClose,
-  onFocus,
-  onMove,
-  onResize,
-  onNotification,
-  containerBounds,
-}) => {
-  const { t } = useI18n()
-  const animConfig = useAnimationLevel()
-  const noAnimation = animConfig.level === 'none'
+const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
+  ({
+    window,
+    isActive,
+    onClose,
+    onFocus,
+    onMove,
+    onResize,
+    onNotification,
+    containerBounds,
+  }) => {
+    const { t } = useI18n()
+    const animConfig = useAnimationLevel()
+    const noAnimation = animConfig.level === 'none'
 
-  const windowRef = useRef<HTMLDivElement>(null)
-  const [isDragging, setIsDragging] = useState(false)
-  const [isResizing, setIsResizing] = useState(false)
-  const [resizeDirection, setResizeDirection] = useState<string | null>(null)
+    const windowRef = useRef<HTMLDivElement>(null)
+    const [isDragging, setIsDragging] = useState(false)
+    const [isResizing, setIsResizing] = useState(false)
+    const [resizeDirection, setResizeDirection] = useState<string | null>(null)
 
-  const dragStartRef = useRef({ x: 0, y: 0 })
-  const positionStartRef = useRef({ x: 0, y: 0 })
-  const sizeStartRef = useRef({ width: 0, height: 0 })
+    const dragStartRef = useRef({ x: 0, y: 0 })
+    const positionStartRef = useRef({ x: 0, y: 0 })
+    const sizeStartRef = useRef({ width: 0, height: 0 })
 
-  // 用于追踪交互过程中的实时位置和大小（直接操作 DOM 时使用）
-  const currentPositionRef = useRef({ x: window.position.x, y: window.position.y })
-  const currentSizeRef = useRef({ width: window.size.width, height: window.size.height })
+    // 用于追踪交互过程中的实时位置和大小（直接操作 DOM 时使用）
+    const currentPositionRef = useRef({
+      x: window.position.x,
+      y: window.position.y,
+    })
+    const currentSizeRef = useRef({
+      width: window.size.width,
+      height: window.size.height,
+    })
 
-  // 始终同步 props 到 ref，确保方案保存时能获取最新值
-  // 注意：交互过程中 ref 会被直接修改，但交互结束后会同步回 state
-  useEffect(() => {
-    currentPositionRef.current = { x: window.position.x, y: window.position.y }
-    currentSizeRef.current = { width: window.size.width, height: window.size.height }
-  }, [window.position.x, window.position.y, window.size.width, window.size.height])
-
-  // 缓存图标样式计算
-  const iconStyle = useMemo(() =>
-    window.tapp ? getTappIconStyle(window.tapp.manifest) : null, [window.tapp])
-
-  // 拖拽处理 - 支持鼠标和触摸
-  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(true)
-    // 获取坐标（支持鼠标和触摸）
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    dragStartRef.current = { x: clientX, y: clientY }
-    // 使用 ref 中的当前值，确保从正确位置开始
-    positionStartRef.current = { ...currentPositionRef.current }
-    onFocus(window.windowId)
-  }, [window.windowId, onFocus])
-
-  // 调整大小处理 - 支持鼠标和触摸
-  const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent, direction: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsResizing(true)
-    setResizeDirection(direction)
-    // 获取坐标（支持鼠标和触摸）
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    dragStartRef.current = { x: clientX, y: clientY }
-    // 使用 ref 中的当前值，确保从正确位置和尺寸开始
-    positionStartRef.current = { ...currentPositionRef.current }
-    sizeStartRef.current = { ...currentSizeRef.current }
-    onFocus(window.windowId)
-  }, [window.windowId, onFocus])
-
-  // 移动处理 - 使用 requestAnimationFrame 节流优化性能，支持鼠标和触摸
-  useEffect(() => {
-    if (!isDragging && !isResizing)
-      return
-
-    // 页面不可见时不处理拖拽（由调度器可见性状态控制）
-    if (!isPageVisible())
-      return
-
-    let rafId: number | null = null
-    let lastX = dragStartRef.current.x
-    let lastY = dragStartRef.current.y
-
-    const handleMove = (e: MouseEvent | TouchEvent) => {
-      // 获取坐标（支持鼠标和触摸）
-      const clientX = 'touches' in e ? e.touches[0]?.clientX ?? lastX : e.clientX
-      const clientY = 'touches' in e ? e.touches[0]?.clientY ?? lastY : e.clientY
-
-      // 避免重复计算相同位置
-      if (clientX === lastX && clientY === lastY)
-        return
-      lastX = clientX
-      lastY = clientY
-
-      // 取消上一次未执行的 RAF
-      if (rafId)
-        cancelAnimationFrame(rafId)
-
-      rafId = requestAnimationFrame(() => {
-        if (!windowRef.current)
-          return
-
-        const deltaX = clientX - dragStartRef.current.x
-        const deltaY = clientY - dragStartRef.current.y
-
-        if (isDragging) {
-          // 拖拽移动 - 直接操作 DOM
-          let newX = positionStartRef.current.x + deltaX
-          let newY = positionStartRef.current.y + deltaY
-
-          // 边界限制
-          newX = Math.max(0, Math.min(newX, containerBounds.width - currentSizeRef.current.width))
-          newY = Math.max(0, Math.min(newY, containerBounds.height - currentSizeRef.current.height))
-
-          // 使用 transform 进行 GPU 加速定位
-          windowRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0)`
-          currentPositionRef.current = { x: newX, y: newY }
-        }
-        else if (isResizing && resizeDirection) {
-          // 调整大小 - 直接操作 DOM
-          let newWidth = sizeStartRef.current.width
-          let newHeight = sizeStartRef.current.height
-          let newX = positionStartRef.current.x
-          let newY = positionStartRef.current.y
-
-          if (resizeDirection.includes('e')) {
-            newWidth = Math.max(MIN_WINDOW_SIZE.width, sizeStartRef.current.width + deltaX)
-          }
-          if (resizeDirection.includes('w')) {
-            const widthDelta = Math.min(deltaX, sizeStartRef.current.width - MIN_WINDOW_SIZE.width)
-            newWidth = sizeStartRef.current.width - widthDelta
-            newX = positionStartRef.current.x + widthDelta
-          }
-          if (resizeDirection.includes('s')) {
-            newHeight = Math.max(MIN_WINDOW_SIZE.height, sizeStartRef.current.height + deltaY)
-          }
-          if (resizeDirection.includes('n')) {
-            const heightDelta = Math.min(deltaY, sizeStartRef.current.height - MIN_WINDOW_SIZE.height)
-            newHeight = sizeStartRef.current.height - heightDelta
-            newY = positionStartRef.current.y + heightDelta
-          }
-
-          // 边界限制
-          newWidth = Math.min(newWidth, containerBounds.width - newX)
-          newHeight = Math.min(newHeight, containerBounds.height - newY)
-
-          // 使用 transform + width/height，transform 用于 GPU 加速位置变换
-          windowRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0)`
-          windowRef.current.style.width = `${newWidth}px`
-          windowRef.current.style.height = `${newHeight}px`
-
-          currentSizeRef.current = { width: newWidth, height: newHeight }
-          currentPositionRef.current = { x: newX, y: newY }
-        }
-      })
-    }
-
-    const handleEnd = () => {
-      if (rafId)
-        cancelAnimationFrame(rafId)
-
-      // 交互结束时一次性同步状态到 React
-      if (isDragging) {
-        onMove(window.windowId, currentPositionRef.current)
+    // 始终同步 props 到 ref，确保方案保存时能获取最新值
+    // 注意：交互过程中 ref 会被直接修改，但交互结束后会同步回 state
+    useEffect(() => {
+      currentPositionRef.current = {
+        x: window.position.x,
+        y: window.position.y,
       }
-      else if (isResizing) {
-        onResize(window.windowId, currentSizeRef.current)
-        if (resizeDirection?.includes('w') || resizeDirection?.includes('n')) {
-          onMove(window.windowId, currentPositionRef.current)
-        }
+      currentSizeRef.current = {
+        width: window.size.width,
+        height: window.size.height,
       }
+    }, [
+      window.position.x,
+      window.position.y,
+      window.size.width,
+      window.size.height,
+    ])
 
-      setIsDragging(false)
-      setIsResizing(false)
-      setResizeDirection(null)
-    }
+    // 缓存图标样式计算
+    const iconStyle = useMemo(
+      () => (window.tapp ? getTappIconStyle(window.tapp.manifest) : null),
+      [window.tapp],
+    )
 
-    // 鼠标事件
-    document.addEventListener('mousemove', handleMove, { passive: true })
-    document.addEventListener('mouseup', handleEnd)
-    // 触摸事件 - 使用 passive: true 优化滚动性能
-    document.addEventListener('touchmove', handleMove, { passive: true })
-    document.addEventListener('touchend', handleEnd)
-    document.addEventListener('touchcancel', handleEnd)
+    // 拖拽处理 - 支持鼠标和触摸
+    const handleDragStart = useCallback(
+      (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDragging(true)
+        // 获取坐标（支持鼠标和触摸）
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+        dragStartRef.current = { x: clientX, y: clientY }
+        // 使用 ref 中的当前值，确保从正确位置开始
+        positionStartRef.current = { ...currentPositionRef.current }
+        onFocus(window.windowId)
+      },
+      [window.windowId, onFocus],
+    )
 
-    return () => {
-      if (rafId)
-        cancelAnimationFrame(rafId)
-      document.removeEventListener('mousemove', handleMove)
-      document.removeEventListener('mouseup', handleEnd)
-      document.removeEventListener('touchmove', handleMove)
-      document.removeEventListener('touchend', handleEnd)
-      document.removeEventListener('touchcancel', handleEnd)
-    }
-  // 注意：onMove, onResize, window.windowId 通过闭包捕获，不加入依赖以避免不必要的重新绑定
-  }, [isDragging, isResizing, resizeDirection, containerBounds])
+    // 调整大小处理 - 支持鼠标和触摸
+    const handleResizeStart = useCallback(
+      (e: React.MouseEvent | React.TouchEvent, direction: string) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsResizing(true)
+        setResizeDirection(direction)
+        // 获取坐标（支持鼠标和触摸）
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+        dragStartRef.current = { x: clientX, y: clientY }
+        // 使用 ref 中的当前值，确保从正确位置和尺寸开始
+        positionStartRef.current = { ...currentPositionRef.current }
+        sizeStartRef.current = { ...currentSizeRef.current }
+        onFocus(window.windowId)
+      },
+      [window.windowId, onFocus],
+    )
 
-  // 计算窗口样式 - 使用 transform 进行 GPU 加速
-  const windowStyle = useMemo(() => ({
-    width: window.size.width,
-    height: window.size.height,
-    zIndex: window.zIndex,
-    // 使用 transform 替代 top/left，启用 GPU 加速
-    transform: `translate3d(${window.position.x}px, ${window.position.y}px, 0)`,
-    // 只在非交互时启用过渡
-    transition: (isDragging || isResizing) ? 'none' : 'box-shadow 0.15s',
-  }), [window.position, window.size, window.zIndex, isDragging, isResizing])
+    // 移动处理 - 使用 requestAnimationFrame 节流优化性能，支持鼠标和触摸
+    useEffect(() => {
+      if (!isDragging && !isResizing) return
 
-  // 交互状态 - 用于显示遮罩层
-  const isInteracting = isDragging || isResizing
+      // 页面不可见时不处理拖拽（由调度器可见性状态控制）
+      if (!isPageVisible()) return
 
-  // 缓存 boxShadow 样式 - 使用更简单的阴影以提升性能
-  const boxShadowStyle = useMemo(() => ({
-    boxShadow: isActive
-      ? '0 8px 24px rgba(0, 0, 0, 0.2)'
-      : '0 4px 12px rgba(0, 0, 0, 0.1)',
-    border: '1px solid var(--border-color)',
-  }), [isActive])
+      let rafId: number | null = null
+      let lastX = dragStartRef.current.x
+      let lastY = dragStartRef.current.y
 
-  // 缓存标题栏样式
-  const headerStyle = useMemo(() => ({
-    backgroundColor: 'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
-    borderBottom: '1px solid var(--border-color)',
-    opacity: isActive ? 1 : 0.7,
-    transition: 'opacity 0.2s ease',
-  }), [isActive])
+      const handleMove = (e: MouseEvent | TouchEvent) => {
+        // 获取坐标（支持鼠标和触摸）
+        const clientX =
+          'touches' in e ? (e.touches[0]?.clientX ?? lastX) : e.clientX
+        const clientY =
+          'touches' in e ? (e.touches[0]?.clientY ?? lastY) : e.clientY
 
-  // 缓存窗口点击处理函数
-  const handleWindowClick = useCallback(() => {
-    onFocus(window.windowId)
-  }, [onFocus, window.windowId])
+        // 避免重复计算相同位置
+        if (clientX === lastX && clientY === lastY) return
+        lastX = clientX
+        lastY = clientY
 
-  // 缓存关闭按钮处理函数
-  const handleCloseClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    onClose(window.windowId)
-  }, [onClose, window.windowId])
+        // 取消上一次未执行的 RAF
+        if (rafId) cancelAnimationFrame(rafId)
 
-  // 调整大小的手柄 - 使用 useMemo 缓存避免每次渲染创建新数组
-  const resizeHandles = useMemo(() => [
-    { direction: 'n', className: 'top-0 left-2 right-2 h-1 cursor-n-resize' },
-    { direction: 's', className: 'bottom-0 left-2 right-2 h-1 cursor-s-resize' },
-    { direction: 'e', className: 'right-0 top-2 bottom-2 w-1 cursor-e-resize' },
-    { direction: 'w', className: 'left-0 top-2 bottom-2 w-1 cursor-w-resize' },
-    { direction: 'ne', className: 'top-0 right-0 w-3 h-3 cursor-ne-resize' },
-    { direction: 'nw', className: 'top-0 left-0 w-3 h-3 cursor-nw-resize' },
-    { direction: 'se', className: 'bottom-0 right-0 w-3 h-3 cursor-se-resize' },
-    { direction: 'sw', className: 'bottom-0 left-0 w-3 h-3 cursor-sw-resize' },
-  ], [])
+        rafId = requestAnimationFrame(() => {
+          if (!windowRef.current) return
 
-  return (
-    <div
-      ref={windowRef}
-      className="absolute flex flex-col overflow-hidden rounded-xl"
-      style={{
-        top: 0,
-        left: 0,
-        ...windowStyle,
-        ...boxShadowStyle,
-      }}
-      onClick={handleWindowClick}
-    >
-      {/* 窗口标题栏 - 可拖拽（支持鼠标和触摸） */}
-      <div
-        className={`flex items-center justify-between px-3 h-10 shrink-0 select-none backdrop-blur-sm ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-        style={headerStyle}
-        onMouseDown={handleDragStart}
-        onTouchStart={handleDragStart}
-      >
-        {/* 左侧：拖拽手柄 + 图标 + 名称 */}
-        <div className="flex items-center gap-2 min-w-0">
-          <FaGripVertical
-            className="w-3 h-3 shrink-0"
-            style={{ color: 'var(--text-muted)' }}
-          />
+          const deltaX = clientX - dragStartRef.current.x
+          const deltaY = clientY - dragStartRef.current.y
 
-          {window.loading
-            ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-6 h-6 rounded-lg flex items-center justify-center"
-                    style={{ backgroundColor: 'var(--bg-hover)' }}
-                  >
-                    <FaSpinner className="w-3 h-3 animate-spin" style={{ color: 'var(--text-muted)' }} />
-                  </div>
-                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t.tapp.loadingApp}</span>
-                </div>
-              )
-            : window.error
-              ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                      <FaExclamationTriangle className="w-3 h-3 text-red-500" />
-                    </div>
-                    <span className="text-xs text-red-500 truncate">{t.tapp.loadAppFailed}</span>
-                  </div>
-                )
-              : window.tapp && iconStyle
-                ? (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div
-                        className={`w-6 h-6 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold shrink-0`}
-                        style={iconStyle.style}
-                      >
-                        <TappIcon
-                          icon={window.tapp.manifest.icon}
-                          iconSvg={window.tapp.manifest.iconSvg}
-                          name={window.tapp.manifest.name}
-                          sizeClass="w-3 h-3"
-                          textSizeClass="text-xs"
-                        />
-                      </div>
-                      <span
-                        className="text-xs font-medium truncate"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        {window.tapp.manifest.name}
-                      </span>
-                      <span
-                        className="text-[10px] shrink-0"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        v
-                        {window.tapp.manifest.version}
-                      </span>
-                    </div>
-                  )
-                : null}
-        </div>
+          if (isDragging) {
+            // 拖拽移动 - 直接操作 DOM
+            let newX = positionStartRef.current.x + deltaX
+            let newY = positionStartRef.current.y + deltaY
 
-        {/* 右侧：关闭按钮 */}
-        <div className="flex items-center gap-1 shrink-0">
-          <motion.button
-            onClick={handleCloseClick}
-            className="p-1 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-            title={t.common.close}
-            whileHover={noAnimation ? undefined : { scale: 1.1 }}
-            whileTap={noAnimation ? undefined : { scale: 0.9 }}
-          >
-            <FaTimes className="w-3 h-3" />
-          </motion.button>
-        </div>
-      </div>
-
-      {/* 窗口内容 */}
-      <div
-        className="flex-1 overflow-hidden relative"
-        style={{ backgroundColor: 'var(--bg-primary)' }}
-      >
-        {/* 交互时显示遮罩层，防止 iframe 捕获事件并避免重绘 */}
-        {isInteracting && (
-          <div
-            className="absolute inset-0 z-50"
-            style={{ backgroundColor: 'transparent' }}
-          />
-        )}
-        {window.loading
-          ? (
-              <div className="w-full h-full flex items-center justify-center">
-                <FaSpinner className="w-8 h-8 text-gray-400 animate-spin" />
-              </div>
+            // 边界限制
+            newX = Math.max(
+              0,
+              Math.min(
+                newX,
+                containerBounds.width - currentSizeRef.current.width,
+              ),
             )
-          : window.error
-            ? (
-                <div className="w-full h-full flex items-center justify-center">
-                  <div className="text-center max-w-xs mx-4">
-                    <FaExclamationTriangle className="w-10 h-10 mx-auto text-red-500 mb-3" />
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{window.error}</p>
-                  </div>
-                </div>
-              )
-            : window.tapp && window.code
-              ? (
-                  <div
-                    data-window-id={window.windowId}
-                    data-tapp-id={window.tappId}
-                    className="absolute inset-0"
-                  >
-                    <TappPageSandbox
-                      tappInstance={window.tapp}
-                      code={window.code}
-                      onError={err => console.error('[TappWindow] Error:', err)}
-                      onNotification={onNotification}
-                    />
-                  </div>
-                )
-              : null}
-      </div>
+            newY = Math.max(
+              0,
+              Math.min(
+                newY,
+                containerBounds.height - currentSizeRef.current.height,
+              ),
+            )
 
-      {/* 调整大小的手柄（支持鼠标和触摸） */}
-      {resizeHandles.map(({ direction, className }) => (
+            // 使用 transform 进行 GPU 加速定位
+            windowRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0)`
+            currentPositionRef.current = { x: newX, y: newY }
+          } else if (isResizing && resizeDirection) {
+            // 调整大小 - 直接操作 DOM
+            let newWidth = sizeStartRef.current.width
+            let newHeight = sizeStartRef.current.height
+            let newX = positionStartRef.current.x
+            let newY = positionStartRef.current.y
+
+            if (resizeDirection.includes('e')) {
+              newWidth = Math.max(
+                MIN_WINDOW_SIZE.width,
+                sizeStartRef.current.width + deltaX,
+              )
+            }
+            if (resizeDirection.includes('w')) {
+              const widthDelta = Math.min(
+                deltaX,
+                sizeStartRef.current.width - MIN_WINDOW_SIZE.width,
+              )
+              newWidth = sizeStartRef.current.width - widthDelta
+              newX = positionStartRef.current.x + widthDelta
+            }
+            if (resizeDirection.includes('s')) {
+              newHeight = Math.max(
+                MIN_WINDOW_SIZE.height,
+                sizeStartRef.current.height + deltaY,
+              )
+            }
+            if (resizeDirection.includes('n')) {
+              const heightDelta = Math.min(
+                deltaY,
+                sizeStartRef.current.height - MIN_WINDOW_SIZE.height,
+              )
+              newHeight = sizeStartRef.current.height - heightDelta
+              newY = positionStartRef.current.y + heightDelta
+            }
+
+            // 边界限制
+            newWidth = Math.min(newWidth, containerBounds.width - newX)
+            newHeight = Math.min(newHeight, containerBounds.height - newY)
+
+            // 使用 transform + width/height，transform 用于 GPU 加速位置变换
+            windowRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0)`
+            windowRef.current.style.width = `${newWidth}px`
+            windowRef.current.style.height = `${newHeight}px`
+
+            currentSizeRef.current = { width: newWidth, height: newHeight }
+            currentPositionRef.current = { x: newX, y: newY }
+          }
+        })
+      }
+
+      const handleEnd = () => {
+        if (rafId) cancelAnimationFrame(rafId)
+
+        // 交互结束时一次性同步状态到 React
+        if (isDragging) {
+          onMove(window.windowId, currentPositionRef.current)
+        } else if (isResizing) {
+          onResize(window.windowId, currentSizeRef.current)
+          if (
+            resizeDirection?.includes('w') ||
+            resizeDirection?.includes('n')
+          ) {
+            onMove(window.windowId, currentPositionRef.current)
+          }
+        }
+
+        setIsDragging(false)
+        setIsResizing(false)
+        setResizeDirection(null)
+      }
+
+      // 鼠标事件
+      document.addEventListener('mousemove', handleMove, { passive: true })
+      document.addEventListener('mouseup', handleEnd)
+      // 触摸事件 - 使用 passive: true 优化滚动性能
+      document.addEventListener('touchmove', handleMove, { passive: true })
+      document.addEventListener('touchend', handleEnd)
+      document.addEventListener('touchcancel', handleEnd)
+
+      return () => {
+        if (rafId) cancelAnimationFrame(rafId)
+        document.removeEventListener('mousemove', handleMove)
+        document.removeEventListener('mouseup', handleEnd)
+        document.removeEventListener('touchmove', handleMove)
+        document.removeEventListener('touchend', handleEnd)
+        document.removeEventListener('touchcancel', handleEnd)
+      }
+      // 注意：onMove, onResize, window.windowId 通过闭包捕获，不加入依赖以避免不必要的重新绑定
+    }, [isDragging, isResizing, resizeDirection, containerBounds])
+
+    // 计算窗口样式 - 使用 transform 进行 GPU 加速
+    const windowStyle = useMemo(
+      () => ({
+        width: window.size.width,
+        height: window.size.height,
+        zIndex: window.zIndex,
+        // 使用 transform 替代 top/left，启用 GPU 加速
+        transform: `translate3d(${window.position.x}px, ${window.position.y}px, 0)`,
+        // 只在非交互时启用过渡
+        transition: isDragging || isResizing ? 'none' : 'box-shadow 0.15s',
+      }),
+      [window.position, window.size, window.zIndex, isDragging, isResizing],
+    )
+
+    // 交互状态 - 用于显示遮罩层
+    const isInteracting = isDragging || isResizing
+
+    // 缓存 boxShadow 样式 - 使用更简单的阴影以提升性能
+    const boxShadowStyle = useMemo(
+      () => ({
+        boxShadow: isActive
+          ? '0 8px 24px rgba(0, 0, 0, 0.2)'
+          : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        border: '1px solid var(--border-color)',
+      }),
+      [isActive],
+    )
+
+    // 缓存标题栏样式
+    const headerStyle = useMemo(
+      () => ({
+        backgroundColor:
+          'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
+        borderBottom: '1px solid var(--border-color)',
+        opacity: isActive ? 1 : 0.7,
+        transition: 'opacity 0.2s ease',
+      }),
+      [isActive],
+    )
+
+    // 缓存窗口点击处理函数
+    const handleWindowClick = useCallback(() => {
+      onFocus(window.windowId)
+    }, [onFocus, window.windowId])
+
+    // 缓存关闭按钮处理函数
+    const handleCloseClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation()
+        onClose(window.windowId)
+      },
+      [onClose, window.windowId],
+    )
+
+    // 调整大小的手柄 - 使用 useMemo 缓存避免每次渲染创建新数组
+    const resizeHandles = useMemo(
+      () => [
+        {
+          direction: 'n',
+          className: 'top-0 left-2 right-2 h-1 cursor-n-resize',
+        },
+        {
+          direction: 's',
+          className: 'bottom-0 left-2 right-2 h-1 cursor-s-resize',
+        },
+        {
+          direction: 'e',
+          className: 'right-0 top-2 bottom-2 w-1 cursor-e-resize',
+        },
+        {
+          direction: 'w',
+          className: 'left-0 top-2 bottom-2 w-1 cursor-w-resize',
+        },
+        {
+          direction: 'ne',
+          className: 'top-0 right-0 w-3 h-3 cursor-ne-resize',
+        },
+        { direction: 'nw', className: 'top-0 left-0 w-3 h-3 cursor-nw-resize' },
+        {
+          direction: 'se',
+          className: 'bottom-0 right-0 w-3 h-3 cursor-se-resize',
+        },
+        {
+          direction: 'sw',
+          className: 'bottom-0 left-0 w-3 h-3 cursor-sw-resize',
+        },
+      ],
+      [],
+    )
+
+    return (
+      <div
+        ref={windowRef}
+        className="absolute flex flex-col overflow-hidden rounded-xl"
+        style={{
+          top: 0,
+          left: 0,
+          ...windowStyle,
+          ...boxShadowStyle,
+        }}
+        onClick={handleWindowClick}
+      >
+        {/* 窗口标题栏 - 可拖拽（支持鼠标和触摸） */}
         <div
-          key={direction}
-          className={`absolute ${className} z-10`}
-          onMouseDown={e => handleResizeStart(e, direction)}
-          onTouchStart={e => handleResizeStart(e, direction)}
-          onMouseEnter={(e) => {
-            (e.target as HTMLElement).style.backgroundColor = 'color-mix(in srgb, var(--color-primary) 30%, transparent)'
-          }}
-          onMouseLeave={(e) => {
-            (e.target as HTMLElement).style.backgroundColor = 'transparent'
-          }}
-        />
-      ))}
-    </div>
-  )
-}, (prevProps, nextProps) => {
-  // 自定义比较函数，只在关键属性变化时重新渲染
-  return (
-    prevProps.window.windowId === nextProps.window.windowId
-    && prevProps.window.position.x === nextProps.window.position.x
-    && prevProps.window.position.y === nextProps.window.position.y
-    && prevProps.window.size.width === nextProps.window.size.width
-    && prevProps.window.size.height === nextProps.window.size.height
-    && prevProps.window.zIndex === nextProps.window.zIndex
-    && prevProps.window.loading === nextProps.window.loading
-    && prevProps.window.error === nextProps.window.error
-    && prevProps.window.tapp === nextProps.window.tapp
-    && prevProps.window.code === nextProps.window.code
-    && prevProps.isActive === nextProps.isActive
-    && prevProps.containerBounds.width === nextProps.containerBounds.width
-    && prevProps.containerBounds.height === nextProps.containerBounds.height
-  )
-})
+          className={`flex items-center justify-between px-3 h-10 shrink-0 select-none backdrop-blur-sm ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          style={headerStyle}
+          onMouseDown={handleDragStart}
+          onTouchStart={handleDragStart}
+        >
+          {/* 左侧：拖拽手柄 + 图标 + 名称 */}
+          <div className="flex items-center gap-2 min-w-0">
+            <FaGripVertical
+              className="w-3 h-3 shrink-0"
+              style={{ color: 'var(--text-muted)' }}
+            />
+
+            {window.loading ? (
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-6 h-6 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: 'var(--bg-hover)' }}
+                >
+                  <FaSpinner
+                    className="w-3 h-3 animate-spin"
+                    style={{ color: 'var(--text-muted)' }}
+                  />
+                </div>
+                <span
+                  className="text-xs"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {t.tapp.loadingApp}
+                </span>
+              </div>
+            ) : window.error ? (
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <FaExclamationTriangle className="w-3 h-3 text-red-500" />
+                </div>
+                <span className="text-xs text-red-500 truncate">
+                  {t.tapp.loadAppFailed}
+                </span>
+              </div>
+            ) : window.tapp && iconStyle ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <div
+                  className={`w-6 h-6 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold shrink-0`}
+                  style={iconStyle.style}
+                >
+                  <TappIcon
+                    icon={window.tapp.manifest.icon}
+                    iconSvg={window.tapp.manifest.iconSvg}
+                    name={window.tapp.manifest.name}
+                    sizeClass="w-3 h-3"
+                    textSizeClass="text-xs"
+                  />
+                </div>
+                <span
+                  className="text-xs font-medium truncate"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  {window.tapp.manifest.name}
+                </span>
+                <span
+                  className="text-[10px] shrink-0"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  v{window.tapp.manifest.version}
+                </span>
+              </div>
+            ) : null}
+          </div>
+
+          {/* 右侧：关闭按钮 */}
+          <div className="flex items-center gap-1 shrink-0">
+            <motion.button
+              onClick={handleCloseClick}
+              className="p-1 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+              title={t.common.close}
+              whileHover={noAnimation ? undefined : { scale: 1.1 }}
+              whileTap={noAnimation ? undefined : { scale: 0.9 }}
+            >
+              <FaTimes className="w-3 h-3" />
+            </motion.button>
+          </div>
+        </div>
+
+        {/* 窗口内容 */}
+        <div
+          className="flex-1 overflow-hidden relative"
+          style={{ backgroundColor: 'var(--bg-primary)' }}
+        >
+          {/* 交互时显示遮罩层，防止 iframe 捕获事件并避免重绘 */}
+          {isInteracting && (
+            <div
+              className="absolute inset-0 z-50"
+              style={{ backgroundColor: 'transparent' }}
+            />
+          )}
+          {window.loading ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <FaSpinner className="w-8 h-8 text-gray-400 animate-spin" />
+            </div>
+          ) : window.error ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="text-center max-w-xs mx-4">
+                <FaExclamationTriangle className="w-10 h-10 mx-auto text-red-500 mb-3" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {window.error}
+                </p>
+              </div>
+            </div>
+          ) : window.tapp && window.code ? (
+            <div
+              data-window-id={window.windowId}
+              data-tapp-id={window.tappId}
+              className="absolute inset-0"
+            >
+              <TappPageSandbox
+                tappInstance={window.tapp}
+                code={window.code}
+                onError={(err) => console.error('[TappWindow] Error:', err)}
+                onNotification={onNotification}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        {/* 调整大小的手柄（支持鼠标和触摸） */}
+        {resizeHandles.map(({ direction, className }) => (
+          <div
+            key={direction}
+            className={`absolute ${className} z-10`}
+            onMouseDown={(e) => handleResizeStart(e, direction)}
+            onTouchStart={(e) => handleResizeStart(e, direction)}
+            onMouseEnter={(e) => {
+              ;(e.target as HTMLElement).style.backgroundColor =
+                'color-mix(in srgb, var(--color-primary) 30%, transparent)'
+            }}
+            onMouseLeave={(e) => {
+              ;(e.target as HTMLElement).style.backgroundColor = 'transparent'
+            }}
+          />
+        ))}
+      </div>
+    )
+  },
+  (prevProps, nextProps) => {
+    // 自定义比较函数，只在关键属性变化时重新渲染
+    return (
+      prevProps.window.windowId === nextProps.window.windowId &&
+      prevProps.window.position.x === nextProps.window.position.x &&
+      prevProps.window.position.y === nextProps.window.position.y &&
+      prevProps.window.size.width === nextProps.window.size.width &&
+      prevProps.window.size.height === nextProps.window.size.height &&
+      prevProps.window.zIndex === nextProps.window.zIndex &&
+      prevProps.window.loading === nextProps.window.loading &&
+      prevProps.window.error === nextProps.window.error &&
+      prevProps.window.tapp === nextProps.window.tapp &&
+      prevProps.window.code === nextProps.window.code &&
+      prevProps.isActive === nextProps.isActive &&
+      prevProps.containerBounds.width === nextProps.containerBounds.width &&
+      prevProps.containerBounds.height === nextProps.containerBounds.height
+    )
+  },
+)
 
 // 设置 displayName 便于调试
 TappWindowComponent.displayName = 'TappWindowComponent'
@@ -577,7 +665,10 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const schemeMenuRef = useRef<HTMLDivElement>(null)
-  const [containerBounds, setContainerBounds] = useState({ width: 0, height: 0 })
+  const [containerBounds, setContainerBounds] = useState({
+    width: 0,
+    height: 0,
+  })
   const [windows, setWindows] = useState<TappWindow[]>([])
   const [activeWindowId, setActiveWindowId] = useState<string | null>(null)
   const [nextZIndex, setNextZIndex] = useState(100)
@@ -603,11 +694,13 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
 
   // 点击外部关闭方案菜单
   useEffect(() => {
-    if (!showSchemeMenu)
-      return
+    if (!showSchemeMenu) return
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (schemeMenuRef.current && !schemeMenuRef.current.contains(e.target as Node)) {
+      if (
+        schemeMenuRef.current &&
+        !schemeMenuRef.current.contains(e.target as Node)
+      ) {
         setShowSchemeMenu(false)
       }
     }
@@ -634,8 +727,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             setSavedSchemes(schemes)
           }
         }
-      }
-      catch (e) {
+      } catch (e) {
         console.warn('Failed to load window schemes from cloud:', e)
       }
     }
@@ -671,11 +763,15 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   // 加载可用的 Tapps - 使用空闲调度
   useEffect(() => {
     // 使用空闲任务调度预加载 Tapp 列表，避免阻塞主线程
-    const cancelIdle = scheduleIdle('tapp-multi-load-tapps', async () => {
-      await runtime.waitForSync()
-      const tapps = runtime.getAllTapps()
-      setAvailableTapps(tapps.filter(t => t.manifest.hasPage))
-    }, 'normal')
+    const cancelIdle = scheduleIdle(
+      'tapp-multi-load-tapps',
+      async () => {
+        await runtime.waitForSync()
+        const tapps = runtime.getAllTapps()
+        setAvailableTapps(tapps.filter((t) => t.manifest.hasPage))
+      },
+      'normal',
+    )
 
     return cancelIdle
   }, [runtime])
@@ -688,122 +784,150 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   }, [initialTappId])
 
   // 打开新的 Tapp 窗口
-  const openTappWindow = useCallback(async (tappId: string) => {
-    if (windows.length >= MAX_WINDOWS) {
-      console.warn('Maximum window limit reached')
-      return
-    }
-
-    const windowId = generateWindowId()
-    const position = getInitialPosition(windows.length)
-
-    // 创建初始窗口状态
-    const newWindow: TappWindow = {
-      windowId,
-      tappId,
-      tapp: null,
-      code: null,
-      loading: true,
-      error: null,
-      position,
-      size: { ...DEFAULT_WINDOW_SIZE },
-      isMaximized: false,
-      zIndex: nextZIndex,
-    }
-
-    setWindows(prev => [...prev, newWindow])
-    setActiveWindowId(windowId)
-    setNextZIndex(prev => prev + 1)
-    setShowTappSelector(false)
-
-    // 异步加载 Tapp
-    try {
-      await runtime.waitForSync()
-
-      const instance = runtime.getTapp(tappId)
-      if (!instance) {
-        setWindows(prev => prev.map(w =>
-          w.windowId === windowId
-            ? { ...w, loading: false, error: t.tapp.appNotExist }
-            : w,
-        ))
+  const openTappWindow = useCallback(
+    async (tappId: string) => {
+      if (windows.length >= MAX_WINDOWS) {
+        console.warn('Maximum window limit reached')
         return
       }
 
-      const resources = await loadPageResources(instance)
-      const tappCode: TappCodeStructure = {
-        core: resources.core,
-        page: resources.page,
-        pageHtml: resources.html,
-        styles: resources.styles,
-        pageCSS: resources.css,
-        i18n: resources.i18n,
-        pageModules: resources.pageModules,
+      const windowId = generateWindowId()
+      const position = getInitialPosition(windows.length)
+
+      // 创建初始窗口状态
+      const newWindow: TappWindow = {
+        windowId,
+        tappId,
+        tapp: null,
+        code: null,
+        loading: true,
+        error: null,
+        position,
+        size: { ...DEFAULT_WINDOW_SIZE },
+        isMaximized: false,
+        zIndex: nextZIndex,
       }
 
-      if (!runtime.isRunning(tappId)) {
-        await runtime.startTapp(tappId)
-      }
+      setWindows((prev) => [...prev, newWindow])
+      setActiveWindowId(windowId)
+      setNextZIndex((prev) => prev + 1)
+      setShowTappSelector(false)
 
-      setWindows(prev => prev.map(w =>
-        w.windowId === windowId
-          ? { ...w, tapp: instance, code: tappCode, loading: false }
-          : w,
-      ))
-    }
-    catch (err) {
-      setWindows(prev => prev.map(w =>
-        w.windowId === windowId
-          ? { ...w, loading: false, error: err instanceof Error ? err.message : t.tapp.loadAppFailed }
-          : w,
-      ))
-    }
-  }, [windows.length, nextZIndex, runtime, t.tapp.appNotExist, t.tapp.loadAppFailed])
+      // 异步加载 Tapp
+      try {
+        await runtime.waitForSync()
+
+        const instance = runtime.getTapp(tappId)
+        if (!instance) {
+          setWindows((prev) =>
+            prev.map((w) =>
+              w.windowId === windowId
+                ? { ...w, loading: false, error: t.tapp.appNotExist }
+                : w,
+            ),
+          )
+          return
+        }
+
+        const resources = await loadPageResources(instance)
+        const tappCode: TappCodeStructure = {
+          core: resources.core,
+          page: resources.page,
+          pageHtml: resources.html,
+          styles: resources.styles,
+          pageCSS: resources.css,
+          i18n: resources.i18n,
+          pageModules: resources.pageModules,
+        }
+
+        if (!runtime.isRunning(tappId)) {
+          await runtime.startTapp(tappId)
+        }
+
+        setWindows((prev) =>
+          prev.map((w) =>
+            w.windowId === windowId
+              ? { ...w, tapp: instance, code: tappCode, loading: false }
+              : w,
+          ),
+        )
+      } catch (err) {
+        setWindows((prev) =>
+          prev.map((w) =>
+            w.windowId === windowId
+              ? {
+                  ...w,
+                  loading: false,
+                  error:
+                    err instanceof Error ? err.message : t.tapp.loadAppFailed,
+                }
+              : w,
+          ),
+        )
+      }
+    },
+    [
+      windows.length,
+      nextZIndex,
+      runtime,
+      t.tapp.appNotExist,
+      t.tapp.loadAppFailed,
+    ],
+  )
 
   // 关闭窗口（不触发暂停应用逻辑，应用继续在后台运行）
-  const closeWindow = useCallback((windowId: string) => {
-    setWindows((prev) => {
-      const remaining = prev.filter(w => w.windowId !== windowId)
-      // 如果关闭的是活动窗口，激活下一个
-      if (activeWindowId === windowId && remaining.length > 0) {
-        const topWindow = remaining.reduce((a, b) => a.zIndex > b.zIndex ? a : b)
-        setActiveWindowId(topWindow.windowId)
-      }
-      else if (remaining.length === 0) {
-        setActiveWindowId(null)
-      }
-      return remaining
-    })
-  }, [activeWindowId])
+  const closeWindow = useCallback(
+    (windowId: string) => {
+      setWindows((prev) => {
+        const remaining = prev.filter((w) => w.windowId !== windowId)
+        // 如果关闭的是活动窗口，激活下一个
+        if (activeWindowId === windowId && remaining.length > 0) {
+          const topWindow = remaining.reduce((a, b) =>
+            a.zIndex > b.zIndex ? a : b,
+          )
+          setActiveWindowId(topWindow.windowId)
+        } else if (remaining.length === 0) {
+          setActiveWindowId(null)
+        }
+        return remaining
+      })
+    },
+    [activeWindowId],
+  )
 
   // 聚焦窗口
-  const focusWindow = useCallback((windowId: string) => {
-    setActiveWindowId(windowId)
-    setWindows(prev => prev.map(w =>
-      w.windowId === windowId
-        ? { ...w, zIndex: nextZIndex }
-        : w,
-    ))
-    setNextZIndex(prev => prev + 1)
-  }, [nextZIndex])
+  const focusWindow = useCallback(
+    (windowId: string) => {
+      setActiveWindowId(windowId)
+      setWindows((prev) =>
+        prev.map((w) =>
+          w.windowId === windowId ? { ...w, zIndex: nextZIndex } : w,
+        ),
+      )
+      setNextZIndex((prev) => prev + 1)
+    },
+    [nextZIndex],
+  )
 
   // 移动窗口
-  const moveWindow = useCallback((windowId: string, position: { x: number, y: number }) => {
-    setWindows(prev => prev.map(w =>
-      w.windowId === windowId
-        ? { ...w, position }
-        : w,
-    ))
-  }, [])
+  const moveWindow = useCallback(
+    (windowId: string, position: { x: number; y: number }) => {
+      setWindows((prev) =>
+        prev.map((w) => (w.windowId === windowId ? { ...w, position } : w)),
+      )
+    },
+    [],
+  )
 
   // 调整窗口大小
-  const resizeWindow = useCallback((windowId: string, size: { width: number, height: number }) => {
-    setWindows(prev => prev.map(w =>
-      w.windowId === windowId
-        ? { ...w, size }
-        : w,
-    ))
-  }, [])
+  const resizeWindow = useCallback(
+    (windowId: string, size: { width: number; height: number }) => {
+      setWindows((prev) =>
+        prev.map((w) => (w.windowId === windowId ? { ...w, size } : w)),
+      )
+    },
+    [],
+  )
 
   // ===== Agent 操作处理器（已解耦为 Hook）=====
   useWindowAgentHandler({
@@ -824,37 +948,38 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         return
       }
 
-      const response = await fetch(`${API_URL}/api/config/tapp-window-schemes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
+      const response = await fetch(
+        `${API_URL}/api/config/tapp-window-schemes`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            schemes: JSON.stringify(schemes),
+          }),
         },
-        credentials: 'include',
-        body: JSON.stringify({
-          schemes: JSON.stringify(schemes),
-        }),
-      })
+      )
 
       if (!response.ok) {
         throw new Error('Failed to save to cloud')
       }
-    }
-    catch (e) {
+    } catch (e) {
       console.warn('Failed to save window schemes to cloud:', e)
     }
   }, [])
 
   // 保存当前窗口方案
   const saveCurrentScheme = useCallback(async () => {
-    if (windows.length === 0 || isSaving)
-      return
+    if (windows.length === 0 || isSaving) return
 
     setIsSaving(true)
 
     const schemeWindows: WindowSchemeItem[] = windows
-      .filter(w => w.tapp) // 只保存已加载的窗口
-      .map(w => ({
+      .filter((w) => w.tapp) // 只保存已加载的窗口
+      .map((w) => ({
         tappId: w.tappId,
         position: { ...w.position },
         size: { ...w.size },
@@ -882,106 +1007,122 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   }, [windows, savedSchemes, isSaving, saveToCloud, t.tapp.schemeNamePrefix])
 
   // 加载窗口方案
-  const loadScheme = useCallback(async (scheme: WindowScheme) => {
-    // 1. 先关闭菜单
-    setShowSchemeMenu(false)
+  const loadScheme = useCallback(
+    async (scheme: WindowScheme) => {
+      // 1. 先关闭菜单
+      setShowSchemeMenu(false)
 
-    // 2. 清空所有当前窗口并等待状态更新完成
-    await new Promise<void>((resolve) => {
-      setWindows([])
-      setActiveWindowId(null)
-      // 使用 requestAnimationFrame 确保 React 状态更新完成
-      requestAnimationFrame(() => {
+      // 2. 清空所有当前窗口并等待状态更新完成
+      await new Promise<void>((resolve) => {
+        setWindows([])
+        setActiveWindowId(null)
+        // 使用 requestAnimationFrame 确保 React 状态更新完成
         requestAnimationFrame(() => {
-          resolve()
+          requestAnimationFrame(() => {
+            resolve()
+          })
         })
       })
-    })
 
-    // 3. 准备所有新窗口的初始状态
-    const newWindows: TappWindow[] = []
-    const baseZIndex = nextZIndex
+      // 3. 准备所有新窗口的初始状态
+      const newWindows: TappWindow[] = []
+      const baseZIndex = nextZIndex
 
-    for (let i = 0; i < scheme.windows.length && i < MAX_WINDOWS; i++) {
-      const schemeWindow = scheme.windows[i]
-      const windowId = generateWindowId()
+      for (let i = 0; i < scheme.windows.length && i < MAX_WINDOWS; i++) {
+        const schemeWindow = scheme.windows[i]
+        const windowId = generateWindowId()
 
-      newWindows.push({
-        windowId,
-        tappId: schemeWindow.tappId,
-        tapp: null,
-        code: null,
-        loading: true,
-        error: null,
-        position: { ...schemeWindow.position },
-        size: { ...schemeWindow.size },
-        isMaximized: false,
-        zIndex: baseZIndex + i,
-      })
-    }
-
-    // 4. 一次性设置所有窗口（批量更新，减少重渲染）
-    if (newWindows.length > 0) {
-      setWindows(newWindows)
-      setActiveWindowId(newWindows[newWindows.length - 1].windowId)
-      setNextZIndex(baseZIndex + newWindows.length)
-    }
-
-    // 5. 异步加载所有 Tapp 的资源
-    await runtime.waitForSync()
-
-    for (const newWindow of newWindows) {
-      const { windowId, tappId } = newWindow
-
-      try {
-        const instance = runtime.getTapp(tappId)
-        if (!instance) {
-          setWindows(prev => prev.map(w =>
-            w.windowId === windowId
-              ? { ...w, loading: false, error: t.tapp.appNotExist }
-              : w,
-          ))
-          continue
-        }
-
-        const resources = await loadPageResources(instance)
-        const tappCode: TappCodeStructure = {
-          core: resources.core,
-          page: resources.page,
-          pageHtml: resources.html,
-          styles: resources.styles,
-          pageCSS: resources.css,
-          i18n: resources.i18n,
-          pageModules: resources.pageModules,
-        }
-
-        if (!runtime.isRunning(tappId)) {
-          await runtime.startTapp(tappId)
-        }
-
-        setWindows(prev => prev.map(w =>
-          w.windowId === windowId
-            ? { ...w, tapp: instance, code: tappCode, loading: false }
-            : w,
-        ))
+        newWindows.push({
+          windowId,
+          tappId: schemeWindow.tappId,
+          tapp: null,
+          code: null,
+          loading: true,
+          error: null,
+          position: { ...schemeWindow.position },
+          size: { ...schemeWindow.size },
+          isMaximized: false,
+          zIndex: baseZIndex + i,
+        })
       }
-      catch (err) {
-        setWindows(prev => prev.map(w =>
-          w.windowId === windowId
-            ? { ...w, loading: false, error: err instanceof Error ? err.message : t.tapp.loadAppFailed }
-            : w,
-        ))
+
+      // 4. 一次性设置所有窗口（批量更新，减少重渲染）
+      if (newWindows.length > 0) {
+        setWindows(newWindows)
+        setActiveWindowId(newWindows[newWindows.length - 1].windowId)
+        setNextZIndex(baseZIndex + newWindows.length)
       }
-    }
-  }, [nextZIndex, runtime, t.tapp.appNotExist, t.tapp.loadAppFailed])
+
+      // 5. 异步加载所有 Tapp 的资源
+      await runtime.waitForSync()
+
+      for (const newWindow of newWindows) {
+        const { windowId, tappId } = newWindow
+
+        try {
+          const instance = runtime.getTapp(tappId)
+          if (!instance) {
+            setWindows((prev) =>
+              prev.map((w) =>
+                w.windowId === windowId
+                  ? { ...w, loading: false, error: t.tapp.appNotExist }
+                  : w,
+              ),
+            )
+            continue
+          }
+
+          const resources = await loadPageResources(instance)
+          const tappCode: TappCodeStructure = {
+            core: resources.core,
+            page: resources.page,
+            pageHtml: resources.html,
+            styles: resources.styles,
+            pageCSS: resources.css,
+            i18n: resources.i18n,
+            pageModules: resources.pageModules,
+          }
+
+          if (!runtime.isRunning(tappId)) {
+            await runtime.startTapp(tappId)
+          }
+
+          setWindows((prev) =>
+            prev.map((w) =>
+              w.windowId === windowId
+                ? { ...w, tapp: instance, code: tappCode, loading: false }
+                : w,
+            ),
+          )
+        } catch (err) {
+          setWindows((prev) =>
+            prev.map((w) =>
+              w.windowId === windowId
+                ? {
+                    ...w,
+                    loading: false,
+                    error:
+                      err instanceof Error ? err.message : t.tapp.loadAppFailed,
+                  }
+                : w,
+            ),
+          )
+        }
+      }
+    },
+    [nextZIndex, runtime, t.tapp.appNotExist, t.tapp.loadAppFailed],
+  )
 
   // 删除方案
-  const deleteScheme = useCallback(async (schemeId: string) => {
-    const updatedSchemes = savedSchemes.filter(s => s.id !== schemeId)
-    setSavedSchemes(updatedSchemes)
+  const deleteScheme = useCallback(
+    async (schemeId: string) => {
+      const updatedSchemes = savedSchemes.filter((s) => s.id !== schemeId)
+      setSavedSchemes(updatedSchemes)
 
-    await saveToCloud(updatedSchemes)
-  }, [savedSchemes, saveToCloud])
+      await saveToCloud(updatedSchemes)
+    },
+    [savedSchemes, saveToCloud],
+  )
 
   // 可用于添加的 Tapps（允许打开同一应用的多个实例）
   const selectableTapps = useMemo(() => {
@@ -996,7 +1137,8 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         <div
           className="flex items-center gap-2 rounded-xl px-2 py-1.5 backdrop-blur-md"
           style={{
-            backgroundColor: 'color-mix(in srgb, var(--bg-card) 80%, transparent)',
+            backgroundColor:
+              'color-mix(in srgb, var(--bg-card) 80%, transparent)',
             border: '1px solid var(--border-color)',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
           }}
@@ -1011,8 +1153,18 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               whileTap={noAnimation ? undefined : { scale: 0.95 }}
               title={t.tapp.back}
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
             </motion.button>
           )}
@@ -1062,16 +1214,28 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                           disabled={isSaving}
                           className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors disabled:opacity-50"
                           style={{ color: 'var(--text-primary)' }}
-                          whileHover={isSaving ? undefined : { backgroundColor: 'var(--bg-hover)' }}
+                          whileHover={
+                            isSaving
+                              ? undefined
+                              : { backgroundColor: 'var(--bg-hover)' }
+                          }
                         >
-                          {isSaving
-                            ? (
-                                <FaSpinner className="w-4 h-4 animate-spin" style={{ color: 'var(--color-primary)' }} />
-                              )
-                            : (
-                                <FaSave className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />
-                              )}
-                          <span>{isSaving ? t.tapp.saving : t.tapp.saveCurrentScheme}</span>
+                          {isSaving ? (
+                            <FaSpinner
+                              className="w-4 h-4 animate-spin"
+                              style={{ color: 'var(--color-primary)' }}
+                            />
+                          ) : (
+                            <FaSave
+                              className="w-4 h-4"
+                              style={{ color: 'var(--color-primary)' }}
+                            />
+                          )}
+                          <span>
+                            {isSaving
+                              ? t.tapp.saving
+                              : t.tapp.saveCurrentScheme}
+                          </span>
                         </motion.button>
                       )}
 
@@ -1084,55 +1248,58 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                       )}
 
                       {/* 已保存的方案列表 */}
-                      {savedSchemes.length > 0
-                        ? (
-                            <div className="max-h-48 overflow-y-auto py-1">
-                              {savedSchemes.map(scheme => (
-                                <div
-                                  key={scheme.id}
-                                  className="flex items-center justify-between px-4 py-2.5 group transition-colors hover:bg-[var(--bg-hover)]"
-                                >
-                                  <motion.button
-                                    onClick={() => loadScheme(scheme)}
-                                    className="flex-1 text-left text-sm truncate"
-                                    style={{ color: 'var(--text-primary)' }}
-                                    whileTap={{ scale: 0.98 }}
-                                  >
-                                    <span className="block truncate">{scheme.name}</span>
-                                    <span
-                                      className="text-xs"
-                                      style={{ color: 'var(--text-muted)' }}
-                                    >
-                                      {t.tapp.windowCount.replace('{count}', String(scheme.windows.length))}
-                                    </span>
-                                  </motion.button>
-                                  <motion.button
-                                    onClick={(e: React.MouseEvent) => {
-                                      e.stopPropagation()
-                                      deleteScheme(scheme.id)
-                                    }}
-                                    className="p-1.5 opacity-0 group-hover:opacity-100 transition-opacity rounded"
-                                    style={{ color: 'var(--text-muted)' }}
-                                    whileHover={{ color: 'var(--color-error, #ef4444)' }}
-                                    whileTap={{ scale: 0.9 }}
-                                    title={t.tapp.deleteScheme}
-                                  >
-                                    <FaTrash className="w-3.5 h-3.5" />
-                                  </motion.button>
-                                </div>
-                              ))}
-                            </div>
-                          )
-                        : windows.length === 0
-                          ? (
-                              <div
-                                className="px-4 py-5 text-center text-sm"
-                                style={{ color: 'var(--text-muted)' }}
+                      {savedSchemes.length > 0 ? (
+                        <div className="max-h-48 overflow-y-auto py-1">
+                          {savedSchemes.map((scheme) => (
+                            <div
+                              key={scheme.id}
+                              className="flex items-center justify-between px-4 py-2.5 group transition-colors hover:bg-[var(--bg-hover)]"
+                            >
+                              <motion.button
+                                onClick={() => loadScheme(scheme)}
+                                className="flex-1 text-left text-sm truncate"
+                                style={{ color: 'var(--text-primary)' }}
+                                whileTap={{ scale: 0.98 }}
                               >
-                                {t.tapp.noSavedSchemes}
-                              </div>
-                            )
-                          : null}
+                                <span className="block truncate">
+                                  {scheme.name}
+                                </span>
+                                <span
+                                  className="text-xs"
+                                  style={{ color: 'var(--text-muted)' }}
+                                >
+                                  {t.tapp.windowCount.replace(
+                                    '{count}',
+                                    String(scheme.windows.length),
+                                  )}
+                                </span>
+                              </motion.button>
+                              <motion.button
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation()
+                                  deleteScheme(scheme.id)
+                                }}
+                                className="p-1.5 opacity-0 group-hover:opacity-100 transition-opacity rounded"
+                                style={{ color: 'var(--text-muted)' }}
+                                whileHover={{
+                                  color: 'var(--color-error, #ef4444)',
+                                }}
+                                whileTap={{ scale: 0.9 }}
+                                title={t.tapp.deleteScheme}
+                              >
+                                <FaTrash className="w-3.5 h-3.5" />
+                              </motion.button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : windows.length === 0 ? (
+                        <div
+                          className="px-4 py-5 text-center text-sm"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {t.tapp.noSavedSchemes}
+                        </div>
+                      ) : null}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1152,9 +1319,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               className="px-2 py-1 text-sm font-medium"
               style={{ color: 'var(--text-muted)' }}
             >
-              {windows.length}
-              /
-              {MAX_WINDOWS}
+              {windows.length}/{MAX_WINDOWS}
             </span>
 
             {windows.length < MAX_WINDOWS && (
@@ -1162,7 +1327,10 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                 onClick={() => setShowTappSelector(true)}
                 className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
                 style={{ color: 'var(--color-primary)' }}
-                whileHover={{ backgroundColor: 'color-mix(in srgb, var(--color-primary) 15%, transparent)' }}
+                whileHover={{
+                  backgroundColor:
+                    'color-mix(in srgb, var(--color-primary) 15%, transparent)',
+                }}
                 whileTap={noAnimation ? undefined : { scale: 0.9 }}
                 title={t.tapp.addWindow}
               >
@@ -1174,12 +1342,9 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
       </div>
 
       {/* 窗口容器 */}
-      <div
-        ref={containerRef}
-        className="absolute inset-0 overflow-hidden"
-      >
+      <div ref={containerRef} className="absolute inset-0 overflow-hidden">
         <AnimatePresence>
-          {windows.map(window => (
+          {windows.map((window) => (
             <TappWindowComponent
               key={window.windowId}
               window={window}
@@ -1231,7 +1396,10 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             {/* 背景遮罩 */}
             <motion.div
               className="fixed inset-0 z-2000"
-              style={{ backgroundColor: 'color-mix(in srgb, var(--bg-primary) 60%, transparent)' }}
+              style={{
+                backgroundColor:
+                  'color-mix(in srgb, var(--bg-primary) 60%, transparent)',
+              }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1267,7 +1435,10 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                     onClick={() => setShowTappSelector(false)}
                     className="p-1.5 rounded-lg transition-colors"
                     style={{ color: 'var(--text-muted)' }}
-                    whileHover={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-primary)' }}
+                    whileHover={{
+                      backgroundColor: 'var(--bg-hover)',
+                      color: 'var(--text-primary)',
+                    }}
                     whileTap={{ scale: 0.9 }}
                   >
                     <FaTimes className="w-4 h-4" />
@@ -1276,52 +1447,50 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
 
                 {/* 应用列表 - 网格布局 */}
                 <div className="p-4 overflow-y-auto max-h-[calc(70vh-80px)]">
-                  {selectableTapps.length === 0
-                    ? (
-                        <div className="text-center py-8">
-                          <p style={{ color: 'var(--text-muted)' }}>
-                            {t.tapp.noAvailableApps}
-                          </p>
-                        </div>
-                      )
-                    : (
-                        <div className="grid grid-cols-4 gap-3">
-                          {selectableTapps.map((tapp) => {
-                            const style = getTappIconStyle(tapp.manifest)
-                            return (
-                              <motion.button
-                                key={tapp.id}
-                                onClick={() => openTappWindow(tapp.id)}
-                                className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors"
-                                whileHover={{ backgroundColor: 'var(--bg-hover)' }}
-                                whileTap={{ scale: 0.95 }}
-                                title={tapp.manifest.description}
+                  {selectableTapps.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p style={{ color: 'var(--text-muted)' }}>
+                        {t.tapp.noAvailableApps}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-3">
+                      {selectableTapps.map((tapp) => {
+                        const style = getTappIconStyle(tapp.manifest)
+                        return (
+                          <motion.button
+                            key={tapp.id}
+                            onClick={() => openTappWindow(tapp.id)}
+                            className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors"
+                            whileHover={{ backgroundColor: 'var(--bg-hover)' }}
+                            whileTap={{ scale: 0.95 }}
+                            title={tapp.manifest.description}
+                          >
+                            {style && (
+                              <div
+                                className={`w-12 h-12 rounded-xl ${style.className} flex items-center justify-center text-white font-bold`}
+                                style={style.style}
                               >
-                                {style && (
-                                  <div
-                                    className={`w-12 h-12 rounded-xl ${style.className} flex items-center justify-center text-white font-bold`}
-                                    style={style.style}
-                                  >
-                                    <TappIcon
-                                      icon={tapp.manifest.icon}
-                                      iconSvg={tapp.manifest.iconSvg}
-                                      name={tapp.manifest.name}
-                                      sizeClass="w-6 h-6"
-                                      textSizeClass="text-lg"
-                                    />
-                                  </div>
-                                )}
-                                <span
-                                  className="text-xs text-center w-full truncate"
-                                  style={{ color: 'var(--text-primary)' }}
-                                >
-                                  {tapp.manifest.name}
-                                </span>
-                              </motion.button>
-                            )
-                          })}
-                        </div>
-                      )}
+                                <TappIcon
+                                  icon={tapp.manifest.icon}
+                                  iconSvg={tapp.manifest.iconSvg}
+                                  name={tapp.manifest.name}
+                                  sizeClass="w-6 h-6"
+                                  textSizeClass="text-lg"
+                                />
+                              </div>
+                            )}
+                            <span
+                              className="text-xs text-center w-full truncate"
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              {tapp.manifest.name}
+                            </span>
+                          </motion.button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             </div>

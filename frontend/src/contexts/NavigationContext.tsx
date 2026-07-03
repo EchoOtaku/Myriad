@@ -7,9 +7,17 @@
  * - 支持动画过渡和状态同步
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-
 import type { ReactNode } from 'react'
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 // 二级导航项配置
 export interface SecondaryNavItem {
@@ -47,13 +55,15 @@ interface NavigationContextValue {
   /** 注销二级导航（页面卸载时调用） */
   unregisterSecondaryNav: (routePath: string) => void
   /** 更新二级导航状态 */
-  updateSecondaryNav: (updates: Partial<Pick<SecondaryNavConfig, 'activeId' | 'expanded'>>) => void
+  updateSecondaryNav: (
+    updates: Partial<Pick<SecondaryNavConfig, 'activeId' | 'expanded'>>,
+  ) => void
   /** 动画状态 */
   isAnimating: boolean
   /** 设置动画状态 */
   setIsAnimating: (value: boolean) => void
   /** 渲染模式引用（用于动画期间锁定渲染） */
-  renderModeRef: React.MutableRefObject<'normal' | 'secondary'>
+  renderModeRef: React.RefObject<'normal' | 'secondary'>
   /** 沉浸模式（隐藏导航岛和控制面板） */
   immersiveMode: boolean
   /** 设置沉浸模式 */
@@ -63,7 +73,9 @@ interface NavigationContextValue {
 const NavigationContext = createContext<NavigationContextValue | null>(null)
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
-  const [secondaryNav, setSecondaryNav] = useState<SecondaryNavConfig | null>(null)
+  const [secondaryNav, setSecondaryNav] = useState<SecondaryNavConfig | null>(
+    null,
+  )
   const [isAnimating, setIsAnimating] = useState(false)
   const [immersiveMode, setImmersiveMode] = useState(false)
   const renderModeRef = useRef<'normal' | 'secondary'>('normal')
@@ -78,7 +90,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     setSecondaryNav((prev) => {
       if (prev?.routePath === routePath) {
         // 如果当前在子路由（如 /federation/room/xxx），保留二级导航
-        if (window.location.pathname.startsWith(routePath + '/')) {
+        if (window.location.pathname.startsWith(`${routePath}/`)) {
           return prev
         }
         return null
@@ -88,25 +100,37 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // 更新二级导航状态
-  const updateSecondaryNav = useCallback((updates: Partial<Pick<SecondaryNavConfig, 'activeId' | 'expanded'>>) => {
-    setSecondaryNav((prev) => {
-      if (!prev)
-        return null
-      return { ...prev, ...updates }
-    })
-  }, [])
+  const updateSecondaryNav = useCallback(
+    (updates: Partial<Pick<SecondaryNavConfig, 'activeId' | 'expanded'>>) => {
+      setSecondaryNav((prev) => {
+        if (!prev) return null
+        return { ...prev, ...updates }
+      })
+    },
+    [],
+  )
 
-  const value = useMemo(() => ({
-    secondaryNav,
-    registerSecondaryNav,
-    unregisterSecondaryNav,
-    updateSecondaryNav,
-    isAnimating,
-    setIsAnimating,
-    renderModeRef,
-    immersiveMode,
-    setImmersiveMode,
-  }), [secondaryNav, registerSecondaryNav, unregisterSecondaryNav, updateSecondaryNav, isAnimating, immersiveMode])
+  const value = useMemo(
+    () => ({
+      secondaryNav,
+      registerSecondaryNav,
+      unregisterSecondaryNav,
+      updateSecondaryNav,
+      isAnimating,
+      setIsAnimating,
+      renderModeRef,
+      immersiveMode,
+      setImmersiveMode,
+    }),
+    [
+      secondaryNav,
+      registerSecondaryNav,
+      unregisterSecondaryNav,
+      updateSecondaryNav,
+      isAnimating,
+      immersiveMode,
+    ],
+  )
 
   return (
     <NavigationContext.Provider value={value}>
@@ -132,12 +156,21 @@ export function useSecondaryNav(config: {
   /** 展开按钮的提示文案 */
   expandHint?: string
 }) {
-  const { secondaryNav, registerSecondaryNav, unregisterSecondaryNav, updateSecondaryNav } = useNavigation()
+  const {
+    secondaryNav,
+    registerSecondaryNav,
+    unregisterSecondaryNav,
+    updateSecondaryNav,
+  } = useNavigation()
   // 如果已有相同 routePath 的二级导航（从子路由返回/进入时保留的），复用其 activeId 和 expanded
   const isSameGroup = secondaryNav?.routePath === config.routePath
   const existingActiveId = isSameGroup ? secondaryNav.activeId : null
-  const existingExpanded = isSameGroup ? (secondaryNav.expanded ?? false) : false
-  const [activeId, setActiveIdLocal] = useState(existingActiveId ?? config.defaultActiveId)
+  const existingExpanded = isSameGroup
+    ? (secondaryNav.expanded ?? false)
+    : false
+  const [activeId, setActiveIdLocal] = useState(
+    existingActiveId ?? config.defaultActiveId,
+  )
   const [expanded, setExpandedLocal] = useState(existingExpanded)
 
   // 用 ref 追踪当前值，避免在 state updater 内部调用 updateSecondaryNav
@@ -148,26 +181,37 @@ export function useSecondaryNav(config: {
   expandedRef.current = expanded
 
   // 同步包装：状态变更同步更新到 Context，消除 effect 延迟造成的一帧闪烁
-  const setActiveId = useCallback((value: string | ((prev: string) => string)) => {
-    const next = typeof value === 'function' ? value(activeIdRef.current) : value
-    setActiveIdLocal(next)
-    updateSecondaryNav({ activeId: next })
-  }, [updateSecondaryNav])
+  const setActiveId = useCallback(
+    (value: string | ((prev: string) => string)) => {
+      const next =
+        typeof value === 'function' ? value(activeIdRef.current) : value
+      setActiveIdLocal(next)
+      updateSecondaryNav({ activeId: next })
+    },
+    [updateSecondaryNav],
+  )
 
-  const setExpanded = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
-    const next = typeof value === 'function' ? value(expandedRef.current) : value
-    setExpandedLocal(next)
-    updateSecondaryNav({ expanded: next })
-  }, [updateSecondaryNav])
+  const setExpanded = useCallback(
+    (value: boolean | ((prev: boolean) => boolean)) => {
+      const next =
+        typeof value === 'function' ? value(expandedRef.current) : value
+      setExpandedLocal(next)
+      updateSecondaryNav({ expanded: next })
+    },
+    [updateSecondaryNav],
+  )
 
   // 选中项变化处理（由导航岛的按钮点击触发）
-  const handleChange = useCallback((id: string) => {
-    setActiveId(id)
-  }, [setActiveId])
+  const handleChange = useCallback(
+    (id: string) => {
+      setActiveId(id)
+    },
+    [setActiveId],
+  )
 
   // 展开/收起切换（由导航岛的 handleExpand/handleCollapse 触发）
   const handleToggleExpand = useCallback(() => {
-    setExpanded(prev => !prev)
+    setExpanded((prev) => !prev)
   }, [setExpanded])
 
   // 用 ref 保持回调引用稳定，避免注册 effect 因回调变化而重跑
@@ -181,9 +225,9 @@ export function useSecondaryNav(config: {
     registerSecondaryNav({
       routePath: config.routePath,
       items: config.items,
-      activeId: activeId,
+      activeId,
       onChange: (id: string) => handleChangeRef.current(id),
-      expanded: expanded,
+      expanded,
       onToggleExpand: () => handleToggleExpandRef.current(),
       expandHint: config.expandHint,
     })
@@ -191,8 +235,13 @@ export function useSecondaryNav(config: {
     return () => {
       unregisterSecondaryNav(config.routePath)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 首次注册，后续通过 synced setters 直接更新 Context
-  }, [config.routePath, config.items, config.expandHint, registerSecondaryNav, unregisterSecondaryNav])
+  }, [
+    config.routePath,
+    config.items,
+    config.expandHint,
+    registerSecondaryNav,
+    unregisterSecondaryNav,
+  ])
 
   return {
     activeId,

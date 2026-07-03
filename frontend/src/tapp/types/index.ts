@@ -12,16 +12,16 @@ export type PermissionLevel = 'public' | 'basic' | 'elevated' | 'privileged'
 export type TappStatus = 'installed' | 'running' | 'suspended' | 'error'
 
 /** 小组件尺寸（与系统保持一致） */
-export type WidgetSize
-  = | '1x1' | '1x2' | '2x1' | '2x2'
-    | '2x3' | '3x2' | '4x2' | '2x4'
-    | '3x3' | '4x4'
+export type WidgetSize =
+  '1x1' | '1x2' | '2x1' | '2x2' | '2x3' | '3x2' | '4x2' | '2x4' | '3x3' | '4x4'
 
 /** 小组件分类 */
-export type WidgetCategory = 'stats' | 'activity' | 'visualization' | 'utility' | 'custom'
+export type WidgetCategory =
+  'stats' | 'activity' | 'visualization' | 'utility' | 'custom'
 
 /** 平台数据类型 */
-export type PlatformDataType = 'game' | 'video' | 'music' | 'anime' | 'article' | 'custom'
+export type PlatformDataType =
+  'game' | 'video' | 'music' | 'anime' | 'article' | 'custom'
 
 // ============ Tapp Manifest ============
 
@@ -160,7 +160,7 @@ export interface TappSettingItem {
   /** 默认值 */
   defaultValue?: unknown
   /** select 类型的选项 */
-  options?: { value: string, label: string }[]
+  options?: { value: string; label: string }[]
   /** number 类型的范围 */
   min?: number
   max?: number
@@ -170,60 +170,60 @@ export interface TappSettingItem {
 }
 
 /** 权限类型 */
-export type TappPermission
+export type TappPermission =
   // 小组件权限
-  = | 'widget:register'
+  | 'widget:register'
   // 平台数据权限
-    | 'platform:read'
-    | 'platform:write'
-    | 'platform:register'
+  | 'platform:read'
+  | 'platform:write'
+  | 'platform:register'
   // AI 权限
-    | 'ai:generate'
-    | 'ai:analyze'
-    | 'ai:chat'
-    | 'ai:image'
+  | 'ai:generate'
+  | 'ai:analyze'
+  | 'ai:chat'
+  | 'ai:image'
   // 报告权限
-    | 'report:read'
-    | 'report:write'
+  | 'report:read'
+  | 'report:write'
   // 存储权限
-    | 'storage'
+  | 'storage'
   // UI 权限
-    | 'ui:notification'
-    | 'ui:fullscreen'
-    | 'ui:theme'
-    | 'ui:confirm'
+  | 'ui:notification'
+  | 'ui:fullscreen'
+  | 'ui:theme'
+  | 'ui:confirm'
   // P0: 网络权限
-    | 'network:fetch'
+  | 'network:fetch'
   // P1: 媒体权限
-    | 'media:control'
-    | 'media:read'
+  | 'media:control'
+  | 'media:read'
   // P2: 组件注册权限
-    | 'component:theme'
-    | 'component:agent'
+  | 'component:theme'
+  | 'component:agent'
   // P2: 快捷键权限
-    | 'shortcut:register'
+  | 'shortcut:register'
   // P2: 事件权限
-    | 'event:publish'
-    | 'event:subscribe'
+  | 'event:publish'
+  | 'event:subscribe'
   // P3: 定时任务权限
-    | 'scheduler:register'
+  | 'scheduler:register'
   // P4: 语音服务权限
-    | 'speech:tts'
-    | 'speech:asr'
+  | 'speech:tts'
+  | 'speech:asr'
   // Tapp 列表权限
-    | 'tappList:read'
-    | 'tappList:manage'
+  | 'tappList:read'
+  | 'tappList:manage'
   // Brew 权限
-    | 'brew:read'
-    | 'brew:write'
-    | 'brew:comment'
-    | 'brew:manage'
+  | 'brew:read'
+  | 'brew:write'
+  | 'brew:comment'
+  | 'brew:manage'
   // 联邦权限
-    | 'federation:read'
-    | 'federation:write'
-    | 'federation:message'
-    | 'federation:trust'
-    | 'federation:files'
+  | 'federation:read'
+  | 'federation:write'
+  | 'federation:message'
+  | 'federation:trust'
+  | 'federation:files'
 
 // ============ 用户角色 ============
 
@@ -233,14 +233,14 @@ export type UserRole = 'guest' | 'user' | 'admin'
 // ============ 后台运行需求 ============
 
 /** 后台运行需求类型 */
-export type BackgroundRequirement
-  = | 'widget' // 有小组件在主页显示
-    | 'media' // 媒体控制（如音乐播放器扩展）
-    | 'sync' // 后台数据同步
-    | 'notification' // 定时通知
-    | 'scheduler' // 定时任务
-    | 'event-listener' // 事件监听（跨 Tapp 通信）
-    | 'realtime' // 实时数据更新
+export type BackgroundRequirement =
+  | 'widget' // 有小组件在主页显示
+  | 'media' // 媒体控制（如音乐播放器扩展）
+  | 'sync' // 后台数据同步
+  | 'notification' // 定时通知
+  | 'scheduler' // 定时任务
+  | 'event-listener' // 事件监听（跨 Tapp 通信）
+  | 'realtime' // 实时数据更新
 
 /** 后台运行需求声明 */
 export interface BackgroundRequirementDeclaration {
@@ -340,13 +340,16 @@ export interface WidgetRegistration {
 /** 小组件配置 Schema */
 export interface WidgetConfigSchema {
   type: 'object'
-  properties: Record<string, {
-    type: 'string' | 'number' | 'boolean' | 'select'
-    title: string
-    description?: string
-    default?: unknown
-    options?: Array<{ label: string, value: unknown }>
-  }>
+  properties: Record<
+    string,
+    {
+      type: 'string' | 'number' | 'boolean' | 'select'
+      title: string
+      description?: string
+      default?: unknown
+      options?: Array<{ label: string; value: unknown }>
+    }
+  >
   required?: string[]
 }
 

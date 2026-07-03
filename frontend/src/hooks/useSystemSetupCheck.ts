@@ -8,14 +8,12 @@ export function useSystemSetupCheck() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (location.pathname === '/setup')
-      return
+    if (location.pathname === '/setup') return
 
     async function checkSetup() {
       try {
         const response = await fetch(`${API_URL}/api/setup/status`)
-        if (!response.ok)
-          return
+        if (!response.ok) return
 
         const data = await response.json()
         if (data.is_setup_required) {
@@ -23,8 +21,7 @@ export function useSystemSetupCheck() {
           // Use hard redirect to avoid conflicts with router/animations during init
           window.location.replace('/setup')
         }
-      }
-      catch (error) {
+      } catch (error) {
         console.error('Failed to check setup status:', error)
         showError('无法连接到服务器检查系统状态')
       }

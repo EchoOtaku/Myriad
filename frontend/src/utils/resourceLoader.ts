@@ -47,8 +47,7 @@ class ResourceLoader {
     // 监听页面加载完成
     if (document.readyState === 'complete') {
       this.isPageLoaded = true
-    }
-    else {
+    } else {
       window.addEventListener('load', () => {
         this.isPageLoaded = true
         this.processQueue()
@@ -66,7 +65,7 @@ class ResourceLoader {
     }
 
     // 检查是否在队列中
-    const existingIndex = this.queue.findIndex(t => t.id === task.id)
+    const existingIndex = this.queue.findIndex((t) => t.id === task.id)
     if (existingIndex !== -1) {
       // 如果新任务优先级更高，更新优先级
       if (task.priority < this.queue[existingIndex].priority) {
@@ -85,14 +84,14 @@ class ResourceLoader {
    * 批量添加任务
    */
   addTasks(tasks: LoadTask[]): void {
-    tasks.forEach(task => this.addTask(task))
+    tasks.forEach((task) => this.addTask(task))
   }
 
   /**
    * 取消任务
    */
   cancelTask(id: string): void {
-    const index = this.queue.findIndex(t => t.id === id)
+    const index = this.queue.findIndex((t) => t.id === id)
     if (index !== -1) {
       this.queue.splice(index, 1)
     }
@@ -102,7 +101,7 @@ class ResourceLoader {
    * 清空指定优先级的任务
    */
   clearPriority(priority: LoadPriority): void {
-    this.queue = this.queue.filter(t => t.priority !== priority)
+    this.queue = this.queue.filter((t) => t.priority !== priority)
   }
 
   /**
@@ -128,14 +127,13 @@ class ResourceLoader {
 
     // 获取下一个任务
     const task = this.queue.shift()
-    if (!task)
-      return
+    if (!task) return
 
     // 根据优先级决定是否延迟
     const delay = this.getDelayForPriority(task.priority)
     if (delay > 0) {
       // 重新加入队列，等待延迟
-      await new Promise(resolve => setTimeout(resolve, delay))
+      await new Promise((resolve) => setTimeout(resolve, delay))
 
       // 延迟后检查任务是否已被取消
       if (this.completedLoads.has(task.id) || this.activeLoads.has(task.id)) {
@@ -167,12 +165,16 @@ class ResourceLoader {
 
     // 低优先级：页面加载后延迟执行
     if (priority === LoadPriority.LOW) {
-      return this.isPageLoaded ? this.config.lowPriorityDelay : this.config.lowPriorityDelay * 2
+      return this.isPageLoaded
+        ? this.config.lowPriorityDelay
+        : this.config.lowPriorityDelay * 2
     }
 
     // 空闲优先级：使用 requestIdleCallback 或长延迟
     if (priority === LoadPriority.IDLE) {
-      return this.isPageLoaded ? this.config.idleDelay : this.config.idleDelay * 2
+      return this.isPageLoaded
+        ? this.config.idleDelay
+        : this.config.idleDelay * 2
     }
 
     return 0
@@ -195,16 +197,14 @@ class ResourceLoader {
       // 执行加载
       if (timeoutPromise) {
         await Promise.race([task.loader(), timeoutPromise])
-      }
-      else {
+      } else {
         await task.loader()
       }
 
       // 标记完成
       this.completedLoads.add(task.id)
       this.failedLoads.delete(task.id)
-    }
-    catch (error) {
+    } catch (error) {
       console.warn(`Resource load failed for task ${task.id}:`, error)
 
       // 记录失败次数
@@ -216,12 +216,14 @@ class ResourceLoader {
         // 降低优先级重试
         this.queue.push({
           ...task,
-          priority: Math.min(task.priority + 1, LoadPriority.IDLE) as LoadPriority,
+          priority: Math.min(
+            task.priority + 1,
+            LoadPriority.IDLE,
+          ) as LoadPriority,
         })
         this.sortQueue()
       }
-    }
-    finally {
+    } finally {
       this.activeLoads.delete(task.id)
       // 继续处理下一个任务
       this.processQueue()
@@ -240,8 +242,7 @@ class ResourceLoader {
           loader,
         })
       })
-    }
-    else {
+    } else {
       // 降级方案：使用 setTimeout
       setTimeout(() => {
         this.addTask({
@@ -259,13 +260,13 @@ class ResourceLoader {
   async waitForCritical(): Promise<void> {
     // 等待所有关键和高优先级任务完成
     while (
-      this.queue.some(t => t.priority <= LoadPriority.HIGH)
-      || Array.from(this.activeLoads).some((id) => {
-        const task = this.queue.find(t => t.id === id)
+      this.queue.some((t) => t.priority <= LoadPriority.HIGH) ||
+      Array.from(this.activeLoads).some((id) => {
+        const task = this.queue.find((t) => t.id === id)
         return task && task.priority <= LoadPriority.HIGH
       })
     ) {
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100))
     }
   }
 
@@ -284,11 +285,21 @@ class ResourceLoader {
 
     for (const task of this.queue) {
       switch (task.priority) {
-        case LoadPriority.CRITICAL: queuedByPriority.critical++; break
-        case LoadPriority.HIGH: queuedByPriority.high++; break
-        case LoadPriority.MEDIUM: queuedByPriority.medium++; break
-        case LoadPriority.LOW: queuedByPriority.low++; break
-        case LoadPriority.IDLE: queuedByPriority.idle++; break
+        case LoadPriority.CRITICAL:
+          queuedByPriority.critical++
+          break
+        case LoadPriority.HIGH:
+          queuedByPriority.high++
+          break
+        case LoadPriority.MEDIUM:
+          queuedByPriority.medium++
+          break
+        case LoadPriority.LOW:
+          queuedByPriority.low++
+          break
+        case LoadPriority.IDLE:
+          queuedByPriority.idle++
+          break
       }
     }
 
@@ -334,7 +345,7 @@ export const globalResourceLoader = new ResourceLoader({
 // 开发环境下的调试工具
 if (import.meta.env.DEV) {
   // 将资源加载器暴露到全局，方便调试
-  (window as any).__resourceLoader = globalResourceLoader
+  ;(window as any).__resourceLoader = globalResourceLoader
 
   // 调试统计 - 仅在有活动任务时处理
   setInterval(() => {
@@ -349,7 +360,11 @@ export const loadResource = {
    * 加载关键资源
    */
   critical: (id: string, loader: () => Promise<void>) => {
-    globalResourceLoader.addTask({ id, priority: LoadPriority.CRITICAL, loader })
+    globalResourceLoader.addTask({
+      id,
+      priority: LoadPriority.CRITICAL,
+      loader,
+    })
   },
 
   /**
@@ -370,7 +385,12 @@ export const loadResource = {
    * 加载低优先级资源
    */
   low: (id: string, loader: () => Promise<void>) => {
-    globalResourceLoader.addTask({ id, priority: LoadPriority.LOW, loader, retryCount: 2 })
+    globalResourceLoader.addTask({
+      id,
+      priority: LoadPriority.LOW,
+      loader,
+      retryCount: 2,
+    })
   },
 
   /**

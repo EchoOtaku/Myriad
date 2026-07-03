@@ -74,12 +74,15 @@ export function useManagedFetch() {
         }
 
         return result
-      }
-      catch (error) {
+      } catch (error) {
         requestKeysRef.current.delete(key)
 
         // 如果是取消错误且组件已卸载，静默处理
-        if (error instanceof Error && error.message.includes('cancelled') && !isMountedRef.current) {
+        if (
+          error instanceof Error &&
+          error.message.includes('cancelled') &&
+          !isMountedRef.current
+        ) {
           return null
         }
 

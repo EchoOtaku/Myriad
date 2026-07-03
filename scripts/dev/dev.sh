@@ -65,6 +65,18 @@ get_terminal_size() {
     TERM_COLS=$(tput cols 2>/dev/null || echo 80)
 }
 
+list_backend_pids() {
+    ps -axo pid=,command= | awk -v root="$PROJECT_ROOT" '
+        index($0, root "/backend") && ($0 ~ /(cargo run|myriad-backend)/) { print $1 }
+    '
+}
+
+list_frontend_pids() {
+    ps -axo pid=,command= | awk -v root="$PROJECT_ROOT" '
+        index($0, root "/frontend") && ($0 ~ /(pnpm|astro|vite|node)/) { print $1 }
+    '
+}
+
 # Draw a box
 draw_box() {
     local title="$1"
@@ -164,10 +176,10 @@ get_service_status() {
     local service=$1
     case $service in
         backend)
-            pgrep -f "myriad-backend|cargo run" > /dev/null 2>&1
+            [[ -n "$(list_backend_pids)" ]]
             ;;
         frontend)
-            pgrep -f "astro dev|vite|pnpm run dev" > /dev/null 2>&1
+            [[ -n "$(list_frontend_pids)" ]]
             ;;
         database)
             docker ps --filter "name=myriad-postgres" --format "{{.Names}}" 2>/dev/null | grep -q "myriad-postgres"
@@ -187,17 +199,17 @@ get_status_text() {
 }
 
 backend_health_ok() {
-    curl -fsS --max-time 1 "http://127.0.0.1:3000/health" >/dev/null 2>&1
+    curl -fsS --max-time 1 "http://127.0.0.1:1103/health" >/dev/null 2>&1
 }
 
 updater_health_ok() {
-    curl -fsS --max-time 1 "http://127.0.0.1:9090/healthz" >/dev/null 2>&1
+    curl -fsS --max-time 1 "http://127.0.0.1:1101/healthz" >/dev/null 2>&1
 }
 
 wait_for_backend() {
     local timeout="${1:-90}"
     local elapsed=0
-    print_info "Waiting for backend health on http://127.0.0.1:3000/health ..."
+    print_info "Waiting for backend health on http://127.0.0.1:1103/health ..."
     while [[ $elapsed -lt $timeout ]]; do
         if backend_health_ok; then
             print_success "Backend is ready"
@@ -212,7 +224,7 @@ wait_for_backend() {
 wait_for_updater() {
     local timeout="${1:-90}"
     local elapsed=0
-    print_info "Waiting for updater health on http://127.0.0.1:9090/healthz ..."
+    print_info "Waiting for updater health on http://127.0.0.1:1101/healthz ..."
     while [[ $elapsed -lt $timeout ]]; do
         if updater_health_ok; then
             print_success "Updater is ready"
@@ -238,7 +250,7 @@ UPDATER_TAG=v0.0.0-dev
 COMPOSE_PROJECT_NAME=myriad-dev-updater
 POSTGRES_PASSWORD=devupdaterpostgres12345678901234567890
 JWT_SECRET=devupdaterjwtsecret12345678901234567890
-CORS_ORIGINS=http://localhost:4321,http://localhost:3000
+CORS_ORIGINS=http://localhost:1102,http://localhost:1103
 UPDATE_TOKEN=$(dev_updater_token)
 CHANNEL=stable
 CHECK_INTERVAL_SECS=0
@@ -292,9 +304,9 @@ show_status_dashboard() {
     draw_box_line "" $width "$BRIGHT_CYAN"
     
     if $backend_status || $frontend_status || $updater_status; then
-        $backend_status && draw_box_line "${DIM}API:      http://localhost:3000${NC}" $width "$BRIGHT_CYAN"
-        $frontend_status && draw_box_line "${DIM}Frontend: http://localhost:4321${NC}" $width "$BRIGHT_CYAN"
-        $updater_status && draw_box_line "${DIM}Updater:  http://127.0.0.1:9090${NC}" $width "$BRIGHT_CYAN"
+        $backend_status && draw_box_line "${DIM}API:      http://localhost:1103${NC}" $width "$BRIGHT_CYAN"
+        $frontend_status && draw_box_line "${DIM}Frontend: http://localhost:1102${NC}" $width "$BRIGHT_CYAN"
+        $updater_status && draw_box_line "${DIM}Updater:  http://127.0.0.1:1101${NC}" $width "$BRIGHT_CYAN"
     fi
     
     draw_box_bottom $width "$BRIGHT_CYAN"
@@ -381,7 +393,7 @@ start_backend() {
     cd "$PROJECT_ROOT/backend"
 
     local cargo_cmd="cargo run"
-    local updater_url="http://127.0.0.1:9090"
+    local updater_url="http://127.0.0.1:1101"
     if dev_updater_enabled; then
         ensure_dev_updater_files
         cargo_cmd="MYRIAD_UPDATER_URL=$updater_url UPDATE_TOKEN=$(dev_updater_token) cargo run"
@@ -411,8 +423,13 @@ start_backend() {
 
 stop_backend() {
     print_step "Stopping backend..."
-    pkill -f "myriad-backend" 2>/dev/null || true
-    pkill -f "cargo run" 2>/dev/null || true
+    local pids
+    pids="$(list_backend_pids)"
+    if [[ -z "$pids" ]]; then
+        print_info "No Myriad backend process found"
+        return 0
+    fi
+    kill $pids 2>/dev/null || true
     print_success "Backend stopped"
 }
 
@@ -438,14 +455,18 @@ start_frontend() {
     fi
     
     sleep 2
-    print_success "Frontend starting on http://localhost:4321"
+    print_success "Frontend starting on http://localhost:1102"
 }
 
 stop_frontend() {
     print_step "Stopping frontend..."
-    pkill -f "astro dev" 2>/dev/null || true
-    pkill -f "vite" 2>/dev/null || true
-    pkill -f "pnpm run dev" 2>/dev/null || true
+    local pids
+    pids="$(list_frontend_pids)"
+    if [[ -z "$pids" ]]; then
+        print_info "No Myriad frontend process found"
+        return 0
+    fi
+    kill $pids 2>/dev/null || true
     print_success "Frontend stopped"
 }
 
@@ -472,7 +493,7 @@ start_all() {
     start_backend
     if ! backend_health_ok; then
         echo ""
-        print_error "Backend is not ready; frontend was not started to avoid 127.0.0.1:3000 ECONNREFUSED."
+        print_error "Backend is not ready; frontend was not started to avoid 127.0.0.1:1103 ECONNREFUSED."
         print_info "Fix the backend error first, then run: ./scripts/dev/dev.sh start frontend"
         return 1
     fi
@@ -483,11 +504,11 @@ start_all() {
     echo -e "${GREEN}${BOLD}${ICON_CHECK} All services started!${NC}"
     echo ""
     echo -e "${DIM}URLs:${NC}"
-    echo -e "  ${CYAN}Frontend:${NC} http://localhost:4321"
-    echo -e "  ${CYAN}Backend:${NC}  http://localhost:3000"
-    echo -e "  ${CYAN}Health:${NC}   http://localhost:3000/health"
+    echo -e "  ${CYAN}Frontend:${NC} http://localhost:1102"
+    echo -e "  ${CYAN}Backend:${NC}  http://localhost:1103"
+    echo -e "  ${CYAN}Health:${NC}   http://localhost:1103/health"
     if get_service_status updater; then
-        echo -e "  ${CYAN}Updater:${NC}  http://127.0.0.1:9090"
+        echo -e "  ${CYAN}Updater:${NC}  http://127.0.0.1:1101"
     fi
     echo ""
 }

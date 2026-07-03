@@ -67,8 +67,7 @@ export function showToast(event: ToastEvent): void {
   listeners.forEach((listener) => {
     try {
       listener(eventWithTimestamp)
-    }
-    catch (error) {
+    } catch (error) {
       console.error('[ToastManager] Listener error:', error)
     }
   })

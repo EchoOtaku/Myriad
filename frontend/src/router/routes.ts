@@ -93,9 +93,8 @@ export const routes: RouteConfig[] = [
  */
 export function findRoute(path: string): RouteConfig | undefined {
   // 先尝试精确匹配
-  const exactMatch = routes.find(route => route.path === path)
-  if (exactMatch)
-    return exactMatch
+  const exactMatch = routes.find((route) => route.path === path)
+  if (exactMatch) return exactMatch
 
   // 再尝试模式匹配
   for (const route of routes) {

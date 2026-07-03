@@ -29,8 +29,16 @@ export const ISLAND_GLASS_EDIT = [
 
 // ==================== 动画 Transition ====================
 
-export const SPRING_SNAPPY = { type: 'spring', stiffness: 400, damping: 25 } as const
-export const SPRING_SMOOTH = { type: 'spring', stiffness: 350, damping: 28 } as const
+export const SPRING_SNAPPY = {
+  type: 'spring',
+  stiffness: 400,
+  damping: 25,
+} as const
+export const SPRING_SMOOTH = {
+  type: 'spring',
+  stiffness: 350,
+  damping: 28,
+} as const
 export const TRANSITION_QUICK = { duration: 0.12 } as const
 export const TRANSITION_NORMAL = { duration: 0.15 } as const
 export const TRANSITION_SLOW = { duration: 0.25, ease: 'easeOut' } as const
@@ -96,11 +104,13 @@ export const ISLAND_INPUT_STYLE: React.CSSProperties = {
 
 // ==================== 分隔线 ====================
 
-export const ISLAND_DIVIDER = 'w-px h-6 bg-linear-to-b from-transparent via-gray-300/50 to-transparent dark:via-white/10'
+export const ISLAND_DIVIDER =
+  'w-px h-6 bg-linear-to-b from-transparent via-gray-300/50 to-transparent dark:via-white/10'
 
 // ==================== 徽章 ====================
 
-export const ISLAND_BADGE = 'text-[10px] font-medium tabular-nums text-gray-400 dark:text-gray-500 px-1.5'
+export const ISLAND_BADGE =
+  'text-[10px] font-medium tabular-nums text-gray-400 dark:text-gray-500 px-1.5'
 
 // ==================== 下拉选择框 ====================
 
@@ -121,8 +131,7 @@ export const API_URL = CONFIG_API_URL
  * 处理图标 URL - 确保正确的完整路径
  */
 export function getIconUrl(iconUrl: string | null | undefined): string | null {
-  if (!iconUrl)
-    return null
+  if (!iconUrl) return null
   if (iconUrl.startsWith('/api/')) {
     return `${API_URL}${iconUrl}`
   }

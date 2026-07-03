@@ -18,7 +18,7 @@ export const CardSkeleton: React.FC<CardSkeletonProps> = ({
 
     return (
       <>
-        {items.map(i => (
+        {items.map((i) => (
           <div
             key={i}
             className="relative rounded-xl overflow-hidden bg-white/60 dark:bg-neutral-900/60 animate-pulse"
@@ -51,7 +51,7 @@ export const CardSkeleton: React.FC<CardSkeletonProps> = ({
   // item type
   return (
     <>
-      {items.map(i => (
+      {items.map((i) => (
         <div
           key={i}
           className="relative rounded-2xl overflow-hidden bg-white/60 dark:bg-neutral-900/60 animate-pulse"

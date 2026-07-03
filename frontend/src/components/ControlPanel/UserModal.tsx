@@ -1,15 +1,16 @@
-import '../UserModal.css'
-
-import React, { useEffect, useState } from 'react'
-import type { RecentTappItem, TappListItem } from '../../tapp'
-import { TappIcon, getRecentTapps, listTapps } from '../../tapp'
-
-import { API_URL } from '../../config'
-import { SiAppstore, LuCrown, LuUser } from '@lib/icons'
 import type { User } from '../../contexts/AuthContext'
-import { getCSRFToken } from '../../utils/csrf'
-import { useI18n } from '../../contexts/I18nContext'
+
+import type { RecentTappItem, TappListItem } from '../../tapp'
+import type { FC, SubmitEvent } from 'react'
+import { LuCrown, LuUser, SiAppstore } from '@lib/icons'
+import { useEffect, useState } from 'react'
+
 import { useNavigate } from 'react-router-dom'
+import { API_URL } from '../../config'
+import { useI18n } from '../../contexts/I18nContext'
+import { getRecentTapps, listTapps, TappIcon } from '../../tapp'
+import { getCSRFToken } from '../../utils/csrf'
+import '../UserModal.css'
 
 interface UserInfo {
   name: string
@@ -31,7 +32,7 @@ interface UserModalProps {
  * 用户信息弹窗组件（已登录状态）
  * 全新设计：头像居中、信息整合、浮动关闭按钮
  */
-export const UserModal: React.FC<UserModalProps> = ({
+export const UserModal: FC<UserModalProps> = ({
   user,
   userInfo,
   isClosing,
@@ -59,11 +60,9 @@ export const UserModal: React.FC<UserModalProps> = ({
         ])
         setTapps(tappList)
         setRecentTapps(recentList)
-      }
-      catch (error) {
+      } catch (error) {
         console.error('Failed to load tapps:', error)
-      }
-      finally {
+      } finally {
         setTappsLoading(false)
       }
     }
@@ -71,7 +70,7 @@ export const UserModal: React.FC<UserModalProps> = ({
   }, [])
 
   // 处理修改密码
-  const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleChangePassword = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault()
     setPasswordError('')
 
@@ -124,15 +123,12 @@ export const UserModal: React.FC<UserModalProps> = ({
         alert(t.userModal.passwordChanged)
         e.currentTarget.reset()
         setShowChangePassword(false)
-      }
-      else {
+      } else {
         setPasswordError(result.message || result.error || t.common.error)
       }
-    }
-    catch (_error) {
+    } catch (_error) {
       setPasswordError(t.userModal.networkError)
-    }
-    finally {
+    } finally {
       setPasswordSubmitting(false)
     }
   }
@@ -148,15 +144,27 @@ export const UserModal: React.FC<UserModalProps> = ({
   }
 
   return (
-    <div className={`user-modal ${canAnimate ? 'animate-in' : 'pre-animate'} ${isClosing ? 'closing' : ''}`}>
+    <div
+      className={`user-modal ${canAnimate ? 'animate-in' : 'pre-animate'} ${isClosing ? 'closing' : ''}`}
+    >
       {/* 浮动关闭按钮 */}
       <button
         onClick={onClose}
         className="user-modal-close-float"
         aria-label={t.common.close}
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M6 18L18 6M6 6l12 12"
+          />
         </svg>
       </button>
 
@@ -184,32 +192,68 @@ export const UserModal: React.FC<UserModalProps> = ({
           <h3 className="user-modal-username">{userInfo.name}</h3>
           <div className="user-modal-badges">
             {/* 角色徽章 */}
-            <span className={`user-modal-badge ${user.is_admin ? 'badge-admin' : 'badge-user'}`}>
-              {user.is_admin ? <><LuCrown size={12} className="inline" /> Admin</> : <><LuUser size={12} className="inline" /> User</>}
+            <span
+              className={`user-modal-badge ${user.is_admin ? 'badge-admin' : 'badge-user'}`}
+            >
+              {user.is_admin ? (
+                <>
+                  <LuCrown size={12} className="inline" /> Admin
+                </>
+              ) : (
+                <>
+                  <LuUser size={12} className="inline" /> User
+                </>
+              )}
             </span>
             {/* 账户类型徽章 - 根据数据库记录正确判断 */}
             {/* 混合账户：auth_provider='local' + linked_github_id 存在 = 本地管理员绑定了 GitHub */}
             {user.auth_provider === 'local' && user.linked_github_id ? (
               // 混合账户（本地+GitHub绑定）- 显示特殊的混合标识
               <span className="user-modal-badge badge-hybrid">
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd" />
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z"
+                    clipRule="evenodd"
+                  />
                 </svg>
                 {t.userModal.hybridAccount || 'Local + GitHub'}
               </span>
             ) : user.auth_provider === 'github' ? (
               // 纯 GitHub 用户
               <span className="user-modal-badge badge-github">
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd" />
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z"
+                    clipRule="evenodd"
+                  />
                 </svg>
                 GitHub
               </span>
             ) : (
               // 纯本地用户（未绑定 GitHub）
               <span className="user-modal-badge badge-local">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                  />
                 </svg>
                 Local
               </span>
@@ -232,7 +276,11 @@ export const UserModal: React.FC<UserModalProps> = ({
               className="user-modal-action-btn action-github"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z"
+                  clipRule="evenodd"
+                />
               </svg>
               {t.userModal.bindGithub}
             </a>
@@ -244,17 +292,40 @@ export const UserModal: React.FC<UserModalProps> = ({
               onClick={() => setShowChangePassword(true)}
               className="user-modal-action-btn action-password"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
               </svg>
               {t.userModal.changePassword}
             </button>
           )}
 
           {/* 退出登录 - 所有用户显示 */}
-          <button onClick={onLogout} className="user-modal-action-btn action-logout">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          <button
+            onClick={onLogout}
+            className="user-modal-action-btn action-logout"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              />
             </svg>
             {t.userModal.logout}
           </button>
@@ -291,7 +362,9 @@ export const UserModal: React.FC<UserModalProps> = ({
                 autoComplete="new-password"
               />
               {passwordError && (
-                <p className="text-red-500 text-xs text-center">{passwordError}</p>
+                <p className="text-red-500 text-xs text-center">
+                  {passwordError}
+                </p>
               )}
               <div className="flex gap-2">
                 <button
@@ -299,11 +372,16 @@ export const UserModal: React.FC<UserModalProps> = ({
                   disabled={passwordSubmitting}
                   className="flex-1 user-modal-action-btn action-confirm"
                 >
-                  {passwordSubmitting ? t.userModal.changing : t.userModal.confirmChange}
+                  {passwordSubmitting
+                    ? t.userModal.changing
+                    : t.userModal.confirmChange}
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowChangePassword(false); setPasswordError('') }}
+                  onClick={() => {
+                    setShowChangePassword(false)
+                    setPasswordError('')
+                  }}
                   className="user-modal-action-btn action-cancel"
                 >
                   {t.common.cancel}
@@ -322,26 +400,42 @@ export const UserModal: React.FC<UserModalProps> = ({
             <span>Tapp</span>
           </div>
           {/* 已安装数 + 查看全部合并 */}
-          <button onClick={handleViewAllTapps} className="user-modal-tapps-count-btn" title={t.userModal.viewAllTapps || 'View all Tapps'}>
-            {tappsLoading
-              ? (
-                  <span className="user-modal-tapps-loading" />
-                )
-              : (
-                  <>
-                    <span className="user-modal-tapps-number">{tapps.length}</span>
-                    <span className="user-modal-tapps-label">{t.userModal.installedApps || 'installed'}</span>
-                    <svg className="user-modal-tapps-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </>
-                )}
+          <button
+            onClick={handleViewAllTapps}
+            className="user-modal-tapps-count-btn"
+            title={t.userModal.viewAllTapps || 'View all Tapps'}
+          >
+            {tappsLoading ? (
+              <span className="user-modal-tapps-loading" />
+            ) : (
+              <>
+                <span className="user-modal-tapps-number">{tapps.length}</span>
+                <span className="user-modal-tapps-label">
+                  {t.userModal.installedApps || 'installed'}
+                </span>
+                <svg
+                  className="user-modal-tapps-arrow"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </>
+            )}
           </button>
         </div>
 
         {/* 最近使用的 Tapp - 始终渲染容器，避免高度跳变 */}
         <div className="user-modal-recent-tapps">
-          <p className="user-modal-recent-label">{t.userModal.recentlyUsed || 'Recently used'}</p>
+          <p className="user-modal-recent-label">
+            {t.userModal.recentlyUsed || 'Recently used'}
+          </p>
           <div className="user-modal-recent-list">
             {tappsLoading ? (
               // 加载中显示骨架屏
@@ -351,7 +445,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                 <div className="user-modal-tapp-item user-modal-tapp-skeleton" />
               </>
             ) : recentTapps.length > 0 ? (
-              recentTapps.map(tapp => (
+              recentTapps.map((tapp) => (
                 <button
                   key={tapp.id}
                   onClick={() => handleTappClick(tapp.id)}
@@ -359,11 +453,13 @@ export const UserModal: React.FC<UserModalProps> = ({
                 >
                   <div
                     className="user-modal-tapp-icon"
-                    style={tapp.themeColor
-                      ? {
-                          background: `linear-gradient(135deg, ${tapp.themeColor}30 0%, ${tapp.themeColor}40 100%)`,
-                        }
-                      : undefined}
+                    style={
+                      tapp.themeColor
+                        ? {
+                            background: `linear-gradient(135deg, ${tapp.themeColor}30 0%, ${tapp.themeColor}40 100%)`,
+                          }
+                        : undefined
+                    }
                   >
                     <TappIcon
                       icon={tapp.icon}
@@ -379,7 +475,9 @@ export const UserModal: React.FC<UserModalProps> = ({
               ))
             ) : (
               // 无最近使用时显示空状态
-              <span className="user-modal-recent-empty">{t.userModal.noRecentTapps || 'No recent apps'}</span>
+              <span className="user-modal-recent-empty">
+                {t.userModal.noRecentTapps || 'No recent apps'}
+              </span>
             )}
           </div>
         </div>

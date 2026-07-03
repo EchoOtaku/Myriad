@@ -21,7 +21,6 @@
   margin-top: 0.25rem;
   margin-bottom: 0.625rem;
   padding-left: 0;
-  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -32,6 +31,7 @@
   margin-bottom: 0.25rem;
   border-radius: 0.5rem;
   transition: background-color 0.2s;
+
   /* 重置 button 默认样式 */
   border: none;
   background: transparent;
@@ -41,11 +41,11 @@
 }
 
 .setting-group-header.collapsible:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgb(0 0 0 / 3%);
 }
 
 html.dark .setting-group-header.collapsible:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(255 255 255 / 3%);
 }
 
 .setting-group-header-content {
@@ -69,7 +69,11 @@ html.dark .setting-group-header.collapsible:hover {
   width: 1.75rem;
   height: 1.75rem;
   border-radius: 0.5rem;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent), color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent),
+    color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent)
+  );
   color: var(--color-primary, #3b82f6);
   font-size: 0.875rem;
   flex-shrink: 0;
@@ -81,7 +85,11 @@ html.dark .setting-group-header.collapsible:hover {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 100%);
+  background: linear-gradient(
+    135deg,
+    rgb(255 255 255 / 30%) 0%,
+    rgb(255 255 255 / 0%) 100%
+  );
   opacity: 0.4;
 }
 
@@ -92,7 +100,11 @@ html.dark .setting-group-header.collapsible:hover {
 }
 
 html.dark .setting-group-icon {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary, #60a5fa) 22%, transparent), color-mix(in srgb, var(--color-primary, #60a5fa) 8%, transparent));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-primary, #60a5fa) 22%, transparent),
+    color-mix(in srgb, var(--color-primary, #60a5fa) 8%, transparent)
+  );
   color: var(--color-primary, #60a5fa);
 }
 
@@ -103,7 +115,7 @@ html.dark .setting-group-title {
 .setting-group-description {
   font-size: 0.6875rem;
   color: #6b7280;
-  margin: 0.125rem 0 0 0;
+  margin: 0.125rem 0 0;
 }
 
 .setting-group-description a {
@@ -154,12 +166,12 @@ html.dark .setting-group-description a {
 /* 带边框的分组样式变体 */
 .setting-group.bordered .setting-group-content {
   padding: 1rem;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(229, 231, 235, 0.5);
+  background: rgb(255 255 255 / 40%);
+  border: 1px solid rgb(229 231 235 / 50%);
   border-radius: 0.75rem;
 }
 
 html.dark .setting-group.bordered .setting-group-content {
-  background: rgba(31, 41, 55, 0.4);
-  border-color: rgba(55, 65, 81, 0.5);
+  background: rgb(31 41 55 / 40%);
+  border-color: rgb(55 65 81 / 50%);
 }

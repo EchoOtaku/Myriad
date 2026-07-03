@@ -44,15 +44,14 @@
 .arael-panel {
   position: relative;
   width: 100%;
-  background: rgba(255, 255, 255, 0.94);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: rgb(255 255 255 / 94%);
   backdrop-filter: blur(24px) saturate(180%);
-  border: 3px solid rgba(0, 0, 0, 0.05);
+  border: 3px solid rgb(0 0 0 / 5%);
   border-radius: 32px;
   box-shadow:
-    0 12px 48px rgba(0, 0, 0, 0.1),
-    0 4px 16px rgba(0, 0, 0, 0.05),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 12px 48px rgb(0 0 0 / 10%),
+    0 4px 16px rgb(0 0 0 / 5%),
+    inset 0 1px 0 rgb(255 255 255 / 90%);
   min-width: 380px;
   max-width: min(90vw, 480px);
   overflow: hidden;
@@ -60,20 +59,21 @@
 }
 
 html.dark .arael-panel {
-  background: rgba(24, 24, 27, 0.94);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgb(24 24 27 / 94%);
+  border-color: rgb(255 255 255 / 8%);
   box-shadow:
-    0 12px 48px rgba(0, 0, 0, 0.55),
-    0 4px 16px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 12px 48px rgb(0 0 0 / 55%),
+    0 4px 16px rgb(0 0 0 / 35%),
+    inset 0 1px 0 rgb(255 255 255 / 5%);
 }
 
 /* Processing state - animated gradient border */
 .arael-panel.arael-panel-processing {
   background:
-    linear-gradient(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.94)) padding-box,
+    linear-gradient(rgb(255 255 255 / 94%), rgb(255 255 255 / 94%)) padding-box,
     conic-gradient(
-        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
+        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%)
+          var(--arael-gradient-y, 50%),
         var(--color-primary, #10b981),
         var(--color-secondary, #34d399),
         var(--color-accent, #f59e0b),
@@ -90,9 +90,10 @@ html.dark .arael-panel {
 
 html.dark .arael-panel.arael-panel-processing {
   background:
-    linear-gradient(rgba(24, 24, 27, 0.94), rgba(24, 24, 27, 0.94)) padding-box,
+    linear-gradient(rgb(24 24 27 / 94%), rgb(24 24 27 / 94%)) padding-box,
     conic-gradient(
-        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
+        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%)
+          var(--arael-gradient-y, 50%),
         var(--color-primary, #10b981),
         var(--color-secondary, #34d399),
         var(--color-accent, #f59e0b),
@@ -104,22 +105,52 @@ html.dark .arael-panel.arael-panel-processing {
 }
 
 @keyframes arael-gradient-flow-angle {
-  0%, 100% { --arael-gradient-angle: 0deg; }
-  25% { --arael-gradient-angle: 120deg; }
-  50% { --arael-gradient-angle: 200deg; }
-  75% { --arael-gradient-angle: 300deg; }
+  0%,
+  100% {
+    --arael-gradient-angle: 0deg;
+  }
+
+  25% {
+    --arael-gradient-angle: 120deg;
+  }
+
+  50% {
+    --arael-gradient-angle: 200deg;
+  }
+
+  75% {
+    --arael-gradient-angle: 300deg;
+  }
 }
 
 @keyframes arael-gradient-flow-x {
-  0%, 100% { --arael-gradient-x: 30%; }
-  33% { --arael-gradient-x: 70%; }
-  66% { --arael-gradient-x: 20%; }
+  0%,
+  100% {
+    --arael-gradient-x: 30%;
+  }
+
+  33% {
+    --arael-gradient-x: 70%;
+  }
+
+  66% {
+    --arael-gradient-x: 20%;
+  }
 }
 
 @keyframes arael-gradient-flow-y {
-  0%, 100% { --arael-gradient-y: 20%; }
-  40% { --arael-gradient-y: 80%; }
-  70% { --arael-gradient-y: 40%; }
+  0%,
+  100% {
+    --arael-gradient-y: 20%;
+  }
+
+  40% {
+    --arael-gradient-y: 80%;
+  }
+
+  70% {
+    --arael-gradient-y: 40%;
+  }
 }
 
 @property --arael-gradient-angle {
@@ -173,7 +204,6 @@ html.dark .arael-panel.arael-panel-processing {
   font-weight: 600;
   color: var(--text-secondary, #6b7280);
 }
-
 
 .arael-tasks-title-rest {
   align-self: center;
@@ -229,8 +259,14 @@ html.dark .arael-tasks-title {
 }
 
 @keyframes arael-debug-pulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Header icon buttons */
@@ -249,20 +285,24 @@ html.dark .arael-tasks-title {
 }
 
 .arael-header-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgb(0 0 0 / 6%);
   color: var(--text-secondary, #6b7280);
   opacity: 1;
 }
 
 html.dark .arael-header-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
   color: #e5e7eb;
 }
 
 .arael-header-btn.active {
   color: var(--color-primary, #10b981);
   opacity: 1;
-  background: color-mix(in srgb, var(--color-primary, #10b981) 10%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 10%,
+    transparent
+  );
 }
 
 /* Processing dot */
@@ -275,7 +315,8 @@ html.dark .arael-header-btn:hover {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
+  border: 2px solid
+    color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
   border-top-color: var(--color-primary, #10b981);
   border-radius: 50%;
   animation: arael-spin 0.7s linear infinite;
@@ -288,7 +329,7 @@ html.dark .arael-header-btn:hover {
 }
 
 .arael-spinner-waiting {
-  border-color: rgba(245, 158, 11, 0.2);
+  border-color: rgb(245 158 11 / 20%);
   border-top-color: #f59e0b;
 }
 
@@ -296,14 +337,16 @@ html.dark .arael-header-btn:hover {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid rgb(255 255 255 / 30%);
   border-top-color: white;
   border-radius: 50%;
   animation: arael-spin 0.7s linear infinite;
 }
 
 @keyframes arael-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes arael-msg-in {
@@ -311,6 +354,7 @@ html.dark .arael-header-btn:hover {
     opacity: 0;
     transform: translateY(6px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -340,12 +384,12 @@ html.dark .arael-header-btn:hover {
 }
 
 .arael-msg-list::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgb(0 0 0 / 10%);
   border-radius: 2px;
 }
 
 html.dark .arael-msg-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgb(255 255 255 / 12%);
 }
 
 /* Empty state */
@@ -369,13 +413,20 @@ html.dark .arael-msg-list::-webkit-scrollbar-thumb {
   font-size: 48px;
   font-weight: 700;
   line-height: 1.1;
-  background: linear-gradient(135deg, var(--color-primary, #10b981), color-mix(in srgb, var(--color-primary, #10b981) 60%, #3b82f6));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary, #10b981),
+    color-mix(in srgb, var(--color-primary, #10b981) 60%, #3b82f6)
+  );
   background-size: 200% 200%;
-  animation: arael-name-shimmer 3s ease infinite, arael-name-breathe 4s ease-in-out infinite;
-  -webkit-background-clip: text;
+  animation:
+    arael-name-shimmer 3s ease infinite,
+    arael-name-breathe 4s ease-in-out infinite;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent));
+  filter: drop-shadow(
+    0 0 12px color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent)
+  );
   letter-spacing: -0.02em;
   position: relative;
 }
@@ -384,9 +435,13 @@ html.dark .arael-msg-list::-webkit-scrollbar-thumb {
   content: 'Arael';
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(255 255 255 / 40%) 50%,
+    transparent 100%
+  );
   background-size: 200% 100%;
-  -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: arael-name-glint 4s ease-in-out infinite;
@@ -394,24 +449,44 @@ html.dark .arael-msg-list::-webkit-scrollbar-thumb {
 }
 
 @keyframes arael-name-shimmer {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 @keyframes arael-name-breathe {
-  0%, 100% {
-    filter: drop-shadow(0 0 12px color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent));
+  0%,
+  100% {
+    filter: drop-shadow(
+      0 0 12px
+        color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent)
+    );
     transform: scale(1);
   }
+
   50% {
-    filter: drop-shadow(0 0 24px color-mix(in srgb, var(--color-primary, #10b981) 50%, transparent));
+    filter: drop-shadow(
+      0 0 24px
+        color-mix(in srgb, var(--color-primary, #10b981) 50%, transparent)
+    );
     transform: scale(1.02);
   }
 }
 
 @keyframes arael-name-glint {
-  0%, 100% { background-position: -200% 0; }
-  50% { background-position: 200% 0; }
+  0%,
+  100% {
+    background-position: -200% 0;
+  }
+
+  50% {
+    background-position: 200% 0;
+  }
 }
 
 .arael-empty-hero-sub {
@@ -458,7 +533,8 @@ html.dark .arael-msg-list::-webkit-scrollbar-thumb {
   display: flex;
   align-items: flex-start;
   background: color-mix(in srgb, var(--text-muted, #9ca3af) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
   border-radius: 10px;
   padding: 8px 12px;
   cursor: pointer;
@@ -469,7 +545,11 @@ html.dark .arael-msg-list::-webkit-scrollbar-thumb {
 
 .arael-empty-continue-btn:hover {
   background: color-mix(in srgb, var(--color-primary, #10b981) 8%, white);
-  border-color: color-mix(in srgb, var(--color-primary, #10b981) 22%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 22%,
+    transparent
+  );
 }
 
 .arael-empty-continue-title {
@@ -483,12 +563,20 @@ html.dark .arael-msg-list::-webkit-scrollbar-thumb {
 }
 
 html.dark .arael-empty-continue-btn {
-  background: color-mix(in srgb, var(--text-muted, #9ca3af) 6%, rgba(24, 24, 27, 0.7));
+  background: color-mix(
+    in srgb,
+    var(--text-muted, #9ca3af) 6%,
+    rgb(24 24 27 / 70%)
+  );
   border-color: color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
 }
 
 html.dark .arael-empty-continue-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 10%, rgba(24, 24, 27, 0.9));
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 10%,
+    rgb(24 24 27 / 90%)
+  );
 }
 
 html.dark .arael-empty-continue-title {
@@ -513,15 +601,24 @@ html.dark .arael-empty-continue-title {
 
 .arael-msg-user .arael-msg-bubble {
   background: color-mix(in srgb, var(--color-primary, #10b981) 12%, white);
-  border: 1px solid color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
-  border-radius: 18px 18px 4px 18px;
+  border: 1px solid
+    color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
+  border-radius: 18px 18px 4px;
   padding: 10px 14px;
   max-width: 85%;
 }
 
 html.dark .arael-msg-user .arael-msg-bubble {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 18%, rgba(24, 24, 27, 0.9));
-  border-color: color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 18%,
+    rgb(24 24 27 / 90%)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 25%,
+    transparent
+  );
 }
 
 /* Assistant message - left aligned */
@@ -537,15 +634,15 @@ html.dark .arael-msg-user .arael-msg-bubble {
 }
 
 .arael-msg-assistant .arael-msg-bubble {
-  background: rgba(0, 0, 0, 0.025);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  border-radius: 4px 18px 18px 18px;
+  background: rgb(0 0 0 / 2.5%);
+  border: 1px solid rgb(0 0 0 / 5%);
+  border-radius: 4px 18px 18px;
   padding: 14px;
 }
 
 html.dark .arael-msg-assistant .arael-msg-bubble {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.07);
+  background: rgb(255 255 255 / 4%);
+  border-color: rgb(255 255 255 / 7%);
 }
 
 /* System message - centered divider */
@@ -559,11 +656,11 @@ html.dark .arael-msg-assistant .arael-msg-bubble {
 .arael-msg-system-line {
   flex: 1;
   height: 1px;
-  background: rgba(0, 0, 0, 0.06);
+  background: rgb(0 0 0 / 6%);
 }
 
 html.dark .arael-msg-system-line {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
 }
 
 .arael-msg-system-text {
@@ -591,15 +688,19 @@ html.dark .arael-msg-system-line {
     var(--text-muted, #9ca3af) 100%
   );
   background-size: 200% 100%;
-  -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: arael-status-shimmer 2s ease-in-out infinite;
 }
 
 @keyframes arael-status-shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 html.dark .arael-msg-status span {
@@ -612,7 +713,6 @@ html.dark .arael-msg-status span {
     #9ca3af 100%
   );
   background-size: 200% 100%;
-  -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: arael-status-shimmer 2s ease-in-out infinite;
@@ -623,7 +723,7 @@ html.dark .arael-msg-status span {
   font-size: 13px;
   line-height: 1.6;
   color: var(--text-primary, #1f2937);
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 html.dark .arael-msg-content {
@@ -683,8 +783,15 @@ html.dark .arael-msg-content {
 }
 
 @keyframes arael-panel-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .arael-thinking-panel-timer {
@@ -771,14 +878,14 @@ html.dark .arael-msg-content {
 .arael-thinking-panel-footer {
   margin-top: 4px;
   padding-top: 4px;
-  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  border-top: 1px solid rgb(0 0 0 / 4%);
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
 html.dark .arael-thinking-panel-footer {
-  border-top-color: rgba(255, 255, 255, 0.06);
+  border-top-color: rgb(255 255 255 / 6%);
 }
 
 .arael-thinking-panel-meta {
@@ -826,7 +933,6 @@ html.dark .arael-thinking-panel-footer {
     var(--text-muted, #9ca3af) 100%
   );
   background-size: 200% 100%;
-  -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: arael-status-shimmer 2s ease-in-out infinite;
@@ -842,13 +948,10 @@ html.dark .arael-current-step-text {
     #6b7280 100%
   );
   background-size: 200% 100%;
-  -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: arael-status-shimmer 2s ease-in-out infinite;
 }
-
-
 
 /* Markdown elements inside message */
 .arael-md-p {
@@ -864,9 +967,17 @@ html.dark .arael-current-step-text {
   font-weight: 600;
 }
 
-h3.arael-md-heading { font-size: 15px; }
-h4.arael-md-heading { font-size: 14px; }
-h5.arael-md-heading { font-size: 13px; }
+h3.arael-md-heading {
+  font-size: 15px;
+}
+
+h4.arael-md-heading {
+  font-size: 14px;
+}
+
+h5.arael-md-heading {
+  font-size: 13px;
+}
 
 .arael-md-list {
   margin: 4px 0;
@@ -878,7 +989,7 @@ h5.arael-md-heading { font-size: 13px; }
 }
 
 .arael-md-code {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgb(0 0 0 / 6%);
   padding: 1px 5px;
   border-radius: 4px;
   font-family: 'SF Mono', 'Fira Code', monospace;
@@ -886,11 +997,11 @@ h5.arael-md-heading { font-size: 13px; }
 }
 
 html.dark .arael-md-code {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgb(255 255 255 / 10%);
 }
 
 .arael-md-pre {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgb(0 0 0 / 4%);
   border-radius: 8px;
   padding: 10px 12px;
   margin: 6px 0;
@@ -900,7 +1011,7 @@ html.dark .arael-md-code {
 }
 
 html.dark .arael-md-pre {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
 }
 
 .arael-md-pre code {
@@ -934,7 +1045,10 @@ html.dark .arael-md-pre {
   color: var(--text-muted, #6b7280);
   font-style: italic;
 }
-.arael-md-blockquote .arael-md-p { margin: 2px 0; }
+
+.arael-md-blockquote .arael-md-p {
+  margin: 2px 0;
+}
 
 /* Horizontal rule */
 .arael-md-hr {
@@ -942,7 +1056,10 @@ html.dark .arael-md-pre {
   border-top: 1px solid var(--border-color, #e5e7eb);
   margin: 10px 0;
 }
-html.dark .arael-md-hr { border-color: #374151; }
+
+html.dark .arael-md-hr {
+  border-color: #374151;
+}
 
 /* Table */
 .arael-md-table {
@@ -951,19 +1068,27 @@ html.dark .arael-md-hr { border-color: #374151; }
   font-size: 12px;
   width: 100%;
 }
+
 .arael-md-table th,
 .arael-md-table td {
   border: 1px solid var(--border-color, #e5e7eb);
   padding: 4px 8px;
   text-align: left;
 }
+
 .arael-md-table th {
   background: var(--bg-secondary, #f9fafb);
   font-weight: 600;
 }
-html.dark .arael-md-table th { background: #1f2937; }
+
+html.dark .arael-md-table th {
+  background: #1f2937;
+}
+
 html.dark .arael-md-table th,
-html.dark .arael-md-table td { border-color: #374151; }
+html.dark .arael-md-table td {
+  border-color: #374151;
+}
 
 /* Message time */
 .arael-msg-time {
@@ -998,18 +1123,22 @@ html.dark .arael-md-table td { border-color: #374151; }
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgb(0 0 0 / 4%);
   color: var(--text-muted, #9ca3af);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 html.dark .arael-copy-btn {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
 }
 
 .arael-copy-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 15%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 15%,
+    transparent
+  );
   color: var(--color-primary, #10b981);
 }
 
@@ -1027,18 +1156,22 @@ html.dark .arael-copy-btn {
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgb(0 0 0 / 4%);
   color: var(--text-muted, #9ca3af);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 html.dark .arael-retry-btn {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
 }
 
 .arael-retry-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 15%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 15%,
+    transparent
+  );
   color: var(--color-primary, #10b981);
 }
 
@@ -1117,16 +1250,16 @@ html.dark .arael-retry-btn {
   font-weight: 700;
   padding: 1px 4px;
   border-radius: 3px;
-  background: rgba(99, 102, 241, 0.08);
-  color: rgba(99, 102, 241, 0.7);
+  background: rgb(99 102 241 / 8%);
+  color: rgb(99 102 241 / 70%);
   flex-shrink: 0;
   line-height: 1;
   letter-spacing: 0.02em;
 }
 
 html.dark .arael-step-role-label {
-  background: rgba(99, 102, 241, 0.15);
-  color: rgba(165, 180, 252, 0.8);
+  background: rgb(99 102 241 / 15%);
+  color: rgb(165 180 252 / 80%);
 }
 
 .arael-exec-step-text {
@@ -1189,25 +1322,25 @@ html.dark .arael-step-image img {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 6px;
-  background: rgba(59, 130, 246, 0.06);
-  border: 1px solid rgba(59, 130, 246, 0.15);
-  color: rgba(0, 0, 0, 0.6);
+  background: rgb(59 130 246 / 6%);
+  border: 1px solid rgb(59 130 246 / 15%);
+  color: rgb(0 0 0 / 60%);
 }
 
 html.dark .arael-agent-tag {
-  color: rgba(255, 255, 255, 0.55);
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.2);
+  color: rgb(255 255 255 / 55%);
+  background: rgb(59 130 246 / 10%);
+  border-color: rgb(59 130 246 / 20%);
 }
 
 .arael-agent-tag[data-tier='pro'] {
-  background: rgba(168, 85, 247, 0.06);
-  border-color: rgba(168, 85, 247, 0.2);
+  background: rgb(168 85 247 / 6%);
+  border-color: rgb(168 85 247 / 20%);
 }
 
 html.dark .arael-agent-tag[data-tier='pro'] {
-  background: rgba(168, 85, 247, 0.1);
-  border-color: rgba(168, 85, 247, 0.25);
+  background: rgb(168 85 247 / 10%);
+  border-color: rgb(168 85 247 / 25%);
 }
 
 .arael-agent-name {
@@ -1229,9 +1362,9 @@ html.dark .arael-agent-tag[data-tier='pro'] {
   align-items: center;
   gap: 4px;
   margin-top: 8px;
-  background: rgba(239, 68, 68, 0.08);
+  background: rgb(239 68 68 / 8%);
   color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  border: 1px solid rgb(239 68 68 / 20%);
   border-radius: 8px;
   padding: 4px 12px;
   font-size: 12px;
@@ -1240,13 +1373,13 @@ html.dark .arael-agent-tag[data-tier='pro'] {
 }
 
 .arael-exec-interrupt:hover {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.4);
+  background: rgb(239 68 68 / 15%);
+  border-color: rgb(239 68 68 / 40%);
 }
 
 html.dark .arael-exec-interrupt {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.25);
+  background: rgb(239 68 68 / 12%);
+  border-color: rgb(239 68 68 / 25%);
 }
 
 /* ==========================================
@@ -1259,11 +1392,11 @@ html.dark .arael-exec-interrupt {
   gap: 6px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  border-top: 1px solid rgb(0 0 0 / 5%);
 }
 
 html.dark .arael-question-options {
-  border-top-color: rgba(255, 255, 255, 0.06);
+  border-top-color: rgb(255 255 255 / 6%);
 }
 
 .arael-option-btn {
@@ -1271,7 +1404,8 @@ html.dark .arael-question-options {
   font-size: 12px;
   font-weight: 500;
   background: color-mix(in srgb, var(--color-primary, #10b981) 8%, white);
-  border: 1px solid color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
   border-radius: 20px;
   color: var(--color-primary, #10b981);
   cursor: pointer;
@@ -1308,13 +1442,25 @@ html.dark .arael-question-options {
 }
 
 html.dark .arael-option-btn {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 12%, rgba(24, 24, 27, 0.9));
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 12%,
+    rgb(24 24 27 / 90%)
+  );
   color: var(--color-primary, #10b981);
-  border-color: color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 30%,
+    transparent
+  );
 }
 
 html.dark .arael-option-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 22%, rgba(24, 24, 27, 0.9));
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 22%,
+    rgb(24 24 27 / 90%)
+  );
   border-color: var(--color-primary, #10b981);
 }
 
@@ -1327,11 +1473,11 @@ html.dark .arael-option-btn-selected {
 .arael-question-input-area {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  border-top: 1px solid rgb(0 0 0 / 5%);
 }
 
 html.dark .arael-question-input-area {
-  border-top-color: rgba(255, 255, 255, 0.06);
+  border-top-color: rgb(255 255 255 / 6%);
 }
 
 .arael-question-input-area .arael-question-options {
@@ -1342,24 +1488,24 @@ html.dark .arael-question-input-area {
 
 .arael-question-text {
   font-size: 13px;
-  color: rgba(0, 0, 0, 0.8);
+  color: rgb(0 0 0 / 80%);
   margin-bottom: 8px;
   line-height: 1.6;
 }
 
 html.dark .arael-question-text {
-  color: rgba(255, 255, 255, 0.85);
+  color: rgb(255 255 255 / 85%);
 }
 
 .arael-question-context {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.5);
+  color: rgb(0 0 0 / 50%);
   margin-bottom: 8px;
   line-height: 1.5;
 }
 
 html.dark .arael-question-context {
-  color: rgba(255, 255, 255, 0.45);
+  color: rgb(255 255 255 / 45%);
 }
 
 .arael-question-text-input {
@@ -1374,8 +1520,8 @@ html.dark .arael-question-context {
   min-width: 0;
   padding: 7px 12px;
   font-size: 12px;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgb(255 255 255 / 80%);
+  border: 1px solid rgb(0 0 0 / 10%);
   border-radius: 16px;
   outline: none;
   color: inherit;
@@ -1387,8 +1533,8 @@ html.dark .arael-question-context {
 }
 
 html.dark .arael-question-input {
-  background: rgba(24, 24, 27, 0.6);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: rgb(24 24 27 / 60%);
+  border-color: rgb(255 255 255 / 10%);
 }
 
 .arael-question-submit {
@@ -1404,7 +1550,9 @@ html.dark .arael-question-input {
   color: white;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.15s ease, transform 0.1s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.1s ease;
 }
 
 .arael-question-submit:hover {
@@ -1432,18 +1580,17 @@ html.dark .arael-question-input {
 .arael-input-wrapper {
   flex: 1;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.8);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgb(255 255 255 / 80%);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid rgb(0 0 0 / 6%);
   border-radius: 20px;
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 8px rgb(0 0 0 / 5%);
 }
 
 html.dark .arael-input-wrapper {
-  background: rgba(40, 40, 44, 0.75);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
+  background: rgb(40 40 44 / 75%);
+  border-color: rgb(255 255 255 / 8%);
+  box-shadow: 0 1px 8px rgb(0 0 0 / 20%);
 }
 
 .arael-input {
@@ -1490,26 +1637,29 @@ html.dark .arael-input {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid rgb(0 0 0 / 6%);
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: rgba(255, 255, 255, 0.8);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgb(255 255 255 / 80%);
   backdrop-filter: blur(12px);
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 8px rgb(0 0 0 / 5%);
   color: var(--text-muted, #9ca3af);
 }
 
 html.dark .arael-voice-btn {
-  background: rgba(40, 40, 44, 0.75);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
+  background: rgb(40 40 44 / 75%);
+  border-color: rgb(255 255 255 / 8%);
+  box-shadow: 0 1px 8px rgb(0 0 0 / 20%);
 }
 
 .arael-voice-btn:hover:not(:disabled) {
   transform: scale(1.05);
-  background: color-mix(in srgb, var(--color-primary, #10b981) 12%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 12%,
+    transparent
+  );
   color: var(--color-primary, #10b981);
 }
 
@@ -1534,18 +1684,24 @@ html.dark .arael-voice-btn {
 }
 
 @keyframes arael-recording-pulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 0 0 rgb(239 68 68 / 40%);
   }
+
   50% {
     transform: scale(1.05);
-    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    box-shadow: 0 0 0 8px rgb(239 68 68 / 0%);
   }
 }
 
 .arael-voice-btn.arael-voice-processing {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 12%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 12%,
+    transparent
+  );
   color: var(--color-primary, #10b981);
 }
 
@@ -1567,12 +1723,14 @@ html.dark .arael-voice-btn {
   letter-spacing: 0.02em;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 1px 8px color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
+  box-shadow: 0 1px 8px
+    color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
 }
 
 .arael-send-btn:hover:not(:disabled) {
   filter: brightness(1.08);
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent);
+  box-shadow: 0 2px 10px
+    color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent);
 }
 
 .arael-send-btn:active:not(:disabled) {
@@ -1591,7 +1749,7 @@ html.dark .arael-voice-btn {
 
 .arael-send-btn.arael-stop-btn:hover {
   filter: brightness(1.08);
-  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.35);
+  box-shadow: 0 2px 10px rgb(239 68 68 / 35%);
 }
 
 /* ==========================================
@@ -1609,18 +1767,22 @@ html.dark .arael-voice-btn {
   gap: 6px;
   padding: 8px 10px;
   margin: 4px 6px 0;
-  background: rgba(0, 0, 0, 0.03);
+  background: rgb(0 0 0 / 3%);
   border-radius: 8px;
   border: 1px solid transparent;
   transition: border-color 0.15s ease;
 }
 
 .arael-sessions-search:focus-within {
-  border-color: color-mix(in srgb, var(--color-primary, #10b981) 30%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 30%,
+    transparent
+  );
 }
 
 html.dark .arael-sessions-search {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(255 255 255 / 5%);
 }
 
 .arael-sessions-search-icon {
@@ -1657,14 +1819,14 @@ html.dark .arael-sessions-search-input {
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.08);
+  background: rgb(0 0 0 / 8%);
   color: var(--text-muted, #9ca3af);
   cursor: pointer;
   flex-shrink: 0;
 }
 
 html.dark .arael-sessions-search-clear {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgb(255 255 255 / 10%);
 }
 
 .arael-sessions-loading {
@@ -1693,23 +1855,35 @@ html.dark .arael-sessions-search-clear {
 }
 
 .arael-sessions-item:hover {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.04);
+  background: rgb(0 0 0 / 3%);
+  border-color: rgb(0 0 0 / 4%);
 }
 
 html.dark .arael-sessions-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 5%);
+  border-color: rgb(255 255 255 / 6%);
 }
 
 .arael-sessions-item.active {
   background: color-mix(in srgb, var(--color-primary, #10b981) 8%, white);
-  border-color: color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 20%,
+    transparent
+  );
 }
 
 html.dark .arael-sessions-item.active {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 10%, rgba(24, 24, 27, 0.9));
-  border-color: color-mix(in srgb, var(--color-primary, #10b981) 25%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 10%,
+    rgb(24 24 27 / 90%)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 25%,
+    transparent
+  );
 }
 
 .arael-sessions-item-row {
@@ -1776,14 +1950,14 @@ html.dark .arael-sessions-item-title {
 .arael-sessions-item-delete:hover {
   opacity: 1;
   color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
+  background: rgb(239 68 68 / 10%);
 }
 
 .arael-spinner-tiny {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border: 1.5px solid rgba(0, 0, 0, 0.1);
+  border: 1.5px solid rgb(0 0 0 / 10%);
   border-top-color: var(--color-primary, #10b981);
   border-radius: 50%;
   animation: arael-spin 0.6s linear infinite;
@@ -1819,13 +1993,13 @@ html.dark .arael-sessions-item-title {
   align-items: center;
   gap: 4px;
   padding: 8px 4px;
-  border-right: 1px solid rgba(0, 0, 0, 0.05);
-  background: rgba(0, 0, 0, 0.015);
+  border-right: 1px solid rgb(0 0 0 / 5%);
+  background: rgb(0 0 0 / 1.5%);
 }
 
 html.dark .arael-manage-sidebar {
-  border-right-color: rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.02);
+  border-right-color: rgb(255 255 255 / 6%);
+  background: rgb(255 255 255 / 2%);
 }
 
 .arael-manage-back-icon {
@@ -1844,11 +2018,11 @@ html.dark .arael-manage-sidebar {
 }
 
 .arael-manage-back-icon:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgb(0 0 0 / 6%);
 }
 
 html.dark .arael-manage-back-icon:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
 }
 
 .arael-manage-nav {
@@ -1873,22 +2047,30 @@ html.dark .arael-manage-back-icon:hover {
 }
 
 .arael-manage-nav-item:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgb(0 0 0 / 5%);
   color: var(--text-secondary, #6b7280);
 }
 
 html.dark .arael-manage-nav-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
   color: #d1d5db;
 }
 
 .arael-manage-nav-item.active {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 12%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 12%,
+    transparent
+  );
   color: var(--color-primary, #10b981);
 }
 
 html.dark .arael-manage-nav-item.active {
-  background: color-mix(in srgb, var(--color-primary, #10b981) 15%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 15%,
+    transparent
+  );
 }
 
 .arael-manage-nav-label {
@@ -1938,14 +2120,14 @@ html.dark .arael-manage-nav-item.active {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.02);
+  background: rgb(0 0 0 / 2%);
   border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  border: 1px solid rgb(0 0 0 / 4%);
 }
 
 html.dark .arael-hb-item {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 4%);
+  border-color: rgb(255 255 255 / 6%);
 }
 
 .arael-hb-info {
@@ -1984,7 +2166,7 @@ html.dark .arael-hb-name {
 }
 
 html.dark .arael-hb-result {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgb(255 255 255 / 50%);
 }
 
 .arael-hb-toggle {
@@ -1999,31 +2181,31 @@ html.dark .arael-hb-result {
 }
 
 .arael-hb-toggle.on {
-  background: rgba(16, 185, 129, 0.12);
+  background: rgb(16 185 129 / 12%);
   color: #059669;
 }
 
 .arael-hb-toggle.off {
-  background: rgba(0, 0, 0, 0.06);
-  color: rgba(0, 0, 0, 0.4);
+  background: rgb(0 0 0 / 6%);
+  color: rgb(0 0 0 / 40%);
 }
 
 html.dark .arael-hb-toggle.off {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.4);
+  background: rgb(255 255 255 / 6%);
+  color: rgb(255 255 255 / 40%);
 }
 
 /* Skill items */
 .arael-skill-item {
   padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.02);
+  background: rgb(0 0 0 / 2%);
   border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  border: 1px solid rgb(0 0 0 / 4%);
 }
 
 html.dark .arael-skill-item {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 4%);
+  border-color: rgb(255 255 255 / 6%);
 }
 
 .arael-skill-header {
@@ -2050,17 +2232,17 @@ html.dark .arael-skill-name {
 }
 
 .arael-skill-origin-manual {
-  background: rgba(99, 102, 241, 0.08);
+  background: rgb(99 102 241 / 8%);
   color: #6366f1;
 }
 
 .arael-skill-origin-agent_generated {
-  background: rgba(245, 158, 11, 0.08);
+  background: rgb(245 158 11 / 8%);
   color: #d97706;
 }
 
 .arael-skill-origin-agent_improved {
-  background: rgba(16, 185, 129, 0.08);
+  background: rgb(16 185 129 / 8%);
   color: #059669;
 }
 
@@ -2072,7 +2254,7 @@ html.dark .arael-skill-name {
 }
 
 html.dark .arael-skill-desc {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgb(255 255 255 / 50%);
 }
 
 .arael-skill-stats {
@@ -2100,13 +2282,13 @@ html.dark .arael-skill-desc {
 }
 
 .arael-tier-badge.arael-tier-pro {
-  background: rgba(124, 58, 237, 0.1);
+  background: rgb(124 58 237 / 10%);
   color: #7c3aed;
 }
 
 .arael-tier-badge.arael-tier-standard,
 .arael-tier-badge.arael-tier-std {
-  background: rgba(5, 150, 105, 0.1);
+  background: rgb(5 150 105 / 10%);
   color: #059669;
 }
 
@@ -2116,14 +2298,14 @@ html.dark .arael-skill-desc {
   flex-direction: column;
   gap: 4px;
   padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.02);
+  background: rgb(0 0 0 / 2%);
   border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  border: 1px solid rgb(0 0 0 / 4%);
 }
 
 html.dark .arael-mem-item {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 4%);
+  border-color: rgb(255 255 255 / 6%);
 }
 
 .arael-mem-header {
@@ -2156,33 +2338,38 @@ html.dark .arael-mem-item {
   background: transparent;
   cursor: pointer;
   color: var(--text-tertiary, #9ca3af);
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   padding: 0;
 }
 
 .arael-manage-action-btn:hover {
-  background: rgba(99, 102, 241, 0.1);
-  color: rgb(99, 102, 241);
+  background: rgb(99 102 241 / 10%);
+  color: rgb(99 102 241);
 }
 
 .arael-manage-delete-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: rgb(239, 68, 68);
+  background: rgb(239 68 68 / 10%);
+  color: rgb(239 68 68);
 }
 
 html.dark .arael-manage-action-btn {
-  color: rgba(255, 255, 255, 0.35);
+  color: rgb(255 255 255 / 35%);
 }
+
 html.dark .arael-manage-action-btn:hover {
-  background: rgba(99, 102, 241, 0.15);
-  color: rgb(129, 140, 248);
+  background: rgb(99 102 241 / 15%);
+  color: rgb(129 140 248);
 }
+
 html.dark .arael-manage-delete-btn {
-  color: rgba(255, 255, 255, 0.35);
+  color: rgb(255 255 255 / 35%);
 }
+
 html.dark .arael-manage-delete-btn:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: rgb(248, 113, 113);
+  background: rgb(239 68 68 / 15%);
+  color: rgb(248 113 113);
 }
 
 .arael-mem-type {
@@ -2190,8 +2377,8 @@ html.dark .arael-manage-delete-btn:hover {
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(99, 102, 241, 0.08);
-  color: rgba(99, 102, 241, 0.8);
+  background: rgb(99 102 241 / 8%);
+  color: rgb(99 102 241 / 80%);
   flex-shrink: 0;
 }
 
@@ -2202,7 +2389,7 @@ html.dark .arael-manage-delete-btn:hover {
 }
 
 html.dark .arael-mem-content {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgb(255 255 255 / 50%);
 }
 
 .arael-mem-meta {
@@ -2222,13 +2409,13 @@ html.dark .arael-mem-content {
   font-size: 9px;
   padding: 0 4px;
   border-radius: 3px;
-  background: rgba(0, 0, 0, 0.05);
+  background: rgb(0 0 0 / 5%);
   color: var(--text-tertiary, #9ca3af);
 }
 
 html.dark .arael-mem-tier {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.3);
+  background: rgb(255 255 255 / 6%);
+  color: rgb(255 255 255 / 30%);
 }
 
 /* Memory edit */
@@ -2242,9 +2429,9 @@ html.dark .arael-mem-tier {
   width: 100%;
   font-size: 12px;
   padding: 6px 8px;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  border: 1px solid rgb(99 102 241 / 30%);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgb(255 255 255 / 80%);
   color: var(--text-primary, #1f2937);
   line-height: 1.4;
   resize: vertical;
@@ -2253,14 +2440,14 @@ html.dark .arael-mem-tier {
 }
 
 .arael-mem-edit-input:focus {
-  border-color: rgba(99, 102, 241, 0.6);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+  border-color: rgb(99 102 241 / 60%);
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 10%);
 }
 
 html.dark .arael-mem-edit-input {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: rgba(99, 102, 241, 0.25);
-  color: rgba(255, 255, 255, 0.85);
+  background: rgb(0 0 0 / 30%);
+  border-color: rgb(99 102 241 / 25%);
+  color: rgb(255 255 255 / 85%);
 }
 
 .arael-mem-edit-actions {
@@ -2284,19 +2471,21 @@ html.dark .arael-mem-edit-input {
 }
 
 .arael-mem-edit-save {
-  background: rgba(34, 197, 94, 0.1);
-  color: rgb(34, 197, 94);
+  background: rgb(34 197 94 / 10%);
+  color: rgb(34 197 94);
 }
+
 .arael-mem-edit-save:hover {
-  background: rgba(34, 197, 94, 0.2);
+  background: rgb(34 197 94 / 20%);
 }
 
 .arael-mem-edit-cancel {
-  background: rgba(107, 114, 128, 0.1);
-  color: rgb(107, 114, 128);
+  background: rgb(107 114 128 / 10%);
+  color: rgb(107 114 128);
 }
+
 .arael-mem-edit-cancel:hover {
-  background: rgba(107, 114, 128, 0.2);
+  background: rgb(107 114 128 / 20%);
 }
 
 /* Skill header right area (origin + delete) */
@@ -2321,12 +2510,12 @@ html.dark .arael-mem-edit-input {
 
 .arael-trace-detail {
   margin-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  border-top: 1px solid rgb(0 0 0 / 5%);
   padding-top: 4px;
 }
 
 html.dark .arael-trace-detail {
-  border-top-color: rgba(255, 255, 255, 0.06);
+  border-top-color: rgb(255 255 255 / 6%);
 }
 
 .arael-trace-toggle {
@@ -2338,22 +2527,22 @@ html.dark .arael-trace-detail {
   cursor: pointer;
   padding: 4px 0;
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.4);
+  color: rgb(0 0 0 / 40%);
   width: 100%;
   text-align: left;
   transition: color 0.15s;
 }
 
 html.dark .arael-trace-toggle {
-  color: rgba(255, 255, 255, 0.35);
+  color: rgb(255 255 255 / 35%);
 }
 
 .arael-trace-toggle:hover {
-  color: rgba(0, 0, 0, 0.65);
+  color: rgb(0 0 0 / 65%);
 }
 
 html.dark .arael-trace-toggle:hover {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgb(255 255 255 / 60%);
 }
 
 .arael-trace-chevron {
@@ -2365,12 +2554,12 @@ html.dark .arael-trace-toggle:hover {
 }
 
 .arael-trace-summary {
-  color: rgba(0, 0, 0, 0.3);
+  color: rgb(0 0 0 / 30%);
   font-size: 10px;
 }
 
 html.dark .arael-trace-summary {
-  color: rgba(255, 255, 255, 0.25);
+  color: rgb(255 255 255 / 25%);
 }
 
 .arael-trace-tiers {
@@ -2397,12 +2586,12 @@ html.dark .arael-trace-summary {
 
 .arael-trace-loading {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.3);
+  color: rgb(0 0 0 / 30%);
   padding: 4px 0;
 }
 
 html.dark .arael-trace-loading {
-  color: rgba(255, 255, 255, 0.25);
+  color: rgb(255 255 255 / 25%);
 }
 
 .arael-trace-steps {
@@ -2416,11 +2605,11 @@ html.dark .arael-trace-loading {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.55);
+  color: rgb(0 0 0 / 55%);
 }
 
 html.dark .arael-trace-step {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgb(255 255 255 / 50%);
 }
 
 .arael-trace-step-failed {
@@ -2435,13 +2624,13 @@ html.dark .arael-trace-step {
   flex-shrink: 0;
   padding: 1px 2px;
   border-radius: 3px;
-  background: rgba(99, 102, 241, 0.06);
-  color: rgba(99, 102, 241, 0.6);
+  background: rgb(99 102 241 / 6%);
+  color: rgb(99 102 241 / 60%);
 }
 
 html.dark .arael-trace-step-label {
-  background: rgba(99, 102, 241, 0.12);
-  color: rgba(165, 180, 252, 0.7);
+  background: rgb(99 102 241 / 12%);
+  color: rgb(165 180 252 / 70%);
 }
 
 .arael-trace-step-name {
@@ -2460,65 +2649,65 @@ html.dark .arael-trace-step-label {
 
 .arael-trace-step-duration {
   font-size: 10px;
-  color: rgba(0, 0, 0, 0.3);
+  color: rgb(0 0 0 / 30%);
   font-variant-numeric: tabular-nums;
 }
 
 html.dark .arael-trace-step-duration {
-  color: rgba(255, 255, 255, 0.25);
+  color: rgb(255 255 255 / 25%);
 }
 
 .arael-trace-step-note {
   font-size: 10px;
-  color: rgba(245, 158, 11, 0.75);
+  color: rgb(245 158 11 / 75%);
   padding-left: 24px;
   margin-top: 1px;
 }
 
 .arael-trace-step-error {
   font-size: 10px;
-  color: rgba(239, 68, 68, 0.8);
+  color: rgb(239 68 68 / 80%);
   padding-left: 24px;
   margin-top: 2px;
   line-height: 1.3;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 html.dark .arael-trace-step-error {
-  color: rgba(248, 113, 113, 0.85);
+  color: rgb(248 113 113 / 85%);
 }
 
 .arael-trace-memories {
   margin-top: 8px;
   padding: 6px 8px;
-  background: rgba(99, 102, 241, 0.04);
+  background: rgb(99 102 241 / 4%);
   border-radius: 6px;
   font-size: 11px;
 }
 
 html.dark .arael-trace-memories {
-  background: rgba(99, 102, 241, 0.08);
+  background: rgb(99 102 241 / 8%);
 }
 
 .arael-trace-memories-label {
-  color: rgba(0, 0, 0, 0.45);
+  color: rgb(0 0 0 / 45%);
   font-size: 10px;
   font-weight: 500;
 }
 
 html.dark .arael-trace-memories-label {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgb(255 255 255 / 40%);
 }
 
 .arael-trace-memory-item {
-  color: rgba(0, 0, 0, 0.55);
+  color: rgb(0 0 0 / 55%);
   padding-left: 8px;
   margin-top: 2px;
   font-style: italic;
 }
 
 html.dark .arael-trace-memory-item {
-  color: rgba(255, 255, 255, 0.45);
+  color: rgb(255 255 255 / 45%);
 }
 
 .arael-trace-skill {
@@ -2530,19 +2719,19 @@ html.dark .arael-trace-memory-item {
 }
 
 .arael-trace-skill-label {
-  color: rgba(0, 0, 0, 0.45);
+  color: rgb(0 0 0 / 45%);
   font-size: 10px;
   font-weight: 500;
 }
 
 html.dark .arael-trace-skill-label {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgb(255 255 255 / 40%);
 }
 
 .arael-trace-skill-name {
   font-family: monospace;
   font-size: 10px;
-  color: rgba(99, 102, 241, 0.75);
+  color: rgb(99 102 241 / 75%);
 }
 
 /* ==========================================
@@ -2556,12 +2745,12 @@ html.dark .arael-trace-skill-label {
   gap: 6px;
   padding: 8px 12px;
   margin-top: 4px;
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
   background:
-    linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)) padding-box,
+    linear-gradient(rgb(255 255 255 / 92%), rgb(255 255 255 / 92%)) padding-box,
     conic-gradient(
-        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
+        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%)
+          var(--arael-gradient-y, 50%),
         var(--color-primary, #10b981),
         var(--color-secondary, #34d399),
         var(--color-accent, #f59e0b),
@@ -2572,9 +2761,9 @@ html.dark .arael-trace-skill-label {
   border: 1px solid transparent;
   border-radius: 16px;
   box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.06),
-    0 1px 4px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    0 4px 16px rgb(0 0 0 / 6%),
+    0 1px 4px rgb(0 0 0 / 4%),
+    inset 0 1px 0 rgb(255 255 255 / 80%);
   animation:
     arael-gradient-flow-angle 4s ease-in-out infinite,
     arael-gradient-flow-x 7s ease-in-out infinite,
@@ -2585,14 +2774,14 @@ html.dark .arael-trace-skill-label {
   max-width: 300px;
   will-change: transform, opacity;
   user-select: none;
-  -webkit-user-select: none;
 }
 
 html.dark .arael-favorite-capsule {
   background:
-    linear-gradient(rgba(24, 24, 27, 0.92), rgba(24, 24, 27, 0.92)) padding-box,
+    linear-gradient(rgb(24 24 27 / 92%), rgb(24 24 27 / 92%)) padding-box,
     conic-gradient(
-        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%) var(--arael-gradient-y, 50%),
+        from var(--arael-gradient-angle, 0deg) at var(--arael-gradient-x, 50%)
+          var(--arael-gradient-y, 50%),
         var(--color-primary, #10b981),
         var(--color-secondary, #34d399),
         var(--color-accent, #f59e0b),
@@ -2602,9 +2791,9 @@ html.dark .arael-favorite-capsule {
       border-box;
   color: #d1d5db;
   box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.3),
-    0 1px 4px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 4px 16px rgb(0 0 0 / 30%),
+    0 1px 4px rgb(0 0 0 / 20%),
+    inset 0 1px 0 rgb(255 255 255 / 4%);
 }
 
 .arael-favorite-text {
@@ -2697,7 +2886,8 @@ html.dark .arael-favorite-unfav {
   transform: translate(-50%, -50%) scale(0);
   border-radius: 50%;
   background: var(--color-primary, #6366f1);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--color-primary, #6366f1) 40%, transparent);
+  box-shadow: 0 0 6px
+    color-mix(in srgb, var(--color-primary, #6366f1) 40%, transparent);
 }
 
 .arael-longpress-indicator.active .arael-lp-dot {
@@ -2710,17 +2900,20 @@ html.dark .arael-favorite-unfav {
     background: var(--color-primary, #6366f1);
     opacity: 1;
   }
+
   35% {
     transform: translate(-50%, -50%) scale(0.25);
     background: var(--color-primary, #6366f1);
     opacity: 1;
   }
+
   70% {
     transform: translate(-50%, -50%) scale(0.88);
     background: transparent;
     box-shadow: inset 0 0 0 2.5px var(--color-primary, #6366f1);
     opacity: 1;
   }
+
   100% {
     transform: translate(-50%, -50%) scale(1);
     background: transparent;
@@ -2747,9 +2940,19 @@ html.dark .arael-favorite-unfav {
 }
 
 @keyframes arael-lp-pulse {
-  0% { opacity: 0; transform: scale(0.3); }
-  30% { opacity: 0.9; }
-  100% { opacity: 0; transform: scale(2.2); }
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  30% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
 }
 
 .arael-lp-svg {
@@ -2768,13 +2971,27 @@ html.dark .arael-favorite-unfav {
 }
 
 @keyframes arael-lp-svg-expand {
-  0% { transform: scale(0.85); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes arael-lp-breathe {
-  from { transform: scale(0.92); opacity: 0.7; }
-  to { transform: scale(1.06); opacity: 1; }
+  from {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+
+  to {
+    transform: scale(1.06);
+    opacity: 1;
+  }
 }
 
 .arael-lp-track {
@@ -2787,14 +3004,16 @@ html.dark .arael-favorite-unfav {
   fill: none;
   stroke: var(--color-primary, #6366f1);
   stroke-width: 2.5;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-primary, #6366f1) 45%, transparent));
+  filter: drop-shadow(
+    0 0 4px color-mix(in srgb, var(--color-primary, #6366f1) 45%, transparent)
+  );
 }
 
 /* ==========================================
    14. Responsive
    ========================================== */
 
-@media (max-width: 480px) {
+@media (width <= 480px) {
   .arael-panel-container {
     top: 0.5rem;
     left: 0.5rem;

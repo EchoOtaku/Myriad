@@ -10,11 +10,7 @@ import type { PermissionItem, QuotaItem } from '../settings'
 import React from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
-import {
-  PermissionGroup,
-  QuotaGroup,
-  SettingSection,
-} from '../settings'
+import { PermissionGroup, QuotaGroup, SettingSection } from '../settings'
 
 interface PermissionsConfigSectionProps {
   permissionConfig: {
@@ -61,7 +57,9 @@ interface PermissionsConfigSectionProps {
   sectionId?: string
 }
 
-export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> = ({
+export const PermissionsConfigSection: React.FC<
+  PermissionsConfigSectionProps
+> = ({
   permissionConfig,
   updatePermissionConfig,
   loading = false,
@@ -75,37 +73,123 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
   // 定义权限项列表（复用于用户和游客）
   const permissionItems: PermissionItem[] = [
     // AI 相关
-    { key: 'ai_generate', code: 'ai:generate', label: t.config.permAiGenerate, hint: t.config.permAiGenerateHint },
-    { key: 'ai_analyze', code: 'ai:analyze', label: t.config.permAiAnalyze, hint: t.config.permAiAnalyzeHint },
-    { key: 'ai_chat', code: 'ai:chat', label: t.config.permAiChat, hint: t.config.permAiChatHint },
-    { key: 'ai_image', code: 'ai:image', label: t.config.permAiImage, hint: t.config.permAiImageHint },
+    {
+      key: 'ai_generate',
+      code: 'ai:generate',
+      label: t.config.permAiGenerate,
+      hint: t.config.permAiGenerateHint,
+    },
+    {
+      key: 'ai_analyze',
+      code: 'ai:analyze',
+      label: t.config.permAiAnalyze,
+      hint: t.config.permAiAnalyzeHint,
+    },
+    {
+      key: 'ai_chat',
+      code: 'ai:chat',
+      label: t.config.permAiChat,
+      hint: t.config.permAiChatHint,
+    },
+    {
+      key: 'ai_image',
+      code: 'ai:image',
+      label: t.config.permAiImage,
+      hint: t.config.permAiImageHint,
+    },
     // 语音相关
-    { key: 'speech_tts', code: 'speech:tts', label: t.config.permSpeechTts, hint: t.config.permSpeechTtsHint },
-    { key: 'speech_asr', code: 'speech:asr', label: t.config.permSpeechAsr, hint: t.config.permSpeechAsrHint },
+    {
+      key: 'speech_tts',
+      code: 'speech:tts',
+      label: t.config.permSpeechTts,
+      hint: t.config.permSpeechTtsHint,
+    },
+    {
+      key: 'speech_asr',
+      code: 'speech:asr',
+      label: t.config.permSpeechAsr,
+      hint: t.config.permSpeechAsrHint,
+    },
     // 数据与网络
-    { key: 'report_write', code: 'report:write', label: t.config.permReportWrite, hint: t.config.permReportWriteHint },
-    { key: 'network_fetch', code: 'network:fetch', label: t.config.permNetworkFetch, hint: t.config.permNetworkFetchHint },
+    {
+      key: 'report_write',
+      code: 'report:write',
+      label: t.config.permReportWrite,
+      hint: t.config.permReportWriteHint,
+    },
+    {
+      key: 'network_fetch',
+      code: 'network:fetch',
+      label: t.config.permNetworkFetch,
+      hint: t.config.permNetworkFetchHint,
+    },
     // 界面与交互
-    { key: 'media_control', code: 'media:control', label: t.config.permMediaControl, hint: t.config.permMediaControlHint },
-    { key: 'event_publish', code: 'event:publish', label: t.config.permEventPublish, hint: t.config.permEventPublishHint },
+    {
+      key: 'media_control',
+      code: 'media:control',
+      label: t.config.permMediaControl,
+      hint: t.config.permMediaControlHint,
+    },
+    {
+      key: 'event_publish',
+      code: 'event:publish',
+      label: t.config.permEventPublish,
+      hint: t.config.permEventPublishHint,
+    },
     // 注册类
-    { key: 'component_theme', code: 'component:theme', label: t.config.permComponentTheme, hint: t.config.permComponentThemeHint },
-    { key: 'shortcut_register', code: 'shortcut:register', label: t.config.permShortcutRegister, hint: t.config.permShortcutRegisterHint },
-    { key: 'scheduler_register', code: 'scheduler:register', label: t.config.permSchedulerRegister, hint: t.config.permSchedulerRegisterHint },
+    {
+      key: 'component_theme',
+      code: 'component:theme',
+      label: t.config.permComponentTheme,
+      hint: t.config.permComponentThemeHint,
+    },
+    {
+      key: 'shortcut_register',
+      code: 'shortcut:register',
+      label: t.config.permShortcutRegister,
+      hint: t.config.permShortcutRegisterHint,
+    },
+    {
+      key: 'scheduler_register',
+      code: 'scheduler:register',
+      label: t.config.permSchedulerRegister,
+      hint: t.config.permSchedulerRegisterHint,
+    },
   ]
 
   // 定义配额项列表
   const quotaItems: QuotaItem[] = [
-    { key: 'daily_calls', label: t.config.aiDailyCalls, hint: t.config.aiDailyCallsHint, min: 0, max: 10000 },
-    { key: 'daily_tokens', label: t.config.aiDailyTokens, hint: t.config.aiDailyTokensHint, min: 0, max: 1000000 },
-    { key: 'cooldown_seconds', label: t.config.aiCooldownSeconds, hint: t.config.aiCooldownSecondsHint, min: 0, max: 3600, unit: '秒' },
+    {
+      key: 'daily_calls',
+      label: t.config.aiDailyCalls,
+      hint: t.config.aiDailyCallsHint,
+      min: 0,
+      max: 10000,
+    },
+    {
+      key: 'daily_tokens',
+      label: t.config.aiDailyTokens,
+      hint: t.config.aiDailyTokensHint,
+      min: 0,
+      max: 1000000,
+    },
+    {
+      key: 'cooldown_seconds',
+      label: t.config.aiCooldownSeconds,
+      hint: t.config.aiCooldownSecondsHint,
+      min: 0,
+      max: 3600,
+      unit: '秒',
+    },
   ]
 
   // 转换权限值（添加前缀）
   const getUserPermValues = () => {
     const values: Record<string, boolean> = {}
     permissionItems.forEach((item) => {
-      values[item.key] = permissionConfig[`user_perm_${item.key}` as keyof typeof permissionConfig] as boolean
+      values[item.key] = permissionConfig[
+        `user_perm_${item.key}` as keyof typeof permissionConfig
+      ] as boolean
     })
     return values
   }
@@ -113,7 +197,9 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
   const getGuestPermValues = () => {
     const values: Record<string, boolean> = {}
     permissionItems.forEach((item) => {
-      values[item.key] = permissionConfig[`guest_perm_${item.key}` as keyof typeof permissionConfig] as boolean
+      values[item.key] = permissionConfig[
+        `guest_perm_${item.key}` as keyof typeof permissionConfig
+      ] as boolean
     })
     return values
   }
@@ -143,7 +229,9 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
         description={t.config.userElevatedPermissionsDesc}
         permissions={permissionItems}
         values={getUserPermValues()}
-        onChange={(key, value) => updatePermissionConfig(`user_perm_${key}`, value)}
+        onChange={(key, value) =>
+          updatePermissionConfig(`user_perm_${key}`, value)
+        }
         loading={loading}
       />
 
@@ -153,7 +241,9 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
         description={t.config.guestElevatedPermissionsDesc}
         permissions={permissionItems}
         values={getGuestPermValues()}
-        onChange={(key, value) => updatePermissionConfig(`guest_perm_${key}`, value)}
+        onChange={(key, value) =>
+          updatePermissionConfig(`guest_perm_${key}`, value)
+        }
         loading={loading}
       />
 
@@ -163,7 +253,9 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
         description={t.config.userAiQuotaDesc}
         quotas={quotaItems}
         values={getUserQuotaValues()}
-        onChange={(key, value) => updatePermissionConfig(`user_ai_${key}`, value)}
+        onChange={(key, value) =>
+          updatePermissionConfig(`user_ai_${key}`, value)
+        }
         loading={loading}
       />
 
@@ -173,7 +265,9 @@ export const PermissionsConfigSection: React.FC<PermissionsConfigSectionProps> =
         description={t.config.guestAiQuotaDesc}
         quotas={quotaItems}
         values={getGuestQuotaValues()}
-        onChange={(key, value) => updatePermissionConfig(`guest_ai_${key}`, value)}
+        onChange={(key, value) =>
+          updatePermissionConfig(`guest_ai_${key}`, value)
+        }
         loading={loading}
       />
     </SettingSection>

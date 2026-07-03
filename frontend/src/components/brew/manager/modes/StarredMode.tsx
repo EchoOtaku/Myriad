@@ -2,15 +2,15 @@
  * StarredMode - 收藏文章模式
  */
 
+import type { StarredModeConfig } from './types'
+
 import {
   LuChevronLeft as ChevronLeft,
   LuEdit3 as Edit3,
   LuStar as Star,
 } from '@lib/icons'
-
 import { IslandShell } from '../../../shared/control-island'
 import { ISLAND_BTN, ISLAND_DIVIDER } from './constants'
-import type { StarredModeConfig } from './types'
 
 export interface StarredModeProps {
   variant: 'mobile' | 'desktop'
@@ -23,13 +23,7 @@ export interface StarredModeProps {
   }
 }
 
-export function StarredMode({
-  variant,
-  starredMode,
-  t,
-}: StarredModeProps) {
-  const isMobile = variant === 'mobile'
-
+export function StarredMode({ variant, starredMode, t }: StarredModeProps) {
   return (
     <IslandShell variant={variant} motionKey={`starred-bar-${variant}`}>
       {/* 返回按钮 */}

@@ -127,17 +127,13 @@ pub struct TappManifest {
 /// Tapp API 访问级别
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum TappApiAccess {
     /// 公开 API：所有用户（包括游客）可调用，无需权限
     Public,
     /// 受保护 API：需要 network:fetch 权限
+    #[default]
     Protected,
-}
-
-impl Default for TappApiAccess {
-    fn default() -> Self {
-        Self::Protected
-    }
 }
 
 /// Tapp API 定义

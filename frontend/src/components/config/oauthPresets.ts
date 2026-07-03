@@ -13,8 +13,9 @@
  */
 
 /** 用 Google s2 favicon 服务取任意域名的 favicon — 可靠、统一尺寸、无 CORS */
-const favicon = (domain: string) =>
-  `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+function favicon(domain: string) {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+}
 
 export interface OAuthPreset {
   /** 预设 ID，仅用于前端 UI 选择 */
@@ -53,7 +54,8 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     defaultSlug: 'google',
     kind: 'oidc',
     display_name: 'Google',
-    discovery_url: 'https://accounts.google.com/.well-known/openid-configuration',
+    discovery_url:
+      'https://accounts.google.com/.well-known/openid-configuration',
     scopes: ['openid', 'email', 'profile'],
     icon_url: favicon('google.com'),
     docs_url: 'https://console.cloud.google.com/apis/credentials',
@@ -68,7 +70,8 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
       'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
     scopes: ['openid', 'email', 'profile', 'User.Read'],
     icon_url: favicon('microsoft.com'),
-    docs_url: 'https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
+    docs_url:
+      'https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
     hintKey: 'oauthPresetHintMicrosoft',
   },
   {
@@ -140,5 +143,5 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
 ]
 
 export function findPreset(id: string): OAuthPreset | undefined {
-  return OAUTH_PRESETS.find(p => p.id === id)
+  return OAUTH_PRESETS.find((p) => p.id === id)
 }

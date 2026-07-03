@@ -18,7 +18,6 @@ interface CustomLinkProps extends Omit<LinkProps, 'to' | 'prefetch'> {
  */
 export const Link = forwardRef<HTMLAnchorElement, CustomLinkProps>(
   ({ href, prefetch: _prefetch, ...props }, ref) => {
-    // @ts-expect-error - prefetch type mismatch between boolean and PrefetchBehavior
     return <RouterLink ref={ref} to={href} {...props} />
   },
 )

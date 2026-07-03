@@ -27,7 +27,11 @@ pub async fn run(compose_dir: &Path, env_file: &Path) -> Result<()> {
         .arg("--env-file")
         .arg(env_file)
         .arg("-p")
-        .arg(std::env::var("COMPOSE_PROJECT_NAME").as_deref().unwrap_or("myriad"))
+        .arg(
+            std::env::var("COMPOSE_PROJECT_NAME")
+                .as_deref()
+                .unwrap_or("myriad"),
+        )
         .arg("up")
         .arg("-d")
         .arg("--no-deps")
@@ -44,7 +48,11 @@ pub async fn run(compose_dir: &Path, env_file: &Path) -> Result<()> {
             .arg("--env-file")
             .arg(env_file)
             .arg("-p")
-            .arg(std::env::var("COMPOSE_PROJECT_NAME").as_deref().unwrap_or("myriad"))
+            .arg(
+                std::env::var("COMPOSE_PROJECT_NAME")
+                    .as_deref()
+                    .unwrap_or("myriad"),
+            )
             .arg("up")
             .arg("-d")
             .arg("--no-deps")

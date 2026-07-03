@@ -67,15 +67,11 @@ pub struct NotionConfig {
 /// Notion 资源类型
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum NotionResourceType {
+    #[default]
     Database,
     Page,
-}
-
-impl Default for NotionResourceType {
-    fn default() -> Self {
-        Self::Database
-    }
 }
 
 /// Notion 服务

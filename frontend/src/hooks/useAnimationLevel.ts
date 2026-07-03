@@ -1,7 +1,10 @@
 import { useContext, useEffect, useMemo } from 'react'
 import { AnimationPreferenceContext } from '../contexts/AnimationPreferenceContext'
 import { configureAnimationCoordinator } from './animation'
-import { getPerformanceProfileSync, usePerformanceProfile } from './usePerformanceProfile'
+import {
+  getPerformanceProfileSync,
+  usePerformanceProfile,
+} from './usePerformanceProfile'
 
 export type AnimationLevel = 'none' | 'light' | 'standard'
 
@@ -41,25 +44,49 @@ export function useAnimationLevel(): AnimationConfig {
   const config = useMemo(() => {
     // prefers-reduced-motion 优先（无法被手动覆盖）
     if (perf.reduceMotion) {
-      return { level: 'none' as const, loop: false, spring: false, durationScale: 0.0 }
+      return {
+        level: 'none' as const,
+        loop: false,
+        spring: false,
+        durationScale: 0.0,
+      }
     }
 
     // 如果有手动设置的偏好，使用手动偏好
     if (prefContext?.preference && prefContext.preference !== 'auto') {
       if (prefContext.preference === 'light') {
-        return { level: 'light' as const, loop: false, spring: false, durationScale: 0.6 }
-      }
-      else if (prefContext.preference === 'standard') {
-        return { level: 'standard' as const, loop: true, spring: true, durationScale: 1.0 }
+        return {
+          level: 'light' as const,
+          loop: false,
+          spring: false,
+          durationScale: 0.6,
+        }
+      } else if (prefContext.preference === 'standard') {
+        return {
+          level: 'standard' as const,
+          loop: true,
+          spring: true,
+          durationScale: 1.0,
+        }
       }
     }
 
     // 自动检测：低端设备
     if (perf.lowEndDevice) {
-      return { level: 'light' as const, loop: false, spring: false, durationScale: 0.6 }
+      return {
+        level: 'light' as const,
+        loop: false,
+        spring: false,
+        durationScale: 0.6,
+      }
     }
     // 自动检测：标准设备
-    return { level: 'standard' as const, loop: true, spring: true, durationScale: 1.0 }
+    return {
+      level: 'standard' as const,
+      loop: true,
+      spring: true,
+      durationScale: 1.0,
+    }
   }, [perf.reduceMotion, perf.lowEndDevice, prefContext?.preference])
 
   // 根据性能级别自动配置动画协调器

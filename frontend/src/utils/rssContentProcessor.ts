@@ -51,12 +51,10 @@ const DEFAULT_OPTIONS: ProcessOptions = {
  */
 function getProxiedImageUrl(src: string): string {
   // 已经是 data URL，直接返回
-  if (src.startsWith('data:'))
-    return src
+  if (src.startsWith('data:')) return src
 
   // 已经是本地 API 路径，直接返回
-  if (src.startsWith('/api/') || src.startsWith(`${API_URL}/api/`))
-    return src
+  if (src.startsWith('/api/') || src.startsWith(`${API_URL}/api/`)) return src
 
   // 外部 URL，使用图片代理
   if (src.startsWith('http://') || src.startsWith('https://')) {
@@ -194,8 +192,7 @@ function cleanUrl(url: string): string {
       parsed.searchParams.delete(param)
     })
     return parsed.toString()
-  }
-  catch {
+  } catch {
     return url
   }
 }
@@ -205,7 +202,10 @@ function cleanUrl(url: string): string {
  */
 function removeDangerousTags(html: string): string {
   const tagPattern = DANGEROUS_TAGS.join('|')
-  const regex = new RegExp(`<(${tagPattern})[^>]*>([\\s\\S]*?)<\\/\\1>|<(${tagPattern})[^>]*>`, 'gi')
+  const regex = new RegExp(
+    `<(${tagPattern})[^>]*>([\\s\\S]*?)<\\/\\1>|<(${tagPattern})[^>]*>`,
+    'gi',
+  )
   return html.replace(regex, '')
 }
 
@@ -215,7 +215,10 @@ function removeDangerousTags(html: string): string {
 function removeDangerousAttrs(html: string): string {
   const attrPattern = DANGEROUS_ATTRS.join('|')
   // 匹配事件属性：支持空白符或 / 作为属性分隔符（防止 <tag/onload=... 绕过）
-  const regex = new RegExp(`[\\s/](${attrPattern})\\s*=\\s*["'][^"']*["']|[\\s/](${attrPattern})\\s*=\\s*[^\\s>]+`, 'gi')
+  const regex = new RegExp(
+    `[\\s/](${attrPattern})\\s*=\\s*["'][^"']*["']|[\\s/](${attrPattern})\\s*=\\s*[^\\s>]+`,
+    'gi',
+  )
   return html.replace(regex, '')
 }
 
@@ -242,10 +245,16 @@ function removeEmptyTags(html: string): string {
   while (result.length !== prevLength) {
     prevLength = result.length
     // 匹配只包含空白字符或 &nbsp; 的标签
-    const regex = new RegExp(`<(${tagPattern})[^>]*>\\s*(<br\\s*\\/?>\\s*)*<\\/\\1>`, 'gi')
+    const regex = new RegExp(
+      `<(${tagPattern})[^>]*>\\s*(<br\\s*\\/?>\\s*)*<\\/\\1>`,
+      'gi',
+    )
     result = result.replace(regex, '')
     // 移除只有 &nbsp; 的标签
-    const nbspRegex = new RegExp(`<(${tagPattern})[^>]*>(&nbsp;|\\s)*<\\/\\1>`, 'gi')
+    const nbspRegex = new RegExp(
+      `<(${tagPattern})[^>]*>(&nbsp;|\\s)*<\\/\\1>`,
+      'gi',
+    )
     result = result.replace(nbspRegex, '')
   }
   return result
@@ -259,8 +268,7 @@ function processImages(html: string, options: ProcessOptions): string {
   const result = html.replace(/<img([^>]*)>/gi, (match, attrs) => {
     // 提取 src
     const srcMatch = attrs.match(/src\s*=\s*["']([^"']+)["']/i)
-    if (!srcMatch)
-      return match
+    if (!srcMatch) return match
 
     let src = srcMatch[1]
 
@@ -270,11 +278,14 @@ function processImages(html: string, options: ProcessOptions): string {
     }
 
     // 转换相对 URL
-    if (options.baseUrl && !src.startsWith('http') && !src.startsWith('data:')) {
+    if (
+      options.baseUrl &&
+      !src.startsWith('http') &&
+      !src.startsWith('data:')
+    ) {
       try {
         src = new URL(src, options.baseUrl).toString()
-      }
-      catch {
+      } catch {
         // 忽略无效 URL
       }
     }
@@ -283,10 +294,7 @@ function processImages(html: string, options: ProcessOptions): string {
     src = getProxiedImageUrl(src)
 
     // 构建新属性 - 只保留必要属性，样式由渲染层添加
-    const newAttrs: string[] = [
-      `src="${src}"`,
-      'data-rss-image="true"',
-    ]
+    const newAttrs: string[] = [`src="${src}"`, 'data-rss-image="true"']
 
     // 懒加载
     if (options.lazyLoadImages) {
@@ -321,7 +329,10 @@ function processFigures(html: string): string {
   // 为 figure 添加样式类
   let result = html.replace(/<figure([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, 'class="$1 rss-content-figure my-6"')
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        'class="$1 rss-content-figure my-6"',
+      )
     }
     return `<figure${attrs} class="rss-content-figure my-6">`
   })
@@ -329,7 +340,10 @@ function processFigures(html: string): string {
   // 为 figcaption 添加样式
   result = result.replace(/<figcaption([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, 'class="$1 rss-content-figcaption text-center text-sm mt-2 opacity-60"')
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        'class="$1 rss-content-figcaption text-center text-sm mt-2 opacity-60"',
+      )
     }
     return `<figcaption${attrs} class="rss-content-figcaption text-center text-sm mt-2 opacity-60">`
   })
@@ -344,7 +358,10 @@ function processVideos(html: string): string {
   // 处理 <video> 标签
   const result = html.replace(/<video([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, 'class="$1 rss-content-video w-full rounded-xl my-4"')
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        'class="$1 rss-content-video w-full rounded-xl my-4"',
+      )
     }
     return `<video${attrs} class="rss-content-video w-full rounded-xl my-4" controls>`
   })
@@ -358,7 +375,10 @@ function processVideos(html: string): string {
 function processAudio(html: string): string {
   return html.replace(/<audio([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, 'class="$1 rss-content-audio w-full my-4"')
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        'class="$1 rss-content-audio w-full my-4"',
+      )
     }
     return `<audio${attrs} class="rss-content-audio w-full my-4" controls>`
   })
@@ -371,8 +391,7 @@ function _processIframes(html: string): string {
   return html.replace(/<iframe([^>]*)>/gi, (match, attrs) => {
     // 提取 src
     const srcMatch = attrs.match(/src\s*=\s*["']([^"']+)["']/i)
-    if (!srcMatch)
-      return match
+    if (!srcMatch) return match
 
     const src = srcMatch[1]
 
@@ -380,7 +399,11 @@ function _processIframes(html: string): string {
     let aspectClass = 'aspect-video' // 默认 16:9
 
     // 音乐类嵌入使用不同比例
-    if (src.includes('music.163.com') || src.includes('xiami.com') || src.includes('spotify.com')) {
+    if (
+      src.includes('music.163.com') ||
+      src.includes('xiami.com') ||
+      src.includes('spotify.com')
+    ) {
       aspectClass = 'aspect-wide' // 音乐播放器更扁 (3:1)
     }
 
@@ -448,7 +471,10 @@ function processTables(html: string, isDark: boolean): string {
   result = result.replace(/<table([^>]*)>/gi, (match, attrs) => {
     const tableClass = `rss-content-table w-full text-sm border-collapse rounded-xl overflow-hidden border ${borderClass}`
     if (attrs.includes('class=')) {
-      const newTag = match.replace(/class\s*=\s*["']([^"']*)["']/i, `class="$1 ${tableClass}"`)
+      const newTag = match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        `class="$1 ${tableClass}"`,
+      )
       return `<div class="rss-content-table-wrapper overflow-x-auto my-4 rounded-xl">${newTag}`
     }
     return `<div class="rss-content-table-wrapper overflow-x-auto my-4 rounded-xl"><table${attrs} class="${tableClass}">`
@@ -458,12 +484,24 @@ function processTables(html: string, isDark: boolean): string {
   result = result.replace(/<\/table>/gi, '</table></div>')
 
   // 处理表头
-  result = result.replace(/<thead([^>]*)>/gi, `<thead$1 class="rss-content-thead ${headerBg}">`)
-  result = result.replace(/<th([^>]*)>/gi, `<th$1 class="rss-content-th py-2 px-3 text-left font-medium border-b ${borderClass}">`)
+  result = result.replace(
+    /<thead([^>]*)>/gi,
+    `<thead$1 class="rss-content-thead ${headerBg}">`,
+  )
+  result = result.replace(
+    /<th([^>]*)>/gi,
+    `<th$1 class="rss-content-th py-2 px-3 text-left font-medium border-b ${borderClass}">`,
+  )
 
   // 处理表格行
-  result = result.replace(/<tr([^>]*)>/gi, `<tr$1 class="rss-content-tr even:${stripeBg}">`)
-  result = result.replace(/<td([^>]*)>/gi, `<td$1 class="rss-content-td py-2 px-3 border-b ${borderClass}">`)
+  result = result.replace(
+    /<tr([^>]*)>/gi,
+    `<tr$1 class="rss-content-tr even:${stripeBg}">`,
+  )
+  result = result.replace(
+    /<td([^>]*)>/gi,
+    `<td$1 class="rss-content-td py-2 px-3 border-b ${borderClass}">`,
+  )
 
   return result
 }
@@ -476,21 +514,30 @@ function processDescriptionLists(html: string): string {
 
   result = result.replace(/<dl([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, 'class="$1 rss-content-dl my-4"')
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        'class="$1 rss-content-dl my-4"',
+      )
     }
     return `<dl${attrs} class="rss-content-dl my-4">`
   })
 
   result = result.replace(/<dt([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, 'class="$1 rss-content-dt font-semibold mt-2"')
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        'class="$1 rss-content-dt font-semibold mt-2"',
+      )
     }
     return `<dt${attrs} class="rss-content-dt font-semibold mt-2">`
   })
 
   result = result.replace(/<dd([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, 'class="$1 rss-content-dd ml-4 pl-4 mt-1"')
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        'class="$1 rss-content-dd ml-4 pl-4 mt-1"',
+      )
     }
     return `<dd${attrs} class="rss-content-dd ml-4 pl-4 mt-1">`
   })
@@ -509,14 +556,20 @@ function processDetails(html: string, isDark: boolean): string {
 
   result = result.replace(/<details([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, `class="$1 rss-content-details ${bgClass} rounded-xl my-4 overflow-hidden"`)
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        `class="$1 rss-content-details ${bgClass} rounded-xl my-4 overflow-hidden"`,
+      )
     }
     return `<details${attrs} class="rss-content-details ${bgClass} rounded-xl my-4 overflow-hidden">`
   })
 
   result = result.replace(/<summary([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, `class="$1 rss-content-summary cursor-pointer py-3 px-4 font-medium select-none ${hoverBg} transition-colors"`)
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        `class="$1 rss-content-summary cursor-pointer py-3 px-4 font-medium select-none ${hoverBg} transition-colors"`,
+      )
     }
     return `<summary${attrs} class="rss-content-summary cursor-pointer py-3 px-4 font-medium select-none ${hoverBg} transition-colors">`
   })
@@ -531,8 +584,7 @@ function processLinks(html: string, options: ProcessOptions): string {
   return html.replace(/<a([^>]*)>/gi, (match, attrs) => {
     // 提取 href
     const hrefMatch = attrs.match(/href\s*=\s*["']([^"']+)["']/i)
-    if (!hrefMatch)
-      return match
+    if (!hrefMatch) return match
 
     let href = hrefMatch[1]
 
@@ -542,11 +594,15 @@ function processLinks(html: string, options: ProcessOptions): string {
     }
 
     // 转换相对 URL
-    if (options.baseUrl && !href.startsWith('http') && !href.startsWith('#') && !href.startsWith('mailto:')) {
+    if (
+      options.baseUrl &&
+      !href.startsWith('http') &&
+      !href.startsWith('#') &&
+      !href.startsWith('mailto:')
+    ) {
       try {
         href = new URL(href, options.baseUrl).toString()
-      }
-      catch {
+      } catch {
         // 忽略
       }
     }
@@ -566,7 +622,8 @@ function processLinks(html: string, options: ProcessOptions): string {
 
     // 添加样式类
     if (!newAttrs.includes('class=')) {
-      newAttrs += ' class="rss-content-link text-inherit underline underline-offset-2 decoration-1 wrap-break-word"'
+      newAttrs +=
+        ' class="rss-content-link text-inherit underline underline-offset-2 decoration-1 wrap-break-word"'
     }
 
     return `<a${newAttrs}>`
@@ -644,23 +701,38 @@ function processSemanticTags(html: string): string {
   let result = html
 
   // article
-  result = result.replace(/<article([^>]*)>/gi, '<article$1 class="rss-content-article">')
+  result = result.replace(
+    /<article([^>]*)>/gi,
+    '<article$1 class="rss-content-article">',
+  )
 
   // section
-  result = result.replace(/<section([^>]*)>/gi, '<section$1 class="rss-content-section">')
+  result = result.replace(
+    /<section([^>]*)>/gi,
+    '<section$1 class="rss-content-section">',
+  )
 
   // aside - 侧边栏内容，给予特殊样式
   const asideClass = 'rss-content-aside my-4 p-4 rounded-xl opacity-80'
   result = result.replace(/<aside([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(/class\s*=\s*["']([^"']*)["']/i, `class="$1 ${asideClass}"`)
+      return match.replace(
+        /class\s*=\s*["']([^"']*)["']/i,
+        `class="$1 ${asideClass}"`,
+      )
     }
     return `<aside${attrs} class="${asideClass}">`
   })
 
   // header/footer 在文章内容中通常是元信息
-  result = result.replace(/<header([^>]*)>/gi, '<header$1 class="rss-content-header mb-4">')
-  result = result.replace(/<footer([^>]*)>/gi, '<footer$1 class="rss-content-footer mt-4 text-sm opacity-70">')
+  result = result.replace(
+    /<header([^>]*)>/gi,
+    '<header$1 class="rss-content-header mb-4">',
+  )
+  result = result.replace(
+    /<footer([^>]*)>/gi,
+    '<footer$1 class="rss-content-footer mt-4 text-sm opacity-70">',
+  )
 
   return result
 }
@@ -675,23 +747,47 @@ function processInlineFormatting(html: string): string {
 
   // 删除线 - 分别处理每个标签
   // <del> 标签：完整标签名，不会有歧义
-  result = result.replace(/<del(\s[^>]*)?>/gi, '<del$1 class="rss-content-del line-through opacity-60">')
+  result = result.replace(
+    /<del(\s[^>]*)?>/gi,
+    '<del$1 class="rss-content-del line-through opacity-60">',
+  )
   // <strike> 标签：完整标签名
-  result = result.replace(/<strike(\s[^>]*)?>/gi, '<strike$1 class="rss-content-del line-through opacity-60">')
+  result = result.replace(
+    /<strike(\s[^>]*)?>/gi,
+    '<strike$1 class="rss-content-del line-through opacity-60">',
+  )
   // <s> 标签：必须后面是 > 或空格+属性，不能是字母（排除 strong, span, section, small, sub, sup, svg, style 等）
-  result = result.replace(/<s(\s[^>]*)?>(?![a-z])/gi, '<s$1 class="rss-content-del line-through opacity-60">')
+  result = result.replace(
+    /<s(\s[^>]*)?>(?![a-z])/gi,
+    '<s$1 class="rss-content-del line-through opacity-60">',
+  )
 
   // 插入标签 - <ins> 不会有歧义
-  result = result.replace(/<ins(\s[^>]*)?>/gi, '<ins$1 class="rss-content-ins underline">')
+  result = result.replace(
+    /<ins(\s[^>]*)?>/gi,
+    '<ins$1 class="rss-content-ins underline">',
+  )
   // 下划线 <u> 标签：必须后面是 > 或空格+属性，不能是字母（排除 ul 等）
-  result = result.replace(/<u(\s[^>]*)?>(?![a-z])/gi, '<u$1 class="rss-content-ins underline">')
+  result = result.replace(
+    /<u(\s[^>]*)?>(?![a-z])/gi,
+    '<u$1 class="rss-content-ins underline">',
+  )
 
   // 小号文本 - <small> 不会有歧义
-  result = result.replace(/<small(\s[^>]*)?>/gi, '<small$1 class="rss-content-small text-[0.85em] opacity-80">')
+  result = result.replace(
+    /<small(\s[^>]*)?>/gi,
+    '<small$1 class="rss-content-small text-[0.85em] opacity-80">',
+  )
 
   // 上标/下标 - <sup> 和 <sub> 不会有歧义
-  result = result.replace(/<sup(\s[^>]*)?>/gi, '<sup$1 class="rss-content-sup text-[0.75em]">')
-  result = result.replace(/<sub(\s[^>]*)?>/gi, '<sub$1 class="rss-content-sub text-[0.75em]">')
+  result = result.replace(
+    /<sup(\s[^>]*)?>/gi,
+    '<sup$1 class="rss-content-sup text-[0.75em]">',
+  )
+  result = result.replace(
+    /<sub(\s[^>]*)?>/gi,
+    '<sub$1 class="rss-content-sub text-[0.75em]">',
+  )
 
   return result
 }
@@ -710,8 +806,9 @@ function fixMalformedHtml(html: string): string {
 
   // 检测是否存在缺失尖括号的标签模式
   // 典型特征: "iframe " 开头 + "/iframe" 结尾，但没有 <> 包裹
-  const hasMalformedTags = /(?:^|[^<])(iframe\s[^<]*\/iframe)/i.test(result)
-    || /(?:^|[^<])(img\s+src=)/i.test(result)
+  const hasMalformedTags =
+    /(?:^|[^<])(iframe\s[^<]*\/iframe)/i.test(result) ||
+    /(?:^|[^<])(img\s+src=)/i.test(result)
 
   if (hasMalformedTags) {
     // 先处理 /iframe -> </iframe>
@@ -719,17 +816,26 @@ function fixMalformedHtml(html: string): string {
 
     // 处理 br（可能粘连在其他内容后面）
     // 例如: referrer/iframebrimg -> referrer/iframe<br/>img
-    result = result.replace(/~CLOSE_IFRAME~br(?![a-z])/gi, '~CLOSE_IFRAME~<br/>')
+    result = result.replace(
+      /~CLOSE_IFRAME~br(?![a-z])/gi,
+      '~CLOSE_IFRAME~<br/>',
+    )
     result = result.replace(/([a-z0-9"'])br(?=img|iframe|p|div|$)/gi, '$1<br/>')
 
     // 现在处理 iframe 开始标签
     // 匹配: iframe + 属性内容 + ~CLOSE_IFRAME~
-    result = result.replace(/(?:^|(?<=[>\s]))iframe(\s[^~]*)~CLOSE_IFRAME~/gi, '<iframe$1></iframe>')
+    result = result.replace(
+      /(?:^|(?<=[>\s]))iframe(\s[^~]*)~CLOSE_IFRAME~/gi,
+      '<iframe$1></iframe>',
+    )
     result = result.replace(/(?<![</a-z])iframe\s/gi, '<iframe ')
 
     // 处理 img 标签（可能粘连）
     // 例如: <br/>img src=... referrerpolicy=no-referrer<br/>
-    result = result.replace(/(?<![</a-z])img\s+(src=[^\s<>]*(?:\s+[a-z]+=(?:"[^"]*"|[^\s<>"]*))*)/gi, '<img $1/>')
+    result = result.replace(
+      /(?<![</a-z])img\s+(src=[^\s<>]*(?:\s+[a-z]+=(?:"[^"]*"|[^\s<>"]*))*)/gi,
+      '<img $1/>',
+    )
 
     // 清理剩余的标记
     result = result.replace(/~CLOSE_IFRAME~/g, '</iframe>')
@@ -742,11 +848,18 @@ function fixMalformedHtml(html: string): string {
 
   // 2. 修复缺少空格的属性（如 width=640height=360）
   // 匹配 数字或引号结尾 后面直接跟 字母开头的属性名
-  const attrNames = 'width|height|src|href|class|id|style|alt|title|frameborder|allowfullscreen|loading|referrerpolicy|data-[a-z-]+'
+  const attrNames =
+    'width|height|src|href|class|id|style|alt|title|frameborder|allowfullscreen|loading|referrerpolicy|data-[a-z-]+'
   result = result.replace(new RegExp(`(\\d)(${attrNames})=`, 'gi'), '$1 $2=')
   result = result.replace(new RegExp(`(["'])(${attrNames})=`, 'gi'), '$1 $2=')
   // 修复无值属性后面紧跟的属性
-  result = result.replace(new RegExp(`(allowfullscreen|readonly|disabled|checked|selected)(${attrNames})=`, 'gi'), '$1 $2=')
+  result = result.replace(
+    new RegExp(
+      `(allowfullscreen|readonly|disabled|checked|selected)(${attrNames})=`,
+      'gi',
+    ),
+    '$1 $2=',
+  )
 
   // 3. 修复无引号的属性值（为常见属性添加引号）
   // src=https://... -> src="https://..."
@@ -759,11 +872,14 @@ function fixMalformedHtml(html: string): string {
   result = result.replace(/<img([^>]*)(?<!\/)>/gi, '<img$1/>')
 
   // 5. 修复缺少闭合的 iframe 标签
-  result = result.replace(/<iframe([^>]*)>(?![\s\S]*?<\/iframe>)/gi, '<iframe$1></iframe>')
+  result = result.replace(
+    /<iframe([^>]*)>(?![\s\S]*?<\/iframe>)/gi,
+    '<iframe$1></iframe>',
+  )
 
   // ========== 第三阶段：处理开头就是没有 < 的 iframe ==========
   // 处理整段内容开头就是 "iframe" 的情况
-  if (result.match(/^iframe\s/i)) {
+  if (/^iframe\s/i.test(result)) {
     result = `<${result}`
   }
 
@@ -794,16 +910,25 @@ function processRssHubSpecific(html: string): string {
 
   // 处理 RSSHub 的时间戳格式 (有些源会包含)
   // 通常格式如: <time datetime="2024-01-01T00:00:00Z">
-  result = result.replace(/<time([^>]*)>([^<]*)<\/time>/gi, (match, attrs, content) => {
-    // 保留 time 标签但添加样式
-    return `<time${attrs} class="rss-content-time tabular-nums">${content}</time>`
-  })
+  result = result.replace(
+    /<time([^>]*)>([^<]*)<\/time>/gi,
+    (match, attrs, content) => {
+      // 保留 time 标签但添加样式
+      return `<time${attrs} class="rss-content-time tabular-nums">${content}</time>`
+    },
+  )
 
   // 处理一些源会包含的作者信息
-  result = result.replace(/<author>([^<]*)<\/author>/gi, '<span class="rss-content-author font-medium">$1</span>')
+  result = result.replace(
+    /<author>([^<]*)<\/author>/gi,
+    '<span class="rss-content-author font-medium">$1</span>',
+  )
 
   // 处理类别标签
-  result = result.replace(/<category>([^<]*)<\/category>/gi, '<span class="rss-content-category inline-block px-2 py-0.5 text-xs rounded-full bg-black/5 dark:bg-white/10 mr-1">$1</span>')
+  result = result.replace(
+    /<category>([^<]*)<\/category>/gi,
+    '<span class="rss-content-category inline-block px-2 py-0.5 text-xs rounded-full bg-black/5 dark:bg-white/10 mr-1">$1</span>',
+  )
 
   return result
 }
@@ -820,14 +945,26 @@ function processSourceSpecific(html: string, _options: ProcessOptions): string {
   result = result.replace(/<img[^>]*class="[^"]*wx_profile[^"]*"[^>]*>/gi, '')
 
   // 移除一些网站的广告占位
-  result = result.replace(/<div[^>]*class="[^"]*ad[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
-  result = result.replace(/<aside[^>]*class="[^"]*ad[^"]*"[^>]*>[\s\S]*?<\/aside>/gi, '')
+  result = result.replace(
+    /<div[^>]*class="[^"]*ad[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+    '',
+  )
+  result = result.replace(
+    /<aside[^>]*class="[^"]*ad[^"]*"[^>]*>[\s\S]*?<\/aside>/gi,
+    '',
+  )
 
   // 移除 "阅读原文" 等重复链接
-  result = result.replace(/<a[^>]*>[\s\S]*?(阅读原文|点击阅读|查看原文|Read more|Continue reading)[\s\S]*?<\/a>/gi, '')
+  result = result.replace(
+    /<a[^>]*>[\s\S]*?(阅读原文|点击阅读|查看原文|Read more|Continue reading)[\s\S]*?<\/a>/gi,
+    '',
+  )
 
   // 移除 RSS 底部的订阅提示
-  result = result.replace(/<p[^>]*>[\s\S]*?(订阅|RSS|Feed|Subscribe)[\s\S]*?<\/p>$/gi, '')
+  result = result.replace(
+    /<p[^>]*>[\s\S]*?(订阅|RSS|Feed|Subscribe)[\s\S]*?<\/p>$/gi,
+    '',
+  )
 
   return result
 }
@@ -835,7 +972,10 @@ function processSourceSpecific(html: string, _options: ProcessOptions): string {
 /**
  * 主处理函数 - 处理 RSS 内容
  */
-export function processRssContent(html: string, options: Partial<ProcessOptions> = {}): string {
+export function processRssContent(
+  html: string,
+  options: Partial<ProcessOptions> = {},
+): string {
   const opts: ProcessOptions = { ...DEFAULT_OPTIONS, ...options }
 
   if (!html || typeof html !== 'string') {
@@ -895,8 +1035,7 @@ export function processRssContent(html: string, options: Partial<ProcessOptions>
  * 提取纯文本（用于摘要等）
  */
 export function extractPlainText(html: string, maxLength?: number): string {
-  if (!html)
-    return ''
+  if (!html) return ''
 
   // 移除 HTML 标签
   let text = html.replace(/<[^>]+>/g, ' ')
@@ -908,8 +1047,10 @@ export function extractPlainText(html: string, maxLength?: number): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, '\'')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number.parseInt(code)))
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) =>
+      String.fromCharCode(Number.parseInt(code)),
+    )
     .replace(/&[a-z]+;/gi, ' ')
 
   // 规范化空白
@@ -950,11 +1091,17 @@ export function isImageContent(html: string): boolean {
 /**
  * 估算阅读时间（分钟）
  */
-export function estimateReadingTime(html: string, wordsPerMinute = 300): number {
+export function estimateReadingTime(
+  html: string,
+  wordsPerMinute = 300,
+): number {
   const text = extractPlainText(html)
   // 中文按字符计数，英文按单词计数
   const chineseChars = (text.match(/[\u4E00-\u9FFF]/g) || []).length
-  const englishWords = text.replace(/[\u4E00-\u9FFF]/g, '').split(/\s+/).filter(Boolean).length
+  const englishWords = text
+    .replace(/[\u4E00-\u9FFF]/g, '')
+    .split(/\s+/)
+    .filter(Boolean).length
 
   // 中文阅读速度约 300-400 字/分钟，英文约 200-250 词/分钟
   const totalChars = chineseChars + englishWords * 1.5
@@ -969,7 +1116,10 @@ export function estimateReadingTime(html: string, wordsPerMinute = 300): number 
 export function countWords(html: string): number {
   const text = extractPlainText(html)
   const chineseChars = (text.match(/[\u4E00-\u9FFF]/g) || []).length
-  const englishWords = text.replace(/[\u4E00-\u9FFF]/g, '').split(/\s+/).filter(Boolean).length
+  const englishWords = text
+    .replace(/[\u4E00-\u9FFF]/g, '')
+    .split(/\s+/)
+    .filter(Boolean).length
 
   return chineseChars + englishWords
 }
@@ -1002,11 +1152,18 @@ export function extractCoverImage(html: string): string | null {
   const validImages = urls.filter((url) => {
     const lower = url.toLowerCase()
     // 排除常见的表情、图标等
-    if (lower.includes('emoji') || lower.includes('icon') || lower.includes('avatar')) {
+    if (
+      lower.includes('emoji') ||
+      lower.includes('icon') ||
+      lower.includes('avatar')
+    ) {
       return false
     }
     // 排除 GIF 表情
-    if (lower.includes('sticker') || (lower.includes('.gif') && lower.includes('face'))) {
+    if (
+      lower.includes('sticker') ||
+      (lower.includes('.gif') && lower.includes('face'))
+    ) {
       return false
     }
     return true
@@ -1018,9 +1175,12 @@ export function extractCoverImage(html: string): string | null {
 /**
  * 提取标题列表（用于生成目录）
  */
-export function extractHeadings(html: string): Array<{ level: number, text: string, id: string }> {
-  const headingPattern = /<h([1-6])([^>]*)>([^<]*(?:<[^/h][^>]*>[^<]*)*)<\/h\1>/gi
-  const headings: Array<{ level: number, text: string, id: string }> = []
+export function extractHeadings(
+  html: string,
+): Array<{ level: number; text: string; id: string }> {
+  const headingPattern =
+    /<h([1-6])([^>]*)>([^<]*(?:<[^/h][^>]*>[^<]*)*)<\/h\1>/gi
+  const headings: Array<{ level: number; text: string; id: string }> = []
   let match = headingPattern.exec(html)
   let index = 0
 
@@ -1047,15 +1207,12 @@ export function detectLanguage(html: string): 'zh' | 'en' | 'mixed' {
   const chineseChars = (text.match(/[\u4E00-\u9FFF]/g) || []).length
   const totalChars = text.replace(/\s/g, '').length
 
-  if (totalChars === 0)
-    return 'en'
+  if (totalChars === 0) return 'en'
 
   const chineseRatio = chineseChars / totalChars
 
-  if (chineseRatio > 0.3)
-    return 'zh'
-  if (chineseRatio < 0.1)
-    return 'en'
+  if (chineseRatio > 0.3) return 'zh'
+  if (chineseRatio < 0.1) return 'en'
   return 'mixed'
 }
 
@@ -1069,8 +1226,8 @@ export function decodeHtmlEntities(text: string): string {
     '&lt;': '<',
     '&gt;': '>',
     '&quot;': '"',
-    '&#39;': '\'',
-    '&apos;': '\'',
+    '&#39;': "'",
+    '&apos;': "'",
     '&copy;': String.fromCharCode(169),
     '&reg;': String.fromCharCode(174),
     '&trade;': String.fromCharCode(8482),
@@ -1091,10 +1248,14 @@ export function decodeHtmlEntities(text: string): string {
   }
 
   // 替换数字实体 &#123;
-  result = result.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number.parseInt(code)))
+  result = result.replace(/&#(\d+);/g, (_, code) =>
+    String.fromCharCode(Number.parseInt(code)),
+  )
 
   // 替换十六进制实体 &#x1F;
-  result = result.replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(Number.parseInt(code, 16)))
+  result = result.replace(/&#x([0-9a-fA-F]+);/g, (_, code) =>
+    String.fromCharCode(Number.parseInt(code, 16)),
+  )
 
   return result
 }
@@ -1111,7 +1272,7 @@ export interface ContentAnalysis {
   hasVideo: boolean
   language: 'zh' | 'en' | 'mixed'
   coverImage: string | null
-  headings: Array<{ level: number, text: string, id: string }>
+  headings: Array<{ level: number; text: string; id: string }>
 }
 
 /**

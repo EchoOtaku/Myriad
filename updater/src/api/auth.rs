@@ -29,7 +29,9 @@ pub fn record_failure(key: &str) -> bool {
     let mut l = LIMITER.lock().unwrap();
     let entry = l.counters.entry(key.to_string()).or_default();
     let now = Instant::now();
-    entry.0.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
+    entry
+        .0
+        .retain(|t| now.duration_since(*t) < Duration::from_secs(60));
     entry.0.push(now);
     if entry.0.len() as u32 > MAX_FAILED_PER_MIN {
         entry.1 = Some(now + BLOCK_DURATION);
@@ -75,7 +77,10 @@ pub async fn token_required(
             return Err(StatusCode::UNAUTHORIZED);
         }
     };
-    if !constant_time_eq(provided.as_bytes(), state.config.update_token.expose().as_bytes()) {
+    if !constant_time_eq(
+        provided.as_bytes(),
+        state.config.update_token.expose().as_bytes(),
+    ) {
         record_failure(key);
         return Err(StatusCode::UNAUTHORIZED);
     }

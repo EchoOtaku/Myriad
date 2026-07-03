@@ -23,7 +23,11 @@ function getApiUrl(): string {
   if (typeof window !== 'undefined') {
     const origin = window.location.origin
     // 如果是标准端口（生产环境），返回空字符串使用相对路径
-    if (window.location.port === '' || window.location.port === '80' || window.location.port === '443') {
+    if (
+      window.location.port === '' ||
+      window.location.port === '80' ||
+      window.location.port === '443'
+    ) {
       return ''
     }
     // 开发环境返回当前 origin
@@ -36,7 +40,7 @@ function getApiUrl(): string {
 
 // 动态生成 connect-src 列表
 function getConnectSources(): string[] {
-  const sources = ['\'self\'']
+  const sources = ["'self'"]
 
   const apiUrl = getApiUrl()
 
@@ -45,11 +49,13 @@ function getConnectSources(): string[] {
     try {
       const url = new URL(apiUrl)
       const apiOrigin = url.origin
-      if (apiOrigin !== (typeof window !== 'undefined' ? window.location.origin : '')) {
+      if (
+        apiOrigin !==
+        (typeof window !== 'undefined' ? window.location.origin : '')
+      ) {
         sources.push(apiOrigin)
       }
-    }
-    catch {
+    } catch {
       // 如果解析失败，尝试直接添加
       if (apiUrl.startsWith('http')) {
         sources.push(apiUrl)
@@ -58,14 +64,19 @@ function getConnectSources(): string[] {
   }
 
   // 添加常见的本地开发地址（仅开发环境）
-  if (typeof window !== 'undefined' && (
-    window.location.hostname === 'localhost'
-    || window.location.hostname === '127.0.0.1'
-  )) {
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1')
+  ) {
     // 开发环境才添加 localhost 地址
-    if (window.location.port !== '' && window.location.port !== '80' && window.location.port !== '443') {
-      sources.push('http://localhost:3000')
-      sources.push('http://127.0.0.1:3000')
+    if (
+      window.location.port !== '' &&
+      window.location.port !== '80' &&
+      window.location.port !== '443'
+    ) {
+      sources.push('http://localhost:1103')
+      sources.push('http://127.0.0.1:1103')
     }
   }
 
@@ -79,56 +90,53 @@ function getConnectSources(): string[] {
 
 export const CSP_DIRECTIVES = {
   // 默认源：只允许同源内容
-  'default-src': ['\'self\''],
+  'default-src': ["'self'"],
 
   // 脚本源：允许同源和内联脚本（Astro需要）
   'script-src': [
-    '\'self\'',
-    '\'unsafe-inline\'', // Astro 内联脚本需要
-    '\'unsafe-eval\'', // 开发环境需要，生产环境应移除
+    "'self'",
+    "'unsafe-inline'", // Astro 内联脚本需要
+    "'unsafe-eval'", // 开发环境需要，生产环境应移除
   ],
 
   // 样式源：允许同源和内联样式
   'style-src': [
-    '\'self\'',
-    '\'unsafe-inline\'', // Tailwind CSS 需要
+    "'self'",
+    "'unsafe-inline'", // Tailwind CSS 需要
     'https://fonts.googleapis.com',
   ],
 
   // 字体源
-  'font-src': [
-    '\'self\'',
-    'https://fonts.gstatic.com',
-  ],
+  'font-src': ["'self'", 'https://fonts.gstatic.com'],
 
   // 图片源:允许同源、data URI 和外部图片服务
   'img-src': [
-    '\'self\'',
+    "'self'",
     'data:',
     'blob:',
     'https:', // 允许所有 HTTPS 图片(壁纸服务)
   ],
 
   // 媒体源
-  'media-src': ['\'self\''],
+  'media-src': ["'self'"],
 
   // 连接源：API 请求 - 动态生成
   'connect-src': [], // 将在 generateCSPString 中动态填充
 
   // Frame 源：禁止嵌入
-  'frame-src': ['\'none\''],
+  'frame-src': ["'none'"],
 
   // Object 源：禁止插件
-  'object-src': ['\'none\''],
+  'object-src': ["'none'"],
 
   // Base URI：限制 <base> 标签
-  'base-uri': ['\'self\''],
+  'base-uri': ["'self'"],
 
   // Form 动作：限制表单提交
-  'form-action': ['\'self\''],
+  'form-action': ["'self'"],
 
   // Frame 祖先：防止点击劫持
-  'frame-ancestors': ['\'none\''],
+  'frame-ancestors': ["'none'"],
 
   // 升级不安全请求（生产环境）
   'upgrade-insecure-requests': [],
@@ -146,14 +154,13 @@ export function generateCSPString(isDev: boolean = false): string {
   // 生产环境移除 unsafe-eval
   if (!isDev && directives['script-src']) {
     directives['script-src'] = directives['script-src'].filter(
-      src => src !== '\'unsafe-eval\'',
+      (src) => src !== "'unsafe-eval'",
     )
   }
 
   return Object.entries(directives)
     .map(([key, values]) => {
-      if (values.length === 0)
-        return key
+      if (values.length === 0) return key
       return `${key} ${values.join(' ')}`
     })
     .join('; ')

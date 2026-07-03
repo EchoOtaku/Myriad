@@ -25,7 +25,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getPageIntervalManager, getPageResizeManager, isPageVisible, onVisibility, registerPageCleanup } from '../core'
+import {
+  getPageIntervalManager,
+  getPageResizeManager,
+  isPageVisible,
+  onVisibility,
+  registerPageCleanup,
+} from '../core'
 import { Feature, hasFeature } from '../pageFeatures'
 
 const PAGE_ID = 'home'
@@ -94,8 +100,7 @@ export function useHomeVisibilityInterval(
   }, [callback])
 
   useEffect(() => {
-    if (!enabled)
-      return
+    if (!enabled) return
 
     if (visible) {
       intervalRef.current = setInterval(() => {
@@ -126,7 +131,7 @@ function getResizeManager() {
  */
 export function useHomeResize<T extends Element>(
   ref: React.RefObject<T>,
-): { width: number, height: number } {
+): { width: number; height: number } {
   const [size, setSize] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
@@ -136,15 +141,17 @@ export function useHomeResize<T extends Element>(
     }
 
     const el = ref.current
-    if (!el)
-      return
+    if (!el) return
 
     const observer = getResizeManager()
     const callback = (entry: ResizeObserverEntry) => {
       const { width, height } = entry.contentRect
       setSize((prev) => {
         // 避免不必要的更新
-        if (Math.abs(prev.width - width) < 1 && Math.abs(prev.height - height) < 1) {
+        if (
+          Math.abs(prev.width - width) < 1 &&
+          Math.abs(prev.height - height) < 1
+        ) {
           return prev
         }
         return { width, height }
@@ -178,19 +185,25 @@ export function useHomeResize<T extends Element>(
  * ```
  */
 export function useHomeResizeObserver(): {
-  observeHomeResize: (el: Element, callback: (entry: ResizeObserverEntry) => void) => void
+  observeHomeResize: (
+    el: Element,
+    callback: (entry: ResizeObserverEntry) => void,
+  ) => void
   unobserveHomeResize: (el: Element) => void
 } {
-  const observeHomeResize = useCallback((el: Element, callback: (entry: ResizeObserverEntry) => void) => {
-    if (!hasFeature(PAGE_ID, Feature.Resize)) {
-      return
-    }
-    const manager = getResizeManager()
-    manager.observe(el, callback)
-    // 立即触发一次
-    const rect = el.getBoundingClientRect()
-    callback({ contentRect: rect } as ResizeObserverEntry)
-  }, [])
+  const observeHomeResize = useCallback(
+    (el: Element, callback: (entry: ResizeObserverEntry) => void) => {
+      if (!hasFeature(PAGE_ID, Feature.Resize)) {
+        return
+      }
+      const manager = getResizeManager()
+      manager.observe(el, callback)
+      // 立即触发一次
+      const rect = el.getBoundingClientRect()
+      callback({ contentRect: rect } as ResizeObserverEntry)
+    },
+    [],
+  )
 
   const unobserveHomeResize = useCallback((el: Element) => {
     getResizeManager().unobserve(el)
@@ -254,11 +267,14 @@ export function useHomeIdle(
       return
     }
 
-    const id = requestIdleCallback(() => {
-      if (isPageVisible()) {
-        callback()
-      }
-    }, { timeout: 3000 })
+    const id = requestIdleCallback(
+      () => {
+        if (isPageVisible()) {
+          callback()
+        }
+      },
+      { timeout: 3000 },
+    )
 
     return () => cancelIdleCallback(id)
   }, deps)

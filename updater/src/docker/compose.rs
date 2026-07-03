@@ -118,7 +118,8 @@ impl ComposeRunner {
         let timeout_str = timeout_secs.to_string();
         let mut args: Vec<&str> = vec!["stop", "-t", &timeout_str];
         args.extend_from_slice(services);
-        self.run(&args, Duration::from_secs((timeout_secs as u64) + 60)).await
+        self.run(&args, Duration::from_secs((timeout_secs as u64) + 60))
+            .await
     }
 
     pub async fn start(&self, services: &[&str]) -> Result<ComposeOutput> {
@@ -140,9 +141,14 @@ impl ComposeRunner {
     }
 
     pub async fn ps_json(&self) -> Result<String> {
-        let out = self.run(&["ps", "--format", "json"], Duration::from_secs(30)).await?;
+        let out = self
+            .run(&["ps", "--format", "json"], Duration::from_secs(30))
+            .await?;
         if !out.ok() {
-            return Err(UpdaterError::Docker(format!("compose ps: {}", out.error_summary())));
+            return Err(UpdaterError::Docker(format!(
+                "compose ps: {}",
+                out.error_summary()
+            )));
         }
         Ok(out.stdout_tail)
     }

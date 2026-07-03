@@ -6,9 +6,10 @@
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   // 只在生产环境和支持 Service Worker 的浏览器中注册
   if (
-    import.meta.env.PROD
-      && 'serviceWorker' in navigator
-      && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')
+    import.meta.env.PROD &&
+    'serviceWorker' in navigator &&
+    (window.location.protocol === 'https:' ||
+      window.location.hostname === 'localhost')
   ) {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js', {
@@ -20,7 +21,10 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
         const newWorker = registration.installing
         if (newWorker) {
           newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            if (
+              newWorker.state === 'installed' &&
+              navigator.serviceWorker.controller
+            ) {
               // 新版本可用 - 可以在这里通知用户
               const event = new CustomEvent('sw-update-available', {
                 detail: { registration },
@@ -35,8 +39,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
       registration.update()
 
       return registration
-    }
-    catch (error) {
+    } catch (error) {
       console.error('[SW] Service Worker registration failed:', error)
       return null
     }
@@ -56,8 +59,7 @@ export async function unregisterServiceWorker(): Promise<boolean> {
         const success = await registration.unregister()
         return success
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('[SW] Service Worker unregister failed:', error)
     }
   }
@@ -71,9 +73,8 @@ export async function clearServiceWorkerCache(): Promise<void> {
   if ('serviceWorker' in navigator && 'caches' in window) {
     try {
       const keys = await caches.keys()
-      await Promise.all(keys.map(key => caches.delete(key)))
-    }
-    catch (error) {
+      await Promise.all(keys.map((key) => caches.delete(key)))
+    } catch (error) {
       console.error('[SW] Failed to clear caches:', error)
     }
   }
@@ -92,8 +93,7 @@ export async function sendMessageToSW(message: any): Promise<any> {
         messageChannel.port1.onmessage = (event) => {
           if (event.data.error) {
             reject(event.data.error)
-          }
-          else {
+          } else {
             resolve(event.data)
           }
         }

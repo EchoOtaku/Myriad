@@ -50,22 +50,19 @@ impl McpServer {
         tracing::info!(server = %self.config.id, "Starting MCP server");
 
         // 1. Spawn 子进程
-        let transport = StdioTransport::spawn(&self.config).await.map_err(|e| {
+        let transport = StdioTransport::spawn(&self.config).await.inspect_err(|e| {
             self.state = ServerState::Failed(e.clone());
-            e
         })?;
         self.transport = Some(transport);
 
         // 2. Initialize 握手
-        self.do_initialize().await.map_err(|e| {
+        self.do_initialize().await.inspect_err(|e| {
             self.state = ServerState::Failed(e.clone());
-            e
         })?;
 
         // 3. 发现工具列表
-        self.do_tools_list().await.map_err(|e| {
+        self.do_tools_list().await.inspect_err(|e| {
             self.state = ServerState::Failed(e.clone());
-            e
         })?;
 
         self.state = ServerState::Ready;

@@ -21,9 +21,9 @@ COPY --from=builder /work/proxy/target/release/myriad-proxy /usr/local/bin/myria
 
 ENV PROXY_LISTEN=0.0.0.0:80 \
     PROXY_STATE_FILE=/state/maintenance.json \
-    PROXY_BACKEND_UPSTREAM=http://backend:3000 \
-    PROXY_FRONTEND_UPSTREAM=http://frontend:4321 \
-    PROXY_UPDATER_UPSTREAM=http://updater:9090
+    PROXY_BACKEND_UPSTREAM=http://backend:1103 \
+    PROXY_FRONTEND_UPSTREAM=http://frontend:1102 \
+    PROXY_UPDATER_UPSTREAM=http://updater:1101
 
 EXPOSE 80
 

@@ -15,8 +15,8 @@ import type {
   CreateCategoryRequest,
   UpdateSourceRequest,
 } from '../types/brew'
-import { getCSRFToken } from '../utils/csrf'
 import { API_URL } from '../config'
+import { getCSRFToken } from '../utils/csrf'
 import { requestCache } from '../utils/requestCache'
 
 const API_BASE = `${API_URL}/api/brew`
@@ -119,13 +119,14 @@ export function invalidateSourcesCache(): void {
  * 添加订阅源
  */
 export async function addSource(req: AddSourceRequest): Promise<BrewSource> {
-  const data = await request<{ success: boolean, source: BrewSource, error?: string }>(
-    '/sources',
-    {
-      method: 'POST',
-      body: JSON.stringify(req),
-    },
-  )
+  const data = await request<{
+    success: boolean
+    source: BrewSource
+    error?: string
+  }>('/sources', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
   invalidateSourcesCache()
   return data.source
 }
@@ -137,7 +138,7 @@ export async function updateSource(
   id: number,
   req: UpdateSourceRequest,
 ): Promise<BrewSource> {
-  const data = await request<{ success: boolean, source: BrewSource }>(
+  const data = await request<{ success: boolean; source: BrewSource }>(
     `/sources/${id}`,
     {
       method: 'PUT',
@@ -160,7 +161,7 @@ export async function deleteSource(id: number): Promise<void> {
  * 刷新订阅源
  */
 export async function refreshSource(id: number): Promise<number> {
-  const data = await request<{ success: boolean, new_items: number }>(
+  const data = await request<{ success: boolean; new_items: number }>(
     `/sources/${id}/refresh`,
     { method: 'POST' },
   )
@@ -179,10 +180,13 @@ export async function discoverSource(url: string): Promise<{
   feed_type: string
   item_count: number
 }> {
-  const data = await request<{ success: boolean, feed: any }>('/sources/discover', {
-    method: 'POST',
-    body: JSON.stringify({ url }),
-  })
+  const data = await request<{ success: boolean; feed: any }>(
+    '/sources/discover',
+    {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    },
+  )
   return data.feed
 }
 
@@ -191,14 +195,17 @@ export async function discoverSource(url: string): Promise<{
 /**
  * 导入 OPML
  */
-export async function importOpml(opml: string): Promise<{ imported: number, skipped: number }> {
-  const data = await request<{ success: boolean, imported: number, skipped: number }>(
-    '/import-opml',
-    {
-      method: 'POST',
-      body: JSON.stringify({ opml }),
-    },
-  )
+export async function importOpml(
+  opml: string,
+): Promise<{ imported: number; skipped: number }> {
+  const data = await request<{
+    success: boolean
+    imported: number
+    skipped: number
+  }>('/import-opml', {
+    method: 'POST',
+    body: JSON.stringify({ opml }),
+  })
   invalidateSourcesCache()
   invalidateCategoriesCache()
   return { imported: data.imported, skipped: data.skipped }
@@ -219,7 +226,9 @@ export async function exportOpml(): Promise<string> {
 /**
  * 获取所有分类（带缓存）
  */
-export async function getCategories(): Promise<BrewCategoriesResponse['categories']> {
+export async function getCategories(): Promise<
+  BrewCategoriesResponse['categories']
+> {
   return requestCache.fetch(
     'brew:categories',
     async () => {
@@ -240,7 +249,9 @@ export function invalidateCategoriesCache(): void {
 /**
  * 创建分类
  */
-export async function createCategory(req: CreateCategoryRequest): Promise<void> {
+export async function createCategory(
+  req: CreateCategoryRequest,
+): Promise<void> {
   await request('/categories', {
     method: 'POST',
     body: JSON.stringify(req),
@@ -261,20 +272,16 @@ export async function deleteCategory(id: number): Promise<void> {
 /**
  * 获取文章列表
  */
-export async function getItems(query: BrewItemsQuery = {}): Promise<BrewItemsResponse> {
+export async function getItems(
+  query: BrewItemsQuery = {},
+): Promise<BrewItemsResponse> {
   const params = new URLSearchParams()
-  if (query.source_id)
-    params.set('source_id', String(query.source_id))
-  if (query.category)
-    params.set('category', query.category)
-  if (query.filter)
-    params.set('filter', query.filter)
-  if (query.sort_order)
-    params.set('sort_order', query.sort_order)
-  if (query.page)
-    params.set('page', String(query.page))
-  if (query.per_page)
-    params.set('per_page', String(query.per_page))
+  if (query.source_id) params.set('source_id', String(query.source_id))
+  if (query.category) params.set('category', query.category)
+  if (query.filter) params.set('filter', query.filter)
+  if (query.sort_order) params.set('sort_order', query.sort_order)
+  if (query.page) params.set('page', String(query.page))
+  if (query.per_page) params.set('per_page', String(query.per_page))
 
   const queryString = params.toString()
   const endpoint = queryString ? `/items?${queryString}` : '/items'
@@ -289,7 +296,9 @@ export async function getItem(id: number): Promise<BrewItem> {
   return requestCache.fetch(
     `brew:item:${id}`,
     async () => {
-      const data = await request<{ success: boolean, item: BrewItem }>(`/items/${id}`)
+      const data = await request<{ success: boolean; item: BrewItem }>(
+        `/items/${id}`,
+      )
       return data.item
     },
     CACHE_TTL.ITEM,
@@ -342,15 +351,20 @@ export async function unstarItem(itemId: number): Promise<void> {
 /**
  * 全部标记为已读
  */
-export async function markAllRead(options: {
-  source_id?: number
-  category?: string
-  before?: number
-} = {}): Promise<number> {
-  const data = await request<{ success: boolean, marked: number }>('/mark-all-read', {
-    method: 'POST',
-    body: JSON.stringify(options),
-  })
+export async function markAllRead(
+  options: {
+    source_id?: number
+    category?: string
+    before?: number
+  } = {},
+): Promise<number> {
+  const data = await request<{ success: boolean; marked: number }>(
+    '/mark-all-read',
+    {
+      method: 'POST',
+      body: JSON.stringify(options),
+    },
+  )
   invalidateSourcesCache() // 更新未读计数
   return data.marked
 }
@@ -387,8 +401,7 @@ export function createBrewWebSocket(
     try {
       const data = JSON.parse(event.data)
       onMessage(data)
-    }
-    catch (e) {
+    } catch (e) {
       console.error('Failed to parse WebSocket message:', e)
     }
   }
@@ -491,7 +504,7 @@ export async function getComments(itemId: number): Promise<CommentsResponse> {
 export async function createComment(
   itemId: number,
   req: CreateCommentRequest,
-): Promise<{ success: boolean, comment: CommentItem, error?: string }> {
+): Promise<{ success: boolean; comment: CommentItem; error?: string }> {
   return request(`/items/${itemId}/comments`, {
     method: 'POST',
     body: JSON.stringify(req),
@@ -504,7 +517,7 @@ export async function createComment(
 export async function updateComment(
   commentId: number,
   req: UpdateCommentRequest,
-): Promise<{ success: boolean, comment: CommentItem, error?: string }> {
+): Promise<{ success: boolean; comment: CommentItem; error?: string }> {
   return request(`/comments/${commentId}`, {
     method: 'PUT',
     body: JSON.stringify(req),
@@ -516,7 +529,7 @@ export async function updateComment(
  */
 export async function deleteComment(
   commentId: number,
-): Promise<{ success: boolean, error?: string }> {
+): Promise<{ success: boolean; error?: string }> {
   return request(`/comments/${commentId}`, {
     method: 'DELETE',
   })
@@ -534,7 +547,9 @@ export interface RepliesResponse {
 /**
  * 获取评论的回复列表
  */
-export async function getCommentReplies(commentId: number): Promise<RepliesResponse> {
+export async function getCommentReplies(
+  commentId: number,
+): Promise<RepliesResponse> {
   return request<RepliesResponse>(`/comments/${commentId}/replies`)
 }
 
@@ -545,7 +560,7 @@ export async function createReply(
   itemId: number,
   parentId: number,
   comment: string,
-): Promise<{ success: boolean, comment: CommentItem, error?: string }> {
+): Promise<{ success: boolean; comment: CommentItem; error?: string }> {
   return request(`/items/${itemId}/comments`, {
     method: 'POST',
     body: JSON.stringify({

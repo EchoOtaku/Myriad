@@ -25,7 +25,9 @@ export function Spinner({
   className = '',
 }: SpinnerProps) {
   return (
-    <div className={`spinner spinner-${size} spinner-${variant} ${className}`} />
+    <div
+      className={`spinner spinner-${size} spinner-${variant} ${className}`}
+    />
   )
 }
 

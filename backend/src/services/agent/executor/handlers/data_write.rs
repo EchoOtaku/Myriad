@@ -168,7 +168,7 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
         .ok_or("Missing platform parameter")?;
 
     let platforms_to_refresh = if platform == "all" {
-        vec!["steam", "bilibili", "github", "netease"]
+        vec!["steam", "bilibili", "bangumi", "github", "netease"]
     } else {
         vec![platform]
     };
@@ -410,7 +410,7 @@ async fn execute_brew_subscribe(
         .get("name")
         .and_then(|v| v.as_str())
         .filter(|s| !s.trim().is_empty())
-        .map(|s| sanitize_feed_name(s))
+        .map(sanitize_feed_name)
         .transpose()?;
     let category = params.get("category").and_then(|v| v.as_str());
     let update_interval = params
@@ -789,7 +789,7 @@ async fn execute_brew_mark(
                 .execute(sea_orm::Statement::from_sql_and_values(
                     sea_orm::DatabaseBackend::Postgres,
                     "UPDATE brew_sources SET unread_count = GREATEST(unread_count + $1, 0) WHERE id = $2 AND user_id = $3",
-                    [delta.into(), source.id.into(), (user_id as i32).into()],
+                    [delta.into(), source.id.into(), user_id.into()],
                 ))
                 .await;
         }

@@ -11,8 +11,8 @@ import { useEffect, useState } from 'react'
 
 type ThemeCallback = (isDark: boolean) => void
 
-let isDarkMode
-  = typeof document !== 'undefined'
+let isDarkMode =
+  typeof document !== 'undefined'
     ? document.documentElement.classList.contains('dark')
     : false
 
@@ -28,8 +28,7 @@ function notifySubscribers() {
     subscriberArray.forEach((callback) => {
       try {
         callback(isDarkMode)
-      }
-      catch (e) {
+      } catch (e) {
         console.error('Theme subscriber error:', e)
       }
     })
@@ -37,12 +36,14 @@ function notifySubscribers() {
 }
 
 function ensureObserver() {
-  if (observer || typeof document === 'undefined')
-    return
+  if (observer || typeof document === 'undefined') return
 
   observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+      if (
+        mutation.type === 'attributes' &&
+        mutation.attributeName === 'class'
+      ) {
         notifySubscribers()
         break
       }

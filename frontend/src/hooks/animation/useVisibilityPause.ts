@@ -63,20 +63,17 @@ export function useVisibilityInterval(
 
   // 调度下一次执行
   const scheduleNext = useCallback(() => {
-    if (cancelledRef.current || !isPageVisible())
-      return
+    if (cancelledRef.current || !isPageVisible()) return
 
     timeoutIdRef.current = window.setTimeout(() => {
-      if (cancelledRef.current || !isPageVisible())
-        return
+      if (cancelledRef.current || !isPageVisible()) return
       savedCallback.current()
       scheduleNext()
     }, delay)
   }, [delay])
 
   useEffect(() => {
-    if (!enabled)
-      return
+    if (!enabled) return
 
     cancelledRef.current = false
 
@@ -95,8 +92,7 @@ export function useVisibilityInterval(
         if (timeoutIdRef.current === null && !cancelledRef.current) {
           scheduleNext()
         }
-      }
-      else {
+      } else {
         // 页面隐藏，暂停定时
         clearTimer()
       }
@@ -149,15 +145,13 @@ export function useVisibilityTimeout(
   }, [callback])
 
   useEffect(() => {
-    if (!enabled)
-      return
+    if (!enabled) return
 
     hasExecutedRef.current = false
     remainingTimeRef.current = delay
 
     const startTimer = () => {
-      if (hasExecutedRef.current)
-        return
+      if (hasExecutedRef.current) return
 
       startTimeRef.current = Date.now()
       timeoutIdRef.current = window.setTimeout(() => {
@@ -174,7 +168,10 @@ export function useVisibilityTimeout(
         timeoutIdRef.current = null
         // 计算剩余时间
         const elapsed = Date.now() - startTimeRef.current
-        remainingTimeRef.current = Math.max(0, remainingTimeRef.current - elapsed)
+        remainingTimeRef.current = Math.max(
+          0,
+          remainingTimeRef.current - elapsed,
+        )
       }
     }
 
@@ -187,8 +184,7 @@ export function useVisibilityTimeout(
     const unsubscribe = onVisibility((isVisible) => {
       if (isVisible) {
         startTimer()
-      }
-      else {
+      } else {
         pauseTimer()
       }
     })

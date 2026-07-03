@@ -199,8 +199,7 @@ export function runWhenIdle(
 ): void {
   if ('requestIdleCallback' in window) {
     requestIdleCallback(fn, options)
-  }
-  else {
+  } else {
     // 降级为setTimeout
     setTimeout(fn, 1)
   }
@@ -221,13 +220,11 @@ export async function processBatched<T>(
     const batch = array.slice(i, i + batchSize)
 
     await Promise.all(
-      batch.map((item, batchIndex) =>
-        processor(item, i + batchIndex),
-      ),
+      batch.map((item, batchIndex) => processor(item, i + batchIndex)),
     )
 
     // 让出主线程
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await new Promise((resolve) => setTimeout(resolve, 0))
   }
 }
 
@@ -256,12 +253,10 @@ export async function measurePerformance<T>(
     performance.measure(measureName, startMark, endMark)
 
     return result
-  }
-  catch (error) {
+  } catch (error) {
     performance.mark(endMark)
     throw error
-  }
-  finally {
+  } finally {
     // 清理标记
     performance.clearMarks(startMark)
     performance.clearMarks(endMark)
@@ -286,7 +281,7 @@ export function preloadImage(src: string): Promise<void> {
  * @param srcs 图片URL数组
  */
 export async function preloadImages(srcs: string[]): Promise<void> {
-  await Promise.all(srcs.map(src => preloadImage(src)))
+  await Promise.all(srcs.map((src) => preloadImage(src)))
 }
 
 /**

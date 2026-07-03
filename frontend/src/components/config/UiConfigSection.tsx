@@ -3,7 +3,14 @@
  * 使用通用设置组件重构
  */
 
-import { FaGlobe, FaInfoCircle, FaLink, FaMagic, LuPalette, SiCloudflare } from '@lib/icons'
+import {
+  FaGlobe,
+  FaInfoCircle,
+  FaLink,
+  FaMagic,
+  LuPalette,
+  SiCloudflare,
+} from '@lib/icons'
 import React, { useCallback, useMemo } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 
@@ -18,7 +25,10 @@ import {
 // EdgeOne Logo
 const EdgeOneIcon: React.FC = () => (
   <svg viewBox="0 0 32 32" fill="none">
-    <path d="M29.8101 18.138C29.9349 17.4442 30 16.7297 30 16C30 15.3831 29.9535 14.7772 29.8637 14.1854C29.829 13.9567 29.6296 13.792 29.3983 13.792H21.6802C21.4277 13.792 21.2439 13.5525 21.3093 13.3086L22.2229 9.89892C22.2904 9.6471 22.5185 9.472 22.7792 9.472H27.3634C27.668 9.472 27.8488 9.13574 27.6682 8.89047C25.4834 5.9244 21.9664 4 18 4C11.3726 4 6 9.37258 6 16C6 19.0173 7.11361 21.7745 8.95224 23.883C9.14804 24.1076 9.5076 24.0146 9.58436 23.7268L12.2394 13.7702C12.2882 13.5874 12.1504 13.408 11.9612 13.408H9.65504C9.40274 13.408 9.21899 13.1689 9.284 12.9251L10.0327 10.1174C10.0889 9.90673 10.28 9.76117 10.498 9.75666C13.0104 9.70465 15.493 9.04698 17.6975 7.84351C17.9253 7.71913 18.2007 7.92739 18.1338 8.1782L13.2499 26.4929C13.177 26.7664 13.313 27.0538 13.5761 27.1582C14.9451 27.7014 16.4377 28 18 28C21.7878 28 25.1656 26.2451 27.3649 23.5039C27.5597 23.2611 27.3809 22.912 27.0696 22.912H19.2365C18.984 22.912 18.8002 22.6725 18.8656 22.4286L19.7792 19.0189C19.8467 18.7671 20.0749 18.592 20.3356 18.592H29.2564C29.5268 18.592 29.7622 18.4042 29.8101 18.138Z" fill="#0055D2" />
+    <path
+      d="M29.8101 18.138C29.9349 17.4442 30 16.7297 30 16C30 15.3831 29.9535 14.7772 29.8637 14.1854C29.829 13.9567 29.6296 13.792 29.3983 13.792H21.6802C21.4277 13.792 21.2439 13.5525 21.3093 13.3086L22.2229 9.89892C22.2904 9.6471 22.5185 9.472 22.7792 9.472H27.3634C27.668 9.472 27.8488 9.13574 27.6682 8.89047C25.4834 5.9244 21.9664 4 18 4C11.3726 4 6 9.37258 6 16C6 19.0173 7.11361 21.7745 8.95224 23.883C9.14804 24.1076 9.5076 24.0146 9.58436 23.7268L12.2394 13.7702C12.2882 13.5874 12.1504 13.408 11.9612 13.408H9.65504C9.40274 13.408 9.21899 13.1689 9.284 12.9251L10.0327 10.1174C10.0889 9.90673 10.28 9.76117 10.498 9.75666C13.0104 9.70465 15.493 9.04698 17.6975 7.84351C17.9253 7.71913 18.2007 7.92739 18.1338 8.1782L13.2499 26.4929C13.177 26.7664 13.313 27.0538 13.5761 27.1582C14.9451 27.7014 16.4377 28 18 28C21.7878 28 25.1656 26.2451 27.3649 23.5039C27.5597 23.2611 27.3809 22.912 27.0696 22.912H19.2365C18.984 22.912 18.8002 22.6725 18.8656 22.4286L19.7792 19.0189C19.8467 18.7671 20.0749 18.592 20.3356 18.592H29.2564C29.5268 18.592 29.7622 18.4042 29.8101 18.138Z"
+      fill="#0055D2"
+    />
   </svg>
 )
 
@@ -69,26 +79,38 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
   const { t } = useI18n()
 
   // 辅助函数：获取配置字段值
-  const getFieldValue = useCallback((key: string) => {
-    return configFields.find(f => f.key === key)?.value || ''
-  }, [configFields])
+  const getFieldValue = useCallback(
+    (key: string) => {
+      return configFields.find((f) => f.key === key)?.value || ''
+    },
+    [configFields],
+  )
 
   // 站点元数据字段
-  const siteMetadataFields = useMemo(() =>
-    configFields.filter(f => ['site_title', 'site_description', 'site_favicon'].includes(f.key)), [configFields])
+  const siteMetadataFields = useMemo(
+    () =>
+      configFields.filter((f) =>
+        ['site_title', 'site_description', 'site_favicon'].includes(f.key),
+      ),
+    [configFields],
+  )
 
   // 背景主题字段（排除特定前缀和字段）
-  const backgroundFields = useMemo(() =>
-    configFields.filter(f =>
-      !f.key.startsWith('pet_')
-      && !f.key.startsWith('github_')
-      && !f.key.startsWith('music_')
-      && !f.key.startsWith('proxy_')
-      && !f.key.startsWith('evocative_')
-      && !f.key.startsWith('site_')
-      && !f.key.endsWith('_base_url')
-      && !['base_url', 'wallpaper_parallax', 'cloud_sponsors'].includes(f.key),
-    ), [configFields])
+  const backgroundFields = useMemo(
+    () =>
+      configFields.filter(
+        (f) =>
+          !f.key.startsWith('pet_') &&
+          !f.key.startsWith('github_') &&
+          !f.key.startsWith('music_') &&
+          !f.key.startsWith('proxy_') &&
+          !f.key.startsWith('evocative_') &&
+          !f.key.startsWith('site_') &&
+          !f.key.endsWith('_base_url') &&
+          !['base_url', 'wallpaper_parallax', 'cloud_sponsors'].includes(f.key),
+      ),
+    [configFields],
+  )
 
   return (
     <SettingSection
@@ -98,15 +120,12 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       sectionId={sectionId}
     >
       {/* 站点 URL 配置 */}
-      <SettingGroup
-        title={t.config.siteUrlConfig}
-        icon={<FaLink />}
-      >
+      <SettingGroup title={t.config.siteUrlConfig} icon={<FaLink />}>
         <InputItem
           itemKey="base_url"
           label={t.config.baseUrl}
           value={getFieldValue('base_url')}
-          onChange={v => updateValue('base_url', v)}
+          onChange={(v) => updateValue('base_url', v)}
           placeholder={t.config.baseUrlPlaceholder}
           hint={t.config.baseUrlHint}
           layout="vertical"
@@ -114,18 +133,15 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       </SettingGroup>
 
       {/* 站点元数据 */}
-      <SettingGroup
-        title={t.config.siteMetadata}
-        icon={<FaGlobe />}
-      >
-        {siteMetadataFields.map(field => (
+      <SettingGroup title={t.config.siteMetadata} icon={<FaGlobe />}>
+        {siteMetadataFields.map((field) => (
           <InputItem
             key={field.key}
             itemKey={field.key}
             label={getFieldLabel(field.key, field.label)}
             required={field.required}
             value={field.value}
-            onChange={v => updateValue(field.key, v)}
+            onChange={(v) => updateValue(field.key, v)}
             placeholder={getFieldPlaceholder(field.key, field.placeholder)}
             multiline={field.key === 'site_description'}
             rows={2}
@@ -144,7 +160,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           itemKey="site_icp"
           label={t.config.siteIcp}
           value={getFieldValue('site_icp')}
-          onChange={v => updateValue('site_icp', v)}
+          onChange={(v) => updateValue('site_icp', v)}
           placeholder={t.config.siteIcpPlaceholder}
           hint={t.config.siteIcpHint}
           layout="vertical"
@@ -153,7 +169,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           itemKey="site_gongan"
           label={t.config.siteGongan}
           value={getFieldValue('site_gongan')}
-          onChange={v => updateValue('site_gongan', v)}
+          onChange={(v) => updateValue('site_gongan', v)}
           placeholder={t.config.siteGonganPlaceholder}
           hint={t.config.siteGonganHint}
           layout="vertical"
@@ -163,35 +179,52 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           label={t.config.cloudSponsors}
           description={t.config.cloudSponsorsHint}
           options={[
-            { key: 'cloudflare', label: t.config.cloudflare, icon: <SiCloudflare style={{ color: '#F38020' }} />, value: getFieldValue('cloud_sponsors').includes('cloudflare') },
-            { key: 'edgeone', label: t.config.edgeone, icon: <EdgeOneIcon />, value: getFieldValue('cloud_sponsors').includes('edgeone') },
-            { key: 'upyun', label: t.config.upyun, icon: <UpyunIcon />, value: getFieldValue('cloud_sponsors').includes('upyun') },
+            {
+              key: 'cloudflare',
+              label: t.config.cloudflare,
+              icon: <SiCloudflare style={{ color: '#F38020' }} />,
+              value: getFieldValue('cloud_sponsors').includes('cloudflare'),
+            },
+            {
+              key: 'edgeone',
+              label: t.config.edgeone,
+              icon: <EdgeOneIcon />,
+              value: getFieldValue('cloud_sponsors').includes('edgeone'),
+            },
+            {
+              key: 'upyun',
+              label: t.config.upyun,
+              icon: <UpyunIcon />,
+              value: getFieldValue('cloud_sponsors').includes('upyun'),
+            },
           ]}
           onChange={(key, checked) => {
-            const current = getFieldValue('cloud_sponsors').split(',').map(s => s.trim()).filter(Boolean)
+            const current = getFieldValue('cloud_sponsors')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
             const newSponsors = checked
-              ? [...current.filter(s => s !== key), key]
-              : current.filter(s => s !== key)
+              ? [...current.filter((s) => s !== key), key]
+              : current.filter((s) => s !== key)
             updateValue('cloud_sponsors', newSponsors.join(','))
           }}
         />
       </SettingGroup>
 
       {/* 背景与主题 */}
-      <SettingGroup
-        title={t.config.backgroundAndTheme}
-        icon={<LuPalette />}
-      >
-        {backgroundFields.map(field => (
+      <SettingGroup title={t.config.backgroundAndTheme} icon={<LuPalette />}>
+        {backgroundFields.map((field) => (
           <InputItem
             key={field.key}
             itemKey={field.key}
             label={getFieldLabel(field.key, field.label)}
             required={field.required}
             value={field.value}
-            onChange={v => updateValue(field.key, v)}
+            onChange={(v) => updateValue(field.key, v)}
             placeholder={getFieldPlaceholder(field.key, field.placeholder)}
-            inputType={field.field_type as 'text' | 'password' | 'url' | 'email'}
+            inputType={
+              field.field_type as 'text' | 'password' | 'url' | 'email'
+            }
             layout="vertical"
           />
         ))}
@@ -207,11 +240,28 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         <CheckboxGroupItem
           label={t.config.evocativeEffects || '动效开关'}
           options={[
-            { key: 'evocative_parallax', label: t.config.fieldEvocativeParallax, description: t.config.fieldEvocativeParallaxHint, value: getFieldValue('evocative_parallax') === 'true' },
-            { key: 'evocative_dynamic_blur', label: t.config.fieldEvocativeDynamicBlur, description: t.config.fieldEvocativeDynamicBlurHint, value: getFieldValue('evocative_dynamic_blur') === 'true' },
-            { key: 'evocative_ripple', label: t.config.fieldEvocativeRipple, description: t.config.fieldEvocativeRippleHint, value: getFieldValue('evocative_ripple') === 'true' },
+            {
+              key: 'evocative_parallax',
+              label: t.config.fieldEvocativeParallax,
+              description: t.config.fieldEvocativeParallaxHint,
+              value: getFieldValue('evocative_parallax') === 'true',
+            },
+            {
+              key: 'evocative_dynamic_blur',
+              label: t.config.fieldEvocativeDynamicBlur,
+              description: t.config.fieldEvocativeDynamicBlurHint,
+              value: getFieldValue('evocative_dynamic_blur') === 'true',
+            },
+            {
+              key: 'evocative_ripple',
+              label: t.config.fieldEvocativeRipple,
+              description: t.config.fieldEvocativeRippleHint,
+              value: getFieldValue('evocative_ripple') === 'true',
+            },
           ]}
-          onChange={(key, checked) => updateValue(key, checked ? 'true' : 'false')}
+          onChange={(key, checked) =>
+            updateValue(key, checked ? 'true' : 'false')
+          }
         />
 
         {/* 动效帧率 */}
@@ -219,7 +269,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           itemKey="evocative_fps"
           label={t.config.fieldEvocativeFps}
           value={getFieldValue('evocative_fps') || '30'}
-          onChange={v => updateValue('evocative_fps', v)}
+          onChange={(v) => updateValue('evocative_fps', v)}
           options={[
             { value: '30', label: `30 FPS (${t.config.fpsBalanced})` },
             { value: '60', label: `60 FPS (${t.config.fpsSmooth})` },
@@ -233,7 +283,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           itemKey="evocative_ripple_quality"
           label={t.config.fieldEvocativeRippleQuality}
           value={getFieldValue('evocative_ripple_quality') || '0.85'}
-          onChange={v => updateValue('evocative_ripple_quality', v)}
+          onChange={(v) => updateValue('evocative_ripple_quality', v)}
           options={[
             { value: '0.5', label: `50% (${t.config.qualityLow})` },
             { value: '0.65', label: `65% (${t.config.qualityMedium})` },

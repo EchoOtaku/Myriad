@@ -14,6 +14,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -25,6 +26,7 @@
     opacity: 0;
     transform: translateY(20px) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) translateZ(0);
@@ -37,6 +39,7 @@
     opacity: 0;
     transform: translateX(-30px) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: translateX(0) translateZ(0);
@@ -49,6 +52,7 @@
     opacity: 0;
     transform: translateY(20px) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) translateZ(0);
@@ -61,6 +65,7 @@
     opacity: 0;
     transform: translateY(-20px) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) translateZ(0);
@@ -73,6 +78,7 @@
     opacity: 0;
     transform: translateX(30px) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: translateX(0) translateZ(0);
@@ -85,6 +91,7 @@
     opacity: 0;
     transform: scale(0.9) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: scale(1) translateZ(0);
@@ -97,6 +104,7 @@
     opacity: 0;
     transform: translateY(8px) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) translateZ(0);
@@ -109,6 +117,7 @@
     opacity: 0;
     transform: translate(-50%, -30px) scale(0.95) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: translate(-50%, 0) scale(1) translateZ(0);
@@ -120,6 +129,7 @@
     opacity: 1;
     transform: translate(-50%, 0) scale(1) translateZ(0);
   }
+
   to {
     opacity: 0;
     transform: translate(-50%, -20px) scale(0.95) translateZ(0);
@@ -131,6 +141,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -142,6 +153,7 @@
     opacity: 0;
     transform: translateY(20px) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) translateZ(0);
@@ -153,6 +165,7 @@
     opacity: 0;
     transform: translateX(30px) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: translateX(0) translateZ(0);
@@ -164,6 +177,7 @@
     opacity: 0;
     transform: scale(0.9) translateZ(0);
   }
+
   to {
     opacity: 1;
     transform: scale(1) translateZ(0);
@@ -175,6 +189,7 @@
   from {
     transform: rotate(0deg) translateZ(0);
   }
+
   to {
     transform: rotate(360deg) translateZ(0);
   }
@@ -187,6 +202,7 @@
     opacity: 1;
     transform: scale(1) translateZ(0);
   }
+
   50% {
     opacity: 0.7;
     transform: scale(0.95) translateZ(0);

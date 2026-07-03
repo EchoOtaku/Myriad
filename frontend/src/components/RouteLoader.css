@@ -12,7 +12,7 @@
 }
 
 /* 桌面端：垂直导航岛，指示器在上方 */
-@media (min-width: 768px) {
+@media (width >= 768px) {
   .route-loader-indicator {
     top: 1.5rem;
     left: 1.5rem;
@@ -20,7 +20,7 @@
 }
 
 /* 移动端：水平导航岛，指示器在左上角 */
-@media (max-width: 767px) {
+@media (width <= 767px) {
   .route-loader-indicator {
     top: 1rem;
     left: 1rem;
@@ -33,7 +33,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  border: 1.5px solid rgba(0, 0, 0, 0.1);
+  border: 1.5px solid rgb(0 0 0 / 10%);
   border-top-color: var(--color-primary, #6366f1);
 }
 
@@ -55,6 +55,7 @@
     opacity: 0;
     transform: scale(0.5);
   }
+
   100% {
     opacity: 1;
     transform: scale(1);
@@ -67,6 +68,7 @@
     opacity: 1;
     transform: scale(1);
   }
+
   100% {
     opacity: 0;
     transform: scale(0.5);
@@ -76,7 +78,7 @@
 /* 暗黑模式 */
 @media (prefers-color-scheme: dark) {
   .route-loader-light {
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: rgb(255 255 255 / 10%);
     border-top-color: var(--color-primary, #818cf8);
   }
 }

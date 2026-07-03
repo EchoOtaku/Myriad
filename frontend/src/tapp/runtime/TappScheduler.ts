@@ -22,7 +22,8 @@ export type ExecutionTarget = 'backend' | 'frontend' | 'both'
 export type MissedPolicy = 'skip' | 'run-once' | 'run-all'
 
 /** 任务执行状态 */
-export type TaskExecutionStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+export type TaskExecutionStatus =
+  'pending' | 'running' | 'success' | 'failed' | 'cancelled'
 
 /** 调度配置 */
 export interface ScheduleConfig {
@@ -45,13 +46,24 @@ export interface RetryConfig {
 }
 
 /** 后端操作定义 */
-export type BackendAction
-  = | { type: 'platform.sync', platform: string }
-    | { type: 'storage.set', key: string, value: unknown }
-    | { type: 'storage.delete', key: string }
-    | { type: 'ai.generate', prompt: string }
-    | { type: 'fetch', url: string, method?: string, headers?: Record<string, string>, body?: unknown }
-    | { type: 'notification.queue', title?: string, message: string, notificationType?: string }
+export type BackendAction =
+  | { type: 'platform.sync'; platform: string }
+  | { type: 'storage.set'; key: string; value: unknown }
+  | { type: 'storage.delete'; key: string }
+  | { type: 'ai.generate'; prompt: string }
+  | {
+      type: 'fetch'
+      url: string
+      method?: string
+      headers?: Record<string, string>
+      body?: unknown
+    }
+  | {
+      type: 'notification.queue'
+      title?: string
+      message: string
+      notificationType?: string
+    }
 
 /** 任务注册选项 */
 export interface TaskRegistrationOptions {
@@ -114,7 +126,10 @@ export interface TaskExecutionEvent {
 }
 
 /** 任务回调函数 */
-export type TaskCallback = (payload: unknown, event: TaskExecutionEvent) => void | Promise<void>
+export type TaskCallback = (
+  payload: unknown,
+  event: TaskExecutionEvent,
+) => void | Promise<void>
 
 /** WebSocket 消息类型 */
 interface SchedulerWebSocketMessage {
@@ -250,8 +265,7 @@ export class TappScheduler {
       this.ws.onerror = (error) => {
         console.error('[TappScheduler] WebSocket error:', error)
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('[TappScheduler] Failed to create WebSocket:', error)
       this.scheduleReconnect()
     }
@@ -293,7 +307,9 @@ export class TappScheduler {
     this.reconnectAttempts++
     const delay = this.reconnectInterval * Math.min(this.reconnectAttempts, 5)
 
-    console.log(`[TappScheduler] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
+    console.log(
+      `[TappScheduler] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`,
+    )
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
@@ -328,8 +344,7 @@ export class TappScheduler {
     if (this.ws && this.connected) {
       try {
         this.ws.send(JSON.stringify({ type: 'ping' }))
-      }
-      catch {
+      } catch {
         // 忽略发送错误
       }
     }
@@ -358,8 +373,7 @@ export class TappScheduler {
         default:
           console.log('[TappScheduler] Unknown message type:', message)
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('[TappScheduler] Failed to parse message:', error)
     }
   }
@@ -367,7 +381,9 @@ export class TappScheduler {
   /**
    * 处理任务执行事件
    */
-  private async handleTaskExecution(message: SchedulerWebSocketMessage): Promise<void> {
+  private async handleTaskExecution(
+    message: SchedulerWebSocketMessage,
+  ): Promise<void> {
     if (!message.task) {
       return
     }
@@ -388,10 +404,13 @@ export class TappScheduler {
       try {
         await callback(message.payload, event)
         this.reportTaskComplete(event.executionId, true)
-      }
-      catch (error) {
+      } catch (error) {
         console.error('[TappScheduler] Task callback error:', error)
-        this.reportTaskComplete(event.executionId, false, error instanceof Error ? error.message : 'Unknown error')
+        this.reportTaskComplete(
+          event.executionId,
+          false,
+          error instanceof Error ? error.message : 'Unknown error',
+        )
       }
     }
 
@@ -399,8 +418,7 @@ export class TappScheduler {
     for (const globalCallback of this.globalCallbacks) {
       try {
         await globalCallback(message.payload, event)
-      }
-      catch (error) {
+      } catch (error) {
         console.error('[TappScheduler] Global callback error:', error)
       }
     }
@@ -409,17 +427,22 @@ export class TappScheduler {
   /**
    * 报告任务完成状态
    */
-  private reportTaskComplete(executionId: number, success: boolean, error?: string): void {
+  private reportTaskComplete(
+    executionId: number,
+    success: boolean,
+    error?: string,
+  ): void {
     if (this.ws && this.connected) {
       try {
-        this.ws.send(JSON.stringify({
-          type: 'task:complete',
-          executionId,
-          success,
-          error,
-        }))
-      }
-      catch {
+        this.ws.send(
+          JSON.stringify({
+            type: 'task:complete',
+            executionId,
+            success,
+            error,
+          }),
+        )
+      } catch {
         // 忽略发送错误
       }
     }
@@ -432,8 +455,7 @@ export class TappScheduler {
     for (const listener of this.connectionListeners) {
       try {
         listener(connected)
-      }
-      catch {
+      } catch {
         // 忽略监听器错误
       }
     }
@@ -461,8 +483,14 @@ export class TappScheduler {
   /**
    * 注册定时任务
    */
-  async registerTask(tappId: string, options: TaskRegistrationOptions): Promise<RegisteredTask> {
-    const response = await this.apiRequest<{ success: boolean, task: RegisteredTask }>('POST', '/tasks', {
+  async registerTask(
+    tappId: string,
+    options: TaskRegistrationOptions,
+  ): Promise<RegisteredTask> {
+    const response = await this.apiRequest<{
+      success: boolean
+      task: RegisteredTask
+    }>('POST', '/tasks', {
       tapp_id: tappId,
       task_id: options.taskId,
       name: options.name,
@@ -494,19 +522,27 @@ export class TappScheduler {
    */
   async listTasks(tappId?: string): Promise<RegisteredTask[]> {
     const endpoint = tappId ? `/${tappId}/tasks` : '/tasks'
-    const response = await this.apiRequest<{ success: boolean, tasks: RegisteredTask[] }>('GET', endpoint)
+    const response = await this.apiRequest<{
+      success: boolean
+      tasks: RegisteredTask[]
+    }>('GET', endpoint)
     return response.tasks || []
   }
 
   /**
    * 获取单个任务
    */
-  async getTask(tappId: string, taskId: string): Promise<RegisteredTask | null> {
+  async getTask(
+    tappId: string,
+    taskId: string,
+  ): Promise<RegisteredTask | null> {
     try {
-      const response = await this.apiRequest<{ success: boolean, task: RegisteredTask }>('GET', `/${tappId}/tasks/${taskId}`)
+      const response = await this.apiRequest<{
+        success: boolean
+        task: RegisteredTask
+      }>('GET', `/${tappId}/tasks/${taskId}`)
       return response.task || null
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -578,7 +614,9 @@ export class TappScheduler {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }))
+      const error = await response
+        .json()
+        .catch(() => ({ error: 'Request failed' }))
       throw new Error(error.error || `HTTP ${response.status}`)
     }
 

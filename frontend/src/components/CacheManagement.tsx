@@ -8,8 +8,14 @@
  * 4. 触发后台处理任务
  */
 
-import { FaClock, FaExclamationCircle, FaHdd, FaSyncAlt, FaTrash } from '@lib/icons'
-import React, { useEffect, useState } from 'react'
+import {
+  FaClock,
+  FaExclamationCircle,
+  FaHdd,
+  FaSyncAlt,
+  FaTrash,
+} from '@lib/icons'
+import { useEffect, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 import { useBackgroundTasks } from '../hooks/useBackgroundTasks'
 import { TaskStatus } from './TaskStatus'
@@ -27,7 +33,9 @@ export function CacheManagement() {
   const [totalSize, setTotalSize] = useState<string>('0.00')
   const [isLoading, setIsLoading] = useState(true)
   const [activeTask, setActiveTask] = useState<string | null>(null)
-  const [processingPlatform, setProcessingPlatform] = useState<string | null>(null)
+  const [processingPlatform, setProcessingPlatform] = useState<string | null>(
+    null,
+  )
   const { t, locale } = useI18n()
 
   const {
@@ -55,7 +63,9 @@ export function CacheManagement() {
   }, [])
 
   const handleClearCache = async (platform: string) => {
-    if (!confirm(t.cache.clearPlatformConfirm.replace('{platform}', platform))) {
+    if (
+      !confirm(t.cache.clearPlatformConfirm.replace('{platform}', platform))
+    ) {
       return
     }
 
@@ -63,8 +73,7 @@ export function CacheManagement() {
 
     if (success) {
       await loadCacheStatus()
-    }
-    else {
+    } else {
       alert(t.cache.clearFailed.replace('{platform}', platform))
     }
   }
@@ -78,8 +87,7 @@ export function CacheManagement() {
 
     if (success) {
       await loadCacheStatus()
-    }
-    else {
+    } else {
       alert(t.cache.clearFailed)
     }
   }
@@ -90,8 +98,7 @@ export function CacheManagement() {
     if (taskId) {
       setActiveTask(taskId)
       setProcessingPlatform(platform)
-    }
-    else {
+    } else {
       alert(t.cache.submitTaskFailed.replace('{platform}', platform))
     }
   }
@@ -108,15 +115,13 @@ export function CacheManagement() {
   }
 
   const formatSize = (bytes?: number): string => {
-    if (!bytes)
-      return '-'
+    if (!bytes) return '-'
     const mb = bytes / 1024 / 1024
     return `${mb.toFixed(2)} MB`
   }
 
   const formatDate = (dateString?: string): string => {
-    if (!dateString)
-      return '-'
+    if (!dateString) return '-'
     return new Date(dateString).toLocaleString(locale)
   }
 
@@ -124,7 +129,9 @@ export function CacheManagement() {
     return (
       <div className="flex items-center justify-center p-8">
         <FaSyncAlt className="w-6 h-6 animate-spin text-gray-400" />
-        <span className="ml-2 text-gray-600 dark:text-gray-400">{t.cache.loading}</span>
+        <span className="ml-2 text-gray-600 dark:text-gray-400">
+          {t.cache.loading}
+        </span>
       </div>
     )
   }
@@ -148,15 +155,14 @@ export function CacheManagement() {
       {/* 总览 */}
       <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-gray-200 dark:border-neutral-700 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t.cache.title}</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+            {t.cache.title}
+          </h2>
           <div className="flex items-center gap-4">
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              {t.cache.totalSize}
-              :
+              {t.cache.totalSize}:
               <span className="font-semibold text-gray-900 dark:text-gray-100">
-                {totalSize}
-                {' '}
-                MB
+                {totalSize} MB
               </span>
             </div>
             <button
@@ -182,7 +188,7 @@ export function CacheManagement() {
 
         {/* 缓存列表 */}
         <div className="space-y-3">
-          {caches.map(cache => (
+          {caches.map((cache) => (
             <div
               key={cache.platform}
               className={`border rounded-lg p-4 transition-all ${
@@ -197,17 +203,15 @@ export function CacheManagement() {
                     <h3 className="font-medium text-gray-900 dark:text-gray-100 capitalize">
                       {cache.platform}
                     </h3>
-                    {cache.exists
-                      ? (
-                          <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs rounded-full">
-                            {t.cache.cached}
-                          </span>
-                        )
-                      : (
-                          <span className="px-2 py-1 bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-400 text-xs rounded-full">
-                            {t.cache.notCached}
-                          </span>
-                        )}
+                    {cache.exists ? (
+                      <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs rounded-full">
+                        {t.cache.cached}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-1 bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-400 text-xs rounded-full">
+                        {t.cache.notCached}
+                      </span>
+                    )}
                   </div>
 
                   {cache.exists && (
@@ -215,18 +219,13 @@ export function CacheManagement() {
                       <div className="flex items-center gap-2">
                         <FaHdd className="w-4 h-4" />
                         <span>
-                          {t.cache.size}
-                          :
-                          {' '}
-                          {formatSize(cache.size_bytes)}
+                          {t.cache.size}:{formatSize(cache.size_bytes)}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <FaClock className="w-4 h-4" />
                         <span>
-                          {t.cache.modifiedTime}
-                          :
-                          {' '}
+                          {t.cache.modifiedTime}:{' '}
                           {formatDate(cache.modified_at)}
                         </span>
                       </div>
@@ -253,13 +252,17 @@ export function CacheManagement() {
                   )}
                   <button
                     onClick={() => handleProcessPlatform(cache.platform)}
-                    disabled={isSubmitting || processingPlatform === cache.platform}
+                    disabled={
+                      isSubmitting || processingPlatform === cache.platform
+                    }
                     className="px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white rounded-lg transition-colors flex items-center gap-2 text-sm"
                     title={cache.exists ? t.cache.reprocess : t.cache.process}
                   >
                     <FaSyncAlt
                       className={`w-4 h-4 ${
-                        processingPlatform === cache.platform ? 'animate-spin' : ''
+                        processingPlatform === cache.platform
+                          ? 'animate-spin'
+                          : ''
                       }`}
                     />
                     {cache.exists ? t.cache.reprocess : t.cache.process}
@@ -278,22 +281,10 @@ export function CacheManagement() {
           <div className="text-sm text-blue-900 dark:text-blue-100">
             <p className="font-medium mb-2">{t.cache.aboutCaching}</p>
             <ul className="space-y-1 text-blue-800 dark:text-blue-200">
-              <li>
-                •
-                {t.cache.cacheHint1}
-              </li>
-              <li>
-                •
-                {t.cache.cacheHint2}
-              </li>
-              <li>
-                •
-                {t.cache.cacheHint3}
-              </li>
-              <li>
-                •
-                {t.cache.cacheHint4}
-              </li>
+              <li>•{t.cache.cacheHint1}</li>
+              <li>•{t.cache.cacheHint2}</li>
+              <li>•{t.cache.cacheHint3}</li>
+              <li>•{t.cache.cacheHint4}</li>
             </ul>
           </div>
         </div>

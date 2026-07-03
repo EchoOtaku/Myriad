@@ -3,13 +3,13 @@
  * 显示版本号、备案号、云赞助商 Logo
  */
 
-import './SiteFooter.css'
+import { SiCloudflare } from '@lib/icons'
 
 import React, { memo, useEffect, useState } from 'react'
 
 import { API_URL } from '../config'
-import { SiCloudflare } from '@lib/icons'
 import { fetchJson } from '../utils/apiHelper'
+import './SiteFooter.css'
 
 // Myriad 版本号 - 从 package.json 读取
 const MYRIAD_VERSION = __APP_VERSION__ || '0.1.0'
@@ -47,12 +47,18 @@ L282.639,281.223L282.639,281.223
 // EdgeOne Logo
 const EdgeOneLogo: React.FC<{ className?: string }> = ({ className }) => (
   <svg viewBox="0 0 32 32" fill="none" className={className}>
-    <path d="M29.8101 18.138C29.9349 17.4442 30 16.7297 30 16C30 15.3831 29.9535 14.7772 29.8637 14.1854C29.829 13.9567 29.6296 13.792 29.3983 13.792H21.6802C21.4277 13.792 21.2439 13.5525 21.3093 13.3086L22.2229 9.89892C22.2904 9.6471 22.5185 9.472 22.7792 9.472H27.3634C27.668 9.472 27.8488 9.13574 27.6682 8.89047C25.4834 5.9244 21.9664 4 18 4C11.3726 4 6 9.37258 6 16C6 19.0173 7.11361 21.7745 8.95224 23.883C9.14804 24.1076 9.5076 24.0146 9.58436 23.7268L12.2394 13.7702C12.2882 13.5874 12.1504 13.408 11.9612 13.408H9.65504C9.40274 13.408 9.21899 13.1689 9.284 12.9251L10.0327 10.1174C10.0889 9.90673 10.28 9.76117 10.498 9.75666C13.0104 9.70465 15.493 9.04698 17.6975 7.84351C17.9253 7.71913 18.2007 7.92739 18.1338 8.1782L13.2499 26.4929C13.177 26.7664 13.313 27.0538 13.5761 27.1582C14.9451 27.7014 16.4377 28 18 28C21.7878 28 25.1656 26.2451 27.3649 23.5039C27.5597 23.2611 27.3809 22.912 27.0696 22.912H19.2365C18.984 22.912 18.8002 22.6725 18.8656 22.4286L19.7792 19.0189C19.8467 18.7671 20.0749 18.592 20.3356 18.592H29.2564C29.5268 18.592 29.7622 18.4042 29.8101 18.138Z" fill="#0055D2" />
+    <path
+      d="M29.8101 18.138C29.9349 17.4442 30 16.7297 30 16C30 15.3831 29.9535 14.7772 29.8637 14.1854C29.829 13.9567 29.6296 13.792 29.3983 13.792H21.6802C21.4277 13.792 21.2439 13.5525 21.3093 13.3086L22.2229 9.89892C22.2904 9.6471 22.5185 9.472 22.7792 9.472H27.3634C27.668 9.472 27.8488 9.13574 27.6682 8.89047C25.4834 5.9244 21.9664 4 18 4C11.3726 4 6 9.37258 6 16C6 19.0173 7.11361 21.7745 8.95224 23.883C9.14804 24.1076 9.5076 24.0146 9.58436 23.7268L12.2394 13.7702C12.2882 13.5874 12.1504 13.408 11.9612 13.408H9.65504C9.40274 13.408 9.21899 13.1689 9.284 12.9251L10.0327 10.1174C10.0889 9.90673 10.28 9.76117 10.498 9.75666C13.0104 9.70465 15.493 9.04698 17.6975 7.84351C17.9253 7.71913 18.2007 7.92739 18.1338 8.1782L13.2499 26.4929C13.177 26.7664 13.313 27.0538 13.5761 27.1582C14.9451 27.7014 16.4377 28 18 28C21.7878 28 25.1656 26.2451 27.3649 23.5039C27.5597 23.2611 27.3809 22.912 27.0696 22.912H19.2365C18.984 22.912 18.8002 22.6725 18.8656 22.4286L19.7792 19.0189C19.8467 18.7671 20.0749 18.592 20.3356 18.592H29.2564C29.5268 18.592 29.7622 18.4042 29.8101 18.138Z"
+      fill="#0055D2"
+    />
   </svg>
 )
 
 // 云服务商 Logo 配置
-const CLOUD_SPONSORS: Record<string, { name: string, icon: React.ReactNode, url: string, className: string }> = {
+const CLOUD_SPONSORS: Record<
+  string,
+  { name: string; icon: React.ReactNode; url: string; className: string }
+> = {
   cloudflare: {
     name: 'Cloudflare',
     url: 'https://www.cloudflare.com',
@@ -74,12 +80,13 @@ const CLOUD_SPONSORS: Record<string, { name: string, icon: React.ReactNode, url:
 }
 
 // 优雅的 Tooltip 组件
-const Tooltip: React.FC<{ content: string, children: React.ReactNode }> = ({ content, children }) => (
+const Tooltip: React.FC<{ content: string; children: React.ReactNode }> = ({
+  content,
+  children,
+}) => (
   <div className="tooltip-wrapper">
     {children}
-    <div className="tooltip-content">
-      {content}
-    </div>
+    <div className="tooltip-content">{content}</div>
   </div>
 )
 
@@ -87,178 +94,180 @@ interface SiteFooterProps {
   isHomePage?: boolean
 }
 
-export const SiteFooter: React.FC<SiteFooterProps> = memo(({ isHomePage = false }) => {
-  const [config, setConfig] = useState<SiteConfig | null>(null)
-  const [isMobile, setIsMobile] = useState(false)
+export const SiteFooter: React.FC<SiteFooterProps> = memo(
+  ({ isHomePage = false }) => {
+    const [config, setConfig] = useState<SiteConfig | null>(null)
+    const [isMobile, setIsMobile] = useState(false)
 
-  // 检测移动端（带防抖，避免拖拽窗口时频繁 setState）
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768)
-    checkMobile()
-    let timerId: ReturnType<typeof setTimeout>
-    const handleResize = () => {
-      clearTimeout(timerId)
-      timerId = setTimeout(checkMobile, 150)
-    }
-    window.addEventListener('resize', handleResize, { passive: true })
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      clearTimeout(timerId)
-    }
-  }, [])
-
-  useEffect(() => {
-    const loadConfig = async () => {
-      try {
-        const data = await fetchJson(`${API_URL}/api/config/ui`, {
-          credentials: 'include',
-        })
-        console.debug('[SiteFooter] Config loaded:', data)
-        setConfig(data)
+    // 检测移动端（带防抖，避免拖拽窗口时频繁 setState）
+    useEffect(() => {
+      const checkMobile = () => setIsMobile(window.innerWidth < 768)
+      checkMobile()
+      let timerId: ReturnType<typeof setTimeout>
+      const handleResize = () => {
+        clearTimeout(timerId)
+        timerId = setTimeout(checkMobile, 150)
       }
-      catch (e) {
-        console.debug('[SiteFooter] Failed to load config:', e)
+      window.addEventListener('resize', handleResize, { passive: true })
+      return () => {
+        window.removeEventListener('resize', handleResize)
+        clearTimeout(timerId)
       }
-    }
-    loadConfig()
-  }, [])
+    }, [])
 
-  // 解析云赞助商
-  const sponsors = config?.cloud_sponsors
-    ? config.cloud_sponsors.split(',').map(s => s.trim().toLowerCase()).filter(s => CLOUD_SPONSORS[s])
-    : []
+    useEffect(() => {
+      const loadConfig = async () => {
+        try {
+          const data = await fetchJson(`${API_URL}/api/config/ui`, {
+            credentials: 'include',
+          })
+          console.debug('[SiteFooter] Config loaded:', data)
+          setConfig(data)
+        } catch (e) {
+          console.debug('[SiteFooter] Failed to load config:', e)
+        }
+      }
+      loadConfig()
+    }, [])
 
-  // 如果没有任何内容要显示，不渲染
-  const hasContent = config?.site_icp || config?.site_gongan || sponsors.length > 0
+    // 解析云赞助商
+    const sponsors = config?.cloud_sponsors
+      ? config.cloud_sponsors
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .filter((s) => CLOUD_SPONSORS[s])
+      : []
 
-  // 移动端强制使用简化模式
-  const useCompactMode = !isHomePage || isMobile
+    // 如果没有任何内容要显示，不渲染
+    const hasContent =
+      config?.site_icp || config?.site_gongan || sponsors.length > 0
 
-  // 简化模式（非首页或移动端）：只显示图标
-  if (useCompactMode) {
-    const hasAnyIcon = config?.site_icp || config?.site_gongan || sponsors.length > 0
-    if (!hasAnyIcon)
-      return null
+    // 移动端强制使用简化模式
+    const useCompactMode = !isHomePage || isMobile
 
-    return (
-      <footer className="site-footer site-footer-compact">
-        <div className="site-footer-content">
-          {/* 备案信息图标 */}
-          {config?.site_icp && (
-            <Tooltip content={config.site_icp}>
-              <a
-                href="https://beian.miit.gov.cn/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="footer-icon-link footer-icon-icp"
-              >
-                <span className="text-icon">备</span>
-              </a>
-            </Tooltip>
-          )}
+    // 简化模式（非首页或移动端）：只显示图标
+    if (useCompactMode) {
+      const hasAnyIcon =
+        config?.site_icp || config?.site_gongan || sponsors.length > 0
+      if (!hasAnyIcon) return null
 
-          {config?.site_gongan && (
-            <Tooltip content={config.site_gongan}>
-              <a
-                href="http://www.beian.gov.cn/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="footer-icon-link footer-icon-gongan"
-              >
-                <span className="text-icon">公</span>
-              </a>
-            </Tooltip>
-          )}
-
-          {/* 云赞助商图标 */}
-          {sponsors.map((key) => {
-            const sponsor = CLOUD_SPONSORS[key]
-            return (
-              <Tooltip key={key} content={sponsor.name}>
+      return (
+        <footer className="site-footer site-footer-compact">
+          <div className="site-footer-content">
+            {/* 备案信息图标 */}
+            {config?.site_icp && (
+              <Tooltip content={config.site_icp}>
                 <a
-                  href={sponsor.url}
+                  href="https://beian.miit.gov.cn/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`sponsor-link ${sponsor.className}`}
+                  className="footer-icon-link footer-icon-icp"
                 >
-                  {sponsor.icon}
+                  <span className="text-icon">备</span>
                 </a>
               </Tooltip>
-            )
-          })}
-        </div>
-      </footer>
-    )
-  }
+            )}
 
-  // 完整模式（首页）
-  return (
-    <footer className="site-footer">
-      <div className="site-footer-content">
-        {/* 版本号 */}
-        <div className="footer-version">
-          <span className="version-label">Myriad</span>
-          <span className="version-number">
-            v
-            {MYRIAD_VERSION}
-          </span>
-        </div>
+            {config?.site_gongan && (
+              <Tooltip content={config.site_gongan}>
+                <a
+                  href="http://www.beian.gov.cn/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="footer-icon-link footer-icon-gongan"
+                >
+                  <span className="text-icon">公</span>
+                </a>
+              </Tooltip>
+            )}
 
-        {/* 分隔符 */}
-        {hasContent && <span className="footer-divider">·</span>}
-
-        {/* 备案信息 */}
-        {config?.site_icp && (
-          <a
-            href="https://beian.miit.gov.cn/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="footer-icp"
-          >
-            {config.site_icp}
-          </a>
-        )}
-
-        {config?.site_gongan && (
-          <a
-            href="http://www.beian.gov.cn/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="footer-gongan"
-          >
-            <span className="gongan-text-icon">公</span>
-            {config.site_gongan}
-          </a>
-        )}
-
-        {/* 云赞助商 */}
-        {sponsors.length > 0 && (
-          <>
-            <span className="footer-divider">·</span>
-            <div className="footer-sponsors">
-              <span className="sponsors-label">Powered by</span>
-              {sponsors.map((key) => {
-                const sponsor = CLOUD_SPONSORS[key]
-                return (
+            {/* 云赞助商图标 */}
+            {sponsors.map((key) => {
+              const sponsor = CLOUD_SPONSORS[key]
+              return (
+                <Tooltip key={key} content={sponsor.name}>
                   <a
-                    key={key}
                     href={sponsor.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`sponsor-link ${sponsor.className}`}
-                    title={sponsor.name}
                   >
                     {sponsor.icon}
                   </a>
-                )
-              })}
-            </div>
-          </>
-        )}
-      </div>
-    </footer>
-  )
-})
+                </Tooltip>
+              )
+            })}
+          </div>
+        </footer>
+      )
+    }
+
+    // 完整模式（首页）
+    return (
+      <footer className="site-footer">
+        <div className="site-footer-content">
+          {/* 版本号 */}
+          <div className="footer-version">
+            <span className="version-label">Myriad</span>
+            <span className="version-number">v{MYRIAD_VERSION}</span>
+          </div>
+
+          {/* 分隔符 */}
+          {hasContent && <span className="footer-divider">·</span>}
+
+          {/* 备案信息 */}
+          {config?.site_icp && (
+            <a
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="footer-icp"
+            >
+              {config.site_icp}
+            </a>
+          )}
+
+          {config?.site_gongan && (
+            <a
+              href="http://www.beian.gov.cn/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="footer-gongan"
+            >
+              <span className="gongan-text-icon">公</span>
+              {config.site_gongan}
+            </a>
+          )}
+
+          {/* 云赞助商 */}
+          {sponsors.length > 0 && (
+            <>
+              <span className="footer-divider">·</span>
+              <div className="footer-sponsors">
+                <span className="sponsors-label">Powered by</span>
+                {sponsors.map((key) => {
+                  const sponsor = CLOUD_SPONSORS[key]
+                  return (
+                    <a
+                      key={key}
+                      href={sponsor.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`sponsor-link ${sponsor.className}`}
+                      title={sponsor.name}
+                    >
+                      {sponsor.icon}
+                    </a>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </footer>
+    )
+  },
+)
 
 SiteFooter.displayName = 'SiteFooter'
 

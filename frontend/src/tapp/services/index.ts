@@ -3,7 +3,11 @@
  */
 
 export * from './QuotaManager'
-export { DEFAULT_QUOTA, getQuotaManager, TappQuotaManager } from './QuotaManager'
+export {
+  DEFAULT_QUOTA,
+  getQuotaManager,
+  TappQuotaManager,
+} from './QuotaManager'
 
 export * from './RemoteStoreService'
 

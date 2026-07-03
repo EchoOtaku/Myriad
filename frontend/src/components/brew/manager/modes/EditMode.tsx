@@ -2,6 +2,7 @@
  * 编辑模式组件
  */
 
+import type { ImportProgress } from './types'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -16,9 +17,11 @@ import {
   LuUpload as Upload,
   LuX as X,
 } from '@lib/icons'
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 
-import type { ImportProgress } from './types'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { IslandShell } from '../../../shared/control-island'
 import { ISLAND_BTN, ISLAND_BTN_DANGER, ISLAND_DIVIDER } from './constants'
 
@@ -87,25 +90,20 @@ export function EditMode({
           onClick={onSelectAll}
           className={ISLAND_BTN}
           title={selectedIds.size === totalCount ? t.deselectAll : t.selectAll}
-          aria-label={selectedIds.size === totalCount ? t.deselectAll : t.selectAll}
+          aria-label={
+            selectedIds.size === totalCount ? t.deselectAll : t.selectAll
+          }
         >
-          {selectedIds.size === totalCount
-            ? (
-                <CheckSquare className="w-5 h-5" />
-              )
-            : selectedIds.size > 0
-              ? (
-                  <MinusSquare className="w-5 h-5" />
-                )
-              : (
-                  <Square className="w-5 h-5" />
-                )}
+          {selectedIds.size === totalCount ? (
+            <CheckSquare className="w-5 h-5" />
+          ) : selectedIds.size > 0 ? (
+            <MinusSquare className="w-5 h-5" />
+          ) : (
+            <Square className="w-5 h-5" />
+          )}
         </button>
         <span className="text-sm font-medium text-gray-600 dark:text-gray-300 min-w-[4.5rem] text-center tabular-nums">
-          {selectedIds.size}
-          {' '}
-          /
-          {totalCount}
+          {selectedIds.size} /{totalCount}
         </span>
         <button
           onClick={onBatchDelete}
@@ -123,7 +121,9 @@ export function EditMode({
           title={t.refreshAllSources}
           aria-label={t.refreshAllSources}
         >
-          <RefreshCw className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <RefreshCw
+            className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`}
+          />
         </button>
         {isAuthenticated && onMarkAllSourcesRead && (
           <button
@@ -155,27 +155,22 @@ export function EditMode({
         onClick={onSelectAll}
         className={ISLAND_BTN}
         title={selectedIds.size === totalCount ? t.deselectAll : t.selectAll}
-        aria-label={selectedIds.size === totalCount ? t.deselectAll : t.selectAll}
+        aria-label={
+          selectedIds.size === totalCount ? t.deselectAll : t.selectAll
+        }
       >
-        {selectedIds.size === totalCount
-          ? (
-              <CheckSquare className="w-5 h-5" />
-            )
-          : selectedIds.size > 0
-            ? (
-                <MinusSquare className="w-5 h-5" />
-              )
-            : (
-                <Square className="w-5 h-5" />
-              )}
+        {selectedIds.size === totalCount ? (
+          <CheckSquare className="w-5 h-5" />
+        ) : selectedIds.size > 0 ? (
+          <MinusSquare className="w-5 h-5" />
+        ) : (
+          <Square className="w-5 h-5" />
+        )}
       </button>
 
       {/* 选中数量 */}
       <span className="text-sm font-medium text-gray-600 dark:text-gray-300 min-w-[4.5rem] text-center tabular-nums">
-        {selectedIds.size}
-        {' '}
-        /
-        {totalCount}
+        {selectedIds.size} /{totalCount}
       </span>
 
       {/* 删除按钮 */}
@@ -197,7 +192,9 @@ export function EditMode({
         title={t.refreshAllSources}
         aria-label={t.refreshAllSources}
       >
-        <RefreshCw className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+        <RefreshCw
+          className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`}
+        />
       </button>
 
       {/* 全部已读按钮 */}
@@ -224,7 +221,9 @@ export function EditMode({
           title={t.exportBrewpack}
           aria-label={t.exportBrewpack}
         >
-          <Download className={`w-4.5 h-4.5 ${importExportLoading ? 'animate-pulse' : ''}`} />
+          <Download
+            className={`w-4.5 h-4.5 ${importExportLoading ? 'animate-pulse' : ''}`}
+          />
         </button>
       )}
 
@@ -235,7 +234,9 @@ export function EditMode({
           title={t.importBrewpack}
           aria-label={t.importBrewpack}
         >
-          <Upload className={`w-4.5 h-4.5 ${importExportLoading ? 'animate-pulse' : ''}`} />
+          <Upload
+            className={`w-4.5 h-4.5 ${importExportLoading ? 'animate-pulse' : ''}`}
+          />
           <input
             ref={brewExportInputRef}
             type="file"
@@ -262,9 +263,7 @@ export function EditMode({
             <span className="truncate max-w-40">{importProgress.step}</span>
             {importProgress.total > 0 && (
               <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40">
-                {importProgress.current}
-                /
-                {importProgress.total}
+                {importProgress.current}/{importProgress.total}
               </span>
             )}
           </motion.div>
@@ -285,14 +284,14 @@ export function EditMode({
                 : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200/50 dark:border-red-800/50'
             }`}
           >
-            {importExportSuccess
-              ? (
-                  <Check className="w-3.5 h-3.5 shrink-0" />
-                )
-              : (
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                )}
-            <span className="truncate max-w-48">{importExportSuccess || importExportError}</span>
+            {importExportSuccess ? (
+              <Check className="w-3.5 h-3.5 shrink-0" />
+            ) : (
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            )}
+            <span className="truncate max-w-48">
+              {importExportSuccess || importExportError}
+            </span>
           </motion.div>
         )}
       </AnimatePresence>

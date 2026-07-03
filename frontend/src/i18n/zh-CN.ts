@@ -183,7 +183,8 @@ export const zhCN: TranslationKeys = {
     saveAndConnect: '保存并连接数据库',
     saving: '保存中...',
     configurationMode: '后端运行在配置模式',
-    configurationModeDesc: '数据库未连接。请配置数据库信息，保存后受管环境会重启后端并连接数据库。',
+    configurationModeDesc:
+      '数据库未连接。请配置数据库信息，保存后受管环境会重启后端并连接数据库。',
     initDatabase: '初始化数据库表',
     initDatabaseDesc: '数据库连接成功，但表结构还未创建。请先初始化数据库。',
     initializing: '初始化中...',
@@ -201,7 +202,8 @@ export const zhCN: TranslationKeys = {
     dbConnectionSuccess: '数据库连接成功！',
     systemSwitchedToNormal: '后端已重启并进入正常模式，现在可以继续配置。',
     dbConnectionTimeout: '数据库连接超时',
-    dbConnectionTimeoutDesc: '配置已保存，但后端可能还没有重启成功。请检查配置是否正确，或手动重启后端服务。',
+    dbConnectionTimeoutDesc:
+      '配置已保存，但后端可能还没有重启成功。请检查配置是否正确，或手动重启后端服务。',
     dbMigrationFailed: '数据库迁移失败',
     verificationResult: '验证结果',
     totalTables: '总表数',
@@ -232,7 +234,8 @@ export const zhCN: TranslationKeys = {
     basic: '基础配置',
     basicDesc: '网站URL、背景、主题等基础设置',
     oauth: '第三方登录',
-    oauthDesc: '配置 GitHub、Google、Microsoft 等第三方登录方式，以及本地账号注册策略',
+    oauthDesc:
+      '配置 GitHub、Google、Microsoft 等第三方登录方式，以及本地账号注册策略',
     music: '音乐播放器',
     musicDesc: '配置歌单播放',
     network: '网络代理',
@@ -288,7 +291,8 @@ export const zhCN: TranslationKeys = {
     updaterTokenRequiredDirect: '直连模式需要填入 UPDATE_TOKEN',
     updaterConfirmUpgrade: '确认升级到 {version}？升级期间会进入维护模式。',
     updaterConfirmRollback: '确认回滚到快照 {snapshotId}？',
-    updaterConfirmExitMaintenance: '强制退出维护模式？仅在确认服务已恢复时使用。',
+    updaterConfirmExitMaintenance:
+      '强制退出维护模式？仅在确认服务已恢复时使用。',
     updaterTaskProgress: '任务进度 ({jobId})',
     updaterTaskKind: 'kind',
     updaterTaskStatus: 'status',
@@ -304,27 +308,34 @@ export const zhCN: TranslationKeys = {
     updaterRollbackDispatched: '回滚任务已派发',
     updaterMaintenanceExited: '已退出维护模式',
     updaterAdvancedTitle: '高级：直连模式 (运维 fallback)',
-    updaterAdvancedDesc: '仅在 backend 不可用时使用。直连绕过 backend，通过 proxy 直接访问 updater，需要手动提供 UPDATE_TOKEN。Token 仅保留在浏览器内存，刷新页面后需重新输入。',
+    updaterAdvancedDesc:
+      '仅在 backend 不可用时使用。直连绕过 backend，通过 proxy 直接访问 updater，需要手动提供 UPDATE_TOKEN。Token 仅保留在浏览器内存，刷新页面后需重新输入。',
     updaterModeBackend: 'backend（默认，admin session）',
     updaterModeDirect: 'direct（绕过 backend）',
-    updaterDriftWarn: '检测到浏览器缓存版本 ({build}) 与服务端 ({current}) 不一致。',
+    updaterDriftWarn:
+      '检测到浏览器缓存版本 ({build}) 与服务端 ({current}) 不一致。',
     updaterDriftAction: '建议立即刷新页面',
-    updaterSelfUpdateRequired: '新版本 {version} 需要先升级 updater 到 {minUpdaterVersion}。',
+    updaterSelfUpdateRequired:
+      '新版本 {version} 需要先升级 updater 到 {minUpdaterVersion}。',
     updaterSelfUpdateButton: '一键升级 updater',
-    updaterSelfUpdateConfirm: '升级 updater 到 {version}？升级期间 updater 会短暂中断，业务不受影响。',
+    updaterSelfUpdateConfirm:
+      '升级 updater 到 {version}？升级期间 updater 会短暂中断，业务不受影响。',
     updaterSelfUpdateDispatching: '正在派发…',
-    updaterSelfUpdateDispatched: 'updater 升级已派发：helper={helper}，几秒后将替换当前 updater',
+    updaterSelfUpdateDispatched:
+      'updater 升级已派发：helper={helper}，几秒后将替换当前 updater',
     updaterUpdateAvailable: '新版本可用：{version}',
     updaterUpdateAvailableCurrent: '(当前 {current})',
     updaterReleaseNotes: '查看 release notes',
-    updaterBackendError: '无法连接 updater（/api/admin/updater/status）。检查 backend 是否配置了 MYRIAD_UPDATER_URL / UPDATE_TOKEN。',
+    updaterBackendError:
+      '无法连接 updater（/api/admin/updater/status）。检查 backend 是否配置了 MYRIAD_UPDATER_URL / UPDATE_TOKEN。',
     updaterDirectError: '无法连接 updater（/_updater/status）',
     updaterLoading: '加载中…',
     updaterErr401: '鉴权失败：UPDATE_TOKEN 不正确',
     updaterErr403: '需要先在宿主机 touch state/manual-override',
     updaterErr409: '已有进行中任务',
     updaterErr412: '前置条件失败',
-    updaterErrNotConfigured: '开发环境默认不启动 updater。需要测试完整更新流程时，请使用生产 compose 栈，或在 backend 环境设置 MYRIAD_UPDATER_URL / UPDATE_TOKEN。',
+    updaterErrNotConfigured:
+      '开发环境默认不启动 updater。需要测试完整更新流程时，请使用生产 compose 栈，或在 backend 环境设置 MYRIAD_UPDATER_URL / UPDATE_TOKEN。',
     updaterStatusHealthy: '运行正常',
     updaterStatusHealthyDesc: '已是最新版本，无可用更新',
     updaterStatusAvailable: '有新版本可用',
@@ -334,18 +345,22 @@ export const zhCN: TranslationKeys = {
     updaterStatusMaintenance: '维护模式',
     updaterStatusMaintenanceDesc: '系统处于维护中，可强制退出',
     updaterStatusNeedsManual: '需要人工恢复',
-    updaterStatusNeedsManualDesc: '上次升级失败且自动回滚未完成，请查看快照或诊断',
+    updaterStatusNeedsManualDesc:
+      '上次升级失败且自动回滚未完成，请查看快照或诊断',
     updaterStatusOffline: '无法连接 updater',
-    updaterStatusOfflineDesc: '检查 backend 是否设置了 MYRIAD_UPDATER_URL / UPDATE_TOKEN',
+    updaterStatusOfflineDesc:
+      '检查 backend 是否设置了 MYRIAD_UPDATER_URL / UPDATE_TOKEN',
     updaterStatusFirstRun: '尚未记录版本',
     updaterStatusFirstRunDesc: '点击「检查更新」获取最新 release',
     updaterRowStatus: '状态',
     updaterMaintenanceActions: '维护操作',
     updaterActionCheckDesc: '从 GitHub Release 获取最新可用版本',
-    updaterActionUpgradeDesc: '执行完整升级流程：维护 → 快照 → 替换镜像 → 健康检查',
+    updaterActionUpgradeDesc:
+      '执行完整升级流程：维护 → 快照 → 替换镜像 → 健康检查',
     updaterActionExitDesc: '在确认服务恢复后强制清除维护模式',
     updaterActionRollbackDesc: '使用此快照恢复 pgdata 并启动旧版本镜像',
-    updaterActionSelfUpdateDesc: '在 helper 容器中替换 updater 自身，业务不受影响',
+    updaterActionSelfUpdateDesc:
+      '在 helper 容器中替换 updater 自身，业务不受影响',
     updaterGroupHistory: '快照与历史',
     updaterGroupHistoryDesc: '查看可恢复的 pgdata 快照',
     updaterGroupAdvanced: '高级与诊断',
@@ -362,7 +377,8 @@ export const zhCN: TranslationKeys = {
     saveConfig: '保存配置',
     resetConfig: '重置配置',
     resetConfigDesc: '将所有配置重置为默认值。此操作不可撤销。',
-    resetConfirmMessage: '您确定要重置所有配置吗？此操作不可撤销，所有设置将恢复为默认值。',
+    resetConfirmMessage:
+      '您确定要重置所有配置吗？此操作不可撤销，所有设置将恢复为默认值。',
     exportConfig: '导出设置',
     exportConfigDesc: '将当前所有配置导出为 JSON 文件，可用于备份或迁移。',
     importConfig: '导入设置',
@@ -398,15 +414,18 @@ export const zhCN: TranslationKeys = {
     clearMusicCache: '清空音乐缓存',
     siteMetadata: '网站元数据',
     backgroundAndTheme: '背景和主题',
-    parallaxHint: '启用后壁纸会根据鼠标移动/设备倾斜产生轻微位移，创造立体空间感',
+    parallaxHint:
+      '启用后壁纸会根据鼠标移动/设备倾斜产生轻微位移，创造立体空间感',
     // Evocative 壁纸动效
     evocativeTitle: 'Evocative 壁纸动效',
     evocativeEffects: '动效开关',
     evocativeDesc: '让静态壁纸焕发生机，创造沉浸式视觉体验',
     fieldEvocativeParallax: '微动效果',
-    fieldEvocativeParallaxHint: '壁纸根据鼠标移动/设备倾斜产生轻微位移，创造立体空间感',
+    fieldEvocativeParallaxHint:
+      '壁纸根据鼠标移动/设备倾斜产生轻微位移，创造立体空间感',
     fieldEvocativeDynamicBlur: '动态模糊',
-    fieldEvocativeDynamicBlurHint: '鼠标靠近屏幕顶部时壁纸变得清晰，移向底部时逐渐模糊',
+    fieldEvocativeDynamicBlurHint:
+      '鼠标靠近屏幕顶部时壁纸变得清晰，移向底部时逐渐模糊',
     fieldEvocativeRipple: '涟漪效果',
     fieldEvocativeRippleHint: '点击壁纸时产生水波纹扩散效果',
     fieldEvocativeFps: '动效帧率',
@@ -437,19 +456,22 @@ export const zhCN: TranslationKeys = {
     advanced: '高级配置',
     advancedDesc: '高级系统配置及危险操作',
     networkProxyInfoTitle: '代理配置说明',
-    networkProxyInfo: '如果您的服务器位于中国大陆，可能需要配置代理才能正常访问 GitHub OAuth、Gemini AI 等外部服务。您可以选择以下方式：',
+    networkProxyInfo:
+      '如果您的服务器位于中国大陆，可能需要配置代理才能正常访问 GitHub OAuth、Gemini AI 等外部服务。您可以选择以下方式：',
     enableProxy: '启用网络代理',
     enableProxyHint: '开启后将使用代理访问外部API',
     proxyUrl: '代理地址',
     proxyUrlHint: '支持 HTTP、HTTPS、SOCKS5 代理协议',
     proxyBypass: '代理绕过列表',
-    proxyBypassHint: '不使用代理的域名，用逗号分隔。国内服务（如 Bilibili）建议添加到绕过列表',
+    proxyBypassHint:
+      '不使用代理的域名，用逗号分隔。国内服务（如 Bilibili）建议添加到绕过列表',
     apiMirrorConfig: 'API 镜像服务',
     apiMirrorConfigHint: '使用第三方 API 镜像服务，可替代代理配置',
     geminiBaseUrl: 'Gemini API 基础地址',
     geminiBaseUrlHint: '留空使用官方地址，可填写第三方代理服务地址',
     githubApiBaseUrl: 'GitHub API 基础地址',
-    githubApiBaseUrlHint: '留空使用官方地址，可填写 GitHub API 镜像地址（注意：OAuth 认证仍需使用官方地址）',
+    githubApiBaseUrlHint:
+      '留空使用官方地址，可填写 GitHub API 镜像地址（注意：OAuth 认证仍需使用官方地址）',
     proxyOption: '代理',
     proxyOptionDesc: '配置代理服务器地址，所有外部请求将通过代理发送。',
     mirrorOption: '镜像服务',
@@ -458,14 +480,16 @@ export const zhCN: TranslationKeys = {
     placeholderWallpaperUrl: '壁纸图片或 API 端点的 URL',
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
-    placeholderSiteFavicon: '/favicon.webp 或 https://example.com/icon.png（支持站外链接）',
+    placeholderSiteFavicon:
+      '/favicon.webp 或 https://example.com/icon.png（支持站外链接）',
     placeholderPetImageUrl: '萌宠角色图片的 URL',
     githubOAuthHint: '如何获取 GitHub OAuth 凭证',
     callbackUrl: '回调地址',
     redirectUrl: '重定向地址',
     aiServiceDesc: '支持 Google Gemini 和 OpenAI 兼容格式的 API',
     getApiKey: '获取 API Key',
-    personaServiceDesc: 'AI 会根据你的数据生成独特的虚拟人设，点击首页右上角的圆形头像查看',
+    personaServiceDesc:
+      'AI 会根据你的数据生成独特的虚拟人设，点击首页右上角的圆形头像查看',
     savingDefault: '正在保存默认配置...',
     resetFailed: '重置配置失败：',
     refreshing: '正在刷新...',
@@ -478,28 +502,34 @@ export const zhCN: TranslationKeys = {
     aiConfigDesc: '配置AI模型和API密钥',
     aiServiceTitle: 'AI 服务',
     aiServiceInfoTitle: 'AI 服务配置说明',
-    aiServiceInfo: '支持 Google Gemini 和 OpenAI 兼容格式的 API。\nGoogle Gemini: 免费额度，适合个人使用。\nOpenAI 兼容: 支持 OpenAI API 和其他兼容服务（如 Azure OpenAI、第三方代理等）',
+    aiServiceInfo:
+      '支持 Google Gemini 和 OpenAI 兼容格式的 API。\nGoogle Gemini: 免费额度，适合个人使用。\nOpenAI 兼容: 支持 OpenAI API 和其他兼容服务（如 Azure OpenAI、第三方代理等）',
     aiProvider: 'AI Provider',
     aiProviderHint: '选择 AI 服务提供商后，下方会显示对应的配置项',
     aiServiceInfoDescription: '支持 Google Gemini 和 OpenAI 兼容格式的 API。',
     aiStandardModelTitle: '标准模型',
     aiStandardModelDesc: '用于日常任务，如词汇注释、简单分析等',
     aiProModelTitle: 'Pro 模型配置',
-    aiProModelDesc: '用于复杂任务（深度分析、报告生成等）。API Key 留空则自动复用标准模型的配置',
+    aiProModelDesc:
+      '用于复杂任务（深度分析、报告生成等）。API Key 留空则自动复用标准模型的配置',
     aiProEnable: '启用 Pro 模型',
-    aiProEnableDesc: '开启后可为复杂任务配置独立的高级模型，关闭则所有任务使用标准模型',
+    aiProEnableDesc:
+      '开启后可为复杂任务配置独立的高级模型，关闭则所有任务使用标准模型',
     aiProProviderHint: '为 Pro 模型选择服务提供商，可与标准模型不同',
     geminiDescription: '免费额度，适合个人使用。',
     openaiCompatible: 'OpenAI 兼容',
-    openaiDescription: '支持 OpenAI API 和其他兼容服务（如 Azure OpenAI、第三方代理等）',
+    openaiDescription:
+      '支持 OpenAI API 和其他兼容服务（如 Azure OpenAI、第三方代理等）',
     // AI 图片生成配置
     aiImageTitle: 'AI 图片生成',
     aiImageDesc: 'Pollinations 免费快速响应 · PixAI 专业动漫图片生成（需付费）',
     aiImageUsageTitle: '使用说明',
     enableAiImage: '启用 AI 图片生成',
     aiImageHint: '启用后可在 Myriad 中使用 AI 生成图片功能',
-    pollinationsDescription: '完全免费，响应快速（<1秒），适合开发测试和快速迭代',
-    pixaiDescription: '专业动漫图片生成 API，支持多种模型（需付费，需要 API Key）',
+    pollinationsDescription:
+      '完全免费，响应快速（<1秒），适合开发测试和快速迭代',
+    pixaiDescription:
+      '专业动漫图片生成 API，支持多种模型（需付费，需要 API Key）',
     pollinationsFree: '免费',
     pixaiBadge: 'SD/DiT',
     fluxAnimeRecommend: 'Flux Anime (推荐)',
@@ -532,6 +562,7 @@ export const zhCN: TranslationKeys = {
     platformsConfigDesc: '配置各个数据源平台的访问凭证',
     platformDescGithub: '追踪你的仓库、Star 和贡献记录',
     platformDescBilibili: '追踪你的收藏、追番和观看历史',
+    platformDescBangumi: '同步你的 Bangumi 收藏、评分和追看状态',
     platformDescSteam: '同步你的游戏库、愿望单和游戏统计',
     platformDescNetease: '同步你的喜欢歌曲和网易云音乐品味',
     configuredStatus: '✓ 已配置',
@@ -544,16 +575,19 @@ export const zhCN: TranslationKeys = {
     siteUrlConfig: '站点地址',
     baseUrl: '站点 URL',
     baseUrlPlaceholder: 'https://yourdomain.com（用于OAuth回调和Cookie设置）',
-    baseUrlHint: '您的站点访问地址，用于自动生成 OAuth 回调 URL 和判断是否启用 HTTPS 安全 Cookie',
+    baseUrlHint:
+      '您的站点访问地址，用于自动生成 OAuth 回调 URL 和判断是否启用 HTTPS 安全 Cookie',
     oauthConfigTitle: '第三方登录 (OAuth)',
-    oauthConfigDesc: '配置 GitHub、Google、Microsoft 等第三方登录方式，以及本地账号注册策略',
+    oauthConfigDesc:
+      '配置 GitHub、Google、Microsoft 等第三方登录方式，以及本地账号注册策略',
     oauthGuideTitle: '快速开始',
     oauthGuideStep1: '访问 GitHub Developer Settings',
     oauthGuideStep2: '点击 "New OAuth App" 创建新应用',
     oauthGuideStep3: '填写应用信息，Callback URL 填写：',
     oauthGuideStep4: '创建后复制 Client ID 和生成 Client Secret',
     currentCallbackUrl: '当前回调地址',
-    currentCallbackUrlHint: '请将此地址填入 GitHub OAuth App 的 Authorization callback URL',
+    currentCallbackUrlHint:
+      '请将此地址填入 GitHub OAuth App 的 Authorization callback URL',
     callbackUrlNotConfigured: '请先在「基础配置」中设置站点 URL',
     githubClientId: 'GitHub Client ID',
     githubClientIdPlaceholder: 'GitHub OAuth App 的 Client ID',
@@ -561,7 +595,8 @@ export const zhCN: TranslationKeys = {
     githubClientSecretPlaceholder: 'GitHub OAuth App 的 Client Secret',
     // OIDC providers + 注册开关
     oidcSectionTitle: '其他 OAuth 登录方式（OIDC）',
-    oidcSectionDesc: '支持任何符合 OpenID Connect 标准的提供方：Google、Microsoft、Authentik、Keycloak、Auth0…',
+    oidcSectionDesc:
+      '支持任何符合 OpenID Connect 标准的提供方：Google、Microsoft、Authentik、Keycloak、Auth0…',
     oidcCallbackTemplate: '回调 URL 形如',
     oidcEmpty: '尚未添加任何 OIDC 提供方。',
     oidcAddProvider: '添加 OIDC 提供方',
@@ -578,7 +613,8 @@ export const zhCN: TranslationKeys = {
     oidcClientSecretLabel: 'Client Secret',
     oidcClientSecretPlaceholder: '留空保持原值（显示 *** 表示已设置）',
     oidcDiscoveryLabel: 'OIDC Discovery URL',
-    oidcDiscoveryPlaceholder: 'https://accounts.google.com/.well-known/openid-configuration',
+    oidcDiscoveryPlaceholder:
+      'https://accounts.google.com/.well-known/openid-configuration',
     oidcScopesLabel: 'Scopes（空格分隔，默认 openid email profile）',
     oidcScopesPlaceholder: 'openid email profile',
     oidcIconLabel: '图标 URL（可选）',
@@ -586,37 +622,54 @@ export const zhCN: TranslationKeys = {
     oidcNewProvider: '(新 provider)',
     // 重排后的核心文案
     oauthProvidersTitle: '已配置的登录方式',
-    oauthProvidersDesc: '配置 GitHub、Google、Microsoft、GitLab、Discord 等第三方登录。每个 provider 都有独立的 client_id / client_secret 与回调地址。',
-    oauthProvidersEmpty: '还没有配置任何第三方登录。点击下方"添加登录方式"从预设中选择。',
+    oauthProvidersDesc:
+      '配置 GitHub、Google、Microsoft、GitLab、Discord 等第三方登录。每个 provider 都有独立的 client_id / client_secret 与回调地址。',
+    oauthProvidersEmpty:
+      '还没有配置任何第三方登录。点击下方"添加登录方式"从预设中选择。',
     oauthAddLoginMethod: '添加登录方式',
     oauthPickPreset: '选择一个预设',
-    oauthHowToHint: '先到「基础配置」填好 Base URL，下面每张卡片就会自动生成该 provider 的专属回调地址，复制到对应平台后台即可',
+    oauthHowToHint:
+      '先到「基础配置」填好 Base URL，下面每张卡片就会自动生成该 provider 的专属回调地址，复制到对应平台后台即可',
     oauthOpenDocs: '查看文档',
     oauthAdvanced: '高级（Slug / 显示名 / Scopes / 图标）',
-    oauthPresetHintGithub: '路径：GitHub 头像 → `Settings` → `Developer settings` → `OAuth Apps` → `New OAuth App`',
-    oauthPresetHintGoogle: '路径：Google Cloud Console → `APIs & Services` → `Credentials` → `Create credentials` → `OAuth client ID`',
-    oauthPresetHintMicrosoft: '路径：Azure Portal → `App registrations` → `New registration`。Discovery URL 里的 `common` 表示任意租户都能登录，单租户改成你的 Tenant ID',
-    oauthPresetHintGitlab: '路径：GitLab → `User Settings` → `Applications`。自建实例需把 `gitlab.com` 替换成你自己的域名',
-    oauthPresetHintDiscord: '路径：Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`',
-    oauthPresetHintAuthentik: 'Discovery URL 形如 `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration`，其中 `<slug>` 是 Application 的 slug',
-    oauthPresetHintKeycloak: 'Discovery URL 形如 `https://keycloak.yourdomain.com/realms/<realm>/.well-known/openid-configuration`，其中 `<realm>` 是你的 Realm 名',
-    oauthPresetHintAuth0: 'Discovery URL 形如 `https://<your-tenant>.auth0.com/.well-known/openid-configuration`',
-    oauthPresetHintCustom: '任意符合 OIDC 标准的提供方。自行填 `Discovery URL`、`Client ID`、`Client Secret`',
+    oauthPresetHintGithub:
+      '路径：GitHub 头像 → `Settings` → `Developer settings` → `OAuth Apps` → `New OAuth App`',
+    oauthPresetHintGoogle:
+      '路径：Google Cloud Console → `APIs & Services` → `Credentials` → `Create credentials` → `OAuth client ID`',
+    oauthPresetHintMicrosoft:
+      '路径：Azure Portal → `App registrations` → `New registration`。Discovery URL 里的 `common` 表示任意租户都能登录，单租户改成你的 Tenant ID',
+    oauthPresetHintGitlab:
+      '路径：GitLab → `User Settings` → `Applications`。自建实例需把 `gitlab.com` 替换成你自己的域名',
+    oauthPresetHintDiscord:
+      '路径：Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`',
+    oauthPresetHintAuthentik:
+      'Discovery URL 形如 `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration`，其中 `<slug>` 是 Application 的 slug',
+    oauthPresetHintKeycloak:
+      'Discovery URL 形如 `https://keycloak.yourdomain.com/realms/<realm>/.well-known/openid-configuration`，其中 `<realm>` 是你的 Realm 名',
+    oauthPresetHintAuth0:
+      'Discovery URL 形如 `https://<your-tenant>.auth0.com/.well-known/openid-configuration`',
+    oauthPresetHintCustom:
+      '任意符合 OIDC 标准的提供方。自行填 `Discovery URL`、`Client ID`、`Client Secret`',
     allowRegisterTitle: '允许公开注册本地账号',
-    allowRegisterDesc: '开启后，未登录用户可在 /register 页面创建账号；关闭时只能由管理员创建',
+    allowRegisterDesc:
+      '开启后，未登录用户可在 /register 页面创建账号；关闭时只能由管理员创建',
     musicConfigTitle: '音乐播放器',
     musicConfigDesc: '配置歌单播放',
     musicUsageTitle: '音乐播放器说明',
-    musicUsageInfo: '在控制岛中播放指定歌单的音乐，支持网易云音乐和QQ音乐。播放有歌词的歌曲时，收缩状态下会自动显示实时歌词。',
+    musicUsageInfo:
+      '在控制岛中播放指定歌单的音乐，支持网易云音乐和QQ音乐。播放有歌词的歌曲时，收缩状态下会自动显示实时歌词。',
     neteaseMusic: '网易云',
     qqMusic: 'QQ音乐',
-    neteasePlaylistHint: '网易云音乐歌单链接中的数字ID，如 https://music.163.com/#/playlist?id=2884035',
-    qqPlaylistHint: 'QQ音乐歌单链接中的数字ID，如 https://y.qq.com/n/ryqq/playlist/8039305244',
+    neteasePlaylistHint:
+      '网易云音乐歌单链接中的数字ID，如 https://music.163.com/#/playlist?id=2884035',
+    qqPlaylistHint:
+      'QQ音乐歌单链接中的数字ID，如 https://y.qq.com/n/ryqq/playlist/8039305244',
     cacheManagement: '缓存管理',
     clearMusicCacheDesc: '清空本地音乐缓存，强制重新加载歌单数据',
     clearMusicCacheBtn: '清空音乐缓存',
     musicCacheCleared: '✓ 音乐缓存已清空，下次加载时将重新获取数据',
-    wallpaperParallaxHint: '启用后壁纸会根据鼠标移动/设备倾斜产生轻微位移，创造立体空间感',
+    wallpaperParallaxHint:
+      '启用后壁纸会根据鼠标移动/设备倾斜产生轻微位移，创造立体空间感',
     neteasePlaylistExample: '例如: 2884035',
     qqPlaylistExample: '例如: 8039305244',
     removeFavorite: '从收藏夹移除',
@@ -627,16 +680,19 @@ export const zhCN: TranslationKeys = {
     closeLabel: '关闭',
     // Tapp 权限管理配置
     permissions: '权限管理',
-    permissionsDesc: '配置 Tapp 的 elevated 权限下放及 AI 使用配额，权限分 4 级：public、basic、elevated（可下放）、privileged（仅管理员）',
+    permissionsDesc:
+      '配置 Tapp 的 elevated 权限下放及 AI 使用配额，权限分 4 级：public、basic、elevated（可下放）、privileged（仅管理员）',
     permissionsTitle: 'Tapp 权限管理',
     tappPermissionsInfoTitle: '权限等级说明',
-    tappPermissionsInfo: 'Tapp 有4个权限等级：public（公开）、basic（基础，默认所有人可用）、elevated（提升，可配置下放）、privileged（特权，仅管理员）。这里可以配置将11个 elevated 权限下放给普通用户或游客。',
+    tappPermissionsInfo:
+      'Tapp 有4个权限等级：public（公开）、basic（基础，默认所有人可用）、elevated（提升，可配置下放）、privileged（特权，仅管理员）。这里可以配置将11个 elevated 权限下放给普通用户或游客。',
     // 用户 elevated 权限
     userElevatedPermissions: '普通用户权限下放',
     userElevatedPermissionsDesc: '选择允许普通用户使用的 elevated 级别权限',
     // 游客 elevated 权限
     guestElevatedPermissions: '游客权限下放',
-    guestElevatedPermissionsDesc: '选择允许游客使用的 elevated 级别权限（请谨慎开放）',
+    guestElevatedPermissionsDesc:
+      '选择允许游客使用的 elevated 级别权限（请谨慎开放）',
     // 9个 elevated 权限 (platform:write 和 platform:register 已升级为 privileged)
     permAiGenerate: 'AI 生成',
     permAiGenerateHint: '允许 Tapp 使用 AI 生成内容',
@@ -683,7 +739,8 @@ export const zhCN: TranslationKeys = {
     aiQuotaAdminNote: '管理员账户不受以上限额约束',
     // 站点备案和云赞助商
     siteFooterTitle: '站点底部信息',
-    siteFooterDesc: '配置站点版权、备案号和云服务赞助商信息，将显示在页面右下角',
+    siteFooterDesc:
+      '配置站点版权、备案号和云服务赞助商信息，将显示在页面右下角',
     siteIcp: 'ICP 备案号',
     siteIcpHint: '中国大陆网站需要填写 ICP 备案号',
     siteIcpPlaceholder: '例如：京ICP备12345678号',
@@ -988,7 +1045,8 @@ export const zhCN: TranslationKeys = {
     usernameHint: '例如: your_username',
     linkAutoGenerate: '留空则自动生成',
     linkManualInput: '请填写完整链接',
-    popupHint: '输入文本、图片链接等\n例如:\n微信号: wxid_123\nhttps://example.com/qrcode.png',
+    popupHint:
+      '输入文本、图片链接等\n例如:\n微信号: wxid_123\nhttps://example.com/qrcode.png',
     close: '关闭',
     delete: '删除',
     longPressToEdit: '长按小组件进行设置',
@@ -1180,7 +1238,8 @@ export const zhCN: TranslationKeys = {
     clearing: '清除中',
     clear: '清除',
     usageTitle: '使用说明',
-    usageRawData: '原始数据: 从各平台 API 获取的未处理数据,点击刷新按钮可重新获取',
+    usageRawData:
+      '原始数据: 从各平台 API 获取的未处理数据,点击刷新按钮可重新获取',
     usageSmartFilter: '智能过滤: 经过 AI 分析处理后的数据,点击处理按钮生成缓存',
     usageBackground: '后台处理: 数据处理任务在后台异步执行,可在顶部查看进度',
   },
@@ -1308,7 +1367,8 @@ export const zhCN: TranslationKeys = {
     fillPlatformName: '请填写平台名称',
     fillUsernameOrUrl: '请填写用户名/ID 或 URL模式（至少填写一项）',
     fillPopupContent: '请填写显示内容',
-    invalidUrlPattern: 'URL 模式不合法\n\n要求：\n• 必须以 http:// 或 https:// 或 mailto: 开头\n• 不能包含特殊字符 < > " \' ` \\',
+    invalidUrlPattern:
+      'URL 模式不合法\n\n要求：\n• 必须以 http:// 或 https:// 或 mailto: 开头\n• 不能包含特殊字符 < > " \' ` \\',
     createCustomPlatformFailed: '创建自定义平台失败',
     confirmDeleteCustomPlatform: '确定要删除这个自定义平台吗？',
     close: '关闭',
@@ -1388,6 +1448,17 @@ export const zhCN: TranslationKeys = {
     permSchedulerRegister: '注册定时任务',
     permSpeechTts: '文本转语音',
     permSpeechAsr: '语音识别',
+    permReadTappList: '读取 Tapp 列表',
+    permManageTappList: '管理 Tapp 列表',
+    permReadBrew: '读取 Brew',
+    permWriteBrew: '写入 Brew',
+    permCommentBrew: '评论 Brew',
+    permManageBrew: '管理 Brew',
+    permReadFederation: '读取联邦数据',
+    permWriteFederation: '写入联邦数据',
+    permMessageFederation: '联邦消息',
+    permTrustFederation: '联邦信任',
+    permFederationFiles: '联邦文件',
 
     // 权限描述
     permRegisterWidgetDesc: '允许注册自定义小组件到主页',
@@ -1416,6 +1487,17 @@ export const zhCN: TranslationKeys = {
     permSchedulerRegisterDesc: '允许注册和管理定时任务',
     permSpeechTtsDesc: '允许使用文本转语音服务',
     permSpeechAsrDesc: '允许使用语音识别服务',
+    permReadTappListDesc: '允许读取已安装的 Tapp 列表',
+    permManageTappListDesc: '允许安装、更新或移除 Tapp',
+    permReadBrewDesc: '允许读取 Brew 订阅和文章',
+    permWriteBrewDesc: '允许写入 Brew 订阅和文章数据',
+    permCommentBrewDesc: '允许创建和管理 Brew 评论',
+    permManageBrewDesc: '允许管理 Brew 订阅源和高级设置',
+    permReadFederationDesc: '允许读取联邦房间、频道和成员数据',
+    permWriteFederationDesc: '允许创建或更新联邦资源',
+    permMessageFederationDesc: '允许发送和接收联邦消息',
+    permTrustFederationDesc: '允许管理联邦信任关系',
+    permFederationFilesDesc: '允许访问联邦文件传输能力',
 
     // 列表页面
     listTitle: 'Tapp 应用',
@@ -1594,7 +1676,8 @@ export const zhCN: TranslationKeys = {
     feedTypeLinkDesc: '仅保存链接入口，不订阅更新',
     feedTypeNotionDesc: '订阅 Notion 数据库或页面内容',
     feedTypeRsshubDesc: 'RSSHub 多平台路由订阅，支持实例切换',
-    feedTypeBrewliaDesc: 'AI 增强订阅：自动提供词汇注释、代词指代分析等阅读辅助功能',
+    feedTypeBrewliaDesc:
+      'AI 增强订阅：自动提供词汇注释、代词指代分析等阅读辅助功能',
 
     // 操作
     addSubscription: '添加订阅',

@@ -55,7 +55,8 @@ pub async fn run(worker: Arc<Worker>, job_id: String, target: MyriadVersion) -> 
         .stop(&["frontend", "backend"], 30)
         .await
         .map_err(|e| {
-            rec.finish_step_err(format!("stop frontend/backend: {e}")).ok();
+            rec.finish_step_err(format!("stop frontend/backend: {e}"))
+                .ok();
             e
         })?;
     if !out.ok() {
@@ -143,9 +144,8 @@ pub async fn run(worker: Arc<Worker>, job_id: String, target: MyriadVersion) -> 
 
     // Health probe with deadline derived from migrations.estimated_seconds × 3 (min 5min).
     rec.enter(Phase::HealthProbing, "updater.phase.health_probing")?;
-    let deadline = Duration::from_secs(
-        300u64.max((pre.manifest.migrations.estimated_seconds as u64) * 3),
-    );
+    let deadline =
+        Duration::from_secs(300u64.max((pre.manifest.migrations.estimated_seconds as u64) * 3));
     let probe_result = health_probe(&worker, &target, deadline).await;
     if let Err(e) = probe_result {
         rec.finish_step_err(format!("health: {e}"))?;
@@ -195,7 +195,8 @@ async fn finish_with_rollback(
     original_err: UpdaterError,
 ) -> Result<()> {
     error!(err = %original_err, "rollback triggered");
-    let rb_result = rollback::execute_inline(worker.clone(), rec, compose, snap, snapshot_id, from_tag).await;
+    let rb_result =
+        rollback::execute_inline(worker.clone(), rec, compose, snap, snapshot_id, from_tag).await;
     match rb_result {
         Ok(_) => {
             rec.finalize(JobStatus::Failed)?;
@@ -223,12 +224,10 @@ async fn finish_with_rollback(
             m.message_key = "updater.phase.needs_manual".into();
             m.bump_heartbeat();
             worker.state().write_maintenance(&m)?;
-            worker
-                .state()
-                .append_history(&format!(
-                    "job {}: NEEDS_MANUAL — original={original_err}; rollback={rb_err}",
-                    rec.job_id
-                ))?;
+            worker.state().append_history(&format!(
+                "job {}: NEEDS_MANUAL — original={original_err}; rollback={rb_err}",
+                rec.job_id
+            ))?;
             Err(rb_err)
         }
     }
@@ -277,41 +276,41 @@ async fn health_probe(
     let target_str = target.as_str();
     while start.elapsed() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        let backend_url = "http://backend:3000/health";
-        let frontend_url = "http://frontend:4321/";
-        match worker
+        let backend_url = "http://backend:1103/health";
+        let frontend_url = "http://frontend:1102/";
+        if let Ok((200, body)) = worker
             .docker()
             .http_probe(backend_url, Duration::from_secs(10))
-            .await
-        {
-            Ok((200, body)) => {
-                let json: serde_json::Value =
-                    serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
-                let v = json.get("version").and_then(|v| v.as_str()).unwrap_or("");
-                let db = json.get("db_connected").and_then(|v| v.as_bool()).unwrap_or(false);
-                let mig = json
-                    .get("migrations_applied")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                if v == target_str && db && mig {
-                    // also check frontend
-                    if let Ok((200, html)) = worker
-                        .docker()
-                        .http_probe(frontend_url, Duration::from_secs(10))
-                        .await
+            .await {
+            let json: serde_json::Value =
+                serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+            let v = json.get("version").and_then(|v| v.as_str()).unwrap_or("");
+            let db = json
+                .get("db_connected")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let mig = json
+                .get("migrations_applied")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if v == target_str && db && mig {
+                // also check frontend
+                if let Ok((200, html)) = worker
+                    .docker()
+                    .http_probe(frontend_url, Duration::from_secs(10))
+                    .await
+                {
+                    if html
+                        .contains(&format!(r#"name="myriad-version" content="{target_str}""#))
                     {
-                        if html.contains(&format!(r#"name="myriad-version" content="{target_str}""#))
-                        {
-                            ok_streak += 1;
-                            if ok_streak >= 3 {
-                                return Ok(());
-                            }
-                            continue;
+                        ok_streak += 1;
+                        if ok_streak >= 3 {
+                            return Ok(());
                         }
+                        continue;
                     }
                 }
             }
-            Ok(_) | Err(_) => {}
         }
         ok_streak = 0;
         let _ = crate::worker::machine::heartbeat(worker.state());

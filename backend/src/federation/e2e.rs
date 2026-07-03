@@ -143,19 +143,19 @@ fn x25519_scalar_mult(scalar: &[u8; 32], u_bytes: &[u8; 32]) -> [u8; 32] {
         // Full reduction mod p = 2^255 - 19
         for _ in 0..2 {
             let mut carry: u64 = 0;
-            for i in 0..5 {
-                h[i] += carry;
-                carry = h[i] >> 51;
-                h[i] &= MASK51;
+            for limb in &mut h {
+                *limb += carry;
+                carry = *limb >> 51;
+                *limb &= MASK51;
             }
             h[0] += carry * 19;
         }
         // Final subtraction
         let mut carry = 0u64;
-        for i in 0..5 {
-            h[i] += carry;
-            carry = h[i] >> 51;
-            h[i] &= MASK51;
+        for limb in &mut h {
+            *limb += carry;
+            carry = *limb >> 51;
+            *limb &= MASK51;
         }
         h[0] += carry * 19;
         // Pack into bytes
@@ -179,8 +179,8 @@ fn x25519_scalar_mult(scalar: &[u8; 32], u_bytes: &[u8; 32]) -> [u8; 32] {
     #[inline]
     fn fe_add(a: &Fe, b: &Fe) -> Fe {
         let mut r = [0u64; 5];
-        for i in 0..5 {
-            r[i] = a[i] + b[i];
+        for (i, limb) in r.iter_mut().enumerate() {
+            *limb = a[i] + b[i];
         }
         r
     }
@@ -196,39 +196,39 @@ fn x25519_scalar_mult(scalar: &[u8; 32], u_bytes: &[u8; 32]) -> [u8; 32] {
             2u64 * ((1u64 << 51) - 1),
         ];
         let mut r = [0u64; 5];
-        for i in 0..5 {
-            r[i] = (a[i] + bias[i]) - b[i];
+        for (i, limb) in r.iter_mut().enumerate() {
+            *limb = (a[i] + bias[i]) - b[i];
         }
         r
     }
 
     fn fe_mul(a: &Fe, b: &Fe) -> Fe {
         let mut t = [0u128; 5];
-        for i in 0..5 {
-            for j in 0..5 {
+        for (i, &a_limb) in a.iter().enumerate() {
+            for (j, &b_limb) in b.iter().enumerate() {
                 let idx = i + j;
                 if idx < 5 {
-                    t[idx] += a[i] as u128 * b[j] as u128;
+                    t[idx] += a_limb as u128 * b_limb as u128;
                 } else {
                     // Reduction: x^5 ≡ 19 (in the limb representation)
-                    t[idx - 5] += 19u128 * a[i] as u128 * b[j] as u128;
+                    t[idx - 5] += 19u128 * a_limb as u128 * b_limb as u128;
                 }
             }
         }
         let mut r = [0u64; 5];
         let mut carry = 0u128;
-        for i in 0..5 {
-            t[i] += carry;
-            r[i] = (t[i] as u64) & MASK51;
-            carry = t[i] >> 51;
+        for (i, limb) in t.iter_mut().enumerate() {
+            *limb += carry;
+            r[i] = (*limb as u64) & MASK51;
+            carry = *limb >> 51;
         }
         r[0] += (carry as u64) * 19;
         // One more carry pass
         let mut c2 = 0u64;
-        for i in 0..5 {
-            r[i] += c2;
-            c2 = r[i] >> 51;
-            r[i] &= MASK51;
+        for limb in &mut r {
+            *limb += c2;
+            c2 = *limb >> 51;
+            *limb &= MASK51;
         }
         r[0] += c2 * 19;
         r

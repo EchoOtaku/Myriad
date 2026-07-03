@@ -16,7 +16,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         input_schema: json!({
             "type": "object",
             "properties": {
-                "platform": { "type": "string", "enum": ["bilibili", "steam", "github", "netease"] },
+                "platform": { "type": "string", "enum": ["bilibili", "bangumi", "steam", "github", "netease"] },
                 "limit": { "type": "integer", "default": 100 },
                 "offset": { "type": "integer", "default": 0 },
                 "filters": { "type": "object" }
@@ -101,7 +101,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         input_schema: json!({
             "type": "object",
             "properties": {
-                "platform": { "type": "string", "enum": ["bilibili", "steam", "github", "netease", "all"] }
+                "platform": { "type": "string", "enum": ["bilibili", "bangumi", "steam", "github", "netease", "all"] }
             },
             "required": ["platform"]
         }),
@@ -141,6 +141,63 @@ pub fn register(registry: &mut CapabilityRegistry) {
             }
         }),
         required_permissions: vec!["bilibili:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(5000),
+        ..Default::default()
+    });
+
+    // Bangumi 用户查询
+    registry.register(Capability {
+        id: "bangumi.user".to_string(),
+        name: "Bangumi 用户查询".to_string(),
+        description: "获取 Bangumi 用户基本信息".to_string(),
+        category: CapabilityCategory::ExternalIntegration,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "username": { "type": "string" },
+                "access_token": { "type": "string", "description": "可选，用于访问需要授权的数据" },
+                "user_agent": { "type": "string", "default": "haru/Myriad" }
+            },
+            "required": ["username"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "userInfo": { "type": "object" }
+            }
+        }),
+        required_permissions: vec!["bangumi:read".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(3000),
+        ..Default::default()
+    });
+
+    // Bangumi 收藏查询
+    registry.register(Capability {
+        id: "bangumi.collections".to_string(),
+        name: "Bangumi 收藏查询".to_string(),
+        description: "查询用户的 Bangumi 收藏、评分和观看状态".to_string(),
+        category: CapabilityCategory::ExternalIntegration,
+        supported_actions: vec![IntentAction::Query],
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "username": { "type": "string" },
+                "access_token": { "type": "string", "description": "可选，用于访问私有收藏" },
+                "user_agent": { "type": "string", "default": "haru/Myriad" }
+            },
+            "required": ["username"]
+        }),
+        output_schema: json!({
+            "type": "object",
+            "properties": {
+                "items": { "type": "array" },
+                "total": { "type": "integer" }
+            }
+        }),
+        required_permissions: vec!["bangumi:read".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(5000),
         ..Default::default()

@@ -62,7 +62,11 @@ impl EnvFile {
                 }
                 let raw_rhs = rest.trim().to_string();
                 let value = strip_quotes(&raw_rhs);
-                lines.push(Line::KeyValue { key, raw: raw_rhs, value });
+                lines.push(Line::KeyValue {
+                    key,
+                    raw: raw_rhs,
+                    value,
+                });
             } else {
                 lines.push(Line::Other(raw.to_string()));
             }
@@ -91,11 +95,18 @@ impl EnvFile {
     /// Value is serialized with safe quoting.
     pub fn set(&mut self, key: &str, value: &str) -> Result<()> {
         if !is_valid_key(key) {
-            return Err(UpdaterError::InvalidInput(format!("invalid env key: {key}")));
+            return Err(UpdaterError::InvalidInput(format!(
+                "invalid env key: {key}"
+            )));
         }
         let quoted = quote_if_needed(value);
         for l in self.lines.iter_mut() {
-            if let Line::KeyValue { key: k, raw, value: v } = l {
+            if let Line::KeyValue {
+                key: k,
+                raw,
+                value: v,
+            } = l
+            {
                 if k == key {
                     *raw = quoted.clone();
                     *v = value.to_string();
@@ -113,10 +124,9 @@ impl EnvFile {
 
     /// Persist atomically, rotating backups (max 5 retained).
     pub fn save(&self) -> Result<()> {
-        let backup = self.path.with_extension(format!(
-            "bak.{}",
-            Utc::now().format("%Y%m%dT%H%M%SZ")
-        ));
+        let backup = self
+            .path
+            .with_extension(format!("bak.{}", Utc::now().format("%Y%m%dT%H%M%SZ")));
         // Snapshot the existing file as a backup so a partial overwrite never destroys history.
         if self.path.exists() {
             std::fs::copy(&self.path, &backup)?;
@@ -172,7 +182,8 @@ fn strip_quotes(s: &str) -> String {
 
 fn quote_if_needed(v: &str) -> String {
     let needs_quotes = v.is_empty()
-        || v.chars().any(|c| c.is_whitespace() || matches!(c, '#' | '"' | '\'' | '=' | '$'));
+        || v.chars()
+            .any(|c| c.is_whitespace() || matches!(c, '#' | '"' | '\'' | '=' | '$'));
     if !needs_quotes {
         return v.to_string();
     }

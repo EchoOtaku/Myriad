@@ -17,8 +17,7 @@ export const InfoCard: React.FC<InfoCardProps> = ({
   className = '',
 }) => {
   const renderIcon = () => {
-    if (!icon)
-      return null
+    if (!icon) return null
     if (typeof icon === 'string') {
       return <span className="info-card-icon">{icon}</span>
     }

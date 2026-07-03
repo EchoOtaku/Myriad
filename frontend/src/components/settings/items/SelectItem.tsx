@@ -6,7 +6,10 @@ import type { SelectSettingConfig } from '../types'
 import React, { useCallback } from 'react'
 import './SettingItem.css'
 
-export interface SelectItemProps<T = string> extends Omit<SelectSettingConfig<T>, 'type'> {}
+export interface SelectItemProps<T = string> extends Omit<
+  SelectSettingConfig<T>,
+  'type'
+> {}
 
 function SelectItemComponent<T extends string = string>({
   itemKey,
@@ -24,11 +27,14 @@ function SelectItemComponent<T extends string = string>({
   layout = 'vertical',
   className = '',
 }: SelectItemProps<T>) {
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!disabled && !loading) {
-      onChange(e.target.value as T)
-    }
-  }, [onChange, disabled, loading])
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      if (!disabled && !loading) {
+        onChange(e.target.value as T)
+      }
+    },
+    [onChange, disabled, loading],
+  )
 
   const id = `setting-select-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
 
@@ -54,7 +60,7 @@ function SelectItemComponent<T extends string = string>({
           disabled={disabled || loading}
           className={`field-select ${error ? 'has-error' : ''}`}
         >
-          {options.map(option => (
+          {options.map((option) => (
             <option
               key={String(option.value)}
               value={option.value as string}
@@ -71,4 +77,6 @@ function SelectItemComponent<T extends string = string>({
   )
 }
 
-export const SelectItem = React.memo(SelectItemComponent) as typeof SelectItemComponent
+export const SelectItem = React.memo(
+  SelectItemComponent,
+) as typeof SelectItemComponent

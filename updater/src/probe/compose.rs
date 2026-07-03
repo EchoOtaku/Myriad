@@ -28,7 +28,12 @@ pub async fn probe(compose_dir: &Path) -> ComposeProbe {
     let binary = detect_binary().await;
 
     let mut files = Vec::new();
-    for name in ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"] {
+    for name in [
+        "compose.yaml",
+        "compose.yml",
+        "docker-compose.yaml",
+        "docker-compose.yml",
+    ] {
         let p = compose_dir.join(name);
         if p.exists() {
             files.push(p);

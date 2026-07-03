@@ -9,7 +9,10 @@ interface LoaderProps {
   className?: string
 }
 
-export default function Loader({ size = 'medium', className = '' }: LoaderProps) {
+export default function Loader({
+  size = 'medium',
+  className = '',
+}: LoaderProps) {
   const sizeMap = {
     small: 100,
     medium: 200,

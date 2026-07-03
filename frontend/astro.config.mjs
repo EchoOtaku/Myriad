@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
@@ -11,7 +12,9 @@ import { defineConfig, fontProviders } from 'astro/config'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // 读取 package.json 版本号
-const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'))
+const pkg = JSON.parse(
+  readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
+)
 const APP_VERSION = pkg.version || '0.1.0'
 
 /**
@@ -30,24 +33,20 @@ function spaFallbackPlugin() {
 
         // 动态 Tapp 路由回退：/tapp/run/* 和 /tapp/detail/*
         // 服务端将这些路径重写为占位路径，但浏览器 URL 保持不变
-        if (url.match(/^\/tapp\/run\/[^_/][^/]*/)) {
+        if (/^\/tapp\/run\/[^_/][^/]*/.test(url)) {
           req.url = '/tapp/run/_'
-        }
-        else if (url.match(/^\/tapp\/run(\?|$)/)) {
+        } else if (/^\/tapp\/run(\?|$)/.test(url)) {
           // 多任务模式：/tapp/run 或 /tapp/run?multi=true
           req.url = '/tapp/run/_'
-        }
-        else if (url.match(/^\/tapp\/detail\/[^_/][^/]*/)) {
+        } else if (/^\/tapp\/detail\/[^_/][^/]*/.test(url)) {
           req.url = '/tapp/detail/_'
         }
         // 联邦动态路由回退
-        else if (url.match(/^\/federation\/chat\/[^_/][^/]*/)) {
+        else if (/^\/federation\/chat\/[^_/][^/]*/.test(url)) {
           req.url = '/federation/chat/_'
-        }
-        else if (url.match(/^\/federation\/room\/[^_/][^/]*/)) {
+        } else if (/^\/federation\/room\/[^_/][^/]*/.test(url)) {
           req.url = '/federation/room/_'
-        }
-        else if (url.match(/^\/federation\/ring\/[^_/][^/]*/)) {
+        } else if (/^\/federation\/ring\/[^_/][^/]*/.test(url)) {
           req.url = '/federation/ring/_'
         }
 
@@ -57,7 +56,7 @@ function spaFallbackPlugin() {
   }
 }
 
-const BACKEND_TARGET = 'http://127.0.0.1:3000'
+const BACKEND_TARGET = 'http://127.0.0.1:1103'
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -80,7 +79,7 @@ async function readRequestBody(req) {
 }
 
 function wait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function proxyBackendRequest(targetUrl, method, headers, body) {
@@ -91,24 +90,30 @@ function proxyBackendRequest(targetUrl, method, headers, body) {
       requestHeaders['content-length'] = String(body.length)
     }
 
-    const backendReq = http.request(targetUrl, {
-      method,
-      headers: requestHeaders,
-      agent: false,
-      timeout: 30000,
-    }, (backendRes) => {
-      const chunks = []
-      backendRes.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))
-      backendRes.on('end', () => {
-        resolve({
-          statusCode: backendRes.statusCode || 502,
-          statusMessage: backendRes.statusMessage || 'Bad Gateway',
-          headers: backendRes.headers,
-          body: Buffer.concat(chunks),
+    const backendReq = http.request(
+      targetUrl,
+      {
+        method,
+        headers: requestHeaders,
+        agent: false,
+        timeout: 30000,
+      },
+      (backendRes) => {
+        const chunks = []
+        backendRes.on('data', (chunk) =>
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+        )
+        backendRes.on('end', () => {
+          resolve({
+            statusCode: backendRes.statusCode || 502,
+            statusMessage: backendRes.statusMessage || 'Bad Gateway',
+            headers: backendRes.headers,
+            body: Buffer.concat(chunks),
+          })
         })
-      })
-      backendRes.on('error', reject)
-    })
+        backendRes.on('error', reject)
+      },
+    )
 
     backendReq.on('timeout', () => {
       backendReq.destroy(new Error('Backend proxy timeout'))
@@ -117,8 +122,7 @@ function proxyBackendRequest(targetUrl, method, headers, body) {
 
     if (body && body.length > 0) {
       backendReq.end(body)
-    }
-    else {
+    } else {
       backendReq.end()
     }
   })
@@ -154,8 +158,7 @@ function backendDevProxyPlugin() {
               for (const item of value) {
                 headers.append(name, item)
               }
-            }
-            else {
+            } else {
               headers.set(name, value)
             }
           }
@@ -169,10 +172,14 @@ function backendDevProxyPlugin() {
           let lastError
           for (let attempt = 0; attempt < 4; attempt++) {
             try {
-              response = await proxyBackendRequest(targetUrl, method, headers, body)
+              response = await proxyBackendRequest(
+                targetUrl,
+                method,
+                headers,
+                body,
+              )
               break
-            }
-            catch (error) {
+            } catch (error) {
               lastError = error
               if (!retryable || attempt === 3) {
                 throw error
@@ -197,11 +204,12 @@ function backendDevProxyPlugin() {
           }
 
           res.end(response.body)
-        }
-        catch (error) {
+        } catch (error) {
           server.config.logger.error(
             `[backend-dev-proxy] ${req.method || 'GET'} ${originalUrl} failed: ${
-              error instanceof Error ? `${error.message}\n${error.stack || ''}` : String(error)
+              error instanceof Error
+                ? `${error.message}\n${error.stack || ''}`
+                : String(error)
             }`,
           )
           if (!res.headersSent) {
@@ -209,10 +217,12 @@ function backendDevProxyPlugin() {
             res.setHeader('Content-Type', 'application/json')
             res.setHeader('x-myriad-dev-proxy', 'http')
           }
-          res.end(JSON.stringify({
-            error: 'Backend proxy failed',
-            message: error instanceof Error ? error.message : String(error),
-          }))
+          res.end(
+            JSON.stringify({
+              error: 'Backend proxy failed',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          )
         }
       })
     },
@@ -226,7 +236,7 @@ export default defineConfig({
   // 这样可以支持 /tapp/run/:id 等动态路由
   output: 'static',
   server: {
-    port: 4321,
+    port: 1102,
     host: true,
   },
   build: {
@@ -242,7 +252,12 @@ export default defineConfig({
       cssVariable: '--font-inter',
       weights: [400, 500, 600, 700],
       styles: ['normal'],
-      fallbacks: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+      fallbacks: [
+        '-apple-system',
+        'BlinkMacSystemFont',
+        'Segoe UI',
+        'sans-serif',
+      ],
     },
     // 标题装饰字体（由 useTitleFont hook 按需切换）
     {
@@ -355,14 +370,19 @@ export default defineConfig({
               manualChunks: (id) => {
                 // React 核心 + React Router 合并到同一 chunk
                 // 避免 React Router v7 在 React Context 初始化前加载导致 hydration 错误
-                if (id.includes('node_modules/react/')
-                  || id.includes('node_modules/react-dom/')
-                  || id.includes('node_modules/react-router')
-                  || id.includes('node_modules/@remix-run')) {
+                if (
+                  id.includes('node_modules/react/') ||
+                  id.includes('node_modules/react-dom/') ||
+                  id.includes('node_modules/react-router') ||
+                  id.includes('node_modules/@remix-run')
+                ) {
                   return 'react-vendor'
                 }
                 // Chart.js
-                if (id.includes('node_modules/chart.js') || id.includes('node_modules/react-chartjs-2')) {
+                if (
+                  id.includes('node_modules/chart.js') ||
+                  id.includes('node_modules/react-chartjs-2')
+                ) {
                   return 'chart-vendor'
                 }
                 // Motion

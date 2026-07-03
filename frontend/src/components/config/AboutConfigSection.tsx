@@ -23,13 +23,18 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
 }) => {
   const { t } = useI18n()
 
-  const devInfo: Array<{ label: string, value: React.ReactNode }> = [
+  const devInfo: Array<{ label: string; value: React.ReactNode }> = [
     { label: t.config.aboutVersion, value: `v${MYRIAD_VERSION}` },
     { label: t.config.aboutLicense, value: 'GPL-3.0' },
     {
       label: t.config.aboutOrganization,
       value: (
-        <a className="about-row-link" href={ORG_URL} target="_blank" rel="noreferrer noopener">
+        <a
+          className="about-row-link"
+          href={ORG_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
           {ORG_NAME}
         </a>
       ),
@@ -37,7 +42,12 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
     {
       label: t.config.aboutRepository,
       value: (
-        <a className="about-row-link" href={REPO_URL} target="_blank" rel="noreferrer noopener">
+        <a
+          className="about-row-link"
+          href={REPO_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
           github.com/myriad-you/Myriad
         </a>
       ),
@@ -54,7 +64,11 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
       <SettingGroup>
         <div className="about">
           <div className="about-hero">
-            <img src="/logo.webp" alt={t.config.aboutLogoAlt} className="about-logo" />
+            <img
+              src="/logo.webp"
+              alt={t.config.aboutLogoAlt}
+              className="about-logo"
+            />
             <h3 className="about-name">Myriad</h3>
             <p className="about-tagline">{t.config.aboutTagline}</p>
           </div>

@@ -20,7 +20,10 @@ interface AnimatedViewProps {
   className?: string
 }
 
-export default function AnimatedView({ children, className = '' }: AnimatedViewProps) {
+export default function AnimatedView({
+  children,
+  className = '',
+}: AnimatedViewProps) {
   const location = useLocation()
   const pageId = location.pathname.replace(/\//g, '-') || 'home'
 
@@ -45,8 +48,6 @@ export default function AnimatedView({ children, className = '' }: AnimatedViewP
   }, [location.pathname, onEnterComplete])
 
   return (
-    <div className={`animated-view-container ${className}`}>
-      {children}
-    </div>
+    <div className={`animated-view-container ${className}`}>{children}</div>
   )
 }

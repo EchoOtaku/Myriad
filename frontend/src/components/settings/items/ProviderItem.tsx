@@ -7,10 +7,12 @@ import type { ProviderSettingConfig, SettingOption } from '../types'
 import React, { useCallback } from 'react'
 import './SettingItem.css'
 
-export interface ProviderItemProps<T = string> extends Omit<ProviderSettingConfig<T>, 'type'> {}
+export interface ProviderItemProps<T = string> extends Omit<
+  ProviderSettingConfig<T>,
+  'type'
+> {}
 
 function ProviderItemComponent<T extends string = string>({
-  _itemKey,
   label,
   description,
   hint,
@@ -23,15 +25,17 @@ function ProviderItemComponent<T extends string = string>({
   layout = 'horizontal',
   className = '',
 }: ProviderItemProps<T>) {
-  const handleSelect = useCallback((optionValue: T) => {
-    if (!disabled && !loading) {
-      onChange(optionValue)
-    }
-  }, [onChange, disabled, loading])
+  const handleSelect = useCallback(
+    (optionValue: T) => {
+      if (!disabled && !loading) {
+        onChange(optionValue)
+      }
+    },
+    [onChange, disabled, loading],
+  )
 
   const renderIcon = (icon: SettingOption['icon']) => {
-    if (!icon)
-      return null
+    if (!icon) return null
     if (typeof icon === 'string') {
       return <span className="provider-icon">{icon}</span>
     }
@@ -52,7 +56,7 @@ function ProviderItemComponent<T extends string = string>({
 
         <div className="setting-control">
           <div className="provider-selector">
-            {options.map(option => (
+            {options.map((option) => (
               <button
                 key={String(option.value)}
                 type="button"
@@ -75,4 +79,6 @@ function ProviderItemComponent<T extends string = string>({
   )
 }
 
-export const ProviderItem = React.memo(ProviderItemComponent) as typeof ProviderItemComponent
+export const ProviderItem = React.memo(
+  ProviderItemComponent,
+) as typeof ProviderItemComponent

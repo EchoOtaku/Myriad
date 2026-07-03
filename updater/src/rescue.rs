@@ -39,7 +39,8 @@ pub async fn exit_maintenance(ctx: &Context, force: bool) -> Result<()> {
     }
     ctx.state.clear_maintenance()?;
     ctx.state.set_current_job(None)?;
-    ctx.state.append_history("rescue: exit_maintenance via CLI")?;
+    ctx.state
+        .append_history("rescue: exit_maintenance via CLI")?;
     info!("maintenance cleared");
     Ok(())
 }
@@ -91,7 +92,11 @@ pub async fn diagnose(ctx: &Context, output: &PathBuf) -> Result<()> {
     // docker compose ps + docker images.
     let _ = run_capture(
         "docker",
-        &["images", "--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}"],
+        &[
+            "images",
+            "--format",
+            "{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}",
+        ],
     )
     .await
     .map(|s| std::fs::write(staging.join("docker-images.txt"), s));
@@ -134,8 +139,7 @@ pub async fn clean_snapshots(ctx: &Context, keep: usize) -> Result<()> {
 }
 
 async fn compose_v2_or_v1(ctx: &Context, args: &[&str]) -> Result<()> {
-    let project =
-        std::env::var("COMPOSE_PROJECT_NAME").unwrap_or_else(|_| "myriad".into());
+    let project = std::env::var("COMPOSE_PROJECT_NAME").unwrap_or_else(|_| "myriad".into());
 
     let v2 = tokio::process::Command::new("docker")
         .arg("compose")

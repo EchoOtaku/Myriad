@@ -4,7 +4,7 @@ import { useEffect, useSyncExternalStore } from 'react'
  * 全局 framer-motion 加载状态
  * 使用单例模式确保所有组件共享同一份加载状态
  */
-let globalFM: { motion: any, AnimatePresence: any } | null = null
+let globalFM: { motion: any; AnimatePresence: any } | null = null
 let isLoading = false
 let loadPromise: Promise<void> | null = null
 const listeners = new Set<() => void>()
@@ -19,14 +19,12 @@ function getSnapshot() {
 }
 
 function notifyListeners() {
-  listeners.forEach(listener => listener())
+  listeners.forEach((listener) => listener())
 }
 
 function loadFramerMotion() {
-  if (globalFM)
-    return Promise.resolve()
-  if (loadPromise)
-    return loadPromise
+  if (globalFM) return Promise.resolve()
+  if (loadPromise) return loadPromise
 
   isLoading = true
   loadPromise = import('motion/react')
@@ -60,5 +58,10 @@ export function useLazyMotion(shouldAnimate: boolean) {
   const MDiv: any = FM ? FM.motion.div : 'div'
   const MSpan: any = FM ? FM.motion.span : 'span'
 
-  return { motion: FM?.motion, AnimatePresence: FM?.AnimatePresence, MDiv, MSpan } as const
+  return {
+    motion: FM?.motion,
+    AnimatePresence: FM?.AnimatePresence,
+    MDiv,
+    MSpan,
+  } as const
 }

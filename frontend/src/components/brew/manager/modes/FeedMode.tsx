@@ -2,6 +2,8 @@
  * Feed 模式组件 - 单个订阅源文章列表视图
  */
 
+import type { FeedModeConfig } from './types'
+
 import {
   LuCheckCircle as CheckCircle,
   LuChevronLeft as ChevronLeft,
@@ -9,8 +11,6 @@ import {
   LuRefreshCw as RefreshCw,
   LuRss as Rss,
 } from '@lib/icons'
-
-import type { FeedModeConfig } from './types'
 import { IslandShell } from '../../../shared/control-island'
 import { ISLAND_BTN, ISLAND_DIVIDER } from './constants'
 
@@ -36,8 +36,6 @@ export function FeedMode({
   isAuthenticated = false,
   t,
 }: FeedModeProps) {
-  const isMobile = variant === 'mobile'
-
   return (
     <IslandShell variant={variant} motionKey={`feed-bar-${variant}`}>
       {/* 返回按钮 */}
@@ -52,34 +50,39 @@ export function FeedMode({
 
       {/* 订阅源信息 */}
       <div className="flex items-center gap-2 h-9 px-2 min-w-0 flex-1">
-        {feedMode.source.icon
-          ? (
-              <img
-                src={feedMode.source.icon}
-                alt=""
-                className="w-7 h-7 rounded-lg object-cover shrink-0"
-              />
-            )
-          : (
-              <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                style={{ backgroundColor: feedMode.source.theme_color || '#F97316' }}
-              >
-                <Rss className="w-4 h-4 text-white" />
-              </div>
-            )}
+        {feedMode.source.icon ? (
+          <img
+            src={feedMode.source.icon}
+            alt=""
+            className="w-7 h-7 rounded-lg object-cover shrink-0"
+          />
+        ) : (
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+            style={{
+              backgroundColor: feedMode.source.theme_color || '#F97316',
+            }}
+          >
+            <Rss className="w-4 h-4 text-white" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
             {feedMode.source.name}
           </h3>
           <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
-            <span>{t.articlesCount.replace('{count}', String(feedMode.total))}</span>
+            <span>
+              {t.articlesCount.replace('{count}', String(feedMode.total))}
+            </span>
             {feedMode.source.unread_count > 0 && (
               <span
                 className="font-medium"
                 style={{ color: feedMode.source.theme_color || '#F97316' }}
               >
-                {t.tipUnreadCount.replace('{count}', String(feedMode.source.unread_count))}
+                {t.tipUnreadCount.replace(
+                  '{count}',
+                  String(feedMode.source.unread_count),
+                )}
               </span>
             )}
           </div>
@@ -98,7 +101,9 @@ export function FeedMode({
           title={t.refreshSource}
           aria-label={t.refreshSource}
         >
-          <RefreshCw className={`w-4 h-4 ${feedMode.isRefreshing ? 'animate-spin' : ''}`} />
+          <RefreshCw
+            className={`w-4 h-4 ${feedMode.isRefreshing ? 'animate-spin' : ''}`}
+          />
         </button>
       )}
 

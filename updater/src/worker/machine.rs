@@ -41,7 +41,8 @@ impl<'a> PhaseRecorder<'a> {
         }
         self.state.write_job(&job)?;
         info!(job = %self.job_id, ?phase, "phase enter");
-        self.state.append_history(&format!("job {}: -> {:?}", self.job_id, phase))?;
+        self.state
+            .append_history(&format!("job {}: -> {:?}", self.job_id, phase))?;
         Ok(())
     }
 

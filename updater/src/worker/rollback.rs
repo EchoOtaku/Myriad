@@ -98,7 +98,7 @@ pub async fn execute_inline(
         tokio::time::sleep(Duration::from_secs(2)).await;
         if let Ok((200, body)) = worker
             .docker()
-            .http_probe("http://backend:3000/health", Duration::from_secs(5))
+            .http_probe("http://backend:1103/health", Duration::from_secs(5))
             .await
         {
             let json: serde_json::Value =

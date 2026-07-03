@@ -21,7 +21,7 @@
 //! - `YYYY-MM-DD.md`：每日交互日志
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::{NaiveDate, Utc};
@@ -107,6 +107,7 @@ pub enum MemoryType {
 /// 记忆层级
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[allow(clippy::enum_variant_names)]
 pub enum MemoryTier {
     /// 当前对话上下文（ephemeral）
     ShortTerm,
@@ -615,17 +616,17 @@ impl AgentMemory {
                 .iter()
                 .rev()
                 .take(6)
-                .filter_map(|msg| {
+                .map(|msg| {
                     let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("?");
                     let content = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
                     if content.len() > 200 {
-                        Some(format!(
+                        format!(
                             "{}: {}...",
                             role,
                             &content.chars().take(200).collect::<String>()
-                        ))
+                        )
                     } else {
-                        Some(format!("{}: {}", role, content))
+                        format!("{}: {}", role, content)
                     }
                 })
                 .collect();
@@ -1618,7 +1619,7 @@ impl AgentMemory {
     }
 
     /// 加载全部记忆条目
-    async fn load_entries(memory_dir: &PathBuf) -> HashMap<String, MemoryEntry> {
+    async fn load_entries(memory_dir: &Path) -> HashMap<String, MemoryEntry> {
         // 优先从 memory_index.json 快速恢复
         let index_path = memory_dir.join(INDEX_FILE);
         if let Ok(content) = tokio::fs::read_to_string(&index_path).await {

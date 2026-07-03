@@ -15,16 +15,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import { observeResize } from '../hooks/animation'
-import { useSharedResize, useSharedScroll } from '../hooks/useSharedEventListener'
+import {
+  useSharedResize,
+  useSharedScroll,
+} from '../hooks/useSharedEventListener'
 
 // 检测是否为移动端 - 使用多重检测确保准确性
 function getIsMobile(): boolean {
-  if (typeof window === 'undefined')
-    return true // SSR 时视为移动端，不渲染
+  if (typeof window === 'undefined') return true // SSR 时视为移动端，不渲染
 
   // 多重检测: 屏幕宽度 + 触摸设备
   const isSmallScreen = window.matchMedia('(max-width: 767px)').matches
-  const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches
+  const isTouchDevice = window.matchMedia(
+    '(hover: none) and (pointer: coarse)',
+  ).matches
 
   return isSmallScreen || isTouchDevice
 }
@@ -47,28 +51,17 @@ export default function CustomScrollbar() {
   const [isMobile, setIsMobile] = useState(getIsMobile)
 
   useEffect(() => {
-    if (typeof window === 'undefined')
-      return
+    if (typeof window === 'undefined') return
 
     const mediaQuery = window.matchMedia('(max-width: 767px)')
     const handleChange = (e: MediaQueryListEvent) => {
       setIsMobile(e.matches)
     }
 
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', handleChange)
-    }
-    else {
-      mediaQuery.addListener(handleChange)
-    }
+    mediaQuery.addEventListener('change', handleChange)
 
     return () => {
-      if (mediaQuery.removeEventListener) {
-        mediaQuery.removeEventListener('change', handleChange)
-      }
-      else {
-        mediaQuery.removeListener(handleChange)
-      }
+      mediaQuery.removeEventListener('change', handleChange)
     }
   }, [])
 
@@ -109,12 +102,10 @@ function CustomScrollbarInner() {
 
   // 计算并更新 Thumb 的位置和高度
   const updateThumb = useCallback(() => {
-    if (!thumbRef.current || isDraggingRef.current)
-      return
+    if (!thumbRef.current || isDraggingRef.current) return
 
     // 路由切换期间，禁止所有更新
-    if (isRouteTransitioningRef.current)
-      return
+    if (isRouteTransitioningRef.current) return
 
     const now = Date.now()
     const timeSinceDragEnd = now - dragEndTimeRef.current
@@ -129,7 +120,10 @@ function CustomScrollbarInner() {
 
     // 🔧 优化：缓存 scrollHeight，每 500ms 最多更新一次
     // 这减少了大量的强制布局计算
-    if (now - lastHeightCheckRef.current > 500 || cachedDocumentHeightRef.current === 0) {
+    if (
+      now - lastHeightCheckRef.current > 500 ||
+      cachedDocumentHeightRef.current === 0
+    ) {
       cachedDocumentHeightRef.current = document.documentElement.scrollHeight
       lastHeightCheckRef.current = now
     }
@@ -165,9 +159,9 @@ function CustomScrollbarInner() {
     // 拖动结束后的修正动画
     else if (timeSinceDragEnd >= 1000 && timeSinceDragEnd < 1600) {
       // 先设置过渡动画
-      thumbRef.current.style.transition = 'top 0.6s cubic-bezier(0.4, 0, 0.2, 1), height 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
-    }
-    else {
+      thumbRef.current.style.transition =
+        'top 0.6s cubic-bezier(0.4, 0, 0.2, 1), height 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+    } else {
       thumbRef.current.style.transition = 'none'
     }
 
@@ -181,8 +175,7 @@ function CustomScrollbarInner() {
 
   // RAF 节流的更新处理器 - 使用 useCallback 确保引用稳定
   const handleUpdate = useCallback(() => {
-    if (isDraggingRef.current)
-      return
+    if (isDraggingRef.current) return
     updateThumb()
   }, [updateThumb])
 
@@ -198,8 +191,7 @@ function CustomScrollbarInner() {
     let throttleTimer: number | null = null
 
     const handleUpdateThrottled = () => {
-      if (throttleTimer !== null)
-        return
+      if (throttleTimer !== null) return
       throttleTimer = window.setTimeout(() => {
         handleUpdate()
         throttleTimer = null
@@ -210,23 +202,24 @@ function CustomScrollbarInner() {
     requestAnimationFrame(() => {
       updateThumb()
       // 再次更新以确保准确（处理初次渲染后的 DOM 变化）
-      setTimeout(() => updateThumb(), 100)
+      setTimeout(updateThumb, 100)
     })
 
     // 使用共享 ResizeObserver 监听文档高度变化
-    const unobserve = observeResize(document.documentElement, handleUpdateThrottled)
+    const unobserve = observeResize(
+      document.documentElement,
+      handleUpdateThrottled,
+    )
 
     return () => {
       unobserve()
-      if (throttleTimer !== null)
-        clearTimeout(throttleTimer)
+      if (throttleTimer !== null) clearTimeout(throttleTimer)
     }
   }, [updateThumb, handleUpdate])
 
   // 监听路由变化，触发平滑过渡
   useEffect(() => {
-    if (!thumbRef.current)
-      return
+    if (!thumbRef.current) return
 
     // 记录路由切换时间
     routeTransitionTimeRef.current = Date.now()
@@ -236,11 +229,11 @@ function CustomScrollbarInner() {
 
     // 等待 DOM 重排和页面内容加载完成
     const initialDelay = setTimeout(() => {
-      if (!thumbRef.current)
-        return
+      if (!thumbRef.current) return
 
       // 先启用过渡动画
-      thumbRef.current.style.transition = 'top 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+      thumbRef.current.style.transition =
+        'top 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
 
       // 再等待一段时间后触发更新到新页面的尺寸
       const updateDelay = setTimeout(() => {
@@ -280,10 +273,8 @@ function CustomScrollbarInner() {
       setIsScrolling(true)
 
       // 清除之前的计时器
-      if (hideTimerRef.current)
-        clearTimeout(hideTimerRef.current)
-      if (scrollingTimerRef.current)
-        clearTimeout(scrollingTimerRef.current)
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+      if (scrollingTimerRef.current) clearTimeout(scrollingTimerRef.current)
 
       // 100ms 检测滚动停止（更灵敏）
       scrollingTimerRef.current = window.setTimeout(() => {
@@ -302,7 +293,8 @@ function CustomScrollbarInner() {
 
     // 初始显示
     const initialCheck = () => {
-      const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight
+      const scrollableHeight =
+        document.documentElement.scrollHeight - window.innerHeight
       if (scrollableHeight > 0) {
         setIsVisible(true)
         hideTimerRef.current = window.setTimeout(() => {
@@ -317,10 +309,8 @@ function CustomScrollbarInner() {
 
     return () => {
       window.removeEventListener('scroll', handleScroll)
-      if (hideTimerRef.current)
-        clearTimeout(hideTimerRef.current)
-      if (scrollingTimerRef.current)
-        clearTimeout(scrollingTimerRef.current)
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+      if (scrollingTimerRef.current) clearTimeout(scrollingTimerRef.current)
     }
   }, [isDragging, isHovering])
 
@@ -343,12 +333,10 @@ function CustomScrollbarInner() {
 
   // 处理拖拽 - 完全同步，无延迟
   useEffect(() => {
-    if (!isDragging)
-      return
+    if (!isDragging) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!thumbRef.current)
-        return
+      if (!thumbRef.current) return
 
       // 获取当前尺寸
       const windowHeight = window.innerHeight
@@ -357,7 +345,9 @@ function CustomScrollbarInner() {
       const trackHeight = windowHeight * TRACK_HEIGHT_PERCENT
 
       // 获取当前 Thumb 高度（动态计算的）
-      const currentThumbHeight = Number.parseFloat(thumbRef.current.style.height || '0')
+      const currentThumbHeight = Number.parseFloat(
+        thumbRef.current.style.height || '0',
+      )
       const availableTrackHeight = trackHeight - currentThumbHeight
 
       // 计算鼠标移动距离
@@ -365,7 +355,8 @@ function CustomScrollbarInner() {
 
       // 计算新的滚动位置
       const scrollRatio = deltaY / availableTrackHeight
-      const newScrollY = dragStartRef.current.scrollY + scrollRatio * scrollableHeight
+      const newScrollY =
+        dragStartRef.current.scrollY + scrollRatio * scrollableHeight
       const clampedScrollY = Math.max(0, Math.min(newScrollY, scrollableHeight))
 
       // 同步更新滚动位置
@@ -421,9 +412,9 @@ function CustomScrollbarInner() {
   const TRACK_HEIGHT = windowHeight * TRACK_HEIGHT_PERCENT
 
   // 检查是否有可滚动内容
-  const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight
-  if (scrollableHeight <= 0)
-    return null
+  const scrollableHeight =
+    document.documentElement.scrollHeight - window.innerHeight
+  if (scrollableHeight <= 0) return null
 
   return (
     <>
@@ -453,9 +444,16 @@ function CustomScrollbarInner() {
           className="absolute inset-0 rounded-full"
           style={{
             backgroundColor: `color-mix(in srgb, var(--color-primary) ${
-              isDragging ? '20%' : isScrolling ? '15%' : isHovering ? '12%' : '8%'
+              isDragging
+                ? '20%'
+                : isScrolling
+                  ? '15%'
+                  : isHovering
+                    ? '12%'
+                    : '8%'
             }, transparent)`,
-            backdropFilter: isDragging || isScrolling ? 'blur(10px)' : 'blur(6px)',
+            backdropFilter:
+              isDragging || isScrolling ? 'blur(10px)' : 'blur(6px)',
             boxShadow: isDragging
               ? `inset 0 0 24px color-mix(in srgb, var(--color-primary) 15%, transparent)`
               : isScrolling
@@ -475,7 +473,8 @@ function CustomScrollbarInner() {
             // 设置初始值，防止 thumb 在 updateThumb 执行前不可见
             top: '0px',
             height: `${MIN_THUMB_HEIGHT}px`,
-            backgroundColor: 'color-mix(in srgb, var(--color-primary) 70%, transparent)',
+            backgroundColor:
+              'color-mix(in srgb, var(--color-primary) 70%, transparent)',
             opacity: 0.95,
             boxShadow: `0 0 14px color-mix(in srgb, var(--color-primary) 65%, transparent),
                        0 3px 10px color-mix(in srgb, var(--color-primary) 45%, transparent)`,
@@ -497,7 +496,8 @@ function CustomScrollbarInner() {
               height: '16px',
               borderRadius: '50%',
               backgroundColor: `color-mix(in srgb, var(--color-primary) 30%, transparent)`,
-              animation: 'pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              animation:
+                'pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             }}
           />
         )}

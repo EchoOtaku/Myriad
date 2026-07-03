@@ -58,22 +58,28 @@ export default function BrewFeedList({
   const [columnCount, setColumnCount] = useState(2)
 
   // 缓存翻译对象
-  const timeTranslations = useMemo<TimeTranslations>(() => ({
-    justNow: t.brew.justNow,
-    minutesAgo: t.brew.minutesAgo,
-    hoursAgo: t.brew.hoursAgo,
-    daysAgo: t.brew.daysAgo,
-  }), [t.brew])
+  const timeTranslations = useMemo<TimeTranslations>(
+    () => ({
+      justNow: t.brew.justNow,
+      minutesAgo: t.brew.minutesAgo,
+      hoursAgo: t.brew.hoursAgo,
+      daysAgo: t.brew.daysAgo,
+    }),
+    [t.brew],
+  )
 
-  const brewTranslations = useMemo(() => ({
-    hasAnnotations: t.brew.hasAnnotations,
-    annotationsLabel: t.brew.annotationsLabel,
-    hasPodcast: t.brew.hasPodcast,
-    podcastLabel: t.brew.podcastLabel,
-    unstarArticle: t.brew.unstarArticle,
-    starArticle: t.brew.starArticle,
-    openInNewTab: t.brew.openInNewTab,
-  }), [t.brew])
+  const brewTranslations = useMemo(
+    () => ({
+      hasAnnotations: t.brew.hasAnnotations,
+      annotationsLabel: t.brew.annotationsLabel,
+      hasPodcast: t.brew.hasPodcast,
+      podcastLabel: t.brew.podcastLabel,
+      unstarArticle: t.brew.unstarArticle,
+      starArticle: t.brew.starArticle,
+      openInNewTab: t.brew.openInNewTab,
+    }),
+    [t.brew],
+  )
 
   // 响应式列数 - 使用 ResizeObserver 替代 resize 事件（更高效，避免防抖）
   const containerRef = useRef<HTMLDivElement>(null)
@@ -104,20 +110,22 @@ export default function BrewFeedList({
   }, [])
 
   // 缓存主题色获取函数
-  const getItemThemeColor = useCallback((item: BrewItem): string => {
-    return sourceColors?.get(item.source_id) || DEFAULT_THEME_COLOR
-  }, [sourceColors])
+  const getItemThemeColor = useCallback(
+    (item: BrewItem): string => {
+      return sourceColors?.get(item.source_id) || DEFAULT_THEME_COLOR
+    },
+    [sourceColors],
+  )
 
   // 瀑布流列分配 - 最短列优先算法（根据预估高度平衡列）
   const columns = useMemo(() => {
     const cols: BrewItem[][] = Array.from({ length: columnCount }, () => [])
-    const colHeights: number[] = Array.from({ length: columnCount }, () => 0)
+    const colHeights = Array.from({ length: columnCount }, () => 0)
 
     // 预估卡片高度：基础高度 + 封面图高度 + 摘要行数
     const estimateHeight = (item: BrewItem): number => {
       let height = 140 // 基础高度（标题、元信息、padding）
-      if (item.image)
-        height += 80 // 封面图
+      if (item.image) height += 80 // 封面图
       if (item.summary) {
         const textLen = getPlainText(item.summary).length
         height += Math.min(Math.ceil(textLen / 40) * 22, 66) // 每行约22px，最多3行
@@ -144,16 +152,16 @@ export default function BrewFeedList({
   }, [items, columnCount])
 
   // 缓存最后一项 ID
-  const lastItemId = useMemo(() =>
-    items.length > 0 ? items[items.length - 1].id : null, [items])
+  const lastItemId = useMemo(
+    () => (items.length > 0 ? items[items.length - 1].id : null),
+    [items],
+  )
 
   // 无限滚动加载 - 使用 IntersectionObserver
   const lastItemRef = useCallback(
     (node: HTMLDivElement | null) => {
-      if (loading)
-        return
-      if (observerRef.current)
-        observerRef.current.disconnect()
+      if (loading) return
+      if (observerRef.current) observerRef.current.disconnect()
 
       observerRef.current = new IntersectionObserver(
         (entries) => {
@@ -164,8 +172,7 @@ export default function BrewFeedList({
         { rootMargin: '100px' }, // 提前 100px 开始加载
       )
 
-      if (node)
-        observerRef.current.observe(node)
+      if (node) observerRef.current.observe(node)
     },
     [loading, hasMore, onLoadMore],
   )
@@ -179,8 +186,12 @@ export default function BrewFeedList({
             <FileText className="w-5.5 h-5.5" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{t.brew.noArticles}</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 leading-snug">{t.brew.subscribeMoreSources}</p>
+            <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
+              {t.brew.noArticles}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 leading-snug">
+              {t.brew.subscribeMoreSources}
+            </p>
           </div>
         </div>
       </div>

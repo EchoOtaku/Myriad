@@ -12,10 +12,10 @@ import { lazy } from 'react'
 export function lazyWithPreload<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ) {
-  const Component = lazy(factory);
+  const Component = lazy(factory)
 
   // 添加preload方法
-  (Component as any).preload = factory
+  ;(Component as any).preload = factory
 
   return Component
 }
@@ -30,7 +30,7 @@ export function preloadRoutes(routes: string[]): void {
       routes.forEach((route) => {
         const component = routeComponents[route as keyof typeof routeComponents]
         if (component && (component as any).preload) {
-          (component as any).preload()
+          ;(component as any).preload()
         }
       })
     })
@@ -67,7 +67,9 @@ export const componentLazy = {
   // 大型组件
   LibraryGrid: lazyWithPreload(() => import('../components/LibraryGrid')),
   ConfigForm: lazyWithPreload(() => import('../components/ConfigForm')),
-  GlobalControlPanel: lazyWithPreload(() => import('../components/GlobalControlPanel')),
+  GlobalControlPanel: lazyWithPreload(
+    () => import('../components/GlobalControlPanel'),
+  ),
 
   // 辅助组件
   SetupWizard: lazyWithPreload(() => import('../components/SetupWizard')),

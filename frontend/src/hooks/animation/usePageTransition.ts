@@ -43,8 +43,7 @@ export function usePageTransition({
   const animationId = `page-${pageId}`
 
   useEffect(() => {
-    if (hasStarted.current)
-      return
+    if (hasStarted.current) return
     hasStarted.current = true
 
     // 通知协调器开始页面过渡

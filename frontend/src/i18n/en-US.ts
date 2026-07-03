@@ -74,7 +74,8 @@ export const enUS: TranslationKeys = {
     currentFilterAnime: 'Current Filter: Anime - Click to Expand',
     currentFilterTvSeries: 'Current Filter: TV Series - Click to Expand',
     currentTabPlatform: 'Current Tab: Platform Report - Click to Expand',
-    currentTabComprehensive: 'Current Tab: Comprehensive Report - Click to Expand',
+    currentTabComprehensive:
+      'Current Tab: Comprehensive Report - Click to Expand',
     expandFilters: 'Click to expand filters',
     switchTab: 'Click to switch tab',
     // Brew
@@ -135,13 +136,15 @@ export const enUS: TranslationKeys = {
     enterPassword: 'Enter password',
     fillUsernameAndPassword: 'Please enter username and password',
     usernameLengthError: 'Username must be 3-50 characters',
-    usernameFormatError: 'Username can only contain letters, numbers and underscores',
+    usernameFormatError:
+      'Username can only contain letters, numbers and underscores',
     passwordLengthError: 'Password must be 8-128 characters',
     loginFailed: 'Login failed',
     loginResponseIncomplete: 'Login response incomplete',
     userInfoIncomplete: 'User info incomplete',
     invalidTokenFormat: 'Invalid token format',
-    rateLimitError: 'Too many login attempts, please retry in {seconds} seconds',
+    rateLimitError:
+      'Too many login attempts, please retry in {seconds} seconds',
     logoutSuccess: 'Logged out successfully',
     logoutFailed: 'Logout failed',
     loginWith: 'Sign in with {name}',
@@ -157,18 +160,21 @@ export const enUS: TranslationKeys = {
     registerFailed: 'Registration failed',
     registerResponseIncomplete: 'Incomplete registration response',
     usernameRange3to20: 'Username must be 3-20 characters',
-    passwordRule: 'Password must be at least 8 chars and contain letters and digits',
+    passwordRule:
+      'Password must be at least 8 chars and contain letters and digits',
   },
 
   // Setup Wizard
   setup: {
     title: 'System Setup',
     databaseConfig: 'Database Configuration',
-    databaseConfigDesc: 'Configure PostgreSQL database connection and run migrations',
+    databaseConfigDesc:
+      'Configure PostgreSQL database connection and run migrations',
     adminAccount: 'Admin Account',
     adminAccountDesc: 'Create system administrator account',
     connectionFailed: 'Connection Failed',
-    connectionFailedDesc: 'Cannot connect to backend service, please make sure the server is running',
+    connectionFailedDesc:
+      'Cannot connect to backend service, please make sure the server is running',
     backendDisconnected: 'Backend service disconnected',
     reconnecting: 'Attempting to reconnect...',
     retry: 'Retry',
@@ -183,25 +189,32 @@ export const enUS: TranslationKeys = {
     saveAndConnect: 'Save and Connect',
     saving: 'Saving...',
     configurationMode: 'Backend running in configuration mode',
-    configurationModeDesc: 'Database not connected. After saving, the managed runtime will restart the backend and connect to the database.',
+    configurationModeDesc:
+      'Database not connected. After saving, the managed runtime will restart the backend and connect to the database.',
     initDatabase: 'Initialize Database Tables',
-    initDatabaseDesc: 'Database connected, but tables not created yet. Please initialize the database first.',
+    initDatabaseDesc:
+      'Database connected, but tables not created yet. Please initialize the database first.',
     initializing: 'Initializing...',
     createAdmin: 'Create Admin Account',
     creating: 'Creating...',
-    adminUsernameHint: 'Username: 3-20 characters, letters, numbers and underscores only',
+    adminUsernameHint:
+      'Username: 3-20 characters, letters, numbers and underscores only',
     adminPasswordHint: 'Password: at least 8 characters',
     passwordMismatch: 'Passwords do not match',
     enterDbPassword: 'Please enter database password',
     dbConfigSaved: 'Database configuration saved!',
     dbReconnecting: 'Backend is restarting and connecting to database...',
-    waitingForConnection: 'Please wait, the page will detect connection status automatically.',
-    restartRequired: 'Please manually restart the backend service to apply changes.',
+    waitingForConnection:
+      'Please wait, the page will detect connection status automatically.',
+    restartRequired:
+      'Please manually restart the backend service to apply changes.',
     saveConfigFailed: 'Failed to save configuration',
     dbConnectionSuccess: 'Database connected successfully!',
-    systemSwitchedToNormal: 'Backend restarted and entered normal mode. You can continue configuration now.',
+    systemSwitchedToNormal:
+      'Backend restarted and entered normal mode. You can continue configuration now.',
     dbConnectionTimeout: 'Database connection timeout',
-    dbConnectionTimeoutDesc: 'Configuration saved, but the backend may not have restarted successfully yet. Check the configuration or restart the backend service manually.',
+    dbConnectionTimeoutDesc:
+      'Configuration saved, but the backend may not have restarted successfully yet. Check the configuration or restart the backend service manually.',
     dbMigrationFailed: 'Database migration failed',
     verificationResult: 'Verification Result',
     totalTables: 'Total tables',
@@ -211,13 +224,16 @@ export const enUS: TranslationKeys = {
     yes: 'Yes',
     no: 'No',
     usernameLengthError: 'Username must be 3-20 characters',
-    usernameFormatError: 'Username can only contain letters, numbers and underscores',
+    usernameFormatError:
+      'Username can only contain letters, numbers and underscores',
     passwordLengthError: 'Password must be at least 8 characters',
     adminCreated: 'Admin account created successfully!',
     createAdminFailed: 'Failed to create admin account',
     createFailed: 'Creation failed',
-    adminAccountFullDesc: 'Create local admin account with full system management privileges',
-    saveHint: 'Tip: Backend restarts after saving so the full route table is loaded',
+    adminAccountFullDesc:
+      'Create local admin account with full system management privileges',
+    saveHint:
+      'Tip: Backend restarts after saving so the full route table is loaded',
     atLeast8Chars: 'At least 8 characters',
     enterPasswordAgain: 'Enter password again',
   },
@@ -232,7 +248,8 @@ export const enUS: TranslationKeys = {
     basic: 'Basic Config',
     basicDesc: 'Site URL, background, theme and other basic settings',
     oauth: 'Third-party login',
-    oauthDesc: 'Configure GitHub / Google / Microsoft and other login providers, plus local registration policy',
+    oauthDesc:
+      'Configure GitHub / Google / Microsoft and other login providers, plus local registration policy',
     music: 'Music Player',
     musicDesc: 'Configure playlist playback',
     network: 'Network Proxy',
@@ -250,7 +267,8 @@ export const enUS: TranslationKeys = {
     aboutLogoAlt: 'Myriad Logo',
     // Updater
     updaterTitle: 'Update Management',
-    updaterDesc: 'Manage version upgrades and rollbacks of this self-hosted Myriad instance',
+    updaterDesc:
+      'Manage version upgrades and rollbacks of this self-hosted Myriad instance',
     updaterCurrentVersion: 'Running version',
     updaterUpdaterVersion: 'Updater version',
     updaterChannel: 'Channel',
@@ -283,12 +301,15 @@ export const enUS: TranslationKeys = {
     updaterUpgradeTo: 'Upgrade to {version}',
     updaterDispatching: 'Dispatching…',
     updaterDispatched: 'Update dispatched: {jobId}',
-    updaterJobInFlightWarn: 'A job is already in flight; please wait for it to finish.',
+    updaterJobInFlightWarn:
+      'A job is already in flight; please wait for it to finish.',
     updaterTokenRequired: 'Please enter UPDATE_TOKEN first',
     updaterTokenRequiredDirect: 'Direct mode requires UPDATE_TOKEN',
-    updaterConfirmUpgrade: 'Upgrade to {version}? Maintenance mode will engage.',
+    updaterConfirmUpgrade:
+      'Upgrade to {version}? Maintenance mode will engage.',
     updaterConfirmRollback: 'Roll back to snapshot {snapshotId}?',
-    updaterConfirmExitMaintenance: 'Force-exit maintenance mode? Only do this once service is confirmed healthy.',
+    updaterConfirmExitMaintenance:
+      'Force-exit maintenance mode? Only do this once service is confirmed healthy.',
     updaterTaskProgress: 'Task progress ({jobId})',
     updaterTaskKind: 'kind',
     updaterTaskStatus: 'status',
@@ -304,52 +325,71 @@ export const enUS: TranslationKeys = {
     updaterRollbackDispatched: 'Rollback dispatched',
     updaterMaintenanceExited: 'Maintenance cleared',
     updaterAdvancedTitle: 'Advanced: direct mode (operator fallback)',
-    updaterAdvancedDesc: 'Use only when backend is down. Direct mode bypasses backend and talks to the updater via proxy, requiring you to supply UPDATE_TOKEN manually. The token is held only in memory.',
+    updaterAdvancedDesc:
+      'Use only when backend is down. Direct mode bypasses backend and talks to the updater via proxy, requiring you to supply UPDATE_TOKEN manually. The token is held only in memory.',
     updaterModeBackend: 'backend (default, admin session)',
     updaterModeDirect: 'direct (bypass backend)',
-    updaterDriftWarn: 'Browser cache version ({build}) differs from server ({current}).',
+    updaterDriftWarn:
+      'Browser cache version ({build}) differs from server ({current}).',
     updaterDriftAction: 'Reload page',
-    updaterSelfUpdateRequired: 'New release {version} requires updater ≥ {minUpdaterVersion}.',
+    updaterSelfUpdateRequired:
+      'New release {version} requires updater ≥ {minUpdaterVersion}.',
     updaterSelfUpdateButton: 'Self-update updater',
-    updaterSelfUpdateConfirm: 'Upgrade updater to {version}? The updater will be briefly unavailable; business services are unaffected.',
+    updaterSelfUpdateConfirm:
+      'Upgrade updater to {version}? The updater will be briefly unavailable; business services are unaffected.',
     updaterSelfUpdateDispatching: 'Dispatching…',
-    updaterSelfUpdateDispatched: 'Updater upgrade dispatched: helper={helper}; the running updater will be replaced shortly',
+    updaterSelfUpdateDispatched:
+      'Updater upgrade dispatched: helper={helper}; the running updater will be replaced shortly',
     updaterUpdateAvailable: 'New release available: {version}',
     updaterUpdateAvailableCurrent: '(current {current})',
     updaterReleaseNotes: 'Release notes',
-    updaterBackendError: 'Cannot reach updater via /api/admin/updater/status. Check MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend.',
+    updaterBackendError:
+      'Cannot reach updater via /api/admin/updater/status. Check MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend.',
     updaterDirectError: 'Cannot reach updater via /_updater/status',
     updaterLoading: 'Loading…',
     updaterErr401: 'Auth failed: invalid UPDATE_TOKEN',
     updaterErr403: 'You must `touch state/manual-override` on the host first',
     updaterErr409: 'A job is already in flight',
     updaterErr412: 'Precondition failed',
-    updaterErrNotConfigured: 'The development stack does not start the updater by default. To test the full update flow, run the production compose stack or set MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend.',
+    updaterErrNotConfigured:
+      'The development stack does not start the updater by default. To test the full update flow, run the production compose stack or set MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend.',
     updaterStatusHealthy: 'Healthy',
-    updaterStatusHealthyDesc: 'Running the latest release; no updates available',
+    updaterStatusHealthyDesc:
+      'Running the latest release; no updates available',
     updaterStatusAvailable: 'Update available',
-    updaterStatusAvailableDesc: 'Click upgrade to enter maintenance mode and swap images',
+    updaterStatusAvailableDesc:
+      'Click upgrade to enter maintenance mode and swap images',
     updaterStatusUpdating: 'Upgrading',
-    updaterStatusUpdatingDesc: 'Maintenance mode is active; business traffic is paused',
+    updaterStatusUpdatingDesc:
+      'Maintenance mode is active; business traffic is paused',
     updaterStatusMaintenance: 'Maintenance mode',
-    updaterStatusMaintenanceDesc: 'System is in maintenance; can be force-exited',
+    updaterStatusMaintenanceDesc:
+      'System is in maintenance; can be force-exited',
     updaterStatusNeedsManual: 'Manual recovery required',
-    updaterStatusNeedsManualDesc: 'Last upgrade failed and auto-rollback did not complete; check snapshots or diagnostics',
+    updaterStatusNeedsManualDesc:
+      'Last upgrade failed and auto-rollback did not complete; check snapshots or diagnostics',
     updaterStatusOffline: 'Updater unreachable',
-    updaterStatusOfflineDesc: 'Check MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend',
+    updaterStatusOfflineDesc:
+      'Check MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend',
     updaterStatusFirstRun: 'Version not recorded',
-    updaterStatusFirstRunDesc: 'Click "Check for updates" to discover the latest release',
+    updaterStatusFirstRunDesc:
+      'Click "Check for updates" to discover the latest release',
     updaterRowStatus: 'Status',
     updaterMaintenanceActions: 'Maintenance actions',
     updaterActionCheckDesc: 'Look up the latest release from GitHub',
-    updaterActionUpgradeDesc: 'Run the full flow: maintenance → snapshot → swap → health check',
-    updaterActionExitDesc: 'Force-clear maintenance after confirming the service is healthy',
-    updaterActionRollbackDesc: 'Restore pgdata from this snapshot and start the previous image',
-    updaterActionSelfUpdateDesc: 'Replace the updater itself via a helper container (business unaffected)',
+    updaterActionUpgradeDesc:
+      'Run the full flow: maintenance → snapshot → swap → health check',
+    updaterActionExitDesc:
+      'Force-clear maintenance after confirming the service is healthy',
+    updaterActionRollbackDesc:
+      'Restore pgdata from this snapshot and start the previous image',
+    updaterActionSelfUpdateDesc:
+      'Replace the updater itself via a helper container (business unaffected)',
     updaterGroupHistory: 'Snapshots & history',
     updaterGroupHistoryDesc: 'View restorable pgdata snapshots',
     updaterGroupAdvanced: 'Advanced & diagnostics',
-    updaterGroupAdvancedDesc: 'Image digests, transport mode, operator fallback',
+    updaterGroupAdvancedDesc:
+      'Image digests, transport mode, operator fallback',
     updaterDetailsTitle: 'Details',
     updaterStepLog: 'Steps',
     updaterAgoJustNow: 'just now',
@@ -361,17 +401,24 @@ export const enUS: TranslationKeys = {
     allConfig: 'All Configurations',
     saveConfig: 'Save Config',
     resetConfig: 'Reset Config',
-    resetConfigDesc: 'Reset all configurations to default values. This action cannot be undone.',
-    resetConfirmMessage: 'Are you sure you want to reset all configurations? This action cannot be undone and will restore all settings to their default values.',
+    resetConfigDesc:
+      'Reset all configurations to default values. This action cannot be undone.',
+    resetConfirmMessage:
+      'Are you sure you want to reset all configurations? This action cannot be undone and will restore all settings to their default values.',
     exportConfig: 'Export Settings',
-    exportConfigDesc: 'Export all current configurations as a JSON file for backup or migration.',
+    exportConfigDesc:
+      'Export all current configurations as a JSON file for backup or migration.',
     importConfig: 'Import Settings',
-    importConfigDesc: 'Import configurations from a JSON file. This will overwrite all current settings.',
+    importConfigDesc:
+      'Import configurations from a JSON file. This will overwrite all current settings.',
     exportConfigSuccess: 'Configuration exported successfully!',
-    importConfigSuccess: 'Configuration imported and saved! Page will refresh...',
+    importConfigSuccess:
+      'Configuration imported and saved! Page will refresh...',
     importConfigFailed: 'Failed to import configuration',
-    importConfigInvalid: 'Invalid configuration file. Please check the JSON format.',
-    importConfirmMessage: 'Importing will overwrite all current settings. Are you sure you want to continue?',
+    importConfigInvalid:
+      'Invalid configuration file. Please check the JSON format.',
+    importConfirmMessage:
+      'Importing will overwrite all current settings. Are you sure you want to continue?',
     dangerZone: 'Danger Zone',
     searchConfig: 'Search configurations...',
     searchResults: 'Search Results',
@@ -398,23 +445,30 @@ export const enUS: TranslationKeys = {
     clearMusicCache: 'Clear Music Cache',
     siteMetadata: 'Site Metadata',
     backgroundAndTheme: 'Background and Theme',
-    parallaxHint: 'Enable parallax effect on mouse movement / device tilt for 3D depth',
+    parallaxHint:
+      'Enable parallax effect on mouse movement / device tilt for 3D depth',
     // Evocative Wallpaper Effects
     evocativeTitle: 'Evocative Wallpaper Effects',
     evocativeEffects: 'Effect Toggles',
-    evocativeDesc: 'Bring static wallpapers to life with immersive visual effects',
+    evocativeDesc:
+      'Bring static wallpapers to life with immersive visual effects',
     fieldEvocativeParallax: 'Parallax Effect',
-    fieldEvocativeParallaxHint: 'Wallpaper shifts subtly with mouse movement / device tilt for 3D depth',
+    fieldEvocativeParallaxHint:
+      'Wallpaper shifts subtly with mouse movement / device tilt for 3D depth',
     fieldEvocativeDynamicBlur: 'Dynamic Blur',
-    fieldEvocativeDynamicBlurHint: 'Wallpaper becomes clearer near top, gradually blurs towards bottom',
+    fieldEvocativeDynamicBlurHint:
+      'Wallpaper becomes clearer near top, gradually blurs towards bottom',
     fieldEvocativeRipple: 'Ripple Effect',
-    fieldEvocativeRippleHint: 'Click on wallpaper to create water ripple distortion',
+    fieldEvocativeRippleHint:
+      'Click on wallpaper to create water ripple distortion',
     fieldEvocativeFps: 'Effect Frame Rate',
-    fieldEvocativeFpsHint: 'Higher frame rate is smoother but uses more resources',
+    fieldEvocativeFpsHint:
+      'Higher frame rate is smoother but uses more resources',
     fpsBalanced: 'Balanced',
     fpsSmooth: 'Smooth',
     fieldEvocativeRippleQuality: 'Ripple Quality',
-    fieldEvocativeRippleQualityHint: 'Higher quality ripples look better but use more resources',
+    fieldEvocativeRippleQualityHint:
+      'Higher quality ripples look better but use more resources',
     qualityLow: 'Low',
     qualityMedium: 'Medium',
     qualityHigh: 'High',
@@ -433,39 +487,50 @@ export const enUS: TranslationKeys = {
     fieldMusicPlaylistId: 'Playlist ID',
     // Network Proxy Config
     networkConfigTitle: 'Network Proxy',
-    networkConfigDesc: 'Configure network proxy for servers in mainland China to access external APIs',
+    networkConfigDesc:
+      'Configure network proxy for servers in mainland China to access external APIs',
     advanced: 'Advanced',
     advancedDesc: 'Advanced system configurations and dangerous operations',
     networkProxyInfoTitle: 'Proxy Configuration Guide',
-    networkProxyInfo: 'If your server is in mainland China, you may need to configure a proxy to access external services like GitHub OAuth and Gemini AI. You can choose:',
+    networkProxyInfo:
+      'If your server is in mainland China, you may need to configure a proxy to access external services like GitHub OAuth and Gemini AI. You can choose:',
     enableProxy: 'Enable Network Proxy',
-    enableProxyHint: 'External API requests will be sent through the proxy when enabled',
+    enableProxyHint:
+      'External API requests will be sent through the proxy when enabled',
     proxyUrl: 'Proxy URL',
     proxyUrlHint: 'Supports HTTP, HTTPS, and SOCKS5 proxy protocols',
     proxyBypass: 'Proxy Bypass List',
-    proxyBypassHint: 'Domains that should bypass the proxy, separated by commas. Recommended for domestic services like Bilibili',
+    proxyBypassHint:
+      'Domains that should bypass the proxy, separated by commas. Recommended for domestic services like Bilibili',
     apiMirrorConfig: 'API Mirror Services',
-    apiMirrorConfigHint: 'Use third-party API mirror services as an alternative to proxy configuration',
+    apiMirrorConfigHint:
+      'Use third-party API mirror services as an alternative to proxy configuration',
     geminiBaseUrl: 'Gemini API Base URL',
-    geminiBaseUrlHint: 'Leave empty for official endpoint, or enter a third-party proxy service URL',
+    geminiBaseUrlHint:
+      'Leave empty for official endpoint, or enter a third-party proxy service URL',
     githubApiBaseUrl: 'GitHub API Base URL',
-    githubApiBaseUrlHint: 'Leave empty for official endpoint, or enter GitHub API mirror URL (Note: OAuth still requires official endpoint)',
+    githubApiBaseUrlHint:
+      'Leave empty for official endpoint, or enter GitHub API mirror URL (Note: OAuth still requires official endpoint)',
     proxyOption: 'Proxy',
-    proxyOptionDesc: 'Configure proxy server address, all external requests will be sent through the proxy.',
+    proxyOptionDesc:
+      'Configure proxy server address, all external requests will be sent through the proxy.',
     mirrorOption: 'Mirror Service',
-    mirrorOptionDesc: 'Use third-party API mirror/relay services without configuring a proxy.',
+    mirrorOptionDesc:
+      'Use third-party API mirror/relay services without configuring a proxy.',
     // UI field placeholders
     placeholderWallpaperUrl: 'URL to wallpaper image or API endpoint',
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
-    placeholderSiteFavicon: '/favicon.webp or https://example.com/icon.png (external links supported)',
+    placeholderSiteFavicon:
+      '/favicon.webp or https://example.com/icon.png (external links supported)',
     placeholderPetImageUrl: 'URL to pet character image',
     githubOAuthHint: 'How to get GitHub OAuth credentials',
     callbackUrl: 'Callback URL',
     redirectUrl: 'Redirect URL',
     aiServiceDesc: 'Supports Google Gemini and OpenAI compatible APIs',
     getApiKey: 'Get API Key',
-    personaServiceDesc: 'AI will generate unique virtual persona based on your data, click avatar on home page to view',
+    personaServiceDesc:
+      'AI will generate unique virtual persona based on your data, click avatar on home page to view',
     savingDefault: 'Saving default configuration...',
     resetFailed: 'Failed to reset configuration: ',
     refreshing: 'Refreshing...',
@@ -478,28 +543,39 @@ export const enUS: TranslationKeys = {
     aiConfigDesc: 'Configure AI model and API keys',
     aiServiceTitle: 'AI Service',
     aiServiceInfoTitle: 'AI Service Configuration',
-    aiServiceInfo: 'Supports Google Gemini and OpenAI compatible APIs.\nGoogle Gemini: Free quota, suitable for personal use.\nOpenAI Compatible: Supports OpenAI API and other compatible services (Azure OpenAI, third-party proxies, etc.)',
+    aiServiceInfo:
+      'Supports Google Gemini and OpenAI compatible APIs.\nGoogle Gemini: Free quota, suitable for personal use.\nOpenAI Compatible: Supports OpenAI API and other compatible services (Azure OpenAI, third-party proxies, etc.)',
     aiProvider: 'AI Provider',
-    aiProviderHint: 'Select AI service provider to show corresponding configuration',
-    aiServiceInfoDescription: 'Supports Google Gemini and OpenAI compatible APIs.',
+    aiProviderHint:
+      'Select AI service provider to show corresponding configuration',
+    aiServiceInfoDescription:
+      'Supports Google Gemini and OpenAI compatible APIs.',
     aiStandardModelTitle: 'Standard Model',
-    aiStandardModelDesc: 'For daily tasks like vocabulary annotation, simple analysis, etc.',
+    aiStandardModelDesc:
+      'For daily tasks like vocabulary annotation, simple analysis, etc.',
     aiProModelTitle: 'Pro Model Configuration',
-    aiProModelDesc: 'For complex tasks (in-depth analysis, report generation, etc.). Leave API Key empty to automatically reuse standard model config',
+    aiProModelDesc:
+      'For complex tasks (in-depth analysis, report generation, etc.). Leave API Key empty to automatically reuse standard model config',
     aiProEnable: 'Enable Pro Model',
-    aiProEnableDesc: 'Configure a separate advanced model for complex tasks. When off, all tasks use the standard model',
-    aiProProviderHint: 'Select provider for Pro model, can differ from standard model',
+    aiProEnableDesc:
+      'Configure a separate advanced model for complex tasks. When off, all tasks use the standard model',
+    aiProProviderHint:
+      'Select provider for Pro model, can differ from standard model',
     geminiDescription: 'Free quota, suitable for personal use.',
     openaiCompatible: 'OpenAI Compatible',
-    openaiDescription: 'Supports OpenAI API and other compatible services (Azure OpenAI, third-party proxies, etc.)',
+    openaiDescription:
+      'Supports OpenAI API and other compatible services (Azure OpenAI, third-party proxies, etc.)',
     // AI Image Generation Configuration
     aiImageTitle: 'AI Image Generation',
-    aiImageDesc: 'Pollinations free & fast · PixAI professional anime image generation (paid)',
+    aiImageDesc:
+      'Pollinations free & fast · PixAI professional anime image generation (paid)',
     aiImageUsageTitle: 'Usage Guide',
     enableAiImage: 'Enable AI Image Generation',
     aiImageHint: 'Enable to use AI image generation in Myriad',
-    pollinationsDescription: 'Completely free, fast response (<1 sec), suitable for development testing and rapid iteration',
-    pixaiDescription: 'Professional anime image generation API with multiple model support (paid, API key required)',
+    pollinationsDescription:
+      'Completely free, fast response (<1 sec), suitable for development testing and rapid iteration',
+    pixaiDescription:
+      'Professional anime image generation API with multiple model support (paid, API key required)',
     pollinationsFree: 'Free',
     pixaiBadge: 'SD/DiT',
     fluxAnimeRecommend: 'Flux Anime (Recommended)',
@@ -510,7 +586,8 @@ export const enUS: TranslationKeys = {
     pixaiModelId: 'Model Version ID',
     // Speech service (TTS/ASR) configuration
     speechServiceTitle: 'Speech Service',
-    speechServiceDesc: 'Configure Tencent Cloud TTS (Text-to-Speech) and ASR (Speech Recognition)',
+    speechServiceDesc:
+      'Configure Tencent Cloud TTS (Text-to-Speech) and ASR (Speech Recognition)',
     tencentSecretId: 'Tencent Cloud Secret ID',
     tencentSecretIdPlaceholder: 'Get from Tencent Cloud Console',
     tencentSecretKey: 'Tencent Cloud Secret Key',
@@ -529,11 +606,16 @@ export const enUS: TranslationKeys = {
     speechNotConfigured: 'Please configure Tencent Cloud credentials first',
     // Platform configuration
     platformsConfigTitle: 'Data Platform Configuration',
-    platformsConfigDesc: 'Configure access credentials for data source platforms',
+    platformsConfigDesc:
+      'Configure access credentials for data source platforms',
     platformDescGithub: 'Track repositories, stars, and contributions',
-    platformDescBilibili: 'Track your Bilibili favorites, anime, and viewing history',
+    platformDescBilibili:
+      'Track your Bilibili favorites, anime, and viewing history',
+    platformDescBangumi:
+      'Sync your Bangumi collections, ratings, and watching status',
     platformDescSteam: 'Sync your Steam library, wishlist, and gaming stats',
-    platformDescNetease: 'Sync your liked songs and music taste from Netease Cloud Music',
+    platformDescNetease:
+      'Sync your liked songs and music taste from Netease Cloud Music',
     configuredStatus: '✓ Configured',
     unconfiguredStatus: '⚠ Not Configured',
     enablePlatform: 'Enable {platform} platform',
@@ -542,25 +624,30 @@ export const enUS: TranslationKeys = {
     basicConfigTitle: 'Basic Configuration',
     siteUrlConfig: 'Site URL',
     baseUrl: 'Site URL',
-    baseUrlPlaceholder: 'https://yourdomain.com (for OAuth callback and Cookie settings)',
-    baseUrlHint: 'Your site URL, used to auto-generate OAuth callback URL and determine HTTPS secure Cookie',
+    baseUrlPlaceholder:
+      'https://yourdomain.com (for OAuth callback and Cookie settings)',
+    baseUrlHint:
+      'Your site URL, used to auto-generate OAuth callback URL and determine HTTPS secure Cookie',
     basicConfigDesc: 'Site URL, background, theme and interface style',
     oauthConfigTitle: 'Third-party Login (OAuth)',
-    oauthConfigDesc: 'Configure GitHub / Google / Microsoft / etc. as login methods, plus local registration policy.',
+    oauthConfigDesc:
+      'Configure GitHub / Google / Microsoft / etc. as login methods, plus local registration policy.',
     oauthGuideTitle: 'Getting started',
     oauthGuideStep1: 'Visit GitHub Developer Settings',
     oauthGuideStep2: 'Click "New OAuth App" to create new app',
     oauthGuideStep3: 'Fill in app info, Callback URL:',
     oauthGuideStep4: 'Copy Client ID and generate Client Secret after creation',
     currentCallbackUrl: 'Current Callback URL',
-    currentCallbackUrlHint: 'Please fill this URL in GitHub OAuth App Authorization callback URL',
+    currentCallbackUrlHint:
+      'Please fill this URL in GitHub OAuth App Authorization callback URL',
     callbackUrlNotConfigured: 'Please set Site URL in "Basic Config" first',
     githubClientId: 'GitHub Client ID',
     githubClientIdPlaceholder: 'GitHub OAuth App Client ID',
     githubClientSecret: 'GitHub Client Secret',
     githubClientSecretPlaceholder: 'GitHub OAuth App Client Secret',
     oidcSectionTitle: 'Other OAuth providers (OIDC)',
-    oidcSectionDesc: 'Any OpenID Connect-compatible provider works here: Google, Microsoft, Authentik, Keycloak, Auth0…',
+    oidcSectionDesc:
+      'Any OpenID Connect-compatible provider works here: Google, Microsoft, Authentik, Keycloak, Auth0…',
     oidcCallbackTemplate: 'Callback URL pattern:',
     oidcEmpty: 'No OIDC providers configured yet.',
     oidcAddProvider: 'Add OIDC provider',
@@ -575,46 +662,67 @@ export const enUS: TranslationKeys = {
     oidcDisplayNamePlaceholder: 'Google',
     oidcClientIdLabel: 'Client ID',
     oidcClientSecretLabel: 'Client Secret',
-    oidcClientSecretPlaceholder: 'Leave blank to keep current value (*** means already set)',
+    oidcClientSecretPlaceholder:
+      'Leave blank to keep current value (*** means already set)',
     oidcDiscoveryLabel: 'OIDC Discovery URL',
-    oidcDiscoveryPlaceholder: 'https://accounts.google.com/.well-known/openid-configuration',
+    oidcDiscoveryPlaceholder:
+      'https://accounts.google.com/.well-known/openid-configuration',
     oidcScopesLabel: 'Scopes (space-separated, default: openid email profile)',
     oidcScopesPlaceholder: 'openid email profile',
     oidcIconLabel: 'Icon URL (optional)',
     oidcIconPlaceholder: 'https://...',
     oidcNewProvider: '(new provider)',
     oauthProvidersTitle: 'Configured login methods',
-    oauthProvidersDesc: 'Configure GitHub, Google, Microsoft, GitLab, Discord and more. Each provider has its own client_id / client_secret and callback URL.',
-    oauthProvidersEmpty: 'No login methods configured yet. Click "Add login method" below to pick one from the presets.',
+    oauthProvidersDesc:
+      'Configure GitHub, Google, Microsoft, GitLab, Discord and more. Each provider has its own client_id / client_secret and callback URL.',
+    oauthProvidersEmpty:
+      'No login methods configured yet. Click "Add login method" below to pick one from the presets.',
     oauthAddLoginMethod: 'Add login method',
     oauthPickPreset: 'Pick a preset',
-    oauthHowToHint: 'Set the site Base URL in "Basic Config" first — each card below will then show a provider-specific callback URL you can paste into the provider dashboard',
+    oauthHowToHint:
+      'Set the site Base URL in "Basic Config" first — each card below will then show a provider-specific callback URL you can paste into the provider dashboard',
     oauthOpenDocs: 'Open docs',
     oauthAdvanced: 'Advanced (slug / display name / scopes / icon)',
-    oauthPresetHintGithub: 'Navigate: GitHub avatar → `Settings` → `Developer settings` → `OAuth Apps` → `New OAuth App`',
-    oauthPresetHintGoogle: 'Navigate: Google Cloud Console → `APIs & Services` → `Credentials` → `Create credentials` → `OAuth client ID`',
-    oauthPresetHintMicrosoft: 'Navigate: Azure Portal → `App registrations` → `New registration`. `common` in the Discovery URL accepts any tenant; for single-tenant, replace it with your Tenant ID',
-    oauthPresetHintGitlab: 'Navigate: GitLab → `User Settings` → `Applications`. For self-hosted, replace `gitlab.com` with your own domain',
-    oauthPresetHintDiscord: 'Navigate: Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`',
-    oauthPresetHintAuthentik: 'Discovery URL looks like `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration`, where `<slug>` is your Application slug',
-    oauthPresetHintKeycloak: 'Discovery URL looks like `https://keycloak.yourdomain.com/realms/<realm>/.well-known/openid-configuration`, where `<realm>` is your Realm name',
-    oauthPresetHintAuth0: 'Discovery URL looks like `https://<your-tenant>.auth0.com/.well-known/openid-configuration`',
-    oauthPresetHintCustom: 'Any OIDC-compliant provider. Fill in `Discovery URL`, `Client ID`, `Client Secret` yourself',
+    oauthPresetHintGithub:
+      'Navigate: GitHub avatar → `Settings` → `Developer settings` → `OAuth Apps` → `New OAuth App`',
+    oauthPresetHintGoogle:
+      'Navigate: Google Cloud Console → `APIs & Services` → `Credentials` → `Create credentials` → `OAuth client ID`',
+    oauthPresetHintMicrosoft:
+      'Navigate: Azure Portal → `App registrations` → `New registration`. `common` in the Discovery URL accepts any tenant; for single-tenant, replace it with your Tenant ID',
+    oauthPresetHintGitlab:
+      'Navigate: GitLab → `User Settings` → `Applications`. For self-hosted, replace `gitlab.com` with your own domain',
+    oauthPresetHintDiscord:
+      'Navigate: Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`',
+    oauthPresetHintAuthentik:
+      'Discovery URL looks like `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration`, where `<slug>` is your Application slug',
+    oauthPresetHintKeycloak:
+      'Discovery URL looks like `https://keycloak.yourdomain.com/realms/<realm>/.well-known/openid-configuration`, where `<realm>` is your Realm name',
+    oauthPresetHintAuth0:
+      'Discovery URL looks like `https://<your-tenant>.auth0.com/.well-known/openid-configuration`',
+    oauthPresetHintCustom:
+      'Any OIDC-compliant provider. Fill in `Discovery URL`, `Client ID`, `Client Secret` yourself',
     allowRegisterTitle: 'Allow public local registration',
-    allowRegisterDesc: 'When enabled, anyone can sign up at /register. When disabled, only admins can create accounts.',
+    allowRegisterDesc:
+      'When enabled, anyone can sign up at /register. When disabled, only admins can create accounts.',
     musicConfigTitle: 'Music Player',
     musicConfigDesc: 'Configure playlist playback',
     musicUsageTitle: 'Music Player Guide',
-    musicUsageInfo: 'Play music from specified playlist in control island. Supports NetEase Music and QQ Music. Real-time lyrics display when playing songs with lyrics.',
+    musicUsageInfo:
+      'Play music from specified playlist in control island. Supports NetEase Music and QQ Music. Real-time lyrics display when playing songs with lyrics.',
     neteaseMusic: 'NetEase',
     qqMusic: 'QQ Music',
-    neteasePlaylistHint: 'Playlist ID from NetEase Music URL, e.g. https://music.163.com/#/playlist?id=2884035',
-    qqPlaylistHint: 'Playlist ID from QQ Music URL, e.g. https://y.qq.com/n/ryqq/playlist/8039305244',
+    neteasePlaylistHint:
+      'Playlist ID from NetEase Music URL, e.g. https://music.163.com/#/playlist?id=2884035',
+    qqPlaylistHint:
+      'Playlist ID from QQ Music URL, e.g. https://y.qq.com/n/ryqq/playlist/8039305244',
     cacheManagement: 'Cache Management',
-    clearMusicCacheDesc: 'Clear local music cache to force reload playlist data',
+    clearMusicCacheDesc:
+      'Clear local music cache to force reload playlist data',
     clearMusicCacheBtn: 'Clear Music Cache',
-    musicCacheCleared: '✓ Music cache cleared, data will be refetched on next load',
-    wallpaperParallaxHint: 'When enabled, wallpaper will shift slightly based on mouse movement/device tilt for a 3D effect',
+    musicCacheCleared:
+      '✓ Music cache cleared, data will be refetched on next load',
+    wallpaperParallaxHint:
+      'When enabled, wallpaper will shift slightly based on mouse movement/device tilt for a 3D effect',
     neteasePlaylistExample: 'e.g. 2884035',
     qqPlaylistExample: 'e.g. 8039305244',
     removeFavorite: 'Remove from favorites',
@@ -625,16 +733,20 @@ export const enUS: TranslationKeys = {
     closeLabel: 'Close',
     // Tapp permission management settings
     permissions: 'Permission Management',
-    permissionsDesc: 'Configure Tapp elevated permission delegation and AI usage quotas. 4 levels: public, basic, elevated (delegable), privileged (admin only)',
+    permissionsDesc:
+      'Configure Tapp elevated permission delegation and AI usage quotas. 4 levels: public, basic, elevated (delegable), privileged (admin only)',
     permissionsTitle: 'Tapp Permission Management',
     tappPermissionsInfoTitle: 'Permission Levels',
-    tappPermissionsInfo: 'Tapp has 4 permission levels: public (open), basic (default for all), elevated (configurable delegation), privileged (admin only). Here you can delegate 11 elevated permissions to users or guests.',
+    tappPermissionsInfo:
+      'Tapp has 4 permission levels: public (open), basic (default for all), elevated (configurable delegation), privileged (admin only). Here you can delegate 11 elevated permissions to users or guests.',
     // User elevated permissions
     userElevatedPermissions: 'User Permission Delegation',
-    userElevatedPermissionsDesc: 'Select elevated permissions to grant to regular users',
+    userElevatedPermissionsDesc:
+      'Select elevated permissions to grant to regular users',
     // Guest elevated permissions
     guestElevatedPermissions: 'Guest Permission Delegation',
-    guestElevatedPermissionsDesc: 'Select elevated permissions to grant to guests (use with caution)',
+    guestElevatedPermissionsDesc:
+      'Select elevated permissions to grant to guests (use with caution)',
     // 9 elevated permissions (platform:write and platform:register upgraded to privileged)
     permAiGenerate: 'AI Generate',
     permAiGenerateHint: 'Allow Tapp to generate content with AI',
@@ -657,23 +769,27 @@ export const enUS: TranslationKeys = {
     permAiImage: 'AI Image Generation',
     permAiImageHint: 'Allow Tapp to generate images with AI',
     permSchedulerRegister: 'Register Scheduled Tasks',
-    permSchedulerRegisterHint: 'Allow Tapp to register and manage scheduled tasks',
+    permSchedulerRegisterHint:
+      'Allow Tapp to register and manage scheduled tasks',
     permSpeechTts: 'Text to Speech',
     permSpeechTtsHint: 'Allow Tapp to use cloud text-to-speech service (TTS)',
     permSpeechAsr: 'Speech to Text',
-    permSpeechAsrHint: 'Allow Tapp to use cloud speech recognition service (ASR)',
+    permSpeechAsrHint:
+      'Allow Tapp to use cloud speech recognition service (ASR)',
     permissionsSaved: 'Permission settings saved',
     permissionsSaveFailed: 'Failed to save permission settings',
     loadPermissionsFailed: 'Failed to load permission settings',
     // AI Quota Configuration
     aiQuotaTitle: 'AI Usage Limits',
-    aiQuotaDesc: 'Configure AI usage limits for non-admin users (admins have no limits)',
+    aiQuotaDesc:
+      'Configure AI usage limits for non-admin users (admins have no limits)',
     userAiQuota: 'User AI Quota',
     userAiQuotaDesc: 'Daily AI usage quota for logged-in users',
     guestAiQuota: 'Guest AI Quota',
     guestAiQuotaDesc: 'Daily AI usage quota for anonymous visitors',
     aiDailyCalls: 'Daily Calls',
-    aiDailyCallsHint: 'Maximum AI calls per day (shared across all AI features)',
+    aiDailyCallsHint:
+      'Maximum AI calls per day (shared across all AI features)',
     aiDailyTokens: 'Daily Token Limit',
     aiDailyTokensHint: 'Maximum AI tokens per day',
     aiCooldownSeconds: 'Cooldown Time',
@@ -681,7 +797,8 @@ export const enUS: TranslationKeys = {
     aiQuotaAdminNote: 'Admin accounts are not subject to these limits',
     // Site footer and cloud sponsors
     siteFooterTitle: 'Site Footer',
-    siteFooterDesc: 'Configure site copyright, ICP number, and cloud sponsors displayed in the bottom-right corner',
+    siteFooterDesc:
+      'Configure site copyright, ICP number, and cloud sponsors displayed in the bottom-right corner',
     siteIcp: 'ICP Number',
     siteIcpHint: 'ICP filing number required for websites in mainland China',
     siteIcpPlaceholder: 'e.g., 京ICP备12345678号',
@@ -777,7 +894,8 @@ export const enUS: TranslationKeys = {
     vipSongWarning: 'VIP song may not play completely',
     nowPlaying: 'Now playing: {name}',
     // Empty states
-    emptyLibrary: 'Library is empty, please fetch platform data in config page first',
+    emptyLibrary:
+      'Library is empty, please fetch platform data in config page first',
     emptyCategory: 'No content in this category, try switching to another',
     // Content types
     anime: 'Anime',
@@ -890,7 +1008,8 @@ export const enUS: TranslationKeys = {
     title: 'Cache Management',
     totalSize: 'Total size',
     clearAll: 'Clear all caches',
-    clearAllConfirm: 'Are you sure you want to clear all caches? This action cannot be undone.',
+    clearAllConfirm:
+      'Are you sure you want to clear all caches? This action cannot be undone.',
     clearPlatformConfirm: 'Are you sure you want to clear {platform} cache?',
     clearFailed: 'Failed to clear {platform} cache',
     submitTaskFailed: 'Failed to submit {platform} processing task',
@@ -906,8 +1025,9 @@ export const enUS: TranslationKeys = {
     aboutCaching: 'About Cache Processing',
     cacheHint1: 'Click "Process" to process platform data in background',
     cacheHint2: 'Cache status will update automatically after processing',
-    cacheHint3: 'After clearing cache, you need to reprocess to use platform data',
-    cacheHint4: 'Processing won\'t block other operations',
+    cacheHint3:
+      'After clearing cache, you need to reprocess to use platform data',
+    cacheHint4: "Processing won't block other operations",
   },
 
   // Task Status
@@ -985,7 +1105,8 @@ export const enUS: TranslationKeys = {
     usernameHint: 'e.g., your_username',
     linkAutoGenerate: 'Leave empty to auto-generate',
     linkManualInput: 'Enter full URL',
-    popupHint: 'Enter text, image URL, etc.\ne.g.:\nWeChat: wxid_123\nhttps://example.com/qrcode.png',
+    popupHint:
+      'Enter text, image URL, etc.\ne.g.:\nWeChat: wxid_123\nhttps://example.com/qrcode.png',
     close: 'Close',
     delete: 'Delete',
     longPressToEdit: 'Long press widget to edit',
@@ -1108,10 +1229,12 @@ export const enUS: TranslationKeys = {
     adminOnlyGenerateHint: 'Admin only',
     styleDescPlaceholder: 'Enter style description...',
     allPlatformReport: 'All Platform Report',
-    confirmDeleteReport: 'Are you sure you want to delete this report? This cannot be undone.',
+    confirmDeleteReport:
+      'Are you sure you want to delete this report? This cannot be undone.',
     tenThousandSuffix: 'W',
     noComprehensiveReport: 'No Comprehensive Report',
-    useInputToGenerate: 'Use the input above to generate your first comprehensive report',
+    useInputToGenerate:
+      'Use the input above to generate your first comprehensive report',
     adminNotGenerated: 'Admin has not generated a comprehensive report yet',
     waitingGenerate: 'Waiting to generate',
   },
@@ -1139,7 +1262,8 @@ export const enUS: TranslationKeys = {
     passwordMinLength: 'New password must be at least 8 characters',
     passwordMismatch: 'Passwords do not match',
     passwordSameAsOld: 'New password cannot be the same as current password',
-    csrfTokenError: 'Unable to get CSRF Token, please refresh the page and try again',
+    csrfTokenError:
+      'Unable to get CSRF Token, please refresh the page and try again',
     passwordChangeSuccess: 'Password changed successfully!',
     changeFailed: 'Change failed, please try again',
     networkError: 'Network error, please try again later',
@@ -1156,7 +1280,8 @@ export const enUS: TranslationKeys = {
     dataRefreshed: '✓ {platform} data refreshed',
     refreshFailed: '✗ Refresh failed',
     submitTaskFailed: '✗ Failed to submit {platform} processing task',
-    confirmClearCache: 'Are you sure you want to clear {platform} smart filter cache?',
+    confirmClearCache:
+      'Are you sure you want to clear {platform} smart filter cache?',
     cacheCleared: '✓ {platform} cache cleared',
     clearCacheFailed: '✗ Failed to clear {platform} cache',
     unknown: 'Unknown',
@@ -1177,9 +1302,12 @@ export const enUS: TranslationKeys = {
     clearing: 'Clearing',
     clear: 'Clear',
     usageTitle: 'Usage Guide',
-    usageRawData: 'Raw Data: Unprocessed data from platform APIs, click refresh to re-fetch',
-    usageSmartFilter: 'Smart Filter: AI-processed data, click process to generate cache',
-    usageBackground: 'Background Processing: Tasks run asynchronously, check progress at top',
+    usageRawData:
+      'Raw Data: Unprocessed data from platform APIs, click refresh to re-fetch',
+    usageSmartFilter:
+      'Smart Filter: AI-processed data, click process to generate cache',
+    usageBackground:
+      'Background Processing: Tasks run asynchronously, check progress at top',
   },
 
   // Quick Stats Widget
@@ -1305,9 +1433,11 @@ export const enUS: TranslationKeys = {
     fillPlatformName: 'Please enter platform name',
     fillUsernameOrUrl: 'Please enter username/ID or URL pattern (at least one)',
     fillPopupContent: 'Please enter popup content',
-    invalidUrlPattern: 'Invalid URL pattern\n\nRequirements:\n• Must start with http://, https://, or mailto:\n• Cannot contain special characters < > " \' ` \\',
+    invalidUrlPattern:
+      'Invalid URL pattern\n\nRequirements:\n• Must start with http://, https://, or mailto:\n• Cannot contain special characters < > " \' ` \\',
     createCustomPlatformFailed: 'Failed to create custom platform',
-    confirmDeleteCustomPlatform: 'Are you sure you want to delete this custom platform?',
+    confirmDeleteCustomPlatform:
+      'Are you sure you want to delete this custom platform?',
     close: 'Close',
     delete: 'Delete',
     longPressToEdit: 'Long press widget to edit',
@@ -1385,6 +1515,17 @@ export const enUS: TranslationKeys = {
     permSchedulerRegister: 'Register Scheduler',
     permSpeechTts: 'Text-to-Speech',
     permSpeechAsr: 'Speech Recognition',
+    permReadTappList: 'Read Tapp List',
+    permManageTappList: 'Manage Tapp List',
+    permReadBrew: 'Read Brew',
+    permWriteBrew: 'Write Brew',
+    permCommentBrew: 'Comment on Brew',
+    permManageBrew: 'Manage Brew',
+    permReadFederation: 'Read Federation Data',
+    permWriteFederation: 'Write Federation Data',
+    permMessageFederation: 'Federation Messaging',
+    permTrustFederation: 'Federation Trust',
+    permFederationFiles: 'Federation Files',
 
     // Permission descriptions
     permRegisterWidgetDesc: 'Allow registering custom widgets to homepage',
@@ -1402,7 +1543,8 @@ export const enUS: TranslationKeys = {
     permReadThemeDesc: 'Allow reading current theme settings',
     permConfirmDesc: 'Allow showing confirm dialogs',
     permNetworkFetchDesc: 'Allow sending HTTP requests via proxy',
-    permMediaControlDesc: 'Allow controlling media playback (play, pause, switch, etc.)',
+    permMediaControlDesc:
+      'Allow controlling media playback (play, pause, switch, etc.)',
     permMediaReadDesc: 'Allow reading current media playback status',
     permRegisterThemeDesc: 'Allow registering custom theme styles',
     permRegisterAgentDesc: 'Allow registering AI Agent capabilities',
@@ -1413,13 +1555,28 @@ export const enUS: TranslationKeys = {
     permSchedulerRegisterDesc: 'Allow registering and managing scheduled tasks',
     permSpeechTtsDesc: 'Allow using text-to-speech service',
     permSpeechAsrDesc: 'Allow using speech recognition service',
+    permReadTappListDesc: 'Allow reading the installed Tapp list',
+    permManageTappListDesc: 'Allow installing, updating, or removing Tapps',
+    permReadBrewDesc: 'Allow reading Brew feeds and articles',
+    permWriteBrewDesc: 'Allow writing Brew feed and article data',
+    permCommentBrewDesc: 'Allow creating and managing Brew comments',
+    permManageBrewDesc: 'Allow managing Brew sources and advanced settings',
+    permReadFederationDesc:
+      'Allow reading federation rooms, channels, and members',
+    permWriteFederationDesc: 'Allow creating or updating federation resources',
+    permMessageFederationDesc:
+      'Allow sending and receiving federation messages',
+    permTrustFederationDesc: 'Allow managing federation trust relationships',
+    permFederationFilesDesc:
+      'Allow accessing federation file transfer capabilities',
 
     // List page
     listTitle: 'Tapp Apps',
     listSubtitle: 'Manage and run your extension apps',
     multiWindow: 'Multi-window',
     noAppsInstalled: 'No apps installed yet',
-    noAppsInstalledDesc: 'Install Tapp apps to extend functionality, add custom widgets and data sources',
+    noAppsInstalledDesc:
+      'Install Tapp apps to extend functionality, add custom widgets and data sources',
     browseStore: 'Browse Store',
     manualInstall: 'Manual Install',
     clickToOpen: 'Click to open',
@@ -1517,7 +1674,8 @@ export const enUS: TranslationKeys = {
     currentVersion: 'Current v{version}',
     // Uninstall confirmation dialog
     keepDataOnUninstall: 'Keep app data',
-    keepDataOnUninstallDesc: 'Preserve stored data and settings for recovery when reinstalling',
+    keepDataOnUninstallDesc:
+      'Preserve stored data and settings for recovery when reinstalling',
     uninstalling: 'Uninstalling...',
     confirmUninstallBtn: 'Confirm Uninstall',
 
@@ -1590,8 +1748,10 @@ export const enUS: TranslationKeys = {
     feedTypeRssDesc: 'Standard RSS/Atom/JSON Feed subscription',
     feedTypeLinkDesc: 'Save link only, no update subscription',
     feedTypeNotionDesc: 'Subscribe to Notion database or page content',
-    feedTypeRsshubDesc: 'RSSHub multi-platform route subscription with instance switching',
-    feedTypeBrewliaDesc: 'AI enhanced subscription: auto vocabulary annotation, pronoun analysis and more',
+    feedTypeRsshubDesc:
+      'RSSHub multi-platform route subscription with instance switching',
+    feedTypeBrewliaDesc:
+      'AI enhanced subscription: auto vocabulary annotation, pronoun analysis and more',
 
     // Operations
     addSubscription: 'Add Subscription',
@@ -1630,7 +1790,8 @@ export const enUS: TranslationKeys = {
     // AI Enhancement
     enableAiEnhance: 'Enable AI Enhancement',
     disableAiEnhance: 'Disable AI Enhancement',
-    aiEnhanceDesc: 'AI enhanced subscription: auto vocabulary annotation, pronoun analysis and more',
+    aiEnhanceDesc:
+      'AI enhanced subscription: auto vocabulary annotation, pronoun analysis and more',
 
     // Edit subscription
     uploadIcon: 'Upload Icon',
@@ -1866,7 +2027,8 @@ export const enUS: TranslationKeys = {
     cloudTtsUnavailable: 'Cloud TTS service unavailable',
     cannotConnectSpeech: 'Cannot connect to speech service',
     checkingCloudTts: 'Checking cloud TTS service...',
-    cloudTtsUnavailableCheck: 'Cloud TTS unavailable, please check configuration',
+    cloudTtsUnavailableCheck:
+      'Cloud TTS unavailable, please check configuration',
     switchedToCloudTts: 'Switched to cloud TTS',
     checkingCloudCache: 'Checking cloud cache...',
     cloudCacheIncomplete: 'Cloud cache incomplete, fallback to system TTS',
@@ -1967,7 +2129,8 @@ export const enUS: TranslationKeys = {
     voiceRoleMixed: 'Mixed',
     fileCountSuffix: ' files',
     useVoice: 'Use',
-    autoGenerateAudioHint: 'Audio will be generated and cached when you click play',
+    autoGenerateAudioHint:
+      'Audio will be generated and cached when you click play',
     systemTtsHint: 'Using system TTS. Switch to cloud TTS to select voices',
     // Podcast speakers
     hostA: 'Host A',
@@ -2039,12 +2202,14 @@ export const enUS: TranslationKeys = {
     styleTagsDesc: 'AI will generate style tags based on source content',
     noTagsHint: 'Click button above to generate tags',
     customTag: 'Custom Tag',
-    customTagDesc: 'Add custom tags for pure links, displayed on the right side of the card (max 3)',
+    customTagDesc:
+      'Add custom tags for pure links, displayed on the right side of the card (max 3)',
     tagInputPlaceholder: 'Enter tag name...',
     addTag: 'Add',
     noCustomTagHint: 'No tags added yet',
     adminOnlyVisible: 'Admin Only',
-    adminOnlyVisibleHint: 'When enabled, non-admin users will not see this source',
+    adminOnlyVisibleHint:
+      'When enabled, non-admin users will not see this source',
     saveChanges: 'Save Changes',
 
     // RSSHubConfig - Error messages
@@ -2129,7 +2294,8 @@ export const enUS: TranslationKeys = {
 
   federation: {
     title: 'Federation',
-    subtitle: 'Connect to the decentralized social network and subscribe to remote users',
+    subtitle:
+      'Connect to the decentralized social network and subscribe to remote users',
     timeline: 'Timeline',
     profile: 'Profile',
     following: 'Following',
@@ -2143,12 +2309,14 @@ export const enUS: TranslationKeys = {
     emptyFollowing: 'Not following any remote users yet',
     emptyFollowers: 'No remote followers yet',
     emptyPublished: 'No content published to the federation yet',
-    emptyPublishedHint: 'Click the "Federate" button on reports or Brew articles',
+    emptyPublishedHint:
+      'Click the "Federate" button on reports or Brew articles',
     // Phase 3: Channel
     channelPlaceholder: 'Remote Actor URL or user@domain',
     newChannelBtn: 'New Channel',
     emptyChannels: 'No channels yet',
-    emptyChannelsHint: 'Create a channel to start real-time communication with remote users',
+    emptyChannelsHint:
+      'Create a channel to start real-time communication with remote users',
     back: 'Back',
     connected: 'Connected',
     disconnected: 'Disconnected',
@@ -2193,8 +2361,18 @@ export const enUS: TranslationKeys = {
       evening: 'Good evening',
     },
     pageHints: {
-      library: ['Want to listen to music?', 'Explore playlists', 'Organize collection', 'Shuffle play'],
-      brew: ['What would you like?', 'Check subscriptions', 'Refresh content', 'Explore'],
+      library: [
+        'Want to listen to music?',
+        'Explore playlists',
+        'Organize collection',
+        'Shuffle play',
+      ],
+      brew: [
+        'What would you like?',
+        'Check subscriptions',
+        'Refresh content',
+        'Explore',
+      ],
       reports: ['View reports', 'Generate report', 'Data insights'],
       config: ['Adjust settings?', 'Personalize', 'Optimize experience'],
       dataManagement: ['Manage data', 'Sync data', 'Clear cache'],

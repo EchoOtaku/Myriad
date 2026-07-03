@@ -44,6 +44,7 @@ pub struct Model {
 /// 实例健康状态
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum HealthStatus {
     /// 健康 - 响应正常
     #[sea_orm(string_value = "healthy")]
@@ -56,13 +57,8 @@ pub enum HealthStatus {
     Unhealthy,
     /// 未知 - 尚未检查
     #[sea_orm(string_value = "unknown")]
+    #[default]
     Unknown,
-}
-
-impl Default for HealthStatus {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

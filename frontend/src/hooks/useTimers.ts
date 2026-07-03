@@ -54,13 +54,13 @@ export function useTimers(): TimerManager {
 
   // 清理所有定时器
   const clearAll = useCallback(() => {
-    timeoutsRef.current.forEach(id => clearTimeout(id))
+    timeoutsRef.current.forEach((id) => clearTimeout(id))
     timeoutsRef.current.clear()
 
-    intervalsRef.current.forEach(id => clearInterval(id))
+    intervalsRef.current.forEach((id) => clearInterval(id))
     intervalsRef.current.clear()
 
-    rafsRef.current.forEach(id => cancelAnimationFrame(id))
+    rafsRef.current.forEach((id) => cancelAnimationFrame(id))
     rafsRef.current.clear()
   }, [])
 
@@ -83,11 +83,14 @@ export function useTimers(): TimerManager {
     timeoutsRef.current.delete(id)
   }, [])
 
-  const safeSetInterval = useCallback((fn: () => void, ms: number): IntervalId => {
-    const id = setInterval(fn, ms)
-    intervalsRef.current.add(id)
-    return id
-  }, [])
+  const safeSetInterval = useCallback(
+    (fn: () => void, ms: number): IntervalId => {
+      const id = setInterval(fn, ms)
+      intervalsRef.current.add(id)
+      return id
+    },
+    [],
+  )
 
   const safeClearInterval = useCallback((id: IntervalId) => {
     clearInterval(id)
@@ -148,8 +151,7 @@ export function useTimeout(callback: () => void, delay: number | null): void {
   }, [callback])
 
   useEffect(() => {
-    if (delay === null)
-      return
+    if (delay === null) return
 
     const id = setTimeout(() => {
       savedCallback.current()
@@ -181,8 +183,7 @@ export function useInterval(callback: () => void, delay: number | null): void {
   }, [callback])
 
   useEffect(() => {
-    if (delay === null)
-      return
+    if (delay === null) return
 
     const id = setInterval(() => {
       savedCallback.current()

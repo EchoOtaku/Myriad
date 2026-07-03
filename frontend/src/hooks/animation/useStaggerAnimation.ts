@@ -65,7 +65,9 @@ let staggerIdCounter = 0
  * }
  * ```
  */
-export function useStaggerAnimation(options: UseStaggerAnimationOptions): StaggerAnimationResult {
+export function useStaggerAnimation(
+  options: UseStaggerAnimationOptions,
+): StaggerAnimationResult {
   const { groupId, index, baseDelay, waitForPage = true } = options
 
   // 生成稳定的 ID
@@ -82,11 +84,12 @@ export function useStaggerAnimation(options: UseStaggerAnimationOptions): Stagge
   const stateRef = useRef<AnimationState>(AnimationState.WAITING)
   // 🔧 优化：追踪是否已调度，避免重复调用 schedule
   const scheduledRef = useRef(false)
-  const [, forceUpdate] = useReducer(x => x + 1, 0)
+  const [, forceUpdate] = useReducer((x) => x + 1, 0)
 
-  const canAnimate = stateRef.current === AnimationState.READY
-    || stateRef.current === AnimationState.RUNNING
-    || stateRef.current === AnimationState.COMPLETED
+  const canAnimate =
+    stateRef.current === AnimationState.READY ||
+    stateRef.current === AnimationState.RUNNING ||
+    stateRef.current === AnimationState.COMPLETED
 
   useEffect(() => {
     if (!waitForPage) {

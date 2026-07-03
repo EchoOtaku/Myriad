@@ -9,7 +9,8 @@ export * from './quote'
 // 重新导出类型和函数，保持向后兼容
 export * from './weather'
 
-export type GreetingIconName = 'sunrise' | 'sun' | 'cloud-sun' | 'sunset' | 'moon'
+export type GreetingIconName =
+  'sunrise' | 'sun' | 'cloud-sun' | 'sunset' | 'moon'
 export type ThemeIconName = 'sun' | 'moon'
 
 export interface GreetingData {
@@ -58,20 +59,16 @@ export function getGreeting(
   if (hour >= 5 && hour < 12) {
     icon = 'sunrise'
     text = t.morning
-  }
-  else if (hour >= 12 && hour < 14) {
+  } else if (hour >= 12 && hour < 14) {
     icon = 'sun'
     text = t.noon
-  }
-  else if (hour >= 14 && hour < 18) {
+  } else if (hour >= 14 && hour < 18) {
     icon = 'cloud-sun'
     text = t.afternoon
-  }
-  else if (hour >= 18 && hour < 22) {
+  } else if (hour >= 18 && hour < 22) {
     icon = 'sunset'
     text = t.evening
-  }
-  else {
+  } else {
     icon = 'moon'
     text = t.night
   }
@@ -87,7 +84,10 @@ export function getGreeting(
  * 获取主题状态信息
  * @param translations 翻译对象（可选）
  */
-export function getThemeInfo(translations?: { dark: string, light: string }): { text: string, icon: ThemeIconName } {
+export function getThemeInfo(translations?: { dark: string; light: string }): {
+  text: string
+  icon: ThemeIconName
+} {
   const isDark = document.documentElement.classList.contains('dark')
   const t = translations || { dark: '深色模式', light: '浅色模式' }
   return {

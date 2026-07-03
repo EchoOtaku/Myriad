@@ -41,8 +41,8 @@ deploy:
 	@echo "✓ Deployment complete!"
 	@echo ""
 	@echo "Access URLs:"
-	@echo "  Frontend: http://localhost:4321"
-	@echo "  Backend:  http://localhost:3000"
+	@echo "  Frontend: http://localhost:1102"
+	@echo "  Backend:  http://localhost:1103"
 
 # Start services
 start:

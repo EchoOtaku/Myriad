@@ -10,10 +10,17 @@
 
 import type { ReactNode } from 'react'
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from 'react'
 
 /** 页面内容类型 */
-export type PageContentType = 'brew_article' | 'tapp_data' | 'platform_data' | 'custom'
+export type PageContentType =
+  'brew_article' | 'tapp_data' | 'platform_data' | 'custom'
 
 /** 页面内容数据 */
 export interface PageContent {
@@ -61,7 +68,7 @@ function extractPlainText(html: string): string {
 
   // 移除脚本和样式
   const scripts = temp.querySelectorAll('script, style')
-  scripts.forEach(el => el.remove())
+  scripts.forEach((el) => el.remove())
 
   // 获取文本内容
   const text = temp.textContent || ''
@@ -72,8 +79,7 @@ function extractPlainText(html: string): string {
 
 /** 截断文本 */
 function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength)
-    return text
+  if (text.length <= maxLength) return text
   return `${text.slice(0, maxLength)}...`
 }
 
@@ -101,8 +107,7 @@ export function PageContentProvider({ children }: { children: ReactNode }) {
   const hasContent = pageContent !== null
 
   const getContentForAgent = useCallback((): Record<string, unknown> | null => {
-    if (!pageContent)
-      return null
+    if (!pageContent) return null
 
     return {
       type: pageContent.type,
@@ -121,13 +126,22 @@ export function PageContentProvider({ children }: { children: ReactNode }) {
     }
   }, [pageContent])
 
-  const value = useMemo(() => ({
-    pageContent,
-    setPageContent,
-    clearPageContent,
-    hasContent,
-    getContentForAgent,
-  }), [pageContent, setPageContent, clearPageContent, hasContent, getContentForAgent])
+  const value = useMemo(
+    () => ({
+      pageContent,
+      setPageContent,
+      clearPageContent,
+      hasContent,
+      getContentForAgent,
+    }),
+    [
+      pageContent,
+      setPageContent,
+      clearPageContent,
+      hasContent,
+      getContentForAgent,
+    ],
+  )
 
   return (
     <PageContentContext.Provider value={value}>

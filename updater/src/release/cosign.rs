@@ -70,10 +70,14 @@ pub async fn verify(
 
     let mut cmd = Command::new("cosign");
     cmd.arg("verify-blob")
-        .arg("--signature").arg(signature_path)
-        .arg("--certificate").arg(cert_path)
-        .arg("--certificate-identity-regexp").arg(&subject_re)
-        .arg("--certificate-oidc-issuer").arg(issuer)
+        .arg("--signature")
+        .arg(signature_path)
+        .arg("--certificate")
+        .arg(cert_path)
+        .arg("--certificate-identity-regexp")
+        .arg(&subject_re)
+        .arg("--certificate-oidc-issuer")
+        .arg(issuer)
         .arg(manifest_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -100,10 +104,7 @@ pub async fn verify(
 }
 
 /// Apply policy: convert outcome + policy into a `Result` for the caller's flow.
-pub fn enforce(
-    outcome: &VerifyOutcome,
-    policy: CosignPolicy,
-) -> Result<(), String> {
+pub fn enforce(outcome: &VerifyOutcome, policy: CosignPolicy) -> Result<(), String> {
     match (policy, outcome) {
         (CosignPolicy::Off, _) => Ok(()),
         (CosignPolicy::Soft, VerifyOutcome::Skipped | VerifyOutcome::Verified) => Ok(()),

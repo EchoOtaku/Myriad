@@ -53,7 +53,7 @@ class SlidingWindowRateLimiter {
    * 检查是否允许请求
    * @returns 是否允许，以及剩余配额
    */
-  check(): { allowed: boolean, remaining: number, retryAfter?: number } {
+  check(): { allowed: boolean; remaining: number; retryAfter?: number } {
     const now = Date.now()
     this.cleanup(now)
 
@@ -93,8 +93,7 @@ class SlidingWindowRateLimiter {
       const mid = Math.floor((left + right) / 2)
       if (this.timestamps[mid] <= cutoff) {
         left = mid + 1
-      }
-      else {
+      } else {
         right = mid
       }
     }
@@ -123,7 +122,7 @@ class SlidingWindowRateLimiter {
 interface UsageRecord {
   count: number
   lastReset: number
-  history: { timestamp: number, count: number }[]
+  history: { timestamp: number; count: number }[]
   rateLimiter?: SlidingWindowRateLimiter
 }
 
@@ -131,9 +130,6 @@ interface UsageRecord {
 class TappQuotaManager {
   private quotaConfig: TappQuotaConfig
   private usageByTapp: Map<string, Record<string, UsageRecord>>
-
-  /** 全局速率限制器（防止单个 Tapp 滥用） */
-  private globalRateLimiters: Map<string, SlidingWindowRateLimiter> = new Map()
 
   /** 自动清理定时器 */
   private cleanupInterval: ReturnType<typeof setInterval> | null = null
@@ -143,7 +139,10 @@ class TappQuotaManager {
     this.usageByTapp = new Map()
 
     // 启动自动清理（每 5 分钟清理一次过期数据）
-    this.cleanupInterval = setInterval(() => this.cleanupExpiredRecords(), 5 * 60 * 1000)
+    this.cleanupInterval = setInterval(
+      () => this.cleanupExpiredRecords(),
+      5 * 60 * 1000,
+    )
   }
 
   /**
@@ -197,16 +196,19 @@ class TappQuotaManager {
       let rateLimiter: SlidingWindowRateLimiter | undefined
 
       if (type === 'platform.read') {
-        rateLimiter = new SlidingWindowRateLimiter(60 * 1000, this.quotaConfig.platform.readPerMinute)
-      }
-      else if (type === 'platform.write') {
-        rateLimiter = new SlidingWindowRateLimiter(60 * 1000, this.quotaConfig.platform.writePerMinute)
-      }
-      else if (type.startsWith('ai.')) {
+        rateLimiter = new SlidingWindowRateLimiter(
+          60 * 1000,
+          this.quotaConfig.platform.readPerMinute,
+        )
+      } else if (type === 'platform.write') {
+        rateLimiter = new SlidingWindowRateLimiter(
+          60 * 1000,
+          this.quotaConfig.platform.writePerMinute,
+        )
+      } else if (type.startsWith('ai.')) {
         // AI 请求使用更严格的短期限制（10秒内最多5次）
         rateLimiter = new SlidingWindowRateLimiter(10 * 1000, 5)
-      }
-      else if (type === 'http.fetch') {
+      } else if (type === 'http.fetch') {
         // HTTP 请求限制（每分钟30次）
         rateLimiter = new SlidingWindowRateLimiter(60 * 1000, 30)
       }
@@ -222,7 +224,10 @@ class TappQuotaManager {
   }
 
   /** 检查是否需要重置计数器 */
-  private checkReset(record: UsageRecord, period: 'minute' | 'day' | 'month'): void {
+  private checkReset(
+    record: UsageRecord,
+    period: 'minute' | 'day' | 'month',
+  ): void {
     const now = Date.now()
     const periodMs = {
       minute: 60 * 1000,
@@ -249,7 +254,11 @@ class TappQuotaManager {
   /**
    * 检查配额是否允许操作（增强版：包含滑动窗口检查）
    */
-  checkQuota(tappId: string, type: string, amount: number = 1): {
+  checkQuota(
+    tappId: string,
+    type: string,
+    amount: number = 1,
+  ): {
     allowed: boolean
     remaining: number
     reason?: string
@@ -328,17 +337,25 @@ class TappQuotaManager {
   /**
    * 批量检查多个操作的配额
    */
-  checkMultipleQuotas(tappId: string, operations: Array<{ type: string, amount?: number }>): {
+  checkMultipleQuotas(
+    tappId: string,
+    operations: Array<{ type: string; amount?: number }>,
+  ): {
     allowed: boolean
-    results: Array<{ type: string, allowed: boolean, remaining: number, reason?: string }>
+    results: Array<{
+      type: string
+      allowed: boolean
+      remaining: number
+      reason?: string
+    }>
   } {
-    const results = operations.map(op => ({
+    const results = operations.map((op) => ({
       type: op.type,
       ...this.checkQuota(tappId, op.type, op.amount || 1),
     }))
 
     return {
-      allowed: results.every(r => r.allowed),
+      allowed: results.every((r) => r.allowed),
       results,
     }
   }
@@ -364,18 +381,26 @@ class TappQuotaManager {
         used: aiRecord.count,
         limit: this.quotaConfig.ai.dailyLimit,
         remaining: Math.max(0, this.quotaConfig.ai.dailyLimit - aiRecord.count),
-        resetAt: new Date(aiRecord.lastReset + 24 * 60 * 60 * 1000).toISOString(),
+        resetAt: new Date(
+          aiRecord.lastReset + 24 * 60 * 60 * 1000,
+        ).toISOString(),
       },
       platformRead: {
         used: readRecord.count,
         limit: this.quotaConfig.platform.readPerMinute,
-        remaining: Math.max(0, this.quotaConfig.platform.readPerMinute - readRecord.count),
+        remaining: Math.max(
+          0,
+          this.quotaConfig.platform.readPerMinute - readRecord.count,
+        ),
         resetAt: new Date(readRecord.lastReset + 60 * 1000).toISOString(),
       },
       platformWrite: {
         used: writeRecord.count,
         limit: this.quotaConfig.platform.writePerMinute,
-        remaining: Math.max(0, this.quotaConfig.platform.writePerMinute - writeRecord.count),
+        remaining: Math.max(
+          0,
+          this.quotaConfig.platform.writePerMinute - writeRecord.count,
+        ),
         resetAt: new Date(writeRecord.lastReset + 60 * 1000).toISOString(),
       },
       history: Object.entries(usage).map(([type, record]) => ({
@@ -405,8 +430,7 @@ class TappQuotaManager {
       const record = this.getTypeUsage(tappId, type)
       record.count = 0
       record.lastReset = Date.now()
-    }
-    else {
+    } else {
       this.usageByTapp.delete(tappId)
     }
     // 不再保存到 localStorage

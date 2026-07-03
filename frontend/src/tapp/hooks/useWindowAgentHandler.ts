@@ -5,10 +5,7 @@
  * TappWindowManager 不再直接依赖 agent 服务实现细节。
  */
 
-import type {
-  FrontendAction,
-  WindowTarget,
-} from '../../services/agent'
+import type { FrontendAction, WindowTarget } from '../../services/agent'
 import { useEffect } from 'react'
 
 import {
@@ -43,7 +40,7 @@ function resolveWindowTarget(
     return target.windowId
   }
   if (target.tappId) {
-    const win = windowsRef.current?.find(w => w.tappId === target.tappId)
+    const win = windowsRef.current?.find((w) => w.tappId === target.tappId)
     return win?.windowId || null
   }
   if (target.position === 'active') {
@@ -63,7 +60,9 @@ export function useWindowAgentHandler({
   focusWindow,
 }: UseWindowAgentHandlerOptions): void {
   useEffect(() => {
-    const handleAgentAction = async (action: FrontendAction): Promise<boolean> => {
+    const handleAgentAction = async (
+      action: FrontendAction,
+    ): Promise<boolean> => {
       try {
         switch (action.type) {
           case 'open_window': {
@@ -79,7 +78,11 @@ export function useWindowAgentHandler({
           case 'close_window': {
             const target = action.target as WindowTarget | undefined
             if (target) {
-              const windowId = resolveWindowTarget(target, windowsRef, activeWindowIdRef)
+              const windowId = resolveWindowTarget(
+                target,
+                windowsRef,
+                activeWindowIdRef,
+              )
               if (windowId) {
                 closeWindow(windowId)
                 return true
@@ -91,7 +94,11 @@ export function useWindowAgentHandler({
           case 'focus_window': {
             const target = action.target as WindowTarget | undefined
             if (target) {
-              const windowId = resolveWindowTarget(target, windowsRef, activeWindowIdRef)
+              const windowId = resolveWindowTarget(
+                target,
+                windowsRef,
+                activeWindowIdRef,
+              )
               if (windowId) {
                 focusWindow(windowId)
                 return true
@@ -104,17 +111,26 @@ export function useWindowAgentHandler({
             const target = action.target as WindowTarget | undefined
             const data = action.data as Record<string, unknown> | undefined
             if (target && data) {
-              const windowId = resolveWindowTarget(target, windowsRef, activeWindowIdRef)
+              const windowId = resolveWindowTarget(
+                target,
+                windowsRef,
+                activeWindowIdRef,
+              )
               if (windowId) {
                 const container = document.querySelector(
                   `[data-window-id="${CSS.escape(windowId)}"]`,
                 )
-                const iframe = container?.querySelector('iframe') as HTMLIFrameElement
+                const iframe = container?.querySelector(
+                  'iframe',
+                ) as HTMLIFrameElement
                 if (iframe?.contentWindow) {
-                  iframe.contentWindow.postMessage({
-                    type: 'AGENT_FILL_DATA',
-                    data,
-                  }, '*')
+                  iframe.contentWindow.postMessage(
+                    {
+                      type: 'AGENT_FILL_DATA',
+                      data,
+                    },
+                    '*',
+                  )
                   return true
                 }
               }
@@ -126,17 +142,26 @@ export function useWindowAgentHandler({
             const target = action.target as WindowTarget | undefined
             const data = action.data as Record<string, unknown> | undefined
             if (target) {
-              const windowId = resolveWindowTarget(target, windowsRef, activeWindowIdRef)
+              const windowId = resolveWindowTarget(
+                target,
+                windowsRef,
+                activeWindowIdRef,
+              )
               if (windowId) {
                 const container = document.querySelector(
                   `[data-window-id="${CSS.escape(windowId)}"]`,
                 )
-                const iframe = container?.querySelector('iframe') as HTMLIFrameElement
+                const iframe = container?.querySelector(
+                  'iframe',
+                ) as HTMLIFrameElement
                 if (iframe?.contentWindow) {
-                  iframe.contentWindow.postMessage({
-                    type: 'AGENT_READ_DATA',
-                    fields: data?.fields,
-                  }, '*')
+                  iframe.contentWindow.postMessage(
+                    {
+                      type: 'AGENT_READ_DATA',
+                      fields: data?.fields,
+                    },
+                    '*',
+                  )
                   return true
                 }
               }
@@ -148,8 +173,7 @@ export function useWindowAgentHandler({
             console.warn('Unknown agent action:', action.type)
             return false
         }
-      }
-      catch (error) {
+      } catch (error) {
         console.error('Failed to execute agent action:', error)
         return false
       }

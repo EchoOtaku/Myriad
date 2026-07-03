@@ -10,10 +10,7 @@ use crate::error::Result;
 
 pub fn append(path: &Path, line: &str) -> Result<()> {
     let ts = Utc::now().to_rfc3339();
-    let mut f = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
+    let mut f = OpenOptions::new().create(true).append(true).open(path)?;
     writeln!(f, "[{ts}] {line}")?;
     f.flush()?;
     f.sync_data()?;

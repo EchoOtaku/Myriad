@@ -155,14 +155,14 @@ impl HeartbeatManager {
         let hour = now.format("%H").to_string();
 
         let minute_match = parts[0] == "*"
-            || parts[0] == &minute
+            || parts[0] == minute
             || parts[0].starts_with("*/") && {
                 let interval: u32 = parts[0][2..].parse().ok()?;
                 let current: u32 = minute.parse().ok()?;
-                interval > 0 && current % interval == 0
+                interval > 0 && current.is_multiple_of(interval)
             };
 
-        let hour_match = parts[1] == "*" || parts[1] == &hour;
+        let hour_match = parts[1] == "*" || parts[1] == hour;
 
         Some(minute_match && hour_match)
     }

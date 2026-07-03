@@ -378,7 +378,7 @@ async fn execute_report_comprehensive(
         .get("platforms")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec!["steam", "bilibili", "github", "netease"]);
+        .unwrap_or_else(|| vec!["steam", "bilibili", "bangumi", "github", "netease"]);
 
     let style = params
         .get("style")
@@ -670,7 +670,7 @@ async fn execute_bookmark_save(
                 host != "localhost"
                     && !host.ends_with(".local")
                     && !host.ends_with(".internal")
-                    && !host.parse::<std::net::IpAddr>().map_or(false, |ip| {
+                    && !host.parse::<std::net::IpAddr>().is_ok_and(|ip| {
                         ip.is_loopback()
                             || match ip {
                                 std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
@@ -747,7 +747,7 @@ async fn execute_bookmark_save(
         "frontendAction": {
             "type": "show_notification",
             "params": {
-                "title": crate::services::agent::response_agent::bookmark_saved(&final_title),
+                "title": crate::services::agent::response_agent::bookmark_saved(final_title),
                 "bookmarkId": bookmark_id,
                 "url": url
             },

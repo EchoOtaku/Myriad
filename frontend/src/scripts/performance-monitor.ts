@@ -30,8 +30,7 @@ class PerformanceMonitor {
   }
 
   private init() {
-    if (typeof window === 'undefined')
-      return
+    if (typeof window === 'undefined') return
 
     // 监测Core Web Vitals
     this.measureWebVitals()
@@ -43,8 +42,7 @@ class PerformanceMonitor {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         this.stopFPSMonitor()
-      }
-      else {
+      } else {
         this.startFPSMonitor()
       }
     })
@@ -69,8 +67,7 @@ class PerformanceMonitor {
           }
         })
         fcpObserver.observe({ entryTypes: ['paint'] })
-      }
-      catch (_e) {
+      } catch (_e) {
         // FCP monitoring not supported
       }
 
@@ -85,8 +82,7 @@ class PerformanceMonitor {
           }
         })
         lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] })
-      }
-      catch (_e) {
+      } catch (_e) {
         // LCP monitoring not supported
       }
 
@@ -107,8 +103,7 @@ class PerformanceMonitor {
           }
         })
         clsObserver.observe({ entryTypes: ['layout-shift'] })
-      }
-      catch (_e) {
+      } catch (_e) {
         // CLS monitoring not supported
       }
 
@@ -124,15 +119,17 @@ class PerformanceMonitor {
           }
         })
         fidObserver.observe({ entryTypes: ['first-input'] })
-      }
-      catch (_e) {
+      } catch (_e) {
         // FID monitoring not supported
       }
     }
 
     // Time to First Byte (TTFB)
-    if (performance.timing) {
-      const ttfb = performance.timing.responseStart - performance.timing.requestStart
+    const navigationEntry = performance.getEntriesByType(
+      'navigation',
+    )[0] as PerformanceNavigationTiming | undefined
+    if (navigationEntry) {
+      const ttfb = navigationEntry.responseStart - navigationEntry.requestStart
       this.metrics.ttfb = ttfb
       if (ENABLE_LOGGING) {
         console.log(`✅ TTFB: ${ttfb}ms`)
@@ -144,8 +141,7 @@ class PerformanceMonitor {
    * 开始FPS监测（从 AnimationCoordinator 轮询）
    */
   private startFPSMonitor() {
-    if (this.fpsIntervalId)
-      return
+    if (this.fpsIntervalId) return
 
     // 每秒从 coordinator 获取 FPS 数据
     this.fpsIntervalId = setInterval(() => {
@@ -164,8 +160,7 @@ class PerformanceMonitor {
         if (ENABLE_LOGGING && fps < FPS_WARNING_THRESHOLD) {
           console.warn(`⚠️ Low FPS detected: ${fps}`)
         }
-      }
-      catch {
+      } catch {
         // coordinator 可能未初始化
       }
     }, 1000)
@@ -185,8 +180,7 @@ class PerformanceMonitor {
    * 获取平均FPS
    */
   public getAverageFPS(): number {
-    if (this.fpsFrames.length === 0)
-      return 0
+    if (this.fpsFrames.length === 0) return 0
     const sum = this.fpsFrames.reduce((a, b) => a + b, 0)
     return Math.round(sum / this.fpsFrames.length)
   }
@@ -205,12 +199,19 @@ class PerformanceMonitor {
    * 输出性能报告
    */
   public logReport() {
-    if (!ENABLE_LOGGING)
-      return
+    if (!ENABLE_LOGGING) return
 
     console.group('📊 Performance Report')
-    console.log('FCP (First Contentful Paint):', this.metrics.fcp?.toFixed(2), 'ms')
-    console.log('LCP (Largest Contentful Paint):', this.metrics.lcp?.toFixed(2), 'ms')
+    console.log(
+      'FCP (First Contentful Paint):',
+      this.metrics.fcp?.toFixed(2),
+      'ms',
+    )
+    console.log(
+      'LCP (Largest Contentful Paint):',
+      this.metrics.lcp?.toFixed(2),
+      'ms',
+    )
     console.log('FID (First Input Delay):', this.metrics.fid?.toFixed(2), 'ms')
     console.log('CLS (Cumulative Layout Shift):', this.metrics.cls?.toFixed(4))
     console.log('TTFB (Time to First Byte):', this.metrics.ttfb, 'ms')
@@ -222,20 +223,21 @@ class PerformanceMonitor {
    * 检测长任务
    */
   public detectLongTasks() {
-    if (!ENABLE_LOGGING || !('PerformanceObserver' in window))
-      return
+    if (!ENABLE_LOGGING || !('PerformanceObserver' in window)) return
 
     try {
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
           if (entry.duration > LONG_TASK_THRESHOLD) {
-            console.warn(`⚠️ Long task detected: ${entry.duration.toFixed(2)}ms`, entry)
+            console.warn(
+              `⚠️ Long task detected: ${entry.duration.toFixed(2)}ms`,
+              entry,
+            )
           }
         }
       })
       observer.observe({ entryTypes: ['longtask'] })
-    }
-    catch (_e) {
+    } catch (_e) {
       // Long task monitoring not supported
     }
   }
@@ -258,8 +260,7 @@ export function getPerformanceMonitor(): PerformanceMonitor {
  * 快速检查性能
  */
 export function quickPerformanceCheck() {
-  if (typeof window === 'undefined')
-    return
+  if (typeof window === 'undefined') return
 
   const monitor = getPerformanceMonitor()
 

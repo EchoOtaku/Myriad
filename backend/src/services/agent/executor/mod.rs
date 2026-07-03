@@ -253,9 +253,7 @@ impl Executor {
 
         // 构建 DAG 调度器（检测是否有并行依赖）
         let mut dag_scheduler = dag::DagScheduler::new(&all_steps).ok();
-        let mut use_dag = dag_scheduler
-            .as_ref()
-            .map_or(false, |d| d.is_parallel_mode());
+        let mut use_dag = dag_scheduler.as_ref().is_some_and(|d| d.is_parallel_mode());
         // 追踪被注入 DAG 的动态子步骤 ID（区分原始 recipe 步骤和 Skill 子步骤）
         let mut dag_injected_ids: HashSet<String> = HashSet::new();
         if use_dag {
@@ -267,7 +265,7 @@ impl Executor {
 
         while step_index < all_steps.len()
             || context.has_pending_steps()
-            || dag_scheduler.as_ref().map_or(false, |d| d.has_remaining())
+            || dag_scheduler.as_ref().is_some_and(|d| d.has_remaining())
         {
             // 🔴 检查任务是否被取消
             if is_cancelled(&task_state.task_id).await {
@@ -648,7 +646,7 @@ impl Executor {
                                         if let Some(question) = self
                                             .analyze_and_generate_dynamic_steps(
                                                 &step,
-                                                &output_val,
+                                                output_val,
                                                 &mut context,
                                                 recipe,
                                             )
@@ -859,39 +857,37 @@ impl Executor {
                     // 🛡️ 如果已取消，跳过 WaitingForInput 和重试
                     let dag_cancelled = task_state.status == TaskStatus::Failed
                         && task_state.error.as_deref() == Some("用户取消了任务");
-                    if !dag_cancelled {
+                    if !dag_cancelled && !pending_questions_from_dag.is_empty() {
+                        let question = pending_questions_from_dag.remove(0);
+                        // 将剩余问题存入 context，resume 后继续提问
                         if !pending_questions_from_dag.is_empty() {
-                            let question = pending_questions_from_dag.remove(0);
-                            // 将剩余问题存入 context，resume 后继续提问
-                            if !pending_questions_from_dag.is_empty() {
-                                tracing::info!(
-                                    deferred = pending_questions_from_dag.len(),
-                                    "[Executor] DAG: {} additional questions stored for later",
-                                    pending_questions_from_dag.len()
-                                );
-                                context.pending_questions.extend(pending_questions_from_dag);
-                            }
-                            emitter
-                                .waiting_for_input(&task_state.task_id, &question)
-                                .await;
-
-                            // 保存任务状态为 WaitingForInput
-                            task_state.status = TaskStatus::WaitingForInput;
-                            task_state.set_pending_question(question);
-                            task_state.recipe = Some(recipe.clone());
-                            context.retry_budget_remaining = global_retry_budget;
-                            task_state.execution_context = Some(context);
-
-                            {
-                                let mut store = TASK_STORE.write().await;
-                                if let Some(task) = store.get_mut(&task_state.task_id) {
-                                    *task = task_state.clone();
-                                }
-                            }
-                            persist_task_async(user_id, task_state.clone());
-
-                            return Ok(task_state);
+                            tracing::info!(
+                                deferred = pending_questions_from_dag.len(),
+                                "[Executor] DAG: {} additional questions stored for later",
+                                pending_questions_from_dag.len()
+                            );
+                            context.pending_questions.extend(pending_questions_from_dag);
                         }
+                        emitter
+                            .waiting_for_input(&task_state.task_id, &question)
+                            .await;
+
+                        // 保存任务状态为 WaitingForInput
+                        task_state.status = TaskStatus::WaitingForInput;
+                        task_state.set_pending_question(question);
+                        task_state.recipe = Some(recipe.clone());
+                        context.retry_budget_remaining = global_retry_budget;
+                        task_state.execution_context = Some(context);
+
+                        {
+                            let mut store = TASK_STORE.write().await;
+                            if let Some(task) = store.get_mut(&task_state.task_id) {
+                                *task = task_state.clone();
+                            }
+                        }
+                        persist_task_async(user_id, task_state.clone());
+
+                        return Ok(task_state);
                     } // end !dag_cancelled guard
 
                     // ====== 流式DAG后的串行重试（复用 retry.rs 统一逻辑）======
@@ -1617,10 +1613,8 @@ impl Executor {
                     Some(summary)
                 } else if let Some(analysis) = out_val.get("analysis").and_then(|v| v.as_str()) {
                     Some(analysis)
-                } else if let Some(reply) = out_val.get("reply").and_then(|v| v.as_str()) {
-                    Some(reply)
                 } else {
-                    None
+                    out_val.get("reply").and_then(|v| v.as_str())
                 };
                 if let Some(text) = text {
                     let truncated: String = text.chars().take(1500).collect();
@@ -2043,51 +2037,48 @@ impl Executor {
         params: &mut HashMap<String, Value>,
         previous_outputs: &HashMap<String, Value>,
     ) {
-        match capability_id {
-            "music.playlist" => {
-                let has_playlist_id = params
-                    .get("playlistId")
-                    .map(|v| {
-                        v.as_str().map(|s| !s.is_empty()).unwrap_or(false)
-                            || v.as_i64().is_some()
-                            || v.as_u64().is_some()
-                    })
-                    .unwrap_or(false);
+        if capability_id == "music.playlist" {
+            let has_playlist_id = params
+                .get("playlistId")
+                .map(|v| {
+                    v.as_str().map(|s| !s.is_empty()).unwrap_or(false)
+                        || v.as_i64().is_some()
+                        || v.as_u64().is_some()
+                })
+                .unwrap_or(false);
 
-                if !has_playlist_id {
-                    tracing::info!(
-                        "[Executor] music.playlist missing playlistId, searching previous outputs"
-                    );
-                    for (_step_id, output) in previous_outputs {
-                        if let Some(pid) = output
-                            .get("recommendedPlaylistId")
-                            .and_then(|v| v.as_str())
-                            .filter(|s| !s.is_empty())
-                        {
-                            tracing::info!(playlist_id = %pid, "[Executor] Found recommendedPlaylistId");
-                            params.insert("playlistId".to_string(), json!(pid));
+            if !has_playlist_id {
+                tracing::info!(
+                    "[Executor] music.playlist missing playlistId, searching previous outputs"
+                );
+                for output in previous_outputs.values() {
+                    if let Some(pid) = output
+                        .get("recommendedPlaylistId")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    {
+                        tracing::info!(playlist_id = %pid, "[Executor] Found recommendedPlaylistId");
+                        params.insert("playlistId".to_string(), json!(pid));
+                        break;
+                    }
+                    if let Some(first) = output
+                        .get("playlists")
+                        .and_then(|p| p.as_array())
+                        .and_then(|arr| arr.first())
+                    {
+                        let id_opt = first.get("id").and_then(|id| {
+                            id.as_i64()
+                                .map(|n| n.to_string())
+                                .or_else(|| id.as_str().map(String::from))
+                        });
+                        if let Some(id_str) = id_opt {
+                            tracing::info!(playlist_id = %id_str, "[Executor] Found playlistId from playlists[0]");
+                            params.insert("playlistId".to_string(), json!(id_str));
                             break;
-                        }
-                        if let Some(first) = output
-                            .get("playlists")
-                            .and_then(|p| p.as_array())
-                            .and_then(|arr| arr.first())
-                        {
-                            let id_opt = first.get("id").and_then(|id| {
-                                id.as_i64()
-                                    .map(|n| n.to_string())
-                                    .or_else(|| id.as_str().map(String::from))
-                            });
-                            if let Some(id_str) = id_opt {
-                                tracing::info!(playlist_id = %id_str, "[Executor] Found playlistId from playlists[0]");
-                                params.insert("playlistId".to_string(), json!(id_str));
-                                break;
-                            }
                         }
                     }
                 }
             }
-            _ => {}
         }
     }
 
@@ -2268,7 +2259,7 @@ impl Executor {
         let before_len = context.pending_questions.len();
         context
             .pending_questions
-            .retain(|q| q.expires_at.map_or(true, |exp| now <= exp));
+            .retain(|q| q.expires_at.is_none_or(|exp| now <= exp));
         if context.pending_questions.len() < before_len {
             tracing::info!(
                 task_id = %task_id,
@@ -2416,9 +2407,7 @@ impl Executor {
 
         // 构建 DAG 调度器（检测是否有并行依赖）
         let mut dag_scheduler = dag::DagScheduler::new(&all_steps).ok();
-        let mut use_dag = dag_scheduler
-            .as_ref()
-            .map_or(false, |d| d.is_parallel_mode());
+        let mut use_dag = dag_scheduler.as_ref().is_some_and(|d| d.is_parallel_mode());
 
         // 已完成的步骤需要在 DAG 中标记
         if let Some(ref mut dag) = dag_scheduler {
@@ -2443,7 +2432,7 @@ impl Executor {
 
         while step_index < all_steps.len()
             || context.has_pending_steps()
-            || dag_scheduler.as_ref().map_or(false, |d| d.has_remaining())
+            || dag_scheduler.as_ref().is_some_and(|d| d.has_remaining())
         {
             // 取消检查
             if is_cancelled(&task_state.task_id).await {
@@ -2764,7 +2753,7 @@ impl Executor {
         let now = chrono::Utc::now();
         context
             .pending_questions
-            .retain(|q| q.expires_at.map_or(true, |exp| now <= exp));
+            .retain(|q| q.expires_at.is_none_or(|exp| now <= exp));
         if !context.pending_questions.is_empty() {
             let question = context.pending_questions.remove(0);
             tracing::info!(
@@ -3456,25 +3445,25 @@ impl Executor {
             "==" => {
                 if expected == "null" || expected == "nil" {
                     value.is_null()
-                } else if let Some(expected_num) = expected.parse::<f64>().ok() {
+                } else if let Ok(expected_num) = expected.parse::<f64>() {
                     value
                         .as_f64()
-                        .map_or(false, |v| (v - expected_num).abs() < f64::EPSILON)
+                        .is_some_and(|v| (v - expected_num).abs() < f64::EPSILON)
                 } else {
                     let expected_str = expected.trim_matches('"').trim_matches('\'');
-                    value.as_str().map_or(false, |v| v == expected_str)
+                    value.as_str() == Some(expected_str)
                 }
             }
             "!=" => {
                 if expected == "null" || expected == "nil" {
                     !value.is_null()
-                } else if let Some(expected_num) = expected.parse::<f64>().ok() {
+                } else if let Ok(expected_num) = expected.parse::<f64>() {
                     value
                         .as_f64()
-                        .map_or(true, |v| (v - expected_num).abs() >= f64::EPSILON)
+                        .is_none_or(|v| (v - expected_num).abs() >= f64::EPSILON)
                 } else {
                     let expected_str = expected.trim_matches('"').trim_matches('\'');
-                    value.as_str().map_or(true, |v| v != expected_str)
+                    value.as_str() != Some(expected_str)
                 }
             }
             ">" | ">=" | "<" | "<=" => {
@@ -3523,7 +3512,7 @@ impl Executor {
         // 逐层取值
         let mut current = root.clone();
         for part in &parts[field_start..] {
-            current = if let Some(idx) = part.parse::<usize>().ok() {
+            current = if let Ok(idx) = part.parse::<usize>() {
                 current
                     .as_array()
                     .and_then(|arr| arr.get(idx).cloned())
@@ -3540,7 +3529,7 @@ impl Executor {
         match value {
             Value::Null => false,
             Value::Bool(b) => *b,
-            Value::Number(n) => n.as_f64().map_or(false, |v| v != 0.0),
+            Value::Number(n) => n.as_f64().is_some_and(|v| v != 0.0),
             Value::String(s) => !s.is_empty(),
             Value::Array(arr) => !arr.is_empty(),
             Value::Object(obj) => !obj.is_empty(),

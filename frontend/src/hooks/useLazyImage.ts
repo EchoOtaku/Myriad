@@ -28,11 +28,7 @@ export function useLazyImage(
   hasError: boolean
   containerRef: (node: Element | null) => void
 } {
-  const {
-    threshold = 0.01,
-    rootMargin = '50px',
-    placeholder = '',
-  } = options
+  const { threshold = 0.01, rootMargin = '50px', placeholder = '' } = options
 
   const [imageSrc, setImageSrc] = useState<string>(placeholder)
   const [isLoading, setIsLoading] = useState<boolean>(true)
@@ -43,8 +39,7 @@ export function useLazyImage(
   const elementRef = useRef<Element | null>(null)
 
   const loadImage = useCallback(async () => {
-    if (hasLoadedRef.current || !src)
-      return
+    if (hasLoadedRef.current || !src) return
     hasLoadedRef.current = true
 
     setIsLoading(true)
@@ -54,57 +49,56 @@ export function useLazyImage(
     const success = await loadImagePooled(src, { timeout: 15000 })
 
     // 检查是否已被取消
-    if (abortedRef.current)
-      return
+    if (abortedRef.current) return
 
     if (success) {
       setImageSrc(src)
       setIsLoading(false)
-    }
-    else {
+    } else {
       setHasError(true)
       setIsLoading(false)
     }
   }, [src])
 
   // Ref callback - 连接到共享 IntersectionObserver
-  const containerRef = useCallback((node: Element | null) => {
-    // 清理旧观察
-    if (unobserveRef.current) {
-      unobserveRef.current()
-      unobserveRef.current = null
-    }
+  const containerRef = useCallback(
+    (node: Element | null) => {
+      // 清理旧观察
+      if (unobserveRef.current) {
+        unobserveRef.current()
+        unobserveRef.current = null
+      }
 
-    elementRef.current = node
+      elementRef.current = node
 
-    if (node && !hasLoadedRef.current) {
-      if ('IntersectionObserver' in window) {
-        unobserveRef.current = observeIntersection(
-          node,
-          (entry) => {
-            if (entry.isIntersecting) {
-              loadImage()
-              // 图片开始加载后取消观察
-              if (unobserveRef.current) {
-                unobserveRef.current()
-                unobserveRef.current = null
+      if (node && !hasLoadedRef.current) {
+        if ('IntersectionObserver' in window) {
+          unobserveRef.current = observeIntersection(
+            node,
+            (entry) => {
+              if (entry.isIntersecting) {
+                loadImage()
+                // 图片开始加载后取消观察
+                if (unobserveRef.current) {
+                  unobserveRef.current()
+                  unobserveRef.current = null
+                }
               }
-            }
-          },
-          { threshold, rootMargin },
-        )
+            },
+            { threshold, rootMargin },
+          )
+        } else {
+          // 不支持 IntersectionObserver 的浏览器直接加载
+          loadImage()
+        }
       }
-      else {
-        // 不支持 IntersectionObserver 的浏览器直接加载
-        loadImage()
-      }
-    }
-  }, [threshold, rootMargin, loadImage])
+    },
+    [threshold, rootMargin, loadImage],
+  )
 
   // src 变化时重置状态
   useEffect(() => {
-    if (!src)
-      return
+    if (!src) return
 
     abortedRef.current = false
     hasLoadedRef.current = false

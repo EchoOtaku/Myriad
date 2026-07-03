@@ -16,7 +16,8 @@ interface LongPressIndicator {
   active: boolean
 }
 
-const EXCLUDED_SELECTORS = '.arael-panel, input, textarea, button, a, [contenteditable], .tapp-window'
+const EXCLUDED_SELECTORS =
+  '.arael-panel, input, textarea, button, a, [contenteditable], .tapp-window'
 
 export function useLongPress(
   duration: number,
@@ -26,7 +27,11 @@ export function useLongPress(
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const startRef = useRef<{ x: number; y: number } | null>(null)
   const isPressing = useRef(false)
-  const [indicator, setIndicator] = useState<LongPressIndicator>({ x: 0, y: 0, active: false })
+  const [indicator, setIndicator] = useState<LongPressIndicator>({
+    x: 0,
+    y: 0,
+    active: false,
+  })
 
   const cancel = useCallback(() => {
     if (timerRef.current) {
@@ -35,40 +40,41 @@ export function useLongPress(
     }
     isPressing.current = false
     startRef.current = null
-    setIndicator(prev => ({ ...prev, active: false }))
+    setIndicator((prev) => ({ ...prev, active: false }))
   }, [])
 
-  const start = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!enabled)
-      return
-    const target = e.target as HTMLElement
-    if (target.closest(EXCLUDED_SELECTORS))
-      return
+  const start = useCallback(
+    (e: MouseEvent | TouchEvent) => {
+      if (!enabled) return
+      const target = e.target as HTMLElement
+      if (target.closest(EXCLUDED_SELECTORS)) return
 
-    const point = 'touches' in e ? e.touches[0] : e
-    startRef.current = { x: point.clientX, y: point.clientY }
-    isPressing.current = true
-    setIndicator({ x: point.clientX, y: point.clientY, active: true })
+      const point = 'touches' in e ? e.touches[0] : e
+      startRef.current = { x: point.clientX, y: point.clientY }
+      isPressing.current = true
+      setIndicator({ x: point.clientX, y: point.clientY, active: true })
 
-    timerRef.current = setTimeout(() => {
-      if (isPressing.current) {
-        setIndicator(prev => ({ ...prev, active: false }))
-        onTrigger()
-        if (navigator.vibrate)
-          navigator.vibrate(50)
-      }
-    }, duration)
-  }, [enabled, duration, onTrigger])
+      timerRef.current = setTimeout(() => {
+        if (isPressing.current) {
+          setIndicator((prev) => ({ ...prev, active: false }))
+          onTrigger()
+          if (navigator.vibrate) navigator.vibrate(50)
+        }
+      }, duration)
+    },
+    [enabled, duration, onTrigger],
+  )
 
-  const checkMovement = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!startRef.current || !isPressing.current)
-      return
-    const point = 'touches' in e ? e.touches[0] : e
-    const dx = Math.abs(point.clientX - startRef.current.x)
-    const dy = Math.abs(point.clientY - startRef.current.y)
-    if (dx > 10 || dy > 10)
-      cancel()
-  }, [cancel])
+  const checkMovement = useCallback(
+    (e: MouseEvent | TouchEvent) => {
+      if (!startRef.current || !isPressing.current) return
+      const point = 'touches' in e ? e.touches[0] : e
+      const dx = Math.abs(point.clientX - startRef.current.x)
+      const dy = Math.abs(point.clientY - startRef.current.y)
+      if (dx > 10 || dy > 10) cancel()
+    },
+    [cancel],
+  )
 
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => start(e)
@@ -78,7 +84,9 @@ export function useLongPress(
     const handleTouchMove = (e: TouchEvent) => checkMovement(e)
 
     document.addEventListener('mousedown', handleMouseDown)
-    document.addEventListener('touchstart', handleTouchStart, { passive: true })
+    document.addEventListener('touchstart', handleTouchStart, {
+      passive: true,
+    })
     document.addEventListener('mouseup', handleUp)
     document.addEventListener('touchend', handleUp)
     document.addEventListener('mousemove', handleMouseMove)

@@ -51,15 +51,11 @@ export async function navigateWithTransition(
     if (targetUrl.origin !== window.location.origin) {
       throw new Error('Cross-origin navigation not allowed')
     }
-  }
-  catch (_error) {
+  } catch (_error) {
     throw new Error('Invalid URL format')
   }
 
-  const {
-    minLoadingTime = 300,
-    preload = true,
-  } = config
+  const { minLoadingTime = 300, preload = true } = config
 
   // 验证配置参数
   const validMinLoadingTime = Math.max(0, Math.min(minLoadingTime, 5000))
@@ -85,13 +81,14 @@ export async function navigateWithTransition(
     // 3. 确保最小加载时间
     const elapsed = Date.now() - startTime
     if (elapsed < validMinLoadingTime) {
-      await new Promise(resolve => setTimeout(resolve, validMinLoadingTime - elapsed))
+      await new Promise((resolve) =>
+        setTimeout(resolve, validMinLoadingTime - elapsed),
+      )
     }
 
     // 4. 导航到新页面
     window.location.href = url
-  }
-  catch (_error) {
+  } catch (_error) {
     // 隐藏加载器
     loader?.hide(0)
 
@@ -118,8 +115,7 @@ async function preloadPage(url: string): Promise<void> {
     if (!response.ok) {
       // 静默失败,不影响用户体验
     }
-  }
-  catch (_error) {
+  } catch (_error) {
     // 静默失败,预加载失败不应阻止导航
   }
 }
@@ -129,8 +125,7 @@ async function preloadPage(url: string): Promise<void> {
  */
 export function initPageTransitions(): void {
   // 只在客户端执行
-  if (typeof window === 'undefined')
-    return
+  if (typeof window === 'undefined') return
 
   // 使用事件委托优化性能
   const handleClick = (e: Event): void => {
@@ -139,13 +134,13 @@ export function initPageTransitions(): void {
 
     // 检查是否是内部链接
     if (
-      link
-      && link.href
-      && link.origin === location.origin
-      && !link.hasAttribute('data-no-transition')
-      && !link.hasAttribute('download')
-      && !link.target
-      && !link.href.includes('#') // 排除锚点链接
+      link &&
+      link.href &&
+      link.origin === location.origin &&
+      !link.hasAttribute('data-no-transition') &&
+      !link.hasAttribute('download') &&
+      !link.target &&
+      !link.href.includes('#') // 排除锚点链接
     ) {
       e.preventDefault()
 
@@ -177,8 +172,7 @@ export function initPageTransitions(): void {
  * 添加页面进入动画
  */
 export function animatePageEnter(): void {
-  if (typeof window === 'undefined')
-    return
+  if (typeof window === 'undefined') return
 
   // 页面加载完成,隐藏加载器
   const loader = getPageLoader()
@@ -195,7 +189,8 @@ export function animatePageEnter(): void {
     // 使用 requestAnimationFrame 确保动画平滑
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        main.style.transition = 'opacity 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+        main.style.transition =
+          'opacity 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
         main.style.opacity = '1'
         main.style.transform = 'translateY(0)'
       })
@@ -208,16 +203,14 @@ export function animatePageEnter(): void {
  * @param urls 需要预加载的URL列表
  */
 export function preloadPages(urls: string[]): void {
-  if (typeof document === 'undefined')
-    return
+  if (typeof document === 'undefined') return
 
   // 验证并过滤 URL
   const validUrls = urls.filter((url) => {
     try {
       const targetUrl = new URL(url, window.location.origin)
       return targetUrl.origin === window.location.origin
-    }
-    catch {
+    } catch {
       return false
     }
   })
@@ -240,8 +233,7 @@ export function preloadPages(urls: string[]): void {
  * 应该在 DOMContentLoaded 后调用
  */
 export function initTransitionSystem(): void {
-  if (typeof window === 'undefined')
-    return
+  if (typeof window === 'undefined') return
 
   // 初始化链接拦截
   initPageTransitions()

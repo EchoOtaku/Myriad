@@ -13,13 +13,15 @@ import { isUserInChinaMainland } from './geoLocation'
  * @param useProxy 是否强制使用代理（覆盖自动检测）
  * @returns 音频URL
  */
-export async function getNeteaseAudioUrl(songId: string, useProxy?: boolean): Promise<string> {
+export async function getNeteaseAudioUrl(
+  songId: string,
+  useProxy?: boolean,
+): Promise<string> {
   // 如果显式指定了是否使用代理
   if (useProxy !== undefined) {
     if (useProxy) {
       return `${API_URL}/api/proxy/music/netease/audio/${songId}`
-    }
-    else {
+    } else {
       // 直连网易云音乐API获取音频URL
       return `https://music.163.com/song/media/outer/url?id=${songId}.mp3`
     }
@@ -31,8 +33,7 @@ export async function getNeteaseAudioUrl(songId: string, useProxy?: boolean): Pr
   if (inChina) {
     // 中国大陆用户：直连网易云音乐
     return `https://music.163.com/song/media/outer/url?id=${songId}.mp3`
-  }
-  else {
+  } else {
     // 海外用户：通过后端代理
     return `${API_URL}/api/proxy/music/netease/audio/${songId}`
   }
@@ -61,8 +62,7 @@ export function throttle<T extends (...args: any[]) => any>(
       }
       previous = now
       func.apply(this, args)
-    }
-    else if (!timeout) {
+    } else if (!timeout) {
       timeout = setTimeout(() => {
         previous = Date.now()
         timeout = null
@@ -161,7 +161,9 @@ export function parseLyrics(lrcText: string): LyricLine[] {
     if (match) {
       const minutes = Number.parseInt(match[1], 10)
       const seconds = Number.parseInt(match[2], 10)
-      const milliseconds = match[3] ? Number.parseInt(match[3].padEnd(3, '0'), 10) : 0
+      const milliseconds = match[3]
+        ? Number.parseInt(match[3].padEnd(3, '0'), 10)
+        : 0
       const text = match[4].trim()
 
       if (text) {
@@ -183,7 +185,10 @@ export function parseLyrics(lrcText: string): LyricLine[] {
 function getPlaylistFromCache(cacheKey: string): Song[] | null {
   // 1. 先检查内存缓存
   const memoryCache = playlistMemoryCache.get(cacheKey)
-  if (memoryCache && Date.now() - memoryCache.timestamp < PLAYLIST_CACHE_DURATION) {
+  if (
+    memoryCache &&
+    Date.now() - memoryCache.timestamp < PLAYLIST_CACHE_DURATION
+  ) {
     return memoryCache.data
   }
 
@@ -191,7 +196,10 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
   try {
     const storageData = sessionStorage.getItem(PLAYLIST_STORAGE_KEY)
     if (storageData) {
-      const allCache = JSON.parse(storageData) as Record<string, PlaylistCacheEntry>
+      const allCache = JSON.parse(storageData) as Record<
+        string,
+        PlaylistCacheEntry
+      >
       const cached = allCache[cacheKey]
 
       if (cached && Date.now() - cached.timestamp < PLAYLIST_CACHE_DURATION) {
@@ -200,8 +208,7 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
         return cached.data
       }
     }
-  }
-  catch (_error) {
+  } catch (_error) {
     // SessionStorage 读取失败，静默处理
   }
 
@@ -242,14 +249,15 @@ function savePlaylistToCache(cacheKey: string, songs: Song[]): void {
     if (keys.length > 5) {
       // 删除最旧的
       const oldestKey = keys.reduce((oldest, key) => {
-        return allCache[key].timestamp < allCache[oldest].timestamp ? key : oldest
+        return allCache[key].timestamp < allCache[oldest].timestamp
+          ? key
+          : oldest
       }, keys[0])
       delete allCache[oldestKey]
     }
 
     sessionStorage.setItem(PLAYLIST_STORAGE_KEY, JSON.stringify(allCache))
-  }
-  catch (error) {
+  } catch (error) {
     // SessionStorage 写入失败（可能配额已满），仅保留内存缓存
     console.warn('Failed to save playlist to SessionStorage:', error)
   }
@@ -262,8 +270,7 @@ export function clearPlaylistCache(): void {
   playlistMemoryCache.clear()
   try {
     sessionStorage.removeItem(PLAYLIST_STORAGE_KEY)
-  }
-  catch (_error) {
+  } catch (_error) {
     // 静默处理
   }
 }
@@ -293,7 +300,9 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
     const geoPromise = isUserInChinaMainland()
 
     // 通过后端代理访问网易云音乐API（歌单信息始终通过代理获取，确保稳定性）
-    const response = await fetch(`${API_URL}/api/proxy/music/netease/playlist/${playlistId}`)
+    const response = await fetch(
+      `${API_URL}/api/proxy/music/netease/playlist/${playlistId}`,
+    )
 
     if (!response.ok) {
       throw new Error('Failed to fetch playlist')
@@ -310,8 +319,7 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
       // -462: 版权限制
       if (data.code === -447) {
         throw new Error('网易云API访问频率过高,请稍后再试或使用QQ音乐')
-      }
-      else if (data.code === -460 || data.code === -462) {
+      } else if (data.code === -460 || data.code === -462) {
         throw new Error('该歌单因版权或地理位置限制无法播放,建议使用QQ音乐')
       }
       throw new Error(data.message || `网易云API错误 (${data.code})`)
@@ -324,7 +332,9 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
 
     // 等待地理位置检测结果
     const inChina = await geoPromise
-    console.log(`[MusicPlayer] 歌单加载完成，用户在中国大陆: ${inChina}，${inChina ? '使用直连' : '使用代理'}`)
+    console.log(
+      `[MusicPlayer] 歌单加载完成，用户在中国大陆: ${inChina}，${inChina ? '使用直连' : '使用代理'}`,
+    )
 
     const songs = tracks.map((track: any) => {
       // 网易云音乐API v6返回格式：ar(艺术家数组), al(专辑对象), dt(时长毫秒)
@@ -364,8 +374,7 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
     savePlaylistToCache(cacheKey, songs)
 
     return songs
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Error fetching Netease playlist:', error)
     return []
   }
@@ -385,7 +394,9 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
 
   try {
     // 通过后端代理访问QQ音乐API
-    const response = await fetch(`${API_URL}/api/proxy/music/qq/playlist/${playlistId}`)
+    const response = await fetch(
+      `${API_URL}/api/proxy/music/qq/playlist/${playlistId}`,
+    )
 
     if (!response.ok) {
       throw new Error('Failed to fetch playlist')
@@ -407,9 +418,14 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
       return {
         id: song.songmid || song.id?.toString() || '',
         name: song.songname || song.name,
-        artist: singers.length > 0 ? singers.map((s: any) => s.name).join(', ') : 'Unknown',
+        artist:
+          singers.length > 0
+            ? singers.map((s: any) => s.name).join(', ')
+            : 'Unknown',
         album: song.albumname || song.album?.name || '',
-        cover: song.albummid ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg` : '',
+        cover: song.albummid
+          ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg`
+          : '',
         url: `https://ws.stream.qqmusic.qq.com/${song.songmid}.m4a?fromtag=46`,
         duration: song.interval || 0,
         source: 'qq' as MusicSource,
@@ -420,8 +436,7 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
     savePlaylistToCache(cacheKey, songs)
 
     return songs
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Error fetching QQ playlist:', error)
     return []
   }
@@ -439,7 +454,9 @@ export async function getNeteaseLyrics(songId: string): Promise<LyricLine[]> {
   }
 
   try {
-    const response = await fetch(`${API_URL}/api/proxy/music/netease/lyrics/${songId}`)
+    const response = await fetch(
+      `${API_URL}/api/proxy/music/netease/lyrics/${songId}`,
+    )
 
     if (!response.ok) {
       throw new Error('Failed to fetch lyrics')
@@ -454,8 +471,7 @@ export async function getNeteaseLyrics(songId: string): Promise<LyricLine[]> {
     }
 
     return []
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Error fetching Netease lyrics:', error)
     return []
   }
@@ -473,7 +489,9 @@ export async function getQQLyrics(songId: string): Promise<LyricLine[]> {
   }
 
   try {
-    const response = await fetch(`${API_URL}/api/proxy/music/qq/lyrics/${songId}`)
+    const response = await fetch(
+      `${API_URL}/api/proxy/music/qq/lyrics/${songId}`,
+    )
 
     if (!response.ok) {
       throw new Error('Failed to fetch lyrics')
@@ -488,8 +506,7 @@ export async function getQQLyrics(songId: string): Promise<LyricLine[]> {
     }
 
     return []
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Error fetching QQ lyrics:', error)
     return []
   }
@@ -499,9 +516,11 @@ export async function getQQLyrics(songId: string): Promise<LyricLine[]> {
  * 根据当前播放时间获取当前歌词索引
  * 重构版：精确匹配，正确处理所有边界情况
  */
-export function getCurrentLyricIndex(lyrics: LyricLine[], currentTime: number): number {
-  if (!lyrics || lyrics.length === 0)
-    return -1
+export function getCurrentLyricIndex(
+  lyrics: LyricLine[],
+  currentTime: number,
+): number {
+  if (!lyrics || lyrics.length === 0) return -1
 
   // 如果还没到第一句歌词的时间，返回 -1 表示没有当前歌词
   if (currentTime < lyrics[0].time) {
@@ -515,8 +534,7 @@ export function getCurrentLyricIndex(lyrics: LyricLine[], currentTime: number): 
   for (let i = 0; i < lyrics.length; i++) {
     if (lyrics[i].time <= currentTime) {
       currentIndex = i
-    }
-    else {
+    } else {
       // 因为歌词已按时间排序，后面的都不会匹配了
       break
     }
@@ -537,7 +555,10 @@ export function formatTime(seconds: number): string {
 /**
  * 检查歌曲是否为VIP或试听版本
  */
-export function getSongVipStatus(song: { isVip?: boolean, isTrial?: boolean }): {
+export function getSongVipStatus(song: {
+  isVip?: boolean
+  isTrial?: boolean
+}): {
   isVip: boolean
   isTrial: boolean
   displayText: string
@@ -569,19 +590,20 @@ export function filterPlaylist(
 
   // 根据VIP状态过滤
   if (options?.hideVip) {
-    filtered = filtered.filter(song => !song.isVip)
+    filtered = filtered.filter((song) => !song.isVip)
   }
   if (options?.hideTrial) {
-    filtered = filtered.filter(song => !song.isTrial)
+    filtered = filtered.filter((song) => !song.isTrial)
   }
 
   // 根据搜索关键词过滤
   if (query && query.trim()) {
     const lowerQuery = query.toLowerCase().trim()
-    filtered = filtered.filter(song =>
-      song.name.toLowerCase().includes(lowerQuery)
-      || song.artist.toLowerCase().includes(lowerQuery)
-      || song.album.toLowerCase().includes(lowerQuery),
+    filtered = filtered.filter(
+      (song) =>
+        song.name.toLowerCase().includes(lowerQuery) ||
+        song.artist.toLowerCase().includes(lowerQuery) ||
+        song.album.toLowerCase().includes(lowerQuery),
     )
   }
 
@@ -605,7 +627,10 @@ export function highlightText(text: string, query: string): string {
     return escaped
   }
 
-  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  const regex = new RegExp(
+    `(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
+    'gi',
+  )
   return escaped.replace(regex, '<mark>$1</mark>')
 }
 
@@ -638,7 +663,10 @@ class GlobalAudioManager {
    * 设置当前音频实例
    * 会自动停止并清理之前的音频
    */
-  setCurrentAudio(audio: HTMLAudioElement | null, song: Song | null = null): void {
+  setCurrentAudio(
+    audio: HTMLAudioElement | null,
+    song: Song | null = null,
+  ): void {
     // 如果有之前的音频在播放，先停止并清理
     if (this.currentAudio && this.currentAudio !== audio) {
       this.currentAudio.pause()
@@ -730,8 +758,7 @@ class GlobalAudioManager {
       if (handlers.play) {
         try {
           navigator.mediaSession.setActionHandler('play', handlers.play)
-        }
-        catch {
+        } catch {
           // Media Session action not supported
         }
       }
@@ -739,8 +766,7 @@ class GlobalAudioManager {
       if (handlers.pause) {
         try {
           navigator.mediaSession.setActionHandler('pause', handlers.pause)
-        }
-        catch {
+        } catch {
           // Media Session action not supported
         }
       }
@@ -748,18 +774,22 @@ class GlobalAudioManager {
       // 设置上一首/下一首
       if (handlers.previoustrack) {
         try {
-          navigator.mediaSession.setActionHandler('previoustrack', handlers.previoustrack)
-        }
-        catch {
+          navigator.mediaSession.setActionHandler(
+            'previoustrack',
+            handlers.previoustrack,
+          )
+        } catch {
           // Media Session action not supported
         }
       }
 
       if (handlers.nexttrack) {
         try {
-          navigator.mediaSession.setActionHandler('nexttrack', handlers.nexttrack)
-        }
-        catch {
+          navigator.mediaSession.setActionHandler(
+            'nexttrack',
+            handlers.nexttrack,
+          )
+        } catch {
           // Media Session action not supported
         }
       }
@@ -767,18 +797,22 @@ class GlobalAudioManager {
       // 设置快进/快退
       if (handlers.seekbackward) {
         try {
-          navigator.mediaSession.setActionHandler('seekbackward', handlers.seekbackward)
-        }
-        catch {
+          navigator.mediaSession.setActionHandler(
+            'seekbackward',
+            handlers.seekbackward,
+          )
+        } catch {
           // Media Session action not supported
         }
       }
 
       if (handlers.seekforward) {
         try {
-          navigator.mediaSession.setActionHandler('seekforward', handlers.seekforward)
-        }
-        catch {
+          navigator.mediaSession.setActionHandler(
+            'seekforward',
+            handlers.seekforward,
+          )
+        } catch {
           // Media Session action not supported
         }
       }
@@ -791,8 +825,7 @@ class GlobalAudioManager {
               handlers.seekto({ seekTime: details.seekTime })
             }
           })
-        }
-        catch {
+        } catch {
           // Media Session action not supported
         }
       }
@@ -812,8 +845,15 @@ class GlobalAudioManager {
    * 更新 Media Session 位置状态（移动端后台播放关键）
    * 需要定期调用以保持系统媒体控制的同步
    */
-  updatePositionState(duration: number, position: number, playbackRate: number = 1): void {
-    if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+  updatePositionState(
+    duration: number,
+    position: number,
+    playbackRate: number = 1,
+  ): void {
+    if (
+      'mediaSession' in navigator &&
+      navigator.mediaSession.setPositionState
+    ) {
       try {
         // 确保参数有效
         if (duration > 0 && position >= 0 && position <= duration) {
@@ -823,8 +863,7 @@ class GlobalAudioManager {
             position,
           })
         }
-      }
-      catch {
+      } catch {
         // Position state update not supported or invalid parameters
       }
     }
@@ -838,8 +877,7 @@ class GlobalAudioManager {
     if (this.audioContext && this.audioContext.state === 'suspended') {
       try {
         await this.audioContext.resume()
-      }
-      catch {
+      } catch {
         // AudioContext resume failed
       }
     }
@@ -850,11 +888,14 @@ class GlobalAudioManager {
    * 注意：由于 CORS 限制，跨域音频无法进行频谱分析
    */
   private initAudioContext(): boolean {
-    if (this.audioContext)
-      return true
+    if (this.audioContext) return true
 
     try {
-      this.audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+      this.audioContext = new (
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext
+      )()
       this.analyser = this.audioContext.createAnalyser()
 
       // 配置分析器 - 使用较小的 FFT 以获得更快的响应
@@ -870,9 +911,11 @@ class GlobalAudioManager {
       this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount)
 
       return true
-    }
-    catch (e) {
-      console.warn('Failed to initialize AudioContext for spectrum analysis:', e)
+    } catch (e) {
+      console.warn(
+        'Failed to initialize AudioContext for spectrum analysis:',
+        e,
+      )
       return false
     }
   }
@@ -898,11 +941,13 @@ class GlobalAudioManager {
       this.connectedAudio = audio
 
       return true
-    }
-    catch (e) {
+    } catch (e) {
       // 如果音频元素已经被连接过，会抛出错误
       // 这种情况下频谱分析可能仍然可用
-      console.warn('Failed to connect audio to analyser (may already be connected):', e)
+      console.warn(
+        'Failed to connect audio to analyser (may already be connected):',
+        e,
+      )
       return false
     }
   }
@@ -938,7 +983,9 @@ class GlobalAudioManager {
 
     try {
       // 获取频率数据
-      this.analyser.getByteFrequencyData(this.frequencyData as Uint8Array<ArrayBuffer>)
+      this.analyser.getByteFrequencyData(
+        this.frequencyData as Uint8Array<ArrayBuffer>,
+      )
 
       // 将32个频段分成8个区域，每个区域4个bin，获得更精细的频率分布
       const binCount = this.frequencyData.length // 32 个频段
@@ -959,8 +1006,7 @@ class GlobalAudioManager {
         // 归一化到 0-1 范围，应用 1.8x 增益（提高灵敏度）
         const value = Math.min(1, (sum / bandSize / 255) * 1.8)
         this.tempBands[i] = value
-        if (value > 0.01)
-          hasData = true // 降低阈值，检测更细微的声音
+        if (value > 0.01) hasData = true // 降低阈值，检测更细微的声音
       }
 
       if (!hasData) {
@@ -1046,8 +1092,7 @@ class GlobalAudioManager {
       this.spectrumResult[3] = bands[indices[3]] // bar4: 第四
 
       return this.spectrumResult
-    }
-    catch {
+    } catch {
       // 移除随机频响后退方案：异常时返回静默
       this.spectrumResult.fill(0)
       return this.spectrumResult
@@ -1058,7 +1103,11 @@ class GlobalAudioManager {
    * 检查是否支持频谱分析
    */
   isSpectrumSupported(): boolean {
-    return !!(window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)
+    return !!(
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext
+    )
   }
 }
 

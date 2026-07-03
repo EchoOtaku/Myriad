@@ -41,66 +41,75 @@ export interface GlowBackgroundProps {
 /**
  * 光晕背景组件 - 纯 CSS 动画版本
  */
-export const GlowBackground = memo(({
-  color,
-  _animLevel,
-  shouldAnimate,
-  variant = 'single',
-  size = 'md',
-  opacity,
-}: GlowBackgroundProps) => {
-  // 根据动画级别选择模糊程度
-  const blurClass = INITIAL_ANIM_CONFIG.level === 'standard' ? 'glow-blur-lg' : 'glow-blur-sm'
+export const GlowBackground = memo(
+  ({
+    color,
+    animLevel = INITIAL_ANIM_CONFIG.level,
+    shouldAnimate,
+    variant = 'single',
+    size = 'md',
+    opacity,
+  }: GlowBackgroundProps) => {
+    // 根据动画级别选择模糊程度
+    const blurClass = animLevel === 'standard' ? 'glow-blur-lg' : 'glow-blur-sm'
 
-  // 根据 size 确定尺寸类
-  const sizeClass = useMemo(() => {
-    switch (size) {
-      case 'sm': return 'glow-size-sm'
-      case 'lg': return 'glow-size-lg'
-      default: return 'glow-size-md'
+    // 根据 size 确定尺寸类
+    const sizeClass = useMemo(() => {
+      switch (size) {
+        case 'sm':
+          return 'glow-size-sm'
+        case 'lg':
+          return 'glow-size-lg'
+        default:
+          return 'glow-size-md'
+      }
+    }, [size])
+
+    // 基础样式
+    const baseStyle = useMemo(
+      () =>
+        ({
+          background: color,
+          ...(opacity !== undefined && { '--glow-opacity': opacity }),
+        }) as React.CSSProperties,
+      [color, opacity],
+    )
+
+    // 根据 variant 渲染不同布局
+    if (variant === 'single-left') {
+      return (
+        <div
+          className={`glow-orb glow-left ${sizeClass} ${blurClass} ${shouldAnimate ? 'glow-animate-primary' : 'glow-static'}`}
+          style={baseStyle}
+        />
+      )
     }
-  }, [size])
 
-  // 基础样式
-  const baseStyle = useMemo(() => ({
-    background: color,
-    ...(opacity !== undefined && { '--glow-opacity': opacity }),
-  } as React.CSSProperties), [color, opacity])
+    if (variant === 'single') {
+      return (
+        <div
+          className={`glow-orb glow-right ${sizeClass} ${blurClass} ${shouldAnimate ? 'glow-animate-primary' : 'glow-static'}`}
+          style={baseStyle}
+        />
+      )
+    }
 
-  // 根据 variant 渲染不同布局
-  if (variant === 'single-left') {
+    // dual variant
     return (
-      <div
-        className={`glow-orb glow-left ${sizeClass} ${blurClass} ${shouldAnimate ? 'glow-animate-primary' : 'glow-static'}`}
-        style={baseStyle}
-      />
+      <>
+        {/* 第一个光晕 - 右上角 */}
+        <div
+          className={`glow-orb glow-right ${sizeClass} ${blurClass} ${shouldAnimate ? 'glow-animate-primary' : 'glow-static'}`}
+          style={baseStyle}
+        />
+        {/* 第二个光晕 - 左下角 */}
+        <div
+          className={`glow-orb glow-left glow-secondary ${blurClass} ${shouldAnimate ? 'glow-animate-secondary' : 'glow-static'}`}
+          style={baseStyle}
+        />
+      </>
     )
-  }
-
-  if (variant === 'single') {
-    return (
-      <div
-        className={`glow-orb glow-right ${sizeClass} ${blurClass} ${shouldAnimate ? 'glow-animate-primary' : 'glow-static'}`}
-        style={baseStyle}
-      />
-    )
-  }
-
-  // dual variant
-  return (
-    <>
-      {/* 第一个光晕 - 右上角 */}
-      <div
-        className={`glow-orb glow-right ${sizeClass} ${blurClass} ${shouldAnimate ? 'glow-animate-primary' : 'glow-static'}`}
-        style={baseStyle}
-      />
-      {/* 第二个光晕 - 左下角 */}
-      <div
-        className={`glow-orb glow-left glow-secondary ${blurClass} ${shouldAnimate ? 'glow-animate-secondary' : 'glow-static'}`}
-        style={baseStyle}
-      />
-    </>
-  )
-})
+  },
+)
 
 export default GlowBackground

@@ -14,7 +14,7 @@
 # 与生产部署 (docker-compose.yml) 的区别
 # ============================================================================
 # 本文件默认不启动 proxy/updater；updater 通过 profile 按需启动，并暴露到
-# 127.0.0.1:9090 供宿主机 backend 的 /api/admin/updater/* 代理测试。
+# 127.0.0.1:1101 供宿主机 backend 的 /api/admin/updater/* 代理测试。
 # 若要验证真实业务容器替换流程，请使用 docker-compose.yml 配合
 # scripts/docker/deploy.sh。
 #
@@ -63,7 +63,7 @@ services:
       UPDATER_COMPOSE_DIR: /host/compose
       UPDATER_ENV_FILE: /host/compose/.env
       UPDATER_PGDATA: /host/pgdata
-      UPDATER_LISTEN: 0.0.0.0:9090
+      UPDATER_LISTEN: 0.0.0.0:1101
       COMPOSE_PROJECT_NAME: myriad-dev-updater
       MYRIAD_VERSION: ${UPDATER_TAG:-v0.0.0-dev}
       TZ: Asia/Shanghai
@@ -74,7 +74,7 @@ services:
       - ./.dev-updater/state:/state
       - ./.dev-updater/backups:/backups
     ports:
-      - "127.0.0.1:9090:9090"
+      - "127.0.0.1:1101:1101"
     restart: unless-stopped
 
 volumes:

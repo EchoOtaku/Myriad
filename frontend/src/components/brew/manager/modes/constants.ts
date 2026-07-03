@@ -30,15 +30,14 @@ export {
  * 判断是否为 base64 图片数据
  */
 export function isBase64Image(str: string | null): boolean {
-  if (!str)
-    return false
+  if (!str) return false
   return str.startsWith('data:image/')
 }
 
 /**
  * 从 base64 提取 MIME 类型和扩展名
  */
-export function getBase64Info(base64: string): { mime: string, ext: string } {
+export function getBase64Info(base64: string): { mime: string; ext: string } {
   const match = base64.match(/^data:(image\/\w+);base64,/)
   if (match) {
     const mime = match[1]

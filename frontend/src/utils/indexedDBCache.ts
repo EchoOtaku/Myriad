@@ -41,7 +41,9 @@ export class IndexedDBCache {
         const db = (event.target as IDBOpenDBRequest).result
 
         if (!db.objectStoreNames.contains(this.storeName)) {
-          const objectStore = db.createObjectStore(this.storeName, { keyPath: 'key' })
+          const objectStore = db.createObjectStore(this.storeName, {
+            keyPath: 'key',
+          })
           objectStore.createIndex('timestamp', 'timestamp', { unique: false })
         }
       }
@@ -52,10 +54,8 @@ export class IndexedDBCache {
    * 设置缓存
    */
   async set<T>(key: string, data: T, expiryMs?: number): Promise<void> {
-    if (!this.db)
-      await this.init()
-    if (!this.db)
-      throw new Error('Database not initialized')
+    if (!this.db) await this.init()
+    if (!this.db) throw new Error('Database not initialized')
 
     const entry: CacheEntry<T> = {
       data,
@@ -77,10 +77,8 @@ export class IndexedDBCache {
    * 获取缓存
    */
   async get<T>(key: string): Promise<T | null> {
-    if (!this.db)
-      await this.init()
-    if (!this.db)
-      return null
+    if (!this.db) await this.init()
+    if (!this.db) return null
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([this.storeName], 'readonly')
@@ -119,10 +117,8 @@ export class IndexedDBCache {
    * 删除缓存
    */
   async delete(key: string): Promise<void> {
-    if (!this.db)
-      await this.init()
-    if (!this.db)
-      return
+    if (!this.db) await this.init()
+    if (!this.db) return
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([this.storeName], 'readwrite')
@@ -138,10 +134,8 @@ export class IndexedDBCache {
    * 清空所有缓存
    */
   async clear(): Promise<void> {
-    if (!this.db)
-      await this.init()
-    if (!this.db)
-      return
+    if (!this.db) await this.init()
+    if (!this.db) return
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([this.storeName], 'readwrite')
@@ -157,10 +151,8 @@ export class IndexedDBCache {
    * 获取所有键
    */
   async keys(): Promise<string[]> {
-    if (!this.db)
-      await this.init()
-    if (!this.db)
-      return []
+    if (!this.db) await this.init()
+    if (!this.db) return []
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([this.storeName], 'readonly')
@@ -176,10 +168,8 @@ export class IndexedDBCache {
    * 清理过期缓存
    */
   async cleanupExpired(): Promise<number> {
-    if (!this.db)
-      await this.init()
-    if (!this.db)
-      return 0
+    if (!this.db) await this.init()
+    if (!this.db) return 0
 
     const keys = await this.keys()
     let cleaned = 0
@@ -200,7 +190,10 @@ export const globalCache = new IndexedDBCache()
 
 // 自动清理过期缓存(每小时)
 if (typeof window !== 'undefined') {
-  setInterval(() => {
-    globalCache.cleanupExpired()
-  }, 60 * 60 * 1000)
+  setInterval(
+    () => {
+      globalCache.cleanupExpired()
+    },
+    60 * 60 * 1000,
+  )
 }

@@ -106,6 +106,8 @@ impl TierRouter {
             | "bilibili.user"
             | "bilibili.video"
             | "bilibili.bangumi"
+            | "bangumi.user"
+            | "bangumi.collections"
             | "steam.user"
             | "steam.game"
             | "steam.wishlist"

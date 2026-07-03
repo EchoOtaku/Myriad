@@ -57,7 +57,10 @@ class AgentService {
   /**
    * 处理自然语言请求
    */
-  async process(input: string, context?: Partial<ProcessContext>): Promise<AgentResponse> {
+  async process(
+    input: string,
+    context?: Partial<ProcessContext>,
+  ): Promise<AgentResponse> {
     const request: ProcessRequest = {
       input,
       context: {
@@ -66,9 +69,13 @@ class AgentService {
       },
     }
 
-    const response = await apiService.post<AgentResponse>(`${this.baseUrl}/process`, request, {
-      timeout: 120000,
-    })
+    const response = await apiService.post<AgentResponse>(
+      `${this.baseUrl}/process`,
+      request,
+      {
+        timeout: 120000,
+      },
+    )
     return response
   }
 
@@ -155,10 +162,14 @@ class AgentService {
   /**
    * 取消任务
    */
-  async cancelTask(taskId: string): Promise<{ success: boolean, message: string }> {
-    return apiService.post<{ success: boolean, message: string, taskId: string }>(
-      `${this.baseUrl}/tasks/${taskId}/cancel`,
-    )
+  async cancelTask(
+    taskId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    return apiService.post<{
+      success: boolean
+      message: string
+      taskId: string
+    }>(`${this.baseUrl}/tasks/${taskId}/cancel`)
   }
 
   /**
@@ -201,7 +212,7 @@ class AgentService {
   async getCapabilities(): Promise<Capability[]> {
     const response = await apiService.get<{
       success: boolean
-      capabilities: { capabilities: Capability[], totalCount: number }
+      capabilities: { capabilities: Capability[]; totalCount: number }
     }>(`${this.baseUrl}/capabilities`)
     return response.capabilities.capabilities
   }
@@ -209,8 +220,12 @@ class AgentService {
   /**
    * 健康检查
    */
-  async health(): Promise<{ status: string, service: string, version: string }> {
-    return apiService.get<{ status: string, service: string, version: string }>(
+  async health(): Promise<{
+    status: string
+    service: string
+    version: string
+  }> {
+    return apiService.get<{ status: string; service: string; version: string }>(
       `${this.baseUrl}/health`,
     )
   }
@@ -236,11 +251,15 @@ class AgentService {
         onProgress(task)
       }
 
-      if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
+      if (
+        task.status === 'completed' ||
+        task.status === 'failed' ||
+        task.status === 'cancelled'
+      ) {
         return task
       }
 
-      await new Promise(resolve => setTimeout(resolve, intervalMs))
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
     }
 
     throw new Error(`Task ${taskId} timed out after ${timeoutMs}ms`)
@@ -283,21 +302,27 @@ class AgentService {
    * 删除任务预设
    */
   async deletePreset(presetId: number): Promise<{ success: boolean }> {
-    return apiService.delete<{ success: boolean }>(`${this.baseUrl}/presets/${presetId}`)
+    return apiService.delete<{ success: boolean }>(
+      `${this.baseUrl}/presets/${presetId}`,
+    )
   }
 
   /**
    * 切换收藏状态
    */
   async toggleFavorite(presetId: number): Promise<TaskPreset> {
-    return apiService.post<TaskPreset>(`${this.baseUrl}/presets/${presetId}/toggle-favorite`)
+    return apiService.post<TaskPreset>(
+      `${this.baseUrl}/presets/${presetId}/toggle-favorite`,
+    )
   }
 
   /**
    * 更新预设使用时间
    */
   async usePreset(presetId: number): Promise<TaskPreset> {
-    return apiService.post<TaskPreset>(`${this.baseUrl}/presets/${presetId}/use`)
+    return apiService.post<TaskPreset>(
+      `${this.baseUrl}/presets/${presetId}/use`,
+    )
   }
 
   /**
@@ -327,14 +352,20 @@ class AgentService {
   /**
    * 中断当前会话，替换为新请求
    */
-  async interruptSession(input: string): Promise<{ success: boolean, cancelled_tasks: number, response: AgentResponse }> {
+  async interruptSession(input: string): Promise<{
+    success: boolean
+    cancelled_tasks: number
+    response: AgentResponse
+  }> {
     return apiService.post(`${this.baseUrl}/session/interrupt`, { input })
   }
 
   /**
    * 向当前会话注入转向指令
    */
-  async steerSession(instruction: string): Promise<{ success: boolean, message: string }> {
+  async steerSession(
+    instruction: string,
+  ): Promise<{ success: boolean; message: string }> {
     return apiService.post(`${this.baseUrl}/session/steer`, { instruction })
   }
 
@@ -344,14 +375,18 @@ class AgentService {
    * 获取 Heartbeat 任务列表
    */
   async getHeartbeatTasks(): Promise<HeartbeatTask[]> {
-    const response = await apiService.get<{ tasks: HeartbeatTask[] }>(`${this.baseUrl}/heartbeat`)
+    const response = await apiService.get<{ tasks: HeartbeatTask[] }>(
+      `${this.baseUrl}/heartbeat`,
+    )
     return response.tasks
   }
 
   /**
    * 切换 Heartbeat 任务启停
    */
-  async toggleHeartbeat(taskId: string): Promise<{ task_id: string, enabled: boolean }> {
+  async toggleHeartbeat(
+    taskId: string,
+  ): Promise<{ task_id: string; enabled: boolean }> {
     return apiService.post(`${this.baseUrl}/heartbeat/${taskId}/toggle`)
   }
 
@@ -360,14 +395,18 @@ class AgentService {
   /**
    * 获取执行追踪列表
    */
-  async getTraces(limit: number = 20): Promise<{ traces: ExecutionTrace[], total: number }> {
+  async getTraces(
+    limit: number = 20,
+  ): Promise<{ traces: ExecutionTrace[]; total: number }> {
     return apiService.get(`${this.baseUrl}/traces?limit=${limit}`)
   }
 
   /**
    * 获取任务详情（含执行追踪）
    */
-  async getTaskWithTrace(taskId: string): Promise<TaskDetail & { executionTrace?: ExecutionTrace }> {
+  async getTaskWithTrace(
+    taskId: string,
+  ): Promise<TaskDetail & { executionTrace?: ExecutionTrace }> {
     const response = await apiService.get<{
       success: boolean
       task: TaskInfo
@@ -396,10 +435,11 @@ class AgentService {
    */
   async getMemories(): Promise<MemoryEntry[]> {
     try {
-      const response = await apiService.get<{ memories: MemoryEntry[] }>(`${this.baseUrl}/memory`)
+      const response = await apiService.get<{ memories: MemoryEntry[] }>(
+        `${this.baseUrl}/memory`,
+      )
       return response.memories
-    }
-    catch {
+    } catch {
       return []
     }
   }
@@ -408,14 +448,19 @@ class AgentService {
    * 删除记忆条目
    */
   async deleteMemory(memoryId: string): Promise<void> {
-    await apiService.delete(`${this.baseUrl}/memory/${encodeURIComponent(memoryId)}`)
+    await apiService.delete(
+      `${this.baseUrl}/memory/${encodeURIComponent(memoryId)}`,
+    )
   }
 
   /**
    * 更新记忆条目内容
    */
   async updateMemory(memoryId: string, content: string): Promise<void> {
-    await apiService.put(`${this.baseUrl}/memory/${encodeURIComponent(memoryId)}`, { content })
+    await apiService.put(
+      `${this.baseUrl}/memory/${encodeURIComponent(memoryId)}`,
+      { content },
+    )
   }
 
   // ============ 技能 (Phase 2B) ============
@@ -425,10 +470,11 @@ class AgentService {
    */
   async getSkills(): Promise<SkillInfo[]> {
     try {
-      const response = await apiService.get<{ skills: SkillInfo[] }>(`${this.baseUrl}/skills`)
+      const response = await apiService.get<{ skills: SkillInfo[] }>(
+        `${this.baseUrl}/skills`,
+      )
       return response.skills
-    }
-    catch {
+    } catch {
       return []
     }
   }
@@ -437,7 +483,9 @@ class AgentService {
    * 删除技能
    */
   async deleteSkill(skillId: string): Promise<void> {
-    await apiService.delete(`${this.baseUrl}/skills/${encodeURIComponent(skillId)}`)
+    await apiService.delete(
+      `${this.baseUrl}/skills/${encodeURIComponent(skillId)}`,
+    )
   }
 
   // ============ 会话管理 ============
@@ -452,7 +500,10 @@ class AgentService {
   /**
    * 列出最近会话
    */
-  async listSessions(page: number = 1, limit: number = 20): Promise<SessionInfo[]> {
+  async listSessions(
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<SessionInfo[]> {
     const response = await apiService.get<{ sessions: SessionInfo[] }>(
       `${this.baseUrl}/sessions?page=${page}&limit=${limit}`,
     )
@@ -477,21 +528,32 @@ class AgentService {
    * 归档会话
    */
   async archiveSession(sessionId: string): Promise<{ success: boolean }> {
-    return apiService.delete<{ success: boolean }>(`${this.baseUrl}/sessions/${sessionId}`)
+    return apiService.delete<{ success: boolean }>(
+      `${this.baseUrl}/sessions/${sessionId}`,
+    )
   }
 
   /**
    * 更新会话标题
    */
-  async updateSessionTitle(sessionId: string, title: string): Promise<SessionInfo> {
-    return apiService.patch<SessionInfo>(`${this.baseUrl}/sessions/${sessionId}`, { title })
+  async updateSessionTitle(
+    sessionId: string,
+    title: string,
+  ): Promise<SessionInfo> {
+    return apiService.patch<SessionInfo>(
+      `${this.baseUrl}/sessions/${sessionId}`,
+      { title },
+    )
   }
 
   /**
    * AI 生成会话标题
    */
   async generateSessionTitle(sessionId: string): Promise<{ title: string }> {
-    return apiService.post<{ title: string }>(`${this.baseUrl}/sessions/${sessionId}/generate-title`, {})
+    return apiService.post<{ title: string }>(
+      `${this.baseUrl}/sessions/${sessionId}/generate-title`,
+      {},
+    )
   }
 
   // ============ 内部方法 ============
@@ -549,7 +611,9 @@ class AgentService {
 
           if (!response.ok) {
             const text = await response.text()
-            throw new Error(`HTTP error! status: ${response.status}, body: ${text}`)
+            throw new Error(
+              `HTTP error! status: ${response.status}, body: ${text}`,
+            )
           }
 
           const reader = response.body?.getReader()
@@ -573,11 +637,13 @@ class AgentService {
               }
 
               const lines = buffer.split('\n')
-              buffer = done ? '' : (lines.pop() || '')
+              buffer = done ? '' : lines.pop() || ''
 
               for (const line of lines) {
                 if (line.startsWith('data: ') || line.startsWith('data:')) {
-                  const data = line.slice(line.startsWith('data: ') ? 6 : 5).trim()
+                  const data = line
+                    .slice(line.startsWith('data: ') ? 6 : 5)
+                    .trim()
                   if (data) {
                     try {
                       const event: ProgressEvent = JSON.parse(data)
@@ -593,54 +659,64 @@ class AgentService {
 
                       if (event.type === 'task_completed') {
                         finalResponse = (event as TaskCompletedEvent).response
-                      }
-                      else if (event.type === 'error') {
+                      } else if (event.type === 'error') {
                         reject(new Error((event as ErrorEvent).message))
                         return
                       }
-                    }
-                    catch (parseError) {
-                      console.warn('[AgentService] Failed to parse SSE event:', parseError)
+                    } catch (parseError) {
+                      console.warn(
+                        '[AgentService] Failed to parse SSE event:',
+                        parseError,
+                      )
                     }
                   }
                 }
               }
 
-              if (done)
-                break
+              if (done) break
             }
-          }
-          finally {
+          } finally {
             reader.releaseLock()
             cleanup()
           }
 
           if (finalResponse) {
             resolve(finalResponse)
-          }
-          else if (capturedTaskId) {
+          } else if (capturedTaskId) {
             // SSE 流意外结束但任务已创建，fallback 到轮询等待结果
-            console.warn('[AgentService] SSE stream ended without completion, falling back to polling for task:', capturedTaskId)
+            console.warn(
+              '[AgentService] SSE stream ended without completion, falling back to polling for task:',
+              capturedTaskId,
+            )
             try {
               const task = await this.pollTaskUntilComplete(capturedTaskId, {
                 intervalMs: 2000,
                 timeoutMs: 300000,
-                onProgress: onProgress ? (t) => {
-                  onProgress({ type: 'progress', progress: t.progress, completedSteps: 0, totalSteps: 0, message: '' })
-                } : undefined,
+                onProgress: onProgress
+                  ? (t) => {
+                      onProgress({
+                        type: 'progress',
+                        progress: t.progress,
+                        completedSteps: 0,
+                        totalSteps: 0,
+                        message: '',
+                      })
+                    }
+                  : undefined,
               })
               if (task.status === 'completed' && task.results) {
                 resolve(task.results as unknown as AgentResponse)
+              } else {
+                reject(
+                  new Error(
+                    `Task ${capturedTaskId} ended with status ${task.status}`,
+                  ),
+                )
               }
-              else {
-                reject(new Error(`Task ${capturedTaskId} ended with status ${task.status}`))
-              }
-            }
-            catch (pollError) {
+            } catch (pollError) {
               reject(pollError)
             }
-          }
-          else {
+          } else {
             reject(new Error('No completion response received'))
           }
         })
@@ -648,8 +724,7 @@ class AgentService {
           cleanup()
           if (error.name === 'AbortError') {
             reject(new Error('Request timed out or interrupted'))
-          }
-          else {
+          } else {
             reject(error)
           }
         })

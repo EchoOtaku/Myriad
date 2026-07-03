@@ -80,7 +80,7 @@ pub async fn run(worker: Arc<Worker>, target: &MyriadVersion) -> Result<Prefligh
 
     // 5. disk: free space ≥ pgdata_size × 1.5 + 1GiB headroom
     if let Ok(stat) = nix::sys::statvfs::statvfs(&worker.cli().pgdata) {
-        let block = stat.fragment_size() as u64;
+        let block = stat.fragment_size();
         let avail = block * (stat.blocks_available() as u64);
         let pgdata_size = fs_size(&worker.cli().pgdata).unwrap_or(0);
         let need = pgdata_size + (pgdata_size / 2) + (1024 * 1024 * 1024);
@@ -145,7 +145,9 @@ fn digest_matches(pulled: &str, expected: &str) -> bool {
 }
 
 fn fs_size(p: &std::path::Path) -> std::io::Result<u64> {
-    let out = std::process::Command::new("du").args(["-sb", &p.to_string_lossy()]).output()?;
+    let out = std::process::Command::new("du")
+        .args(["-sb", &p.to_string_lossy()])
+        .output()?;
     if !out.status.success() {
         return Ok(0);
     }

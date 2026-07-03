@@ -541,6 +541,7 @@ export interface TranslationKeys {
     platformsConfigDesc: string
     platformDescGithub: string
     platformDescBilibili: string
+    platformDescBangumi: string
     platformDescSteam: string
     platformDescNetease: string
     configuredStatus: string
@@ -1395,6 +1396,17 @@ export interface TranslationKeys {
     permSchedulerRegister: string
     permSpeechTts: string
     permSpeechAsr: string
+    permReadTappList: string
+    permManageTappList: string
+    permReadBrew: string
+    permWriteBrew: string
+    permCommentBrew: string
+    permManageBrew: string
+    permReadFederation: string
+    permWriteFederation: string
+    permMessageFederation: string
+    permTrustFederation: string
+    permFederationFiles: string
 
     // 权限描述
     permRegisterWidgetDesc: string
@@ -1423,6 +1435,17 @@ export interface TranslationKeys {
     permSchedulerRegisterDesc: string
     permSpeechTtsDesc: string
     permSpeechAsrDesc: string
+    permReadTappListDesc: string
+    permManageTappListDesc: string
+    permReadBrewDesc: string
+    permWriteBrewDesc: string
+    permCommentBrewDesc: string
+    permManageBrewDesc: string
+    permReadFederationDesc: string
+    permWriteFederationDesc: string
+    permMessageFederationDesc: string
+    permTrustFederationDesc: string
+    permFederationFilesDesc: string
 
     // 列表页面
     listTitle: string

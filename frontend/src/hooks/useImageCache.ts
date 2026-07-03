@@ -38,8 +38,9 @@ function cleanupExpiredCache(): void {
 
   // 如果缓存仍然过大，删除最旧的条目
   if (imageCache.size > MAX_CACHE_SIZE) {
-    const entries = Array.from(imageCache.entries())
-      .sort((a, b) => a[1].timestamp - b[1].timestamp)
+    const entries = Array.from(imageCache.entries()).sort(
+      (a, b) => a[1].timestamp - b[1].timestamp,
+    )
     const toDelete = entries.slice(0, entries.length - MAX_CACHE_SIZE)
     for (const [url] of toDelete) {
       imageCache.delete(url)
@@ -52,8 +53,7 @@ function cleanupExpiredCache(): void {
  */
 export function preloadImage(url: string): Promise<boolean> {
   // 空 URL 直接返回
-  if (!url)
-    return Promise.resolve(false)
+  if (!url) return Promise.resolve(false)
 
   // 检查缓存
   const cached = imageCache.get(url)
@@ -97,28 +97,31 @@ export function preloadImage(url: string): Promise<boolean> {
  * 检查图片是否已缓存
  */
 export function isImageCached(url: string): boolean {
-  if (!url)
-    return false
+  if (!url) return false
   const cached = imageCache.get(url)
-  return cached?.status === 'loaded' && Date.now() - cached.timestamp < CACHE_EXPIRY
+  return (
+    cached?.status === 'loaded' && Date.now() - cached.timestamp < CACHE_EXPIRY
+  )
 }
 
 /**
  * 检查图片是否加载失败
  */
 export function isImageError(url: string): boolean {
-  if (!url)
-    return false
+  if (!url) return false
   const cached = imageCache.get(url)
-  return cached?.status === 'error' && Date.now() - cached.timestamp < CACHE_EXPIRY
+  return (
+    cached?.status === 'error' && Date.now() - cached.timestamp < CACHE_EXPIRY
+  )
 }
 
 /**
  * 获取缓存的图片 URL（如果已缓存则返回，否则返回 null）
  */
-export function getCachedImageUrl(url: string | null | undefined): string | null {
-  if (!url)
-    return null
+export function getCachedImageUrl(
+  url: string | null | undefined,
+): string | null {
+  if (!url) return null
 
   // 清理过期缓存
   if (imageCache.size > MAX_CACHE_SIZE / 2) {

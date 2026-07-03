@@ -71,7 +71,11 @@ pub struct Worker {
 pub enum RecoveryReport {
     Idle,
     ResumedRollback(String),
-    NeedsManual { job_id: String, phase: Phase, reason: String },
+    NeedsManual {
+        job_id: String,
+        phase: Phase,
+        reason: String,
+    },
     ClearedPreSwap,
     NoChange,
 }
@@ -131,7 +135,7 @@ impl Worker {
         };
         let digest = self.docker.pull(&actual_ref, None).await?;
         // Strip "<image>@" prefix, keep only "sha256:..."
-        Ok(digest.split('@').last().unwrap_or(&digest).to_string())
+        Ok(digest.split('@').next_back().unwrap_or(&digest).to_string())
     }
 
     pub fn sender(&self) -> mpsc::Sender<Command> {
@@ -169,7 +173,10 @@ impl Worker {
             // We must not re-attempt destructive operations from a half-known state.
             job.status = JobStatus::NeedsManual;
             let last_phase = maint.phase;
-            let reason = format!("recovered into post-swap phase {:?}; manual intervention required", last_phase);
+            let reason = format!(
+                "recovered into post-swap phase {:?}; manual intervention required",
+                last_phase
+            );
             job.steps
                 .push(crate::state::JobStep::start(Phase::NeedsManual));
             if let Some(step) = job.steps.last_mut() {
@@ -459,4 +466,3 @@ pub(crate) fn set_phase(
     };
     state.write_maintenance(&m)
 }
-

@@ -47,7 +47,7 @@ function Write-Error {
 
 function Test-BackendHealth {
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:3000/health" -TimeoutSec 1 | Out-Null
+        Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:1103/health" -TimeoutSec 1 | Out-Null
         return $true
     }
     catch {
@@ -58,7 +58,7 @@ function Test-BackendHealth {
 function Wait-Backend {
     param([int]$TimeoutSeconds = 90)
 
-    Write-Info "Waiting for backend health on http://127.0.0.1:3000/health ..."
+    Write-Info "Waiting for backend health on http://127.0.0.1:1103/health ..."
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         if (Test-BackendHealth) {
@@ -70,6 +70,56 @@ function Wait-Backend {
     return $false
 }
 
+function Test-CommandLinePath {
+    param(
+        [AllowNull()][string]$CommandLine,
+        [string]$Path
+    )
+
+    if (-not $CommandLine) {
+        return $false
+    }
+
+    $normalizedCommand = $CommandLine.Replace('\', '/')
+    $normalizedPath = $Path.Replace('\', '/')
+    return $normalizedCommand.Contains($normalizedPath)
+}
+
+function Get-ProjectBackendProcesses {
+    $backendPath = Join-Path $projectRoot "backend"
+    Get-WmiObject Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        (Test-CommandLinePath $_.CommandLine $backendPath) -and
+        ($_.CommandLine -match "cargo run|myriad-backend")
+    }
+}
+
+function Get-ProjectFrontendProcesses {
+    $frontendPath = Join-Path $projectRoot "frontend"
+    Get-WmiObject Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        (Test-CommandLinePath $_.CommandLine $frontendPath) -and
+        ($_.CommandLine -match "pnpm|astro|vite|node")
+    }
+}
+
+function Stop-ProjectProcesses {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Processes
+    )
+
+    $count = 0
+    foreach ($proc in $Processes) {
+        try {
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
+            $count += 1
+        }
+        catch {
+            Write-Host "  Could not stop PID $($proc.ProcessId): $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+    return $count
+}
+
 function Get-DevUpdaterToken {
     if ($env:MYRIAD_DEV_UPDATE_TOKEN) {
         return $env:MYRIAD_DEV_UPDATE_TOKEN
@@ -79,7 +129,7 @@ function Get-DevUpdaterToken {
 
 function Test-UpdaterHealth {
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:9090/healthz" -TimeoutSec 1 | Out-Null
+        Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:1101/healthz" -TimeoutSec 1 | Out-Null
         return $true
     }
     catch {
@@ -90,7 +140,7 @@ function Test-UpdaterHealth {
 function Wait-Updater {
     param([int]$TimeoutSeconds = 120)
 
-    Write-Info "Waiting for updater health on http://127.0.0.1:9090/healthz ..."
+    Write-Info "Waiting for updater health on http://127.0.0.1:1101/healthz ..."
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         if (Test-UpdaterHealth) {
@@ -120,7 +170,7 @@ UPDATER_TAG=v0.0.0-dev
 COMPOSE_PROJECT_NAME=myriad-dev-updater
 POSTGRES_PASSWORD=devupdaterpostgres12345678901234567890
 JWT_SECRET=devupdaterjwtsecret12345678901234567890
-CORS_ORIGINS=http://localhost:4321,http://localhost:3000
+CORS_ORIGINS=http://localhost:1102,http://localhost:1103
 UPDATE_TOKEN=$(Get-DevUpdaterToken)
 CHANNEL=stable
 CHECK_INTERVAL_SECS=0
@@ -203,20 +253,14 @@ function Start-Services {
     }
     
     # Check if services are already running
-    $existingBackend = Get-Process -Name "myriad-backend", "cargo" -ErrorAction SilentlyContinue
-    $existingFrontend = Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object {
-        try {
-            $cmd = (Get-WmiObject Win32_Process -Filter "ProcessId = $($_.Id)").CommandLine
-            $cmd -like "*astro*" -or $cmd -like "*vite*"
-        }
-        catch { $false }
-    }
+    $existingBackend = @(Get-ProjectBackendProcesses)
+    $existingFrontend = @(Get-ProjectFrontendProcesses)
 
     if ($Service -eq "all-updater" -and $existingBackend) {
         Write-Info "Restarting backend so it picks up updater dev environment..."
-        $existingBackend | Stop-Process -Force
+        Stop-ProjectProcesses -Processes $existingBackend | Out-Null
         Start-Sleep -Seconds 1
-        $existingBackend = $null
+        $existingBackend = @()
     }
 
     if (($existingBackend -and $startBackend) -or
@@ -245,8 +289,8 @@ function Start-Services {
             $backendCommand = "Write-Host '🦀 Myriad Backend' -ForegroundColor Cyan; Write-Host ''; Set-Location '$backendPath'; "
             if (Test-UpdaterRunning) {
                 Ensure-DevUpdaterFiles
-                $backendCommand += "`$env:MYRIAD_UPDATER_URL='http://127.0.0.1:9090'; `$env:UPDATE_TOKEN='$(Get-DevUpdaterToken)'; "
-                Write-Info "Backend updater proxy enabled: http://127.0.0.1:9090"
+                $backendCommand += "`$env:MYRIAD_UPDATER_URL='http://127.0.0.1:1101'; `$env:UPDATE_TOKEN='$(Get-DevUpdaterToken)'; "
+                Write-Info "Backend updater proxy enabled: http://127.0.0.1:1101"
             }
             $backendCommand += "cargo run"
 
@@ -264,7 +308,7 @@ function Start-Services {
     }
 
     if (($Service -eq "all" -or $Service -eq "all-updater") -and -not $backendReady) {
-        Write-Error "Frontend was not started to avoid 127.0.0.1:3000 ECONNREFUSED."
+        Write-Error "Frontend was not started to avoid 127.0.0.1:1103 ECONNREFUSED."
         Write-Info "Fix the backend error first, then run: .\dev.ps1 start -Service frontend"
         return
     }
@@ -285,11 +329,11 @@ function Start-Services {
     Write-Host "`n" -NoNewline
     Write-Success "Services Started!"
     Write-Host "`nURLs (wait ~10 seconds for startup):"
-    Write-Host "  Frontend: http://localhost:4321" -ForegroundColor White
-    Write-Host "  Backend:  http://localhost:3000" -ForegroundColor White
-    Write-Host "  Health:   http://localhost:3000/health" -ForegroundColor White
+    Write-Host "  Frontend: http://localhost:1102" -ForegroundColor White
+    Write-Host "  Backend:  http://localhost:1103" -ForegroundColor White
+    Write-Host "  Health:   http://localhost:1103/health" -ForegroundColor White
     if (Test-UpdaterRunning) {
-        Write-Host "  Updater:  http://127.0.0.1:9090" -ForegroundColor White
+        Write-Host "  Updater:  http://127.0.0.1:1101" -ForegroundColor White
     }
     Write-Host ""
 }
@@ -309,17 +353,8 @@ function Stop-Services {
     if ($stopBackend) {
         Write-Info "Stopping backend services..."
         
-        $cargoProcesses = Get-Process -Name "cargo" -ErrorAction SilentlyContinue
-        if ($cargoProcesses) {
-            $cargoProcesses | Stop-Process -Force
-            $stoppedCount += $cargoProcesses.Count
-        }
-        
-        $backendProcesses = Get-Process -Name "myriad-backend" -ErrorAction SilentlyContinue
-        if ($backendProcesses) {
-            $backendProcesses | Stop-Process -Force
-            $stoppedCount += $backendProcesses.Count
-        }
+        $backendProcesses = @(Get-ProjectBackendProcesses)
+        $stoppedCount += Stop-ProjectProcesses -Processes $backendProcesses
         
         Write-Success "Backend stopped"
     }
@@ -328,18 +363,8 @@ function Stop-Services {
     if ($stopFrontend) {
         Write-Info "Stopping frontend services..."
         
-        $nodeProcesses = Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object {
-            try {
-                $cmd = (Get-WmiObject Win32_Process -Filter "ProcessId = $($_.Id)").CommandLine
-                $cmd -like "*astro*" -or $cmd -like "*vite*"
-            }
-            catch { $false }
-        }
-        
-        if ($nodeProcesses) {
-            $nodeProcesses | Stop-Process -Force
-            $stoppedCount += $nodeProcesses.Count
-        }
+        $nodeProcesses = @(Get-ProjectFrontendProcesses)
+        $stoppedCount += Stop-ProjectProcesses -Processes $nodeProcesses
         
         Write-Success "Frontend stopped"
     }
@@ -462,7 +487,7 @@ END `$`$;
     Write-Success "Cleanup Complete!"
     Write-Host "`nNext steps:"
     Write-Host "  1. Run '.\dev.ps1 start' to start services" -ForegroundColor White
-    Write-Host "  2. Complete setup wizard at http://localhost:4321/setup" -ForegroundColor White
+    Write-Host "  2. Complete setup wizard at http://localhost:1102/setup" -ForegroundColor White
     Write-Host ""
 }
 
@@ -473,7 +498,7 @@ function Show-Status {
     Write-Header "Myriad Services Status"
     
     # Backend status
-    $backendProcesses = Get-Process -Name "cargo", "myriad-backend" -ErrorAction SilentlyContinue
+    $backendProcesses = @(Get-ProjectBackendProcesses)
     if ($backendProcesses) {
         Write-Host "Backend:  " -NoNewline
         Write-Host "RUNNING" -ForegroundColor Green
@@ -485,13 +510,7 @@ function Show-Status {
     }
     
     # Frontend status
-    $frontendProcesses = Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object {
-        try {
-            $cmd = (Get-WmiObject Win32_Process -Filter "ProcessId = $($_.Id)").CommandLine
-            $cmd -like "*astro*" -or $cmd -like "*vite*"
-        }
-        catch { $false }
-    }
+    $frontendProcesses = @(Get-ProjectFrontendProcesses)
     if ($frontendProcesses) {
         Write-Host "Frontend: " -NoNewline
         Write-Host "RUNNING" -ForegroundColor Green
@@ -505,7 +524,7 @@ function Show-Status {
     if (Test-UpdaterRunning) {
         Write-Host "Updater:  " -NoNewline
         Write-Host "RUNNING" -ForegroundColor Green
-        Write-Host "  URL: http://127.0.0.1:9090" -ForegroundColor Gray
+        Write-Host "  URL: http://127.0.0.1:1101" -ForegroundColor Gray
     }
     else {
         Write-Host "Updater:  " -NoNewline

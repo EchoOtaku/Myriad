@@ -15,9 +15,8 @@ use std::str::FromStr;
 
 use crate::error::UpdaterError;
 
-static VERSION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^v(?P<sv>[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?)$").unwrap()
-});
+static VERSION_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^v(?P<sv>[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?)$").unwrap());
 
 /// A validated `v`-prefixed Myriad version.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -34,7 +33,10 @@ impl MyriadVersion {
         let sv = &caps["sv"];
         let inner = Version::parse(sv)
             .map_err(|e| UpdaterError::InvalidInput(format!("invalid version {s}: {e}")))?;
-        Ok(Self { raw: s.to_string(), inner })
+        Ok(Self {
+            raw: s.to_string(),
+            inner,
+        })
     }
 
     pub fn as_str(&self) -> &str {

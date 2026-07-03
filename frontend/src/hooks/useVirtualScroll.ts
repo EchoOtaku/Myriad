@@ -31,8 +31,7 @@ export function useVirtualScroll(
 
   // 监听滚动 - 使用RAF节流优化
   useEffect(() => {
-    if (!enabled)
-      return
+    if (!enabled) return
 
     const handleScroll = rafThrottle(() => {
       setScrollTop(window.scrollY)
@@ -58,7 +57,10 @@ export function useVirtualScroll(
       return Array.from({ length: totalItems }, (_, i) => i)
     }
 
-    const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan)
+    const startIndex = Math.max(
+      0,
+      Math.floor(scrollTop / itemHeight) - overscan,
+    )
     const endIndex = Math.min(
       totalItems - 1,
       Math.ceil((scrollTop + containerHeight) / itemHeight) + overscan,
@@ -111,15 +113,14 @@ export function usePagedLoad<T>(
 
   // 加载更多
   const loadMore = useCallback(() => {
-    if (loadingRef.current || !hasMore)
-      return
+    if (loadingRef.current || !hasMore) return
 
     loadingRef.current = true
     setLoading(true)
 
     // 模拟异步加载延迟
     setTimeout(() => {
-      setCurrentPage(prev => prev + 1)
+      setCurrentPage((prev) => prev + 1)
       setLoading(false)
       loadingRef.current = false
     }, 300)
@@ -128,8 +129,7 @@ export function usePagedLoad<T>(
   // 监听滚动触发加载 - 使用RAF节流优化
   useEffect(() => {
     const handleScroll = rafThrottle(() => {
-      if (!hasMore || loadingRef.current)
-        return
+      if (!hasMore || loadingRef.current) return
 
       const scrollHeight = document.documentElement.scrollHeight
       const scrollTop = window.scrollY
@@ -196,8 +196,7 @@ export function useVirtualGrid(
 
   // 监听滚动
   useEffect(() => {
-    if (!enabled)
-      return
+    if (!enabled) return
 
     const handleScroll = rafThrottle(() => {
       setScrollTop(window.scrollY)
@@ -243,18 +242,21 @@ export function useVirtualGrid(
   })()
 
   // 获取项目样式
-  const getItemStyle = useCallback((index: number): React.CSSProperties => {
-    const row = Math.floor(index / columnCount)
-    const col = index % columnCount
+  const getItemStyle = useCallback(
+    (index: number): React.CSSProperties => {
+      const row = Math.floor(index / columnCount)
+      const col = index % columnCount
 
-    return {
-      position: 'absolute',
-      top: `${row * rowHeight}px`,
-      left: `${(col / columnCount) * 100}%`,
-      width: `${(1 / columnCount) * 100}%`,
-      height: `${rowHeight}px`,
-    }
-  }, [columnCount, rowHeight])
+      return {
+        position: 'absolute',
+        top: `${row * rowHeight}px`,
+        left: `${(col / columnCount) * 100}%`,
+        width: `${(1 / columnCount) * 100}%`,
+        height: `${rowHeight}px`,
+      }
+    },
+    [columnCount, rowHeight],
+  )
 
   return {
     visibleItems,
@@ -277,7 +279,7 @@ interface IntersectionObserverOptions {
 }
 
 export function useIntersectionObserver(
-  elementRef: React.RefObject<Element>,
+  elementRef: React.RefObject<Element | null>,
   callback: (isIntersecting: boolean, entry: IntersectionObserverEntry) => void,
   options?: IntersectionObserverOptions,
 ): void {
@@ -287,8 +289,7 @@ export function useIntersectionObserver(
 
   useEffect(() => {
     const element = elementRef.current
-    if (!element || typeof IntersectionObserver === 'undefined')
-      return
+    if (!element || typeof IntersectionObserver === 'undefined') return
 
     // 清理旧观察
     if (unobserveRef.current) {
@@ -300,8 +301,7 @@ export function useIntersectionObserver(
     unobserveRef.current = observeIntersection(
       element,
       (entry) => {
-        if (once && hasTriggered.current)
-          return
+        if (once && hasTriggered.current) return
 
         callback(entry.isIntersecting, entry)
 
@@ -333,7 +333,7 @@ export function useIntersectionObserver(
 export function useLazyImage(
   src: string,
   placeholder?: string,
-): [string, boolean, React.RefObject<HTMLImageElement>] {
+): [string, boolean, React.RefObject<HTMLImageElement | null>] {
   const [imageSrc, setImageSrc] = useState(placeholder || '')
   const [isLoaded, setIsLoaded] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)

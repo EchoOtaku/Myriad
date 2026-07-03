@@ -10,29 +10,35 @@
  * 详见 docs/oauth-refactor-plan.md + oauthPresets.ts
  */
 
-import { FaCheck, FaClipboard, FaExternalLinkAlt, FaGithub, FaPlus, FaTrash } from '@lib/icons'
+import {
+  FaCheck,
+  FaClipboard,
+  FaExternalLinkAlt,
+  FaGithub,
+  FaPlus,
+  FaTrash,
+} from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { API_URL } from '../../config'
 
 import { useI18n } from '../../contexts/I18nContext'
 import { fetchJson } from '../../utils/apiHelper'
 import { getCSRFToken } from '../../utils/csrf'
-import {
-  InfoCard,
-  InputItem,
-  SettingSection,
-  SwitchItem,
-} from '../settings'
+import { InfoCard, InputItem, SettingSection, SwitchItem } from '../settings'
 import { findPreset, OAUTH_PRESETS } from './oauthPresets'
 
 /** 把字符串中反引号 `foo` 包裹的片段渲染为 <code>foo</code> */
 function renderHint(text: string): React.ReactNode {
   const parts = text.split(/`([^`]+)`/g)
-  return parts.map((part, i) => (
-    i % 2 === 1
-      ? <code key={i} className="inline-code">{part}</code>
-      : <React.Fragment key={i}>{part}</React.Fragment>
-  ))
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <code key={i} className="inline-code">
+        {part}
+      </code>
+    ) : (
+      <React.Fragment key={i}>{part}</React.Fragment>
+    ),
+  )
 }
 
 interface ConfigField {
@@ -72,9 +78,12 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
 }) => {
   const { t } = useI18n()
 
-  const getFieldValue = useCallback((key: string) => {
-    return configFields.find(f => f.key === key)?.value || ''
-  }, [configFields])
+  const getFieldValue = useCallback(
+    (key: string) => {
+      return configFields.find((f) => f.key === key)?.value || ''
+    },
+    [configFields],
+  )
 
   const baseUrl = getFieldValue('base_url').replace(/\/$/, '')
 
@@ -100,22 +109,24 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
         if (cancelled) return
         setProviders(Array.isArray(data?.providers) ? data.providers : [])
         setAllowRegister(Boolean(data?.allow_local_registration))
-      }
-      catch (e: any) {
+      } catch (e: any) {
         if (!cancelled) setError(e?.message || 'Load failed')
-      }
-      finally {
+      } finally {
         if (!cancelled) setLoading(false)
       }
     })()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const updateProvider = (idx: number, patch: Partial<OAuthProviderEntry>) => {
-    setProviders(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p))
+    setProviders((prev) =>
+      prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)),
+    )
   }
   const removeProvider = (idx: number) => {
-    setProviders(prev => prev.filter((_, i) => i !== idx))
+    setProviders((prev) => prev.filter((_, i) => i !== idx))
   }
 
   const addFromPreset = (presetId: string) => {
@@ -123,9 +134,9 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
     if (!preset) return
     // 生成唯一 slug
     let slug = preset.defaultSlug || preset.id
-    if (slug && providers.some(p => p.slug === slug)) {
+    if (slug && providers.some((p) => p.slug === slug)) {
       let n = 2
-      while (providers.some(p => p.slug === `${slug}-${n}`)) n++
+      while (providers.some((p) => p.slug === `${slug}-${n}`)) n++
       slug = `${slug}-${n}`
     }
     const entry: OAuthProviderEntry = {
@@ -139,7 +150,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
       discovery_url: preset.discovery_url || '',
       icon_url: preset.icon_url || null,
     }
-    setProviders(prev => [...prev, entry])
+    setProviders((prev) => [...prev, entry])
     setPicker(false)
   }
 
@@ -149,7 +160,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
     setSaved(false)
     try {
       const payload = {
-        providers: providers.map(p => ({
+        providers: providers.map((p) => ({
           ...p,
           discovery_url: p.discovery_url || null,
           icon_url: p.icon_url || null,
@@ -159,7 +170,9 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
       }
       // 加 CSRF token — admin 端点经过 csrf_middleware
       const csrfToken = await getCSRFToken()
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
       if (csrfToken) headers['X-CSRF-Token'] = csrfToken
 
       await fetchJson(`${API_URL}/api/config/oauth-providers`, {
@@ -169,28 +182,31 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
         body: JSON.stringify(payload),
       })
       // 保存成功后重新拉一次，让后端做的规范化（slug 大小写、secret 掩码等）反映到 UI
-      const refreshed = await fetchJson(`${API_URL}/api/config/oauth-providers`, {
-        credentials: 'include',
-      })
+      const refreshed = await fetchJson(
+        `${API_URL}/api/config/oauth-providers`,
+        {
+          credentials: 'include',
+        },
+      )
       if (Array.isArray(refreshed?.providers)) {
         setProviders(refreshed.providers)
         setAllowRegister(Boolean(refreshed?.allow_local_registration))
       }
       setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    }
-    catch (e: any) {
+      setTimeout(setSaved, 2500, false)
+    } catch (e: any) {
       setError(e?.message || 'Save failed')
-    }
-    finally {
+    } finally {
       setSaving(false)
     }
   }
 
   // 可用 preset = 全部 - 已用 GitHub 的（一个实例足够）
   const availablePresets = useMemo(() => {
-    const hasGithub = providers.some(p => p.slug === 'github' && p.kind === 'github')
-    return OAUTH_PRESETS.filter(p => !(p.id === 'github' && hasGithub))
+    const hasGithub = providers.some(
+      (p) => p.slug === 'github' && p.kind === 'github',
+    )
+    return OAUTH_PRESETS.filter((p) => !(p.id === 'github' && hasGithub))
   }, [providers])
 
   return (
@@ -203,13 +219,13 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
       {!baseUrl && (
         <InfoCard
           title={t.config.oauthGuideTitle}
-          content={(
+          content={
             <>
               <strong>{t.config.callbackUrlNotConfigured}</strong>
               <br />
               {t.config.oauthHowToHint}
             </>
-          )}
+          }
           className="info-card-spaced"
         />
       )}
@@ -227,13 +243,15 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
       <div className="oidc-section">
         <div className="oidc-section-head">
           <div className="oidc-section-head-text">
-            <h3 className="oidc-section-title">{t.config.oauthProvidersTitle}</h3>
+            <h3 className="oidc-section-title">
+              {t.config.oauthProvidersTitle}
+            </h3>
             <p className="oidc-section-desc">{t.config.oauthProvidersDesc}</p>
           </div>
           <button
             type="button"
             className="btn-base btn-secondary btn-sm"
-            onClick={() => setPicker(v => !v)}
+            onClick={() => setPicker((v) => !v)}
           >
             <FaPlus />
             {t.config.oauthAddLoginMethod}
@@ -267,7 +285,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
             key={`${p.slug}-${idx}`}
             entry={p}
             baseUrl={baseUrl}
-            onChange={patch => updateProvider(idx, patch)}
+            onChange={(patch) => updateProvider(idx, patch)}
             onRemove={() => removeProvider(idx)}
             t={t}
           />
@@ -315,23 +333,29 @@ interface ProviderCardProps {
 }
 
 const ProviderCard: React.FC<ProviderCardProps> = ({
-  entry, baseUrl, onChange, onRemove, t,
+  entry,
+  baseUrl,
+  onChange,
+  onRemove,
+  t,
 }) => {
   const [copied, setCopied] = useState(false)
-  const callbackUrl = baseUrl && entry.slug
-    ? `${baseUrl}/api/auth/oauth/${entry.slug}/callback`
-    : null
+  const callbackUrl =
+    baseUrl && entry.slug
+      ? `${baseUrl}/api/auth/oauth/${entry.slug}/callback`
+      : null
 
   const copy = async () => {
     if (!callbackUrl) return
     await navigator.clipboard.writeText(callbackUrl)
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setTimeout(setCopied, 2000, false)
   }
 
   // preset 提示（按 slug 匹配 — 比如 slug='github-2' 也算 github 类型）
-  const preset = OAUTH_PRESETS.find(p =>
-    p.kind === entry.kind && entry.slug.startsWith(p.defaultSlug || p.id),
+  const preset = OAUTH_PRESETS.find(
+    (p) =>
+      p.kind === entry.kind && entry.slug.startsWith(p.defaultSlug || p.id),
   )
 
   return (
@@ -345,12 +369,14 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
         </span>
         <div className="oidc-provider-actions">
           <label className="oidc-enable-toggle">
-            <span className="oidc-enable-toggle-label">{t.config.oidcEnabled}</span>
+            <span className="oidc-enable-toggle-label">
+              {t.config.oidcEnabled}
+            </span>
             <span className="toggle-switch">
               <input
                 type="checkbox"
                 checked={entry.enabled}
-                onChange={e => onChange({ enabled: e.target.checked })}
+                onChange={(e) => onChange({ enabled: e.target.checked })}
               />
               <span className="toggle-slider"></span>
             </span>
@@ -369,7 +395,9 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
       {/* 回调 URL — 用户复制粘到 provider 后台 */}
       {callbackUrl && (
         <div className="oidc-callback-row">
-          <span className="oidc-callback-label">{t.config.currentCallbackUrl}</span>
+          <span className="oidc-callback-label">
+            {t.config.currentCallbackUrl}
+          </span>
           <code className="inline-code callback-url-code">{callbackUrl}</code>
           <button
             type="button"
@@ -385,20 +413,27 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
       {/* preset 提示 — i18n 翻译 + 反引号片段渲染为 <code> */}
       {preset?.hintKey && (
         <InfoCard
-          content={(
+          content={
             <>
-              {renderHint((t.config as Record<string, string>)[preset.hintKey] ?? '')}
+              {renderHint(
+                (t.config as Record<string, string>)[preset.hintKey] ?? '',
+              )}
               {preset.docs_url && (
                 <>
                   {' '}
-                  <a href={preset.docs_url} target="_blank" rel="noopener noreferrer" className="oidc-docs-link">
+                  <a
+                    href={preset.docs_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="oidc-docs-link"
+                  >
                     {t.config.oauthOpenDocs}
                     <FaExternalLinkAlt />
                   </a>
                 </>
               )}
             </>
-          )}
+          }
           className="info-card-spaced"
         />
       )}
@@ -410,7 +445,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
           label={t.config.oidcClientIdLabel}
           required
           value={entry.client_id}
-          onChange={v => onChange({ client_id: v })}
+          onChange={(v) => onChange({ client_id: v })}
           placeholder=""
           layout="vertical"
         />
@@ -419,7 +454,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
           label={t.config.oidcClientSecretLabel}
           required
           value={entry.client_secret}
-          onChange={v => onChange({ client_secret: v })}
+          onChange={(v) => onChange({ client_secret: v })}
           placeholder={t.config.oidcClientSecretPlaceholder}
           inputType="password"
           autoSelectOnMask
@@ -434,7 +469,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
               label={t.config.oidcDiscoveryLabel}
               required
               value={entry.discovery_url || ''}
-              onChange={v => onChange({ discovery_url: v })}
+              onChange={(v) => onChange({ discovery_url: v })}
               placeholder={t.config.oidcDiscoveryPlaceholder}
               layout="vertical"
             />
@@ -453,7 +488,9 @@ const ProviderIcon: React.FC<{ entry: OAuthProviderEntry }> = ({ entry }) => {
     return <FaGithub className="oidc-provider-icon-img" />
   }
   if (entry.icon_url) {
-    return <img src={entry.icon_url} alt="" className="oidc-provider-icon-img" />
+    return (
+      <img src={entry.icon_url} alt="" className="oidc-provider-icon-img" />
+    )
   }
   return (
     <span className="oidc-provider-icon-img oidc-provider-icon-placeholder">
@@ -468,18 +505,20 @@ interface AdvancedFieldsProps {
   t: any
 }
 
-const AdvancedFields: React.FC<AdvancedFieldsProps> = ({ entry, onChange, t }) => {
+const AdvancedFields: React.FC<AdvancedFieldsProps> = ({
+  entry,
+  onChange,
+  t,
+}) => {
   const [open, setOpen] = useState(false)
   return (
     <div className="full-width oidc-advanced">
       <button
         type="button"
         className="oidc-advanced-toggle"
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen((v) => !v)}
       >
-        {open ? '▼' : '▶'}
-        {' '}
-        {t.config.oauthAdvanced}
+        {open ? '▼' : '▶'} {t.config.oauthAdvanced}
       </button>
       {open && (
         <div className="oidc-advanced-content">
@@ -487,7 +526,7 @@ const AdvancedFields: React.FC<AdvancedFieldsProps> = ({ entry, onChange, t }) =
             itemKey={`provider-${entry.slug}-slug`}
             label={t.config.oidcSlugLabel}
             value={entry.slug}
-            onChange={v => onChange({ slug: v })}
+            onChange={(v) => onChange({ slug: v })}
             placeholder={t.config.oidcSlugPlaceholder}
             layout="vertical"
           />
@@ -495,7 +534,7 @@ const AdvancedFields: React.FC<AdvancedFieldsProps> = ({ entry, onChange, t }) =
             itemKey={`provider-${entry.slug}-display`}
             label={t.config.oidcDisplayNameLabel}
             value={entry.display_name}
-            onChange={v => onChange({ display_name: v })}
+            onChange={(v) => onChange({ display_name: v })}
             placeholder={t.config.oidcDisplayNamePlaceholder}
             layout="vertical"
           />
@@ -504,7 +543,9 @@ const AdvancedFields: React.FC<AdvancedFieldsProps> = ({ entry, onChange, t }) =
               itemKey={`provider-${entry.slug}-scopes`}
               label={t.config.oidcScopesLabel}
               value={entry.scopes.join(' ')}
-              onChange={v => onChange({ scopes: v.split(/\s+/).filter(Boolean) })}
+              onChange={(v) =>
+                onChange({ scopes: v.split(/\s+/).filter(Boolean) })
+              }
               placeholder={t.config.oidcScopesPlaceholder}
               layout="vertical"
             />
@@ -513,7 +554,7 @@ const AdvancedFields: React.FC<AdvancedFieldsProps> = ({ entry, onChange, t }) =
             itemKey={`provider-${entry.slug}-icon`}
             label={t.config.oidcIconLabel}
             value={entry.icon_url || ''}
-            onChange={v => onChange({ icon_url: v })}
+            onChange={(v) => onChange({ icon_url: v })}
             placeholder={t.config.oidcIconPlaceholder}
             layout="vertical"
           />
@@ -530,7 +571,12 @@ interface PresetPickerProps {
   t: any
 }
 
-const PresetPicker: React.FC<PresetPickerProps> = ({ presets, onPick, onClose, t }) => {
+const PresetPicker: React.FC<PresetPickerProps> = ({
+  presets,
+  onPick,
+  onClose,
+  t,
+}) => {
   return (
     <div className="oidc-preset-picker">
       <div className="oidc-preset-picker-header">
@@ -545,20 +591,26 @@ const PresetPicker: React.FC<PresetPickerProps> = ({ presets, onPick, onClose, t
         </button>
       </div>
       <div className="oidc-preset-grid">
-        {presets.map(p => (
+        {presets.map((p) => (
           <button
             key={p.id}
             type="button"
             className="oidc-preset-card"
             onClick={() => onPick(p.id)}
           >
-            {p.id === 'github'
-              ? <FaGithub className="oidc-preset-icon" />
-              : p.icon_url
-                ? <img src={p.icon_url} alt="" className="oidc-preset-icon" />
-                : <span className="oidc-preset-icon oidc-preset-icon-placeholder">{p.display_name[0]}</span>}
+            {p.id === 'github' ? (
+              <FaGithub className="oidc-preset-icon" />
+            ) : p.icon_url ? (
+              <img src={p.icon_url} alt="" className="oidc-preset-icon" />
+            ) : (
+              <span className="oidc-preset-icon oidc-preset-icon-placeholder">
+                {p.display_name[0]}
+              </span>
+            )}
             <span className="oidc-preset-name">{p.display_name}</span>
-            {p.kind === 'oidc' && <span className="oidc-preset-badge">OIDC</span>}
+            {p.kind === 'oidc' && (
+              <span className="oidc-preset-badge">OIDC</span>
+            )}
           </button>
         ))}
       </div>

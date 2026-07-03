@@ -29,17 +29,20 @@ export interface TappIconProps {
  * 检查字符串是否为 URL（用于区分 emoji 和图片 URL）
  */
 export function isIconUrl(icon: string | undefined): boolean {
-  if (!icon)
-    return false
-  return icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:') || icon.startsWith('/')
+  if (!icon) return false
+  return (
+    icon.startsWith('http://') ||
+    icon.startsWith('https://') ||
+    icon.startsWith('data:') ||
+    icon.startsWith('/')
+  )
 }
 
 /**
  * 检查字符串是否为内联 SVG
  */
 export function isIconSvg(icon: string | undefined): boolean {
-  if (!icon)
-    return false
+  if (!icon) return false
   return icon.trim().startsWith('<svg')
 }
 
@@ -52,7 +55,10 @@ function svgToDataUri(svg: string, color: string = 'white'): string {
 
   // 添加 xmlns（如果缺失）- 必须用于 data URI
   if (!normalized.includes('xmlns=')) {
-    normalized = normalized.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
+    normalized = normalized.replace(
+      '<svg',
+      '<svg xmlns="http://www.w3.org/2000/svg"',
+    )
   }
 
   // 替换 currentColor 为指定颜色（data URI 中无法继承 CSS 颜色）
@@ -118,11 +124,7 @@ export function TappIcon({
 
   // 3. 使用 emoji
   if (icon) {
-    return (
-      <span className={`${textSizeClass} ${className}`}>
-        {icon}
-      </span>
-    )
+    return <span className={`${textSizeClass} ${className}`}>{icon}</span>
   }
 
   // 4. Fallback：显示名称首字母

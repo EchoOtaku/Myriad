@@ -7,18 +7,23 @@
 .text-gray-700 {
   color: var(--text-primary) !important;
 }
+
 .text-gray-800 {
   color: var(--text-primary) !important;
 }
+
 .text-gray-600 {
   color: var(--text-secondary) !important;
 }
+
 .text-gray-500 {
   color: var(--text-tertiary) !important;
 }
+
 .text-gray-400 {
   color: var(--text-muted) !important;
 }
+
 .text-gray-300 {
   color: var(--text-secondary) !important;
 }
@@ -26,12 +31,15 @@
 html.dark .dark\:text-gray-100 {
   color: var(--text-primary) !important;
 }
+
 html.dark .dark\:text-gray-300 {
   color: var(--text-secondary) !important;
 }
+
 html.dark .dark\:text-gray-400 {
   color: var(--text-tertiary) !important;
 }
+
 html.dark .dark\:text-gray-500 {
   color: var(--text-muted) !important;
 }
@@ -40,28 +48,45 @@ html.dark .dark\:text-gray-500 {
 html.dark .dark\:bg-gray-700 {
   background-color: var(--bg-tertiary) !important;
 }
+
 html.dark .dark\:bg-gray-800\/50 {
-  background-color: rgba(31, 33, 40, 0.5) !important;
-  background-color: color-mix(in srgb, var(--bg-tertiary) 50%, transparent) !important;
+  background-color: rgb(31 33 40 / 50%) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--bg-tertiary) 50%,
+    transparent
+  ) !important;
 }
+
 html.dark .dark\:hover\:bg-gray-700:hover {
   background-color: var(--bg-hover) !important;
 }
 
 /* 边框颜色覆盖 */
 .border-gray-200\/50 {
-  border-color: rgba(229, 231, 235, 0.5) !important;
-  border-color: color-mix(in srgb, var(--border-color) 50%, transparent) !important;
+  border-color: rgb(229 231 235 / 50%) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--border-color) 50%,
+    transparent
+  ) !important;
 }
+
 .border-gray-300 {
   border-color: var(--border-color) !important;
 }
+
 html.dark .dark\:border-gray-600 {
   border-color: var(--border-color) !important;
 }
+
 html.dark .dark\:border-gray-700\/50 {
-  border-color: rgba(55, 58, 71, 0.5) !important;
-  border-color: color-mix(in srgb, var(--border-color) 50%, transparent) !important;
+  border-color: rgb(55 58 71 / 50%) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--border-color) 50%,
+    transparent
+  ) !important;
 }
 
 /* 主题色覆盖 */
@@ -72,21 +97,37 @@ html.dark .dark\:border-gray-700\/50 {
 
 .hover\:bg-indigo-600:hover,
 html.dark .dark\:hover\:bg-indigo-700:hover {
-  background-color: rgba(79, 82, 217, 1) !important;
-  background-color: color-mix(in srgb, var(--color-primary) 90%, black) !important;
+  background-color: rgb(79 82 217 / 100%) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--color-primary) 90%,
+    black
+  ) !important;
 }
 
 .focus\:ring-indigo-500:focus {
-  --tw-ring-color: rgba(99, 102, 241, 0.5) !important;
-  --tw-ring-color: color-mix(in srgb, var(--color-primary) 50%, transparent) !important;
+  --tw-ring-color: rgb(99 102 241 / 50%) !important;
+  --tw-ring-color: color-mix(
+    in srgb,
+    var(--color-primary) 50%,
+    transparent
+  ) !important;
 }
 
 .bg-gray-900 {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)) !important;
+  background: linear-gradient(
+    135deg,
+    var(--color-primary),
+    var(--color-secondary)
+  ) !important;
 }
 
 .hover\:bg-gray-800:hover {
-  background: linear-gradient(135deg, rgba(79, 82, 217, 1), rgba(139, 92, 246, 1)) !important;
+  background: linear-gradient(
+    135deg,
+    rgb(79 82 217 / 100%),
+    rgb(139 92 246 / 100%)
+  ) !important;
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--color-primary) 90%, black),
@@ -118,8 +159,9 @@ select:focus {
   background: var(--bg-secondary);
   border-color: var(--color-primary);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 15%);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-primary) 15%, transparent);
 }
 
 /* 按钮样式 */
@@ -131,12 +173,14 @@ button:disabled {
 /* 按钮样式 */
 .btn-primary-large {
   background-color: var(--color-primary);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--color-primary) 40%, transparent);
+  box-shadow: 0 4px 14px
+    color-mix(in srgb, var(--color-primary) 40%, transparent);
 }
 
 .btn-secondary-large {
   background-color: var(--color-secondary);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--color-secondary) 40%, transparent);
+  box-shadow: 0 4px 14px
+    color-mix(in srgb, var(--color-secondary) 40%, transparent);
 }
 
 .btn-primary {
@@ -148,11 +192,12 @@ button:disabled {
 }
 
 .via-primary {
-  --tw-gradient-stops: var(--tw-gradient-from), var(--color-primary), var(--tw-gradient-to);
+  --tw-gradient-stops:
+    var(--tw-gradient-from), var(--color-primary), var(--tw-gradient-to);
 }
 
 /* 移动端文字优化 */
-@media (max-width: 640px) {
+@media (width <= 640px) {
   body {
     font-size: 15px;
   }
@@ -161,9 +206,11 @@ button:disabled {
   .prose h1 {
     font-size: 1.75rem;
   }
+
   .prose h2 {
     font-size: 1.5rem;
   }
+
   .prose h3 {
     font-size: 1.25rem;
   }
@@ -179,7 +226,7 @@ button:disabled {
   }
 }
 
-@media (max-width: 375px) {
+@media (width <= 375px) {
   body {
     font-size: 14px;
   }
@@ -191,7 +238,7 @@ button:disabled {
 }
 
 /* 横屏模式 */
-@media (max-height: 500px) and (orientation: landscape) {
+@media (height <= 500px) and (orientation: landscape) {
   .min-h-screen {
     min-height: 0;
   }
@@ -202,13 +249,13 @@ button:disabled {
 }
 
 /* 高对比度模式 */
-@media (prefers-contrast: high) {
+@media (prefers-contrast: more) {
   :root {
-    --border-color: rgba(0, 0, 0, 0.3);
+    --border-color: rgb(0 0 0 / 30%);
   }
 
   html.dark {
-    --border-color: rgba(255, 255, 255, 0.3);
+    --border-color: rgb(255 255 255 / 30%);
   }
 }
 
@@ -226,5 +273,6 @@ button:disabled {
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
+
   --tw-ring-color: transparent !important;
 }

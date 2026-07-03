@@ -36,7 +36,11 @@ interface ProfileDisplayInfo {
 /**
  * 获取缓存数据
  */
-function getCachedData<T>(cacheKey: string, cacheTimeKey: string, maxAge: number): T | null {
+function getCachedData<T>(
+  cacheKey: string,
+  cacheTimeKey: string,
+  maxAge: number,
+): T | null {
   try {
     const cached = localStorage.getItem(cacheKey)
     const cacheTime = localStorage.getItem(cacheTimeKey)
@@ -47,8 +51,7 @@ function getCachedData<T>(cacheKey: string, cacheTimeKey: string, maxAge: number
         return JSON.parse(cached) as T
       }
     }
-  }
-  catch (e) {
+  } catch (e) {
     console.warn('读取用户信息缓存失败:', e)
   }
   return null
@@ -57,12 +60,15 @@ function getCachedData<T>(cacheKey: string, cacheTimeKey: string, maxAge: number
 /**
  * 设置缓存数据
  */
-function setCachedData<T>(cacheKey: string, cacheTimeKey: string, data: T): void {
+function setCachedData<T>(
+  cacheKey: string,
+  cacheTimeKey: string,
+  data: T,
+): void {
   try {
     localStorage.setItem(cacheKey, JSON.stringify(data))
     localStorage.setItem(cacheTimeKey, Date.now().toString())
-  }
-  catch (e) {
+  } catch (e) {
     console.warn('写入用户信息缓存失败:', e)
   }
 }
@@ -74,8 +80,7 @@ function clearCache(cacheKey: string, cacheTimeKey: string): void {
   try {
     localStorage.removeItem(cacheKey)
     localStorage.removeItem(cacheTimeKey)
-  }
-  catch (_e) {
+  } catch (_e) {
     // 忽略错误
   }
 }
@@ -84,7 +89,12 @@ function clearCache(cacheKey: string, cacheTimeKey: string): void {
  * 获取登录认证信息（实时验证，不缓存）
  * ⚠️ 安全：权限信息必须实时验证，防止本地篡改
  */
-async function getAuthInfoRealtime(): Promise<{ isLoggedIn: boolean, is_admin: boolean, username?: string, display_name?: string }> {
+async function getAuthInfoRealtime(): Promise<{
+  isLoggedIn: boolean
+  is_admin: boolean
+  username?: string
+  display_name?: string
+}> {
   try {
     const response = await fetch(`${API_URL}/api/auth/me`, {
       credentials: 'include',
@@ -99,8 +109,7 @@ async function getAuthInfoRealtime(): Promise<{ isLoggedIn: boolean, is_admin: b
         display_name: data.display_name,
       }
     }
-  }
-  catch {
+  } catch {
     // 获取认证信息失败时静默处理
   }
 
@@ -139,8 +148,7 @@ async function getProfileInfoWithCache(): Promise<ProfileDisplayInfo | null> {
         return result
       }
     }
-  }
-  catch (e) {
+  } catch (e) {
     console.warn('获取站长资料失败:', e)
   }
 
@@ -151,7 +159,9 @@ async function getProfileInfoWithCache(): Promise<ProfileDisplayInfo | null> {
  * 获取用户头像（带缓存）
  * 轻量级方法，供需要快速获取头像的场景使用
  */
-export async function getUserAvatarWithCache(fallbackUsername?: string): Promise<string> {
+export async function getUserAvatarWithCache(
+  fallbackUsername?: string,
+): Promise<string> {
   const profileInfo = await getProfileInfoWithCache()
 
   if (profileInfo?.avatar) {
@@ -170,7 +180,9 @@ export async function getUserAvatarWithCache(fallbackUsername?: string): Promise
  * @param skipAuthCheck - 如果为 true，跳过认证检查（当已从 AuthContext 获取认证状态时）
  * ⚠️ 认证状态实时验证，展示信息使用缓存
  */
-export async function getUserInfoWithCache(skipAuthCheck: boolean = false): Promise<UserInfo> {
+export async function getUserInfoWithCache(
+  skipAuthCheck: boolean = false,
+): Promise<UserInfo> {
   // 默认访客信息
   let userInfo: UserInfo = {
     name: 'Myriad Dashboard',
@@ -180,7 +192,12 @@ export async function getUserInfoWithCache(skipAuthCheck: boolean = false): Prom
   }
 
   // 1. 获取认证信息和公开资料
-  let authInfo: { isLoggedIn: boolean, is_admin: boolean, username?: string, display_name?: string } = {
+  let authInfo: {
+    isLoggedIn: boolean
+    is_admin: boolean
+    username?: string
+    display_name?: string
+  } = {
     isLoggedIn: false,
     is_admin: false,
   }
@@ -189,10 +206,9 @@ export async function getUserInfoWithCache(skipAuthCheck: boolean = false): Prom
   if (skipAuthCheck) {
     // 只获取公开资料，跳过认证检查（避免重复请求）
     profileInfo = await getProfileInfoWithCache()
-  }
-  else {
+  } else {
     // 并行获取：认证信息(实时) + 公开资料(缓存)
-    [authInfo, profileInfo] = await Promise.all([
+    ;[authInfo, profileInfo] = await Promise.all([
       getAuthInfoRealtime(), // ⚠️ 实时验证权限
       getProfileInfoWithCache(), // ✅ 可缓存的展示信息
     ])
@@ -210,14 +226,10 @@ export async function getUserInfoWithCache(skipAuthCheck: boolean = false): Prom
 
   // 3. 如果有公开资料，优先使用（站长展示）
   if (profileInfo) {
-    if (profileInfo.name)
-      userInfo.name = profileInfo.name
-    if (profileInfo.avatar)
-      userInfo.avatar = profileInfo.avatar
-    if (profileInfo.bio)
-      userInfo.bio = profileInfo.bio
-    if (profileInfo.platform)
-      userInfo.platform = profileInfo.platform
+    if (profileInfo.name) userInfo.name = profileInfo.name
+    if (profileInfo.avatar) userInfo.avatar = profileInfo.avatar
+    if (profileInfo.bio) userInfo.bio = profileInfo.bio
+    if (profileInfo.platform) userInfo.platform = profileInfo.platform
   }
 
   return userInfo
@@ -242,12 +254,15 @@ export function clearAllUserCache(): void {
  * 获取 CSRF Token（带内存缓存）
  * ✅ 安全：CSRF Token 存内存不存 localStorage，刷新即失效
  */
-let csrfTokenCache: { token: string, timestamp: number } | null = null
+let csrfTokenCache: { token: string; timestamp: number } | null = null
 const CSRF_CACHE_DURATION = 10 * 60 * 1000 // CSRF Token 缓存 10 分钟
 
 export async function getCsrfTokenWithCache(): Promise<string> {
   // 检查内存缓存
-  if (csrfTokenCache && (Date.now() - csrfTokenCache.timestamp < CSRF_CACHE_DURATION)) {
+  if (
+    csrfTokenCache &&
+    Date.now() - csrfTokenCache.timestamp < CSRF_CACHE_DURATION
+  ) {
     return csrfTokenCache.token
   }
 
@@ -265,8 +280,7 @@ export async function getCsrfTokenWithCache(): Promise<string> {
         return data.csrf_token
       }
     }
-  }
-  catch (e) {
+  } catch (e) {
     console.warn('获取 CSRF Token 失败:', e)
   }
 

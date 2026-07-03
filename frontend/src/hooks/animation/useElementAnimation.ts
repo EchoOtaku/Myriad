@@ -41,13 +41,10 @@ let elementIdCounter = 0
  * }
  * ```
  */
-export function useElementAnimation(options: ElementAnimationOptions = {}): UseElementAnimationResult {
-  const {
-    groupId,
-    index = 0,
-    staggerDelay,
-    waitForPage = true,
-  } = options
+export function useElementAnimation(
+  options: ElementAnimationOptions = {},
+): UseElementAnimationResult {
+  const { groupId, index = 0, staggerDelay, waitForPage = true } = options
 
   // 生成稳定的 ID
   const idRef = useRef<string>('')
@@ -58,19 +55,18 @@ export function useElementAnimation(options: ElementAnimationOptions = {}): UseE
 
   // 自定义交错将手动计算延迟，以避免协调器重复叠加
   const hasCustomStagger = typeof staggerDelay === 'number'
-  const computedDelay = hasCustomStagger
-    ? index * (staggerDelay ?? 0)
-    : 0
+  const computedDelay = hasCustomStagger ? index * (staggerDelay ?? 0) : 0
   const effectiveGroupId = hasCustomStagger ? undefined : groupId
 
   // 使用 ref 存储状态，避免不必要的渲染
   const stateRef = useRef<AnimationState>(AnimationState.WAITING)
   // 🔧 优化：追踪是否已调度
   const scheduledRef = useRef(false)
-  const [, forceUpdate] = useReducer(x => x + 1, 0)
+  const [, forceUpdate] = useReducer((x) => x + 1, 0)
 
-  const canAnimate = stateRef.current === AnimationState.READY
-    || stateRef.current === AnimationState.RUNNING
+  const canAnimate =
+    stateRef.current === AnimationState.READY ||
+    stateRef.current === AnimationState.RUNNING
   const isAnimating = stateRef.current === AnimationState.RUNNING
 
   useEffect(() => {
@@ -102,10 +98,10 @@ export function useElementAnimation(options: ElementAnimationOptions = {}): UseE
       stateRef.current = state
 
       // 只在状态真正变化时触发渲染
-      if (prevState !== state && (
-        state === AnimationState.READY
-        || state === AnimationState.SKIPPED
-      )) {
+      if (
+        prevState !== state &&
+        (state === AnimationState.READY || state === AnimationState.SKIPPED)
+      ) {
         forceUpdate()
       }
     })
@@ -118,7 +114,14 @@ export function useElementAnimation(options: ElementAnimationOptions = {}): UseE
         stateRef.current = AnimationState.SKIPPED
       }
     }
-  }, [id, effectiveGroupId, hasCustomStagger, computedDelay, index, waitForPage])
+  }, [
+    id,
+    effectiveGroupId,
+    hasCustomStagger,
+    computedDelay,
+    index,
+    waitForPage,
+  ])
 
   const onComplete = useCallback(() => {
     coordinator.markCompleted(id)

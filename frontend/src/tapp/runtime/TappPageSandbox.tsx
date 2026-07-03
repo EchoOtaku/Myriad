@@ -6,7 +6,11 @@
 
 import type { TappCodeStructure } from '../examples/tapps/types'
 import type { TappInstance } from '../types'
-import type { AnimationConfigRef, SafeInsets, TappNotificationOptions } from './sandbox'
+import type {
+  AnimationConfigRef,
+  SafeInsets,
+  TappNotificationOptions,
+} from './sandbox'
 import type { TappBridge } from './TappBridge'
 import type { TappPermissionController } from './TappPermission'
 
@@ -61,8 +65,7 @@ import { useSandboxSubscriptions } from './useSandboxSubscriptions'
 const RE_APPLE_WEBKIT = /\bAppleWebKit\b/
 const RE_CHROMIUM = /\bChrom(e|ium)\b/
 export const isWebKit: boolean = (() => {
-  if (typeof navigator === 'undefined')
-    return false
+  if (typeof navigator === 'undefined') return false
   const ua = navigator.userAgent
   // UA 检测：包含 AppleWebKit 但排除桌面版 Chrome/Chromium
   // iOS 上所有浏览器（CriOS、FxiOS 等）不含 Chrome/Chromium 标识，会被正确识别
@@ -121,9 +124,10 @@ function generatePageHTML(
 ): string {
   const { manifest } = tappInstance
   const isDark = getIsDarkMode()
-  const primaryColor = getComputedStyle(document.documentElement)
-    .getPropertyValue('--color-primary')
-    .trim() || '#94a3b8'
+  const primaryColor =
+    getComputedStyle(document.documentElement)
+      .getPropertyValue('--color-primary')
+      .trim() || '#94a3b8'
 
   // 🔒 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
@@ -141,10 +145,11 @@ function generatePageHTML(
 
   // 🎯 检测 pageHtml 是否已经包含分层结构
   // 如果包含 #tapp-background 或 #tapp-content，说明 Tapp 自己定义了分层
-  const hasLayeredStructure = pageHtmlContent.includes('id="tapp-background"')
-    || pageHtmlContent.includes('id=\'tapp-background\'')
-    || pageHtmlContent.includes('id="tapp-content"')
-    || pageHtmlContent.includes('id=\'tapp-content\'')
+  const hasLayeredStructure =
+    pageHtmlContent.includes('id="tapp-background"') ||
+    pageHtmlContent.includes("id='tapp-background'") ||
+    pageHtmlContent.includes('id="tapp-content"') ||
+    pageHtmlContent.includes("id='tapp-content'")
 
   // JS 代码 - 混合模式下也会加载
   // 🎯 page 模块化：如果有 pageModules，按顺序拼装替代 core+page 标记分割
@@ -156,36 +161,36 @@ function generatePageHTML(
     // 优先使用 code.pageModuleOrder（从后端资源响应，始终最新），
     // 其次 manifest.pageModules（可能因 DB 序列化丢失），
     // 最后按字母序（index.js 最后）
-    const moduleOrder = code.pageModuleOrder
-      || tappInstance.manifest.pageModules
-    const moduleNames = moduleOrder && moduleOrder.length > 0
-      ? moduleOrder.filter(name => name in code.pageModules!)
-      : Object.keys(code.pageModules).sort((a, b) => {
-          if (a === 'index.js')
-            return 1
-          if (b === 'index.js')
-            return -1
-          return a.localeCompare(b)
-        })
+    const moduleOrder =
+      code.pageModuleOrder || tappInstance.manifest.pageModules
+    const moduleNames =
+      moduleOrder && moduleOrder.length > 0
+        ? moduleOrder.filter((name) => name in code.pageModules!)
+        : Object.keys(code.pageModules).sort((a, b) => {
+            if (a === 'index.js') return 1
+            if (b === 'index.js') return -1
+            return a.localeCompare(b)
+          })
     loadedModules = moduleNames
     pageCode = moduleNames
-      .map(name => `// ===== ${name} =====\n${code.pageModules![name]}`)
+      .map((name) => `// ===== ${name} =====\n${code.pageModules![name]}`)
       .join('\n\n')
-  }
-  else {
+  } else {
     loadingMode = 'monolith'
     pageCode = getCodeForMode(code, 'page')
   }
 
   // 🎯 加载模式标识（用于调试和验证）
-  const loadingModeScript = loadedModules.length > 0
-    ? `window._TAPP_LOADING_MODE = '${loadingMode}';\n    window._TAPP_LOADED_MODULES = ${JSON.stringify(loadedModules)};`
-    : `window._TAPP_LOADING_MODE = '${loadingMode}';`
+  const loadingModeScript =
+    loadedModules.length > 0
+      ? `window._TAPP_LOADING_MODE = '${loadingMode}';\n    window._TAPP_LOADED_MODULES = ${JSON.stringify(loadedModules)};`
+      : `window._TAPP_LOADING_MODE = '${loadingMode}';`
 
   // 🎯 i18n 注入脚本
-  const i18nScript = code.i18n && Object.keys(code.i18n).length > 0
-    ? `window._TAPP_I18N = ${JSON.stringify(code.i18n)};`
-    : ''
+  const i18nScript =
+    code.i18n && Object.keys(code.i18n).length > 0
+      ? `window._TAPP_I18N = ${JSON.stringify(code.i18n)};`
+      : ''
 
   // 🎯 使用安装时预编译的 CSS
   const tailwindCSS = code.pageCSS || ''
@@ -277,8 +282,9 @@ function generatePageHTML(
     })();
   </script>
 
-  ${needsJsRender
-    ? `
+  ${
+    needsJsRender
+      ? `
   <!-- 纯 JS 模式：调用 render 函数 -->
   <script nonce="${nonce}">
     (function() {
@@ -304,7 +310,8 @@ function generatePageHTML(
     })();
   </script>
   `
-    : '<!-- 混合/HTML 模式：HTML 已渲染，JS 用于交互 -->'}
+      : '<!-- 混合/HTML 模式：HTML 已渲染，JS 用于交互 -->'
+  }
 </body>
 </html>`
 }
@@ -354,15 +361,18 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   }, [code])
 
   const localeRef = useRef(locale)
-  useEffect(() => { localeRef.current = locale }, [locale])
+  useEffect(() => {
+    localeRef.current = locale
+  }, [locale])
 
   const animationConfigRef = useRef<AnimationConfigRef>(animationConfig)
-  useEffect(() => { animationConfigRef.current = animationConfig }, [animationConfig])
+  useEffect(() => {
+    animationConfigRef.current = animationConfig
+  }, [animationConfig])
 
   // 尺寸更新
   useEffect(() => {
-    if (!iframeRef.current || dimensions.width === 0)
-      return
+    if (!iframeRef.current || dimensions.width === 0) return
     const dims = {
       ...dimensions,
       safeInsetTop: safeInsets?.top ?? 0,
@@ -375,18 +385,22 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
   // 语言变化
   useEffect(() => {
-    if (!bridgeRef.current || !isReady)
-      return
+    if (!bridgeRef.current || !isReady) return
     bridgeRef.current.emit('locale:change', locale)
   }, [locale, isReady])
 
   // 构建媒体状态对象（供 mediaStateChange 事件使用）
-  const modeMap: Record<string, string> = { loop: 'loop', single: 'single', shuffle: 'shuffle' }
+  const modeMap: Record<string, string> = {
+    loop: 'loop',
+    single: 'single',
+    shuffle: 'shuffle',
+  }
 
   const buildMediaState = useCallback((detail: Record<string, unknown>) => {
     const currentSong = detail.currentSong as Record<string, unknown> | null
     const currentTime = (detail.currentTime as number) || 0
-    const audioDuration = (detail.audioDuration as number) || (currentSong?.duration as number) || 0
+    const audioDuration =
+      (detail.audioDuration as number) || (currentSong?.duration as number) || 0
     const volume = (detail.volume as number) ?? 0.7
     const playMode = (detail.playMode as string) || 'loop'
     return {
@@ -415,8 +429,12 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       lyrics: detail.lyrics || [],
       currentLyricIndex: (detail.currentLyricIndex as number) ?? -1,
       primaryColor: detail.musicColor || '#fc3c44',
-      secondaryColor: (detail.musicColors as any)?.secondary || detail.musicColor || '#fc3c44',
-      accentColor: (detail.musicColors as any)?.accent || detail.musicColor || '#fc3c44',
+      secondaryColor:
+        (detail.musicColors as any)?.secondary ||
+        detail.musicColor ||
+        '#fc3c44',
+      accentColor:
+        (detail.musicColors as any)?.accent || detail.musicColor || '#fc3c44',
       lightColor: (detail.musicColors as any)?.light || '#ffffff',
       darkColor: (detail.musicColors as any)?.dark || '#000000',
     }
@@ -424,22 +442,18 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
   // 媒体状态变化 - 转发给 Tapp 沙箱
   useEffect(() => {
-    if (!isReady)
-      return
+    if (!isReady) return
 
     const bridge = bridgeRef.current
     const tapp = tappInstanceRef.current
 
-    if (!bridge || !tapp?.grantedPermissions?.includes('media:read'))
-      return
+    if (!bridge || !tapp?.grantedPermissions?.includes('media:read')) return
 
     const handleMusicStateChange = (e: Event) => {
       const detail = (e as CustomEvent).detail
-      if (!detail || !bridgeRef.current)
-        return
+      if (!detail || !bridgeRef.current) return
       const currentTapp = tappInstanceRef.current
-      if (!currentTapp?.grantedPermissions?.includes('media:read'))
-        return
+      if (!currentTapp?.grantedPermissions?.includes('media:read')) return
       bridgeRef.current.emit('mediaStateChange', buildMediaState(detail))
     }
 
@@ -458,8 +472,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     if (currentGlobalState) {
       // 直接从全局状态构建并推送
       bridge.emit('mediaStateChange', buildMediaState(currentGlobalState))
-    }
-    else {
+    } else {
       // 全局状态尚未初始化，触发同步请求（监听器已就位，会收到结果）
       window.dispatchEvent(new CustomEvent('request-music-state-sync'))
     }
@@ -470,23 +483,23 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
     return () => {
       clearTimeout(retryTimer)
-      window.removeEventListener('music-player-state-change', handleMusicStateChange)
+      window.removeEventListener(
+        'music-player-state-change',
+        handleMusicStateChange,
+      )
     }
   }, [isReady])
 
   // 媒体进度实时推送 - 同时发送 mediaProgress（新API）和 mediaStateChange（向后兼容）
   useEffect(() => {
-    if (!isReady)
-      return
+    if (!isReady) return
 
     const handleProgress = (e: Event) => {
       const bridge = bridgeRef.current
-      if (!bridge)
-        return
+      if (!bridge) return
 
       const tapp = tappInstanceRef.current
-      if (!tapp?.grantedPermissions?.includes('media:read'))
-        return
+      if (!tapp?.grantedPermissions?.includes('media:read')) return
 
       const { currentTime, audioDuration } = (e as CustomEvent).detail
       const progress = {
@@ -502,7 +515,11 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       // 已有 tapp（如音乐播放器）依赖 onStateChange 接收进度更新
       const globalState = (window as any).__musicPlayerState
       if (globalState) {
-        const lastState = buildMediaState({ ...globalState, currentTime, audioDuration })
+        const lastState = buildMediaState({
+          ...globalState,
+          currentTime,
+          audioDuration,
+        })
         bridge.emit('mediaStateChange', lastState)
       }
     }
@@ -515,8 +532,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
   // 动画级别变化
   useEffect(() => {
-    if (!isReady)
-      return
+    if (!isReady) return
     bridgeRef.current?.emit('animationLevel:change', animationConfig.level)
   }, [isReady, animationConfig.level])
 
@@ -525,9 +541,12 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     onReady?.()
   }, [onReady])
 
-  const handleError = useCallback((error: Error) => {
-    onError?.(error)
-  }, [onError])
+  const handleError = useCallback(
+    (error: Error) => {
+      onError?.(error)
+    },
+    [onError],
+  )
 
   // 初始化
   // 🎯 依赖优化：只使用稳定的 ID 和指纹，不使用对象引用
@@ -535,8 +554,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   //    Safari/WebKit 不会重新渲染已挂载的 sandboxed iframe 的 srcdoc 变更
   useEffect(() => {
     const container = containerRef.current
-    if (!container)
-      return
+    if (!container) return
 
     // 🎯 从 ref 获取当前对象，避免闭包陈旧问题
     const currentTappInstance = tappInstanceRef.current
@@ -564,7 +582,12 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     bridge.initialize(iframe, currentTappInstance, sessionToken)
 
     // 注册所有处理器
-    registerLifecycleHandlers(bridge, currentTappInstance, handleReady, handleError)
+    registerLifecycleHandlers(
+      bridge,
+      currentTappInstance,
+      handleReady,
+      handleError,
+    )
     registerUIHandlers(bridge, () => localeRef.current, onNotification)
     registerStorageHandlers(bridge, currentTappInstance.id)
     registerUserHandlers(bridge, currentTappInstance)
@@ -581,19 +604,31 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerAnimationHandlers(bridge, animationConfigRef)
     registerDynamicContentHandlers(bridge, currentTappInstance)
     registerAdvancedHandlers(bridge, currentTappInstance)
-    const closeFederationSockets = registerFederationHandlers(bridge, currentTappInstance)
+    const closeFederationSockets = registerFederationHandlers(
+      bridge,
+      currentTappInstance,
+    )
     registerContextHandlers(bridge, currentTappInstance)
 
     // 收集 URL 启动参数传递给沙箱
     const launchParams: Record<string, string> = {}
     try {
       const sp = new URLSearchParams(window.location.search)
-      sp.forEach((v, k) => { launchParams[k] = v })
+      sp.forEach((v, k) => {
+        launchParams[k] = v
+      })
+    } catch (_) {
+      /* ignore */
     }
-    catch (_) { /* ignore */ }
 
     // 生成 HTML（使用预生成的 session token）
-    const html = generatePageHTML(currentTappInstance, currentCode, sessionToken, safeInsetsRef.current, launchParams)
+    const html = generatePageHTML(
+      currentTappInstance,
+      currentCode,
+      sessionToken,
+      safeInsetsRef.current,
+      launchParams,
+    )
 
     // 清理函数列表
     const cleanups: (() => void)[] = [closeFederationSockets]
@@ -603,16 +638,15 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       // WebKit 存在合成层 bug：当 iframe 嵌套在含 opacity 动画、overflow:hidden 的祖先链中时，
       // iframe 内容无法被绘制到屏幕上。
       // 解决方案：将 iframe 挂载到 body，使用 position:fixed + ResizeObserver 同步位置和尺寸。
-      iframe.style.cssText = 'position:fixed;border:none;display:block;z-index:40;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
+      iframe.style.cssText =
+        'position:fixed;border:none;display:block;z-index:40;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
 
       let lastRect = ''
       const syncPosition = () => {
-        if (!document.body.contains(iframe))
-          return
+        if (!document.body.contains(iframe)) return
         const rect = container.getBoundingClientRect()
         const key = `${rect.top},${rect.left},${rect.width},${rect.height}`
-        if (key === lastRect)
-          return
+        if (key === lastRect) return
         lastRect = key
         iframe.style.top = `${rect.top}px`
         iframe.style.left = `${rect.left}px`
@@ -641,11 +675,11 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
           document.body.removeChild(iframe)
         }
       })
-    }
-    else {
+    } else {
       // 🎯 非 Safari 内联模式
       // iframe 直接放在 container 内，位置/尺寸自然跟随父元素，无延迟
-      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:none;display:block;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
+      iframe.style.cssText =
+        'position:absolute;inset:0;width:100%;height:100%;border:none;display:block;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
 
       container.appendChild(iframe)
       iframe.srcdoc = html
@@ -658,16 +692,16 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     }
 
     return () => {
-      cleanups.forEach(fn => fn())
+      cleanups.forEach((fn) => fn())
       setIsReady(false)
       iframeRef.current = null
       bridge.destroy()
       onDestroy?.()
     }
-  // 🎯 稳定依赖：只有这些真正改变时才重建 iframe
-  // - tappInstance.id: Tapp 实例 ID
-  // - codeFingerprint: 代码指纹（内容变化才会变）
-  // ⚠️ 注意：safeInsets 通过 ref 获取，不作为依赖（通过 postMessage 动态更新）
+    // 🎯 稳定依赖：只有这些真正改变时才重建 iframe
+    // - tappInstance.id: Tapp 实例 ID
+    // - codeFingerprint: 代码指纹（内容变化才会变）
+    // ⚠️ 注意：safeInsets 通过 ref 获取，不作为依赖（通过 postMessage 动态更新）
   }, [tappInstance.id, codeFingerprint, handleReady])
 
   return (

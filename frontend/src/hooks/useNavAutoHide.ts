@@ -18,8 +18,7 @@ const TRANSFORM_HIDE_MOBILE = 'translateX(-50%) translateY(20px)'
 export function useNavAutoHide(selector = '.nav-container') {
   useEffect(() => {
     const navContainer = document.querySelector(selector) as HTMLElement
-    if (!navContainer)
-      return
+    if (!navContainer) return
 
     // ===== 状态 =====
     let lastScrollY = window.scrollY
@@ -37,8 +36,12 @@ export function useNavAutoHide(selector = '.nav-container') {
 
     const applyVisibility = (visible: boolean) => {
       const transform = visible
-        ? (cachedIsDesktop ? TRANSFORM_SHOW_DESKTOP : TRANSFORM_SHOW_MOBILE)
-        : (cachedIsDesktop ? TRANSFORM_HIDE_DESKTOP : TRANSFORM_HIDE_MOBILE)
+        ? cachedIsDesktop
+          ? TRANSFORM_SHOW_DESKTOP
+          : TRANSFORM_SHOW_MOBILE
+        : cachedIsDesktop
+          ? TRANSFORM_HIDE_DESKTOP
+          : TRANSFORM_HIDE_MOBILE
 
       navContainer.style.opacity = visible ? '1' : '0'
       navContainer.style.transform = transform
@@ -47,23 +50,20 @@ export function useNavAutoHide(selector = '.nav-container') {
 
     // ===== 核心显示/隐藏 =====
     const showNav = () => {
-      if (isNavVisible)
-        return
+      if (isNavVisible) return
       isNavVisible = true
       hiddenByScroll = false
       applyVisibility(true)
     }
 
     const hideNav = () => {
-      if (!isNavVisible || isHovering)
-        return
+      if (!isNavVisible || isHovering) return
       isNavVisible = false
       applyVisibility(false)
     }
 
     const hideNavByScroll = () => {
-      if (!isNavVisible || isHovering)
-        return
+      if (!isNavVisible || isHovering) return
       isNavVisible = false
       hiddenByScroll = true
       applyVisibility(false)
@@ -90,11 +90,14 @@ export function useNavAutoHide(selector = '.nav-container') {
       const delta = currentScrollY - lastScrollY
       const isDown = delta > 0
 
-      if (isDown && delta > SCROLL_THRESHOLD && currentScrollY > PAGE_TOP_THRESHOLD) {
+      if (
+        isDown &&
+        delta > SCROLL_THRESHOLD &&
+        currentScrollY > PAGE_TOP_THRESHOLD
+      ) {
         clearInactivityTimer()
         hideNavByScroll()
-      }
-      else if (!isDown || currentScrollY < PAGE_TOP_THRESHOLD) {
+      } else if (!isDown || currentScrollY < PAGE_TOP_THRESHOLD) {
         showNav()
         startInactivityTimer()
       }
@@ -114,8 +117,7 @@ export function useNavAutoHide(selector = '.nav-container') {
     let mouseRafId = 0
 
     const processMouseMove = () => {
-      if (!pendingMouseMove)
-        return
+      if (!pendingMouseMove) return
       const e = pendingMouseMove
       pendingMouseMove = null
       mouseRafId = 0
@@ -192,10 +194,8 @@ export function useNavAutoHide(selector = '.nav-container') {
 
     return () => {
       controller.abort()
-      if (rafId)
-        cancelAnimationFrame(rafId)
-      if (mouseRafId)
-        cancelAnimationFrame(mouseRafId)
+      if (rafId) cancelAnimationFrame(rafId)
+      if (mouseRafId) cancelAnimationFrame(mouseRafId)
       clearInactivityTimer()
     }
   }, [selector])

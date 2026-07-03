@@ -2,7 +2,7 @@
 
 ## 概述
 
-资料库页面展示从各个平台（Steam、Bilibili、网易云音乐）获取的游戏、视频、音乐收藏数据，使用精美的瀑布流布局混合展示不同类型的内容。
+资料库页面展示从各个平台（Steam、Bilibili、Bangumi、网易云音乐）获取的游戏、视频、动画、书籍、音乐收藏数据，使用精美的瀑布流布局混合展示不同类型的内容。
 
 ## 功能特性
 
@@ -10,6 +10,7 @@
 
 - **游戏**：从 Steam 平台获取（游玩时间 ≥ 3 小时的游戏）
 - **视频**：从 Bilibili 获取追番/追剧和收藏的视频
+- **Bangumi 收藏**：从 Bangumi 获取动画、书籍、游戏、音乐、三次元条目和评分状态
 - **音乐**：从网易云音乐获取喜欢的歌曲
 
 ### 卡片设计
@@ -52,7 +53,7 @@
 ```rust
 pub struct LibraryItem {
     pub id: String,
-    pub item_type: String, // "game", "video", "music"
+    pub item_type: String, // "game", "video", "music", "anime", "book", "tv_series" 等
     pub title: String,
     pub cover: Option<String>,
     pub platform: String,
@@ -84,7 +85,7 @@ pub struct LibraryItem {
 
 ## 使用方法
 
-1. **配置平台**：在配置页面设置 Steam、Bilibili、网易云音乐的 API 凭证
+1. **配置平台**：在配置页面设置 Steam、Bilibili、Bangumi、网易云音乐的 API 凭证
 2. **获取数据**：点击"灯泡"图标生成报告（会自动获取平台数据并存入数据库）
 3. **访问资料库**：点击导航栏的资料库图标 📚
 

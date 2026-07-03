@@ -108,7 +108,7 @@ server {
     # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
 
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:1103;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -139,7 +139,7 @@ http {
 ### 使用 curl 验证
 
 ```bash
-curl -I http://localhost:3000
+curl -I http://localhost:1103
 ```
 
 应该看到类似的输出:

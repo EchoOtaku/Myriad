@@ -3,7 +3,11 @@
  * 管理 Tapp 注册的小组件并提供给 WidgetGrid 使用
  */
 
-import type { WidgetComponentProps, WidgetSize, WidgetType } from '../components/WidgetGrid'
+import type {
+  WidgetComponentProps,
+  WidgetSize,
+  WidgetType,
+} from '../components/WidgetGrid'
 import type { RegisteredWidget } from '../tapp/types'
 import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
 import { TappWidgetComponent } from '../components/widgets/TappWidget'
@@ -23,8 +27,7 @@ const TAPP_SIZE_MAP: Record<string, WidgetSize> = {
 
 // 将 Tapp WidgetSize 转换为 WidgetGrid 兼容的尺寸
 function mapTappSize(size: string | undefined): WidgetSize {
-  if (!size)
-    return '2x2'
+  if (!size) return '2x2'
   return TAPP_SIZE_MAP[size] || '2x2'
 }
 
@@ -34,7 +37,7 @@ function mapTappSizes(sizes: string[] | undefined): WidgetSize[] {
     return ['2x2'] // 默认尺寸
   }
   const mapped = sizes
-    .map(s => TAPP_SIZE_MAP[s])
+    .map((s) => TAPP_SIZE_MAP[s])
     .filter((s): s is WidgetSize => s !== undefined)
   return mapped.length > 0 ? mapped : ['2x2']
 }
@@ -100,12 +103,10 @@ export function useTappWidgets(): {
       const widgetTypes = registeredWidgets.map(createTappWidgetType)
       setTappWidgets(widgetTypes)
       setError(null)
-    }
-    catch (err) {
+    } catch (err) {
       console.error('[useTappWidgets] Failed to load widgets:', err)
       setError(err instanceof Error ? err.message : 'Failed to load widgets')
-    }
-    finally {
+    } finally {
       setIsLoading(false)
     }
   }, [])
@@ -123,12 +124,10 @@ export function useTappWidgets(): {
       const widgetTypes = registeredWidgets.map(createTappWidgetType)
       setTappWidgets(widgetTypes)
       setError(null)
-    }
-    catch (err) {
+    } catch (err) {
       console.error('[useTappWidgets] Failed to load widgets:', err)
       setError(err instanceof Error ? err.message : 'Failed to load widgets')
-    }
-    finally {
+    } finally {
       setIsLoading(false)
     }
   }, [])
@@ -180,8 +179,8 @@ export function useCombinedWidgets(systemWidgets: WidgetType[]): WidgetType[] {
 
   return useMemo(() => {
     // 过滤掉重复的（基于 ID）
-    const systemIds = new Set(systemWidgets.map(w => w.id))
-    const uniqueTappWidgets = tappWidgets.filter(w => !systemIds.has(w.id))
+    const systemIds = new Set(systemWidgets.map((w) => w.id))
+    const uniqueTappWidgets = tappWidgets.filter((w) => !systemIds.has(w.id))
 
     return [...systemWidgets, ...uniqueTappWidgets]
   }, [systemWidgets, tappWidgets])

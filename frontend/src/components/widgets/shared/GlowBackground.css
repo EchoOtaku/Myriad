@@ -102,6 +102,7 @@
     opacity: 0;
     transform: translate3d(0, 0, 0) scale(0.8);
   }
+
   100% {
     opacity: var(--glow-opacity, 0.12);
     transform: translate3d(0, 0, 0) scale(1);
@@ -113,6 +114,7 @@
     opacity: 0;
     transform: translate3d(0, 0, 0) scale(0.8);
   }
+
   100% {
     opacity: var(--glow-opacity, 0.08);
     transform: translate3d(0, 0, 0) scale(1);

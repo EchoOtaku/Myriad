@@ -105,8 +105,7 @@ class RequestDeduplicator {
 
   async dedupe<T>(key: string, factory: () => Promise<T>): Promise<T> {
     const existing = this.pending.get(key)
-    if (existing)
-      return existing as Promise<T>
+    if (existing) return existing as Promise<T>
 
     const promise = factory().finally(() => this.pending.delete(key))
     this.pending.set(key, promise)
@@ -187,7 +186,10 @@ export class TappResourceLoader {
   private pageCache = new Map<string, ResourceCacheEntry<PageResources>>()
 
   /** 原始资源缓存（从 API 获取，多个尺寸共享） */
-  private rawResourceCache = new Map<string, ResourceCacheEntry<TappApiService.TappResources>>()
+  private rawResourceCache = new Map<
+    string,
+    ResourceCacheEntry<TappApiService.TappResources>
+  >()
 
   /** Widget CSS 缓存 (key: tappId:size) */
   private widgetCssCache = new Map<string, ResourceCacheEntry<string>>()
@@ -265,13 +267,10 @@ export class TappResourceLoader {
       if (cssMode === 'separated') {
         // 混合模式：共享样式 + Widget 专用样式
         const parts: string[] = []
-        if (raw.styles)
-          parts.push(raw.styles)
-        if (raw.widgetStyles)
-          parts.push(raw.widgetStyles)
+        if (raw.styles) parts.push(raw.styles)
+        if (raw.widgetStyles) parts.push(raw.widgetStyles)
         effectiveStyles = parts.length > 0 ? parts.join('\n') : undefined
-      }
-      else {
+      } else {
         effectiveStyles = raw.styles
       }
 
@@ -288,9 +287,10 @@ export class TappResourceLoader {
         raw.widgetCSS, // 使用后端预分离的 Widget CSS
       )
       // 合并：原生 CSS 在前，Tailwind 在后（Tailwind 可覆盖）
-      const css = cssMode === 'separated' && effectiveStyles
-        ? `${effectiveStyles}\n${tailwindCSS}`
-        : tailwindCSS
+      const css =
+        cssMode === 'separated' && effectiveStyles
+          ? `${effectiveStyles}\n${tailwindCSS}`
+          : tailwindCSS
 
       const resources: WidgetResources = {
         core: coreCode,
@@ -352,13 +352,10 @@ export class TappResourceLoader {
       if (cssMode === 'separated') {
         // 混合模式：共享样式 + Page 专用样式
         const parts: string[] = []
-        if (raw.styles)
-          parts.push(raw.styles)
-        if (raw.pageStyles)
-          parts.push(raw.pageStyles)
+        if (raw.styles) parts.push(raw.styles)
+        if (raw.pageStyles) parts.push(raw.pageStyles)
         effectiveStyles = parts.length > 0 ? parts.join('\n') : undefined
-      }
-      else {
+      } else {
         effectiveStyles = raw.styles
       }
 
@@ -375,9 +372,10 @@ export class TappResourceLoader {
         raw.pageModules,
       )
       // 合并：原生 CSS 在前，Tailwind 在后（Tailwind 可覆盖）
-      const css = cssMode === 'separated' && effectiveStyles
-        ? `${effectiveStyles}\n${tailwindCSS}`
-        : tailwindCSS
+      const css =
+        cssMode === 'separated' && effectiveStyles
+          ? `${effectiveStyles}\n${tailwindCSS}`
+          : tailwindCSS
 
       const resources: PageResources = {
         core: coreCode,
@@ -433,10 +431,14 @@ export class TappResourceLoader {
     // 🎯 策略 1: 优先使用后端预分离的 Widget CSS
     if (precompiledWidgetCSS && precompiledWidgetCSS.length > 50) {
       css = precompiledWidgetCSS
-    }
-    else {
+    } else {
       // 策略 2: 从源码生成 Widget 专用 CSS
-      css = CssSeparator.generateWidgetCSS(coreCode, widgetCode, widgetHtml, styles)
+      css = CssSeparator.generateWidgetCSS(
+        coreCode,
+        widgetCode,
+        widgetHtml,
+        styles,
+      )
     }
 
     // 缓存
@@ -478,10 +480,15 @@ export class TappResourceLoader {
     // 🎯 策略 1: 优先使用后端预分离的 Page CSS
     if (precompiledPageCSS && precompiledPageCSS.length > 50) {
       css = precompiledPageCSS
-    }
-    else {
+    } else {
       // 策略 2: 从源码生成 Page 专用 CSS
-      css = CssSeparator.generatePageCSS(coreCode, pageCode, pageHtml, styles, pageModules)
+      css = CssSeparator.generatePageCSS(
+        coreCode,
+        pageCode,
+        pageHtml,
+        styles,
+        pageModules,
+      )
     }
 
     // 缓存
@@ -499,7 +506,9 @@ export class TappResourceLoader {
   /**
    * 获取原始资源（带缓存）
    */
-  private async fetchRawResources(tappId: string): Promise<TappApiService.TappResources> {
+  private async fetchRawResources(
+    tappId: string,
+  ): Promise<TappApiService.TappResources> {
     const cached = this.rawResourceCache.get(tappId)
     if (cached && Date.now() - cached.timestamp < cached.ttl) {
       return cached.data
@@ -516,8 +525,7 @@ export class TappResourceLoader {
         })
 
         return resources
-      }
-      catch {
+      } catch {
         // 回退到只获取代码
         const code = await TappApiService.getTappCode(tappId)
         return { code }
@@ -543,8 +551,7 @@ export class TappResourceLoader {
       const pageIdx = code.indexOf(pageMarker, widgetIdx)
       if (pageIdx !== -1) {
         code = code.substring(0, widgetIdx) + code.substring(pageIdx)
-      }
-      else {
+      } else {
         code = code.substring(0, widgetIdx)
       }
     }
@@ -561,21 +568,25 @@ export class TappResourceLoader {
   /**
    * 提取特定模式的代码
    */
-  private extractModeCode(fullCode: string, mode: 'widget' | 'page'): string | undefined {
-    const marker = mode === 'widget'
-      ? '// ========== Widget Code =========='
-      : '// ========== Page Code =========='
+  private extractModeCode(
+    fullCode: string,
+    mode: 'widget' | 'page',
+  ): string | undefined {
+    const marker =
+      mode === 'widget'
+        ? '// ========== Widget Code =========='
+        : '// ========== Page Code =========='
 
     const startIdx = fullCode.indexOf(marker)
-    if (startIdx === -1)
-      return undefined
+    if (startIdx === -1) return undefined
 
     const codeStart = startIdx + marker.length
 
     // 查找下一个标记或结尾
-    const otherMarker = mode === 'widget'
-      ? '// ========== Page Code =========='
-      : '// ========== Widget Code =========='
+    const otherMarker =
+      mode === 'widget'
+        ? '// ========== Page Code =========='
+        : '// ========== Widget Code =========='
 
     const endIdx = fullCode.indexOf(otherMarker, codeStart)
 
@@ -607,8 +618,7 @@ export class TappResourceLoader {
       this.pageCache.delete(tappId)
       this.pageCssCache.delete(tappId)
       this.rawResourceCache.delete(tappId)
-    }
-    else {
+    } else {
       // 清除所有缓存
       this.widgetCache.clear()
       this.pageCache.clear()
@@ -659,10 +669,7 @@ export class TappResourceLoader {
    * 获取 Widget CSS（仅 CSS，不加载其他资源）
    * 用于需要提前获取 CSS 但不需要其他资源的场景
    */
-  async getWidgetCSSOnly(
-    tappId: string,
-    size: string,
-  ): Promise<string | null> {
+  async getWidgetCSSOnly(tappId: string, size: string): Promise<string | null> {
     const cacheKey = `${tappId}:${size}`
     const cached = this.widgetCssCache.get(cacheKey)
     if (cached && Date.now() - cached.timestamp < cached.ttl) {

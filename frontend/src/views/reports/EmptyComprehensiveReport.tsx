@@ -9,7 +9,9 @@ interface EmptyComprehensiveReportProps {
   isAdmin: boolean
 }
 
-export function EmptyComprehensiveReport({ isAdmin }: EmptyComprehensiveReportProps) {
+export function EmptyComprehensiveReport({
+  isAdmin,
+}: EmptyComprehensiveReportProps) {
   const { t } = useI18n()
 
   return (

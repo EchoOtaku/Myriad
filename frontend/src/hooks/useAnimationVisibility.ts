@@ -17,7 +17,9 @@ import { observeIntersection } from './animation'
  * );
  * ```
  */
-export function useAnimationVisibility<T extends HTMLElement = HTMLElement>(options?: {
+export function useAnimationVisibility<
+  T extends HTMLElement = HTMLElement,
+>(options?: {
   /** 根边距，默认 '50px' 提前加载 */
   rootMargin?: string
   /** 可见性阈值，默认 0 */
@@ -37,13 +39,12 @@ export function useAnimationVisibility<T extends HTMLElement = HTMLElement>(opti
   const ref = useRef<T>(null)
   const [isVisible, setIsVisible] = useState(defaultVisible)
   const [shouldAnimate, setShouldAnimate] = useState(defaultVisible)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const unobserveRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const element = ref.current
-    if (!element)
-      return
+    if (!element) return
 
     // 检查是否支持 IntersectionObserver
     if (!('IntersectionObserver' in window)) {
@@ -68,8 +69,7 @@ export function useAnimationVisibility<T extends HTMLElement = HTMLElement>(opti
         if (nowVisible) {
           // 立即恢复动画
           setShouldAnimate(true)
-        }
-        else {
+        } else {
           // 延迟暂停，避免快速滚动时闪烁
           timeoutRef.current = setTimeout(() => {
             setShouldAnimate(false)
@@ -105,37 +105,36 @@ export function useAnimationVisibilityBatch(options?: {
   const [visibleSet, setVisibleSet] = useState<Set<Element>>(new Set())
   const unobserveMap = useRef<Map<Element, () => void>>(new Map())
 
-  const observe = useCallback((element: Element | null) => {
-    if (!element || !('IntersectionObserver' in window))
-      return
+  const observe = useCallback(
+    (element: Element | null) => {
+      if (!element || !('IntersectionObserver' in window)) return
 
-    // 已经在观察
-    if (unobserveMap.current.has(element))
-      return
+      // 已经在观察
+      if (unobserveMap.current.has(element)) return
 
-    const unobserve = observeIntersection(
-      element,
-      (entry) => {
-        setVisibleSet((prev) => {
-          const next = new Set(prev)
-          if (entry.isIntersecting) {
-            next.add(entry.target)
-          }
-          else {
-            next.delete(entry.target)
-          }
-          return next
-        })
-      },
-      { rootMargin, threshold },
-    )
+      const unobserve = observeIntersection(
+        element,
+        (entry) => {
+          setVisibleSet((prev) => {
+            const next = new Set(prev)
+            if (entry.isIntersecting) {
+              next.add(entry.target)
+            } else {
+              next.delete(entry.target)
+            }
+            return next
+          })
+        },
+        { rootMargin, threshold },
+      )
 
-    unobserveMap.current.set(element, unobserve)
-  }, [rootMargin, threshold])
+      unobserveMap.current.set(element, unobserve)
+    },
+    [rootMargin, threshold],
+  )
 
   const unobserve = useCallback((element: Element | null) => {
-    if (!element)
-      return
+    if (!element) return
 
     const unobserveFn = unobserveMap.current.get(element)
     if (unobserveFn) {
@@ -153,7 +152,7 @@ export function useAnimationVisibilityBatch(options?: {
   // 清理
   useEffect(() => {
     return () => {
-      unobserveMap.current.forEach(unobserveFn => unobserveFn())
+      unobserveMap.current.forEach((unobserveFn) => unobserveFn())
       unobserveMap.current.clear()
     }
   }, [])
@@ -179,13 +178,11 @@ export function useAnimationPauseOnHidden<T extends HTMLElement = HTMLElement>(
 
   useEffect(() => {
     const element = ref.current
-    if (!element)
-      return
+    if (!element) return
 
     if (shouldAnimate) {
       element.classList.remove('animation-paused')
-    }
-    else {
+    } else {
       element.classList.add('animation-paused')
     }
   }, [shouldAnimate])

@@ -76,12 +76,17 @@ export const AVAILABLE_COLORS: readonly ColorOption[] = Object.freeze([
     id: 'adaptive',
     nameKey: 'colorAdaptive',
     value: 'adaptive',
-    cssValue: 'color-mix(in srgb, var(--color-primary) 50%, var(--adaptive-base))',
+    cssValue:
+      'color-mix(in srgb, var(--color-primary) 50%, var(--adaptive-base))',
   },
 ])
 
 // 字体大小选项
-export const FONT_SIZE_OPTIONS: readonly { id: string, nameKey: string, value: number }[] = Object.freeze([
+export const FONT_SIZE_OPTIONS: readonly {
+  id: string
+  nameKey: string
+  value: number
+}[] = Object.freeze([
   { id: 'md', nameKey: 'sizeMedium', value: 0.8 },
   { id: 'lg', nameKey: 'sizeLarge', value: 1.0 },
   { id: 'xl', nameKey: 'sizeXLarge', value: 1.2 },
@@ -163,9 +168,9 @@ export const AVAILABLE_FONTS: readonly FontOption[] = Object.freeze([
 ])
 
 // 创建快速查找 Map
-const fontMap = new Map(AVAILABLE_FONTS.map(f => [f.id, f]))
-const colorMap = new Map(AVAILABLE_COLORS.map(c => [c.id, c]))
-const sizeMap = new Map(FONT_SIZE_OPTIONS.map(s => [s.value, s]))
+const fontMap = new Map(AVAILABLE_FONTS.map((f) => [f.id, f]))
+const colorMap = new Map(AVAILABLE_COLORS.map((c) => [c.id, c]))
+const sizeMap = new Map(FONT_SIZE_OPTIONS.map((s) => [s.value, s]))
 
 // ==================== 字体加载器 ====================
 
@@ -192,7 +197,10 @@ function loadFont(font: FontOption): Promise<void> {
   // CSS 变量值可能包含 fallback 列表（如 "Inter-hash, -apple-system, ..."），
   // document.fonts.load() 仅需第一个字体名
   const primaryFamily = computedValue
-    ? computedValue.split(',')[0].trim().replace(/^["']|["']$/g, '')
+    ? computedValue
+        .split(',')[0]
+        .trim()
+        .replace(/^["']|["']$/g, '')
     : font.name
 
   const promise = document.fonts
@@ -225,7 +233,7 @@ let initPromise: Promise<void> | null = null
 
 function notifyListeners() {
   const state = { ...globalState }
-  listeners.forEach(listener => listener(state))
+  listeners.forEach((listener) => listener(state))
 }
 
 function updateGlobalState(updates: Partial<TitleStyle>) {
@@ -239,7 +247,11 @@ const SAVE_DEBOUNCE_MS = 500
 
 async function debouncedSave(
   csrfToken: string,
-  settings: Partial<{ title_font: string, title_font_size: number, title_color: string }>,
+  settings: Partial<{
+    title_font: string
+    title_font_size: number
+    title_color: string
+  }>,
 ) {
   if (saveTimeout) {
     clearTimeout(saveTimeout)
@@ -256,8 +268,7 @@ async function debouncedSave(
         credentials: 'include',
         body: JSON.stringify(settings),
       })
-    }
-    catch (err) {
+    } catch (err) {
       console.error('保存标题样式失败:', err)
     }
   }, SAVE_DEBOUNCE_MS)
@@ -265,16 +276,13 @@ async function debouncedSave(
 
 // 初始化全局状态
 async function initGlobalState(): Promise<void> {
-  if (isGlobalInitialized)
-    return
-  if (initPromise)
-    return initPromise
+  if (isGlobalInitialized) return
+  if (initPromise) return initPromise
 
   initPromise = (async () => {
     try {
       const response = await fetch(`${API_URL}/api/config/ui`)
-      if (!response.ok)
-        return
+      if (!response.ok) return
 
       const data = await response.json()
 
@@ -284,8 +292,7 @@ async function initGlobalState(): Promise<void> {
       if (data.title_font && fontMap.has(data.title_font)) {
         updates.font = data.title_font
         const font = fontMap.get(data.title_font)
-        if (font)
-          loadFont(font) // 异步加载，不阻塞
+        if (font) loadFont(font) // 异步加载，不阻塞
       }
 
       if (data.title_font_size != null) {
@@ -302,11 +309,9 @@ async function initGlobalState(): Promise<void> {
       if (Object.keys(updates).length > 0) {
         updateGlobalState(updates)
       }
-    }
-    catch (err) {
+    } catch (err) {
       console.error('加载标题样式设置失败:', err)
-    }
-    finally {
+    } finally {
       isGlobalInitialized = true
       initPromise = null
     }
@@ -327,9 +332,18 @@ export function useTitleFont() {
   const mountedRef = useRef(true)
 
   // 缓存当前配置
-  const currentFont = useMemo(() => fontMap.get(state.font) || AVAILABLE_FONTS[0], [state.font])
-  const currentColor = useMemo(() => colorMap.get(state.color) || AVAILABLE_COLORS[0], [state.color])
-  const currentFontSizeOption = useMemo(() => sizeMap.get(state.fontSize) || FONT_SIZE_OPTIONS[1], [state.fontSize])
+  const currentFont = useMemo(
+    () => fontMap.get(state.font) || AVAILABLE_FONTS[0],
+    [state.font],
+  )
+  const currentColor = useMemo(
+    () => colorMap.get(state.color) || AVAILABLE_COLORS[0],
+    [state.color],
+  )
+  const currentFontSizeOption = useMemo(
+    () => sizeMap.get(state.fontSize) || FONT_SIZE_OPTIONS[1],
+    [state.fontSize],
+  )
 
   // 订阅全局状态
   useEffect(() => {
@@ -351,25 +365,26 @@ export function useTitleFont() {
   }, [])
 
   // 设置字体
-  const setTitleFont = useCallback(async (fontId: string, csrfToken?: string) => {
-    const font = fontMap.get(fontId)
-    if (!font)
-      return
+  const setTitleFont = useCallback(
+    async (fontId: string, csrfToken?: string) => {
+      const font = fontMap.get(fontId)
+      if (!font) return
 
-    setIsLoading(true)
-    try {
-      await loadFont(font)
-      updateGlobalState({ font: fontId })
-      if (csrfToken) {
-        debouncedSave(csrfToken, { title_font: fontId })
+      setIsLoading(true)
+      try {
+        await loadFont(font)
+        updateGlobalState({ font: fontId })
+        if (csrfToken) {
+          debouncedSave(csrfToken, { title_font: fontId })
+        }
+      } finally {
+        if (mountedRef.current) {
+          setIsLoading(false)
+        }
       }
-    }
-    finally {
-      if (mountedRef.current) {
-        setIsLoading(false)
-      }
-    }
-  }, [])
+    },
+    [],
+  )
 
   // 设置字体大小
   const setTitleFontSize = useCallback((size: number, csrfToken?: string) => {
@@ -432,8 +447,7 @@ export function getCurrentTitleColorId(): string {
 export function getTitleColorCss(colorId?: string, isDark?: boolean): string {
   const id = colorId || globalState.color
   const color = colorMap.get(id)
-  if (!color)
-    return AVAILABLE_COLORS[0].cssValue
+  if (!color) return AVAILABLE_COLORS[0].cssValue
 
   if (id === 'adaptive') {
     const adaptiveBase = isDark ? '#ffffff' : '#000000'

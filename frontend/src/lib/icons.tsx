@@ -13,8 +13,8 @@ import type { IconType } from 'react-icons'
 import {
   Activity as LuActivity,
   AlertCircle as LuAlertCircle,
-  AlignJustify as LuAlignJustify,
   AlertTriangle as LuAlertTriangle,
+  AlignJustify as LuAlignJustify,
   ArrowRight as LuArrowRight,
   ArrowUpDown as LuArrowUpDown,
   BarChart3 as LuBarChart3,
@@ -26,8 +26,8 @@ import {
   ChevronLeft as LuChevronLeft,
   ChevronRight as LuChevronRight,
   ChevronUp as LuChevronUp,
-  Clock as LuClock,
   ClipboardList as LuClipboardList,
+  Clock as LuClock,
   Cloud as LuCloud,
   CloudFog as LuCloudFog,
   CloudRain as LuCloudRain,
@@ -46,13 +46,13 @@ import {
   Folder as LuFolder,
   FolderOpen as LuFolderOpen,
   Gauge as LuGauge,
-  Globe as LuGlobe,
   GitFork as LuGitFork,
+  Globe as LuGlobe,
   GripVertical as LuGripVertical,
   Headphones as LuHeadphones,
   Image as LuImage,
-  Info as LuInfo,
   Inbox as LuInbox,
+  Info as LuInfo,
   Key as LuKey,
   Keyboard as LuKeyboard,
   Languages as LuLanguages,
@@ -72,8 +72,8 @@ import {
   Music as LuMusic,
   Music2 as LuMusic2,
   Newspaper as LuNewspaper,
-  Palette as LuPalette,
   Package as LuPackage,
+  Palette as LuPalette,
   Pause as LuPause,
   Play as LuPlay,
   Plus as LuPlus,
@@ -355,7 +355,7 @@ const SiBangumi: IconType = ({ size, style, title, ...props }) => {
 
   return (
     <svg
-      viewBox="-2.5 -2 28 28"
+      viewBox="0 0 24 24"
       width={iconSize}
       height={iconSize}
       role={title ? 'img' : undefined}
@@ -365,33 +365,22 @@ const SiBangumi: IconType = ({ size, style, title, ...props }) => {
       {...props}
     >
       {title ? <title>{title}</title> : null}
-      <path
-        d="M7.2 7.05 3.25 .75M12.05 7.05 16.45 .75"
+      <g
         fill="none"
         stroke="currentColor"
-        strokeLinecap="square"
-        strokeWidth="2.35"
-      />
-      <path
-        d="M6.85 7.05a3.05 3.05 0 0 1 6.1 0"
-        fill="currentColor"
-      />
-      <path
-        d="M0 7.05h20.55A2.45 2.45 0 0 1 23 9.5v8.05A2.45 2.45 0 0 1 20.55 20H10.8L5.1 23.55 7.35 20H0"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="square"
+        strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth="2.7"
-      />
-      <path
-        d="m.2 10.9 4.2 1.8-4.2 1.8M18.85 10.9l-4.2 1.8 4.2 1.8M.15 16.05h4.5M.15 17.35h4.5M15.4 16.05h4.5M15.4 17.35h4.5M8.2 12.35h5.2l-2.6 4.55Z"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="square"
-        strokeLinejoin="miter"
-        strokeWidth="1.05"
-      />
+      >
+        <path d="M8.55 6.75 5.95 2.25" strokeWidth="2.15" />
+        <path d="M15.45 6.75 18.05 2.25" strokeWidth="2.15" />
+        <path
+          d="M4.25 6.85h15.5A2.95 2.95 0 0 1 22.7 9.8v7.25A2.95 2.95 0 0 1 19.75 20H11.35L6.8 23.05 7.85 20h-3.6a2.95 2.95 0 0 1-2.95-2.95V9.8a2.95 2.95 0 0 1 2.95-2.95Z"
+          strokeWidth="2.05"
+        />
+        <path d="m5.6 11.35 3.35 1.35-3.35 1.35" strokeWidth="1.45" />
+        <path d="m18.4 11.35-3.35 1.35 3.35 1.35" strokeWidth="1.45" />
+        <path d="M9.75 13.2h4.5L12 16.95Z" strokeWidth="1.35" />
+      </g>
     </svg>
   )
 }
@@ -630,7 +619,6 @@ export {
   LuArrowRight,
   LuArrowUpDown,
   LuBarChart3,
-
   LuCalendar,
   LuCheck,
   LuCheckCircle,
@@ -641,9 +629,9 @@ export {
   LuChevronLeft,
   LuChevronRight,
   LuChevronUp,
+  LuClipboardList,
   // 时间 & 用户
   LuClock,
-  LuClipboardList,
   LuCloud,
   LuCloudFog,
   LuCloudRain,
@@ -660,16 +648,15 @@ export {
   LuEyeOff,
   LuFileText,
   LuFolder,
-
   LuFolderOpen,
   LuGauge,
-  LuGlobe,
   LuGitFork,
+  LuGlobe,
   LuGripVertical,
   LuHeadphones,
   LuImage,
-  LuInfo,
   LuInbox,
+  LuInfo,
   LuKey,
   LuKeyboard,
   LuLanguages,
@@ -689,8 +676,8 @@ export {
   LuMusic,
   LuMusic2,
   LuNewspaper,
-  LuPalette,
   LuPackage,
+  LuPalette,
   LuPause,
   LuPlay,
   LuPlus,

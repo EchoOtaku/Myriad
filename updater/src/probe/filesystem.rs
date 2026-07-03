@@ -89,7 +89,7 @@ pub async fn probe_pgdata(path: &Path) -> PgdataProbe {
 
     // Free space on the fs containing pgdata, via statvfs.
     if let Ok(stat) = nix::sys::statvfs::statvfs(path) {
-        let block_size = stat.fragment_size() as u64;
+        let block_size = stat.fragment_size();
         let free_blocks = stat.blocks_available() as u64;
         out.free_bytes_on_fs = Some(block_size * free_blocks);
     }

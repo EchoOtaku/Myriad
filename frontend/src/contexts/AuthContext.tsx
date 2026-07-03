@@ -3,10 +3,17 @@
  * 统一管理用户登录状态，避免重复的认证请求
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-
-import { API_URL } from '../config'
 import type { ReactNode } from 'react'
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+import { API_URL } from '../config'
 import { clearSessionHint } from '../utils/sessionDetection'
 
 export interface User {
@@ -41,8 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = useCallback(async () => {
     // 如果已经在检查中，避免重复
-    if (isLoading)
-      return
+    if (isLoading) return
 
     setIsLoading(true)
     try {
@@ -56,21 +62,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(userData)
         setIsAuthenticated(true)
         setIsAdmin(userData.is_admin || false)
-      }
-      else {
+      } else {
         // 401 是正常的未登录状态，静默处理
         setUser(null)
         setIsAuthenticated(false)
         setIsAdmin(false)
       }
-    }
-    catch (_error) {
+    } catch (_error) {
       // 网络错误时静默处理
       setUser(null)
       setIsAuthenticated(false)
       setIsAdmin(false)
-    }
-    finally {
+    } finally {
       setIsLoading(false)
       setHasChecked(true)
     }
@@ -100,8 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 清理 URL 参数，避免刷新时重复触发
       const newUrl = window.location.pathname
       window.history.replaceState({}, '', newUrl)
-    }
-    else {
+    } else {
       // 页面加载时自动检查认证状态（恢复登录会话）
       // 这确保了刷新页面后登录状态能够持久化
       console.debug('[AuthContext] Page load, checking auth session...')
@@ -118,25 +120,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     window.addEventListener('auth-state-changed', handleAuthChange)
-    return () => window.removeEventListener('auth-state-changed', handleAuthChange)
+    return () =>
+      window.removeEventListener('auth-state-changed', handleAuthChange)
   }, [checkAuth])
 
   // 🔧 性能优化：使用 useMemo 缓存 context value，避免不必要的重渲染
-  const value = useMemo(() => ({
-    isAuthenticated,
-    isAdmin,
-    user,
-    isLoading,
-    hasChecked,
-    checkAuth,
-    logout,
-  }), [isAuthenticated, isAdmin, user, isLoading, hasChecked, checkAuth, logout])
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      isAuthenticated,
+      isAdmin,
+      user,
+      isLoading,
+      hasChecked,
+      checkAuth,
+      logout,
+    }),
+    [isAuthenticated, isAdmin, user, isLoading, hasChecked, checkAuth, logout],
   )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

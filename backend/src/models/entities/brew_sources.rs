@@ -79,8 +79,10 @@ pub struct Model {
 /// 订阅源类型
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum FeedType {
     #[sea_orm(string_value = "rss")]
+    #[default]
     Rss,
     #[sea_orm(string_value = "atom")]
     Atom,
@@ -92,31 +94,21 @@ pub enum FeedType {
     RssHub,
 }
 
-impl Default for FeedType {
-    fn default() -> Self {
-        Self::Rss
-    }
-}
-
 /// 来源类型（订阅模式）
 /// - Link: 纯链接，不订阅，仅作为快捷入口
 /// - Rss: 标准 RSS/Atom 订阅
 /// - Brewlia: AI 增强订阅，在 RSS 基础上提供词汇注释等增强功能
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum SourceType {
     #[sea_orm(string_value = "link")]
     Link,
     #[sea_orm(string_value = "rss")]
+    #[default]
     Rss,
     #[sea_orm(string_value = "brewlia")]
     Brewlia,
-}
-
-impl Default for SourceType {
-    fn default() -> Self {
-        Self::Rss
-    }
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -4,10 +4,20 @@
  */
 
 import type { UseMusicPlayerReturn } from '../../hooks/useMusicPlayer'
+import {
+  LuAlertTriangle,
+  LuMusic,
+  LuPause,
+  LuPlay,
+  LuSearchX,
+} from '@lib/icons'
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { LuAlertTriangle, LuMusic, LuPause, LuPlay, LuSearchX } from '@lib/icons'
-import { formatTime, getSongVipStatus, highlightText } from '../../utils/musicPlayer'
+import {
+  formatTime,
+  getSongVipStatus,
+  highlightText,
+} from '../../utils/musicPlayer'
 import '../MusicPlayer.css'
 
 interface MusicPlayerProps {
@@ -48,14 +58,19 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
   } = player
 
   // 获取翻译后的错误消息
-  const musicError = musicErrorKey ? (t.music as Record<string, string>)[musicErrorKey] || musicErrorKey : ''
+  const musicError = musicErrorKey
+    ? (t.music as Record<string, string>)[musicErrorKey] || musicErrorKey
+    : ''
 
   if (!currentSong) {
     return (
       <div className="music-no-song">
-        <div className="music-no-song-icon">{musicError ? <LuAlertTriangle size={20} /> : <LuMusic size={20} />}</div>
+        <div className="music-no-song-icon">
+          {musicError ? <LuAlertTriangle size={20} /> : <LuMusic size={20} />}
+        </div>
         <div className={`music-no-song-text ${musicError ? 'error' : ''}`}>
-          {musicError || (playlist.length === 0 ? t.music.noPlaylist : t.music.noPlaying)}
+          {musicError ||
+            (playlist.length === 0 ? t.music.noPlaylist : t.music.noPlaying)}
         </div>
       </div>
     )
@@ -83,27 +98,32 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
       {/* 封面和歌曲信息 + 进度条 */}
       <div className="music-info-main">
         <div className="music-album-cover-large">
-          {currentSong.cover
-            ? (
-                <img
-                  key={currentSong.cover}
-                  src={currentSong.cover}
-                  alt={currentSong.name}
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none'
-                    e.currentTarget.nextElementSibling?.classList.remove('hidden')
-                  }}
-                />
-              )
-            : null}
-          <div className={`music-cover-placeholder ${currentSong.cover ? 'hidden' : ''}`}>
+          {currentSong.cover ? (
+            <img
+              key={currentSong.cover}
+              src={currentSong.cover}
+              alt={currentSong.name}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none'
+                e.currentTarget.nextElementSibling?.classList.remove('hidden')
+              }}
+            />
+          ) : null}
+          <div
+            className={`music-cover-placeholder ${currentSong.cover ? 'hidden' : ''}`}
+          >
             <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
             </svg>
           </div>
           {isPlaying && (
             <div className="music-playing-indicator">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
                 <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
               </svg>
             </div>
@@ -115,7 +135,9 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
             <div className="music-song-name-row">
               <div className="music-song-name">{currentSong.name}</div>
               {vipStatus.displayText && (
-                <span className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}>
+                <span
+                  className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}
+                >
                   {vipStatus.displayText}
                 </span>
               )}
@@ -135,13 +157,17 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
               onMouseUp={handleSeekEnd}
               onTouchStart={handleSeekStart}
               onTouchEnd={handleSeekEnd}
-              onInput={e => handleSeek(Number.parseFloat(e.currentTarget.value))}
+              onInput={(e) =>
+                handleSeek(Number.parseFloat(e.currentTarget.value))
+              }
               className={`music-progress-bar ${isAudioLoading ? 'loading' : ''}`}
               aria-label={t.music.progress}
             />
             <span className="music-time">
               -
-              {formatTime((audioDuration || currentSong.duration || 0) - currentTime)}
+              {formatTime(
+                (audioDuration || currentSong.duration || 0) - currentTime,
+              )}
             </span>
           </div>
         </div>
@@ -193,17 +219,15 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
             className="music-play-btn"
             aria-label={isPlaying ? t.music.pause : t.music.play}
           >
-            {isPlaying
-              ? (
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                  </svg>
-                )
-              : (
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                )}
+            {isPlaying ? (
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
           </button>
 
           <button
@@ -230,7 +254,9 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
                 <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
               </svg>
             </button>
-            <div className={`music-volume-popup ${showVolumePopup ? 'visible' : ''}`}>
+            <div
+              className={`music-volume-popup ${showVolumePopup ? 'visible' : ''}`}
+            >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
               </svg>
@@ -240,7 +266,9 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
                 max="1"
                 step="0.01"
                 value={volume}
-                onChange={e => handleVolumeChange(Number.parseFloat(e.target.value))}
+                onChange={(e) =>
+                  handleVolumeChange(Number.parseFloat(e.target.value))
+                }
                 className="music-volume-slider"
                 aria-label={t.music.volume}
               />
@@ -256,7 +284,11 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
               title={t.music.playlist}
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path fillRule="evenodd" d="M2.625 6.75a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0A.75.75 0 018.25 6h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75zM2.625 12a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zM7.5 12a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12A.75.75 0 017.5 12zm-4.875 5.25a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M2.625 6.75a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0A.75.75 0 018.25 6h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75zM2.625 12a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zM7.5 12a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12A.75.75 0 017.5 12zm-4.875 5.25a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75z"
+                  clipRule="evenodd"
+                />
               </svg>
             </button>
           )}
@@ -269,7 +301,9 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
 /**
  * 歌词视图
  */
-const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player }) => {
+const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({
+  player,
+}) => {
   const { t } = useI18n()
   const {
     currentSong,
@@ -296,13 +330,12 @@ const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player })
     }
 
     const activeElement = container.children[currentLyricIndex] as HTMLElement
-    if (!activeElement)
-      return
+    if (!activeElement) return
 
     const containerHeight = container.clientHeight
     const elementTop = activeElement.offsetTop
     const elementHeight = activeElement.clientHeight
-    const scrollTop = elementTop - (containerHeight / 2) + (elementHeight / 2)
+    const scrollTop = elementTop - containerHeight / 2 + elementHeight / 2
 
     container.scrollTo({
       top: Math.max(0, scrollTop),
@@ -325,14 +358,20 @@ const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player })
           aria-label={t.music.back}
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+            <path
+              fillRule="evenodd"
+              d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+              clipRule="evenodd"
+            />
           </svg>
         </button>
         <div className="music-lyrics-title">
           <div className="music-lyrics-song-name-row">
             <div className="music-lyrics-song-name">{currentSong.name}</div>
             {vipStatus.displayText && (
-              <span className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}>
+              <span
+                className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}
+              >
                 {vipStatus.displayText}
               </span>
             )}
@@ -353,7 +392,9 @@ const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player })
             className={`music-lyric-line ${
               index === currentLyricIndex ? 'active' : ''
             } ${
-              currentLyricIndex >= 0 && index < currentLyricIndex ? 'passed' : ''
+              currentLyricIndex >= 0 && index < currentLyricIndex
+                ? 'passed'
+                : ''
             }`}
             data-time={line.time.toFixed(2)}
             data-index={index}
@@ -371,67 +412,87 @@ const MusicLyricsView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player })
  * 单个播放列表项 - 使用 memo 避免不必要的重渲染
  */
 const PlaylistItem = memo<{
-  song: { id: string, name: string, artist: string, isVip?: boolean, vipType?: string }
+  song: {
+    id: string
+    name: string
+    artist: string
+    isVip?: boolean
+    vipType?: string
+  }
   originalIndex: number
   isActive: boolean
   isPlaying: boolean
   searchQuery: string
   onSelect: (song: any, index: number, autoPlay: boolean) => void
   onClose: () => void
-}>(({ song, originalIndex, isActive, isPlaying, searchQuery, onSelect, onClose }) => {
-  const vipStatus = getSongVipStatus(song)
+}>(
+  ({
+    song,
+    originalIndex,
+    isActive,
+    isPlaying,
+    searchQuery,
+    onSelect,
+    onClose,
+  }) => {
+    const vipStatus = getSongVipStatus(song)
 
-  const handleClick = useCallback(() => {
-    onSelect(song, originalIndex, true)
-    onClose()
-  }, [song, originalIndex, onSelect, onClose])
+    const handleClick = useCallback(() => {
+      onSelect(song, originalIndex, true)
+      onClose()
+    }, [song, originalIndex, onSelect, onClose])
 
-  return (
-    <div
-      onClick={handleClick}
-      className={`music-playlist-item ${isActive ? 'active' : ''}`}
-    >
-      <span className="music-playlist-index">{originalIndex + 1}</span>
-      <div className="music-playlist-info">
-        <div className="music-playlist-name-row">
+    return (
+      <div
+        onClick={handleClick}
+        className={`music-playlist-item ${isActive ? 'active' : ''}`}
+      >
+        <span className="music-playlist-index">{originalIndex + 1}</span>
+        <div className="music-playlist-info">
+          <div className="music-playlist-name-row">
+            <div
+              className="music-playlist-name"
+              dangerouslySetInnerHTML={{
+                __html: searchQuery
+                  ? highlightText(song.name, searchQuery)
+                  : song.name,
+              }}
+            />
+            {vipStatus.displayText && (
+              <span
+                className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}
+              >
+                {vipStatus.displayText}
+              </span>
+            )}
+          </div>
           <div
-            className="music-playlist-name"
+            className="music-playlist-artist"
             dangerouslySetInnerHTML={{
               __html: searchQuery
-                ? highlightText(song.name, searchQuery)
-                : song.name,
+                ? highlightText(song.artist, searchQuery)
+                : song.artist,
             }}
           />
-          {vipStatus.displayText && (
-            <span className={`music-vip-badge ${vipStatus.isTrial ? 'trial' : ''}`}>
-              {vipStatus.displayText}
-            </span>
-          )}
         </div>
-        <div
-          className="music-playlist-artist"
-          dangerouslySetInnerHTML={{
-            __html: searchQuery
-              ? highlightText(song.artist, searchQuery)
-              : song.artist,
-          }}
-        />
+        {isActive && (
+          <span className="music-playlist-playing">
+            {isPlaying ? <LuPlay size={12} /> : <LuPause size={12} />}
+          </span>
+        )}
       </div>
-      {isActive && (
-        <span className="music-playlist-playing">
-          {isPlaying ? <LuPlay size={12} /> : <LuPause size={12} />}
-        </span>
-      )}
-    </div>
-  )
-})
+    )
+  },
+)
 
 PlaylistItem.displayName = 'PlaylistItem'
 
 /**
  * 播放列表视图
  */
-const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player }) => {
+const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({
+  player,
+}) => {
   const { t } = useI18n()
   const {
     playlist,
@@ -466,8 +527,7 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
   // 播放列表自动滚动到当前歌曲
   useEffect(() => {
     // 动画期间不滚动
-    if (isPanelAnimating)
-      return
+    if (isPanelAnimating) return
     if (!playlistScrollRef.current || playlist.length === 0) {
       return
     }
@@ -479,21 +539,28 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
     }
 
     setTimeout(() => {
-      const activeElement = container.querySelector('.music-playlist-item.active') as HTMLElement
-      if (!activeElement)
-        return
+      const activeElement = container.querySelector(
+        '.music-playlist-item.active',
+      ) as HTMLElement
+      if (!activeElement) return
 
       const containerHeight = container.clientHeight
       const elementTop = activeElement.offsetTop
       const elementHeight = activeElement.clientHeight
-      const scrollTop = elementTop - (containerHeight / 2) + (elementHeight / 2)
+      const scrollTop = elementTop - containerHeight / 2 + elementHeight / 2
 
       container.scrollTo({
         top: Math.max(0, scrollTop),
         behavior: 'smooth',
       })
     }, 100)
-  }, [currentSongIndex, playlist.length, playlistSearchQuery, playlistScrollRef, isPanelAnimating])
+  }, [
+    currentSongIndex,
+    playlist.length,
+    playlistSearchQuery,
+    playlistScrollRef,
+    isPanelAnimating,
+  ])
 
   // 🔧 预计算歌曲 ID 到索引的映射，避免 O(n²) 查找
   const songIdToIndex = useMemo(() => {
@@ -518,23 +585,27 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
   const displayPlaylist = playlistSearchQuery.trim()
     ? playlist.filter((song) => {
         const query = playlistSearchQuery.toLowerCase()
-        return song.name.toLowerCase().includes(query)
-          || song.artist.toLowerCase().includes(query)
+        return (
+          song.name.toLowerCase().includes(query) ||
+          song.artist.toLowerCase().includes(query)
+        )
       })
     : playlist
 
   // 🔧 动画期间只显示简化视图（当前歌曲附近的几首）
-  const visiblePlaylist = isPanelAnimating && displayPlaylist.length > 20
-    ? displayPlaylist.slice(
-        Math.max(0, currentSongIndex - 3),
-        Math.min(displayPlaylist.length, currentSongIndex + 7),
-      )
-    : displayPlaylist
+  const visiblePlaylist =
+    isPanelAnimating && displayPlaylist.length > 20
+      ? displayPlaylist.slice(
+          Math.max(0, currentSongIndex - 3),
+          Math.min(displayPlaylist.length, currentSongIndex + 7),
+        )
+      : displayPlaylist
 
   // 计算动画期间的偏移索引
-  const indexOffset = isPanelAnimating && displayPlaylist.length > 20
-    ? Math.max(0, currentSongIndex - 3)
-    : 0
+  const indexOffset =
+    isPanelAnimating && displayPlaylist.length > 20
+      ? Math.max(0, currentSongIndex - 3)
+      : 0
 
   return (
     <div className="music-view music-view-playlist">
@@ -548,49 +619,55 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
           aria-label={t.music.back}
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+            <path
+              fillRule="evenodd"
+              d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+              clipRule="evenodd"
+            />
           </svg>
         </button>
         <div className="music-playlist-title">
-          {t.music.playlistTitle}
-          {' '}
-          (
-          {displayPlaylist.length}
-          /
-          {playlist.length}
-          )
+          {t.music.playlistTitle} ({displayPlaylist.length}/{playlist.length})
         </div>
 
         {/* 排除VIP开关 */}
         <button
           onClick={() => setExcludeVipSongs(!excludeVipSongs)}
           className={`music-vip-filter-toggle ${excludeVipSongs ? 'active' : ''}`}
-          aria-label={excludeVipSongs ? t.music.showVipSongs : t.music.hideVipSongs}
+          aria-label={
+            excludeVipSongs ? t.music.showVipSongs : t.music.hideVipSongs
+          }
           title={excludeVipSongs ? t.music.showVipSongs : t.music.hideVipSongs}
         >
-          {excludeVipSongs
-            ? (
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
-                </svg>
-              )
-            : (
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
+          {excludeVipSongs ? (
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          )}
         </button>
 
         {/* 搜索框 */}
         <div className="music-playlist-search-compact">
-          <svg className="music-search-icon" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+          <svg
+            className="music-search-icon"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+              clipRule="evenodd"
+            />
           </svg>
           <input
             type="text"
             placeholder={t.music.searchPlaceholder}
             value={playlistSearchQuery}
-            onChange={e => setPlaylistSearchQuery(e.target.value)}
+            onChange={(e) => setPlaylistSearchQuery(e.target.value)}
             className="music-search-input"
           />
           {playlistSearchQuery && (
@@ -600,7 +677,11 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
               aria-label={t.music.clearSearch}
             >
               <svg fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                  clipRule="evenodd"
+                />
               </svg>
             </button>
           )}
@@ -614,7 +695,8 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
         {visiblePlaylist.length > 0 ? (
           visiblePlaylist.map((song, idx) => {
             // 使用 Map 查找，O(1) 复杂度
-            const originalIndex = songIdToIndex.get(song.id) ?? (indexOffset + idx)
+            const originalIndex =
+              songIdToIndex.get(song.id) ?? indexOffset + idx
 
             return (
               <PlaylistItem
@@ -631,7 +713,9 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
           })
         ) : (
           <div className="music-no-results">
-            <div className="music-no-results-icon"><LuSearchX size={20} /></div>
+            <div className="music-no-results-icon">
+              <LuSearchX size={20} />
+            </div>
             <div className="music-no-results-text">{t.music.noMatching}</div>
           </div>
         )}
@@ -645,7 +729,13 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({ player 
  */
 export const MusicPlayer: React.FC<MusicPlayerProps> = (props) => {
   const { player } = props
-  const { musicEnabled, musicPlayerView, currentSong, lyrics, musicContainerRef } = player
+  const {
+    musicEnabled,
+    musicPlayerView,
+    currentSong,
+    lyrics,
+    musicContainerRef,
+  } = player
 
   // 🔧 视图切换时触发父容器重测高度
   useEffect(() => {
@@ -664,7 +754,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = (props) => {
 
     if (!currentSong || lyrics.length === 0) {
       const timer = setTimeout(() => {
-        if (musicPlayerView === 'lyrics' && (!currentSong || lyrics.length === 0)) {
+        if (
+          musicPlayerView === 'lyrics' &&
+          (!currentSong || lyrics.length === 0)
+        ) {
           player.setMusicPlayerView('info')
         }
       }, 800)

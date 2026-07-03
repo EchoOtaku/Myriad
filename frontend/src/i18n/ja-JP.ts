@@ -141,7 +141,8 @@ export const jaJP: TranslationKeys = {
     loginResponseIncomplete: 'ログイン応答データが不完全です',
     userInfoIncomplete: 'ユーザー情報が不完全です',
     invalidTokenFormat: '無効なトークン形式',
-    rateLimitError: 'ログイン試行が多すぎます。{seconds}秒後に再試行してください',
+    rateLimitError:
+      'ログイン試行が多すぎます。{seconds}秒後に再試行してください',
     logoutSuccess: 'ログアウトしました',
     logoutFailed: 'ログアウト失敗',
     loginWith: '{name} でログイン',
@@ -164,11 +165,13 @@ export const jaJP: TranslationKeys = {
   setup: {
     title: 'システム設定',
     databaseConfig: 'データベース設定',
-    databaseConfigDesc: 'PostgreSQLデータベース接続を設定し、マイグレーションを実行',
+    databaseConfigDesc:
+      'PostgreSQLデータベース接続を設定し、マイグレーションを実行',
     adminAccount: '管理者アカウント',
     adminAccountDesc: 'システム管理者アカウントを作成',
     connectionFailed: '接続失敗',
-    connectionFailedDesc: 'バックエンドサービスに接続できません。サーバーが起動していることを確認してください',
+    connectionFailedDesc:
+      'バックエンドサービスに接続できません。サーバーが起動していることを確認してください',
     backendDisconnected: 'バックエンドサービス接続中断',
     reconnecting: '再接続を試行中...',
     retry: '再試行',
@@ -183,9 +186,11 @@ export const jaJP: TranslationKeys = {
     saveAndConnect: '保存して接続',
     saving: '保存中...',
     configurationMode: 'バックエンドが設定モードで動作中',
-    configurationModeDesc: 'データベース未接続。保存後、管理環境がバックエンドを再起動してデータベースに接続します。',
+    configurationModeDesc:
+      'データベース未接続。保存後、管理環境がバックエンドを再起動してデータベースに接続します。',
     initDatabase: 'データベーステーブルを初期化',
-    initDatabaseDesc: 'データベース接続成功。テーブル構造がまだ作成されていません。まずデータベースを初期化してください。',
+    initDatabaseDesc:
+      'データベース接続成功。テーブル構造がまだ作成されていません。まずデータベースを初期化してください。',
     initializing: '初期化中...',
     createAdmin: '管理者アカウント作成',
     creating: '作成中...',
@@ -195,13 +200,17 @@ export const jaJP: TranslationKeys = {
     enterDbPassword: 'データベースパスワードを入力してください',
     dbConfigSaved: 'データベース設定を保存しました！',
     dbReconnecting: 'バックエンドを再起動し、データベースへ接続中...',
-    waitingForConnection: 'しばらくお待ちください。ページが自動的に接続状態を検出します。',
-    restartRequired: '変更を適用するにはバックエンドサービスを手動で再起動してください。',
+    waitingForConnection:
+      'しばらくお待ちください。ページが自動的に接続状態を検出します。',
+    restartRequired:
+      '変更を適用するにはバックエンドサービスを手動で再起動してください。',
     saveConfigFailed: '設定の保存に失敗しました',
     dbConnectionSuccess: 'データベース接続成功！',
-    systemSwitchedToNormal: 'バックエンドが再起動し、通常モードになりました。設定を続行できます。',
+    systemSwitchedToNormal:
+      'バックエンドが再起動し、通常モードになりました。設定を続行できます。',
     dbConnectionTimeout: 'データベース接続タイムアウト',
-    dbConnectionTimeoutDesc: '設定は保存されましたが、バックエンドの再起動がまだ成功していない可能性があります。設定を確認するか、バックエンドサービスを手動で再起動してください。',
+    dbConnectionTimeoutDesc:
+      '設定は保存されましたが、バックエンドの再起動がまだ成功していない可能性があります。設定を確認するか、バックエンドサービスを手動で再起動してください。',
     dbMigrationFailed: 'データベースマイグレーション失敗',
     verificationResult: '検証結果',
     totalTables: 'テーブル総数',
@@ -216,8 +225,10 @@ export const jaJP: TranslationKeys = {
     adminCreated: '管理者アカウント作成成功！',
     createAdminFailed: '管理者アカウント作成失敗',
     createFailed: '作成失敗',
-    adminAccountFullDesc: 'システム完全管理権限を持つローカル管理者アカウントを作成',
-    saveHint: 'ヒント：保存後、完全なルートテーブルを読み込むためバックエンドが再起動します',
+    adminAccountFullDesc:
+      'システム完全管理権限を持つローカル管理者アカウントを作成',
+    saveHint:
+      'ヒント：保存後、完全なルートテーブルを読み込むためバックエンドが再起動します',
     atLeast8Chars: '8文字以上',
     enterPasswordAgain: 'パスワードを再入力',
   },
@@ -232,7 +243,8 @@ export const jaJP: TranslationKeys = {
     basic: '基本設定',
     basicDesc: 'サイトURL、背景、テーマなどの基本設定',
     oauth: 'サードパーティログイン',
-    oauthDesc: 'GitHub、Google、Microsoft 等のログイン方式と、ローカル登録ポリシーを設定',
+    oauthDesc:
+      'GitHub、Google、Microsoft 等のログイン方式と、ローカル登録ポリシーを設定',
     music: '音楽プレイヤー',
     musicDesc: 'プレイリスト再生を設定',
     network: 'ネットワークプロキシ',
@@ -283,12 +295,16 @@ export const jaJP: TranslationKeys = {
     updaterUpgradeTo: '{version} へアップグレード',
     updaterDispatching: '送信中…',
     updaterDispatched: '更新タスクを送信しました: {jobId}',
-    updaterJobInFlightWarn: '既に実行中のタスクがあります。完了をお待ちください。',
+    updaterJobInFlightWarn:
+      '既に実行中のタスクがあります。完了をお待ちください。',
     updaterTokenRequired: 'UPDATE_TOKEN を入力してください',
     updaterTokenRequiredDirect: 'direct モードは UPDATE_TOKEN が必要です',
-    updaterConfirmUpgrade: '{version} にアップグレードしますか？メンテナンスモードに入ります。',
-    updaterConfirmRollback: 'スナップショット {snapshotId} にロールバックしますか？',
-    updaterConfirmExitMaintenance: 'メンテナンスを強制解除しますか？サービス復旧確認後にのみ実行してください。',
+    updaterConfirmUpgrade:
+      '{version} にアップグレードしますか？メンテナンスモードに入ります。',
+    updaterConfirmRollback:
+      'スナップショット {snapshotId} にロールバックしますか？',
+    updaterConfirmExitMaintenance:
+      'メンテナンスを強制解除しますか？サービス復旧確認後にのみ実行してください。',
     updaterTaskProgress: 'タスク進捗 ({jobId})',
     updaterTaskKind: 'kind',
     updaterTaskStatus: 'status',
@@ -304,52 +320,68 @@ export const jaJP: TranslationKeys = {
     updaterRollbackDispatched: 'ロールバックを送信しました',
     updaterMaintenanceExited: 'メンテナンスを解除しました',
     updaterAdvancedTitle: '高度な設定：direct モード（運用フォールバック）',
-    updaterAdvancedDesc: 'backend が動作しない場合のみ使用してください。direct モードは backend を経由せず proxy 経由で updater に直接接続し、UPDATE_TOKEN の手入力が必要です。トークンはメモリにのみ保持されます。',
+    updaterAdvancedDesc:
+      'backend が動作しない場合のみ使用してください。direct モードは backend を経由せず proxy 経由で updater に直接接続し、UPDATE_TOKEN の手入力が必要です。トークンはメモリにのみ保持されます。',
     updaterModeBackend: 'backend（既定、admin セッション）',
     updaterModeDirect: 'direct（backend をバイパス）',
-    updaterDriftWarn: 'ブラウザキャッシュのバージョン ({build}) がサーバー ({current}) と一致しません。',
+    updaterDriftWarn:
+      'ブラウザキャッシュのバージョン ({build}) がサーバー ({current}) と一致しません。',
     updaterDriftAction: 'ページを再読み込み',
-    updaterSelfUpdateRequired: '新リリース {version} は updater ≥ {minUpdaterVersion} を必要とします。',
+    updaterSelfUpdateRequired:
+      '新リリース {version} は updater ≥ {minUpdaterVersion} を必要とします。',
     updaterSelfUpdateButton: 'updater をワンクリックで更新',
-    updaterSelfUpdateConfirm: 'updater を {version} へ更新しますか？updater が短時間停止しますが、業務サービスは影響を受けません。',
+    updaterSelfUpdateConfirm:
+      'updater を {version} へ更新しますか？updater が短時間停止しますが、業務サービスは影響を受けません。',
     updaterSelfUpdateDispatching: '送信中…',
-    updaterSelfUpdateDispatched: 'updater 更新を送信しました：helper={helper}、数秒後に現在の updater が置き換えられます',
+    updaterSelfUpdateDispatched:
+      'updater 更新を送信しました：helper={helper}、数秒後に現在の updater が置き換えられます',
     updaterUpdateAvailable: '新リリースあり: {version}',
     updaterUpdateAvailableCurrent: '(現在 {current})',
     updaterReleaseNotes: 'リリースノートを見る',
-    updaterBackendError: '/api/admin/updater/status に接続できません。backend の MYRIAD_UPDATER_URL / UPDATE_TOKEN を確認してください。',
+    updaterBackendError:
+      '/api/admin/updater/status に接続できません。backend の MYRIAD_UPDATER_URL / UPDATE_TOKEN を確認してください。',
     updaterDirectError: '/_updater/status に接続できません',
     updaterLoading: '読み込み中…',
     updaterErr401: '認証失敗：UPDATE_TOKEN が不正です',
     updaterErr403: 'ホストで state/manual-override を touch してください',
     updaterErr409: '既に実行中のタスクがあります',
     updaterErr412: '前提条件を満たしていません',
-    updaterErrNotConfigured: '開発環境では既定で updater は起動しません。完全な更新フローを確認する場合は production compose スタックを使うか、backend に MYRIAD_UPDATER_URL / UPDATE_TOKEN を設定してください。',
+    updaterErrNotConfigured:
+      '開発環境では既定で updater は起動しません。完全な更新フローを確認する場合は production compose スタックを使うか、backend に MYRIAD_UPDATER_URL / UPDATE_TOKEN を設定してください。',
     updaterStatusHealthy: '正常稼働',
-    updaterStatusHealthyDesc: '最新リリースで稼働中、利用可能な更新はありません',
+    updaterStatusHealthyDesc:
+      '最新リリースで稼働中、利用可能な更新はありません',
     updaterStatusAvailable: '更新あり',
-    updaterStatusAvailableDesc: 'アップグレードでメンテナンスモード→イメージ置換を実行',
+    updaterStatusAvailableDesc:
+      'アップグレードでメンテナンスモード→イメージ置換を実行',
     updaterStatusUpdating: '更新中',
-    updaterStatusUpdatingDesc: 'メンテナンスモードが有効、業務トラフィックは一時停止中',
+    updaterStatusUpdatingDesc:
+      'メンテナンスモードが有効、業務トラフィックは一時停止中',
     updaterStatusMaintenance: 'メンテナンスモード',
     updaterStatusMaintenanceDesc: 'システムがメンテナンス中、強制解除可能',
     updaterStatusNeedsManual: '手動復旧が必要',
-    updaterStatusNeedsManualDesc: '前回の更新が失敗し自動ロールバックも未完了。スナップショットか診断を確認',
+    updaterStatusNeedsManualDesc:
+      '前回の更新が失敗し自動ロールバックも未完了。スナップショットか診断を確認',
     updaterStatusOffline: 'updater に接続できません',
-    updaterStatusOfflineDesc: 'backend の MYRIAD_UPDATER_URL / UPDATE_TOKEN を確認',
+    updaterStatusOfflineDesc:
+      'backend の MYRIAD_UPDATER_URL / UPDATE_TOKEN を確認',
     updaterStatusFirstRun: 'バージョン未記録',
     updaterStatusFirstRunDesc: '「更新を確認」をクリックして最新リリースを取得',
     updaterRowStatus: '状態',
     updaterMaintenanceActions: 'メンテナンス操作',
     updaterActionCheckDesc: 'GitHub Release から最新版を取得',
-    updaterActionUpgradeDesc: '完全フロー：メンテナンス → スナップショット → イメージ置換 → ヘルスチェック',
+    updaterActionUpgradeDesc:
+      '完全フロー：メンテナンス → スナップショット → イメージ置換 → ヘルスチェック',
     updaterActionExitDesc: 'サービス復旧を確認後、メンテナンスモードを強制解除',
-    updaterActionRollbackDesc: 'このスナップショットから pgdata を復元し旧イメージを起動',
-    updaterActionSelfUpdateDesc: 'helper コンテナで updater 自身を置換（業務に影響なし）',
+    updaterActionRollbackDesc:
+      'このスナップショットから pgdata を復元し旧イメージを起動',
+    updaterActionSelfUpdateDesc:
+      'helper コンテナで updater 自身を置換（業務に影響なし）',
     updaterGroupHistory: 'スナップショットと履歴',
     updaterGroupHistoryDesc: '復元可能な pgdata スナップショットを表示',
     updaterGroupAdvanced: '詳細設定と診断',
-    updaterGroupAdvancedDesc: 'イメージ digest、通信経路の切替、運用フォールバック',
+    updaterGroupAdvancedDesc:
+      'イメージ digest、通信経路の切替、運用フォールバック',
     updaterDetailsTitle: '詳細情報',
     updaterStepLog: '実行ステップ',
     updaterAgoJustNow: 'たった今',
@@ -361,17 +393,23 @@ export const jaJP: TranslationKeys = {
     allConfig: 'すべての設定',
     saveConfig: '設定を保存',
     resetConfig: '設定をリセット',
-    resetConfigDesc: 'すべての設定をデフォルト値にリセットします。この操作は元に戻せません。',
-    resetConfirmMessage: 'すべての設定をリセットしてもよろしいですか？この操作は元に戻せません。すべての設定がデフォルト値に戻ります。',
+    resetConfigDesc:
+      'すべての設定をデフォルト値にリセットします。この操作は元に戻せません。',
+    resetConfirmMessage:
+      'すべての設定をリセットしてもよろしいですか？この操作は元に戻せません。すべての設定がデフォルト値に戻ります。',
     exportConfig: '設定をエクスポート',
-    exportConfigDesc: '現在のすべての設定をJSONファイルとしてエクスポートします。バックアップや移行に使用できます。',
+    exportConfigDesc:
+      '現在のすべての設定をJSONファイルとしてエクスポートします。バックアップや移行に使用できます。',
     importConfig: '設定をインポート',
-    importConfigDesc: 'JSONファイルから設定をインポートします。現在のすべての設定が上書きされます。',
+    importConfigDesc:
+      'JSONファイルから設定をインポートします。現在のすべての設定が上書きされます。',
     exportConfigSuccess: '設定を正常にエクスポートしました！',
-    importConfigSuccess: '設定をインポートして保存しました！ページを更新します...',
+    importConfigSuccess:
+      '設定をインポートして保存しました！ページを更新します...',
     importConfigFailed: '設定のインポートに失敗しました',
     importConfigInvalid: '無効な設定ファイルです。JSON形式を確認してください。',
-    importConfirmMessage: 'インポートすると現在のすべての設定が上書きされます。続行しますか？',
+    importConfirmMessage:
+      'インポートすると現在のすべての設定が上書きされます。続行しますか？',
     dangerZone: '危険エリア',
     searchConfig: '設定項目を検索...',
     searchResults: '検索結果',
@@ -398,23 +436,28 @@ export const jaJP: TranslationKeys = {
     clearMusicCache: '音楽キャッシュをクリア',
     siteMetadata: 'サイトメタデータ',
     backgroundAndTheme: '背景とテーマ',
-    parallaxHint: '有効にすると、マウス移動やデバイス傾きに応じて壁紙がわずかに移動し、立体的な空間感を演出します',
+    parallaxHint:
+      '有効にすると、マウス移動やデバイス傾きに応じて壁紙がわずかに移動し、立体的な空間感を演出します',
     // Evocative 壁紙エフェクト
     evocativeTitle: 'Evocative 壁紙エフェクト',
     evocativeEffects: 'エフェクト切り替え',
     evocativeDesc: '静止した壁紙に命を吹き込み、没入型ビジュアル体験を創造',
     fieldEvocativeParallax: 'パララックス効果',
-    fieldEvocativeParallaxHint: 'マウス移動やデバイス傾きに応じて壁紙がわずかに移動し、立体的な空間感を演出',
+    fieldEvocativeParallaxHint:
+      'マウス移動やデバイス傾きに応じて壁紙がわずかに移動し、立体的な空間感を演出',
     fieldEvocativeDynamicBlur: 'ダイナミックぼかし',
-    fieldEvocativeDynamicBlurHint: 'マウスが画面上部に近づくと壁紙がクリアに、下部に移動するにつれてぼやけます',
+    fieldEvocativeDynamicBlurHint:
+      'マウスが画面上部に近づくと壁紙がクリアに、下部に移動するにつれてぼやけます',
     fieldEvocativeRipple: 'リップルエフェクト',
     fieldEvocativeRippleHint: '壁紙をクリックすると水の波紋が広がります',
     fieldEvocativeFps: 'エフェクトフレームレート',
-    fieldEvocativeFpsHint: '高いフレームレートはよりスムーズですが、リソースを消費します',
+    fieldEvocativeFpsHint:
+      '高いフレームレートはよりスムーズですが、リソースを消費します',
     fpsBalanced: 'バランス',
     fpsSmooth: 'スムーズ',
     fieldEvocativeRippleQuality: 'リップル品質',
-    fieldEvocativeRippleQualityHint: '高品質のリップルはより美しいですが、リソースを消費します',
+    fieldEvocativeRippleQualityHint:
+      '高品質のリップルはより美しいですが、リソースを消費します',
     qualityLow: '低',
     qualityMedium: '中',
     qualityHigh: '高',
@@ -433,39 +476,50 @@ export const jaJP: TranslationKeys = {
     fieldMusicPlaylistId: 'プレイリストID',
     // ネットワークプロキシ設定
     networkConfigTitle: 'ネットワークプロキシ',
-    networkConfigDesc: '中国本土のサーバーが外部APIにアクセスするためのプロキシを設定',
+    networkConfigDesc:
+      '中国本土のサーバーが外部APIにアクセスするためのプロキシを設定',
     advanced: '詳細設定',
     advancedDesc: '高度なシステム設定と危険な操作',
     networkProxyInfoTitle: 'プロキシ設定ガイド',
-    networkProxyInfo: 'サーバーが中国本土にある場合、GitHub OAuthやGemini AIなどの外部サービスにアクセスするためにプロキシが必要な場合があります。以下の方法から選択できます：',
+    networkProxyInfo:
+      'サーバーが中国本土にある場合、GitHub OAuthやGemini AIなどの外部サービスにアクセスするためにプロキシが必要な場合があります。以下の方法から選択できます：',
     enableProxy: 'ネットワークプロキシを有効化',
-    enableProxyHint: '有効にすると、外部APIリクエストはプロキシ経由で送信されます',
+    enableProxyHint:
+      '有効にすると、外部APIリクエストはプロキシ経由で送信されます',
     proxyUrl: 'プロキシURL',
     proxyUrlHint: 'HTTP、HTTPS、SOCKS5プロキシプロトコルに対応',
     proxyBypass: 'プロキシバイパスリスト',
-    proxyBypassHint: 'プロキシを使用しないドメインをカンマ区切りで指定。Bilibiliなどの国内サービスに推奨',
+    proxyBypassHint:
+      'プロキシを使用しないドメインをカンマ区切りで指定。Bilibiliなどの国内サービスに推奨',
     apiMirrorConfig: 'APIミラーサービス',
-    apiMirrorConfigHint: 'プロキシ設定の代替としてサードパーティのAPIミラーサービスを使用',
+    apiMirrorConfigHint:
+      'プロキシ設定の代替としてサードパーティのAPIミラーサービスを使用',
     geminiBaseUrl: 'Gemini APIベースURL',
-    geminiBaseUrlHint: '空欄の場合は公式エンドポイント、またはサードパーティプロキシサービスURLを入力',
+    geminiBaseUrlHint:
+      '空欄の場合は公式エンドポイント、またはサードパーティプロキシサービスURLを入力',
     githubApiBaseUrl: 'GitHub APIベースURL',
-    githubApiBaseUrlHint: '空欄の場合は公式エンドポイント、またはGitHub APIミラーURLを入力（注意：OAuthは公式エンドポイントが必要）',
+    githubApiBaseUrlHint:
+      '空欄の場合は公式エンドポイント、またはGitHub APIミラーURLを入力（注意：OAuthは公式エンドポイントが必要）',
     proxyOption: 'プロキシ',
-    proxyOptionDesc: 'プロキシサーバーアドレスを設定し、すべての外部リクエストはプロキシ経由で送信されます。',
+    proxyOptionDesc:
+      'プロキシサーバーアドレスを設定し、すべての外部リクエストはプロキシ経由で送信されます。',
     mirrorOption: 'ミラーサービス',
-    mirrorOptionDesc: 'プロキシ設定なしでサードパーティのAPIミラー/リレーサービスを使用。',
+    mirrorOptionDesc:
+      'プロキシ設定なしでサードパーティのAPIミラー/リレーサービスを使用。',
     // UIフィールドプレースホルダー
     placeholderWallpaperUrl: '壁紙画像またはAPIエンドポイントのURL',
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
-    placeholderSiteFavicon: '/favicon.webp または https://example.com/icon.png（外部リンク対応）',
+    placeholderSiteFavicon:
+      '/favicon.webp または https://example.com/icon.png（外部リンク対応）',
     placeholderPetImageUrl: 'ペットキャラクター画像のURL',
     githubOAuthHint: 'GitHub OAuth認証情報の取得方法',
     callbackUrl: 'コールバックURL',
     redirectUrl: 'リダイレクトURL',
     aiServiceDesc: 'Google GeminiおよびOpenAI互換形式のAPIをサポート',
     getApiKey: 'APIキーを取得',
-    personaServiceDesc: 'AIがあなたのデータに基づいて独自のバーチャルペルソナを生成します。ホームページ右上の丸いアバターをクリックして確認',
+    personaServiceDesc:
+      'AIがあなたのデータに基づいて独自のバーチャルペルソナを生成します。ホームページ右上の丸いアバターをクリックして確認',
     savingDefault: 'デフォルト設定を保存中...',
     resetFailed: '設定のリセットに失敗：',
     refreshing: '更新中...',
@@ -478,28 +532,37 @@ export const jaJP: TranslationKeys = {
     aiConfigDesc: 'AIモデルとAPIキーを設定',
     aiServiceTitle: 'AIサービス',
     aiServiceInfoTitle: 'AIサービス設定説明',
-    aiServiceInfo: 'Google GeminiおよびOpenAI互換形式のAPIをサポート。\nGoogle Gemini：無料枠あり、個人利用に最適。\nOpenAI互換：OpenAI APIおよび他の互換サービス（Azure OpenAI、サードパーティプロキシなど）をサポート',
+    aiServiceInfo:
+      'Google GeminiおよびOpenAI互換形式のAPIをサポート。\nGoogle Gemini：無料枠あり、個人利用に最適。\nOpenAI互換：OpenAI APIおよび他の互換サービス（Azure OpenAI、サードパーティプロキシなど）をサポート',
     aiProvider: 'AIプロバイダー',
-    aiProviderHint: 'AIサービスプロバイダーを選択すると、対応する設定項目が表示されます',
-    aiServiceInfoDescription: 'Google GeminiおよびOpenAI互換形式のAPIをサポート。',
+    aiProviderHint:
+      'AIサービスプロバイダーを選択すると、対応する設定項目が表示されます',
+    aiServiceInfoDescription:
+      'Google GeminiおよびOpenAI互換形式のAPIをサポート。',
     aiStandardModelTitle: 'スタンダードモデル',
     aiStandardModelDesc: '日常タスク（語彙注釈、簡易分析など）に使用',
     aiProModelTitle: 'Pro モデル設定',
-    aiProModelDesc: '複雑なタスク（詳細分析、レポート生成など）に使用。API Keyが空の場合は自動的にスタンダードモデルの設定を使用',
+    aiProModelDesc:
+      '複雑なタスク（詳細分析、レポート生成など）に使用。API Keyが空の場合は自動的にスタンダードモデルの設定を使用',
     aiProEnable: 'Pro モデルを有効化',
-    aiProEnableDesc: '複雑なタスク用に別の高性能モデルを設定できます。オフの場合、全タスクがスタンダードモデルを使用',
-    aiProProviderHint: 'Proモデルのプロバイダーを選択（スタンダードモデルと異なるプロバイダーも可）',
+    aiProEnableDesc:
+      '複雑なタスク用に別の高性能モデルを設定できます。オフの場合、全タスクがスタンダードモデルを使用',
+    aiProProviderHint:
+      'Proモデルのプロバイダーを選択（スタンダードモデルと異なるプロバイダーも可）',
     geminiDescription: '無料枠あり、個人利用に最適。',
     openaiCompatible: 'OpenAI互換',
-    openaiDescription: 'OpenAI APIおよび他の互換サービス（Azure OpenAI、サードパーティプロキシなど）をサポート',
+    openaiDescription:
+      'OpenAI APIおよび他の互換サービス（Azure OpenAI、サードパーティプロキシなど）をサポート',
     // AI画像生成設定
     aiImageTitle: 'AI画像生成',
     aiImageDesc: 'Pollinations 無料・高速 · PixAI プロアニメ画像生成（有料）',
     aiImageUsageTitle: '使用説明',
     enableAiImage: 'AI画像生成を有効化',
     aiImageHint: '有効にすると Myriad 内で AI 画像生成機能を使用できます',
-    pollinationsDescription: '完全無料、高速レスポンス（1秒以下）、開発テストや迅速な反復に最適',
-    pixaiDescription: 'プロアニメ画像生成API、複数モデル対応（有料、APIキー必要）',
+    pollinationsDescription:
+      '完全無料、高速レスポンス（1秒以下）、開発テストや迅速な反復に最適',
+    pixaiDescription:
+      'プロアニメ画像生成API、複数モデル対応（有料、APIキー必要）',
     pollinationsFree: '無料',
     pixaiBadge: 'SD/DiT',
     fluxAnimeRecommend: 'Flux Anime (推奨)',
@@ -510,7 +573,8 @@ export const jaJP: TranslationKeys = {
     pixaiModelId: 'モデルバージョンID',
     // 音声サービス設定 (TTS/ASR)
     speechServiceTitle: '音声サービス',
-    speechServiceDesc: 'Tencent Cloud音声合成(TTS)と音声認識(ASR)サービスを設定',
+    speechServiceDesc:
+      'Tencent Cloud音声合成(TTS)と音声認識(ASR)サービスを設定',
     tencentSecretId: 'Tencent Cloud Secret ID',
     tencentSecretIdPlaceholder: 'Tencent Cloudコンソールから取得',
     tencentSecretKey: 'Tencent Cloud Secret Key',
@@ -529,9 +593,11 @@ export const jaJP: TranslationKeys = {
     speechNotConfigured: '先にTencent Cloud認証情報を設定してください',
     // プラットフォーム設定
     platformsConfigTitle: 'データプラットフォーム設定',
-    platformsConfigDesc: '各データソースプラットフォームのアクセス認証情報を設定',
+    platformsConfigDesc:
+      '各データソースプラットフォームのアクセス認証情報を設定',
     platformDescGithub: 'リポジトリ、スター、コントリビューションを追跡',
     platformDescBilibili: 'お気に入り、アニメ、視聴履歴を追跡',
+    platformDescBangumi: 'Bangumiのコレクション、評価、視聴状態を同期',
     platformDescSteam: 'ゲームライブラリ、ウィッシュリスト、ゲーム統計を同期',
     platformDescNetease: 'お気に入りの曲と音楽の好みを同期',
     configuredStatus: '✓ 設定済み',
@@ -542,25 +608,30 @@ export const jaJP: TranslationKeys = {
     basicConfigTitle: '基本設定',
     siteUrlConfig: 'サイトURL',
     baseUrl: 'サイトURL',
-    baseUrlPlaceholder: 'https://yourdomain.com（OAuthコールバックとCookie設定用）',
-    baseUrlHint: 'サイトのURL。OAuthコールバックURLの自動生成とHTTPSセキュアCookieの判定に使用されます',
+    baseUrlPlaceholder:
+      'https://yourdomain.com（OAuthコールバックとCookie設定用）',
+    baseUrlHint:
+      'サイトのURL。OAuthコールバックURLの自動生成とHTTPSセキュアCookieの判定に使用されます',
     basicConfigDesc: 'サイトURL、背景、テーマなどの基本設定',
     oauthConfigTitle: 'サードパーティログイン (OAuth)',
-    oauthConfigDesc: 'GitHub / Google / Microsoft 等のログイン方式と、ローカル登録ポリシーを設定。',
+    oauthConfigDesc:
+      'GitHub / Google / Microsoft 等のログイン方式と、ローカル登録ポリシーを設定。',
     oauthGuideTitle: 'はじめに',
     oauthGuideStep1: 'GitHub Developer Settingsにアクセス',
     oauthGuideStep2: '「New OAuth App」をクリックして新しいアプリを作成',
     oauthGuideStep3: 'アプリ情報を入力、Callback URLは：',
     oauthGuideStep4: '作成後、Client IDをコピーしてClient Secretを生成',
     currentCallbackUrl: '現在のコールバックURL',
-    currentCallbackUrlHint: 'このURLをGitHub OAuth AppのAuthorization callback URLに入力してください',
+    currentCallbackUrlHint:
+      'このURLをGitHub OAuth AppのAuthorization callback URLに入力してください',
     callbackUrlNotConfigured: '「基本設定」でサイトURLを先に設定してください',
     githubClientId: 'GitHub Client ID',
     githubClientIdPlaceholder: 'GitHub OAuth AppのClient ID',
     githubClientSecret: 'GitHub Client Secret',
     githubClientSecretPlaceholder: 'GitHub OAuth AppのClient Secret',
     oidcSectionTitle: 'その他の OAuth ログイン (OIDC)',
-    oidcSectionDesc: 'Google、Microsoft、Authentik、Keycloak、Auth0 など OpenID Connect 準拠の任意プロバイダに対応',
+    oidcSectionDesc:
+      'Google、Microsoft、Authentik、Keycloak、Auth0 など OpenID Connect 準拠の任意プロバイダに対応',
     oidcCallbackTemplate: 'コールバック URL の形式：',
     oidcEmpty: 'OIDC プロバイダは未登録です。',
     oidcAddProvider: 'OIDC プロバイダを追加',
@@ -577,44 +648,64 @@ export const jaJP: TranslationKeys = {
     oidcClientSecretLabel: 'Client Secret',
     oidcClientSecretPlaceholder: '空欄で現在の値を維持（*** は設定済み）',
     oidcDiscoveryLabel: 'OIDC Discovery URL',
-    oidcDiscoveryPlaceholder: 'https://accounts.google.com/.well-known/openid-configuration',
+    oidcDiscoveryPlaceholder:
+      'https://accounts.google.com/.well-known/openid-configuration',
     oidcScopesLabel: 'Scopes（スペース区切り、既定 openid email profile）',
     oidcScopesPlaceholder: 'openid email profile',
     oidcIconLabel: 'アイコン URL（任意）',
     oidcIconPlaceholder: 'https://...',
     oidcNewProvider: '(新規 provider)',
     oauthProvidersTitle: '設定済みのログイン方式',
-    oauthProvidersDesc: 'GitHub、Google、Microsoft、GitLab、Discord 等を設定。各 provider に専用の client_id / client_secret とコールバック URL が必要。',
-    oauthProvidersEmpty: 'まだログイン方式が未設定。下の「ログイン方式を追加」からプリセットを選択。',
+    oauthProvidersDesc:
+      'GitHub、Google、Microsoft、GitLab、Discord 等を設定。各 provider に専用の client_id / client_secret とコールバック URL が必要。',
+    oauthProvidersEmpty:
+      'まだログイン方式が未設定。下の「ログイン方式を追加」からプリセットを選択。',
     oauthAddLoginMethod: 'ログイン方式を追加',
     oauthPickPreset: 'プリセットを選択',
-    oauthHowToHint: '先に「基本設定」で Base URL を入力すると、下の各カードに provider 専用のコールバック URL が表示されます。それを各プラットフォームに貼り付け',
+    oauthHowToHint:
+      '先に「基本設定」で Base URL を入力すると、下の各カードに provider 専用のコールバック URL が表示されます。それを各プラットフォームに貼り付け',
     oauthOpenDocs: 'ドキュメント',
     oauthAdvanced: '詳細設定（Slug / 表示名 / Scopes / アイコン）',
-    oauthPresetHintGithub: '手順：GitHub アバター → `Settings` → `Developer settings` → `OAuth Apps` → `New OAuth App`',
-    oauthPresetHintGoogle: '手順：Google Cloud Console → `APIs & Services` → `Credentials` → `Create credentials` → `OAuth client ID`',
-    oauthPresetHintMicrosoft: '手順：Azure Portal → `App registrations` → `New registration`。Discovery URL の `common` は任意テナント対応、シングルテナントは自分の Tenant ID に置換',
-    oauthPresetHintGitlab: '手順：GitLab → `User Settings` → `Applications`。セルフホスト時は `gitlab.com` を自分のドメインに置換',
-    oauthPresetHintDiscord: '手順：Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`',
-    oauthPresetHintAuthentik: 'Discovery URL は `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration` 形式。`<slug>` は Application のスラッグ',
-    oauthPresetHintKeycloak: 'Discovery URL は `https://keycloak.yourdomain.com/realms/<realm>/.well-known/openid-configuration` 形式。`<realm>` は Realm 名',
-    oauthPresetHintAuth0: 'Discovery URL は `https://<your-tenant>.auth0.com/.well-known/openid-configuration` 形式',
-    oauthPresetHintCustom: '任意の OIDC 準拠プロバイダ。`Discovery URL`、`Client ID`、`Client Secret` を自分で入力',
+    oauthPresetHintGithub:
+      '手順：GitHub アバター → `Settings` → `Developer settings` → `OAuth Apps` → `New OAuth App`',
+    oauthPresetHintGoogle:
+      '手順：Google Cloud Console → `APIs & Services` → `Credentials` → `Create credentials` → `OAuth client ID`',
+    oauthPresetHintMicrosoft:
+      '手順：Azure Portal → `App registrations` → `New registration`。Discovery URL の `common` は任意テナント対応、シングルテナントは自分の Tenant ID に置換',
+    oauthPresetHintGitlab:
+      '手順：GitLab → `User Settings` → `Applications`。セルフホスト時は `gitlab.com` を自分のドメインに置換',
+    oauthPresetHintDiscord:
+      '手順：Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`',
+    oauthPresetHintAuthentik:
+      'Discovery URL は `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration` 形式。`<slug>` は Application のスラッグ',
+    oauthPresetHintKeycloak:
+      'Discovery URL は `https://keycloak.yourdomain.com/realms/<realm>/.well-known/openid-configuration` 形式。`<realm>` は Realm 名',
+    oauthPresetHintAuth0:
+      'Discovery URL は `https://<your-tenant>.auth0.com/.well-known/openid-configuration` 形式',
+    oauthPresetHintCustom:
+      '任意の OIDC 準拠プロバイダ。`Discovery URL`、`Client ID`、`Client Secret` を自分で入力',
     allowRegisterTitle: 'ローカルアカウントの公開登録を許可',
-    allowRegisterDesc: '有効時は /register で誰でも登録可能。無効時は管理者のみが作成可能。',
+    allowRegisterDesc:
+      '有効時は /register で誰でも登録可能。無効時は管理者のみが作成可能。',
     musicConfigTitle: '音楽プレイヤー',
     musicConfigDesc: 'プレイリスト再生を設定',
     musicUsageTitle: '音楽プレイヤー説明',
-    musicUsageInfo: 'コントロールアイランドで指定したプレイリストの音楽を再生します。NetEase MusicとQQ Musicに対応。歌詞付きの曲を再生すると、縮小状態でリアルタイム歌詞が自動表示されます。',
+    musicUsageInfo:
+      'コントロールアイランドで指定したプレイリストの音楽を再生します。NetEase MusicとQQ Musicに対応。歌詞付きの曲を再生すると、縮小状態でリアルタイム歌詞が自動表示されます。',
     neteaseMusic: 'NetEase Music',
     qqMusic: 'QQ Music',
-    neteasePlaylistHint: 'NetEase MusicプレイリストリンクのID、例：https://music.163.com/#/playlist?id=2884035',
-    qqPlaylistHint: 'QQ MusicプレイリストリンクのID、例：https://y.qq.com/n/ryqq/playlist/8039305244',
+    neteasePlaylistHint:
+      'NetEase MusicプレイリストリンクのID、例：https://music.163.com/#/playlist?id=2884035',
+    qqPlaylistHint:
+      'QQ MusicプレイリストリンクのID、例：https://y.qq.com/n/ryqq/playlist/8039305244',
     cacheManagement: 'キャッシュ管理',
-    clearMusicCacheDesc: 'ローカル音楽キャッシュをクリアし、プレイリストデータを強制リロード',
+    clearMusicCacheDesc:
+      'ローカル音楽キャッシュをクリアし、プレイリストデータを強制リロード',
     clearMusicCacheBtn: '音楽キャッシュをクリア',
-    musicCacheCleared: '✓ 音楽キャッシュをクリアしました。次回読み込み時にデータを再取得します',
-    wallpaperParallaxHint: '有効にすると、マウス移動やデバイス傾きに応じて壁紙がわずかに移動し、立体的な空間感を演出します',
+    musicCacheCleared:
+      '✓ 音楽キャッシュをクリアしました。次回読み込み時にデータを再取得します',
+    wallpaperParallaxHint:
+      '有効にすると、マウス移動やデバイス傾きに応じて壁紙がわずかに移動し、立体的な空間感を演出します',
     neteasePlaylistExample: '例：2884035',
     qqPlaylistExample: '例：8039305244',
     removeFavorite: 'お気に入りから削除',
@@ -625,16 +716,19 @@ export const jaJP: TranslationKeys = {
     closeLabel: '閉じる',
     // Tapp権限管理設定
     permissions: '権限管理',
-    permissionsDesc: 'Tappのelevated権限委譲とAI使用制限を設定。権限は4段階：public、basic、elevated（委譲可）、privileged（管理者のみ）',
+    permissionsDesc:
+      'Tappのelevated権限委譲とAI使用制限を設定。権限は4段階：public、basic、elevated（委譲可）、privileged（管理者のみ）',
     permissionsTitle: 'Tapp権限管理',
     tappPermissionsInfoTitle: '権限レベルについて',
-    tappPermissionsInfo: 'Tappには4つの権限レベルがあります：public（公開）、basic（基本、全員利用可能）、elevated（昇格、委譲可能）、privileged（特権、管理者のみ）。ここでは11のelevated権限をユーザーやゲストに委譲できます。',
+    tappPermissionsInfo:
+      'Tappには4つの権限レベルがあります：public（公開）、basic（基本、全員利用可能）、elevated（昇格、委譲可能）、privileged（特権、管理者のみ）。ここでは11のelevated権限をユーザーやゲストに委譲できます。',
     // ユーザーelevated権限
     userElevatedPermissions: 'ユーザー権限委譲',
     userElevatedPermissionsDesc: '一般ユーザーに付与するelevated権限を選択',
     // ゲストelevated権限
     guestElevatedPermissions: 'ゲスト権限委譲',
-    guestElevatedPermissionsDesc: 'ゲストに付与するelevated権限を選択（慎重に開放してください）',
+    guestElevatedPermissionsDesc:
+      'ゲストに付与するelevated権限を選択（慎重に開放してください）',
     // 9個のelevated権限 (platform:write と platform:register は privileged に昇格)
     permAiGenerate: 'AI生成',
     permAiGenerateHint: 'TappにAIでのコンテンツ生成を許可',
@@ -681,7 +775,8 @@ export const jaJP: TranslationKeys = {
     aiQuotaAdminNote: '管理者アカウントはこれらの制限を受けません',
     // サイトフッターとクラウドスポンサー
     siteFooterTitle: 'サイトフッター',
-    siteFooterDesc: 'ページ右下に表示されるサイト著作権、ICP番号、クラウドスポンサー情報を設定',
+    siteFooterDesc:
+      'ページ右下に表示されるサイト著作権、ICP番号、クラウドスポンサー情報を設定',
     siteIcp: 'ICP 番号',
     siteIcpHint: '中国本土のウェブサイトに必要なICP登録番号',
     siteIcpPlaceholder: '例：京ICP备12345678号',
@@ -777,8 +872,10 @@ export const jaJP: TranslationKeys = {
     vipSongWarning: 'VIP曲は完全に再生できない場合があります',
     nowPlaying: '再生中：{name}',
     // 空状態
-    emptyLibrary: 'ライブラリが空です。設定ページでプラットフォームデータを取得してください',
-    emptyCategory: 'このカテゴリにはコンテンツがありません。他のカテゴリをお試しください',
+    emptyLibrary:
+      'ライブラリが空です。設定ページでプラットフォームデータを取得してください',
+    emptyCategory:
+      'このカテゴリにはコンテンツがありません。他のカテゴリをお試しください',
     // コンテンツタイプ
     anime: 'アニメ',
     tvSeries: 'ドラマ',
@@ -883,7 +980,8 @@ export const jaJP: TranslationKeys = {
     shuffle: 'シャッフル',
     listRepeat: 'リストリピート',
     loadPlaylistFailed: 'プレイリストの読み込みに失敗しました',
-    playFailed: '再生に失敗しました。ネットワーク接続または曲の利用可能性を確認してください',
+    playFailed:
+      '再生に失敗しました。ネットワーク接続または曲の利用可能性を確認してください',
   },
 
   // キャッシュ管理
@@ -891,8 +989,10 @@ export const jaJP: TranslationKeys = {
     title: 'キャッシュ管理',
     totalSize: '合計サイズ',
     clearAll: 'すべてのキャッシュをクリア',
-    clearAllConfirm: 'すべてのキャッシュをクリアしてもよろしいですか？この操作は元に戻せません。',
-    clearPlatformConfirm: '{platform}のキャッシュをクリアしてもよろしいですか？',
+    clearAllConfirm:
+      'すべてのキャッシュをクリアしてもよろしいですか？この操作は元に戻せません。',
+    clearPlatformConfirm:
+      '{platform}のキャッシュをクリアしてもよろしいですか？',
     clearFailed: '{platform}のキャッシュクリアに失敗しました',
     submitTaskFailed: '{platform}の処理タスク送信に失敗しました',
     cached: 'キャッシュ済み',
@@ -905,9 +1005,11 @@ export const jaJP: TranslationKeys = {
     process: '処理',
     loading: 'キャッシュ状態を読み込み中...',
     aboutCaching: 'キャッシュ処理について',
-    cacheHint1: '「処理」ボタンをクリックするとバックグラウンドでプラットフォームデータを非同期処理します',
+    cacheHint1:
+      '「処理」ボタンをクリックするとバックグラウンドでプラットフォームデータを非同期処理します',
     cacheHint2: '処理完了後、キャッシュ状態が自動的に更新されます',
-    cacheHint3: 'キャッシュをクリアした後、プラットフォームデータを使用するには再処理が必要です',
+    cacheHint3:
+      'キャッシュをクリアした後、プラットフォームデータを使用するには再処理が必要です',
     cacheHint4: '処理中も他の操作はブロックされません',
   },
 
@@ -953,7 +1055,8 @@ export const jaJP: TranslationKeys = {
     newPasswordMinLength: '新しいパスワードは8文字以上必要です',
     passwordMismatch: '新しいパスワードが一致しません',
     passwordSameAsOld: '新しいパスワードは現在のパスワードと同じにできません',
-    cannotGetCsrf: 'CSRFトークンを取得できません。ページを更新して再試行してください',
+    cannotGetCsrf:
+      'CSRFトークンを取得できません。ページを更新して再試行してください',
     passwordChanged: '✓ パスワードを変更しました！',
     changing: '変更中...',
     confirmChange: '変更を確認',
@@ -986,7 +1089,8 @@ export const jaJP: TranslationKeys = {
     usernameHint: '例：your_username',
     linkAutoGenerate: '空白で自動生成',
     linkManualInput: '完全なリンクを入力してください',
-    popupHint: 'テキスト、画像リンクなどを入力\n例：\nLINE ID: line_123\nhttps://example.com/qrcode.png',
+    popupHint:
+      'テキスト、画像リンクなどを入力\n例：\nLINE ID: line_123\nhttps://example.com/qrcode.png',
     close: '閉じる',
     delete: '削除',
     longPressToEdit: 'ウィジェットを長押しして設定',
@@ -1109,10 +1213,12 @@ export const jaJP: TranslationKeys = {
     adminOnlyGenerateHint: '管理者のみ生成可能',
     styleDescPlaceholder: 'スタイル説明を入力...',
     allPlatformReport: '全プラットフォーム総合レポート',
-    confirmDeleteReport: 'この総合レポートを削除してもよろしいですか？この操作は元に戻せません。',
+    confirmDeleteReport:
+      'この総合レポートを削除してもよろしいですか？この操作は元に戻せません。',
     tenThousandSuffix: '万',
     noComprehensiveReport: '総合レポートがありません',
-    useInputToGenerate: '上の入力ボックスを使って最初の総合レポートを生成しましょう',
+    useInputToGenerate:
+      '上の入力ボックスを使って最初の総合レポートを生成しましょう',
     adminNotGenerated: '管理者がまだ総合レポートを生成していません',
     waitingGenerate: '生成待ち',
   },
@@ -1140,7 +1246,8 @@ export const jaJP: TranslationKeys = {
     passwordMinLength: '新しいパスワードは8文字以上必要です',
     passwordMismatch: '新しいパスワードが一致しません',
     passwordSameAsOld: '新しいパスワードは現在のパスワードと同じにできません',
-    csrfTokenError: 'CSRFトークンを取得できません。ページを更新して再試行してください',
+    csrfTokenError:
+      'CSRFトークンを取得できません。ページを更新して再試行してください',
     passwordChangeSuccess: 'パスワードを変更しました！',
     changeFailed: '変更に失敗しました、もう一度お試しください',
     networkError: 'ネットワークエラー、後でもう一度お試しください',
@@ -1157,7 +1264,8 @@ export const jaJP: TranslationKeys = {
     dataRefreshed: '✓ {platform}データを更新しました',
     refreshFailed: '✗ 更新失敗',
     submitTaskFailed: '✗ {platform}処理タスクの送信に失敗しました',
-    confirmClearCache: '{platform}のスマートフィルターキャッシュをクリアしてもよろしいですか？',
+    confirmClearCache:
+      '{platform}のスマートフィルターキャッシュをクリアしてもよろしいですか？',
     cacheCleared: '✓ {platform}キャッシュをクリアしました',
     clearCacheFailed: '✗ {platform}キャッシュのクリアに失敗しました',
     unknown: '不明',
@@ -1167,7 +1275,8 @@ export const jaJP: TranslationKeys = {
     process: '処理',
     clearCache: 'キャッシュクリア',
     dataManagementTitle: 'データ管理',
-    dataManagementDesc: 'プラットフォームデータとスマートフィルターキャッシュを管理',
+    dataManagementDesc:
+      'プラットフォームデータとスマートフィルターキャッシュを管理',
     rawData: '生データ',
     noData: 'データなし',
     smartFilter: 'スマートフィルター',
@@ -1178,9 +1287,12 @@ export const jaJP: TranslationKeys = {
     clearing: 'クリア中',
     clear: 'クリア',
     usageTitle: '使用説明',
-    usageRawData: '生データ：各プラットフォームAPIから取得した未処理データ、更新ボタンで再取得',
-    usageSmartFilter: 'スマートフィルター：AI分析処理後のデータ、処理ボタンでキャッシュ生成',
-    usageBackground: 'バックグラウンド処理：データ処理タスクは非同期で実行、トップで進捗を確認可能',
+    usageRawData:
+      '生データ：各プラットフォームAPIから取得した未処理データ、更新ボタンで再取得',
+    usageSmartFilter:
+      'スマートフィルター：AI分析処理後のデータ、処理ボタンでキャッシュ生成',
+    usageBackground:
+      'バックグラウンド処理：データ処理タスクは非同期で実行、トップで進捗を確認可能',
   },
 
   // クイック統計ウィジェット
@@ -1304,11 +1416,14 @@ export const jaJP: TranslationKeys = {
   // ソーシャルネットワークウィジェット拡張
   socialNetworkWidget: {
     fillPlatformName: 'プラットフォーム名を入力してください',
-    fillUsernameOrUrl: 'ユーザー名/IDまたはURLパターンを入力してください（少なくとも1つ）',
+    fillUsernameOrUrl:
+      'ユーザー名/IDまたはURLパターンを入力してください（少なくとも1つ）',
     fillPopupContent: '表示内容を入力してください',
-    invalidUrlPattern: 'URLパターンが無効です\n\n要件：\n• http://、https://、または mailto: で始まる必要があります\n• 特殊文字 < > " \' ` \\ を含めることはできません',
+    invalidUrlPattern:
+      'URLパターンが無効です\n\n要件：\n• http://、https://、または mailto: で始まる必要があります\n• 特殊文字 < > " \' ` \\ を含めることはできません',
     createCustomPlatformFailed: 'カスタムプラットフォームの作成に失敗しました',
-    confirmDeleteCustomPlatform: 'このカスタムプラットフォームを削除してもよろしいですか？',
+    confirmDeleteCustomPlatform:
+      'このカスタムプラットフォームを削除してもよろしいですか？',
     close: '閉じる',
     delete: '削除',
     longPressToEdit: 'ウィジェットを長押しして設定',
@@ -1386,6 +1501,17 @@ export const jaJP: TranslationKeys = {
     permSchedulerRegister: 'スケジューラ登録',
     permSpeechTts: 'テキスト読み上げ',
     permSpeechAsr: '音声認識',
+    permReadTappList: 'Tapp リスト読取',
+    permManageTappList: 'Tapp リスト管理',
+    permReadBrew: 'Brew 読取',
+    permWriteBrew: 'Brew 書込',
+    permCommentBrew: 'Brew コメント',
+    permManageBrew: 'Brew 管理',
+    permReadFederation: 'Federation データ読取',
+    permWriteFederation: 'Federation データ書込',
+    permMessageFederation: 'Federation メッセージ',
+    permTrustFederation: 'Federation 信頼管理',
+    permFederationFiles: 'Federation ファイル',
 
     // 権限説明
     permRegisterWidgetDesc: 'ホームページへのカスタムウィジェット登録を許可',
@@ -1403,7 +1529,8 @@ export const jaJP: TranslationKeys = {
     permReadThemeDesc: '現在のテーマ設定の読取を許可',
     permConfirmDesc: '確認ダイアログの表示を許可',
     permNetworkFetchDesc: 'プロキシ経由での HTTP リクエスト送信を許可',
-    permMediaControlDesc: 'メディア再生の制御（再生、一時停止、切替など）を許可',
+    permMediaControlDesc:
+      'メディア再生の制御（再生、一時停止、切替など）を許可',
     permMediaReadDesc: '現在のメディア再生状態の読取を許可',
     permRegisterThemeDesc: 'カスタムテーマスタイルの登録を許可',
     permRegisterAgentDesc: 'AI Agent 能力の登録を許可',
@@ -1414,13 +1541,26 @@ export const jaJP: TranslationKeys = {
     permSchedulerRegisterDesc: 'スケジュールタスクの登録と管理を許可',
     permSpeechTtsDesc: 'テキスト読み上げサービスの使用を許可',
     permSpeechAsrDesc: '音声認識サービスの使用を許可',
+    permReadTappListDesc: 'インストール済み Tapp リストの読取を許可',
+    permManageTappListDesc: 'Tapp のインストール、更新、削除を許可',
+    permReadBrewDesc: 'Brew のフィードと記事の読取を許可',
+    permWriteBrewDesc: 'Brew のフィードと記事データの書込を許可',
+    permCommentBrewDesc: 'Brew コメントの作成と管理を許可',
+    permManageBrewDesc: 'Brew ソースと詳細設定の管理を許可',
+    permReadFederationDesc:
+      'Federation のルーム、チャンネル、メンバーの読取を許可',
+    permWriteFederationDesc: 'Federation リソースの作成または更新を許可',
+    permMessageFederationDesc: 'Federation メッセージの送受信を許可',
+    permTrustFederationDesc: 'Federation の信頼関係の管理を許可',
+    permFederationFilesDesc: 'Federation ファイル転送機能へのアクセスを許可',
 
     // リストページ
     listTitle: 'Tapp アプリ',
     listSubtitle: '拡張アプリを管理・実行',
     multiWindow: 'マルチウィンドウ',
     noAppsInstalled: 'アプリがインストールされていません',
-    noAppsInstalledDesc: 'Tapp アプリをインストールして機能を拡張し、カスタムウィジェットやデータソースを追加',
+    noAppsInstalledDesc:
+      'Tapp アプリをインストールして機能を拡張し、カスタムウィジェットやデータソースを追加',
     browseStore: 'ストアを見る',
     manualInstall: '手動インストール',
     clickToOpen: 'クリックで開く',
@@ -1518,7 +1658,8 @@ export const jaJP: TranslationKeys = {
     currentVersion: '現在 v{version}',
     // アンインストール確認ダイアログ
     keepDataOnUninstall: 'アプリデータを保持',
-    keepDataOnUninstallDesc: '再インストール時に復元できるよう、保存されたデータと設定を保持します',
+    keepDataOnUninstallDesc:
+      '再インストール時に復元できるよう、保存されたデータと設定を保持します',
     uninstalling: 'アンインストール中...',
     confirmUninstallBtn: 'アンインストールを確認',
 
@@ -1540,7 +1681,8 @@ export const jaJP: TranslationKeys = {
 
     // 動的コンテンツ API
     dynamicContent: '動的コンテンツ',
-    dynamicContentDesc: '折りたたみ時のコントロールアイランドにカスタムコンテンツを表示',
+    dynamicContentDesc:
+      '折りたたみ時のコントロールアイランドにカスタムコンテンツを表示',
     dynamicContentSet: '動的コンテンツを設定しました',
     dynamicContentRemoved: '動的コンテンツを削除しました',
   },
@@ -1591,8 +1733,10 @@ export const jaJP: TranslationKeys = {
     feedTypeRssDesc: '標準 RSS/Atom/JSON Feed 購読',
     feedTypeLinkDesc: 'リンクのみ保存、更新購読なし',
     feedTypeNotionDesc: 'Notion データベースまたはページコンテンツを購読',
-    feedTypeRsshubDesc: 'RSSHub マルチプラットフォームルート購読、インスタンス切り替え対応',
-    feedTypeBrewliaDesc: 'AI 強化購読：語彙注釈、代名詞分析などの読書支援機能を自動提供',
+    feedTypeRsshubDesc:
+      'RSSHub マルチプラットフォームルート購読、インスタンス切り替え対応',
+    feedTypeBrewliaDesc:
+      'AI 強化購読：語彙注釈、代名詞分析などの読書支援機能を自動提供',
 
     // 操作
     addSubscription: '購読を追加',
@@ -1631,7 +1775,8 @@ export const jaJP: TranslationKeys = {
     // AI 強化
     enableAiEnhance: 'AI 強化を有効化',
     disableAiEnhance: 'AI 強化を無効化',
-    aiEnhanceDesc: 'AI 強化購読：語彙注釈、代名詞分析などの読書支援機能を自動提供',
+    aiEnhanceDesc:
+      'AI 強化購読：語彙注釈、代名詞分析などの読書支援機能を自動提供',
 
     // 購読を編集
     uploadIcon: 'アイコンをアップロード',
@@ -1697,7 +1842,8 @@ export const jaJP: TranslationKeys = {
     tipQuietTime: '静かな時間をお楽しみください',
 
     // エラーメッセージ
-    errorDetectFailed: '検出に失敗しました。ネットワークまたは URL を確認してください',
+    errorDetectFailed:
+      '検出に失敗しました。ネットワークまたは URL を確認してください',
     errorRsshubRouteRequired: 'RSSHub ルートを設定してください',
     errorUrlRequired: '購読 URL を入力してください',
     errorNameRequired: 'リンクタイプには名前が必要です',
@@ -1835,7 +1981,8 @@ export const jaJP: TranslationKeys = {
     close: '閉じる',
     resultsCount: '{count}件の結果',
     refreshAllSources: 'すべての購読を更新',
-    errorDiscoverFailed: '検出に失敗しました。ネットワークまたはURLを確認してください',
+    errorDiscoverFailed:
+      '検出に失敗しました。ネットワークまたはURLを確認してください',
     errorConfigRsshub: 'RSSHubルートを設定してください',
     errorEnterUrl: '購読URLを入力してください',
     errorLinkNeedName: 'リンクタイプには名前が必要です',
@@ -1873,7 +2020,8 @@ export const jaJP: TranslationKeys = {
     cloudTtsUnavailable: 'クラウドTTSサービスは利用できません',
     cannotConnectSpeech: '音声サービスに接続できません',
     checkingCloudTts: 'クラウドTTSサービスを確認中...',
-    cloudTtsUnavailableCheck: 'クラウドTTSサービスは利用できません。ネットワークまたはサービス設定を確認してください',
+    cloudTtsUnavailableCheck:
+      'クラウドTTSサービスは利用できません。ネットワークまたはサービス設定を確認してください',
     switchedToCloudTts: 'クラウドTTSに切り替えました',
     checkingCloudCache: 'クラウドキャッシュを確認中...',
     cloudCacheIncomplete: 'クラウドキャッシュが不完全です。再生成してください',
@@ -1882,7 +2030,8 @@ export const jaJP: TranslationKeys = {
     switchedToSystemTts: 'システムTTSに切り替えました',
     cloudTts: 'クラウドTTS',
     reloadTts: 'TTSを再読み込み',
-    voiceSettingSaved: '音声設定を保存しました。「再読み込み」をクリックして適用してください',
+    voiceSettingSaved:
+      '音声設定を保存しました。「再読み込み」をクリックして適用してください',
     reload: '再読み込み',
     switchFailed: '切り替えに失敗しました',
     clearFailed: 'クリアに失敗しました',
@@ -1978,7 +2127,8 @@ export const jaJP: TranslationKeys = {
     voiceRoleMixed: 'ミックス',
     fileCountSuffix: '件',
     useVoice: '使用',
-    autoGenerateAudioHint: '再生をクリックすると音声が自動生成されキャッシュされます',
+    autoGenerateAudioHint:
+      '再生をクリックすると音声が自動生成されキャッシュされます',
     systemTtsHint: 'システムTTSを使用中。クラウドTTSに切り替えて音声を選択',
     // Podcast speakers
     hostA: 'ホスト A',
@@ -2050,12 +2200,14 @@ export const jaJP: TranslationKeys = {
     styleTagsDesc: 'AIがソースの内容に基づいてスタイルタグを生成します',
     noTagsHint: '上のボタンをクリックしてタグを生成',
     customTag: 'カスタムタグ',
-    customTagDesc: '純粋なリンクにカスタムタグを追加、カードの右側に表示（最大3つ）',
+    customTagDesc:
+      '純粋なリンクにカスタムタグを追加、カードの右側に表示（最大3つ）',
     tagInputPlaceholder: 'タグ名を入力...',
     addTag: '追加',
     noCustomTagHint: 'タグはまだ追加されていません',
     adminOnlyVisible: '管理者のみ表示',
-    adminOnlyVisibleHint: '有効にすると、管理者以外のユーザーはこのソースを見ることができません',
+    adminOnlyVisibleHint:
+      '有効にすると、管理者以外のユーザーはこのソースを見ることができません',
     saveChanges: '変更を保存',
 
     // RSSHubConfig - Error messages
@@ -2140,7 +2292,8 @@ export const jaJP: TranslationKeys = {
 
   federation: {
     title: '連合ネットワーク',
-    subtitle: '分散型ソーシャルネットワークに接続し、リモートユーザーをフォロー',
+    subtitle:
+      '分散型ソーシャルネットワークに接続し、リモートユーザーをフォロー',
     timeline: 'タイムライン',
     profile: 'プロフィール',
     following: 'フォロー中',
@@ -2150,7 +2303,8 @@ export const jaJP: TranslationKeys = {
     followBtn: 'フォロー',
     followPlaceholder: 'user@instance.social またはActor URL',
     emptyTimeline: 'タイムラインは空です',
-    emptyTimelineHint: 'リモートユーザーをフォローすると、ここにアクティビティが表示されます',
+    emptyTimelineHint:
+      'リモートユーザーをフォローすると、ここにアクティビティが表示されます',
     emptyFollowing: 'まだリモートユーザーをフォローしていません',
     emptyFollowers: 'まだリモートフォロワーはいません',
     emptyPublished: '連合ネットワークにまだコンテンツを公開していません',
@@ -2159,7 +2313,8 @@ export const jaJP: TranslationKeys = {
     channelPlaceholder: 'リモートActor URL または user@domain',
     newChannelBtn: '新規チャンネル',
     emptyChannels: 'チャンネルはまだありません',
-    emptyChannelsHint: 'チャンネルを作成してリモートユーザーとリアルタイム通信を開始',
+    emptyChannelsHint:
+      'チャンネルを作成してリモートユーザーとリアルタイム通信を開始',
     back: '戻る',
     connected: '接続中',
     disconnected: '未接続',
@@ -2204,7 +2359,12 @@ export const jaJP: TranslationKeys = {
       evening: 'こんばんは',
     },
     pageHints: {
-      library: ['音楽を聴きますか？', 'プレイリストを探す', 'コレクション整理', 'シャッフル再生'],
+      library: [
+        '音楽を聴きますか？',
+        'プレイリストを探す',
+        'コレクション整理',
+        'シャッフル再生',
+      ],
       brew: ['何を飲みますか？', '購読を確認', 'コンテンツ更新', '発見する'],
       reports: ['レポートを見る', 'レポート生成', 'データ分析'],
       config: ['設定を変更？', 'カスタマイズ', '体験を最適化'],

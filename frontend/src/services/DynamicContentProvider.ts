@@ -13,7 +13,8 @@ import type { TappInstance } from '../tapp/types'
 // ============ 类型定义 ============
 
 /** 内置动态内容类型 */
-export type BuiltinContentType = 'greeting' | 'weather' | 'quote' | 'theme' | 'music'
+export type BuiltinContentType =
+  'greeting' | 'weather' | 'quote' | 'theme' | 'music'
 
 /** 动态内容类型（包含 Tapp 自定义类型） */
 export type DynamicContentType = BuiltinContentType | `tapp-${string}`
@@ -162,12 +163,14 @@ class DynamicContentProviderService {
   setContent(providerId: string, content: DynamicContentItem): void {
     const provider = this.providers.get(providerId)
     if (!provider || !provider.enabled) {
-      console.warn(`[DynamicContentProvider] Provider ${providerId} not found or disabled`)
+      console.warn(
+        `[DynamicContentProvider] Provider ${providerId} not found or disabled`,
+      )
       return
     }
 
     const contents = this.contents.get(providerId) || []
-    const existingIndex = contents.findIndex(c => c.type === content.type)
+    const existingIndex = contents.findIndex((c) => c.type === content.type)
 
     if (existingIndex >= 0) {
       contents[existingIndex] = content
@@ -176,8 +179,7 @@ class DynamicContentProviderService {
         providerId,
         content,
       })
-    }
-    else {
+    } else {
       contents.push(content)
       this.notifyListeners({
         type: 'add',
@@ -197,10 +199,9 @@ class DynamicContentProviderService {
    */
   removeContent(providerId: string, contentType: DynamicContentType): void {
     const contents = this.contents.get(providerId)
-    if (!contents)
-      return
+    if (!contents) return
 
-    const index = contents.findIndex(c => c.type === contentType)
+    const index = contents.findIndex((c) => c.type === contentType)
     if (index >= 0) {
       contents.splice(index, 1)
       this.notifyListeners({
@@ -238,13 +239,11 @@ class DynamicContentProviderService {
 
     for (const [providerId, contents] of this.contents.entries()) {
       const provider = this.providers.get(providerId)
-      if (!provider?.enabled)
-        continue
+      if (!provider?.enabled) continue
 
       for (const content of contents) {
         // 过滤过期内容
-        if (content.expiresAt && content.expiresAt < now)
-          continue
+        if (content.expiresAt && content.expiresAt < now) continue
 
         // 应用本地化
         const localizedContent = this.localizeContent(content)
@@ -260,24 +259,23 @@ class DynamicContentProviderService {
    * 应用本地化
    */
   private localizeContent(content: DynamicContentItem): DynamicContentItem {
-    if (!content.i18n)
-      return content
+    if (!content.i18n) return content
 
     const localized = { ...content }
     const locale = this.currentLocale
 
     // 尝试本地化 text
     if (content.i18n.text) {
-      localized.text = content.i18n.text[locale]
-        || content.i18n.text['en-US']
-        || content.text
+      localized.text =
+        content.i18n.text[locale] || content.i18n.text['en-US'] || content.text
     }
 
     // 尝试本地化 subtext
     if (content.i18n.subtext) {
-      localized.subtext = content.i18n.subtext[locale]
-        || content.i18n.subtext['en-US']
-        || content.subtext
+      localized.subtext =
+        content.i18n.subtext[locale] ||
+        content.i18n.subtext['en-US'] ||
+        content.subtext
     }
 
     return localized
@@ -307,8 +305,7 @@ class DynamicContentProviderService {
     for (const listener of this.listeners) {
       try {
         listener(event)
-      }
-      catch (error) {
+      } catch (error) {
         console.error('[DynamicContentProvider] Listener error:', error)
       }
     }
@@ -343,7 +340,10 @@ class DynamicContentProviderService {
   /**
    * Tapp 设置动态内容
    */
-  setTappContent(tappId: string, content: Omit<DynamicContentItem, 'sourceTappId'>): void {
+  setTappContent(
+    tappId: string,
+    content: Omit<DynamicContentItem, 'sourceTappId'>,
+  ): void {
     const providerId = `tapp-${tappId}`
 
     // 确保提供者已注册
@@ -359,7 +359,9 @@ class DynamicContentProviderService {
     // 设置内容类型为 tapp 类型
     const tappContent: DynamicContentItem = {
       ...content,
-      type: content.type.startsWith('tapp-') ? content.type : `tapp-${tappId}` as DynamicContentType,
+      type: content.type.startsWith('tapp-')
+        ? content.type
+        : (`tapp-${tappId}` as DynamicContentType),
       sourceTappId: tappId,
       priority: content.priority ?? -1, // Tapp 内容默认低优先级
     }
@@ -382,7 +384,7 @@ class DynamicContentProviderService {
   getTappContent(tappId: string): DynamicContentItem | undefined {
     const providerId = `tapp-${tappId}`
     const contents = this.contents.get(providerId) || []
-    return contents.find(c => c.sourceTappId === tappId)
+    return contents.find((c) => c.sourceTappId === tappId)
   }
 
   // ============ 辅助方法 ============
@@ -409,20 +411,23 @@ class DynamicContentProviderService {
   /**
    * 安全获取内容文本（处理空值）
    */
-  getSafeText(content: DynamicContentItem | null | undefined, fallback: string = ''): string {
-    if (!content)
-      return fallback
+  getSafeText(
+    content: DynamicContentItem | null | undefined,
+    fallback: string = '',
+  ): string {
+    if (!content) return fallback
     return content.text || fallback
   }
 
   /**
    * 安全获取内容副文本（处理空值）
    */
-  getSafeSubtext(content: DynamicContentItem | null | undefined, fallback?: string): string | undefined {
-    if (!content)
-      return fallback
-    if (!this.shouldShowSubtext(content))
-      return undefined
+  getSafeSubtext(
+    content: DynamicContentItem | null | undefined,
+    fallback?: string,
+  ): string | undefined {
+    if (!content) return fallback
+    if (!this.shouldShowSubtext(content)) return undefined
     return content.subtext || fallback
   }
 }

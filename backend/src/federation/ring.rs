@@ -803,8 +803,8 @@ async fn collect_sync_entries(ring_type: &str, db: &DatabaseConnection) -> Vec<s
                 .await
                 .unwrap_or_default();
             rows.iter()
-                .filter_map(|r| {
-                    Some(json!({
+                .map(|r| {
+                    json!({
                         "type": "instance",
                         "domain": r.try_get::<String>("", "domain").unwrap_or_default(),
                         "software": r.try_get::<Option<String>>("", "software").unwrap_or(None),
@@ -812,7 +812,7 @@ async fn collect_sync_entries(ring_type: &str, db: &DatabaseConnection) -> Vec<s
                         "name": r.try_get::<Option<String>>("", "instance_name").unwrap_or(None),
                         "description": r.try_get::<Option<String>>("", "description").unwrap_or(None),
                         "trust_level": r.try_get::<i16>("", "trust_level").unwrap_or(0)
-                    }))
+                    })
                 })
                 .collect()
         }

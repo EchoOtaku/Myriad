@@ -20,7 +20,7 @@ const ResourceLoaderMonitor: React.FC = () => {
 
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'R') {
-        setIsVisible(prev => !prev)
+        setIsVisible((prev) => !prev)
       }
     }
 
@@ -46,7 +46,10 @@ const ResourceLoaderMonitor: React.FC = () => {
     <div className="resource-monitor">
       <div className="monitor-header">
         <h3>Resource Loader</h3>
-        <button className="monitor-close-btn" onClick={() => setIsVisible(false)}>
+        <button
+          className="monitor-close-btn"
+          onClick={() => setIsVisible(false)}
+        >
           ✕
         </button>
       </div>
@@ -115,7 +118,7 @@ const ResourceLoaderMonitor: React.FC = () => {
               clearPlaylistCache()
               clearLyricsCache()
               setShowCacheCleared(true)
-              setTimeout(() => setShowCacheCleared(false), 2000)
+              setTimeout(setShowCacheCleared, 2000, false)
             }}
           >
             Clear Cache

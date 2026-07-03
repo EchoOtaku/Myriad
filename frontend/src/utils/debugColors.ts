@@ -15,8 +15,15 @@
  * @version 2.1
  */
 
-import { applyColorPalette, clearColorCache, extractColorsFromImage } from './colorExtractor'
-import { clearColorCache as clearWallpaperCache, getCacheInfo } from './wallpaperColorCache'
+import {
+  applyColorPalette,
+  clearColorCache,
+  extractColorsFromImage,
+} from './colorExtractor'
+import {
+  clearColorCache as clearWallpaperCache,
+  getCacheInfo,
+} from './wallpaperColorCache'
 import { extractBackgroundUrl, wallpaperState } from './wallpaperState'
 
 // ============================================================================
@@ -24,21 +31,20 @@ import { extractBackgroundUrl, wallpaperState } from './wallpaperState'
 // ============================================================================
 
 /** 截断URL用于显示 */
-function truncateUrl(url: string | null | undefined, maxLen = 80): string | null {
-  if (!url)
-    return null
+function truncateUrl(
+  url: string | null | undefined,
+  maxLen = 80,
+): string | null {
+  if (!url) return null
   return url.length > maxLen ? `${url.substring(0, maxLen)}...` : url
 }
 
 /** 格式化时间间隔 */
 function formatTimeAgo(timestamp: number | null | undefined): string {
-  if (!timestamp)
-    return '未记录'
+  if (!timestamp) return '未记录'
   const seconds = Math.round((Date.now() - timestamp) / 1000)
-  if (seconds < 60)
-    return `${seconds}秒前`
-  if (seconds < 3600)
-    return `${Math.round(seconds / 60)}分钟前`
+  if (seconds < 60) return `${seconds}秒前`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}分钟前`
   return `${Math.round(seconds / 3600)}小时前`
 }
 
@@ -71,7 +77,7 @@ export const debugColorTools = {
       .map(([name, color]) => `%c ${name}: ${color} %c  `)
       .join('')
 
-    const styles = Object.values(colors).flatMap(color => [
+    const styles = Object.values(colors).flatMap((color) => [
       `background: ${color}; color: white; padding: 2px 8px; border-radius: 3px;`,
       'background: transparent;',
     ])
@@ -108,20 +114,18 @@ export const debugColorTools = {
 
     if (status.isConsistent && status.isDOMConsistent) {
       console.log('✅ 壁纸状态一致')
-    }
-    else if (status.isConsistent) {
+    } else if (status.isConsistent) {
       console.log('⚠️ URL规范化后一致，原始URL略有不同（可能是缓存参数）')
-    }
-    else {
+    } else {
       console.warn('❌ 壁纸状态不一致')
     }
 
     console.table({
-      '状态URL': status.activeUrl || '(无)',
+      状态URL: status.activeUrl || '(无)',
       'DOM URL': status.domUrl || '(无)',
-      '一致性': status.isConsistent ? '✓' : '✗',
-      '最后应用': status.lastApplied,
-      '监听器数量': status.listenerCount,
+      一致性: status.isConsistent ? '✓' : '✗',
+      最后应用: status.lastApplied,
+      监听器数量: status.listenerCount,
     })
 
     return status
@@ -151,11 +155,13 @@ export const debugColorTools = {
 
     if (info.items && info.items.length > 0) {
       console.log('🎨 缓存条目:')
-      console.table(info.items.map(item => ({
-        URL: item.url,
-        缓存年龄: `${item.age}秒`,
-        访问次数: item.accessCount,
-      })))
+      console.table(
+        info.items.map((item) => ({
+          URL: item.url,
+          缓存年龄: `${item.age}秒`,
+          访问次数: item.accessCount,
+        })),
+      )
     }
 
     return info
@@ -185,7 +191,7 @@ export const debugColorTools = {
         .map(([name]) => `%c ${name} %c`)
         .join('')
 
-      const styles = Object.values(colors).flatMap(color => [
+      const styles = Object.values(colors).flatMap((color) => [
         `background: ${color}; color: white; padding: 4px 12px; border-radius: 4px;`,
         'background: transparent;',
       ])
@@ -199,8 +205,7 @@ export const debugColorTools = {
       }
 
       return colors
-    }
-    catch (error) {
+    } catch (error) {
       const duration = Math.round(performance.now() - startTime)
       console.error(`❌ 提取失败 (${duration}ms):`, error)
       throw error
@@ -220,8 +225,7 @@ export const debugColorTools = {
 
     if (isActive) {
       console.log('✅ URL与当前壁纸一致')
-    }
-    else {
+    } else {
       console.warn('⚠️ URL与当前壁纸不一致')
     }
 
@@ -256,7 +260,8 @@ export const debugColorTools = {
    * 显示帮助信息
    */
   help() {
-    console.log(`
+    console.log(
+      `
 %c🎨 壁纸颜色提取调试工具 v2.1%c
 
 %c状态检查%c
@@ -277,7 +282,18 @@ export const debugColorTools = {
   __debugColors.test('https://example.com/image.jpg')
   __debugColors.wallpaperStatus()
   __debugColors.verify(document.body.style.backgroundImage)
-`, 'font-size: 14px; font-weight: bold; color: #3b82f6;', '', 'font-weight: bold; color: #10b981;', '', 'font-weight: bold; color: #f59e0b;', '', 'font-weight: bold; color: #ef4444;', '', 'font-weight: bold; color: #8b5cf6;', '')
+`,
+      'font-size: 14px; font-weight: bold; color: #3b82f6;',
+      '',
+      'font-weight: bold; color: #10b981;',
+      '',
+      'font-weight: bold; color: #f59e0b;',
+      '',
+      'font-weight: bold; color: #ef4444;',
+      '',
+      'font-weight: bold; color: #8b5cf6;',
+      '',
+    )
   },
 }
 
@@ -286,7 +302,7 @@ export const debugColorTools = {
 // ============================================================================
 
 if (import.meta.env.DEV) {
-  (window as any).__debugColors = debugColorTools
+  ;(window as any).__debugColors = debugColorTools
   console.log(
     '%c🛠️ 颜色调试工具已加载%c 输入 %c__debugColors.help()%c 查看帮助',
     'color: #3b82f6; font-weight: bold;',

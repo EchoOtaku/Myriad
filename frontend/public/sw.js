@@ -8,10 +8,7 @@ const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`
 const IMAGE_CACHE = `${CACHE_VERSION}-images`
 
 // 需要预缓存的静态资源
-const STATIC_ASSETS = [
-  '/',
-  '/logo.webp',
-]
+const STATIC_ASSETS = ['/', '/logo.webp']
 
 // 缓存配置
 const MAX_DYNAMIC_CACHE_SIZE = 50
@@ -37,7 +34,8 @@ globalThis.addEventListener('install', (event) => {
   console.log('[SW] Installing Service Worker...')
 
   event.waitUntil(
-    caches.open(STATIC_CACHE)
+    caches
+      .open(STATIC_CACHE)
       .then((cache) => {
         console.log('[SW] Precaching static assets')
         return cache.addAll(STATIC_ASSETS)
@@ -59,7 +57,13 @@ globalThis.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys
-          .filter(key => key.startsWith('myriad-') && key !== STATIC_CACHE && key !== DYNAMIC_CACHE && key !== IMAGE_CACHE)
+          .filter(
+            (key) =>
+              key.startsWith('myriad-') &&
+              key !== STATIC_CACHE &&
+              key !== DYNAMIC_CACHE &&
+              key !== IMAGE_CACHE,
+          )
           .map((key) => {
             console.log('[SW] Removing old cache:', key)
             return caches.delete(key)
@@ -79,19 +83,18 @@ async function limitCacheSize(cacheName, maxSize) {
 
   if (keys.length > maxSize) {
     const keysToDelete = keys.slice(0, keys.length - maxSize)
-    await Promise.all(keysToDelete.map(key => cache.delete(key)))
+    await Promise.all(keysToDelete.map((key) => cache.delete(key)))
   }
 }
 
 // 检查缓存是否过期
 function isCacheExpired(response, maxAge) {
   const cachedDate = response.headers.get('sw-cached-date')
-  if (!cachedDate)
-    return false
+  if (!cachedDate) return false
 
   const cacheTime = new Date(cachedDate).getTime()
   const now = Date.now()
-  return (now - cacheTime) > maxAge
+  return now - cacheTime > maxAge
 }
 
 // 添加缓存时间戳
@@ -155,25 +158,30 @@ globalThis.addEventListener('fetch', (event) => {
 
   // 图片请求 - 缓存优先策略(带过期检查)
   // ⚠️ 壁纸图片不缓存，避免跨域问题
-  if (request.destination === 'image' || /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(url.pathname)) {
+  if (
+    request.destination === 'image' ||
+    /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(url.pathname)
+  ) {
     // 检查是否为壁纸 CDN 图片
-    const isWallpaperCDN = WALLPAPER_CDN_DOMAINS.some(domain => url.hostname.includes(domain))
+    const isWallpaperCDN = WALLPAPER_CDN_DOMAINS.some((domain) =>
+      url.hostname.includes(domain),
+    )
 
     // 壁纸图片不走缓存，直接网络请求（避免跨域缓存问题）
     if (isWallpaperCDN) {
       event.respondWith(
-        fetch(request, { mode: 'cors', credentials: 'omit' })
-          .catch((error) => {
-            console.warn('[SW] Wallpaper fetch failed:', request.url.slice(0, 80), error)
-            // 返回透明占位
-            return new Response(
-              new Blob([]),
-              {
-                status: 200,
-                headers: { 'Content-Type': 'image/svg+xml' },
-              },
-            )
-          }),
+        fetch(request, { mode: 'cors', credentials: 'omit' }).catch((error) => {
+          console.warn(
+            '[SW] Wallpaper fetch failed:',
+            request.url.slice(0, 80),
+            error,
+          )
+          // 返回透明占位
+          return new Response(new Blob([]), {
+            status: 200,
+            headers: { 'Content-Type': 'image/svg+xml' },
+          })
+        }),
       )
       return
     }
@@ -181,39 +189,40 @@ globalThis.addEventListener('fetch', (event) => {
     const cacheMaxAge = CACHE_MAX_AGE.images
 
     event.respondWith(
-      caches.match(request)
-        .then(async (cachedResponse) => {
-          // 检查缓存是否过期
-          if (cachedResponse && !isCacheExpired(cachedResponse, cacheMaxAge)) {
+      caches.match(request).then(async (cachedResponse) => {
+        // 检查缓存是否过期
+        if (cachedResponse && !isCacheExpired(cachedResponse, cacheMaxAge)) {
+          return cachedResponse
+        }
+
+        try {
+          const response = await fetch(request, {
+            mode: 'cors',
+            credentials: 'omit',
+          })
+
+          if (response.ok && response.status !== 206) {
+            const responseClone = response.clone()
+            await cacheWithTimestamp(IMAGE_CACHE, request, responseClone)
+            limitCacheSize(IMAGE_CACHE, MAX_IMAGE_CACHE_SIZE)
+          }
+          return response
+        } catch (error) {
+          // 网络失败时返回过期缓存
+          if (cachedResponse) {
+            console.log(
+              '[SW] Using cached image after network error:',
+              request.url,
+            )
             return cachedResponse
           }
-
-          try {
-            const response = await fetch(request, { mode: 'cors', credentials: 'omit' })
-
-            if (response.ok && response.status !== 206) {
-              const responseClone = response.clone()
-              await cacheWithTimestamp(IMAGE_CACHE, request, responseClone)
-              limitCacheSize(IMAGE_CACHE, MAX_IMAGE_CACHE_SIZE)
-            }
-            return response
-          }
-          catch (error) {
-            // 网络失败时返回过期缓存
-            if (cachedResponse) {
-              console.log('[SW] Using cached image after network error:', request.url)
-              return cachedResponse
-            }
-            console.warn('[SW] Image fetch failed:', request.url, error)
-            return new Response(
-              new Blob([]),
-              {
-                status: 200,
-                headers: { 'Content-Type': 'image/svg+xml' },
-              },
-            )
-          }
-        }),
+          console.warn('[SW] Image fetch failed:', request.url, error)
+          return new Response(new Blob([]), {
+            status: 200,
+            headers: { 'Content-Type': 'image/svg+xml' },
+          })
+        }
+      }),
     )
     return
   }
@@ -221,27 +230,28 @@ globalThis.addEventListener('fetch', (event) => {
   // CSS/JS静态资源 - 缓存优先(带过期检查)
   if (/\.(css|js|woff2?)$/i.test(url.pathname)) {
     event.respondWith(
-      caches.match(request)
-        .then(async (cachedResponse) => {
-          if (cachedResponse && !isCacheExpired(cachedResponse, CACHE_MAX_AGE.static)) {
+      caches.match(request).then(async (cachedResponse) => {
+        if (
+          cachedResponse &&
+          !isCacheExpired(cachedResponse, CACHE_MAX_AGE.static)
+        ) {
+          return cachedResponse
+        }
+
+        try {
+          const response = await fetch(request)
+          if (response.ok) {
+            const responseClone = response.clone()
+            await cacheWithTimestamp(STATIC_CACHE, request, responseClone)
+          }
+          return response
+        } catch (error) {
+          if (cachedResponse) {
             return cachedResponse
           }
-
-          try {
-            const response = await fetch(request)
-            if (response.ok) {
-              const responseClone = response.clone()
-              await cacheWithTimestamp(STATIC_CACHE, request, responseClone)
-            }
-            return response
-          }
-          catch (error) {
-            if (cachedResponse) {
-              return cachedResponse
-            }
-            throw error
-          }
-        }),
+          throw error
+        }
+      }),
     )
     return
   }
@@ -251,7 +261,11 @@ globalThis.addEventListener('fetch', (event) => {
     fetch(request)
       .then((response) => {
         // ✅ 只缓存成功的 GET 请求（排除 206 响应）
-        if (request.method === 'GET' && response.ok && response.status !== 206) {
+        if (
+          request.method === 'GET' &&
+          response.ok &&
+          response.status !== 206
+        ) {
           const responseClone = response.clone()
           caches.open(DYNAMIC_CACHE).then((cache) => {
             cache.put(request, responseClone)
@@ -283,11 +297,14 @@ globalThis.addEventListener('message', (event) => {
 
   if (event.data && event.data.type === 'CLEAR_CACHE') {
     event.waitUntil(
-      caches.keys().then((keys) => {
-        return Promise.all(keys.map(key => caches.delete(key)))
-      }).then(() => {
-        event.ports[0].postMessage({ success: true })
-      }),
+      caches
+        .keys()
+        .then((keys) => {
+          return Promise.all(keys.map((key) => caches.delete(key)))
+        })
+        .then(() => {
+          event.ports[0].postMessage({ success: true })
+        }),
     )
   }
 })

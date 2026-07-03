@@ -221,7 +221,7 @@ mod tests {
     use super::*;
     use crate::GLOBAL_DYNAMIC_CONFIG;
     use lazy_static::lazy_static;
-    use std::sync::Mutex;
+    use tokio::sync::Mutex;
 
     lazy_static! {
         static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -239,7 +239,7 @@ mod tests {
             ],
         };
 
-        assert!(config.should_bypass("http://localhost:3000"));
+        assert!(config.should_bypass("http://localhost:1103"));
         assert!(config.should_bypass("https://api.bilibili.com/x/web"));
         assert!(config.should_bypass("http://127.0.0.1:8080"));
         assert!(!config.should_bypass("https://api.github.com"));
@@ -248,7 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn github_api_base_url_should_follow_dynamic_config_runtime() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX.lock().await;
         let original = { GLOBAL_DYNAMIC_CONFIG.read().await.clone() };
 
         {
@@ -267,7 +267,7 @@ mod tests {
 
     #[tokio::test]
     async fn github_api_user_url_should_use_dynamic_base() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = TEST_MUTEX.lock().await;
         let original = { GLOBAL_DYNAMIC_CONFIG.read().await.clone() };
 
         {

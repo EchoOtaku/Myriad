@@ -4,13 +4,13 @@
  * 包含 Lifecycle, UI, Storage 等基础处理器
  */
 
-import * as TappApiService from '../../../services/TappApiService'
-
-import { sanitizeStorageValue, validateStorageKey } from '../security'
+import type { TappInstance } from '../../../types'
 
 import type { TappBridge } from '../../TappBridge'
-import type { TappInstance } from '../../../types'
+
 import type { TappNotificationOptions } from '../types'
+import * as TappApiService from '../../../services/TappApiService'
+import { sanitizeStorageValue, validateStorageKey } from '../security'
 
 /**
  * 注册生命周期处理器
@@ -28,7 +28,10 @@ export function registerLifecycleHandlers(
 
   bridge.registerHandler('lifecycle.error', async (message) => {
     const payload = message.payload
-    const errorMsg = typeof payload === 'string' ? payload : (payload as Record<string, unknown>)?.message || 'Unknown error'
+    const errorMsg =
+      typeof payload === 'string'
+        ? payload
+        : (payload as Record<string, unknown>)?.message || 'Unknown error'
     console.error(`[Sandbox] Tapp ${tappInstance.id} error:`, payload)
     onError?.(new Error(String(errorMsg)))
     return { success: true, data: null }
@@ -62,9 +65,10 @@ export function registerUIHandlers(
   })
 
   bridge.registerHandler('ui.getPrimaryColor', async () => {
-    const color = getComputedStyle(document.documentElement)
-      .getPropertyValue('--color-primary')
-      .trim() || '#94a3b8'
+    const color =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-primary')
+        .trim() || '#94a3b8'
     return { success: true, data: color }
   })
 
@@ -79,7 +83,12 @@ export function registerUIHandlers(
   bridge.registerHandler('ui.showNotification', async (message) => {
     const [options] = (message.payload as { args: unknown[] }).args || []
     if (onNotification && options) {
-      const opts = options as { title?: string, message?: string, type?: string, duration?: number }
+      const opts = options as {
+        title?: string
+        message?: string
+        type?: string
+        duration?: number
+      }
       onNotification({
         title: opts.title || 'Tapp 通知',
         message: opts.message || '',
@@ -104,16 +113,13 @@ export function registerUIHandlers(
       }
       if (docEl.requestFullscreen) {
         await docEl.requestFullscreen()
-      }
-      else if (docEl.webkitRequestFullscreen) {
+      } else if (docEl.webkitRequestFullscreen) {
         await docEl.webkitRequestFullscreen()
-      }
-      else {
+      } else {
         return { success: false, error: 'Fullscreen not supported' }
       }
       return { success: true, data: null }
-    }
-    catch {
+    } catch {
       return { success: false, error: 'Fullscreen request denied' }
     }
   })
@@ -126,13 +132,11 @@ export function registerUIHandlers(
       }
       if (doc.exitFullscreen) {
         await doc.exitFullscreen()
-      }
-      else if (doc.webkitExitFullscreen) {
+      } else if (doc.webkitExitFullscreen) {
         await doc.webkitExitFullscreen()
       }
       return { success: true, data: null }
-    }
-    catch {
+    } catch {
       return { success: false, error: 'Exit fullscreen failed' }
     }
   })
@@ -148,28 +152,25 @@ export function registerUIHandlers(
         webkitRequestFullscreen?: () => Promise<void>
       }
 
-      const fullscreenElement = doc.fullscreenElement || doc.webkitFullscreenElement
+      const fullscreenElement =
+        doc.fullscreenElement || doc.webkitFullscreenElement
 
       if (fullscreenElement) {
         if (doc.exitFullscreen) {
           await doc.exitFullscreen()
-        }
-        else if (doc.webkitExitFullscreen) {
+        } else if (doc.webkitExitFullscreen) {
           await doc.webkitExitFullscreen()
         }
         return { success: true, data: { isFullscreen: false } }
-      }
-      else {
+      } else {
         if (docEl.requestFullscreen) {
           await docEl.requestFullscreen()
-        }
-        else if (docEl.webkitRequestFullscreen) {
+        } else if (docEl.webkitRequestFullscreen) {
           await docEl.webkitRequestFullscreen()
         }
         return { success: true, data: { isFullscreen: true } }
       }
-    }
-    catch {
+    } catch {
       return { success: false, error: 'Fullscreen toggle failed' }
     }
   })
@@ -179,7 +180,10 @@ export function registerUIHandlers(
     const doc = document as Document & {
       webkitFullscreenElement?: Element
     }
-    return { success: true, data: !!(doc.fullscreenElement || doc.webkitFullscreenElement) }
+    return {
+      success: true,
+      data: !!(doc.fullscreenElement || doc.webkitFullscreenElement),
+    }
   })
 }
 
@@ -200,8 +204,7 @@ export function registerStorageHandlers(
 
   bridge.registerHandler('storage.get', async (message) => {
     const [key] = (message.payload as { args: unknown[] }).args || []
-    if (!key)
-      return { success: false, error: 'Key is required' }
+    if (!key) return { success: false, error: 'Key is required' }
 
     // 🔒 安全校验：验证 key 格式
     const keyValidation = validateStorageKey(key as string)
@@ -212,16 +215,17 @@ export function registerStorageHandlers(
     try {
       const value = await TappApiService.getStorage(tappId, key as string)
       return { success: true, data: value }
-    }
-    catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
     }
   })
 
   bridge.registerHandler('storage.set', async (message) => {
     const [key, value] = (message.payload as { args: unknown[] }).args || []
-    if (!key)
-      return { success: false, error: 'Key is required' }
+    if (!key) return { success: false, error: 'Key is required' }
 
     // 🔒 安全校验：验证 key 格式
     const keyValidation = validateStorageKey(key as string)
@@ -233,22 +237,26 @@ export function registerStorageHandlers(
     const sanitizedValue = sanitizeStorageValue(value)
     const valueSize = JSON.stringify(sanitizedValue).length
     if (valueSize > MAX_VALUE_SIZE) {
-      return { success: false, error: `Value too large: ${valueSize} bytes (max ${MAX_VALUE_SIZE})` }
+      return {
+        success: false,
+        error: `Value too large: ${valueSize} bytes (max ${MAX_VALUE_SIZE})`,
+      }
     }
 
     try {
       await TappApiService.setStorage(tappId, key as string, sanitizedValue)
       return { success: true, data: null }
-    }
-    catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
     }
   })
 
   bridge.registerHandler('storage.remove', async (message) => {
     const [key] = (message.payload as { args: unknown[] }).args || []
-    if (!key)
-      return { success: false, error: 'Key is required' }
+    if (!key) return { success: false, error: 'Key is required' }
 
     // 🔒 安全校验：验证 key 格式
     const keyValidation = validateStorageKey(key as string)
@@ -259,9 +267,11 @@ export function registerStorageHandlers(
     try {
       await TappApiService.removeStorage(tappId, key as string)
       return { success: true, data: null }
-    }
-    catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
     }
   })
 
@@ -269,9 +279,11 @@ export function registerStorageHandlers(
     try {
       const keys = await TappApiService.listStorageKeys(tappId)
       return { success: true, data: keys }
-    }
-    catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
     }
   })
 
@@ -279,9 +291,11 @@ export function registerStorageHandlers(
     try {
       await TappApiService.clearStorage(tappId)
       return { success: true, data: null }
-    }
-    catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
     }
   })
 
@@ -294,9 +308,11 @@ export function registerStorageHandlers(
         used += (key.length + JSON.stringify(value).length) * 2
       }
       return { success: true, data: { used, quota: 5 * 1024 * 1024 } }
-    }
-    catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
     }
   })
 }
@@ -317,7 +333,10 @@ export function registerUserHandlers(
   })
 
   bridge.registerHandler('user.isGuest', async () => {
-    return { success: true, data: (tappInstance.userRole || 'guest') === 'guest' }
+    return {
+      success: true,
+      data: (tappInstance.userRole || 'guest') === 'guest',
+    }
   })
 
   bridge.registerHandler('user.isLoggedIn', async () => {
@@ -326,24 +345,27 @@ export function registerUserHandlers(
 
   bridge.registerHandler('user.getAllowedPermissionLevels', async () => {
     const role = tappInstance.userRole || 'guest'
-    const levels = role === 'admin'
-      ? ['public', 'basic', 'elevated', 'privileged']
-      : role === 'user'
-        ? ['public', 'basic']
-        : ['public']
+    const levels =
+      role === 'admin'
+        ? ['public', 'basic', 'elevated', 'privileged']
+        : role === 'user'
+          ? ['public', 'basic']
+          : ['public']
     return { success: true, data: levels }
   })
 
   bridge.registerHandler('user.canUsePermissionLevel', async (message) => {
     const [level] = (message.payload as { args: unknown[] }).args || []
-    if (!level)
-      return { success: false, error: 'Level required' }
+    if (!level) return { success: false, error: 'Level required' }
     const role = tappInstance.userRole || 'guest'
-    const allowed = role === 'admin'
-      ? ['public', 'basic', 'elevated', 'privileged'].includes(level as string)
-      : role === 'user'
-        ? ['public', 'basic'].includes(level as string)
-        : level === 'public'
+    const allowed =
+      role === 'admin'
+        ? ['public', 'basic', 'elevated', 'privileged'].includes(
+            level as string,
+          )
+        : role === 'user'
+          ? ['public', 'basic'].includes(level as string)
+          : level === 'public'
     return { success: true, data: allowed }
   })
 }
@@ -353,13 +375,10 @@ export function registerUserHandlers(
  *
  * 提供文件下载功能，绕过 iframe 沙箱限制
  */
-export function registerFileHandlers(
-  bridge: TappBridge,
-): void {
+export function registerFileHandlers(bridge: TappBridge): void {
   bridge.registerHandler('file.download', async (message) => {
     const [options] = (message.payload as { args: unknown[] }).args || []
-    if (!options)
-      return { success: false, error: 'Options required' }
+    if (!options) return { success: false, error: 'Options required' }
 
     const { content, filename, mimeType } = options as {
       content: string
@@ -367,25 +386,32 @@ export function registerFileHandlers(
       mimeType?: string
     }
 
-    if (!content)
-      return { success: false, error: 'Content is required' }
-    if (!filename)
-      return { success: false, error: 'Filename is required' }
+    if (!content) return { success: false, error: 'Content is required' }
+    if (!filename) return { success: false, error: 'Filename is required' }
 
     // 验证文件名（防止路径遍历）
-    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    if (
+      filename.includes('..') ||
+      filename.includes('/') ||
+      filename.includes('\\')
+    ) {
       return { success: false, error: 'Invalid filename' }
     }
 
     // 限制文件大小（最大 10MB）
     const MAX_SIZE = 10 * 1024 * 1024
     if (content.length > MAX_SIZE) {
-      return { success: false, error: `Content too large (max ${MAX_SIZE} bytes)` }
+      return {
+        success: false,
+        error: `Content too large (max ${MAX_SIZE} bytes)`,
+      }
     }
 
     try {
       // 在主应用上下文中创建下载（绕过 iframe 沙箱限制）
-      const blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8' })
+      const blob = new Blob([content], {
+        type: mimeType || 'text/plain;charset=utf-8',
+      })
       const url = URL.createObjectURL(blob)
 
       const a = document.createElement('a')
@@ -402,9 +428,11 @@ export function registerFileHandlers(
       }, 100)
 
       return { success: true, data: { filename } }
-    }
-    catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Download failed' }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Download failed',
+      }
     }
   })
 }

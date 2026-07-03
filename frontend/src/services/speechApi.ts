@@ -4,8 +4,8 @@
  * 提供腾讯云 TTS/ASR 服务的前端接口
  */
 
-import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
 import { API_URL } from '../config'
+import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
 
 const API_BASE = `${API_URL}/api/speech`
 
@@ -310,7 +310,9 @@ export async function textToSpeech(req: TTSRequest): Promise<TTSResponse> {
 /**
  * 批量文本转语音（用于播客）
  */
-export async function batchTextToSpeech(req: BatchTTSRequest): Promise<BatchTTSResponse> {
+export async function batchTextToSpeech(
+  req: BatchTTSRequest,
+): Promise<BatchTTSResponse> {
   return request<BatchTTSResponse>('/tts/batch', {
     method: 'POST',
     body: JSON.stringify(req),
@@ -320,7 +322,10 @@ export async function batchTextToSpeech(req: BatchTTSRequest): Promise<BatchTTSR
 /**
  * 将 Base64 音频数据转换为 Blob URL
  */
-export function base64ToAudioUrl(base64: string, mimeType: string = 'audio/mp3'): string {
+export function base64ToAudioUrl(
+  base64: string,
+  mimeType: string = 'audio/mp3',
+): string {
   const byteCharacters = atob(base64)
   const byteArray = new Uint8Array(byteCharacters.length)
   for (let i = 0; i < byteCharacters.length; i++) {
@@ -336,7 +341,7 @@ export function base64ToAudioUrl(base64: string, mimeType: string = 'audio/mp3')
  * 使用腾讯云 TTS 服务生成播客音频并播放
  */
 export class CloudPodcastPlayer {
-  private dialogues: Array<{ speaker: string, text: string }> = []
+  private dialogues: Array<{ speaker: string; text: string }> = []
   private audioElements: Map<number, HTMLAudioElement> = new Map()
   private audioUrls: string[] = []
   private currentIndex = 0
@@ -389,9 +394,20 @@ export class CloudPodcastPlayer {
    * @returns 加载结果，包含成功状态、缓存命中数、新生成数、总数
    */
   async load(
-    dialogues: Array<{ speaker: string, text: string }>,
-    options: { sourceId: number, articleId: number, hostVoiceId?: number, guestVoiceId?: number, forceRegenerate?: boolean },
-  ): Promise<{ success: boolean, cacheHits: number, generated: number, total: number }> {
+    dialogues: Array<{ speaker: string; text: string }>,
+    options: {
+      sourceId: number
+      articleId: number
+      hostVoiceId?: number
+      guestVoiceId?: number
+      forceRegenerate?: boolean
+    },
+  ): Promise<{
+    success: boolean
+    cacheHits: number
+    generated: number
+    total: number
+  }> {
     this.stop()
     this.cleanup()
     this.dialogues = dialogues
@@ -418,8 +434,18 @@ export class CloudPodcastPlayer {
         force_regenerate: options.forceRegenerate,
       }
 
-      console.log('[CloudPodcastPlayer] Loading TTS for', dialogues.length, 'dialogues')
-      console.log('[CloudPodcastPlayer] Options:', { sourceId: options.sourceId, articleId: options.articleId, hostVoiceId: options?.hostVoiceId, guestVoiceId: options?.guestVoiceId, forceRegenerate: options.forceRegenerate })
+      console.log(
+        '[CloudPodcastPlayer] Loading TTS for',
+        dialogues.length,
+        'dialogues',
+      )
+      console.log('[CloudPodcastPlayer] Options:', {
+        sourceId: options.sourceId,
+        articleId: options.articleId,
+        hostVoiceId: options?.hostVoiceId,
+        guestVoiceId: options?.guestVoiceId,
+        forceRegenerate: options.forceRegenerate,
+      })
 
       const response = await batchTextToSpeech(batchReq)
 
@@ -439,18 +465,19 @@ export class CloudPodcastPlayer {
           // 显示第一个错误
           const firstError = response.errors[0]
           throw new Error(`TTS失败: ${firstError.error}`)
-        }
-        else if (response.error) {
+        } else if (response.error) {
           throw new Error(response.error)
-        }
-        else {
+        } else {
           throw new Error('批量TTS请求失败：未返回任何音频')
         }
       }
 
       // 有音频返回，即使部分失败也继续
       if (response.errors && response.errors.length > 0) {
-        console.warn('[CloudPodcastPlayer] Some dialogues failed:', response.errors)
+        console.warn(
+          '[CloudPodcastPlayer] Some dialogues failed:',
+          response.errors,
+        )
       }
 
       console.log('[CloudPodcastPlayer] TTS loaded:', {
@@ -480,8 +507,7 @@ export class CloudPodcastPlayer {
         generated: response.generated || 0,
         total: dialogues.length,
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('[CloudPodcastPlayer] Load failed:', error)
       this.isLoading = false
       throw error
@@ -492,10 +518,8 @@ export class CloudPodcastPlayer {
    * 开始播放
    */
   async play(): Promise<void> {
-    if (this.dialogues.length === 0)
-      return
-    if (this.isLoading)
-      return
+    if (this.dialogues.length === 0) return
+    if (this.isLoading) return
 
     if (this.isPaused) {
       this.isPaused = false
@@ -516,8 +540,7 @@ export class CloudPodcastPlayer {
    * 暂停播放
    */
   pause() {
-    if (!this.isPlaying)
-      return
+    if (!this.isPlaying) return
     this.isPaused = true
 
     const audio = this.audioElements.get(this.currentIndex)
@@ -530,8 +553,7 @@ export class CloudPodcastPlayer {
    * 恢复播放
    */
   async resume() {
-    if (!this.isPaused)
-      return
+    if (!this.isPaused) return
     this.isPaused = false
 
     const audio = this.audioElements.get(this.currentIndex)
@@ -558,8 +580,7 @@ export class CloudPodcastPlayer {
    * 跳转到指定对话
    */
   async seekTo(index: number) {
-    if (index < 0 || index >= this.dialogues.length)
-      return
+    if (index < 0 || index >= this.dialogues.length) return
 
     // 停止当前播放
     const currentAudio = this.audioElements.get(this.currentIndex)
@@ -608,8 +629,7 @@ export class CloudPodcastPlayer {
    * 播放下一段
    */
   private async playNext() {
-    if (!this.isPlaying || this.isPaused)
-      return
+    if (!this.isPlaying || this.isPaused) return
 
     if (this.currentIndex >= this.dialogues.length) {
       this.isPlaying = false
@@ -634,15 +654,13 @@ export class CloudPodcastPlayer {
 
     audio.onended = () => {
       // 确保是当前播放的音频
-      if (this.currentIndex !== currentIdx)
-        return
+      if (this.currentIndex !== currentIdx) return
 
       this.currentIndex++
 
       // 对话间隔后继续
       setTimeout(() => {
-        if (!this.isPlaying || this.isPaused)
-          return
+        if (!this.isPlaying || this.isPaused) return
         this.onProgress?.(this.currentIndex, this.dialogues.length)
         this.playNext()
       }, this.config.dialogueGap)
@@ -657,8 +675,7 @@ export class CloudPodcastPlayer {
 
     try {
       await audio.play()
-    }
-    catch (e) {
+    } catch (e) {
       console.error('[CloudPodcastPlayer] Play failed:', e)
       this.currentIndex++
       this.onProgress?.(this.currentIndex, this.dialogues.length)
@@ -715,8 +732,7 @@ export function getTTSSettings(): TTSSettings {
     if (stored) {
       return JSON.parse(stored)
     }
-  }
-  catch (e) {
+  } catch (e) {
     console.warn('[TTS] Failed to load settings:', e)
   }
   return { engine: 'system' }
@@ -730,8 +746,7 @@ export function saveTTSSettings(settings: Partial<TTSSettings>) {
     const current = getTTSSettings()
     const merged = { ...current, ...settings }
     localStorage.setItem('brewlia_tts_settings', JSON.stringify(merged))
-  }
-  catch (e) {
+  } catch (e) {
     console.warn('[TTS] Failed to save settings:', e)
   }
 }
@@ -818,8 +833,13 @@ export interface ArticleCacheResponse {
 /**
  * 获取文章缓存信息
  */
-export async function getArticleCacheInfo(sourceId: number, articleId: number): Promise<ArticleCacheResponse> {
-  return request<ArticleCacheResponse>(`/cache/article?source_id=${sourceId}&article_id=${articleId}`)
+export async function getArticleCacheInfo(
+  sourceId: number,
+  articleId: number,
+): Promise<ArticleCacheResponse> {
+  return request<ArticleCacheResponse>(
+    `/cache/article?source_id=${sourceId}&article_id=${articleId}`,
+  )
 }
 
 /**

@@ -25,11 +25,7 @@ import {
   onVisibility,
   scheduleTask,
 } from './core'
-import {
-  AnimationPriority,
-  AnimationState,
-  DEFAULT_CONFIG,
-} from './types'
+import { AnimationPriority, AnimationState, DEFAULT_CONFIG } from './types'
 
 /** IdleDeadline 类型（用于 requestIdleCallback） */
 interface IdleDeadline {
@@ -98,9 +94,6 @@ class AnimationCoordinator {
   private activeSlots = new Map<string, AnimationSlot>()
   // 等待队列（按优先级排序）
   private waitingQueue: WaitingItem[] = []
-  // 上次启动时间（用于最小间隔控制）
-  private lastStartTime = 0
-
   // ==================== 爆发模式 ====================
   // 爆发模式开始时间
   private burstStartTime: number = 0
@@ -116,7 +109,12 @@ class AnimationCoordinator {
   private timeoutCheckerId: ReturnType<typeof setInterval> | null = null
 
   // 延迟队列
-  private delayedQueue: Array<{ id: string, executeAt: number, priority: AnimationPriority }> = []
+  private delayedQueue: Array<{
+    id: string
+    executeAt: number
+    priority: AnimationPriority
+  }> = []
+
   private delayTimerId: ReturnType<typeof setTimeout> | null = null
 
   // ==================== 分片处理配置 ====================
@@ -198,11 +196,19 @@ class AnimationCoordinator {
   /** 共享的 ResizeObserver 实例（单一观察者，多元素） */
   private sharedResizeObserver: ResizeObserver | null = null
   /** 尺寸回调映射：element -> callback */
-  private resizeCallbacks = new WeakMap<Element, (entry: ResizeObserverEntry) => void>()
+  private resizeCallbacks = new WeakMap<
+    Element,
+    (entry: ResizeObserverEntry) => void
+  >()
+
   /** 被观察元素集合（用于统计和清理） */
   private observedElements = new Set<Element>()
   /** 尺寸更新批次队列 */
-  private resizeBatchQueue: Array<{ element: Element, entry: ResizeObserverEntry }> = []
+  private resizeBatchQueue: Array<{
+    element: Element
+    entry: ResizeObserverEntry
+  }> = []
+
   /** 尺寸批次是否已调度 */
   private resizeBatchScheduled: boolean = false
   /** 尺寸更新节流时间（ms） */
@@ -212,16 +218,22 @@ class AnimationCoordinator {
   /** 尺寸变化阈值（px），小于此值的变化将被忽略 */
   private readonly RESIZE_THRESHOLD_PX = 4
   /** 元素上次尺寸缓存 */
-  private elementSizeCache = new WeakMap<Element, { width: number, height: number }>()
+  private elementSizeCache = new WeakMap<
+    Element,
+    { width: number; height: number }
+  >()
 
   // ==================== IntersectionObserver 管理器 ====================
   /** 共享的 IntersectionObserver 实例池（按配置分组） */
   private intersectionObservers = new Map<string, IntersectionObserver>()
   /** 可见性回调映射：element -> { callback, observerKey } */
-  private intersectionCallbacks = new WeakMap<Element, {
-    callback: (entry: IntersectionObserverEntry) => void
-    observerKey: string
-  }>()
+  private intersectionCallbacks = new WeakMap<
+    Element,
+    {
+      callback: (entry: IntersectionObserverEntry) => void
+      observerKey: string
+    }
+  >()
 
   /** 被观察元素集合（IntersectionObserver） */
   private intersectionObservedElements = new Set<Element>()
@@ -270,8 +282,7 @@ class AnimationCoordinator {
       for (const subscriber of this.visibilitySubscribers) {
         try {
           subscriber(visible)
-        }
-        catch (e) {
+        } catch (e) {
           console.error('[Coordinator] Visibility subscriber error:', e)
         }
       }
@@ -314,10 +325,12 @@ class AnimationCoordinator {
    */
   private initFinalizationRegistry() {
     if (typeof FinalizationRegistry !== 'undefined') {
-      this.finalizationRegistry = new FinalizationRegistry<string>((animationId) => {
-        // 元素被 GC，清理相关状态
-        this.cleanupAnimationState(animationId)
-      })
+      this.finalizationRegistry = new FinalizationRegistry<string>(
+        (animationId) => {
+          // 元素被 GC，清理相关状态
+          this.cleanupAnimationState(animationId)
+        },
+      )
     }
 
     // 备用方案：定期检查 WeakRef（用于不支持 FinalizationRegistry 的环境）
@@ -329,8 +342,7 @@ class AnimationCoordinator {
    * 作为 FinalizationRegistry 的备用方案
    */
   private startWeakRefChecker() {
-    if (this.weakRefCheckerId)
-      return
+    if (this.weakRefCheckerId) return
 
     // 每 30 秒检查一次（低频率，避免性能影响）
     this.weakRefCheckerId = setInterval(() => {
@@ -342,8 +354,7 @@ class AnimationCoordinator {
    * 🔧 检查并清理已失效的 WeakRef
    */
   private checkAndCleanupWeakRefs() {
-    if (this.elementRefs.size === 0)
-      return
+    if (this.elementRefs.size === 0) return
 
     const toCleanup: string[] = []
 
@@ -406,8 +417,7 @@ class AnimationCoordinator {
    */
   isElementAlive(animationId: string): boolean {
     const entry = this.elementRefs.get(animationId)
-    if (!entry)
-      return true // 未注册元素，假设存在
+    if (!entry) return true // 未注册元素，假设存在
 
     const element = entry.ref.deref()
     return element !== undefined
@@ -440,7 +450,9 @@ class AnimationCoordinator {
     }
 
     // 从延迟队列移除（仍用 findIndex，因为延迟队列通常较小）
-    const delayIdx = this.delayedQueue.findIndex(item => item.id === animationId)
+    const delayIdx = this.delayedQueue.findIndex(
+      (item) => item.id === animationId,
+    )
     if (delayIdx !== -1) {
       this.delayedQueue.splice(delayIdx, 1)
     }
@@ -454,8 +466,7 @@ class AnimationCoordinator {
    * 🔧 优化：使用 requestIdleCallback 在浏览器空闲时执行，减少主线程开销
    */
   private startTimeoutChecker() {
-    if (this.timeoutCheckerId)
-      return
+    if (this.timeoutCheckerId) return
 
     // 🔧 优先使用 requestIdleCallback，降低调度开销
     if (typeof requestIdleCallback !== 'undefined') {
@@ -463,8 +474,10 @@ class AnimationCoordinator {
         this.timeoutCheckerId = requestIdleCallback(
           (deadline) => {
             // 只在有空闲时间且页面可见时执行
-            if (deadline.timeRemaining() > 0
-              && (typeof document === 'undefined' || !document.hidden)) {
+            if (
+              deadline.timeRemaining() > 0 &&
+              (typeof document === 'undefined' || !document.hidden)
+            ) {
               this.cleanupTimedOutSlots()
             }
             // 继续调度下一次检查
@@ -476,8 +489,7 @@ class AnimationCoordinator {
         ) as unknown as ReturnType<typeof setInterval>
       }
       scheduleIdleCheck()
-    }
-    else {
+    } else {
       // 降级方案：使用 setInterval
       this.timeoutCheckerId = setInterval(() => {
         if (typeof document !== 'undefined' && document.hidden) {
@@ -493,12 +505,10 @@ class AnimationCoordinator {
    */
   private cleanupTimedOutSlots() {
     // 🔧 页面不可见时跳过清理（节省 CPU）
-    if (!coreIsPageVisible())
-      return
+    if (!coreIsPageVisible()) return
 
     // 快速返回：无活动槽位
-    if (this.activeSlots.size === 0)
-      return
+    if (this.activeSlots.size === 0) return
 
     const now = coreRefreshNow() // 使用刷新的时间戳确保准确
     let hasTimedOut = false
@@ -544,8 +554,7 @@ class AnimationCoordinator {
    * 检查并触发爆发模式（仅在需要时调用）
    */
   private checkAndTriggerBurst() {
-    if (this.inBurstMode)
-      return
+    if (this.inBurstMode) return
 
     const totalQueued = this.waitingQueue.length + this.delayedQueue.length
     if (totalQueued > Math.ceil(this.config.baseConcurrent * 0.5)) {
@@ -616,8 +625,7 @@ class AnimationCoordinator {
             cb()
           }
         })
-      }
-      else {
+      } else {
         // 大批量：需要转数组以支持分片索引
         const callbacks = Array.from(this.pageReadyCallbacks)
         this.pageReadyCallbacks.clear()
@@ -752,7 +760,10 @@ class AnimationCoordinator {
   /**
    * 尝试获取并发槽位
    */
-  private tryAcquireSlot(id: string, priority: AnimationPriority): AnimationState {
+  private tryAcquireSlot(
+    id: string,
+    priority: AnimationPriority,
+  ): AnimationState {
     const maxConcurrent = this.getMaxConcurrent()
 
     // 检查是否有可用槽位
@@ -786,7 +797,6 @@ class AnimationCoordinator {
       startTime: now,
       duration: 0,
     })
-    this.lastStartTime = now
   }
 
   /**
@@ -794,12 +804,10 @@ class AnimationCoordinator {
    */
   private canPreempt(priority: AnimationPriority): boolean {
     // 只有高优先级可以抢占（数值越小优先级越高）
-    if (priority > AnimationPriority.SECTION)
-      return false
+    if (priority > AnimationPriority.SECTION) return false
 
     // 快速返回：没有活动槽位
-    if (this.activeSlots.size === 0)
-      return false
+    if (this.activeSlots.size === 0) return false
 
     // 检查是否有可抢占的低优先级项
     for (const slot of this.activeSlots.values()) {
@@ -858,7 +866,10 @@ class AnimationCoordinator {
 
     // 🔧 快速路径：队列为空或应该插入末尾
     const queueLen = this.waitingQueue.length
-    if (queueLen === 0 || this.waitingQueue[queueLen - 1].priority <= priority) {
+    if (
+      queueLen === 0 ||
+      this.waitingQueue[queueLen - 1].priority <= priority
+    ) {
       this.waitingQueueIndex.set(id, queueLen)
       this.waitingQueue.push(item)
       return
@@ -871,8 +882,7 @@ class AnimationCoordinator {
       const mid = (left + right) >>> 1
       if (this.waitingQueue[mid].priority <= priority) {
         left = mid + 1
-      }
-      else {
+      } else {
         right = mid
       }
     }
@@ -903,8 +913,7 @@ class AnimationCoordinator {
    */
   private processWaitQueue() {
     // 快速返回：无等待项
-    if (this.waitingQueue.length === 0)
-      return
+    if (this.waitingQueue.length === 0) return
 
     // 队列有压力时触发爆发模式
     this.checkAndTriggerBurst()
@@ -913,9 +922,9 @@ class AnimationCoordinator {
     let processed = 0
 
     while (
-      this.waitingQueue.length > 0
-      && this.activeSlots.size < maxConcurrent
-      && processed < this.BATCH_SIZE
+      this.waitingQueue.length > 0 &&
+      this.activeSlots.size < maxConcurrent &&
+      processed < this.BATCH_SIZE
     ) {
       const next = this.waitingQueue.shift()
       if (next) {
@@ -942,13 +951,20 @@ class AnimationCoordinator {
   /**
    * 添加到延迟队列 - 优化版：二分插入避免排序，使用缓存时间戳
    */
-  private addToDelayedQueue(id: string, delay: number, priority: AnimationPriority = AnimationPriority.COMPONENT) {
+  private addToDelayedQueue(
+    id: string,
+    delay: number,
+    priority: AnimationPriority = AnimationPriority.COMPONENT,
+  ) {
     const executeAt = coreNow() + delay
     const item = { id, executeAt, priority }
 
     // 🔧 快速路径：队列为空或应该插入末尾
     const queueLen = this.delayedQueue.length
-    if (queueLen === 0 || this.delayedQueue[queueLen - 1].executeAt <= executeAt) {
+    if (
+      queueLen === 0 ||
+      this.delayedQueue[queueLen - 1].executeAt <= executeAt
+    ) {
       this.delayedQueue.push(item)
       this.scheduleNextDelay()
       return
@@ -961,8 +977,7 @@ class AnimationCoordinator {
       const mid = (left + right) >>> 1
       if (this.delayedQueue[mid].executeAt <= executeAt) {
         left = mid + 1
-      }
-      else {
+      } else {
         right = mid
       }
     }
@@ -976,8 +991,7 @@ class AnimationCoordinator {
    * 调度下一个延迟项
    */
   private scheduleNextDelay() {
-    if (this.delayTimerId || this.delayedQueue.length === 0)
-      return
+    if (this.delayTimerId || this.delayedQueue.length === 0) return
 
     const next = this.delayedQueue[0]
     const wait = Math.max(0, next.executeAt - coreNow())
@@ -997,8 +1011,7 @@ class AnimationCoordinator {
     // 处理所有到期项
     while (this.delayedQueue.length > 0) {
       const next = this.delayedQueue[0]
-      if (next.executeAt > now)
-        break
+      if (next.executeAt > now) break
 
       this.delayedQueue.shift()
       // 到期后尝试获取槽位
@@ -1066,8 +1079,7 @@ class AnimationCoordinator {
    * microtask 在当前任务结束后立即执行，不会计入 RAF 计数
    */
   private scheduleMicrotaskFlush() {
-    if (this.isMicrotaskScheduled)
-      return
+    if (this.isMicrotaskScheduled) return
     this.isMicrotaskScheduled = true
 
     queueMicrotask(() => {
@@ -1080,8 +1092,7 @@ class AnimationCoordinator {
    * 刷新待更新项 - 分片版：避免 Long Task
    */
   private flushPendingUpdates() {
-    if (this.pendingUpdates.size === 0)
-      return
+    if (this.pendingUpdates.size === 0) return
 
     // 小批量直接处理
     if (this.pendingUpdates.size <= this.BATCH_SIZE) {
@@ -1191,7 +1202,9 @@ class AnimationCoordinator {
    * 获取负载（0-1）- 优化版：避免除零
    */
   getLoad(): number {
-    const max = this.inBurstMode ? this.config.burstConcurrent : this.config.baseConcurrent
+    const max = this.inBurstMode
+      ? this.config.burstConcurrent
+      : this.config.baseConcurrent
     return this.activeSlots.size / max
   }
 
@@ -1220,9 +1233,13 @@ class AnimationCoordinator {
       // 🔧 页面可见性状态（委托 core.ts）
       isPageVisible: coreIsPageVisible(),
       // 总计：超过 500 可能有泄漏
-      totalEntries: this.states.size + this.listeners.size + this.activeSlots.size
-        + this.waitingQueue.length + this.delayedQueue.length
-        + this.elementRefs.size,
+      totalEntries:
+        this.states.size +
+        this.listeners.size +
+        this.activeSlots.size +
+        this.waitingQueue.length +
+        this.delayedQueue.length +
+        this.elementRefs.size,
     }
   }
 
@@ -1239,7 +1256,10 @@ class AnimationCoordinator {
       maxConcurrent,
       inBurstMode: this.inBurstMode,
       burstTimeRemaining: this.inBurstMode
-        ? Math.max(0, this.currentBurstDuration - (coreNow() - this.burstStartTime))
+        ? Math.max(
+            0,
+            this.currentBurstDuration - (coreNow() - this.burstStartTime),
+          )
         : 0,
       waitingQueue: this.waitingQueue.length,
       delayedQueue: this.delayedQueue.length,
@@ -1301,8 +1321,7 @@ class AnimationCoordinator {
    * 6. 低帧率阈值相对于检测到的刷新率动态计算
    */
   startFpsMonitor(): void {
-    if (this.fpsMonitorRunning)
-      return
+    if (this.fpsMonitorRunning) return
     this.fpsMonitorRunning = true
     this.lastFrameTimestamp = performance.now()
     this.lastFpsUpdateTime = this.lastFrameTimestamp
@@ -1318,8 +1337,7 @@ class AnimationCoordinator {
     this.refreshRateDetected = false
 
     const measureFps = (timestamp: number) => {
-      if (!this.fpsMonitorRunning)
-        return
+      if (!this.fpsMonitorRunning) return
 
       const frameTime = timestamp - this.lastFrameTimestamp
       this.lastFrameTimestamp = timestamp
@@ -1343,7 +1361,9 @@ class AnimationCoordinator {
           this.detectedRefreshRate = this.snapToCommonRefreshRate(inferredRate)
           // 动态计算帧时间预算和低帧率阈值
           this.frameBudget = 1000 / this.detectedRefreshRate
-          this.lowFpsThreshold = Math.round(this.detectedRefreshRate * this.LOW_FPS_RATIO)
+          this.lowFpsThreshold = Math.round(
+            this.detectedRefreshRate * this.LOW_FPS_RATIO,
+          )
           // 初始 FPS 设为检测到的刷新率
           this.currentFps = this.detectedRefreshRate
         }
@@ -1360,8 +1380,7 @@ class AnimationCoordinator {
       if (this.frameTimeCount < this.FPS_SAMPLE_SIZE) {
         this.frameTimeCount++
         this.frameTimeSum += frameTime
-      }
-      else {
+      } else {
         // 缓冲区已满，减去被覆盖的旧值，加上新值
         this.frameTimeSum = this.frameTimeSum - oldValue + frameTime
       }
@@ -1373,7 +1392,10 @@ class AnimationCoordinator {
 
       // 每 1000ms 更新一次 FPS 显示值
       const timeSinceUpdate = timestamp - this.lastFpsUpdateTime
-      if (timeSinceUpdate >= this.FPS_UPDATE_INTERVAL && this.frameTimeCount >= 10) {
+      if (
+        timeSinceUpdate >= this.FPS_UPDATE_INTERVAL &&
+        this.frameTimeCount >= 10
+      ) {
         this.lastFpsUpdateTime = timestamp
 
         // 🔧 使用累加器直接计算平均帧时间（O(1)）
@@ -1467,9 +1489,8 @@ class AnimationCoordinator {
     refreshRateDetected: boolean
   } {
     // 🔧 使用累加器直接计算，O(1) 复杂度
-    const avgFrameTime = this.frameTimeCount > 0
-      ? this.frameTimeSum / this.frameTimeCount
-      : 16
+    const avgFrameTime =
+      this.frameTimeCount > 0 ? this.frameTimeSum / this.frameTimeCount : 16
 
     return {
       fps: this.currentFps,
@@ -1546,13 +1567,11 @@ class AnimationCoordinator {
    * 使用单一 Observer 观察所有元素，比每个元素一个 Observer 更高效
    */
   private initSharedResizeObserver(): void {
-    if (typeof ResizeObserver === 'undefined')
-      return
+    if (typeof ResizeObserver === 'undefined') return
 
     this.sharedResizeObserver = new ResizeObserver((entries) => {
       // 页面不可见时跳过处理
-      if (!coreIsPageVisible())
-        return
+      if (!coreIsPageVisible()) return
 
       // 批量收集变化
       for (const entry of entries) {
@@ -1567,7 +1586,10 @@ class AnimationCoordinator {
             const heightDiff = Math.abs(cached.height - height)
 
             // 小于阈值的变化忽略
-            if (widthDiff < this.RESIZE_THRESHOLD_PX && heightDiff < this.RESIZE_THRESHOLD_PX) {
+            if (
+              widthDiff < this.RESIZE_THRESHOLD_PX &&
+              heightDiff < this.RESIZE_THRESHOLD_PX
+            ) {
               continue
             }
           }
@@ -1590,8 +1612,7 @@ class AnimationCoordinator {
    * 使用节流避免过于频繁的更新
    */
   private scheduleResizeBatch(): void {
-    if (this.resizeBatchScheduled || this.resizeBatchQueue.length === 0)
-      return
+    if (this.resizeBatchScheduled || this.resizeBatchQueue.length === 0) return
 
     const now = coreNow()
     const timeSinceLastProcess = now - this.lastResizeProcessTime
@@ -1602,8 +1623,7 @@ class AnimationCoordinator {
       requestAnimationFrame(() => {
         this.flushResizeBatch()
       })
-    }
-    else {
+    } else {
       // 延迟到节流时间后处理
       this.resizeBatchScheduled = true
       setTimeout(() => {
@@ -1631,8 +1651,7 @@ class AnimationCoordinator {
       if (callback) {
         try {
           callback(entry)
-        }
-        catch (e) {
+        } catch (e) {
           console.error('ResizeObserver callback error:', e)
         }
       }
@@ -1665,18 +1684,22 @@ class AnimationCoordinator {
     // 立即执行一次测量（可选）
     if (options?.immediate) {
       requestAnimationFrame(() => {
-        if (!element.isConnected)
-          return
+        if (!element.isConnected) return
         const rect = element.getBoundingClientRect()
         // 更新缓存
-        this.elementSizeCache.set(element, { width: rect.width, height: rect.height })
+        this.elementSizeCache.set(element, {
+          width: rect.width,
+          height: rect.height,
+        })
         // 创建模拟的 entry
         const fakeEntry = {
           target: element,
           contentRect: rect,
           borderBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
           contentBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
-          devicePixelContentBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+          devicePixelContentBoxSize: [
+            { inlineSize: rect.width, blockSize: rect.height },
+          ],
         } as ResizeObserverEntry
         callback(fakeEntry)
       })
@@ -1692,8 +1715,7 @@ class AnimationCoordinator {
    * 取消观察元素
    */
   unobserveResize(element: Element): void {
-    if (!this.sharedResizeObserver)
-      return
+    if (!this.sharedResizeObserver) return
 
     this.sharedResizeObserver.unobserve(element)
     this.resizeCallbacks.delete(element)
@@ -1701,7 +1723,9 @@ class AnimationCoordinator {
     this.elementSizeCache.delete(element)
 
     // 从批次队列中移除该元素的待处理项
-    this.resizeBatchQueue = this.resizeBatchQueue.filter(item => item.element !== element)
+    this.resizeBatchQueue = this.resizeBatchQueue.filter(
+      (item) => item.element !== element,
+    )
   }
 
   /**
@@ -1714,7 +1738,7 @@ class AnimationCoordinator {
   /**
    * 获取元素的缓存尺寸（无需触发重排）
    */
-  getCachedSize(element: Element): { width: number, height: number } | null {
+  getCachedSize(element: Element): { width: number; height: number } | null {
     return this.elementSizeCache.get(element) || null
   }
 
@@ -1724,7 +1748,10 @@ class AnimationCoordinator {
    * 获取或创建 IntersectionObserver
    * 相同配置的元素共享同一个 Observer
    */
-  private getIntersectionObserver(threshold: number, rootMargin: string): IntersectionObserver {
+  private getIntersectionObserver(
+    threshold: number,
+    rootMargin: string,
+  ): IntersectionObserver {
     const key = `${threshold}:${rootMargin}`
 
     let observer = this.intersectionObservers.get(key)
@@ -1732,8 +1759,7 @@ class AnimationCoordinator {
       observer = new IntersectionObserver(
         (entries) => {
           // 页面不可见时跳过
-          if (!coreIsPageVisible())
-            return
+          if (!coreIsPageVisible()) return
 
           // 批量收集
           for (const entry of entries) {
@@ -1755,8 +1781,12 @@ class AnimationCoordinator {
    * 调度 IntersectionObserver 批量处理
    */
   private scheduleIntersectionBatch(): void {
-    if (this.intersectionBatchScheduled || this.intersectionBatchQueue.length === 0)
+    if (
+      this.intersectionBatchScheduled ||
+      this.intersectionBatchQueue.length === 0
+    ) {
       return
+    }
 
     this.intersectionBatchScheduled = true
 
@@ -1780,8 +1810,7 @@ class AnimationCoordinator {
       if (info) {
         try {
           info.callback(entry)
-        }
-        catch (e) {
+        } catch (e) {
           console.error('IntersectionObserver callback error:', e)
         }
       }
@@ -1798,10 +1827,9 @@ class AnimationCoordinator {
   observeIntersection(
     element: Element,
     callback: (entry: IntersectionObserverEntry) => void,
-    options?: { threshold?: number, rootMargin?: string },
+    options?: { threshold?: number; rootMargin?: string },
   ): () => void {
-    if (!element)
-      return () => {}
+    if (!element) return () => {}
 
     const threshold = options?.threshold ?? 0
     const rootMargin = options?.rootMargin ?? '0px'
@@ -1827,8 +1855,7 @@ class AnimationCoordinator {
    */
   unobserveIntersection(element: Element): void {
     const info = this.intersectionCallbacks.get(element)
-    if (!info)
-      return
+    if (!info) return
 
     const observer = this.intersectionObservers.get(info.observerKey)
     if (observer) {
@@ -1840,7 +1867,7 @@ class AnimationCoordinator {
 
     // 从批次队列中移除
     this.intersectionBatchQueue = this.intersectionBatchQueue.filter(
-      entry => entry.target !== element,
+      (entry) => entry.target !== element,
     )
   }
 
@@ -1896,7 +1923,8 @@ class AnimationCoordinator {
       return () => this.cancelIdleTask(id)
     }
 
-    const priorityValue = priority === 'high' ? 2 : priority === 'normal' ? 1 : 0
+    const priorityValue =
+      priority === 'high' ? 2 : priority === 'normal' ? 1 : 0
 
     this.idleTaskQueue.push({ id, task, timeout, priority: priorityValue })
     this.registeredIdleTasks.add(id)
@@ -1914,7 +1942,7 @@ class AnimationCoordinator {
    * 🔧 取消空闲任务
    */
   cancelIdleTask(id: string): boolean {
-    const index = this.idleTaskQueue.findIndex(t => t.id === id)
+    const index = this.idleTaskQueue.findIndex((t) => t.id === id)
     if (index !== -1) {
       this.idleTaskQueue.splice(index, 1)
       this.registeredIdleTasks.delete(id)
@@ -1927,19 +1955,23 @@ class AnimationCoordinator {
    * 🔧 调度 requestIdleCallback
    */
   private scheduleIdleCallback() {
-    if (this.idleCallbackId !== null || this.idleTaskQueue.length === 0)
-      return
+    if (this.idleCallbackId !== null || this.idleTaskQueue.length === 0) return
 
     // 页面不可见时暂停
-    if (!coreIsPageVisible())
-      return
+    if (!coreIsPageVisible()) return
 
-    const scheduleIdle = typeof requestIdleCallback !== 'undefined'
-      ? requestIdleCallback
-      : (cb: IdleRequestCallback) => setTimeout(() => cb({
-          didTimeout: false,
-          timeRemaining: () => 50,
-        }), 1)
+    const scheduleIdle =
+      typeof requestIdleCallback !== 'undefined'
+        ? requestIdleCallback
+        : (cb: IdleRequestCallback) =>
+            setTimeout(
+              () =>
+                cb({
+                  didTimeout: false,
+                  timeRemaining: () => 50,
+                }),
+              1,
+            )
 
     // 获取最高优先级任务的 timeout
     const highestPriorityTask = this.idleTaskQueue[0]
@@ -1949,7 +1981,9 @@ class AnimationCoordinator {
         this.idleCallbackId = null
         this.processIdleTasks(deadline)
       },
-      highestPriorityTask?.timeout ? { timeout: highestPriorityTask.timeout } : undefined,
+      highestPriorityTask?.timeout
+        ? { timeout: highestPriorityTask.timeout }
+        : undefined,
     ) as number
   }
 
@@ -1959,16 +1993,15 @@ class AnimationCoordinator {
   private processIdleTasks(deadline: IdleDeadline) {
     // 在时间允许内尽可能多地处理任务
     while (
-      this.idleTaskQueue.length > 0
-      && (deadline.timeRemaining() > 5 || deadline.didTimeout)
+      this.idleTaskQueue.length > 0 &&
+      (deadline.timeRemaining() > 5 || deadline.didTimeout)
     ) {
       const taskInfo = this.idleTaskQueue.shift()
       if (taskInfo) {
         this.registeredIdleTasks.delete(taskInfo.id)
         try {
           taskInfo.task()
-        }
-        catch (e) {
+        } catch (e) {
           console.error(`[Coordinator] Idle task "${taskInfo.id}" error:`, e)
         }
       }
@@ -2030,8 +2063,7 @@ class AnimationCoordinator {
     if (this.idleCallbackId !== null) {
       if (typeof cancelIdleCallback !== 'undefined') {
         cancelIdleCallback(this.idleCallbackId)
-      }
-      else {
+      } else {
         clearTimeout(this.idleCallbackId)
       }
       this.idleCallbackId = null

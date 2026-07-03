@@ -8,9 +8,11 @@ use serde::{Deserialize, Serialize};
 /// 注释类型
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum AnnotationType {
     /// 专业术语/难词
     #[sea_orm(string_value = "term")]
+    #[default]
     Term,
     /// 代词指代（他/她/它、这个/那个）
     #[sea_orm(string_value = "reference")]
@@ -24,12 +26,6 @@ pub enum AnnotationType {
     /// 缩写/简称
     #[sea_orm(string_value = "abbreviation")]
     Abbreviation,
-}
-
-impl Default for AnnotationType {
-    fn default() -> Self {
-        Self::Term
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]

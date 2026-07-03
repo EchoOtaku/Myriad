@@ -36,23 +36,63 @@ import * as brewApi from '../services/brewApi'
 // 导航图标
 const NavIcons = {
   all: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"
+      />
     </svg>
   ),
   friends: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+      />
     </svg>
   ),
   mine: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+      />
     </svg>
   ),
   starred: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+      />
     </svg>
   ),
 }
@@ -63,7 +103,8 @@ const _PRESET_CATEGORY_IDS = {
   mine: 'mine',
 } as const
 
-type PresetCategoryId = typeof _PRESET_CATEGORY_IDS[keyof typeof _PRESET_CATEGORY_IDS]
+type PresetCategoryId =
+  (typeof _PRESET_CATEGORY_IDS)[keyof typeof _PRESET_CATEGORY_IDS]
 
 // 预置分类的数据库存储值（后端使用的固定值，不要改动）
 // 这些值与数据库中存储的分类名称一致
@@ -89,13 +130,19 @@ export default function Brew() {
   const { t } = useI18n()
 
   // 获取预置分类的显示名称（国际化）
-  const getCategoryName = useCallback((categoryId: PresetCategoryId): string => {
-    switch (categoryId) {
-      case 'friends': return t.brew.friendLinks
-      case 'mine': return t.brew.me
-      default: return categoryId
-    }
-  }, [t])
+  const getCategoryName = useCallback(
+    (categoryId: PresetCategoryId): string => {
+      switch (categoryId) {
+        case 'friends':
+          return t.brew.friendLinks
+        case 'mine':
+          return t.brew.me
+        default:
+          return categoryId
+      }
+    },
+    [t],
+  )
 
   // 获取登录状态和管理员状态
   // - isAuthenticated: 用于已读状态等普通用户功能
@@ -130,7 +177,9 @@ export default function Brew() {
 
   // 收藏页面批量管理状态（仅登录用户可用）
   const [starredEditMode, setStarredEditMode] = useState(false)
-  const [starredSelectedIds, setStarredSelectedIds] = useState<Set<number>>(new Set())
+  const [starredSelectedIds, setStarredSelectedIds] = useState<Set<number>>(
+    new Set(),
+  )
   const [starredProcessing, setStarredProcessing] = useState(false)
 
   // 分页状态
@@ -152,24 +201,39 @@ export default function Brew() {
   }, [sources])
 
   // 构建二级导航项
-  const navItems: SecondaryNavItem[] = useMemo(() => [
-    {
-      id: 'all',
-      icon: NavIcons.all,
-      label: t.brew.all,
-      title: t.brew.all + t.brew.sources,
-      ariaLabel: t.brew.all + t.brew.sources,
-    },
-    {
-      id: 'friends',
-      icon: NavIcons.friends,
-      label: t.brew.friendLinks,
-      title: t.brew.friendLinks,
-      ariaLabel: t.brew.friendLinks,
-    },
-    { id: 'mine', icon: NavIcons.mine, label: t.brew.me, title: t.brew.me, ariaLabel: t.brew.me },
-    { id: 'starred', icon: NavIcons.starred, label: t.brew.starred, title: t.brew.starred, ariaLabel: t.brew.starred },
-  ], [t])
+  const navItems: SecondaryNavItem[] = useMemo(
+    () => [
+      {
+        id: 'all',
+        icon: NavIcons.all,
+        label: t.brew.all,
+        title: t.brew.all + t.brew.sources,
+        ariaLabel: t.brew.all + t.brew.sources,
+      },
+      {
+        id: 'friends',
+        icon: NavIcons.friends,
+        label: t.brew.friendLinks,
+        title: t.brew.friendLinks,
+        ariaLabel: t.brew.friendLinks,
+      },
+      {
+        id: 'mine',
+        icon: NavIcons.mine,
+        label: t.brew.me,
+        title: t.brew.me,
+        ariaLabel: t.brew.me,
+      },
+      {
+        id: 'starred',
+        icon: NavIcons.starred,
+        label: t.brew.starred,
+        title: t.brew.starred,
+        ariaLabel: t.brew.starred,
+      },
+    ],
+    [t],
+  )
 
   // 使用二级导航 Hook
   const { activeId, setActiveId, setExpanded } = useSecondaryNav({
@@ -187,9 +251,15 @@ export default function Brew() {
       }
     }
 
-    window.addEventListener('nav-expand-secondary', handleExpandSecondary as EventListener)
+    window.addEventListener(
+      'nav-expand-secondary',
+      handleExpandSecondary as EventListener,
+    )
     return () => {
-      window.removeEventListener('nav-expand-secondary', handleExpandSecondary as EventListener)
+      window.removeEventListener(
+        'nav-expand-secondary',
+        handleExpandSecondary as EventListener,
+      )
     }
   }, [setExpanded])
 
@@ -214,14 +284,21 @@ export default function Brew() {
           isWebSearchArticle?: boolean
         }
       }>
-      console.log('[Brew] Agent open article event received:', customEvent.detail)
+      console.log(
+        '[Brew] Agent open article event received:',
+        customEvent.detail,
+      )
       console.log('[Brew] Current items count:', itemsRef.current.length)
 
-      const { articleId, articleLink, openLatest, webSearchArticle } = customEvent.detail
+      const { articleId, articleLink, openLatest, webSearchArticle } =
+        customEvent.detail
 
       // 🔴 处理网络搜索文章：创建临时的 BrewItem
       if (webSearchArticle?.isWebSearchArticle) {
-        console.log('[Brew] Opening web search article:', webSearchArticle.title)
+        console.log(
+          '[Brew] Opening web search article:',
+          webSearchArticle.title,
+        )
         const tempBrewItem: BrewItem = {
           id: webSearchArticle.id,
           source_id: 0,
@@ -230,12 +307,17 @@ export default function Brew() {
           guid: `web_search_${webSearchArticle.id}`,
           title: webSearchArticle.title,
           link: webSearchArticle.link || '',
-          summary: webSearchArticle.summary || webSearchArticle.relevanceReason || null,
+          summary:
+            webSearchArticle.summary ||
+            webSearchArticle.relevanceReason ||
+            null,
           content: webSearchArticle.content || null, // 可能为空，BrewReader 会通过 API 获取
           image: null,
           audio_url: null,
           author: webSearchArticle.author || null,
-          published_at: webSearchArticle.publishedAt ? new Date(webSearchArticle.publishedAt).getTime() : null,
+          published_at: webSearchArticle.publishedAt
+            ? new Date(webSearchArticle.publishedAt).getTime()
+            : null,
           word_count: null,
           reading_time: null,
           is_read: false,
@@ -251,10 +333,15 @@ export default function Brew() {
       // 🔴 修复：优先使用后端返回的 articleId/articleLink，而不是无脑取第一篇
       // 这样才能正确打开"指定作者的最新文章"
       if (articleId || articleLink) {
-        console.log('[Brew] Looking for specific article:', { articleId, articleLink })
+        console.log('[Brew] Looking for specific article:', {
+          articleId,
+          articleLink,
+        })
 
         // 🔴 如果 articleId 是数字，直接用 API 获取单篇文章（最可靠）
-        const numericId = articleId ? Number.parseInt(articleId, 10) : Number.NaN
+        const numericId = articleId
+          ? Number.parseInt(articleId, 10)
+          : Number.NaN
         if (!Number.isNaN(numericId)) {
           try {
             console.log('[Brew] Fetching article by ID:', numericId)
@@ -264,8 +351,7 @@ export default function Brew() {
               setSelectedItem(article)
               return
             }
-          }
-          catch (err) {
+          } catch (err) {
             console.warn('[Brew] Failed to fetch article by ID:', err)
             // 继续尝试其他方式
           }
@@ -275,14 +361,11 @@ export default function Brew() {
         // 🔴 优先用 link 匹配（最可靠），然后用 id 和 guid 匹配
         let targetItem = itemsRef.current.find((item) => {
           // 1. 优先匹配 link（最准确）
-          if (articleLink && item.link === articleLink)
-            return true
+          if (articleLink && item.link === articleLink) return true
           // 2. 匹配数字 ID
-          if (articleId && String(item.id) === articleId)
-            return true
+          if (articleId && String(item.id) === articleId) return true
           // 3. 匹配 guid（后端可能返回 guid 作为 articleId）
-          if (articleId && item.guid === articleId)
-            return true
+          if (articleId && item.guid === articleId) return true
           return false
         })
 
@@ -299,12 +382,9 @@ export default function Brew() {
           console.log('[Brew] Loaded', data.items.length, 'items from API')
 
           targetItem = data.items.find((item) => {
-            if (articleLink && item.link === articleLink)
-              return true
-            if (articleId && String(item.id) === articleId)
-              return true
-            if (articleId && item.guid === articleId)
-              return true
+            if (articleLink && item.link === articleLink) return true
+            if (articleId && String(item.id) === articleId) return true
+            if (articleId && item.guid === articleId) return true
             return false
           })
 
@@ -314,13 +394,17 @@ export default function Brew() {
             setTotal(data.total)
             setSelectedItem(targetItem)
             return
+          } else {
+            console.warn(
+              '[Brew] Article not found in API response. Looking for:',
+              { articleId, articleLink },
+            )
+            console.warn(
+              '[Brew] Available links:',
+              data.items.slice(0, 5).map((i) => i.link),
+            )
           }
-          else {
-            console.warn('[Brew] Article not found in API response. Looking for:', { articleId, articleLink })
-            console.warn('[Brew] Available links:', data.items.slice(0, 5).map(i => i.link))
-          }
-        }
-        catch (err) {
+        } catch (err) {
           console.error('[Brew] Failed to load article for agent:', err)
         }
       }
@@ -333,7 +417,10 @@ export default function Brew() {
           console.log('[Brew] Items empty, loading from API...')
           setItemsLoading(true)
           try {
-            const data = await brewApi.getItems({ per_page: 20, filter: 'all' })
+            const data = await brewApi.getItems({
+              per_page: 20,
+              filter: 'all',
+            })
             console.log('[Brew] Loaded items:', data.items.length)
             setItems(data.items)
             setTotal(data.total)
@@ -342,17 +429,17 @@ export default function Brew() {
               console.log('[Brew] Opening first article:', data.items[0].title)
               setSelectedItem(data.items[0])
             }
-          }
-          catch (err) {
+          } catch (err) {
             console.error('[Brew] Failed to load items for agent:', err)
-          }
-          finally {
+          } finally {
             setItemsLoading(false)
           }
-        }
-        else {
+        } else {
           // 直接打开第一篇
-          console.log('[Brew] Opening first existing article:', itemsRef.current[0].title)
+          console.log(
+            '[Brew] Opening first existing article:',
+            itemsRef.current[0].title,
+          )
           setSelectedItem(itemsRef.current[0])
         }
       }
@@ -362,47 +449,61 @@ export default function Brew() {
     window.addEventListener('agent:open-brew-article', handleAgentOpenArticle)
 
     // 检查是否有通过 sessionStorage 传递的待执行阅读列表（解决跨页面导航的竞态条件）
-    const pendingReadingListStr = sessionStorage.getItem('brew_pending_reading_list')
+    const pendingReadingListStr = sessionStorage.getItem(
+      'brew_pending_reading_list',
+    )
     if (pendingReadingListStr) {
       try {
         const pendingAction = JSON.parse(pendingReadingListStr)
-        console.log('[Brew] Found pending reading list from sessionStorage:', pendingAction)
+        console.log(
+          '[Brew] Found pending reading list from sessionStorage:',
+          pendingAction,
+        )
         // 检查时间戳，只处理 10 秒内的请求
-        if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
+        if (
+          pendingAction.timestamp &&
+          Date.now() - pendingAction.timestamp < 10000
+        ) {
           // 清除存储，避免重复执行
           sessionStorage.removeItem('brew_pending_reading_list')
 
           // 设置阅读列表
           if (pendingAction.readingList) {
-            window.dispatchEvent(new CustomEvent('agent:set-reading-list', {
-              detail: {
-                ...pendingAction.readingList,
-                createdAt: new Date(pendingAction.readingList.createdAt),
-              },
-            }))
+            window.dispatchEvent(
+              new CustomEvent('agent:set-reading-list', {
+                detail: {
+                  ...pendingAction.readingList,
+                  createdAt: new Date(pendingAction.readingList.createdAt),
+                },
+              }),
+            )
           }
 
           // 打开第一篇文章
           if (pendingAction.articleId) {
             setTimeout(() => {
-              console.log('[Brew] Opening first article from reading list:', pendingAction.articleId)
-              const syntheticEvent = new CustomEvent('agent:open-brew-article', {
-                detail: {
-                  articleId: pendingAction.articleId,
-                  openLatest: false,
-                  webSearchArticle: pendingAction.webSearchArticle, // 传递网络搜索文章数据
+              console.log(
+                '[Brew] Opening first article from reading list:',
+                pendingAction.articleId,
+              )
+              const syntheticEvent = new CustomEvent(
+                'agent:open-brew-article',
+                {
+                  detail: {
+                    articleId: pendingAction.articleId,
+                    openLatest: false,
+                    webSearchArticle: pendingAction.webSearchArticle, // 传递网络搜索文章数据
+                  },
                 },
-              })
+              )
               handleAgentOpenArticle(syntheticEvent)
             }, 200)
           }
-        }
-        else {
+        } else {
           console.log('[Brew] Pending reading list expired, removing')
           sessionStorage.removeItem('brew_pending_reading_list')
         }
-      }
-      catch (e) {
+      } catch (e) {
         console.error('[Brew] Failed to parse pending reading list:', e)
         sessionStorage.removeItem('brew_pending_reading_list')
       }
@@ -413,9 +514,15 @@ export default function Brew() {
     if (pendingActionStr) {
       try {
         const pendingAction = JSON.parse(pendingActionStr)
-        console.log('[Brew] Found pending action from sessionStorage:', pendingAction)
+        console.log(
+          '[Brew] Found pending action from sessionStorage:',
+          pendingAction,
+        )
         // 检查时间戳，只处理 10 秒内的请求
-        if (pendingAction.timestamp && Date.now() - pendingAction.timestamp < 10000) {
+        if (
+          pendingAction.timestamp &&
+          Date.now() - pendingAction.timestamp < 10000
+        ) {
           // 清除存储，避免重复执行
           sessionStorage.removeItem('brew_pending_open_article')
           // 模拟事件触发
@@ -427,13 +534,11 @@ export default function Brew() {
             console.log('[Brew] Executing pending action from sessionStorage')
             handleAgentOpenArticle(syntheticEvent)
           }, 100)
-        }
-        else {
+        } else {
           console.log('[Brew] Pending action expired, removing')
           sessionStorage.removeItem('brew_pending_open_article')
         }
-      }
-      catch (e) {
+      } catch (e) {
         console.error('[Brew] Failed to parse pending action:', e)
         sessionStorage.removeItem('brew_pending_open_article')
       }
@@ -441,7 +546,10 @@ export default function Brew() {
 
     return () => {
       console.log('[Brew] Unregistering agent:open-brew-article event listener')
-      window.removeEventListener('agent:open-brew-article', handleAgentOpenArticle)
+      window.removeEventListener(
+        'agent:open-brew-article',
+        handleAgentOpenArticle,
+      )
     }
   }, [])
 
@@ -460,19 +568,16 @@ export default function Brew() {
     if (activeId === 'starred') {
       setViewMode('starred')
       setSelectedSource(null)
-    }
-    else if (activeId === 'friends') {
+    } else if (activeId === 'friends') {
       setViewMode('sources')
       setSelectedCategory('friends')
       setSelectedSource(null)
-    }
-    else if (activeId === 'mine') {
+    } else if (activeId === 'mine') {
       // "我"分类特殊处理：直接展示合并的文章列表，不显示网站卡片
       setViewMode('category-feed')
       setSelectedCategory('mine')
       setSelectedSource(null)
-    }
-    else if (activeId === 'all') {
+    } else if (activeId === 'all') {
       setViewMode('sources')
       setSelectedCategory('all')
       setSelectedSource(null)
@@ -484,8 +589,7 @@ export default function Brew() {
     try {
       const data = await brewApi.getSources()
       setSources(data)
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to load sources:', err)
       setError('加载订阅源失败')
     }
@@ -496,66 +600,72 @@ export default function Brew() {
     try {
       const data = await brewApi.getStats()
       setStats(data)
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to load stats:', err)
     }
   }, [])
 
   // 加载文章列表 - 接受参数以避免闭包问题
-  const loadItems = useCallback(async (reset = false, sourceId?: number, mode?: ViewMode, categoryFilter?: string) => {
-    // 生成新的请求 ID，用于防止竞态条件
-    const requestId = ++loadRequestIdRef.current
+  const loadItems = useCallback(
+    async (
+      reset = false,
+      sourceId?: number,
+      mode?: ViewMode,
+      categoryFilter?: string,
+    ) => {
+      // 生成新的请求 ID，用于防止竞态条件
+      const requestId = ++loadRequestIdRef.current
 
-    setItemsLoading(true)
-    try {
-      const currentPage = reset ? 1 : pageRef.current
-      const filter = mode === 'starred' ? 'starred' : 'all'
+      setItemsLoading(true)
+      try {
+        const currentPage = reset ? 1 : pageRef.current
+        const filter = mode === 'starred' ? 'starred' : 'all'
 
-      const data = await brewApi.getItems({
-        source_id: sourceId || undefined,
-        category: categoryFilter || undefined,
-        filter,
-        page: currentPage,
-        per_page: 20,
-      })
-
-      // 检查是否是最新的请求，忽略过期请求的响应
-      if (requestId !== loadRequestIdRef.current) {
-        return
-      }
-
-      if (reset) {
-        setItems(data.items)
-        setPage(1)
-        pageRef.current = 1
-      }
-      else {
-        setItems(prev => {
-          const existingIds = new Set(prev.map(item => item.id))
-          const newItems = data.items.filter(item => !existingIds.has(item.id))
-          return [...prev, ...newItems]
+        const data = await brewApi.getItems({
+          source_id: sourceId || undefined,
+          category: categoryFilter || undefined,
+          filter,
+          page: currentPage,
+          per_page: 20,
         })
-      }
 
-      setTotal(data.total)
-      setHasMore(data.items.length >= 20)
-    }
-    catch (err) {
-      // 忽略过期请求的错误
-      if (requestId !== loadRequestIdRef.current) {
-        return
+        // 检查是否是最新的请求，忽略过期请求的响应
+        if (requestId !== loadRequestIdRef.current) {
+          return
+        }
+
+        if (reset) {
+          setItems(data.items)
+          setPage(1)
+          pageRef.current = 1
+        } else {
+          setItems((prev) => {
+            const existingIds = new Set(prev.map((item) => item.id))
+            const newItems = data.items.filter(
+              (item) => !existingIds.has(item.id),
+            )
+            return [...prev, ...newItems]
+          })
+        }
+
+        setTotal(data.total)
+        setHasMore(data.items.length >= 20)
+      } catch (err) {
+        // 忽略过期请求的错误
+        if (requestId !== loadRequestIdRef.current) {
+          return
+        }
+        console.error('Failed to load items:', err)
+        setError('加载文章失败')
+      } finally {
+        // 只有最新请求才更新 loading 状态
+        if (requestId === loadRequestIdRef.current) {
+          setItemsLoading(false)
+        }
       }
-      console.error('Failed to load items:', err)
-      setError('加载文章失败')
-    }
-    finally {
-      // 只有最新请求才更新 loading 状态
-      if (requestId === loadRequestIdRef.current) {
-        setItemsLoading(false)
-      }
-    }
-  }, []) // 移除 page 依赖，使用 ref
+    },
+    [],
+  ) // 移除 page 依赖，使用 ref
 
   // 初始加载
   useEffect(() => {
@@ -571,13 +681,12 @@ export default function Brew() {
   useEffect(() => {
     if (viewMode === 'items' && selectedSource) {
       loadItems(true, selectedSource.id, viewMode)
-    }
-    else if (viewMode === 'starred') {
+    } else if (viewMode === 'starred') {
       loadItems(true, undefined, viewMode)
-    }
-    else if (viewMode === 'category-feed' && selectedCategory !== 'all') {
+    } else if (viewMode === 'category-feed' && selectedCategory !== 'all') {
       // 分类合并文章视图：加载该分类下所有文章
-      const categoryDbValue = PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
+      const categoryDbValue =
+        PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
       loadItems(true, undefined, viewMode, categoryDbValue)
     }
   }, [viewMode, selectedSource, selectedCategory, loadItems])
@@ -597,8 +706,8 @@ export default function Brew() {
 
   // 处理订阅源更新（如卡片尺寸变更）
   const handleSourceUpdate = (updatedSource: BrewSource) => {
-    setSources(prev =>
-      prev.map(s => s.id === updatedSource.id ? updatedSource : s),
+    setSources((prev) =>
+      prev.map((s) => (s.id === updatedSource.id ? updatedSource : s)),
     )
   }
 
@@ -628,134 +737,160 @@ export default function Brew() {
 
       try {
         await brewApi.markRead(item.id)
-        setItems(prev =>
-          prev.map(i => i.id === item.id ? { ...i, is_read: true } : i),
+        setItems((prev) =>
+          prev.map((i) => (i.id === item.id ? { ...i, is_read: true } : i)),
         )
-        setStats(prev => prev ? { ...prev, total_unread: prev.total_unread - 1 } : prev)
+        setStats((prev) =>
+          prev ? { ...prev, total_unread: prev.total_unread - 1 } : prev,
+        )
         // 同时更新 sources 的 unread_count 和 recent_items 中对应文章的 is_read
-        setSources(prev =>
-          prev.map(s => s.id === item.source_id
-            ? {
-                ...s,
-                unread_count: s.unread_count - 1,
-                recent_items: s.recent_items?.map(ri =>
-                  ri.id === item.id ? { ...ri, is_read: true } : ri,
-                ),
-              }
-            : s),
+        setSources((prev) =>
+          prev.map((s) =>
+            s.id === item.source_id
+              ? {
+                  ...s,
+                  unread_count: s.unread_count - 1,
+                  recent_items: s.recent_items?.map((ri) =>
+                    ri.id === item.id ? { ...ri, is_read: true } : ri,
+                  ),
+                }
+              : s,
+          ),
         )
-      }
-      catch (err) {
+      } catch (err) {
         console.error('Failed to mark as read:', err)
         // API 失败时恢复状态
         setSelectedItem(item)
       }
-    }
-    else {
+    } else {
       setSelectedItem(item)
     }
   }
 
   // 阅读列表导航 - 根据文章 ID 跳转
-  const handleNavigateToArticle = useCallback(async (articleId: number) => {
-    // 🔴 首先检查阅读列表中是否有这篇文章（可能是网络搜索结果）
-    if (readingList?.currentList) {
-      const listItem = readingList.currentList.items.find(i => i.id === articleId)
-      if (listItem?.fromWebSearch) {
-        console.log('[Brew] Navigating to web search article from reading list:', listItem.title)
-        const tempBrewItem: BrewItem = {
-          id: listItem.id,
-          source_id: 0,
-          source_name: listItem.sourceName || '网络搜索',
-          source_icon: null,
-          guid: `web_search_${listItem.id}`,
-          title: listItem.title,
-          link: listItem.link || '',
-          summary: listItem.summary || listItem.relevanceReason || null,
-          content: listItem.content || null, // 可能为空，BrewReader 会通过 API 获取
-          image: null,
-          audio_url: null,
-          author: listItem.author || null,
-          published_at: listItem.publishedAt ? new Date(listItem.publishedAt).getTime() : null,
-          word_count: null,
-          reading_time: null,
-          is_read: false,
-          is_starred: false,
-          read_progress: null,
-          created_at: Date.now(),
-          fromWebSearch: true,
+  const handleNavigateToArticle = useCallback(
+    async (articleId: number) => {
+      // 🔴 首先检查阅读列表中是否有这篇文章（可能是网络搜索结果）
+      if (readingList?.currentList) {
+        const listItem = readingList.currentList.items.find(
+          (i) => i.id === articleId,
+        )
+        if (listItem?.fromWebSearch) {
+          console.log(
+            '[Brew] Navigating to web search article from reading list:',
+            listItem.title,
+          )
+          const tempBrewItem: BrewItem = {
+            id: listItem.id,
+            source_id: 0,
+            source_name: listItem.sourceName || '网络搜索',
+            source_icon: null,
+            guid: `web_search_${listItem.id}`,
+            title: listItem.title,
+            link: listItem.link || '',
+            summary: listItem.summary || listItem.relevanceReason || null,
+            content: listItem.content || null, // 可能为空，BrewReader 会通过 API 获取
+            image: null,
+            audio_url: null,
+            author: listItem.author || null,
+            published_at: listItem.publishedAt
+              ? new Date(listItem.publishedAt).getTime()
+              : null,
+            word_count: null,
+            reading_time: null,
+            is_read: false,
+            is_starred: false,
+            read_progress: null,
+            created_at: Date.now(),
+            fromWebSearch: true,
+          }
+          setSelectedItem(tempBrewItem)
+          // 更新阅读列表的当前位置
+          const itemIndex = readingList.currentList.items.findIndex(
+            (i) => i.id === articleId,
+          )
+          if (itemIndex !== -1) {
+            readingList.goToArticle(itemIndex)
+          }
+          return
         }
-        setSelectedItem(tempBrewItem)
-        // 更新阅读列表的当前位置
-        const itemIndex = readingList.currentList.items.findIndex(i => i.id === articleId)
-        if (itemIndex !== -1) {
-          readingList.goToArticle(itemIndex)
+      }
+
+      // 先尝试从当前 items 列表中查找
+      let targetItem = items.find((i) => i.id === articleId)
+
+      if (!targetItem) {
+        // 如果在当前列表中找不到，从 API 获取
+        try {
+          targetItem = await brewApi.getItem(articleId)
+        } catch (err) {
+          console.error('Failed to fetch article:', err)
+          return
         }
-        return
       }
-    }
 
-    // 先尝试从当前 items 列表中查找
-    let targetItem = items.find(i => i.id === articleId)
-
-    if (!targetItem) {
-      // 如果在当前列表中找不到，从 API 获取
-      try {
-        targetItem = await brewApi.getItem(articleId)
+      if (targetItem) {
+        handleItemSelect(targetItem)
       }
-      catch (err) {
-        console.error('Failed to fetch article:', err)
-        return
-      }
-    }
-
-    if (targetItem) {
-      handleItemSelect(targetItem)
-    }
-  }, [items, handleItemSelect, readingList])
+    },
+    [items, handleItemSelect, readingList],
+  )
 
   // 处理收藏切换
   const handleToggleStar = async (item: BrewItem) => {
     try {
       if (item.is_starred) {
         await brewApi.unstarItem(item.id)
-      }
-      else {
+      } else {
         await brewApi.starItem(item.id)
       }
 
-      setItems(prev =>
-        prev.map(i => i.id === item.id ? { ...i, is_starred: !i.is_starred } : i),
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id ? { ...i, is_starred: !i.is_starred } : i,
+        ),
       )
 
       if (selectedItem?.id === item.id) {
-        setSelectedItem(prev => prev ? { ...prev, is_starred: !prev.is_starred } : prev)
+        setSelectedItem((prev) =>
+          prev ? { ...prev, is_starred: !prev.is_starred } : prev,
+        )
       }
 
       setStats((prev) => {
-        if (!prev)
-          return prev
+        if (!prev) return prev
         return {
           ...prev,
-          total_starred: item.is_starred ? prev.total_starred - 1 : prev.total_starred + 1,
+          total_starred: item.is_starred
+            ? prev.total_starred - 1
+            : prev.total_starred + 1,
         }
       })
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to toggle star:', err)
     }
   }
 
   // 处理添加订阅源
-  const handleAddSource = async (url: string, name?: string, category?: string, icon?: string, sourceType?: 'link' | 'rss' | 'brewlia' | 'rsshub') => {
-    const source = await brewApi.addSource({ url, name, category, source_type: sourceType })
+  const handleAddSource = async (
+    url: string,
+    name?: string,
+    category?: string,
+    icon?: string,
+    sourceType?: 'link' | 'rss' | 'brewlia' | 'rsshub',
+  ) => {
+    const source = await brewApi.addSource({
+      url,
+      name,
+      category,
+      source_type: sourceType,
+    })
     // 如果有自定义图标，添加后立即更新
     if (icon && source.id) {
       const updatedSource = await brewApi.updateSource(source.id, { icon })
-      setSources(prev => [...prev, updatedSource])
-    }
-    else {
-      setSources(prev => [...prev, source])
+      setSources((prev) => [...prev, updatedSource])
+    } else {
+      setSources((prev) => [...prev, source])
     }
     loadStats()
   }
@@ -772,11 +907,9 @@ export default function Brew() {
         loadStats()
         loadSources()
       }
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to refresh source:', err)
-    }
-    finally {
+    } finally {
       setSourceRefreshing(false)
     }
   }
@@ -785,9 +918,10 @@ export default function Brew() {
   const handleMarkAllRead = async () => {
     try {
       // 分类合并文章视图时，按分类标记已读
-      const categoryFilter = viewMode === 'category-feed' && selectedCategory !== 'all'
-        ? PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
-        : undefined
+      const categoryFilter =
+        viewMode === 'category-feed' && selectedCategory !== 'all'
+          ? PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
+          : undefined
 
       const marked = await brewApi.markAllRead({
         source_id: selectedSource?.id || undefined,
@@ -796,29 +930,30 @@ export default function Brew() {
 
       if (marked > 0) {
         // 只更新当前列表中文章的已读状态，不重新加载列表，避免破坏排序
-        setItems(prev => prev.map(item => ({ ...item, is_read: true })))
+        setItems((prev) => prev.map((item) => ({ ...item, is_read: true })))
         // 更新订阅源的未读计数
         if (selectedSource) {
-          setSources(prev => prev.map(s =>
-            s.id === selectedSource.id ? { ...s, unread_count: 0 } : s,
-          ))
-        }
-        else if (categoryFilter) {
+          setSources((prev) =>
+            prev.map((s) =>
+              s.id === selectedSource.id ? { ...s, unread_count: 0 } : s,
+            ),
+          )
+        } else if (categoryFilter) {
           // 分类视图：更新该分类下所有源的未读计数
-          setSources(prev => prev.map((s) => {
-            if (!s.category)
+          setSources((prev) =>
+            prev.map((s) => {
+              if (!s.category) return s
+              const cats = s.category.split(',').map((c) => c.trim())
+              if (cats.includes(categoryFilter)) {
+                return { ...s, unread_count: 0 }
+              }
               return s
-            const cats = s.category.split(',').map(c => c.trim())
-            if (cats.includes(categoryFilter)) {
-              return { ...s, unread_count: 0 }
-            }
-            return s
-          }))
+            }),
+          )
         }
         loadStats()
       }
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to mark all read:', err)
     }
   }
@@ -837,43 +972,41 @@ export default function Brew() {
   const handleStarredSelectAll = useCallback(() => {
     if (starredSelectedIds.size === items.length) {
       setStarredSelectedIds(new Set())
-    }
-    else {
-      setStarredSelectedIds(new Set(items.map(i => i.id)))
+    } else {
+      setStarredSelectedIds(new Set(items.map((i) => i.id)))
     }
   }, [items, starredSelectedIds.size])
 
   const handleStarredBatchUnstar = useCallback(async () => {
-    if (starredSelectedIds.size === 0)
-      return
+    if (starredSelectedIds.size === 0) return
 
     setStarredProcessing(true)
     try {
       // 批量取消收藏
-      const promises = Array.from(starredSelectedIds).map(id =>
+      const promises = Array.from(starredSelectedIds).map((id) =>
         brewApi.unstarItem(id),
       )
       await Promise.all(promises)
 
       // 更新列表
-      setItems(prev => prev.filter(i => !starredSelectedIds.has(i.id)))
-      setTotal(prev => prev - starredSelectedIds.size)
+      setItems((prev) => prev.filter((i) => !starredSelectedIds.has(i.id)))
+      setTotal((prev) => prev - starredSelectedIds.size)
 
       // 更新统计
-      setStats(prev => prev
-        ? {
-            ...prev,
-            total_starred: prev.total_starred - starredSelectedIds.size,
-          }
-        : prev)
+      setStats((prev) =>
+        prev
+          ? {
+              ...prev,
+              total_starred: prev.total_starred - starredSelectedIds.size,
+            }
+          : prev,
+      )
 
       // 退出编辑模式
       handleStarredExitEditMode()
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to batch unstar:', err)
-    }
-    finally {
+    } finally {
       setStarredProcessing(false)
     }
   }, [starredSelectedIds, handleStarredExitEditMode])
@@ -890,12 +1023,20 @@ export default function Brew() {
       pageRef.current += 1
       setPage(pageRef.current)
       // 分类合并文章视图需要传递分类筛选
-      const categoryFilter = viewMode === 'category-feed' && selectedCategory !== 'all'
-        ? PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
-        : undefined
+      const categoryFilter =
+        viewMode === 'category-feed' && selectedCategory !== 'all'
+          ? PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
+          : undefined
       loadItems(false, selectedSource?.id, viewMode, categoryFilter)
     }
-  }, [itemsLoading, hasMore, selectedSource?.id, viewMode, selectedCategory, loadItems])
+  }, [
+    itemsLoading,
+    hasMore,
+    selectedSource?.id,
+    viewMode,
+    selectedCategory,
+    loadItems,
+  ])
 
   // 关闭阅读器 - useCallback 缓存
   const handleCloseReader = useCallback(() => {
@@ -907,44 +1048,51 @@ export default function Brew() {
     try {
       if (item.is_read) {
         await brewApi.markUnread(item.id)
-      }
-      else {
+      } else {
         await brewApi.markRead(item.id)
       }
 
       const newReadState = !item.is_read
 
-      setItems(prev =>
-        prev.map(i => i.id === item.id ? { ...i, is_read: newReadState } : i),
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id ? { ...i, is_read: newReadState } : i,
+        ),
       )
 
       if (selectedItem?.id === item.id) {
-        setSelectedItem(prev => prev ? { ...prev, is_read: newReadState } : prev)
+        setSelectedItem((prev) =>
+          prev ? { ...prev, is_read: newReadState } : prev,
+        )
       }
 
       setStats((prev) => {
-        if (!prev)
-          return prev
+        if (!prev) return prev
         return {
           ...prev,
-          total_unread: newReadState ? prev.total_unread - 1 : prev.total_unread + 1,
+          total_unread: newReadState
+            ? prev.total_unread - 1
+            : prev.total_unread + 1,
         }
       })
 
       // 同时更新 sources 的 unread_count 和 recent_items 中对应文章的 is_read
-      setSources(prev =>
-        prev.map(s => s.id === item.source_id
-          ? {
-              ...s,
-              unread_count: newReadState ? s.unread_count - 1 : s.unread_count + 1,
-              recent_items: s.recent_items?.map(ri =>
-                ri.id === item.id ? { ...ri, is_read: newReadState } : ri,
-              ),
-            }
-          : s),
+      setSources((prev) =>
+        prev.map((s) =>
+          s.id === item.source_id
+            ? {
+                ...s,
+                unread_count: newReadState
+                  ? s.unread_count - 1
+                  : s.unread_count + 1,
+                recent_items: s.recent_items?.map((ri) =>
+                  ri.id === item.id ? { ...ri, is_read: newReadState } : ri,
+                ),
+              }
+            : s,
+        ),
       )
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to toggle read:', err)
     }
   }
@@ -954,7 +1102,8 @@ export default function Brew() {
     items,
     selectedItem,
     enabled: true,
-    onSelectItem: item => item ? handleItemSelect(item) : handleCloseReader(),
+    onSelectItem: (item) =>
+      item ? handleItemSelect(item) : handleCloseReader(),
     onToggleRead: handleToggleRead,
     onToggleStar: handleToggleStar,
     onRefresh: () => selectedSource && handleRefreshSource(selectedSource.id),
@@ -983,7 +1132,13 @@ export default function Brew() {
           {viewMode === 'sources' && (
             <BrewSourceGrid
               sources={sources}
-              category={selectedCategory === 'all' ? undefined : PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]}
+              category={
+                selectedCategory === 'all'
+                  ? undefined
+                  : PRESET_CATEGORY_DB_VALUES[
+                      selectedCategory as PresetCategoryId
+                    ]
+              }
               onSourceClick={handleSourceClick}
               onRefreshSource={handleRefreshSource}
               onSourceUpdate={handleSourceUpdate}
@@ -1044,15 +1199,25 @@ export default function Brew() {
                 isAdmin={isAdmin}
                 isAuthenticated={isAuthenticated}
                 categoryFeedMode={{
-                  categoryName: PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId],
-                  categoryLabel: getCategoryName(selectedCategory as PresetCategoryId),
+                  categoryName:
+                    PRESET_CATEGORY_DB_VALUES[
+                      selectedCategory as PresetCategoryId
+                    ],
+                  categoryLabel: getCategoryName(
+                    selectedCategory as PresetCategoryId,
+                  ),
                   total,
                   unreadCount: sources
                     .filter((s) => {
-                      const targetCat = PRESET_CATEGORY_DB_VALUES[selectedCategory as PresetCategoryId]
-                      if (!s.category)
-                        return false
-                      return s.category.split(',').map(c => c.trim()).includes(targetCat)
+                      const targetCat =
+                        PRESET_CATEGORY_DB_VALUES[
+                          selectedCategory as PresetCategoryId
+                        ]
+                      if (!s.category) return false
+                      return s.category
+                        .split(',')
+                        .map((c) => c.trim())
+                        .includes(targetCat)
                     })
                     .reduce((sum, s) => sum + s.unread_count, 0),
                   onBack: handleBackFromCategoryFeed,
@@ -1114,8 +1279,7 @@ export default function Brew() {
                     const newSet = new Set(prev)
                     if (newSet.has(id)) {
                       newSet.delete(id)
-                    }
-                    else {
+                    } else {
                       newSet.add(id)
                     }
                     return newSet
@@ -1135,10 +1299,17 @@ export default function Brew() {
                 onToggleStar={() => handleToggleStar(selectedItem)}
                 isAuthenticated={isAuthenticated}
                 isAdmin={isAdmin}
-                sourceType={sources.find(s => s.id === selectedItem.source_id)?.source_type}
+                sourceType={
+                  sources.find((s) => s.id === selectedItem.source_id)
+                    ?.source_type
+                }
                 onNavigateToArticle={handleNavigateToArticle}
                 articleList={readingList?.currentList ? undefined : items}
-                currentArticleIndex={readingList?.currentList ? undefined : items.findIndex(i => i.id === selectedItem.id)}
+                currentArticleIndex={
+                  readingList?.currentList
+                    ? undefined
+                    : items.findIndex((i) => i.id === selectedItem.id)
+                }
               />
             )}
           </AnimatePresence>

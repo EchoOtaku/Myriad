@@ -22,8 +22,7 @@ async function fetchCSRFTokenFromServer(): Promise<string | null> {
     if (!response.ok) {
       if (response.status === 401) {
         console.warn('Failed to fetch CSRF token: Not authenticated')
-      }
-      else {
+      } else {
         console.warn('Failed to fetch CSRF token from server:', response.status)
       }
       return null
@@ -33,8 +32,7 @@ async function fetchCSRFTokenFromServer(): Promise<string | null> {
     const token = data.csrf_token || null
 
     return token
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Error fetching CSRF token:', error)
     return null
   }
@@ -46,7 +44,9 @@ async function fetchCSRFTokenFromServer(): Promise<string | null> {
  *
  * @param forceRefresh - 是否强制从服务器获取新 Token（默认 false）
  */
-export async function getCSRFToken(forceRefresh: boolean = false): Promise<string | null> {
+export async function getCSRFToken(
+  forceRefresh: boolean = false,
+): Promise<string | null> {
   // 如果不强制刷新，先尝试使用缓存的 Token
   if (!forceRefresh) {
     const token = sessionStorage.getItem(CSRF_TOKEN_KEY)
@@ -70,7 +70,11 @@ export async function getCSRFToken(forceRefresh: boolean = false): Promise<strin
  * 验证 CSRF Token 格式（服务器生成的格式：32字符字母数字）
  */
 export function isValidCSRFToken(token: string): boolean {
-  return typeof token === 'string' && token.length === 32 && /^[a-z0-9]{32}$/i.test(token)
+  return (
+    typeof token === 'string' &&
+    token.length === 32 &&
+    /^[a-z0-9]{32}$/i.test(token)
+  )
 }
 
 /**
@@ -91,7 +95,9 @@ export function getCSRFHeaderName(): string {
  * 为请求添加 CSRF Token
  * ✅ 安全修复 P0: 使用异步版本
  */
-export async function addCSRFToken(headers: Record<string, string> = {}): Promise<Record<string, string>> {
+export async function addCSRFToken(
+  headers: Record<string, string> = {},
+): Promise<Record<string, string>> {
   const token = await getCSRFToken()
   if (token) {
     return {

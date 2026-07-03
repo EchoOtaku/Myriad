@@ -8,7 +8,7 @@ proxy(唯一宿主端口，默认 80) ─┬─► frontend
 updater(内网) ─► docker compose / pgdata snapshot / tag switch
 ```
 
-开发环境才直接访问前端 `4321` 和后端 `3000`。生产环境不要暴露
+开发环境才直接访问前端 `1102` 和后端 `1103`。生产环境不要暴露
 backend/frontend 端口，也不要用 `:latest` 直接覆盖容器。
 完整端口表见 [deployment/PORTS.md](./deployment/PORTS.md)。
 
@@ -84,10 +84,10 @@ docker compose logs -f
 # 日常开发：只启动 PostgreSQL，不启动 proxy/updater
 docker compose -f docker-compose.dev.yml up -d postgres
 
-# 后端：读取 backend/.env，监听 3000
+# 后端：读取 backend/.env，监听 1103
 (cd backend && cp .env.example .env && cargo run)
 
-# 前端：监听 4321，/api/* 通过 Astro dev proxy 转发到 3000
+# 前端：监听 1102，/api/* 通过 Astro dev proxy 转发到 1103
 (cd frontend && pnpm install && pnpm dev)
 ```
 
@@ -102,7 +102,7 @@ docker compose -f docker-compose.dev.yml up -d postgres
 ./scripts/dev/dev.sh restart backend
 ```
 
-这个 harness 监听 `127.0.0.1:9090`，运行数据放在 `.dev-updater/`，用于验证
+这个 harness 监听 `127.0.0.1:1101`，运行数据放在 `.dev-updater/`，用于验证
 backend `/api/admin/updater/*` 和前端更新管理面板。真实镜像替换/生产拓扑仍使用
 `scripts/docker/deploy.sh`。
 
@@ -215,7 +215,7 @@ docker compose exec backend env | grep DATABASE_URL
 
 ```bash
 # 开发环境后端允许前端 dev origin
-CORS_ORIGINS=http://localhost:4321
+CORS_ORIGINS=http://localhost:1102
 
 # 生产环境（必须是你的真实域名，通常由 proxy/外层 TLS 入口访问）
 CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com

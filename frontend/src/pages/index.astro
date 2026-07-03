@@ -10,7 +10,6 @@ import '../styles/tailwind.css'
 
 const title = 'Myriad - A myriad of lights, in one place.'
 const description = 'A myriad of lights, in one place.'
-const apiUrl = import.meta.env.PUBLIC_API_URL || ''
 // Build-time version stamp consumed by the Myriad updater health probe.
 // Falls back to `dev` outside of release builds.
 const myriadVersion = import.meta.env.PUBLIC_MYRIAD_VERSION || 'dev'
@@ -154,23 +153,31 @@ const myriadVersion = import.meta.env.PUBLIC_MYRIAD_VERSION || 'dev'
     <script>
       function resetMyriadDevServiceWorker() {
         Promise.all([
-          navigator.serviceWorker.getRegistrations()
-            .then(registrations => Promise.all(registrations.map(async (registration) => {
-              try {
-                await registration.update()
-              } catch {}
-              return registration.unregister()
-            }))),
+          navigator.serviceWorker.getRegistrations().then((registrations) =>
+            Promise.all(
+              registrations.map(async (registration) => {
+                try {
+                  await registration.update()
+                } catch {}
+                return registration.unregister()
+              }),
+            ),
+          ),
           'caches' in window
-            ? caches.keys()
-                .then(keys => Promise.all(keys.filter(key => key.startsWith('myriad-')).map(key => caches.delete(key))))
+            ? caches
+                .keys()
+                .then((keys) =>
+                  Promise.all(keys.filter((key) => key.startsWith('myriad-')).map((key) => caches.delete(key))),
+                )
             : Promise.resolve(),
-        ]).then(() => {
-          if (navigator.serviceWorker.controller && !sessionStorage.getItem('myriad-dev-sw-reset')) {
-            sessionStorage.setItem('myriad-dev-sw-reset', '1')
-            window.location.reload()
-          }
-        }).catch(() => {})
+        ])
+          .then(() => {
+            if (navigator.serviceWorker.controller && !sessionStorage.getItem('myriad-dev-sw-reset')) {
+              sessionStorage.setItem('myriad-dev-sw-reset', '1')
+              window.location.reload()
+            }
+          })
+          .catch(() => {})
       }
 
       if ('serviceWorker' in navigator && import.meta.env.DEV) {

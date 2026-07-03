@@ -10,9 +10,5 @@ export const CompactSettingGroup: React.FC<CompactSettingGroupProps> = ({
   children,
   className = '',
 }) => {
-  return (
-    <div className={`config-compact-group ${className}`}>
-      {children}
-    </div>
-  )
+  return <div className={`config-compact-group ${className}`}>{children}</div>
 }

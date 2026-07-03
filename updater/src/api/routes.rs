@@ -32,13 +32,19 @@ pub fn build(state: ApiState) -> Router {
         .route("/rollback", post(rollback))
         .route("/admin/self-update", post(self_update))
         .route("/diagnostics", get(diagnostics))
-        .layer(middleware::from_fn_with_state(state.clone(), auth::token_required));
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::token_required,
+        ));
 
     let manual = Router::new()
         .route("/rescue/exit-maintenance", post(rescue_exit))
         .route("/rescue/continue", post(rescue_continue))
         .route("/rescue/forget-current", post(rescue_forget))
-        .layer(middleware::from_fn_with_state(state.clone(), auth::token_and_manual_required));
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::token_and_manual_required,
+        ));
 
     Router::new()
         .merge(public)
@@ -228,8 +234,8 @@ async fn diagnostics(State(st): State<ApiState>) -> Result<Json<Value>, ApiError
     let env_probe = std::fs::read_to_string(&env_probe_path)
         .ok()
         .and_then(|s| serde_json::from_str::<Value>(&s).ok());
-    let history = crate::state::history::tail(&st.state.root().join("history.log"), 100)
-        .unwrap_or_default();
+    let history =
+        crate::state::history::tail(&st.state.root().join("history.log"), 100).unwrap_or_default();
     Ok(Json(json!({
         "updater_version": crate::self_version(),
         "config": {
@@ -250,7 +256,8 @@ async fn diagnostics(State(st): State<ApiState>) -> Result<Json<Value>, ApiError
 async fn rescue_exit(State(st): State<ApiState>) -> Result<Json<Value>, ApiError> {
     st.state.clear_maintenance()?;
     st.state.set_current_job(None)?;
-    st.state.append_history("rescue: exit_maintenance via API")?;
+    st.state
+        .append_history("rescue: exit_maintenance via API")?;
     Ok(Json(json!({"ok": true})))
 }
 

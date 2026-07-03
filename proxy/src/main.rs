@@ -79,11 +79,11 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "/state/maintenance.json".into())
         .into();
     let backend_upstream =
-        std::env::var("PROXY_BACKEND_UPSTREAM").unwrap_or_else(|_| "http://backend:3000".into());
+        std::env::var("PROXY_BACKEND_UPSTREAM").unwrap_or_else(|_| "http://backend:1103".into());
     let frontend_upstream =
-        std::env::var("PROXY_FRONTEND_UPSTREAM").unwrap_or_else(|_| "http://frontend:4321".into());
+        std::env::var("PROXY_FRONTEND_UPSTREAM").unwrap_or_else(|_| "http://frontend:1102".into());
     let updater_upstream =
-        std::env::var("PROXY_UPDATER_UPSTREAM").unwrap_or_else(|_| "http://updater:9090".into());
+        std::env::var("PROXY_UPDATER_UPSTREAM").unwrap_or_else(|_| "http://updater:1101".into());
     let allow_direct_updater = std::env::var("PROXY_ALLOW_DIRECT_UPDATER")
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(false);

@@ -3,13 +3,13 @@
  * 预设组合：使用 CheckboxGroupItem 卡片式渲染权限开关
  */
 
-import './presets.css'
+import type { CheckboxGroupOption } from '../items/CheckboxGroupItem'
+
+import type { PermissionGroupConfig } from '../types'
 
 import React, { useCallback, useMemo } from 'react'
-
 import { CheckboxGroupItem } from '../items/CheckboxGroupItem'
-import type { CheckboxGroupOption } from '../items/CheckboxGroupItem'
-import type { PermissionGroupConfig } from '../types'
+import './presets.css'
 
 export interface PermissionGroupProps extends PermissionGroupConfig {}
 
@@ -21,17 +21,23 @@ export const PermissionGroup: React.FC<PermissionGroupProps> = ({
   onChange,
   disabled = false,
 }) => {
-  const handleChange = useCallback((key: string, value: boolean) => {
-    onChange(key, value)
-  }, [onChange])
+  const handleChange = useCallback(
+    (key: string, value: boolean) => {
+      onChange(key, value)
+    },
+    [onChange],
+  )
 
-  const options: CheckboxGroupOption[] = useMemo(() =>
-    permissions.map(permission => ({
-      key: permission.key,
-      label: permission.code ? `${permission.label} ${permission.code}` : permission.label,
-      description: permission.hint,
-      value: values[permission.key] ?? false,
-    })),
+  const options: CheckboxGroupOption[] = useMemo(
+    () =>
+      permissions.map((permission) => ({
+        key: permission.key,
+        label: permission.code
+          ? `${permission.label} ${permission.code}`
+          : permission.label,
+        description: permission.hint,
+        value: values[permission.key] ?? false,
+      })),
     [permissions, values],
   )
 

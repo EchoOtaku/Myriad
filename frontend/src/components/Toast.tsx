@@ -13,11 +13,11 @@
  * - 可选标题和消息组合
  */
 
-import './Toast.css'
-
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { TappIcon } from '../tapp'
+
+import './Toast.css'
 
 /** Toast 消息类型 */
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
@@ -68,14 +68,16 @@ const TYPE_CONFIG = {
  * 从消息内容自动推断类型
  */
 function inferTypeFromMessage(message: string): ToastType {
-  if (message.startsWith('✓') || message.startsWith('✔'))
-    return 'success'
-  if (message.startsWith('✗') || message.startsWith('✘') || message.startsWith('❌'))
+  if (message.startsWith('✓') || message.startsWith('✔')) return 'success'
+  if (
+    message.startsWith('✗') ||
+    message.startsWith('✘') ||
+    message.startsWith('❌')
+  ) {
     return 'error'
-  if (message.startsWith('⚠') || message.startsWith('⚡'))
-    return 'warning'
-  if (message.startsWith('ℹ') || message.startsWith('💡'))
-    return 'info'
+  }
+  if (message.startsWith('⚠') || message.startsWith('⚡')) return 'warning'
+  if (message.startsWith('ℹ') || message.startsWith('💡')) return 'info'
   return 'info' // 默认为 info 类型
 }
 
@@ -102,7 +104,10 @@ export default function Toast({
   const [isPaused, setIsPaused] = useState(false)
 
   // 自动推断类型
-  const toastType = useMemo(() => type || inferTypeFromMessage(message), [type, message])
+  const toastType = useMemo(
+    () => type || inferTypeFromMessage(message),
+    [type, message],
+  )
 
   // 清理消息前缀
   const cleanMessage = useMemo(() => cleanMessagePrefix(message), [message])
@@ -121,8 +126,7 @@ export default function Toast({
 
   // 自动关闭计时器
   useEffect(() => {
-    if (duration <= 0 || isPaused)
-      return
+    if (duration <= 0 || isPaused) return
 
     const hideTimer = setTimeout(() => {
       handleClose()
@@ -177,9 +181,7 @@ export default function Toast({
     >
       <div className={`toast-message ${config.colorClass}`}>
         {/* 图标区域 */}
-        <div className="toast-icon-wrapper">
-          {renderIcon()}
-        </div>
+        <div className="toast-icon-wrapper">{renderIcon()}</div>
 
         {/* 内容区域 */}
         <div className="toast-content">
@@ -194,8 +196,19 @@ export default function Toast({
             onClick={handleClose}
             aria-label="关闭通知"
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10.5 3.5L3.5 10.5M3.5 3.5L10.5 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M10.5 3.5L3.5 10.5M3.5 3.5L10.5 10.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
         )}
@@ -254,8 +267,7 @@ export function TappToast({
   }, [onClose])
 
   useEffect(() => {
-    if (duration <= 0 || isPaused)
-      return
+    if (duration <= 0 || isPaused) return
 
     const timer = setTimeout(() => {
       handleClose()
@@ -322,7 +334,12 @@ export function TappToast({
           aria-label="关闭通知"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M10.5 3.5L3.5 10.5M3.5 3.5L10.5 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path
+              d="M10.5 3.5L3.5 10.5M3.5 3.5L10.5 10.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
           </svg>
         </button>
       </div>

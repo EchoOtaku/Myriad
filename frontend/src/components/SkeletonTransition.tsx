@@ -64,7 +64,7 @@ export default function SkeletonTransition({
   // 清理所有定时器
   useEffect(() => {
     return () => {
-      timersRef.current.forEach(id => clearTimeout(id))
+      timersRef.current.forEach((id) => clearTimeout(id))
       timersRef.current.clear()
     }
   }, [])
@@ -74,8 +74,7 @@ export default function SkeletonTransition({
       // 开始加载
       setPhase(TransitionPhase.SKELETON)
       startTimeRef.current = Date.now()
-    }
-    else {
+    } else {
       // 加载完成，检查是否满足最小显示时间
       const elapsed = Date.now() - startTimeRef.current
       const remaining = Math.max(0, minDuration - elapsed)
@@ -92,7 +91,8 @@ export default function SkeletonTransition({
     }
   }, [loading, delay, minDuration, safeSetTimeout])
 
-  const showSkeleton = phase === TransitionPhase.SKELETON || phase === TransitionPhase.FADING
+  const showSkeleton =
+    phase === TransitionPhase.SKELETON || phase === TransitionPhase.FADING
   const contentReady = phase === TransitionPhase.CONTENT
 
   return (
@@ -184,8 +184,7 @@ export function LiquidGlassSkeleton({
       standard: { count: 80, baseDistance: 400 },
     }[level]
 
-    if (config.count === 0)
-      return []
+    if (config.count === 0) return []
 
     return PARTICLE_SEED.slice(0, config.count).map((seed, i) => {
       const distance = config.baseDistance * seed.distFactor + 200
@@ -210,20 +209,22 @@ export function LiquidGlassSkeleton({
       {/* 微粒消散层 */}
       <div className="liquid-wave">
         <div className="particle-layer">
-          {particles.map(particle => (
+          {particles.map((particle) => (
             <div
               key={particle.id}
               className="particle"
-              style={{
-                'width': `${particle.size}px`,
-                'height': `${particle.size}px`,
-                'left': `${particle.startX}%`,
-                'top': `${particle.startY}%`,
-                '--tx': `${particle.tx}px`,
-                '--ty': `${particle.ty}px`,
-                'animationDelay': `${particle.delay}s`,
-                'animationDuration': `${particle.duration}s`,
-              } as React.CSSProperties}
+              style={
+                {
+                  width: `${particle.size}px`,
+                  height: `${particle.size}px`,
+                  left: `${particle.startX}%`,
+                  top: `${particle.startY}%`,
+                  '--tx': `${particle.tx}px`,
+                  '--ty': `${particle.ty}px`,
+                  animationDelay: `${particle.delay}s`,
+                  animationDuration: `${particle.duration}s`,
+                } as React.CSSProperties
+              }
             />
           ))}
         </div>
@@ -235,9 +236,7 @@ export function LiquidGlassSkeleton({
         <div className="pulse-ring" />
 
         {/* 加载文本 */}
-        <div className="loading-text">
-          {text}
-        </div>
+        <div className="loading-text">{text}</div>
 
         {/* 消散点 */}
         <div className="loading-dots">

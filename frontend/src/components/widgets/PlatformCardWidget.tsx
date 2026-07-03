@@ -3,7 +3,13 @@
  */
 
 import type { WidgetComponentProps } from '../WidgetGrid'
-import { FaGithub, FaSteam, SiBangumi, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
+import {
+  FaGithub,
+  FaSteam,
+  SiBangumi,
+  SiBilibili,
+  SiNeteasecloudmusic,
+} from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -42,13 +48,16 @@ const PLATFORMS = [
   },
 ]
 
-export function PlatformCardWidget({ config, isEditMode }: WidgetComponentProps) {
+export function PlatformCardWidget({
+  config,
+  isEditMode,
+}: WidgetComponentProps) {
   const navigate = useNavigate()
   const { t } = useI18n()
 
   // 从配置中获取平台ID，默认为bilibili
   const platformId = config.config?.platformId || 'bilibili'
-  const platform = PLATFORMS.find(p => p.id === platformId) || PLATFORMS[0]
+  const platform = PLATFORMS.find((p) => p.id === platformId) || PLATFORMS[0]
 
   // 翻译的平台名称
   const displayName = useMemo(() => {
@@ -72,7 +81,9 @@ export function PlatformCardWidget({ config, isEditMode }: WidgetComponentProps)
       onClick={handleClick}
     >
       {/* 渐变背景 */}
-      <div className={`absolute inset-0 bg-linear-to-br ${platform.color} opacity-90`} />
+      <div
+        className={`absolute inset-0 bg-linear-to-br ${platform.color} opacity-90`}
+      />
 
       {/* 装饰圆 */}
       <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-white/10 blur-2xl" />
@@ -81,18 +92,12 @@ export function PlatformCardWidget({ config, isEditMode }: WidgetComponentProps)
       {/* 内容 */}
       <div className="relative z-10 h-full flex flex-col justify-between p-4">
         <div className="flex items-center gap-2">
-          <div className="text-white text-2xl">
-            {platform.icon}
-          </div>
-          <span className="text-white font-bold text-lg">
-            {displayName}
-          </span>
+          <div className="text-white text-2xl">{platform.icon}</div>
+          <span className="text-white font-bold text-lg">{displayName}</span>
         </div>
 
         <div className="text-right">
-          <div className="text-5xl opacity-20">
-            {platform.icon}
-          </div>
+          <div className="text-5xl opacity-20">{platform.icon}</div>
         </div>
       </div>
 

@@ -28,7 +28,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getPageResizeManager, isPageVisible, registerPageCleanup } from '../core'
+import {
+  getPageResizeManager,
+  isPageVisible,
+  registerPageCleanup,
+} from '../core'
 import { Feature, hasFeature } from '../pageFeatures'
 
 const PAGE_ID = 'library'
@@ -57,8 +61,8 @@ function getResizeManager() {
  * 资料库元素尺寸监听
  */
 export function useLibraryResize<T extends Element>(
-  ref: React.RefObject<T>,
-): { width: number, height: number } {
+  ref: React.RefObject<T | null>,
+): { width: number; height: number } {
   const [size, setSize] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
@@ -67,14 +71,16 @@ export function useLibraryResize<T extends Element>(
     }
 
     const el = ref.current
-    if (!el)
-      return
+    if (!el) return
 
     const manager = getResizeManager()
     const callback = (entry: ResizeObserverEntry) => {
       const { width, height } = entry.contentRect
       setSize((prev) => {
-        if (Math.abs(prev.width - width) < 1 && Math.abs(prev.height - height) < 1) {
+        if (
+          Math.abs(prev.width - width) < 1 &&
+          Math.abs(prev.height - height) < 1
+        ) {
           return prev
         }
         return { width, height }
@@ -97,7 +103,10 @@ export function useLibraryResize<T extends Element>(
 // ==================== Intersection Hooks ====================
 
 let _libraryIntersectionObserver: IntersectionObserver | null = null
-const _libraryIntersectionCallbacks = new Map<Element, (entry: IntersectionObserverEntry) => void>()
+const _libraryIntersectionCallbacks = new Map<
+  Element,
+  (entry: IntersectionObserverEntry) => void
+>()
 
 function getLibraryIntersectionObserver(): IntersectionObserver {
   if (!_libraryIntersectionObserver) {
@@ -105,8 +114,7 @@ function getLibraryIntersectionObserver(): IntersectionObserver {
       (entries) => {
         for (const entry of entries) {
           const cb = _libraryIntersectionCallbacks.get(entry.target)
-          if (cb)
-            cb(entry)
+          if (cb) cb(entry)
         }
       },
       {
@@ -123,7 +131,7 @@ function getLibraryIntersectionObserver(): IntersectionObserver {
  * 用于懒加载图片和无限滚动
  */
 export function useLibraryInView<T extends Element>(): {
-  ref: React.RefObject<T>
+  ref: React.RefObject<T | null>
   isInView: boolean
 } {
   const ref = useRef<T>(null)
@@ -137,8 +145,7 @@ export function useLibraryInView<T extends Element>(): {
     }
 
     const el = ref.current
-    if (!el)
-      return
+    if (!el) return
 
     const observer = getLibraryIntersectionObserver()
     const callback = (entry: IntersectionObserverEntry) => {
@@ -162,7 +169,7 @@ export function useLibraryInView<T extends Element>(): {
  * 只在元素进入视口后加载，且只触发一次
  */
 export function useLibraryLazyLoad<T extends Element>(): {
-  ref: React.RefObject<T>
+  ref: React.RefObject<T | null>
   shouldLoad: boolean
 } {
   const ref = useRef<T>(null)
@@ -175,8 +182,7 @@ export function useLibraryLazyLoad<T extends Element>(): {
     }
 
     const el = ref.current
-    if (!el)
-      return
+    if (!el) return
 
     const observer = getLibraryIntersectionObserver()
     const callback = (entry: IntersectionObserverEntry) => {
@@ -212,7 +218,7 @@ export function useLibraryInfiniteScroll(
   onLoadMore: () => void | Promise<void>,
   hasMore: boolean,
   isLoading?: boolean,
-): React.RefObject<HTMLDivElement> {
+): React.RefObject<HTMLDivElement | null> {
   const sentinelRef = useRef<HTMLDivElement>(null)
   const loadingRef = useRef(false)
 
@@ -229,8 +235,7 @@ export function useLibraryInfiniteScroll(
     }
 
     const el = sentinelRef.current
-    if (!el)
-      return
+    if (!el) return
 
     const observer = getLibraryIntersectionObserver()
     const callback = async (entry: IntersectionObserverEntry) => {
@@ -238,8 +243,7 @@ export function useLibraryInfiniteScroll(
         loadingRef.current = true
         try {
           await onLoadMore()
-        }
-        finally {
+        } finally {
           // 异步完成后才重置，确保不会重复触发
           loadingRef.current = false
         }
@@ -272,19 +276,25 @@ export function useLibraryInfiniteScroll(
  * ```
  */
 export function useLibraryIntersectionObserver(): {
-  observeLibraryIntersection: (el: Element, callback: (entry: IntersectionObserverEntry) => void) => void
+  observeLibraryIntersection: (
+    el: Element,
+    callback: (entry: IntersectionObserverEntry) => void,
+  ) => void
   unobserveLibraryIntersection: (el: Element) => void
 } {
-  const observeLibraryIntersection = useCallback((el: Element, callback: (entry: IntersectionObserverEntry) => void) => {
-    if (!hasFeature(PAGE_ID, Feature.Intersection)) {
-      // 功能未启用时，模拟一次 isIntersecting
-      callback({ isIntersecting: true } as IntersectionObserverEntry)
-      return
-    }
-    const observer = getLibraryIntersectionObserver()
-    _libraryIntersectionCallbacks.set(el, callback)
-    observer.observe(el)
-  }, [])
+  const observeLibraryIntersection = useCallback(
+    (el: Element, callback: (entry: IntersectionObserverEntry) => void) => {
+      if (!hasFeature(PAGE_ID, Feature.Intersection)) {
+        // 功能未启用时，模拟一次 isIntersecting
+        callback({ isIntersecting: true } as IntersectionObserverEntry)
+        return
+      }
+      const observer = getLibraryIntersectionObserver()
+      _libraryIntersectionCallbacks.set(el, callback)
+      observer.observe(el)
+    },
+    [],
+  )
 
   const unobserveLibraryIntersection = useCallback((el: Element) => {
     _libraryIntersectionCallbacks.delete(el)
@@ -310,11 +320,14 @@ export function useLibraryPrefetch(
       return
     }
 
-    const id = requestIdleCallback(() => {
-      if (isPageVisible()) {
-        prefetchFn()
-      }
-    }, { timeout: 5000 })
+    const id = requestIdleCallback(
+      () => {
+        if (isPageVisible()) {
+          prefetchFn()
+        }
+      },
+      { timeout: 5000 },
+    )
 
     return () => cancelIdleCallback(id)
   }, deps)

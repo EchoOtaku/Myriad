@@ -37,7 +37,7 @@ class SharedEventManager {
   add(
     eventType: string,
     callback: EventCallback,
-    options: { priority?: number, throttle?: boolean } = {},
+    options: { priority?: number; throttle?: boolean } = {},
   ): () => void {
     const { priority = 0, throttle = false } = options
 
@@ -71,8 +71,7 @@ class SharedEventManager {
   private setupNativeListener(eventType: string, throttle: boolean) {
     const handler: EventCallback = (event) => {
       const entries = this.listeners.get(eventType)
-      if (!entries || entries.size === 0)
-        return
+      if (!entries || entries.size === 0) return
 
       // 🔧 使用缓存的排序结果，只有在监听器变化时才重新排序
       let sorted = this.sortedListenersCache.get(eventType)
@@ -85,8 +84,7 @@ class SharedEventManager {
       for (let i = 0; i < sorted.length; i++) {
         try {
           sorted[i].callback(event)
-        }
-        catch (e) {
+        } catch (e) {
           console.error(`Error in ${eventType} listener:`, e)
         }
       }
@@ -150,7 +148,7 @@ export const sharedEventManager = new SharedEventManager()
 export function useSharedEventListener(
   eventType: string,
   callback: EventCallback,
-  options: { priority?: number, throttle?: boolean, enabled?: boolean } = {},
+  options: { priority?: number; throttle?: boolean; enabled?: boolean } = {},
 ): void {
   const { priority = 0, throttle = true, enabled = true } = options
 
@@ -162,8 +160,7 @@ export function useSharedEventListener(
   }, [])
 
   useEffect(() => {
-    if (!enabled)
-      return
+    if (!enabled) return
 
     const remove = sharedEventManager.add(eventType, stableCallback, {
       priority,
@@ -183,7 +180,7 @@ export function useSharedEventListener(
  */
 export function useSharedResize(
   callback: () => void,
-  options: { priority?: number, enabled?: boolean, debounce?: number } = {},
+  options: { priority?: number; enabled?: boolean; debounce?: number } = {},
 ): void {
   const { debounce: debounceMs, ...restOptions } = options
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -198,8 +195,7 @@ export function useSharedResize(
       timeoutRef.current = setTimeout(() => {
         callbackRef.current()
       }, debounceMs)
-    }
-    else {
+    } else {
       callbackRef.current()
     }
   }, [debounceMs])
@@ -225,7 +221,7 @@ export function useSharedResize(
  */
 export function useSharedScroll(
   callback: (event: Event) => void,
-  options: { priority?: number, enabled?: boolean, throttleMs?: number } = {},
+  options: { priority?: number; enabled?: boolean; throttleMs?: number } = {},
 ): void {
   const { throttleMs, ...restOptions } = options
   const callbackRef = useRef(callback)
@@ -233,18 +229,20 @@ export function useSharedScroll(
 
   const lastCallTime = useRef(0)
 
-  const handler = useCallback((event: Event) => {
-    if (throttleMs && throttleMs > 0) {
-      const now = performance.now()
-      if (now - lastCallTime.current >= throttleMs) {
-        lastCallTime.current = now
+  const handler = useCallback(
+    (event: Event) => {
+      if (throttleMs && throttleMs > 0) {
+        const now = performance.now()
+        if (now - lastCallTime.current >= throttleMs) {
+          lastCallTime.current = now
+          callbackRef.current(event)
+        }
+      } else {
         callbackRef.current(event)
       }
-    }
-    else {
-      callbackRef.current(event)
-    }
-  }, [throttleMs])
+    },
+    [throttleMs],
+  )
 
   useSharedEventListener('scroll', handler, {
     ...restOptions,
@@ -260,7 +258,7 @@ export function useSharedScroll(
  * const { width, height } = useWindowSize();
  * ```
  */
-export function useWindowSize(): { width: number, height: number } {
+export function useWindowSize(): { width: number; height: number } {
   const [size, setSize] = useState({
     width: typeof window !== 'undefined' ? window.innerWidth : 0,
     height: typeof window !== 'undefined' ? window.innerHeight : 0,
@@ -283,7 +281,10 @@ export function useWindowSize(): { width: number, height: number } {
  *
  * @param delay 防抖延迟（毫秒）
  */
-export function useDebouncedWindowSize(delay = 150): { width: number, height: number } {
+export function useDebouncedWindowSize(delay = 150): {
+  width: number
+  height: number
+} {
   const [size, setSize] = useState({
     width: typeof window !== 'undefined' ? window.innerWidth : 0,
     height: typeof window !== 'undefined' ? window.innerHeight : 0,
@@ -332,14 +333,12 @@ export function useDebouncedWindowSize(delay = 150): { width: number, height: nu
  */
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => {
-    if (typeof window === 'undefined')
-      return false
+    if (typeof window === 'undefined') return false
     return window.matchMedia(query).matches
   })
 
   useEffect(() => {
-    if (typeof window === 'undefined')
-      return
+    if (typeof window === 'undefined') return
 
     const mediaQuery = window.matchMedia(query)
     setMatches(mediaQuery.matches)
@@ -362,14 +361,17 @@ export function useBreakpoints() {
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const isLargeDesktop = useMediaQuery('(min-width: 1280px)')
 
-  return useMemo(() => ({
-    isMobile,
-    isTablet,
-    isDesktop,
-    isLargeDesktop,
-    // 便捷属性
-    isTouchDevice: isMobile || isTablet,
-  }), [isMobile, isTablet, isDesktop, isLargeDesktop])
+  return useMemo(
+    () => ({
+      isMobile,
+      isTablet,
+      isDesktop,
+      isLargeDesktop,
+      // 便捷属性
+      isTouchDevice: isMobile || isTablet,
+    }),
+    [isMobile, isTablet, isDesktop, isLargeDesktop],
+  )
 }
 
 /**
@@ -393,8 +395,7 @@ export function usePageVisibility(): boolean {
  */
 export function useOnlineStatus(): boolean {
   const [isOnline, setIsOnline] = useState(() => {
-    if (typeof navigator === 'undefined')
-      return true
+    if (typeof navigator === 'undefined') return true
     return navigator.onLine
   })
 

@@ -12,7 +12,7 @@
 //! - 每日自动创建上限 10 个
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -141,7 +141,7 @@ impl SkillEvolution {
     // ==================== 统计文件持久化 ====================
 
     /// 从文件加载统计
-    async fn load_stats_from_file(skills_dir: &PathBuf) -> HashMap<String, SkillStats> {
+    async fn load_stats_from_file(skills_dir: &Path) -> HashMap<String, SkillStats> {
         let path = skills_dir.join(STATS_FILE);
         match tokio::fs::read_to_string(&path).await {
             Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
@@ -150,7 +150,7 @@ impl SkillEvolution {
     }
 
     /// 从文件加载能力缺口
-    async fn load_gaps_from_file(skills_dir: &PathBuf) -> Vec<CapabilityGap> {
+    async fn load_gaps_from_file(skills_dir: &Path) -> Vec<CapabilityGap> {
         let path = skills_dir.join(GAPS_FILE);
         match tokio::fs::read_to_string(&path).await {
             Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
@@ -557,6 +557,7 @@ impl SkillEvolution {
     // ==================== 自动创建 ====================
 
     /// 自动创建 Skill（带参数声明）
+    #[allow(clippy::too_many_arguments)]
     pub async fn auto_create_skill_with_params(
         &self,
         name: &str,
@@ -580,6 +581,7 @@ impl SkillEvolution {
     }
 
     /// 自动创建 Skill 内部实现
+    #[allow(clippy::too_many_arguments)]
     async fn auto_create_skill_inner(
         &self,
         name: &str,
@@ -1126,7 +1128,7 @@ pub async fn init_skill_evolution(skills_dir: PathBuf) {
             evolution.flush().await;
 
             // 每 24 小时 prune
-            if tick_count % prune_interval_ticks == 0 {
+            if tick_count.is_multiple_of(prune_interval_ticks) {
                 let pruned = evolution.prune_skills().await;
                 if !pruned.is_empty() {
                     tracing::info!(

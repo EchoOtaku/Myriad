@@ -39,8 +39,7 @@ let _visibilityHandler: (() => void) | null = null
 const _visibilitySubscribers = new Set<(visible: boolean) => void>()
 
 function initVisibility() {
-  if (visibilityInitialized || typeof document === 'undefined')
-    return
+  if (visibilityInitialized || typeof document === 'undefined') return
   // 检查当前页面是否需要此功能
   if (currentPageId && !hasFeature(currentPageId, Feature.Visibility)) {
     if (import.meta.env.DEV) {
@@ -54,24 +53,30 @@ function initVisibility() {
     _isPageVisible = !document.hidden
     // 直接遍历，避免创建临时数组
     for (const sub of _visibilitySubscribers) {
-      try { sub(_isPageVisible) }
-      catch {}
+      try {
+        sub(_isPageVisible)
+      } catch {}
     }
   }
-  document.addEventListener('visibilitychange', _visibilityHandler, { passive: true })
+  document.addEventListener('visibilitychange', _visibilityHandler, {
+    passive: true,
+  })
 }
 
 /** 订阅页面可见性 */
-export function onVisibility(callback: (visible: boolean) => void): Unsubscribe {
+export function onVisibility(
+  callback: (visible: boolean) => void,
+): Unsubscribe {
   initVisibility()
   _visibilitySubscribers.add(callback)
-  return () => { _visibilitySubscribers.delete(callback) }
+  return () => {
+    _visibilitySubscribers.delete(callback)
+  }
 }
 
 /** 获取页面可见性 */
 export function isPageVisible(): boolean {
-  if (!visibilityInitialized)
-    initVisibility()
+  if (!visibilityInitialized) initVisibility()
   return _isPageVisible
 }
 
@@ -81,8 +86,7 @@ let _channel: MessageChannel | null = null
 let _pendingCallbacks: Array<() => void> = []
 
 function initMessageChannel() {
-  if (messageChannelInitialized)
-    return
+  if (messageChannelInitialized) return
   messageChannelInitialized = true
 
   if (typeof MessageChannel !== 'undefined') {
@@ -103,15 +107,14 @@ export function scheduleTask(callback: () => void): void {
     if (_pendingCallbacks.length === 1) {
       _channel.port2.postMessage(null)
     }
-  }
-  else {
+  } else {
     setTimeout(callback, 0)
   }
 }
 
 /** 让出主线程并返回 Promise */
 export function yieldToMain(): Promise<void> {
-  return new Promise(resolve => scheduleTask(resolve))
+  return new Promise((resolve) => scheduleTask(resolve))
 }
 
 // ==================== 时间戳缓存（微优化） ====================
@@ -124,7 +127,9 @@ export function now(): number {
   if (!_nowValid) {
     _cachedNow = performance.now()
     _nowValid = true
-    queueMicrotask(() => { _nowValid = false })
+    queueMicrotask(() => {
+      _nowValid = false
+    })
   }
   return _cachedNow
 }
@@ -139,7 +144,10 @@ export function refreshNow(): number {
 // ==================== ResizeObserver 模块（惰性） ====================
 
 let _resizeObserver: ResizeObserver | null = null
-const _resizeCallbacks = new WeakMap<Element, (entry: ResizeObserverEntry) => void>()
+const _resizeCallbacks = new WeakMap<
+  Element,
+  (entry: ResizeObserverEntry) => void
+>()
 const _resizeElements = new Set<Element>()
 let _resizeBatch: ResizeObserverEntry[] = []
 let _resizeScheduled = false
@@ -147,13 +155,11 @@ const RESIZE_THROTTLE = 50
 let _lastResizeTime = 0
 
 function initResizeObserver() {
-  if (resizeObserverInitialized || typeof ResizeObserver === 'undefined')
-    return
+  if (resizeObserverInitialized || typeof ResizeObserver === 'undefined') return
   resizeObserverInitialized = true
 
   _resizeObserver = new ResizeObserver((entries) => {
-    if (!_isPageVisible)
-      return
+    if (!_isPageVisible) return
 
     const nowTime = performance.now()
     // 节流
@@ -170,8 +176,7 @@ function initResizeObserver() {
     // 直接处理
     for (const entry of entries) {
       const cb = _resizeCallbacks.get(entry.target)
-      if (cb)
-        cb(entry)
+      if (cb) cb(entry)
     }
   })
 }
@@ -184,8 +189,7 @@ function flushResizeBatch() {
 
   for (const entry of batch) {
     const cb = _resizeCallbacks.get(entry.target)
-    if (cb)
-      cb(entry)
+    if (cb) cb(entry)
   }
 }
 
@@ -195,8 +199,7 @@ export function observeResize(
   callback: (entry: ResizeObserverEntry) => void,
 ): Unsubscribe {
   initResizeObserver()
-  if (!_resizeObserver)
-    return () => {}
+  if (!_resizeObserver) return () => {}
 
   _resizeCallbacks.set(element, callback)
   _resizeElements.add(element)
@@ -212,29 +215,33 @@ export function observeResize(
 // ==================== IntersectionObserver 模块（惰性） ====================
 
 const _intersectionObservers = new Map<string, IntersectionObserver>()
-const _intersectionCallbacks = new WeakMap<Element, {
-  callback: (entry: IntersectionObserverEntry) => void
-  key: string
-}>()
+const _intersectionCallbacks = new WeakMap<
+  Element,
+  {
+    callback: (entry: IntersectionObserverEntry) => void
+    key: string
+  }
+>()
 const _intersectionElements = new Set<Element>()
 
 function getIntersectionKey(threshold: number, rootMargin: string): string {
   return `${threshold}:${rootMargin}`
 }
 
-function getOrCreateIntersectionObserver(threshold: number, rootMargin: string): IntersectionObserver {
+function getOrCreateIntersectionObserver(
+  threshold: number,
+  rootMargin: string,
+): IntersectionObserver {
   const key = getIntersectionKey(threshold, rootMargin)
   let observer = _intersectionObservers.get(key)
 
   if (!observer) {
     observer = new IntersectionObserver(
       (entries) => {
-        if (!_isPageVisible)
-          return
+        if (!_isPageVisible) return
         for (const entry of entries) {
           const info = _intersectionCallbacks.get(entry.target)
-          if (info)
-            info.callback(entry)
+          if (info) info.callback(entry)
         }
       },
       { threshold, rootMargin },
@@ -250,7 +257,7 @@ function getOrCreateIntersectionObserver(threshold: number, rootMargin: string):
 export function observeIntersection(
   element: Element,
   callback: (entry: IntersectionObserverEntry) => void,
-  options: { threshold?: number, rootMargin?: string } = {},
+  options: { threshold?: number; rootMargin?: string } = {},
 ): Unsubscribe {
   const { threshold = 0, rootMargin = '0px' } = options
   const key = getIntersectionKey(threshold, rootMargin)
@@ -287,23 +294,34 @@ function scheduleIdleRun() {
   if (_idleCallbackId !== null || _idleTasks.length === 0 || !_isPageVisible)
     return
 
-  const run = typeof requestIdleCallback !== 'undefined'
-    ? requestIdleCallback
-    : (cb: IdleRequestCallback) => setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 1)
+  const run =
+    typeof requestIdleCallback !== 'undefined'
+      ? requestIdleCallback
+      : (cb: IdleRequestCallback) =>
+          setTimeout(
+            () => cb({ didTimeout: false, timeRemaining: () => 50 }),
+            1,
+          )
 
-  _idleCallbackId = run((deadline) => {
-    _idleCallbackId = null
+  _idleCallbackId = run(
+    (deadline) => {
+      _idleCallbackId = null
 
-    while (_idleTasks.length > 0 && (deadline.timeRemaining() > 2 || deadline.didTimeout)) {
-      const task = _idleTasks.shift()!
-      _registeredTasks.delete(task.id)
-      try { task.task() }
-      catch {}
-    }
+      while (
+        _idleTasks.length > 0 &&
+        (deadline.timeRemaining() > 2 || deadline.didTimeout)
+      ) {
+        const task = _idleTasks.shift()!
+        _registeredTasks.delete(task.id)
+        try {
+          task.task()
+        } catch {}
+      }
 
-    if (_idleTasks.length > 0)
-      scheduleIdleRun()
-  }, { timeout: 2000 }) as number
+      if (_idleTasks.length > 0) scheduleIdleRun()
+    },
+    { timeout: 2000 },
+  ) as number
 
   idleSchedulerInitialized = true
 }
@@ -326,9 +344,8 @@ export function scheduleIdle(
   // 按优先级排序（简单插入排序，因为通常队列很短）
   for (let i = _idleTasks.length - 1; i > 0; i--) {
     if (_idleTasks[i].priority > _idleTasks[i - 1].priority) {
-      [_idleTasks[i], _idleTasks[i - 1]] = [_idleTasks[i - 1], _idleTasks[i]]
-    }
-    else {
+      ;[_idleTasks[i], _idleTasks[i - 1]] = [_idleTasks[i - 1], _idleTasks[i]]
+    } else {
       break
     }
   }
@@ -339,7 +356,7 @@ export function scheduleIdle(
 
 /** 取消空闲任务 */
 export function cancelIdle(id: string): boolean {
-  const idx = _idleTasks.findIndex(t => t.id === id)
+  const idx = _idleTasks.findIndex((t) => t.id === id)
   if (idx !== -1) {
     _idleTasks.splice(idx, 1)
     _registeredTasks.delete(id)
@@ -361,16 +378,18 @@ function flushDomBatch() {
   const reads = _reads
   _reads = []
   for (const r of reads) {
-    try { r() }
-    catch {}
+    try {
+      r()
+    } catch {}
   }
 
   // 再执行所有写入
   const writes = _writes
   _writes = []
   for (const w of writes) {
-    try { w() }
-    catch {}
+    try {
+      w()
+    } catch {}
   }
 }
 
@@ -414,8 +433,7 @@ export function runPageCleanup(pageId: string): void {
  * 清理旧页面资源，根据页面配置初始化所需功能
  */
 export function startPage(pageId: string): void {
-  if (currentPageId === pageId)
-    return
+  if (currentPageId === pageId) return
 
   // 清理旧页面
   if (currentPageId) {
@@ -485,7 +503,10 @@ export function isSchedulerActive(): boolean {
 // ==================== 页面级 ResizeObserver 工厂（消除 pages 间重复代码） ====================
 
 interface PageResizeManager {
-  observe: (element: Element, callback: (entry: ResizeObserverEntry) => void) => void
+  observe: (
+    element: Element,
+    callback: (entry: ResizeObserverEntry) => void,
+  ) => void
   unobserve: (element: Element) => void
   cleanup: () => void
 }
@@ -498,8 +519,7 @@ const _pageResizeManagers = new Map<string, PageResizeManager>()
  */
 export function getPageResizeManager(pageId: string): PageResizeManager {
   let manager = _pageResizeManagers.get(pageId)
-  if (manager)
-    return manager
+  if (manager) return manager
 
   let observer: ResizeObserver | null = null
   const callbacks = new Map<Element, (entry: ResizeObserverEntry) => void>()
@@ -509,8 +529,7 @@ export function getPageResizeManager(pageId: string): PageResizeManager {
       observer = new ResizeObserver((entries) => {
         for (const entry of entries) {
           const cb = callbacks.get(entry.target)
-          if (cb)
-            cb(entry)
+          if (cb) cb(entry)
         }
       })
     }
@@ -554,14 +573,18 @@ const _pageIntervalManagers = new Map<string, PageIntervalManager>()
  */
 export function getPageIntervalManager(pageId: string): PageIntervalManager {
   let manager = _pageIntervalManagers.get(pageId)
-  if (manager)
-    return manager
+  if (manager) return manager
 
   const intervals = new Set<ReturnType<typeof setInterval>>()
 
   manager = {
-    add(id) { intervals.add(id) },
-    remove(id) { clearInterval(id); intervals.delete(id) },
+    add(id) {
+      intervals.add(id)
+    },
+    remove(id) {
+      clearInterval(id)
+      intervals.delete(id)
+    },
     cleanup() {
       for (const id of intervals) clearInterval(id)
       intervals.clear()

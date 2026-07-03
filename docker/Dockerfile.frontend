@@ -47,13 +47,13 @@ COPY --from=builder --chown=myriad:myriad /app/dist ./dist
 # Switch to non-root user
 USER myriad
 
-EXPOSE 4321
+EXPOSE 1102
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:4321 || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:1102 || exit 1
 
 # Serve the built application
 # 使用 -s (SPA模式) 将所有未匹配的路由回退到 index.html
 # 这样 React Router 可以在客户端处理动态路由（如 /tapp/run/:id）
-CMD ["serve", "dist", "-s", "-l", "4321", "--no-clipboard"]
+CMD ["serve", "dist", "-s", "-l", "1102", "--no-clipboard"]

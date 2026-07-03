@@ -26,7 +26,7 @@ import {
   OAuthConfigSection,
   UiConfigSection,
   PermissionsConfigSection,
-} from './config';
+} from './config'
 ```
 
 ### 2. 替换音乐播放器区块
@@ -42,11 +42,11 @@ import {
       configFields={config.ui_config.config_fields}
       updateValue={updateUiFieldValue}
       onMessage={(msg) => {
-        setMessage(msg);
-        setTimeout(() => setMessage(''), 3000);
+        setMessage(msg)
+        setTimeout(() => setMessage(''), 3000)
       }}
     />
-  );
+  )
 }
 ```
 
@@ -63,7 +63,7 @@ import {
       configFields={config.ui_config.config_fields}
       updateValue={updateUiFieldValue}
     />
-  );
+  )
 }
 ```
 
@@ -80,7 +80,7 @@ import {
       configFields={config.ui_config.config_fields}
       updateValue={updateUiFieldValue}
     />
-  );
+  )
 }
 ```
 
@@ -99,7 +99,7 @@ import {
       getFieldLabel={getFieldLabel}
       getFieldPlaceholder={getFieldPlaceholder}
     />
-  );
+  )
 }
 ```
 
@@ -117,7 +117,7 @@ import {
       updatePermissionConfig={updatePermissionConfig}
       loading={permissionLoading}
     />
-  );
+  )
 }
 ```
 
@@ -154,8 +154,8 @@ import {
 
 ```typescript
 interface ConfigField {
-  key: string;
-  value: string;
+  key: string
+  value: string
 }
 ```
 
@@ -163,9 +163,9 @@ interface ConfigField {
 
 ```typescript
 interface XxxConfigSectionProps {
-  configFields: ConfigField[];
-  updateValue: (key: string, value: string) => void;
-  onMessage?: (message: string) => void;
+  configFields: ConfigField[]
+  updateValue: (key: string, value: string) => void
+  onMessage?: (message: string) => void
 }
 ```
 

@@ -22,9 +22,10 @@ export function useOptimizedTransition(
       return { duration: 0 }
     }
 
-    const duration = typeof baseTransition.duration === 'number'
-      ? baseTransition.duration * durationScale
-      : undefined
+    const duration =
+      typeof baseTransition.duration === 'number'
+        ? baseTransition.duration * durationScale
+        : undefined
 
     // 低端设备禁用弹簧动画
     if (level === 'light' && baseTransition.type === 'spring') {
@@ -68,7 +69,7 @@ export function useConditionalAnimate(
 export function useLoopAnimation(
   animation: TargetAndTransition,
   transition: Transition & { repeat?: number },
-): { animate: TargetAndTransition, transition: Transition } {
+): { animate: TargetAndTransition; transition: Transition } {
   const { loop, durationScale } = useAnimationLevel()
 
   return useMemo(() => {
@@ -79,9 +80,10 @@ export function useLoopAnimation(
         transition: {
           ...transition,
           repeat: 0,
-          duration: typeof transition.duration === 'number'
-            ? transition.duration * durationScale
-            : undefined,
+          duration:
+            typeof transition.duration === 'number'
+              ? transition.duration * durationScale
+              : undefined,
         },
       }
     }

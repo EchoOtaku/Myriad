@@ -100,7 +100,7 @@ if [ -n "${UPDATER_BASE:-}" ]; then
   [ "$code" = "400" ] || fail "/update with bad version expected 400, got $code"
   pass "/update with bad version returns 400"
 else
-  echo "  (set UPDATER_BASE=http://host:9090 to run live smoke; skipping)"
+  echo "  (set UPDATER_BASE=http://host:1101 to run live smoke; skipping)"
 fi
 
 echo

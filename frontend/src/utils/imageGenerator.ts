@@ -25,7 +25,11 @@ const IMAGE_CACHE_KEY = 'myriad_card_illustrations'
 const CACHE_EXPIRY_DAYS = 30
 
 // 调用后端 AI 生成提示词
-async function generatePromptFromAPI(title: string, summary: string, category: string): Promise<string> {
+async function generatePromptFromAPI(
+  title: string,
+  summary: string,
+  category: string,
+): Promise<string> {
   try {
     // 输入验证
     if (!title || typeof title !== 'string') {
@@ -69,22 +73,28 @@ async function generatePromptFromAPI(title: string, summary: string, category: s
     }
 
     return data.prompt
-  }
-  catch (_error) {
+  } catch (_error) {
     // 降级方案：使用简单的默认提示词
     return `A cute chibi character, ${title}, in Studio Ghibli art style, transparent background, PNG format, no background, isolated subject, masterpiece, highest quality, detailed character design, soft lighting, hand-drawn animation style, Hayao Miyazaki inspired, watercolor texture, gentle colors, whimsical atmosphere, professional illustration, 8K resolution, ultra detailed, cute kawaii style`
   }
 }
 
 // 根据卡片内容生成吉卜力风格插画提示词
-export async function generateGhibliPrompt(title: string, summary: string, category: string): Promise<string> {
+export async function generateGhibliPrompt(
+  title: string,
+  summary: string,
+  category: string,
+): Promise<string> {
   // 直接调用后端 AI 生成提示词
   const prompt = await generatePromptFromAPI(title, summary, category)
   return prompt
 }
 
 // 生成插画 URL（Pollinations API）
-export function generateImageUrl(prompt: string, options: ImageGenOptions = {}): string {
+export function generateImageUrl(
+  prompt: string,
+  options: ImageGenOptions = {},
+): string {
   const {
     model = 'flux',
     width = 512,
@@ -117,8 +127,7 @@ export function generateImageUrl(prompt: string, options: ImageGenOptions = {}):
 export function getCachedIllustrations(): Map<number, CardIllustration> {
   try {
     const cached = localStorage.getItem(IMAGE_CACHE_KEY)
-    if (!cached)
-      return new Map()
+    if (!cached) return new Map()
 
     const data = JSON.parse(cached)
     const illustrations = new Map<number, CardIllustration>()
@@ -135,14 +144,16 @@ export function getCachedIllustrations(): Map<number, CardIllustration> {
     }
 
     return illustrations
-  }
-  catch (_e) {
+  } catch (_e) {
     return new Map()
   }
 }
 
 // 保存插画到 localStorage
-export function saveIllustration(cardId: number, illustration: CardIllustration): void {
+export function saveIllustration(
+  cardId: number,
+  illustration: CardIllustration,
+): void {
   try {
     const cached = getCachedIllustrations()
     cached.set(cardId, illustration)
@@ -153,8 +164,7 @@ export function saveIllustration(cardId: number, illustration: CardIllustration)
     })
 
     localStorage.setItem(IMAGE_CACHE_KEY, JSON.stringify(data))
-  }
-  catch (_e) {
+  } catch (_e) {
     // 静默失败,缓存不可用不影响功能
   }
 }
@@ -193,7 +203,7 @@ export async function generateCardIllustration(
   const prompt = await generateGhibliPrompt(title, summary, category)
 
   // 使用 cardId 作为 seed 确保每张卡片生成不同的图片
-  const seed = cardId * 1000 + Date.now() % 1000
+  const seed = cardId * 1000 + (Date.now() % 1000)
 
   // 生成图片 URL
   const imageUrl = generateImageUrl(prompt, {

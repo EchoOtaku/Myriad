@@ -28,16 +28,16 @@ html.dark .updater-panel-heading {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid rgba(209, 213, 219, 0.45);
+  border: 1px solid rgb(209 213 219 / 45%);
   border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgb(255 255 255 / 55%);
   overflow: hidden;
   backdrop-filter: blur(8px);
 }
 
 html.dark .updater-list {
-  background: rgba(55, 65, 81, 0.32);
-  border-color: rgba(107, 114, 128, 0.4);
+  background: rgb(55 65 81 / 32%);
+  border-color: rgb(107 114 128 / 40%);
 }
 
 .updater-row {
@@ -46,12 +46,12 @@ html.dark .updater-list {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(209, 213, 219, 0.4);
+  border-bottom: 1px solid rgb(209 213 219 / 40%);
   min-height: 2.5rem;
 }
 
 html.dark .updater-row {
-  border-bottom-color: rgba(107, 114, 128, 0.32);
+  border-bottom-color: rgb(107 114 128 / 32%);
 }
 
 .updater-row:last-child {
@@ -123,12 +123,12 @@ html.dark .updater-row-value.danger {
   font-size: 0.82rem;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.05);
+  background: rgb(0 0 0 / 5%);
 }
 
 html.dark .updater-row-value code,
 html.dark .updater-version {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
 }
 
 /* ===== 主操作按钮行 ===== */
@@ -152,14 +152,14 @@ html.dark .updater-actions-hint {
 .updater-progress {
   padding: 1rem 1.1rem;
   border-radius: 0.75rem;
-  border: 1px solid rgba(209, 213, 219, 0.45);
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgb(209 213 219 / 45%);
+  background: rgb(255 255 255 / 55%);
   backdrop-filter: blur(8px);
 }
 
 html.dark .updater-progress {
-  background: rgba(55, 65, 81, 0.32);
-  border-color: rgba(107, 114, 128, 0.4);
+  background: rgb(55 65 81 / 32%);
+  border-color: rgb(107 114 128 / 40%);
 }
 
 .updater-progress-head {
@@ -205,12 +205,12 @@ html.dark .updater-progress-phase {
   position: relative;
   height: 4px;
   border-radius: 2px;
-  background: rgba(0, 0, 0, 0.06);
+  background: rgb(0 0 0 / 6%);
   overflow: hidden;
 }
 
 html.dark .updater-progress-bar {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
 }
 
 .updater-progress-bar-fill {
@@ -231,8 +231,13 @@ html.dark .updater-progress-bar-fill {
 }
 
 @keyframes progress-slide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(300%); }
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(300%);
+  }
 }
 
 .updater-progress-details {
@@ -269,10 +274,25 @@ html.dark .updater-progress-steps {
   font-size: 0.76rem;
 }
 
-.updater-step-ok::before { content: '✓ '; color: #6b7280; }
-.updater-step-err::before { content: '✗ '; color: #b91c1c; font-weight: 600; }
-.updater-step-err-msg { color: #b91c1c; margin-left: 0.3rem; }
-html.dark .updater-step-err-msg { color: #fca5a5; }
+.updater-step-ok::before {
+  content: '✓ ';
+  color: #6b7280;
+}
+
+.updater-step-err::before {
+  content: '✗ ';
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.updater-step-err-msg {
+  color: #b91c1c;
+  margin-left: 0.3rem;
+}
+
+html.dark .updater-step-err-msg {
+  color: #fca5a5;
+}
 
 /* ===== Toast ===== */
 .updater-toast {
@@ -281,36 +301,52 @@ html.dark .updater-step-err-msg { color: #fca5a5; }
   font-size: 0.83rem;
   line-height: 1.5;
   border: 1px solid transparent;
-  background: rgba(243, 244, 246, 0.6);
+  background: rgb(243 244 246 / 60%);
   color: #374151;
 }
 
 html.dark .updater-toast {
-  background: rgba(31, 41, 55, 0.55);
+  background: rgb(31 41 55 / 55%);
   color: #e5e7eb;
 }
 
-.updater-toast.ok { color: #065f46; background: rgba(209, 250, 229, 0.55); border-color: rgba(110, 231, 183, 0.4); }
-.updater-toast.error { color: #991b1b; background: rgba(254, 226, 226, 0.55); border-color: rgba(252, 165, 165, 0.4); }
+.updater-toast.ok {
+  color: #065f46;
+  background: rgb(209 250 229 / 55%);
+  border-color: rgb(110 231 183 / 40%);
+}
 
-html.dark .updater-toast.ok { color: #a7f3d0; background: rgba(6, 78, 59, 0.45); }
-html.dark .updater-toast.error { color: #fecaca; background: rgba(127, 29, 29, 0.45); }
+.updater-toast.error {
+  color: #991b1b;
+  background: rgb(254 226 226 / 55%);
+  border-color: rgb(252 165 165 / 40%);
+}
+
+html.dark .updater-toast.ok {
+  color: #a7f3d0;
+  background: rgb(6 78 59 / 45%);
+}
+
+html.dark .updater-toast.error {
+  color: #fecaca;
+  background: rgb(127 29 29 / 45%);
+}
 
 /* ===== Drift（小提示条）===== */
 .updater-drift {
   padding: 0.5rem 0.85rem;
   border-radius: 0.5rem;
-  background: rgba(254, 243, 199, 0.55);
+  background: rgb(254 243 199 / 55%);
   color: #92400e;
   font-size: 0.78rem;
   text-align: center;
-  border: 1px solid rgba(252, 211, 77, 0.4);
+  border: 1px solid rgb(252 211 77 / 40%);
 }
 
 html.dark .updater-drift {
-  background: rgba(120, 53, 15, 0.4);
+  background: rgb(120 53 15 / 40%);
   color: #fde68a;
-  border-color: rgba(245, 158, 11, 0.4);
+  border-color: rgb(245 158 11 / 40%);
 }
 
 .updater-drift a {
@@ -332,13 +368,13 @@ html.dark .updater-drift {
   gap: 0.85rem;
   padding: 0.55rem 0.85rem;
   border-radius: 0.5rem;
-  border: 1px solid rgba(209, 213, 219, 0.45);
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgb(209 213 219 / 45%);
+  background: rgb(255 255 255 / 55%);
 }
 
 html.dark .updater-snapshot-item {
-  background: rgba(55, 65, 81, 0.32);
-  border-color: rgba(107, 114, 128, 0.4);
+  background: rgb(55 65 81 / 32%);
+  border-color: rgb(107 114 128 / 40%);
 }
 
 .updater-snapshot-meta {
@@ -432,8 +468,8 @@ html.dark .updater-mode-row label {
   margin-top: 0.5rem;
   padding: 0.45rem 0.7rem;
   border-radius: 0.5rem;
-  border: 1px solid rgba(209, 213, 219, 0.6);
-  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgb(209 213 219 / 60%);
+  background: rgb(255 255 255 / 65%);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.82rem;
   color: #111827;
@@ -442,11 +478,11 @@ html.dark .updater-mode-row label {
 .updater-token-input:focus {
   outline: none;
   border-color: #818cf8;
-  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.18);
+  box-shadow: 0 0 0 2px rgb(129 140 248 / 18%);
 }
 
 html.dark .updater-token-input {
-  background: rgba(31, 41, 55, 0.55);
-  border-color: rgba(107, 114, 128, 0.45);
+  background: rgb(31 41 55 / 55%);
+  border-color: rgb(107 114 128 / 45%);
   color: #f3f4f6;
 }

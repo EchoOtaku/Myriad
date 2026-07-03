@@ -38,7 +38,15 @@ type WallpaperStateListener = (state: WallpaperStateSnapshot) => void
 // ============================================================================
 
 /** 用于标准化URL时需要移除的缓存参数 */
-const CACHE_BUST_PARAMS = ['t', '_t', 'timestamp', 'cache', 'v', 'cachebust', 'nocache'] as const
+const CACHE_BUST_PARAMS = [
+  't',
+  '_t',
+  'timestamp',
+  'cache',
+  'v',
+  'cachebust',
+  'nocache',
+] as const
 
 /** 壁纸元素ID */
 const WALLPAPER_ELEMENT_ID = 'wallpaper'
@@ -53,15 +61,13 @@ const WALLPAPER_ELEMENT_ID = 'wallpaper'
  * @returns 标准化后的URL
  */
 export function normalizeWallpaperUrl(url: string): string {
-  if (!url)
-    return ''
+  if (!url) return ''
 
   try {
     const urlObj = new URL(url)
-    CACHE_BUST_PARAMS.forEach(param => urlObj.searchParams.delete(param))
+    CACHE_BUST_PARAMS.forEach((param) => urlObj.searchParams.delete(param))
     return urlObj.toString()
-  }
-  catch {
+  } catch {
     // 如果URL无效，直接返回原始值
     return url
   }
@@ -73,9 +79,11 @@ export function normalizeWallpaperUrl(url: string): string {
  * @param url2 第二个URL
  * @returns 是否相同
  */
-export function areUrlsEquivalent(url1: string | null, url2: string | null): boolean {
-  if (!url1 || !url2)
-    return false
+export function areUrlsEquivalent(
+  url1: string | null,
+  url2: string | null,
+): boolean {
+  if (!url1 || !url2) return false
   return normalizeWallpaperUrl(url1) === normalizeWallpaperUrl(url2)
 }
 
@@ -84,14 +92,14 @@ export function areUrlsEquivalent(url1: string | null, url2: string | null): boo
  * @param elementId 元素ID
  * @returns URL或null
  */
-export function extractBackgroundUrl(elementId: string = WALLPAPER_ELEMENT_ID): string | null {
+export function extractBackgroundUrl(
+  elementId: string = WALLPAPER_ELEMENT_ID,
+): string | null {
   const element = document.getElementById(elementId)
-  if (!element)
-    return null
+  if (!element) return null
 
   const bgImage = element.style.backgroundImage
-  if (!bgImage || bgImage === 'none')
-    return null
+  if (!bgImage || bgImage === 'none') return null
 
   // 匹配 url("...") 或 url('...') 或 url(...)
   const match = bgImage.match(/url\(["']?([^"')]+)["']?\)/)
@@ -235,8 +243,7 @@ class WallpaperStateManager {
       this.listeners.forEach((listener) => {
         try {
           listener(snapshot)
-        }
-        catch (error) {
+        } catch (error) {
           console.error('壁纸状态监听器执行错误:', error)
         }
       })

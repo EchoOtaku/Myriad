@@ -31,7 +31,7 @@ interface FetchWithRetryOptions extends RetryOptions {
  * 延迟指定毫秒数
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
@@ -59,7 +59,10 @@ function calculateDelay(
  */
 function defaultShouldRetry(error: Error, _attempt: number): boolean {
   // 网络错误总是重试
-  if (error.message.includes('Failed to fetch') || error.message.includes('Network')) {
+  if (
+    error.message.includes('Failed to fetch') ||
+    error.message.includes('Network')
+  ) {
     return true
   }
 
@@ -104,8 +107,7 @@ async function fetchWithTimeout(
     })
     clearTimeout(timeoutId)
     return response
-  }
-  catch (error) {
+  } catch (error) {
     clearTimeout(timeoutId)
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(`Request timeout after ${timeoutMs}ms`)
@@ -171,8 +173,7 @@ export async function fetchWithRetry(
 
           if (onRetry) {
             onRetry(error, attempt + 1, delay)
-          }
-          else {
+          } else {
             console.warn(
               `Request failed (attempt ${attempt + 1}/${maxRetries + 1}): ${error.message}. Retrying in ${delay}ms...`,
             )
@@ -186,8 +187,7 @@ export async function fetchWithRetry(
       }
 
       return response
-    }
-    catch (error) {
+    } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
 
       // 最后一次尝试，直接抛出错误
@@ -211,8 +211,7 @@ export async function fetchWithRetry(
 
       if (onRetry) {
         onRetry(err, attempt + 1, delay)
-      }
-      else {
+      } else {
         console.warn(
           `Request failed (attempt ${attempt + 1}/${maxRetries + 1}): ${err.message}. Retrying in ${delay}ms...`,
         )
@@ -280,8 +279,7 @@ export async function retryAsync<T>(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn()
-    }
-    catch (error) {
+    } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
 
       // 最后一次尝试，直接抛出错误
@@ -305,8 +303,7 @@ export async function retryAsync<T>(
 
       if (onRetry) {
         onRetry(err, attempt + 1, delay)
-      }
-      else {
+      } else {
         console.warn(
           `Operation failed (attempt ${attempt + 1}/${maxRetries + 1}): ${err.message}. Retrying in ${delay}ms...`,
         )

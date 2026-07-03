@@ -3,6 +3,7 @@
  * 包含单个添加和 OPML 导入两个标签页
  */
 
+import type { ChangeEvent, SubmitEvent } from 'react'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -14,17 +15,19 @@ import {
   LuLink as Link,
   LuLoader2 as Loader2,
   NotionIcon,
-  RSSHubIcon,
   LuRss as Rss,
+  RSSHubIcon,
   LuSparkles as Sparkles,
   LuStar as Star,
   LuUpload as Upload,
   LuX as X,
 } from '@lib/icons'
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import type { ChangeEvent, FormEvent } from 'react'
-import { ISLAND_GLASS, SPRING_SMOOTH, TRANSITION_QUICK } from './constants'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { useRef, useState } from 'react'
+import { ISLAND_GLASS, SPRING_SMOOTH, TRANSITION_QUICK } from './constants'
 
 interface DiscoveredFeed {
   title: string
@@ -49,9 +52,11 @@ export interface AddModeProps {
     notionToken?: string
     rsshubConfig?: unknown
     enableBrewlia?: boolean
-  }) => Promise<{ success: boolean, error?: string, title?: string }>
+  }) => Promise<{ success: boolean; error?: string; title?: string }>
   onDiscover?: (url: string) => Promise<DiscoveredFeed | null>
-  onImportOpml?: (content: string) => Promise<{ imported: number, skipped: number }>
+  onImportOpml?: (
+    content: string,
+  ) => Promise<{ imported: number; skipped: number }>
   onExportOpml?: () => void
   // RSSHub 配置组件（可选）
   RSSHubConfigComponent?: React.ComponentType<{
@@ -120,8 +125,12 @@ export function AddMode({
   const [activeTab, setActiveTab] = useState<'single' | 'opml'>('single')
 
   // 单个添加相关状态
-  const [sourceType, setSourceType] = useState<'rss' | 'brewlia' | 'link' | 'rsshub'>('rss')
-  const [feedType, setFeedType] = useState<'rss' | 'atom' | 'notion' | 'rsshub'>('rss')
+  const [sourceType, setSourceType] = useState<
+    'rss' | 'brewlia' | 'link' | 'rsshub'
+  >('rss')
+  const [feedType, setFeedType] = useState<
+    'rss' | 'atom' | 'notion' | 'rsshub'
+  >('rss')
   const [url, setUrl] = useState('')
   const [name, setName] = useState('')
   const [category, setCategory] = useState('')
@@ -141,7 +150,10 @@ export function AddMode({
   // OPML 相关状态
   const [opmlContent, setOpmlContent] = useState<string | null>(null)
   const [opmlLoading, setOpmlLoading] = useState(false)
-  const [opmlResult, setOpmlResult] = useState<{ imported: number, skipped: number } | null>(null)
+  const [opmlResult, setOpmlResult] = useState<{
+    imported: number
+    skipped: number
+  } | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [exporting, setExporting] = useState(false)
 
@@ -149,12 +161,15 @@ export function AddMode({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 计算显示图标
-  const displayIcon = customIcon || (discovered?.title ? `https://www.google.com/s2/favicons?sz=64&domain=${new URL(url).hostname}` : null)
+  const displayIcon =
+    customIcon ||
+    (discovered?.title
+      ? `https://www.google.com/s2/favicons?sz=64&domain=${new URL(url).hostname}`
+      : null)
 
   // 处理探测
   const handleDiscover = async () => {
-    if (!url.trim() || !onDiscover)
-      return
+    if (!url.trim() || !onDiscover) return
     setDiscovering(true)
     setError(null)
     try {
@@ -163,11 +178,9 @@ export function AddMode({
       if (result) {
         setName(result.title)
       }
-    }
-    catch (err) {
+    } catch (err) {
       setError(err instanceof Error ? err.message : 'Discovery failed')
-    }
-    finally {
+    } finally {
       setDiscovering(false)
     }
   }
@@ -175,8 +188,7 @@ export function AddMode({
   // 处理图标上传
   const handleIconUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file)
-      return
+    if (!file) return
 
     const reader = new FileReader()
     reader.onload = (event) => {
@@ -186,10 +198,9 @@ export function AddMode({
   }
 
   // 处理提交
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!onSubmit)
-      return
+    if (!onSubmit) return
 
     setLoading(true)
     setError(null)
@@ -197,7 +208,10 @@ export function AddMode({
 
     try {
       const result = await onSubmit({
-        sourceType: sourceType === 'rsshub' && enableBrewliaForRsshub ? 'brewlia' : sourceType,
+        sourceType:
+          sourceType === 'rsshub' && enableBrewliaForRsshub
+            ? 'brewlia'
+            : sourceType,
         feedType,
         url: sourceType === 'rsshub' ? rsshubFullUrl : url,
         name,
@@ -217,15 +231,12 @@ export function AddMode({
         setCustomIcon(null)
         setDiscovered(null)
         setNotionToken('')
-      }
-      else {
+      } else {
         setError(result.error || 'Failed to add')
       }
-    }
-    catch (err) {
+    } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add')
-    }
-    finally {
+    } finally {
       setLoading(false)
     }
   }
@@ -233,8 +244,7 @@ export function AddMode({
   // OPML 文件处理
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file)
-      return
+    if (!file) return
 
     const reader = new FileReader()
     reader.onload = (event) => {
@@ -258,8 +268,7 @@ export function AddMode({
   }
 
   const handleImport = async () => {
-    if (!opmlContent || !onImportOpml)
-      return
+    if (!opmlContent || !onImportOpml) return
 
     setOpmlLoading(true)
     setError(null)
@@ -268,23 +277,19 @@ export function AddMode({
       const result = await onImportOpml(opmlContent)
       setOpmlResult(result)
       setOpmlContent(null)
-    }
-    catch (err) {
+    } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed')
-    }
-    finally {
+    } finally {
       setOpmlLoading(false)
     }
   }
 
   const handleExport = async () => {
-    if (!onExportOpml)
-      return
+    if (!onExportOpml) return
     setExporting(true)
     try {
       await onExportOpml()
-    }
-    finally {
+    } finally {
       setExporting(false)
     }
   }
@@ -316,7 +321,12 @@ export function AddMode({
                 {/* Link */}
                 <button
                   type="button"
-                  onClick={() => { setSourceType('link'); setFeedType('rss'); setDiscovered(null); setError(null) }}
+                  onClick={() => {
+                    setSourceType('link')
+                    setFeedType('rss')
+                    setDiscovered(null)
+                    setError(null)
+                  }}
                   disabled={loading}
                   className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
                     sourceType === 'link'
@@ -324,8 +334,12 @@ export function AddMode({
                       : 'border-gray-200 dark:border-neutral-700 hover:border-gray-300'
                   }`}
                 >
-                  <ExternalLink className={`w-4 h-4 ${sourceType === 'link' ? 'text-gray-600 dark:text-gray-400' : 'text-gray-400'}`} />
-                  <span className={`text-[10px] font-medium ${sourceType === 'link' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+                  <ExternalLink
+                    className={`w-4 h-4 ${sourceType === 'link' ? 'text-gray-600 dark:text-gray-400' : 'text-gray-400'}`}
+                  />
+                  <span
+                    className={`text-[10px] font-medium ${sourceType === 'link' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}
+                  >
                     {t.pureLink}
                   </span>
                 </button>
@@ -333,16 +347,26 @@ export function AddMode({
                 {/* RSS */}
                 <button
                   type="button"
-                  onClick={() => { setSourceType('rss'); setFeedType('rss'); setError(null) }}
+                  onClick={() => {
+                    setSourceType('rss')
+                    setFeedType('rss')
+                    setError(null)
+                  }}
                   disabled={loading}
                   className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
-                    (sourceType === 'rss' || sourceType === 'brewlia') && feedType !== 'notion' && feedType !== 'rsshub'
+                    (sourceType === 'rss' || sourceType === 'brewlia') &&
+                    feedType !== 'notion' &&
+                    feedType !== 'rsshub'
                       ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10'
                       : 'border-gray-200 dark:border-neutral-700 hover:border-gray-300'
                   }`}
                 >
-                  <Rss className={`w-4 h-4 ${(sourceType === 'rss' || sourceType === 'brewlia') && feedType !== 'notion' && feedType !== 'rsshub' ? 'text-orange-600 dark:text-orange-400' : 'text-gray-400'}`} />
-                  <span className={`text-[10px] font-medium ${(sourceType === 'rss' || sourceType === 'brewlia') && feedType !== 'notion' && feedType !== 'rsshub' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+                  <Rss
+                    className={`w-4 h-4 ${(sourceType === 'rss' || sourceType === 'brewlia') && feedType !== 'notion' && feedType !== 'rsshub' ? 'text-orange-600 dark:text-orange-400' : 'text-gray-400'}`}
+                  />
+                  <span
+                    className={`text-[10px] font-medium ${(sourceType === 'rss' || sourceType === 'brewlia') && feedType !== 'notion' && feedType !== 'rsshub' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}
+                  >
                     RSS
                   </span>
                 </button>
@@ -350,7 +374,13 @@ export function AddMode({
                 {/* RSSHub */}
                 <button
                   type="button"
-                  onClick={() => { setSourceType('rsshub'); setFeedType('rsshub'); setDiscovered(null); setError(null); setUrl('') }}
+                  onClick={() => {
+                    setSourceType('rsshub')
+                    setFeedType('rsshub')
+                    setDiscovered(null)
+                    setError(null)
+                    setUrl('')
+                  }}
                   disabled={loading}
                   className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
                     sourceType === 'rsshub'
@@ -358,8 +388,12 @@ export function AddMode({
                       : 'border-gray-200 dark:border-neutral-700 hover:border-gray-300'
                   }`}
                 >
-                  <RSSHubIcon className={`w-4 h-4 ${sourceType === 'rsshub' ? 'text-teal-600 dark:text-teal-400' : 'text-gray-400'}`} />
-                  <span className={`text-[10px] font-medium ${sourceType === 'rsshub' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+                  <RSSHubIcon
+                    className={`w-4 h-4 ${sourceType === 'rsshub' ? 'text-teal-600 dark:text-teal-400' : 'text-gray-400'}`}
+                  />
+                  <span
+                    className={`text-[10px] font-medium ${sourceType === 'rsshub' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}
+                  >
                     RSSHub
                   </span>
                 </button>
@@ -367,7 +401,12 @@ export function AddMode({
                 {/* Notion */}
                 <button
                   type="button"
-                  onClick={() => { setSourceType('rss'); setFeedType('notion'); setDiscovered(null); setError(null) }}
+                  onClick={() => {
+                    setSourceType('rss')
+                    setFeedType('notion')
+                    setDiscovered(null)
+                    setError(null)
+                  }}
                   disabled={loading}
                   className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
                     feedType === 'notion'
@@ -375,8 +414,12 @@ export function AddMode({
                       : 'border-gray-200 dark:border-neutral-700 hover:border-gray-300'
                   }`}
                 >
-                  <NotionIcon className={`w-4 h-4 ${feedType === 'notion' ? 'text-slate-600 dark:text-slate-400' : 'text-gray-400'}`} />
-                  <span className={`text-[10px] font-medium ${feedType === 'notion' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+                  <NotionIcon
+                    className={`w-4 h-4 ${feedType === 'notion' ? 'text-slate-600 dark:text-slate-400' : 'text-gray-400'}`}
+                  />
+                  <span
+                    className={`text-[10px] font-medium ${feedType === 'notion' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}
+                  >
                     Notion
                   </span>
                 </button>
@@ -396,24 +439,37 @@ export function AddMode({
             {sourceType !== 'link' && sourceType !== 'rsshub' && (
               <div className="flex items-center justify-between px-2.5 py-2 bg-purple-50/50 dark:bg-purple-900/10 border border-purple-200/50 dark:border-purple-800/30 rounded-xl">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <Sparkles className={`w-4 h-4 shrink-0 ${sourceType === 'brewlia' ? 'text-purple-500' : 'text-purple-400'}`} />
+                  <Sparkles
+                    className={`w-4 h-4 shrink-0 ${sourceType === 'brewlia' ? 'text-purple-500' : 'text-purple-400'}`}
+                  />
                   <div className="min-w-0">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Brewlia AI</span>
-                    <p className="text-[10px] text-gray-400 truncate">{t.brewliaShortDesc}</p>
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      Brewlia AI
+                    </span>
+                    <p className="text-[10px] text-gray-400 truncate">
+                      {t.brewliaShortDesc}
+                    </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSourceType(sourceType === 'brewlia' ? 'rss' : 'brewlia')}
+                  onClick={() =>
+                    setSourceType(sourceType === 'brewlia' ? 'rss' : 'brewlia')
+                  }
                   disabled={loading}
                   title={sourceType === 'brewlia' ? t.disableAI : t.enableAI}
                   className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
-                    sourceType === 'brewlia' ? 'bg-purple-500' : 'bg-gray-300 dark:bg-neutral-600'
+                    sourceType === 'brewlia'
+                      ? 'bg-purple-500'
+                      : 'bg-gray-300 dark:bg-neutral-600'
                   }`}
                 >
-                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                    sourceType === 'brewlia' ? 'translate-x-4' : 'translate-x-0'
-                  }`}
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                      sourceType === 'brewlia'
+                        ? 'translate-x-4'
+                        : 'translate-x-0'
+                    }`}
                   />
                 </button>
               </div>
@@ -432,24 +488,37 @@ export function AddMode({
                 {/* RSSHub 的 Brewlia AI 增强开关 */}
                 <div className="flex items-center justify-between px-2.5 py-2 bg-purple-50/50 dark:bg-purple-900/10 border border-purple-200/50 dark:border-purple-800/30 rounded-xl">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <Sparkles className={`w-4 h-4 shrink-0 ${enableBrewliaForRsshub ? 'text-purple-500' : 'text-purple-400'}`} />
+                    <Sparkles
+                      className={`w-4 h-4 shrink-0 ${enableBrewliaForRsshub ? 'text-purple-500' : 'text-purple-400'}`}
+                    />
                     <div className="min-w-0">
-                      <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Brewlia AI</span>
-                      <p className="text-[10px] text-gray-400 truncate">{t.brewliaFeatures}</p>
+                      <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                        Brewlia AI
+                      </span>
+                      <p className="text-[10px] text-gray-400 truncate">
+                        {t.brewliaFeatures}
+                      </p>
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setEnableBrewliaForRsshub(!enableBrewliaForRsshub)}
+                    onClick={() =>
+                      setEnableBrewliaForRsshub(!enableBrewliaForRsshub)
+                    }
                     disabled={loading}
                     title={enableBrewliaForRsshub ? t.disableAI : t.enableAI}
                     className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
-                      enableBrewliaForRsshub ? 'bg-purple-500' : 'bg-gray-300 dark:bg-neutral-600'
+                      enableBrewliaForRsshub
+                        ? 'bg-purple-500'
+                        : 'bg-gray-300 dark:bg-neutral-600'
                     }`}
                   >
-                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                      enableBrewliaForRsshub ? 'translate-x-4' : 'translate-x-0'
-                    }`}
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        enableBrewliaForRsshub
+                          ? 'translate-x-4'
+                          : 'translate-x-0'
+                      }`}
                     />
                   </button>
                 </div>
@@ -460,7 +529,11 @@ export function AddMode({
             {sourceType !== 'rsshub' && (
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  {feedType === 'notion' ? t.notionUrlLabel : sourceType === 'link' ? t.linkUrlLabel : t.subscriptionUrlLabel}
+                  {feedType === 'notion'
+                    ? t.notionUrlLabel
+                    : sourceType === 'link'
+                      ? t.linkUrlLabel
+                      : t.subscriptionUrlLabel}
                   <span className="text-rose-500"> *</span>
                 </label>
                 <div className="flex gap-2">
@@ -469,8 +542,14 @@ export function AddMode({
                     <input
                       type="url"
                       value={url}
-                      onChange={e => setUrl(e.target.value)}
-                      placeholder={feedType === 'notion' ? 'notion://database/xxx' : sourceType === 'link' ? 'https://example.com' : 'https://example.com/feed.xml'}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder={
+                        feedType === 'notion'
+                          ? 'notion://database/xxx'
+                          : sourceType === 'link'
+                            ? 'https://example.com'
+                            : 'https://example.com/feed.xml'
+                      }
                       className="w-full pl-8 pr-3 py-2 bg-gray-50/80 dark:bg-neutral-800/50 border border-gray-200/80 dark:border-neutral-700/80 rounded-xl text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 transition-all"
                       disabled={loading}
                     />
@@ -482,7 +561,11 @@ export function AddMode({
                       disabled={discovering || !url.trim()}
                       className="px-2.5 py-2 bg-gray-100 dark:bg-neutral-700/80 border border-gray-200/80 dark:border-neutral-600/80 rounded-xl text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-600 disabled:opacity-50 transition-colors"
                     >
-                      {discovering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t.discover}
+                      {discovering ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        t.discover
+                      )}
                     </button>
                   )}
                 </div>
@@ -493,14 +576,13 @@ export function AddMode({
             {feedType === 'notion' && (
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Notion Integration Token
-                  {' '}
+                  Notion Integration Token{' '}
                   <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="password"
                   value={notionToken}
-                  onChange={e => setNotionToken(e.target.value)}
+                  onChange={(e) => setNotionToken(e.target.value)}
                   placeholder="secret_xxx..."
                   className="w-full px-3 py-2 bg-gray-50/80 dark:bg-neutral-800/50 border border-gray-200/80 dark:border-neutral-700/80 rounded-xl text-xs placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-slate-500/30 transition-all font-mono"
                   disabled={loading}
@@ -516,15 +598,15 @@ export function AddMode({
                 className="flex items-center gap-2 px-2.5 py-2 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/50 dark:border-emerald-800/50 rounded-xl"
               >
                 <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                <span className="text-xs text-emerald-700 dark:text-emerald-300 truncate">{discovered.title}</span>
+                <span className="text-xs text-emerald-700 dark:text-emerald-300 truncate">
+                  {discovered.title}
+                </span>
                 <span className="text-[10px] px-1 py-0.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded shrink-0">
                   {discovered.feed_type.toUpperCase()}
                 </span>
                 {sourceType === 'brewlia' && (
                   <span className="text-[10px] px-1 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded shrink-0 flex items-center gap-0.5">
-                    <Star className="w-2.5 h-2.5" />
-                    {' '}
-                    AI
+                    <Star className="w-2.5 h-2.5" /> AI
                   </span>
                 )}
               </motion.div>
@@ -534,32 +616,47 @@ export function AddMode({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  {t.nameLabel}
-                  {' '}
-                  {sourceType === 'link' && <span className="text-rose-500">*</span>}
+                  {t.nameLabel}{' '}
+                  {sourceType === 'link' && (
+                    <span className="text-rose-500">*</span>
+                  )}
                 </label>
                 <input
                   type="text"
                   value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder={sourceType === 'link' ? t.enterName : t.autoFetch}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={
+                    sourceType === 'link' ? t.enterName : t.autoFetch
+                  }
                   className="w-full px-2.5 py-2 bg-gray-50/80 dark:bg-neutral-800/50 border border-gray-200/80 dark:border-neutral-700/80 rounded-xl text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 transition-all"
                   disabled={loading}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t.category}</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  {t.category}
+                </label>
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setShowAddCategoryDropdown(!showAddCategoryDropdown)}
+                    onClick={() =>
+                      setShowAddCategoryDropdown(!showAddCategoryDropdown)
+                    }
                     disabled={loading}
                     className="w-full px-2.5 py-2 bg-gray-50/80 dark:bg-neutral-800/50 border border-gray-200/80 dark:border-neutral-700/80 rounded-xl text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-orange-500/30 transition-all disabled:opacity-50"
                   >
-                    <span className={category ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400'}>
+                    <span
+                      className={
+                        category
+                          ? 'text-gray-800 dark:text-gray-100'
+                          : 'text-gray-400'
+                      }
+                    >
                       {category || t.selectCategory}
                     </span>
-                    <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showAddCategoryDropdown ? 'rotate-180' : ''}`} />
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showAddCategoryDropdown ? 'rotate-180' : ''}`}
+                    />
                   </button>
                   <AnimatePresence>
                     {showAddCategoryDropdown && (
@@ -574,30 +671,38 @@ export function AddMode({
                           <input
                             type="text"
                             value={category}
-                            onChange={e => setCategory(e.target.value)}
+                            onChange={(e) => setCategory(e.target.value)}
                             placeholder={t.inputNewCategory}
                             className="w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-neutral-900 border-0 focus:outline-none focus:ring-2 focus:ring-orange-500/30 text-sm text-gray-800 dark:text-gray-100 placeholder:text-gray-400"
-                            onClick={e => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
                           />
                         </div>
                         <div className="max-h-32 overflow-y-auto py-0.5">
                           <button
                             type="button"
-                            onClick={() => { setCategory(''); setShowAddCategoryDropdown(false) }}
+                            onClick={() => {
+                              setCategory('')
+                              setShowAddCategoryDropdown(false)
+                            }}
                             className={`w-full px-2.5 py-1.5 text-left text-xs hover:bg-gray-50 dark:hover:bg-neutral-700 flex items-center ${!category ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'text-gray-600 dark:text-gray-300'}`}
                           >
                             {t.noCategory}
                             {!category && <Check className="w-3 h-3 ml-auto" />}
                           </button>
-                          {allCategories.map(cat => (
+                          {allCategories.map((cat) => (
                             <button
                               key={cat}
                               type="button"
-                              onClick={() => { setCategory(cat); setShowAddCategoryDropdown(false) }}
+                              onClick={() => {
+                                setCategory(cat)
+                                setShowAddCategoryDropdown(false)
+                              }}
                               className={`w-full px-2.5 py-1.5 text-left text-xs hover:bg-gray-50 dark:hover:bg-neutral-700 flex items-center ${category === cat ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'text-gray-600 dark:text-gray-300'}`}
                             >
                               {cat}
-                              {category === cat && <Check className="w-3 h-3 ml-auto" />}
+                              {category === cat && (
+                                <Check className="w-3 h-3 ml-auto" />
+                              )}
                             </button>
                           ))}
                         </div>
@@ -610,16 +715,20 @@ export function AddMode({
 
             {/* 自定义图标 */}
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t.siteIcon}</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                {t.siteIcon}
+              </label>
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-neutral-800 flex items-center justify-center overflow-hidden border border-dashed border-gray-300 dark:border-neutral-600">
-                  {displayIcon
-                    ? (
-                        <img src={displayIcon} alt="" className="w-full h-full object-cover" />
-                      )
-                    : (
-                        <Rss className="w-3.5 h-3.5 text-gray-400" />
-                      )}
+                  {displayIcon ? (
+                    <img
+                      src={displayIcon}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Rss className="w-3.5 h-3.5 text-gray-400" />
+                  )}
                 </div>
                 <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-medium cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors">
                   <Upload className="w-3 h-3" />
@@ -637,8 +746,8 @@ export function AddMode({
                   <button
                     type="button"
                     onClick={() => {
-                      setCustomIcon(null); if (iconInputRef.current)
-                        iconInputRef.current.value = ''
+                      setCustomIcon(null)
+                      if (iconInputRef.current) iconInputRef.current.value = ''
                     }}
                     className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                     title={t.deleteIcon}
@@ -666,7 +775,12 @@ export function AddMode({
             {/* 提交按钮 */}
             <button
               type="submit"
-              disabled={loading || (sourceType === 'rsshub' ? !rsshubFullUrl : (!url.trim() || (sourceType === 'link' && !name.trim())))}
+              disabled={
+                loading ||
+                (sourceType === 'rsshub'
+                  ? !rsshubFullUrl
+                  : !url.trim() || (sourceType === 'link' && !name.trim()))
+              }
               className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all text-white ${
                 sourceType === 'brewlia'
                   ? 'bg-linear-to-r from-purple-500 to-violet-500 hover:from-purple-600 hover:to-violet-600 disabled:from-purple-300 disabled:to-violet-300'
@@ -678,7 +792,13 @@ export function AddMode({
               }`}
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {sourceType === 'link' ? t.addLink : sourceType === 'brewlia' ? t.addBrewlia : sourceType === 'rsshub' ? t.addRsshub : t.addSubscription}
+              {sourceType === 'link'
+                ? t.addLink
+                : sourceType === 'brewlia'
+                  ? t.addBrewlia
+                  : sourceType === 'rsshub'
+                    ? t.addRsshub
+                    : t.addSubscription}
             </button>
           </form>
         ) : (
@@ -686,7 +806,10 @@ export function AddMode({
           <div className="space-y-3">
             {/* 导入区域 */}
             <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragOver(true)
+              }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
@@ -704,9 +827,15 @@ export function AddMode({
                 className="hidden"
                 title={t.selectOpmlFile}
               />
-              <FolderOpen className={`w-8 h-8 mx-auto mb-1.5 ${dragOver ? 'text-violet-400' : 'text-gray-300 dark:text-gray-600'}`} />
-              <p className="text-xs text-gray-600 dark:text-gray-400">{t.dropOpmlHere}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{t.supportedFormats}</p>
+              <FolderOpen
+                className={`w-8 h-8 mx-auto mb-1.5 ${dragOver ? 'text-violet-400' : 'text-gray-300 dark:text-gray-600'}`}
+              />
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {t.dropOpmlHere}
+              </p>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                {t.supportedFormats}
+              </p>
             </div>
 
             {/* 导入按钮 */}
@@ -716,7 +845,11 @@ export function AddMode({
                 disabled={opmlLoading}
                 className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-linear-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 text-white rounded-xl text-sm font-medium transition-all"
               >
-                {opmlLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                {opmlLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
                 {t.startImport}
               </button>
             )}
@@ -727,7 +860,11 @@ export function AddMode({
               disabled={exporting || sourcesCount === 0}
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 disabled:opacity-50 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium transition-all"
             >
-              {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              {exporting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
               {t.exportOpml.replace('{count}', String(sourcesCount))}
             </button>
 
@@ -735,7 +872,17 @@ export function AddMode({
             {opmlResult && (
               <div className="flex items-center gap-1.5 px-2.5 py-2 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/50 dark:border-emerald-800/50 rounded-xl text-xs text-emerald-600 dark:text-emerald-400">
                 <Check className="w-3.5 h-3.5" />
-                {t.importResult.replace('{imported}', String(opmlResult.imported)).replace('{skipped}', opmlResult.skipped > 0 ? t.skippedCount.replace('{count}', String(opmlResult.skipped)) : '')}
+                {t.importResult
+                  .replace('{imported}', String(opmlResult.imported))
+                  .replace(
+                    '{skipped}',
+                    opmlResult.skipped > 0
+                      ? t.skippedCount.replace(
+                          '{count}',
+                          String(opmlResult.skipped),
+                        )
+                      : '',
+                  )}
               </div>
             )}
 

@@ -58,7 +58,10 @@ function generateStorageKeyValidator(): string {
  * @param tappInstance - Tapp 实例
  * @param sessionToken - 会话 token（用于消息验证）
  */
-export function generateFullSDK(tappInstance: TappInstance, sessionToken?: string): string {
+export function generateFullSDK(
+  tappInstance: TappInstance,
+  sessionToken?: string,
+): string {
   const { id, manifest, grantedPermissions } = tappInstance
   const token = sessionToken || ''
 
@@ -689,7 +692,10 @@ export function generateFullSDK(tappInstance: TappInstance, sessionToken?: strin
  * @param tappInstance - Tapp 实例
  * @param sessionToken - 会话 token（用于消息验证）
  */
-export function generateWidgetSDK(tappInstance: TappInstance, sessionToken?: string): string {
+export function generateWidgetSDK(
+  tappInstance: TappInstance,
+  sessionToken?: string,
+): string {
   const { id, manifest, grantedPermissions } = tappInstance
   const token = sessionToken || ''
 

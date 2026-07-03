@@ -16,66 +16,88 @@ export function useMessageState() {
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
-  const updateMessage = useCallback((messageId: string, updates: Partial<ChatMessage>) => {
-    setMessages(prev => prev.map(m =>
-      m.id === messageId ? { ...m, ...updates } : m,
-    ))
-  }, [])
+  const updateMessage = useCallback(
+    (messageId: string, updates: Partial<ChatMessage>) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, ...updates } : m)),
+      )
+    },
+    [],
+  )
 
-  const updateMessageExecution = useCallback((messageId: string, updates: Partial<TaskExecution>) => {
-    setMessages(prev => prev.map((m) => {
-      if (m.id !== messageId || !m.taskExecution)
-        return m
-      // progress 仅递增，避免回退
-      const newProgress = updates.progress != null
-        ? Math.max(updates.progress, m.taskExecution.progress)
-        : m.taskExecution.progress
-      return {
-        ...m,
-        taskExecution: { ...m.taskExecution, ...updates, progress: newProgress },
-      }
-    }))
-  }, [])
+  const updateMessageExecution = useCallback(
+    (messageId: string, updates: Partial<TaskExecution>) => {
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId || !m.taskExecution) return m
+          // progress 仅递增，避免回退
+          const newProgress =
+            updates.progress != null
+              ? Math.max(updates.progress, m.taskExecution.progress)
+              : m.taskExecution.progress
+          return {
+            ...m,
+            taskExecution: {
+              ...m.taskExecution,
+              ...updates,
+              progress: newProgress,
+            },
+          }
+        }),
+      )
+    },
+    [],
+  )
 
-  const addExecutionStep = useCallback((messageId: string, step: ExecutionStep) => {
-    setMessages(prev => prev.map((m) => {
-      if (m.id !== messageId || !m.taskExecution)
-        return m
-      const exists = m.taskExecution.steps.some(s => s.id === step.id)
-      if (exists) {
-        return {
-          ...m,
-          taskExecution: {
-            ...m.taskExecution,
-            steps: m.taskExecution.steps.map(s => s.id === step.id ? { ...s, ...step } : s),
-          },
-        }
-      }
-      return {
-        ...m,
-        taskExecution: {
-          ...m.taskExecution,
-          steps: [...m.taskExecution.steps, step],
-        },
-      }
-    }))
-  }, [])
+  const addExecutionStep = useCallback(
+    (messageId: string, step: ExecutionStep) => {
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId || !m.taskExecution) return m
+          const exists = m.taskExecution.steps.some((s) => s.id === step.id)
+          if (exists) {
+            return {
+              ...m,
+              taskExecution: {
+                ...m.taskExecution,
+                steps: m.taskExecution.steps.map((s) =>
+                  s.id === step.id ? { ...s, ...step } : s,
+                ),
+              },
+            }
+          }
+          return {
+            ...m,
+            taskExecution: {
+              ...m.taskExecution,
+              steps: [...m.taskExecution.steps, step],
+            },
+          }
+        }),
+      )
+    },
+    [],
+  )
 
-  const updateExecutionStep = useCallback((messageId: string, stepId: string, updates: Partial<ExecutionStep>) => {
-    setMessages(prev => prev.map((m) => {
-      if (m.id !== messageId || !m.taskExecution)
-        return m
-      return {
-        ...m,
-        taskExecution: {
-          ...m.taskExecution,
-          steps: m.taskExecution.steps.map(s =>
-            s.id === stepId ? { ...s, ...updates } : s,
-          ),
-        },
-      }
-    }))
-  }, [])
+  const updateExecutionStep = useCallback(
+    (messageId: string, stepId: string, updates: Partial<ExecutionStep>) => {
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId || !m.taskExecution) return m
+          return {
+            ...m,
+            taskExecution: {
+              ...m.taskExecution,
+              steps: m.taskExecution.steps.map((s) =>
+                s.id === stepId ? { ...s, ...updates } : s,
+              ),
+            },
+          }
+        }),
+      )
+    },
+    [],
+  )
 
   return {
     messages,

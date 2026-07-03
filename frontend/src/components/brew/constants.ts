@@ -34,10 +34,18 @@ export const SHORT_CONTENT_THRESHOLD = 280
 // ==================== 动画配置 ====================
 
 /** Spring 动画 - 快速 */
-export const SPRING_SNAPPY = { type: 'spring', stiffness: 400, damping: 25 } as const
+export const SPRING_SNAPPY = {
+  type: 'spring',
+  stiffness: 400,
+  damping: 25,
+} as const
 
 /** Spring 动画 - 平滑 */
-export const SPRING_SMOOTH = { type: 'spring', stiffness: 350, damping: 28 } as const
+export const SPRING_SMOOTH = {
+  type: 'spring',
+  stiffness: 350,
+  damping: 28,
+} as const
 
 /** 过渡动画 - 快速 */
 export const TRANSITION_QUICK = { duration: 0.12 } as const
@@ -59,8 +67,7 @@ export const API_URL = CONFIG_API_URL
  * 处理图标 URL - 如果是外部 URL 则通过代理访问
  */
 export function getIconUrl(iconUrl: string | null): string | null {
-  if (!iconUrl)
-    return null
+  if (!iconUrl) return null
   if (iconUrl.startsWith('/api/')) {
     return `${API_URL}${iconUrl}`
   }
@@ -74,8 +81,7 @@ export function getIconUrl(iconUrl: string | null): string | null {
  * 处理图片 URL - 封面图等外部图片通过代理访问
  */
 export function getImageUrl(imageUrl: string | null): string | null {
-  if (!imageUrl)
-    return null
+  if (!imageUrl) return null
   if (imageUrl.startsWith('/api/') || imageUrl.startsWith(`${API_URL}/api/`)) {
     return imageUrl.startsWith('/api/') ? `${API_URL}${imageUrl}` : imageUrl
   }
@@ -89,17 +95,18 @@ export function getImageUrl(imageUrl: string | null): string | null {
  * 清理 HTML 标签
  */
 export function stripHtml(html: string | null): string {
-  if (!html)
-    return ''
-  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
+  if (!html) return ''
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .trim()
 }
 
 /**
  * 提取摘要纯文本
  */
 export function getPlainText(html: string | null): string {
-  if (!html)
-    return ''
+  if (!html) return ''
   return html.replace(/<[^>]*>/g, '').slice(0, 200)
 }
 
@@ -107,8 +114,7 @@ export function getPlainText(html: string | null): string {
  * 提取完整纯文本 - 用于短文判断和显示
  */
 export function getFullPlainText(html: string | null): string {
-  if (!html)
-    return ''
+  if (!html) return ''
   return html.replace(/<[^>]*>/g, '').trim()
 }
 
@@ -116,15 +122,14 @@ export function getFullPlainText(html: string | null): string {
  * 判断是否为 base64 图片数据
  */
 export function isBase64Image(str: string | null): boolean {
-  if (!str)
-    return false
+  if (!str) return false
   return str.startsWith('data:image/')
 }
 
 /**
  * 从 base64 提取 MIME 类型和扩展名
  */
-export function getBase64Info(base64: string): { mime: string, ext: string } {
+export function getBase64Info(base64: string): { mime: string; ext: string } {
   const match = base64.match(/^data:(image\/\w+);base64,/)
   if (match) {
     const mime = match[1]
@@ -137,7 +142,9 @@ export function getBase64Info(base64: string): { mime: string, ext: string } {
 /**
  * 获取源的主题色 - 优先使用数据库中存储的 theme_color
  */
-export function getSourceColor(source: { theme_color?: string | null }): string {
+export function getSourceColor(source: {
+  theme_color?: string | null
+}): string {
   if (source.theme_color) {
     return source.theme_color
   }

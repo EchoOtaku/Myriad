@@ -145,29 +145,23 @@ impl ResultEvaluator {
     fn is_data_source_empty(&self, result: &Value) -> bool {
         if let Value::Object(obj) = result {
             // 检查 items 数组
-            if let Some(items) = obj.get("items") {
-                if let Value::Array(arr) = items {
-                    if arr.is_empty() {
-                        return true;
-                    }
+            if let Some(Value::Array(arr)) = obj.get("items") {
+                if arr.is_empty() {
+                    return true;
                 }
             }
 
             // 检查 results 数组
-            if let Some(results) = obj.get("results") {
-                if let Value::Array(arr) = results {
-                    if arr.is_empty() {
-                        return true;
-                    }
+            if let Some(Value::Array(arr)) = obj.get("results") {
+                if arr.is_empty() {
+                    return true;
                 }
             }
 
             // 检查 data 数组
-            if let Some(data) = obj.get("data") {
-                if let Value::Array(arr) = data {
-                    if arr.is_empty() {
-                        return true;
-                    }
+            if let Some(Value::Array(arr)) = obj.get("data") {
+                if arr.is_empty() {
+                    return true;
                 }
             }
         }

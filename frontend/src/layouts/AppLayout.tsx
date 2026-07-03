@@ -13,14 +13,20 @@ import { ToastContainer } from '../components/ToastContainer'
 
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
-import { useIdleEffect, useVisibilityInterval } from '../hooks/animation/atomicHooks'
+import {
+  useIdleEffect,
+  useVisibilityInterval,
+} from '../hooks/animation/atomicHooks'
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useEvocativeWallpaper } from '../hooks/useEvocativeWallpaper'
 import { useNavAutoHide } from '../hooks/useNavAutoHide'
 import { useScrollOptimization } from '../hooks/useScrollOptimization'
 import { useSystemSetupCheck } from '../hooks/useSystemSetupCheck'
 import { useWallpaper } from '../hooks/useWallpaper'
-import { applyColorPalette, extractColorsFromImage } from '../utils/colorExtractor'
+import {
+  applyColorPalette,
+  extractColorsFromImage,
+} from '../utils/colorExtractor'
 import { startFpsMonitor, stopFpsMonitor } from '../utils/performance'
 import {
   getColorFromCache,
@@ -32,7 +38,9 @@ import './AppLayout.css'
 
 // 懒加载设置弹窗 — 1769 行的 SocialNetworkWidget 延迟到需要时才加载
 const SocialNetworkSettingsModal = lazy(() =>
-  import('../components/widgets/SocialNetworkWidget').then(m => ({ default: m.SocialNetworkSettingsModal })),
+  import('../components/widgets/SocialNetworkWidget').then((m) => ({
+    default: m.SocialNetworkSettingsModal,
+  })),
 )
 
 interface AppLayoutProps {
@@ -96,30 +104,28 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // 🎨 壁纸颜色提取 —— 缓存 → 验证 → 提取 → 应用
   const extractAndApplyColors = useCallback(async (url: string) => {
-    if (!wallpaperState.isUrlActive(url))
-      return
+    if (!wallpaperState.isUrlActive(url)) return
 
     // 先检查缓存
     const cachedColors = getColorFromCache(url)
     if (cachedColors) {
-      if (wallpaperState.isUrlActive(url))
-        applyColorPalette(cachedColors)
+      if (wallpaperState.isUrlActive(url)) applyColorPalette(cachedColors)
       return
     }
 
     // 检查是否为有效壁纸（包含一致性验证）
     const checkResult = await shouldApplyColorExtraction(url)
-    if (!checkResult.shouldApply)
-      return
+    if (!checkResult.shouldApply) return
 
     try {
-      const colors = await extractColorsFromImage(url, { context: 'wallpaper' })
+      const colors = await extractColorsFromImage(url, {
+        context: 'wallpaper',
+      })
       if (wallpaperState.isUrlActive(url)) {
         applyColorPalette(colors)
         saveColorToCache(url, colors)
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('颜色提取失败:', error)
     }
   }, [])
@@ -127,8 +133,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 加载壁纸和颜色（使用 Hook）
   const loadWallpaper = useCallback(async () => {
     const wallpaperResult = await loadWallpaperFromHook()
-    if (!wallpaperResult)
-      return
+    if (!wallpaperResult) return
 
     // 更新 Evocative 动效配置（单次 setState 替代 6 次）
     if (wallpaperResult.evocative) {
@@ -140,11 +145,10 @@ export function AppLayout({ children }: AppLayoutProps) {
         rippleQuality: wallpaperResult.evocative.rippleQuality,
         blur: wallpaperResult.blur,
       })
-    }
-    else {
-      setEvocativeConfig(prev => ({
+    } else {
+      setEvocativeConfig((prev) => ({
         ...prev,
-        parallax: wallpaperResult.parallaxEnabled,
+        parallax: wallpaperResult.evocative.parallax,
         blur: wallpaperResult.blur,
       }))
     }
@@ -164,37 +168,41 @@ export function AppLayout({ children }: AppLayoutProps) {
       if (response.ok) {
         setHasEverConnected(true)
       }
-    }
-    catch {
+    } catch {
       setBackendConnected(false)
     }
   }
 
   // 首次检查延迟到主线程空闲时执行
-  useIdleEffect(() => {
-    checkBackendRef.current?.()
-  }, [], { priority: 'high' })
+  useIdleEffect(
+    () => {
+      checkBackendRef.current?.()
+    },
+    [],
+    { priority: 'high' },
+  )
 
   // 每30秒检查一次，页面隐藏时自动暂停
-  useVisibilityInterval(() => {
-    checkBackendRef.current?.()
-  }, { delay: 30000, enabled: true })
+  useVisibilityInterval(
+    () => {
+      checkBackendRef.current?.()
+    },
+    { delay: 30000, enabled: true },
+  )
 
   // 初始化：加载壁纸（仅首次挂载执行）
   const hasInitializedRef = useRef(false)
   useEffect(() => {
     // 防止重复初始化
-    if (hasInitializedRef.current)
-      return
+    if (hasInitializedRef.current) return
     hasInitializedRef.current = true
 
-    console.debug('[AppLayout] Initializing wallpaper load...');
-    (async () => {
+    console.debug('[AppLayout] Initializing wallpaper load...')
+    ;(async () => {
       try {
         await loadWallpaper()
         console.debug('[AppLayout] Wallpaper load completed')
-      }
-      catch (error) {
+      } catch (error) {
         console.error('[AppLayout] Wallpaper load failed:', error)
       }
     })()
@@ -205,8 +213,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => {
     const handleWallpaperChanged = async (e: Event) => {
       const newUrl = (e as CustomEvent).detail?.url
-      if (newUrl)
-        await extractAndApplyColors(newUrl)
+      if (newUrl) await extractAndApplyColors(newUrl)
     }
 
     window.addEventListener('wallpaperChanged', handleWallpaperChanged)
@@ -227,8 +234,14 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* 背景 */}
       <div id="bg-container" className="fixed inset-0 -z-10 overflow-hidden">
-        <div id="wallpaper" className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ease-in-out"></div>
-        <div id="bg-gradient" className="absolute inset-0 bg-linear-to-b from-transparent from-35% via-white/40 via-55% to-white/90 to-85% transition-opacity duration-500 ease-out"></div>
+        <div
+          id="wallpaper"
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ease-in-out"
+        ></div>
+        <div
+          id="bg-gradient"
+          className="absolute inset-0 bg-linear-to-b from-transparent from-35% via-white/40 via-55% to-white/90 to-85% transition-opacity duration-500 ease-out"
+        ></div>
         {/* ⚠️ 性能优化: 只在标准设备上渲染动画背景
             🔥 使用 GPU 加速的独立合成层，避免 mix-blend-mode 导致的 CPU 回退 */}
         {anim.level === 'standard' && (
@@ -256,12 +269,12 @@ export function AppLayout({ children }: AppLayoutProps) {
         3. 父容器 pointer-events-none，子元素需要 pointer-events-auto
         4. 响应式定位已配置好，自动避开导航岛
       */}
-      <div className="fixed z-100 pointer-events-none
+      <div
+        className="fixed z-100 pointer-events-none
         bottom-6 left-6
         md:bottom-6 md:left-30
         flex flex-col gap-3 max-w-xs"
       >
-
         {/* 后端未连接提示 - 只在曾经连接过但现在断开时显示 */}
         {backendConnected === false && hasEverConnected && (
           <div className="pointer-events-auto animate-fade-in">
@@ -271,23 +284,24 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-red-900 dark:text-red-100">{t.setup.backendDisconnected}</p>
-                  <p className="text-xs text-red-700 dark:text-red-300 mt-0.5">{t.setup.reconnecting}</p>
+                  <p className="text-sm font-medium text-red-900 dark:text-red-100">
+                    {t.setup.backendDisconnected}
+                  </p>
+                  <p className="text-xs text-red-700 dark:text-red-300 mt-0.5">
+                    {t.setup.reconnecting}
+                  </p>
                 </div>
               </div>
             </div>
           </div>
         )}
-
       </div>
 
       {/* 全局 Toast 通知 */}
       <ToastContainer />
 
       {/* 主内容区域 */}
-      <main className="relative z-10">
-        {children}
-      </main>
+      <main className="relative z-10">{children}</main>
 
       {/* 全局设置弹窗 - 懒加载，整个应用只渲染一次 */}
       <Suspense fallback={null}>

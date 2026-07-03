@@ -138,8 +138,8 @@ impl StateDir {
 
     pub fn read_job(&self, id: &str) -> Result<Job> {
         let path = self.job_path(id);
-        let bytes = std::fs::read(&path)
-            .map_err(|_| UpdaterError::NotFound(format!("job {id}")))?;
+        let bytes =
+            std::fs::read(&path).map_err(|_| UpdaterError::NotFound(format!("job {id}")))?;
         Ok(serde_json::from_slice(&bytes)?)
     }
 
@@ -153,7 +153,10 @@ impl StateDir {
             let entry = entry?;
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if let Some(id) = name.strip_prefix("job.").and_then(|s| s.strip_suffix(".json")) {
+            if let Some(id) = name
+                .strip_prefix("job.")
+                .and_then(|s| s.strip_suffix(".json"))
+            {
                 if id != "current" {
                     out.push(id.to_string());
                 }

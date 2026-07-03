@@ -29,7 +29,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getPageIntervalManager, isPageVisible, onVisibility, registerPageCleanup } from '../core'
+import {
+  getPageIntervalManager,
+  isPageVisible,
+  onVisibility,
+  registerPageCleanup,
+} from '../core'
 import { Feature, hasFeature } from '../pageFeatures'
 
 const PAGE_ID = 'reports'
@@ -154,8 +159,7 @@ export function useReportsTimeout(
   }, [callback])
 
   useEffect(() => {
-    if (delay === null)
-      return
+    if (delay === null) return
 
     const id = setTimeout(() => savedCallback.current(), delay)
     return () => clearTimeout(id)
@@ -169,8 +173,7 @@ let _reportsRafId: number | null = null
 const _reportsRafCallbacks = new Map<symbol, (time: number) => void>()
 
 function startReportsRafLoop() {
-  if (_reportsRafId !== null)
-    return
+  if (_reportsRafId !== null) return
 
   const loop = (time: number) => {
     for (const cb of _reportsRafCallbacks.values()) {
@@ -178,8 +181,7 @@ function startReportsRafLoop() {
     }
     if (_reportsRafCallbacks.size > 0) {
       _reportsRafId = requestAnimationFrame(loop)
-    }
-    else {
+    } else {
       _reportsRafId = null
     }
   }
@@ -208,7 +210,7 @@ export function useReportsRaf(
     }
 
     const key = keyRef.current
-    _reportsRafCallbacks.set(key, time => savedCallback.current(time))
+    _reportsRafCallbacks.set(key, (time) => savedCallback.current(time))
     startReportsRafLoop()
 
     return () => {

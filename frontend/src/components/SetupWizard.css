@@ -60,22 +60,34 @@ html.dark .setup-step-disabled {
 }
 
 .setup-db-icon-wrapper {
-  background: linear-gradient(to bottom right, var(--color-accent), var(--color-light));
+  background: linear-gradient(
+    to bottom right,
+    var(--color-accent),
+    var(--color-light)
+  );
   color: var(--color-dark);
 }
 
 html.dark .setup-db-icon-wrapper {
-  background: linear-gradient(to bottom right, rgba(203, 213, 225, 0.2), rgba(203, 213, 225, 0.1));
+  background: linear-gradient(
+    to bottom right,
+    rgb(203 213 225 / 20%),
+    rgb(203 213 225 / 10%)
+  );
   color: #cbd5e1;
 }
 
 .setup-admin-icon-wrapper {
-  background: linear-gradient(to bottom right, var(--color-primary), var(--color-secondary));
+  background: linear-gradient(
+    to bottom right,
+    var(--color-primary),
+    var(--color-secondary)
+  );
   color: white;
 }
 
 html.dark .setup-admin-icon-wrapper {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
 }
 
 .setup-save-button {
@@ -134,7 +146,7 @@ html.dark .setup-admin-icon-wrapper {
    ======================================== */
 
 /* 移动端按钮优化 */
-@media (max-width: 640px) {
+@media (width <= 640px) {
   .setup-retry-button,
   .setup-complete-link,
   .setup-save-button,
@@ -155,7 +167,7 @@ html.dark .setup-admin-icon-wrapper {
 }
 
 /* 超小屏幕优化 */
-@media (max-width: 375px) {
+@media (width <= 375px) {
   .setup-retry-button,
   .setup-complete-link,
   .setup-save-button,
@@ -173,22 +185,22 @@ html.dark .setup-admin-icon-wrapper {
 /* 深色模式按钮增强 */
 html.dark .setup-save-button,
 html.dark .setup-migrate-button {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
 }
 
 html.dark .setup-save-button:hover:not(:disabled),
 html.dark .setup-migrate-button:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 40%);
 }
 
 html.dark .setup-create-admin-button {
-  background-color: rgba(71, 85, 105, 0.8);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  background-color: rgb(71 85 105 / 80%);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
 }
 
 html.dark .setup-create-admin-button:hover:not(:disabled) {
   background-color: var(--color-secondary);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 40%);
 }
 
 /* 深色模式焦点状态 */

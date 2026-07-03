@@ -3,9 +3,9 @@
  * 提供 motion 动画包裹 + glass morphism 样式
  */
 
-import { ISLAND_GLASS, ISLAND_GLASS_EDIT, SPRING_SNAPPY } from './constants'
-
 import { motionShim as motion } from '@lib/motionShim'
+
+import { ISLAND_GLASS, ISLAND_GLASS_EDIT, SPRING_SNAPPY } from './constants'
 
 export interface IslandShellProps {
   /** 响应式变体 */
@@ -35,9 +35,19 @@ export function IslandShell({
   return (
     <motion.div
       key={motionKey}
-      initial={{ opacity: 0, y: isMobile ? -8 : 8, scale: 0.97, filter: 'blur(4px)' }}
+      initial={{
+        opacity: 0,
+        y: isMobile ? -8 : 8,
+        scale: 0.97,
+        filter: 'blur(4px)',
+      }}
       animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-      exit={{ opacity: 0, y: isMobile ? -8 : 8, scale: 0.97, filter: 'blur(4px)' }}
+      exit={{
+        opacity: 0,
+        y: isMobile ? -8 : 8,
+        scale: 0.97,
+        filter: 'blur(4px)',
+      }}
       transition={SPRING_SNAPPY}
       className={`flex items-center gap-2 px-2.5 py-2 ${glass} ${className}`}
     >

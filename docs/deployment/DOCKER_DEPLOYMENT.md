@@ -10,9 +10,9 @@ removed.
 host HTTP_PORT
   |
   v
-proxy ──┬── frontend:4321
-        ├── backend:3000 ── postgres:5432
-        └── updater:9090 (internal only)
+proxy ──┬── frontend:1102
+        ├── backend:1103 ── postgres:5432
+        └── updater:1101 (internal only)
 ```
 
 - Only `proxy` publishes a host port.
@@ -123,5 +123,5 @@ docker compose -f docker-compose.dev.yml up -d postgres
 (cd frontend && pnpm install && pnpm dev)
 ```
 
-Development directly uses `localhost:4321` and `localhost:3000`; production does
+Development directly uses `localhost:1102` and `localhost:1103`; production does
 not.

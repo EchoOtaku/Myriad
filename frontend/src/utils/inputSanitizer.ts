@@ -71,34 +71,24 @@ export function checkPasswordStrength(password: string): PasswordStrength {
     feedback.push('密码至少需要8个字符')
     return { isValid: false, score: 0, feedback }
   }
-  if (password.length >= 12)
-    score++
-  if (password.length >= 16)
-    score++
+  if (password.length >= 12) score++
+  if (password.length >= 16) score++
 
   // 复杂度检查
-  if (/[a-z]/.test(password))
-    score++
-  if (/[A-Z]/.test(password))
-    score++
-  if (/\d/.test(password))
-    score++
-  if (/[^a-z0-9]/i.test(password))
-    score++
+  if (/[a-z]/.test(password)) score++
+  if (/[A-Z]/.test(password)) score++
+  if (/\d/.test(password)) score++
+  if (/[^a-z0-9]/i.test(password)) score++
 
   // 反馈
-  if (!/[a-z]/.test(password))
-    feedback.push('建议包含小写字母')
-  if (!/[A-Z]/.test(password))
-    feedback.push('建议包含大写字母')
-  if (!/\d/.test(password))
-    feedback.push('建议包含数字')
-  if (!/[^a-z0-9]/i.test(password))
-    feedback.push('建议包含特殊字符')
+  if (!/[a-z]/.test(password)) feedback.push('建议包含小写字母')
+  if (!/[A-Z]/.test(password)) feedback.push('建议包含大写字母')
+  if (!/\d/.test(password)) feedback.push('建议包含数字')
+  if (!/[^a-z0-9]/i.test(password)) feedback.push('建议包含特殊字符')
 
   // 常见弱密码检查
   const commonPasswords = ['password', '12345678', 'qwerty', 'admin', 'letmein']
-  if (commonPasswords.some(weak => password.toLowerCase().includes(weak))) {
+  if (commonPasswords.some((weak) => password.toLowerCase().includes(weak))) {
     feedback.push('密码过于常见，请使用更复杂的密码')
     score = Math.max(0, score - 2)
   }
@@ -121,8 +111,7 @@ export function sanitizeUrl(url: string): string {
       throw new Error('Invalid protocol')
     }
     return parsed.toString()
-  }
-  catch {
+  } catch {
     return ''
   }
 }
@@ -130,14 +119,15 @@ export function sanitizeUrl(url: string): string {
 /**
  * 验证并清洗整数输入
  */
-export function sanitizeInteger(value: any, min?: number, max?: number): number | null {
+export function sanitizeInteger(
+  value: any,
+  min?: number,
+  max?: number,
+): number | null {
   const num = Number.parseInt(value, 10)
-  if (Number.isNaN(num))
-    return null
-  if (min !== undefined && num < min)
-    return null
-  if (max !== undefined && num > max)
-    return null
+  if (Number.isNaN(num)) return null
+  if (min !== undefined && num < min) return null
+  if (max !== undefined && num > max) return null
   return num
 }
 
@@ -145,9 +135,7 @@ export function sanitizeInteger(value: any, min?: number, max?: number): number 
  * 验证并清洗文本输入
  */
 export function sanitizeText(text: string, maxLength: number = 1000): string {
-  return stripHtmlTags(text)
-    .trim()
-    .slice(0, maxLength)
+  return stripHtmlTags(text).trim().slice(0, maxLength)
 }
 
 /**
@@ -166,14 +154,16 @@ export function sanitizePath(path: string): string {
 export function isValidFilename(filename: string): boolean {
   // 不允许路径分隔符和特殊字符
   const invalidChars = /[<>:"/\\|?*\x00-\x1F]/
-  return !invalidChars.test(filename) && filename.length > 0 && filename.length <= 255
+  return (
+    !invalidChars.test(filename) &&
+    filename.length > 0 &&
+    filename.length <= 255
+  )
 }
 
 /**
  * 清洗文件名
  */
 export function sanitizeFilename(filename: string): string {
-  return filename
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
-    .slice(0, 255)
+  return filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').slice(0, 255)
 }

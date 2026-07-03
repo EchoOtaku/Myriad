@@ -3,6 +3,8 @@
  * 使用 Portal 渲染到 document.body，确保全局层叠上下文
  */
 
+import type { MouseEvent } from 'react'
+import type { BrewSource, SourceType } from '../../../types/brew'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -17,13 +19,15 @@ import {
   LuUpload as Upload,
   LuX as X,
 } from '@lib/icons'
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import type { BrewSource, SourceType } from '../../../types/brew'
 
-import { createPortal } from 'react-dom'
-import { generateStyleTags } from '../../../services/brewApi'
-import { useI18n } from '../../../contexts/I18nContext'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useI18n } from '../../../contexts/I18nContext'
+import { generateStyleTags } from '../../../services/brewApi'
 
 // Framer Motion transition 配置常量
 const TRANSITION_FAST = { duration: 0.1 } as const
@@ -33,25 +37,38 @@ export interface EditModalProps {
   source: BrewSource
   categories: string[]
   onClose: () => void
-  onSave: (id: number, data: {
-    name?: string
-    category?: string
-    update_interval?: number
-    enabled?: boolean
-    icon?: string
-    theme_color?: string | null
-    source_type?: SourceType
-    ai_style_tags?: string[]
-    admin_only?: boolean
-  }) => Promise<void>
+  onSave: (
+    id: number,
+    data: {
+      name?: string
+      category?: string
+      update_interval?: number
+      enabled?: boolean
+      icon?: string
+      theme_color?: string | null
+      source_type?: SourceType
+      ai_style_tags?: string[]
+      admin_only?: boolean
+    },
+  ) => Promise<void>
 }
 
-export default function EditModal({ source, categories, onClose, onSave }: EditModalProps) {
+export default function EditModal({
+  source,
+  categories,
+  onClose,
+  onSave,
+}: EditModalProps) {
   const { t } = useI18n()
   const [name, setName] = useState(source.name)
   // 支持多分类：用逗号分隔的字符串解析为数组
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    source.category ? source.category.split(',').map(c => c.trim()).filter(Boolean) : [],
+    source.category
+      ? source.category
+          .split(',')
+          .map((c) => c.trim())
+          .filter(Boolean)
+      : [],
   )
   const [newCategory, setNewCategory] = useState('')
   const [updateInterval, setUpdateInterval] = useState(source.update_interval)
@@ -63,10 +80,16 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const [showIntervalDropdown, setShowIntervalDropdown] = useState(false)
   const [isEditingInfo, setIsEditingInfo] = useState(false) // 名称/分类编辑模式
-  const [themeColor, setThemeColor] = useState<string>(source.theme_color || '#f97316')
-  const [sourceType, _setSourceType] = useState<SourceType>(source.source_type || 'rss')
+  const [themeColor, setThemeColor] = useState<string>(
+    source.theme_color || '#f97316',
+  )
+  const [sourceType, _setSourceType] = useState<SourceType>(
+    source.source_type || 'rss',
+  )
   // AI 风格标签状态
-  const [styleTags, setStyleTags] = useState<string[]>(source.ai_style_tags || [])
+  const [styleTags, setStyleTags] = useState<string[]>(
+    source.ai_style_tags || [],
+  )
   const [generatingTags, setGeneratingTags] = useState(false)
   // 用户手动输入标签状态
   const [newTagInput, setNewTagInput] = useState('')
@@ -80,28 +103,37 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
   const isNotion = source.feed_type === 'notion'
   const isLink = source.source_type === 'link'
   // 原始 Feed 类型用于显示
-  const feedTypeLabel = isLink ? t.brew.pureLink : isRssHub ? 'RSSHub' : isNotion ? 'Notion' : 'RSS'
+  const feedTypeLabel = isLink
+    ? t.brew.pureLink
+    : isRssHub
+      ? 'RSSHub'
+      : isNotion
+        ? 'Notion'
+        : 'RSS'
 
   // 订阅模式：停止订阅 / 普通订阅 / AI增强订阅
   // 只有 rss/notion/rsshub 类型才有这个选项
   type SubscriptionMode = 'disabled' | 'normal' | 'brewlia'
   const getInitialMode = (): SubscriptionMode => {
-    if (!source.enabled)
-      return 'disabled'
-    if (source.source_type === 'brewlia')
-      return 'brewlia'
+    if (!source.enabled) return 'disabled'
+    if (source.source_type === 'brewlia') return 'brewlia'
     return 'normal'
   }
-  const [subscriptionMode, setSubscriptionMode] = useState<SubscriptionMode>(getInitialMode)
+  const [subscriptionMode, setSubscriptionMode] =
+    useState<SubscriptionMode>(getInitialMode)
 
   // 预置分类（只有选中这些分类才能添加第二个分类）
   const presetCategories = [t.brew.friendLink, t.brew.categoryMe]
   const allCategories = [...new Set([...presetCategories, ...categories])]
 
   // 检查是否已选中预置分类
-  const hasPresetCategory = selectedCategories.some(cat => presetCategories.includes(cat))
+  const hasPresetCategory = selectedCategories.some((cat) =>
+    presetCategories.includes(cat),
+  )
   // 只有选中预置分类才能选择第二个分类
-  const canAddSecondCategory = selectedCategories.length === 0 || (selectedCategories.length === 1 && hasPresetCategory)
+  const canAddSecondCategory =
+    selectedCategories.length === 0 ||
+    (selectedCategories.length === 1 && hasPresetCategory)
 
   // 更新间隔选项
   const intervalOptions = [
@@ -114,13 +146,13 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
     { value: 1440, label: t.brew.intervalDaily },
   ]
 
-  const currentIntervalLabel = intervalOptions.find(o => o.value === updateInterval)?.label || '1 小时'
+  const currentIntervalLabel =
+    intervalOptions.find((o) => o.value === updateInterval)?.label || '1 小时'
 
   // 处理图标上传
   const handleIconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file)
-      return
+    if (!file) return
 
     if (!file.type.startsWith('image/')) {
       setError(t.brew.errorSelectImage)
@@ -163,25 +195,25 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
       if (result.success && result.tags) {
         setStyleTags(result.tags)
       }
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : t.brew.errorGenerateStyleTags)
-    }
-    finally {
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : t.brew.errorGenerateStyleTags,
+      )
+    } finally {
       setGeneratingTags(false)
     }
   }
 
   // 删除风格标签
   const handleRemoveTag = (tagToRemove: string) => {
-    setStyleTags(prev => prev.filter(tag => tag !== tagToRemove))
+    setStyleTags((prev) => prev.filter((tag) => tag !== tagToRemove))
   }
 
   // 添加用户自定义标签
   const handleAddTag = () => {
     const trimmedTag = newTagInput.trim()
     if (trimmedTag && !styleTags.includes(trimmedTag) && styleTags.length < 3) {
-      setStyleTags(prev => [...prev, trimmedTag])
+      setStyleTags((prev) => [...prev, trimmedTag])
       setNewTagInput('')
     }
   }
@@ -207,8 +239,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
         finalEnabled = subscriptionMode !== 'disabled'
         if (subscriptionMode === 'brewlia') {
           finalSourceType = 'brewlia'
-        }
-        else if (subscriptionMode === 'normal') {
+        } else if (subscriptionMode === 'normal') {
           // 恢复原始类型
           finalSourceType = isRssHub ? 'rsshub' : 'rss'
         }
@@ -216,10 +247,15 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
 
       // 合并分类：已选分类 + 新分类（如果有）
       const finalCategories = [...selectedCategories]
-      if (newCategory.trim() && !finalCategories.includes(newCategory.trim()) && finalCategories.length < 2) {
+      if (
+        newCategory.trim() &&
+        !finalCategories.includes(newCategory.trim()) &&
+        finalCategories.length < 2
+      ) {
         finalCategories.push(newCategory.trim())
       }
-      const categoryString = finalCategories.length > 0 ? finalCategories.join(', ') : undefined
+      const categoryString =
+        finalCategories.length > 0 ? finalCategories.join(', ') : undefined
 
       await onSave(source.id, {
         name: name.trim() || undefined,
@@ -236,11 +272,9 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
         admin_only: adminOnly,
       })
       onClose()
-    }
-    catch (err) {
+    } catch (err) {
       setError(err instanceof Error ? err.message : t.brew.errorSaveFailed)
-    }
-    finally {
+    } finally {
       setSaving(false)
     }
   }
@@ -259,11 +293,13 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         className="w-full max-w-3xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-gray-200/50 dark:border-neutral-700/50"
-        onClick={e => e.stopPropagation()}
+        onClick={(e: MouseEvent) => e.stopPropagation()}
       >
         {/* 头部 */}
         <div className="px-5 py-4 border-b border-gray-200/50 dark:border-neutral-700/50 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">{t.brew.editSource}</h3>
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+            {t.brew.editSource}
+          </h3>
           <button
             onClick={onClose}
             className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-700"
@@ -281,13 +317,15 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
             {/* 图标预览 - 悬浮操作 */}
             <div className="relative group mb-4 w-24 h-24">
               <div className="w-24 h-24 rounded-2xl bg-gray-100 dark:bg-neutral-800 flex items-center justify-center overflow-hidden border-2 border-dashed border-gray-200 dark:border-neutral-600">
-                {iconPreview
-                  ? (
-                      <img src={iconPreview} alt="" className="w-full h-full object-cover" />
-                    )
-                  : (
-                      <Rss className="w-10 h-10 text-gray-400" />
-                    )}
+                {iconPreview ? (
+                  <img
+                    src={iconPreview}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Rss className="w-10 h-10 text-gray-400" />
+                )}
               </div>
               {/* 悬浮操作层 */}
               <div className="absolute top-0 left-0 w-24 h-24 rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col p-2 gap-1.5">
@@ -297,7 +335,13 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                 >
                   <Upload className="w-4 h-4" />
                   {t.brew.replace}
-                  <input type="file" accept="image/*" onChange={handleIconUpload} className="hidden" aria-label={t.brew.uploadIcon} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleIconUpload}
+                    className="hidden"
+                    aria-label={t.brew.uploadIcon}
+                  />
                 </label>
                 {iconPreview && (
                   <button
@@ -321,7 +365,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                   <input
                     type="text"
                     value={name}
-                    onChange={e => setName(e.target.value)}
+                    onChange={(e) => setName(e.target.value)}
                     className="w-full px-3 py-2 text-base rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500/50 text-gray-800 dark:text-gray-100"
                     placeholder={t.brew.sourceName}
                     autoFocus
@@ -331,7 +375,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     {/* 已选分类标签 */}
                     {selectedCategories.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
-                        {selectedCategories.map(cat => (
+                        {selectedCategories.map((cat) => (
                           <span
                             key={cat}
                             className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"
@@ -339,7 +383,11 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                             {cat}
                             <button
                               type="button"
-                              onClick={() => setSelectedCategories(prev => prev.filter(c => c !== cat))}
+                              onClick={() =>
+                                setSelectedCategories((prev) =>
+                                  prev.filter((c) => c !== cat),
+                                )
+                              }
                               className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-orange-200 dark:hover:bg-orange-800 transition-colors"
                               title={t.brew.removeCategory}
                             >
@@ -353,14 +401,20 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     <div className="relative">
                       <button
                         type="button"
-                        onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                        disabled={!canAddSecondCategory && selectedCategories.length >= 1}
+                        onClick={() =>
+                          setShowCategoryDropdown(!showCategoryDropdown)
+                        }
+                        disabled={
+                          !canAddSecondCategory &&
+                          selectedCategories.length >= 1
+                        }
                         className={`w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 text-left flex items-center justify-between ${!canAddSecondCategory && selectedCategories.length >= 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span className="text-gray-400">
                           {selectedCategories.length >= 2
                             ? t.brew.maxCategories
-                            : selectedCategories.length === 1 && !hasPresetCategory
+                            : selectedCategories.length === 1 &&
+                                !hasPresetCategory
                               ? t.brew.needFriendLinkFirst
                               : t.brew.addCategory}
                         </span>
@@ -379,37 +433,54 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                               <input
                                 type="text"
                                 value={newCategory}
-                                onChange={e => setNewCategory(e.target.value)}
+                                onChange={(e) => setNewCategory(e.target.value)}
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter' && newCategory.trim() && !selectedCategories.includes(newCategory.trim())) {
-                                    setSelectedCategories(prev => [...prev, newCategory.trim()])
+                                  if (
+                                    e.key === 'Enter' &&
+                                    newCategory.trim() &&
+                                    !selectedCategories.includes(
+                                      newCategory.trim(),
+                                    )
+                                  ) {
+                                    setSelectedCategories((prev) => [
+                                      ...prev,
+                                      newCategory.trim(),
+                                    ])
                                     setNewCategory('')
                                     setShowCategoryDropdown(false)
                                   }
                                 }}
                                 placeholder={t.brew.enterCategoryHint}
                                 className="w-full px-2 py-1.5 rounded text-sm bg-gray-50 dark:bg-neutral-900 border-0 focus:outline-none focus:ring-1 focus:ring-orange-500/50 text-gray-800 dark:text-gray-100"
-                                onClick={e => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
                               />
                             </div>
                             <div className="max-h-32 overflow-y-auto py-0.5">
                               {selectedCategories.length > 0 && (
                                 <button
                                   type="button"
-                                  onClick={() => { setSelectedCategories([]); setShowCategoryDropdown(false) }}
+                                  onClick={() => {
+                                    setSelectedCategories([])
+                                    setShowCategoryDropdown(false)
+                                  }}
                                   className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-neutral-700 text-red-500"
                                 >
                                   {t.brew.clearAllCategories}
                                 </button>
                               )}
                               {allCategories
-                                .filter(cat => !selectedCategories.includes(cat))
-                                .map(cat => (
+                                .filter(
+                                  (cat) => !selectedCategories.includes(cat),
+                                )
+                                .map((cat) => (
                                   <button
                                     key={cat}
                                     type="button"
                                     onClick={() => {
-                                      setSelectedCategories(prev => [...prev, cat])
+                                      setSelectedCategories((prev) => [
+                                        ...prev,
+                                        cat,
+                                      ])
                                       setShowCategoryDropdown(false)
                                     }}
                                     className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-neutral-700 text-gray-600 dark:text-gray-300"
@@ -423,13 +494,16 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                       </AnimatePresence>
                     </div>
                     <p className="text-xs text-gray-400">
-                      {t.brew.categoryCount.replace('{count}', String(selectedCategories.length))}
-                      {selectedCategories.length === 1 && !hasPresetCategory && (
-                        <span className="text-orange-500 ml-1">
-                          ·
-                          {t.brew.selectFriendLinkHint}
-                        </span>
+                      {t.brew.categoryCount.replace(
+                        '{count}',
+                        String(selectedCategories.length),
                       )}
+                      {selectedCategories.length === 1 &&
+                        !hasPresetCategory && (
+                          <span className="text-orange-500 ml-1">
+                            ·{t.brew.selectFriendLinkHint}
+                          </span>
+                        )}
                     </p>
                   </div>
                   {/* 主题色 */}
@@ -437,7 +511,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     <input
                       type="color"
                       value={themeColor}
-                      onChange={e => setThemeColor(e.target.value)}
+                      onChange={(e) => setThemeColor(e.target.value)}
                       className="w-10 h-10 rounded-lg cursor-pointer border border-gray-200 dark:border-neutral-700 bg-transparent shrink-0 p-0"
                       title={t.brew.selectThemeColor}
                       aria-label={t.brew.selectThemeColor}
@@ -445,7 +519,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     <input
                       type="text"
                       value={themeColor}
-                      onChange={e => setThemeColor(e.target.value)}
+                      onChange={(e) => setThemeColor(e.target.value)}
                       placeholder="#f97316"
                       className="min-w-0 flex-1 px-3 py-2 text-sm rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500/50 text-gray-800 dark:text-gray-100 font-mono"
                     />
@@ -467,12 +541,17 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                       style={{ backgroundColor: themeColor }}
                       title={`${t.brew.themeColor}: ${themeColor}`}
                     />
-                    <h4 className="font-semibold text-gray-800 dark:text-gray-100 text-xl leading-snug truncate" title={name}>
+                    <h4
+                      className="font-semibold text-gray-800 dark:text-gray-100 text-xl leading-snug truncate"
+                      title={name}
+                    >
                       {name}
                     </h4>
                   </div>
                   <p className="text-base text-gray-500 dark:text-gray-400 mt-1">
-                    {selectedCategories.length > 0 ? selectedCategories.join(' · ') : t.brew.uncategorized}
+                    {selectedCategories.length > 0
+                      ? selectedCategories.join(' · ')
+                      : t.brew.uncategorized}
                   </p>
                   <button
                     type="button"
@@ -489,54 +568,65 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
 
             {/* 订阅类型标识（只读显示）- 移动到左侧 */}
             <div className="pt-3">
-              <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">{t.brew.sourceType}</label>
-              <div className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
-                isLink
-                  ? 'bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-gray-400'
-                  : isRssHub
-                    ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
-                    : isNotion
-                      ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'
-                      : 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
-              }`}
+              <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
+                {t.brew.sourceType}
+              </label>
+              <div
+                className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
+                  isLink
+                    ? 'bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-gray-400'
+                    : isRssHub
+                      ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
+                      : isNotion
+                        ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'
+                        : 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
+                }`}
               >
-                {isLink
-                  ? (
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                    )
-                  : isRssHub
-                    ? (
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-                        </svg>
-                      )
-                    : isNotion
-                      ? (
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.98-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.886l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952l1.448.327s0 .84-1.168.84l-3.22.186c-.094-.187 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.454-.233 4.764 7.279v-6.44l-1.215-.14c-.093-.514.28-.886.747-.933zM2.62 1.108l13.496-.934c1.635-.14 2.055-.047 3.08.7l4.25 2.987c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.127-4.06c-.56-.747-.793-1.306-.793-1.96V2.788c0-.84.374-1.54 1.26-1.68z" />
-                          </svg>
-                        )
-                      : (
-                          <Rss className="w-3.5 h-3.5" />
-                        )}
+                {isLink ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                ) : isRssHub ? (
+                  <svg
+                    className="w-3.5 h-3.5"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+                  </svg>
+                ) : isNotion ? (
+                  <svg
+                    className="w-3.5 h-3.5"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.98-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.886l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952l1.448.327s0 .84-1.168.84l-3.22.186c-.094-.187 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.454-.233 4.764 7.279v-6.44l-1.215-.14c-.093-.514.28-.886.747-.933zM2.62 1.108l13.496-.934c1.635-.14 2.055-.047 3.08.7l4.25 2.987c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.127-4.06c-.56-.747-.793-1.306-.793-1.96V2.788c0-.84.374-1.54 1.26-1.68z" />
+                  </svg>
+                ) : (
+                  <Rss className="w-3.5 h-3.5" />
+                )}
                 {feedTypeLabel}
               </div>
             </div>
 
             {/* 订阅地址 */}
             <div className="mt-auto pt-3">
-              <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">{t.brew.sourceUrl}</label>
+              <label className="block text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5">
+                {t.brew.sourceUrl}
+              </label>
               {isRssHub && source.rsshub_route ? (
                 // RSSHub 类型：分离显示实例和路由
                 <div className="space-y-1.5">
                   <div className="px-2.5 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-900/20 border border-teal-200/50 dark:border-teal-700/50">
-                    <div className="text-[9px] text-teal-600 dark:text-teal-400 font-medium mb-0.5">{t.brew.rsshubRoute}</div>
+                    <div className="text-[9px] text-teal-600 dark:text-teal-400 font-medium mb-0.5">
+                      {t.brew.rsshubRoute}
+                    </div>
                     <div className="text-[10px] text-gray-600 dark:text-gray-300 font-mono break-all">
                       {source.rsshub_route}
                     </div>
                   </div>
                   <div className="px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-neutral-800">
-                    <div className="text-[9px] text-gray-500 dark:text-gray-400 font-medium mb-0.5">{t.brew.rsshubInstance}</div>
+                    <div className="text-[9px] text-gray-500 dark:text-gray-400 font-medium mb-0.5">
+                      {t.brew.rsshubInstance}
+                    </div>
                     <div className="text-[10px] text-gray-500 dark:text-gray-400 font-mono break-all">
                       {source.url.replace(source.rsshub_route, '')}
                     </div>
@@ -553,11 +643,12 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
 
           {/* 右侧 - 设置区域 */}
           <div className="flex-1 p-6 space-y-4 overflow-y-auto max-h-[60vh] md:max-h-[50vh]">
-
             {/* 订阅模式切换（仅 RSS/Notion/RSSHub 显示） */}
             {!isLink && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t.brew.subscriptionMode}</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  {t.brew.subscriptionMode}
+                </label>
                 <div className="grid grid-cols-4 gap-1.5">
                   {/* 停止订阅 */}
                   <button
@@ -570,10 +661,20 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
-                      <X className={`w-3.5 h-3.5 shrink-0 ${subscriptionMode === 'disabled' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500'}`} />
-                      <span className={`text-xs font-medium ${subscriptionMode === 'disabled' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>{t.brew.stop}</span>
+                      <X
+                        className={`w-3.5 h-3.5 shrink-0 ${subscriptionMode === 'disabled' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500'}`}
+                      />
+                      <span
+                        className={`text-xs font-medium ${subscriptionMode === 'disabled' ? 'text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}
+                      >
+                        {t.brew.stop}
+                      </span>
                     </div>
-                    <p className={`text-[10px] mt-0.5 ${subscriptionMode === 'disabled' ? 'text-gray-600 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>{t.brew.pauseFetch}</p>
+                    <p
+                      className={`text-[10px] mt-0.5 ${subscriptionMode === 'disabled' ? 'text-gray-600 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}
+                    >
+                      {t.brew.pauseFetch}
+                    </p>
                   </button>
 
                   {/* 普通订阅 */}
@@ -582,15 +683,29 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     onClick={() => setSubscriptionMode('normal')}
                     className={`px-2.5 py-2 rounded-lg text-left transition-colors border ${
                       subscriptionMode === 'normal'
-                        ? (isRssHub ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-200 dark:border-teal-700' : isNotion ? 'bg-sky-50 dark:bg-sky-900/30 border-sky-200 dark:border-sky-700' : 'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700')
+                        ? isRssHub
+                          ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-200 dark:border-teal-700'
+                          : isNotion
+                            ? 'bg-sky-50 dark:bg-sky-900/30 border-sky-200 dark:border-sky-700'
+                            : 'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700'
                         : 'bg-gray-50 dark:bg-neutral-800/50 border-transparent hover:bg-gray-100 dark:hover:bg-neutral-800'
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
-                      <Rss className={`w-3.5 h-3.5 shrink-0 ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-500' : isNotion ? 'text-sky-500' : 'text-orange-500') : 'text-gray-400 dark:text-gray-500'}`} />
-                      <span className={`text-xs font-medium ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-600 dark:text-teal-400' : isNotion ? 'text-sky-600 dark:text-sky-400' : 'text-orange-600 dark:text-orange-400') : 'text-gray-500 dark:text-gray-400'}`}>{t.brew.subscribe}</span>
+                      <Rss
+                        className={`w-3.5 h-3.5 shrink-0 ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-500' : isNotion ? 'text-sky-500' : 'text-orange-500') : 'text-gray-400 dark:text-gray-500'}`}
+                      />
+                      <span
+                        className={`text-xs font-medium ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-600 dark:text-teal-400' : isNotion ? 'text-sky-600 dark:text-sky-400' : 'text-orange-600 dark:text-orange-400') : 'text-gray-500 dark:text-gray-400'}`}
+                      >
+                        {t.brew.subscribe}
+                      </span>
                     </div>
-                    <p className={`text-[10px] mt-0.5 ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-600/70 dark:text-teal-400/70' : isNotion ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-orange-600/70 dark:text-orange-400/70') : 'text-gray-400 dark:text-gray-500'}`}>{t.brew.standardMode}</p>
+                    <p
+                      className={`text-[10px] mt-0.5 ${subscriptionMode === 'normal' ? (isRssHub ? 'text-teal-600/70 dark:text-teal-400/70' : isNotion ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-orange-600/70 dark:text-orange-400/70') : 'text-gray-400 dark:text-gray-500'}`}
+                    >
+                      {t.brew.standardMode}
+                    </p>
                   </button>
 
                   {/* Brewlia AI 订阅 - 2倍宽度 */}
@@ -604,10 +719,20 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
-                      <Sparkles className={`w-3.5 h-3.5 shrink-0 ${subscriptionMode === 'brewlia' ? 'text-purple-500' : 'text-gray-400 dark:text-gray-500'}`} />
-                      <span className={`text-xs font-medium ${subscriptionMode === 'brewlia' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}>Brewlia AI</span>
+                      <Sparkles
+                        className={`w-3.5 h-3.5 shrink-0 ${subscriptionMode === 'brewlia' ? 'text-purple-500' : 'text-gray-400 dark:text-gray-500'}`}
+                      />
+                      <span
+                        className={`text-xs font-medium ${subscriptionMode === 'brewlia' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
+                      >
+                        Brewlia AI
+                      </span>
                     </div>
-                    <p className={`text-[10px] mt-0.5 ${subscriptionMode === 'brewlia' ? 'text-purple-600/70 dark:text-purple-400/70' : 'text-gray-400 dark:text-gray-500'}`}>{t.brew.brewliaFeatures}</p>
+                    <p
+                      className={`text-[10px] mt-0.5 ${subscriptionMode === 'brewlia' ? 'text-purple-600/70 dark:text-purple-400/70' : 'text-gray-400 dark:text-gray-500'}`}
+                    >
+                      {t.brew.brewliaFeatures}
+                    </p>
                   </button>
                 </div>
               </div>
@@ -616,15 +741,21 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
             {/* 更新间隔 - 纯链接类型和停止订阅模式不显示 */}
             {!isLink && subscriptionMode !== 'disabled' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t.brew.updateInterval}</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  {t.brew.updateInterval}
+                </label>
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setShowIntervalDropdown(!showIntervalDropdown)}
+                    onClick={() =>
+                      setShowIntervalDropdown(!showIntervalDropdown)
+                    }
                     className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500/50 text-left flex items-center justify-between text-sm text-gray-800 dark:text-gray-100"
                   >
                     <span>{currentIntervalLabel}</span>
-                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showIntervalDropdown ? 'rotate-180' : ''}`} />
+                    <ChevronDown
+                      className={`w-4 h-4 text-gray-400 transition-transform ${showIntervalDropdown ? 'rotate-180' : ''}`}
+                    />
                   </button>
                   <AnimatePresence>
                     {showIntervalDropdown && (
@@ -635,15 +766,20 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                         transition={TRANSITION_NORMAL}
                         className="absolute z-50 w-full mt-1 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-xl shadow-lg overflow-hidden py-1"
                       >
-                        {intervalOptions.map(opt => (
+                        {intervalOptions.map((opt) => (
                           <button
                             key={opt.value}
                             type="button"
-                            onClick={() => { setUpdateInterval(opt.value); setShowIntervalDropdown(false) }}
+                            onClick={() => {
+                              setUpdateInterval(opt.value)
+                              setShowIntervalDropdown(false)
+                            }}
                             className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-neutral-700 flex items-center ${updateInterval === opt.value ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'text-gray-600 dark:text-gray-300'}`}
                           >
                             {opt.label}
-                            {updateInterval === opt.value && <Check className="w-4 h-4 ml-auto" />}
+                            {updateInterval === opt.value && (
+                              <Check className="w-4 h-4 ml-auto" />
+                            )}
                           </button>
                         ))}
                       </motion.div>
@@ -659,7 +795,9 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Tag className="w-4 h-4 text-purple-500" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.brew.aiStyleTags}</span>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {t.brew.aiStyleTags}
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -667,51 +805,49 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                     disabled={generatingTags}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    {generatingTags
-                      ? (
-                          <>
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                            {t.brew.generating}
-                          </>
-                        )
-                      : (
-                          <>
-                            <Sparkles className="w-3 h-3" />
-                            {styleTags.length > 0 ? t.brew.regenerate : t.brew.generateTags}
-                          </>
-                        )}
+                    {generatingTags ? (
+                      <>
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        {t.brew.generating}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3" />
+                        {styleTags.length > 0
+                          ? t.brew.regenerate
+                          : t.brew.generateTags}
+                      </>
+                    )}
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                   {t.brew.styleTagsDesc}
                 </p>
                 {/* 已有标签展示 */}
-                {styleTags.length > 0
-                  ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {styleTags.map((tag, index) => (
-                          <span
-                            key={index}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-purple-100 dark:bg-purple-800/40 text-purple-700 dark:text-purple-300"
-                          >
-                            {tag}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveTag(tag)}
-                              className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-purple-200 dark:hover:bg-purple-700 transition-colors"
-                              title={t.brew.deleteTag}
-                            >
-                              <X className="w-2.5 h-2.5" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )
-                  : (
-                      <div className="text-xs text-gray-400 dark:text-gray-500 italic">
-                        {t.brew.noTagsHint}
-                      </div>
-                    )}
+                {styleTags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {styleTags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-purple-100 dark:bg-purple-800/40 text-purple-700 dark:text-purple-300"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTag(tag)}
+                          className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-purple-200 dark:hover:bg-purple-700 transition-colors"
+                          title={t.brew.deleteTag}
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-400 dark:text-gray-500 italic">
+                    {t.brew.noTagsHint}
+                  </div>
+                )}
               </div>
             )}
 
@@ -720,7 +856,9 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
               <div className="p-3 rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200/50 dark:border-orange-700/50">
                 <div className="flex items-center gap-2 mb-2">
                   <Tag className="w-4 h-4 text-orange-500" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.brew.customTag}</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {t.brew.customTag}
+                  </span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                   {t.brew.customTagDesc}
@@ -730,7 +868,7 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                   <input
                     type="text"
                     value={newTagInput}
-                    onChange={e => setNewTagInput(e.target.value)}
+                    onChange={(e) => setNewTagInput(e.target.value)}
                     onKeyDown={handleTagInputKeyDown}
                     placeholder={t.brew.tagInputPlaceholder}
                     maxLength={10}
@@ -747,32 +885,30 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                   </button>
                 </div>
                 {/* 已有标签展示 */}
-                {styleTags.length > 0
-                  ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {styleTags.map((tag, index) => (
-                          <span
-                            key={index}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-orange-100 dark:bg-orange-800/40 text-orange-700 dark:text-orange-300"
-                          >
-                            {tag}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveTag(tag)}
-                              className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-orange-200 dark:hover:bg-orange-700 transition-colors"
-                              title={t.brew.deleteTag}
-                            >
-                              <X className="w-2.5 h-2.5" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )
-                  : (
-                      <div className="text-xs text-gray-400 dark:text-gray-500 italic">
-                        {t.brew.noCustomTagHint}
-                      </div>
-                    )}
+                {styleTags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {styleTags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-orange-100 dark:bg-orange-800/40 text-orange-700 dark:text-orange-300"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTag(tag)}
+                          className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-orange-200 dark:hover:bg-orange-700 transition-colors"
+                          title={t.brew.deleteTag}
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-400 dark:text-gray-500 italic">
+                    {t.brew.noCustomTagHint}
+                  </div>
+                )}
               </div>
             )}
 
@@ -790,15 +926,21 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
                 <div className="flex items-center gap-2">
                   <EyeOff className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                   <div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.brew.adminOnlyVisible}</span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t.brew.adminOnlyVisibleHint}</p>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {t.brew.adminOnlyVisible}
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {t.brew.adminOnlyVisibleHint}
+                    </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setAdminOnly(!adminOnly)}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    adminOnly ? 'bg-orange-500' : 'bg-gray-300 dark:bg-neutral-600'
+                    adminOnly
+                      ? 'bg-orange-500'
+                      : 'bg-gray-300 dark:bg-neutral-600'
                   }`}
                 >
                   <span
@@ -825,19 +967,17 @@ export default function EditModal({ source, categories, onClose, onSave }: EditM
             disabled={saving}
             className="px-5 py-2.5 rounded-xl bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 flex items-center gap-2 font-medium shadow-sm transition-colors"
           >
-            {saving
-              ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    {t.brew.saving}
-                  </>
-                )
-              : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    {t.brew.saveChanges}
-                  </>
-                )}
+            {saving ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                {t.brew.saving}
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                {t.brew.saveChanges}
+              </>
+            )}
           </button>
         </div>
       </motion.div>

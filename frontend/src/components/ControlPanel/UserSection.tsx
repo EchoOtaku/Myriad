@@ -8,7 +8,10 @@ import { useI18n } from '../../contexts/I18nContext'
 import { cleanupTemporaryTapps } from '../../tapp'
 import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
-import { clearAllUserCache, invalidateUserInfoCache } from '../../utils/userInfoCache'
+import {
+  clearAllUserCache,
+  invalidateUserInfoCache,
+} from '../../utils/userInfoCache'
 import LoginForm from '../LoginForm'
 import { UserModal } from './UserModal'
 
@@ -35,7 +38,9 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
 
   // 弹窗状态机：'closed' -> 'mounting' -> 'visible' -> 'closing' -> 'closed'
-  const [modalState, setModalState] = useState<'closed' | 'mounting' | 'visible' | 'closing'>('closed')
+  const [modalState, setModalState] = useState<
+    'closed' | 'mounting' | 'visible' | 'closing'
+  >('closed')
 
   // 处理弹窗状态机转换
   useEffect(() => {
@@ -72,8 +77,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
   // 对于普通用户：使用 authUser 中的 GitHub 信息
   const fetchUserInfo = useCallback(async () => {
     // 先检查 authUser 是否有信息
-    if (!authUser)
-      return
+    if (!authUser) return
 
     // 如果是管理员，尝试获取站长资料（Bilibili/GitHub/Steam 绑定的资料）
     if (authUser.is_admin) {
@@ -86,27 +90,32 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
               name: profileData.user_info.name || t.userModal.unknownUser,
               avatar: profileData.user_info.avatar || '',
               bio: profileData.user_info.bio || t.userModal.defaultBio,
-              platform: profileData.user_info.platform || t.userModal.unknownPlatform,
+              platform:
+                profileData.user_info.platform || t.userModal.unknownPlatform,
             })
             return
           }
         }
-      }
-      catch (_error) {
+      } catch (_error) {
         // 站长资料获取失败，回退到 authUser 信息
-        console.debug('[UserSection] Failed to fetch admin profile, using authUser info')
+        console.debug(
+          '[UserSection] Failed to fetch admin profile, using authUser info',
+        )
       }
     }
 
     // 普通 GitHub 用户或管理员资料获取失败时，使用 authUser 中的信息
     const displayName = authUser.display_name || authUser.username
-    const avatar = authUser.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`
+    const avatar =
+      authUser.avatar_url ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`
     const bio = authUser.bio || t.userModal.defaultBio
-    const platform = authUser.auth_provider === 'github'
-      ? 'GitHub'
-      : authUser.auth_provider === 'local'
-        ? 'Local'
-        : authUser.auth_provider || t.userModal.unknownPlatform
+    const platform =
+      authUser.auth_provider === 'github'
+        ? 'GitHub'
+        : authUser.auth_provider === 'local'
+          ? 'Local'
+          : authUser.auth_provider || t.userModal.unknownPlatform
 
     setUserInfo({
       name: displayName,
@@ -175,18 +184,19 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
     onClosePanel()
 
     // 触发认证状态变化事件
-    window.dispatchEvent(new CustomEvent('auth-state-changed', {
-      detail: {
-        isAuthenticated: false,
-        isAdmin: false,
-      },
-    }))
+    window.dispatchEvent(
+      new CustomEvent('auth-state-changed', {
+        detail: {
+          isAuthenticated: false,
+          isAdmin: false,
+        },
+      }),
+    )
 
     try {
       // 先清理用户临时安装的 Tapp
       await cleanupTemporaryTapps()
-    }
-    catch (error) {
+    } catch (error) {
       // 静默处理清理错误
       console.warn('[UserSection] Failed to cleanup temporary tapps:', error)
     }
@@ -196,8 +206,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
         method: 'POST',
         credentials: 'include',
       })
-    }
-    catch (_error) {
+    } catch (_error) {
       // 静默处理退出错误
     }
 
@@ -228,72 +237,95 @@ export const UserSection: React.FC<UserSectionProps> = ({ onClosePanel }) => {
         onClick={handleUserInfoClick}
         className="user-info-button flex items-center gap-3"
       >
-        {isAuthenticated && userInfo
-          ? (
-              <>
-                <img
-                  src={userInfo.avatar}
-                  alt={userInfo.name}
-                  className="w-10 h-10 rounded-full object-cover shrink-0"
-                  onError={(e) => {
-                    e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}`
-                  }}
-                />
-                <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
-                    {userInfo.name}
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {userInfo.bio.length > 30 ? `${userInfo.bio.substring(0, 30)}...` : userInfo.bio}
-                  </p>
-                </div>
-              </>
-            )
-          : (
-              <>
-                <svg className="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                <span className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">{t.userModal.pleaseLogin}</span>
-              </>
-            )}
+        {isAuthenticated && userInfo ? (
+          <>
+            <img
+              src={userInfo.avatar}
+              alt={userInfo.name}
+              className="w-10 h-10 rounded-full object-cover shrink-0"
+              onError={(e) => {
+                e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}`
+              }}
+            />
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
+                {userInfo.name}
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                {userInfo.bio.length > 30
+                  ? `${userInfo.bio.substring(0, 30)}...`
+                  : userInfo.bio}
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            <svg
+              className="w-5 h-5 text-gray-400 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+              />
+            </svg>
+            <span className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
+              {t.userModal.pleaseLogin}
+            </span>
+          </>
+        )}
       </button>
 
       {/* 用户信息/登录弹窗 - 使用 Portal 渲染到 body */}
-      {modalState !== 'closed' && createPortal(
-        <>
-          <div
-            className={`user-modal-overlay ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`}
-            onClick={closeModal}
-          />
-          {isAuthenticated && user && userInfo
-            ? (
-                <UserModal
-                  user={user}
-                  userInfo={userInfo}
-                  isClosing={modalState === 'closing'}
-                  canAnimate={modalState === 'visible'}
-                  onClose={closeModal}
-                  onLogout={handleLogout}
-                />
-              )
-            : (
-                <div className={`user-modal-login-only ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`}>
-                  <button
-                    onClick={closeModal}
-                    className="login-close-btn"
-                    aria-label={t.common.close}
+      {modalState !== 'closed' &&
+        createPortal(
+          <>
+            <div
+              className={`user-modal-overlay ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`}
+              onClick={closeModal}
+            />
+            {isAuthenticated && user && userInfo ? (
+              <UserModal
+                user={user}
+                userInfo={userInfo}
+                isClosing={modalState === 'closing'}
+                canAnimate={modalState === 'visible'}
+                onClose={closeModal}
+                onLogout={handleLogout}
+              />
+            ) : (
+              <div
+                className={`user-modal-login-only ${modalState === 'visible' ? 'animate-in' : ''} ${modalState === 'closing' ? 'closing' : ''}`}
+              >
+                <button
+                  onClick={closeModal}
+                  className="login-close-btn"
+                  aria-label={t.common.close}
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                  <LoginForm />
-                </div>
-              )}
-        </>,
-        document.body,
-      )}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+                <LoginForm />
+              </div>
+            )}
+          </>,
+          document.body,
+        )}
     </>
   )
 }

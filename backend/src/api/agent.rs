@@ -411,7 +411,7 @@ impl From<agent_task_presets::Model> for TaskPresetResponse {
         let conversation_data: Option<Vec<ConversationMessage>> = model
             .conversation_data
             .as_ref()
-            .and_then(|j| serde_json::from_value(serde_json::Value::from(j.clone())).ok());
+            .and_then(|j| serde_json::from_value(j.clone()).ok());
 
         let has_conversation = conversation_data
             .as_ref()
@@ -422,7 +422,7 @@ impl From<agent_task_presets::Model> for TaskPresetResponse {
             id: model.id,
             input: model.input,
             preset_type: model.preset_type,
-            parsed_steps: model.parsed_steps.map(|j| serde_json::Value::from(j)),
+            parsed_steps: model.parsed_steps,
             intent_summary: model.intent_summary,
             last_used_at: model.last_used_at.to_rfc3339(),
             use_count: model.use_count,
@@ -1905,7 +1905,7 @@ pub async fn create_preset(
         // 从原始 Model 获取 use_count 避免 ActiveValue::unwrap() panic
         active_model.use_count = Set(existing_preset.use_count + 1);
         if req.parsed_steps.is_some() {
-            active_model.parsed_steps = Set(req.parsed_steps.map(sea_orm::JsonValue::from));
+            active_model.parsed_steps = Set(req.parsed_steps);
         }
         if req.intent_summary.is_some() {
             active_model.intent_summary = Set(req.intent_summary);
@@ -1917,7 +1917,7 @@ pub async fn create_preset(
         if req.conversation_data.is_some() {
             active_model.conversation_data = Set(req
                 .conversation_data
-                .map(|c| sea_orm::JsonValue::from(serde_json::to_value(&c).unwrap_or_default())));
+                .map(|c| serde_json::to_value(&c).unwrap_or_default()));
         }
 
         let updated = active_model.update(&db).await.map_err(|e| {
@@ -1937,7 +1937,7 @@ pub async fn create_preset(
         user_id: Set(user_id),
         input: Set(req.input),
         preset_type: Set(req.preset_type.clone()),
-        parsed_steps: Set(req.parsed_steps.map(sea_orm::JsonValue::from)),
+        parsed_steps: Set(req.parsed_steps),
         intent_summary: Set(req.intent_summary),
         last_used_at: Set(now),
         use_count: Set(1),
@@ -1945,7 +1945,7 @@ pub async fn create_preset(
         title: Set(req.title),
         conversation_data: Set(req
             .conversation_data
-            .map(|c| sea_orm::JsonValue::from(serde_json::to_value(&c).unwrap_or_default()))),
+            .map(|c| serde_json::to_value(&c).unwrap_or_default())),
     };
 
     let created = new_preset.insert(&db).await.map_err(|e| {
@@ -2246,7 +2246,7 @@ pub async fn execute_preset(
                 step_descriptions: recipe
                     .steps
                     .iter()
-                    .map(|s| crate::services::agent::capability::get_step_description(s))
+                    .map(crate::services::agent::capability::get_step_description)
                     .collect(),
             })
             .await;

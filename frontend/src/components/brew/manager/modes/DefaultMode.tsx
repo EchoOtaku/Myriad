@@ -3,7 +3,7 @@
  * 动态提示 + 排序 + 功能按钮
  */
 
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import type { ControlMode, DynamicTip, SortMode, SortOption } from './types'
 import {
   LuArrowUpDown as ArrowUpDown,
   LuCheck as Check,
@@ -13,9 +13,17 @@ import {
   LuPlus as Plus,
   LuSearch as Search,
 } from '@lib/icons'
-import type { ControlMode, DynamicTip, SortMode, SortOption } from './types'
-import { ISLAND_BTN, ISLAND_GLASS, TRANSITION_NORMAL, TRANSITION_SLOW } from './constants'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { IslandShell } from '../../../shared/control-island'
+import {
+  ISLAND_BTN,
+  ISLAND_GLASS,
+  TRANSITION_NORMAL,
+  TRANSITION_SLOW,
+} from './constants'
 
 export interface DefaultModeProps {
   variant: 'mobile' | 'desktop'
@@ -84,21 +92,23 @@ export function DefaultMode({
               transition={TRANSITION_SLOW}
               className="flex items-center gap-2"
             >
-              {tip.iconUrl && getIconUrl
-                ? (
-                    <img
-                      src={getIconUrl(tip.iconUrl) || ''}
-                      alt=""
-                      className="w-5 h-5 rounded shrink-0 object-cover"
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                        (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden')
-                      }}
-                    />
-                  )
-                : null}
-              <span className={`text-base shrink-0 ${tip.iconUrl ? 'hidden' : ''}`}>
+              {tip.iconUrl && getIconUrl ? (
+                <img
+                  src={getIconUrl(tip.iconUrl) || ''}
+                  alt=""
+                  className="w-5 h-5 rounded shrink-0 object-cover"
+                  loading="lazy"
+                  onError={(e) => {
+                    ;(e.target as HTMLImageElement).style.display = 'none'
+                    ;(
+                      e.target as HTMLImageElement
+                    ).nextElementSibling?.classList.remove('hidden')
+                  }}
+                />
+              ) : null}
+              <span
+                className={`text-base shrink-0 ${tip.iconUrl ? 'hidden' : ''}`}
+              >
                 {tip.icon}
               </span>
               <div className="flex flex-col justify-center leading-tight min-w-0">
@@ -133,7 +143,7 @@ export function DefaultMode({
                 transition={TRANSITION_NORMAL}
                 className={`absolute top-full mt-2 right-0 w-36 ${ISLAND_GLASS} overflow-hidden py-1 z-100`}
               >
-                {sortOptions.map(option => (
+                {sortOptions.map((option) => (
                   <button
                     key={option.value}
                     onClick={() => {
@@ -148,7 +158,9 @@ export function DefaultMode({
                   >
                     {option.icon}
                     <span>{t[option.labelKey]}</span>
-                    {sortMode === option.value && <Check className="w-3 h-3 ml-auto" />}
+                    {sortMode === option.value && (
+                      <Check className="w-3 h-3 ml-auto" />
+                    )}
                   </button>
                 ))}
               </motion.div>
@@ -161,7 +173,11 @@ export function DefaultMode({
 
   // 桌面端版本 - 完整功能
   return (
-    <IslandShell variant="desktop" motionKey="default-bar" className="flex-col sm:flex-row">
+    <IslandShell
+      variant="desktop"
+      motionKey="default-bar"
+      className="flex-col sm:flex-row"
+    >
       {/* 动态提示 */}
       <div className="flex items-center gap-2 h-9 px-2.5 min-w-44 overflow-hidden">
         <AnimatePresence mode="wait">
@@ -173,21 +189,23 @@ export function DefaultMode({
             transition={TRANSITION_SLOW}
             className="flex items-center gap-2"
           >
-            {tip.iconUrl && getIconUrl
-              ? (
-                  <img
-                    src={getIconUrl(tip.iconUrl) || ''}
-                    alt=""
-                    className="w-5 h-5 rounded shrink-0 object-cover"
-                    loading="lazy"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                      (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden')
-                    }}
-                  />
-                )
-              : null}
-            <span className={`text-base shrink-0 ${tip.iconUrl ? 'hidden' : ''}`}>
+            {tip.iconUrl && getIconUrl ? (
+              <img
+                src={getIconUrl(tip.iconUrl) || ''}
+                alt=""
+                className="w-5 h-5 rounded shrink-0 object-cover"
+                loading="lazy"
+                onError={(e) => {
+                  ;(e.target as HTMLImageElement).style.display = 'none'
+                  ;(
+                    e.target as HTMLImageElement
+                  ).nextElementSibling?.classList.remove('hidden')
+                }}
+              />
+            ) : null}
+            <span
+              className={`text-base shrink-0 ${tip.iconUrl ? 'hidden' : ''}`}
+            >
               {tip.icon}
             </span>
             <div className="flex flex-col justify-center leading-tight">
@@ -213,8 +231,12 @@ export function DefaultMode({
             aria-label={t.sortMethod}
           >
             <ArrowUpDown className="w-4 h-4" />
-            <span className="text-xs font-medium hidden sm:inline">{t[currentSortOption.labelKey]}</span>
-            <ChevronDown className={`w-3 h-3 transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
+            <span className="text-xs font-medium hidden sm:inline">
+              {t[currentSortOption.labelKey]}
+            </span>
+            <ChevronDown
+              className={`w-3 h-3 transition-transform ${showSortDropdown ? 'rotate-180' : ''}`}
+            />
           </button>
 
           <AnimatePresence>
@@ -226,7 +248,7 @@ export function DefaultMode({
                 transition={TRANSITION_NORMAL}
                 className={`absolute bottom-full mb-2 left-0 w-36 ${ISLAND_GLASS} overflow-hidden py-1`}
               >
-                {sortOptions.map(option => (
+                {sortOptions.map((option) => (
                   <button
                     key={option.value}
                     onClick={() => {
@@ -241,7 +263,9 @@ export function DefaultMode({
                   >
                     {option.icon}
                     <span>{t[option.labelKey]}</span>
-                    {sortMode === option.value && <Check className="w-3 h-3 ml-auto" />}
+                    {sortMode === option.value && (
+                      <Check className="w-3 h-3 ml-auto" />
+                    )}
                   </button>
                 ))}
               </motion.div>
@@ -257,7 +281,9 @@ export function DefaultMode({
           aria-label={t.search}
         >
           <Search className="w-4 h-4" />
-          <span className="text-xs font-medium hidden sm:inline">{t.search}</span>
+          <span className="text-xs font-medium hidden sm:inline">
+            {t.search}
+          </span>
         </button>
 
         {/* 编辑模式按钮 - 仅管理员可见 */}
@@ -269,7 +295,9 @@ export function DefaultMode({
             aria-label={t.editMode}
           >
             <Edit3 className="w-4 h-4" />
-            <span className="text-xs font-medium hidden sm:inline">{t.edit}</span>
+            <span className="text-xs font-medium hidden sm:inline">
+              {t.edit}
+            </span>
           </button>
         )}
 
@@ -281,7 +309,9 @@ export function DefaultMode({
           aria-label={t.shortcuts}
         >
           <Keyboard className="w-4 h-4" />
-          <span className="text-xs font-medium hidden sm:inline">{t.shortcuts}</span>
+          <span className="text-xs font-medium hidden sm:inline">
+            {t.shortcuts}
+          </span>
         </button>
 
         {/* 添加订阅按钮 - 仅管理员可见 */}

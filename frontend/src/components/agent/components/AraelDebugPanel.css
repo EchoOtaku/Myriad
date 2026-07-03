@@ -12,7 +12,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+  border-bottom: 1px solid rgb(128 128 128 / 15%);
   flex-shrink: 0;
 }
 
@@ -30,8 +30,8 @@
 }
 
 .adb-copy-btn {
-  background: rgba(128, 128, 128, 0.1);
-  border: 1px solid rgba(128, 128, 128, 0.15);
+  background: rgb(128 128 128 / 10%);
+  border: 1px solid rgb(128 128 128 / 15%);
   color: inherit;
   opacity: 0.7;
   font-size: 11px;
@@ -42,7 +42,7 @@
 }
 
 .adb-copy-btn:hover {
-  background: rgba(128, 128, 128, 0.18);
+  background: rgb(128 128 128 / 18%);
   opacity: 1;
 }
 
@@ -54,12 +54,12 @@
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
   color: inherit;
 }
 
 .adb-close:hover {
-  background: rgba(128, 128, 128, 0.15);
+  background: rgb(128 128 128 / 15%);
   opacity: 1;
 }
 
@@ -86,7 +86,7 @@
   height: 0;
   border-style: solid;
   border-width: 4px 0 4px 5px;
-  border-color: transparent transparent transparent currentColor;
+  border-color: transparent transparent transparent currentcolor;
   opacity: 0.4;
   transition: transform 0.15s ease;
   flex-shrink: 0;
@@ -104,7 +104,7 @@
 
 .adb-section {
   margin-bottom: 6px;
-  border: 1px solid rgba(128, 128, 128, 0.12);
+  border: 1px solid rgb(128 128 128 / 12%);
   border-radius: 5px;
   overflow: hidden;
 }
@@ -123,7 +123,7 @@
 }
 
 .adb-section-toggle:hover {
-  background: rgba(128, 128, 128, 0.08);
+  background: rgb(128 128 128 / 8%);
 }
 
 .adb-section-title {
@@ -137,16 +137,16 @@
 .adb-section-count {
   font-size: 10px;
   opacity: 0.5;
-  background: rgba(128, 128, 128, 0.12);
+  background: rgb(128 128 128 / 12%);
   padding: 0 5px;
   border-radius: 8px;
   line-height: 16px;
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
 }
 
 .adb-section-body {
   padding: 4px 8px 8px;
-  border-top: 1px solid rgba(128, 128, 128, 0.1);
+  border-top: 1px solid rgb(128 128 128 / 10%);
 }
 
 /* ---- KV Grid ---- */
@@ -165,7 +165,7 @@
 
 .adb-kv-v {
   word-break: break-all;
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
 }
 
 /* ---- Field ---- */
@@ -185,12 +185,12 @@
 }
 
 .adb-field-value {
-  background: rgba(128, 128, 128, 0.06);
-  border: 1px solid rgba(128, 128, 128, 0.1);
+  background: rgb(128 128 128 / 6%);
+  border: 1px solid rgb(128 128 128 / 10%);
   border-radius: 4px;
   padding: 4px 6px;
   font-size: 11px;
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
@@ -241,12 +241,12 @@ html.dark .adb-error-text {
 }
 
 .adb-json-pre {
-  background: rgba(128, 128, 128, 0.06);
-  border: 1px solid rgba(128, 128, 128, 0.1);
+  background: rgb(128 128 128 / 6%);
+  border: 1px solid rgb(128 128 128 / 10%);
   border-radius: 4px;
   padding: 4px 6px;
   font-size: 10px;
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
   white-space: pre-wrap;
   word-break: break-all;
   margin: 2px 0 0;
@@ -258,7 +258,7 @@ html.dark .adb-error-text {
 /* ---- Step Card ---- */
 
 .adb-step-card {
-  border: 1px solid rgba(128, 128, 128, 0.1);
+  border: 1px solid rgb(128 128 128 / 10%);
   border-radius: 4px;
   margin-bottom: 4px;
   overflow: hidden;
@@ -295,7 +295,7 @@ html.dark .adb-error-text {
 }
 
 .adb-step-header:hover {
-  background: rgba(128, 128, 128, 0.08);
+  background: rgb(128 128 128 / 8%);
 }
 
 .adb-step-index {
@@ -303,7 +303,7 @@ html.dark .adb-error-text {
   font-weight: 600;
   min-width: 14px;
   font-size: 10px;
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
 }
 
 .adb-step-dot {
@@ -326,7 +326,7 @@ html.dark .adb-error-text {
 }
 
 .adb-step-cap {
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
   font-weight: 500;
   font-size: 11px;
   flex: 1;
@@ -334,7 +334,7 @@ html.dark .adb-error-text {
 
 .adb-badge-dynamic {
   font-size: 9px;
-  background: rgba(212, 167, 44, 0.15);
+  background: rgb(212 167 44 / 15%);
   color: #d4a72c;
   padding: 1px 4px;
   border-radius: 3px;
@@ -345,20 +345,20 @@ html.dark .adb-error-text {
 .adb-step-time {
   opacity: 0.5;
   font-size: 10px;
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
 }
 
 .adb-step-tier {
   font-size: 9px;
   padding: 1px 4px;
   border-radius: 3px;
-  background: rgba(128, 128, 128, 0.1);
+  background: rgb(128 128 128 / 10%);
   opacity: 0.6;
 }
 
 .adb-step-body {
   padding: 4px 8px 8px;
-  border-top: 1px solid rgba(128, 128, 128, 0.1);
+  border-top: 1px solid rgb(128 128 128 / 10%);
 }
 
 /* ---- Planner Steps ---- */
@@ -373,18 +373,18 @@ html.dark .adb-error-text {
   gap: 6px;
   padding: 3px 0;
   font-size: 11px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
+  border-bottom: 1px solid rgb(128 128 128 / 8%);
 }
 
 .adb-ps-idx {
   opacity: 0.5;
   min-width: 18px;
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
   font-size: 10px;
 }
 
 .adb-ps-cap {
-  font-family: 'SF Mono', 'Menlo', monospace;
+  font-family: 'SF Mono', Menlo, monospace;
   color: #2a7ab5;
   font-weight: 500;
 }
@@ -409,7 +409,7 @@ html.dark .adb-ps-cap {
 .adb-body::-webkit-scrollbar-thumb,
 .adb-field-value::-webkit-scrollbar-thumb,
 .adb-json-pre::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.2);
+  background: rgb(128 128 128 / 20%);
   border-radius: 2px;
 }
 

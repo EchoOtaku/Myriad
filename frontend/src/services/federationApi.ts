@@ -52,22 +52,37 @@ const PREFIX = '/federation'
  */
 function shouldUseMock(): boolean {
   try {
-    if (!import.meta.env.DEV)
-      return false
+    if (!import.meta.env.DEV) return false
     // 开发者可手动切换回真实 API
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('federation-real') === '1')
+    if (
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem('federation-real') === '1'
+    ) {
       return false
+    }
     return true
-  }
-  catch {
+  } catch {
     return false
   }
 }
 
-async function withDevFallback<T>(realCall: () => Promise<T>, mockCall: () => Promise<T>): Promise<T> {
-  if (shouldUseMock())
-    return mockCall()
+async function withDevFallback<T>(
+  realCall: () => Promise<T>,
+  mockCall: () => Promise<T>,
+): Promise<T> {
+  if (shouldUseMock()) return mockCall()
   return realCall()
+}
+
+function dispatchMockWsListener(
+  listener: EventListenerOrEventListenerObject,
+  event: Event,
+): void {
+  if (typeof listener === 'function') {
+    listener(event)
+  } else {
+    listener.handleEvent(event)
+  }
 }
 
 /**
@@ -75,24 +90,63 @@ async function withDevFallback<T>(realCall: () => Promise<T>, mockCall: () => Pr
  * 通过 MessageChannel 创建一个合法的 WebSocket-like 对象。
  */
 function createMockWs(): WebSocket {
-  const _listeners: Record<string, EventListenerOrEventListenerObject | null> = {}
+  const _listeners: Record<string, EventListenerOrEventListenerObject | null> =
+    {}
   let _readyState = 1 // OPEN
 
   const proxy = Object.create(new EventTarget(), {
     readyState: { get: () => _readyState },
     send: { value: () => {} },
-    close: { value: () => { _readyState = 3; if (_listeners.close) (_listeners.close as Function)(new CloseEvent('close')) } },
-    onopen: { get: () => _listeners.open ?? null, set: (fn: any) => { _listeners.open = fn }, configurable: true },
-    onmessage: { get: () => _listeners.message ?? null, set: (fn: any) => { _listeners.message = fn }, configurable: true },
-    onclose: { get: () => _listeners.close ?? null, set: (fn: any) => { _listeners.close = fn }, configurable: true },
-    onerror: { get: () => _listeners.error ?? null, set: (fn: any) => { _listeners.error = fn }, configurable: true },
-    addEventListener: { value: (type: string, fn: any) => { _listeners[type] = fn } },
-    removeEventListener: { value: (type: string, _fn: any) => { delete _listeners[type] } },
+    close: {
+      value: () => {
+        _readyState = 3
+        if (_listeners.close)
+          dispatchMockWsListener(_listeners.close, new CloseEvent('close'))
+      },
+    },
+    onopen: {
+      get: () => _listeners.open ?? null,
+      set: (fn: any) => {
+        _listeners.open = fn
+      },
+      configurable: true,
+    },
+    onmessage: {
+      get: () => _listeners.message ?? null,
+      set: (fn: any) => {
+        _listeners.message = fn
+      },
+      configurable: true,
+    },
+    onclose: {
+      get: () => _listeners.close ?? null,
+      set: (fn: any) => {
+        _listeners.close = fn
+      },
+      configurable: true,
+    },
+    onerror: {
+      get: () => _listeners.error ?? null,
+      set: (fn: any) => {
+        _listeners.error = fn
+      },
+      configurable: true,
+    },
+    addEventListener: {
+      value: (type: string, fn: any) => {
+        _listeners[type] = fn
+      },
+    },
+    removeEventListener: {
+      value: (type: string, _fn: any) => {
+        delete _listeners[type]
+      },
+    },
   }) as unknown as WebSocket
 
   setTimeout(() => {
     if (_listeners.open) {
-      (_listeners.open as Function)(new Event('open'))
+      dispatchMockWsListener(_listeners.open, new Event('open'))
     }
   }, 30)
 
@@ -104,12 +158,16 @@ export const federationApi = {
 
   /** 关注远程用户 */
   follow(target: string): Promise<FollowResponse> {
-    return apiService.post<FollowResponse>(`${PREFIX}/follow`, { target } satisfies FollowRequest)
+    return apiService.post<FollowResponse>(`${PREFIX}/follow`, {
+      target,
+    } satisfies FollowRequest)
   },
 
   /** 取消关注 */
   unfollow(target: string): Promise<{ success: boolean }> {
-    return apiService.post<{ success: boolean }>(`${PREFIX}/unfollow`, { target } satisfies FollowRequest)
+    return apiService.post<{ success: boolean }>(`${PREFIX}/unfollow`, {
+      target,
+    } satisfies FollowRequest)
   },
 
   /** 获取我关注的远程用户 */
@@ -187,7 +245,11 @@ export const federationApi = {
   /** 关闭 Channel */
   closeChannel(channelId: string): Promise<{ success: boolean }> {
     return withDevFallback(
-      () => apiService.post<{ success: boolean }>(`${PREFIX}/channels/${channelId}/close`, {}),
+      () =>
+        apiService.post<{ success: boolean }>(
+          `${PREFIX}/channels/${channelId}/close`,
+          {},
+        ),
       () => federationMock.closeChannel(channelId),
     )
   },
@@ -195,42 +257,59 @@ export const federationApi = {
   /** 接受 Channel */
   acceptChannel(channelId: string): Promise<{ success: boolean }> {
     return withDevFallback(
-      () => apiService.post<{ success: boolean }>(`${PREFIX}/channels/${channelId}/accept`, {}),
+      () =>
+        apiService.post<{ success: boolean }>(
+          `${PREFIX}/channels/${channelId}/accept`,
+          {},
+        ),
       () => federationMock.acceptChannel(channelId),
     )
   },
 
   /** 获取消息历史 */
-  getMessages(channelId: string, before?: string, limit?: number): Promise<MessageListResponse> {
+  getMessages(
+    channelId: string,
+    before?: string,
+    limit?: number,
+  ): Promise<MessageListResponse> {
     return withDevFallback(
       () => {
         const params = new URLSearchParams()
-        if (before)
-          params.set('before', before)
-        if (limit)
-          params.set('limit', String(limit))
+        if (before) params.set('before', before)
+        if (limit) params.set('limit', String(limit))
         const qs = params.toString()
-        return apiService.get<MessageListResponse>(`${PREFIX}/channels/${channelId}/messages${qs ? `?${qs}` : ''}`)
+        return apiService.get<MessageListResponse>(
+          `${PREFIX}/channels/${channelId}/messages${qs ? `?${qs}` : ''}`,
+        )
       },
       () => federationMock.getMessages(channelId),
     )
   },
 
   /** 发送消息 */
-  sendMessage(channelId: string, req: SendMessageRequest): Promise<SendMessageResponse> {
+  sendMessage(
+    channelId: string,
+    req: SendMessageRequest,
+  ): Promise<SendMessageResponse> {
     return withDevFallback(
-      () => apiService.post<SendMessageResponse>(`${PREFIX}/channels/${channelId}/messages`, req),
-      () => federationMock.sendMessage(channelId, req.payload, req.message_type),
+      () =>
+        apiService.post<SendMessageResponse>(
+          `${PREFIX}/channels/${channelId}/messages`,
+          req,
+        ),
+      () =>
+        federationMock.sendMessage(channelId, req.payload, req.message_type),
     )
   },
 
   /** 创建 Channel WebSocket 连接 */
   connectChannelWs(channelId: string): WebSocket {
-    if (shouldUseMock())
-      return createMockWs()
+    if (shouldUseMock()) return createMockWs()
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
     const base = location.host
-    return new WebSocket(`${proto}//${base}/api${PREFIX}/channels/${channelId}/ws`)
+    return new WebSocket(
+      `${proto}//${base}/api${PREFIX}/channels/${channelId}/ws`,
+    )
   },
 
   // ==================== Room 多方通信 ====================
@@ -255,7 +334,7 @@ export const federationApi = {
   updateRoom(roomId: string, req: UpdateRoomRequest): Promise<RoomDetail> {
     return withDevFallback(
       () => apiService.put<RoomDetail>(`${PREFIX}/rooms/${roomId}`, req),
-      () => federationMock.updateRoom(roomId, req),
+      () => federationMock.updateRoom(roomId, req as Record<string, unknown>),
     )
   },
 
@@ -270,23 +349,39 @@ export const federationApi = {
   /** 获取 Room 成员 */
   getRoomMembers(roomId: string): Promise<RoomMembersResponse> {
     return withDevFallback(
-      () => apiService.get<RoomMembersResponse>(`${PREFIX}/rooms/${roomId}/members`),
+      () =>
+        apiService.get<RoomMembersResponse>(
+          `${PREFIX}/rooms/${roomId}/members`,
+        ),
       () => federationMock.getRoomMembers(roomId),
     )
   },
 
   /** 邀请成员 */
-  inviteMember(roomId: string, req: InviteMemberRequest): Promise<{ success: boolean }> {
+  inviteMember(
+    roomId: string,
+    req: InviteMemberRequest,
+  ): Promise<{ success: boolean }> {
     return withDevFallback(
-      () => apiService.post<{ success: boolean }>(`${PREFIX}/rooms/${roomId}/invite`, req),
+      () =>
+        apiService.post<{ success: boolean }>(
+          `${PREFIX}/rooms/${roomId}/invite`,
+          req,
+        ),
       () => federationMock.inviteMember(roomId, req),
     )
   },
 
   /** 移除成员 */
-  removeMember(roomId: string, actorUrl: string): Promise<{ success: boolean }> {
+  removeMember(
+    roomId: string,
+    actorUrl: string,
+  ): Promise<{ success: boolean }> {
     return withDevFallback(
-      () => apiService.delete<{ success: boolean }>(`${PREFIX}/rooms/${roomId}/members/${encodeURIComponent(actorUrl)}`),
+      () =>
+        apiService.delete<{ success: boolean }>(
+          `${PREFIX}/rooms/${roomId}/members/${encodeURIComponent(actorUrl)}`,
+        ),
       () => federationMock.removeMember(roomId, actorUrl),
     )
   },
@@ -294,7 +389,11 @@ export const federationApi = {
   /** 离开 Room */
   leaveRoom(roomId: string): Promise<{ success: boolean }> {
     return withDevFallback(
-      () => apiService.post<{ success: boolean }>(`${PREFIX}/rooms/${roomId}/leave`, {}),
+      () =>
+        apiService.post<{ success: boolean }>(
+          `${PREFIX}/rooms/${roomId}/leave`,
+          {},
+        ),
       () => federationMock.leaveRoom(roomId),
     )
   },
@@ -302,47 +401,67 @@ export const federationApi = {
   /** 解散 Room（仅 owner） */
   deleteRoom(roomId: string): Promise<{ success: boolean }> {
     return withDevFallback(
-      () => apiService.delete<{ success: boolean }>(`${PREFIX}/rooms/${roomId}`),
+      () =>
+        apiService.delete<{ success: boolean }>(`${PREFIX}/rooms/${roomId}`),
       () => federationMock.deleteRoom(roomId),
     )
   },
 
   /** 获取 Room 消息 */
-  getRoomMessages(roomId: string, before?: string, limit?: number): Promise<RoomMessageListResponse> {
+  getRoomMessages(
+    roomId: string,
+    before?: string,
+    limit?: number,
+  ): Promise<RoomMessageListResponse> {
     return withDevFallback(
       () => {
         const params = new URLSearchParams()
-        if (before)
-          params.set('before', before)
-        if (limit)
-          params.set('limit', String(limit))
+        if (before) params.set('before', before)
+        if (limit) params.set('limit', String(limit))
         const qs = params.toString()
-        return apiService.get<RoomMessageListResponse>(`${PREFIX}/rooms/${roomId}/messages${qs ? `?${qs}` : ''}`)
+        return apiService.get<RoomMessageListResponse>(
+          `${PREFIX}/rooms/${roomId}/messages${qs ? `?${qs}` : ''}`,
+        )
       },
       () => federationMock.getRoomMessages(roomId),
     )
   },
 
   /** 发送 Room 消息 */
-  sendRoomMessage(roomId: string, req: SendRoomMessageRequest): Promise<SendRoomMessageResponse> {
+  sendRoomMessage(
+    roomId: string,
+    req: SendRoomMessageRequest,
+  ): Promise<SendRoomMessageResponse> {
     return withDevFallback(
-      () => apiService.post<SendRoomMessageResponse>(`${PREFIX}/rooms/${roomId}/messages`, req),
-      () => federationMock.sendRoomMessage(roomId, req.payload, req.message_type),
+      () =>
+        apiService.post<SendRoomMessageResponse>(
+          `${PREFIX}/rooms/${roomId}/messages`,
+          req,
+        ),
+      () =>
+        federationMock.sendRoomMessage(roomId, req.payload, req.message_type),
     )
   },
 
   /** Pin/Unpin Room 消息 */
-  pinRoomMessage(roomId: string, messageId: string, pinned: boolean): Promise<import('../types/federation').PinRoomMessageResponse> {
+  pinRoomMessage(
+    roomId: string,
+    messageId: string,
+    pinned: boolean,
+  ): Promise<import('../types/federation').PinRoomMessageResponse> {
     return withDevFallback(
-      () => apiService.post<import('../types/federation').PinRoomMessageResponse>(`${PREFIX}/rooms/${roomId}/messages/${messageId}/pin`, { pinned }),
+      () =>
+        apiService.post<import('../types/federation').PinRoomMessageResponse>(
+          `${PREFIX}/rooms/${roomId}/messages/${messageId}/pin`,
+          { pinned },
+        ),
       () => federationMock.pinRoomMessage(roomId, messageId, pinned),
     )
   },
 
   /** 创建 Room WebSocket 连接 */
   connectRoomWs(roomId: string): WebSocket {
-    if (shouldUseMock())
-      return createMockWs()
+    if (shouldUseMock()) return createMockWs()
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
     const base = location.host
     return new WebSocket(`${proto}//${base}/api${PREFIX}/rooms/${roomId}/ws`)
@@ -373,31 +492,49 @@ export const federationApi = {
 
   /** 离开 Ring */
   leaveRing(ringId: string): Promise<{ success: boolean }> {
-    return apiService.post<{ success: boolean }>(`${PREFIX}/rings/${ringId}/leave`, {})
+    return apiService.post<{ success: boolean }>(
+      `${PREFIX}/rings/${ringId}/leave`,
+      {},
+    )
   },
 
   /** 获取 Ring Peer 列表 */
   getRingPeers(ringId: string): Promise<RingPeersResponse> {
     return withDevFallback(
-      () => apiService.get<RingPeersResponse>(`${PREFIX}/rings/${ringId}/peers`),
+      () =>
+        apiService.get<RingPeersResponse>(`${PREFIX}/rings/${ringId}/peers`),
       () => federationMock.getRingPeers(ringId),
     )
   },
 
   /** 添加 Peer */
   addPeer(ringId: string, req: AddPeerRequest): Promise<{ success: boolean }> {
-    return apiService.post<{ success: boolean }>(`${PREFIX}/rings/${ringId}/peers`, req)
+    return apiService.post<{ success: boolean }>(
+      `${PREFIX}/rings/${ringId}/peers`,
+      req,
+    )
   },
 
   /** 移除 Peer */
   removePeer(ringId: string, peerUrl: string): Promise<{ success: boolean }> {
-    return apiService.delete<{ success: boolean }>(`${PREFIX}/rings/${ringId}/peers/${encodeURIComponent(peerUrl)}`)
+    return apiService.delete<{ success: boolean }>(
+      `${PREFIX}/rings/${ringId}/peers/${encodeURIComponent(peerUrl)}`,
+    )
   },
 
   /** 触发 Gossip 同步 */
-  triggerSync(ringId: string): Promise<{ success: boolean; synced_peers: number; entries_count: number }> {
+  triggerSync(ringId: string): Promise<{
+    success: boolean
+    synced_peers: number
+    entries_count: number
+  }> {
     return withDevFallback(
-      () => apiService.post<{ success: boolean; synced_peers: number; entries_count: number }>(`${PREFIX}/rings/${ringId}/sync`, {}),
+      () =>
+        apiService.post<{
+          success: boolean
+          synced_peers: number
+          entries_count: number
+        }>(`${PREFIX}/rings/${ringId}/sync`, {}),
       () => federationMock.triggerSync(ringId),
     )
   },
@@ -427,13 +564,21 @@ export const federationApi = {
   // ==================== 文件传输 ====================
 
   /** 发起文件传输 */
-  initiateTransfer(channelId: string, req: InitTransferRequest): Promise<TransferDetail> {
-    return apiService.post<TransferDetail>(`${PREFIX}/channels/${channelId}/transfers`, req)
+  initiateTransfer(
+    channelId: string,
+    req: InitTransferRequest,
+  ): Promise<TransferDetail> {
+    return apiService.post<TransferDetail>(
+      `${PREFIX}/channels/${channelId}/transfers`,
+      req,
+    )
   },
 
   /** 列出 Channel 的文件传输 */
   listTransfers(channelId: string): Promise<TransferListResponse> {
-    return apiService.get<TransferListResponse>(`${PREFIX}/channels/${channelId}/transfers`)
+    return apiService.get<TransferListResponse>(
+      `${PREFIX}/channels/${channelId}/transfers`,
+    )
   },
 
   /** 获取传输详情 */
@@ -442,12 +587,21 @@ export const federationApi = {
   },
 
   /** 上传文件分块 */
-  uploadChunk(transferId: string, req: UploadChunkRequest): Promise<{ success: boolean; progress: number }> {
-    return apiService.post<{ success: boolean; progress: number }>(`${PREFIX}/transfers/${transferId}/chunks`, req)
+  uploadChunk(
+    transferId: string,
+    req: UploadChunkRequest,
+  ): Promise<{ success: boolean; progress: number }> {
+    return apiService.post<{ success: boolean; progress: number }>(
+      `${PREFIX}/transfers/${transferId}/chunks`,
+      req,
+    )
   },
 
   /** 取消传输 */
   cancelTransfer(transferId: string): Promise<{ success: boolean }> {
-    return apiService.post<{ success: boolean }>(`${PREFIX}/transfers/${transferId}/cancel`, {})
+    return apiService.post<{ success: boolean }>(
+      `${PREFIX}/transfers/${transferId}/cancel`,
+      {},
+    )
   },
 }

@@ -2,10 +2,7 @@
  * KeyboardMode - 快捷键模式
  */
 
-import {
-  LuKeyboard as Keyboard,
-  LuX as X,
-} from '@lib/icons'
+import { LuKeyboard as Keyboard, LuX as X } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 
 import { ISLAND_BTN, ISLAND_GLASS, SPRING_SMOOTH } from './constants'
@@ -61,8 +58,7 @@ export function KeyboardMode({
       <div className="p-4 max-h-[50vh] overflow-y-auto">
         <div className="grid grid-cols-2 gap-3">
           {Object.entries(groupedShortcuts).map(([cat, shortcuts]) => {
-            if (shortcuts.length === 0)
-              return null
+            if (shortcuts.length === 0) return null
             return (
               <div
                 key={cat}
@@ -77,13 +73,16 @@ export function KeyboardMode({
                   </span>
                 </div>
                 <div className="space-y-1">
-                  {shortcuts.map(shortcut => (
+                  {shortcuts.map((shortcut) => (
                     <div
                       key={shortcut.key}
                       className="flex items-center justify-between py-1 px-0.5"
                     >
                       <span className="text-xs text-gray-600 dark:text-gray-400 truncate mr-2">
-                        {shortcut.descriptionKey ? (t[shortcut.descriptionKey] || shortcut.descriptionKey) : shortcut.description}
+                        {shortcut.descriptionKey
+                          ? t[shortcut.descriptionKey] ||
+                            shortcut.descriptionKey
+                          : shortcut.description}
                       </span>
                       <kbd className="min-w-4.5 px-1.5 py-0.5 bg-white dark:bg-neutral-700 border border-gray-200 dark:border-neutral-600 rounded text-[10px] text-gray-500 dark:text-gray-400 font-mono text-center shadow-sm shrink-0">
                         {shortcut.key.split(' / ')[0]}

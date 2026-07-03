@@ -65,8 +65,7 @@ const MIN_IMAGE_SIZE = 100 // 最小图片尺寸（降低要求以支持更多�
 function getCacheStore(): WallpaperColorCacheStore | null {
   try {
     const cached = localStorage.getItem(CACHE_KEY)
-    if (!cached)
-      return null
+    if (!cached) return null
 
     const store: WallpaperColorCacheStore = JSON.parse(cached)
     if (store.version !== CACHE_VERSION) {
@@ -76,13 +75,13 @@ function getCacheStore(): WallpaperColorCacheStore | null {
     }
 
     return store
-  }
-  catch {
+  } catch {
     // 解析失败，清除损坏的缓存
     try {
       localStorage.removeItem(CACHE_KEY)
+    } catch {
+      /* 忽略 */
     }
-    catch { /* 忽略 */ }
     return null
   }
 }
@@ -94,8 +93,7 @@ function saveCacheStore(store: WallpaperColorCacheStore): boolean {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(store))
     return true
-  }
-  catch (error) {
+  } catch (error) {
     // localStorage可能已满或不可用
     console.warn('保存颜色缓存失败:', error)
     return false
@@ -110,7 +108,7 @@ function cleanupCacheStore(store: WallpaperColorCacheStore): void {
 
   // 移除过期项
   store.items = store.items.filter(
-    item => now - item.timestamp < CACHE_DURATION_MS,
+    (item) => now - item.timestamp < CACHE_DURATION_MS,
   )
 
   // 如果仍超出限制，按访问次数和时间排序后裁剪
@@ -135,7 +133,9 @@ function cleanupCacheStore(store: WallpaperColorCacheStore): void {
  * 检查URL是否适合进行颜色提取，并验证与当前壁纸的一致性
  * 简化验证流程，避免重复加载图片
  */
-export async function shouldApplyColorExtraction(url: string): Promise<ColorExtractionCheckResult> {
+export async function shouldApplyColorExtraction(
+  url: string,
+): Promise<ColorExtractionCheckResult> {
   if (!url) {
     return { shouldApply: false, reason: 'URL为空' }
   }
@@ -157,9 +157,7 @@ export async function shouldApplyColorExtraction(url: string): Promise<ColorExtr
     })
     return {
       shouldApply: false,
-      reason: activeUrl
-        ? `URL与当前壁纸不一致`
-        : '没有活跃壁纸',
+      reason: activeUrl ? `URL与当前壁纸不一致` : '没有活跃壁纸',
     }
   }
 
@@ -184,7 +182,9 @@ export async function shouldApplyColorExtraction(url: string): Promise<ColorExtr
 /**
  * 验证图片是否有效
  */
-async function _validateImage(url: string): Promise<{ valid: boolean, reason?: string }> {
+async function _validateImage(
+  url: string,
+): Promise<{ valid: boolean; reason?: string }> {
   return new Promise((resolve) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -197,9 +197,11 @@ async function _validateImage(url: string): Promise<{ valid: boolean, reason?: s
     img.onload = () => {
       clearTimeout(timeout)
       if (img.width < MIN_IMAGE_SIZE || img.height < MIN_IMAGE_SIZE) {
-        resolve({ valid: false, reason: `图片太小: ${img.width}x${img.height}` })
-      }
-      else {
+        resolve({
+          valid: false,
+          reason: `图片太小: ${img.width}x${img.height}`,
+        })
+      } else {
         resolve({ valid: true })
       }
     }
@@ -220,18 +222,16 @@ export function getColorFromCache(url: string): ColorPalette | null {
   try {
     const normalizedUrl = normalizeWallpaperUrl(url)
     const store = getCacheStore()
-    if (!store)
-      return null
+    if (!store) return null
 
-    const item = store.items.find(i => i.url === normalizedUrl)
-    if (!item)
-      return null
+    const item = store.items.find((i) => i.url === normalizedUrl)
+    if (!item) return null
 
     // 检查是否过期
     const age = Date.now() - item.timestamp
     if (age > CACHE_DURATION_MS) {
       // 异步清理过期项
-      store.items = store.items.filter(i => i.url !== normalizedUrl)
+      store.items = store.items.filter((i) => i.url !== normalizedUrl)
       saveCacheStore(store)
       return null
     }
@@ -241,8 +241,7 @@ export function getColorFromCache(url: string): ColorPalette | null {
     saveCacheStore(store)
 
     return item.palette
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -260,7 +259,7 @@ export function saveColorToCache(url: string, palette: ColorPalette): void {
     }
 
     // 移除已存在的相同URL项
-    store.items = store.items.filter(item => item.url !== normalizedUrl)
+    store.items = store.items.filter((item) => item.url !== normalizedUrl)
 
     // 添加新项
     store.items.push({
@@ -273,8 +272,7 @@ export function saveColorToCache(url: string, palette: ColorPalette): void {
     // 清理
     cleanupCacheStore(store)
     saveCacheStore(store)
-  }
-  catch {
+  } catch {
     // 静默失败
   }
 }
@@ -285,8 +283,7 @@ export function saveColorToCache(url: string, palette: ColorPalette): void {
 export function clearColorCache(): void {
   try {
     localStorage.removeItem(CACHE_KEY)
-  }
-  catch {
+  } catch {
     // 静默失败
   }
 }
@@ -298,12 +295,11 @@ export function getCacheInfo(): {
   exists: boolean
   count?: number
   totalSize?: number
-  items?: Array<{ url: string, age: number, accessCount: number }>
+  items?: Array<{ url: string; age: number; accessCount: number }>
 } {
   try {
     const cached = localStorage.getItem(CACHE_KEY)
-    if (!cached)
-      return { exists: false }
+    if (!cached) return { exists: false }
 
     const store: WallpaperColorCacheStore = JSON.parse(cached)
     const now = Date.now()
@@ -312,14 +308,14 @@ export function getCacheInfo(): {
       exists: true,
       count: store.items.length,
       totalSize: cached.length,
-      items: store.items.map(item => ({
-        url: item.url.length > 60 ? `${item.url.substring(0, 60)}...` : item.url,
+      items: store.items.map((item) => ({
+        url:
+          item.url.length > 60 ? `${item.url.substring(0, 60)}...` : item.url,
         age: Math.round((now - item.timestamp) / 1000),
         accessCount: item.accessCount,
       })),
     }
-  }
-  catch {
+  } catch {
     return { exists: false }
   }
 }

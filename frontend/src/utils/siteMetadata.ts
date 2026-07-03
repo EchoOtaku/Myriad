@@ -37,8 +37,7 @@ function getCachedMetadata(): SiteMetadata | null {
         return JSON.parse(cached)
       }
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.warn('[元数据] 读取缓存失败:', error)
   }
   return null
@@ -51,8 +50,7 @@ function cacheMetadata(metadata: SiteMetadata): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(metadata))
     localStorage.setItem(CACHE_TIME_KEY, Date.now().toString())
-  }
-  catch (error) {
+  } catch (error) {
     console.warn('[元数据] 写入缓存失败:', error)
   }
 }
@@ -64,7 +62,9 @@ async function fetchMetadata(): Promise<SiteMetadata | null> {
   try {
     // 如果 API_URL 为空，使用相对路径（生产环境）
     const apiUrl = API_URL || ''
-    const url = apiUrl ? `${apiUrl}/api/config/metadata` : '/api/config/metadata'
+    const url = apiUrl
+      ? `${apiUrl}/api/config/metadata`
+      : '/api/config/metadata'
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 3000) // 3秒超时
@@ -79,12 +79,12 @@ async function fetchMetadata(): Promise<SiteMetadata | null> {
       const data = await response.json()
       return {
         site_title: data.site_title || DEFAULT_METADATA.site_title,
-        site_description: data.site_description || DEFAULT_METADATA.site_description,
+        site_description:
+          data.site_description || DEFAULT_METADATA.site_description,
         site_favicon: data.site_favicon || DEFAULT_METADATA.site_favicon,
       }
     }
-  }
-  catch (error) {
+  } catch (error) {
     if ((error as Error).name !== 'AbortError') {
       console.warn('[元数据] 获取失败:', error)
     }
@@ -117,8 +117,7 @@ function updateDescription(description: string): void {
  */
 function updateFavicon(faviconUrl: string): void {
   // 检查是否为有效的URL
-  if (!faviconUrl)
-    return
+  if (!faviconUrl) return
 
   let favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
 
@@ -130,10 +129,13 @@ function updateFavicon(faviconUrl: string): void {
   }
 
   // 检查是否为站外链接
-  const isExternalUrl = faviconUrl.startsWith('http://') || faviconUrl.startsWith('https://')
+  const isExternalUrl =
+    faviconUrl.startsWith('http://') || faviconUrl.startsWith('https://')
 
   // 构建完整的 URL（处理相对路径）
-  const fullUrl = isExternalUrl ? faviconUrl : new URL(faviconUrl, window.location.origin).href
+  const fullUrl = isExternalUrl
+    ? faviconUrl
+    : new URL(faviconUrl, window.location.origin).href
 
   // 检查 URL 是否真的变化了（避免不必要的更新）
   if (favicon.href === fullUrl) {
@@ -146,42 +148,32 @@ function updateFavicon(faviconUrl: string): void {
     // 根据文件扩展名推断类型
     if (faviconUrl.endsWith('.svg')) {
       favicon.type = 'image/svg+xml'
-    }
-    else if (faviconUrl.endsWith('.webp')) {
+    } else if (faviconUrl.endsWith('.webp')) {
       favicon.type = 'image/webp'
-    }
-    else if (faviconUrl.endsWith('.png')) {
+    } else if (faviconUrl.endsWith('.png')) {
       favicon.type = 'image/png'
-    }
-    else if (faviconUrl.endsWith('.ico')) {
+    } else if (faviconUrl.endsWith('.ico')) {
       favicon.type = 'image/x-icon'
-    }
-    else if (faviconUrl.endsWith('.jpg') || faviconUrl.endsWith('.jpeg')) {
+    } else if (faviconUrl.endsWith('.jpg') || faviconUrl.endsWith('.jpeg')) {
       favicon.type = 'image/jpeg'
-    }
-    else {
+    } else {
       // 默认假设是 WebP
       favicon.type = 'image/webp'
     }
-  }
-  else {
+  } else {
     // 站内链接：移除跨域属性
     favicon.removeAttribute('crossorigin')
 
     // 根据文件扩展名设置类型
     if (faviconUrl.endsWith('.svg')) {
       favicon.type = 'image/svg+xml'
-    }
-    else if (faviconUrl.endsWith('.webp')) {
+    } else if (faviconUrl.endsWith('.webp')) {
       favicon.type = 'image/webp'
-    }
-    else if (faviconUrl.endsWith('.png')) {
+    } else if (faviconUrl.endsWith('.png')) {
       favicon.type = 'image/png'
-    }
-    else if (faviconUrl.endsWith('.ico')) {
+    } else if (faviconUrl.endsWith('.ico')) {
       favicon.type = 'image/x-icon'
-    }
-    else if (faviconUrl.endsWith('.jpg') || faviconUrl.endsWith('.jpeg')) {
+    } else if (faviconUrl.endsWith('.jpg') || faviconUrl.endsWith('.jpeg')) {
       favicon.type = 'image/jpeg'
     }
   }
@@ -238,8 +230,7 @@ export async function initSiteMetadata(): Promise<void> {
       if (!cached || JSON.stringify(cached) !== JSON.stringify(fetched)) {
         applyMetadata(fetched)
       }
-    }
-    else if (!cached) {
+    } else if (!cached) {
       // 3. 如果缓存和数据库都失败，使用默认值
       applyMetadata(DEFAULT_METADATA)
     }

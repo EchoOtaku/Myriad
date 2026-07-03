@@ -10,8 +10,8 @@ import { useCallback, useEffect, useRef } from 'react'
 /** Widget 简化数据（用于传递给 Worker） */
 export interface WidgetData {
   id: string
-  position: { x: number, y: number }
-  size: { w: number, h: number }
+  position: { x: number; y: number }
+  size: { w: number; h: number }
 }
 
 /** 碰撞检测结果 */
@@ -22,12 +22,12 @@ export interface CollisionResult {
 
 /** 位置查找结果 */
 export interface PositionResult {
-  position: { x: number, y: number } | null
+  position: { x: number; y: number } | null
 }
 
 /** 批量检测结果 */
 export interface BatchCollisionResult {
-  collisions: Array<{ id1: string, id2: string }>
+  collisions: Array<{ id1: string; id2: string }>
 }
 
 /**
@@ -61,7 +61,9 @@ export interface BatchCollisionResult {
 export function useCollisionWorker() {
   const workerRef = useRef<Worker | null>(null)
   const isReadyRef = useRef(false)
-  const pendingCallbacksRef = useRef<Map<string, (data: any) => void>>(new Map())
+  const pendingCallbacksRef = useRef<Map<string, (data: any) => void>>(
+    new Map(),
+  )
   const requestIdRef = useRef(0)
 
   // 初始化 Worker
@@ -202,41 +204,43 @@ export function useCollisionWorker() {
         isReadyRef.current = false
         pendingCallbacksRef.current.clear()
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('[useCollisionWorker] Failed to create worker:', error)
     }
   }, [])
 
   // 发送消息并等待响应
-  const sendMessage = useCallback(<T>(type: string, payload: any): Promise<T> => {
-    return new Promise((resolve, reject) => {
-      if (!workerRef.current || !isReadyRef.current) {
-        reject(new Error('Worker not ready'))
-        return
-      }
-
-      const requestId = `req_${++requestIdRef.current}`
-      pendingCallbacksRef.current.set(requestId, resolve)
-
-      // 设置超时
-      setTimeout(() => {
-        if (pendingCallbacksRef.current.has(requestId)) {
-          pendingCallbacksRef.current.delete(requestId)
-          reject(new Error('Worker timeout'))
+  const sendMessage = useCallback(
+    <T>(type: string, payload: any): Promise<T> => {
+      return new Promise((resolve, reject) => {
+        if (!workerRef.current || !isReadyRef.current) {
+          reject(new Error('Worker not ready'))
+          return
         }
-      }, 5000)
 
-      workerRef.current.postMessage({ type, requestId, payload })
-    })
-  }, [])
+        const requestId = `req_${++requestIdRef.current}`
+        pendingCallbacksRef.current.set(requestId, resolve)
+
+        // 设置超时
+        setTimeout(() => {
+          if (pendingCallbacksRef.current.has(requestId)) {
+            pendingCallbacksRef.current.delete(requestId)
+            reject(new Error('Worker timeout'))
+          }
+        }, 5000)
+
+        workerRef.current.postMessage({ type, requestId, payload })
+      })
+    },
+    [],
+  )
 
   // 碰撞检测 API
   const checkCollision = useCallback(
     (params: {
       widgetId: string
-      position: { x: number, y: number }
-      size: { w: number, h: number }
+      position: { x: number; y: number }
+      size: { w: number; h: number }
       allWidgets: WidgetData[]
       gridWidth: number
       gridHeight: number
@@ -250,11 +254,11 @@ export function useCollisionWorker() {
   // 查找有效位置 API
   const findValidPosition = useCallback(
     (params: {
-      widgetSize: { w: number, h: number }
+      widgetSize: { w: number; h: number }
       allWidgets: WidgetData[]
       gridWidth: number
       gridHeight: number
-      preferredPosition?: { x: number, y: number }
+      preferredPosition?: { x: number; y: number }
     }): Promise<PositionResult> => {
       return sendMessage('findValidPosition', params)
     },
@@ -285,7 +289,10 @@ export function useCollisionWorker() {
  * 同步碰撞检测（主线程，用于不支持 Worker 的环境或简单场景）
  */
 export function checkCollisionSync(
-  widget: { position: { x: number, y: number }, size: { w: number, h: number } },
+  widget: {
+    position: { x: number; y: number }
+    size: { w: number; h: number }
+  },
   allWidgets: WidgetData[],
   gridWidth: number,
   gridHeight: number,
@@ -302,8 +309,7 @@ export function checkCollisionSync(
 
   // 检查与其他组件的碰撞
   for (const other of allWidgets) {
-    if (other.id === excludeId)
-      continue
+    if (other.id === excludeId) continue
 
     const { x: ox, y: oy } = other.position
     const { w: ow, h: oh } = other.size

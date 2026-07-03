@@ -6,7 +6,7 @@
 import type { TappManifest } from '../types'
 
 /** 类别颜色配置 */
-export const CATEGORY_COLORS: Record<string, { from: string, to: string }> = {
+export const CATEGORY_COLORS: Record<string, { from: string; to: string }> = {
   // 演示
   demo: { from: 'from-blue-500', to: 'to-cyan-500' },
   // 工具
@@ -45,7 +45,8 @@ export const CATEGORY_COLORS: Record<string, { from: string, to: string }> = {
 }
 
 /** 默认使用全局壁纸色 */
-export const DEFAULT_TAPP_BG = 'bg-[var(--bg-accent,rgb(var(--color-accent,16_185_129)))]'
+export const DEFAULT_TAPP_BG =
+  'bg-[var(--bg-accent,rgb(var(--color-accent,16_185_129)))]'
 
 /** 图标样式返回类型 */
 export interface IconStyle {
@@ -84,17 +85,27 @@ export function getTappIconGradient(manifest: TappManifest): string {
 
   // 检查 ID 中是否包含类别关键词
   for (const [category, colors] of Object.entries(CATEGORY_COLORS)) {
-    if (lastPart.includes(category) || manifest.id.toLowerCase().includes(category)) {
+    if (
+      lastPart.includes(category) ||
+      manifest.id.toLowerCase().includes(category)
+    ) {
       return `bg-linear-to-br ${colors.from} ${colors.to}`
     }
   }
 
   // 2. 尝试从权限推断类型
   const permissions = manifest.permissions || []
-  if (permissions.includes('ai:generate') || permissions.includes('ai:chat') || permissions.includes('ai:image')) {
+  if (
+    permissions.includes('ai:generate') ||
+    permissions.includes('ai:chat') ||
+    permissions.includes('ai:image')
+  ) {
     return `bg-linear-to-br ${CATEGORY_COLORS.ai.from} ${CATEGORY_COLORS.ai.to}`
   }
-  if (permissions.includes('media:control') || permissions.includes('media:read')) {
+  if (
+    permissions.includes('media:control') ||
+    permissions.includes('media:read')
+  ) {
     return `bg-linear-to-br ${CATEGORY_COLORS.media.from} ${CATEGORY_COLORS.media.to}`
   }
   if (permissions.includes('platform:register')) {
@@ -112,8 +123,7 @@ export function getTappIconGradient(manifest: TappManifest): string {
  * 根据类别名称获取颜色
  */
 export function getCategoryGradient(category: string | undefined): string {
-  if (!category)
-    return DEFAULT_TAPP_BG
+  if (!category) return DEFAULT_TAPP_BG
 
   const lowerCategory = category.toLowerCase()
   if (CATEGORY_COLORS[lowerCategory]) {

@@ -97,22 +97,18 @@ let currentExtractionUrl: string | null = null
 function getLocalStorageCache(url: string): ColorPalette | null {
   try {
     const cached = localStorage.getItem('wallpaperColorCache')
-    if (!cached)
-      return null
+    if (!cached) return null
 
     const data: CachedColorData = JSON.parse(cached)
     if (data.version !== CACHE_VERSION) {
       localStorage.removeItem('wallpaperColorCache')
       return null
     }
-    if (data.url !== url)
-      return null
-    if (Date.now() - data.timestamp > CACHE_EXPIRY_MS)
-      return null
+    if (data.url !== url) return null
+    if (Date.now() - data.timestamp > CACHE_EXPIRY_MS) return null
 
     return data.palette
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -129,8 +125,7 @@ function saveToLocalStorage(url: string, palette: ColorPalette): void {
       version: CACHE_VERSION,
     }
     localStorage.setItem('wallpaperColorCache', JSON.stringify(data))
-  }
-  catch {
+  } catch {
     // 静默失败
   }
 }
@@ -164,25 +159,26 @@ function getDistanceFromGray(r: number, g: number, b: number): number {
 
 /** 检测是否为鲜艳的彩色 */
 function isVividColor(r: number, g: number, b: number): boolean {
-  const { minSaturation, minChroma, minGrayDistance, minBrightness, maxBrightness } = COLOR_THRESHOLDS
+  const {
+    minSaturation,
+    minChroma,
+    minGrayDistance,
+    minBrightness,
+    maxBrightness,
+  } = COLOR_THRESHOLDS
 
   const brightness = getPerceptualBrightness(r, g, b)
-  if (brightness < minBrightness || brightness > maxBrightness)
-    return false
+  if (brightness < minBrightness || brightness > maxBrightness) return false
 
-  if (getSaturation(r, g, b) < minSaturation)
-    return false
-  if (getChroma(r, g, b) < minChroma)
-    return false
-  if (getDistanceFromGray(r, g, b) < minGrayDistance)
-    return false
+  if (getSaturation(r, g, b) < minSaturation) return false
+  if (getChroma(r, g, b) < minChroma) return false
+  if (getDistanceFromGray(r, g, b) < minGrayDistance) return false
 
   // 检查RGB值是否太接近（灰色特征）
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
   const mid = r + g + b - max - min
-  if (max - mid < 20 && mid - min < 20)
-    return false
+  if (max - mid < 20 && mid - min < 20) return false
 
   return true
 }
@@ -195,43 +191,47 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 /** RGB转HSL */
-function rgbToHsl(r: number, g: number, b: number): { h: number, s: number, l: number } {
-  r /= 255; g /= 255; b /= 255
+function rgbToHsl(
+  r: number,
+  g: number,
+  b: number,
+): { h: number; s: number; l: number } {
+  r /= 255
+  g /= 255
+  b /= 255
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
   const delta = max - min
   const l = (max + min) / 2
 
-  let h = 0; let s = 0
+  let h = 0
+  let s = 0
   if (delta !== 0) {
     s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min)
-    if (max === r)
-      h = ((g - b) / delta + (g < b ? 6 : 0)) / 6
-    else if (max === g)
-      h = ((b - r) / delta + 2) / 6
+    if (max === r) h = ((g - b) / delta + (g < b ? 6 : 0)) / 6
+    else if (max === g) h = ((b - r) / delta + 2) / 6
     else h = ((r - g) / delta + 4) / 6
   }
   return { h, s, l }
 }
 
 /** HSL转RGB */
-function hslToRgb(h: number, s: number, l: number): { r: number, g: number, b: number } {
+function hslToRgb(
+  h: number,
+  s: number,
+  l: number,
+): { r: number; g: number; b: number } {
   if (s === 0) {
     const v = Math.round(l * 255)
     return { r: v, g: v, b: v }
   }
 
   const hue2rgb = (p: number, q: number, t: number) => {
-    if (t < 0)
-      t += 1
-    if (t > 1)
-      t -= 1
-    if (t < 1 / 6)
-      return p + (q - p) * 6 * t
-    if (t < 1 / 2)
-      return q
-    if (t < 2 / 3)
-      return p + (q - p) * (2 / 3 - t) * 6
+    if (t < 0) t += 1
+    if (t > 1) t -= 1
+    if (t < 1 / 6) return p + (q - p) * 6 * t
+    if (t < 1 / 2) return q
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
     return p
   }
 
@@ -282,10 +282,8 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
     const b = pixels[i + 2]
     const a = pixels[i + 3]
 
-    if (a < 128)
-      continue // 跳过透明像素
-    if (!isVividColor(r, g, b))
-      continue
+    if (a < 128) continue // 跳过透明像素
+    if (!isVividColor(r, g, b)) continue
 
     const qR = Math.round(r / COLOR_QUANTIZE_STEP) * COLOR_QUANTIZE_STEP
     const qG = Math.round(g / COLOR_QUANTIZE_STEP) * COLOR_QUANTIZE_STEP
@@ -316,22 +314,25 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
     })
 
   // 筛选鲜艳颜色
-  const { minPercentage, fallbackMinPercentage, minSaturation, minChroma } = COLOR_THRESHOLDS
+  const { minPercentage, fallbackMinPercentage, minSaturation, minChroma } =
+    COLOR_THRESHOLDS
 
-  let selectedColors = sortedColors.filter(c =>
-    c.percentage > minPercentage
-    && c.saturation > minSaturation
-    && c.chroma > minChroma
-    && c.brightness > 40
-    && c.brightness < 220,
+  let selectedColors = sortedColors.filter(
+    (c) =>
+      c.percentage > minPercentage &&
+      c.saturation > minSaturation &&
+      c.chroma > minChroma &&
+      c.brightness > 40 &&
+      c.brightness < 220,
   )
 
   // 如果没有足够鲜艳的颜色，放宽条件
   if (selectedColors.length === 0) {
-    selectedColors = sortedColors.filter(c =>
-      c.percentage > fallbackMinPercentage
-      && c.saturation > minSaturation * 0.8
-      && c.chroma > minChroma * 0.7,
+    selectedColors = sortedColors.filter(
+      (c) =>
+        c.percentage > fallbackMinPercentage &&
+        c.saturation > minSaturation * 0.8 &&
+        c.chroma > minChroma * 0.7,
     )
   }
 
@@ -355,7 +356,10 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
 /**
  * 从图片提取颜色（使用对象池优化）
  */
-async function extractFromImage(imageUrl: string, signal: AbortSignal): Promise<ColorPalette> {
+async function extractFromImage(
+  imageUrl: string,
+  signal: AbortSignal,
+): Promise<ColorPalette> {
   // 使用池化的 Image 对象
   const pooled = imagePool.acquire()
   const { img } = pooled
@@ -391,7 +395,11 @@ async function extractFromImage(imageUrl: string, signal: AbortSignal): Promise<
     }
 
     // 使用池化的 Canvas
-    const scale = Math.min(MAX_CANVAS_SIZE / img.width, MAX_CANVAS_SIZE / img.height, 1)
+    const scale = Math.min(
+      MAX_CANVAS_SIZE / img.width,
+      MAX_CANVAS_SIZE / img.height,
+      1,
+    )
     const width = Math.floor(img.width * scale)
     const height = Math.floor(img.height * scale)
 
@@ -405,8 +413,7 @@ async function extractFromImage(imageUrl: string, signal: AbortSignal): Promise<
     }
 
     return analyzeImageColors(imageData)
-  }
-  finally {
+  } finally {
     // 确保归还 Image 到池中
     imagePool.release(pooled)
   }
@@ -442,7 +449,9 @@ export async function extractColorsFromImage(
   try {
     // 壁纸提取时验证一致性（软验证，只记录警告）
     if (isWallpaper && !wallpaperState.isUrlActive(imageUrl)) {
-      console.debug('[ColorExtractor] Wallpaper URL may have changed, but continuing extraction')
+      console.debug(
+        '[ColorExtractor] Wallpaper URL may have changed, but continuing extraction',
+      )
       // 不再抛出错误，继续提取（因为用户可能正在等待颜色）
     }
 
@@ -456,7 +465,10 @@ export async function extractColorsFromImage(
       }
     }
 
-    console.debug('[ColorExtractor] Starting extraction for:', imageUrl.substring(0, 80))
+    console.debug(
+      '[ColorExtractor] Starting extraction for:',
+      imageUrl.substring(0, 80),
+    )
 
     // 提取颜色
     const palette = await extractFromImage(imageUrl, myController.signal)
@@ -467,12 +479,16 @@ export async function extractColorsFromImage(
 
     // 验证URL未变化
     if (!isMusic && currentExtractionUrl !== imageUrl) {
-      console.debug('[ColorExtractor] URL changed during extraction, but using result anyway')
+      console.debug(
+        '[ColorExtractor] URL changed during extraction, but using result anyway',
+      )
     }
 
     // 壁纸提取完成后验证（软验证）
     if (isWallpaper && !wallpaperState.isUrlActive(imageUrl)) {
-      console.debug('[ColorExtractor] Wallpaper changed during extraction, but applying colors anyway')
+      console.debug(
+        '[ColorExtractor] Wallpaper changed during extraction, but applying colors anyway',
+      )
     }
 
     // 缓存结果
@@ -482,21 +498,25 @@ export async function extractColorsFromImage(
     console.debug('[ColorExtractor] Extraction completed:', palette.primary)
 
     return palette
-  }
-  catch (error) {
+  } catch (error) {
     // 记录错误以便调试
-    console.debug('[ColorExtractor] Extraction failed:', error instanceof Error ? error.message : error)
+    console.debug(
+      '[ColorExtractor] Extraction failed:',
+      error instanceof Error ? error.message : error,
+    )
 
     if (error instanceof Error) {
       // 只在取消或壁纸变更时抛出错误
-      if (error.message.includes('cancel') || error.message.includes('Wallpaper')) {
+      if (
+        error.message.includes('cancel') ||
+        error.message.includes('Wallpaper')
+      ) {
         throw error
       }
     }
     // 其他错误返回默认颜色
     return { ...DEFAULT_PALETTE }
-  }
-  finally {
+  } finally {
     if (!isMusic && currentExtractionController === myController) {
       currentExtractionController = null
       currentExtractionUrl = null
@@ -535,8 +555,7 @@ export function clearColors(): void {
 export function clearColorCache(url?: string): void {
   if (url) {
     memoryCache.delete(url)
-  }
-  else {
+  } else {
     memoryCache.clear()
     localStorage.removeItem('wallpaperColorCache')
   }
@@ -547,10 +566,16 @@ export function clearColorCache(url?: string): void {
  * 用于处理跨域图片（如网站图标），因为已经渲染到页面的图片可以绑定到 canvas
  * 注意：如果图片跨域且服务器不支持 CORS，仍会失败
  */
-export function extractColorsFromLoadedImage(img: HTMLImageElement): ColorPalette {
+export function extractColorsFromLoadedImage(
+  img: HTMLImageElement,
+): ColorPalette {
   try {
     // 使用池化的 Canvas
-    const scale = Math.min(MAX_CANVAS_SIZE / img.naturalWidth, MAX_CANVAS_SIZE / img.naturalHeight, 1)
+    const scale = Math.min(
+      MAX_CANVAS_SIZE / img.naturalWidth,
+      MAX_CANVAS_SIZE / img.naturalHeight,
+      1,
+    )
     const width = Math.floor(img.naturalWidth * scale) || 50
     const height = Math.floor(img.naturalHeight * scale) || 50
 
@@ -560,10 +585,12 @@ export function extractColorsFromLoadedImage(img: HTMLImageElement): ColorPalett
     })
 
     return analyzeImageColors(imageData)
-  }
-  catch (err) {
+  } catch (err) {
     // 跨域图片会抛出安全错误
-    console.debug('[ColorExtractor] Cannot extract from image (likely CORS):', err)
+    console.debug(
+      '[ColorExtractor] Cannot extract from image (likely CORS):',
+      err,
+    )
     return { ...DEFAULT_PALETTE }
   }
 }

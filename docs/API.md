@@ -2,7 +2,7 @@
 
 Base URL:
 
-- Development backend direct: `http://localhost:3000`
+- Development backend direct: `http://localhost:1103`
 - Production through Myriad proxy: same-origin, for example `https://yourdomain.com`
 
 All endpoint paths are the same in both modes.
@@ -376,13 +376,13 @@ Future versions will support webhooks for real-time notifications:
 
 The API supports CORS for frontend access. Default allowed origins:
 
-- `http://localhost:4321` (development)
-- `http://localhost:3000` (development)
+- `http://localhost:1102` (development)
+- `http://localhost:1103` (development)
 
 Configure additional origins in the `.env` file:
 
 ```env
-CORS_ORIGINS=http://localhost:4321,https://yourdomain.com
+CORS_ORIGINS=http://localhost:1102,https://yourdomain.com
 ```
 
 ---
@@ -394,19 +394,19 @@ CORS_ORIGINS=http://localhost:4321,https://yourdomain.com
 **Health check:**
 
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:1103/health
 ```
 
 **Get configuration:**
 
 ```bash
-curl http://localhost:3000/api/config
+curl http://localhost:1103/api/config
 ```
 
 **Trigger fetch:**
 
 ```bash
-curl -X POST http://localhost:3000/api/fetch \
+curl -X POST http://localhost:1103/api/fetch \
   -H "Content-Type: application/json" \
   -d '{"platforms": ["github"]}'
 ```
@@ -416,13 +416,13 @@ curl -X POST http://localhost:3000/api/fetch \
 **Health check:**
 
 ```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/health"
+Invoke-RestMethod -Uri "http://localhost:1103/health"
 ```
 
 **Get configuration:**
 
 ```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/api/config"
+Invoke-RestMethod -Uri "http://localhost:1103/api/config"
 ```
 
 **Trigger fetch:**
@@ -432,7 +432,7 @@ $body = @{
     platforms = @("github")
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "http://localhost:3000/api/fetch" `
+Invoke-RestMethod -Uri "http://localhost:1103/api/fetch" `
   -Method Post `
   -ContentType "application/json" `
   -Body $body
@@ -468,7 +468,7 @@ use reqwest::Client;
 
 let client = Client::new();
 let response = client
-    .get("http://localhost:3000/api/config")
+    .get("http://localhost:1103/api/config")
     .send()
     .await?;
 
@@ -499,13 +499,13 @@ This section provides practical examples and common workflows for using the Myri
 
 ```bash
 # Step 1: Check API health
-curl http://localhost:3000/health
+curl http://localhost:1103/health
 
 # Step 2: Get current configuration
-curl http://localhost:3000/api/config
+curl http://localhost:1103/api/config
 
 # Step 3: Update configuration with API keys
-curl -X POST http://localhost:3000/api/config \
+curl -X POST http://localhost:1103/api/config \
   -H "Content-Type: application/json" \
   -d '{
     "github_token": "ghp_xxxxxxxxxxxx",
@@ -514,24 +514,24 @@ curl -X POST http://localhost:3000/api/config \
   }'
 
 # Step 4: Verify configuration
-curl http://localhost:3000/api/config
+curl http://localhost:1103/api/config
 ```
 
 #### 2. Data Collection Workflow
 
 ```bash
 # Fetch data from all platforms
-curl -X POST http://localhost:3000/api/fetch
+curl -X POST http://localhost:1103/api/fetch
 
 # Fetch from specific platforms only
-curl -X POST http://localhost:3000/api/fetch \
+curl -X POST http://localhost:1103/api/fetch \
   -H "Content-Type: application/json" \
   -d '{
     "platforms": ["GitHub", "Steam"]
   }'
 
 # Force refresh (ignore cache)
-curl -X POST http://localhost:3000/api/fetch \
+curl -X POST http://localhost:1103/api/fetch \
   -H "Content-Type: application/json" \
   -d '{
     "force": true
@@ -542,7 +542,7 @@ curl -X POST http://localhost:3000/api/fetch \
 
 ```bash
 # Trigger AI analysis
-curl -X POST http://localhost:3000/api/analysis \
+curl -X POST http://localhost:1103/api/analysis \
   -H "Content-Type: application/json" \
   -d '{
     "type": "profile_summary",
@@ -552,10 +552,10 @@ curl -X POST http://localhost:3000/api/analysis \
   }'
 
 # Get analysis results
-curl http://localhost:3000/api/analysis
+curl http://localhost:1103/api/analysis
 
 # Get specific analysis type
-curl "http://localhost:3000/api/analysis?type=profile_summary&limit=5"
+curl "http://localhost:1103/api/analysis?type=profile_summary&limit=5"
 ```
 
 ### Platform-Specific Examples
@@ -564,16 +564,19 @@ curl "http://localhost:3000/api/analysis?type=profile_summary&limit=5"
 
 ```bash
 # Get user complete information
-curl "http://localhost:3000/api/bilibili/user?uid=123456"
+curl "http://localhost:1103/api/bilibili/user?uid=123456"
 
 # Get user basic info
-curl "http://localhost:3000/api/bilibili/user/123456"
+curl "http://localhost:1103/api/bilibili/user/123456"
 
 # Get favorites list
-curl "http://localhost:3000/api/bilibili/favorites/123456"
+curl "http://localhost:1103/api/bilibili/favorites/123456"
 
 # Get bangumi (anime) list
-curl "http://localhost:3000/api/bilibili/bangumi/123456?bangumi_type=1"
+curl "http://localhost:1103/api/bilibili/bangumi/123456?bangumi_type=1"
+
+# Get all bangumi/cinema follows
+curl "http://localhost:1103/api/bilibili/bangumi/all/123456"
 ```
 
 **Bangumi Types:**
@@ -581,32 +584,52 @@ curl "http://localhost:3000/api/bilibili/bangumi/123456?bangumi_type=1"
 - `1` - Anime
 - `2` - Movies
 - `3` - Documentaries
-- `4` - TV Shows
+- `4` - Chinese animation
+- `5` - TV Shows
+
+#### Bangumi API
+
+```bash
+# Get user complete information and collections
+curl "http://localhost:1103/api/bangumi/user?username=example"
+
+# Get user basic info
+curl "http://localhost:1103/api/bangumi/user/example"
+
+# Get current user info with an access token
+curl "http://localhost:1103/api/bangumi/me?access_token=YOUR_TOKEN"
+
+# Get collections list
+curl "http://localhost:1103/api/bangumi/collections/example"
+
+# Optional: include access token and custom User-Agent for private collections
+curl "http://localhost:1103/api/bangumi/collections/example?access_token=YOUR_TOKEN&user_agent=haru%2FMyriad"
+```
 
 #### GitHub API
 
 ```bash
 # Get user profile
-curl "http://localhost:3000/api/github/user/username"
+curl "http://localhost:1103/api/github/user/username"
 
 # Get user repositories
-curl "http://localhost:3000/api/github/repos/username"
+curl "http://localhost:1103/api/github/repos/username"
 
 # Get repository details
-curl "http://localhost:3000/api/github/repo/owner/repo-name"
+curl "http://localhost:1103/api/github/repo/owner/repo-name"
 ```
 
 #### Steam API
 
 ```bash
 # Get user profile
-curl "http://localhost:3000/api/steam/user/76561198012345678"
+curl "http://localhost:1103/api/steam/user/76561198012345678"
 
 # Get owned games
-curl "http://localhost:3000/api/steam/games/76561198012345678"
+curl "http://localhost:1103/api/steam/games/76561198012345678"
 
 # Get recent games
-curl "http://localhost:3000/api/steam/recent/76561198012345678"
+curl "http://localhost:1103/api/steam/recent/76561198012345678"
 ```
 
 ### JavaScript/TypeScript Examples
@@ -616,14 +639,14 @@ curl "http://localhost:3000/api/steam/recent/76561198012345678"
 ```javascript
 // Get configuration
 async function getConfig() {
-  const response = await fetch("http://localhost:3000/api/config");
+  const response = await fetch("http://localhost:1103/api/config");
   const config = await response.json();
   console.log(config);
 }
 
 // Update configuration
 async function updateConfig(newConfig) {
-  const response = await fetch("http://localhost:3000/api/config", {
+  const response = await fetch("http://localhost:1103/api/config", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -636,7 +659,7 @@ async function updateConfig(newConfig) {
 // Trigger data fetch
 async function triggerFetch(platforms = null) {
   const body = platforms ? { platforms } : {};
-  const response = await fetch("http://localhost:3000/api/fetch", {
+  const response = await fetch("http://localhost:1103/api/fetch", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -652,7 +675,7 @@ async function getAnalysis(type = null, limit = 10) {
   if (type) params.append("type", type);
   params.append("limit", limit.toString());
 
-  const response = await fetch(`http://localhost:3000/api/analysis?${params}`);
+  const response = await fetch(`http://localhost:1103/api/analysis?${params}`);
   return response.json();
 }
 ```
@@ -667,7 +690,7 @@ function ConfigPanel() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:3000/api/config")
+    fetch("http://localhost:1103/api/config")
       .then((res) => res.json())
       .then((data) => {
         setConfig(data);
@@ -676,7 +699,7 @@ function ConfigPanel() {
   }, []);
 
   const handleSave = async (newConfig) => {
-    const response = await fetch("http://localhost:3000/api/config", {
+    const response = await fetch("http://localhost:1103/api/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newConfig),
@@ -705,7 +728,7 @@ function ConfigPanel() {
 ```python
 import requests
 
-BASE_URL = "http://localhost:3000"
+BASE_URL = "http://localhost:1103"
 
 # Get configuration
 def get_config():
@@ -783,7 +806,7 @@ async function safeFetch(url, options = {}) {
 
 // Usage
 try {
-  const config = await safeFetch("http://localhost:3000/api/config");
+  const config = await safeFetch("http://localhost:1103/api/config");
   console.log(config);
 } catch (error) {
   alert(`Failed to load configuration: ${error.message}`);
@@ -868,7 +891,7 @@ Future versions will include authentication:
 
 ```bash
 # Login to get token
-curl -X POST http://localhost:3000/api/auth/login \
+curl -X POST http://localhost:1103/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "password"}'
 
@@ -879,7 +902,7 @@ curl -X POST http://localhost:3000/api/auth/login \
 }
 
 # Use token in requests
-curl http://localhost:3000/api/config \
+curl http://localhost:1103/api/config \
   -H "Authorization: Bearer eyJhbGc..."
 ```
 
@@ -896,4 +919,4 @@ curl http://localhost:3000/api/config \
 
 **API Version**: 0.1.0  
 **Last Updated**: 2025-01-05  
-**Base URL**: `http://localhost:3000` in development; same-origin through the Myriad proxy in production.
+**Base URL**: `http://localhost:1103` in development; same-origin through the Myriad proxy in production.

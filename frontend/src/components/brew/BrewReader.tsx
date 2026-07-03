@@ -17,16 +17,28 @@ import {
   LuClock as Clock,
   LuUser as User,
 } from '@lib/icons'
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { API_URL as CONFIG_API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { useNavigation } from '../../contexts/NavigationContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
-import { useReadingListOptional } from '../../contexts/ReadingListContext'
 
-import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../hooks/animation'
+import { useReadingListOptional } from '../../contexts/ReadingListContext'
+import {
+  brewAnimationPresets,
+  getBrewTransition,
+  useBrewAnimationConfig,
+} from '../../hooks/animation'
 import * as brewliaApi from '../../services/brewliaApi'
-import { loadEmbedData, playNeteaseSong, processEmbeds } from '../../utils/embedProcessor'
+import {
+  loadEmbedData,
+  playNeteaseSong,
+  processEmbeds,
+} from '../../utils/embedProcessor'
 import { processRssContent } from '../../utils/rssContentProcessor'
 import {
   AnnotationTooltip,
@@ -39,13 +51,11 @@ import {
   ReaderRightPanel,
   STYLE_READER_CONTAINER,
   STYLE_SCROLL_SMOOTH,
-  TRANSITION_FAST,
   useAnnotations,
   useComments,
   usePodcast,
   useReaderSettings,
 } from './reader'
-import { API_URL as CONFIG_API_URL } from '../../config'
 
 // API URL
 const API_URL = CONFIG_API_URL
@@ -61,12 +71,14 @@ function saveEmbedElements(container: HTMLElement): SavedIframe[] {
   const saved: SavedIframe[] = []
 
   // 保存 bilibili 嵌入（通过 data-video-id 匹配）
-  container.querySelectorAll('.brew-bilibili-embed[data-video-id]').forEach((el) => {
-    const videoId = el.getAttribute('data-video-id')
-    if (videoId && el.querySelector('iframe')) {
-      saved.push({ key: `bilibili:${videoId}`, element: el as HTMLElement })
-    }
-  })
+  container
+    .querySelectorAll('.brew-bilibili-embed[data-video-id]')
+    .forEach((el) => {
+      const videoId = el.getAttribute('data-video-id')
+      if (videoId && el.querySelector('iframe')) {
+        saved.push({ key: `bilibili:${videoId}`, element: el as HTMLElement })
+      }
+    })
 
   // 保存 RSS 内容中的 iframe 包装器（通过 iframe src 匹配）
   container.querySelectorAll('.rss-content-iframe-wrapper').forEach((el) => {
@@ -80,53 +92,77 @@ function saveEmbedElements(container: HTMLElement): SavedIframe[] {
   })
 
   // 保存后处理阶段包装的 iframe（通过 iframe src 匹配）
-  container.querySelectorAll('iframe[data-iframe-wrapped="true"]').forEach((iframe) => {
-    if (iframe.closest('.brew-bilibili-embed') || iframe.closest('.rss-content-iframe-wrapper'))
-      return
-    const wrapper = iframe.parentElement
-    if (wrapper) {
-      const src = iframe.getAttribute('src') || (iframe as HTMLIFrameElement).src || ''
-      if (src) {
-        saved.push({ key: `wrapped:${src}`, element: wrapper })
+  container
+    .querySelectorAll('iframe[data-iframe-wrapped="true"]')
+    .forEach((iframe) => {
+      if (
+        iframe.closest('.brew-bilibili-embed') ||
+        iframe.closest('.rss-content-iframe-wrapper')
+      ) {
+        return
       }
-    }
-  })
+      const wrapper = iframe.parentElement
+      if (wrapper) {
+        const src =
+          iframe.getAttribute('src') || (iframe as HTMLIFrameElement).src || ''
+        if (src) {
+          saved.push({ key: `wrapped:${src}`, element: wrapper })
+        }
+      }
+    })
 
   // 保存已加载数据的嵌入卡片（网易云音乐、Steam、GitHub）
   // 避免 overlay 变化时丢失 data-loaded 状态导致重新 fetch
-  container.querySelectorAll('.brew-netease-music[data-loaded="true"], .brew-netease-music[data-loaded="loading"]').forEach((el) => {
-    const songId = el.getAttribute('data-song-id')
-    if (songId) {
-      saved.push({ key: `netease:${songId}`, element: el as HTMLElement })
-    }
-  })
-  container.querySelectorAll('.brew-steam-game[data-loaded="true"], .brew-steam-game[data-loaded="loading"]').forEach((el) => {
-    const appId = el.getAttribute('data-app-id')
-    if (appId) {
-      saved.push({ key: `steam:${appId}`, element: el as HTMLElement })
-    }
-  })
-  container.querySelectorAll('.brew-github-repo[data-loaded="true"], .brew-github-repo[data-loaded="loading"]').forEach((el) => {
-    const repo = el.getAttribute('data-repo')
-    if (repo) {
-      saved.push({ key: `github:${repo}`, element: el as HTMLElement })
-    }
-  })
+  container
+    .querySelectorAll(
+      '.brew-netease-music[data-loaded="true"], .brew-netease-music[data-loaded="loading"]',
+    )
+    .forEach((el) => {
+      const songId = el.getAttribute('data-song-id')
+      if (songId) {
+        saved.push({ key: `netease:${songId}`, element: el as HTMLElement })
+      }
+    })
+  container
+    .querySelectorAll(
+      '.brew-steam-game[data-loaded="true"], .brew-steam-game[data-loaded="loading"]',
+    )
+    .forEach((el) => {
+      const appId = el.getAttribute('data-app-id')
+      if (appId) {
+        saved.push({ key: `steam:${appId}`, element: el as HTMLElement })
+      }
+    })
+  container
+    .querySelectorAll(
+      '.brew-github-repo[data-loaded="true"], .brew-github-repo[data-loaded="loading"]',
+    )
+    .forEach((el) => {
+      const repo = el.getAttribute('data-repo')
+      if (repo) {
+        saved.push({ key: `github:${repo}`, element: el as HTMLElement })
+      }
+    })
 
   // 从 DOM 摘出保存的元素（防止 innerHTML 赋值时销毁它们）
-  saved.forEach(s => s.element.remove())
+  saved.forEach((s) => s.element.remove())
 
   return saved
 }
 
-function restoreEmbedElements(container: HTMLElement, saved: SavedIframe[]): void {
-  if (saved.length === 0)
-    return
-  const savedMap = new Map(saved.map(s => [s.key, s.element]))
+function restoreEmbedElements(
+  container: HTMLElement,
+  saved: SavedIframe[],
+): void {
+  if (saved.length === 0) return
+  const savedMap = new Map(saved.map((s) => [s.key, s.element]))
   const restored = new Set<string>()
 
   // 通用恢复：按 selector + key 生成器匹配
-  const restoreBySelector = (selector: string, keyFn: (el: Element) => string | null) => {
+  const restoreBySelector = (
+    selector: string,
+    keyFn: (el: Element) => string | null,
+  ) => {
     container.querySelectorAll(selector).forEach((newEl) => {
       const key = keyFn(newEl)
       if (key && !restored.has(key)) {
@@ -140,8 +176,11 @@ function restoreEmbedElements(container: HTMLElement, saved: SavedIframe[]): voi
   }
 
   // 恢复 bilibili 嵌入
-  restoreBySelector('.brew-bilibili-embed[data-video-id]', el =>
-    el.getAttribute('data-video-id') ? `bilibili:${el.getAttribute('data-video-id')}` : null)
+  restoreBySelector('.brew-bilibili-embed[data-video-id]', (el) =>
+    el.getAttribute('data-video-id')
+      ? `bilibili:${el.getAttribute('data-video-id')}`
+      : null,
+  )
 
   // 恢复 RSS iframe 包装器
   restoreBySelector('.rss-content-iframe-wrapper', (el) => {
@@ -150,17 +189,30 @@ function restoreEmbedElements(container: HTMLElement, saved: SavedIframe[]): voi
   })
 
   // 恢复已加载的嵌入卡片（避免重新 fetch API 数据）
-  restoreBySelector('.brew-netease-music[data-song-id]', el =>
-    el.getAttribute('data-song-id') ? `netease:${el.getAttribute('data-song-id')}` : null)
-  restoreBySelector('.brew-steam-game[data-app-id]', el =>
-    el.getAttribute('data-app-id') ? `steam:${el.getAttribute('data-app-id')}` : null)
-  restoreBySelector('.brew-github-repo[data-repo]', el =>
-    el.getAttribute('data-repo') ? `github:${el.getAttribute('data-repo')}` : null)
+  restoreBySelector('.brew-netease-music[data-song-id]', (el) =>
+    el.getAttribute('data-song-id')
+      ? `netease:${el.getAttribute('data-song-id')}`
+      : null,
+  )
+  restoreBySelector('.brew-steam-game[data-app-id]', (el) =>
+    el.getAttribute('data-app-id')
+      ? `steam:${el.getAttribute('data-app-id')}`
+      : null,
+  )
+  restoreBySelector('.brew-github-repo[data-repo]', (el) =>
+    el.getAttribute('data-repo')
+      ? `github:${el.getAttribute('data-repo')}`
+      : null,
+  )
 
   // 恢复后处理包装的 iframe
   container.querySelectorAll('iframe').forEach((newIframe) => {
-    if (newIframe.closest('.brew-bilibili-embed') || newIframe.closest('.rss-content-iframe-wrapper'))
+    if (
+      newIframe.closest('.brew-bilibili-embed') ||
+      newIframe.closest('.rss-content-iframe-wrapper')
+    ) {
       return
+    }
     const src = newIframe.getAttribute('src') || newIframe.src || ''
     const key = `wrapped:${src}`
     if (src && !restored.has(key)) {
@@ -175,8 +227,7 @@ function restoreEmbedElements(container: HTMLElement, saved: SavedIframe[]): voi
 
 // 处理图片 URL - 封面图等外部图片通过代理访问
 function getImageUrl(imageUrl: string | null): string | null {
-  if (!imageUrl)
-    return null
+  if (!imageUrl) return null
   // 已经是本地路径或代理路径，直接使用
   if (imageUrl.startsWith('/api/') || imageUrl.startsWith(`${API_URL}/api/`)) {
     return imageUrl.startsWith('/api/') ? `${API_URL}${imageUrl}` : imageUrl
@@ -209,7 +260,17 @@ interface TocItem {
   level: number
 }
 
-export default function BrewReader({ item, onClose, onToggleStar, isAuthenticated = false, isAdmin = false, sourceType, onNavigateToArticle, articleList, currentArticleIndex }: BrewReaderProps) {
+export default function BrewReader({
+  item,
+  onClose,
+  onToggleStar,
+  isAuthenticated = false,
+  isAdmin = false,
+  sourceType,
+  onNavigateToArticle,
+  articleList,
+  currentArticleIndex,
+}: BrewReaderProps) {
   const { t } = useI18n()
   const contentRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
@@ -243,7 +304,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         content: articleContent,
         sourceUrl: item.link,
         author: item.author || undefined,
-        publishedAt: item.published_at ? new Date(item.published_at).toISOString() : undefined,
+        publishedAt: item.published_at
+          ? new Date(item.published_at).toISOString()
+          : undefined,
         metadata: {
           sourceId: item.source_id,
           sourceName: item.source_name,
@@ -269,7 +332,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 动画配置 - 根据设备性能自适应
   const animConfig = useBrewAnimationConfig()
-  const readerTransition = useMemo(() => getBrewTransition(animConfig, 'reader'), [animConfig])
+  const readerTransition = useMemo(
+    () => getBrewTransition(animConfig, 'reader'),
+    [animConfig],
+  )
   const enableAnimations = animConfig.level !== 'none'
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
@@ -282,7 +348,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const {
     fontSize,
     lineHeight,
-    _fontFamily,
     theme,
     layout,
     currentTheme,
@@ -316,7 +381,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const [activeHeadingId, setActiveHeadingId] = useState<string>('')
   const activeHeadingIdRef = useRef<string>('')
   const [headingHistory, setHeadingHistory] = useState<string[]>([]) // 标题访问历史
-  const progressLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const progressLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
   const isLongPressRef = useRef(false)
 
   // 统一的 Toast 显示函数，自动管理定时器防止泄漏
@@ -351,7 +418,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     showBrewliaPanel,
     hoveredAnnotation,
     tooltipPosition,
-    _setShowAnnotations,
     setSelectedAnnotation,
     setShowBrewliaPanel,
     setHoveredAnnotation,
@@ -376,7 +442,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     showCommentPopup,
     commentPopupPosition,
     selectedText,
-    _selectionRange,
     commentInput,
     commentSubmitting,
     showCommentsPanel,
@@ -386,7 +451,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     expandedComments,
     commentReplies,
     commentTooltip,
-    _setComments,
     setShowCommentPopup,
     setCommentPopupPosition,
     setSelectedText,
@@ -402,7 +466,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     toggleReplies,
     submitReply,
     highlightComments,
-    _commentsLoadingRef,
   } = useComments({
     itemId: item.id,
     isAuthenticated,
@@ -422,14 +485,16 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     }
   }, [])
 
-  const startTooltipHideTimer = useCallback((delay = 200) => {
-    if (tooltipHideTimerRef.current)
-      return // 已有定时器运行中
-    tooltipHideTimerRef.current = setTimeout(() => {
-      tooltipHideTimerRef.current = null
-      setCommentTooltip(null)
-    }, delay)
-  }, [setCommentTooltip])
+  const startTooltipHideTimer = useCallback(
+    (delay = 200) => {
+      if (tooltipHideTimerRef.current) return // 已有定时器运行中
+      tooltipHideTimerRef.current = setTimeout(() => {
+        tooltipHideTimerRef.current = null
+        setCommentTooltip(null)
+      }, delay)
+    },
+    [setCommentTooltip],
+  )
 
   const handleTooltipMouseEnter = useCallback(() => {
     isHoveringTooltipRef.current = true
@@ -450,7 +515,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const {
     podcastDialogues,
     podcastLoading,
-    _podcastError,
     showPodcastPlayer,
     podcastState,
     podcastCurrentIndex,
@@ -466,11 +530,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     articleCache,
     articleCacheLoading,
     clearingVoiceId,
-    _groupedVoices,
     setShowPodcastPlayer,
     setShowVoiceSettings,
     loadPodcast,
-    _regeneratePodcast,
     handleTtsEngineChange,
     handleVoiceChange,
     handleOpenSettings,
@@ -483,7 +545,6 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     handlePodcastPrev,
     handlePodcastNext,
     handlePodcastSeek,
-    _podcastListRef,
   } = usePodcast({
     itemId: item.id,
     sourceId: item.source_id,
@@ -493,23 +554,29 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   })
 
   // 侧边栏按钮样式 - useMemo 缓存
-  const sideButtonClass = useMemo(() =>
-    `p-2.5 rounded-xl transition-all duration-200 ${currentTheme.secondary} hover:${currentTheme.text} ${
-      isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'
-    }`, [currentTheme.secondary, currentTheme.text, isDark])
+  const sideButtonClass = useMemo(
+    () =>
+      `p-2.5 rounded-xl transition-all duration-200 ${currentTheme.secondary} hover:${currentTheme.text} ${
+        isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'
+      }`,
+    [currentTheme.secondary, currentTheme.text, isDark],
+  )
 
   // 基础内容（不含注释/评论高亮）—— 仅在文章内容或暗色模式变化时重新计算
   // 与 iframe 嵌入等重型内容绑定，避免频繁重建导致闪烁
   const baseContent = useMemo(() => {
-    if (!contentReady)
-      return ''
+    if (!contentReady) return ''
 
     // 🔴 网络搜索文章：直接显示 AI 生成的摘要（不再支持加载原文）
     if (item.fromWebSearch && !item.content) {
       const hasSummary = item.summary && item.summary.trim().length > 20
       if (hasSummary) {
-        const paragraphs = item.summary!.split(/\n\n|\n/).filter(p => p.trim())
-        const summaryHtml = paragraphs.map(p => `<p>${p.trim()}</p>`).join('\n')
+        const paragraphs = item
+          .summary!.split(/\n\n|\n/)
+          .filter((p) => p.trim())
+        const summaryHtml = paragraphs
+          .map((p) => `<p>${p.trim()}</p>`)
+          .join('\n')
         return `<div class="web-search-summary">
           ${summaryHtml}
           <p class="web-search-note">以上内容由 AI 根据网络搜索结果生成</p>
@@ -520,7 +587,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       </div>`
     }
 
-    let content = item.content || item.summary || `<p class="opacity-50">${t.brew.noContent}</p>`
+    let content =
+      item.content ||
+      item.summary ||
+      `<p class="opacity-50">${t.brew.noContent}</p>`
 
     // 0. 首先处理 RSS 内容格式（清理危险标签、适配各类 HTML 标签样式）
     content = processRssContent(content, {
@@ -534,7 +604,15 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     // 1. 处理嵌入内容（iframe、特定链接转卡片）
     content = processEmbeds(content, isDark)
     return content
-  }, [contentReady, item.content, item.summary, item.link, item.fromWebSearch, isDark, t.brew.noContent])
+  }, [
+    contentReady,
+    item.content,
+    item.summary,
+    item.link,
+    item.fromWebSearch,
+    isDark,
+    t.brew.noContent,
+  ])
 
   // 内容渲染 ref（取代 dangerouslySetInnerHTML，避免 iframe 重建导致闪烁）
   const contentInnerRef = useRef<HTMLDivElement>(null)
@@ -543,8 +621,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   // 🔴 统一内容渲染：基础内容变化时全量更新，仅注释/评论变化时保留已加载的 iframe
   useEffect(() => {
     const container = contentInnerRef.current
-    if (!container || !baseContent)
-      return
+    if (!container || !baseContent) return
 
     const isBaseChanged = prevBaseContentRef.current !== baseContent
     prevBaseContentRef.current = baseContent
@@ -563,12 +640,18 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       const saved = saveEmbedElements(container)
       container.innerHTML = displayHtml
       restoreEmbedElements(container, saved)
-    }
-    else {
+    } else {
       // 基础内容变化：直接全量替换
       container.innerHTML = displayHtml
     }
-  }, [baseContent, showAnnotations, annotations, comments, highlightComments, theme])
+  }, [
+    baseContent,
+    showAnnotations,
+    annotations,
+    comments,
+    highlightComments,
+    theme,
+  ])
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
   // 这避免了同时执行动画 + 大量 DOM 渲染导致的卡顿
@@ -580,7 +663,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
     // 使用 requestAnimationFrame 确保在下一帧开始前设置
     // 延迟时间略长于动画时长，确保动画完成
-    const delay = (readerTransition.duration * 1000) + 50
+    const delay = readerTransition.duration * 1000 + 50
     const timer = setTimeout(() => {
       requestAnimationFrame(() => {
         setContentReady(true)
@@ -600,8 +683,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 格式化日期 - useMemo 缓存
   const formattedDate = useMemo(() => {
-    if (!item.published_at)
-      return ''
+    if (!item.published_at) return ''
     return new Date(item.published_at).toLocaleDateString('zh-CN', {
       year: 'numeric',
       month: 'long',
@@ -612,14 +694,18 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   // 计算阅读进度
   const updateReadingProgress = useCallback(() => {
     // RAF 节流：每帧最多更新一次，避免每像素滚动都触发 React re-render
-    if (progressRafRef.current !== null)
-      return
+    if (progressRafRef.current !== null) return
     progressRafRef.current = requestAnimationFrame(() => {
       progressRafRef.current = null
       if (articleRef.current) {
         const { scrollTop, scrollHeight, clientHeight } = articleRef.current
-        const progress = Math.min(100, Math.round((scrollTop / (scrollHeight - clientHeight)) * 100))
-        setReadingProgress(prev => (Number.isNaN(progress) || prev === progress ? prev : progress))
+        const progress = Math.min(
+          100,
+          Math.round((scrollTop / (scrollHeight - clientHeight)) * 100),
+        )
+        setReadingProgress((prev) =>
+          Number.isNaN(progress) || prev === progress ? prev : progress,
+        )
       }
     })
   }, [])
@@ -635,8 +721,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         }
 
         // 跳过已处理的图片
-        if (img.dataset.sizeProcessed)
-          return
+        if (img.dataset.sizeProcessed) return
         img.dataset.sizeProcessed = 'true'
 
         // 添加基础样式
@@ -656,8 +741,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
         if (img.complete && img.naturalWidth > 0) {
           handleImageLoad()
-        }
-        else {
+        } else {
           img.addEventListener('load', handleImageLoad, { once: true })
         }
       })
@@ -672,8 +756,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       const codeBlocks = contentRef.current.querySelectorAll('pre')
       codeBlocks.forEach((pre) => {
         // 跳过已处理的代码块
-        if (pre.parentElement?.classList.contains('code-block-wrapper'))
-          return
+        if (pre.parentElement?.classList.contains('code-block-wrapper')) return
 
         // 创建包装容器
         const wrapper = document.createElement('div')
@@ -685,7 +768,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
         // 添加复制按钮 - 代码块背景始终是深色的，所以按钮用浅色样式
         const copyBtn = document.createElement('button')
-        copyBtn.className = 'absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/10 hover:bg-white/20 text-white/60 hover:text-white/90 backdrop-blur-sm'
+        copyBtn.className =
+          'absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/10 hover:bg-white/20 text-white/60 hover:text-white/90 backdrop-blur-sm'
         copyBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`
         copyBtn.title = '复制代码'
 
@@ -700,8 +784,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             setTimeout(() => {
               copyBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`
             }, 2000)
-          }
-          catch (err) {
+          } catch (err) {
             console.error('复制失败:', err)
           }
         })
@@ -714,15 +797,22 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       const iframes = contentRef.current.querySelectorAll('iframe')
       iframes.forEach((iframe) => {
         // 跳过已在 brew-embed 容器内的（bilibili 等已处理的嵌入）
-        if (iframe.closest('.brew-embed-card, .brew-bilibili-embed, .rss-content-iframe-wrapper'))
+        if (
+          iframe.closest(
+            '.brew-embed-card, .brew-bilibili-embed, .rss-content-iframe-wrapper',
+          )
+        ) {
           return
+        }
         // 跳过已处理的
-        if (iframe.dataset.iframeWrapped)
-          return
+        if (iframe.dataset.iframeWrapped) return
         iframe.dataset.iframeWrapped = 'true'
 
         const src = iframe.src || iframe.getAttribute('src') || ''
-        const isMusicEmbed = src.includes('music.163.com') || src.includes('spotify.com') || src.includes('xiami.com')
+        const isMusicEmbed =
+          src.includes('music.163.com') ||
+          src.includes('spotify.com') ||
+          src.includes('xiami.com')
 
         const wrapper = document.createElement('div')
         wrapper.className = `my-5 rounded-xl overflow-hidden ${isMusicEmbed ? 'aspect-3/1' : 'aspect-video'}`
@@ -738,7 +828,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       })
 
       // 解析标题生成目录
-      const headings = contentRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6')
+      const headings = contentRef.current.querySelectorAll(
+        'h1, h2, h3, h4, h5, h6',
+      )
       const tocItems: TocItem[] = []
 
       headings.forEach((heading, index) => {
@@ -772,8 +864,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 处理评论高亮和嵌入卡片的点击和悬停事件
   useEffect(() => {
-    if (!contentRef.current)
-      return
+    if (!contentRef.current) return
 
     const handleContentClick = async (e: Event) => {
       const target = e.target as HTMLElement
@@ -782,7 +873,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       if (target.tagName === 'IMG') {
         const img = target as HTMLImageElement
         // 检查图片是否在嵌入卡片内（brew-embed-card, brew-embed-exempt, brew-bilibili-embed 等）
-        const isInEmbedCard = img.closest('.brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video')
+        const isInEmbedCard = img.closest(
+          '.brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video',
+        )
 
         if (img.src && !isInEmbedCard) {
           e.preventDefault()
@@ -806,12 +899,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             neteaseCard.classList.add('opacity-50', 'pointer-events-none')
             await playNeteaseSong(songId)
             showToastMessage(t.brew.startPlaying)
-          }
-          catch (error) {
+          } catch (error) {
             console.error('[BrewReader] 播放网易云音乐失败:', error)
             showToastMessage(t.brew.playFailed)
-          }
-          finally {
+          } finally {
             neteaseCard.classList.remove('opacity-50', 'pointer-events-none')
           }
         }
@@ -833,7 +924,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           setShowCommentsPanel(true)
           // 可选：滚动到对应评论
           setTimeout(() => {
-            const commentEl = document.querySelector(`[data-panel-comment-id="${commentId}"]`)
+            const commentEl = document.querySelector(
+              `[data-panel-comment-id="${commentId}"]`,
+            )
             if (commentEl) {
               commentEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
             }
@@ -855,7 +948,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         // 同一个评论不重复设置，避免创建新对象引用触发重渲染
         if (commentId && commentId !== lastHoveredCommentId) {
           lastHoveredCommentId = commentId
-          const comment = commentsRef.current.find(c => c.id === Number.parseInt(commentId))
+          const comment = commentsRef.current.find(
+            (c) => c.id === Number.parseInt(commentId),
+          )
           if (comment) {
             const rect = highlight.getBoundingClientRect()
             setCommentTooltip({
@@ -865,8 +960,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             })
           }
         }
-      }
-      else {
+      } else {
         lastHoveredCommentId = null
         // 鼠标离开高亮区域到文章其他内容，启动延迟关闭（如果不在 tooltip 上）
         if (!isHoveringTooltipRef.current) {
@@ -889,7 +983,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     return () => {
       contentRef.current?.removeEventListener('click', handleContentClick)
       contentRef.current?.removeEventListener('mouseover', handleMouseOver)
-      contentRef.current?.removeEventListener('mouseleave', handleContentMouseLeave)
+      contentRef.current?.removeEventListener(
+        'mouseleave',
+        handleContentMouseLeave,
+      )
     }
   }, []) // 挂载一次，通过 commentsRef 读取最新评论
 
@@ -900,13 +997,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   useEffect(() => {
     const article = articleRef.current
     const content = contentRef.current
-    if (!article || !content || toc.length === 0)
-      return
+    if (!article || !content || toc.length === 0) return
 
     // 缓存标题元素引用，避免每次滚动都调用 querySelectorAll
-    const headings = Array.from(content.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[]
-    if (headings.length === 0)
-      return
+    const headings = Array.from(
+      content.querySelectorAll('h1, h2, h3, h4, h5, h6'),
+    ) as HTMLElement[]
+    if (headings.length === 0) return
 
     const handleScrollForToc = () => {
       let currentId = ''
@@ -924,7 +1021,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         // 记录标题访问历史（去重，只记录最近 20 个）
         if (currentId && prevId) {
           setHeadingHistory((prev) => {
-            const newHistory = prev.filter(id => id !== prevId)
+            const newHistory = prev.filter((id) => id !== prevId)
             newHistory.push(prevId)
             return newHistory.slice(-20)
           })
@@ -951,8 +1048,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     try {
       await navigator.clipboard.writeText(item.link)
       showToastMessage(t.brew.linkCopied)
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to copy:', err)
     }
   }
@@ -963,7 +1059,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     if (heading && articleRef.current) {
       const articleRect = articleRef.current.getBoundingClientRect()
       const headingRect = heading.getBoundingClientRect()
-      const scrollTop = articleRef.current.scrollTop + headingRect.top - articleRect.top - 80
+      const scrollTop =
+        articleRef.current.scrollTop + headingRect.top - articleRect.top - 80
 
       articleRef.current.scrollTo({
         top: scrollTop,
@@ -978,13 +1075,12 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   const goToPreviousHeading = useCallback(() => {
     if (headingHistory.length > 0) {
       const prevId = headingHistory[headingHistory.length - 1]
-      setHeadingHistory(prev => prev.slice(0, -1))
+      setHeadingHistory((prev) => prev.slice(0, -1))
       scrollToHeading(prevId)
       showToastMessage(t.brew.backToPrevParagraph, 1500)
-    }
-    else if (activeHeadingId && toc.length > 0) {
+    } else if (activeHeadingId && toc.length > 0) {
       // 没有历史时，跳转到当前标题的上一个
-      const currentIndex = toc.findIndex(t => t.id === activeHeadingId)
+      const currentIndex = toc.findIndex((t) => t.id === activeHeadingId)
       if (currentIndex > 0) {
         scrollToHeading(toc[currentIndex - 1].id)
         showToastMessage(t.brew.backToPrevParagraph, 1500)
@@ -1037,12 +1133,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape')
-        onClose()
-      if (e.key === '+' || e.key === '=')
-        adjustFontSize(1)
-      if (e.key === '-')
-        adjustFontSize(-1)
+      if (e.key === 'Escape') onClose()
+      if (e.key === '+' || e.key === '=') adjustFontSize(1)
+      if (e.key === '-') adjustFontSize(-1)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -1071,8 +1164,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 处理文本选择
   const handleTextSelection = useCallback(() => {
-    if (!isAuthenticated)
-      return
+    if (!isAuthenticated) return
 
     const selection = window.getSelection()
     if (!selection || selection.isCollapsed || !selection.rangeCount) {
@@ -1108,7 +1200,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         start: textIndex,
         end: textIndex + text.length,
         contextBefore: fullText.slice(Math.max(0, textIndex - 50), textIndex),
-        contextAfter: fullText.slice(textIndex + text.length, textIndex + text.length + 50),
+        contextAfter: fullText.slice(
+          textIndex + text.length,
+          textIndex + text.length + 50,
+        ),
       })
     }
 
@@ -1117,8 +1212,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 监听选择事件
   useEffect(() => {
-    if (!isAuthenticated)
-      return
+    if (!isAuthenticated) return
 
     let selectionTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -1130,15 +1224,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     document.addEventListener('mouseup', handleMouseUp)
     return () => {
       document.removeEventListener('mouseup', handleMouseUp)
-      if (selectionTimer)
-        clearTimeout(selectionTimer)
+      if (selectionTimer) clearTimeout(selectionTimer)
     }
   }, [isAuthenticated, handleTextSelection])
 
   // 监听选中状态变化，当选中被移除时关闭弹窗
   useEffect(() => {
-    if (!showCommentPopup)
-      return
+    if (!showCommentPopup) return
 
     const handleSelectionChange = () => {
       // 如果焦点在评论弹窗内部（比如 textarea），不要关闭弹窗
@@ -1158,7 +1250,8 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     }
 
     document.addEventListener('selectionchange', handleSelectionChange)
-    return () => document.removeEventListener('selectionchange', handleSelectionChange)
+    return () =>
+      document.removeEventListener('selectionchange', handleSelectionChange)
   }, [showCommentPopup])
 
   // 点击其他地方关闭评论弹窗
@@ -1166,8 +1259,10 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement
       // 如果点击的是评论弹窗内部或评论高亮，不关闭
-      if (target.closest('.comment-popup')
-        || target.closest('.user-comment-highlight')) {
+      if (
+        target.closest('.comment-popup') ||
+        target.closest('.user-comment-highlight')
+      ) {
         return
       }
       if (showCommentPopup) {
@@ -1186,17 +1281,21 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   }, [showCommentPopup])
 
   // 包装 scrollToAnnotation 以传入 refs
-  const handleScrollToAnnotation = useCallback((annotation: AnnotationItem) => {
-    scrollToAnnotation(annotation, contentRef, articleRef)
-  }, [scrollToAnnotation])
+  const handleScrollToAnnotation = useCallback(
+    (annotation: AnnotationItem) => {
+      scrollToAnnotation(annotation, contentRef, articleRef)
+    },
+    [scrollToAnnotation],
+  )
 
   // 监听注释 hover 事件（优化稳定性）
   useEffect(() => {
-    if (!contentRef.current || !showAnnotations)
-      return
+    if (!contentRef.current || !showAnnotations) return
 
     const handleMouseOver = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest('.brewlia-annotation') as HTMLElement
+      const target = (e.target as HTMLElement).closest(
+        '.brewlia-annotation',
+      ) as HTMLElement
 
       if (target) {
         // 鼠标在注释上：清除隐藏定时器，显示 tooltip
@@ -1207,7 +1306,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
         const term = decodeURIComponent(target.dataset.term || '')
         const explanation = decodeURIComponent(target.dataset.explanation || '')
-        const type = target.dataset.type as AnnotationType || 'term'
+        const type = (target.dataset.type as AnnotationType) || 'term'
 
         const rect = target.getBoundingClientRect()
         setTooltipPosition({
@@ -1215,8 +1314,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           y: rect.top - 8,
         })
         setHoveredAnnotation({ term, explanation, type })
-      }
-      else {
+      } else {
         // 鼠标移到非注释元素：启动延迟隐藏
         if (!hoverTimeoutRef.current) {
           hoverTimeoutRef.current = setTimeout(() => {
@@ -1263,31 +1361,33 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   }, [])
 
   // 自动隐藏控制栏
-  const resetHideTimer = useCallback((delay = 4000) => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current)
-    }
-    hideTimerRef.current = setTimeout(() => {
-      // 如果鼠标在控制栏区域，不隐藏
-      if (isHoveringControlsRef.current) {
-        resetHideTimer(delay)
-        return
+  const resetHideTimer = useCallback(
+    (delay = 4000) => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current)
       }
-      setShowPanels(false)
-      // 关闭所有附属的 tooltip
-      closeAllTooltips()
-      // 进入冷却期
-      cooldownRef.current = true
-      setTimeout(() => {
-        cooldownRef.current = false
-      }, 800)
-    }, delay)
-  }, [closeAllTooltips])
+      hideTimerRef.current = setTimeout(() => {
+        // 如果鼠标在控制栏区域，不隐藏
+        if (isHoveringControlsRef.current) {
+          resetHideTimer(delay)
+          return
+        }
+        setShowPanels(false)
+        // 关闭所有附属的 tooltip
+        closeAllTooltips()
+        // 进入冷却期
+        cooldownRef.current = true
+        setTimeout(() => {
+          cooldownRef.current = false
+        }, 800)
+      }, delay)
+    },
+    [closeAllTooltips],
+  )
 
   // 显示控制栏
   const showPanelsIfAllowed = useCallback(() => {
-    if (cooldownRef.current || isScrollingRef.current)
-      return
+    if (cooldownRef.current || isScrollingRef.current) return
     setShowPanels(true)
     resetHideTimer()
   }, [resetHideTimer])
@@ -1295,8 +1395,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   // 滚动时：向上滚动显示控制栏2秒，向下滚动隐藏
   useEffect(() => {
     const article = articleRef.current
-    if (!article)
-      return
+    if (!article) return
 
     let scrollEndTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -1306,16 +1405,14 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       lastScrollTopRef.current = currentScrollTop
 
       // 清除之前的定时器
-      if (scrollEndTimer)
-        clearTimeout(scrollEndTimer)
+      if (scrollEndTimer) clearTimeout(scrollEndTimer)
 
       // 向上滚动（往之前内容滑动）时显示控制栏
       if (isScrollingUp && currentScrollTop > 10) {
         isScrollingRef.current = false
         setShowPanels(true)
         resetHideTimer(2000) // 显示2秒后自动隐藏
-      }
-      else if (!isScrollingUp) {
+      } else if (!isScrollingUp) {
         // 向下滚动时隐藏（如果鼠标不在控制栏区域）
         if (!isScrollingRef.current && !isHoveringControlsRef.current) {
           isScrollingRef.current = true
@@ -1334,8 +1431,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     article.addEventListener('scroll', handleScroll, { passive: true })
     return () => {
       article.removeEventListener('scroll', handleScroll)
-      if (scrollEndTimer)
-        clearTimeout(scrollEndTimer)
+      if (scrollEndTimer) clearTimeout(scrollEndTimer)
     }
   }, [resetHideTimer, closeAllTooltips])
 
@@ -1354,8 +1450,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
       // 控制栏区域：内容区两侧各 80px 范围内（控制栏宽度约 60px + margin）
       const controlZoneWidth = 80
-      const isInLeftControlZone = e.clientX >= contentLeft - controlZoneWidth && e.clientX <= contentLeft
-      const isInRightControlZone = e.clientX >= contentRight && e.clientX <= contentRight + controlZoneWidth
+      const isInLeftControlZone =
+        e.clientX >= contentLeft - controlZoneWidth && e.clientX <= contentLeft
+      const isInRightControlZone =
+        e.clientX >= contentRight &&
+        e.clientX <= contentRight + controlZoneWidth
       const isInControlZone = isInLeftControlZone || isInRightControlZone
 
       // 更新悬停状态
@@ -1364,8 +1463,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       // 控制栏区域立即响应，其他区域节流
       if (isInControlZone) {
         // 控制栏区域：直接显示，不节流，不自动隐藏
-        if (cooldownRef.current)
-          return
+        if (cooldownRef.current) return
         isScrollingRef.current = false // 允许覆盖滚动隐藏
         setShowPanels(true)
         // 清除隐藏定时器，鼠标在控制栏区域时不隐藏
@@ -1373,11 +1471,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
           clearTimeout(hideTimerRef.current)
           hideTimerRef.current = null
         }
-      }
-      else {
+      } else {
         // 非控制栏区域：节流 500ms
-        if (now - lastMouseMoveRef.current < 500)
-          return
+        if (now - lastMouseMoveRef.current < 500) return
         lastMouseMoveRef.current = now
         showPanelsIfAllowed()
       }
@@ -1396,8 +1492,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseleave', handleMouseLeave)
-      if (hideTimerRef.current)
-        clearTimeout(hideTimerRef.current)
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
     }
   }, [showPanelsIfAllowed, resetHideTimer, layout, showPanels])
 
@@ -1405,8 +1500,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
   useEffect(() => {
     resetHideTimer()
     return () => {
-      if (hideTimerRef.current)
-        clearTimeout(hideTimerRef.current)
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
     }
   }, [resetHideTimer])
 
@@ -1436,10 +1530,21 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
 
   // 遮罩渐变背景样式 - useMemo 缓存避免每次渲染重新创建对象
   const maskGradientStyles = useMemo(() => {
-    const bgColor = theme === 'light' ? '#f8f5ec' : theme === 'sepia' ? '#f4ecd8' : theme === 'dark' ? '#1a1a1a' : '#0d1117'
+    const bgColor =
+      theme === 'light'
+        ? '#f8f5ec'
+        : theme === 'sepia'
+          ? '#f4ecd8'
+          : theme === 'dark'
+            ? '#1a1a1a'
+            : '#0d1117'
     return {
-      top: { background: `linear-gradient(to bottom, ${bgColor} 0%, ${bgColor}00 100%)` },
-      bottom: { background: `linear-gradient(to top, ${bgColor} 0%, ${bgColor}00 100%)` },
+      top: {
+        background: `linear-gradient(to bottom, ${bgColor} 0%, ${bgColor}00 100%)`,
+      },
+      bottom: {
+        background: `linear-gradient(to top, ${bgColor} 0%, ${bgColor}00 100%)`,
+      },
     }
   }, [theme])
 
@@ -1533,7 +1638,11 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             handleClearVoiceCache={handleClearVoiceCache}
             handleSwitchToCachedVoice={handleSwitchToVoice}
             reloadCloudTts={reloadCloudTTS}
-            handlePlayPause={podcastState === 'playing' ? handlePodcastPause : handlePodcastPlay}
+            handlePlayPause={
+              podcastState === 'playing'
+                ? handlePodcastPause
+                : handlePodcastPlay
+            }
             handleStop={handlePodcastStop}
             handlePrevious={handlePodcastPrev}
             handleNext={handlePodcastNext}
@@ -1543,13 +1652,20 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             handleProgressPointerLeave={handleProgressPointerLeave}
             enableAnimations={enableAnimations}
             sideButtonClass={sideButtonClass}
-            onMouseEnter={() => { isHoveringControlsRef.current = true }}
-            onMouseLeave={() => { isHoveringControlsRef.current = false; resetHideTimer(2000) }}
+            onMouseEnter={() => {
+              isHoveringControlsRef.current = true
+            }}
+            onMouseLeave={() => {
+              isHoveringControlsRef.current = false
+              resetHideTimer(2000)
+            }}
             t={t}
           />
 
           {/* 正文内容 */}
-          <div className={`w-full ${currentLayout.width} px-6 py-16 transition-all duration-300`}>
+          <div
+            className={`w-full ${currentLayout.width} px-6 py-16 transition-all duration-300`}
+          >
             {/* 标题 */}
             <h1
               className={`text-3xl font-bold ${currentTheme.text} leading-tight mb-6`}
@@ -1559,10 +1675,16 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             </h1>
 
             {/* 元信息 */}
-            <div className={`flex flex-wrap items-center gap-4 text-sm ${currentTheme.secondary} mb-8 pb-8 border-b ${currentTheme.border}`}>
+            <div
+              className={`flex flex-wrap items-center gap-4 text-sm ${currentTheme.secondary} mb-8 pb-8 border-b ${currentTheme.border}`}
+            >
               <span className="flex items-center gap-1.5">
                 {item.source_icon && (
-                  <img src={item.source_icon} alt="" className="w-4 h-4 rounded" />
+                  <img
+                    src={item.source_icon}
+                    alt=""
+                    className="w-4 h-4 rounded"
+                  />
                 )}
                 {item.source_name}
               </span>
@@ -1581,14 +1703,15 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               {item.reading_time && (
                 <span className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4" />
-                  {t.brew.readingTime.replace('{time}', String(item.reading_time))}
+                  {t.brew.readingTime.replace(
+                    '{time}',
+                    String(item.reading_time),
+                  )}
                 </span>
               )}
               {item.word_count && (
                 <span>
-                  {item.word_count.toLocaleString()}
-                  {' '}
-                  {t.brew.wordCount}
+                  {item.word_count.toLocaleString()} {t.brew.wordCount}
                 </span>
               )}
             </div>
@@ -1825,8 +1948,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
               [&_.web-search-link]:bg-black/5 [&_.web-search-link]:hover:bg-black/10
               [&_.web-search-link]:transition-colors
 
-              ${isDark
-      ? `
+              ${
+                isDark
+                  ? `
                 /* === 暗色主题 === */
                 prose-invert
 
@@ -2055,7 +2179,7 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-code_figcaption]:mt-2 [&_.notion-code_figcaption]:opacity-50
 
               `
-      : `
+                  : `
                 /* === 浅色主题 === */
 
                 /* 链接 */
@@ -2277,38 +2401,54 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 [&_.notion-code_pre]:rounded-xl [&_.notion-code_pre]:overflow-x-auto
                 [&_.notion-code_figcaption]:text-center [&_.notion-code_figcaption]:text-sm
                 [&_.notion-code_figcaption]:mt-2 [&_.notion-code_figcaption]:opacity-50
-              `}
+              `
+              }
             `}
               style={{
                 fontSize: `${fontSize}px`,
                 lineHeight,
                 fontFamily: currentFont.family,
               }}
-              onClick={e => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
             >
               {/* WebKit 优化：动画期间显示简单占位，避免同时渲染大量 DOM */}
-              {contentReady
-                ? (
-                    <div ref={contentInnerRef} />
-                  )
-                : (
-                    <div className="space-y-4 animate-pulse">
-                      <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '90%' }} />
-                      <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '100%' }} />
-                      <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '85%' }} />
-                      <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '95%' }} />
-                      <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`} style={{ width: '70%' }} />
-                    </div>
-                  )}
+              {contentReady ? (
+                <div ref={contentInnerRef} />
+              ) : (
+                <div className="space-y-4 animate-pulse">
+                  <div
+                    className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`}
+                    style={{ width: '90%' }}
+                  />
+                  <div
+                    className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`}
+                    style={{ width: '100%' }}
+                  />
+                  <div
+                    className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`}
+                    style={{ width: '85%' }}
+                  />
+                  <div
+                    className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`}
+                    style={{ width: '95%' }}
+                  />
+                  <div
+                    className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-black/5'}`}
+                    style={{ width: '70%' }}
+                  />
+                </div>
+              )}
             </div>
 
             {/* 音频播放器 */}
             {item.audio_url && (
               <div
                 className={`mt-8 p-4 rounded-2xl ${currentTheme.surfaceSolid} border ${currentTheme.border}`}
-                onClick={e => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
               >
-                <p className={`text-sm ${currentTheme.secondary} mb-3`}>{t.brew.audioLabel}</p>
+                <p className={`text-sm ${currentTheme.secondary} mb-3`}>
+                  {t.brew.audioLabel}
+                </p>
                 <audio src={item.audio_url} controls className="w-full" />
               </div>
             )}
@@ -2322,17 +2462,14 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 return (
                   <div
                     className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
-                    onClick={e => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <div className={`text-center mb-6 ${currentTheme.secondary}`}>
+                    <div
+                      className={`text-center mb-6 ${currentTheme.secondary}`}
+                    >
                       <span className="text-sm">
-                        {readingList?.currentList?.name}
-                        {' '}
-                        ·
-                        {positionInfo.index + 1}
-                        {' '}
-                        /
-                        {positionInfo.total}
+                        {readingList?.currentList?.name} ·
+                        {positionInfo.index + 1} /{positionInfo.total}
                       </span>
                     </div>
                     <div className="flex gap-4">
@@ -2346,13 +2483,27 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                         disabled={!positionInfo.hasPrev}
                         className={`flex-1 min-w-0 p-4 rounded-2xl text-left transition-all ${positionInfo.hasPrev ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
                       >
-                        <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}>
-                          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        <div
+                          className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}
+                        >
+                          <svg
+                            className="w-3 h-3 shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 19l-7-7 7-7"
+                            />
                           </svg>
                           上一篇
                         </div>
-                        <div className={`${currentTheme.text} font-medium truncate`}>
+                        <div
+                          className={`${currentTheme.text} font-medium truncate`}
+                        >
                           {prevItem?.title || '没有了'}
                         </div>
                       </button>
@@ -2366,13 +2517,27 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                         disabled={!positionInfo.hasNext}
                         className={`flex-1 min-w-0 p-4 rounded-2xl text-right transition-all ${positionInfo.hasNext ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
                       >
-                        <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}>
+                        <div
+                          className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}
+                        >
                           下一篇
-                          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          <svg
+                            className="w-3 h-3 shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
                           </svg>
                         </div>
-                        <div className={`${currentTheme.text} font-medium truncate`}>
+                        <div
+                          className={`${currentTheme.text} font-medium truncate`}
+                        >
                           {nextItem?.title || '没有了'}
                         </div>
                       </button>
@@ -2381,15 +2546,23 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                 )
               }
               // 全局文章列表导航
-              if (articleList && currentArticleIndex != null && onNavigateToArticle) {
+              if (
+                articleList &&
+                currentArticleIndex != null &&
+                onNavigateToArticle
+              ) {
                 const hasPrev = currentArticleIndex > 0
                 const hasNext = currentArticleIndex < articleList.length - 1
-                const prevArticle = hasPrev ? articleList[currentArticleIndex - 1] : null
-                const nextArticle = hasNext ? articleList[currentArticleIndex + 1] : null
+                const prevArticle = hasPrev
+                  ? articleList[currentArticleIndex - 1]
+                  : null
+                const nextArticle = hasNext
+                  ? articleList[currentArticleIndex + 1]
+                  : null
                 return (
                   <div
                     className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
-                    onClick={e => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex gap-4">
                       <button
@@ -2399,13 +2572,27 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                         disabled={!hasPrev}
                         className={`flex-1 min-w-0 p-4 rounded-2xl text-left transition-all ${hasPrev ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
                       >
-                        <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}>
-                          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        <div
+                          className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}
+                        >
+                          <svg
+                            className="w-3 h-3 shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 19l-7-7 7-7"
+                            />
                           </svg>
                           上一篇
                         </div>
-                        <div className={`${currentTheme.text} font-medium truncate`}>
+                        <div
+                          className={`${currentTheme.text} font-medium truncate`}
+                        >
                           {prevArticle?.title || '没有了'}
                         </div>
                       </button>
@@ -2416,13 +2603,27 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
                         disabled={!hasNext}
                         className={`flex-1 min-w-0 p-4 rounded-2xl text-right transition-all ${hasNext ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
                       >
-                        <div className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}>
+                        <div
+                          className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}
+                        >
                           下一篇
-                          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          <svg
+                            className="w-3 h-3 shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
                           </svg>
                         </div>
-                        <div className={`${currentTheme.text} font-medium truncate`}>
+                        <div
+                          className={`${currentTheme.text} font-medium truncate`}
+                        >
                           {nextArticle?.title || '没有了'}
                         </div>
                       </button>
@@ -2455,8 +2656,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
             handleShare={() => {}}
             enableAnimations={enableAnimations}
             sideButtonClass={sideButtonClass}
-            onMouseEnter={() => { isHoveringControlsRef.current = true }}
-            onMouseLeave={() => { isHoveringControlsRef.current = false; resetHideTimer(2000) }}
+            onMouseEnter={() => {
+              isHoveringControlsRef.current = true
+            }}
+            onMouseLeave={() => {
+              isHoveringControlsRef.current = false
+              resetHideTimer(2000)
+            }}
             t={t}
             isAuthenticated={isAuthenticated || false}
             hasComments={hasComments}
@@ -2471,10 +2677,20 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
       <AnimatePresence>
         {showToast && (
           <motion.div
-            initial={enableAnimations ? { opacity: 0, y: 50, scale: 0.95 } : false}
-            animate={enableAnimations ? { opacity: 1, y: 0, scale: 1 } : undefined}
-            exit={enableAnimations ? { opacity: 0, y: 50, scale: 0.95 } : undefined}
-            transition={enableAnimations ? { duration: 0.25, ease: [0.16, 1, 0.3, 1] } : undefined}
+            initial={
+              enableAnimations ? { opacity: 0, y: 50, scale: 0.95 } : false
+            }
+            animate={
+              enableAnimations ? { opacity: 1, y: 0, scale: 1 } : undefined
+            }
+            exit={
+              enableAnimations ? { opacity: 0, y: 50, scale: 0.95 } : undefined
+            }
+            transition={
+              enableAnimations
+                ? { duration: 0.25, ease: [0.16, 1, 0.3, 1] }
+                : undefined
+            }
             className={`fixed bottom-8 inset-x-0 mx-auto w-fit px-4 py-2 rounded-xl shadow-lg z-60 ${
               isDark ? 'bg-neutral-800/95 text-white' : 'bg-black/90 text-white'
             }`}
@@ -2606,7 +2822,9 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         handleClearVoiceCache={handleClearVoiceCache}
         handleSwitchToCachedVoice={handleSwitchToVoice}
         reloadCloudTts={reloadCloudTTS}
-        handlePlayPause={podcastState === 'playing' ? handlePodcastPause : handlePodcastPlay}
+        handlePlayPause={
+          podcastState === 'playing' ? handlePodcastPause : handlePodcastPlay
+        }
         handleStop={handlePodcastStop}
         handlePrevious={handlePodcastPrev}
         handleNext={handlePodcastNext}
@@ -2620,8 +2838,13 @@ export default function BrewReader({ item, onClose, onToggleStar, isAuthenticate
         currentFont={currentFont}
         handleShare={handleShare}
         enableAnimations={enableAnimations}
-        onTouchStart={() => { isHoveringControlsRef.current = true }}
-        onTouchEnd={() => { isHoveringControlsRef.current = false; resetHideTimer(2000) }}
+        onTouchStart={() => {
+          isHoveringControlsRef.current = true
+        }}
+        onTouchEnd={() => {
+          isHoveringControlsRef.current = false
+          resetHideTimer(2000)
+        }}
         t={t}
       />
 

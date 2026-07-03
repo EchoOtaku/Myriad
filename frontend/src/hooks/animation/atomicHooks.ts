@@ -52,7 +52,7 @@ export function usePageVisible(): boolean {
  */
 export function useVisibilityInterval(
   callback: () => void,
-  options: { delay: number, enabled?: boolean, immediate?: boolean },
+  options: { delay: number; enabled?: boolean; immediate?: boolean },
 ): void {
   const { delay, enabled = true, immediate = false } = options
   const callbackRef = useRef(callback)
@@ -63,14 +63,12 @@ export function useVisibilityInterval(
   }, [callback])
 
   useEffect(() => {
-    if (!enabled)
-      return
+    if (!enabled) return
 
     let cancelled = false
 
     const tick = () => {
-      if (cancelled || !isPageVisible())
-        return
+      if (cancelled || !isPageVisible()) return
       callbackRef.current()
       timeoutRef.current = window.setTimeout(tick, delay)
     }
@@ -87,8 +85,7 @@ export function useVisibilityInterval(
     const unsub = onVisibility((vis) => {
       if (vis && timeoutRef.current === null && !cancelled) {
         timeoutRef.current = window.setTimeout(tick, delay)
-      }
-      else if (!vis && timeoutRef.current !== null) {
+      } else if (!vis && timeoutRef.current !== null) {
         clearTimeout(timeoutRef.current)
         timeoutRef.current = null
       }
@@ -134,8 +131,7 @@ export function useElementSize<T extends Element>(): {
       unobserveRef.current = observeResize(element, (entry) => {
         const { width, height } = entry.contentRect
         setSize((prev) => {
-          if (prev.width === width && prev.height === height)
-            return prev
+          if (prev.width === width && prev.height === height) return prev
           return { width, height }
         })
       })
@@ -178,29 +174,32 @@ export function useInView<T extends Element>(options?: {
   const unobserveRef = useRef<(() => void) | null>(null)
   const hasTriggeredRef = useRef(false)
 
-  const ref = useCallback((element: T | null) => {
-    if (unobserveRef.current) {
-      unobserveRef.current()
-      unobserveRef.current = null
-    }
+  const ref = useCallback(
+    (element: T | null) => {
+      if (unobserveRef.current) {
+        unobserveRef.current()
+        unobserveRef.current = null
+      }
 
-    if (element && !(once && hasTriggeredRef.current)) {
-      unobserveRef.current = observeIntersection(
-        element,
-        (entry) => {
-          const visible = entry.isIntersecting
-          setIsVisible(visible)
+      if (element && !(once && hasTriggeredRef.current)) {
+        unobserveRef.current = observeIntersection(
+          element,
+          (entry) => {
+            const visible = entry.isIntersecting
+            setIsVisible(visible)
 
-          if (visible && once) {
-            hasTriggeredRef.current = true
-            unobserveRef.current?.()
-            unobserveRef.current = null
-          }
-        },
-        { threshold, rootMargin },
-      )
-    }
-  }, [threshold, rootMargin, once])
+            if (visible && once) {
+              hasTriggeredRef.current = true
+              unobserveRef.current?.()
+              unobserveRef.current = null
+            }
+          },
+          { threshold, rootMargin },
+        )
+      }
+    },
+    [threshold, rootMargin, once],
+  )
 
   useEffect(() => {
     return () => {
@@ -222,7 +221,9 @@ export function useInView<T extends Element>(options?: {
  * return <img ref={ref} src={shouldLoad ? src : placeholder} />;
  * ```
  */
-export function useLazyLoad<T extends Element>(rootMargin = '200px'): {
+export function useLazyLoad<T extends Element>(
+  rootMargin = '200px',
+): {
   ref: React.RefCallback<T>
   shouldLoad: boolean
 } {
@@ -256,7 +257,11 @@ export function useIdleEffect(
 
   useEffect(() => {
     const id = `idle-${now()}-${Math.random().toString(36).slice(2, 9)}`
-    const cancel = scheduleIdle(id, () => callbackRef.current(), options?.priority)
+    const cancel = scheduleIdle(
+      id,
+      () => callbackRef.current(),
+      options?.priority,
+    )
     return cancel
   }, deps)
 }
@@ -315,8 +320,7 @@ export function useAnimationFrame(
   }, [callback])
 
   useEffect(() => {
-    if (!enabled)
-      return
+    if (!enabled) return
 
     let rafId: number
 
@@ -363,13 +367,16 @@ export function useThrottle<T extends (...args: any[]) => void>(
     callbackRef.current = callback
   }, [callback])
 
-  return useCallback((...args: Parameters<T>) => {
-    const nowTime = now()
-    if (nowTime - lastRunRef.current >= ms) {
-      lastRunRef.current = nowTime
-      callbackRef.current(...args)
-    }
-  }, [ms]) as T
+  return useCallback(
+    (...args: Parameters<T>) => {
+      const nowTime = now()
+      if (nowTime - lastRunRef.current >= ms) {
+        lastRunRef.current = nowTime
+        callbackRef.current(...args)
+      }
+    },
+    [ms],
+  ) as T
 }
 
 /**
@@ -385,7 +392,7 @@ export function useDebounce<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value)
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), ms)
+    const timer = setTimeout(setDebounced, ms, value)
     return () => clearTimeout(timer)
   }, [value, ms])
 

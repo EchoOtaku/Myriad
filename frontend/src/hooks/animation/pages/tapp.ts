@@ -91,11 +91,12 @@ export function useTappStagger(
   // 状态管理（使用 ref 避免不必要的渲染）
   const stateRef = useRef<AnimationState>(AnimationState.WAITING)
   const scheduledRef = useRef(false)
-  const [, forceUpdate] = useReducer(x => x + 1, 0)
+  const [, forceUpdate] = useReducer((x) => x + 1, 0)
 
-  const canAnimate = stateRef.current === AnimationState.READY
-    || stateRef.current === AnimationState.RUNNING
-    || stateRef.current === AnimationState.COMPLETED
+  const canAnimate =
+    stateRef.current === AnimationState.READY ||
+    stateRef.current === AnimationState.RUNNING ||
+    stateRef.current === AnimationState.COMPLETED
 
   // 动画完成回调
   const onComplete = useCallback(() => {
@@ -107,8 +108,7 @@ export function useTappStagger(
 
   useEffect(() => {
     // 避免重复调度
-    if (scheduledRef.current)
-      return
+    if (scheduledRef.current) return
     scheduledRef.current = true
 
     // 调度动画
@@ -127,9 +127,9 @@ export function useTappStagger(
 
       // 只在关键状态变化时触发渲染
       if (
-        (prev === AnimationState.WAITING && state === AnimationState.READY)
-        || (prev === AnimationState.SCHEDULED && state === AnimationState.READY)
-        || state === AnimationState.SKIPPED
+        (prev === AnimationState.WAITING && state === AnimationState.READY) ||
+        (prev === AnimationState.SCHEDULED && state === AnimationState.READY) ||
+        state === AnimationState.SKIPPED
       ) {
         forceUpdate()
       }
@@ -151,7 +151,10 @@ export function useTappStagger(
  * 用于在页面不可见时暂停动画
  */
 export function useTappVisibility(): boolean {
-  const [visible, setVisible] = useReducer(() => isPageVisible(), isPageVisible())
+  const [visible, setVisible] = useReducer(
+    () => isPageVisible(),
+    isPageVisible(),
+  )
 
   useEffect(() => {
     return onVisibility(() => {

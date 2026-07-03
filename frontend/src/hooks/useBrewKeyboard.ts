@@ -44,16 +44,40 @@ interface KeyboardShortcut {
 // 导出快捷键列表（供帮助弹窗使用）
 export const BREW_SHORTCUTS: KeyboardShortcut[] = [
   // 导航
-  { key: 'j / ↓', descriptionKey: 'shortcutDescNextArticle', category: 'navigation' },
-  { key: 'k / ↑', descriptionKey: 'shortcutDescPrevArticle', category: 'navigation' },
-  { key: 'o / Enter', descriptionKey: 'shortcutDescOpenReader', category: 'navigation' },
-  { key: 'Escape', descriptionKey: 'shortcutDescCloseReader', category: 'navigation' },
-  { key: '/', descriptionKey: 'shortcutDescFocusSearch', category: 'navigation' },
+  {
+    key: 'j / ↓',
+    descriptionKey: 'shortcutDescNextArticle',
+    category: 'navigation',
+  },
+  {
+    key: 'k / ↑',
+    descriptionKey: 'shortcutDescPrevArticle',
+    category: 'navigation',
+  },
+  {
+    key: 'o / Enter',
+    descriptionKey: 'shortcutDescOpenReader',
+    category: 'navigation',
+  },
+  {
+    key: 'Escape',
+    descriptionKey: 'shortcutDescCloseReader',
+    category: 'navigation',
+  },
+  {
+    key: '/',
+    descriptionKey: 'shortcutDescFocusSearch',
+    category: 'navigation',
+  },
 
   // 文章操作
   { key: 'm', descriptionKey: 'shortcutDescToggleRead', category: 'article' },
   { key: 's', descriptionKey: 'shortcutDescToggleStar', category: 'article' },
-  { key: 'Shift + A', descriptionKey: 'shortcutDescMarkAllRead', category: 'article' },
+  {
+    key: 'Shift + A',
+    descriptionKey: 'shortcutDescMarkAllRead',
+    category: 'article',
+  },
 
   // 订阅源操作
   { key: 'r', descriptionKey: 'shortcutDescRefreshSource', category: 'source' },
@@ -81,9 +105,8 @@ export function useBrewKeyboard({
 
   // 获取当前选中项的索引
   const getCurrentIndex = useCallback(() => {
-    if (!selectedItem)
-      return -1
-    return items.findIndex(item => item.id === selectedItem.id)
+    if (!selectedItem) return -1
+    return items.findIndex((item) => item.id === selectedItem.id)
   }, [items, selectedItem])
 
   // 选择上一篇
@@ -91,8 +114,7 @@ export function useBrewKeyboard({
     const currentIndex = getCurrentIndex()
     if (currentIndex > 0) {
       onSelectItem(items[currentIndex - 1])
-    }
-    else if (currentIndex === -1 && items.length > 0) {
+    } else if (currentIndex === -1 && items.length > 0) {
       // 如果没有选中，选择第一篇
       onSelectItem(items[0])
     }
@@ -103,138 +125,135 @@ export function useBrewKeyboard({
     const currentIndex = getCurrentIndex()
     if (currentIndex < items.length - 1) {
       onSelectItem(items[currentIndex + 1])
-    }
-    else if (currentIndex === -1 && items.length > 0) {
+    } else if (currentIndex === -1 && items.length > 0) {
       // 如果没有选中，选择第一篇
       onSelectItem(items[0])
     }
   }, [getCurrentIndex, items, onSelectItem])
 
   // 键盘事件处理
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // 如果禁用或焦点在输入框中，忽略
-    if (!enabled)
-      return
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      // 如果禁用或焦点在输入框中，忽略
+      if (!enabled) return
 
-    const target = e.target as HTMLElement
-    const isInputFocused
-      = target.tagName === 'INPUT'
-        || target.tagName === 'TEXTAREA'
-        || target.isContentEditable
+      const target = e.target as HTMLElement
+      const isInputFocused =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
 
-    // 防止快速连续触发
-    const now = Date.now()
-    if (now - lastKeyTime.current < 50)
-      return
-    lastKeyTime.current = now
+      // 防止快速连续触发
+      const now = Date.now()
+      if (now - lastKeyTime.current < 50) return
+      lastKeyTime.current = now
 
-    // 某些快捷键在输入框中也需要工作
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      onCloseReader?.()
-      // 如果搜索框有焦点，取消焦点
-      if (document.activeElement === searchInputRef?.current) {
-        searchInputRef.current?.blur()
+      // 某些快捷键在输入框中也需要工作
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onCloseReader?.()
+        // 如果搜索框有焦点，取消焦点
+        if (document.activeElement === searchInputRef?.current) {
+          searchInputRef.current?.blur()
+        }
+        return
       }
-      return
-    }
 
-    // 输入框聚焦时忽略其他快捷键
-    if (isInputFocused)
-      return
+      // 输入框聚焦时忽略其他快捷键
+      if (isInputFocused) return
 
-    switch (e.key.toLowerCase()) {
-      // 导航：下一篇
-      case 'j':
-      case 'arrowdown':
-        e.preventDefault()
-        selectNext()
-        break
-
-      // 导航：上一篇
-      case 'k':
-      case 'arrowup':
-        e.preventDefault()
-        selectPrevious()
-        break
-
-      // 打开/关闭阅读器
-      case 'o':
-      case 'enter':
-        e.preventDefault()
-        if (!selectedItem && items.length > 0) {
-          onSelectItem(items[0])
-        }
-        break
-
-      // 切换已读/未读
-      case 'm':
-        if (selectedItem) {
+      switch (e.key.toLowerCase()) {
+        // 导航：下一篇
+        case 'j':
+        case 'arrowdown':
           e.preventDefault()
-          onToggleRead?.(selectedItem)
-        }
-        break
+          selectNext()
+          break
 
-      // 切换收藏
-      case 's':
-        if (selectedItem) {
+        // 导航：上一篇
+        case 'k':
+        case 'arrowup':
           e.preventDefault()
-          onToggleStar?.(selectedItem)
-        }
-        break
+          selectPrevious()
+          break
 
-      // 刷新
-      case 'r':
-        e.preventDefault()
-        onRefresh?.()
-        break
-
-      // 添加订阅源
-      case 'a':
-        if (e.shiftKey) {
-          // Shift + A: 全部标记已读
+        // 打开/关闭阅读器
+        case 'o':
+        case 'enter':
           e.preventDefault()
-          onMarkAllRead?.()
-        }
-        else {
+          if (!selectedItem && items.length > 0) {
+            onSelectItem(items[0])
+          }
+          break
+
+        // 切换已读/未读
+        case 'm':
+          if (selectedItem) {
+            e.preventDefault()
+            onToggleRead?.(selectedItem)
+          }
+          break
+
+        // 切换收藏
+        case 's':
+          if (selectedItem) {
+            e.preventDefault()
+            onToggleStar?.(selectedItem)
+          }
+          break
+
+        // 刷新
+        case 'r':
           e.preventDefault()
-          onAddSource?.()
-        }
-        break
+          onRefresh?.()
+          break
 
-      // 聚焦搜索框
-      case '/':
-        e.preventDefault()
-        searchInputRef?.current?.focus()
-        break
+        // 添加订阅源
+        case 'a':
+          if (e.shiftKey) {
+            // Shift + A: 全部标记已读
+            e.preventDefault()
+            onMarkAllRead?.()
+          } else {
+            e.preventDefault()
+            onAddSource?.()
+          }
+          break
 
-      // 显示帮助
-      case '?':
-        e.preventDefault()
-        onShowHelp?.()
-        break
-    }
-  }, [
-    enabled,
-    selectedItem,
-    items,
-    selectNext,
-    selectPrevious,
-    onSelectItem,
-    onToggleRead,
-    onToggleStar,
-    onRefresh,
-    onAddSource,
-    onMarkAllRead,
-    onCloseReader,
-    onShowHelp,
-    searchInputRef,
-  ])
+        // 聚焦搜索框
+        case '/':
+          e.preventDefault()
+          searchInputRef?.current?.focus()
+          break
+
+        // 显示帮助
+        case '?':
+          e.preventDefault()
+          onShowHelp?.()
+          break
+      }
+    },
+    [
+      enabled,
+      selectedItem,
+      items,
+      selectNext,
+      selectPrevious,
+      onSelectItem,
+      onToggleRead,
+      onToggleStar,
+      onRefresh,
+      onAddSource,
+      onMarkAllRead,
+      onCloseReader,
+      onShowHelp,
+      searchInputRef,
+    ],
+  )
 
   // 注册键盘事件
   useEffect(() => {
-    if (!enabled)
-      return
+    if (!enabled) return
 
     window.addEventListener('keydown', handleKeyDown)
     return () => {

@@ -67,7 +67,10 @@ pub async fn probe() -> DockerProbe {
     let rootless = parsed
         .pointer("/SecurityOptions")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().any(|s| s.as_str().is_some_and(|s| s.contains("rootless"))))
+        .map(|arr| {
+            arr.iter()
+                .any(|s| s.as_str().is_some_and(|s| s.contains("rootless")))
+        })
         .unwrap_or(false)
         || json.to_lowercase().contains("rootless: true");
 

@@ -113,8 +113,7 @@ export default function FadeIn({
       return
     }
 
-    if (!canAnimate)
-      return
+    if (!canAnimate) return
 
     // 只应用额外的 delay（交错延迟已由协调器处理）
     if (delay > 0) {
@@ -128,8 +127,7 @@ export default function FadeIn({
       return () => {
         clearTimeout(timeoutId)
       }
-    }
-    else {
+    } else {
       animationStartTimeRef.current = performance.now()
       setPhase(AnimationPhase.ANIMATING)
     }
@@ -140,22 +138,22 @@ export default function FadeIn({
   }, [delay, disabled, canAnimate])
 
   // 🔧 优化：使用 transitionend 事件检测动画完成
-  const handleTransitionEnd = useCallback((e: React.TransitionEvent) => {
-    // 只响应 opacity 过渡（避免多次触发）
-    if (e.propertyName !== 'opacity')
-      return
-    if (hasCompletedRef.current)
-      return
+  const handleTransitionEnd = useCallback(
+    (e: React.TransitionEvent) => {
+      // 只响应 opacity 过渡（避免多次触发）
+      if (e.propertyName !== 'opacity') return
+      if (hasCompletedRef.current) return
 
-    hasCompletedRef.current = true
-    setPhase(AnimationPhase.COMPLETED)
-    onComplete()
-  }, [onComplete])
+      hasCompletedRef.current = true
+      setPhase(AnimationPhase.COMPLETED)
+      onComplete()
+    },
+    [onComplete],
+  )
 
   // 🔧 备用：定时器检测动画完成（防止 transitionend 不触发）
   useEffect(() => {
-    if (hasCompletedRef.current)
-      return
+    if (hasCompletedRef.current) return
 
     if (disabled) {
       hasCompletedRef.current = true
@@ -186,8 +184,7 @@ export default function FadeIn({
 
   // 🔧 优化：使用 useMemo 缓存 transform 计算
   const transform = useMemo(() => {
-    if (disabled || isAnimationComplete)
-      return 'none'
+    if (disabled || isAnimationComplete) return 'none'
 
     switch (direction) {
       case 'up':
@@ -216,17 +213,19 @@ export default function FadeIn({
     if (phase === AnimationPhase.WAITING) {
       baseStyle.opacity = 0
       baseStyle.visibility = keepPlaceholder ? 'visible' : 'hidden'
-      baseStyle.transform = direction === 'up'
-        ? 'translateY(12px)'
-        : direction === 'down'
-          ? 'translateY(-12px)'
-          : 'none'
+      baseStyle.transform =
+        direction === 'up'
+          ? 'translateY(12px)'
+          : direction === 'down'
+            ? 'translateY(-12px)'
+            : 'none'
 
       // 🔧 如果提供了预估高度，设置最小高度避免布局跳跃
       if (estimatedHeight !== undefined) {
-        baseStyle.minHeight = typeof estimatedHeight === 'number'
-          ? `${estimatedHeight}px`
-          : estimatedHeight
+        baseStyle.minHeight =
+          typeof estimatedHeight === 'number'
+            ? `${estimatedHeight}px`
+            : estimatedHeight
       }
 
       // 等待阶段不设置 willChange，节省资源
@@ -241,14 +240,25 @@ export default function FadeIn({
     baseStyle.willChange = 'opacity, transform'
 
     return { ...baseStyle, ...style }
-  }, [phase, isAnimationComplete, transform, duration, direction, keepPlaceholder, estimatedHeight, style])
+  }, [
+    phase,
+    isAnimationComplete,
+    transform,
+    duration,
+    direction,
+    keepPlaceholder,
+    estimatedHeight,
+    style,
+  ])
 
   return (
     <div
       ref={ref}
       className={className}
       style={computedStyle}
-      onTransitionEnd={phase === AnimationPhase.ANIMATING ? handleTransitionEnd : undefined}
+      onTransitionEnd={
+        phase === AnimationPhase.ANIMATING ? handleTransitionEnd : undefined
+      }
     >
       {children}
     </div>
@@ -302,9 +312,12 @@ export function FadeInWithSkeleton({
   staggerDelay = 50,
   waitForPage = true,
   groupId = 'fadein-skeleton',
-  _keepPlaceholder = true,
   estimatedHeight,
-}: FadeInWithSkeletonProps & { groupId?: string, keepPlaceholder?: boolean, estimatedHeight?: number | string }) {
+}: FadeInWithSkeletonProps & {
+  groupId?: string
+  keepPlaceholder?: boolean
+  estimatedHeight?: number | string
+}) {
   // 使用新的动画协调系统
   const { canAnimate, onComplete } = useElementAnimation({
     groupId,
@@ -324,9 +337,12 @@ export function FadeInWithSkeleton({
   const contentRef = useRef<HTMLDivElement>(null)
 
   // 计算派生状态
-  const showSkeleton = phase === SkeletonPhase.SKELETON || phase === SkeletonPhase.TRANSITIONING
+  const showSkeleton =
+    phase === SkeletonPhase.SKELETON || phase === SkeletonPhase.TRANSITIONING
   const showContent = phase !== SkeletonPhase.SKELETON
-  const isContentVisible = phase === SkeletonPhase.CONTENT_ANIMATING || phase === SkeletonPhase.COMPLETED
+  const isContentVisible =
+    phase === SkeletonPhase.CONTENT_ANIMATING ||
+    phase === SkeletonPhase.COMPLETED
   const isComplete = phase === SkeletonPhase.COMPLETED
 
   useEffect(() => {
@@ -336,15 +352,13 @@ export function FadeInWithSkeleton({
       loadStartRef.current = Date.now()
       setPhase(SkeletonPhase.SKELETON)
       hasCompletedRef.current = false
-    }
-    else if (canAnimate) {
+    } else if (canAnimate) {
       // 确保骨架屏至少显示 minSkeletonTime
       const elapsed = Date.now() - loadStartRef.current
       const remaining = Math.max(0, minSkeletonTime - elapsed)
 
       const timer1 = window.setTimeout(() => {
-        if (!mountedRef.current)
-          return
+        if (!mountedRef.current) return
 
         // 开始过渡
         setPhase(SkeletonPhase.TRANSITIONING)
@@ -371,25 +385,23 @@ export function FadeInWithSkeleton({
   }, [loading, delay, minSkeletonTime, canAnimate])
 
   // 🔧 优化：使用 transitionend 检测内容动画完成
-  const handleContentTransitionEnd = useCallback((e: React.TransitionEvent) => {
-    if (e.propertyName !== 'opacity')
-      return
-    if (hasCompletedRef.current)
-      return
-    if (phase !== SkeletonPhase.CONTENT_ANIMATING)
-      return
+  const handleContentTransitionEnd = useCallback(
+    (e: React.TransitionEvent) => {
+      if (e.propertyName !== 'opacity') return
+      if (hasCompletedRef.current) return
+      if (phase !== SkeletonPhase.CONTENT_ANIMATING) return
 
-    hasCompletedRef.current = true
-    setPhase(SkeletonPhase.COMPLETED)
-    onComplete()
-  }, [phase, onComplete])
+      hasCompletedRef.current = true
+      setPhase(SkeletonPhase.COMPLETED)
+      onComplete()
+    },
+    [phase, onComplete],
+  )
 
   // 备用定时器
   useEffect(() => {
-    if (hasCompletedRef.current)
-      return
-    if (phase !== SkeletonPhase.CONTENT_ANIMATING)
-      return
+    if (hasCompletedRef.current) return
+    if (phase !== SkeletonPhase.CONTENT_ANIMATING) return
 
     const timer = window.setTimeout(() => {
       if (!hasCompletedRef.current && mountedRef.current) {
@@ -406,8 +418,7 @@ export function FadeInWithSkeleton({
 
   // 🔧 优化：缓存 transform 计算
   const contentTransform = useMemo(() => {
-    if (isComplete)
-      return 'none'
+    if (isComplete) return 'none'
 
     switch (direction) {
       case 'up':
@@ -428,9 +439,10 @@ export function FadeInWithSkeleton({
     }
 
     if (estimatedHeight !== undefined && !isComplete) {
-      base.minHeight = typeof estimatedHeight === 'number'
-        ? `${estimatedHeight}px`
-        : estimatedHeight
+      base.minHeight =
+        typeof estimatedHeight === 'number'
+          ? `${estimatedHeight}px`
+          : estimatedHeight
     }
 
     return { ...base, ...style }
@@ -438,8 +450,7 @@ export function FadeInWithSkeleton({
 
   // 🔧 优化：骨架屏样式
   const skeletonStyle = useMemo((): CSSProperties => {
-    if (isComplete)
-      return {} // 完成后不渲染骨架屏
+    if (isComplete) return {} // 完成后不渲染骨架屏
 
     return {
       position: showContent ? 'absolute' : 'relative',
@@ -473,9 +484,7 @@ export function FadeInWithSkeleton({
     <div className={`${className}`} style={containerStyle}>
       {/* 🔧 优化：动画完成后不渲染骨架屏，彻底释放资源 */}
       {!isComplete && showSkeleton && (
-        <div style={skeletonStyle}>
-          {skeleton}
-        </div>
+        <div style={skeletonStyle}>{skeleton}</div>
       )}
 
       {/* 内容层 */}
@@ -483,7 +492,11 @@ export function FadeInWithSkeleton({
         <div
           ref={contentRef}
           style={contentStyle}
-          onTransitionEnd={phase === SkeletonPhase.CONTENT_ANIMATING ? handleContentTransitionEnd : undefined}
+          onTransitionEnd={
+            phase === SkeletonPhase.CONTENT_ANIMATING
+              ? handleContentTransitionEnd
+              : undefined
+          }
         >
           {children}
         </div>

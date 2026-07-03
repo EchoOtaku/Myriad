@@ -2545,6 +2545,7 @@ pub struct UpdateOAuthProvidersPayload {
 /// 1. slug 必填、不能是保留值 "github"、不能重复
 /// 2. kind="oidc" 时 discovery_url 必填
 /// 3. client_secret 若为掩码 `***`，沿用现有 secret
+///
 /// 保存后触发 [`ProviderRegistry::reload`]。
 pub async fn update_oauth_providers(
     State(db): State<DatabaseConnection>,

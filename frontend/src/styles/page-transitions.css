@@ -28,8 +28,7 @@ body::-webkit-scrollbar,
 }
 
 html {
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden auto;
 }
 
 body {
@@ -39,15 +38,15 @@ body {
 /* CSS 变量 */
 :root {
   --scrollbar-width: 6px;
-  --scrollbar-track-color: rgba(0, 0, 0, 0.1);
-  --scrollbar-thumb-color: rgba(0, 0, 0, 0.3);
-  --scrollbar-thumb-hover-color: rgba(0, 0, 0, 0.5);
+  --scrollbar-track-color: rgb(0 0 0 / 10%);
+  --scrollbar-thumb-color: rgb(0 0 0 / 30%);
+  --scrollbar-thumb-hover-color: rgb(0 0 0 / 50%);
 }
 
 html.dark {
-  --scrollbar-track-color: rgba(255, 255, 255, 0.1);
-  --scrollbar-thumb-color: rgba(255, 255, 255, 0.3);
-  --scrollbar-thumb-hover-color: rgba(255, 255, 255, 0.5);
+  --scrollbar-track-color: rgb(255 255 255 / 10%);
+  --scrollbar-thumb-color: rgb(255 255 255 / 30%);
+  --scrollbar-thumb-hover-color: rgb(255 255 255 / 50%);
 }
 
 /* ========================================
@@ -74,7 +73,7 @@ main.relative {
 }
 
 /* 移动端滚动修复 */
-@media (max-width: 767px) {
+@media (width <= 767px) {
   /* 确保主内容区域在移动端不阻止滚动 */
   main.relative {
     overflow: visible;

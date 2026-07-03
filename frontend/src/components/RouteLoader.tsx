@@ -19,18 +19,19 @@ export default function RouteLoader() {
     const timer = setTimeout(() => {
       setLoading(false)
       // 等待退出动画完成后再隐藏
-      setTimeout(() => setVisible(false), 400)
+      setTimeout(setVisible, 400, false)
     }, 600)
 
     return () => clearTimeout(timer)
   }, [location.pathname])
 
-  if (!visible)
-    return null
+  if (!visible) return null
 
   return (
     <div className="route-loader-indicator">
-      <div className={`route-loader-light ${loading ? 'entering' : 'exiting'}`} />
+      <div
+        className={`route-loader-light ${loading ? 'entering' : 'exiting'}`}
+      />
     </div>
   )
 }

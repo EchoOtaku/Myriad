@@ -2,12 +2,12 @@
  * CategoryFeedMode - 分类合并文章列表模式
  */
 
+import type { CategoryFeedModeConfig } from './types'
+
 import {
   LuCheckCircle as CheckCircle,
   LuChevronLeft as ChevronLeft,
 } from '@lib/icons'
-
-import type { CategoryFeedModeConfig } from './types'
 import { IslandShell } from '../../../shared/control-island'
 import { ISLAND_BTN, ISLAND_DIVIDER } from './constants'
 
@@ -29,8 +29,6 @@ export function CategoryFeedMode({
   isAuthenticated = false,
   t,
 }: CategoryFeedModeProps) {
-  const isMobile = variant === 'mobile'
-
   return (
     <IslandShell variant={variant} motionKey={`category-feed-bar-${variant}`}>
       {/* 返回按钮 */}
@@ -46,8 +44,18 @@ export function CategoryFeedMode({
       {/* 分类信息 */}
       <div className="flex items-center gap-2 h-9 px-2 min-w-0 flex-1">
         <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-linear-to-br from-blue-500 to-purple-500">
-          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          <svg
+            className="w-4 h-4 text-white"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+            />
           </svg>
         </div>
         <div className="min-w-0 flex-1">
@@ -55,10 +63,18 @@ export function CategoryFeedMode({
             {categoryFeedMode.categoryLabel}
           </h3>
           <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
-            <span>{t.totalArticles.replace('{count}', String(categoryFeedMode.total))}</span>
+            <span>
+              {t.totalArticles.replace(
+                '{count}',
+                String(categoryFeedMode.total),
+              )}
+            </span>
             {categoryFeedMode.unreadCount > 0 && (
               <span className="font-medium text-blue-500">
-                {t.tipUnreadCount.replace('{count}', String(categoryFeedMode.unreadCount))}
+                {t.tipUnreadCount.replace(
+                  '{count}',
+                  String(categoryFeedMode.unreadCount),
+                )}
               </span>
             )}
           </div>

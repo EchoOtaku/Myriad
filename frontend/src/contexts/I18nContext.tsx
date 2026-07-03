@@ -4,7 +4,14 @@
  */
 
 import type { Locale, TranslationKeys } from '../i18n'
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { getDefaultLocale, saveLocale } from '../i18n'
 import { enUS } from '../i18n/en-US'
 import { jaJP } from '../i18n/ja-JP'
@@ -29,7 +36,9 @@ interface I18nContextType {
 const I18nContext = createContext<I18nContextType | null>(null)
 
 // Provider 组件
-export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [locale, setLocaleState] = useState<Locale>(getDefaultLocale)
 
   // 切换语言
@@ -49,24 +58,26 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const t = useMemo(() => translations[locale], [locale])
 
   // 格式化带参数的字符串，如 "请在 {seconds} 秒后重试"
-  const format = useCallback((template: string, params: Record<string, string | number>) => {
-    return template.replace(/\{(\w+)\}/g, (_, key) => {
-      return String(params[key] ?? `{${key}}`)
-    })
-  }, [])
-
-  const value = useMemo(() => ({
-    locale,
-    setLocale,
-    t,
-    format,
-  }), [locale, setLocale, t, format])
-
-  return (
-    <I18nContext.Provider value={value}>
-      {children}
-    </I18nContext.Provider>
+  const format = useCallback(
+    (template: string, params: Record<string, string | number>) => {
+      return template.replace(/\{(\w+)\}/g, (_, key) => {
+        return String(params[key] ?? `{${key}}`)
+      })
+    },
+    [],
   )
+
+  const value = useMemo(
+    () => ({
+      locale,
+      setLocale,
+      t,
+      format,
+    }),
+    [locale, setLocale, t, format],
+  )
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 }
 
 // Hook

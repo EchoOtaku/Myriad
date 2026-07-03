@@ -69,6 +69,8 @@ fn get_domain_key(url: &str) -> String {
         return "bilibili.com".to_string();
     } else if url.contains("steamstatic.com") {
         return "steamstatic.com".to_string();
+    } else if url.contains("bgm.tv") || url.contains("bangumi.tv") || url.contains("chii.in") {
+        return "bangumi".to_string();
     } else if url.contains("126.net") || url.contains("163.com") {
         return "netease".to_string();
     }
@@ -93,6 +95,8 @@ async fn wait_for_proxy_permit(url: &str) -> Result<(), ()> {
                     "hdslb.com" | "bilibili.com" => TokenBucket::new(5.0, 30.0),
                     // Steam通常比较宽松
                     "steamstatic.com" => TokenBucket::new(20.0, 100.0),
+                    // Bangumi 封面 CDN
+                    "bangumi" => TokenBucket::new(10.0, 50.0),
                     // 网易云
                     "netease" => TokenBucket::new(10.0, 50.0),
                     // 其他
@@ -257,6 +261,9 @@ fn is_allowed_domain(url: &str) -> bool {
         "bilibili.com",               // Bilibili
         "steamstatic.com",            // Steam CDN
         "cloudflare.steamstatic.com", // Steam Cloudflare CDN
+        "bgm.tv",                     // Bangumi
+        "bangumi.tv",                 // Bangumi legacy domain
+        "chii.in",                    // Bangumi legacy CDN/domain
         "music.126.net",              // 网易云音乐 CDN
     ];
 
@@ -301,6 +308,8 @@ fn get_referer_for_url(url: &str) -> &'static str {
         "https://www.bilibili.com/"
     } else if url.contains("steamstatic.com") {
         "https://store.steampowered.com/"
+    } else if url.contains("bgm.tv") || url.contains("bangumi.tv") || url.contains("chii.in") {
+        "https://bgm.tv/"
     } else if url.contains("music.126.net") {
         "https://music.163.com/"
     } else {

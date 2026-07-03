@@ -24,13 +24,14 @@ use crate::services::permission_service::UserRole;
 use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
+type GeoCache = Arc<RwLock<HashMap<String, (GeoInfo, Instant)>>>;
+
 // 预编译模板变量正则，避免每次调用都重新编译
 static TEMPLATE_RE: Lazy<regex::Regex> =
     Lazy::new(|| regex::Regex::new(r"\{\{([^}]+)\}\}").expect("Invalid template regex"));
 
 // Geo 信息缓存（按 IP，10分钟 TTL）
-static GEO_CACHE: Lazy<Arc<RwLock<HashMap<String, (GeoInfo, Instant)>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+static GEO_CACHE: Lazy<GeoCache> = Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 const GEO_CACHE_TTL: Duration = Duration::from_secs(600);
 

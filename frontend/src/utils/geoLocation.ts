@@ -90,8 +90,7 @@ export async function getClientGeoLocation(): Promise<GeoLocationData | null> {
       geoLocationCacheTime = Date.now()
       return data
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.warn('[GeoLocation] 后端代理获取失败，尝试备用服务:', error)
   }
 
@@ -104,8 +103,7 @@ export async function getClientGeoLocation(): Promise<GeoLocationData | null> {
       geoLocationCacheTime = Date.now()
       return data
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.warn('[GeoLocation] 所有服务获取失败:', error)
   }
 
@@ -149,23 +147,21 @@ export async function isUserInChinaMainland(): Promise<boolean> {
 
       // 判断是否在中国大陆
       // 注意：香港(HK)、澳门(MO)、台湾(TW)不在此范围内
-      const isMainlandChina
-        = country === 'china'
-          || countryCode === 'cn'
-          || country.includes('中国')
+      const isMainlandChina =
+        country === 'china' || countryCode === 'cn' || country.includes('中国')
 
       userInChinaMainland = isMainlandChina
 
-      console.log(`[GeoLocation] 地理位置检测: ${country} (${countryCode}), 中国大陆: ${isMainlandChina}`)
+      console.log(
+        `[GeoLocation] 地理位置检测: ${country} (${countryCode}), 中国大陆: ${isMainlandChina}`,
+      )
 
       return isMainlandChina
-    }
-    catch (error) {
+    } catch (error) {
       console.warn('[GeoLocation] 地理位置检测失败，默认使用代理:', error)
       userInChinaMainland = false
       return false
-    }
-    finally {
+    } finally {
       chinaCheckPromise = null
     }
   })()
@@ -191,8 +187,7 @@ export async function getClientIdentifier(): Promise<string> {
     if (geoData?.ip) {
       return geoData.ip
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.warn('[GeoLocation] 获取客户端标识失败:', error)
   }
 
@@ -218,8 +213,7 @@ export function resetGeoCache(): void {
         localStorage.removeItem(key)
       }
     })
-  }
-  catch (_error) {
+  } catch (_error) {
     // localStorage 操作失败，静默处理
   }
 
@@ -238,8 +232,7 @@ async function getClientGeoFromBackend(): Promise<GeoLocationData | null> {
       const response = await fetch(`${API_URL}/api/proxy/client-geo`, {
         signal: AbortSignal.timeout(10000),
       })
-      if (!response.ok)
-        throw new Error('Failed to fetch client geo')
+      if (!response.ok) throw new Error('Failed to fetch client geo')
       return response.json()
     },
     { cacheTTL: GEO_CACHE_TTL },
@@ -285,16 +278,18 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
         }
       }
     }
-  }
-  catch (_error) {
+  } catch (_error) {
     // 静默失败，尝试下一个服务
   }
 
   // 方案2: ip-api.com（备用）
   try {
-    const response = await fetch('http://ip-api.com/json/?fields=status,lat,lon,city,regionName,country,countryCode', {
-      signal: AbortSignal.timeout(10000),
-    })
+    const response = await fetch(
+      'http://ip-api.com/json/?fields=status,lat,lon,city,regionName,country,countryCode',
+      {
+        signal: AbortSignal.timeout(10000),
+      },
+    )
 
     if (response.ok) {
       const data: GeoApiResponse = await response.json()
@@ -310,8 +305,7 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
         }
       }
     }
-  }
-  catch (_error) {
+  } catch (_error) {
     // 静默失败，尝试下一个服务
   }
 
@@ -325,8 +319,14 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
       const data: GeoApiResponse = await response.json()
 
       if (data.latitude && data.longitude) {
-        const lat = typeof data.latitude === 'string' ? Number.parseFloat(data.latitude as unknown as string) : data.latitude
-        const lon = typeof data.longitude === 'string' ? Number.parseFloat(data.longitude as unknown as string) : data.longitude
+        const lat =
+          typeof data.latitude === 'string'
+            ? Number.parseFloat(data.latitude as unknown as string)
+            : data.latitude
+        const lon =
+          typeof data.longitude === 'string'
+            ? Number.parseFloat(data.longitude as unknown as string)
+            : data.longitude
 
         return {
           latitude: lat,
@@ -339,8 +339,7 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
         }
       }
     }
-  }
-  catch (_error) {
+  } catch (_error) {
     // 静默失败
   }
 
@@ -354,7 +353,9 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
  * @param clientIdentifier 客户端标识（如IP或位置坐标）
  * @returns 地理位置数据
  */
-export async function getGeoLocationWithLocalCache(clientIdentifier: string): Promise<GeoLocationData | null> {
+export async function getGeoLocationWithLocalCache(
+  clientIdentifier: string,
+): Promise<GeoLocationData | null> {
   const cacheKey = `geo_location_${clientIdentifier}`
   const cacheTimeKey = `geo_location_time_${clientIdentifier}`
 
@@ -370,8 +371,7 @@ export async function getGeoLocationWithLocalCache(clientIdentifier: string): Pr
         return JSON.parse(cached)
       }
     }
-  }
-  catch (_error) {
+  } catch (_error) {
     // localStorage 读取失败，继续获取新数据
   }
 
@@ -383,8 +383,7 @@ export async function getGeoLocationWithLocalCache(clientIdentifier: string): Pr
     try {
       localStorage.setItem(cacheKey, JSON.stringify(location))
       localStorage.setItem(cacheTimeKey, Date.now().toString())
-    }
-    catch (_error) {
+    } catch (_error) {
       // localStorage 写入失败，静默处理
     }
   }
@@ -404,12 +403,14 @@ export async function getBrowserGeolocation(): Promise<GeoLocationData | null> {
   }
 
   try {
-    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        timeout: 10000,
-        maximumAge: 600000, // 10分钟缓存
-      })
-    })
+    const position = await new Promise<GeolocationPosition>(
+      (resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          timeout: 10000,
+          maximumAge: 600000, // 10分钟缓存
+        })
+      },
+    )
 
     // 使用 Nominatim 反向地理编码获取城市名
     let city = '当前位置'
@@ -425,15 +426,15 @@ export async function getBrowserGeolocation(): Promise<GeoLocationData | null> {
 
       if (reverseResponse.ok) {
         const reverseData = await reverseResponse.json()
-        city = reverseData.address?.city
-          || reverseData.address?.town
-          || reverseData.address?.village
-          || reverseData.address?.county
-          || reverseData.address?.state
-          || '当前位置'
+        city =
+          reverseData.address?.city ||
+          reverseData.address?.town ||
+          reverseData.address?.village ||
+          reverseData.address?.county ||
+          reverseData.address?.state ||
+          '当前位置'
       }
-    }
-    catch (_e) {
+    } catch (_e) {
       // 反向地理编码失败，使用默认城市名
     }
 
@@ -442,8 +443,7 @@ export async function getBrowserGeolocation(): Promise<GeoLocationData | null> {
       longitude: position.coords.longitude,
       city,
     }
-  }
-  catch (_error) {
+  } catch (_error) {
     // 浏览器 API 失败（可能用户拒绝授权）
     return null
   }

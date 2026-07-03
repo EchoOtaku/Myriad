@@ -13,7 +13,7 @@ export interface PlatformReport {
     hardcore_score?: number
     top_genres?: string[]
     contribution_level?: string
-    languages?: { name: string, percentage: number }[]
+    languages?: { name: string; percentage: number }[]
     soul_color?: string
     mood_keywords?: string[]
     status_counts?: Record<string, number>
@@ -21,8 +21,14 @@ export interface PlatformReport {
     collection_type_distribution?: Record<string, number>
     score_distribution?: Record<string, number>
     favorite_tags?: string[]
-    top_subjects?: Array<{ title?: string, rate?: number, type?: string }>
-    library_items?: Array<{ title: string, cover?: string, type: string, platform?: string, rate?: number }>
+    top_subjects?: Array<{ title?: string; rate?: number; type?: string }>
+    library_items?: Array<{
+      title: string
+      cover?: string
+      type: string
+      platform?: string
+      rate?: number
+    }>
   }
   created_at: string
 }
@@ -60,6 +66,6 @@ export interface CrossPlatformReport {
 export interface PlatformConfig {
   id: string
   name: string
-  icon: React.ComponentType<{ size?: number, className?: string }>
+  icon: React.ComponentType<{ size?: number; className?: string }>
   color: string
 }

@@ -52,7 +52,7 @@ export function ToastContainer() {
 
   // 移除 Toast
   const removeToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id))
+    setToasts((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
   // 添加 Toast

@@ -40,7 +40,9 @@ interface ScrollState {
  * 在滚动时自动添加 'is-scrolling' 类到 body，
  * 配合 CSS 可以暂停动画、简化渲染
  */
-export function useScrollOptimization(options: ScrollOptimizationOptions = {}): ScrollState {
+export function useScrollOptimization(
+  options: ScrollOptimizationOptions = {},
+): ScrollState {
   const {
     enabled = true,
     scrollEndDelay = 150,
@@ -65,8 +67,7 @@ export function useScrollOptimization(options: ScrollOptimizationOptions = {}): 
   const isScrollingRef = useRef(false)
 
   const handleScroll = useCallback(() => {
-    if (!enabled || !target)
-      return
+    if (!enabled || !target) return
 
     const now = performance.now()
     const currentScrollY = window.scrollY
@@ -77,7 +78,8 @@ export function useScrollOptimization(options: ScrollOptimizationOptions = {}): 
     const velocity = deltaTime > 0 ? Math.abs(deltaY / deltaTime) * 1000 : 0
 
     // 确定方向
-    const direction: 'up' | 'down' | 'none' = deltaY > 0 ? 'down' : deltaY < 0 ? 'up' : 'none'
+    const direction: 'up' | 'down' | 'none' =
+      deltaY > 0 ? 'down' : deltaY < 0 ? 'up' : 'none'
 
     // 更新引用
     lastScrollY.current = currentScrollY
@@ -133,11 +135,13 @@ export function useScrollOptimization(options: ScrollOptimizationOptions = {}): 
  * 使用快速滚动检测
  * 当滚动速度超过阈值时触发降级
  */
-export function useFastScrollDetection(options: {
-  velocityThreshold?: number
-  onFastScroll?: () => void
-  onSlowScroll?: () => void
-} = {}): boolean {
+export function useFastScrollDetection(
+  options: {
+    velocityThreshold?: number
+    onFastScroll?: () => void
+    onSlowScroll?: () => void
+  } = {},
+): boolean {
   const {
     velocityThreshold = 1500, // px/s
     onFastScroll,
@@ -158,8 +162,7 @@ export function useFastScrollDetection(options: {
     lastScrollY.current = currentScrollY
     lastTime.current = now
 
-    if (deltaTime <= 0)
-      return
+    if (deltaTime <= 0) return
 
     const velocity = (deltaY / deltaTime) * 1000
     const isFast = velocity > velocityThreshold
@@ -170,8 +173,7 @@ export function useFastScrollDetection(options: {
 
       if (isFast) {
         onFastScroll?.()
-      }
-      else {
+      } else {
         onSlowScroll?.()
       }
     }
@@ -193,7 +195,8 @@ export function useScrollDirection(): 'up' | 'down' | 'none' {
     const currentScrollY = window.scrollY
     const deltaY = currentScrollY - lastScrollY.current
 
-    if (Math.abs(deltaY) > 5) { // 忽略微小滚动
+    if (Math.abs(deltaY) > 5) {
+      // 忽略微小滚动
       setDirection(deltaY > 0 ? 'down' : 'up')
     }
 
@@ -218,8 +221,7 @@ export function useScrollLock(): {
   const originalStyle = useRef<string>('')
 
   const lock = useCallback(() => {
-    if (typeof document === 'undefined')
-      return
+    if (typeof document === 'undefined') return
 
     originalStyle.current = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -227,8 +229,7 @@ export function useScrollLock(): {
   }, [])
 
   const unlock = useCallback(() => {
-    if (typeof document === 'undefined')
-      return
+    if (typeof document === 'undefined') return
 
     document.body.style.overflow = originalStyle.current
     setIsLocked(false)
@@ -260,15 +261,16 @@ export function smoothScrollTo(
 ): Promise<void> {
   const {
     duration = 500,
-    easing = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t, // easeInOutQuad
+    easing = (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t), // easeInOutQuad
     offset = 0,
   } = options
 
   return new Promise((resolve) => {
     const startY = window.scrollY
-    const targetY = typeof target === 'number'
-      ? target
-      : target.getBoundingClientRect().top + startY
+    const targetY =
+      typeof target === 'number'
+        ? target
+        : target.getBoundingClientRect().top + startY
     const deltaY = targetY - startY + offset
     const startTime = performance.now()
 
@@ -281,8 +283,7 @@ export function smoothScrollTo(
 
       if (progress < 1) {
         requestAnimationFrame(step)
-      }
-      else {
+      } else {
         resolve()
       }
     }

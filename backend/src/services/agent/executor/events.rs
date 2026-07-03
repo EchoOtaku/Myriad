@@ -117,6 +117,7 @@ impl StepEventEmitter {
     }
 
     /// 发送 StepDebug 完成事件
+    #[allow(clippy::too_many_arguments)]
     pub async fn debug_complete(
         &self,
         step_id: &str,

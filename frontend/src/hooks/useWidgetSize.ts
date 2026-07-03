@@ -33,7 +33,10 @@ import { usePerformanceProfile } from './usePerformanceProfile'
 // 调整基准：从 120px 降至 80px，以适应 1366px/1440px 等主流笔记本屏幕
 // 在 1920px 屏幕上，单元格约 110px，scale 会被限制在 1
 // 在 1366px 屏幕上，单元格约 75px，scale 约 0.93，接近 1
-const STANDARD_DIMENSIONS: Record<WidgetSize, { width: number, height: number }> = {
+const STANDARD_DIMENSIONS: Record<
+  WidgetSize,
+  { width: number; height: number }
+> = {
   '1x1': { width: 80, height: 80 },
   '2x1': { width: 160, height: 80 },
   '4x1': { width: 320, height: 80 },
@@ -61,7 +64,10 @@ export interface WidgetSizeInfo {
   containerRef: React.RefCallback<HTMLDivElement>
 }
 
-export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): WidgetSizeInfo {
+export function useWidgetSize(
+  widgetSize?: WidgetSize,
+  forceScale?: number,
+): WidgetSizeInfo {
   const [size, setSize] = useState({ width: 0, height: 0 })
   const elementRef = useRef<HTMLDivElement | null>(null)
   const perf = usePerformanceProfile()
@@ -76,13 +82,15 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
     const { width, height } = entry.contentRect
 
     // 宽度为0时不更新（可能是隐藏或未渲染）
-    if (width <= 0)
-      return
+    if (width <= 0) return
 
     setSize((prev) => {
       // 使用较大的阈值避免微小变化触发重渲染
       const THRESHOLD = 8
-      if (Math.abs(prev.width - width) < THRESHOLD && Math.abs(prev.height - height) < THRESHOLD) {
+      if (
+        Math.abs(prev.width - width) < THRESHOLD &&
+        Math.abs(prev.height - height) < THRESHOLD
+      ) {
         return prev
       }
       return { width, height }
@@ -90,40 +98,41 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
   }, [])
 
   // Ref callback - 连接到首页原子化 ResizeObserver
-  const containerRef = useCallback((node: HTMLDivElement | null) => {
-    // 清理旧观察
-    if (elementRef.current) {
-      unobserveHomeResize(elementRef.current)
-    }
+  const containerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      // 清理旧观察
+      if (elementRef.current) {
+        unobserveHomeResize(elementRef.current)
+      }
 
-    elementRef.current = node
+      elementRef.current = node
 
-    if (node) {
-      // 低端设备：仅首次测量，不持续监听
-      if (lowEndDeviceRef.current) {
-        // 尝试获取缓存尺寸
-        const cached = getCachedSize(node)
-        if (cached && cached.width > 0) {
-          setSize(cached)
-        }
-        else {
-          // 延迟测量一次
-          requestAnimationFrame(() => {
-            if (node.isConnected) {
-              const rect = node.getBoundingClientRect()
-              if (rect.width > 0) {
-                setSize({ width: rect.width, height: rect.height })
+      if (node) {
+        // 低端设备：仅首次测量，不持续监听
+        if (lowEndDeviceRef.current) {
+          // 尝试获取缓存尺寸
+          const cached = getCachedSize(node)
+          if (cached && cached.width > 0) {
+            setSize(cached)
+          } else {
+            // 延迟测量一次
+            requestAnimationFrame(() => {
+              if (node.isConnected) {
+                const rect = node.getBoundingClientRect()
+                if (rect.width > 0) {
+                  setSize({ width: rect.width, height: rect.height })
+                }
               }
-            }
-          })
+            })
+          }
+        } else {
+          // 正常设备：使用首页原子化 ResizeObserver 持续监听
+          observeHomeResize(node, handleSizeChange)
         }
       }
-      else {
-        // 正常设备：使用首页原子化 ResizeObserver 持续监听
-        observeHomeResize(node, handleSizeChange)
-      }
-    }
-  }, [handleSizeChange, observeHomeResize, unobserveHomeResize])
+    },
+    [handleSizeChange, observeHomeResize, unobserveHomeResize],
+  )
 
   // 组件卸载时清理
   useEffect(() => {
@@ -136,7 +145,11 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
 
   // widgetSize 变化时重新测量（针对低端设备）
   useEffect(() => {
-    if (lowEndDeviceRef.current && elementRef.current && elementRef.current.isConnected) {
+    if (
+      lowEndDeviceRef.current &&
+      elementRef.current &&
+      elementRef.current.isConnected
+    ) {
       requestAnimationFrame(() => {
         if (elementRef.current && elementRef.current.isConnected) {
           const rect = elementRef.current.getBoundingClientRect()
@@ -150,14 +163,11 @@ export function useWidgetSize(widgetSize?: WidgetSize, forceScale?: number): Wid
 
   // 计算缩放比例
   const scale = (() => {
-    if (forceScale !== undefined)
-      return forceScale
-    if (!widgetSize || size.width === 0)
-      return 1
+    if (forceScale !== undefined) return forceScale
+    if (!widgetSize || size.width === 0) return 1
 
     const standard = STANDARD_DIMENSIONS[widgetSize]
-    if (!standard)
-      return 1
+    if (!standard) return 1
 
     // 基于宽度计算缩放比例
     const calculatedScale = size.width / standard.width
@@ -196,7 +206,10 @@ export function useWidgetScale(widgetSize?: WidgetSize): number {
 /**
  * 布尔版 - 只判断是否为紧凑/迷你模式
  */
-export function useWidgetMode(widgetSize?: WidgetSize): { isCompact: boolean, isMini: boolean } {
+export function useWidgetMode(widgetSize?: WidgetSize): {
+  isCompact: boolean
+  isMini: boolean
+} {
   const { isCompact, isMini } = useWidgetSize(widgetSize)
   return { isCompact, isMini }
 }

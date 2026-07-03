@@ -1,10 +1,16 @@
 import type { DynamicContentType } from '../services/DynamicContentProvider'
 
-import type {
-  QuoteData,
-  WeatherData,
-} from '../utils/dynamicContent'
-import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { QuoteData, WeatherData } from '../utils/dynamicContent'
+import React, {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 
@@ -27,9 +33,7 @@ import {
   LuSun,
   LuZap,
 } from '../lib/icons'
-import {
-  getDynamicContentProvider,
-} from '../services/DynamicContentProvider'
+import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
   getGreeting,
   getRandomQuote,
@@ -42,10 +46,14 @@ import './GlobalControlPanel.css'
 
 // 懒加载展开面板子组件 — 仅在用户展开面板时加载
 const ControlPanelWidgets = lazy(() =>
-  import('./ControlPanel/ControlPanelWidgets').then(m => ({ default: m.ControlPanelWidgets })),
+  import('./ControlPanel/ControlPanelWidgets').then((m) => ({
+    default: m.ControlPanelWidgets,
+  })),
 )
 const MusicPlayer = lazy(() =>
-  import('./ControlPanel/MusicPlayer').then(m => ({ default: m.MusicPlayer })),
+  import('./ControlPanel/MusicPlayer').then((m) => ({
+    default: m.MusicPlayer,
+  })),
 )
 
 /** 扩展的动态内容类型（包含 Tapp 自定义类型） */
@@ -75,7 +83,9 @@ const GlobalControlPanel: React.FC = () => {
 
   // 页面可见性状态 - 用于冻结动态内容更新
   const [isPageVisible, setIsPageVisible] = useState(!document.hidden)
-  const pendingUpdatesRef = useRef<Array<(prev: DynamicContent[]) => DynamicContent[]>>([])
+  const pendingUpdatesRef = useRef<
+    Array<(prev: DynamicContent[]) => DynamicContent[]>
+  >([])
 
   // 监听页面可见性变化
   useEffect(() => {
@@ -98,16 +108,18 @@ const GlobalControlPanel: React.FC = () => {
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null)
 
   // 安全的动态内容更新函数 - 页面隐藏时暂存更新
-  const safeSetDynamicContents = useCallback((updater: (prev: DynamicContent[]) => DynamicContent[]) => {
-    if (document.hidden) {
-      // 页面隐藏时，暂存更新
-      pendingUpdatesRef.current.push(updater)
-    }
-    else {
-      // 页面可见时，直接应用更新
-      setDynamicContents(updater)
-    }
-  }, [])
+  const safeSetDynamicContents = useCallback(
+    (updater: (prev: DynamicContent[]) => DynamicContent[]) => {
+      if (document.hidden) {
+        // 页面隐藏时，暂存更新
+        pendingUpdatesRef.current.push(updater)
+      } else {
+        // 页面可见时，直接应用更新
+        setDynamicContents(updater)
+      }
+    },
+    [],
+  )
 
   // 页面恢复可见时，应用所有暂存的更新
   useEffect(() => {
@@ -129,11 +141,9 @@ const GlobalControlPanel: React.FC = () => {
   const validContents = useMemo(() => {
     return dynamicContents.filter((c) => {
       // 必须有图标和文本
-      if (!c.icon || !c.text)
-        return false
+      if (!c.icon || !c.text) return false
       // 文本不能是空字符串或只有空白
-      if (typeof c.text === 'string' && c.text.trim().length === 0)
-        return false
+      if (typeof c.text === 'string' && c.text.trim().length === 0) return false
       return true
     })
   }, [dynamicContents])
@@ -143,7 +153,11 @@ const GlobalControlPanel: React.FC = () => {
   const [needsScroll, setNeedsScroll] = useState(false)
 
   // 壁纸管理 Hook（替代之前的独立状态和函数）
-  const { canRefresh: canRefreshWallpaper, refreshWallpaper, loadWallpaper } = useWallpaper()
+  const {
+    canRefresh: canRefreshWallpaper,
+    refreshWallpaper,
+    loadWallpaper,
+  } = useWallpaper()
 
   // 音乐播放器 Hook（从 GlobalControlPanel 分离）
   const musicPlayer = useMusicPlayer()
@@ -157,10 +171,14 @@ const GlobalControlPanel: React.FC = () => {
   const volumeControlRef = useRef<HTMLDivElement>(null)
   const perf = usePerformanceProfile()
   const anim = useAnimationLevel()
-  const { preference: animPreference, togglePerformanceMode } = useAnimationPreference()
-  const effectiveAnimationLevel = animPreference === 'auto' ? anim.level : animPreference
+  const { preference: animPreference, togglePerformanceMode } =
+    useAnimationPreference()
+  const effectiveAnimationLevel =
+    animPreference === 'auto' ? anim.level : animPreference
   const isStandardAnimation = effectiveAnimationLevel === 'standard'
-  const animationModeClass = isStandardAnimation ? 'performance-standard' : 'performance-light'
+  const animationModeClass = isStandardAnimation
+    ? 'performance-standard'
+    : 'performance-light'
 
   useEffect(() => {
     // 主题状态现在由 useThemeMode() hook 自动管理
@@ -176,7 +194,10 @@ const GlobalControlPanel: React.FC = () => {
   // 点击外部关闭音量弹窗
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (volumeControlRef.current && !volumeControlRef.current.contains(event.target as Node)) {
+      if (
+        volumeControlRef.current &&
+        !volumeControlRef.current.contains(event.target as Node)
+      ) {
         setShowVolumePopup(false)
       }
     }
@@ -204,7 +225,12 @@ const GlobalControlPanel: React.FC = () => {
   useEffect(() => {
     const unsubscribe = dynamicContentProvider.addListener((event) => {
       // 当 Tapp 内容更新时，刷新动态内容列表
-      if (event.type === 'add' || event.type === 'update' || event.type === 'remove' || event.type === 'clear') {
+      if (
+        event.type === 'add' ||
+        event.type === 'update' ||
+        event.type === 'remove' ||
+        event.type === 'clear'
+      ) {
         refreshTappContents()
       }
     })
@@ -218,12 +244,15 @@ const GlobalControlPanel: React.FC = () => {
   const refreshTappContents = useCallback(() => {
     safeSetDynamicContents((prev) => {
       // 移除旧的 Tapp 内容
-      const builtinContents = prev.filter(c => !c.type.toString().startsWith('tapp-'))
+      const builtinContents = prev.filter(
+        (c) => !c.type.toString().startsWith('tapp-'),
+      )
 
       // 获取所有 Tapp 内容
-      const tappContents = dynamicContentProvider.getAllContents()
-        .filter(c => c.type.toString().startsWith('tapp-'))
-        .map(c => ({
+      const tappContents = dynamicContentProvider
+        .getAllContents()
+        .filter((c) => c.type.toString().startsWith('tapp-'))
+        .map((c) => ({
           type: c.type,
           icon: c.icon,
           text: c.text,
@@ -238,26 +267,22 @@ const GlobalControlPanel: React.FC = () => {
   }, [dynamicContentProvider, safeSetDynamicContents])
 
   // 天气文本翻译辅助函数（提取出来以便复用）
-  const getWeatherText = useCallback((code: number): string => {
-    const weatherT = t.weather ?? {}
-    if (code === 0 || code === 1)
-      return weatherT.sunny ?? 'Sunny'
-    if (code === 2 || code === 3)
-      return weatherT.cloudy ?? 'Cloudy'
-    if (code === 45 || code === 48)
-      return weatherT.foggy ?? 'Foggy'
-    if (code >= 51 && code <= 67)
-      return weatherT.rainy ?? 'Rainy'
-    if (code >= 80 && code <= 82)
-      return weatherT.rainy ?? 'Rainy'
-    if (code >= 71 && code <= 77)
-      return weatherT.snowy ?? 'Snowy'
-    if (code >= 85 && code <= 86)
-      return weatherT.snowy ?? 'Snowy'
-    if (code >= 95 && code <= 99)
-      return weatherT.thunderstorm ?? 'Thunderstorm'
-    return weatherT.unavailable ?? 'Unknown'
-  }, [t.weather])
+  const getWeatherText = useCallback(
+    (code: number): string => {
+      const weatherT = t.weather ?? {}
+      if (code === 0 || code === 1) return weatherT.sunny ?? 'Sunny'
+      if (code === 2 || code === 3) return weatherT.cloudy ?? 'Cloudy'
+      if (code === 45 || code === 48) return weatherT.foggy ?? 'Foggy'
+      if (code >= 51 && code <= 67) return weatherT.rainy ?? 'Rainy'
+      if (code >= 80 && code <= 82) return weatherT.rainy ?? 'Rainy'
+      if (code >= 71 && code <= 77) return weatherT.snowy ?? 'Snowy'
+      if (code >= 85 && code <= 86) return weatherT.snowy ?? 'Snowy'
+      if (code >= 95 && code <= 99)
+        return weatherT.thunderstorm ?? 'Thunderstorm'
+      return weatherT.unavailable ?? 'Unknown'
+    },
+    [t.weather],
+  )
 
   // 加载动态内容
   const loadDynamicContents = useCallback(async () => {
@@ -301,7 +326,9 @@ const GlobalControlPanel: React.FC = () => {
     // 立即显示问候语（保留音乐和 Tapp 内容，只更新内置内容）
     safeSetDynamicContents((prev) => {
       // 保留音乐和 Tapp 类型的内容
-      const preserved = prev.filter(c => c.type === 'music' || c.type.toString().startsWith('tapp-'))
+      const preserved = prev.filter(
+        (c) => c.type === 'music' || c.type.toString().startsWith('tapp-'),
+      )
       return [...contents, ...preserved]
     })
 
@@ -322,9 +349,9 @@ const GlobalControlPanel: React.FC = () => {
 
       safeSetDynamicContents((prev) => {
         // 移除旧的天气内容，添加新的翻译版本
-        const filtered = prev.filter(c => c.type !== 'weather')
+        const filtered = prev.filter((c) => c.type !== 'weather')
         // 在问候语后插入天气信息
-        const greetingIndex = filtered.findIndex(c => c.type === 'greeting')
+        const greetingIndex = filtered.findIndex((c) => c.type === 'greeting')
         const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0
         filtered.splice(insertIndex, 0, {
           type: 'weather',
@@ -345,8 +372,7 @@ const GlobalControlPanel: React.FC = () => {
         priority: 90,
         showSubtext: true,
       })
-    }
-    else {
+    } else {
       // 首次加载天气数据
       loadResource.high('weather-info', async () => {
         try {
@@ -359,9 +385,11 @@ const GlobalControlPanel: React.FC = () => {
 
             safeSetDynamicContents((prev) => {
               // 移除旧的天气内容（如果有）
-              const filtered = prev.filter(c => c.type !== 'weather')
+              const filtered = prev.filter((c) => c.type !== 'weather')
               // 在问候语后插入天气信息
-              const greetingIndex = filtered.findIndex(c => c.type === 'greeting')
+              const greetingIndex = filtered.findIndex(
+                (c) => c.type === 'greeting',
+              )
               const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0
               filtered.splice(insertIndex, 0, {
                 type: 'weather',
@@ -383,8 +411,7 @@ const GlobalControlPanel: React.FC = () => {
               showSubtext: true,
             })
           }
-        }
-        catch (error) {
+        } catch (error) {
           // 静默处理错误 - 天气不可用时不显示
           console.debug('[GlobalControlPanel] Weather unavailable:', error)
         }
@@ -396,14 +423,17 @@ const GlobalControlPanel: React.FC = () => {
     if (quoteData) {
       safeSetDynamicContents((prev) => {
         // 移除旧的一言内容，重新添加
-        const filtered = prev.filter(c => c.type !== 'quote')
-        return [...filtered, {
-          type: 'quote',
-          icon: <LuMessageCircle size={14} />,
-          text: quoteData.text,
-          subtext: quoteData.author || undefined,
-          showSubtext: false,
-        }]
+        const filtered = prev.filter((c) => c.type !== 'quote')
+        return [
+          ...filtered,
+          {
+            type: 'quote',
+            icon: <LuMessageCircle size={14} />,
+            text: quoteData.text,
+            subtext: quoteData.author || undefined,
+            showSubtext: false,
+          },
+        ]
       })
 
       // 同步到动态内容提供者
@@ -415,8 +445,7 @@ const GlobalControlPanel: React.FC = () => {
         priority: 50,
         showSubtext: false,
       })
-    }
-    else {
+    } else {
       // 首次加载一言数据
       loadResource.high('quote-info', async () => {
         try {
@@ -425,14 +454,17 @@ const GlobalControlPanel: React.FC = () => {
             setQuoteData(quote)
             safeSetDynamicContents((prev) => {
               // 移除旧的一言内容（如果有）
-              const filtered = prev.filter(c => c.type !== 'quote')
-              return [...filtered, {
-                type: 'quote',
-                icon: <LuMessageCircle size={14} />,
-                text: quote.text,
-                subtext: quote.author || undefined,
-                showSubtext: false,
-              }]
+              const filtered = prev.filter((c) => c.type !== 'quote')
+              return [
+                ...filtered,
+                {
+                  type: 'quote',
+                  icon: <LuMessageCircle size={14} />,
+                  text: quote.text,
+                  subtext: quote.author || undefined,
+                  showSubtext: false,
+                },
+              ]
             })
 
             // 同步到动态内容提供者
@@ -445,8 +477,7 @@ const GlobalControlPanel: React.FC = () => {
               showSubtext: false,
             })
           }
-        }
-        catch (error) {
+        } catch (error) {
           // 静默处理错误 - 一言不可用时不显示
           console.debug('[GlobalControlPanel] Quote unavailable:', error)
         }
@@ -455,7 +486,17 @@ const GlobalControlPanel: React.FC = () => {
 
     // 4. 加载 Tapp 提供的动态内容
     refreshTappContents()
-  }, [user?.username, t, locale, dynamicContentProvider, refreshTappContents, safeSetDynamicContents, weatherData, quoteData, getWeatherText])
+  }, [
+    user?.username,
+    t,
+    locale,
+    dynamicContentProvider,
+    refreshTappContents,
+    safeSetDynamicContents,
+    weatherData,
+    quoteData,
+    getWeatherText,
+  ])
 
   // 当用户信息更新时，重新加载动态内容
   useEffect(() => {
@@ -480,7 +521,10 @@ const GlobalControlPanel: React.FC = () => {
 
   // 确保 currentContentIndex 在有效范围内（使用 validContents）
   useEffect(() => {
-    if (validContents.length > 0 && currentContentIndex >= validContents.length) {
+    if (
+      validContents.length > 0 &&
+      currentContentIndex >= validContents.length
+    ) {
       setCurrentContentIndex(0)
     }
   }, [validContents.length, currentContentIndex])
@@ -488,20 +532,17 @@ const GlobalControlPanel: React.FC = () => {
   // 动态内容轮播（带淡入淡出效果）- 仅在有有效内容时运行
   useEffect(() => {
     // 在以下情况禁用轮播：展开面板 / 悬停 / 有效内容为空 / 页面隐藏
-    if (validContents.length === 0 || isExpanded || isHovering)
-      return
+    if (validContents.length === 0 || isExpanded || isHovering) return
 
     let timerId: number | null = null
     let cancelled = false
 
     const cycle = () => {
-      if (cancelled || document.hidden)
-        return
+      if (cancelled || document.hidden) return
       setIsTransitioning(true)
       timerId = window.setTimeout(() => {
-        if (cancelled)
-          return
-        setCurrentContentIndex(prev => (prev + 1) % validContents.length)
+        if (cancelled) return
+        setCurrentContentIndex((prev) => (prev + 1) % validContents.length)
         // 稍等一帧后开始淡入，确保内容已更新
         window.setTimeout(setIsTransitioning, 80, false)
         // 下一次循环：延长停留时间到 15秒，低端设备 30秒
@@ -522,11 +563,9 @@ const GlobalControlPanel: React.FC = () => {
           clearTimeout(timerId)
           timerId = null
         }
-      }
-      else if (!cancelled) {
+      } else if (!cancelled) {
         // 页面重新可见时重新启动轮播
-        if (timerId)
-          clearTimeout(timerId)
+        if (timerId) clearTimeout(timerId)
         const restartDelay = Math.round(2000 * (anim.durationScale || 1))
         timerId = window.setTimeout(cycle, restartDelay)
       }
@@ -535,8 +574,7 @@ const GlobalControlPanel: React.FC = () => {
 
     return () => {
       cancelled = true
-      if (timerId)
-        clearTimeout(timerId)
+      if (timerId) clearTimeout(timerId)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [validContents.length, isExpanded, isHovering, anim.durationScale])
@@ -547,16 +585,14 @@ const GlobalControlPanel: React.FC = () => {
   // 动态计算展开面板的高度 - 🔧 事件驱动，无轮询
   // 外部可通过 dispatchEvent(new CustomEvent('gcp-remeasure')) 触发重测
   useLayoutEffect(() => {
-    if (!triggerRef.current)
-      return
+    if (!triggerRef.current) return
     const triggerEl = triggerRef.current
 
     if (!isExpanded) {
       triggerEl.style.height = '3rem'
       return
     }
-    if (!expandedContentRef.current)
-      return
+    if (!expandedContentRef.current) return
     const contentEl = expandedContentRef.current
 
     let lastHeight = 0
@@ -574,8 +610,7 @@ const GlobalControlPanel: React.FC = () => {
 
     const measure = (force = false) => {
       // 🔧 动画期间跳过测量（除非强制）
-      if (isAnimating && !force)
-        return
+      if (isAnimating && !force) return
 
       const now = Date.now()
       if (now - lastUpdateTime < THROTTLE_MS && !force) {
@@ -597,9 +632,7 @@ const GlobalControlPanel: React.FC = () => {
       const isMobile = window.innerWidth <= 640
       // Desktop: 400px - padding(1.375rem * 2 = 44px) = 356px
       // Mobile: (100vw - 1.5rem) - padding(1rem * 2 = 32px) = 100vw - 56px
-      const targetWidth = isMobile
-        ? window.innerWidth - 56
-        : 356
+      const targetWidth = isMobile ? window.innerWidth - 56 : 356
 
       // 🔧 优化：使用轻量级测量方式
       // 对于播放列表视图，使用估算高度而非完整克隆
@@ -610,16 +643,22 @@ const GlobalControlPanel: React.FC = () => {
         // 🔧 播放列表超过 15 项时，使用估算而非克隆
         // 估算：头部约 40px，每项约 52px，底部边距约 16px
         const playlistHeader = contentEl.querySelector('.music-playlist-header')
-        const headerHeight = playlistHeader?.getBoundingClientRect().height ?? 40
+        const headerHeight =
+          playlistHeader?.getBoundingClientRect().height ?? 40
         const itemCount = Math.min(playlistScroll.children.length, 8) // 最多显示 8 项
-        const estimatedPlaylistHeight = headerHeight + (itemCount * 52) + 16
+        const estimatedPlaylistHeight = headerHeight + itemCount * 52 + 16
 
         // 测量除播放列表外的其他内容
         const otherContent = contentEl.cloneNode(true) as HTMLElement
-        const clonedPlaylist = otherContent.querySelector('.music-view-playlist')
+        const clonedPlaylist = otherContent.querySelector(
+          '.music-view-playlist',
+        )
         if (clonedPlaylist) {
-          (clonedPlaylist as HTMLElement).style.height = `${estimatedPlaylistHeight}px`
-          const clonedScroll = clonedPlaylist.querySelector('.music-playlist-scroll')
+          ;(clonedPlaylist as HTMLElement).style.height =
+            `${estimatedPlaylistHeight}px`
+          const clonedScroll = clonedPlaylist.querySelector(
+            '.music-playlist-scroll',
+          )
           if (clonedScroll) {
             clonedScroll.innerHTML = '' // 清空列表项
           }
@@ -633,8 +672,7 @@ const GlobalControlPanel: React.FC = () => {
         document.body.appendChild(otherContent)
         raw = otherContent.offsetHeight
         document.body.removeChild(otherContent)
-      }
-      else {
+      } else {
         // 常规克隆测量
         const clone = contentEl.cloneNode(true) as HTMLElement
         clone.style.position = 'absolute'
@@ -714,7 +752,10 @@ const GlobalControlPanel: React.FC = () => {
       window.removeEventListener('gcp-animation-start', handleAnimationStart)
       window.removeEventListener('gcp-animation-end', handleAnimationEnd)
       window.removeEventListener('gcp-remeasure', handleRemeasure)
-      window.removeEventListener('control-panel-content-resize', handleRemeasure)
+      window.removeEventListener(
+        'control-panel-content-resize',
+        handleRemeasure,
+      )
       window.removeEventListener('resize', handleViewportChange)
       window.removeEventListener('orientationchange', handleViewportChange)
       document.removeEventListener('visibilitychange', handleVisibility)
@@ -736,8 +777,7 @@ const GlobalControlPanel: React.FC = () => {
       html.classList.add('dark')
       html.classList.remove('light')
       localStorage.setItem('theme', 'dark')
-    }
-    else {
+    } else {
       html.classList.add('light')
       html.classList.remove('dark')
       localStorage.setItem('theme', 'light')
@@ -747,7 +787,10 @@ const GlobalControlPanel: React.FC = () => {
     // 更新 meta theme-color - 使用壁纸颜色
     const metaThemeColor = document.querySelector('meta[name="theme-color"]')
     if (metaThemeColor) {
-      const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#94a3b8'
+      const primaryColor =
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--color-primary')
+          .trim() || '#94a3b8'
       metaThemeColor.setAttribute('content', primaryColor)
     }
   }, [isDark])
@@ -768,8 +811,7 @@ const GlobalControlPanel: React.FC = () => {
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('gcp-animation-end'))
       }, 700)
-    }
-    else {
+    } else {
       // 展开：动态内容立即淡出，容器开始展开，面板内容在中途淡入
       setShowDynamicContent(false)
       setIsExpanded(true)
@@ -816,10 +858,14 @@ const GlobalControlPanel: React.FC = () => {
 
     // 早期返回：面板展开时不更新动态内容
     // 注意：页面隐藏时由 safeSetDynamicContents 自动暂存更新
-    if (isExpanded)
-      return
+    if (isExpanded) return
 
-    if (currentSong && isPlaying && lyrics.length > 0 && currentLyricIndex >= 0) {
+    if (
+      currentSong &&
+      isPlaying &&
+      lyrics.length > 0 &&
+      currentLyricIndex >= 0
+    ) {
       const currentLyric = lyrics[currentLyricIndex]
 
       // 如果歌词文本没有变化，跳过更新（避免重复渲染）
@@ -835,15 +881,14 @@ const GlobalControlPanel: React.FC = () => {
       if (currentLyricIndex < lyrics.length - 1) {
         const nextLyric = lyrics[currentLyricIndex + 1]
         lyricDuration = Math.max(1, nextLyric.time - currentLyric.time)
-      }
-      else {
+      } else {
         // 最后一句歌词，默认8秒
         lyricDuration = 8
       }
 
       // 播放时显示歌词 - 使用函数式更新避免闭包问题
       safeSetDynamicContents((prev) => {
-        const filtered = prev.filter(c => c.type !== 'music')
+        const filtered = prev.filter((c) => c.type !== 'music')
         return [
           {
             type: 'music' as const,
@@ -855,8 +900,7 @@ const GlobalControlPanel: React.FC = () => {
           ...filtered,
         ]
       })
-    }
-    else if (currentSong) {
+    } else if (currentSong) {
       // 避免重复更新：检查歌曲和播放状态是否真的变化了
       const songChanged = lastSongIdRef.current !== currentSong.id
       const playingChanged = lastPlayingStateRef.current !== isPlaying
@@ -872,7 +916,7 @@ const GlobalControlPanel: React.FC = () => {
 
       // 暂停时或没有歌词时只显示歌曲名
       safeSetDynamicContents((prev) => {
-        const filtered = prev.filter(c => c.type !== 'music')
+        const filtered = prev.filter((c) => c.type !== 'music')
         return [
           {
             type: 'music' as const,
@@ -883,23 +927,31 @@ const GlobalControlPanel: React.FC = () => {
           ...filtered,
         ]
       })
-    }
-    else if (lastSongIdRef.current !== '') {
+    } else if (lastSongIdRef.current !== '') {
       // 没有歌曲时移除音乐内容（仅当之前有歌曲时）
       lastLyricTextRef.current = ''
       lastSongIdRef.current = ''
       lastPlayingStateRef.current = false
-      safeSetDynamicContents(prev => prev.filter(c => c.type !== 'music'))
+      safeSetDynamicContents((prev) => prev.filter((c) => c.type !== 'music'))
     }
-  }, [musicPlayer.currentSong?.id, musicPlayer.lyrics.length, musicPlayer.currentLyricIndex, musicPlayer.isPlaying, isExpanded, safeSetDynamicContents])
+  }, [
+    musicPlayer.currentSong?.id,
+    musicPlayer.lyrics.length,
+    musicPlayer.currentLyricIndex,
+    musicPlayer.isPlaying,
+    isExpanded,
+    safeSetDynamicContents,
+  ])
 
   // 确保索引在有效范围内
-  const safeContentIndex = validContents.length > 0
-    ? Math.min(currentContentIndex, validContents.length - 1)
-    : 0
+  const safeContentIndex =
+    validContents.length > 0
+      ? Math.min(currentContentIndex, validContents.length - 1)
+      : 0
 
   // 获取当前显示的动态内容
-  const currentContent = validContents.length > 0 ? validContents[safeContentIndex] : null
+  const currentContent =
+    validContents.length > 0 ? validContents[safeContentIndex] : null
 
   // 用于跟踪上一次歌词文本，实现切换时的淡入淡出
   const prevLyricTextRef = useRef<string>('')
@@ -908,12 +960,14 @@ const GlobalControlPanel: React.FC = () => {
 
   // 歌词切换时的淡入淡出效果（独立处理，不影响滚动检测）
   useEffect(() => {
-    if (!textRef.current || !currentContent)
-      return
+    if (!textRef.current || !currentContent) return
 
     const element = textRef.current
     const isMusic = currentContent.type === 'music'
-    const textChanged = isMusic && prevLyricTextRef.current !== '' && prevLyricTextRef.current !== currentContent.text
+    const textChanged =
+      isMusic &&
+      prevLyricTextRef.current !== '' &&
+      prevLyricTextRef.current !== currentContent.text
 
     if (textChanged) {
       // 歌词切换时添加淡入淡出效果
@@ -931,8 +985,7 @@ const GlobalControlPanel: React.FC = () => {
     // 更新上一次歌词文本
     if (isMusic) {
       prevLyricTextRef.current = currentContent.text
-    }
-    else {
+    } else {
       prevLyricTextRef.current = ''
     }
   }, [currentContent?.text, currentContent?.type])
@@ -976,15 +1029,16 @@ const GlobalControlPanel: React.FC = () => {
             // 减去0.5秒作为缓冲，留出0.3秒作为延迟，确保流畅过渡
             duration = Math.max(1.5, currentContent.lyricDuration - 0.5)
             delay = '0.3s' // 歌词用更短的延迟，快速响应
-          }
-          else if (currentContent.type === 'music') {
+          } else if (currentContent.type === 'music') {
             // 没有时间轴的歌词（最后一句或无时间戳），默认 4 秒
             duration = 4
             delay = '0.5s'
-          }
-          else {
+          } else {
             // 普通内容：根据溢出量动态计算，每20px需要1秒，最短10秒，最长20秒
-            duration = Math.max(10, Math.min(20, Math.ceil(overflowAmount / 20) + 10))
+            duration = Math.max(
+              10,
+              Math.min(20, Math.ceil(overflowAmount / 20) + 10),
+            )
             delay = '1.5s'
           }
 
@@ -996,8 +1050,7 @@ const GlobalControlPanel: React.FC = () => {
           requestAnimationFrame(() => {
             setNeedsScroll(true)
           })
-        }
-        else {
+        } else {
           element.style.removeProperty('--scroll-distance')
           element.style.removeProperty('--scroll-duration')
           element.style.removeProperty('--scroll-delay')
@@ -1007,9 +1060,13 @@ const GlobalControlPanel: React.FC = () => {
     }
 
     // 使用统一调度器的ResizeObserver，共享Observer实例，性能更优
-    const unobserve = observeResize(element, (_entry) => {
-      updateScrollAnimation()
-    }, { immediate: true }) // 立即执行首次测量
+    const unobserve = observeResize(
+      element,
+      (_entry) => {
+        updateScrollAnimation()
+      },
+      { immediate: true },
+    ) // 立即执行首次测量
 
     // 监听内容变化，强制重新计算滚动
     // 这确保歌词切换时滚动动画会重置
@@ -1018,7 +1075,13 @@ const GlobalControlPanel: React.FC = () => {
     return () => {
       unobserve()
     }
-  }, [currentContent?.text, currentContent?.type, currentContent?.lyricDuration, currentContentIndex, scrollResetKeyRef.current])
+  }, [
+    currentContent?.text,
+    currentContent?.type,
+    currentContent?.lyricDuration,
+    currentContentIndex,
+    scrollResetKeyRef.current,
+  ])
 
   /**
    * 判断是否应该显示副文本
@@ -1061,9 +1124,7 @@ const GlobalControlPanel: React.FC = () => {
                 className={`dynamic-content-wrapper ${!showDynamicContent || isTransitioning ? 'hidden' : ''}`}
                 onClick={handleTogglePanel}
               >
-                <span className="dynamic-icon">
-                  {currentContent.icon}
-                </span>
+                <span className="dynamic-icon">{currentContent.icon}</span>
                 <div className="dynamic-text">
                   <span
                     ref={textRef}
@@ -1072,12 +1133,25 @@ const GlobalControlPanel: React.FC = () => {
                     {currentContent.text}
                   </span>
                   {/* 根据 showSubtext 属性或类型判断是否显示副文本 */}
-                  {currentContent.subtext && shouldShowSubtext(currentContent) && (
-                    <span className="dynamic-text-sub">{currentContent.subtext}</span>
-                  )}
+                  {currentContent.subtext &&
+                    shouldShowSubtext(currentContent) && (
+                      <span className="dynamic-text-sub">
+                        {currentContent.subtext}
+                      </span>
+                    )}
                 </div>
-                <svg className="dynamic-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <svg
+                  className="dynamic-arrow"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
                 </svg>
               </div>
             )}
@@ -1088,14 +1162,27 @@ const GlobalControlPanel: React.FC = () => {
                 className={`dynamic-content-wrapper empty-state ${!showDynamicContent ? 'hidden' : ''}`}
                 onClick={handleTogglePanel}
               >
-                <svg className="dynamic-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <svg
+                  className="dynamic-arrow"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
                 </svg>
               </div>
             )}
 
             {/* 展开的控制面板内容 - 通过 JS 控制显示/隐藏 */}
-            <div ref={expandedContentRef} className={`expanded-panel-content ${showPanelContent ? 'visible' : ''}`}>
+            <div
+              ref={expandedContentRef}
+              className={`expanded-panel-content ${showPanelContent ? 'visible' : ''}`}
+            >
               {/* 头部 - 用户信息按钮 */}
               <div className="control-panel-header">
                 <UserSection onClosePanel={handleClosePanel} />
@@ -1104,8 +1191,18 @@ const GlobalControlPanel: React.FC = () => {
                   className="control-close-btn"
                   aria-label={t.common.close}
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -1127,8 +1224,12 @@ const GlobalControlPanel: React.FC = () => {
                       {isDark ? <LuMoon /> : <LuSun />}
                     </div>
                     <div>
-                      <h4 className="control-item-title">{t.controlPanel.appearance}</h4>
-                      <p className="control-item-desc">{isDark ? t.controlPanel.dark : t.controlPanel.light}</p>
+                      <h4 className="control-item-title">
+                        {t.controlPanel.appearance}
+                      </h4>
+                      <p className="control-item-desc">
+                        {isDark ? t.controlPanel.dark : t.controlPanel.light}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -1143,15 +1244,23 @@ const GlobalControlPanel: React.FC = () => {
                 {/* 动效等级切换 */}
                 <div className="control-item control-item-compact">
                   <div className="control-item-info">
-                    <div className={`control-item-icon icon-performance ${animationModeClass}`}>
+                    <div
+                      className={`control-item-icon icon-performance ${animationModeClass}`}
+                    >
                       {isStandardAnimation ? <LuZap /> : <LuLeaf />}
                     </div>
                     <div>
-                      <h4 className="control-item-title">{t.controlPanel.animation}</h4>
+                      <h4 className="control-item-title">
+                        {t.controlPanel.animation}
+                      </h4>
                       <p className="control-item-desc">
                         {animPreference === 'auto'
-                          ? (anim.level === 'standard' ? t.controlPanel.highPerformance : t.controlPanel.lowPerformance)
-                          : animPreference === 'light' ? t.controlPanel.lowPerformance : t.controlPanel.highPerformance}
+                          ? anim.level === 'standard'
+                            ? t.controlPanel.highPerformance
+                            : t.controlPanel.lowPerformance
+                          : animPreference === 'light'
+                            ? t.controlPanel.lowPerformance
+                            : t.controlPanel.highPerformance}
                       </p>
                     </div>
                   </div>
@@ -1171,8 +1280,16 @@ const GlobalControlPanel: React.FC = () => {
                       <LuLanguages />
                     </div>
                     <div>
-                      <h4 className="control-item-title">{t.controlPanel.language}</h4>
-                      <p className="control-item-desc">{locale === 'zh-CN' ? '简体中文' : locale === 'ja-JP' ? '日本語' : 'English'}</p>
+                      <h4 className="control-item-title">
+                        {t.controlPanel.language}
+                      </h4>
+                      <p className="control-item-desc">
+                        {locale === 'zh-CN'
+                          ? '简体中文'
+                          : locale === 'ja-JP'
+                            ? '日本語'
+                            : 'English'}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -1188,15 +1305,22 @@ const GlobalControlPanel: React.FC = () => {
                       const locales = ['zh-CN', 'en-US', 'ja-JP'] as const
                       const currentIndex = locales.indexOf(locale)
                       // 向下滚动 = 下一个，向上滚动 = 上一个
-                      const nextIndex = e.deltaY > 0
-                        ? (currentIndex + 1) % locales.length
-                        : (currentIndex - 1 + locales.length) % locales.length
+                      const nextIndex =
+                        e.deltaY > 0
+                          ? (currentIndex + 1) % locales.length
+                          : (currentIndex - 1 + locales.length) % locales.length
                       setLocale(locales[nextIndex])
                     }}
                     className="language-switch-btn"
                     aria-label={t.controlPanel.languageSwitch}
                   >
-                    <span className="language-code">{locale === 'zh-CN' ? '中' : locale === 'ja-JP' ? '日' : 'En'}</span>
+                    <span className="language-code">
+                      {locale === 'zh-CN'
+                        ? '中'
+                        : locale === 'ja-JP'
+                          ? '日'
+                          : 'En'}
+                    </span>
                   </button>
                 </div>
 
@@ -1209,8 +1333,12 @@ const GlobalControlPanel: React.FC = () => {
                         <LuImage />
                       </div>
                       <div>
-                        <h4 className="control-item-title">{t.controlPanel.wallpaper}</h4>
-                        <p className="control-item-desc">{t.controlPanel.random}</p>
+                        <h4 className="control-item-title">
+                          {t.controlPanel.wallpaper}
+                        </h4>
+                        <p className="control-item-desc">
+                          {t.controlPanel.random}
+                        </p>
                       </div>
                     </div>
                     <button
@@ -1218,8 +1346,18 @@ const GlobalControlPanel: React.FC = () => {
                       className="control-action-btn"
                       aria-label={t.controlPanel.wallpaperSwitch}
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
                       </svg>
                     </button>
                   </div>
@@ -1233,8 +1371,12 @@ const GlobalControlPanel: React.FC = () => {
                         <LuSettings />
                       </div>
                       <div>
-                        <h4 className="control-item-title">{t.controlPanel.configuration}</h4>
-                        <p className="control-item-desc">{t.controlPanel.system}</p>
+                        <h4 className="control-item-title">
+                          {t.controlPanel.configuration}
+                        </h4>
+                        <p className="control-item-desc">
+                          {t.controlPanel.system}
+                        </p>
                       </div>
                     </div>
                     <button
@@ -1245,13 +1387,22 @@ const GlobalControlPanel: React.FC = () => {
                       className="control-action-btn"
                       aria-label={t.controlPanel.configuration}
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 7l5 5m0 0l-5 5m5-5H6"
+                        />
                       </svg>
                     </button>
                   </div>
                 )}
-
               </div>
             </div>
           </div>

@@ -37,50 +37,67 @@ export interface CheckboxGroupItemProps {
   className?: string
 }
 
-export const CheckboxGroupItem = React.memo<CheckboxGroupItemProps>(({
-  label,
-  description,
-  hint,
-  options,
-  onChange,
-  disabled = false,
-  className = '',
-}) => {
-  const handleToggle = useCallback((key: string, currentValue: boolean) => () => {
-    if (!disabled) {
-      onChange(key, !currentValue)
-    }
-  }, [onChange, disabled])
+export const CheckboxGroupItem = React.memo<CheckboxGroupItemProps>(
+  ({
+    label,
+    description,
+    hint,
+    options,
+    onChange,
+    disabled = false,
+    className = '',
+  }) => {
+    const handleToggle = useCallback(
+      (key: string, currentValue: boolean) => () => {
+        if (!disabled) {
+          onChange(key, !currentValue)
+        }
+      },
+      [onChange, disabled],
+    )
 
-  return (
-    <div className={`setting-item setting-vertical ${className} ${disabled ? 'disabled' : ''}`}>
-      <div className="setting-label">
-        <span className="setting-label-text">{label}</span>
-        {description && <span className="setting-description">{description}</span>}
+    return (
+      <div
+        className={`setting-item setting-vertical ${className} ${disabled ? 'disabled' : ''}`}
+      >
+        <div className="setting-label">
+          <span className="setting-label-text">{label}</span>
+          {description && (
+            <span className="setting-description">{description}</span>
+          )}
+        </div>
+        <div className="checkbox-group-options">
+          {options.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={`checkbox-group-card${option.value ? ' active' : ''}`}
+              onClick={handleToggle(option.key, option.value)}
+              disabled={disabled}
+            >
+              <span className="checkbox-group-card-header">
+                <span className="checkbox-group-card-indicator" />
+                {option.icon && (
+                  <span className="checkbox-group-card-icon">
+                    {option.icon}
+                  </span>
+                )}
+                <span className="checkbox-group-card-label">
+                  {option.label}
+                </span>
+              </span>
+              {option.description && (
+                <span className="checkbox-group-card-desc">
+                  {option.description}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        {hint && <p className="setting-hint">{hint}</p>}
       </div>
-      <div className="checkbox-group-options">
-        {options.map(option => (
-          <button
-            key={option.key}
-            type="button"
-            className={`checkbox-group-card${option.value ? ' active' : ''}`}
-            onClick={handleToggle(option.key, option.value)}
-            disabled={disabled}
-          >
-            <span className="checkbox-group-card-header">
-              <span className="checkbox-group-card-indicator" />
-              {option.icon && <span className="checkbox-group-card-icon">{option.icon}</span>}
-              <span className="checkbox-group-card-label">{option.label}</span>
-            </span>
-            {option.description && (
-              <span className="checkbox-group-card-desc">{option.description}</span>
-            )}
-          </button>
-        ))}
-      </div>
-      {hint && <p className="setting-hint">{hint}</p>}
-    </div>
-  )
-})
+    )
+  },
+)
 
 CheckboxGroupItem.displayName = 'CheckboxGroupItem'

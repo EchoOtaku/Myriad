@@ -3,8 +3,15 @@
  */
 
 import type { CommentItem } from '../../../services/brewApi'
-import type { AnnotationItem, PodcastDialogue } from '../../../services/brewliaApi'
-import type { ArticleCacheResponse, TTSEngine, VoiceInfo } from '../../../services/speechApi'
+import type {
+  AnnotationItem,
+  PodcastDialogue,
+} from '../../../services/brewliaApi'
+import type {
+  ArticleCacheResponse,
+  TTSEngine,
+  VoiceInfo,
+} from '../../../services/speechApi'
 import type { BrewItem, SourceType } from '../../../types/brew'
 
 // 目录项类型
@@ -124,7 +131,7 @@ export interface MobileReaderBarProps {
   handleTtsEngineChange: (engine: TTSEngine) => void
   cloudTtsAvailable: boolean | null
   cloudTtsError: string | null
-  cloudTtsLoadProgress: { loaded: number, total: number }
+  cloudTtsLoadProgress: { loaded: number; total: number }
   voiceList: VoiceInfo[]
   showVoiceSettings: boolean
   setShowVoiceSettings: (show: boolean) => void
@@ -227,7 +234,7 @@ export interface ReaderLeftPanelProps {
   handleTtsEngineChange: (engine: TTSEngine) => void
   cloudTtsAvailable: boolean | null
   cloudTtsError: string | null
-  cloudTtsLoadProgress: { loaded: number, total: number }
+  cloudTtsLoadProgress: { loaded: number; total: number }
   voiceList: VoiceInfo[]
   showVoiceSettings: boolean
   setShowVoiceSettings: (show: boolean) => void

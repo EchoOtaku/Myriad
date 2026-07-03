@@ -4,7 +4,14 @@
  */
 
 import type { ReactNode } from 'react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 
 // 阅读列表项（来自 AI 生成）
 export interface ReadingListItem {
@@ -63,7 +70,12 @@ interface ReadingListContextType {
   // 检查是否在阅读列表中
   isInReadingList: (itemId: number) => boolean
   // 获取文章在列表中的位置信息
-  getPositionInfo: (itemId: number) => { index: number, total: number, hasPrev: boolean, hasNext: boolean } | null
+  getPositionInfo: (itemId: number) => {
+    index: number
+    total: number
+    hasPrev: boolean
+    hasNext: boolean
+  } | null
 }
 
 const ReadingListContext = createContext<ReadingListContextType | null>(null)
@@ -83,7 +95,7 @@ export function ReadingListProvider({ children }: { children: ReactNode }) {
     })
     // 添加到历史
     setHistory((prev) => {
-      const filtered = prev.filter(h => h.id !== list.id)
+      const filtered = prev.filter((h) => h.id !== list.id)
       return [list, ...filtered].slice(0, 10) // 保留最近10个
     })
   }, [])
@@ -95,37 +107,41 @@ export function ReadingListProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // 跳转到指定文章
-  const goToArticle = useCallback((index: number) => {
-    if (!currentList || index < 0 || index >= currentList.items.length)
-      return
-    setProgress(prev => prev ? { ...prev, currentIndex: index } : null)
-  }, [currentList])
+  const goToArticle = useCallback(
+    (index: number) => {
+      if (!currentList || index < 0 || index >= currentList.items.length) return
+      setProgress((prev) => (prev ? { ...prev, currentIndex: index } : null))
+    },
+    [currentList],
+  )
 
   // 获取当前文章
   const getCurrentItem = useCallback((): ReadingListItem | null => {
-    if (!currentList || !progress)
-      return null
+    if (!currentList || !progress) return null
     return currentList.items[progress.currentIndex] || null
   }, [currentList, progress])
 
   // 获取上一篇
   const getPrevious = useCallback((): ReadingListItem | null => {
-    if (!currentList || !progress || progress.currentIndex <= 0)
-      return null
+    if (!currentList || !progress || progress.currentIndex <= 0) return null
     return currentList.items[progress.currentIndex - 1]
   }, [currentList, progress])
 
   // 获取下一篇
   const getNext = useCallback((): ReadingListItem | null => {
-    if (!currentList || !progress || progress.currentIndex >= currentList.items.length - 1)
+    if (
+      !currentList ||
+      !progress ||
+      progress.currentIndex >= currentList.items.length - 1
+    ) {
       return null
+    }
     return currentList.items[progress.currentIndex + 1]
   }, [currentList, progress])
 
   // 标记已读并跳转下一篇
   const markReadAndNext = useCallback((): ReadingListItem | null => {
-    if (!currentList || !progress)
-      return null
+    if (!currentList || !progress) return null
 
     const currentItem = currentList.items[progress.currentIndex]
     const newReadIds = new Set(progress.readIds)
@@ -140,75 +156,89 @@ export function ReadingListProvider({ children }: { children: ReactNode }) {
         readIds: newReadIds,
       })
       return currentList.items[progress.currentIndex + 1]
-    }
-    else {
+    } else {
       setProgress({ ...progress, readIds: newReadIds })
       return null
     }
   }, [currentList, progress])
 
   // 检查是否在阅读列表中
-  const isInReadingList = useCallback((itemId: number): boolean => {
-    if (!currentList)
-      return false
-    return currentList.items.some(item => item.id === itemId)
-  }, [currentList])
+  const isInReadingList = useCallback(
+    (itemId: number): boolean => {
+      if (!currentList) return false
+      return currentList.items.some((item) => item.id === itemId)
+    },
+    [currentList],
+  )
 
   // 获取位置信息
-  const getPositionInfo = useCallback((itemId: number) => {
-    if (!currentList)
-      return null
-    const index = currentList.items.findIndex(item => item.id === itemId)
-    if (index === -1)
-      return null
-    return {
-      index,
-      total: currentList.items.length,
-      hasPrev: index > 0,
-      hasNext: index < currentList.items.length - 1,
-    }
-  }, [currentList])
+  const getPositionInfo = useCallback(
+    (itemId: number) => {
+      if (!currentList) return null
+      const index = currentList.items.findIndex((item) => item.id === itemId)
+      if (index === -1) return null
+      return {
+        index,
+        total: currentList.items.length,
+        hasPrev: index > 0,
+        hasNext: index < currentList.items.length - 1,
+      }
+    },
+    [currentList],
+  )
 
   // 监听来自 AgentGlobalActions 的阅读列表设置事件
   useEffect(() => {
     const handleSetReadingList = (event: CustomEvent<ReadingList>) => {
-      console.log('[ReadingListContext] Received set-reading-list event:', event.detail)
+      console.log(
+        '[ReadingListContext] Received set-reading-list event:',
+        event.detail,
+      )
       setReadingList(event.detail)
     }
 
-    window.addEventListener('agent:set-reading-list', handleSetReadingList as EventListener)
+    window.addEventListener(
+      'agent:set-reading-list',
+      handleSetReadingList as EventListener,
+    )
     return () => {
-      window.removeEventListener('agent:set-reading-list', handleSetReadingList as EventListener)
+      window.removeEventListener(
+        'agent:set-reading-list',
+        handleSetReadingList as EventListener,
+      )
     }
   }, [setReadingList])
 
-  const value = useMemo(() => ({
-    currentList,
-    progress,
-    history,
-    setReadingList,
-    clearReadingList,
-    goToArticle,
-    markReadAndNext,
-    getPrevious,
-    getNext,
-    getCurrentItem,
-    isInReadingList,
-    getPositionInfo,
-  }), [
-    currentList,
-    progress,
-    history,
-    setReadingList,
-    clearReadingList,
-    goToArticle,
-    markReadAndNext,
-    getPrevious,
-    getNext,
-    getCurrentItem,
-    isInReadingList,
-    getPositionInfo,
-  ])
+  const value = useMemo(
+    () => ({
+      currentList,
+      progress,
+      history,
+      setReadingList,
+      clearReadingList,
+      goToArticle,
+      markReadAndNext,
+      getPrevious,
+      getNext,
+      getCurrentItem,
+      isInReadingList,
+      getPositionInfo,
+    }),
+    [
+      currentList,
+      progress,
+      history,
+      setReadingList,
+      clearReadingList,
+      goToArticle,
+      markReadAndNext,
+      getPrevious,
+      getNext,
+      getCurrentItem,
+      isInReadingList,
+      getPositionInfo,
+    ],
+  )
 
   return (
     <ReadingListContext.Provider value={value}>

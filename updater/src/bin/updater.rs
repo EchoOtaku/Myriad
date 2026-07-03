@@ -33,7 +33,7 @@ struct Cli {
     pgdata: std::path::PathBuf,
 
     /// Listen address.
-    #[arg(long, env = "UPDATER_LISTEN", default_value = "0.0.0.0:9090")]
+    #[arg(long, env = "UPDATER_LISTEN", default_value = "0.0.0.0:1101")]
     listen: String,
 
     /// Optional: bootstrap-self mode (used during self-update; see spec §14.2).

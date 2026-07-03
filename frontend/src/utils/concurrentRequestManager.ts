@@ -71,8 +71,7 @@ class ConcurrentRequestManager {
         this.requestQueue.push(request)
         // 按优先级排序（高优先级在前）
         this.requestQueue.sort((a, b) => b.priority - a.priority)
-      }
-      else {
+      } else {
         this.executeRequest(request)
       }
     })
@@ -88,16 +87,13 @@ class ConcurrentRequestManager {
     try {
       const result = await request.fetcher()
       request.resolve(result)
-    }
-    catch (error) {
+    } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         request.reject(new Error('Request was cancelled'))
-      }
-      else {
+      } else {
         request.reject(error)
       }
-    }
-    finally {
+    } finally {
       this.activeRequests.delete(request.key)
       this.currentCount--
       this.processQueue()
@@ -108,7 +104,10 @@ class ConcurrentRequestManager {
    * 处理队列中的下一个请求
    */
   private processQueue() {
-    if (this.requestQueue.length > 0 && this.currentCount < this.maxConcurrent) {
+    if (
+      this.requestQueue.length > 0 &&
+      this.currentCount < this.maxConcurrent
+    ) {
       const nextRequest = this.requestQueue.shift()
       if (nextRequest) {
         this.executeRequest(nextRequest)
@@ -127,7 +126,7 @@ class ConcurrentRequestManager {
     }
 
     // 同时从队列中移除
-    this.requestQueue = this.requestQueue.filter(req => req.key !== key)
+    this.requestQueue = this.requestQueue.filter((req) => req.key !== key)
   }
 
   /**
@@ -206,7 +205,7 @@ export function useCancelOnUnmount() {
   }
 
   const cleanup = () => {
-    requestKeys.forEach(key => requestManager.cancelRequest(key))
+    requestKeys.forEach((key) => requestManager.cancelRequest(key))
   }
 
   return { registerRequest, cleanup }

@@ -15,34 +15,37 @@ import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 
 /** 格式化相对时间 */
-function formatRelativeTime(dateStr: string, arael: { timeJustNow: string; timeMinutesAgo: string; timeHoursAgo: string; timeDaysAgo: string }, fmt: (template: string, params: Record<string, string | number>) => string): string {
+function formatRelativeTime(
+  dateStr: string,
+  arael: {
+    timeJustNow: string
+    timeMinutesAgo: string
+    timeHoursAgo: string
+    timeDaysAgo: string
+  },
+  fmt: (template: string, params: Record<string, string | number>) => string,
+): string {
   const date = new Date(dateStr)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMin = Math.floor(diffMs / 60000)
 
-  if (diffMin < 1)
-    return arael.timeJustNow
-  if (diffMin < 60)
-    return fmt(arael.timeMinutesAgo, { n: diffMin })
+  if (diffMin < 1) return arael.timeJustNow
+  if (diffMin < 60) return fmt(arael.timeMinutesAgo, { n: diffMin })
   const diffHour = Math.floor(diffMin / 60)
-  if (diffHour < 24)
-    return fmt(arael.timeHoursAgo, { n: diffHour })
+  if (diffHour < 24) return fmt(arael.timeHoursAgo, { n: diffHour })
   const diffDay = Math.floor(diffHour / 24)
-  if (diffDay < 7)
-    return fmt(arael.timeDaysAgo, { n: diffDay })
+  if (diffDay < 7) return fmt(arael.timeDaysAgo, { n: diffDay })
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 export interface AraelSessionListProps {
   onSelectSession: (session: ChatSession) => void
-  onNewSession: () => void
   activeSessionId?: string | null
 }
 
 export const AraelSessionList: React.FC<AraelSessionListProps> = ({
   onSelectSession,
-  onNewSession,
   activeSessionId,
 }) => {
   const [sessions, setSessions] = useState<ChatSession[]>([])
@@ -56,18 +59,18 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
     setLoading(true)
     try {
       const list = await agentService.listSessions(1, 50)
-      setSessions(list.map(s => ({
-        id: s.id,
-        title: s.title,
-        messageCount: s.messageCount,
-        lastActiveAt: s.lastActiveAt,
-        createdAt: s.createdAt,
-      })))
-    }
-    catch {
+      setSessions(
+        list.map((s) => ({
+          id: s.id,
+          title: s.title,
+          messageCount: s.messageCount,
+          lastActiveAt: s.lastActiveAt,
+          createdAt: s.createdAt,
+        })),
+      )
+    } catch {
       // silent
-    }
-    finally {
+    } finally {
       setLoading(false)
     }
   }, [])
@@ -79,32 +82,41 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
   const filteredSessions = useMemo(() => {
     if (!searchQuery.trim()) return sessions
     const q = searchQuery.toLowerCase()
-    return sessions.filter(s =>
-      (s.title || '').toLowerCase().includes(q),
-    )
+    return sessions.filter((s) => (s.title || '').toLowerCase().includes(q))
   }, [sessions, searchQuery])
 
-  const handleDelete = useCallback(async (e: React.MouseEvent, sessionId: string) => {
-    e.stopPropagation()
-    if (deletingId) return
-    setDeletingId(sessionId)
-    try {
-      await agentService.archiveSession(sessionId)
-      setSessions(prev => prev.filter(s => s.id !== sessionId))
-    }
-    catch {
-      // silent
-    }
-    finally {
-      setDeletingId(null)
-    }
-  }, [deletingId])
+  const handleDelete = useCallback(
+    async (e: React.MouseEvent, sessionId: string) => {
+      e.stopPropagation()
+      if (deletingId) return
+      setDeletingId(sessionId)
+      try {
+        await agentService.archiveSession(sessionId)
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+      } catch {
+        // silent
+      } finally {
+        setDeletingId(null)
+      }
+    },
+    [deletingId],
+  )
 
   return (
     <div className="arael-sessions">
       {/* Search bar */}
       <div className="arael-sessions-search">
-        <svg className="arael-sessions-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          className="arael-sessions-search-icon"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
@@ -114,11 +126,23 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
           className="arael-sessions-search-input"
           placeholder={t.arael.searchSessions}
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+          onChange={(e) => setSearchQuery(e.target.value)}
         />
         {searchQuery && (
-          <button className="arael-sessions-search-clear" onClick={() => setSearchQuery('')}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <button
+            className="arael-sessions-search-clear"
+            onClick={() => setSearchQuery('')}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
@@ -135,14 +159,24 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
 
       {/* List */}
       <div className="arael-sessions-items">
-        {filteredSessions.map(session => (
+        {filteredSessions.map((session) => (
           <button
             key={session.id}
             className={`arael-sessions-item${session.id === activeSessionId ? ' active' : ''}`}
             onClick={() => onSelectSession(session)}
           >
             <div className="arael-sessions-item-row">
-              <svg className="arael-sessions-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                className="arael-sessions-item-icon"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
               <span className="arael-sessions-item-title">
@@ -153,7 +187,9 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
               </span>
             </div>
             <div className="arael-sessions-item-sub">
-              <span>{format(t.arael.messageCount, { count: session.messageCount })}</span>
+              <span>
+                {format(t.arael.messageCount, { count: session.messageCount })}
+              </span>
               <button
                 className="arael-sessions-item-delete"
                 onClick={(e) => handleDelete(e, session.id)}
@@ -163,7 +199,16 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
                 {deletingId === session.id ? (
                   <span className="arael-spinner-tiny" />
                 ) : (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <polyline points="3 6 5 6 21 6" />
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                   </svg>
@@ -175,7 +220,17 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
 
         {!loading && filteredSessions.length === 0 && (
           <div className="arael-sessions-empty">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.3"
+            >
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
             <span>{t.arael.noHistory}</span>

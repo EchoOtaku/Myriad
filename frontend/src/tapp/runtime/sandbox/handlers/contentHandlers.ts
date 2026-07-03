@@ -8,12 +8,15 @@ import * as TappApiService from '../../../services/TappApiService'
 
 // 统一错误返回
 function fail(error: unknown) {
-  return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+  return {
+    success: false,
+    error: error instanceof Error ? error.message : 'Failed',
+  }
 }
 
 // 从 message payload 取参数
 function getArgs(message: { payload: unknown }): unknown[] {
-  return ((message.payload as { args?: unknown[] }).args) || []
+  return (message.payload as { args?: unknown[] }).args || []
 }
 
 // ============ Tapp 列表处理器 ============
@@ -28,7 +31,7 @@ export function registerTappListHandlers(
       const tapps = await TappApiService.listTapps()
       return {
         success: true,
-        data: tapps.map(t => ({
+        data: tapps.map((t) => ({
           id: t.id,
           name: t.name,
           version: t.version,
@@ -38,8 +41,9 @@ export function registerTappListHandlers(
           status: t.status,
         })),
       }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 获取单个 Tapp 详情
@@ -60,8 +64,9 @@ export function registerTappListHandlers(
           last_run_at: detail.last_run_at,
         },
       }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 获取最近使用的 Tapp
@@ -70,18 +75,25 @@ export function registerTappListHandlers(
     try {
       const items = await TappApiService.getRecentTapps(limit || 10)
       return { success: true, data: items }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 安装 Tapp（从商店）
   bridge.registerHandler('tappList.install', async (message) => {
-    const [request] = getArgs(message) as [{ source: string, tappId: string, permissions?: string[] }]
+    const [request] = getArgs(message) as [
+      { source: string; tappId: string; permissions?: string[] },
+    ]
     try {
       const result = await TappApiService.installFromStore(request)
-      return { success: true, data: { id: result.id, name: result.name, status: result.status } }
+      return {
+        success: true,
+        data: { id: result.id, name: result.name, status: result.status },
+      }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 卸载 Tapp
@@ -90,8 +102,9 @@ export function registerTappListHandlers(
     try {
       await TappApiService.uninstallTapp(tappId)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 启动 Tapp
@@ -100,8 +113,9 @@ export function registerTappListHandlers(
     try {
       await TappApiService.startTapp(tappId)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 停止 Tapp
@@ -110,8 +124,9 @@ export function registerTappListHandlers(
     try {
       await TappApiService.stopTapp(tappId)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 导出 Tapp
@@ -120,8 +135,9 @@ export function registerTappListHandlers(
     try {
       await TappApiService.exportTapp(tappId)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 }
 
@@ -147,7 +163,7 @@ export function registerBrewListHandlers(
       return {
         success: true,
         data: {
-          items: data.items.map(item => ({
+          items: data.items.map((item) => ({
             id: item.id,
             title: item.title,
             link: item.link,
@@ -163,8 +179,9 @@ export function registerBrewListHandlers(
           total: data.total,
         },
       }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 单篇文章详情
@@ -190,8 +207,9 @@ export function registerBrewListHandlers(
           is_starred: item.is_starred,
         },
       }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 订阅源列表
@@ -201,7 +219,7 @@ export function registerBrewListHandlers(
       const sources = await getSources()
       return {
         success: true,
-        data: sources.map(s => ({
+        data: sources.map((s) => ({
           id: s.id,
           name: s.name,
           url: s.url,
@@ -212,8 +230,9 @@ export function registerBrewListHandlers(
           unread_count: s.unread_count,
         })),
       }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 分类列表
@@ -222,8 +241,9 @@ export function registerBrewListHandlers(
       const { getCategories } = await import('../../../../services/brewApi')
       const categories = await getCategories()
       return { success: true, data: categories }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 统计信息
@@ -232,8 +252,9 @@ export function registerBrewListHandlers(
       const { getStats } = await import('../../../../services/brewApi')
       const stats = await getStats()
       return { success: true, data: stats }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 发现 RSS 源
@@ -243,8 +264,9 @@ export function registerBrewListHandlers(
       const { discoverSource } = await import('../../../../services/brewApi')
       const result = await discoverSource(url)
       return { success: true, data: result }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // 导出 OPML
@@ -253,8 +275,9 @@ export function registerBrewListHandlers(
       const { exportOpml } = await import('../../../../services/brewApi')
       const opml = await exportOpml()
       return { success: true, data: opml }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // --- Brew 写入 ---
@@ -265,8 +288,9 @@ export function registerBrewListHandlers(
       const { markRead } = await import('../../../../services/brewApi')
       await markRead(itemId)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.markUnread', async (message) => {
@@ -275,8 +299,9 @@ export function registerBrewListHandlers(
       const { markUnread } = await import('../../../../services/brewApi')
       await markUnread(itemId)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.star', async (message) => {
@@ -285,8 +310,9 @@ export function registerBrewListHandlers(
       const { starItem } = await import('../../../../services/brewApi')
       await starItem(itemId)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.unstar', async (message) => {
@@ -295,18 +321,22 @@ export function registerBrewListHandlers(
       const { unstarItem } = await import('../../../../services/brewApi')
       await unstarItem(itemId)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.markAllRead', async (message) => {
-    const [options] = getArgs(message) as [{ source_id?: number, category?: string, before?: number }?]
+    const [options] = getArgs(message) as [
+      { source_id?: number; category?: string; before?: number }?,
+    ]
     try {
       const { markAllRead } = await import('../../../../services/brewApi')
       const count = await markAllRead(options)
       return { success: true, data: { count } }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // --- Brew 评论 ---
@@ -317,28 +347,45 @@ export function registerBrewListHandlers(
       const { getComments } = await import('../../../../services/brewApi')
       const result = await getComments(itemId)
       return { success: true, data: result }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.createComment', async (message) => {
-    const [itemId, req] = getArgs(message) as [number, { selected_text: string, comment: string, start_offset?: number, end_offset?: number, color?: string, is_public?: boolean, parent_id?: number }]
+    const [itemId, req] = getArgs(message) as [
+      number,
+      {
+        selected_text: string
+        comment: string
+        start_offset?: number
+        end_offset?: number
+        color?: string
+        is_public?: boolean
+        parent_id?: number
+      },
+    ]
     try {
       const { createComment } = await import('../../../../services/brewApi')
       const result = await createComment(itemId, req)
       return { success: true, data: result }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.updateComment', async (message) => {
-    const [commentId, req] = getArgs(message) as [number, { comment?: string, color?: string }]
+    const [commentId, req] = getArgs(message) as [
+      number,
+      { comment?: string; color?: string },
+    ]
     try {
       const { updateComment } = await import('../../../../services/brewApi')
       const result = await updateComment(commentId, req)
       return { success: true, data: result }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.deleteComment', async (message) => {
@@ -347,8 +394,9 @@ export function registerBrewListHandlers(
       const { deleteComment } = await import('../../../../services/brewApi')
       await deleteComment(commentId)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.getReplies', async (message) => {
@@ -357,40 +405,54 @@ export function registerBrewListHandlers(
       const { getCommentReplies } = await import('../../../../services/brewApi')
       const result = await getCommentReplies(commentId)
       return { success: true, data: result }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.createReply', async (message) => {
-    const [itemId, parentId, content] = getArgs(message) as [number, number, string]
+    const [itemId, parentId, content] = getArgs(message) as [
+      number,
+      number,
+      string,
+    ]
     try {
       const { createReply } = await import('../../../../services/brewApi')
       const result = await createReply(itemId, parentId, content)
       return { success: true, data: result }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   // --- Brew 管理 ---
 
   bridge.registerHandler('brewList.addSource', async (message) => {
-    const [req] = getArgs(message) as [{ url: string, category?: string }]
+    const [req] = getArgs(message) as [{ url: string; category?: string }]
     try {
       const { addSource } = await import('../../../../services/brewApi')
       const source = await addSource(req)
-      return { success: true, data: { id: source.id, name: source.name, url: source.url } }
+      return {
+        success: true,
+        data: { id: source.id, name: source.name, url: source.url },
+      }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.updateSource', async (message) => {
-    const [id, req] = getArgs(message) as [number, { name?: string, category?: string }]
+    const [id, req] = getArgs(message) as [
+      number,
+      { name?: string; category?: string },
+    ]
     try {
       const { updateSource } = await import('../../../../services/brewApi')
       const source = await updateSource(id, req)
       return { success: true, data: { id: source.id, name: source.name } }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.deleteSource', async (message) => {
@@ -399,8 +461,9 @@ export function registerBrewListHandlers(
       const { deleteSource } = await import('../../../../services/brewApi')
       await deleteSource(id)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.refreshSource', async (message) => {
@@ -409,8 +472,9 @@ export function registerBrewListHandlers(
       const { refreshSource } = await import('../../../../services/brewApi')
       const count = await refreshSource(id)
       return { success: true, data: { new_items: count } }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.importOpml', async (message) => {
@@ -419,8 +483,9 @@ export function registerBrewListHandlers(
       const { importOpml } = await import('../../../../services/brewApi')
       const result = await importOpml(opml)
       return { success: true, data: result }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.createCategory', async (message) => {
@@ -429,8 +494,9 @@ export function registerBrewListHandlers(
       const { createCategory } = await import('../../../../services/brewApi')
       await createCategory(req)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 
   bridge.registerHandler('brewList.deleteCategory', async (message) => {
@@ -439,7 +505,8 @@ export function registerBrewListHandlers(
       const { deleteCategory } = await import('../../../../services/brewApi')
       await deleteCategory(id)
       return { success: true }
+    } catch (error) {
+      return fail(error)
     }
-    catch (error) { return fail(error) }
   })
 }

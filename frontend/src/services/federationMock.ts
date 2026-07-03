@@ -85,7 +85,8 @@ const MOCK_TIMELINE: TimelineItem[] = [
     activity_id: 'act-tl-001',
     activity_type: 'Create',
     object_type: 'Note',
-    content_preview: '刚发现了一个超棒的开源项目 Myriad，集成了 RSS 阅读器和去中心化协议，太酷了！',
+    content_preview:
+      '刚发现了一个超棒的开源项目 Myriad，集成了 RSS 阅读器和去中心化协议，太酷了！',
     is_read: false,
     actor: {
       actor_url: 'https://mastodon.social/users/alice',
@@ -98,7 +99,8 @@ const MOCK_TIMELINE: TimelineItem[] = [
     activity_id: 'act-tl-002',
     activity_type: 'Announce',
     object_type: 'Article',
-    content_preview: '转发了一篇关于去中心化社交网络未来发展的深度分析文章。ActivityPub 协议正在改变互联网的基础架构...',
+    content_preview:
+      '转发了一篇关于去中心化社交网络未来发展的深度分析文章。ActivityPub 协议正在改变互联网的基础架构...',
     is_read: false,
     actor: {
       actor_url: 'https://misskey.io/users/bob',
@@ -111,7 +113,8 @@ const MOCK_TIMELINE: TimelineItem[] = [
     activity_id: 'act-tl-003',
     activity_type: 'Create',
     object_type: 'Article',
-    content_preview: '我的新摄影作品集更新了，这次去了冰岛拍摄北极光，已同步到所有节点。',
+    content_preview:
+      '我的新摄影作品集更新了，这次去了冰岛拍摄北极光，已同步到所有节点。',
     is_read: true,
     actor: {
       actor_url: 'https://pixelfed.social/users/carol',
@@ -124,7 +127,8 @@ const MOCK_TIMELINE: TimelineItem[] = [
     activity_id: 'act-tl-004',
     activity_type: 'Create',
     object_type: 'Note',
-    content_preview: '有没有人试过用 Ring 协议做分布式 Tapp 商店？gossip 同步效率意外地高。',
+    content_preview:
+      '有没有人试过用 Ring 协议做分布式 Tapp 商店？gossip 同步效率意外地高。',
     is_read: true,
     actor: {
       actor_url: 'https://lemmy.world/u/dave',
@@ -150,7 +154,8 @@ const MOCK_TIMELINE: TimelineItem[] = [
     activity_id: 'act-tl-006',
     activity_type: 'Create',
     object_type: 'Note',
-    content_preview: '去中心化网络最近新增了不少有趣的实例，各种小众社区正在涌现。开放协议 + 自托管 = 真正的互联网自由。',
+    content_preview:
+      '去中心化网络最近新增了不少有趣的实例，各种小众社区正在涌现。开放协议 + 自托管 = 真正的互联网自由。',
     is_read: false,
     actor: {
       actor_url: 'https://mastodon.social/users/alice',
@@ -390,16 +395,92 @@ const MOCK_CHANNEL_DETAILS: Record<string, ChannelDetail> = {
 
 const MOCK_CHANNEL_MESSAGES: Record<string, MessageItem[]> = {
   'ch-001': [
-    { message_id: 'msg-ch1-001', sender_actor: 'https://mastodon.social/users/alice', message_type: 'text', payload: { text: '你好！最近 Myriad 的社交功能进展如何？' }, is_encrypted: false, created_at: '2026-03-14T05:00:00Z' },
-    { message_id: 'msg-ch1-002', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '进展不错，Channel 和 Room 基本功能都实现了，正在测试中。' }, is_encrypted: false, created_at: '2026-03-14T05:05:00Z' },
-    { message_id: 'msg-ch1-003', sender_actor: 'https://mastodon.social/users/alice', message_type: 'text', payload: { text: '太好了！Ring 的 gossip 同步我也很期待，可以用来做跨实例的 RSS 推荐。' }, is_encrypted: false, created_at: '2026-03-14T05:10:00Z' },
-    { message_id: 'msg-ch1-004', sender_actor: 'https://myriad.local/users/me', message_type: 'tapp', payload: { title: 'Aro Messenger', description: '即时通讯应用，支持频道、群组和圈子', content_type: 'tapp', tapp_id: 'com.myriad.aro', tapp_version: '1.0.0', icon: 'tapp', text: '试试这个新做的通讯应用' }, is_encrypted: false, created_at: '2026-03-14T06:00:00Z' },
-    { message_id: 'msg-ch1-005', sender_actor: 'https://mastodon.social/users/alice', message_type: 'brew', payload: { title: 'Hacker News 精选', description: '每日精选 HN 热门文章，自动翻译中文摘要', content_type: 'brew', brew_id: 42, brew_link: 'https://news.ycombinator.com/rss', icon: 'brew', text: '这个 Brew 源不错，推荐给你' }, is_encrypted: false, created_at: '2026-03-14T06:30:00Z' },
-    { message_id: 'msg-ch1-006', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '收到，我安装看看！' }, is_encrypted: false, created_at: '2026-03-14T06:35:00Z' },
+    {
+      message_id: 'msg-ch1-001',
+      sender_actor: 'https://mastodon.social/users/alice',
+      message_type: 'text',
+      payload: { text: '你好！最近 Myriad 的社交功能进展如何？' },
+      is_encrypted: false,
+      created_at: '2026-03-14T05:00:00Z',
+    },
+    {
+      message_id: 'msg-ch1-002',
+      sender_actor: 'https://myriad.local/users/me',
+      message_type: 'text',
+      payload: {
+        text: '进展不错，Channel 和 Room 基本功能都实现了，正在测试中。',
+      },
+      is_encrypted: false,
+      created_at: '2026-03-14T05:05:00Z',
+    },
+    {
+      message_id: 'msg-ch1-003',
+      sender_actor: 'https://mastodon.social/users/alice',
+      message_type: 'text',
+      payload: {
+        text: '太好了！Ring 的 gossip 同步我也很期待，可以用来做跨实例的 RSS 推荐。',
+      },
+      is_encrypted: false,
+      created_at: '2026-03-14T05:10:00Z',
+    },
+    {
+      message_id: 'msg-ch1-004',
+      sender_actor: 'https://myriad.local/users/me',
+      message_type: 'tapp',
+      payload: {
+        title: 'Aro Messenger',
+        description: '即时通讯应用，支持频道、群组和圈子',
+        content_type: 'tapp',
+        tapp_id: 'com.myriad.aro',
+        tapp_version: '1.0.0',
+        icon: 'tapp',
+        text: '试试这个新做的通讯应用',
+      },
+      is_encrypted: false,
+      created_at: '2026-03-14T06:00:00Z',
+    },
+    {
+      message_id: 'msg-ch1-005',
+      sender_actor: 'https://mastodon.social/users/alice',
+      message_type: 'brew',
+      payload: {
+        title: 'Hacker News 精选',
+        description: '每日精选 HN 热门文章，自动翻译中文摘要',
+        content_type: 'brew',
+        brew_id: 42,
+        brew_link: 'https://news.ycombinator.com/rss',
+        icon: 'brew',
+        text: '这个 Brew 源不错，推荐给你',
+      },
+      is_encrypted: false,
+      created_at: '2026-03-14T06:30:00Z',
+    },
+    {
+      message_id: 'msg-ch1-006',
+      sender_actor: 'https://myriad.local/users/me',
+      message_type: 'text',
+      payload: { text: '收到，我安装看看！' },
+      is_encrypted: false,
+      created_at: '2026-03-14T06:35:00Z',
+    },
   ],
   'ch-002': [
-    { message_id: 'msg-ch2-001', sender_actor: 'https://misskey.io/users/bob', message_type: 'text', payload: { text: 'データ交換テスト — Library の同期をチェックしよう' }, is_encrypted: false, created_at: '2026-03-13T22:00:00Z' },
-    { message_id: 'msg-ch2-002', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '好的，我这边准备好了，发送同步请求。' }, is_encrypted: false, created_at: '2026-03-13T22:15:00Z' },
+    {
+      message_id: 'msg-ch2-001',
+      sender_actor: 'https://misskey.io/users/bob',
+      message_type: 'text',
+      payload: { text: 'データ交換テスト — Library の同期をチェックしよう' },
+      is_encrypted: false,
+      created_at: '2026-03-13T22:00:00Z',
+    },
+    {
+      message_id: 'msg-ch2-002',
+      sender_actor: 'https://myriad.local/users/me',
+      message_type: 'text',
+      payload: { text: '好的，我这边准备好了，发送同步请求。' },
+      is_encrypted: false,
+      created_at: '2026-03-13T22:15:00Z',
+    },
   ],
   'ch-003': [],
 }
@@ -475,52 +556,307 @@ const MOCK_ROOM_DETAILS: Record<string, RoomDetail> = {
 
 const MOCK_ROOM_MEMBERS: Record<string, RoomMember[]> = {
   'rm-001': [
-    { actor_url: 'https://myriad.local/users/me', is_local: true, display_name: 'Me', role: 'owner', joined_at: '2026-01-15T10:00:00Z' },
-    { actor_url: 'https://mastodon.social/users/alice', is_local: false, display_name: 'Alice Chen', role: 'admin', joined_at: '2026-01-16T08:00:00Z', invited_by: 'https://myriad.local/users/me' },
-    { actor_url: 'https://misskey.io/users/bob', is_local: false, display_name: 'Bob 田中', role: 'member', joined_at: '2026-01-20T12:00:00Z' },
-    { actor_url: 'https://lemmy.world/u/dave', is_local: false, display_name: 'Dave López', role: 'member', joined_at: '2026-02-05T09:00:00Z' },
+    {
+      actor_url: 'https://myriad.local/users/me',
+      is_local: true,
+      display_name: 'Me',
+      role: 'owner',
+      joined_at: '2026-01-15T10:00:00Z',
+    },
+    {
+      actor_url: 'https://mastodon.social/users/alice',
+      is_local: false,
+      display_name: 'Alice Chen',
+      role: 'admin',
+      joined_at: '2026-01-16T08:00:00Z',
+      invited_by: 'https://myriad.local/users/me',
+    },
+    {
+      actor_url: 'https://misskey.io/users/bob',
+      is_local: false,
+      display_name: 'Bob 田中',
+      role: 'member',
+      joined_at: '2026-01-20T12:00:00Z',
+    },
+    {
+      actor_url: 'https://lemmy.world/u/dave',
+      is_local: false,
+      display_name: 'Dave López',
+      role: 'member',
+      joined_at: '2026-02-05T09:00:00Z',
+    },
   ],
   'rm-002': [
-    { actor_url: 'https://mastodon.social/users/alice', is_local: false, display_name: 'Alice Chen', role: 'owner', joined_at: '2026-02-01T14:00:00Z' },
-    { actor_url: 'https://myriad.local/users/me', is_local: true, display_name: 'Me', role: 'member', joined_at: '2026-02-02T10:00:00Z' },
-    { actor_url: 'https://pleroma.example.org/users/eve', is_local: false, display_name: 'Eve 佐藤', role: 'member', joined_at: '2026-02-10T16:00:00Z' },
+    {
+      actor_url: 'https://mastodon.social/users/alice',
+      is_local: false,
+      display_name: 'Alice Chen',
+      role: 'owner',
+      joined_at: '2026-02-01T14:00:00Z',
+    },
+    {
+      actor_url: 'https://myriad.local/users/me',
+      is_local: true,
+      display_name: 'Me',
+      role: 'member',
+      joined_at: '2026-02-02T10:00:00Z',
+    },
+    {
+      actor_url: 'https://pleroma.example.org/users/eve',
+      is_local: false,
+      display_name: 'Eve 佐藤',
+      role: 'member',
+      joined_at: '2026-02-10T16:00:00Z',
+    },
   ],
   'rm-003': [
-    { actor_url: 'https://lemmy.world/u/dave', is_local: false, display_name: 'Dave López', role: 'owner', joined_at: '2026-02-28T09:00:00Z' },
-    { actor_url: 'https://myriad.local/users/me', is_local: true, display_name: 'Me', role: 'admin', joined_at: '2026-02-28T10:00:00Z' },
-    { actor_url: 'https://pixelfed.social/users/carol', is_local: false, display_name: 'Carol Wang', role: 'member', joined_at: '2026-03-01T12:00:00Z' },
+    {
+      actor_url: 'https://lemmy.world/u/dave',
+      is_local: false,
+      display_name: 'Dave López',
+      role: 'owner',
+      joined_at: '2026-02-28T09:00:00Z',
+    },
+    {
+      actor_url: 'https://myriad.local/users/me',
+      is_local: true,
+      display_name: 'Me',
+      role: 'admin',
+      joined_at: '2026-02-28T10:00:00Z',
+    },
+    {
+      actor_url: 'https://pixelfed.social/users/carol',
+      is_local: false,
+      display_name: 'Carol Wang',
+      role: 'member',
+      joined_at: '2026-03-01T12:00:00Z',
+    },
   ],
   'rm-004': [
-    { actor_url: 'https://misskey.io/users/bob', is_local: false, display_name: 'Bob 田中', role: 'owner', joined_at: '2025-12-20T16:00:00Z' },
-    { actor_url: 'https://myriad.local/users/me', is_local: true, display_name: 'Me', role: 'member', joined_at: '2026-01-05T20:00:00Z' },
-    { actor_url: 'https://mastodon.social/users/alice', is_local: false, display_name: 'Alice Chen', role: 'member', joined_at: '2026-01-10T14:00:00Z' },
-    { actor_url: 'https://pleroma.example.org/users/eve', is_local: false, display_name: 'Eve 佐藤', role: 'member', joined_at: '2026-02-15T08:00:00Z' },
+    {
+      actor_url: 'https://misskey.io/users/bob',
+      is_local: false,
+      display_name: 'Bob 田中',
+      role: 'owner',
+      joined_at: '2025-12-20T16:00:00Z',
+    },
+    {
+      actor_url: 'https://myriad.local/users/me',
+      is_local: true,
+      display_name: 'Me',
+      role: 'member',
+      joined_at: '2026-01-05T20:00:00Z',
+    },
+    {
+      actor_url: 'https://mastodon.social/users/alice',
+      is_local: false,
+      display_name: 'Alice Chen',
+      role: 'member',
+      joined_at: '2026-01-10T14:00:00Z',
+    },
+    {
+      actor_url: 'https://pleroma.example.org/users/eve',
+      is_local: false,
+      display_name: 'Eve 佐藤',
+      role: 'member',
+      joined_at: '2026-02-15T08:00:00Z',
+    },
   ],
 }
 
 const MOCK_ROOM_MESSAGES: Record<string, RoomMessageItem[]> = {
   'rm-001': [
-    { message_id: 'msg-rm1-001', sender_actor: 'https://mastodon.social/users/alice', message_type: 'text', payload: { text: 'MFP Layer 3 的 Channel 双向通信测试通过了' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T06:00:00Z' },
-    { message_id: 'msg-rm1-002', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '太好了！接下来要把 Room 的分发策略也跑一遍。' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T06:15:00Z' },
-    { message_id: 'msg-rm1-003', sender_actor: 'https://lemmy.world/u/dave', message_type: 'tapp', payload: { title: 'MFP Inspector', description: '协议调试工具，可视化消息流和节点状态', content_type: 'tapp', tapp_id: 'com.myriad.mfp-inspector', tapp_version: '0.2.0', icon: 'search', text: '大家可以用这个工具来调试' }, reactions: { like: 2 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:00:00Z' },
-    { message_id: 'msg-rm1-004', sender_actor: 'https://misskey.io/users/bob', message_type: 'library', payload: { title: 'Steins;Gate (命运石之门)', description: 'MAL 评分 9.07 · Sci-Fi, Thriller · 24 集', content_type: 'library', platform_id: 'mal', item_id: '9253', icon: 'library', text: '经典神作推荐' }, reactions: { heart: 4 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:30:00Z' },
-    { message_id: 'msg-rm1-005', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: 'Perfect. 大家把各自负责的模块测一下，明天汇总。' }, reactions: { like: 3 }, is_pinned: true, is_encrypted: false, created_at: '2026-03-14T07:45:00Z' },
+    {
+      message_id: 'msg-rm1-001',
+      sender_actor: 'https://mastodon.social/users/alice',
+      message_type: 'text',
+      payload: { text: 'MFP Layer 3 的 Channel 双向通信测试通过了' },
+      reactions: {},
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T06:00:00Z',
+    },
+    {
+      message_id: 'msg-rm1-002',
+      sender_actor: 'https://myriad.local/users/me',
+      message_type: 'text',
+      payload: { text: '太好了！接下来要把 Room 的分发策略也跑一遍。' },
+      reactions: {},
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T06:15:00Z',
+    },
+    {
+      message_id: 'msg-rm1-003',
+      sender_actor: 'https://lemmy.world/u/dave',
+      message_type: 'tapp',
+      payload: {
+        title: 'MFP Inspector',
+        description: '协议调试工具，可视化消息流和节点状态',
+        content_type: 'tapp',
+        tapp_id: 'com.myriad.mfp-inspector',
+        tapp_version: '0.2.0',
+        icon: 'search',
+        text: '大家可以用这个工具来调试',
+      },
+      reactions: { like: 2 },
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T07:00:00Z',
+    },
+    {
+      message_id: 'msg-rm1-004',
+      sender_actor: 'https://misskey.io/users/bob',
+      message_type: 'library',
+      payload: {
+        title: 'Steins;Gate (命运石之门)',
+        description: 'MAL 评分 9.07 · Sci-Fi, Thriller · 24 集',
+        content_type: 'library',
+        platform_id: 'mal',
+        item_id: '9253',
+        icon: 'library',
+        text: '经典神作推荐',
+      },
+      reactions: { heart: 4 },
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T07:30:00Z',
+    },
+    {
+      message_id: 'msg-rm1-005',
+      sender_actor: 'https://myriad.local/users/me',
+      message_type: 'text',
+      payload: { text: 'Perfect. 大家把各自负责的模块测一下，明天汇总。' },
+      reactions: { like: 3 },
+      is_pinned: true,
+      is_encrypted: false,
+      created_at: '2026-03-14T07:45:00Z',
+    },
   ],
   'rm-002': [
-    { message_id: 'msg-rm2-001', sender_actor: 'https://mastodon.social/users/alice', message_type: 'text', payload: { text: '推荐一个 Hacker News 的 RSS 源，配合 RSSHub 效果很好' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T04:00:00Z' },
-    { message_id: 'msg-rm2-002', sender_actor: 'https://pleroma.example.org/users/eve', message_type: 'text', payload: { text: '我最近在用 Brew 看日本新闻，NHK 的 RSS 源质量不错' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T04:30:00Z' },
-    { message_id: 'msg-rm2-003', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '收藏了，顺便问下大家有没有好用的技术博客 RSS？' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T05:20:00Z' },
+    {
+      message_id: 'msg-rm2-001',
+      sender_actor: 'https://mastodon.social/users/alice',
+      message_type: 'text',
+      payload: { text: '推荐一个 Hacker News 的 RSS 源，配合 RSSHub 效果很好' },
+      reactions: {},
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T04:00:00Z',
+    },
+    {
+      message_id: 'msg-rm2-002',
+      sender_actor: 'https://pleroma.example.org/users/eve',
+      message_type: 'text',
+      payload: { text: '我最近在用 Brew 看日本新闻，NHK 的 RSS 源质量不错' },
+      reactions: {},
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T04:30:00Z',
+    },
+    {
+      message_id: 'msg-rm2-003',
+      sender_actor: 'https://myriad.local/users/me',
+      message_type: 'text',
+      payload: { text: '收藏了，顺便问下大家有没有好用的技术博客 RSS？' },
+      reactions: {},
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T05:20:00Z',
+    },
   ],
   'rm-003': [
-    { message_id: 'msg-rm3-001', sender_actor: 'https://lemmy.world/u/dave', message_type: 'text', payload: { text: '新的 Tapp API 草案已经提交到 repo 了，大家看看有没有问题。' }, reactions: {}, is_pinned: true, is_encrypted: false, created_at: '2026-03-13T17:00:00Z' },
-    { message_id: 'msg-rm3-002', sender_actor: 'https://pixelfed.social/users/carol', message_type: 'text', payload: { text: '我看了一下，sandbox 部分的设计很棒，权限模型也很清晰。' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-13T18:00:00Z' },
-    { message_id: 'msg-rm3-003', sender_actor: 'https://myriad.local/users/me', message_type: 'text', payload: { text: '同意，周末我来完善文档部分。' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-13T18:30:00Z' },
+    {
+      message_id: 'msg-rm3-001',
+      sender_actor: 'https://lemmy.world/u/dave',
+      message_type: 'text',
+      payload: {
+        text: '新的 Tapp API 草案已经提交到 repo 了，大家看看有没有问题。',
+      },
+      reactions: {},
+      is_pinned: true,
+      is_encrypted: false,
+      created_at: '2026-03-13T17:00:00Z',
+    },
+    {
+      message_id: 'msg-rm3-002',
+      sender_actor: 'https://pixelfed.social/users/carol',
+      message_type: 'text',
+      payload: {
+        text: '我看了一下，sandbox 部分的设计很棒，权限模型也很清晰。',
+      },
+      reactions: {},
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-13T18:00:00Z',
+    },
+    {
+      message_id: 'msg-rm3-003',
+      sender_actor: 'https://myriad.local/users/me',
+      message_type: 'text',
+      payload: { text: '同意，周末我来完善文档部分。' },
+      reactions: {},
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-13T18:30:00Z',
+    },
   ],
   'rm-004': [
-    { message_id: 'msg-rm4-001', sender_actor: 'https://misskey.io/users/bob', message_type: 'text', payload: { text: '今季度最期待的番剧是什么？我投《链锯人》第二季' }, reactions: { hot: 5 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:00:00Z' },
-    { message_id: 'msg-rm4-002', sender_actor: 'https://mastodon.social/users/alice', message_type: 'library', payload: { title: '葬送的芙莉莲 (Sousou no Frieren)', description: 'MAL 评分 9.38 · Adventure, Drama, Fantasy · 第二季确认', content_type: 'library', platform_id: 'mal', item_id: '52991', icon: 'library', text: '葬送的芙莉莲第二季已确定，超期待！' }, reactions: { heart: 8 }, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:20:00Z' },
-    { message_id: 'msg-rm4-003', sender_actor: 'https://myriad.local/users/me', message_type: 'report', payload: { title: '2026年冬季番剧观看报告', description: '追番 12 部，完成 8 部，平均评分 7.8', content_type: 'report', report_id: 'rpt-2026-winter', icon: 'report', text: '分享一下我的冬季番剧报告' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T07:45:00Z' },
-    { message_id: 'msg-rm4-004', sender_actor: 'https://pleroma.example.org/users/eve', message_type: 'text', payload: { text: '芙莉莲 +1！漫画也很好看。' }, reactions: {}, is_pinned: false, is_encrypted: false, created_at: '2026-03-14T08:10:00Z' },
+    {
+      message_id: 'msg-rm4-001',
+      sender_actor: 'https://misskey.io/users/bob',
+      message_type: 'text',
+      payload: { text: '今季度最期待的番剧是什么？我投《链锯人》第二季' },
+      reactions: { hot: 5 },
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T07:00:00Z',
+    },
+    {
+      message_id: 'msg-rm4-002',
+      sender_actor: 'https://mastodon.social/users/alice',
+      message_type: 'library',
+      payload: {
+        title: '葬送的芙莉莲 (Sousou no Frieren)',
+        description: 'MAL 评分 9.38 · Adventure, Drama, Fantasy · 第二季确认',
+        content_type: 'library',
+        platform_id: 'mal',
+        item_id: '52991',
+        icon: 'library',
+        text: '葬送的芙莉莲第二季已确定，超期待！',
+      },
+      reactions: { heart: 8 },
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T07:20:00Z',
+    },
+    {
+      message_id: 'msg-rm4-003',
+      sender_actor: 'https://myriad.local/users/me',
+      message_type: 'report',
+      payload: {
+        title: '2026年冬季番剧观看报告',
+        description: '追番 12 部，完成 8 部，平均评分 7.8',
+        content_type: 'report',
+        report_id: 'rpt-2026-winter',
+        icon: 'report',
+        text: '分享一下我的冬季番剧报告',
+      },
+      reactions: {},
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T07:45:00Z',
+    },
+    {
+      message_id: 'msg-rm4-004',
+      sender_actor: 'https://pleroma.example.org/users/eve',
+      message_type: 'text',
+      payload: { text: '芙莉莲 +1！漫画也很好看。' },
+      reactions: {},
+      is_pinned: false,
+      is_encrypted: false,
+      created_at: '2026-03-14T08:10:00Z',
+    },
   ],
 }
 
@@ -532,7 +868,13 @@ const MOCK_RING_DETAILS: Record<string, RingDetail> = {
     ring_name: 'Global Brew Recommend',
     ring_type: 'brew-recommend',
     gossip_config: { fanout: 3, ttl: 5, interval: 300 },
-    known_peers: ['mastodon.social', 'misskey.io', 'pixelfed.social', 'lemmy.world', 'pleroma.example.org'],
+    known_peers: [
+      'mastodon.social',
+      'misskey.io',
+      'pixelfed.social',
+      'lemmy.world',
+      'pleroma.example.org',
+    ],
     last_sync_at: '2026-03-14T07:00:00Z',
     joined_at: '2026-01-10T10:00:00Z',
   },
@@ -550,7 +892,13 @@ const MOCK_RING_DETAILS: Record<string, RingDetail> = {
     ring_name: '东亚 Library 交换网',
     ring_type: 'library-exchange',
     gossip_config: { fanout: 4, ttl: 6, interval: 180 },
-    known_peers: ['misskey.io', 'mastodon.social', 'pawoo.net', 'mstdn.jp', 'social.mikutter.hachune.net'],
+    known_peers: [
+      'misskey.io',
+      'mastodon.social',
+      'pawoo.net',
+      'mstdn.jp',
+      'social.mikutter.hachune.net',
+    ],
     last_sync_at: '2026-03-13T23:30:00Z',
     joined_at: '2026-03-01T08:00:00Z',
   },
@@ -559,7 +907,15 @@ const MOCK_RING_DETAILS: Record<string, RingDetail> = {
     ring_name: 'Fediverse Instance Directory',
     ring_type: 'instance-directory',
     gossip_config: { fanout: 5, ttl: 8, interval: 120 },
-    known_peers: ['mastodon.social', 'misskey.io', 'pixelfed.social', 'lemmy.world', 'pleroma.example.org', 'peertube.social', 'bookwyrm.social'],
+    known_peers: [
+      'mastodon.social',
+      'misskey.io',
+      'pixelfed.social',
+      'lemmy.world',
+      'pleroma.example.org',
+      'peertube.social',
+      'bookwyrm.social',
+    ],
     last_sync_at: '2026-03-14T08:00:00Z',
     joined_at: '2026-01-05T06:00:00Z',
   },
@@ -567,30 +923,102 @@ const MOCK_RING_DETAILS: Record<string, RingDetail> = {
 
 const MOCK_RING_PEERS: Record<string, RingPeer[]> = {
   'ring-001': [
-    { actor_url: 'https://mastodon.social/relay', instance_domain: 'mastodon.social', added_at: '2026-01-10T10:00:00Z' },
-    { actor_url: 'https://misskey.io/relay', instance_domain: 'misskey.io', added_at: '2026-01-12T08:00:00Z' },
-    { actor_url: 'https://pixelfed.social/relay', instance_domain: 'pixelfed.social', added_at: '2026-01-15T12:00:00Z' },
-    { actor_url: 'https://lemmy.world/relay', instance_domain: 'lemmy.world', added_at: '2026-01-20T06:00:00Z' },
-    { actor_url: 'https://pleroma.example.org/relay', instance_domain: 'pleroma.example.org', added_at: '2026-02-01T14:00:00Z' },
+    {
+      actor_url: 'https://mastodon.social/relay',
+      instance_domain: 'mastodon.social',
+      added_at: '2026-01-10T10:00:00Z',
+    },
+    {
+      actor_url: 'https://misskey.io/relay',
+      instance_domain: 'misskey.io',
+      added_at: '2026-01-12T08:00:00Z',
+    },
+    {
+      actor_url: 'https://pixelfed.social/relay',
+      instance_domain: 'pixelfed.social',
+      added_at: '2026-01-15T12:00:00Z',
+    },
+    {
+      actor_url: 'https://lemmy.world/relay',
+      instance_domain: 'lemmy.world',
+      added_at: '2026-01-20T06:00:00Z',
+    },
+    {
+      actor_url: 'https://pleroma.example.org/relay',
+      instance_domain: 'pleroma.example.org',
+      added_at: '2026-02-01T14:00:00Z',
+    },
   ],
   'ring-002': [
-    { actor_url: 'https://lemmy.world/relay', instance_domain: 'lemmy.world', added_at: '2026-02-15T12:00:00Z' },
-    { actor_url: 'https://misskey.io/relay', instance_domain: 'misskey.io', added_at: '2026-02-18T10:00:00Z' },
-    { actor_url: 'https://myriad.example.com/relay', instance_domain: 'myriad.example.com', added_at: '2026-03-01T08:00:00Z' },
+    {
+      actor_url: 'https://lemmy.world/relay',
+      instance_domain: 'lemmy.world',
+      added_at: '2026-02-15T12:00:00Z',
+    },
+    {
+      actor_url: 'https://misskey.io/relay',
+      instance_domain: 'misskey.io',
+      added_at: '2026-02-18T10:00:00Z',
+    },
+    {
+      actor_url: 'https://myriad.example.com/relay',
+      instance_domain: 'myriad.example.com',
+      added_at: '2026-03-01T08:00:00Z',
+    },
   ],
   'ring-003': [
-    { actor_url: 'https://misskey.io/relay', instance_domain: 'misskey.io', added_at: '2026-03-01T08:00:00Z' },
-    { actor_url: 'https://mastodon.social/relay', instance_domain: 'mastodon.social', added_at: '2026-03-02T10:00:00Z' },
-    { actor_url: 'https://pawoo.net/relay', instance_domain: 'pawoo.net', added_at: '2026-03-03T12:00:00Z' },
-    { actor_url: 'https://mstdn.jp/relay', instance_domain: 'mstdn.jp', added_at: '2026-03-05T08:00:00Z' },
+    {
+      actor_url: 'https://misskey.io/relay',
+      instance_domain: 'misskey.io',
+      added_at: '2026-03-01T08:00:00Z',
+    },
+    {
+      actor_url: 'https://mastodon.social/relay',
+      instance_domain: 'mastodon.social',
+      added_at: '2026-03-02T10:00:00Z',
+    },
+    {
+      actor_url: 'https://pawoo.net/relay',
+      instance_domain: 'pawoo.net',
+      added_at: '2026-03-03T12:00:00Z',
+    },
+    {
+      actor_url: 'https://mstdn.jp/relay',
+      instance_domain: 'mstdn.jp',
+      added_at: '2026-03-05T08:00:00Z',
+    },
   ],
   'ring-004': [
-    { actor_url: 'https://mastodon.social/relay', instance_domain: 'mastodon.social', added_at: '2026-01-05T06:00:00Z' },
-    { actor_url: 'https://misskey.io/relay', instance_domain: 'misskey.io', added_at: '2026-01-06T08:00:00Z' },
-    { actor_url: 'https://pixelfed.social/relay', instance_domain: 'pixelfed.social', added_at: '2026-01-08T10:00:00Z' },
-    { actor_url: 'https://lemmy.world/relay', instance_domain: 'lemmy.world', added_at: '2026-01-10T12:00:00Z' },
-    { actor_url: 'https://peertube.social/relay', instance_domain: 'peertube.social', added_at: '2026-01-15T14:00:00Z' },
-    { actor_url: 'https://bookwyrm.social/relay', instance_domain: 'bookwyrm.social', added_at: '2026-02-01T08:00:00Z' },
+    {
+      actor_url: 'https://mastodon.social/relay',
+      instance_domain: 'mastodon.social',
+      added_at: '2026-01-05T06:00:00Z',
+    },
+    {
+      actor_url: 'https://misskey.io/relay',
+      instance_domain: 'misskey.io',
+      added_at: '2026-01-06T08:00:00Z',
+    },
+    {
+      actor_url: 'https://pixelfed.social/relay',
+      instance_domain: 'pixelfed.social',
+      added_at: '2026-01-08T10:00:00Z',
+    },
+    {
+      actor_url: 'https://lemmy.world/relay',
+      instance_domain: 'lemmy.world',
+      added_at: '2026-01-10T12:00:00Z',
+    },
+    {
+      actor_url: 'https://peertube.social/relay',
+      instance_domain: 'peertube.social',
+      added_at: '2026-01-15T14:00:00Z',
+    },
+    {
+      actor_url: 'https://bookwyrm.social/relay',
+      instance_domain: 'bookwyrm.social',
+      added_at: '2026-02-01T08:00:00Z',
+    },
   ],
 }
 
@@ -598,7 +1026,7 @@ const MOCK_RING_PEERS: Record<string, RingPeer[]> = {
 
 /** 模拟网络延迟（保持极短以避免竞态） */
 function delay(ms = 60): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 let _msgCounter = 100
@@ -646,8 +1074,7 @@ export const federationMock = {
   async getChannel(channelId: string): Promise<ChannelDetail> {
     await delay()
     const detail = MOCK_CHANNEL_DETAILS[channelId]
-    if (!detail)
-      throw new Error('Channel not found')
+    if (!detail) throw new Error('Channel not found')
     return detail
   },
 
@@ -657,7 +1084,11 @@ export const federationMock = {
     return { messages: msgs, total: msgs.length }
   },
 
-  async sendMessage(channelId: string, payload: unknown, messageType?: string): Promise<SendMessageResponse> {
+  async sendMessage(
+    channelId: string,
+    payload: unknown,
+    messageType?: string,
+  ): Promise<SendMessageResponse> {
     await delay()
     const id = `msg-mock-${++_msgCounter}`
     const msg: MessageItem = {
@@ -669,8 +1100,7 @@ export const federationMock = {
       created_at: new Date().toISOString(),
     }
     const bucket = MOCK_CHANNEL_MESSAGES[channelId]
-    if (bucket)
-      bucket.push(msg)
+    if (bucket) bucket.push(msg)
     return { success: true, message_id: id, channel_id: channelId }
   },
 
@@ -679,19 +1109,19 @@ export const federationMock = {
   async getRoom(roomId: string): Promise<RoomDetail> {
     await delay()
     const detail = MOCK_ROOM_DETAILS[roomId]
-    if (!detail)
-      throw new Error('Room not found')
+    if (!detail) throw new Error('Room not found')
     return detail
   },
 
-  async updateRoom(roomId: string, req: Record<string, unknown>): Promise<RoomDetail> {
+  async updateRoom(
+    roomId: string,
+    req: Record<string, unknown>,
+  ): Promise<RoomDetail> {
     await delay()
     const detail = MOCK_ROOM_DETAILS[roomId]
-    if (!detail)
-      throw new Error('Room not found')
+    if (!detail) throw new Error('Room not found')
     // 合并更新字段
-    if (req.name !== undefined)
-      detail.name = req.name as string
+    if (req.name !== undefined) detail.name = req.name as string
     if (req.description !== undefined)
       detail.description = req.description as string
     if (req.avatar_url !== undefined)
@@ -700,13 +1130,11 @@ export const federationMock = {
       detail.invite_policy = req.invite_policy as string
     if (req.max_members !== undefined)
       detail.max_members = req.max_members as number
-    if (req.is_public !== undefined)
-      detail.is_public = req.is_public as boolean
+    if (req.is_public !== undefined) detail.is_public = req.is_public as boolean
     // 同步到 Summary 列表
-    const summary = MOCK_ROOMS.find(r => r.room_id === roomId)
+    const summary = MOCK_ROOMS.find((r) => r.room_id === roomId)
     if (summary) {
-      if (req.name !== undefined)
-        summary.name = req.name as string
+      if (req.name !== undefined) summary.name = req.name as string
       if (req.description !== undefined)
         summary.description = req.description as string
       if (req.avatar_url !== undefined)
@@ -733,7 +1161,11 @@ export const federationMock = {
     return { messages: msgs, total: msgs.length }
   },
 
-  async sendRoomMessage(roomId: string, payload: unknown, messageType?: string): Promise<SendRoomMessageResponse> {
+  async sendRoomMessage(
+    roomId: string,
+    payload: unknown,
+    messageType?: string,
+  ): Promise<SendRoomMessageResponse> {
     await delay()
     const id = `msg-mock-${++_msgCounter}`
     const msg: RoomMessageItem = {
@@ -747,23 +1179,34 @@ export const federationMock = {
       created_at: new Date().toISOString(),
     }
     const bucket = MOCK_ROOM_MESSAGES[roomId]
-    if (bucket)
-      bucket.push(msg)
+    if (bucket) bucket.push(msg)
     return { success: true, message_id: id, room_id: roomId }
   },
 
   // ---- Pin Room Message ----
 
-  async pinRoomMessage(roomId: string, messageId: string, pinned: boolean): Promise<{ success: boolean, room_id: string, message_id: string, is_pinned: boolean }> {
+  async pinRoomMessage(
+    roomId: string,
+    messageId: string,
+    pinned: boolean,
+  ): Promise<{
+    success: boolean
+    room_id: string
+    message_id: string
+    is_pinned: boolean
+  }> {
     await delay()
     const msgs = MOCK_ROOM_MESSAGES[roomId]
-    if (!msgs)
-      throw new Error('Room not found')
-    const msg = msgs.find(m => m.message_id === messageId)
-    if (!msg)
-      throw new Error('Message not found')
+    if (!msgs) throw new Error('Room not found')
+    const msg = msgs.find((m) => m.message_id === messageId)
+    if (!msg) throw new Error('Message not found')
     msg.is_pinned = pinned
-    return { success: true, room_id: roomId, message_id: messageId, is_pinned: pinned }
+    return {
+      success: true,
+      room_id: roomId,
+      message_id: messageId,
+      is_pinned: pinned,
+    }
   },
 
   // ---- Ring 详情 ----
@@ -771,8 +1214,7 @@ export const federationMock = {
   async getRing(ringId: string): Promise<RingDetail> {
     await delay()
     const detail = MOCK_RING_DETAILS[ringId]
-    if (!detail)
-      throw new Error('Ring not found')
+    if (!detail) throw new Error('Ring not found')
     return detail
   },
 
@@ -782,14 +1224,20 @@ export const federationMock = {
     return { peers, total: peers.length }
   },
 
-  async triggerSync(_ringId: string): Promise<{ success: boolean, synced_peers: number, entries_count: number }> {
+  async triggerSync(_ringId: string): Promise<{
+    success: boolean
+    synced_peers: number
+    entries_count: number
+  }> {
     await delay(200)
     return { success: true, synced_peers: 5, entries_count: 42 }
   },
 
   // ---- 通道/房间 创建、关闭、离开 ----
 
-  async createChannel(req: { remote_actor: string }): Promise<{ channel_id: string }> {
+  async createChannel(req: {
+    remote_actor: string
+  }): Promise<{ channel_id: string }> {
     await delay()
     const id = `ch-mock-${++_msgCounter}`
     const parts = req.remote_actor.split('@')
@@ -875,45 +1323,41 @@ export const federationMock = {
 
   async closeChannel(channelId: string): Promise<{ success: boolean }> {
     await delay()
-    const ch = MOCK_CHANNELS.find(c => c.channel_id === channelId)
-    if (ch)
-      ch.status = 'closed'
+    const ch = MOCK_CHANNELS.find((c) => c.channel_id === channelId)
+    if (ch) ch.status = 'closed'
     const detail = MOCK_CHANNEL_DETAILS[channelId]
-    if (detail)
-      detail.status = 'closed'
+    if (detail) detail.status = 'closed'
     return { success: true }
   },
 
   async acceptChannel(channelId: string): Promise<{ success: boolean }> {
     await delay()
-    const ch = MOCK_CHANNELS.find(c => c.channel_id === channelId)
-    if (ch)
-      ch.status = 'active'
+    const ch = MOCK_CHANNELS.find((c) => c.channel_id === channelId)
+    if (ch) ch.status = 'active'
     const detail = MOCK_CHANNEL_DETAILS[channelId]
-    if (detail)
-      detail.status = 'active'
+    if (detail) detail.status = 'active'
     return { success: true }
   },
 
   async leaveRoom(roomId: string): Promise<{ success: boolean }> {
     await delay()
-    const idx = MOCK_ROOMS.findIndex(r => r.room_id === roomId)
-    if (idx !== -1)
-      MOCK_ROOMS.splice(idx, 1)
+    const idx = MOCK_ROOMS.findIndex((r) => r.room_id === roomId)
+    if (idx !== -1) MOCK_ROOMS.splice(idx, 1)
     delete MOCK_ROOM_DETAILS[roomId]
     delete MOCK_ROOM_MEMBERS[roomId]
     delete MOCK_ROOM_MESSAGES[roomId]
     return { success: true }
   },
 
-  async inviteMember(roomId: string, req: { actor: string, role?: string }): Promise<{ success: boolean }> {
+  async inviteMember(
+    roomId: string,
+    req: { actor: string; role?: string },
+  ): Promise<{ success: boolean }> {
     await delay()
     const members = MOCK_ROOM_MEMBERS[roomId]
-    if (!members)
-      throw new Error('Room not found')
+    if (!members) throw new Error('Room not found')
     // Check if already a member
-    if (members.some(m => m.actor_url === req.actor))
-      return { success: true }
+    if (members.some((m) => m.actor_url === req.actor)) return { success: true }
     const parts = req.actor.split('/')
     const username = parts.at(-1) || req.actor
     members.push({
@@ -925,40 +1369,36 @@ export const federationMock = {
     })
     // Update member count
     const detail = MOCK_ROOM_DETAILS[roomId]
-    if (detail)
-      detail.member_count = members.length
-    const summary = MOCK_ROOMS.find(r => r.room_id === roomId)
-    if (summary)
-      summary.member_count = members.length
+    if (detail) detail.member_count = members.length
+    const summary = MOCK_ROOMS.find((r) => r.room_id === roomId)
+    if (summary) summary.member_count = members.length
     return { success: true }
   },
 
   async deleteRoom(roomId: string): Promise<{ success: boolean }> {
     await delay()
-    const idx = MOCK_ROOMS.findIndex(r => r.room_id === roomId)
-    if (idx !== -1)
-      MOCK_ROOMS.splice(idx, 1)
+    const idx = MOCK_ROOMS.findIndex((r) => r.room_id === roomId)
+    if (idx !== -1) MOCK_ROOMS.splice(idx, 1)
     delete MOCK_ROOM_DETAILS[roomId]
     delete MOCK_ROOM_MEMBERS[roomId]
     delete MOCK_ROOM_MESSAGES[roomId]
     return { success: true }
   },
 
-  async removeMember(roomId: string, actorUrl: string): Promise<{ success: boolean }> {
+  async removeMember(
+    roomId: string,
+    actorUrl: string,
+  ): Promise<{ success: boolean }> {
     await delay()
     const members = MOCK_ROOM_MEMBERS[roomId]
-    if (!members)
-      throw new Error('Room not found')
-    const idx = members.findIndex(m => m.actor_url === actorUrl)
-    if (idx === -1)
-      throw new Error('Member not found')
+    if (!members) throw new Error('Room not found')
+    const idx = members.findIndex((m) => m.actor_url === actorUrl)
+    if (idx === -1) throw new Error('Member not found')
     members.splice(idx, 1)
     const detail = MOCK_ROOM_DETAILS[roomId]
-    if (detail)
-      detail.member_count = members.length
-    const summary = MOCK_ROOMS.find(r => r.room_id === roomId)
-    if (summary)
-      summary.member_count = members.length
+    if (detail) detail.member_count = members.length
+    const summary = MOCK_ROOMS.find((r) => r.room_id === roomId)
+    if (summary) summary.member_count = members.length
     return { success: true }
   },
 }

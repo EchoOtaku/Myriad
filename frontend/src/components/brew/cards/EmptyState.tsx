@@ -5,7 +5,8 @@
 import type { EmptyStateProps } from '../types'
 import React from 'react'
 
-const ISLAND_GLASS = 'rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10'
+const ISLAND_GLASS =
+  'rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10'
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   icon,
@@ -23,8 +24,14 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
           </div>
         )}
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{title}</p>
-          {description && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 leading-snug">{description}</p>}
+          <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
+            {title}
+          </p>
+          {description && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 leading-snug">
+              {description}
+            </p>
+          )}
         </div>
       </div>
       {action && (

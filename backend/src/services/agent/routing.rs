@@ -130,6 +130,7 @@ impl AgentRouter {
             "brew.".to_string(),
             "steam.".to_string(),
             "bilibili.".to_string(),
+            "bangumi.".to_string(),
             "github.".to_string(),
             "netease.".to_string(),
             "http.fetch".to_string(),
@@ -423,6 +424,10 @@ mod tests {
         assert_eq!(router.route_capability("brew.items"), AgentRole::DataWorker);
         assert_eq!(router.route_capability("http.fetch"), AgentRole::DataWorker);
         assert_eq!(router.route_capability("steam.user"), AgentRole::DataWorker);
+        assert_eq!(
+            router.route_capability("bangumi.collections"),
+            AgentRole::DataWorker
+        );
     }
 
     #[test]

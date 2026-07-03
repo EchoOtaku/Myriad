@@ -61,7 +61,7 @@ export const AraelInput: React.FC<AraelInputProps> = ({
           ref={inputRef}
           type="text"
           value={value}
-          onChange={e => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={dynamicPlaceholder}
           className="arael-input"
@@ -74,44 +74,66 @@ export const AraelInput: React.FC<AraelInputProps> = ({
             className={`arael-voice-btn${isRecording ? ' arael-voice-recording' : ''}${isProcessingVoice ? ' arael-voice-processing' : ''}`}
             onClick={onToggleRecording}
             disabled={isLoading || isProcessingVoice}
-            title={isRecording ? t.arael.stopRecording : isProcessingVoice ? t.arael.recognizing : t.arael.voiceInput}
+            title={
+              isRecording
+                ? t.arael.stopRecording
+                : isProcessingVoice
+                  ? t.arael.recognizing
+                  : t.arael.voiceInput
+            }
           >
-            {isProcessingVoice
-              ? <span className="arael-spinner-small" />
-              : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <line x1="12" x2="12" y1="19" y2="22" />
-                  </svg>
-                )}
+            {isProcessingVoice ? (
+              <span className="arael-spinner-small" />
+            ) : (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="22" />
+              </svg>
+            )}
           </button>
         )}
-        {isLoading && onInterrupt
-          ? (
-              <button
-                className="arael-send-btn arael-stop-btn"
-                onClick={onInterrupt}
-                title={t.arael.stopConversation}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="4" y="4" width="16" height="16" rx="2" />
-                </svg>
-                {t.arael.stop}
-              </button>
-            )
-          : (
-              <button
-                className="arael-send-btn"
-                onClick={onSubmit}
-                disabled={!value.trim() || isLoading}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="19" x2="12" y2="5" />
-                  <polyline points="5 12 12 5 19 12" />
-                </svg>
-              </button>
-            )}
+        {isLoading && onInterrupt ? (
+          <button
+            className="arael-send-btn arael-stop-btn"
+            onClick={onInterrupt}
+            title={t.arael.stopConversation}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+            </svg>
+            {t.arael.stop}
+          </button>
+        ) : (
+          <button
+            className="arael-send-btn"
+            onClick={onSubmit}
+            disabled={!value.trim() || isLoading}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="12" y1="19" x2="12" y2="5" />
+              <polyline points="5 12 12 5 19 12" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   )

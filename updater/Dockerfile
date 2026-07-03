@@ -68,8 +68,8 @@ ENV UPDATER_STATE_DIR=/state \
     UPDATER_COMPOSE_DIR=/host/compose \
     UPDATER_ENV_FILE=/host/.env \
     UPDATER_PGDATA=/host/pgdata \
-    UPDATER_LISTEN=0.0.0.0:9090
+    UPDATER_LISTEN=0.0.0.0:1101
 
-EXPOSE 9090
+EXPOSE 1101
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/myriad-updater"]

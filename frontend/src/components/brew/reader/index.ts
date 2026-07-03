@@ -46,7 +46,11 @@ export { Lightbox } from './Lightbox'
 export { MobileReaderBar } from './MobileReaderBar'
 export { default as ReaderLeftPanel } from './ReaderLeftPanel'
 export { default as ReaderRightPanel } from './ReaderRightPanel'
-export { AnnotationTooltip, CommentInputPopup, CommentTooltip } from './ReaderTooltips'
+export {
+  AnnotationTooltip,
+  CommentInputPopup,
+  CommentTooltip,
+} from './ReaderTooltips'
 // 类型导出
 export type {
   FontOption,

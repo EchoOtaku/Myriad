@@ -2,6 +2,8 @@
  * StarredEditMode - 收藏编辑模式
  */
 
+import type { StarredModeConfig } from './types'
+
 import {
   LuCheckSquare as CheckSquare,
   LuLoader2 as Loader2,
@@ -10,10 +12,8 @@ import {
   LuStar as Star,
   LuX as X,
 } from '@lib/icons'
-
 import { IslandShell } from '../../../shared/control-island'
 import { ISLAND_BTN, ISLAND_DIVIDER } from './constants'
-import type { StarredModeConfig } from './types'
 
 export interface StarredEditModeProps {
   variant: 'mobile' | 'desktop'
@@ -32,8 +32,6 @@ export function StarredEditMode({
   starredMode,
   t,
 }: StarredEditModeProps) {
-  const isMobile = variant === 'mobile'
-
   return (
     <IslandShell variant={variant} motionKey={`starred-edit-bar-${variant}`}>
       {/* 退出编辑 */}
@@ -54,21 +52,20 @@ export function StarredEditMode({
           title={t.selectAllToggle}
           aria-label={t.selectAllToggle}
         >
-          {starredMode.selectedIds.size === starredMode.total
-            ? (
-                <CheckSquare className="w-5 h-5 text-amber-500" />
-              )
-            : starredMode.selectedIds.size > 0
-              ? (
-                  <MinusSquare className="w-5 h-5 text-amber-500" />
-                )
-              : (
-                  <Square className="w-5 h-5" />
-                )}
+          {starredMode.selectedIds.size === starredMode.total ? (
+            <CheckSquare className="w-5 h-5 text-amber-500" />
+          ) : starredMode.selectedIds.size > 0 ? (
+            <MinusSquare className="w-5 h-5 text-amber-500" />
+          ) : (
+            <Square className="w-5 h-5" />
+          )}
         </button>
         <span className="text-sm text-gray-600 dark:text-gray-300">
           {starredMode.selectedIds.size > 0
-            ? t.selectedCount.replace('{count}', String(starredMode.selectedIds.size))
+            ? t.selectedCount.replace(
+                '{count}',
+                String(starredMode.selectedIds.size),
+              )
             : t.selectArticles}
         </span>
       </div>
@@ -77,18 +74,18 @@ export function StarredEditMode({
       <div className={ISLAND_DIVIDER} />
       <button
         onClick={starredMode.onBatchUnstar}
-        disabled={starredMode.selectedIds.size === 0 || starredMode.isProcessing}
+        disabled={
+          starredMode.selectedIds.size === 0 || starredMode.isProcessing
+        }
         className={`${ISLAND_BTN} hover:text-amber-500! hover:bg-amber-500/10! disabled:opacity-50`}
         title={t.unstar}
         aria-label={t.unstar}
       >
-        {starredMode.isProcessing
-          ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            )
-          : (
-              <Star className="w-4 h-4" />
-            )}
+        {starredMode.isProcessing ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Star className="w-4 h-4" />
+        )}
       </button>
     </IslandShell>
   )

@@ -6,8 +6,16 @@
 
 // ============ 动画常量（与源文件一致）============
 
-export const SPRING_SNAPPY = { type: 'spring', stiffness: 400, damping: 25 } as const
-export const SPRING_SMOOTH = { type: 'spring', stiffness: 350, damping: 28 } as const
+export const SPRING_SNAPPY = {
+  type: 'spring',
+  stiffness: 400,
+  damping: 25,
+} as const
+export const SPRING_SMOOTH = {
+  type: 'spring',
+  stiffness: 350,
+  damping: 28,
+} as const
 export const TRANSITION_QUICK = { duration: 0.12 } as const
 export const TRANSITION_NORMAL = { duration: 0.15 } as const
 export const TRANSITION_SLOW = { duration: 0.25, ease: 'easeOut' } as const

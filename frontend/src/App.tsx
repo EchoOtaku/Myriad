@@ -4,9 +4,18 @@
  * 优化: 代码分割 + 预加载 + 性能监控
  */
 
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import React, { lazy, Suspense, useEffect, useState } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from 'react-router-dom'
 import CustomScrollbar from './components/CustomScrollbar'
 import RouteLoader from './components/RouteLoader'
 import { AgentGlobalActions } from './contexts/AgentGlobalActions'
@@ -33,7 +42,9 @@ import './styles/overrides.css'
 import './styles/performance.css'
 
 // TappBackgroundRunner 懒加载，避免其错误阻塞主应用
-const TappBackgroundRunner = lazy(() => import('./tapp/components/TappBackgroundRunner')) // 🔧 性能优化 CSS
+const TappBackgroundRunner = lazy(
+  () => import('./tapp/components/TappBackgroundRunner'),
+) // 🔧 性能优化 CSS
 
 // 懒加载视图组件 - 使用代码分割
 const Home = lazy(() => import('./views/Home.tsx'))
@@ -58,7 +69,13 @@ const AraelPanel = lazy(() => import('./components/agent/AraelPanel'))
  * 路由守卫：复用全局 AuthContext 认证状态
  * 避免每次路由切换都重新发起 /api/auth/me 请求
  */
-function RequireAuth({ children, requiresAdmin }: { children: React.ReactNode, requiresAdmin?: boolean }) {
+function RequireAuth({
+  children,
+  requiresAdmin,
+}: {
+  children: React.ReactNode
+  requiresAdmin?: boolean
+}) {
   const { isAuthenticated, isAdmin, hasChecked } = useAuth()
 
   // AuthContext 尚未完成首次检查
@@ -98,18 +115,18 @@ function LoadingFallback() {
  * 确保每个页面独立处理加载状态，避免切换时闪屏
  */
 function SuspensePage({ children }: { children: React.ReactNode }) {
-  return (
-    <Suspense fallback={<LoadingFallback />}>
-      {children}
-    </Suspense>
-  )
+  return <Suspense fallback={<LoadingFallback />}>{children}</Suspense>
 }
 
 /**
  * 带动画的页面包装器
  * 确保 AnimatePresence 直接包裹 motion 组件
  */
-function AnimatedPage({ children, animationKey, animationStyle }: {
+function AnimatedPage({
+  children,
+  animationKey,
+  animationStyle,
+}: {
   children: React.ReactNode
   animationKey?: string
   animationStyle?: 'normal' | 'fixed' | 'opacity-only'
@@ -119,9 +136,10 @@ function AnimatedPage({ children, animationKey, animationStyle }: {
 
   // 选择动画变体和包装样式
   const variants = style === 'normal' ? pageVariants : fixedPageVariants
-  const wrapperStyle = style === 'fixed'
-    ? { position: 'absolute' as const, inset: 0 }
-    : { width: '100%' }
+  const wrapperStyle =
+    style === 'fixed'
+      ? { position: 'absolute' as const, inset: 0 }
+      : { width: '100%' }
 
   return (
     <AnimatePresence mode="wait">
@@ -201,9 +219,8 @@ function AppRoutes() {
   // 🎯 动画风格选择：
   // - 'fixed': 绝对定位包装器（仅 tapp/run 等自带 fixed 全屏布局的页面）
   // - 'normal': 正常页面（带 transform 动画）
-  const animationStyle: 'normal' | 'fixed' | 'opacity-only' = location.pathname.startsWith('/tapp/run')
-    ? 'fixed'
-    : 'normal'
+  const animationStyle: 'normal' | 'fixed' | 'opacity-only' =
+    location.pathname.startsWith('/tapp/run') ? 'fixed' : 'normal'
 
   // 🎯 动画分组 key：同组路由之间不触发 exit/enter 动画，避免白屏间隙
   const animationKey = location.pathname
@@ -226,36 +243,117 @@ function AppRoutes() {
   return (
     <AnimatedPage animationStyle={animationStyle} animationKey={animationKey}>
       <Routes location={location}>
-        <Route path="/" element={<SuspensePage><Home /></SuspensePage>} />
-        <Route path="/library" element={<SuspensePage><Library /></SuspensePage>} />
+        <Route
+          path="/"
+          element={
+            <SuspensePage>
+              <Home />
+            </SuspensePage>
+          }
+        />
+        <Route
+          path="/library"
+          element={
+            <SuspensePage>
+              <Library />
+            </SuspensePage>
+          }
+        />
         {/* Brew 页面允许游客访问（只读），登录用户可使用已读/收藏，管理员可管理 */}
-        <Route path="/brew" element={<SuspensePage><Brew /></SuspensePage>} />
-        <Route path="/reports" element={<SuspensePage><Reports /></SuspensePage>} />
+        <Route
+          path="/brew"
+          element={
+            <SuspensePage>
+              <Brew />
+            </SuspensePage>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <SuspensePage>
+              <Reports />
+            </SuspensePage>
+          }
+        />
         <Route
           path="/config"
-          element={(
+          element={
             <RequireAuth requiresAdmin>
-              <SuspensePage><Config /></SuspensePage>
+              <SuspensePage>
+                <Config />
+              </SuspensePage>
             </RequireAuth>
-          )}
+          }
         />
         <Route
           path="/data-management"
-          element={(
+          element={
             <RequireAuth requiresAdmin>
-              <SuspensePage><DataManagement /></SuspensePage>
+              <SuspensePage>
+                <DataManagement />
+              </SuspensePage>
             </RequireAuth>
-          )}
+          }
         />
-        <Route path="/login" element={<SuspensePage><Login /></SuspensePage>} />
-        <Route path="/register" element={<SuspensePage><Register /></SuspensePage>} />
-        <Route path="/setup" element={<SuspensePage><Setup /></SuspensePage>} />
+        <Route
+          path="/login"
+          element={
+            <SuspensePage>
+              <Login />
+            </SuspensePage>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <SuspensePage>
+              <Register />
+            </SuspensePage>
+          }
+        />
+        <Route
+          path="/setup"
+          element={
+            <SuspensePage>
+              <Setup />
+            </SuspensePage>
+          }
+        />
 
         {/* Tapp 路由 */}
-        <Route path="/tapp" element={<SuspensePage><TappList /></SuspensePage>} />
-        <Route path="/tapp/run" element={<SuspensePage><TappRun /></SuspensePage>} />
-        <Route path="/tapp/run/:id" element={<SuspensePage><TappRun /></SuspensePage>} />
-        <Route path="/tapp/detail/:id" element={<SuspensePage><TappDetail /></SuspensePage>} />
+        <Route
+          path="/tapp"
+          element={
+            <SuspensePage>
+              <TappList />
+            </SuspensePage>
+          }
+        />
+        <Route
+          path="/tapp/run"
+          element={
+            <SuspensePage>
+              <TappRun />
+            </SuspensePage>
+          }
+        />
+        <Route
+          path="/tapp/run/:id"
+          element={
+            <SuspensePage>
+              <TappRun />
+            </SuspensePage>
+          }
+        />
+        <Route
+          path="/tapp/detail/:id"
+          element={
+            <SuspensePage>
+              <TappDetail />
+            </SuspensePage>
+          }
+        />
 
         {/* 404 页面 - 重定向到首页 */}
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -282,7 +380,7 @@ export function App() {
 
         // 通知 PageLoader 应用已就绪
         if ((window as any).pageLoader) {
-          (window as any).pageLoader.markAppReady()
+          ;(window as any).pageLoader.markAppReady()
         }
       })
     })
@@ -326,7 +424,9 @@ export function App() {
                     {/* 开发环境下显示合并的性能监控工具 */}
                     {import.meta.env.DEV && (
                       <Suspense fallback={null}>
-                        {React.createElement(lazy(() => import('./components/PerformanceMonitor')))}
+                        {React.createElement(
+                          lazy(() => import('./components/PerformanceMonitor')),
+                        )}
                       </Suspense>
                     )}
                   </ReadingListProvider>

@@ -22,7 +22,9 @@ pub fn write_atomic_bytes(path: &Path, data: &[u8]) -> Result<()> {
         .unwrap_or(0);
     let tmp = parent.join(format!(
         ".{}.tmp.{}.{}",
-        path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default(),
+        path.file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default(),
         pid,
         nanos
     ));

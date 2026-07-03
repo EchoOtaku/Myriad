@@ -69,16 +69,16 @@ for (let i = 0; i < EXP_TABLE_SIZE; i++) {
 }
 
 function fastSin(x: number): number {
-  const idx = ((x % (Math.PI * 2)) / (Math.PI * 2) * SIN_TABLE_SIZE + SIN_TABLE_SIZE) % SIN_TABLE_SIZE
+  const idx =
+    (((x % (Math.PI * 2)) / (Math.PI * 2)) * SIN_TABLE_SIZE + SIN_TABLE_SIZE) %
+    SIN_TABLE_SIZE
   return SIN_TABLE[idx | 0]
 }
 
 function fastExp(x: number): number {
-  if (x >= 0)
-    return 1
+  if (x >= 0) return 1
   const absX = -x
-  if (absX >= EXP_TABLE_MAX)
-    return 0
+  if (absX >= EXP_TABLE_MAX) return 0
   return EXP_TABLE[((absX / EXP_TABLE_MAX) * EXP_TABLE_SIZE) | 0]
 }
 
@@ -150,7 +150,7 @@ interface EvocativeState {
   rippleCtx: CanvasRenderingContext2D | null
   sourceImageData: ImageData | null
   destImageData: ImageData | null
-  activeRipples: Array<{ x: number, y: number, startTime: number }>
+  activeRipples: Array<{ x: number; y: number; startTime: number }>
   rippleRaf: number | null
   lastRippleFrameTime: number
   rippleFadeoutTimer: ReturnType<typeof setTimeout> | null
@@ -165,26 +165,34 @@ function buildTransform(cx: number, cy: number): string {
   return `${STATIC_TF_PREFIX}${rx}px,${ry}px${STATIC_TF_SUFFIX}`
 }
 
-function buildCanvasTransform(wallpaperEl: HTMLElement, parallaxEnabled: boolean): string {
+function buildCanvasTransform(
+  wallpaperEl: HTMLElement,
+  parallaxEnabled: boolean,
+): string {
   if (!parallaxEnabled) {
     // 微动关闭时不需要任何 transform 补偿
     return 'none'
   }
   const transform = wallpaperEl.style.transform
-  if (!transform)
-    return IDLE_TF
+  if (!transform) return IDLE_TF
   const match = transform.match(/translate3d\([^)]+\)/)
   return match ? `scale(${PARALLAX_SCALE}) ${match[0]}` : IDLE_TF
 }
 
-function createRippleCanvas(wallpaperEl: HTMLElement, parallaxEnabled: boolean, rippleScale: number): HTMLCanvasElement {
+function createRippleCanvas(
+  wallpaperEl: HTMLElement,
+  parallaxEnabled: boolean,
+  rippleScale: number,
+): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.id = 'wallpaper-ripple-canvas'
   canvas.width = (window.innerWidth * rippleScale) | 0
   canvas.height = (window.innerHeight * rippleScale) | 0
 
   const computedStyle = window.getComputedStyle(wallpaperEl)
-  const transformOrigin = parallaxEnabled ? (computedStyle.transformOrigin || 'center') : 'center'
+  const transformOrigin = parallaxEnabled
+    ? computedStyle.transformOrigin || 'center'
+    : 'center'
   const canvasTransform = buildCanvasTransform(wallpaperEl, parallaxEnabled)
 
   canvas.style.cssText = `
@@ -208,11 +216,9 @@ function createRippleCanvas(wallpaperEl: HTMLElement, parallaxEnabled: boolean, 
 
   if (bgContainer && wallpaper && bgGradient) {
     bgContainer.insertBefore(canvas, bgGradient)
-  }
-  else if (bgContainer && wallpaper) {
+  } else if (bgContainer && wallpaper) {
     wallpaper.insertAdjacentElement('afterend', canvas)
-  }
-  else {
+  } else {
     canvas.style.position = 'fixed'
     canvas.style.zIndex = '-1'
     document.body.appendChild(canvas)
@@ -231,12 +237,10 @@ async function captureWallpaperToCanvas(
   const computedStyle = window.getComputedStyle(wallpaperEl)
   const bgImage = computedStyle.backgroundImage
 
-  if (!bgImage || bgImage === 'none')
-    return null
+  if (!bgImage || bgImage === 'none') return null
 
   const urlMatch = bgImage.match(/url\(['"]?([^'"]+)['"]?\)/)
-  if (!urlMatch)
-    return null
+  if (!urlMatch) return null
 
   return new Promise((resolve) => {
     const img = new Image()
@@ -253,8 +257,7 @@ async function captureWallpaperToCanvas(
       if (imgRatio > canvasRatio) {
         drawH = canvasH
         drawW = drawH * imgRatio
-      }
-      else {
+      } else {
         drawW = canvasW
         drawH = drawW / imgRatio
       }
@@ -269,8 +272,7 @@ async function captureWallpaperToCanvas(
 
       try {
         resolve(ctx.getImageData(0, 0, canvasW, canvasH))
-      }
-      catch {
+      } catch {
         resolve(null)
       }
     }
@@ -286,15 +288,16 @@ function applyRippleDistortion(
   destData: ImageData | null,
   width: number,
   height: number,
-  ripples: Array<{ x: number, y: number, startTime: number }>,
+  ripples: Array<{ x: number; y: number; startTime: number }>,
   now: number,
   rippleScale: number,
-): { hasActive: boolean, destData: ImageData } {
+): { hasActive: boolean; destData: ImageData } {
   const src32 = new Uint32Array(sourceData.data.buffer)
 
-  const destImageData = destData && destData.width === width && destData.height === height
-    ? destData
-    : ctx.createImageData(width, height)
+  const destImageData =
+    destData && destData.width === width && destData.height === height
+      ? destData
+      : ctx.createImageData(width, height)
   const dest32 = new Uint32Array(destImageData.data.buffer)
 
   dest32.set(src32)
@@ -308,22 +311,28 @@ function applyRippleDistortion(
 
   const durationSec = RIPPLE_DURATION / 1000
   const waveWidth = RIPPLE_WAVELENGTH * 2
-  const wavelengthSqScaled = RIPPLE_WAVELENGTH * RIPPLE_WAVELENGTH * rippleScale * rippleScale
-  const phaseScale = Math.PI * 2 / RIPPLE_WAVELENGTH
+  const wavelengthSqScaled =
+    RIPPLE_WAVELENGTH * RIPPLE_WAVELENGTH * rippleScale * rippleScale
+  const phaseScale = (Math.PI * 2) / RIPPLE_WAVELENGTH
   const scaledAmplitude = RIPPLE_AMPLITUDE * rippleScale
 
-  const rCx: number[] = []; const rCy: number[] = []
-  const rWaveFrontScaled: number[] = []; const rTimeDecay: number[] = []
-  const rElapsed: number[] = []; const rMinRSq: number[] = []; const rMaxRSq: number[] = []
+  const rCx: number[] = []
+  const rCy: number[] = []
+  const rWaveFrontScaled: number[] = []
+  const rTimeDecay: number[] = []
+  const rElapsed: number[] = []
+  const rMinRSq: number[] = []
+  const rMaxRSq: number[] = []
 
-  let globalMinX = width; let globalMaxX = 0
-  let globalMinY = height; let globalMaxY = 0
+  let globalMinX = width
+  let globalMaxX = 0
+  let globalMinY = height
+  let globalMaxY = 0
 
   for (let i = 0; i < activeCount; i++) {
     const ripple = ripples[i]
     const elapsed = (now - ripple.startTime) / 1000
-    if (elapsed > durationSec)
-      continue
+    if (elapsed > durationSec) continue
 
     hasActiveRipple = true
 
@@ -349,14 +358,10 @@ function applyRippleDistortion(
     const minY = Math.max(0, (cy - maxR) | 0)
     const maxY = Math.min(height - 1, (cy + maxR) | 0)
 
-    if (minX < globalMinX)
-      globalMinX = minX
-    if (maxX > globalMaxX)
-      globalMaxX = maxX
-    if (minY < globalMinY)
-      globalMinY = minY
-    if (maxY > globalMaxY)
-      globalMaxY = maxY
+    if (minX < globalMinX) globalMinX = minX
+    if (maxX > globalMaxX) globalMaxX = maxX
+    if (minY < globalMinY) globalMinY = minY
+    if (maxY > globalMaxY) globalMaxY = maxY
   }
 
   if (!hasActiveRipple) {
@@ -370,23 +375,24 @@ function applyRippleDistortion(
     const rowOffset = y * width
 
     for (let x = globalMinX; x <= globalMaxX; x++) {
-      let totalDx = 0; let totalDy = 0
+      let totalDx = 0
+      let totalDy = 0
 
       for (let i = 0; i < rippleLen; i++) {
         const dx = x - rCx[i]
         const dy = y - rCy[i]
         const distSq = dx * dx + dy * dy
 
-        if (distSq > rMaxRSq[i] || distSq < rMinRSq[i])
-          continue
+        if (distSq > rMaxRSq[i] || distSq < rMinRSq[i]) continue
 
         const distance = Math.sqrt(distSq)
-        if (distance < 0.1)
-          continue
+        if (distance < 0.1) continue
 
         const distFromFront = distance - rWaveFrontScaled[i]
-        const envelope = fastExp(-(distFromFront * distFromFront) / wavelengthSqScaled)
-        const phase = distance * phaseScale / rippleScale - rElapsed[i] * 10
+        const envelope = fastExp(
+          -(distFromFront * distFromFront) / wavelengthSqScaled,
+        )
+        const phase = (distance * phaseScale) / rippleScale - rElapsed[i] * 10
         const wave = fastSin(phase)
         const strength = scaledAmplitude * envelope * rTimeDecay[i] * wave
         const invDist = 1 / distance
@@ -550,10 +556,8 @@ export function useEvocativeWallpaper(
     // 设置元素样式
     el.style.transformOrigin = 'center'
     const willChangeProps: string[] = []
-    if (enableParallax)
-      willChangeProps.push('transform')
-    if (enableDynamicBlur)
-      willChangeProps.push('filter')
+    if (enableParallax) willChangeProps.push('transform')
+    if (enableDynamicBlur) willChangeProps.push('filter')
     el.style.willChange = willChangeProps.join(', ')
 
     if (enableParallax) {
@@ -566,7 +570,9 @@ export function useEvocativeWallpaper(
     // 创建涟漪 Canvas
     if (enableRipple) {
       s.rippleCanvas = createRippleCanvas(el, enableParallax, rippleScale)
-      s.rippleCtx = s.rippleCanvas.getContext('2d', { willReadFrequently: true })
+      s.rippleCtx = s.rippleCanvas.getContext('2d', {
+        willReadFrequently: true,
+      })
     }
 
     // ==================== 涟漪动画循环 ====================
@@ -582,13 +588,16 @@ export function useEvocativeWallpaper(
       s.lastRippleFrameTime = now
 
       if (s.el) {
-        s.rippleCanvas.style.transform = buildCanvasTransform(s.el, enableParallax)
+        s.rippleCanvas.style.transform = buildCanvasTransform(
+          s.el,
+          enableParallax,
+        )
       }
 
       // 清理已过期的涟漪（超过 RIPPLE_DURATION）
       const durationSec = RIPPLE_DURATION / 1000
-      s.activeRipples = s.activeRipples.filter(r =>
-        (now - r.startTime) / 1000 <= durationSec,
+      s.activeRipples = s.activeRipples.filter(
+        (r) => (now - r.startTime) / 1000 <= durationSec,
       )
 
       const result = applyRippleDistortion(
@@ -606,8 +615,7 @@ export function useEvocativeWallpaper(
 
       if (result.hasActive) {
         s.rippleRaf = requestAnimationFrame(rippleAnimationLoop)
-      }
-      else {
+      } else {
         // 涟漪结束，开始淡出
         s.rippleRaf = null
         s.rippleIsFadingOut = true
@@ -637,13 +645,15 @@ export function useEvocativeWallpaper(
     }
 
     const startRipple = async (x: number, y: number) => {
-      if (!s.rippleCanvas || !s.rippleCtx || !s.el)
-        return
+      if (!s.rippleCanvas || !s.rippleCtx || !s.el) return
 
       // 检查并更新 canvas 尺寸（窗口可能已调整大小）
       const expectedWidth = (window.innerWidth * rippleScale) | 0
       const expectedHeight = (window.innerHeight * rippleScale) | 0
-      if (s.rippleCanvas.width !== expectedWidth || s.rippleCanvas.height !== expectedHeight) {
+      if (
+        s.rippleCanvas.width !== expectedWidth ||
+        s.rippleCanvas.height !== expectedHeight
+      ) {
         s.rippleCanvas.width = expectedWidth
         s.rippleCanvas.height = expectedHeight
         // 尺寸变化后需要重新捕获壁纸
@@ -672,8 +682,7 @@ export function useEvocativeWallpaper(
           s.blurCurrentBlur,
           rippleScale,
         )
-        if (!s.sourceImageData)
-          return
+        if (!s.sourceImageData) return
         s.rippleCanvas.style.opacity = '1'
       }
 
@@ -696,8 +705,7 @@ export function useEvocativeWallpaper(
 
     // ==================== 统一动画循环 ====================
     const tick = (t: number) => {
-      if (!s.active)
-        return
+      if (!s.active) return
       if (!s.pageVisible) {
         s.raf = null
         return
@@ -705,8 +713,7 @@ export function useEvocativeWallpaper(
 
       let delta = t - s.lastTime
       if (delta >= frameMs) {
-        if (delta > MAX_DELTA)
-          delta = MAX_DELTA
+        if (delta > MAX_DELTA) delta = MAX_DELTA
 
         const smoothFactor = s.returning ? SMOOTH_RETURN : SMOOTH
         const factor = delta * smoothFactor * 0.0625
@@ -730,8 +737,7 @@ export function useEvocativeWallpaper(
               s.parallaxLastRx = s.parallaxLastRy = 0
               el.style.transform = IDLE_TF
             }
-          }
-          else {
+          } else {
             s.parallaxCx += dx
             s.parallaxCy += dy
 
@@ -765,8 +771,7 @@ export function useEvocativeWallpaper(
                   s.el.style.filter = `${BLUR_PREFIX}${rounded}${BLUR_SUFFIX}`
               })
             }
-          }
-          else {
+          } else {
             s.blurCurrentBlur += diff * factor
             const rounded = ((s.blurCurrentBlur * 10 + 0.5) | 0) / 10
 
@@ -785,28 +790,23 @@ export function useEvocativeWallpaper(
 
         if (needsContinue) {
           s.raf = requestAnimationFrame(tick)
-        }
-        else {
+        } else {
           s.raf = null
         }
-      }
-      else {
+      } else {
         s.raf = requestAnimationFrame(tick)
       }
     }
 
     const wake = () => {
-      if (!s.pageVisible)
-        return
+      if (!s.pageVisible) return
 
       const parallaxNeedsWake = enableParallax && s.parallaxIdle
       const blurNeedsWake = enableDynamicBlur && s.blurIdle
 
       if ((parallaxNeedsWake || blurNeedsWake) && s.active) {
-        if (parallaxNeedsWake)
-          s.parallaxIdle = false
-        if (blurNeedsWake)
-          s.blurIdle = false
+        if (parallaxNeedsWake) s.parallaxIdle = false
+        if (blurNeedsWake) s.blurIdle = false
 
         if (!s.raf) {
           s.lastTime = performance.now()
@@ -819,8 +819,9 @@ export function useEvocativeWallpaper(
     const unsubscribeVisibility = onVisibility((visible) => {
       s.pageVisible = visible
       if (visible && s.active) {
-        const needsResume = (enableParallax && !s.parallaxIdle)
-          || (enableDynamicBlur && !s.blurIdle)
+        const needsResume =
+          (enableParallax && !s.parallaxIdle) ||
+          (enableDynamicBlur && !s.blurIdle)
         if (needsResume && !s.raf) {
           s.lastTime = performance.now()
           s.raf = requestAnimationFrame(tick)
@@ -831,14 +832,11 @@ export function useEvocativeWallpaper(
     // ==================== 鼠标事件 ====================
     let lastMouseTime = 0
     const onMouseMove = (e: MouseEvent) => {
-      if (!s.pageVisible)
-        return
-      if (s.gyroEnabled)
-        return
+      if (!s.pageVisible) return
+      if (s.gyroEnabled) return
 
       const now = performance.now()
-      if (now - lastMouseTime < THROTTLE_MS)
-        return
+      if (now - lastMouseTime < THROTTLE_MS) return
       lastMouseTime = now
 
       s.returning = false
@@ -854,8 +852,7 @@ export function useEvocativeWallpaper(
         const normalizedY = e.clientY / window.innerHeight
         if (normalizedY <= unblurZone) {
           s.blurTargetBlur = s.blurBaseBlur * (normalizedY / unblurZone)
-        }
-        else {
+        } else {
           s.blurTargetBlur = s.blurBaseBlur
         }
       }
@@ -879,36 +876,35 @@ export function useEvocativeWallpaper(
 
     // ==================== 点击涟漪 ====================
     const onClick = (e: MouseEvent) => {
-      if (!enableRipple || !s.rippleCanvas || !s.pageVisible)
-        return
+      if (!enableRipple || !s.rippleCanvas || !s.pageVisible) return
 
       const normalizedY = e.clientY / window.innerHeight
-      if (normalizedY > unblurZone)
-        return
+      if (normalizedY > unblurZone) return
 
       const target = e.target as HTMLElement | null
-      if (!target)
-        return
+      if (!target) return
 
       // 排除交互元素
-      if (target.closest(
-        // 基础交互元素
-        'button, a, input, select, textarea, label, '
-        // ARIA 交互角色
-        + '[role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="option"], [role="slider"], '
-        // 弹出层
-        + '[role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"], '
-        // 可聚焦元素
-        + '[tabindex]:not([tabindex="-1"]), '
-        // 导航相关
-        + 'nav, .nav-item, .nav-container, .dynamic-island, '
-        // 常见UI组件
-        + '.card, .modal, .dialog, .dropdown, .menu, .popup, .tooltip, .toast, .panel, '
-        // 媒体和嵌入
-        + 'video, audio, iframe, '
-        // 自定义排除
-        + '[data-no-ripple]',
-      )) {
+      if (
+        target.closest(
+          // 基础交互元素
+          'button, a, input, select, textarea, label, ' +
+            // ARIA 交互角色
+            '[role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="option"], [role="slider"], ' +
+            // 弹出层
+            '[role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"], ' +
+            // 可聚焦元素
+            '[tabindex]:not([tabindex="-1"]), ' +
+            // 导航相关
+            'nav, .nav-item, .nav-container, .dynamic-island, ' +
+            // 常见UI组件
+            '.card, .modal, .dialog, .dropdown, .menu, .popup, .tooltip, .toast, .panel, ' +
+            // 媒体和嵌入
+            'video, audio, iframe, ' +
+            // 自定义排除
+            '[data-no-ripple]',
+        )
+      ) {
         return
       }
 
@@ -920,12 +916,10 @@ export function useEvocativeWallpaper(
     const onGyro = (e: DeviceOrientationEvent) => {
       const beta = e.beta
       const gamma = e.gamma
-      if (beta == null || gamma == null)
-        return
+      if (beta == null || gamma == null) return
 
       const now = performance.now()
-      if (now - lastGyroTime < THROTTLE_MS)
-        return
+      if (now - lastGyroTime < THROTTLE_MS) return
       lastGyroTime = now
 
       const b = (beta < -45 ? -45 : beta > 45 ? 45 : beta) / 45
@@ -937,7 +931,9 @@ export function useEvocativeWallpaper(
     }
 
     // ==================== 事件绑定 ====================
-    const isMobileOnly = window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    const isMobileOnly = window.matchMedia(
+      '(hover: none) and (pointer: coarse)',
+    ).matches
 
     if (!isMobileOnly) {
       window.addEventListener('mousemove', onMouseMove, { passive: true })
@@ -949,23 +945,29 @@ export function useEvocativeWallpaper(
     }
 
     // 陀螺仪设置
-    if (enableParallax && enableGyroscope && 'DeviceOrientationEvent' in window) {
-      const DOE = DeviceOrientationEvent as { requestPermission?: () => Promise<string> }
+    if (
+      enableParallax &&
+      enableGyroscope &&
+      'DeviceOrientationEvent' in window
+    ) {
+      const DOE = DeviceOrientationEvent as {
+        requestPermission?: () => Promise<string>
+      }
 
       if (typeof DOE.requestPermission === 'function') {
         const requestPermission = async () => {
-          if (s.permissionRequested || !s.active)
-            return
+          if (s.permissionRequested || !s.active) return
           s.permissionRequested = true
 
           try {
             const permission = await DOE.requestPermission!()
             if (permission === 'granted' && s.active) {
               s.gyroEnabled = true
-              window.addEventListener('deviceorientation', onGyro, { passive: true })
+              window.addEventListener('deviceorientation', onGyro, {
+                passive: true,
+              })
             }
-          }
-          catch {
+          } catch {
             s.permissionRequested = false
           }
         }
@@ -973,18 +975,21 @@ export function useEvocativeWallpaper(
         s.reqHandler = requestPermission
         document.addEventListener('click', requestPermission)
         document.addEventListener('touchend', requestPermission)
-      }
-      else {
+      } else {
         let received = false
         const testGyro = (e: DeviceOrientationEvent) => {
           if (e.beta != null && e.gamma != null) {
             received = true
             s.gyroEnabled = true
             window.removeEventListener('deviceorientation', testGyro)
-            window.addEventListener('deviceorientation', onGyro, { passive: true })
+            window.addEventListener('deviceorientation', onGyro, {
+              passive: true,
+            })
           }
         }
-        window.addEventListener('deviceorientation', testGyro, { passive: true })
+        window.addEventListener('deviceorientation', testGyro, {
+          passive: true,
+        })
         setTimeout(() => {
           if (!received)
             window.removeEventListener('deviceorientation', testGyro)
@@ -995,12 +1000,9 @@ export function useEvocativeWallpaper(
     // ==================== 清理 ====================
     return () => {
       s.active = false
-      if (s.raf)
-        cancelAnimationFrame(s.raf)
-      if (s.rippleRaf)
-        cancelAnimationFrame(s.rippleRaf)
-      if (s.rippleFadeoutTimer)
-        clearTimeout(s.rippleFadeoutTimer)
+      if (s.raf) cancelAnimationFrame(s.raf)
+      if (s.rippleRaf) cancelAnimationFrame(s.rippleRaf)
+      if (s.rippleFadeoutTimer) clearTimeout(s.rippleFadeoutTimer)
 
       unsubscribeVisibility()
 
@@ -1026,7 +1028,16 @@ export function useEvocativeWallpaper(
       el.style.willChange = ''
       // 注意：不清除 filter，因为基础模糊由 useWallpaper 管理
     }
-  }, [enableParallax, enableDynamicBlur, enableRipple, enableGyroscope, baseBlur, maxOffset, unblurZone, elementId])
+  }, [
+    enableParallax,
+    enableDynamicBlur,
+    enableRipple,
+    enableGyroscope,
+    baseBlur,
+    maxOffset,
+    unblurZone,
+    elementId,
+  ])
 }
 
 export default useEvocativeWallpaper

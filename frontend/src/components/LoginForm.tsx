@@ -1,23 +1,24 @@
 import { FaGithub, FaLock, FaUser } from '@lib/icons'
-import React, { useEffect, useState } from 'react'
+import type { FC, SubmitEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 import { fetchJson } from '../utils/apiHelper'
 import { sanitizeUsername } from '../utils/inputSanitizer'
 import { RateLimitError } from '../utils/rateLimiter'
 import { setSessionHint } from '../utils/sessionDetection'
-import './LoginForm.css'
 import { Spinner } from './Spinner'
+import './LoginForm.css'
 
 // PR #2/#3：后端返回的 OAuth provider 描述
-type ProviderInfo = {
+interface ProviderInfo {
   slug: string
   kind: 'github' | 'oidc'
   display_name: string
   icon?: string | null
 }
 
-const LoginForm: React.FC = () => {
+const LoginForm: FC = () => {
   const { t, format } = useI18n()
   const [formData, setFormData] = useState({
     username: '',
@@ -36,21 +37,19 @@ const LoginForm: React.FC = () => {
         if (Array.isArray(data?.providers)) {
           setProviders(data.providers as ProviderInfo[])
         }
-      }
-      catch (_err) {
+      } catch (_err) {
         // 静默：provider 列表不可用时仅显示本地登录
       }
       try {
         const data = await fetchJson(`${API_URL}/api/setup/config`)
         setAllowRegister(Boolean(data?.allow_local_registration))
-      }
-      catch (_err) {
+      } catch (_err) {
         // 静默：取不到时默认关闭注册
       }
     })()
   }, [])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError('')
 
@@ -94,7 +93,11 @@ const LoginForm: React.FC = () => {
       )
 
       // Validate response data
-      if (!data.token || typeof data.token !== 'string' || data.token.length < 10) {
+      if (
+        !data.token ||
+        typeof data.token !== 'string' ||
+        data.token.length < 10
+      ) {
         throw new Error(t.auth.loginResponseIncomplete)
       }
 
@@ -117,37 +120,38 @@ const LoginForm: React.FC = () => {
       setSessionHint()
 
       // 触发自定义事件通知Layout更新用户信息（携带管理员状态）
-      window.dispatchEvent(new CustomEvent('auth-login-success', {
-        detail: {
-          user: data.user,
-          isAdmin: data.user?.is_admin || false,
-        },
-      }))
+      window.dispatchEvent(
+        new CustomEvent('auth-login-success', {
+          detail: {
+            user: data.user,
+            isAdmin: data.user?.is_admin || false,
+          },
+        }),
+      )
 
       // 同时触发认证状态变化事件
-      window.dispatchEvent(new CustomEvent('auth-state-changed', {
-        detail: {
-          isAuthenticated: true,
-          isAdmin: data.user?.is_admin || false,
-        },
-      }))
+      window.dispatchEvent(
+        new CustomEvent('auth-state-changed', {
+          detail: {
+            isAuthenticated: true,
+            isAdmin: data.user?.is_admin || false,
+          },
+        }),
+      )
 
       // 延迟一下再跳转，让事件处理器先执行
       setTimeout(() => {
         window.location.href = '/'
       }, 100)
-    }
-    catch (err: any) {
+    } catch (err: any) {
       // 处理 Rate Limit 错误
       if (err instanceof RateLimitError) {
         const seconds = Math.ceil(err.retryAfter / 1000)
         setError(format(t.auth.rateLimitError, { seconds }))
-      }
-      else {
+      } else {
         setError(err.message || t.auth.loginFailed)
       }
-    }
-    finally {
+    } finally {
       setSubmitting(false)
     }
   }
@@ -199,7 +203,9 @@ const LoginForm: React.FC = () => {
               <input
                 type="password"
                 value={formData.password}
-                onChange={e => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder={t.auth.enterPassword}
                 maxLength={128}
@@ -214,16 +220,14 @@ const LoginForm: React.FC = () => {
             disabled={submitting}
             className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg"
           >
-            {submitting
-              ? (
-                  <>
-                    <Spinner size="sm" variant="white" />
-                    <span>{t.auth.loggingIn}</span>
-                  </>
-                )
-              : (
-                  <span>{t.auth.login}</span>
-                )}
+            {submitting ? (
+              <>
+                <Spinner size="sm" variant="white" />
+                <span>{t.auth.loggingIn}</span>
+              </>
+            ) : (
+              <span>{t.auth.login}</span>
+            )}
           </button>
         </form>
 
@@ -235,12 +239,14 @@ const LoginForm: React.FC = () => {
                 <div className="w-full border-t border-gray-300"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">{t.common.or}</span>
+                <span className="px-2 bg-white text-gray-500">
+                  {t.common.or}
+                </span>
               </div>
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {providers.map(p => (
+              {providers.map((p) => (
                 <a
                   key={p.slug}
                   href={`${API_URL}/api/auth/oauth/${p.slug}/login`}
@@ -251,11 +257,15 @@ const LoginForm: React.FC = () => {
                   }
                 >
                   <span className="oauth-provider-icon">
-                    {p.icon === 'github'
-                      ? <FaGithub />
-                      : p.icon
-                        ? <img src={p.icon} alt="" />
-                        : <span className="oauth-provider-icon-fallback">{p.display_name?.[0]?.toUpperCase() || '?'}</span>}
+                    {p.icon === 'github' ? (
+                      <FaGithub />
+                    ) : p.icon ? (
+                      <img src={p.icon} alt="" />
+                    ) : (
+                      <span className="oauth-provider-icon-fallback">
+                        {p.display_name?.[0]?.toUpperCase() || '?'}
+                      </span>
+                    )}
                   </span>
                   <span className="oauth-provider-label">
                     {p.slug === 'github'
@@ -272,7 +282,10 @@ const LoginForm: React.FC = () => {
         {allowRegister && (
           <div className="mt-6 text-center text-sm text-gray-600">
             {t.auth.noAccount}
-            <a href="/register" className="text-indigo-600 hover:underline ml-1">
+            <a
+              href="/register"
+              className="text-indigo-600 hover:underline ml-1"
+            >
               {t.auth.registerHere}
             </a>
           </div>

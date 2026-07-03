@@ -26,14 +26,14 @@
 export function generateNonce(): string {
   const array = new Uint8Array(16)
   crypto.getRandomValues(array)
-  return Array.from(array, b => b.toString(16).padStart(2, '0')).join('')
+  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 /** 会话 token 生成（用于 postMessage 验证） */
 export function generateSessionToken(): string {
   const array = new Uint8Array(32)
   crypto.getRandomValues(array)
-  return Array.from(array, b => b.toString(16).padStart(2, '0')).join('')
+  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 // ========================
@@ -49,22 +49,22 @@ export function generateSessionToken(): string {
  * - 🔒 font-src 允许 data: URI 和 Google Fonts
  */
 const CSP_BASE_DIRECTIVES = [
-  'default-src \'none\'',
+  "default-src 'none'",
   // style-src 允许 unsafe-inline 和 Google Fonts CSS
-  'style-src \'unsafe-inline\' https://fonts.googleapis.com',
+  "style-src 'unsafe-inline' https://fonts.googleapis.com",
   // 🔒 安全加强：允许 data:、blob:、https: 图片加载
   // https: 需要用于联邦头像等跨域图片。iframe sandbox 隔离确保无 cookie 泄露
   'img-src data: blob: https:',
   // font-src 允许 data: URI 和 Google Fonts 字体文件
   'font-src data: https://fonts.gstatic.com',
-  'connect-src \'none\'',
-  'frame-src \'none\'',
-  'object-src \'none\'',
-  'media-src \'none\'',
-  'worker-src \'none\'',
-  'form-action \'none\'',
-  'base-uri \'none\'',
-  'manifest-src \'none\'',
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "object-src 'none'",
+  "media-src 'none'",
+  "worker-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'",
+  "manifest-src 'none'",
   // 注意：prefetch-src 已在现代浏览器中废弃，不再需要
 ]
 
@@ -464,7 +464,10 @@ export const IFRAME_SANDBOX_ATTRS = 'allow-scripts allow-pointer-lock'
  * - 不允许以点开头或结尾
  * - 长度限制 1-256 字符
  */
-export function validateStorageKey(key: string): { valid: boolean, reason?: string } {
+export function validateStorageKey(key: string): {
+  valid: boolean
+  reason?: string
+} {
   if (!key || typeof key !== 'string') {
     return { valid: false, reason: 'Key must be a non-empty string' }
   }
@@ -485,7 +488,11 @@ export function validateStorageKey(key: string): { valid: boolean, reason?: stri
 
   // 只允许安全字符
   if (!/^[\w.\-:]+$/.test(key)) {
-    return { valid: false, reason: 'Key contains invalid characters (allowed: a-z, A-Z, 0-9, _, -, ., :)' }
+    return {
+      valid: false,
+      reason:
+        'Key contains invalid characters (allowed: a-z, A-Z, 0-9, _, -, ., :)',
+    }
   }
 
   return { valid: true }

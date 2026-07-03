@@ -28,7 +28,9 @@ type MessageHandler = (message: TappMessage) => Promise<TappAPIResponse>
 function generateMessageId(): string {
   const array = new Uint8Array(16)
   crypto.getRandomValues(array)
-  return `${Date.now()}-${Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('')}`
+  return `${Date.now()}-${Array.from(array)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')}`
 }
 
 /**
@@ -56,11 +58,14 @@ export class TappBridge {
   private iframe: HTMLIFrameElement | null = null
   private tappInstance: TappInstance | null = null
   private messageHandlers: Map<string, MessageHandler> = new Map()
-  private pendingRequests: Map<string, {
-    resolve: (value: TappAPIResponse) => void
-    reject: (reason: Error) => void
-    timeout: ReturnType<typeof setTimeout>
-  }> = new Map()
+  private pendingRequests: Map<
+    string,
+    {
+      resolve: (value: TappAPIResponse) => void
+      reject: (reason: Error) => void
+      timeout: ReturnType<typeof setTimeout>
+    }
+  > = new Map()
 
   private eventListeners: Map<string, Set<(data: unknown) => void>> = new Map()
 
@@ -70,7 +75,8 @@ export class TappBridge {
   /** 允许的 origin（用于验证接收消息的来源） */
   private allowedOrigin: string = ''
 
-  /** postMessage 目标 origin（发送消息用）
+  /**
+   * postMessage 目标 origin（发送消息用）
    * srcdoc iframe 在配合 allow-same-origin 时 origin 为父页面，否则为 null
    * 浏览器不接受字符串 'null' 作为 postMessage 目标，使用 '*' 代替
    * 安全性由 event.source === iframe.contentWindow 检查保证
@@ -112,19 +118,24 @@ export class TappBridge {
    * @param tappInstance - Tapp 实例
    * @param sessionToken - 会话 token（用于消息验证）
    */
-  initialize(iframe: HTMLIFrameElement, tappInstance: TappInstance, sessionToken?: string): void {
+  initialize(
+    iframe: HTMLIFrameElement,
+    tappInstance: TappInstance,
+    sessionToken?: string,
+  ): void {
     this.iframe = iframe
     this.tappInstance = tappInstance
 
     // 设置会话 token（如果未提供则生成一个）
     if (sessionToken) {
       this.sessionToken = sessionToken
-    }
-    else {
+    } else {
       // 生成安全的随机 token
       const array = new Uint8Array(32)
       crypto.getRandomValues(array)
-      this.sessionToken = Array.from(array, b => b.toString(16).padStart(2, '0')).join('')
+      this.sessionToken = Array.from(array, (b) =>
+        b.toString(16).padStart(2, '0'),
+      ).join('')
     }
 
     // 设置允许的 origin
@@ -226,7 +237,10 @@ export class TappBridge {
     }
 
     // action 字段验证
-    if (msg.type !== 'response' && (!msg.action || typeof msg.action !== 'string')) {
+    if (
+      msg.type !== 'response' &&
+      (!msg.action || typeof msg.action !== 'string')
+    ) {
       return { valid: false, error: 'Missing or invalid action field' }
     }
 
@@ -240,7 +254,8 @@ export class TappBridge {
     // payload 大小检查（防止内存攻击）
     if (msg.payload !== undefined) {
       const payloadStr = JSON.stringify(msg.payload)
-      if (payloadStr.length > 1024 * 1024) { // 1MB 限制
+      if (payloadStr.length > 1024 * 1024) {
+        // 1MB 限制
         return { valid: false, error: 'Payload too large' }
       }
     }
@@ -250,7 +265,9 @@ export class TappBridge {
     if (msg.type === 'request' && this.sessionToken) {
       const sessionToken = msg._sessionToken as string | undefined
       if (sessionToken !== this.sessionToken) {
-        console.warn('[TappBridge] Session token mismatch - possible message spoofing')
+        console.warn(
+          '[TappBridge] Session token mismatch - possible message spoofing',
+        )
         return { valid: false, error: 'Invalid session token' }
       }
     }
@@ -264,7 +281,10 @@ export class TappBridge {
   private async handleMessage(event: MessageEvent): Promise<void> {
     // 安全检查：验证消息来源
     // 注意：blob: URL 的 origin 是 'null'
-    if (event.origin !== this.allowedOrigin && event.origin !== window.location.origin) {
+    if (
+      event.origin !== this.allowedOrigin &&
+      event.origin !== window.location.origin
+    ) {
       // 允许来自同源的消息（开发模式）
       if (event.source !== this.iframe?.contentWindow) {
         return
@@ -287,7 +307,10 @@ export class TappBridge {
 
     // 频率限制检查（仅限事件类型消息，request 类必须始终处理以避免 SDK 挂起）
     const now = Date.now()
-    if (message.type !== 'request' && now - this.lastRequestTime < this.MIN_REQUEST_INTERVAL) {
+    if (
+      message.type !== 'request' &&
+      now - this.lastRequestTime < this.MIN_REQUEST_INTERVAL
+    ) {
       return
     }
     this.lastRequestTime = now
@@ -308,7 +331,9 @@ export class TappBridge {
   /**
    * 处理 API 请求（增强安全版本）
    */
-  private async handleRequest(message: TappMessage<TappAPIRequest>): Promise<void> {
+  private async handleRequest(
+    message: TappMessage<TappAPIRequest>,
+  ): Promise<void> {
     const { id, payload } = message
 
     if (!payload || !payload.api || !payload.method) {
@@ -378,8 +403,7 @@ export class TappBridge {
       }
 
       this.sendResponse(id, response)
-    }
-    catch (error) {
+    } catch (error) {
       console.error(`[TappBridge] Handler error for ${action}:`, error)
       this.sendResponse(id, {
         success: false,
@@ -404,8 +428,7 @@ export class TappBridge {
 
     if (message.error) {
       pending.reject(new Error(message.error))
-    }
-    else {
+    } else {
       pending.resolve(message.payload)
     }
   }
@@ -419,8 +442,7 @@ export class TappBridge {
       for (const listener of listeners) {
         try {
           listener(message.payload)
-        }
-        catch (error) {
+        } catch (error) {
           console.error(`[TappBridge] Event listener error:`, error)
         }
       }
@@ -467,14 +489,17 @@ export class TappBridge {
 
     // 未知 action 默认拒绝
     if (!requiredPermission) {
-      console.warn(`[TappBridge] Unknown action for permission check: ${action}`)
+      console.warn(
+        `[TappBridge] Unknown action for permission check: ${action}`,
+      )
       return { allowed: false, reason: `Unknown action: ${action}` }
     }
 
     // 检查是否已授权
     // 后端已经根据权限下放配置过滤了 grantedPermissions
     // 如果权限在列表中，说明后端已批准，前端无需再次验证角色
-    const granted = this.tappInstance.grantedPermissions.includes(requiredPermission)
+    const granted =
+      this.tappInstance.grantedPermissions.includes(requiredPermission)
     if (!granted) {
       return {
         allowed: false,

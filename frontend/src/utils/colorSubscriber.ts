@@ -13,9 +13,11 @@ import { useEffect, useState } from 'react'
 
 type ColorCallback = (color: string) => void
 
-let currentColor
-  = typeof document !== 'undefined'
-    ? getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#8b5cf6'
+let currentColor =
+  typeof document !== 'undefined'
+    ? getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-primary')
+        .trim() || '#8b5cf6'
     : '#8b5cf6'
 
 const subscribers = new Set<ColorCallback>()
@@ -33,8 +35,7 @@ function notifySubscribers() {
     subscriberArray.forEach((callback) => {
       try {
         callback(currentColor)
-      }
-      catch (e) {
+      } catch (e) {
         console.error('Color subscriber error:', e)
       }
     })
@@ -45,8 +46,7 @@ function notifySubscribers() {
 let rafScheduled = false
 
 function scheduleNotify() {
-  if (rafScheduled)
-    return
+  if (rafScheduled) return
   rafScheduled = true
   requestAnimationFrame(() => {
     rafScheduled = false
@@ -55,12 +55,14 @@ function scheduleNotify() {
 }
 
 function ensureObserver() {
-  if (observer || typeof document === 'undefined')
-    return
+  if (observer || typeof document === 'undefined') return
 
   observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+      if (
+        mutation.type === 'attributes' &&
+        mutation.attributeName === 'style'
+      ) {
         // 🎯 使用防抖调度，避免频繁触发
         scheduleNotify()
         break
@@ -120,7 +122,9 @@ export function getPrimaryColor(): string {
 export function usePrimaryColor(): string {
   const [color, setColor] = useState(() =>
     typeof document !== 'undefined'
-      ? getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#8b5cf6'
+      ? getComputedStyle(document.documentElement)
+          .getPropertyValue('--color-primary')
+          .trim() || '#8b5cf6'
       : '#8b5cf6',
   )
 

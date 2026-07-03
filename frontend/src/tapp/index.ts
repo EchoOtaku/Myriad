@@ -10,11 +10,7 @@ export { TappWindowManager } from './components/TappWindowManager'
 export { EXAMPLE_TAPPS, helloWorldTapp } from './examples'
 
 // 页面导出
-export {
-  TappDetailPage,
-  TappListPage,
-  TappRunPage,
-} from './pages'
+export { TappDetailPage, TappListPage, TappRunPage } from './pages'
 // 运行时导出
 export {
   createPermissionController,
@@ -46,7 +42,13 @@ export type {
 } from './runtime'
 
 // 服务导出
-export { cleanupTemporaryTapps, getRecentTapps, listTapps, OFFICIAL_STORE, RemoteStoreService } from './services'
+export {
+  cleanupTemporaryTapps,
+  getRecentTapps,
+  listTapps,
+  OFFICIAL_STORE,
+  RemoteStoreService,
+} from './services'
 
 export type {
   RecentTappItem,

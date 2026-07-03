@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 /// 调度类型
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum ScheduleType {
     #[sea_orm(string_value = "cron")]
     Cron,
     #[sea_orm(string_value = "interval")]
+    #[default]
     Interval,
     #[sea_orm(string_value = "once")]
     Once,
@@ -17,35 +19,27 @@ pub enum ScheduleType {
     Daily,
 }
 
-impl Default for ScheduleType {
-    fn default() -> Self {
-        Self::Interval
-    }
-}
-
 /// 执行目标
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum ExecutionTarget {
     #[sea_orm(string_value = "backend")]
     Backend,
     #[sea_orm(string_value = "frontend")]
+    #[default]
     Frontend,
     #[sea_orm(string_value = "both")]
     Both,
 }
 
-impl Default for ExecutionTarget {
-    fn default() -> Self {
-        Self::Frontend
-    }
-}
-
 /// 错过执行策略
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum MissedPolicy {
     #[sea_orm(string_value = "skip")]
+    #[default]
     Skip,
     #[sea_orm(string_value = "run-once")]
     RunOnce,
@@ -53,20 +47,16 @@ pub enum MissedPolicy {
     RunAll,
 }
 
-impl Default for MissedPolicy {
-    fn default() -> Self {
-        Self::Skip
-    }
-}
-
 /// 任务作用域
 /// 决定任务的执行范围和前端推送目标
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum TaskScope {
     /// 用户级别：只影响注册该任务的用户
     /// 后端执行时使用该用户的权限，前端推送给该用户
     #[sea_orm(string_value = "user")]
+    #[default]
     User,
     /// Tapp 级别（共享数据）：影响所有安装了该 Tapp 的用户
     /// 后端执行一次，结果共享给所有用户，前端推送给所有安装该 Tapp 的用户
@@ -81,12 +71,6 @@ pub enum TaskScope {
     /// 后端执行，不需要前端推送（或推送给管理员）
     #[sea_orm(string_value = "global")]
     Global,
-}
-
-impl Default for TaskScope {
-    fn default() -> Self {
-        Self::User
-    }
 }
 
 /// 定时任务实体

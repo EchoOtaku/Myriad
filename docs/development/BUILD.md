@@ -98,7 +98,7 @@ pnpm install
 # Start development server (with hot reload)
 pnpm run dev
 
-# The server will be available at http://localhost:4321
+# The server will be available at http://localhost:1102
 ```
 
 ### Production Build

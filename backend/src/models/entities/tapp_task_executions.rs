@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 /// 执行状态
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
+#[derive(Default)]
 pub enum ExecutionStatus {
     #[sea_orm(string_value = "pending")]
+    #[default]
     Pending,
     #[sea_orm(string_value = "running")]
     Running,
@@ -17,12 +19,6 @@ pub enum ExecutionStatus {
     Failed,
     #[sea_orm(string_value = "timeout")]
     Timeout,
-}
-
-impl Default for ExecutionStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 /// 任务执行历史实体

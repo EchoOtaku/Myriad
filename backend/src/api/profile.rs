@@ -2374,8 +2374,13 @@ pub async fn delete_card_from_report(
 
 /// 将图片URL转换为代理URL（用于处理防盗链）
 pub fn proxy_image_url(url: &str) -> String {
-    // 检查是否需要代理（Bilibili图片）
-    if url.contains("hdslb.com") || url.contains("bilibili.com") {
+    // 检查是否需要代理（平台图片防盗链/跨域）
+    if url.contains("hdslb.com")
+        || url.contains("bilibili.com")
+        || url.contains("bgm.tv")
+        || url.contains("bangumi.tv")
+        || url.contains("chii.in")
+    {
         format!("/api/proxy/image?url={}", urlencoding::encode(url))
     } else {
         url.to_string()

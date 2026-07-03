@@ -196,7 +196,7 @@ async fn execute_scheduler_create(
             "type": "show_notification",
             "params": {
                 "title": crate::services::agent::response_agent::scheduled_task_created(name),
-                "message": schedule.map(|s| crate::services::agent::response_agent::scheduled_task_schedule(s)).unwrap_or_default(),
+                "message": schedule.map(crate::services::agent::response_agent::scheduled_task_schedule).unwrap_or_default(),
                 "taskId": task_id
             },
             "timestamp": now.timestamp_millis()
@@ -250,7 +250,6 @@ async fn execute_system_metrics() -> Result<Value, String> {
 }
 
 /// 验证平台名称白名单，防止路径穿越
-
 async fn execute_cache_status(params: &HashMap<String, Value>) -> Result<Value, String> {
     let platform = params.get("platform").and_then(|v| v.as_str());
     let platforms = if let Some(p) = platform {
@@ -259,7 +258,7 @@ async fn execute_cache_status(params: &HashMap<String, Value>) -> Result<Value, 
         }
         vec![p.to_string()]
     } else {
-        vec!["netease", "bilibili", "github", "steam"]
+        vec!["netease", "bilibili", "bangumi", "github", "steam"]
             .into_iter()
             .map(|s| s.to_string())
             .collect()
@@ -420,10 +419,8 @@ async fn execute_image_cache(params: &HashMap<String, Value>) -> Result<Value, S
             if cache_dir.exists() {
                 if let Ok(entries) = std::fs::read_dir(cache_dir) {
                     for entry in entries.flatten() {
-                        if entry.path().is_dir() {
-                            if std::fs::remove_dir_all(entry.path()).is_ok() {
-                                cleared += 1;
-                            }
+                        if entry.path().is_dir() && std::fs::remove_dir_all(entry.path()).is_ok() {
+                            cleared += 1;
                         }
                     }
                 }
@@ -451,7 +448,7 @@ async fn execute_export_data(params: &HashMap<String, Value>) -> Result<Value, S
     let mut export_data = json!({});
 
     if data_type == "all" || data_type == "platforms" {
-        let platforms = ["bilibili", "steam", "github", "netease"];
+        let platforms = ["bilibili", "bangumi", "steam", "github", "netease"];
         let mut platform_data = json!({});
 
         for platform in platforms {

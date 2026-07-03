@@ -10,12 +10,12 @@ interface CollisionCheckMessage {
   type: 'checkCollision'
   payload: {
     widgetId: string
-    position: { x: number, y: number }
-    size: { w: number, h: number }
+    position: { x: number; y: number }
+    size: { w: number; h: number }
     allWidgets: Array<{
       id: string
-      position: { x: number, y: number }
-      size: { w: number, h: number }
+      position: { x: number; y: number }
+      size: { w: number; h: number }
     }>
     gridWidth: number
     gridHeight: number
@@ -26,15 +26,15 @@ interface CollisionCheckMessage {
 interface FindPositionMessage {
   type: 'findValidPosition'
   payload: {
-    widgetSize: { w: number, h: number }
+    widgetSize: { w: number; h: number }
     allWidgets: Array<{
       id: string
-      position: { x: number, y: number }
-      size: { w: number, h: number }
+      position: { x: number; y: number }
+      size: { w: number; h: number }
     }>
     gridWidth: number
     gridHeight: number
-    preferredPosition?: { x: number, y: number }
+    preferredPosition?: { x: number; y: number }
   }
 }
 
@@ -43,46 +43,48 @@ interface BatchCollisionMessage {
   payload: {
     widgets: Array<{
       id: string
-      position: { x: number, y: number }
-      size: { w: number, h: number }
+      position: { x: number; y: number }
+      size: { w: number; h: number }
     }>
     gridWidth: number
     gridHeight: number
   }
 }
 
-type WorkerMessage = CollisionCheckMessage | FindPositionMessage | BatchCollisionMessage
+type WorkerMessage =
+  CollisionCheckMessage | FindPositionMessage | BatchCollisionMessage
 
 // 碰撞检测核心算法（AABB）
 function checkAABBCollision(
-  widget: { position: { x: number, y: number }, size: { w: number, h: number } },
-  other: { position: { x: number, y: number }, size: { w: number, h: number } },
+  widget: {
+    position: { x: number; y: number }
+    size: { w: number; h: number }
+  },
+  other: { position: { x: number; y: number }; size: { w: number; h: number } },
 ): boolean {
   const { x, y } = widget.position
   const { w, h } = widget.size
   const { x: ox, y: oy } = other.position
   const { w: ow, h: oh } = other.size
 
-  return (
-    x < ox + ow
-    && x + w > ox
-    && y < oy + oh
-    && y + h > oy
-  )
+  return x < ox + ow && x + w > ox && y < oy + oh && y + h > oy
 }
 
 // 检查单个组件的碰撞
 function checkCollision(
-  widget: { position: { x: number, y: number }, size: { w: number, h: number } },
+  widget: {
+    position: { x: number; y: number }
+    size: { w: number; h: number }
+  },
   allWidgets: Array<{
     id: string
-    position: { x: number, y: number }
-    size: { w: number, h: number }
+    position: { x: number; y: number }
+    size: { w: number; h: number }
   }>,
   gridWidth: number,
   gridHeight: number,
   excludeId?: string,
-): { hasCollision: boolean, collidingIds: string[] } {
+): { hasCollision: boolean; collidingIds: string[] } {
   const { x, y } = widget.position
   const { w, h } = widget.size
   const collidingIds: string[] = []
@@ -94,8 +96,7 @@ function checkCollision(
 
   // 检查与其他组件的碰撞
   for (const other of allWidgets) {
-    if (other.id === excludeId)
-      continue
+    if (other.id === excludeId) continue
 
     if (checkAABBCollision(widget, other)) {
       collidingIds.push(other.id)
@@ -110,16 +111,16 @@ function checkCollision(
 
 // 查找有效位置（贪心算法）
 function findValidPosition(
-  widgetSize: { w: number, h: number },
+  widgetSize: { w: number; h: number },
   allWidgets: Array<{
     id: string
-    position: { x: number, y: number }
-    size: { w: number, h: number }
+    position: { x: number; y: number }
+    size: { w: number; h: number }
   }>,
   gridWidth: number,
   gridHeight: number,
-  preferredPosition?: { x: number, y: number },
-): { x: number, y: number } | null {
+  preferredPosition?: { x: number; y: number },
+): { x: number; y: number } | null {
   const { w, h } = widgetSize
 
   // 优先尝试首选位置
@@ -135,7 +136,12 @@ function findValidPosition(
   for (let y = 0; y <= gridHeight - h; y++) {
     for (let x = 0; x <= gridWidth - w; x++) {
       const testWidget = { position: { x, y }, size: widgetSize }
-      const result = checkCollision(testWidget, allWidgets, gridWidth, gridHeight)
+      const result = checkCollision(
+        testWidget,
+        allWidgets,
+        gridWidth,
+        gridHeight,
+      )
       if (!result.hasCollision) {
         return { x, y }
       }
@@ -149,13 +155,13 @@ function findValidPosition(
 function batchCheckCollisions(
   widgets: Array<{
     id: string
-    position: { x: number, y: number }
-    size: { w: number, h: number }
+    position: { x: number; y: number }
+    size: { w: number; h: number }
   }>,
   _gridWidth: number,
   _gridHeight: number,
-): { collisions: Array<{ id1: string, id2: string }> } {
-  const collisions: Array<{ id1: string, id2: string }> = []
+): { collisions: Array<{ id1: string; id2: string }> } {
+  const collisions: Array<{ id1: string; id2: string }> = []
 
   for (let i = 0; i < widgets.length; i++) {
     for (let j = i + 1; j < widgets.length; j++) {
@@ -174,7 +180,15 @@ globalThis.onmessage = (e: MessageEvent<WorkerMessage>) => {
 
   switch (type) {
     case 'checkCollision': {
-      const { widgetId, position, size, allWidgets, gridWidth, gridHeight, excludeId } = payload
+      const {
+        widgetId,
+        position,
+        size,
+        allWidgets,
+        gridWidth,
+        gridHeight,
+        excludeId,
+      } = payload
       const result = checkCollision(
         { position, size },
         allWidgets,
@@ -193,7 +207,13 @@ globalThis.onmessage = (e: MessageEvent<WorkerMessage>) => {
     }
 
     case 'findValidPosition': {
-      const { widgetSize, allWidgets, gridWidth, gridHeight, preferredPosition } = payload
+      const {
+        widgetSize,
+        allWidgets,
+        gridWidth,
+        gridHeight,
+        preferredPosition,
+      } = payload
       const position = findValidPosition(
         widgetSize,
         allWidgets,
@@ -224,4 +244,8 @@ globalThis.onmessage = (e: MessageEvent<WorkerMessage>) => {
 }
 
 // 导出类型供 TypeScript 使用
-export type { BatchCollisionMessage, CollisionCheckMessage, FindPositionMessage }
+export type {
+  BatchCollisionMessage,
+  CollisionCheckMessage,
+  FindPositionMessage,
+}

@@ -11,7 +11,10 @@ import type { TappBridge } from './TappBridge'
 import { useEffect, useRef } from 'react'
 import { isPageVisible, onVisibility } from '../../hooks/animation'
 
-import { getPrimaryColor, subscribeToPrimaryColor } from '../../utils/colorSubscriber'
+import {
+  getPrimaryColor,
+  subscribeToPrimaryColor,
+} from '../../utils/colorSubscriber'
 import { subscribeToTheme } from '../../utils/themeSubscriber'
 
 /**
@@ -31,15 +34,17 @@ export function useSandboxSubscriptions(
     return onVisibility((visible) => {
       pageVisibleRef.current = visible
       if (isReady && bridgeRef.current) {
-        bridgeRef.current.emit(visible ? 'lifecycle:resume' : 'lifecycle:pause', null)
+        bridgeRef.current.emit(
+          visible ? 'lifecycle:resume' : 'lifecycle:pause',
+          null,
+        )
       }
     })
   }, [isReady, bridgeRef])
 
   // 主题变化监听
   useEffect(() => {
-    if (!isReady)
-      return
+    if (!isReady) return
     return subscribeToTheme((isDark) => {
       const bridge = bridgeRef.current
       if (bridge) {
@@ -50,8 +55,7 @@ export function useSandboxSubscriptions(
 
   // 主色调变化监听（isReady 时立即发送当前颜色 + 订阅后续变化）
   useEffect(() => {
-    if (!isReady)
-      return
+    if (!isReady) return
 
     const bridge = bridgeRef.current
     const currentColor = getPrimaryColor()

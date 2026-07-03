@@ -31,7 +31,6 @@ export type {
   AgentResponseType,
   // 能力
   Capability,
-
   ClarificationPoint,
   // 澄清
   ClarificationType,
@@ -40,10 +39,8 @@ export type {
   // 数据展示
   ColumnDef,
   ConversationMessage,
-
   CreatePresetRequest,
   DataDisplayHint,
-
   ErrorEvent,
   // 执行追踪
   ExecutionTrace,
@@ -63,7 +60,6 @@ export type {
   ProcessContext,
   ProcessRequest,
   ProgressCallback,
-
   ProgressEvent,
   ProgressUpdateEvent,
 
@@ -85,16 +81,13 @@ export type {
   TaskCompletedEvent,
   // SSE 事件
   TaskCreatedEvent,
-
   TaskDetail,
-
   TaskInfo,
   TaskPreset,
   TaskPresetListResponse,
   // 任务
   TaskStatus,
   WaitCondition,
-
   WaitingForInputEvent,
   WindowTarget,
 } from './types'

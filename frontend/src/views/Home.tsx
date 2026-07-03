@@ -28,7 +28,10 @@ import { useTappWidgets } from '../hooks/useTappWidgets'
 import { useTitleFont } from '../hooks/useTitleFont'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
-import { getCsrfTokenWithCache, getUserInfoWithCache } from '../utils/userInfoCache'
+import {
+  getCsrfTokenWithCache,
+  getUserInfoWithCache,
+} from '../utils/userInfoCache'
 
 export default function Home() {
   // 🆕 初始化首页调度器（Visibility + Resize + RAF + Idle）
@@ -55,7 +58,10 @@ export default function Home() {
     }
     checkDarkMode()
     const observer = new MutationObserver(checkDarkMode)
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
     return () => observer.disconnect()
   }, [])
 
@@ -77,107 +83,113 @@ export default function Home() {
   }
 
   // 默认小组件布局
-  const DEFAULT_WIDGETS: WidgetConfig[] = useMemo(() => [
-    {
-      id: 'default-welcome',
-      type: 'welcome',
-      size: '4x2',
-      position: { x: 0, y: 0 },
-    },
-    {
-      id: 'default-weather',
-      type: 'weather',
-      size: '2x2',
-      position: { x: 4, y: 0 },
-    },
-    {
-      id: 'default-quote',
-      type: 'quote',
-      size: '2x2',
-      position: { x: 6, y: 0 },
-    },
-  ], [])
+  const DEFAULT_WIDGETS: WidgetConfig[] = useMemo(
+    () => [
+      {
+        id: 'default-welcome',
+        type: 'welcome',
+        size: '4x2',
+        position: { x: 0, y: 0 },
+      },
+      {
+        id: 'default-weather',
+        type: 'weather',
+        size: '2x2',
+        position: { x: 4, y: 0 },
+      },
+      {
+        id: 'default-quote',
+        type: 'quote',
+        size: '2x2',
+        position: { x: 6, y: 0 },
+      },
+    ],
+    [],
+  )
 
   // 使用 useMemo 生成 AVAILABLE_WIDGETS 以支持 i18n
-  const AVAILABLE_WIDGETS: WidgetType[] = useMemo(() => [
-    {
-      id: 'welcome',
-      name: t.widgets.welcome,
-      defaultSize: '4x2',
-      component: WelcomeWidget,
-      supportedSizes: ['2x2', '4x2'],
-    },
-    {
-      id: 'quick-stats',
-      name: t.widgets.quickStats,
-      defaultSize: '4x2',
-      component: QuickStatsWidget,
-      supportedSizes: ['4x2'],
-    },
-    {
-      id: 'recent-activity',
-      name: t.widgets.recentActivity,
-      defaultSize: '4x2',
-      component: RecentActivityWidget,
-      supportedSizes: ['2x2', '4x2', '4x4'],
-    },
-    {
-      id: 'weather',
-      name: t.widgets.weather,
-      defaultSize: '2x2',
-      component: WeatherWidget,
-      supportedSizes: ['2x2', '4x2', '4x1'],
-    },
-    {
-      id: 'quote',
-      name: t.widgets.quote,
-      defaultSize: '2x2',
-      component: QuoteWidget,
-      supportedSizes: ['2x2', '4x2', '4x1'],
-    },
-    {
-      id: 'music-player',
-      name: t.widgets.musicPlayer,
-      defaultSize: '2x2',
-      component: MusicPlayerWidget,
-      supportedSizes: ['2x2', '4x2'],
-    },
-    {
-      id: 'report-bilibili',
-      name: t.widgets.reportBilibili,
-      defaultSize: '4x2',
-      component: ReportCardWidget,
-      supportedSizes: ['4x2'],
-    },
-    {
-      id: 'report-steam',
-      name: t.widgets.reportSteam,
-      defaultSize: '4x2',
-      component: ReportCardWidget,
-      supportedSizes: ['4x2'],
-    },
-    {
-      id: 'report-github',
-      name: t.widgets.reportGithub,
-      defaultSize: '4x2',
-      component: ReportCardWidget,
-      supportedSizes: ['4x2'],
-    },
-    {
-      id: 'report-netease',
-      name: t.widgets.reportNetease,
-      defaultSize: '4x2',
-      component: ReportCardWidget,
-      supportedSizes: ['4x2'],
-    },
-    {
-      id: 'social-network',
-      name: t.widgets.socialNetwork,
-      defaultSize: '1x1',
-      component: SocialNetworkWidget,
-      supportedSizes: ['1x1', '2x1', '2x2'],
-    },
-  ], [t])
+  const AVAILABLE_WIDGETS: WidgetType[] = useMemo(
+    () => [
+      {
+        id: 'welcome',
+        name: t.widgets.welcome,
+        defaultSize: '4x2',
+        component: WelcomeWidget,
+        supportedSizes: ['2x2', '4x2'],
+      },
+      {
+        id: 'quick-stats',
+        name: t.widgets.quickStats,
+        defaultSize: '4x2',
+        component: QuickStatsWidget,
+        supportedSizes: ['4x2'],
+      },
+      {
+        id: 'recent-activity',
+        name: t.widgets.recentActivity,
+        defaultSize: '4x2',
+        component: RecentActivityWidget,
+        supportedSizes: ['2x2', '4x2', '4x4'],
+      },
+      {
+        id: 'weather',
+        name: t.widgets.weather,
+        defaultSize: '2x2',
+        component: WeatherWidget,
+        supportedSizes: ['2x2', '4x2', '4x1'],
+      },
+      {
+        id: 'quote',
+        name: t.widgets.quote,
+        defaultSize: '2x2',
+        component: QuoteWidget,
+        supportedSizes: ['2x2', '4x2', '4x1'],
+      },
+      {
+        id: 'music-player',
+        name: t.widgets.musicPlayer,
+        defaultSize: '2x2',
+        component: MusicPlayerWidget,
+        supportedSizes: ['2x2', '4x2'],
+      },
+      {
+        id: 'report-bilibili',
+        name: t.widgets.reportBilibili,
+        defaultSize: '4x2',
+        component: ReportCardWidget,
+        supportedSizes: ['4x2'],
+      },
+      {
+        id: 'report-steam',
+        name: t.widgets.reportSteam,
+        defaultSize: '4x2',
+        component: ReportCardWidget,
+        supportedSizes: ['4x2'],
+      },
+      {
+        id: 'report-github',
+        name: t.widgets.reportGithub,
+        defaultSize: '4x2',
+        component: ReportCardWidget,
+        supportedSizes: ['4x2'],
+      },
+      {
+        id: 'report-netease',
+        name: t.widgets.reportNetease,
+        defaultSize: '4x2',
+        component: ReportCardWidget,
+        supportedSizes: ['4x2'],
+      },
+      {
+        id: 'social-network',
+        name: t.widgets.socialNetwork,
+        defaultSize: '1x1',
+        component: SocialNetworkWidget,
+        supportedSizes: ['1x1', '2x1', '2x2'],
+      },
+    ],
+    [t],
+  )
 
   // 获取 Tapp 注册的小组件
   const { tappWidgets, isLoading: isTappWidgetsLoading } = useTappWidgets()
@@ -202,8 +214,7 @@ export default function Home() {
         // 总是获取公开用户信息（站长资料），不需要等待认证检查
         const info = await getUserInfoWithCache(true) // 跳过认证检查
         setUserInfo(info)
-      }
-      catch {
+      } catch {
         // 设置默认访客信息
         setUserInfo({
           name: 'Myriad Dashboard',
@@ -225,8 +236,7 @@ export default function Home() {
           if (token) {
             setCsrfToken(token)
           }
-        }
-        catch {
+        } catch {
           // CSRF Token 获取失败时静默处理
         }
       }
@@ -236,7 +246,9 @@ export default function Home() {
 
   // 从后端加载小组件配置（使用去重机制）
   // 存储原始布局数据，用于 Tapp widgets 加载后重新验证
-  const [rawLayoutData, setRawLayoutData] = useState<WidgetConfig[] | null>(null)
+  const [rawLayoutData, setRawLayoutData] = useState<WidgetConfig[] | null>(
+    null,
+  )
 
   useEffect(() => {
     async function loadDashboardConfig() {
@@ -250,29 +262,31 @@ export default function Home() {
               // 保存原始布局，待 Tapp widgets 加载后再过滤
               setRawLayoutData(parsedLayout)
               // 先用当前可用的组件过滤
-              const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map(w => w.id))
-              const loadedWidgets = parsedLayout.filter((w: WidgetConfig) => registeredWidgetIds.has(w.type))
-              setWidgets(loadedWidgets.length > 0 ? loadedWidgets : DEFAULT_WIDGETS)
+              const registeredWidgetIds = new Set(
+                ALL_AVAILABLE_WIDGETS.map((w) => w.id),
+              )
+              const loadedWidgets = parsedLayout.filter((w: WidgetConfig) =>
+                registeredWidgetIds.has(w.type),
+              )
+              setWidgets(
+                loadedWidgets.length > 0 ? loadedWidgets : DEFAULT_WIDGETS,
+              )
             }
-          }
-          catch (e) {
+          } catch (e) {
             console.error('解析仪表盘布局失败:', e)
             setWidgets(DEFAULT_WIDGETS)
           }
-        }
-        else {
+        } else {
           setWidgets(DEFAULT_WIDGETS)
         }
 
         if (data.dashboard_title) {
           setDashboardTitle(data.dashboard_title)
         }
-      }
-      catch (err) {
+      } catch (err) {
         console.error('加载配置失败:', err)
         setWidgets(DEFAULT_WIDGETS)
-      }
-      finally {
+      } finally {
         setIsLoading(false)
       }
     }
@@ -285,8 +299,10 @@ export default function Home() {
       return
 
     // 使用完整的可用组件列表重新过滤
-    const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map(w => w.id))
-    const validWidgets = rawLayoutData.filter((w: WidgetConfig) => registeredWidgetIds.has(w.type))
+    const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map((w) => w.id))
+    const validWidgets = rawLayoutData.filter((w: WidgetConfig) =>
+      registeredWidgetIds.has(w.type),
+    )
 
     if (validWidgets.length > 0) {
       setWidgets(validWidgets)
@@ -296,14 +312,15 @@ export default function Home() {
   // 保存小组件配置到后端
   const handleWidgetsChange = async (newWidgets: WidgetConfig[]) => {
     // 过滤掉未注册的小组件（已丢失/删除的组件，包括 Tapp 小组件）
-    const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map(w => w.id))
-    const validWidgets = newWidgets.filter(w => registeredWidgetIds.has(w.type))
+    const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map((w) => w.id))
+    const validWidgets = newWidgets.filter((w) =>
+      registeredWidgetIds.has(w.type),
+    )
 
     setWidgets(validWidgets)
 
     // 只有管理员可以保存
-    if (!isAdmin)
-      return
+    if (!isAdmin) return
 
     try {
       await fetch(`${API_URL}/api/config/dashboard`, {
@@ -317,8 +334,7 @@ export default function Home() {
           layout: JSON.stringify(validWidgets), // 序列化为字符串存储
         }),
       })
-    }
-    catch (err) {
+    } catch (err) {
       console.error('保存小组件配置失败:', err)
     }
   }
@@ -328,8 +344,7 @@ export default function Home() {
     setDashboardTitle(newTitle)
 
     // 只有管理员可以保存
-    if (!isAdmin)
-      return
+    if (!isAdmin) return
 
     try {
       await fetch(`${API_URL}/api/config/dashboard`, {
@@ -343,8 +358,7 @@ export default function Home() {
           title: newTitle,
         }),
       })
-    }
-    catch (err) {
+    } catch (err) {
       console.error('保存标题失败:', err)
     }
   }
@@ -354,8 +368,7 @@ export default function Home() {
     const handleCustomPlatformsUpdate = async (event: Event) => {
       const customEvent = event as CustomEvent<{ platforms: any[] }>
       // 只有管理员可以保存
-      if (!isAdmin)
-        return
+      if (!isAdmin) return
 
       try {
         await fetch(`${API_URL}/api/config/dashboard`, {
@@ -369,15 +382,20 @@ export default function Home() {
             custom_platforms: JSON.stringify(customEvent.detail.platforms),
           }),
         })
-      }
-      catch (err) {
+      } catch (err) {
         console.error('保存自定义平台失败:', err)
       }
     }
 
-    window.addEventListener('custom-platforms-update', handleCustomPlatformsUpdate)
+    window.addEventListener(
+      'custom-platforms-update',
+      handleCustomPlatformsUpdate,
+    )
     return () => {
-      window.removeEventListener('custom-platforms-update', handleCustomPlatformsUpdate)
+      window.removeEventListener(
+        'custom-platforms-update',
+        handleCustomPlatformsUpdate,
+      )
     }
   }, [isAdmin, csrfToken])
 
@@ -396,46 +414,50 @@ export default function Home() {
             {/* 顶部信息条 - 作为 children 传入 WidgetGrid */}
             <div className="relative h-15 shrink-0 z-10 mb-2 p-1">
               {/* 背景标题 */}
-              {isEditMode
-                ? (
-                    <input
-                      type="text"
-                      aria-label="Dashboard Title"
-                      value={dashboardTitle}
-                      onChange={e => handleTitleChange(e.target.value)}
-                      className="absolute left-1 whitespace-nowrap z-0 hidden md:block bg-transparent border-none outline-none p-0 m-0 w-full"
-                      style={{
-                        top: `calc(30px - ${7.5 * titleFontSize}rem)`,
-                        fontSize: `${6 * titleFontSize}rem`,
-                        color: getTitleColor(),
-                        WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
-                        lineHeight: 1,
-                        fontFamily: currentFont.family,
-                        fontWeight: 700,
-                      }}
-                    />
-                  )
-                : (
-                    <div
-                      className="absolute left-1 whitespace-nowrap pointer-events-none z-0 hidden md:block"
-                      style={{
-                        top: `calc(30px - ${7.5 * titleFontSize}rem)`,
-                        fontSize: `${6 * titleFontSize}rem`,
-                        color: getTitleColor(),
-                        WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
-                        fontFamily: currentFont.family,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {dashboardTitle}
-                    </div>
-                  )}
+              {isEditMode ? (
+                <input
+                  type="text"
+                  aria-label="Dashboard Title"
+                  value={dashboardTitle}
+                  onChange={(e) => handleTitleChange(e.target.value)}
+                  className="absolute left-1 whitespace-nowrap z-0 hidden md:block bg-transparent border-none outline-none p-0 m-0 w-full"
+                  style={{
+                    top: `calc(30px - ${7.5 * titleFontSize}rem)`,
+                    fontSize: `${6 * titleFontSize}rem`,
+                    color: getTitleColor(),
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
+                    lineHeight: 1,
+                    fontFamily: currentFont.family,
+                    fontWeight: 700,
+                  }}
+                />
+              ) : (
+                <div
+                  className="absolute left-1 whitespace-nowrap pointer-events-none z-0 hidden md:block"
+                  style={{
+                    top: `calc(30px - ${7.5 * titleFontSize}rem)`,
+                    fontSize: `${6 * titleFontSize}rem`,
+                    color: getTitleColor(),
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
+                    fontFamily: currentFont.family,
+                    fontWeight: 700,
+                  }}
+                >
+                  {dashboardTitle}
+                </div>
+              )}
 
               <motion.div
                 className="h-full flex items-center justify-between"
                 initial={{ opacity: 0, x: -20 }}
-                animate={isPageReady ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
-                transition={{ duration: 0.3, ease: 'easeOut', delay: isPageReady ? 0.1 : 0 }}
+                animate={
+                  isPageReady ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }
+                }
+                transition={{
+                  duration: 0.3,
+                  ease: 'easeOut',
+                  delay: isPageReady ? 0.1 : 0,
+                }}
               >
                 {/* 用户信息卡片 */}
                 <motion.div
@@ -443,37 +465,35 @@ export default function Home() {
                   whileHover={{ scale: 1.02 }}
                   transition={{ duration: 0.2 }}
                 >
-                  {userInfo
-                    ? (
-                        <>
-                          <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-white/10">
-                            <img
-                              src={userInfo.avatar}
-                              alt={userInfo.name}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                          <div className="flex flex-col justify-center">
-                            <div className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight">
-                              {userInfo.name}
-                            </div>
-                            {userInfo.bio && (
-                              <div className="text-[10px] text-gray-500 dark:text-gray-400 max-w-50 truncate leading-tight">
-                                {userInfo.bio}
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )
-                    : (
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-white/5 animate-pulse" />
-                          <div className="flex flex-col gap-1">
-                            <div className="w-20 h-3 bg-gray-200 dark:bg-white/5 rounded animate-pulse" />
-                            <div className="w-32 h-2 bg-gray-200 dark:bg-white/5 rounded animate-pulse" />
-                          </div>
+                  {userInfo ? (
+                    <>
+                      <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-white/10">
+                        <img
+                          src={userInfo.avatar}
+                          alt={userInfo.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex flex-col justify-center">
+                        <div className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight">
+                          {userInfo.name}
                         </div>
-                      )}
+                        {userInfo.bio && (
+                          <div className="text-[10px] text-gray-500 dark:text-gray-400 max-w-50 truncate leading-tight">
+                            {userInfo.bio}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-white/5 animate-pulse" />
+                      <div className="flex flex-col gap-1">
+                        <div className="w-20 h-3 bg-gray-200 dark:bg-white/5 rounded animate-pulse" />
+                        <div className="w-32 h-2 bg-gray-200 dark:bg-white/5 rounded animate-pulse" />
+                      </div>
+                    </div>
+                  )}
 
                   {/* 编辑按钮 - 仅管理员可见，且仅在桌面端显示 */}
                   {isAdmin && (
@@ -482,20 +502,26 @@ export default function Home() {
 
                       {/* 字体选择器 - 仅在编辑模式下显示 */}
                       {isEditMode && (
-                        <TitleFontSelector csrfToken={csrfToken} className="hidden lg:block" />
+                        <TitleFontSelector
+                          csrfToken={csrfToken}
+                          className="hidden lg:block"
+                        />
                       )}
 
                       <button
                         onClick={() => setIsEditMode(!isEditMode)}
                         className={`
                           hidden lg:flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all
-                          ${isEditMode
-                      ? 'text-white shadow-md hover:opacity-90'
-                      : 'bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10'
-                    }
+                          ${
+                            isEditMode
+                              ? 'text-white shadow-md hover:opacity-90'
+                              : 'bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10'
+                          }
                         `}
                         style={{
-                          backgroundColor: isEditMode ? 'var(--color-primary)' : undefined,
+                          backgroundColor: isEditMode
+                            ? 'var(--color-primary)'
+                            : undefined,
                           color: isEditMode ? '#fff' : 'var(--color-primary)',
                         }}
                       >

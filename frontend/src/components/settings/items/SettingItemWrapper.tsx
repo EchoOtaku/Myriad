@@ -41,23 +41,17 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
         className={`setting-item setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}`}
       >
         <div className="setting-item-content">
-          {contentRight
-            ? (
-                <>
-                  {labelContent}
-                  <div className="setting-control">
-                    {children}
-                  </div>
-                </>
-              )
-            : (
-                <>
-                  {labelContent}
-                  <div className="setting-control">
-                    {children}
-                  </div>
-                </>
-              )}
+          {contentRight ? (
+            <>
+              {labelContent}
+              <div className="setting-control">{children}</div>
+            </>
+          ) : (
+            <>
+              {labelContent}
+              <div className="setting-control">{children}</div>
+            </>
+          )}
         </div>
         {hint && <p className="setting-hint">{hint}</p>}
         {error && <p className="setting-error">{error}</p>}
@@ -81,9 +75,7 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
         </label>
       )}
 
-      <div className="setting-control">
-        {children}
-      </div>
+      <div className="setting-control">{children}</div>
 
       {hint && <p className="setting-hint">{hint}</p>}
       {error && <p className="setting-error">{error}</p>}

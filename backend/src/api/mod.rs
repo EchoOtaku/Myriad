@@ -6,6 +6,7 @@ pub mod ai_recommend; // ✅ AI图标推荐 API
 pub mod analysis;
 pub mod auth;
 pub mod auth_local;
+pub mod bangumi;
 pub mod bilibili;
 pub mod brew; // ✅ Brew 阅读 RSS/Atom/JSON Feed 订阅 API
 pub mod brewlia; // ✅ Brewlia AI增强阅读 API

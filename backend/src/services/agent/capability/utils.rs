@@ -223,10 +223,11 @@ pub fn get_step_description(step: &RecipeStep) -> String {
         }
 
         // 平台相关
-        "platform.read" | "platform.bilibili" | "platform.steam" | "platform.github"
-        | "platform.netease" => {
+        "platform.read" | "platform.bilibili" | "platform.bangumi" | "platform.steam"
+        | "platform.github" | "platform.netease" => {
             let platform_name = match step.capability_id.as_str() {
                 "platform.bilibili" => "B站",
+                "platform.bangumi" => "Bangumi",
                 "platform.steam" => "Steam",
                 "platform.github" => "GitHub",
                 "platform.netease" => "网易云",
@@ -374,6 +375,8 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "platform.write" => "平台数据写入。向平台缓存写入数据",
         "platform.refresh" => "刷新平台数据。触发平台数据重新获取",
         "bilibili.user" => "B站用户查询。获取 B 站用户信息、收藏、追番",
+        "bangumi.user" => "Bangumi 用户查询。获取 Bangumi 用户基本信息",
+        "bangumi.collections" => "Bangumi 收藏查询。获取 Bangumi 收藏、评分和观看状态",
         "steam.user" => "Steam 用户查询。获取 Steam 用户信息和游戏库",
         "netease.playlist" => "网易云歌单。获取用户网易云歌单和听歌记录",
         "github.repos" => "GitHub 仓库查询。查询 GitHub 仓库、贡献和活动",
@@ -493,6 +496,7 @@ pub fn get_quick_reference() -> Value {
             "生成阅读列表/推荐文章/找文章看": ["brew.generateReadingList"],
             "订阅/添加RSS": ["brew.discover", "brew.subscribe"],
             "B站/bilibili": ["platform.read", "bilibili.user"],
+            "Bangumi/番组计划/动画收藏": ["platform.read", "bangumi.user", "bangumi.collections"],
             "Steam/游戏": ["platform.read", "steam.user"],
             "GitHub/代码/仓库": ["platform.read", "github.repos"],
             "网易云/音乐数据": ["platform.read", "netease.playlist"],
@@ -561,7 +565,7 @@ pub fn get_quick_reference() -> Value {
             "brew.article 是内部能力，不要主动使用，由 brew.items 链式调用"
         ],
         "常见参数示例": {
-            "platform.read": {"platform": "bilibili|steam|github|netease", "type": "overview|favorites|recent"},
+            "platform.read": {"platform": "bilibili|bangumi|steam|github|netease", "type": "overview|favorites|recent"},
             "ai.summarize": {"content": "文章内容或 contentFrom 引用", "maxLength": 300},
             "ai.analyze": {"content": "待分析文本", "analysisType": "sentiment|trends|custom", "customPrompt": "自定义分析角度"},
             "brew.items": {"limit": 10, "source_id": "可选源ID", "unread_only": true},

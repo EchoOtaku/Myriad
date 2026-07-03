@@ -16,8 +16,7 @@ export async function parseJsonResponse(response: Response): Promise<any> {
 
   try {
     return await response.json()
-  }
-  catch (_error) {
+  } catch (_error) {
     throw new Error(`服务器返回了无效的响应格式 (${response.status})`)
   }
 }
@@ -42,12 +41,10 @@ export async function handleErrorResponse(
     try {
       const errorData = await response.json()
       errorMessage = errorData.message || errorData.error || defaultMessage
-    }
-    catch (_jsonError) {
+    } catch (_jsonError) {
       errorMessage = `${defaultMessage} (${response.status})`
     }
-  }
-  else {
+  } else {
     const text = await response.text()
     errorMessage = text || response.statusText || `HTTP ${response.status}`
   }
@@ -60,7 +57,7 @@ const TRANSIENT_STATUSES = new Set([502, 503, 504])
 const MAX_RETRIES = 3
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /** 仅幂等方法可安全重试，避免 POST 等重复提交 */
@@ -94,7 +91,11 @@ export async function fetchJson<T = any>(
         ...options,
       })
 
-      if (retryable && TRANSIENT_STATUSES.has(response.status) && attempt < MAX_RETRIES) {
+      if (
+        retryable &&
+        TRANSIENT_STATUSES.has(response.status) &&
+        attempt < MAX_RETRIES
+      ) {
         await sleep(150 * (attempt + 1))
         continue
       }
@@ -104,8 +105,7 @@ export async function fetchJson<T = any>(
       }
 
       return await parseJsonResponse(response)
-    }
-    catch (error) {
+    } catch (error) {
       // fetch 自身抛出 = 网络层错误（连接被拒 / socket hang up）。
       const isNetworkError = error instanceof TypeError
       if (retryable && isNetworkError && attempt < MAX_RETRIES) {

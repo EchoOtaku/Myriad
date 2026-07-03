@@ -20,13 +20,13 @@
  */
 const TAILWIND_MAP: Record<string, string> = {
   // Display
-  'hidden': 'display:none',
-  'block': 'display:block',
+  hidden: 'display:none',
+  block: 'display:block',
   'inline-block': 'display:inline-block',
-  'inline': 'display:inline',
-  'flex': 'display:flex',
+  inline: 'display:inline',
+  flex: 'display:flex',
   'inline-flex': 'display:inline-flex',
-  'grid': 'display:grid',
+  grid: 'display:grid',
 
   // Flex Direction
   'flex-row': 'flex-direction:row',
@@ -47,11 +47,11 @@ const TAILWIND_MAP: Record<string, string> = {
   'flex-shrink-0': 'flex-shrink:0',
   'shrink-0': 'flex-shrink:0',
   'flex-shrink': 'flex-shrink:1',
-  'shrink': 'flex-shrink:1',
+  shrink: 'flex-shrink:1',
   'flex-grow-0': 'flex-grow:0',
   'grow-0': 'flex-grow:0',
   'flex-grow': 'flex-grow:1',
-  'grow': 'flex-grow:1',
+  grow: 'flex-grow:1',
 
   // Justify Content
   'justify-start': 'justify-content:flex-start',
@@ -76,11 +76,11 @@ const TAILWIND_MAP: Record<string, string> = {
   'self-stretch': 'align-self:stretch',
 
   // Position
-  'static': 'position:static',
-  'fixed': 'position:fixed',
-  'absolute': 'position:absolute',
-  'relative': 'position:relative',
-  'sticky': 'position:sticky',
+  static: 'position:static',
+  fixed: 'position:fixed',
+  absolute: 'position:absolute',
+  relative: 'position:relative',
+  sticky: 'position:sticky',
 
   // Inset
   'inset-0': 'top:0;right:0;bottom:0;left:0',
@@ -421,7 +421,7 @@ const TAILWIND_MAP: Record<string, string> = {
   // Border Radius
   'rounded-none': 'border-radius:0',
   'rounded-sm': 'border-radius:0.125rem',
-  'rounded': 'border-radius:0.25rem',
+  rounded: 'border-radius:0.25rem',
   'rounded-md': 'border-radius:0.375rem',
   'rounded-lg': 'border-radius:0.5rem',
   'rounded-xl': 'border-radius:0.75rem',
@@ -430,7 +430,7 @@ const TAILWIND_MAP: Record<string, string> = {
   'rounded-full': 'border-radius:9999px',
 
   // Border Width
-  'border': 'border-width:1px',
+  border: 'border-width:1px',
   'border-0': 'border-width:0',
   'border-2': 'border-width:2px',
   'border-4': 'border-width:4px',
@@ -493,9 +493,12 @@ const TAILWIND_MAP: Record<string, string> = {
   'font-black': 'font-weight:900',
 
   // Font Family
-  'font-sans': 'font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif',
-  'font-serif': 'font-family:ui-serif,Georgia,Cambria,"Times New Roman",Times,serif',
-  'font-mono': 'font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace',
+  'font-sans':
+    'font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif',
+  'font-serif':
+    'font-family:ui-serif,Georgia,Cambria,"Times New Roman",Times,serif',
+  'font-mono':
+    'font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace',
 
   // Text Align
   'text-left': 'text-align:left',
@@ -504,7 +507,7 @@ const TAILWIND_MAP: Record<string, string> = {
   'text-justify': 'text-align:justify',
 
   // Text Overflow
-  'truncate': 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
+  truncate: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
   'overflow-ellipsis': 'text-overflow:ellipsis',
   'overflow-clip': 'text-overflow:clip',
 
@@ -522,9 +525,12 @@ const TAILWIND_MAP: Record<string, string> = {
   'break-all': 'word-break:break-all',
 
   // Line Clamp
-  'line-clamp-1': 'overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1',
-  'line-clamp-2': 'overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2',
-  'line-clamp-3': 'overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3',
+  'line-clamp-1':
+    'overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1',
+  'line-clamp-2':
+    'overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2',
+  'line-clamp-3':
+    'overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3',
 
   // Opacity
   'opacity-0': 'opacity:0',
@@ -554,8 +560,8 @@ const TAILWIND_MAP: Record<string, string> = {
   'overflow-y-hidden': 'overflow-y:hidden',
 
   // Visibility
-  'visible': 'visibility:visible',
-  'invisible': 'visibility:hidden',
+  visible: 'visibility:visible',
+  invisible: 'visibility:hidden',
 
   // Cursor
   'cursor-auto': 'cursor:auto',
@@ -578,30 +584,38 @@ const TAILWIND_MAP: Record<string, string> = {
 
   // Outline
   'outline-none': 'outline:2px solid transparent;outline-offset:2px',
-  'outline': 'outline-style:solid',
+  outline: 'outline-style:solid',
 
   // Resize
   'resize-none': 'resize:none',
   'resize-y': 'resize:vertical',
   'resize-x': 'resize:horizontal',
-  'resize': 'resize:both',
+  resize: 'resize:both',
 
   // Shadow
   'shadow-sm': 'box-shadow:0 1px 2px 0 rgb(0 0 0/0.05)',
-  'shadow': 'box-shadow:0 1px 3px 0 rgb(0 0 0/0.1),0 1px 2px -1px rgb(0 0 0/0.1)',
-  'shadow-md': 'box-shadow:0 4px 6px -1px rgb(0 0 0/0.1),0 2px 4px -2px rgb(0 0 0/0.1)',
-  'shadow-lg': 'box-shadow:0 10px 15px -3px rgb(0 0 0/0.1),0 4px 6px -4px rgb(0 0 0/0.1)',
-  'shadow-xl': 'box-shadow:0 20px 25px -5px rgb(0 0 0/0.1),0 8px 10px -6px rgb(0 0 0/0.1)',
+  shadow: 'box-shadow:0 1px 3px 0 rgb(0 0 0/0.1),0 1px 2px -1px rgb(0 0 0/0.1)',
+  'shadow-md':
+    'box-shadow:0 4px 6px -1px rgb(0 0 0/0.1),0 2px 4px -2px rgb(0 0 0/0.1)',
+  'shadow-lg':
+    'box-shadow:0 10px 15px -3px rgb(0 0 0/0.1),0 4px 6px -4px rgb(0 0 0/0.1)',
+  'shadow-xl':
+    'box-shadow:0 20px 25px -5px rgb(0 0 0/0.1),0 8px 10px -6px rgb(0 0 0/0.1)',
   'shadow-2xl': 'box-shadow:0 25px 50px -12px rgb(0 0 0/0.25)',
   'shadow-none': 'box-shadow:none',
 
   // Transition
   'transition-none': 'transition-property:none',
-  'transition-all': 'transition-property:all;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
-  'transition': 'transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
-  'transition-colors': 'transition-property:color,background-color,border-color,text-decoration-color,fill,stroke;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
-  'transition-opacity': 'transition-property:opacity;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
-  'transition-transform': 'transition-property:transform;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
+  'transition-all':
+    'transition-property:all;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
+  transition:
+    'transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
+  'transition-colors':
+    'transition-property:color,background-color,border-color,text-decoration-color,fill,stroke;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
+  'transition-opacity':
+    'transition-property:opacity;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
+  'transition-transform':
+    'transition-property:transform;transition-timing-function:cubic-bezier(0.4,0,0.2,1);transition-duration:150ms',
 
   // Duration
   'duration-75': 'transition-duration:75ms',
@@ -615,8 +629,10 @@ const TAILWIND_MAP: Record<string, string> = {
   'duration-1000': 'transition-duration:1000ms',
 
   // Transform
-  'transform': 'transform:translate(var(--tw-translate-x,0),var(--tw-translate-y,0)) rotate(var(--tw-rotate,0)) skewX(var(--tw-skew-x,0)) skewY(var(--tw-skew-y,0)) scaleX(var(--tw-scale-x,1)) scaleY(var(--tw-scale-y,1))',
-  'transform-gpu': 'transform:translate3d(var(--tw-translate-x,0),var(--tw-translate-y,0),0) rotate(var(--tw-rotate,0)) skewX(var(--tw-skew-x,0)) skewY(var(--tw-skew-y,0)) scaleX(var(--tw-scale-x,1)) scaleY(var(--tw-scale-y,1))',
+  transform:
+    'transform:translate(var(--tw-translate-x,0),var(--tw-translate-y,0)) rotate(var(--tw-rotate,0)) skewX(var(--tw-skew-x,0)) skewY(var(--tw-skew-y,0)) scaleX(var(--tw-scale-x,1)) scaleY(var(--tw-scale-y,1))',
+  'transform-gpu':
+    'transform:translate3d(var(--tw-translate-x,0),var(--tw-translate-y,0),0) rotate(var(--tw-rotate,0)) skewX(var(--tw-skew-x,0)) skewY(var(--tw-skew-y,0)) scaleX(var(--tw-scale-x,1)) scaleY(var(--tw-scale-y,1))',
   'transform-none': 'transform:none',
   'translate-x-0': 'transform:translateX(0)',
   'translate-x-1': 'transform:translateX(0.25rem)',
@@ -736,15 +752,17 @@ function extractClassNames(source: string): Set<string> {
     classString.split(/\s+/).forEach((cls) => {
       const trimmed = cls.trim()
       // 过滤掉明显不是 Tailwind 类的内容
-      if (trimmed
-        && !trimmed.includes('(')
-        && !trimmed.includes('{')
-        && !trimmed.includes('<')
-        && !trimmed.includes(';')
-        && !trimmed.includes('=')
-        && !trimmed.includes('$')
-        && !trimmed.includes('function')
-        && trimmed.length < 80) {
+      if (
+        trimmed &&
+        !trimmed.includes('(') &&
+        !trimmed.includes('{') &&
+        !trimmed.includes('<') &&
+        !trimmed.includes(';') &&
+        !trimmed.includes('=') &&
+        !trimmed.includes('$') &&
+        !trimmed.includes('function') &&
+        trimmed.length < 80
+      ) {
         classes.add(trimmed)
       }
     })
@@ -767,7 +785,8 @@ function extractClassNames(source: string): Set<string> {
   }
 
   // 3. 匹配 JS classList.add('...') / classList.remove('...') / classList.toggle('...')
-  const classListRegex = /classList\.(add|remove|toggle|contains)\s*\(\s*["'`]([^"'`]+)["'`]/g
+  const classListRegex =
+    /classList\.(add|remove|toggle|contains)\s*\(\s*["'`]([^"'`]+)["'`]/g
   match = classListRegex.exec(source)
   while (match !== null) {
     addClasses(match[2])
@@ -776,7 +795,8 @@ function extractClassNames(source: string): Set<string> {
 
   // 4. 匹配三元表达式中的类名字符串
   // 例如: (role === 'user' ? 'flex-row-reverse msg-user-enter' : 'msg-ai-enter')
-  const ternaryClassRegex = /\?\s*["'`]([^"'`]+)["'`]\s*:\s*["'`]([^"'`]*)["'`]/g
+  const ternaryClassRegex =
+    /\?\s*["'`]([^"'`]+)["'`]\s*:\s*["'`]([^"'`]*)["'`]/g
   match = ternaryClassRegex.exec(source)
   while (match !== null) {
     addClasses(match[1])
@@ -791,10 +811,12 @@ function extractClassNames(source: string): Set<string> {
   while (match !== null) {
     const value = match[1]
     // 只添加看起来像 Tailwind 类的内容
-    if (value.match(/^[-\w:/[\].!\s]+$/)
-      && !value.includes('http')
-      && !value.includes('://')
-      && value.length < 200) {
+    if (
+      /^[-\w:/[\].!\s]+$/.test(value) &&
+      !value.includes('http') &&
+      !value.includes('://') &&
+      value.length < 200
+    ) {
       addClasses(value)
     }
     match = looseClassRegex.exec(source)
@@ -809,10 +831,10 @@ function extractClassNames(source: string): Set<string> {
 
 /** 颜色映射 */
 const COLORS: Record<string, string> = {
-  'transparent': 'transparent',
-  'current': 'currentColor',
-  'black': '#000',
-  'white': '#fff',
+  transparent: 'transparent',
+  current: 'currentColor',
+  black: '#000',
+  white: '#fff',
   'slate-50': '#f8fafc',
   'slate-100': '#f1f5f9',
   'slate-200': '#e2e8f0',
@@ -1059,10 +1081,8 @@ const COLORS: Record<string, string> = {
 
 /** 将颜色+透明度转换为 rgba */
 function colorWithOpacity(colorValue: string, opacity: number): string {
-  if (colorValue === 'transparent')
-    return 'transparent'
-  if (colorValue === 'currentColor')
-    return 'currentColor'
+  if (colorValue === 'transparent') return 'transparent'
+  if (colorValue === 'currentColor') return 'currentColor'
 
   // 处理 hex 颜色
   if (colorValue.startsWith('#')) {
@@ -1072,8 +1092,7 @@ function colorWithOpacity(colorValue: string, opacity: number): string {
       const g = Number.parseInt(hex[1] + hex[1], 16)
       const b = Number.parseInt(hex[2] + hex[2], 16)
       return `rgba(${r},${g},${b},${opacity})`
-    }
-    else if (hex.length === 6) {
+    } else if (hex.length === 6) {
       const r = Number.parseInt(hex.slice(0, 2), 16)
       const g = Number.parseInt(hex.slice(2, 4), 16)
       const b = Number.parseInt(hex.slice(4, 6), 16)
@@ -1096,15 +1115,13 @@ function parseColorWithOpacity(value: string): string | null {
 
   const [, colorName, opacityStr] = match
   const color = COLORS[colorName]
-  if (!color)
-    return null
+  if (!color) return null
 
   // 解析透明度
   let opacity: number
   if (opacityStr.startsWith('[') && opacityStr.endsWith(']')) {
     opacity = Number.parseFloat(opacityStr.slice(1, -1))
-  }
-  else {
+  } else {
     opacity = Number.parseInt(opacityStr) / 100
   }
 
@@ -1147,22 +1164,38 @@ function parseDynamicClass(className: string): string | null {
 
   // 渐变方向 (支持 v3 bg-gradient-to-* 和 v4 bg-linear-to-* 两种写法)
   const gradientDirs: Record<string, string> = {
-    'bg-gradient-to-t': 'background-image:linear-gradient(to top,var(--tw-gradient-stops))',
-    'bg-gradient-to-tr': 'background-image:linear-gradient(to top right,var(--tw-gradient-stops))',
-    'bg-gradient-to-r': 'background-image:linear-gradient(to right,var(--tw-gradient-stops))',
-    'bg-gradient-to-br': 'background-image:linear-gradient(to bottom right,var(--tw-gradient-stops))',
-    'bg-gradient-to-b': 'background-image:linear-gradient(to bottom,var(--tw-gradient-stops))',
-    'bg-gradient-to-bl': 'background-image:linear-gradient(to bottom left,var(--tw-gradient-stops))',
-    'bg-gradient-to-l': 'background-image:linear-gradient(to left,var(--tw-gradient-stops))',
-    'bg-gradient-to-tl': 'background-image:linear-gradient(to top left,var(--tw-gradient-stops))',
-    'bg-linear-to-t': 'background-image:linear-gradient(to top,var(--tw-gradient-stops))',
-    'bg-linear-to-tr': 'background-image:linear-gradient(to top right,var(--tw-gradient-stops))',
-    'bg-linear-to-r': 'background-image:linear-gradient(to right,var(--tw-gradient-stops))',
-    'bg-linear-to-br': 'background-image:linear-gradient(to bottom right,var(--tw-gradient-stops))',
-    'bg-linear-to-b': 'background-image:linear-gradient(to bottom,var(--tw-gradient-stops))',
-    'bg-linear-to-bl': 'background-image:linear-gradient(to bottom left,var(--tw-gradient-stops))',
-    'bg-linear-to-l': 'background-image:linear-gradient(to left,var(--tw-gradient-stops))',
-    'bg-linear-to-tl': 'background-image:linear-gradient(to top left,var(--tw-gradient-stops))',
+    'bg-gradient-to-t':
+      'background-image:linear-gradient(to top,var(--tw-gradient-stops))',
+    'bg-gradient-to-tr':
+      'background-image:linear-gradient(to top right,var(--tw-gradient-stops))',
+    'bg-gradient-to-r':
+      'background-image:linear-gradient(to right,var(--tw-gradient-stops))',
+    'bg-gradient-to-br':
+      'background-image:linear-gradient(to bottom right,var(--tw-gradient-stops))',
+    'bg-gradient-to-b':
+      'background-image:linear-gradient(to bottom,var(--tw-gradient-stops))',
+    'bg-gradient-to-bl':
+      'background-image:linear-gradient(to bottom left,var(--tw-gradient-stops))',
+    'bg-gradient-to-l':
+      'background-image:linear-gradient(to left,var(--tw-gradient-stops))',
+    'bg-gradient-to-tl':
+      'background-image:linear-gradient(to top left,var(--tw-gradient-stops))',
+    'bg-linear-to-t':
+      'background-image:linear-gradient(to top,var(--tw-gradient-stops))',
+    'bg-linear-to-tr':
+      'background-image:linear-gradient(to top right,var(--tw-gradient-stops))',
+    'bg-linear-to-r':
+      'background-image:linear-gradient(to right,var(--tw-gradient-stops))',
+    'bg-linear-to-br':
+      'background-image:linear-gradient(to bottom right,var(--tw-gradient-stops))',
+    'bg-linear-to-b':
+      'background-image:linear-gradient(to bottom,var(--tw-gradient-stops))',
+    'bg-linear-to-bl':
+      'background-image:linear-gradient(to bottom left,var(--tw-gradient-stops))',
+    'bg-linear-to-l':
+      'background-image:linear-gradient(to left,var(--tw-gradient-stops))',
+    'bg-linear-to-tl':
+      'background-image:linear-gradient(to top left,var(--tw-gradient-stops))',
   }
   if (gradientDirs[className]) {
     return gradientDirs[className]
@@ -1217,7 +1250,11 @@ function parseDynamicClass(className: string): string | null {
     const arbitrary = parseArbitraryValue(value)
     if (arbitrary) {
       // 检测是否是颜色（包含 var、# 或 rgb 等）
-      if (arbitrary.includes('var(') || arbitrary.startsWith('#') || arbitrary.includes('rgb')) {
+      if (
+        arbitrary.includes('var(') ||
+        arbitrary.startsWith('#') ||
+        arbitrary.includes('rgb')
+      ) {
         return `color:${arbitrary}`
       }
       return `font-size:${arbitrary}`
@@ -1230,7 +1267,10 @@ function parseDynamicClass(className: string): string | null {
   }
 
   // 边框颜色 border-*
-  if (className.startsWith('border-') && !className.match(/^border-([trblxy])?-?\d/)) {
+  if (
+    className.startsWith('border-') &&
+    !/^border-([trblxy])?-?\d/.test(className)
+  ) {
     const value = className.slice(7)
     // 先检查任意值
     const arbitrary = parseArbitraryValue(value)
@@ -1304,13 +1344,20 @@ function parseDynamicClass(className: string): string | null {
   if (paddingMatch) {
     const [, side, val] = paddingMatch
     switch (side) {
-      case 'x': return `padding-left:${val};padding-right:${val}`
-      case 'y': return `padding-top:${val};padding-bottom:${val}`
-      case 't': return `padding-top:${val}`
-      case 'r': return `padding-right:${val}`
-      case 'b': return `padding-bottom:${val}`
-      case 'l': return `padding-left:${val}`
-      default: return `padding:${val}`
+      case 'x':
+        return `padding-left:${val};padding-right:${val}`
+      case 'y':
+        return `padding-top:${val};padding-bottom:${val}`
+      case 't':
+        return `padding-top:${val}`
+      case 'r':
+        return `padding-right:${val}`
+      case 'b':
+        return `padding-bottom:${val}`
+      case 'l':
+        return `padding-left:${val}`
+      default:
+        return `padding:${val}`
     }
   }
 
@@ -1319,13 +1366,20 @@ function parseDynamicClass(className: string): string | null {
   if (marginMatch) {
     const [, side, val] = marginMatch
     switch (side) {
-      case 'x': return `margin-left:${val};margin-right:${val}`
-      case 'y': return `margin-top:${val};margin-bottom:${val}`
-      case 't': return `margin-top:${val}`
-      case 'r': return `margin-right:${val}`
-      case 'b': return `margin-bottom:${val}`
-      case 'l': return `margin-left:${val}`
-      default: return `margin:${val}`
+      case 'x':
+        return `margin-left:${val};margin-right:${val}`
+      case 'y':
+        return `margin-top:${val};margin-bottom:${val}`
+      case 't':
+        return `margin-top:${val}`
+      case 'r':
+        return `margin-right:${val}`
+      case 'b':
+        return `margin-bottom:${val}`
+      case 'l':
+        return `margin-left:${val}`
+      default:
+        return `margin:${val}`
     }
   }
 
@@ -1364,15 +1418,21 @@ export function generateOnDemandTailwindCSS(html: string): string {
   const spaceRules: string[] = []
 
   // 添加渐变 CSS 变量基础
-  cssRules.push('*,::before,::after{--tw-gradient-from:#fff;--tw-gradient-to:transparent;--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to)}')
+  cssRules.push(
+    '*,::before,::after{--tw-gradient-from:#fff;--tw-gradient-to:transparent;--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to)}',
+  )
 
   // 添加动画 keyframes（如果使用了动画类）
-  const needsAnimations = Array.from(usedClasses).some(c => c.includes('animate-'))
+  const needsAnimations = Array.from(usedClasses).some((c) =>
+    c.includes('animate-'),
+  )
   if (needsAnimations) {
     cssRules.push('@keyframes spin{to{transform:rotate(360deg)}}')
     cssRules.push('@keyframes ping{75%,100%{transform:scale(2);opacity:0}}')
     cssRules.push('@keyframes pulse{50%{opacity:.5}}')
-    cssRules.push('@keyframes bounce{0%,100%{transform:translateY(-25%);animation-timing-function:cubic-bezier(0.8,0,1,1)}50%{transform:none;animation-timing-function:cubic-bezier(0,0,0.2,1)}}')
+    cssRules.push(
+      '@keyframes bounce{0%,100%{transform:translateY(-25%);animation-timing-function:cubic-bezier(0.8,0,1,1)}50%{transform:none;animation-timing-function:cubic-bezier(0,0,0.2,1)}}',
+    )
   }
 
   usedClasses.forEach((className) => {
@@ -1429,7 +1489,9 @@ export function generateOnDemandTailwindCSS(html: string): string {
       const spacingValue = SPACING[spaceYMatch[1]]
       if (spacingValue) {
         const escapedClass = className.replace(/[:.[\]/%]/g, '\\$&')
-        spaceRules.push(`${prefix}.${escapedClass}>:not([hidden])~:not([hidden]){margin-top:${spacingValue}}`)
+        spaceRules.push(
+          `${prefix}.${escapedClass}>:not([hidden])~:not([hidden]){margin-top:${spacingValue}}`,
+        )
       }
       return
     }
@@ -1440,7 +1502,9 @@ export function generateOnDemandTailwindCSS(html: string): string {
       const spacingValue = SPACING[spaceXMatch[1]]
       if (spacingValue) {
         const escapedClass = className.replace(/[:.[\]/%]/g, '\\$&')
-        spaceRules.push(`${prefix}.${escapedClass}>:not([hidden])~:not([hidden]){margin-left:${spacingValue}}`)
+        spaceRules.push(
+          `${prefix}.${escapedClass}>:not([hidden])~:not([hidden]){margin-left:${spacingValue}}`,
+        )
       }
       return
     }
@@ -1457,10 +1521,11 @@ export function generateOnDemandTailwindCSS(html: string): string {
       }
       // placeholder 需要特殊处理
       else if (baseClass.startsWith('placeholder-')) {
-        placeholderRules.push(`${prefix}.${escapedClass}::placeholder{color:var(--tw-placeholder-color)}`)
+        placeholderRules.push(
+          `${prefix}.${escapedClass}::placeholder{color:var(--tw-placeholder-color)}`,
+        )
         cssRules.push(`${prefix}.${escapedClass}${selector}{${css}}`)
-      }
-      else {
+      } else {
         cssRules.push(`${prefix}.${escapedClass}${selector}{${css}}`)
       }
     }
@@ -1483,18 +1548,19 @@ const themeCSSCache = new Map<string, string>()
  * @param primaryColor - 主色调
  * @returns 主题 CSS 字符串
  */
-export function generateThemeCSS(isDark: boolean, primaryColor: string): string {
+export function generateThemeCSS(
+  isDark: boolean,
+  primaryColor: string,
+): string {
   const cacheKey = `${isDark ? 'd' : 'l'}-${primaryColor}`
 
   const cached = themeCSSCache.get(cacheKey)
-  if (cached)
-    return cached
+  if (cached) return cached
 
   // 限制缓存大小（最多保留 20 个主题组合）
   if (themeCSSCache.size > 20) {
     const firstKey = themeCSSCache.keys().next().value
-    if (firstKey)
-      themeCSSCache.delete(firstKey)
+    if (firstKey) themeCSSCache.delete(firstKey)
   }
 
   // 将 hex 转换为 RGB 分量（用于 rgba 透明度计算）

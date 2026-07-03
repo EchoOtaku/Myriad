@@ -1025,7 +1025,7 @@ async fn execute_brew_generate_reading_list(
             "totalMatched": 0,
             "listName": list_name,
             "criteria": criteria,
-            "message": crate::services::agent::response_agent::no_articles_found(&ai_search_hint),
+            "message": crate::services::agent::response_agent::no_articles_found(ai_search_hint),
             "suggestions": [
                 "检查 Gemini API Key 是否已配置",
                 "尝试更换关键词",
@@ -1174,7 +1174,7 @@ async fn execute_brew_generate_reading_list(
             items.iter().find(|item| item.id as i64 == id).map(|item| {
                 let source = source_map.get(&item.source_id);
                 let reason = reasons
-                    .get(&id.to_string())
+                    .get(id.to_string())
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
 
@@ -3377,7 +3377,7 @@ async fn execute_platform_connection(params: &HashMap<String, Value>) -> Result<
         .unwrap_or("all");
 
     let platforms = if platform == "all" {
-        vec!["steam", "bilibili", "github", "netease"]
+        vec!["steam", "bilibili", "bangumi", "github", "netease"]
     } else {
         vec![platform]
     };
@@ -3415,6 +3415,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
         "totalGames": 0,
         "totalPlaytime": 0,
         "totalAnime": 0,
+        "totalBangumiCollections": 0,
         "totalSongs": 0,
         "totalRepos": 0
     });
@@ -3447,6 +3448,14 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
             {
                 stats["totalAnime"] = json!(anime.len());
             }
+        }
+    }
+
+    // Bangumi 统计
+    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/bangumi_filtered.json").await {
+        if let Ok(data) = serde_json::from_str::<Value>(&content) {
+            let items = extract_platform_items("bangumi", &data);
+            stats["totalBangumiCollections"] = json!(items.len());
         }
     }
 
@@ -3485,7 +3494,7 @@ async fn execute_profile_summary(params: &HashMap<String, Value>) -> Result<Valu
         .get("platforms")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec!["steam", "bilibili", "github", "netease"]);
+        .unwrap_or_else(|| vec!["steam", "bilibili", "bangumi", "github", "netease"]);
 
     let interests: Vec<String> = Vec::new();
     let mut activities = Vec::new();
@@ -3514,6 +3523,7 @@ async fn execute_profile_summary(params: &HashMap<String, Value>) -> Result<Valu
                 match *platform {
                     "steam" => activities.push("游戏".to_string()),
                     "bilibili" => activities.push("追番".to_string()),
+                    "bangumi" => activities.push("收藏番剧/书籍/游戏".to_string()),
                     "github" => activities.push("编程".to_string()),
                     "netease" => activities.push("听歌".to_string()),
                     _ => {}
@@ -3537,7 +3547,7 @@ async fn execute_search_global(params: &HashMap<String, Value>) -> Result<Value,
         .get("platforms")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec!["steam", "bilibili", "github", "netease"]);
+        .unwrap_or_else(|| vec!["steam", "bilibili", "bangumi", "github", "netease"]);
     let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
 
     // 检查是否有有效的搜索关键词
@@ -4318,7 +4328,7 @@ fn clean_search_result_url(url: &str) -> String {
             .split('&')
             .filter(|param| {
                 let key = param.split('=').next().unwrap_or("");
-                !tracking_params.iter().any(|&t| key == t)
+                !tracking_params.contains(&key)
             })
             .collect();
 

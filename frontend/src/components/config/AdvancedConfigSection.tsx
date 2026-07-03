@@ -43,8 +43,7 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       onMessage?.(t.config.exportConfigSuccess)
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Export failed:', error)
     }
   }, [t, onMessage])
@@ -53,35 +52,41 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
     fileInputRef.current?.click()
   }, [])
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file)
-      return
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string)
-        // 基本结构校验
-        if (!data || typeof data !== 'object' || !data.platforms || !data.ai_config || !data.ui_config) {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target?.result as string)
+          // 基本结构校验
+          if (
+            !data ||
+            typeof data !== 'object' ||
+            !data.platforms ||
+            !data.ai_config ||
+            !data.ui_config
+          ) {
+            onMessage?.(t.config.importConfigInvalid)
+            return
+          }
+          setPendingImportData(data)
+          setImportConfirmOpen(true)
+        } catch {
           onMessage?.(t.config.importConfigInvalid)
-          return
         }
-        setPendingImportData(data)
-        setImportConfirmOpen(true)
       }
-      catch {
-        onMessage?.(t.config.importConfigInvalid)
-      }
-    }
-    reader.readAsText(file)
-    // 重置 input 以便再次选择同一文件
-    e.target.value = ''
-  }, [t, onMessage])
+      reader.readAsText(file)
+      // 重置 input 以便再次选择同一文件
+      e.target.value = ''
+    },
+    [t, onMessage],
+  )
 
   const handleImportConfirm = useCallback(async () => {
-    if (!pendingImportData)
-      return
+    if (!pendingImportData) return
     setImportConfirmOpen(false)
 
     try {
@@ -91,12 +96,12 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
       setTimeout(() => {
         window.location.reload()
       }, 2000)
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Import failed:', error)
-      onMessage?.(`${t.config.importConfigFailed}: ${error instanceof Error ? error.message : ''}`)
-    }
-    finally {
+      onMessage?.(
+        `${t.config.importConfigFailed}: ${error instanceof Error ? error.message : ''}`,
+      )
+    } finally {
       setPendingImportData(null)
     }
   }, [pendingImportData, t, onMessage])
@@ -140,7 +145,10 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
         <ButtonItem
           itemKey="reset_config"
           label={t.config.resetConfig}
-          description={t.config.resetConfigDesc || 'Reset all configurations to default values. This action cannot be undone.'}
+          description={
+            t.config.resetConfigDesc ||
+            'Reset all configurations to default values. This action cannot be undone.'
+          }
           buttonText={t.config.resetConfig}
           onClick={() => setResetConfirmOpen(true)}
           variant="danger"
@@ -150,17 +158,30 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
 
       {/* Reset Confirmation Modal */}
       {resetConfirmOpen && (
-        <div className="modal-overlay" onClick={() => setResetConfirmOpen(false)}>
-          <div className="modal-content modal-small" onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setResetConfirmOpen(false)}
+        >
+          <div
+            className="modal-content modal-small"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
-              <h3 className="modal-title text-danger">{t.config.resetConfig}</h3>
-              <button onClick={() => setResetConfirmOpen(false)} className="modal-close-button" title="Close">
+              <h3 className="modal-title text-danger">
+                {t.config.resetConfig}
+              </h3>
+              <button
+                onClick={() => setResetConfirmOpen(false)}
+                className="modal-close-button"
+                title="Close"
+              >
                 <FaTimes />
               </button>
             </div>
             <div className="modal-body">
               <p className="text-base text-gray-600 dark:text-gray-300">
-                {t.config.resetConfirmMessage || 'Are you sure you want to reset all configurations? This action cannot be undone and will restore all settings to their default values.'}
+                {t.config.resetConfirmMessage ||
+                  'Are you sure you want to reset all configurations? This action cannot be undone and will restore all settings to their default values.'}
               </p>
             </div>
             <div className="modal-footer">
@@ -186,11 +207,27 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
 
       {/* Import Confirmation Modal */}
       {importConfirmOpen && (
-        <div className="modal-overlay" onClick={() => { setImportConfirmOpen(false); setPendingImportData(null) }}>
-          <div className="modal-content modal-small" onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setImportConfirmOpen(false)
+            setPendingImportData(null)
+          }}
+        >
+          <div
+            className="modal-content modal-small"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h3 className="modal-title">{t.config.importConfig}</h3>
-              <button onClick={() => { setImportConfirmOpen(false); setPendingImportData(null) }} className="modal-close-button" title="Close">
+              <button
+                onClick={() => {
+                  setImportConfirmOpen(false)
+                  setPendingImportData(null)
+                }}
+                className="modal-close-button"
+                title="Close"
+              >
                 <FaTimes />
               </button>
             </div>
@@ -201,7 +238,10 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
             </div>
             <div className="modal-footer">
               <button
-                onClick={() => { setImportConfirmOpen(false); setPendingImportData(null) }}
+                onClick={() => {
+                  setImportConfirmOpen(false)
+                  setPendingImportData(null)
+                }}
                 className="btn-base btn-secondary"
               >
                 {t.common.cancel}

@@ -90,7 +90,7 @@ services:
     environment:
       DATABASE_URL: postgres://myriad:${POSTGRES_PASSWORD}@postgres:5432/myriad
       SERVER_HOST: 0.0.0.0
-      SERVER_PORT: 3000
+      SERVER_PORT: 1103
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-'self' https:}
@@ -102,13 +102,13 @@ services:
       MYRIAD_VERSION: ${MYRIAD_TAG}
       # Server-side updater proxy: backend forwards admin-authenticated UI requests
       # to the updater. UPDATE_TOKEN is held here, never exposed to the browser.
-      MYRIAD_UPDATER_URL: http://updater:9090
+      MYRIAD_UPDATER_URL: http://updater:1101
       UPDATE_TOKEN: ${UPDATE_TOKEN}
     # NOTE: no `ports:` — only proxy exposes a host port.
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:1103/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -141,7 +141,7 @@ services:
     depends_on:
       backend: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:4321"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:1102"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -162,9 +162,9 @@ services:
       - "${HTTP_PORT:-80}:80"
     environment:
       PROXY_STATE_FILE: /state/maintenance.json
-      PROXY_BACKEND_UPSTREAM: http://backend:3000
-      PROXY_FRONTEND_UPSTREAM: http://frontend:4321
-      PROXY_UPDATER_UPSTREAM: http://updater:9090
+      PROXY_BACKEND_UPSTREAM: http://backend:1103
+      PROXY_FRONTEND_UPSTREAM: http://frontend:1102
+      PROXY_UPDATER_UPSTREAM: http://updater:1101
       # Direct updater channel is OFF by default. Backend /api/admin/updater/* is the
       # recommended path. Enable only for rescue scenarios when the backend is down.
       PROXY_ALLOW_DIRECT_UPDATER: ${PROXY_ALLOW_DIRECT_UPDATER:-false}

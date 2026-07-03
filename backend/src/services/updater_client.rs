@@ -205,7 +205,7 @@ fn default_container_updater_url() -> Option<String> {
         || std::env::var("KUBERNETES_SERVICE_HOST").is_ok();
 
     if production || in_container {
-        Some("http://updater:9090".to_string())
+        Some("http://updater:1101".to_string())
     } else {
         None
     }

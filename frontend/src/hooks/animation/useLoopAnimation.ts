@@ -48,12 +48,10 @@ interface UseLoopAnimationResult {
  * <button onClick={triggerAnimation}>播放动画</button>
  * ```
  */
-export function useLoopAnimation(options: UseLoopAnimationOptions = {}): UseLoopAnimationResult {
-  const {
-    duration = 3000,
-    trigger,
-    enabled = true,
-  } = options
+export function useLoopAnimation(
+  options: UseLoopAnimationOptions = {},
+): UseLoopAnimationResult {
+  const { duration = 3000, trigger, enabled = true } = options
 
   const [isAnimating, setIsAnimating] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -70,8 +68,7 @@ export function useLoopAnimation(options: UseLoopAnimationOptions = {}): UseLoop
 
   // 开始一轮动画
   const startAnimation = useCallback(() => {
-    if (!mountedRef.current || !enabled)
-      return
+    if (!mountedRef.current || !enabled) return
 
     clearTimer()
     setIsAnimating(true)

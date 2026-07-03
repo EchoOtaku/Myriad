@@ -2,18 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::env;
 
 /// AI 模型层级
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ModelTier {
     /// 标准模型 - 用于日常任务
+    #[default]
     Standard,
     /// Pro 模型 - 用于复杂任务
     Pro,
-}
-
-impl Default for ModelTier {
-    fn default() -> Self {
-        Self::Standard
-    }
 }
 
 /// 单个 OAuth Provider 配置（OIDC / 其他）
@@ -80,12 +75,12 @@ impl Default for AppConfig {
         Self {
             database_url: String::new(),
             server_host: "127.0.0.1".to_string(),
-            server_port: 3000,
+            server_port: 1103,
             frontend_dist_path: "../frontend/dist".to_string(),
             jwt_secret: String::new(),
             cors_origins: vec![
-                "http://localhost:4321".to_string(),
-                "http://localhost:3000".to_string(),
+                "http://localhost:1102".to_string(),
+                "http://localhost:1103".to_string(),
             ],
             base_url: None,
             frontend_url: None,
@@ -109,13 +104,13 @@ impl AppConfig {
             server_port: env::var("SERVER_PORT")
                 .ok()
                 .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "3000".to_string())
+                .unwrap_or_else(|| "1103".to_string())
                 .parse()?,
             frontend_dist_path: env::var("FRONTEND_DIST_PATH")
                 .unwrap_or_else(|_| "../frontend/dist".to_string()),
             jwt_secret,
             cors_origins: env::var("CORS_ORIGINS")
-                .unwrap_or_else(|_| "http://localhost:4321,http://localhost:3000".to_string())
+                .unwrap_or_else(|_| "http://localhost:1102,http://localhost:1103".to_string())
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())

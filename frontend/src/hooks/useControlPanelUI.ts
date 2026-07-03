@@ -44,20 +44,20 @@ export interface ControlPanelUIState {
 /**
  * UI 动作类型
  */
-type ControlPanelUIAction
-  = | { type: 'TOGGLE_PANEL' }
-    | { type: 'SET_EXPANDED', payload: boolean }
-    | { type: 'SET_OVERLAY', payload: boolean }
-    | { type: 'SET_DARK_MODE', payload: boolean }
-    | { type: 'SET_DYNAMIC_CONTENTS', payload: DynamicContent[] }
-    | { type: 'SET_CONTENT_INDEX', payload: number }
-    | { type: 'SET_HOVERING', payload: boolean }
-    | { type: 'SET_TRANSITIONING', payload: boolean }
-    | { type: 'SET_WEATHER_DATA', payload: WeatherData | null }
-    | { type: 'SET_QUOTE_DATA', payload: QuoteData | null }
-    | { type: 'SET_EXPANDED_CARD', payload: number }
-    | { type: 'START_COLLAPSE' }
-    | { type: 'START_EXPAND' }
+type ControlPanelUIAction =
+  | { type: 'TOGGLE_PANEL' }
+  | { type: 'SET_EXPANDED'; payload: boolean }
+  | { type: 'SET_OVERLAY'; payload: boolean }
+  | { type: 'SET_DARK_MODE'; payload: boolean }
+  | { type: 'SET_DYNAMIC_CONTENTS'; payload: DynamicContent[] }
+  | { type: 'SET_CONTENT_INDEX'; payload: number }
+  | { type: 'SET_HOVERING'; payload: boolean }
+  | { type: 'SET_TRANSITIONING'; payload: boolean }
+  | { type: 'SET_WEATHER_DATA'; payload: WeatherData | null }
+  | { type: 'SET_QUOTE_DATA'; payload: QuoteData | null }
+  | { type: 'SET_EXPANDED_CARD'; payload: number }
+  | { type: 'START_COLLAPSE' }
+  | { type: 'START_EXPAND' }
 
 /**
  * 初始状态
@@ -156,10 +156,12 @@ export function useControlPanelUI() {
 
       // 400ms 后显示动态内容
       setTimeout(() => {
-        dispatch({ type: 'SET_DYNAMIC_CONTENTS', payload: state.dynamicContents })
+        dispatch({
+          type: 'SET_DYNAMIC_CONTENTS',
+          payload: state.dynamicContents,
+        })
       }, 400)
-    }
-    else {
+    } else {
       // 展开流程
       dispatch({ type: 'START_EXPAND' })
       dispatch({ type: 'SET_EXPANDED', payload: true })
@@ -193,7 +195,8 @@ export function useControlPanelUI() {
     dispatch({ type: 'SET_TRANSITIONING', payload: true })
 
     setTimeout(() => {
-      const nextIndex = (state.currentContentIndex + 1) % state.dynamicContents.length
+      const nextIndex =
+        (state.currentContentIndex + 1) % state.dynamicContents.length
       dispatch({ type: 'SET_CONTENT_INDEX', payload: nextIndex })
 
       setTimeout(() => {

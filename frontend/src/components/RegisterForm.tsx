@@ -1,5 +1,6 @@
 import { FaLock, FaUser } from '@lib/icons'
-import React, { useState } from 'react'
+import type { FC, SubmitEvent } from 'react'
+import { useState } from 'react'
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 import { fetchJson } from '../utils/apiHelper'
@@ -13,7 +14,7 @@ import { Spinner } from './Spinner'
  * 后端开关：`DynamicConfig.allow_local_registration`
  * 端点：POST /api/auth/register
  */
-const RegisterForm: React.FC = () => {
+const RegisterForm: FC = () => {
   const { t } = useI18n()
   const [formData, setFormData] = useState({
     username: '',
@@ -23,7 +24,7 @@ const RegisterForm: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError('')
 
@@ -67,19 +68,23 @@ const RegisterForm: React.FC = () => {
       }
 
       setSessionHint()
-      window.dispatchEvent(new CustomEvent('auth-login-success', {
-        detail: { user: data.user, isAdmin: false },
-      }))
-      window.dispatchEvent(new CustomEvent('auth-state-changed', {
-        detail: { isAuthenticated: true, isAdmin: false },
-      }))
+      window.dispatchEvent(
+        new CustomEvent('auth-login-success', {
+          detail: { user: data.user, isAdmin: false },
+        }),
+      )
+      window.dispatchEvent(
+        new CustomEvent('auth-state-changed', {
+          detail: { isAuthenticated: true, isAdmin: false },
+        }),
+      )
 
-      setTimeout(() => { window.location.href = '/' }, 100)
-    }
-    catch (err: any) {
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 100)
+    } catch (err: any) {
       setError(err?.message || t.auth.registerFailed)
-    }
-    finally {
+    } finally {
       setSubmitting(false)
     }
   }
@@ -125,7 +130,9 @@ const RegisterForm: React.FC = () => {
             <input
               type="email"
               value={formData.email}
-              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               placeholder={t.auth.emailPlaceholder}
               maxLength={255}
@@ -144,7 +151,9 @@ const RegisterForm: React.FC = () => {
               <input
                 type="password"
                 value={formData.password}
-                onChange={e => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder={t.auth.enterPassword}
                 maxLength={128}
@@ -159,16 +168,14 @@ const RegisterForm: React.FC = () => {
             disabled={submitting}
             className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg"
           >
-            {submitting
-              ? (
-                  <>
-                    <Spinner size="sm" variant="white" />
-                    <span>{t.auth.registering}</span>
-                  </>
-                )
-              : (
-                  <span>{t.auth.register}</span>
-                )}
+            {submitting ? (
+              <>
+                <Spinner size="sm" variant="white" />
+                <span>{t.auth.registering}</span>
+              </>
+            ) : (
+              <span>{t.auth.register}</span>
+            )}
           </button>
         </form>
 

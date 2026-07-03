@@ -3,6 +3,7 @@
 //! 处理 http.fetch, hitokoto.get, weather.get 等外部 API 集成类能力
 
 use super::HandlerContext;
+use crate::services::fetcher::PlatformFetcher;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -81,6 +82,8 @@ pub async fn execute(
         "notion.query" => execute_notion_query(params).await,
         "bilibili.user" => execute_bilibili_user(params).await,
         "bilibili.video" => execute_bilibili_video(params).await,
+        "bangumi.user" => execute_bangumi_user(params).await,
+        "bangumi.collections" => execute_bangumi_collections(params).await,
         "steam.user" => execute_steam_user(params).await,
         "steam.game" => execute_steam_game(params).await,
         "proxy.image" => execute_proxy_image(params).await,
@@ -332,6 +335,58 @@ async fn execute_bilibili_video(params: &HashMap<String, Value>) -> Result<Value
     } else {
         Err(format!("Bilibili API error: {:?}", data.get("message")))
     }
+}
+
+// ============================================================================
+// Bangumi
+// ============================================================================
+
+fn optional_string_param(params: &HashMap<String, Value>, key: &str) -> Option<String> {
+    params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+async fn execute_bangumi_user(params: &HashMap<String, Value>) -> Result<Value, String> {
+    let username = optional_string_param(params, "username").ok_or("Missing username parameter")?;
+    let access_token = optional_string_param(params, "access_token");
+    let user_agent = optional_string_param(params, "user_agent");
+    let fetcher = PlatformFetcher::new().await;
+
+    let user = fetcher
+        .fetch_bangumi_user(&username, access_token.as_deref(), user_agent.as_deref())
+        .await
+        .map_err(|e| format!("Failed to fetch Bangumi user: {}", e))?;
+
+    Ok(json!({
+        "username": user.get("username"),
+        "nickname": user.get("nickname"),
+        "avatar": user.get("avatar"),
+        "sign": user.get("sign"),
+        "userInfo": user
+    }))
+}
+
+async fn execute_bangumi_collections(params: &HashMap<String, Value>) -> Result<Value, String> {
+    let username = optional_string_param(params, "username").ok_or("Missing username parameter")?;
+    let access_token = optional_string_param(params, "access_token");
+    let user_agent = optional_string_param(params, "user_agent");
+    let fetcher = PlatformFetcher::new().await;
+
+    let collections = fetcher
+        .fetch_bangumi_collections(&username, access_token.as_deref(), user_agent.as_deref())
+        .await
+        .map_err(|e| format!("Failed to fetch Bangumi collections: {}", e))?;
+    let total = collections.len();
+
+    Ok(json!({
+        "username": username,
+        "items": collections,
+        "total": total
+    }))
 }
 
 // ============================================================================

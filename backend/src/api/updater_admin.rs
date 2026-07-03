@@ -40,23 +40,25 @@ fn err_to_response(e: UpdaterClientError) -> Response {
     (status, body).into_response()
 }
 
-fn require() -> Result<&'static UpdaterClient, Response> {
+fn require() -> Result<&'static UpdaterClient, Box<Response>> {
     client().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "updater service is not configured on this backend",
-                "hint": "set MYRIAD_UPDATER_URL and UPDATE_TOKEN in backend environment"
-            })),
+        Box::new(
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "error": "updater service is not configured on this backend",
+                    "hint": "set MYRIAD_UPDATER_URL and UPDATE_TOKEN in backend environment"
+                })),
+            )
+                .into_response(),
         )
-            .into_response()
     })
 }
 
 pub async fn status() -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     match c.get_json("/status").await {
         Ok(v) => Json(v).into_response(),
@@ -73,7 +75,7 @@ pub struct AvailableQuery {
 pub async fn available(Query(q): Query<AvailableQuery>) -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let path = match q.channel.as_deref() {
         Some(ch) if !ch.is_empty() => format!("/available?channel={ch}"),
@@ -88,7 +90,7 @@ pub async fn available(Query(q): Query<AvailableQuery>) -> Response {
 pub async fn jobs() -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     match c.get_json("/jobs").await {
         Ok(v) => Json(v).into_response(),
@@ -99,7 +101,7 @@ pub async fn jobs() -> Response {
 pub async fn job(Path(id): Path<String>) -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     if !id
         .chars()
@@ -120,7 +122,7 @@ pub async fn job(Path(id): Path<String>) -> Response {
 pub async fn snapshots() -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     match c.get_json("/snapshots").await {
         Ok(v) => Json(v).into_response(),
@@ -138,7 +140,7 @@ pub struct UpdateBody {
 pub async fn trigger_update(headers: HeaderMap, Json(body): Json<UpdateBody>) -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     if !c.has_token() {
         return token_missing();
@@ -168,7 +170,7 @@ pub struct RollbackBody {
 pub async fn rollback(Json(body): Json<RollbackBody>) -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     if !c.has_token() {
         return token_missing();
@@ -183,7 +185,7 @@ pub async fn rollback(Json(body): Json<RollbackBody>) -> Response {
 pub async fn diagnostics() -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     if !c.has_token() {
         return token_missing();
@@ -197,7 +199,7 @@ pub async fn diagnostics() -> Response {
 pub async fn exit_maintenance() -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     if !c.has_token() {
         return token_missing();
@@ -214,7 +216,7 @@ pub async fn exit_maintenance() -> Response {
 pub async fn forget_current() -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     if !c.has_token() {
         return token_missing();
@@ -233,7 +235,7 @@ pub async fn forget_current() -> Response {
 pub async fn self_update() -> Response {
     let c = match require() {
         Ok(c) => c,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     if !c.has_token() {
         return token_missing();

@@ -10,7 +10,10 @@ import type { FrontendAction, FrontendActionType } from './types'
 export type FrontendActionHandler = (action: FrontendAction) => Promise<unknown>
 
 /** 分类型处理器注册表 */
-const typedActionHandlers = new Map<FrontendActionType | string, FrontendActionHandler>()
+const typedActionHandlers = new Map<
+  FrontendActionType | string,
+  FrontendActionHandler
+>()
 
 /** 全局处理器集合（处理所有类型） */
 const globalActionHandlers = new Set<FrontendActionHandler>()
@@ -39,8 +42,7 @@ export function registerActionHandler(
 ): void {
   if (typeof typeOrHandler === 'function') {
     globalActionHandlers.add(typeOrHandler)
-  }
-  else if (handler) {
+  } else if (handler) {
     typedActionHandlers.set(typeOrHandler, handler)
   }
 }
@@ -53,8 +55,7 @@ export function unregisterActionHandler(
 ): void {
   if (typeof typeOrHandler === 'function') {
     globalActionHandlers.delete(typeOrHandler)
-  }
-  else {
+  } else {
     typedActionHandlers.delete(typeOrHandler)
   }
 }
@@ -65,7 +66,9 @@ export function unregisterActionHandler(
  * 当 Agent 返回 frontendAction 时调用
  * 优先使用分类型处理器，否则使用全局处理器
  */
-export async function executeFrontendAction(action: FrontendAction): Promise<unknown> {
+export async function executeFrontendAction(
+  action: FrontendAction,
+): Promise<unknown> {
   // 优先使用分类型处理器
   const typedHandler = typedActionHandlers.get(action.type)
   if (typedHandler) {
@@ -79,13 +82,14 @@ export async function executeFrontendAction(action: FrontendAction): Promise<unk
       if (result !== false && result !== undefined) {
         return result
       }
-    }
-    catch (e) {
+    } catch (e) {
       console.warn('[FrontendActions] Global handler error:', e)
     }
   }
 
-  console.warn(`[FrontendActions] No handler registered for action type: ${action.type}`)
+  console.warn(
+    `[FrontendActions] No handler registered for action type: ${action.type}`,
+  )
   return null
 }
 

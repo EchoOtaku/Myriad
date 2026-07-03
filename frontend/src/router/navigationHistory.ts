@@ -27,7 +27,10 @@ export function getRouteLevel(path: string): number {
  * 判断导航方向
  * @returns 'forward' | 'back' | 'same'
  */
-export function getNavigationDirection(fromPath: string, toPath: string): 'forward' | 'back' | 'same' {
+export function getNavigationDirection(
+  fromPath: string,
+  toPath: string,
+): 'forward' | 'back' | 'same' {
   const fromLevel = getRouteLevel(fromPath)
   const toLevel = getRouteLevel(toPath)
 
@@ -55,7 +58,10 @@ export function recordNavigation(path: string) {
   const lastPath = navigationStack[navigationStack.length - 1]
 
   // 如果是后退导航，从栈中移除
-  if (navigationStack.length > 1 && navigationStack[navigationStack.length - 2] === path) {
+  if (
+    navigationStack.length > 1 &&
+    navigationStack[navigationStack.length - 2] === path
+  ) {
     navigationStack.pop()
     return
   }

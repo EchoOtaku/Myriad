@@ -18,7 +18,12 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import { isPageVisible, pauseScheduler, runPageCleanup, startPage } from './index'
+import {
+  isPageVisible,
+  pauseScheduler,
+  runPageCleanup,
+  startPage,
+} from './index'
 
 // 路径到页面 ID 的映射
 const pathToPageId: Record<string, string> = {

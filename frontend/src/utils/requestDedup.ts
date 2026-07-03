@@ -15,7 +15,7 @@ import { API_URL } from '../config'
 const pendingRequests = new Map<string, Promise<any>>()
 
 // 已完成请求的结果缓存
-const resultCache = new Map<string, { data: any, timestamp: number }>()
+const resultCache = new Map<string, { data: any; timestamp: number }>()
 
 // 🔧 性能优化：LRU 缓存最大容量
 const MAX_CACHE_SIZE = 50
@@ -27,8 +27,7 @@ const DEFAULT_CACHE_TTL = 30 * 1000 // 30秒
  * 🔧 LRU 缓存清理 - 删除最早的条目直到缓存大小正常
  */
 function ensureCacheSize() {
-  if (resultCache.size <= MAX_CACHE_SIZE)
-    return
+  if (resultCache.size <= MAX_CACHE_SIZE) return
 
   // Map 保持插入顺序，所以第一个就是最早的
   const keysToDelete: string[] = []
@@ -36,19 +35,20 @@ function ensureCacheSize() {
 
   let count = 0
   for (const key of resultCache.keys()) {
-    if (count >= deleteCount)
-      break
+    if (count >= deleteCount) break
     keysToDelete.push(key)
     count++
   }
 
-  keysToDelete.forEach(key => resultCache.delete(key))
+  keysToDelete.forEach((key) => resultCache.delete(key))
 }
 
 /**
  * 🔧 读取缓存并更新 LRU 顺序
  */
-function getCacheWithLRU(key: string): { data: any, timestamp: number } | undefined {
+function getCacheWithLRU(
+  key: string,
+): { data: any; timestamp: number } | undefined {
   const cached = resultCache.get(key)
   if (cached) {
     // 删除并重新插入，使其移到末尾（最新）
@@ -139,8 +139,7 @@ export function clearDedupCache(url?: string): void {
   if (url) {
     resultCache.delete(url)
     pendingRequests.delete(url)
-  }
-  else {
+  } else {
     resultCache.clear()
     pendingRequests.clear()
   }
@@ -162,9 +161,8 @@ export function prefetchDedup<T>(
   }
 
   if ('requestIdleCallback' in window) {
-    (window as any).requestIdleCallback(prefetch, { timeout: 5000 })
-  }
-  else {
+    ;(window as any).requestIdleCallback(prefetch, { timeout: 5000 })
+  } else {
     setTimeout(prefetch, 1000)
   }
 }
@@ -178,8 +176,7 @@ export async function getUIConfigDeduped(): Promise<any> {
     `${API_URL}/api/config/ui`,
     async () => {
       const response = await fetch(`${API_URL}/api/config/ui`)
-      if (!response.ok)
-        throw new Error('Failed to fetch UI config')
+      if (!response.ok) throw new Error('Failed to fetch UI config')
       return response.json()
     },
     { cacheTTL: 30 * 1000 },
@@ -197,8 +194,7 @@ export async function getLatestReportDeduped(): Promise<any> {
       const response = await fetch(`${API_URL}/api/reports/latest`, {
         credentials: 'include',
       })
-      if (!response.ok)
-        throw new Error('Failed to fetch latest report')
+      if (!response.ok) throw new Error('Failed to fetch latest report')
       return response.json()
     },
     { cacheTTL: 30 * 1000 },
@@ -214,8 +210,7 @@ export async function getSetupStatusDeduped(): Promise<any> {
     `${API_URL}/api/setup/status`,
     async () => {
       const response = await fetch(`${API_URL}/api/setup/status`)
-      if (!response.ok)
-        throw new Error('Failed to fetch setup status')
+      if (!response.ok) throw new Error('Failed to fetch setup status')
       return response.json()
     },
     { cacheTTL: 60 * 1000 },
@@ -234,8 +229,7 @@ export async function getLibraryDataDeduped(): Promise<any> {
         credentials: 'include',
         signal: AbortSignal.timeout(30000), // 30秒超时（数据量大）
       })
-      if (!response.ok)
-        throw new Error('Failed to fetch library data')
+      if (!response.ok) throw new Error('Failed to fetch library data')
       return response.json()
     },
     { cacheTTL: 2 * 60 * 1000 }, // 2分钟

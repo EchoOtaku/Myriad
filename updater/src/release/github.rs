@@ -67,7 +67,10 @@ impl GithubClient {
     fn auth_headers(&self) -> HeaderMap {
         let mut h = HeaderMap::new();
         h.insert(USER_AGENT, HeaderValue::from_static("myriad-updater"));
-        h.insert(ACCEPT, HeaderValue::from_static("application/vnd.github+json"));
+        h.insert(
+            ACCEPT,
+            HeaderValue::from_static("application/vnd.github+json"),
+        );
         if let Some(t) = &self.token {
             if let Ok(v) = HeaderValue::from_str(&format!("Bearer {}", t.expose())) {
                 h.insert(AUTHORIZATION, v);
@@ -78,7 +81,10 @@ impl GithubClient {
 
     /// Returns releases newest-first.
     pub async fn list_releases(&self) -> Result<Vec<Release>> {
-        let url = format!("https://api.github.com/repos/{}/releases?per_page=20", self.repo);
+        let url = format!(
+            "https://api.github.com/repos/{}/releases?per_page=20",
+            self.repo
+        );
         let resp = self
             .client
             .get(&url)
@@ -104,8 +110,15 @@ impl GithubClient {
         Ok(releases.into_iter().find(|r| {
             !r.draft
                 && match channel {
-                    Channel::Stable => !r.prerelease && !is_marked(&r.tag_name, "nightly") && !is_marked(&r.tag_name, "beta"),
-                    Channel::Beta => is_marked(&r.tag_name, "beta") || (!r.prerelease && !is_marked(&r.tag_name, "nightly")),
+                    Channel::Stable => {
+                        !r.prerelease
+                            && !is_marked(&r.tag_name, "nightly")
+                            && !is_marked(&r.tag_name, "beta")
+                    }
+                    Channel::Beta => {
+                        is_marked(&r.tag_name, "beta")
+                            || (!r.prerelease && !is_marked(&r.tag_name, "nightly"))
+                    }
                     Channel::Nightly => is_marked(&r.tag_name, "nightly"),
                 }
         }))
@@ -119,7 +132,9 @@ impl GithubClient {
             .assets
             .iter()
             .find(|a| a.name == "release.json")
-            .ok_or_else(|| UpdaterError::Github(format!("release {tag} has no release.json asset")))?;
+            .ok_or_else(|| {
+                UpdaterError::Github(format!("release {tag} has no release.json asset"))
+            })?;
         let bytes = self.download_with_cache(tag, manifest_asset).await?;
 
         // 1) parse + structural validation
@@ -139,7 +154,12 @@ impl GithubClient {
     /// Fetch .sig + .pem siblings for `release.json` and ask cosign to verify them.
     /// Returns `VerifyOutcome::Skipped` if the assets are missing — the policy layer decides
     /// whether that's acceptable.
-    async fn verify_cosign(&self, tag: &str, release: &Release, manifest_bytes: &[u8]) -> VerifyOutcome {
+    async fn verify_cosign(
+        &self,
+        tag: &str,
+        release: &Release,
+        manifest_bytes: &[u8],
+    ) -> VerifyOutcome {
         let sig_asset = release.assets.iter().find(|a| a.name == "release.json.sig");
         let pem_asset = release.assets.iter().find(|a| a.name == "release.json.pem");
         let (Some(sig), Some(pem)) = (sig_asset, pem_asset) else {
@@ -197,7 +217,10 @@ impl GithubClient {
     }
 
     async fn get_release_by_tag(&self, tag: &str) -> Result<Release> {
-        let url = format!("https://api.github.com/repos/{}/releases/tags/{}", self.repo, tag);
+        let url = format!(
+            "https://api.github.com/repos/{}/releases/tags/{}",
+            self.repo, tag
+        );
         let resp = self
             .client
             .get(&url)

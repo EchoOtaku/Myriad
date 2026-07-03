@@ -5,6 +5,9 @@
 export { AraelChatMessage } from './AraelChatMessage'
 export type { AraelChatMessageProps } from './AraelChatMessage'
 
+export { AraelDebugPanel } from './AraelDebugPanel'
+export type { AraelDebugPanelProps } from './AraelDebugPanel'
+
 export { AraelInput } from './AraelInput'
 export type { AraelInputProps } from './AraelInput'
 
@@ -15,10 +18,7 @@ export { AraelPresets } from './AraelPresets'
 export type { AraelPresetsProps } from './AraelPresets'
 
 export { AraelSessionList } from './AraelSessionList'
+
 export type { AraelSessionListProps } from './AraelSessionList'
-
 export { AraelTraceDetail } from './AraelTraceDetail'
-
-export { AraelDebugPanel } from './AraelDebugPanel'
-export type { AraelDebugPanelProps } from './AraelDebugPanel'
 export type { AraelTraceDetailProps } from './AraelTraceDetail'

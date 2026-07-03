@@ -248,7 +248,7 @@ impl ErrorAnalyzer {
             // 截取到句号/分号/换行为止的整个短语
             let phrase = after
                 .trim()
-                .split(|c: char| c == '.' || c == ';' || c == '\n')
+                .split(['.', ';', '\n'])
                 .next()
                 .unwrap_or("")
                 .trim();

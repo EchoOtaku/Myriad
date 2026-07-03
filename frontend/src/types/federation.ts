@@ -87,7 +87,8 @@ export interface PublishedListResponse {
 
 // ==================== 视图状态 ====================
 
-export type FederationTab = 'timeline' | 'following' | 'followers' | 'published' | 'rings' | 'profile'
+export type FederationTab =
+  'timeline' | 'following' | 'followers' | 'published' | 'rings' | 'profile'
 
 // ==================== Channel 通信 ====================
 
@@ -161,7 +162,14 @@ export interface SendMessageResponse {
 
 /** WebSocket 消息类型 */
 export interface WsMessage {
-  type: 'connected' | 'message' | 'typing' | 'channel_closed' | 'lagged' | 'pong' | 'error'
+  type:
+    | 'connected'
+    | 'message'
+    | 'typing'
+    | 'channel_closed'
+    | 'lagged'
+    | 'pong'
+    | 'error'
   channel_id?: string
   room_id?: string
   message?: MessageItem | RoomMessageItem

@@ -100,22 +100,25 @@ export function useSimpleDebounce<T extends (...args: any[]) => void>(
     savedCallback.current = callback
   }, [callback])
 
-  const debounced = useCallback((...args: any[]) => {
-    if (!hasFeature(pageId, Feature.Timeout)) {
-      // 功能未启用，直接调用
-      savedCallback.current(...args)
-      return
-    }
+  const debounced = useCallback(
+    (...args: any[]) => {
+      if (!hasFeature(pageId, Feature.Timeout)) {
+        // 功能未启用，直接调用
+        savedCallback.current(...args)
+        return
+      }
 
-    if (timeoutRef.current !== null) {
-      clearTimeout(timeoutRef.current)
-    }
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+      }
 
-    timeoutRef.current = window.setTimeout(() => {
-      timeoutRef.current = null
-      savedCallback.current(...args)
-    }, delay)
-  }, [delay, pageId]) as T
+      timeoutRef.current = window.setTimeout(() => {
+        timeoutRef.current = null
+        savedCallback.current(...args)
+      }, delay)
+    },
+    [delay, pageId],
+  ) as T
 
   useEffect(() => {
     return () => {
@@ -144,27 +147,29 @@ export function useSimpleThrottle<T extends (...args: any[]) => void>(
     savedCallback.current = callback
   }, [callback])
 
-  const throttled = useCallback((...args: any[]) => {
-    if (!hasFeature(pageId, Feature.Timeout)) {
-      savedCallback.current(...args)
-      return
-    }
-
-    const now = Date.now()
-    const remaining = delay - (now - lastRun.current)
-
-    if (remaining <= 0) {
-      lastRun.current = now
-      savedCallback.current(...args)
-    }
-    else if (timeoutRef.current === null) {
-      timeoutRef.current = window.setTimeout(() => {
-        lastRun.current = Date.now()
-        timeoutRef.current = null
+  const throttled = useCallback(
+    (...args: any[]) => {
+      if (!hasFeature(pageId, Feature.Timeout)) {
         savedCallback.current(...args)
-      }, remaining)
-    }
-  }, [delay, pageId]) as T
+        return
+      }
+
+      const now = Date.now()
+      const remaining = delay - (now - lastRun.current)
+
+      if (remaining <= 0) {
+        lastRun.current = now
+        savedCallback.current(...args)
+      } else if (timeoutRef.current === null) {
+        timeoutRef.current = window.setTimeout(() => {
+          lastRun.current = Date.now()
+          timeoutRef.current = null
+          savedCallback.current(...args)
+        }, remaining)
+      }
+    },
+    [delay, pageId],
+  ) as T
 
   useEffect(() => {
     return () => {

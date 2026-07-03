@@ -48,9 +48,12 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
   const { t } = useI18n()
 
   // 辅助函数：获取配置字段值
-  const getFieldValue = useCallback((key: string) => {
-    return configFields.find(f => f.key === key)?.value || ''
-  }, [configFields])
+  const getFieldValue = useCallback(
+    (key: string) => {
+      return configFields.find((f) => f.key === key)?.value || ''
+    },
+    [configFields],
+  )
 
   const handleClearCache = useCallback(() => {
     clearPlaylistCache()
@@ -80,7 +83,7 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
         label={t.config.enableMusicPlayer}
         description={t.config.musicPlayerDesc}
         value={musicEnabled}
-        onChange={v => updateValue('music_enabled', v.toString())}
+        onChange={(v) => updateValue('music_enabled', v.toString())}
         layout="horizontal"
       />
 
@@ -88,7 +91,7 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
         itemKey="music_source"
         label={t.config.musicPlatform}
         value={musicSource}
-        onChange={v => updateValue('music_source', v)}
+        onChange={(v) => updateValue('music_source', v)}
         options={[
           {
             value: 'netease',
@@ -110,7 +113,7 @@ export const MusicConfigSection: React.FC<MusicConfigSectionProps> = ({
         label={t.config.playlistId}
         required
         value={playlistId}
-        onChange={v => updateValue('music_playlist_id', v)}
+        onChange={(v) => updateValue('music_playlist_id', v)}
         placeholder={
           musicSource === 'netease'
             ? t.config.neteasePlaylistExample

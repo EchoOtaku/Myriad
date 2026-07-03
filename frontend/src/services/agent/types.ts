@@ -41,14 +41,14 @@ export interface ClarifyRequest {
 // ============ 任务相关 ============
 
 /** 任务状态 */
-export type TaskStatus
-  = | 'pending'
-    | 'running'
-    | 'waiting_for_input'
-    | 'paused'
-    | 'completed'
-    | 'failed'
-    | 'cancelled'
+export type TaskStatus =
+  | 'pending'
+  | 'running'
+  | 'waiting_for_input'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
 
 /** 任务信息 */
 export interface TaskInfo {
@@ -72,12 +72,8 @@ export interface TaskDetail {
 // ============ 澄清相关 ============
 
 /** 澄清类型 */
-export type ClarificationType
-  = | 'time_range'
-    | 'target'
-    | 'action'
-    | 'missing_parameter'
-    | 'ambiguity'
+export type ClarificationType =
+  'time_range' | 'target' | 'action' | 'missing_parameter' | 'ambiguity'
 
 /** 澄清点 */
 export interface ClarificationPoint {
@@ -91,13 +87,13 @@ export interface ClarificationPoint {
 // ============ 响应相关 ============
 
 /** 响应类型 */
-export type AgentResponseType
-  = | 'answer'
-    | 'clarification'
-    | 'task_created'
-    | 'task_progress'
-    | 'task_completed'
-    | 'error'
+export type AgentResponseType =
+  | 'answer'
+  | 'clarification'
+  | 'task_created'
+  | 'task_progress'
+  | 'task_completed'
+  | 'error'
 
 /** Agent 响应 */
 export interface AgentResponse {
@@ -274,12 +270,12 @@ export interface AgentAssignment {
 }
 
 /** Agent 角色 */
-export type AgentRole
-  = | 'orchestrator'
-    | 'data_worker'
-    | 'content_worker'
-    | 'creative_worker'
-    | 'system_worker'
+export type AgentRole =
+  | 'orchestrator'
+  | 'data_worker'
+  | 'content_worker'
+  | 'creative_worker'
+  | 'system_worker'
 
 /** 会话创建/确认事件 */
 export interface SessionCreatedEvent {
@@ -294,21 +290,21 @@ export interface SessionTitleUpdatedEvent {
 }
 
 /** 所有进度事件类型 */
-export type ProgressEvent
-  = | TaskCreatedEvent
-    | TaskAssignedEvent
-    | StepStartedEvent
-    | StepCompletedEvent
-    | StepRetryingEvent
-    | ProgressUpdateEvent
-    | TaskCompletedEvent
-    | WaitingForInputEvent
-    | ErrorEvent
-    | SessionCreatedEvent
-    | SessionTitleUpdatedEvent
-    | SummaryTokenEvent
-    | PlannerDecisionEvent
-    | StepDebugEvent
+export type ProgressEvent =
+  | TaskCreatedEvent
+  | TaskAssignedEvent
+  | StepStartedEvent
+  | StepCompletedEvent
+  | StepRetryingEvent
+  | ProgressUpdateEvent
+  | TaskCompletedEvent
+  | WaitingForInputEvent
+  | ErrorEvent
+  | SessionCreatedEvent
+  | SessionTitleUpdatedEvent
+  | SummaryTokenEvent
+  | PlannerDecisionEvent
+  | StepDebugEvent
 
 /** 进度回调函数 */
 export type ProgressCallback = (event: ProgressEvent) => void
@@ -324,33 +320,38 @@ export interface ColumnDef {
 }
 
 /** 数据展示类型提示 */
-export type DataDisplayHint
-  = | { type: 'table', columns: ColumnDef[], dataPath?: string }
-    | { type: 'chart', chartType: string, xField: string, yField: string }
-    | { type: 'card_list', titleField: string, descriptionField?: string, imageField?: string }
-    | { type: 'markdown' }
-    | { type: 'key_value' }
-    | { type: 'timeline', timeField: string, contentField: string }
-    | { type: 'raw' }
+export type DataDisplayHint =
+  | { type: 'table'; columns: ColumnDef[]; dataPath?: string }
+  | { type: 'chart'; chartType: string; xField: string; yField: string }
+  | {
+      type: 'card_list'
+      titleField: string
+      descriptionField?: string
+      imageField?: string
+    }
+  | { type: 'markdown' }
+  | { type: 'key_value' }
+  | { type: 'timeline'; timeField: string; contentField: string }
+  | { type: 'raw' }
 
 // ============ 前端动作 ============
 
 /** 前端动作类型 */
-export type FrontendActionType
-  = | 'query_windows'
-    | 'open_window'
-    | 'close_window'
-    | 'focus_window'
-    | 'fill_data'
-    | 'read_data'
-    | 'tapp_interact'
-    | 'navigate'
-    | 'page_interact'
-    | 'brew_open_article'
-    | 'music_control'
-    | 'music_get_status'
-    | 'music_load_playlist'
-    | 'reading_list'
+export type FrontendActionType =
+  | 'query_windows'
+  | 'open_window'
+  | 'close_window'
+  | 'focus_window'
+  | 'fill_data'
+  | 'read_data'
+  | 'tapp_interact'
+  | 'navigate'
+  | 'page_interact'
+  | 'brew_open_article'
+  | 'music_control'
+  | 'music_get_status'
+  | 'music_load_playlist'
+  | 'reading_list'
 
 /** 窗口目标 */
 export interface WindowTarget {
@@ -592,7 +593,16 @@ export interface ExecutionTrace {
 /** 记忆条目 */
 export interface MemoryEntry {
   id: string
-  memoryType: 'preference' | 'fact' | 'interaction' | 'decision' | 'entity_knowledge' | 'execution_lesson' | 'effective_pattern' | 'session_insight' | 'session_summary'
+  memoryType:
+    | 'preference'
+    | 'fact'
+    | 'interaction'
+    | 'decision'
+    | 'entity_knowledge'
+    | 'execution_lesson'
+    | 'effective_pattern'
+    | 'session_insight'
+    | 'session_summary'
   content: string
   source?: string
   createdAt: string

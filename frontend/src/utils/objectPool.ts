@@ -72,10 +72,8 @@ export class ObjectPool<T> {
 
   /** 启动空闲清理定时器 */
   private startCleanupTimer() {
-    if (this.cleanupTimer)
-      return
-    if (this.config.idleTimeout <= 0)
-      return
+    if (this.cleanupTimer) return
+    if (this.config.idleTimeout <= 0) return
 
     this.cleanupTimer = setInterval(() => {
       this.cleanupIdle()
@@ -128,8 +126,7 @@ export class ObjectPool<T> {
         obj,
         lastUsed: Date.now(),
       })
-    }
-    else {
+    } else {
       this.config.destroy(obj)
     }
   }
@@ -188,7 +185,9 @@ export interface DOMNodePoolConfig {
  * 创建 DOM 节点对象池
  * 用于频繁创建/销毁相同类型 DOM 节点的场景
  */
-export function createDOMNodePool(config: DOMNodePoolConfig): ObjectPool<HTMLElement> {
+export function createDOMNodePool(
+  config: DOMNodePoolConfig,
+): ObjectPool<HTMLElement> {
   return new ObjectPool<HTMLElement>({
     create: () => {
       const el = document.createElement(config.tagName)
@@ -206,8 +205,7 @@ export function createDOMNodePool(config: DOMNodePoolConfig): ObjectPool<HTMLEle
       // 保留 className
       if (config.className) {
         el.className = config.className
-      }
-      else {
+      } else {
         el.className = ''
       }
     },
@@ -477,8 +475,7 @@ export function withPooledCanvas<T>(
     canvas.width = width
     canvas.height = height
     return processor(ctx, canvas)
-  }
-  finally {
+  } finally {
     canvasPool.release(pooled)
   }
 }
@@ -520,16 +517,14 @@ export function loadImagePooled(
     }
 
     const handleLoad = () => {
-      if (resolved)
-        return
+      if (resolved) return
       resolved = true
       cleanup()
       resolve(true)
     }
 
     const handleError = () => {
-      if (resolved)
-        return
+      if (resolved) return
       resolved = true
       cleanup()
       resolve(false)
@@ -538,8 +533,7 @@ export function loadImagePooled(
     // 设置超时
     if (timeout > 0) {
       timeoutId = setTimeout(() => {
-        if (resolved)
-          return
+        if (resolved) return
         resolved = true
         img.src = '' // 停止加载
         cleanup()

@@ -75,7 +75,8 @@ impl<'a> SnapshotManager<'a> {
         if !status.success() {
             let _ = std::fs::remove_dir_all(&tmp);
             return Err(UpdaterError::Internal(anyhow::anyhow!(
-                "cp pgdata → snapshot failed: {:?}", status
+                "cp pgdata → snapshot failed: {:?}",
+                status
             )));
         }
 
@@ -116,10 +117,9 @@ impl<'a> SnapshotManager<'a> {
         }
 
         // Move existing pgdata aside.
-        let broken = self.pgdata.with_extension(format!(
-            "broken.{}",
-            Utc::now().format("%Y%m%dT%H%M%SZ")
-        ));
+        let broken = self
+            .pgdata
+            .with_extension(format!("broken.{}", Utc::now().format("%Y%m%dT%H%M%SZ")));
         if self.pgdata.exists() {
             std::fs::rename(&self.pgdata, &broken)?;
         }
@@ -140,7 +140,8 @@ impl<'a> SnapshotManager<'a> {
                 let _ = std::fs::rename(&broken, &self.pgdata);
             }
             return Err(UpdaterError::Internal(anyhow::anyhow!(
-                "cp snapshot → pgdata failed: {:?}", status
+                "cp snapshot → pgdata failed: {:?}",
+                status
             )));
         }
         fsync_dir(&self.pgdata)?;
@@ -196,7 +197,11 @@ fn measure_and_sample(root: &Path) -> Result<(u64, u64, String)> {
     let mut size: u64 = 0;
     let mut count: u64 = 0;
     let mut paths: Vec<PathBuf> = Vec::new();
-    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if entry.file_type().is_file() {
             count += 1;
             if let Ok(meta) = entry.metadata() {

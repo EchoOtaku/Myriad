@@ -3,15 +3,16 @@
  * 统一使用后端 API 管理实例，支持健康检查和故障转移
  */
 
+import type { RSSHubConfig, RSSHubQueryParams } from '../../../types/brew'
 import {
   LuActivity as Activity,
   LuAlertCircle as AlertCircle,
   LuBarChart3 as BarChart3,
   LuCheck as Check,
   LuChevronDown as ChevronDown,
-  LuFileText as FileText,
   LuEdit3 as Edit3,
   LuExternalLink as ExternalLink,
+  LuFileText as FileText,
   LuGlobe as Globe,
   LuInfo as Info,
   LuKey as Key,
@@ -32,13 +33,15 @@ import {
   LuX as X,
   LuZap as Zap,
 } from '@lib/icons'
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import type { RSSHubConfig, RSSHubQueryParams } from '../../../types/brew'
-import { getCSRFHeaderName, getCSRFToken } from '../../../utils/csrf'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { API_URL } from '../../../config'
-
 import { useI18n } from '../../../contexts/I18nContext'
+
+import { getCSRFHeaderName, getCSRFToken } from '../../../utils/csrf'
 
 // Framer Motion transition 配置常量
 const TRANSITION_NORMAL = { duration: 0.15 } as const
@@ -103,26 +106,115 @@ function RSSHubIcon({ className }: { className?: string }) {
 
 // 常用查询参数说明 - 使用翻译键
 const COMMON_QUERY_PARAMS_KEYS = [
-  { key: 'limit', labelKey: 'rsshubParamLimit' as const, placeholder: '10', type: 'number', descKey: 'rsshubParamLimitDesc' as const },
-  { key: 'mode', labelKey: 'rsshubParamMode' as const, placeholder: 'fulltext', type: 'select', options: [{ value: '', labelKey: 'rsshubDefault' as const }, { value: 'fulltext', labelKey: 'rsshubFulltext' as const }], descKey: 'rsshubParamModeDesc' as const },
-  { key: 'filter', labelKey: 'rsshubParamFilter' as const, placeholder: '', type: 'text', descKey: 'rsshubParamFilterDesc' as const },
-  { key: 'filter_title', labelKey: 'rsshubParamFilterTitle' as const, placeholder: '', type: 'text', descKey: 'rsshubParamFilterTitleDesc' as const },
-  { key: 'filterout', labelKey: 'rsshubParamFilterout' as const, placeholder: '', type: 'text', descKey: 'rsshubParamFilteroutDesc' as const },
-  { key: 'filterout_title', labelKey: 'rsshubParamFilteroutTitle' as const, placeholder: '', type: 'text', descKey: 'rsshubParamFilteroutTitleDesc' as const },
-  { key: 'filter_time', labelKey: 'rsshubParamFilterTime' as const, placeholder: '', type: 'number', descKey: 'rsshubParamFilterTimeDesc' as const },
-  { key: 'format', labelKey: 'rsshubParamFormat' as const, placeholder: 'rss', type: 'select', options: [{ value: '', labelKey: 'rsshubDefaultRss' as const }, { value: 'atom', labelKey: 'rsshubAtom' as const }, { value: 'json', labelKey: 'rsshubJson' as const }], descKey: 'rsshubParamFormatDesc' as const },
+  {
+    key: 'limit',
+    labelKey: 'rsshubParamLimit' as const,
+    placeholder: '10',
+    type: 'number',
+    descKey: 'rsshubParamLimitDesc' as const,
+  },
+  {
+    key: 'mode',
+    labelKey: 'rsshubParamMode' as const,
+    placeholder: 'fulltext',
+    type: 'select',
+    options: [
+      { value: '', labelKey: 'rsshubDefault' as const },
+      { value: 'fulltext', labelKey: 'rsshubFulltext' as const },
+    ],
+    descKey: 'rsshubParamModeDesc' as const,
+  },
+  {
+    key: 'filter',
+    labelKey: 'rsshubParamFilter' as const,
+    placeholder: '',
+    type: 'text',
+    descKey: 'rsshubParamFilterDesc' as const,
+  },
+  {
+    key: 'filter_title',
+    labelKey: 'rsshubParamFilterTitle' as const,
+    placeholder: '',
+    type: 'text',
+    descKey: 'rsshubParamFilterTitleDesc' as const,
+  },
+  {
+    key: 'filterout',
+    labelKey: 'rsshubParamFilterout' as const,
+    placeholder: '',
+    type: 'text',
+    descKey: 'rsshubParamFilteroutDesc' as const,
+  },
+  {
+    key: 'filterout_title',
+    labelKey: 'rsshubParamFilteroutTitle' as const,
+    placeholder: '',
+    type: 'text',
+    descKey: 'rsshubParamFilteroutTitleDesc' as const,
+  },
+  {
+    key: 'filter_time',
+    labelKey: 'rsshubParamFilterTime' as const,
+    placeholder: '',
+    type: 'number',
+    descKey: 'rsshubParamFilterTimeDesc' as const,
+  },
+  {
+    key: 'format',
+    labelKey: 'rsshubParamFormat' as const,
+    placeholder: 'rss',
+    type: 'select',
+    options: [
+      { value: '', labelKey: 'rsshubDefaultRss' as const },
+      { value: 'atom', labelKey: 'rsshubAtom' as const },
+      { value: 'json', labelKey: 'rsshubJson' as const },
+    ],
+    descKey: 'rsshubParamFormatDesc' as const,
+  },
 ]
 
 // 常用路由分类 - 使用翻译键
 const ROUTE_CATEGORIES_KEYS = [
-  { id: 'social', nameKey: 'rsshubCategorySocial' as const, icon: <MessageCircle size={12} /> },
-  { id: 'video', nameKey: 'rsshubCategoryVideo' as const, icon: <Video size={12} /> },
-  { id: 'news', nameKey: 'rsshubCategoryNews' as const, icon: <Newspaper size={12} /> },
-  { id: 'blog', nameKey: 'rsshubCategoryBlog' as const, icon: <FileText size={12} /> },
-  { id: 'programming', nameKey: 'rsshubCategoryProgramming' as const, icon: <Monitor size={12} /> },
-  { id: 'design', nameKey: 'rsshubCategoryDesign' as const, icon: <Palette size={12} /> },
-  { id: 'shopping', nameKey: 'rsshubCategoryShopping' as const, icon: <ShoppingCart size={12} /> },
-  { id: 'other', nameKey: 'rsshubCategoryOther' as const, icon: <Package size={12} /> },
+  {
+    id: 'social',
+    nameKey: 'rsshubCategorySocial' as const,
+    icon: <MessageCircle size={12} />,
+  },
+  {
+    id: 'video',
+    nameKey: 'rsshubCategoryVideo' as const,
+    icon: <Video size={12} />,
+  },
+  {
+    id: 'news',
+    nameKey: 'rsshubCategoryNews' as const,
+    icon: <Newspaper size={12} />,
+  },
+  {
+    id: 'blog',
+    nameKey: 'rsshubCategoryBlog' as const,
+    icon: <FileText size={12} />,
+  },
+  {
+    id: 'programming',
+    nameKey: 'rsshubCategoryProgramming' as const,
+    icon: <Monitor size={12} />,
+  },
+  {
+    id: 'design',
+    nameKey: 'rsshubCategoryDesign' as const,
+    icon: <Palette size={12} />,
+  },
+  {
+    id: 'shopping',
+    nameKey: 'rsshubCategoryShopping' as const,
+    icon: <ShoppingCart size={12} />,
+  },
+  {
+    id: 'other',
+    nameKey: 'rsshubCategoryOther' as const,
+    icon: <Package size={12} />,
+  },
 ]
 
 // 路由需要的配置类型
@@ -140,38 +232,74 @@ interface RouteTemplate {
 
 // 热门路由模板（精选经过官方测试验证的可用路由）
 // 标注：✓ Passed Test = 官方测试通过，无需额外配置即可使用
-const POPULAR_ROUTES: { category: string, routes: RouteTemplate[] }[] = [
+const POPULAR_ROUTES: { category: string; routes: RouteTemplate[] }[] = [
   {
     category: 'social',
     routes: [
       // Bluesky - ✓ Passed Test
-      { path: '/bsky/profile/:handle', name: 'Bluesky 用户', params: ['用户handle'] },
+      {
+        path: '/bsky/profile/:handle',
+        name: 'Bluesky 用户',
+        params: ['用户handle'],
+      },
       // 豆瓣 - 无需配置
-      { path: '/douban/people/:id/status', name: '豆瓣用户广播', params: ['用户ID'] },
+      {
+        path: '/douban/people/:id/status',
+        name: '豆瓣用户广播',
+        params: ['用户ID'],
+      },
       { path: '/douban/group/:groupid', name: '豆瓣小组', params: ['小组ID'] },
       { path: '/douban/movie/playing', name: '豆瓣正在热映', params: [] },
       { path: '/douban/explore', name: '豆瓣浏览发现', params: [] },
       // Telegram - 公开频道无需配置
-      { path: '/telegram/channel/:id', name: 'Telegram 频道', params: ['频道名'] },
+      {
+        path: '/telegram/channel/:id',
+        name: 'Telegram 频道',
+        params: ['频道名'],
+      },
       // 微博 - 需要配置才能稳定使用
-      { path: '/weibo/oasis/user/:userid', name: '微博绿洲', params: ['用户ID'] },
+      {
+        path: '/weibo/oasis/user/:userid',
+        name: '微博绿洲',
+        params: ['用户ID'],
+      },
     ],
   },
   {
     category: 'video',
     routes: [
       // B站 - ✓ Passed Test
-      { path: '/bilibili/user/video/:uid', name: 'B站UP主视频', params: ['UID'] },
-      { path: '/bilibili/ranking/:rid?', name: 'B站排行榜', params: ['分区(可选)'] },
+      {
+        path: '/bilibili/user/video/:uid',
+        name: 'B站UP主视频',
+        params: ['UID'],
+      },
+      {
+        path: '/bilibili/ranking/:rid?',
+        name: 'B站排行榜',
+        params: ['分区(可选)'],
+      },
       { path: '/bilibili/popular/all', name: 'B站综合热门', params: [] },
       { path: '/bilibili/weekly', name: 'B站每周必看', params: [] },
       { path: '/bilibili/precious', name: 'B站入站必刷', params: [] },
       { path: '/bilibili/hot-search', name: 'B站热搜', params: [] },
-      { path: '/bilibili/bangumi/media/:mediaid', name: 'B站番剧', params: ['剧集ID'] },
-      { path: '/bilibili/user/article/:uid', name: 'B站UP主图文', params: ['UID'] },
+      {
+        path: '/bilibili/bangumi/media/:mediaid',
+        name: 'B站番剧',
+        params: ['剧集ID'],
+      },
+      {
+        path: '/bilibili/user/article/:uid',
+        name: 'B站UP主图文',
+        params: ['UID'],
+      },
       { path: '/bilibili/audio/:id', name: 'B站歌单', params: ['歌单ID'] },
       // AcFun
-      { path: '/acfun/user/video/:uid', name: 'AcFun用户视频', params: ['用户ID'] },
+      {
+        path: '/acfun/user/video/:uid',
+        name: 'AcFun用户视频',
+        params: ['用户ID'],
+      },
     ],
   },
   {
@@ -180,7 +308,11 @@ const POPULAR_ROUTES: { category: string, routes: RouteTemplate[] }[] = [
       // 少数派 - ✓ Passed Test
       { path: '/sspai/index', name: '少数派首页', params: [] },
       { path: '/sspai/matrix', name: '少数派Matrix', params: [] },
-      { path: '/sspai/author/:id', name: '少数派作者', params: ['作者ID或slug'] },
+      {
+        path: '/sspai/author/:id',
+        name: '少数派作者',
+        params: ['作者ID或slug'],
+      },
       { path: '/sspai/tag/:keyword', name: '少数派标签', params: ['标签名'] },
       { path: '/sspai/topic/:id', name: '少数派专题', params: ['专题ID'] },
       // 36氪 - ✓ Passed Test
@@ -198,16 +330,40 @@ const POPULAR_ROUTES: { category: string, routes: RouteTemplate[] }[] = [
     category: 'programming',
     routes: [
       // GitHub - 大部分无需配置
-      { path: '/github/repos/:user', name: 'GitHub 用户仓库', params: ['用户名'] },
-      { path: '/github/issue/:user/:repo', name: 'GitHub Issues', params: ['用户', '仓库'] },
-      { path: '/github/pull/:user/:repo', name: 'GitHub PRs', params: ['用户', '仓库'] },
-      { path: '/github/wiki/:user/:repo/:page?', name: 'GitHub Wiki', params: ['用户', '仓库', '页面(可选)'] },
-      { path: '/github/topics/:name', name: 'GitHub Topics', params: ['话题名'] },
+      {
+        path: '/github/repos/:user',
+        name: 'GitHub 用户仓库',
+        params: ['用户名'],
+      },
+      {
+        path: '/github/issue/:user/:repo',
+        name: 'GitHub Issues',
+        params: ['用户', '仓库'],
+      },
+      {
+        path: '/github/pull/:user/:repo',
+        name: 'GitHub PRs',
+        params: ['用户', '仓库'],
+      },
+      {
+        path: '/github/wiki/:user/:repo/:page?',
+        name: 'GitHub Wiki',
+        params: ['用户', '仓库', '页面(可选)'],
+      },
+      {
+        path: '/github/topics/:name',
+        name: 'GitHub Topics',
+        params: ['话题名'],
+      },
       // HelloGitHub - ✓ Passed Test
       { path: '/hellogithub/home', name: 'HelloGitHub 开源项目', params: [] },
       { path: '/hellogithub/volume', name: 'HelloGitHub 月刊', params: [] },
       // Huggingface - ✓ Passed Test
-      { path: '/huggingface/daily-papers', name: 'HuggingFace 每日论文', params: [] },
+      {
+        path: '/huggingface/daily-papers',
+        name: 'HuggingFace 每日论文',
+        params: [],
+      },
       // Anthropic
       { path: '/anthropic/news', name: 'Anthropic 新闻', params: [] },
       { path: '/anthropic/research', name: 'Anthropic 研究', params: [] },
@@ -222,7 +378,11 @@ const POPULAR_ROUTES: { category: string, routes: RouteTemplate[] }[] = [
     category: 'blog',
     routes: [
       // RSSHub 自身
-      { path: '/rsshub/routes/:lang?', name: 'RSSHub 路由列表', params: ['语言(可选)'] },
+      {
+        path: '/rsshub/routes/:lang?',
+        name: 'RSSHub 路由列表',
+        params: ['语言(可选)'],
+      },
       // 竹白
       { path: '/zhubai/:id', name: '竹白专栏', params: ['专栏ID'] },
       // Substack
@@ -232,17 +392,33 @@ const POPULAR_ROUTES: { category: string, routes: RouteTemplate[] }[] = [
       // WordPress
       { path: '/wordpress/:domain', name: 'WordPress 博客', params: ['域名'] },
       // 知园 - ✓ Passed Test
-      { path: '/zhiy/letters/:author', name: '知园Newsletter', params: ['作者ID'] },
+      {
+        path: '/zhiy/letters/:author',
+        name: '知园Newsletter',
+        params: ['作者ID'],
+      },
     ],
   },
   {
     category: 'design',
     routes: [
       // Dribbble
-      { path: '/dribbble/popular/:timeframe?', name: 'Dribbble 热门', params: ['时间(可选)'] },
-      { path: '/dribbble/user/:name', name: 'Dribbble 用户', params: ['用户名'] },
+      {
+        path: '/dribbble/popular/:timeframe?',
+        name: 'Dribbble 热门',
+        params: ['时间(可选)'],
+      },
+      {
+        path: '/dribbble/user/:name',
+        name: 'Dribbble 用户',
+        params: ['用户名'],
+      },
       // 站酷
-      { path: '/zcool/discover/:type?', name: '站酷发现', params: ['类型(可选)'] },
+      {
+        path: '/zcool/discover/:type?',
+        name: '站酷发现',
+        params: ['类型(可选)'],
+      },
       { path: '/zcool/user/:uid', name: '站酷用户', params: ['用户ID'] },
       // TOPYS - ✓ Passed Test
       { path: '/topys', name: 'TOPYS 创意内容', params: [] },
@@ -252,8 +428,16 @@ const POPULAR_ROUTES: { category: string, routes: RouteTemplate[] }[] = [
     category: 'shopping',
     routes: [
       // 什么值得买
-      { path: '/smzdm/keyword/:keyword', name: '什么值得买关键词', params: ['关键词'] },
-      { path: '/smzdm/ranking/:rank_type/:rank_id', name: '什么值得买榜单', params: ['类型', '榜单ID'] },
+      {
+        path: '/smzdm/keyword/:keyword',
+        name: '什么值得买关键词',
+        params: ['关键词'],
+      },
+      {
+        path: '/smzdm/ranking/:rank_type/:rank_id',
+        name: '什么值得买榜单',
+        params: ['类型', '榜单ID'],
+      },
     ],
   },
   {
@@ -264,9 +448,17 @@ const POPULAR_ROUTES: { category: string, routes: RouteTemplate[] }[] = [
       // Bangumi
       { path: '/bangumi/calendar/today', name: 'Bangumi 每日放送', params: [] },
       // Steam
-      { path: '/steam/search/:params', name: 'Steam 搜索', params: ['搜索参数'] },
+      {
+        path: '/steam/search/:params',
+        name: 'Steam 搜索',
+        params: ['搜索参数'],
+      },
       // 地震
-      { path: '/earthquake/:region?', name: '地震速报', params: ['地区(可选)'] },
+      {
+        path: '/earthquake/:region?',
+        name: '地震速报',
+        params: ['地区(可选)'],
+      },
     ],
   },
 ]
@@ -296,7 +488,9 @@ export default function RSSHubConfigComponent({
   const [instanceError, setInstanceError] = useState<string | null>(null)
 
   // 选中的实例（使用 ID）
-  const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null)
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(
+    null,
+  )
 
   // 路由配置
   const [routePath, setRoutePath] = useState(initialConfig?.routePath || '')
@@ -343,20 +537,31 @@ export default function RSSHubConfigComponent({
 
   // 测试状态
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null)
+  const [testResult, setTestResult] = useState<{
+    success: boolean
+    message: string
+  } | null>(null)
 
   // 当前选中的实例
-  const currentInstance = useMemo(() =>
-    instances.find(i => i.id === selectedInstanceId) || instances.find(i => i.enabled) || instances[0], [instances, selectedInstanceId])
+  const currentInstance = useMemo(
+    () =>
+      instances.find((i) => i.id === selectedInstanceId) ||
+      instances.find((i) => i.enabled) ||
+      instances[0],
+    [instances, selectedInstanceId],
+  )
 
   // 获取认证头（包含 CSRF token）
   const getAuthHeaders = useCallback(async () => {
     // 从 cookie 获取 auth token
-    const cookies = document.cookie.split(';').reduce((acc, cookie) => {
-      const [key, value] = cookie.trim().split('=')
-      acc[key] = value
-      return acc
-    }, {} as Record<string, string>)
+    const cookies = document.cookie.split(';').reduce(
+      (acc, cookie) => {
+        const [key, value] = cookie.trim().split('=')
+        acc[key] = value
+        return acc
+      },
+      {} as Record<string, string>,
+    )
     const authToken = cookies.auth_token
 
     // 强制从服务器获取最新 CSRF token
@@ -383,29 +588,28 @@ export default function RSSHubConfigComponent({
         setInstances(loadedInstances)
         // 如果有初始配置，尝试匹配实例
         if (initialConfig?.instanceUrl && !selectedInstanceId) {
-          const matched = loadedInstances.find((i: RsshubInstance) => i.url === initialConfig.instanceUrl)
+          const matched = loadedInstances.find(
+            (i: RsshubInstance) => i.url === initialConfig.instanceUrl,
+          )
           if (matched) {
             setSelectedInstanceId(matched.id)
-          }
-          else if (loadedInstances.length > 0) {
+          } else if (loadedInstances.length > 0) {
             // 选择第一个启用的实例
-            const enabled = loadedInstances.find((i: RsshubInstance) => i.enabled)
+            const enabled = loadedInstances.find(
+              (i: RsshubInstance) => i.enabled,
+            )
             setSelectedInstanceId(enabled?.id || loadedInstances[0].id)
           }
-        }
-        else if (!selectedInstanceId && loadedInstances.length > 0) {
+        } else if (!selectedInstanceId && loadedInstances.length > 0) {
           const enabled = loadedInstances.find((i: RsshubInstance) => i.enabled)
           setSelectedInstanceId(enabled?.id || loadedInstances[0].id)
         }
-      }
-      else {
+      } else {
         setInstanceError(data.error || t.brew.errorLoadFailed)
       }
-    }
-    catch {
+    } catch {
       setInstanceError(t.brew.errorNetworkRetry)
-    }
-    finally {
+    } finally {
       setLoadingInstances(false)
     }
   }, [getAuthHeaders, initialConfig?.instanceUrl, selectedInstanceId])
@@ -417,8 +621,7 @@ export default function RSSHubConfigComponent({
 
   // 添加实例
   const handleAddInstance = async () => {
-    if (!newName.trim() || !newUrl.trim())
-      return
+    if (!newName.trim() || !newUrl.trim()) return
     try {
       setAdding(true)
       const response = await fetch(`${API_BASE}/rsshub/instances`, {
@@ -433,22 +636,19 @@ export default function RSSHubConfigComponent({
       })
       const data = await response.json()
       if (data.success) {
-        setInstances(prev => [...prev, data.instance])
+        setInstances((prev) => [...prev, data.instance])
         setSelectedInstanceId(data.instance.id)
         setShowAddForm(false)
         setNewName('')
         setNewUrl('')
         setNewAccessKey('')
         setNewPriority(100)
-      }
-      else {
+      } else {
         setInstanceError(data.error || t.brew.errorAddFailed)
       }
-    }
-    catch {
+    } catch {
       setInstanceError(t.brew.errorNetworkRetry)
-    }
-    finally {
+    } finally {
       setAdding(false)
     }
   }
@@ -468,22 +668,21 @@ export default function RSSHubConfigComponent({
       })
       const data = await response.json()
       if (data.success) {
-        setInstances(prev => prev.map(i => (i.id === id ? data.instance : i)))
+        setInstances((prev) =>
+          prev.map((i) => (i.id === id ? data.instance : i)),
+        )
         setEditingId(null)
-      }
-      else {
+      } else {
         setInstanceError(data.error || t.brew.errorUpdateFailed)
       }
-    }
-    catch {
+    } catch {
       setInstanceError(t.brew.errorNetworkRetry)
     }
   }
 
   // 删除实例
   const handleDeleteInstance = async (id: number) => {
-    if (!confirm(t.brew.rsshubConfirmDelete))
-      return
+    if (!confirm(t.brew.rsshubConfirmDelete)) return
     try {
       const response = await fetch(`${API_BASE}/rsshub/instances/${id}`, {
         method: 'DELETE',
@@ -491,17 +690,17 @@ export default function RSSHubConfigComponent({
       })
       const data = await response.json()
       if (data.success) {
-        setInstances(prev => prev.filter(i => i.id !== id))
+        setInstances((prev) => prev.filter((i) => i.id !== id))
         if (selectedInstanceId === id) {
-          const remaining = instances.filter(i => i.id !== id)
-          setSelectedInstanceId(remaining.find(i => i.enabled)?.id || remaining[0]?.id || null)
+          const remaining = instances.filter((i) => i.id !== id)
+          setSelectedInstanceId(
+            remaining.find((i) => i.enabled)?.id || remaining[0]?.id || null,
+          )
         }
-      }
-      else {
+      } else {
         setInstanceError(data.error || t.brew.errorDeleteFailed)
       }
-    }
-    catch {
+    } catch {
       setInstanceError(t.brew.errorNetworkRetry)
     }
   }
@@ -509,17 +708,21 @@ export default function RSSHubConfigComponent({
   // 切换实例启用状态
   const handleToggleEnabled = async (instance: RsshubInstance) => {
     try {
-      const response = await fetch(`${API_BASE}/rsshub/instances/${instance.id}`, {
-        method: 'PUT',
-        headers: await getAuthHeaders(),
-        body: JSON.stringify({ enabled: !instance.enabled }),
-      })
+      const response = await fetch(
+        `${API_BASE}/rsshub/instances/${instance.id}`,
+        {
+          method: 'PUT',
+          headers: await getAuthHeaders(),
+          body: JSON.stringify({ enabled: !instance.enabled }),
+        },
+      )
       const data = await response.json()
       if (data.success) {
-        setInstances(prev => prev.map(i => (i.id === instance.id ? data.instance : i)))
+        setInstances((prev) =>
+          prev.map((i) => (i.id === instance.id ? data.instance : i)),
+        )
       }
-    }
-    catch {
+    } catch {
       setInstanceError(t.brew.errorNetworkRetry)
     }
   }
@@ -536,11 +739,9 @@ export default function RSSHubConfigComponent({
       if (data.success) {
         await loadInstances()
       }
-    }
-    catch {
+    } catch {
       setInstanceError(t.brew.errorHealthCheckFailed)
-    }
-    finally {
+    } finally {
       setCheckingHealth(null)
     }
   }
@@ -557,11 +758,9 @@ export default function RSSHubConfigComponent({
       if (data.success) {
         await loadInstances()
       }
-    }
-    catch {
+    } catch {
       setInstanceError(t.brew.errorHealthCheckFailed)
-    }
-    finally {
+    } finally {
       setCheckingAllHealth(false)
     }
   }
@@ -577,8 +776,7 @@ export default function RSSHubConfigComponent({
       if (data.success) {
         await loadInstances()
       }
-    }
-    catch {
+    } catch {
       setInstanceError(t.brew.errorResetFailed)
     }
   }
@@ -594,8 +792,7 @@ export default function RSSHubConfigComponent({
 
   // 格式化时间
   const formatTime = (timestamp: number | null) => {
-    if (!timestamp)
-      return t.brew.rsshubNever
+    if (!timestamp) return t.brew.rsshubNever
     const date = new Date(timestamp)
     return date.toLocaleString(locale, {
       month: 'numeric',
@@ -607,8 +804,7 @@ export default function RSSHubConfigComponent({
 
   // 构建完整 URL（包含查询参数）
   const fullUrl = useMemo(() => {
-    if (!routePath || !currentInstance)
-      return ''
+    if (!routePath || !currentInstance) return ''
     const baseUrl = currentInstance.url
     let path = routePath
     // 替换路由参数
@@ -626,7 +822,9 @@ export default function RSSHubConfigComponent({
     // 添加其他查询参数
     Object.entries(queryParams).forEach(([key, value]) => {
       if (value !== undefined && value !== '' && value !== null) {
-        queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+        queryParts.push(
+          `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`,
+        )
       }
     })
 
@@ -637,7 +835,7 @@ export default function RSSHubConfigComponent({
   // 提取路由中的参数
   const extractedParams = useMemo(() => {
     const matches = routePath.match(/:([^/]+)/g) || []
-    return matches.map(m => ({
+    return matches.map((m) => ({
       name: m.slice(1).replace('?', ''),
       required: !m.endsWith('?'),
     }))
@@ -650,16 +848,23 @@ export default function RSSHubConfigComponent({
         instanceUrl: currentInstance.url,
         routePath,
         routeParams,
-        queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+        queryParams:
+          Object.keys(queryParams).length > 0 ? queryParams : undefined,
       }
       onConfigChange(config, fullUrl)
     }
-  }, [currentInstance, routePath, routeParams, queryParams, fullUrl, onConfigChange])
+  }, [
+    currentInstance,
+    routePath,
+    routeParams,
+    queryParams,
+    fullUrl,
+    onConfigChange,
+  ])
 
   // 测试实例连接
   const handleTestConnection = async () => {
-    if (!fullUrl)
-      return
+    if (!fullUrl) return
     setTesting(true)
     setTestResult(null)
     try {
@@ -668,11 +873,9 @@ export default function RSSHubConfigComponent({
         mode: 'no-cors',
       })
       setTestResult({ success: true, message: t.brew.rsshubConnectionOk })
-    }
-    catch {
+    } catch {
       setTestResult({ success: false, message: t.brew.rsshubConnectionFailed })
-    }
-    finally {
+    } finally {
       setTesting(false)
     }
   }
@@ -686,30 +889,33 @@ export default function RSSHubConfigComponent({
       newParams[paramName] = ''
     })
     setRouteParams({})
-    setCurrentRouteConfig(route.requiresConfig
-      ? {
-          requiresConfig: route.requiresConfig,
-          configNote: route.configNote,
-        }
-      : null)
+    setCurrentRouteConfig(
+      route.requiresConfig
+        ? {
+            requiresConfig: route.requiresConfig,
+            configNote: route.configNote,
+          }
+        : null,
+    )
     setShowRouteExplorer(false)
   }
 
   // 过滤路由
   const filteredRoutes = useMemo(() => {
-    if (!searchQuery && !selectedCategory)
-      return POPULAR_ROUTES
+    if (!searchQuery && !selectedCategory) return POPULAR_ROUTES
 
-    return POPULAR_ROUTES.map(category => ({
+    return POPULAR_ROUTES.map((category) => ({
       ...category,
       routes: category.routes.filter((route) => {
-        const matchesCategory = !selectedCategory || category.category === selectedCategory
-        const matchesSearch = !searchQuery
-          || route.name.toLowerCase().includes(searchQuery.toLowerCase())
-          || route.path.toLowerCase().includes(searchQuery.toLowerCase())
+        const matchesCategory =
+          !selectedCategory || category.category === selectedCategory
+        const matchesSearch =
+          !searchQuery ||
+          route.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          route.path.toLowerCase().includes(searchQuery.toLowerCase())
         return matchesCategory && matchesSearch
       }),
-    })).filter(category => category.routes.length > 0)
+    })).filter((category) => category.routes.length > 0)
   }, [searchQuery, selectedCategory])
 
   return (
@@ -727,7 +933,13 @@ export default function RSSHubConfigComponent({
               <AlertCircle className="w-3 h-3" />
               {instanceError}
             </div>
-            <button type="button" onClick={() => setInstanceError(null)} className="text-red-400 hover:text-red-600" title={t.common.close} aria-label={t.brew.rsshubCloseError}>
+            <button
+              type="button"
+              onClick={() => setInstanceError(null)}
+              className="text-red-400 hover:text-red-600"
+              title={t.common.close}
+              aria-label={t.brew.rsshubCloseError}
+            >
               <X className="w-3 h-3" />
             </button>
           </motion.div>
@@ -746,40 +958,54 @@ export default function RSSHubConfigComponent({
           <div className="flex items-center gap-2 min-w-0">
             <RSSHubIcon className="w-4 h-4 text-orange-500 shrink-0" />
             <div className="min-w-0">
-              {loadingInstances
-                ? (
-                    <div className="flex items-center gap-2">
-                      <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
-                      <span className="text-gray-400">{t.brew.loading}</span>
-                    </div>
-                  )
-                : currentInstance
-                  ? (
-                      <>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-gray-800 dark:text-gray-100 truncate">
-                            {currentInstance.name}
-                          </span>
-                          {currentInstance.has_access_key && (
-                            <span title={t.brew.rsshubHasAccessKey}><Key className="w-3 h-3 text-amber-500" /></span>
-                          )}
-                          <span className={`px-1 py-0.5 text-[9px] rounded ${HEALTH_STATUS_CONFIG[currentInstance.health_status].bgColor} ${HEALTH_STATUS_CONFIG[currentInstance.health_status].color}`}>
-                            {t.brew[HEALTH_STATUS_CONFIG[currentInstance.health_status].labelKey]}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-400 truncate">{currentInstance.url}</div>
-                      </>
-                    )
-                  : (
-                      <span className="text-gray-400">{t.brew.rsshubNoInstance}</span>
+              {loadingInstances ? (
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                  <span className="text-gray-400">{t.brew.loading}</span>
+                </div>
+              ) : currentInstance ? (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium text-gray-800 dark:text-gray-100 truncate">
+                      {currentInstance.name}
+                    </span>
+                    {currentInstance.has_access_key && (
+                      <span title={t.brew.rsshubHasAccessKey}>
+                        <Key className="w-3 h-3 text-amber-500" />
+                      </span>
                     )}
+                    <span
+                      className={`px-1 py-0.5 text-[9px] rounded ${HEALTH_STATUS_CONFIG[currentInstance.health_status].bgColor} ${HEALTH_STATUS_CONFIG[currentInstance.health_status].color}`}
+                    >
+                      {
+                        t.brew[
+                          HEALTH_STATUS_CONFIG[currentInstance.health_status]
+                            .labelKey
+                        ]
+                      }
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-400 truncate">
+                    {currentInstance.url}
+                  </div>
+                </>
+              ) : (
+                <span className="text-gray-400">{t.brew.rsshubNoInstance}</span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {instances.length > 0 && (
-              <span className="text-xs text-gray-400">{t.brew.rsshubInstanceCount.replace('{count}', String(instances.length))}</span>
+              <span className="text-xs text-gray-400">
+                {t.brew.rsshubInstanceCount.replace(
+                  '{count}',
+                  String(instances.length),
+                )}
+              </span>
             )}
-            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showInstancePanel ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              className={`w-4 h-4 text-gray-400 transition-transform ${showInstancePanel ? 'rotate-180' : ''}`}
+            />
           </div>
         </button>
 
@@ -803,7 +1029,9 @@ export default function RSSHubConfigComponent({
                       disabled={checkingAllHealth || loadingInstances}
                       className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-neutral-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:opacity-50"
                     >
-                      <RefreshCw className={`w-3 h-3 ${checkingAllHealth ? 'animate-spin' : ''}`} />
+                      <RefreshCw
+                        className={`w-3 h-3 ${checkingAllHealth ? 'animate-spin' : ''}`}
+                      />
                       {t.brew.rsshubCheckAll}
                     </button>
                     <button
@@ -834,45 +1062,57 @@ export default function RSSHubConfigComponent({
                         <input
                           type="text"
                           value={newName}
-                          onChange={e => setNewName(e.target.value)}
+                          onChange={(e) => setNewName(e.target.value)}
                           placeholder={t.brew.rsshubInstanceName}
                           className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
                         />
                         <input
                           type="url"
                           value={newUrl}
-                          onChange={e => setNewUrl(e.target.value)}
+                          onChange={(e) => setNewUrl(e.target.value)}
                           placeholder={t.brew.rsshubInstanceUrl}
                           className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 font-mono"
                         />
                         <input
                           type="password"
                           value={newAccessKey}
-                          onChange={e => setNewAccessKey(e.target.value)}
+                          onChange={(e) => setNewAccessKey(e.target.value)}
                           placeholder={t.brew.rsshubAccessKey}
                           className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
                         />
                         <div className="flex items-center gap-2">
-                          <label className="text-[11px] text-gray-500" htmlFor="new-priority-input">
-                            {t.brew.rsshubPriority}
-                            :
+                          <label
+                            className="text-[11px] text-gray-500"
+                            htmlFor="new-priority-input"
+                          >
+                            {t.brew.rsshubPriority}:
                           </label>
                           <input
                             id="new-priority-input"
                             type="number"
                             value={newPriority}
-                            onChange={e => setNewPriority(Number(e.target.value))}
+                            onChange={(e) =>
+                              setNewPriority(Number(e.target.value))
+                            }
                             min={0}
                             max={999}
                             title={t.brew.rsshubPriority}
                             className="w-16 px-2 py-1 text-xs rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
                           />
-                          <span className="text-[11px] text-gray-400">{t.brew.rsshubPriorityHint}</span>
+                          <span className="text-[11px] text-gray-400">
+                            {t.brew.rsshubPriorityHint}
+                          </span>
                         </div>
                         <div className="flex gap-2 pt-1">
                           <button
                             type="button"
-                            onClick={() => { setShowAddForm(false); setNewName(''); setNewUrl(''); setNewAccessKey(''); setNewPriority(100) }}
+                            onClick={() => {
+                              setShowAddForm(false)
+                              setNewName('')
+                              setNewUrl('')
+                              setNewAccessKey('')
+                              setNewPriority(100)
+                            }}
                             className="flex-1 px-2.5 py-1.5 text-xs border border-gray-300 dark:border-neutral-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg"
                           >
                             {t.brew.cancel}
@@ -880,10 +1120,14 @@ export default function RSSHubConfigComponent({
                           <button
                             type="button"
                             onClick={handleAddInstance}
-                            disabled={adding || !newName.trim() || !newUrl.trim()}
+                            disabled={
+                              adding || !newName.trim() || !newUrl.trim()
+                            }
                             className="flex-1 px-2.5 py-1.5 text-xs bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-200 disabled:opacity-50 flex items-center justify-center gap-1"
                           >
-                            {adding && <RefreshCw className="w-3 h-3 animate-spin" />}
+                            {adding && (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            )}
                             {t.brew.add}
                           </button>
                         </div>
@@ -901,12 +1145,15 @@ export default function RSSHubConfigComponent({
                   <div className="text-center py-6 text-gray-400">
                     <Server className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     <p className="text-xs">{t.brew.rsshubNoInstances}</p>
-                    <p className="text-[10px] mt-0.5">{t.brew.rsshubClickToAdd}</p>
+                    <p className="text-[10px] mt-0.5">
+                      {t.brew.rsshubClickToAdd}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {instances.map((instance) => {
-                      const status = HEALTH_STATUS_CONFIG[instance.health_status]
+                      const status =
+                        HEALTH_STATUS_CONFIG[instance.health_status]
                       const StatusIcon = status.icon
                       const isEditing = editingId === instance.id
                       const isSelected = selectedInstanceId === instance.id
@@ -921,42 +1168,53 @@ export default function RSSHubConfigComponent({
                                 ? 'bg-gray-50 dark:bg-neutral-900 border-gray-200 dark:border-neutral-700 hover:border-orange-300 dark:hover:border-orange-700'
                                 : 'bg-gray-100 dark:bg-neutral-900/50 border-gray-100 dark:border-neutral-800 opacity-60'
                           }`}
-                          onClick={() => !isEditing && setSelectedInstanceId(instance.id)}
+                          onClick={() =>
+                            !isEditing && setSelectedInstanceId(instance.id)
+                          }
                         >
                           {isEditing ? (
                             /* 编辑模式 */
-                            <div className="space-y-2" onClick={e => e.stopPropagation()}>
+                            <div
+                              className="space-y-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <input
                                 type="text"
                                 value={editName}
-                                onChange={e => setEditName(e.target.value)}
+                                onChange={(e) => setEditName(e.target.value)}
                                 placeholder={t.brew.rsshubInstanceName}
                                 className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
                               />
                               <input
                                 type="url"
                                 value={editUrl}
-                                onChange={e => setEditUrl(e.target.value)}
+                                onChange={(e) => setEditUrl(e.target.value)}
                                 placeholder={t.brew.rsshubInstanceUrlShort}
                                 className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 font-mono"
                               />
                               <input
                                 type="password"
                                 value={editAccessKey}
-                                onChange={e => setEditAccessKey(e.target.value)}
+                                onChange={(e) =>
+                                  setEditAccessKey(e.target.value)
+                                }
                                 placeholder={t.brew.rsshubAccessKeyKeep}
                                 className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
                               />
                               <div className="flex items-center gap-2">
-                                <label className="text-[11px] text-gray-500" htmlFor="edit-priority-input">
-                                  {t.brew.rsshubPriority}
-                                  :
+                                <label
+                                  className="text-[11px] text-gray-500"
+                                  htmlFor="edit-priority-input"
+                                >
+                                  {t.brew.rsshubPriority}:
                                 </label>
                                 <input
                                   id="edit-priority-input"
                                   type="number"
                                   value={editPriority}
-                                  onChange={e => setEditPriority(Number(e.target.value))}
+                                  onChange={(e) =>
+                                    setEditPriority(Number(e.target.value))
+                                  }
                                   min={0}
                                   max={999}
                                   title={t.brew.rsshubPriority}
@@ -973,7 +1231,9 @@ export default function RSSHubConfigComponent({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateInstance(instance.id)}
+                                  onClick={() =>
+                                    handleUpdateInstance(instance.id)
+                                  }
                                   className="flex-1 px-2.5 py-1.5 text-xs bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-200"
                                 >
                                   {t.brew.save}
@@ -985,8 +1245,13 @@ export default function RSSHubConfigComponent({
                             <>
                               <div className="flex items-start justify-between mb-1.5">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <div className={`p-1 rounded ${status.bgColor}`} title={t.brew[status.labelKey]}>
-                                    <StatusIcon className={`w-3 h-3 ${status.color}`} />
+                                  <div
+                                    className={`p-1 rounded ${status.bgColor}`}
+                                    title={t.brew[status.labelKey]}
+                                  >
+                                    <StatusIcon
+                                      className={`w-3 h-3 ${status.color}`}
+                                    />
                                   </div>
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-1.5">
@@ -994,24 +1259,40 @@ export default function RSSHubConfigComponent({
                                         {instance.name}
                                       </h4>
                                       {instance.has_access_key && (
-                                        <span title={t.brew.rsshubHasAccessKey}><Key className="w-3 h-3 text-gray-500" /></span>
+                                        <span title={t.brew.rsshubHasAccessKey}>
+                                          <Key className="w-3 h-3 text-gray-500" />
+                                        </span>
                                       )}
                                     </div>
-                                    <div className="text-[11px] text-gray-400 font-mono truncate">{instance.url}</div>
+                                    <div className="text-[11px] text-gray-400 font-mono truncate">
+                                      {instance.url}
+                                    </div>
                                   </div>
                                 </div>
                                 {/* 启用开关 */}
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleToggleEnabled(instance) }}
-                                  title={instance.enabled ? t.brew.rsshubDisable : t.brew.rsshubEnable}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleToggleEnabled(instance)
+                                  }}
+                                  title={
+                                    instance.enabled
+                                      ? t.brew.rsshubDisable
+                                      : t.brew.rsshubEnable
+                                  }
                                   className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${
-                                    instance.enabled ? 'bg-gray-700 dark:bg-gray-300' : 'bg-gray-300 dark:bg-neutral-600'
+                                    instance.enabled
+                                      ? 'bg-gray-700 dark:bg-gray-300'
+                                      : 'bg-gray-300 dark:bg-neutral-600'
                                   }`}
                                 >
-                                  <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${
-                                    instance.enabled ? 'translate-x-4' : 'translate-x-0'
-                                  }`}
+                                  <span
+                                    className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${
+                                      instance.enabled
+                                        ? 'translate-x-4'
+                                        : 'translate-x-0'
+                                    }`}
                                   />
                                 </button>
                               </div>
@@ -1019,39 +1300,60 @@ export default function RSSHubConfigComponent({
                               {/* 统计信息 */}
                               <div className="grid grid-cols-4 gap-1.5 mb-1.5">
                                 <div className="p-1 rounded bg-gray-100 dark:bg-neutral-800">
-                                  <div className="text-[9px] text-gray-400">{t.brew.rsshubPriority}</div>
-                                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300">{instance.priority}</div>
-                                </div>
-                                <div className="p-1 rounded bg-gray-100 dark:bg-neutral-800">
-                                  <div className="text-[9px] text-gray-400">{t.brew.rsshubSuccessRate}</div>
+                                  <div className="text-[9px] text-gray-400">
+                                    {t.brew.rsshubPriority}
+                                  </div>
                                   <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                                    {instance.success_rate.toFixed(0)}
-                                    %
+                                    {instance.priority}
                                   </div>
                                 </div>
                                 <div className="p-1 rounded bg-gray-100 dark:bg-neutral-800">
-                                  <div className="text-[9px] text-gray-400">{t.brew.rsshubResponse}</div>
+                                  <div className="text-[9px] text-gray-400">
+                                    {t.brew.rsshubSuccessRate}
+                                  </div>
                                   <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                                    {instance.last_response_time_ms ? `${instance.last_response_time_ms}ms` : '-'}
+                                    {instance.success_rate.toFixed(0)}%
                                   </div>
                                 </div>
                                 <div className="p-1 rounded bg-gray-100 dark:bg-neutral-800">
-                                  <div className="text-[9px] text-gray-400">{t.brew.rsshubLastCheck}</div>
-                                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate" title={formatTime(instance.last_health_check)}>
+                                  <div className="text-[9px] text-gray-400">
+                                    {t.brew.rsshubResponse}
+                                  </div>
+                                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                    {instance.last_response_time_ms
+                                      ? `${instance.last_response_time_ms}ms`
+                                      : '-'}
+                                  </div>
+                                </div>
+                                <div className="p-1 rounded bg-gray-100 dark:bg-neutral-800">
+                                  <div className="text-[9px] text-gray-400">
+                                    {t.brew.rsshubLastCheck}
+                                  </div>
+                                  <div
+                                    className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate"
+                                    title={formatTime(
+                                      instance.last_health_check,
+                                    )}
+                                  >
                                     {formatTime(instance.last_health_check)}
                                   </div>
                                 </div>
                               </div>
 
                               {/* 操作按钮 */}
-                              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                              <div
+                                className="flex items-center gap-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <button
                                   type="button"
                                   onClick={() => handleHealthCheck(instance.id)}
                                   disabled={checkingHealth === instance.id}
                                   className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1 text-[10px] border border-gray-200 dark:border-neutral-600 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:opacity-50"
                                 >
-                                  <RefreshCw className={`w-2.5 h-2.5 ${checkingHealth === instance.id ? 'animate-spin' : ''}`} />
+                                  <RefreshCw
+                                    className={`w-2.5 h-2.5 ${checkingHealth === instance.id ? 'animate-spin' : ''}`}
+                                  />
                                   {t.brew.rsshubCheck}
                                 </button>
                                 <button
@@ -1064,7 +1366,9 @@ export default function RSSHubConfigComponent({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleResetInstance(instance.id)}
+                                  onClick={() =>
+                                    handleResetInstance(instance.id)
+                                  }
                                   className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1 text-[10px] border border-gray-200 dark:border-neutral-600 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-100 dark:hover:bg-neutral-700"
                                 >
                                   <BarChart3 className="w-2.5 h-2.5" />
@@ -1072,7 +1376,9 @@ export default function RSSHubConfigComponent({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteInstance(instance.id)}
+                                  onClick={() =>
+                                    handleDeleteInstance(instance.id)
+                                  }
                                   className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded"
                                   title={t.brew.delete}
                                 >
@@ -1097,9 +1403,7 @@ export default function RSSHubConfigComponent({
         <div className="flex items-center justify-between mb-1.5">
           <label className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
             <Globe className="w-3.5 h-3.5" />
-            {t.brew.rsshubRoutePath}
-            {' '}
-            <span className="text-rose-500">*</span>
+            {t.brew.rsshubRoutePath} <span className="text-rose-500">*</span>
           </label>
           <button
             type="button"
@@ -1116,7 +1420,7 @@ export default function RSSHubConfigComponent({
           <input
             type="text"
             value={routePath}
-            onChange={e => setRoutePath(e.target.value)}
+            onChange={(e) => setRoutePath(e.target.value)}
             placeholder="/bilibili/user/video/:uid"
             disabled={disabled}
             className="w-full px-3 py-2.5 bg-gray-50/80 dark:bg-neutral-800/50 border border-gray-200/80 dark:border-neutral-700/80 rounded-xl text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 transition-all font-mono disabled:opacity-50"
@@ -1140,7 +1444,7 @@ export default function RSSHubConfigComponent({
                     <input
                       type="text"
                       value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
+                      onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder={t.brew.rsshubSearchRoute}
                       className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
                     />
@@ -1156,7 +1460,7 @@ export default function RSSHubConfigComponent({
                   >
                     {t.brew.all}
                   </button>
-                  {ROUTE_CATEGORIES_KEYS.map(cat => (
+                  {ROUTE_CATEGORIES_KEYS.map((cat) => (
                     <button
                       key={cat.id}
                       type="button"
@@ -1172,26 +1476,38 @@ export default function RSSHubConfigComponent({
                 {/* 配置要求图例 */}
                 <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-gray-400 py-1 border-b border-gray-200/50 dark:border-neutral-700/50">
                   <span className="flex items-center gap-1">
-                    <span className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded"><Settings size={10} /></span>
+                    <span className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded">
+                      <Settings size={10} />
+                    </span>
                     {t.brew.rsshubServerConfig}
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded"><Wrench size={10} /></span>
+                    <span className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">
+                      <Wrench size={10} />
+                    </span>
                     {t.brew.rsshubOptionalConfig}
                   </span>
                 </div>
 
                 {/* 路由列表 */}
                 <div className="max-h-48 overflow-y-auto space-y-2">
-                  {filteredRoutes.map(category => (
+                  {filteredRoutes.map((category) => (
                     <div key={category.category}>
                       <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                        {ROUTE_CATEGORIES_KEYS.find(c => c.id === category.category)?.icon}
-                        {' '}
-                        {(() => { const cat = ROUTE_CATEGORIES_KEYS.find(c => c.id === category.category); return cat ? t.brew[cat.nameKey] : '' })()}
+                        {
+                          ROUTE_CATEGORIES_KEYS.find(
+                            (c) => c.id === category.category,
+                          )?.icon
+                        }{' '}
+                        {(() => {
+                          const cat = ROUTE_CATEGORIES_KEYS.find(
+                            (c) => c.id === category.category,
+                          )
+                          return cat ? t.brew[cat.nameKey] : ''
+                        })()}
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                        {category.routes.map(route => (
+                        {category.routes.map((route) => (
                           <button
                             key={route.path}
                             type="button"
@@ -1202,17 +1518,25 @@ export default function RSSHubConfigComponent({
                               <div className="font-medium text-gray-800 dark:text-gray-100 truncate flex items-center gap-1">
                                 {route.name}
                                 {route.requiresConfig === 'server' && (
-                                  <span className="px-1 py-0.5 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded" title={t.brew.rsshubServerConfig}>
+                                  <span
+                                    className="px-1 py-0.5 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded"
+                                    title={t.brew.rsshubServerConfig}
+                                  >
                                     <Settings size={10} />
                                   </span>
                                 )}
                                 {route.requiresConfig === 'optional' && (
-                                  <span className="px-1 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded" title={t.brew.rsshubOptionalConfig}>
+                                  <span
+                                    className="px-1 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded"
+                                    title={t.brew.rsshubOptionalConfig}
+                                  >
                                     <Wrench size={10} />
                                   </span>
                                 )}
                               </div>
-                              <div className="text-gray-400 truncate font-mono">{route.path}</div>
+                              <div className="text-gray-400 truncate font-mono">
+                                {route.path}
+                              </div>
                             </div>
                           </button>
                         ))}
@@ -1245,24 +1569,29 @@ export default function RSSHubConfigComponent({
             {t.brew.rsshubRouteParams}
           </label>
           <div className="space-y-2">
-            {extractedParams.map(param => (
+            {extractedParams.map((param) => (
               <div key={param.name} className="flex items-center gap-2">
                 <span className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0 font-mono">
-                  :
-                  {param.name}
+                  :{param.name}
                   {!param.required && (
                     <span className="text-gray-400 ml-1">
-                      (
-                      {t.brew.rsshubOptional}
-                      )
+                      ({t.brew.rsshubOptional})
                     </span>
                   )}
                 </span>
                 <input
                   type="text"
                   value={routeParams[param.name] || ''}
-                  onChange={e => setRouteParams(prev => ({ ...prev, [param.name]: e.target.value }))}
-                  placeholder={t.brew.rsshubEnterParam.replace('{param}', param.name)}
+                  onChange={(e) =>
+                    setRouteParams((prev) => ({
+                      ...prev,
+                      [param.name]: e.target.value,
+                    }))
+                  }
+                  placeholder={t.brew.rsshubEnterParam.replace(
+                    '{param}',
+                    param.name,
+                  )}
                   disabled={disabled}
                   className="flex-1 px-2.5 py-1.5 text-sm rounded-lg bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 disabled:opacity-50"
                 />
@@ -1274,66 +1603,74 @@ export default function RSSHubConfigComponent({
 
       {/* 路由配置要求提示 */}
       {currentRouteConfig && currentRouteConfig.requiresConfig && (
-        <div className={`p-3 rounded-xl flex items-start gap-2 ${
-          currentRouteConfig.requiresConfig === 'server'
-            ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50'
-            : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/50'
-        }`}
-        >
-          <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${
+        <div
+          className={`p-3 rounded-xl flex items-start gap-2 ${
             currentRouteConfig.requiresConfig === 'server'
-              ? 'text-amber-500'
-              : 'text-blue-500'
+              ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50'
+              : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/50'
           }`}
+        >
+          <AlertCircle
+            className={`w-4 h-4 shrink-0 mt-0.5 ${
+              currentRouteConfig.requiresConfig === 'server'
+                ? 'text-amber-500'
+                : 'text-blue-500'
+            }`}
           />
           <div className="flex-1 min-w-0">
-            <div className={`text-xs font-medium mb-0.5 ${
-              currentRouteConfig.requiresConfig === 'server'
-                ? 'text-amber-700 dark:text-amber-300'
-                : 'text-blue-700 dark:text-blue-300'
-            }`}
+            <div
+              className={`text-xs font-medium mb-0.5 ${
+                currentRouteConfig.requiresConfig === 'server'
+                  ? 'text-amber-700 dark:text-amber-300'
+                  : 'text-blue-700 dark:text-blue-300'
+              }`}
             >
-              {currentRouteConfig.requiresConfig === 'server'
-                ? <><AlertCircle size={12} /> {t.brew.rsshubRouteNeedsServer}</>
-                : <><Info size={12} /> {t.brew.rsshubRouteSupportsOptional}</>}
+              {currentRouteConfig.requiresConfig === 'server' ? (
+                <>
+                  <AlertCircle size={12} /> {t.brew.rsshubRouteNeedsServer}
+                </>
+              ) : (
+                <>
+                  <Info size={12} /> {t.brew.rsshubRouteSupportsOptional}
+                </>
+              )}
             </div>
-            <div className={`text-xs ${
-              currentRouteConfig.requiresConfig === 'server'
-                ? 'text-amber-600 dark:text-amber-400'
-                : 'text-blue-600 dark:text-blue-400'
-            }`}
+            <div
+              className={`text-xs ${
+                currentRouteConfig.requiresConfig === 'server'
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-blue-600 dark:text-blue-400'
+              }`}
             >
-              {currentRouteConfig.requiresConfig === 'server'
-                ? (
-                    <>
-                      {t.brew.rsshubNeedEnvConfig}
-                      <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-800/50 rounded text-[11px] ml-1">
-                        {currentRouteConfig.configNote}
-                      </code>
-                      <div className="mt-1.5 text-amber-500 dark:text-amber-400">
-                        {t.brew.rsshubUsePrivateInstance}
-                        <a
-                          href="https://docs.rsshub.app/deploy/config#route-specific-configurations"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline hover:no-underline ml-1"
-                        >
-                          {t.brew.rsshubDeployDocs}
-                        </a>
-                      </div>
-                    </>
-                  )
-                : (
-                    <>
-                      {t.brew.rsshubOptionalConfigNote}
-                      <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-800/50 rounded text-[11px] ml-1">
-                        {currentRouteConfig.configNote}
-                      </code>
-                      <div className="mt-1 text-blue-500 dark:text-blue-400">
-                        {t.brew.rsshubOptionalConfigHint}
-                      </div>
-                    </>
-                  )}
+              {currentRouteConfig.requiresConfig === 'server' ? (
+                <>
+                  {t.brew.rsshubNeedEnvConfig}
+                  <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-800/50 rounded text-[11px] ml-1">
+                    {currentRouteConfig.configNote}
+                  </code>
+                  <div className="mt-1.5 text-amber-500 dark:text-amber-400">
+                    {t.brew.rsshubUsePrivateInstance}
+                    <a
+                      href="https://docs.rsshub.app/deploy/config#route-specific-configurations"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:no-underline ml-1"
+                    >
+                      {t.brew.rsshubDeployDocs}
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {t.brew.rsshubOptionalConfigNote}
+                  <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-800/50 rounded text-[11px] ml-1">
+                    {currentRouteConfig.configNote}
+                  </code>
+                  <div className="mt-1 text-blue-500 dark:text-blue-400">
+                    {t.brew.rsshubOptionalConfigHint}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1355,7 +1692,9 @@ export default function RSSHubConfigComponent({
               </span>
             )}
           </div>
-          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showAdvancedOptions ? 'rotate-180' : ''}`} />
+          <ChevronDown
+            className={`w-4 h-4 text-gray-400 transition-transform ${showAdvancedOptions ? 'rotate-180' : ''}`}
+          />
         </button>
 
         <AnimatePresence>
@@ -1374,56 +1713,61 @@ export default function RSSHubConfigComponent({
                     {t.brew.rsshubQueryParams}
                   </label>
                   <div className="space-y-2">
-                    {COMMON_QUERY_PARAMS_KEYS.map(param => (
+                    {COMMON_QUERY_PARAMS_KEYS.map((param) => (
                       <div key={param.key} className="flex items-start gap-2">
                         <span className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0 pt-1.5 font-mono">
                           {param.key}
                         </span>
                         <div className="flex-1">
-                          {param.type === 'select'
-                            ? (
-                                <select
-                                  value={queryParams[param.key] as string || ''}
-                                  onChange={(e) => {
-                                    const newVal = e.target.value
-                                    setQueryParams((prev) => {
-                                      if (!newVal) {
-                                        const { [param.key]: _, ...rest } = prev
-                                        return rest
-                                      }
-                                      return { ...prev, [param.key]: newVal }
-                                    })
-                                  }}
-                                  disabled={disabled}
-                                  title={t.brew[param.labelKey]}
-                                  aria-label={t.brew[param.labelKey]}
-                                  className="w-full px-2.5 py-1.5 text-sm rounded-lg bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 disabled:opacity-50"
-                                >
-                                  {param.options?.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{t.brew[opt.labelKey]}</option>
-                                  ))}
-                                </select>
-                              )
-                            : (
-                                <input
-                                  type={param.type}
-                                  value={queryParams[param.key] as string || ''}
-                                  onChange={(e) => {
-                                    const newVal = param.type === 'number' && e.target.value ? Number(e.target.value) : e.target.value
-                                    setQueryParams((prev) => {
-                                      if (!e.target.value) {
-                                        const { [param.key]: _, ...rest } = prev
-                                        return rest
-                                      }
-                                      return { ...prev, [param.key]: newVal }
-                                    })
-                                  }}
-                                  placeholder={param.placeholder}
-                                  disabled={disabled}
-                                  className="w-full px-2.5 py-1.5 text-sm rounded-lg bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 disabled:opacity-50"
-                                />
-                              )}
-                          <p className="mt-0.5 text-xs text-gray-400">{t.brew[param.descKey]}</p>
+                          {param.type === 'select' ? (
+                            <select
+                              value={(queryParams[param.key] as string) || ''}
+                              onChange={(e) => {
+                                const newVal = e.target.value
+                                setQueryParams((prev) => {
+                                  if (!newVal) {
+                                    const { [param.key]: _, ...rest } = prev
+                                    return rest
+                                  }
+                                  return { ...prev, [param.key]: newVal }
+                                })
+                              }}
+                              disabled={disabled}
+                              title={t.brew[param.labelKey]}
+                              aria-label={t.brew[param.labelKey]}
+                              className="w-full px-2.5 py-1.5 text-sm rounded-lg bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 disabled:opacity-50"
+                            >
+                              {param.options?.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {t.brew[opt.labelKey]}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type={param.type}
+                              value={(queryParams[param.key] as string) || ''}
+                              onChange={(e) => {
+                                const newVal =
+                                  param.type === 'number' && e.target.value
+                                    ? Number(e.target.value)
+                                    : e.target.value
+                                setQueryParams((prev) => {
+                                  if (!e.target.value) {
+                                    const { [param.key]: _, ...rest } = prev
+                                    return rest
+                                  }
+                                  return { ...prev, [param.key]: newVal }
+                                })
+                              }}
+                              placeholder={param.placeholder}
+                              disabled={disabled}
+                              className="w-full px-2.5 py-1.5 text-sm rounded-lg bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 disabled:opacity-50"
+                            />
+                          )}
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            {t.brew[param.descKey]}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -1437,20 +1781,35 @@ export default function RSSHubConfigComponent({
                   </label>
                   {/* 已添加的自定义参数 */}
                   {Object.entries(queryParams)
-                    .filter(([key]) => !COMMON_QUERY_PARAMS_KEYS.some(p => p.key === key))
+                    .filter(
+                      ([key]) =>
+                        !COMMON_QUERY_PARAMS_KEYS.some((p) => p.key === key),
+                    )
                     .map(([key, value]) => (
                       <div key={key} className="flex items-center gap-2 mb-2">
-                        <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">{key}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                          {key}
+                        </span>
                         <span className="text-xs text-gray-400">=</span>
-                        <span className="text-xs text-gray-700 dark:text-gray-300 font-mono flex-1">{String(value)}</span>
+                        <span className="text-xs text-gray-700 dark:text-gray-300 font-mono flex-1">
+                          {String(value)}
+                        </span>
                         <button
                           type="button"
-                          onClick={() => setQueryParams((prev) => {
-                            const { [key]: _, ...rest } = prev
-                            return rest
-                          })}
-                          title={t.brew.rsshubDeleteParam.replace('{param}', key)}
-                          aria-label={t.brew.rsshubDeleteParam.replace('{param}', key)}
+                          onClick={() =>
+                            setQueryParams((prev) => {
+                              const { [key]: _, ...rest } = prev
+                              return rest
+                            })
+                          }
+                          title={t.brew.rsshubDeleteParam.replace(
+                            '{param}',
+                            key,
+                          )}
+                          aria-label={t.brew.rsshubDeleteParam.replace(
+                            '{param}',
+                            key,
+                          )}
                           className="p-1 text-gray-400 hover:text-red-500 rounded"
                         >
                           <X className="w-3 h-3" />
@@ -1462,7 +1821,7 @@ export default function RSSHubConfigComponent({
                     <input
                       type="text"
                       value={customQueryKey}
-                      onChange={e => setCustomQueryKey(e.target.value)}
+                      onChange={(e) => setCustomQueryKey(e.target.value)}
                       placeholder={t.brew.rsshubParamName}
                       disabled={disabled}
                       className="w-24 px-2 py-1 text-xs rounded-lg bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 disabled:opacity-50 font-mono"
@@ -1471,7 +1830,7 @@ export default function RSSHubConfigComponent({
                     <input
                       type="text"
                       value={customQueryValue}
-                      onChange={e => setCustomQueryValue(e.target.value)}
+                      onChange={(e) => setCustomQueryValue(e.target.value)}
                       placeholder={t.brew.rsshubParamValue}
                       disabled={disabled}
                       className="flex-1 px-2 py-1 text-xs rounded-lg bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 disabled:opacity-50 font-mono"
@@ -1480,12 +1839,19 @@ export default function RSSHubConfigComponent({
                       type="button"
                       onClick={() => {
                         if (customQueryKey.trim() && customQueryValue.trim()) {
-                          setQueryParams(prev => ({ ...prev, [customQueryKey.trim()]: customQueryValue.trim() }))
+                          setQueryParams((prev) => ({
+                            ...prev,
+                            [customQueryKey.trim()]: customQueryValue.trim(),
+                          }))
                           setCustomQueryKey('')
                           setCustomQueryValue('')
                         }
                       }}
-                      disabled={disabled || !customQueryKey.trim() || !customQueryValue.trim()}
+                      disabled={
+                        disabled ||
+                        !customQueryKey.trim() ||
+                        !customQueryValue.trim()
+                      }
                       title={t.brew.rsshubAddCustomParam}
                       aria-label={t.brew.rsshubAddCustomParam}
                       className="px-2 py-1 text-xs border border-gray-300 dark:border-neutral-600 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:opacity-50"
@@ -1495,7 +1861,12 @@ export default function RSSHubConfigComponent({
                   </div>
                   <p className="mt-1.5 text-xs text-gray-400">
                     {t.brew.rsshubSpecialRouteHint}
-                    <a href="https://docs.rsshub.app/guide/parameters" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 underline ml-1">
+                    <a
+                      href="https://docs.rsshub.app/guide/parameters"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 underline ml-1"
+                    >
                       {t.brew.rsshubParamDocs}
                     </a>
                   </p>
@@ -1510,14 +1881,20 @@ export default function RSSHubConfigComponent({
       {fullUrl && (
         <div className="p-3 bg-gray-50 dark:bg-neutral-800/50 border border-gray-200 dark:border-neutral-700 rounded-xl">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{t.brew.rsshubFullUrl}</span>
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              {t.brew.rsshubFullUrl}
+            </span>
             <button
               type="button"
               onClick={handleTestConnection}
               disabled={testing || disabled}
               className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-neutral-600 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:opacity-50"
             >
-              {testing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+              {testing ? (
+                <RefreshCw className="w-3 h-3 animate-spin" />
+              ) : (
+                <Check className="w-3 h-3" />
+              )}
               {t.brew.rsshubTest}
             </button>
           </div>
@@ -1525,8 +1902,14 @@ export default function RSSHubConfigComponent({
             {fullUrl}
           </div>
           {testResult && (
-            <div className={`mt-2 flex items-center gap-1 text-xs ${testResult.success ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500'}`}>
-              {testResult.success ? <Check className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+            <div
+              className={`mt-2 flex items-center gap-1 text-xs ${testResult.success ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500'}`}
+            >
+              {testResult.success ? (
+                <Check className="w-3 h-3" />
+              ) : (
+                <AlertCircle className="w-3 h-3" />
+              )}
               {testResult.message}
             </div>
           )}

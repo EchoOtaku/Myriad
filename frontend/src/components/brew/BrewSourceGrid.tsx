@@ -18,10 +18,7 @@
 import type { BrewSource, CardSize, SourceType } from '../../types/brew'
 
 import type { SortMode } from './manager/ControlIsland'
-import {
-  LuRss as Rss,
-  LuSearch as Search,
-} from '@lib/icons'
+import { LuRss as Rss, LuSearch as Search } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
@@ -29,9 +26,7 @@ import * as brewApi from '../../services/brewApi'
 // 卡片组件
 import { SourceCard } from './cards'
 // 共享常量
-import {
-  PRESET_CATEGORY_DB_VALUES,
-} from './constants'
+import { PRESET_CATEGORY_DB_VALUES } from './constants'
 import ControlIsland from './manager/ControlIsland'
 // 管理组件
 import EditModal from './manager/EditModal'
@@ -43,7 +38,13 @@ interface BrewSourceGridProps {
   onRefreshSource: (sourceId: number) => void
   onSourceUpdate?: (source: BrewSource) => void
   onSourcesChange?: () => void
-  onAddSource?: (url: string, name?: string, category?: string, icon?: string, sourceType?: SourceType) => Promise<void>
+  onAddSource?: (
+    url: string,
+    name?: string,
+    category?: string,
+    icon?: string,
+    sourceType?: SourceType,
+  ) => Promise<void>
   isAuthenticated?: boolean // 是否已登录（用于已读状态等普通用户功能）
   isAdmin?: boolean // 是否是管理员（用于添加、编辑、删除等管理功能）
 }
@@ -78,7 +79,7 @@ export default function BrewSourceGrid({
   const [draggingSourceId, setDraggingSourceId] = useState<number | null>(null)
   const [dragOverSourceId, setDragOverSourceId] = useState<number | null>(null)
   const cardRefsRef = useRef<Map<number, HTMLDivElement>>(new Map())
-  const dragStartPosRef = useRef<{ x: number, y: number } | null>(null)
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null)
 
   // FLIP 动画：存储卡片位置快照
   const cardRectsRef = useRef<Map<number, DOMRect>>(new Map())
@@ -95,15 +96,14 @@ export default function BrewSourceGrid({
   // 播放 FLIP 动画（在排序变化后调用）- 支持位置和尺寸变化
   const playFlipAnimations = useCallback(() => {
     // 取消所有正在进行的动画
-    flipAnimationsRef.current.forEach(anim => anim.cancel())
+    flipAnimationsRef.current.forEach((anim) => anim.cancel())
     flipAnimationsRef.current.clear()
 
     // 用 requestAnimationFrame 确保 DOM 已更新
     requestAnimationFrame(() => {
       cardRefsRef.current.forEach((el, id) => {
         const firstRect = cardRectsRef.current.get(id)
-        if (!firstRect)
-          return
+        if (!firstRect) return
 
         const lastRect = el.getBoundingClientRect()
 
@@ -117,7 +117,8 @@ export default function BrewSourceGrid({
 
         // 检查是否有位置或尺寸变化
         const hasPositionChange = Math.abs(deltaX) > 1 || Math.abs(deltaY) > 1
-        const hasSizeChange = Math.abs(scaleX - 1) > 0.01 || Math.abs(scaleY - 1) > 0.01
+        const hasSizeChange =
+          Math.abs(scaleX - 1) > 0.01 || Math.abs(scaleY - 1) > 0.01
 
         if (!hasPositionChange && !hasSizeChange) {
           return
@@ -160,8 +161,7 @@ export default function BrewSourceGrid({
         // 解析逗号分隔的多分类
         s.category.split(',').forEach((c) => {
           const trimmed = c.trim()
-          if (trimmed)
-            cats.add(trimmed)
+          if (trimmed) cats.add(trimmed)
         })
       }
     })
@@ -174,18 +174,18 @@ export default function BrewSourceGrid({
     if (category) {
       // 支持多分类：检查 category 字段是否包含目标分类（用逗号分隔）
       result = result.filter((s) => {
-        if (!s.category)
-          return false
-        const cats = s.category.split(',').map(c => c.trim())
+        if (!s.category) return false
+        const cats = s.category.split(',').map((c) => c.trim())
         return cats.includes(category)
       })
     }
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
-      result = result.filter(s =>
-        s.name.toLowerCase().includes(query)
-        || s.url.toLowerCase().includes(query)
-        || (s.description?.toLowerCase().includes(query)),
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(query) ||
+          s.url.toLowerCase().includes(query) ||
+          s.description?.toLowerCase().includes(query),
       )
     }
     return result
@@ -195,7 +195,9 @@ export default function BrewSourceGrid({
   useEffect(() => {
     if (customOrder.length === 0 && filteredSources.length > 0) {
       // 检查是否有已保存的 sort_order
-      const sourcesWithOrder = filteredSources.filter(s => s.sort_order !== null && s.sort_order !== undefined)
+      const sourcesWithOrder = filteredSources.filter(
+        (s) => s.sort_order !== null && s.sort_order !== undefined,
+      )
 
       if (sourcesWithOrder.length > 0) {
         // 按 sort_order 排序，然后提取 id 作为 customOrder
@@ -204,11 +206,10 @@ export default function BrewSourceGrid({
           const orderB = b.sort_order ?? Number.MAX_SAFE_INTEGER
           return orderA - orderB
         })
-        setCustomOrder(sortedByOrder.map(s => s.id))
-      }
-      else {
+        setCustomOrder(sortedByOrder.map((s) => s.id))
+      } else {
         // 没有保存的排序，使用默认顺序
-        setCustomOrder(filteredSources.map(s => s.id))
+        setCustomOrder(filteredSources.map((s) => s.id))
       }
     }
   }, [filteredSources, customOrder.length])
@@ -222,8 +223,10 @@ export default function BrewSourceGrid({
         // 按最新文章发布时间排序（最新的在前）
         return result.sort((a, b) => {
           // 获取每个订阅源最新文章的发布时间
-          const latestA = a.recent_items?.[0]?.published_at || a.last_fetched_at || 0
-          const latestB = b.recent_items?.[0]?.published_at || b.last_fetched_at || 0
+          const latestA =
+            a.recent_items?.[0]?.published_at || a.last_fetched_at || 0
+          const latestB =
+            b.recent_items?.[0]?.published_at || b.last_fetched_at || 0
           return latestB - latestA
         })
 
@@ -236,10 +239,8 @@ export default function BrewSourceGrid({
           const indexA = customOrder.indexOf(a.id)
           const indexB = customOrder.indexOf(b.id)
           // 如果不在自定义顺序中，放到最后
-          if (indexA === -1)
-            return 1
-          if (indexB === -1)
-            return -1
+          if (indexA === -1) return 1
+          if (indexB === -1) return -1
           return indexA - indexB
         })
 
@@ -247,11 +248,15 @@ export default function BrewSourceGrid({
         // 按分类排序（同分类内按名称排序）
         // 预置分类（友情链接、我）在排序时被忽略，取主分类进行排序
         const getMainCategory = (cat: string | null): string => {
-          if (!cat)
-            return ''
-          const cats = cat.split(',').map(c => c.trim()).filter(Boolean)
+          if (!cat) return ''
+          const cats = cat
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean)
           // 过滤掉预置分类，取第一个非预置分类
-          const mainCat = cats.find(c => !PRESET_CATEGORY_DB_VALUES.includes(c))
+          const mainCat = cats.find(
+            (c) => !PRESET_CATEGORY_DB_VALUES.includes(c),
+          )
           return mainCat || cats[0] || ''
         }
         return result.sort((a, b) => {
@@ -283,71 +288,82 @@ export default function BrewSourceGrid({
 
   // 分类排序时的分类标题生成
   const getMainCategoryForRender = (cat: string | null): string => {
-    if (!cat)
-      return t.brew.uncategorized
-    const cats = cat.split(',').map(c => c.trim()).filter(Boolean)
-    const mainCat = cats.find(c => !PRESET_CATEGORY_DB_VALUES.includes(c))
+    if (!cat) return t.brew.uncategorized
+    const cats = cat
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean)
+    const mainCat = cats.find((c) => !PRESET_CATEGORY_DB_VALUES.includes(c))
     return mainCat || t.brew.uncategorized
   }
 
   // 切换排序模式时的处理 - 带 FLIP 动画
-  const handleSortModeChange = useCallback((mode: SortMode) => {
-    // 1. 记录当前所有卡片的位置
-    recordCardPositions()
+  const handleSortModeChange = useCallback(
+    (mode: SortMode) => {
+      // 1. 记录当前所有卡片的位置
+      recordCardPositions()
 
-    // 2. 更新排序模式（触发重排序）
-    setSortMode(mode)
+      // 2. 更新排序模式（触发重排序）
+      setSortMode(mode)
 
-    // 如果切换到随机排序，更新种子
-    if (mode === 'random') {
-      setRandomSeed(Date.now())
-    }
-    // 如果切换到自由排序，初始化顺序
-    if (mode === 'custom' && customOrder.length === 0) {
-      // 优先按已保存的 sort_order 排序
-      const sourcesWithOrder = filteredSources.filter(s => s.sort_order !== null && s.sort_order !== undefined)
-      if (sourcesWithOrder.length > 0) {
-        const sortedByOrder = [...filteredSources].sort((a, b) => {
-          const orderA = a.sort_order ?? Number.MAX_SAFE_INTEGER
-          const orderB = b.sort_order ?? Number.MAX_SAFE_INTEGER
-          return orderA - orderB
-        })
-        setCustomOrder(sortedByOrder.map(s => s.id))
+      // 如果切换到随机排序，更新种子
+      if (mode === 'random') {
+        setRandomSeed(Date.now())
       }
-      else {
-        setCustomOrder(filteredSources.map(s => s.id))
+      // 如果切换到自由排序，初始化顺序
+      if (mode === 'custom' && customOrder.length === 0) {
+        // 优先按已保存的 sort_order 排序
+        const sourcesWithOrder = filteredSources.filter(
+          (s) => s.sort_order !== null && s.sort_order !== undefined,
+        )
+        if (sourcesWithOrder.length > 0) {
+          const sortedByOrder = [...filteredSources].sort((a, b) => {
+            const orderA = a.sort_order ?? Number.MAX_SAFE_INTEGER
+            const orderB = b.sort_order ?? Number.MAX_SAFE_INTEGER
+            return orderA - orderB
+          })
+          setCustomOrder(sortedByOrder.map((s) => s.id))
+        } else {
+          setCustomOrder(filteredSources.map((s) => s.id))
+        }
       }
-    }
 
-    // 3. 下一帧播放 FLIP 动画
-    // 使用 setTimeout 确保 React 已经完成 DOM 更新
-    setTimeout(() => {
-      playFlipAnimations()
-    }, 0)
-  }, [filteredSources, customOrder.length, recordCardPositions, playFlipAnimations])
+      // 3. 下一帧播放 FLIP 动画
+      // 使用 setTimeout 确保 React 已经完成 DOM 更新
+      setTimeout(() => {
+        playFlipAnimations()
+      }, 0)
+    },
+    [
+      filteredSources,
+      customOrder.length,
+      recordCardPositions,
+      playFlipAnimations,
+    ],
+  )
 
   // 拖拽排序 - 开始拖拽（仅编辑模式 + 自由排序模式）
-  const handleCardDragStart = useCallback((e: React.MouseEvent | React.TouchEvent, sourceId: number) => {
-    if (!isEditMode || sortMode !== 'custom')
-      return
+  const handleCardDragStart = useCallback(
+    (e: React.MouseEvent | React.TouchEvent, sourceId: number) => {
+      if (!isEditMode || sortMode !== 'custom') return
 
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
 
-    dragStartPosRef.current = { x: clientX, y: clientY }
-    setDraggingSourceId(sourceId)
-  }, [isEditMode, sortMode])
+      dragStartPosRef.current = { x: clientX, y: clientY }
+      setDraggingSourceId(sourceId)
+    },
+    [isEditMode, sortMode],
+  )
 
   // 拖拽排序 - 移动和结束
   useEffect(() => {
-    if (draggingSourceId === null)
-      return
+    if (draggingSourceId === null) return
 
     let rafId: number | null = null
 
     const handleMove = (e: MouseEvent | TouchEvent) => {
-      if (rafId !== null)
-        return
+      if (rafId !== null) return
 
       rafId = requestAnimationFrame(() => {
         rafId = null
@@ -358,14 +374,13 @@ export default function BrewSourceGrid({
         // 遍历卡片，找到鼠标下的卡片
         let targetId: number | null = null
         cardRefsRef.current.forEach((element, id) => {
-          if (id === draggingSourceId)
-            return
+          if (id === draggingSourceId) return
           const rect = element.getBoundingClientRect()
           if (
-            clientX >= rect.left
-            && clientX <= rect.right
-            && clientY >= rect.top
-            && clientY <= rect.bottom
+            clientX >= rect.left &&
+            clientX <= rect.right &&
+            clientY >= rect.top &&
+            clientY <= rect.bottom
           ) {
             targetId = id
           }
@@ -405,17 +420,20 @@ export default function BrewSourceGrid({
         })
 
         // 播放 FLIP 动画
-        setTimeout(() => playFlipAnimations(), 0)
+        setTimeout(playFlipAnimations, 0)
 
         // 保存交换后的排序到数据库
         if (newFromIndex !== -1 && newToIndex !== -1) {
           try {
             await Promise.all([
-              brewApi.updateSource(draggingSourceId, { sort_order: newToIndex }),
-              brewApi.updateSource(dragOverSourceId, { sort_order: newFromIndex }),
+              brewApi.updateSource(draggingSourceId, {
+                sort_order: newToIndex,
+              }),
+              brewApi.updateSource(dragOverSourceId, {
+                sort_order: newFromIndex,
+              }),
             ])
-          }
-          catch (err) {
+          } catch (err) {
             console.error('Failed to save sort order:', err)
           }
         }
@@ -440,31 +458,42 @@ export default function BrewSourceGrid({
       window.removeEventListener('touchmove', handleMove)
       window.removeEventListener('touchend', handleEnd)
     }
-  }, [draggingSourceId, dragOverSourceId, recordCardPositions, playFlipAnimations])
+  }, [
+    draggingSourceId,
+    dragOverSourceId,
+    recordCardPositions,
+    playFlipAnimations,
+  ])
 
   // 保存卡片ref
-  const setCardRef = useCallback((id: number, element: HTMLDivElement | null) => {
-    if (element) {
-      cardRefsRef.current.set(id, element)
-    }
-    else {
-      cardRefsRef.current.delete(id)
-    }
-  }, [])
+  const setCardRef = useCallback(
+    (id: number, element: HTMLDivElement | null) => {
+      if (element) {
+        cardRefsRef.current.set(id, element)
+      } else {
+        cardRefsRef.current.delete(id)
+      }
+    },
+    [],
+  )
 
   // 图标颜色提取后保存到数据库
-  const handleThemeColorExtracted = useCallback(async (sourceId: number, color: string) => {
-    try {
-      const updatedSource = await brewApi.updateSource(sourceId, { theme_color: color })
-      // 通知父组件更新
-      if (onSourceUpdate) {
-        onSourceUpdate(updatedSource)
+  const handleThemeColorExtracted = useCallback(
+    async (sourceId: number, color: string) => {
+      try {
+        const updatedSource = await brewApi.updateSource(sourceId, {
+          theme_color: color,
+        })
+        // 通知父组件更新
+        if (onSourceUpdate) {
+          onSourceUpdate(updatedSource)
+        }
+      } catch {
+        // 保存主题色失败，静默处理
       }
-    }
-    catch {
-      // 保存主题色失败，静默处理
-    }
-  }, [onSourceUpdate])
+    },
+    [onSourceUpdate],
+  )
 
   // 处理选择切换
   const handleToggleSelect = useCallback((sourceId: number) => {
@@ -472,8 +501,7 @@ export default function BrewSourceGrid({
       const next = new Set(prev)
       if (next.has(sourceId)) {
         next.delete(sourceId)
-      }
-      else {
+      } else {
         next.add(sourceId)
       }
       return next
@@ -484,9 +512,8 @@ export default function BrewSourceGrid({
   const handleSelectAll = useCallback(() => {
     if (selectedIds.size === filteredSources.length) {
       setSelectedIds(new Set())
-    }
-    else {
-      setSelectedIds(new Set(filteredSources.map(s => s.id)))
+    } else {
+      setSelectedIds(new Set(filteredSources.map((s) => s.id)))
     }
   }, [filteredSources, selectedIds.size])
 
@@ -503,22 +530,19 @@ export default function BrewSourceGrid({
 
   // 批量删除
   const handleBatchDelete = useCallback(async () => {
-    if (selectedIds.size === 0)
-      return
+    if (selectedIds.size === 0) return
 
     const ids = Array.from(selectedIds)
     setDeletingIds(ids)
     setIsDeleting(true)
 
     try {
-      await Promise.all(ids.map(id => brewApi.deleteSource(id)))
+      await Promise.all(ids.map((id) => brewApi.deleteSource(id)))
       setSelectedIds(new Set())
       onSourcesChange?.()
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to delete sources:', err)
-    }
-    finally {
+    } finally {
       setDeletingIds([])
       setIsDeleting(false)
     }
@@ -526,19 +550,18 @@ export default function BrewSourceGrid({
 
   // 批量刷新全部订阅
   const handleBatchRefresh = useCallback(async () => {
-    if (filteredSources.length === 0)
-      return
+    if (filteredSources.length === 0) return
 
     setIsRefreshing(true)
 
     try {
       // 并行刷新所有订阅源
-      await Promise.all(filteredSources.map(source => onRefreshSource(source.id)))
-    }
-    catch (err) {
+      await Promise.all(
+        filteredSources.map((source) => onRefreshSource(source.id)),
+      )
+    } catch (err) {
       console.error('Failed to refresh sources:', err)
-    }
-    finally {
+    } finally {
       setIsRefreshing(false)
     }
   }, [filteredSources, onRefreshSource])
@@ -546,8 +569,7 @@ export default function BrewSourceGrid({
   // 全部订阅标记已读
   const [_isMarkingAllRead, setIsMarkingAllRead] = useState(false)
   const handleMarkAllSourcesRead = useCallback(async () => {
-    if (!isAuthenticated)
-      return
+    if (!isAuthenticated) return
 
     setIsMarkingAllRead(true)
     try {
@@ -555,11 +577,9 @@ export default function BrewSourceGrid({
       await brewApi.markAllRead({ category: category || undefined })
       // 触发刷新
       onSourcesChange?.()
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to mark all sources read:', err)
-    }
-    finally {
+    } finally {
       setIsMarkingAllRead(false)
     }
   }, [isAuthenticated, category, onSourcesChange])
@@ -577,29 +597,29 @@ export default function BrewSourceGrid({
   const RESIZE_THRESHOLD = 100 // 每个尺寸变化需要的像素距离
 
   // 开始拖拽调整尺寸
-  const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent, sourceId: number) => {
-    if (!isEditMode)
-      return
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent | React.TouchEvent, sourceId: number) => {
+      if (!isEditMode) return
 
-    const source = sources.find(s => s.id === sourceId)
-    if (!source)
-      return
+      const source = sources.find((s) => s.id === sourceId)
+      if (!source) return
 
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    const currentSize = source.card_size || 'mini'
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+      const currentSize = source.card_size || 'mini'
 
-    setResizingSource({
-      sourceId,
-      startY: clientY,
-      startSize: currentSize,
-      previewSize: currentSize,
-    })
-  }, [isEditMode, sources])
+      setResizingSource({
+        sourceId,
+        startY: clientY,
+        startSize: currentSize,
+        previewSize: currentSize,
+      })
+    },
+    [isEditMode, sources],
+  )
 
   // 拖拽移动处理 - 更新预览尺寸并触发 FLIP 动画
   useEffect(() => {
-    if (!resizingSource)
-      return
+    if (!resizingSource) return
 
     const handleMove = (e: MouseEvent | TouchEvent) => {
       const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
@@ -608,7 +628,10 @@ export default function BrewSourceGrid({
       // 计算目标尺寸
       const startIndex = SIZE_ORDER.indexOf(resizingSource.startSize)
       const sizeChange = Math.round(deltaY / RESIZE_THRESHOLD)
-      const targetIndex = Math.max(0, Math.min(SIZE_ORDER.length - 1, startIndex + sizeChange))
+      const targetIndex = Math.max(
+        0,
+        Math.min(SIZE_ORDER.length - 1, startIndex + sizeChange),
+      )
       const targetSize = SIZE_ORDER[targetIndex]
 
       // 尺寸变化时触发 FLIP 动画
@@ -616,7 +639,9 @@ export default function BrewSourceGrid({
         // 1. 记录当前位置（在 DOM 更新前）
         recordCardPositions()
         // 2. 更新预览尺寸（触发重渲染）
-        setResizingSource(prev => prev ? { ...prev, previewSize: targetSize } : null)
+        setResizingSource((prev) =>
+          prev ? { ...prev, previewSize: targetSize } : null,
+        )
         // 3. 双层 RAF 确保 React 渲染完成后再播放动画
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -627,10 +652,9 @@ export default function BrewSourceGrid({
     }
 
     const handleEnd = async () => {
-      if (!resizingSource)
-        return
+      if (!resizingSource) return
 
-      const source = sources.find(s => s.id === resizingSource.sourceId)
+      const source = sources.find((s) => s.id === resizingSource.sourceId)
       const finalSize = resizingSource.previewSize
 
       // 尺寸有变化时才更新
@@ -639,20 +663,25 @@ export default function BrewSourceGrid({
         recordCardPositions()
 
         // 更新数据
-        const optimisticSource: BrewSource = { ...source, card_size: finalSize }
+        const optimisticSource: BrewSource = {
+          ...source,
+          card_size: finalSize,
+        }
         onSourceUpdate?.(optimisticSource)
 
         // 播放 FLIP 动画
-        setTimeout(() => playFlipAnimations(), 0)
+        setTimeout(playFlipAnimations, 0)
 
         // 保存到数据库
         try {
           await brewApi.updateSource(source.id, { card_size: finalSize })
-        }
-        catch (err) {
+        } catch (err) {
           console.error('Failed to save card size:', err)
           // 失败时回滚
-          const rollbackSource: BrewSource = { ...source, card_size: resizingSource.startSize }
+          const rollbackSource: BrewSource = {
+            ...source,
+            card_size: resizingSource.startSize,
+          }
           onSourceUpdate?.(rollbackSource)
         }
       }
@@ -671,40 +700,54 @@ export default function BrewSourceGrid({
       window.removeEventListener('touchmove', handleMove)
       window.removeEventListener('touchend', handleEnd)
     }
-  }, [resizingSource, sources, onSourceUpdate, recordCardPositions, playFlipAnimations])
+  }, [
+    resizingSource,
+    sources,
+    onSourceUpdate,
+    recordCardPositions,
+    playFlipAnimations,
+  ])
 
   // 处理编辑保存
-  const handleEditSave = useCallback(async (id: number, data: {
-    name?: string
-    category?: string
-    update_interval?: number
-    enabled?: boolean
-    icon?: string
-    ai_style_tags?: string[]
-  }) => {
-    // 如果更新了图标，同时清除主题色，让图标加载时重新提取
-    const updateData = data.icon !== undefined
-      ? { ...data, theme_color: '' } // 清除主题色
-      : data
-    const updatedSource = await brewApi.updateSource(id, updateData)
-    onSourceUpdate?.(updatedSource)
-    onSourcesChange?.()
-  }, [onSourceUpdate, onSourcesChange])
+  const handleEditSave = useCallback(
+    async (
+      id: number,
+      data: {
+        name?: string
+        category?: string
+        update_interval?: number
+        enabled?: boolean
+        icon?: string
+        ai_style_tags?: string[]
+      },
+    ) => {
+      // 如果更新了图标，同时清除主题色，让图标加载时重新提取
+      const updateData =
+        data.icon !== undefined
+          ? { ...data, theme_color: '' } // 清除主题色
+          : data
+      const updatedSource = await brewApi.updateSource(id, updateData)
+      onSourceUpdate?.(updatedSource)
+      onSourcesChange?.()
+    },
+    [onSourceUpdate, onSourcesChange],
+  )
 
   // 处理单个删除
-  const handleDeleteSource = useCallback(async (sourceId: number) => {
-    setDeletingIds([sourceId])
-    try {
-      await brewApi.deleteSource(sourceId)
-      onSourcesChange?.()
-    }
-    catch (err) {
-      console.error('Failed to delete source:', err)
-    }
-    finally {
-      setDeletingIds([])
-    }
-  }, [onSourcesChange])
+  const handleDeleteSource = useCallback(
+    async (sourceId: number) => {
+      setDeletingIds([sourceId])
+      try {
+        await brewApi.deleteSource(sourceId)
+        onSourcesChange?.()
+      } catch (err) {
+        console.error('Failed to delete source:', err)
+      } finally {
+        setDeletingIds([])
+      }
+    },
+    [onSourcesChange],
+  )
 
   if (filteredSources.length === 0 && !searchQuery) {
     return (
@@ -742,9 +785,16 @@ export default function BrewSourceGrid({
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                {category ? t.brew.emptyCategoryNoSources.replace('{category}', category) : t.brew.emptyNoSources}
+                {category
+                  ? t.brew.emptyCategoryNoSources.replace(
+                      '{category}',
+                      category,
+                    )
+                  : t.brew.emptyNoSources}
               </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 leading-snug">{t.brew.addSourceHint}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 leading-snug">
+                {t.brew.addSourceHint}
+              </p>
             </div>
           </div>
         </div>
@@ -787,21 +837,23 @@ export default function BrewSourceGrid({
           <p className="text-lg font-medium text-gray-700 dark:text-gray-300">
             未找到匹配的订阅源
           </p>
-          <p className="text-sm mt-1 opacity-70">
-            尝试其他关键词
-          </p>
+          <p className="text-sm mt-1 opacity-70">尝试其他关键词</p>
         </div>
       )}
 
       {/* 卡片网格 */}
       {sortedSources.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4" style={{ gridAutoRows: '1.5rem' }}>
+        <div
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4"
+          style={{ gridAutoRows: '1.5rem' }}
+        >
           {sortedSources.map((source, index) => {
             // 分类排序模式下，检查是否需要显示分类标题
-            const showCategoryHeader = sortMode === 'category' && (
-              index === 0
-              || getMainCategoryForRender(sortedSources[index - 1].category) !== getMainCategoryForRender(source.category)
-            )
+            const showCategoryHeader =
+              sortMode === 'category' &&
+              (index === 0 ||
+                getMainCategoryForRender(sortedSources[index - 1].category) !==
+                  getMainCategoryForRender(source.category))
             const currentCategory = getMainCategoryForRender(source.category)
 
             return (
@@ -815,16 +867,26 @@ export default function BrewSourceGrid({
                     <span className="px-3 py-1.5 rounded-lg bg-white/60 dark:bg-black/40 backdrop-blur-sm text-[13px] font-medium text-gray-600 dark:text-gray-300 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
                       {currentCategory}
                       <span className="ml-1.5 text-[11px] text-gray-400 dark:text-gray-500">
-                        {sortedSources.filter(s => getMainCategoryForRender(s.category) === currentCategory).length}
+                        {
+                          sortedSources.filter(
+                            (s) =>
+                              getMainCategoryForRender(s.category) ===
+                              currentCategory,
+                          ).length
+                        }
                       </span>
                     </span>
                   </div>
                 )}
                 <SourceCard
-                  ref={el => setCardRef(source.id, el)}
+                  ref={(el) => setCardRef(source.id, el)}
                   source={source}
                   index={index}
-                  onSourceClick={isEditMode ? () => handleToggleSelect(source.id) : onSourceClick}
+                  onSourceClick={
+                    isEditMode
+                      ? () => handleToggleSelect(source.id)
+                      : onSourceClick
+                  }
                   onRefreshSource={onRefreshSource}
                   onThemeColorExtracted={handleThemeColorExtracted}
                   isEditMode={isEditMode}
@@ -833,7 +895,11 @@ export default function BrewSourceGrid({
                   onEdit={() => setEditingSource(source)}
                   onDelete={() => handleDeleteSource(source.id)}
                   onResizeStart={handleResizeStart}
-                  previewSize={resizingSource?.sourceId === source.id ? resizingSource.previewSize : undefined}
+                  previewSize={
+                    resizingSource?.sourceId === source.id
+                      ? resizingSource.previewSize
+                      : undefined
+                  }
                   isDragging={draggingSourceId === source.id}
                   isDragOver={dragOverSourceId === source.id}
                   onDragStart={handleCardDragStart}

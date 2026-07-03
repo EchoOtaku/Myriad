@@ -31,8 +31,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { registerPageCleanup } from '../core'
 import { useAnimationLevel } from '../../useAnimationLevel'
+import { registerPageCleanup } from '../core'
 
 /** 动画级别配置类型（派生自 useAnimationLevel 返回值，避免越层类型导入） */
 type AnimationConfig = ReturnType<typeof useAnimationLevel>
@@ -74,7 +74,10 @@ export function useBrewScheduler(): void {
 // ==================== 动画配置 Hook ====================
 
 // 缓存的动画配置，避免每次调用都创建新对象
-const ANIM_CONFIG_CACHE = new Map<string, ReturnType<typeof useBrewAnimationConfig>>()
+const ANIM_CONFIG_CACHE = new Map<
+  string,
+  ReturnType<typeof useBrewAnimationConfig>
+>()
 
 /**
  * 获取 Brew 专用的动画配置
@@ -172,15 +175,17 @@ export function useBrewCardStagger(
 
   // 计算延迟
   const delay = useMemo(() => {
-    if (isDisabled)
-      return 0
+    if (isDisabled) return 0
     return Math.min(index * config.baseDelay, config.maxDelay)
   }, [index, config.baseDelay, config.maxDelay, isDisabled])
 
   // 状态：是否可以开始动画
   const [canAnimate, setCanAnimate] = useState(() => {
     // 如果已经动画过且是同一批次，直接显示
-    if (hasAnimatedRef.current && lastBatchIdRef.current === pageAnimationBatchId) {
+    if (
+      hasAnimatedRef.current &&
+      lastBatchIdRef.current === pageAnimationBatchId
+    ) {
       return true
     }
     return isDisabled
@@ -200,7 +205,10 @@ export function useBrewCardStagger(
     }
 
     // 检查是否是新的动画批次
-    if (lastBatchIdRef.current === pageAnimationBatchId && hasAnimatedRef.current) {
+    if (
+      lastBatchIdRef.current === pageAnimationBatchId &&
+      hasAnimatedRef.current
+    ) {
       // 同一批次且已动画过，直接显示
       setCanAnimate(true)
       return
@@ -223,8 +231,7 @@ export function useBrewCardStagger(
 
   // 使用预计算的样式，避免每次渲染创建新对象
   const animateStyle = useMemo<React.CSSProperties>(() => {
-    if (isDisabled)
-      return EMPTY_STYLE
+    if (isDisabled) return EMPTY_STYLE
 
     // 使用 CSS transition 类名而不是内联样式来优化性能
     const duration = animConfig.level === 'light' ? 150 : 250
@@ -288,11 +295,26 @@ export const brewAnimationPresets = {
 export function getBrewTransition(
   animConfig: AnimationConfig,
   type: 'card' | 'reader' | 'fade' = 'card',
-): { duration: number, ease: [number, number, number, number] } {
+): { duration: number; ease: [number, number, number, number] } {
   const durations = {
-    card: animConfig.level === 'none' ? 0 : animConfig.level === 'light' ? 0.15 : 0.25,
-    reader: animConfig.level === 'none' ? 0 : animConfig.level === 'light' ? 0.2 : 0.4,
-    fade: animConfig.level === 'none' ? 0 : animConfig.level === 'light' ? 0.1 : 0.2,
+    card:
+      animConfig.level === 'none'
+        ? 0
+        : animConfig.level === 'light'
+          ? 0.15
+          : 0.25,
+    reader:
+      animConfig.level === 'none'
+        ? 0
+        : animConfig.level === 'light'
+          ? 0.2
+          : 0.4,
+    fade:
+      animConfig.level === 'none'
+        ? 0
+        : animConfig.level === 'light'
+          ? 0.1
+          : 0.2,
   }
 
   return {

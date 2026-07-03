@@ -66,7 +66,7 @@ pub async fn get_setup_config() -> Result<Json<Value>, (StatusCode, Json<Value>)
     let config = json!({
         "database_url_set": env::var("DATABASE_URL").is_ok(),
         "server_host": env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-        "server_port": env::var("SERVER_PORT").unwrap_or_else(|_| "3000".to_string()),
+        "server_port": env::var("SERVER_PORT").unwrap_or_else(|_| "1103".to_string()),
         "github_oauth": {
             "client_id_set": config_guard.github_client_id.is_some(),
             "client_secret_set": config_guard.github_client_secret.is_some(),

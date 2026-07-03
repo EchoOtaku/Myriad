@@ -32,7 +32,7 @@ export const SettingGroup: React.FC<SettingGroupProps> = ({
 
   const handleToggle = React.useCallback(() => {
     if (collapsible) {
-      setIsExpanded(prev => !prev)
+      setIsExpanded((prev) => !prev)
     }
   }, [collapsible])
 
@@ -50,10 +50,14 @@ export const SettingGroup: React.FC<SettingGroupProps> = ({
             {title}
           </h4>
         )}
-        {description && <p className="setting-group-description">{description}</p>}
+        {description && (
+          <p className="setting-group-description">{description}</p>
+        )}
       </div>
       {collapsible && (
-        <span className={`setting-group-chevron ${isExpanded ? 'expanded' : ''}`}>
+        <span
+          className={`setting-group-chevron ${isExpanded ? 'expanded' : ''}`}
+        >
           ▼
         </span>
       )}
@@ -62,30 +66,30 @@ export const SettingGroup: React.FC<SettingGroupProps> = ({
 
   return (
     <div className={`setting-group ${className}`}>
-      {(title || description) && (
-        collapsible
-          ? (
-              <button
-                ref={buttonRef}
-                type="button"
-                className="setting-group-header collapsible"
-                onClick={handleToggle}
-                aria-label={title ? `${isExpanded ? '收起' : '展开'} ${title}` : undefined}
-              >
-                {headerContent}
-              </button>
-            )
-          : (
-              <div className="setting-group-header">
-                {headerContent}
-              </div>
-            )
-      )}
+      {(title || description) &&
+        (collapsible ? (
+          <button
+            ref={buttonRef}
+            type="button"
+            className="setting-group-header collapsible"
+            onClick={handleToggle}
+            aria-label={
+              title ? `${isExpanded ? '收起' : '展开'} ${title}` : undefined
+            }
+          >
+            {headerContent}
+          </button>
+        ) : (
+          <div className="setting-group-header">{headerContent}</div>
+        ))}
 
       {(!collapsible || isExpanded) && (
         <div className="setting-group-content">
           {items?.map((itemProps, index) => (
-            <SettingItem key={`${itemProps.itemKey || 'item'}-${index}`} {...itemProps} />
+            <SettingItem
+              key={`${itemProps.itemKey || 'item'}-${index}`}
+              {...itemProps}
+            />
           ))}
           {children}
         </div>

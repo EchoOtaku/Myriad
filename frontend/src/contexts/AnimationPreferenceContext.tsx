@@ -15,14 +15,20 @@ interface AnimationPreferenceContextType {
   togglePerformanceMode: () => void // 在 standard 和 light 之间切换
 }
 
-const AnimationPreferenceContext = createContext<AnimationPreferenceContextType | undefined>(undefined)
+const AnimationPreferenceContext = createContext<
+  AnimationPreferenceContextType | undefined
+>(undefined)
 
 // Export the context for direct useContext access
 export { AnimationPreferenceContext }
 
 const STORAGE_KEY = 'animation-preference'
 
-export function AnimationPreferenceProvider({ children }: { children: ReactNode }) {
+export function AnimationPreferenceProvider({
+  children,
+}: {
+  children: ReactNode
+}) {
   const [preference, setPreferenceState] = useState<AnimationPreference>(() => {
     // 从 localStorage 读取用户偏好
     if (typeof window !== 'undefined') {
@@ -50,7 +56,9 @@ export function AnimationPreferenceProvider({ children }: { children: ReactNode 
   }
 
   return (
-    <AnimationPreferenceContext.Provider value={{ preference, setPreference, togglePerformanceMode }}>
+    <AnimationPreferenceContext.Provider
+      value={{ preference, setPreference, togglePerformanceMode }}
+    >
       {children}
     </AnimationPreferenceContext.Provider>
   )
@@ -59,7 +67,9 @@ export function AnimationPreferenceProvider({ children }: { children: ReactNode 
 export function useAnimationPreference() {
   const context = useContext(AnimationPreferenceContext)
   if (context === undefined) {
-    throw new Error('useAnimationPreference must be used within AnimationPreferenceProvider')
+    throw new Error(
+      'useAnimationPreference must be used within AnimationPreferenceProvider',
+    )
   }
   return context
 }

@@ -58,73 +58,6 @@
 // 每个页面独立的调度器 Hooks，统一通过 barrel 导出
 
 // Home
-export {
-  cleanupHome,
-  useHomeIdle,
-  useHomeRaf,
-  useHomeResize,
-  useHomeResizeObserver,
-  useHomeScheduler,
-  useHomeVisibility,
-  useHomeVisibilityInterval,
-} from './pages/home'
-
-// Library
-export {
-  cleanupLibrary,
-  useLibraryInfiniteScroll,
-  useLibraryIntersectionObserver,
-  useLibraryInView,
-  useLibraryLazyLoad,
-  useLibraryPrefetch,
-  useLibraryResize,
-  useLibraryScheduler,
-} from './pages/library'
-
-// Reports
-export {
-  cleanupReports,
-  useReportsBatchDom,
-  useReportsInterval,
-  useReportsRaf,
-  useReportsRafThrottle,
-  useReportsScheduler,
-  useReportsTimeout,
-  useReportsVisibility,
-  useReportsVisibilityInterval,
-} from './pages/reports'
-
-// Brew
-export {
-  brewAnimationPresets,
-  cleanupBrew,
-  getBrewTransition,
-  useBrewAnimationConfig,
-  useBrewCardStagger,
-  useBrewScheduler,
-} from './pages/brew'
-
-// Simple pages (Config, Login, Setup, DataManagement, Details)
-export {
-  useConfigScheduler,
-  useDataManagementScheduler,
-  useDetailsScheduler,
-  useLoginScheduler,
-  useSetupScheduler,
-  useSimpleDebounce,
-  useSimplePageScheduler,
-  useSimpleThrottle,
-  useSimpleTimeout,
-} from './pages/simple'
-
-// Tapp
-export {
-  cleanupTapp,
-  useTappScheduler,
-  useTappStagger,
-  useTappVisibility,
-} from './pages/tapp'
-
 // ==================== 页面功能配置 ====================
 // 便捷函数
 import { coordinator } from './coordinator'
@@ -192,7 +125,79 @@ export {
   yieldToMain as yieldToMainAtomic,
 } from './core'
 
-export { Feature, getFeatureList, hasFeature, PAGE_FEATURES } from './pageFeatures'
+export {
+  Feature,
+  getFeatureList,
+  hasFeature,
+  PAGE_FEATURES,
+} from './pageFeatures'
+
+// Brew
+export {
+  brewAnimationPresets,
+  cleanupBrew,
+  getBrewTransition,
+  useBrewAnimationConfig,
+  useBrewCardStagger,
+  useBrewScheduler,
+} from './pages/brew'
+
+export {
+  cleanupHome,
+  useHomeIdle,
+  useHomeRaf,
+  useHomeResize,
+  useHomeResizeObserver,
+  useHomeScheduler,
+  useHomeVisibility,
+  useHomeVisibilityInterval,
+} from './pages/home'
+
+// Library
+export {
+  cleanupLibrary,
+  useLibraryInfiniteScroll,
+  useLibraryIntersectionObserver,
+  useLibraryInView,
+  useLibraryLazyLoad,
+  useLibraryPrefetch,
+  useLibraryResize,
+  useLibraryScheduler,
+} from './pages/library'
+
+// Reports
+export {
+  cleanupReports,
+  useReportsBatchDom,
+  useReportsInterval,
+  useReportsRaf,
+  useReportsRafThrottle,
+  useReportsScheduler,
+  useReportsTimeout,
+  useReportsVisibility,
+  useReportsVisibilityInterval,
+} from './pages/reports'
+
+// Simple pages (Config, Login, Setup, DataManagement, Details)
+export {
+  useConfigScheduler,
+  useDataManagementScheduler,
+  useDetailsScheduler,
+  useLoginScheduler,
+  useSetupScheduler,
+  useSimpleDebounce,
+  useSimplePageScheduler,
+  useSimpleThrottle,
+  useSimpleTimeout,
+} from './pages/simple'
+
+// Tapp
+export {
+  cleanupTapp,
+  useTappScheduler,
+  useTappStagger,
+  useTappVisibility,
+} from './pages/tapp'
 
 // ==================== 类型定义 ====================
 export type {
@@ -226,10 +231,7 @@ export { usePageReady } from './usePageReady'
 export { pageTransitionManager, usePageTransition } from './usePageTransition'
 
 // 🔧 新增：路由调度器整合 Hook
-export {
-  usePageScheduler,
-  useRouteScheduler,
-} from './useRouteScheduler'
+export { usePageScheduler, useRouteScheduler } from './useRouteScheduler'
 
 export { useStaggerAnimation } from './useStaggerAnimation'
 
@@ -251,7 +253,9 @@ export function resetPageAnimationState() {
 /**
  * 配置协调器
  */
-export function configureAnimationCoordinator(config: Partial<import('./types').CoordinatorConfig>) {
+export function configureAnimationCoordinator(
+  config: Partial<import('./types').CoordinatorConfig>,
+) {
   coordinator.updateConfig(config)
 }
 
@@ -410,7 +414,9 @@ export function getObservedElementCount(): number {
 /**
  * 获取元素的缓存尺寸（无需触发重排）
  */
-export function getCachedSize(element: Element): { width: number, height: number } | null {
+export function getCachedSize(
+  element: Element,
+): { width: number; height: number } | null {
   return coordinator.getCachedSize(element)
 }
 
@@ -448,7 +454,7 @@ export function getCachedSize(element: Element): { width: number, height: number
 export function observeIntersection(
   element: Element,
   callback: (entry: IntersectionObserverEntry) => void,
-  options?: { threshold?: number, rootMargin?: string },
+  options?: { threshold?: number; rootMargin?: string },
 ): () => void {
   return coordinator.observeIntersection(element, callback, options)
 }
@@ -499,7 +505,9 @@ export function getIntersectionObserverCount(): number {
  * }, []);
  * ```
  */
-export function onVisibilityChange(callback: (isVisible: boolean) => void): () => void {
+export function onVisibilityChange(
+  callback: (isVisible: boolean) => void,
+): () => void {
   return coordinator.onVisibilityChange(callback)
 }
 

@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react'
 import type { Song } from '../utils/musicPlayer'
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 /**
  * 全局音乐播放器状态管理 - 使用 React Context 实现实时状态同步
@@ -81,13 +89,16 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener('music-player-state-change', handleMusicStateChange)
     return () => {
-      window.removeEventListener('music-player-state-change', handleMusicStateChange)
+      window.removeEventListener(
+        'music-player-state-change',
+        handleMusicStateChange,
+      )
     }
   }, [])
 
   // 更新状态的方法
   const updateState = useCallback((newState: Partial<MusicPlayerState>) => {
-    setState(prev => ({ ...prev, ...newState }))
+    setState((prev) => ({ ...prev, ...newState }))
   }, [])
 
   // 播放歌曲
@@ -106,7 +117,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <MusicPlayerContext.Provider value={{ ...state, playSong, togglePlayPause, stopTempPlay, updateState }}>
+    <MusicPlayerContext.Provider
+      value={{ ...state, playSong, togglePlayPause, stopTempPlay, updateState }}
+    >
       {children}
     </MusicPlayerContext.Provider>
   )
@@ -118,7 +131,9 @@ export function useMusicPlayerControl() {
 
   if (!context) {
     // 如果没有 Provider，使用降级方案（事件监听）
-    console.warn('MusicPlayerProvider not found, using fallback event-based approach')
+    console.warn(
+      'MusicPlayerProvider not found, using fallback event-based approach',
+    )
     return useFallbackMusicPlayerControl()
   }
 
@@ -147,7 +162,7 @@ const musicStateListeners = new Set<() => void>()
 
 /** 通知所有监听器状态已变化 */
 function emitMusicStateChange() {
-  musicStateListeners.forEach(listener => listener())
+  musicStateListeners.forEach((listener) => listener())
 }
 
 /** 订阅状态变化 */
@@ -180,7 +195,7 @@ function updateGlobalMusicState(newState: Partial<MusicPlayerState>) {
 if (typeof window !== 'undefined') {
   // 暴露 audioManager 到 window（供 Tapp SDK 获取频谱数据）
   import('../utils/musicPlayer').then(({ audioManager }) => {
-    (window as any).audioManager = audioManager
+    ;(window as any).audioManager = audioManager
   })
 
   // 从 window 对象读取初始状态
@@ -228,11 +243,14 @@ function useFallbackMusicPlayerControl() {
   }, [])
 
   // 🔧 使用 useMemo 避免每次都创建新对象
-  return useMemo(() => ({
-    ...state,
-    playSong,
-    togglePlayPause,
-    stopTempPlay,
-    updateState,
-  }), [state, playSong, togglePlayPause, stopTempPlay, updateState])
+  return useMemo(
+    () => ({
+      ...state,
+      playSong,
+      togglePlayPause,
+      stopTempPlay,
+      updateState,
+    }),
+    [state, playSong, togglePlayPause, stopTempPlay, updateState],
+  )
 }

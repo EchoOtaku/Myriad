@@ -4,7 +4,10 @@
  */
 
 import { FaTrash } from '@lib/icons'
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { useCallback, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 
@@ -36,8 +39,7 @@ export function UninstallConfirmDialog({
     setUninstalling(true)
     try {
       await onConfirm(keepData)
-    }
-    finally {
+    } finally {
       setUninstalling(false)
       setKeepData(false)
     }
@@ -94,7 +96,7 @@ export function UninstallConfirmDialog({
               <input
                 type="checkbox"
                 checked={keepData}
-                onChange={e => setKeepData(e.target.checked)}
+                onChange={(e) => setKeepData(e.target.checked)}
                 disabled={uninstalling}
                 className="mt-0.5 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-neutral-600 dark:bg-neutral-700"
               />
@@ -122,19 +124,17 @@ export function UninstallConfirmDialog({
                 disabled={uninstalling}
                 className="flex-1 px-4 py-2.5 font-medium rounded-lg transition-colors bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {uninstalling
-                  ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        {t.tapp.uninstalling}
-                      </>
-                    )
-                  : (
-                      <>
-                        <FaTrash className="w-4 h-4" />
-                        {t.tapp.confirmUninstallBtn}
-                      </>
-                    )}
+                {uninstalling ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    {t.tapp.uninstalling}
+                  </>
+                ) : (
+                  <>
+                    <FaTrash className="w-4 h-4" />
+                    {t.tapp.confirmUninstallBtn}
+                  </>
+                )}
               </button>
             </div>
           </motion.div>

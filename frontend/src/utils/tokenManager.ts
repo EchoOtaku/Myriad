@@ -11,10 +11,9 @@ export class TokenManager {
    * 验证 JWT Token 格式是否有效
    */
   private static isValidToken(token: string): boolean {
-    if (!token || typeof token !== 'string')
-      return false
+    if (!token || typeof token !== 'string') return false
     const parts = token.split('.')
-    return parts.length === 3 && parts.every(part => part.length > 0)
+    return parts.length === 3 && parts.every((part) => part.length > 0)
   }
 
   /**
@@ -33,8 +32,7 @@ export class TokenManager {
         }
       }
       return null
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -54,8 +52,7 @@ export class TokenManager {
       // ✅ 安全修复 P0: 不再回退到 localStorage
       // 如果 Cookie 中没有 Token，说明用户未登录或 Token 已过期
       return null
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -76,8 +73,7 @@ export class TokenManager {
 
       // HttpOnly Cookie 由后端在 Set-Cookie 头中设置，前端无法设置
       // Token 仅存储在 HttpOnly Cookie 中，JavaScript 无法访问
-    }
-    catch (e) {
+    } catch (e) {
       console.error('Failed to validate token:', e)
       throw e
     }
@@ -93,8 +89,7 @@ export class TokenManager {
 
       // 清除 Cookie（设置过期时间为过去）
       document.cookie = `${this.COOKIE_NAME}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Strict`
-    }
-    catch (e) {
+    } catch (e) {
       console.error('Failed to remove token:', e)
     }
   }
@@ -113,18 +108,15 @@ export class TokenManager {
   static decodeToken(token?: string): any {
     try {
       const t = token || this.getToken()
-      if (!t)
-        return null
+      if (!t) return null
 
       const parts = t.split('.')
-      if (parts.length !== 3)
-        return null
+      if (parts.length !== 3) return null
 
       const payload = parts[1]
       const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
       return JSON.parse(decoded)
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -135,14 +127,12 @@ export class TokenManager {
   static isTokenExpiringSoon(thresholdMs: number = 300000): boolean {
     try {
       const payload = this.decodeToken()
-      if (!payload || !payload.exp)
-        return true
+      if (!payload || !payload.exp) return true
 
       const expirationTime = payload.exp * 1000 // JWT exp 是秒，转换为毫秒
       const now = Date.now()
       return expirationTime - now < thresholdMs
-    }
-    catch {
+    } catch {
       return true
     }
   }
@@ -153,11 +143,9 @@ export class TokenManager {
   static getTokenExpiration(): Date | null {
     try {
       const payload = this.decodeToken()
-      if (!payload || !payload.exp)
-        return null
+      if (!payload || !payload.exp) return null
       return new Date(payload.exp * 1000)
-    }
-    catch {
+    } catch {
       return null
     }
   }

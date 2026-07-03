@@ -64,8 +64,7 @@ export async function getWeatherInfo(): Promise<WeatherData | null> {
     }
 
     return weatherData
-  }
-  catch (error) {
+  } catch (error) {
     console.warn('[天气] 获取失败:', error)
     return null
   }
@@ -83,7 +82,9 @@ async function getClientIP(): Promise<string | null> {
  * 获取地理位置（带IP缓存）
  * 使用统一的地理位置服务
  */
-async function getGeolocationWithCache(clientIP: string): Promise<{ latitude: number, longitude: number, city: string } | null> {
+async function getGeolocationWithCache(
+  clientIP: string,
+): Promise<{ latitude: number; longitude: number; city: string } | null> {
   const location = await getGeoLocationWithLocalCache(clientIP)
 
   if (location) {
@@ -111,7 +112,11 @@ async function getGeolocationWithCache(clientIP: string): Promise<{ latitude: nu
  * 获取天气数据（带位置缓存）
  * 位置→天气的映射缓存30分钟
  */
-async function getWeatherDataWithCache(location: { latitude: number, longitude: number, city: string }): Promise<WeatherData | null> {
+async function getWeatherDataWithCache(location: {
+  latitude: number
+  longitude: number
+  city: string
+}): Promise<WeatherData | null> {
   // 使用经纬度作为缓存key（精确到小数点后2位）
   const locationKey = `${location.latitude.toFixed(2)},${location.longitude.toFixed(2)}`
   const cacheKey = `weather_data_${locationKey}`
@@ -138,19 +143,29 @@ async function getWeatherDataWithCache(location: { latitude: number, longitude: 
     const aqiUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${location.latitude}&longitude=${location.longitude}&current=us_aqi`
 
     const [weatherData, aqiData] = await Promise.all([
-      dedupedFetch(weatherUrl, async () => {
-        const response = await fetch(weatherUrl, { signal: AbortSignal.timeout(10000) })
-        if (!response.ok)
-          throw new Error('Weather fetch failed')
-        return response.json()
-      }, { cacheTTL: 30 * 60 * 1000 }), // 30分钟缓存
+      dedupedFetch(
+        weatherUrl,
+        async () => {
+          const response = await fetch(weatherUrl, {
+            signal: AbortSignal.timeout(10000),
+          })
+          if (!response.ok) throw new Error('Weather fetch failed')
+          return response.json()
+        },
+        { cacheTTL: 30 * 60 * 1000 },
+      ), // 30分钟缓存
 
-      dedupedFetch(aqiUrl, async () => {
-        const response = await fetch(aqiUrl, { signal: AbortSignal.timeout(10000) })
-        if (!response.ok)
-          return null
-        return response.json()
-      }, { cacheTTL: 30 * 60 * 1000 }).catch(() => null), // AQI 失败不影响天气
+      dedupedFetch(
+        aqiUrl,
+        async () => {
+          const response = await fetch(aqiUrl, {
+            signal: AbortSignal.timeout(10000),
+          })
+          if (!response.ok) return null
+          return response.json()
+        },
+        { cacheTTL: 30 * 60 * 1000 },
+      ).catch(() => null), // AQI 失败不影响天气
     ])
 
     const current = weatherData.current
@@ -200,8 +215,7 @@ async function getWeatherDataWithCache(location: { latitude: number, longitude: 
     localStorage.setItem(cacheTimeKey, Date.now().toString())
 
     return result
-  }
-  catch (error) {
+  } catch (error) {
     console.warn('[天气数据] 获取失败:', error)
     return null
   }

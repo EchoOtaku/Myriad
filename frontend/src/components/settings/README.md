@@ -36,42 +36,42 @@ settings/
 ```typescript
 interface SettingItemConfig {
   // 基础属性
-  key: string; // 唯一标识
-  label: string; // 显示标签
-  description?: string; // 描述说明
-  hint?: string; // 提示文本
+  key: string // 唯一标识
+  label: string // 显示标签
+  description?: string // 描述说明
+  hint?: string // 提示文本
 
   // 类型相关
-  type: SettingType; // 设置项类型
-  value: unknown; // 当前值
-  defaultValue?: unknown; // 默认值
+  type: SettingType // 设置项类型
+  value: unknown // 当前值
+  defaultValue?: unknown // 默认值
 
   // 交互
-  onChange: (value: unknown) => void;
-  onFocus?: () => void;
-  onBlur?: () => void;
+  onChange: (value: unknown) => void
+  onFocus?: () => void
+  onBlur?: () => void
 
   // 验证
-  required?: boolean;
-  validate?: (value: unknown) => string | null;
+  required?: boolean
+  validate?: (value: unknown) => string | null
 
   // 状态
-  disabled?: boolean;
-  loading?: boolean;
-  error?: string;
+  disabled?: boolean
+  loading?: boolean
+  error?: string
 
   // 类型特定配置
-  options?: SettingOption[]; // 用于 select/provider
-  min?: number; // 用于 number/slider
-  max?: number;
-  step?: number;
-  placeholder?: string; // 用于 input
-  inputType?: 'text' | 'password' | 'url' | 'email';
-  multiline?: boolean; // 用于 textarea
+  options?: SettingOption[] // 用于 select/provider
+  min?: number // 用于 number/slider
+  max?: number
+  step?: number
+  placeholder?: string // 用于 input
+  inputType?: 'text' | 'password' | 'url' | 'email'
+  multiline?: boolean // 用于 textarea
 
   // 样式
-  size?: 'sm' | 'md' | 'lg';
-  layout?: 'horizontal' | 'vertical';
+  size?: 'sm' | 'md' | 'lg'
+  layout?: 'horizontal' | 'vertical'
 }
 ```
 
@@ -87,7 +87,7 @@ type SettingType =
   | 'slider' // 滑动条
   | 'button' // 操作按钮
   | 'checkbox' // 复选框
-  | 'custom'; // 自定义渲染
+  | 'custom' // 自定义渲染
 ```
 
 ## 使用示例
@@ -148,7 +148,11 @@ type SettingType =
   title="普通用户权限"
   description="控制普通用户可使用的 Tapp 权限"
   permissions={[
-    { key: 'ai:generate', label: 'AI 生成', hint: '允许 Tapp 调用 AI 生成内容' },
+    {
+      key: 'ai:generate',
+      label: 'AI 生成',
+      hint: '允许 Tapp 调用 AI 生成内容',
+    },
     { key: 'ai:analyze', label: 'AI 分析', hint: '允许 Tapp 调用 AI 分析内容' },
     // ...
   ]}

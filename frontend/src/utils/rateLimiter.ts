@@ -29,7 +29,10 @@ const DEFAULT_CONFIGS: Record<string, RateLimitConfig> = {
 /**
  * 检查是否超出限流
  */
-export function checkRateLimit(key: string, configName: keyof typeof DEFAULT_CONFIGS = 'api'): boolean {
+export function checkRateLimit(
+  key: string,
+  configName: keyof typeof DEFAULT_CONFIGS = 'api',
+): boolean {
   const config = DEFAULT_CONFIGS[configName]
   const now = Date.now()
 
@@ -44,8 +47,7 @@ export function checkRateLimit(key: string, configName: keyof typeof DEFAULT_CON
   if (entry.blocked && entry.blockedUntil) {
     if (now < entry.blockedUntil) {
       return false // 仍在封禁期
-    }
-    else {
+    } else {
       // 封禁期结束，重置
       entry.blocked = false
       entry.blockedUntil = undefined
@@ -55,7 +57,7 @@ export function checkRateLimit(key: string, configName: keyof typeof DEFAULT_CON
 
   // 清理过期的时间戳
   entry.timestamps = entry.timestamps.filter(
-    timestamp => now - timestamp < config.windowMs,
+    (timestamp) => now - timestamp < config.windowMs,
   )
 
   // 检查是否超出限制
@@ -74,16 +76,18 @@ export function checkRateLimit(key: string, configName: keyof typeof DEFAULT_CON
 /**
  * 获取剩余请求次数
  */
-export function getRemainingRequests(key: string, configName: keyof typeof DEFAULT_CONFIGS = 'api'): number {
+export function getRemainingRequests(
+  key: string,
+  configName: keyof typeof DEFAULT_CONFIGS = 'api',
+): number {
   const config = DEFAULT_CONFIGS[configName]
   const entry = rateLimitStore.get(key)
 
-  if (!entry)
-    return config.maxRequests
+  if (!entry) return config.maxRequests
 
   const now = Date.now()
   const validTimestamps = entry.timestamps.filter(
-    timestamp => now - timestamp < config.windowMs,
+    (timestamp) => now - timestamp < config.windowMs,
   )
 
   return Math.max(0, config.maxRequests - validTimestamps.length)
@@ -92,12 +96,14 @@ export function getRemainingRequests(key: string, configName: keyof typeof DEFAU
 /**
  * 获取重置时间（毫秒）
  */
-export function getResetTime(key: string, configName: keyof typeof DEFAULT_CONFIGS = 'api'): number {
+export function getResetTime(
+  key: string,
+  configName: keyof typeof DEFAULT_CONFIGS = 'api',
+): number {
   const config = DEFAULT_CONFIGS[configName]
   const entry = rateLimitStore.get(key)
 
-  if (!entry || entry.timestamps.length === 0)
-    return 0
+  if (!entry || entry.timestamps.length === 0) return 0
 
   const oldestTimestamp = Math.min(...entry.timestamps)
   const resetTime = oldestTimestamp + config.windowMs

@@ -32,12 +32,14 @@ export function SearchMode({
 
   return (
     <IslandShell variant={variant} motionKey={`search-bar-${variant}`}>
-      <div className={`flex items-center gap-2 px-3 h-9 ${isMobile ? 'flex-1' : ''}`}>
+      <div
+        className={`flex items-center gap-2 px-3 h-9 ${isMobile ? 'flex-1' : ''}`}
+      >
         <Search className="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0" />
         <input
           type="text"
           value={searchQuery}
-          onChange={e => setSearchQuery?.(e.target.value)}
+          onChange={(e) => setSearchQuery?.(e.target.value)}
           placeholder={t.searchSources}
           autoFocus
           className={`${isMobile ? 'flex-1' : 'w-40 sm:w-56'} ${ISLAND_INPUT}`}

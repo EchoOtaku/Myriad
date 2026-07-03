@@ -11,7 +11,7 @@ impl SiteConfig {
     /// # 优先级
     /// 1. 数据库 DynamicConfig.base_url
     /// 2. 环境变量 BASE_URL 或 FRONTEND_URL
-    /// 3. 开发默认值 http://localhost:4321
+    /// 3. 开发默认值 http://localhost:1102
     pub async fn get_base_url() -> String {
         use crate::GLOBAL_DYNAMIC_CONFIG;
         use std::env;
@@ -44,7 +44,7 @@ impl SiteConfig {
 
         // 4. 开发默认值
         tracing::warn!("⚠️ No base_url configured, using localhost default");
-        "http://localhost:4321".to_string()
+        "http://localhost:1102".to_string()
     }
 
     /// 判断是否为生产环境（HTTPS）

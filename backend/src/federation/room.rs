@@ -243,7 +243,7 @@ pub async fn create_room(
             Json(json!({"error": "Room name must be 1-500 characters"})),
         ));
     }
-    if req.description.as_ref().map_or(false, |d| d.len() > 5000) {
+    if req.description.as_ref().is_some_and(|d| d.len() > 5000) {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Description must be at most 5000 characters"})),
@@ -251,7 +251,7 @@ pub async fn create_room(
     }
 
     // 验证 max_members 范围
-    if max_members < 2 || max_members > 5000 {
+    if !(2..=5000).contains(&max_members) {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "max_members must be between 2 and 5000"})),
@@ -395,7 +395,7 @@ pub async fn update_room(
         }
     }
     if let Some(max) = req.max_members {
-        if max < 2 || max > 5000 {
+        if !(2..=5000).contains(&max) {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(json!({"error": "max_members must be between 2 and 5000"})),
@@ -446,7 +446,7 @@ pub async fn update_room(
         ));
     }
 
-    set_parts.push(format!("updated_at = NOW()"));
+    set_parts.push("updated_at = NOW()".to_string());
     let set_clause = set_parts.join(", ");
     let sql = format!(
         "UPDATE federation_rooms SET {} WHERE room_id = ${}",

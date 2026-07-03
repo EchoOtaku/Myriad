@@ -4,8 +4,8 @@
  * 提供统一的 HTTP 请求封装
  */
 
-import { getCSRFToken } from '../utils/csrf'
 import { API_URL } from '../config'
+import { getCSRFToken } from '../utils/csrf'
 
 const API_BASE = `${API_URL}/api`
 
@@ -42,7 +42,10 @@ export class ApiError extends Error {
 /**
  * 构建完整 URL
  */
-function buildUrl(endpoint: string, params?: Record<string, string | number | boolean | undefined>): string {
+function buildUrl(
+  endpoint: string,
+  params?: Record<string, string | number | boolean | undefined>,
+): string {
   const url = new URL(`${API_BASE}${endpoint}`, window.location.origin)
 
   if (params) {
@@ -112,8 +115,7 @@ async function request<T>(
         errorMessage = errorBody.message || errorBody.error || errorMessage
         errorCode = errorBody.code
         errorDetails = errorBody.details
-      }
-      catch {
+      } catch {
         // 忽略 JSON 解析错误
       }
 
@@ -127,8 +129,7 @@ async function request<T>(
     }
 
     return {} as T
-  }
-  catch (error) {
+  } catch (error) {
     clearTimeout(timeoutId)
 
     if (error instanceof ApiError) {
@@ -161,7 +162,11 @@ export const apiService = {
   /**
    * POST 请求
    */
-  post<T>(endpoint: string, data?: unknown, options?: ApiRequestOptions): Promise<T> {
+  post<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: ApiRequestOptions,
+  ): Promise<T> {
     return request<T>(endpoint, {
       ...options,
       method: 'POST',
@@ -172,7 +177,11 @@ export const apiService = {
   /**
    * PUT 请求
    */
-  put<T>(endpoint: string, data?: unknown, options?: ApiRequestOptions): Promise<T> {
+  put<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: ApiRequestOptions,
+  ): Promise<T> {
     return request<T>(endpoint, {
       ...options,
       method: 'PUT',
@@ -183,7 +192,11 @@ export const apiService = {
   /**
    * PATCH 请求
    */
-  patch<T>(endpoint: string, data?: unknown, options?: ApiRequestOptions): Promise<T> {
+  patch<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: ApiRequestOptions,
+  ): Promise<T> {
     return request<T>(endpoint, {
       ...options,
       method: 'PATCH',

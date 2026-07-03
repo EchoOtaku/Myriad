@@ -12,8 +12,18 @@
  */
 
 import type { WidgetComponentProps } from '../WidgetGrid'
-import { FaGithub, FaSteam, FaTimes, getIconByName, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
+import {
+  FaGithub,
+  FaSteam,
+  FaTimes,
+  getIconByName,
+  SiBilibili,
+  SiNeteasecloudmusic,
+} from '@lib/icons'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -47,8 +57,7 @@ function escapeHtml(text: string): string {
 
 // 验证 URL 模式是否安全
 function isValidUrlPattern(pattern: string): boolean {
-  if (!pattern)
-    return true // 空字符串允许
+  if (!pattern) return true // 空字符串允许
 
   // 必须以 http:// 或 https:// 或 mailto: 开头
   if (!VALID_PROTOCOLS_REGEX.test(pattern)) {
@@ -95,8 +104,7 @@ function sanitizePopupText(text: string): string {
 
 // 消毒 URL 模式
 function sanitizeUrlPattern(pattern: string): string {
-  if (!pattern)
-    return ''
+  if (!pattern) return ''
 
   // 移除空白字符
   let cleaned = pattern.trim()
@@ -163,7 +171,8 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
     icon: <FaSteam />,
     color: '#1B2838',
     darkColor: '#c7d5e0',
-    getUserUrl: (steamId: string) => `https://steamcommunity.com/profiles/${steamId}`,
+    getUserUrl: (steamId: string) =>
+      `https://steamcommunity.com/profiles/${steamId}`,
     configKey: 'steam_id',
   },
   {
@@ -181,7 +190,8 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
     icon: <SiNeteasecloudmusic />,
     color: '#E60026',
     darkColor: '#E60026',
-    getUserUrl: (userId: string) => `https://music.163.com/#/user/home?id=${userId}`,
+    getUserUrl: (userId: string) =>
+      `https://music.163.com/#/user/home?id=${userId}`,
     configKey: 'netease_user_id',
   },
 ])
@@ -249,7 +259,10 @@ const HINT_NO_LOOP_TRANSITION = { duration: 0.3 }
 
 // ========== 自定义平台 PlatformInfo 缓存 ==========
 // 注意：需要在 saveCustomPlatforms 之前声明
-const platformInfoCache = new Map<string, { info: PlatformInfo, timestamp: number }>()
+const platformInfoCache = new Map<
+  string,
+  { info: PlatformInfo; timestamp: number }
+>()
 const PLATFORM_INFO_CACHE_TTL = 60 * 1000 // 1分钟缓存
 
 // 自定义平台存储管理
@@ -283,14 +296,12 @@ async function loadCustomPlatformsAsync(): Promise<CustomPlatformData[]> {
     if (data.custom_platforms) {
       try {
         customPlatformsData = JSON.parse(data.custom_platforms)
-      }
-      catch (e) {
+      } catch (e) {
         console.error('Failed to parse custom platforms:', e)
         customPlatformsData = []
       }
     }
-  }
-  catch (e) {
+  } catch (e) {
     console.error('Failed to load custom platforms from API:', e)
   }
 
@@ -307,9 +318,11 @@ async function saveCustomPlatforms(platforms: CustomPlatformData[]) {
   platformInfoCache.clear()
 
   // 发送自定义事件，让 Home.tsx 处理实际的保存
-  window.dispatchEvent(new CustomEvent('custom-platforms-update', {
-    detail: { platforms },
-  }))
+  window.dispatchEvent(
+    new CustomEvent('custom-platforms-update', {
+      detail: { platforms },
+    }),
+  )
 }
 
 // 添加自定义平台
@@ -321,7 +334,7 @@ async function addCustomPlatform(platform: CustomPlatformData) {
 
 // 删除自定义平台
 async function removeCustomPlatform(platformId: string) {
-  const updated = customPlatformsData.filter(p => p.id !== platformId)
+  const updated = customPlatformsData.filter((p) => p.id !== platformId)
   await saveCustomPlatforms(updated)
 }
 
@@ -333,7 +346,9 @@ const DEFAULT_ICON = (
 )
 
 // 将自定义平台数据转换为PlatformInfo - 带缓存
-function customPlatformToPlatformInfo(custom: CustomPlatformData): PlatformInfo {
+function customPlatformToPlatformInfo(
+  custom: CustomPlatformData,
+): PlatformInfo {
   // 检查缓存
   const cached = platformInfoCache.get(custom.id)
   const now = Date.now()
@@ -354,7 +369,14 @@ function customPlatformToPlatformInfo(custom: CustomPlatformData): PlatformInfo 
 
   // 如果没有找到图标组件，使用外部URL
   if (!icon && custom.iconUrl) {
-    icon = <img src={custom.iconUrl} alt={custom.name} className="w-full h-full object-contain" loading="lazy" />
+    icon = (
+      <img
+        src={custom.iconUrl}
+        alt={custom.name}
+        className="w-full h-full object-contain"
+        loading="lazy"
+      />
+    )
   }
 
   // 如果没有图标，使用默认图标
@@ -366,11 +388,12 @@ function customPlatformToPlatformInfo(custom: CustomPlatformData): PlatformInfo 
   const linkPattern = custom.linkPattern
   const linkType = custom.linkType
   const hasUsername = custom.username && custom.username.trim() !== ''
-  const getUserUrl = linkType === 'url' && linkPattern
-    ? hasUsername
-      ? (userId: string) => linkPattern.replace('{username}', userId)
-      : () => linkPattern // 无用户名时直接返回URL模式
-    : () => '#'
+  const getUserUrl =
+    linkType === 'url' && linkPattern
+      ? hasUsername
+        ? (userId: string) => linkPattern.replace('{username}', userId)
+        : () => linkPattern // 无用户名时直接返回URL模式
+      : () => '#'
 
   const info: PlatformInfo = {
     id: custom.id,
@@ -410,14 +433,18 @@ let globalModalState: SettingsModalState = {
 
 const modalStateListeners: Set<() => void> = new Set()
 
-function openSettingsModal(selectedPlatformId: string, anchorRect: DOMRect, onSelect: (platformId: string) => void) {
+function openSettingsModal(
+  selectedPlatformId: string,
+  anchorRect: DOMRect,
+  onSelect: (platformId: string) => void,
+) {
   globalModalState = {
     isOpen: true,
     selectedPlatformId,
     anchorRect,
     onSelect,
   }
-  modalStateListeners.forEach(listener => listener())
+  modalStateListeners.forEach((listener) => listener())
 }
 
 function closeSettingsModal() {
@@ -425,7 +452,7 @@ function closeSettingsModal() {
     ...globalModalState,
     isOpen: false,
   }
-  modalStateListeners.forEach(listener => listener())
+  modalStateListeners.forEach((listener) => listener())
 }
 
 function subscribeToModalState(listener: () => void) {
@@ -458,15 +485,13 @@ async function fetchPlatformUserIds(): Promise<PlatformUserIds> {
   }
 
   // 复用进行中的请求
-  if (fetchPromise)
-    return fetchPromise
+  if (fetchPromise) return fetchPromise
 
   fetchPromise = (async () => {
     try {
       // 使用公开端点，不需要登录认证
       const response = await fetch(`${API_URL}/api/config/public`)
-      if (!response.ok)
-        return cachedPlatformUserIds || {}
+      if (!response.ok) return cachedPlatformUserIds || {}
 
       const data = await response.json()
       const result: PlatformUserIds = {}
@@ -474,20 +499,32 @@ async function fetchPlatformUserIds(): Promise<PlatformUserIds> {
       // 从 platforms 数组提取用户ID配置
       if (data.platforms && Array.isArray(data.platforms)) {
         for (const platform of data.platforms) {
-          if (!platform.enabled)
-            continue
+          if (!platform.enabled) continue
 
           for (const field of platform.config_fields || []) {
-            if (platform.name === 'GitHub' && field.key === 'username' && field.value) {
+            if (
+              platform.name === 'GitHub' &&
+              field.key === 'username' &&
+              field.value
+            ) {
               result.github_username = field.value
-            }
-            else if (platform.name === 'Bilibili' && field.key === 'uid' && field.value) {
+            } else if (
+              platform.name === 'Bilibili' &&
+              field.key === 'uid' &&
+              field.value
+            ) {
               result.bilibili_uid = field.value
-            }
-            else if (platform.name === 'Steam' && field.key === 'steam_id' && field.value) {
+            } else if (
+              platform.name === 'Steam' &&
+              field.key === 'steam_id' &&
+              field.value
+            ) {
               result.steam_id = field.value
-            }
-            else if (platform.name === 'Netease Music' && field.key === 'user_id' && field.value) {
+            } else if (
+              platform.name === 'Netease Music' &&
+              field.key === 'user_id' &&
+              field.value
+            ) {
               result.netease_user_id = field.value
             }
           }
@@ -497,11 +534,9 @@ async function fetchPlatformUserIds(): Promise<PlatformUserIds> {
       cachedPlatformUserIds = result
       cacheTimestamp = now
       return result
-    }
-    catch {
+    } catch {
       return cachedPlatformUserIds || {}
-    }
-    finally {
+    } finally {
       fetchPromise = null
     }
   })()
@@ -510,157 +545,167 @@ async function fetchPlatformUserIds(): Promise<PlatformUserIds> {
 }
 
 // 自定义平台表单组件
-const CustomPlatformForm = memo(({
-  formData,
-  onChange,
-  onSubmit,
-  onCancel,
-  isGenerating,
-}: {
-  formData: {
-    name: string
-    username: string
-    linkType: 'url' | 'popup'
-    linkPattern: string
-    popupText: string
-  }
-  onChange: (data: any) => void
-  onSubmit: () => void
-  onCancel: () => void
-  isGenerating: boolean
-}) => {
-  const { t } = useI18n()
-  return (
-    <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
-      {/* 平台名称 */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-          {t.socialNetwork.platformName}
-          {' '}
-          *
-        </label>
-        <input
-          type="text"
-          value={formData.name}
-          onChange={e => onChange({ ...formData, name: e.target.value })}
-          placeholder={t.socialNetwork.platformNameHint}
-          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
-        />
-      </div>
+const CustomPlatformForm = memo(
+  ({
+    formData,
+    onChange,
+    onSubmit,
+    onCancel,
+    isGenerating,
+  }: {
+    formData: {
+      name: string
+      username: string
+      linkType: 'url' | 'popup'
+      linkPattern: string
+      popupText: string
+    }
+    onChange: (data: any) => void
+    onSubmit: () => void
+    onCancel: () => void
+    isGenerating: boolean
+  }) => {
+    const { t } = useI18n()
+    return (
+      <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
+        {/* 平台名称 */}
+        <div>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {t.socialNetwork.platformName} *
+          </label>
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => onChange({ ...formData, name: e.target.value })}
+            placeholder={t.socialNetwork.platformNameHint}
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
+          />
+        </div>
 
-      {/* 链接类型 */}
-      <div>
-        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-          {t.socialNetwork.linkType}
-        </label>
-        <div className="flex gap-2">
+        {/* 链接类型 */}
+        <div>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {t.socialNetwork.linkType}
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onChange({ ...formData, linkType: 'url' })}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                formData.linkType === 'url'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              {t.socialNetwork.urlLink}
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ ...formData, linkType: 'popup' })}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                formData.linkType === 'popup'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              {t.socialNetwork.infoPopup}
+            </button>
+          </div>
+        </div>
+
+        {/* URL类型显示用户名和URL模式 */}
+        {formData.linkType === 'url' ? (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                {t.socialNetwork.usernameId}{' '}
+                <span className="text-gray-400 dark:text-gray-500">
+                  ({t.socialNetwork.optional})
+                </span>
+              </label>
+              <input
+                type="text"
+                value={formData.username}
+                onChange={(e) =>
+                  onChange({ ...formData, username: e.target.value })
+                }
+                placeholder={t.socialNetwork.usernameHint}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                {t.socialNetwork.urlPattern}{' '}
+                {!formData.username && (
+                  <span className="text-amber-500">*</span>
+                )}
+              </label>
+              <input
+                type="text"
+                value={formData.linkPattern}
+                onChange={(e) =>
+                  onChange({ ...formData, linkPattern: e.target.value })
+                }
+                placeholder={
+                  formData.username
+                    ? t.socialNetwork.linkAutoGenerate
+                    : t.socialNetwork.linkManualInput
+                }
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {formData.username
+                  ? t.socialNetwork.usePlaceholder
+                  : t.socialNetwork.noUsernameHint}
+              </p>
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              {t.socialNetwork.popupContent}
+            </label>
+            <textarea
+              value={formData.popupText}
+              onChange={(e) =>
+                onChange({ ...formData, popupText: e.target.value })
+              }
+              placeholder={t.socialNetwork.popupHint}
+              rows={4}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none resize-none"
+            />
+          </div>
+        )}
+
+        {/* 按钮 */}
+        <div className="flex gap-2 pt-2">
           <button
             type="button"
-            onClick={() => onChange({ ...formData, linkType: 'url' })}
-            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-              formData.linkType === 'url'
-                ? 'bg-[var(--color-primary)] text-white'
-                : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
-            }`}
+            onClick={onCancel}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
           >
-            {t.socialNetwork.urlLink}
+            {t.common.cancel}
           </button>
           <button
             type="button"
-            onClick={() => onChange({ ...formData, linkType: 'popup' })}
-            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-              formData.linkType === 'popup'
-                ? 'bg-[var(--color-primary)] text-white'
-                : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
-            }`}
+            onClick={onSubmit}
+            disabled={
+              isGenerating ||
+              !formData.name ||
+              (formData.linkType === 'url' &&
+                !formData.username &&
+                !formData.linkPattern) ||
+              (formData.linkType === 'popup' && !formData.popupText)
+            }
+            className="flex-1 px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {t.socialNetwork.infoPopup}
+            {isGenerating ? t.socialNetwork.generating : t.socialNetwork.create}
           </button>
         </div>
       </div>
-
-      {/* URL类型显示用户名和URL模式 */}
-      {formData.linkType === 'url'
-        ? (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                  {t.socialNetwork.usernameId}
-                  {' '}
-                  <span className="text-gray-400 dark:text-gray-500">
-                    (
-                    {t.socialNetwork.optional}
-                    )
-                  </span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.username}
-                  onChange={e => onChange({ ...formData, username: e.target.value })}
-                  placeholder={t.socialNetwork.usernameHint}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                  {t.socialNetwork.urlPattern}
-                  {' '}
-                  {!formData.username && <span className="text-amber-500">*</span>}
-                </label>
-                <input
-                  type="text"
-                  value={formData.linkPattern}
-                  onChange={e => onChange({ ...formData, linkPattern: e.target.value })}
-                  placeholder={formData.username ? t.socialNetwork.linkAutoGenerate : t.socialNetwork.linkManualInput}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {formData.username ? t.socialNetwork.usePlaceholder : t.socialNetwork.noUsernameHint}
-                </p>
-              </div>
-            </>
-          )
-        : (
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {t.socialNetwork.popupContent}
-              </label>
-              <textarea
-                value={formData.popupText}
-                onChange={e => onChange({ ...formData, popupText: e.target.value })}
-                placeholder={t.socialNetwork.popupHint}
-                rows={4}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none resize-none"
-              />
-            </div>
-          )}
-
-      {/* 按钮 */}
-      <div className="flex gap-2 pt-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
-        >
-          {t.common.cancel}
-        </button>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={
-            isGenerating
-            || !formData.name
-            || (formData.linkType === 'url' && !formData.username && !formData.linkPattern)
-            || (formData.linkType === 'popup' && !formData.popupText)
-          }
-          className="flex-1 px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-        >
-          {isGenerating ? t.socialNetwork.generating : t.socialNetwork.create}
-        </button>
-      </div>
-    </div>
-  )
-})
+    )
+  },
+)
 
 CustomPlatformForm.displayName = 'CustomPlatformForm'
 
@@ -674,19 +719,24 @@ function isValidImageUrl(url: string): boolean {
       return false
     }
     // 检查是否有可疑的路径
-    if (parsed.pathname.includes('..') || parsed.search.includes('<') || parsed.search.includes('>')) {
+    if (
+      parsed.pathname.includes('..') ||
+      parsed.search.includes('<') ||
+      parsed.search.includes('>')
+    ) {
       return false
     }
     return true
-  }
-  catch {
+  } catch {
     return false
   }
 }
 
-function parsePopupContent(text?: string): { textContent: string, imageUrls: string[] } {
-  if (!text)
-    return { textContent: '', imageUrls: [] }
+function parsePopupContent(text?: string): {
+  textContent: string
+  imageUrls: string[]
+} {
+  if (!text) return { textContent: '', imageUrls: [] }
 
   // 匹配图片URL的正则表达式
   const imageUrlRegex = /(https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp|bmp|svg))/gi
@@ -710,112 +760,115 @@ const TOOLTIP_ANIMATION = {
 }
 
 // 信息提示组件 - hover 时在小组件下方显示，点击复制
-const InfoTooltip = memo(({
-  isVisible,
-  popupData,
-  anchorRef,
-}: {
-  isVisible: boolean
-  popupData: CustomPlatformPopupData
-  anchorRef: React.RefObject<HTMLDivElement | null>
-}) => {
-  const { t } = useI18n()
-  const [_copied, setCopied] = useState(false)
+const InfoTooltip = memo(
+  ({
+    isVisible,
+    popupData,
+    anchorRef,
+  }: {
+    isVisible: boolean
+    popupData: CustomPlatformPopupData
+    anchorRef: React.RefObject<HTMLDivElement | null>
+  }) => {
+    const { t } = useI18n()
+    const [_copied, setCopied] = useState(false)
 
-  // 解析内容
-  const { textContent, imageUrls } = useMemo(() =>
-    parsePopupContent(popupData.text), [popupData.text])
+    // 解析内容
+    const { textContent, imageUrls } = useMemo(
+      () => parsePopupContent(popupData.text),
+      [popupData.text],
+    )
 
-  // 计算位置 - 基于小组件中心对齐
-  const position = useMemo(() => {
-    if (!isVisible || !anchorRef.current)
-      return { top: 0, left: 0 }
-    const rect = anchorRef.current.getBoundingClientRect()
-    return {
-      top: rect.bottom + 6,
-      left: rect.left + rect.width / 2,
-    }
-  }, [isVisible, anchorRef])
+    // 计算位置 - 基于小组件中心对齐
+    const position = useMemo(() => {
+      if (!isVisible || !anchorRef.current) return { top: 0, left: 0 }
+      const rect = anchorRef.current.getBoundingClientRect()
+      return {
+        top: rect.bottom + 6,
+        left: rect.left + rect.width / 2,
+      }
+    }, [isVisible, anchorRef])
 
-  // 复制文本
-  const handleCopy = useCallback(async () => {
-    if (!textContent)
-      return
-    try {
-      await navigator.clipboard.writeText(textContent)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    }
-    catch (e) {
-      console.error('Failed to copy:', e)
-    }
-  }, [textContent])
+    // 复制文本
+    const handleCopy = useCallback(async () => {
+      if (!textContent) return
+      try {
+        await navigator.clipboard.writeText(textContent)
+        setCopied(true)
+        setTimeout(setCopied, 1500, false)
+      } catch (e) {
+        console.error('Failed to copy:', e)
+      }
+    }, [textContent])
 
-  if (!isVisible)
-    return null
+    if (!isVisible) return null
 
-  const hasContent = textContent || imageUrls.length > 0 || popupData.qrcodeUrl
+    const hasContent =
+      textContent || imageUrls.length > 0 || popupData.qrcodeUrl
 
-  return createPortal(
-    <motion.div
-      {...TOOLTIP_ANIMATION}
-      className="fixed z-10001 pointer-events-auto w-fit h-fit"
-      style={{ top: position.top, left: position.left }}
-    >
-      <div
-        className="glass rounded-xl shadow-lg overflow-hidden border border-white/20 dark:border-white/10 w-fit h-fit max-w-xs mx-auto"
-        style={{ minWidth: '120px' }}
-        onClick={handleCopy}
+    return createPortal(
+      <motion.div
+        {...TOOLTIP_ANIMATION}
+        className="fixed z-10001 pointer-events-auto w-fit h-fit"
+        style={{ top: position.top, left: position.left }}
       >
-        {hasContent ? (
-          <div className="p-3 space-y-2">
-            {/* 文本内容 - 点击可复制 */}
-            {textContent && (
-              <div className="cursor-pointer text-center">
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 wrap-break-word whitespace-pre-wrap leading-relaxed">
-                  {textContent}
-                </p>
-              </div>
-            )}
+        <div
+          className="glass rounded-xl shadow-lg overflow-hidden border border-white/20 dark:border-white/10 w-fit h-fit max-w-xs mx-auto"
+          style={{ minWidth: '120px' }}
+          onClick={handleCopy}
+        >
+          {hasContent ? (
+            <div className="p-3 space-y-2">
+              {/* 文本内容 - 点击可复制 */}
+              {textContent && (
+                <div className="cursor-pointer text-center">
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100 wrap-break-word whitespace-pre-wrap leading-relaxed">
+                    {textContent}
+                  </p>
+                </div>
+              )}
 
-            {/* 图片 - 紧凑显示 */}
-            {imageUrls.length > 0 && (
-              <div className="flex flex-wrap justify-center gap-1.5">
-                {imageUrls.map((url, index) => (
-                  <img
-                    key={index}
-                    src={url}
-                    alt=""
-                    className="max-h-24 rounded-lg object-contain"
-                    loading="lazy"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none'
-                    }}
-                  />
-                ))}
-              </div>
-            )}
+              {/* 图片 - 紧凑显示 */}
+              {imageUrls.length > 0 && (
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {imageUrls.map((url, index) => (
+                    <img
+                      key={index}
+                      src={url}
+                      alt=""
+                      className="max-h-24 rounded-lg object-contain"
+                      loading="lazy"
+                      onError={(e) => {
+                        ;(e.target as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
 
-            {/* 二维码 - 紧凑显示 */}
-            {popupData.qrcodeUrl && (
-              <img
-                src={popupData.qrcodeUrl}
-                alt="QR"
-                className="w-32 h-32 rounded-lg object-contain mx-auto"
-                loading="lazy"
-              />
-            )}
-          </div>
-        ) : (
-          <div className="p-3 text-center">
-            <span className="text-xs text-gray-400">{t.socialNetwork.noContent}</span>
-          </div>
-        )}
-      </div>
-    </motion.div>,
-    document.body,
-  )
-})
+              {/* 二维码 - 紧凑显示 */}
+              {popupData.qrcodeUrl && (
+                <img
+                  src={popupData.qrcodeUrl}
+                  alt="QR"
+                  className="w-32 h-32 rounded-lg object-contain mx-auto"
+                  loading="lazy"
+                />
+              )}
+            </div>
+          ) : (
+            <div className="p-3 text-center">
+              <span className="text-xs text-gray-400">
+                {t.socialNetwork.noContent}
+              </span>
+            </div>
+          )}
+        </div>
+      </motion.div>,
+      document.body,
+    )
+  },
+)
 
 InfoTooltip.displayName = 'InfoTooltip'
 
@@ -859,8 +912,7 @@ const GlobalSettingsModal = memo(() => {
 
   // 使用 useMemo 计算位置，避免重复计算
   const position = useMemo(() => {
-    if (!anchorRect)
-      return { top: 0, left: 0 }
+    if (!anchorRect) return { top: 0, left: 0 }
 
     const modalWidth = 280
     const modalHeight = 280
@@ -872,21 +924,18 @@ const GlobalSettingsModal = memo(() => {
     if (left + modalWidth > window.innerWidth - padding) {
       left = window.innerWidth - modalWidth - padding
     }
-    if (left < padding)
-      left = padding
+    if (left < padding) left = padding
     if (top + modalHeight > window.innerHeight - padding) {
       top = anchorRect.top - modalHeight - 8
     }
-    if (top < padding)
-      top = padding
+    if (top < padding) top = padding
 
     return { top, left }
   }, [anchorRect])
 
   // 优化事件监听器 - 分离 mousedown 和 keydown 处理
   useEffect(() => {
-    if (!isOpen)
-      return
+    if (!isOpen) return
 
     const handleClickOutside = (e: MouseEvent) => {
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
@@ -902,7 +951,9 @@ const GlobalSettingsModal = memo(() => {
 
     // 延迟添加事件监听，避免立即触发
     const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside, { passive: true })
+      document.addEventListener('mousedown', handleClickOutside, {
+        passive: true,
+      })
       document.addEventListener('keydown', handleKeyDown)
     }, 100)
 
@@ -914,12 +965,15 @@ const GlobalSettingsModal = memo(() => {
   }, [isOpen])
 
   // 处理平台选择
-  const handleSelect = useCallback((platformId: string) => {
-    if (onSelect) {
-      onSelect(platformId)
-    }
-    closeSettingsModal()
-  }, [onSelect])
+  const handleSelect = useCallback(
+    (platformId: string) => {
+      if (onSelect) {
+        onSelect(platformId)
+      }
+      closeSettingsModal()
+    },
+    [onSelect],
+  )
 
   // 处理自定义平台表单提交
   const handleCustomFormSubmit = useCallback(async () => {
@@ -929,7 +983,11 @@ const GlobalSettingsModal = memo(() => {
     }
 
     // URL类型需要用户名或URL模式其一，弹窗类型需要显示内容
-    if (customFormData.linkType === 'url' && !customFormData.username && !customFormData.linkPattern) {
+    if (
+      customFormData.linkType === 'url' &&
+      !customFormData.username &&
+      !customFormData.linkPattern
+    ) {
       alert(t.socialNetworkWidget.fillUsernameOrUrl)
       return
     }
@@ -940,7 +998,11 @@ const GlobalSettingsModal = memo(() => {
 
     // ✅ 安全验证：检查 URL 模式
     const urlPattern = customFormData.linkPattern || ''
-    if (customFormData.linkType === 'url' && urlPattern && !isValidUrlPattern(urlPattern)) {
+    if (
+      customFormData.linkType === 'url' &&
+      urlPattern &&
+      !isValidUrlPattern(urlPattern)
+    ) {
       alert(t.socialNetworkWidget.invalidUrlPattern)
       return
     }
@@ -983,26 +1045,35 @@ const GlobalSettingsModal = memo(() => {
             urlPattern: data.url_pattern, // AI 生成的 URL 模式
           }
         }
-      }
-      catch (error) {
+      } catch (error) {
         console.error('Failed to get AI icon recommendation:', error)
         // 继续使用用户选择的颜色
       }
 
       // 确定最终使用的 URL 模式：优先使用用户填写的，否则使用 AI 推荐的
-      const rawLinkPattern = customFormData.linkPattern || iconData.urlPattern || ''
+      const rawLinkPattern =
+        customFormData.linkPattern || iconData.urlPattern || ''
       // ✅ 安全处理：消毒 URL 模式
       const finalLinkPattern = sanitizeUrlPattern(rawLinkPattern)
 
       // ✅ 再次验证消毒后的 URL（AI 推荐的也需要验证）
-      if (customFormData.linkType === 'url' && finalLinkPattern && !isValidUrlPattern(finalLinkPattern)) {
-        console.warn('AI recommended URL pattern is invalid, using empty pattern')
+      if (
+        customFormData.linkType === 'url' &&
+        finalLinkPattern &&
+        !isValidUrlPattern(finalLinkPattern)
+      ) {
+        console.warn(
+          'AI recommended URL pattern is invalid, using empty pattern',
+        )
       }
 
       const newPlatform: CustomPlatformData = {
         id: customId,
         name: sanitizePlatformName(customFormData.name), // ✅ 消毒平台名称
-        username: customFormData.linkType === 'url' ? sanitizeUsername(customFormData.username) : '', // ✅ 消毒用户名
+        username:
+          customFormData.linkType === 'url'
+            ? sanitizeUsername(customFormData.username)
+            : '', // ✅ 消毒用户名
         iconType: iconData.iconType || 'react-icons',
         iconLibrary: iconData.iconLibrary,
         iconName: iconData.iconName,
@@ -1010,11 +1081,18 @@ const GlobalSettingsModal = memo(() => {
         color: iconData.recommendedColor || '#6366f1', // 使用AI推荐的颜色或默认颜色
         darkColor: iconData.recommendedColor || '#6366f1',
         linkType: customFormData.linkType,
-        linkPattern: customFormData.linkType === 'url' && isValidUrlPattern(finalLinkPattern) ? finalLinkPattern : undefined, // ✅ 验证后存储
-        popupData: customFormData.linkType === 'popup' ? {
-          type: 'text',
-          text: sanitizePopupText(customFormData.popupText), // ✅ 消毒弹窗文本
-        } : undefined,
+        linkPattern:
+          customFormData.linkType === 'url' &&
+          isValidUrlPattern(finalLinkPattern)
+            ? finalLinkPattern
+            : undefined, // ✅ 验证后存储
+        popupData:
+          customFormData.linkType === 'popup'
+            ? {
+                type: 'text',
+                text: sanitizePopupText(customFormData.popupText), // ✅ 消毒弹窗文本
+              }
+            : undefined,
       }
 
       await addCustomPlatform(newPlatform)
@@ -1037,27 +1115,27 @@ const GlobalSettingsModal = memo(() => {
         onSelect(customId)
       }
       closeSettingsModal()
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to create custom platform:', error)
       alert(t.socialNetworkWidget.createCustomPlatformFailed)
-    }
-    finally {
+    } finally {
       setIsGeneratingIcon(false)
     }
   }, [customFormData, onSelect, t])
 
   // 删除自定义平台
-  const handleDeleteCustomPlatform = useCallback(async (platformId: string) => {
-    if (confirm(t.socialNetworkWidget.confirmDeleteCustomPlatform)) {
-      await removeCustomPlatform(platformId)
-      setAllPlatforms(getAllPlatforms())
-    }
-  }, [t])
+  const handleDeleteCustomPlatform = useCallback(
+    async (platformId: string) => {
+      if (confirm(t.socialNetworkWidget.confirmDeleteCustomPlatform)) {
+        await removeCustomPlatform(platformId)
+        setAllPlatforms(getAllPlatforms())
+      }
+    },
+    [t],
+  )
 
   // 提前返回，不渲染任何东西
-  if (!isOpen)
-    return null
+  if (!isOpen) return null
 
   return createPortal(
     <motion.div
@@ -1083,7 +1161,9 @@ const GlobalSettingsModal = memo(() => {
       >
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/50 dark:border-white/10">
-          <span className="font-bold text-sm text-gray-800 dark:text-gray-200">{t.socialNetwork.selectPlatform}</span>
+          <span className="font-bold text-sm text-gray-800 dark:text-gray-200">
+            {t.socialNetwork.selectPlatform}
+          </span>
           <button
             type="button"
             onClick={closeSettingsModal}
@@ -1100,13 +1180,15 @@ const GlobalSettingsModal = memo(() => {
           <>
             {/* 平台列表 - 使用优化后的 PlatformButton */}
             <div className="p-3 space-y-1.5 max-h-80 overflow-y-auto">
-              {allPlatforms.map(platform => (
+              {allPlatforms.map((platform) => (
                 <PlatformButton
                   key={platform.id}
                   platform={platform}
                   isSelected={selectedPlatformId === platform.id}
                   onSelect={handleSelect}
-                  onDelete={platform.isCustom ? handleDeleteCustomPlatform : undefined}
+                  onDelete={
+                    platform.isCustom ? handleDeleteCustomPlatform : undefined
+                  }
                   deleteLabel={t.socialNetworkWidget.delete}
                 />
               ))}
@@ -1119,8 +1201,18 @@ const GlobalSettingsModal = memo(() => {
                 onClick={() => setShowCustomForm(true)}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[var(--color-primary)] hover:opacity-90 text-white font-medium transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98]"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
                 </svg>
                 {t.socialNetwork.create}
               </button>
@@ -1153,615 +1245,750 @@ const GlobalSettingsModal = memo(() => {
 GlobalSettingsModal.displayName = 'GlobalSettingsModal'
 
 // 平台按钮组件 - 单独 memo 避免列表重渲染
-const PlatformButton = memo(({
-  platform,
-  isSelected,
-  onSelect,
-  onDelete,
-  deleteLabel,
-}: {
-  platform: PlatformInfo
-  isSelected: boolean
-  onSelect: (platformId: string) => void
-  onDelete?: (platformId: string) => void
-  deleteLabel?: string
-}) => {
-  const handleClick = useCallback(() => {
-    onSelect(platform.id)
-  }, [onSelect, platform.id])
+const PlatformButton = memo(
+  ({
+    platform,
+    isSelected,
+    onSelect,
+    onDelete,
+    deleteLabel,
+  }: {
+    platform: PlatformInfo
+    isSelected: boolean
+    onSelect: (platformId: string) => void
+    onDelete?: (platformId: string) => void
+    deleteLabel?: string
+  }) => {
+    const handleClick = useCallback(() => {
+      onSelect(platform.id)
+    }, [onSelect, platform.id])
 
-  const handleDelete = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (onDelete) {
-      onDelete(platform.id)
-    }
-  }, [onDelete, platform.id])
+    const handleDelete = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation()
+        if (onDelete) {
+          onDelete(platform.id)
+        }
+      },
+      [onDelete, platform.id],
+    )
 
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
-        isSelected
-          ? 'bg-black/5 dark:bg-white/10 ring-1 ring-black/10 dark:ring-white/20 hover:bg-black/10 dark:hover:bg-white/15'
-          : 'hover:bg-black/5 dark:hover:bg-white/8 hover:shadow-sm active:scale-[0.98]'
-      }`}
-    >
-      <div
-        className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 ${platform.isCustom ? 'p-1.5' : 'text-lg'}`}
-        style={{ backgroundColor: platform.color }}
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+          isSelected
+            ? 'bg-black/5 dark:bg-white/10 ring-1 ring-black/10 dark:ring-white/20 hover:bg-black/10 dark:hover:bg-white/15'
+            : 'hover:bg-black/5 dark:hover:bg-white/8 hover:shadow-sm active:scale-[0.98]'
+        }`}
       >
-        {platform.icon}
-      </div>
-      <span className="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">
-        {platform.name}
-      </span>
-      {isSelected && !onDelete && (
         <div
-          className="ml-auto w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+          className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 ${platform.isCustom ? 'p-1.5' : 'text-lg'}`}
           style={{ backgroundColor: platform.color }}
         >
-          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-          </svg>
+          {platform.icon}
         </div>
-      )}
-      {onDelete && (
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={handleDelete}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDelete(e as any) } }}
-          className="ml-auto w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/10 text-red-500 transition-colors shrink-0 cursor-pointer"
-          title={deleteLabel || 'Delete'}
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </div>
-      )}
-    </button>
-  )
-})
+        <span className="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">
+          {platform.name}
+        </span>
+        {isSelected && !onDelete && (
+          <div
+            className="ml-auto w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+            style={{ backgroundColor: platform.color }}
+          >
+            <svg
+              className="w-3 h-3 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={3}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          </div>
+        )}
+        {onDelete && (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={handleDelete}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                handleDelete(e as any)
+              }
+            }}
+            className="ml-auto w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/10 text-red-500 transition-colors shrink-0 cursor-pointer"
+            title={deleteLabel || 'Delete'}
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
+          </div>
+        )}
+      </button>
+    )
+  },
+)
 
 PlatformButton.displayName = 'PlatformButton'
 
 // 主组件
-export const SocialNetworkWidget = memo(({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
-  const { containerRef, fontScale } = useWidgetSize(config.size, isPreview ? 1 : undefined)
-  const anim = useAnimationLevel()
-  const { t } = useI18n()
+export const SocialNetworkWidget = memo(
+  ({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
+    const { containerRef, fontScale } = useWidgetSize(
+      config.size,
+      isPreview ? 1 : undefined,
+    )
+    const anim = useAnimationLevel()
+    const { t } = useI18n()
 
-  // 🆕 使用触发式动画 - 组件挂载时播放一次hover动画
-  const { isAnimating } = useLoopAnimation({
-    duration: 600, // hover动画约0.6秒
-    trigger: 'mount', // 固定值，组件首次渲染时触发一次
-    enabled: anim.loop, // 低端设备禁用
-  })
+    // 🆕 使用触发式动画 - 组件挂载时播放一次hover动画
+    const { isAnimating } = useLoopAnimation({
+      duration: 600, // hover动画约0.6秒
+      trigger: 'mount', // 固定值，组件首次渲染时触发一次
+      enabled: anim.loop, // 低端设备禁用
+    })
 
-  // 本地 ref 用于获取 DOM 元素引用（用于定位弹窗）
-  const localRef = useRef<HTMLDivElement | null>(null)
+    // 本地 ref 用于获取 DOM 元素引用（用于定位弹窗）
+    const localRef = useRef<HTMLDivElement | null>(null)
 
-  // 深色模式检测 - 使用共享主题订阅器，避免每个组件都创建 MutationObserver
-  const isDark = useThemeMode()
+    // 深色模式检测 - 使用共享主题订阅器，避免每个组件都创建 MutationObserver
+    const isDark = useThemeMode()
 
-  // 从配置获取选中的平台ID
-  const [selectedPlatformId, setSelectedPlatformId] = useState<string>(
-    config.config?.platformId || 'bilibili',
-  )
-  const [platformUserIds, setPlatformUserIds] = useState<PlatformUserIds>({})
-  const [isHovered, setIsHovered] = useState(false)
+    // 从配置获取选中的平台ID
+    const [selectedPlatformId, setSelectedPlatformId] = useState<string>(
+      config.config?.platformId || 'bilibili',
+    )
+    const [platformUserIds, setPlatformUserIds] = useState<PlatformUserIds>({})
+    const [isHovered, setIsHovered] = useState(false)
 
-  // 信息提示状态 - hover 触发
-  const [showInfoTooltip, setShowInfoTooltip] = useState(false)
+    // 信息提示状态 - hover 触发
+    const [showInfoTooltip, setShowInfoTooltip] = useState(false)
 
-  // 自定义平台加载状态
-  const [customPlatformsReady, setCustomPlatformsReady] = useState(customPlatformsLoaded)
+    // 自定义平台加载状态
+    const [customPlatformsReady, setCustomPlatformsReady] = useState(
+      customPlatformsLoaded,
+    )
 
-  // 长按检测 - 使用 ReturnType<typeof setTimeout> 兼容浏览器和 Node 环境
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isLongPressRef = useRef(false)
+    // 长按检测 - 使用 ReturnType<typeof setTimeout> 兼容浏览器和 Node 环境
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const isLongPressRef = useRef(false)
 
-  // hover 延迟计时器
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // hover 延迟计时器
+    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 异步加载自定义平台数据
-  useEffect(() => {
-    if (!customPlatformsLoaded) {
-      loadCustomPlatformsAsync().then(() => {
-        setCustomPlatformsReady(true)
-      })
-    }
-  }, [])
-
-  // 获取当前选中的平台信息 - 支持自定义平台
-  const selectedPlatform = useMemo(() => {
-    // 先检查是否是预设平台
-    const index = PLATFORM_INDEX_MAP[selectedPlatformId]
-    if (index !== undefined) {
-      return PLATFORMS[index]
-    }
-
-    // 检查是否是自定义平台（确保数据已加载）
-    if (customPlatformsReady) {
-      const customPlatform = customPlatformsData.find(p => p.id === selectedPlatformId)
-      if (customPlatform) {
-        return customPlatformToPlatformInfo(customPlatform)
+    // 异步加载自定义平台数据
+    useEffect(() => {
+      if (!customPlatformsLoaded) {
+        loadCustomPlatformsAsync().then(() => {
+          setCustomPlatformsReady(true)
+        })
       }
-    }
+    }, [])
 
-    // 默认返回第一个平台
-    return PLATFORMS[0]
-  }, [selectedPlatformId, customPlatformsReady])
+    // 获取当前选中的平台信息 - 支持自定义平台
+    const selectedPlatform = useMemo(() => {
+      // 先检查是否是预设平台
+      const index = PLATFORM_INDEX_MAP[selectedPlatformId]
+      if (index !== undefined) {
+        return PLATFORMS[index]
+      }
 
-  // 获取用户ID - 支持自定义平台
-  const userId = useMemo(() => {
-    // 预设平台
-    switch (selectedPlatformId) {
-      case 'bilibili': return platformUserIds.bilibili_uid
-      case 'steam': return platformUserIds.steam_id
-      case 'github': return platformUserIds.github_username
-      case 'netease': return platformUserIds.netease_user_id
-      default: {
-        // 自定义平台（确保数据已加载）
-        if (customPlatformsReady) {
-          const customPlatform = customPlatformsData.find(p => p.id === selectedPlatformId)
-          if (customPlatform) {
-            // 信息弹窗类型返回特殊标识，表示已配置
-            if (customPlatform.linkType === 'popup') {
-              return '__popup__'
-            }
-            // 有用户名则返回用户名，否则如果有linkPattern则返回特殊标识表示直接访问
-            if (customPlatform.username && customPlatform.username.trim() !== '') {
-              return customPlatform.username
-            }
-            if (customPlatform.linkPattern) {
-              return '__direct_url__'
+      // 检查是否是自定义平台（确保数据已加载）
+      if (customPlatformsReady) {
+        const customPlatform = customPlatformsData.find(
+          (p) => p.id === selectedPlatformId,
+        )
+        if (customPlatform) {
+          return customPlatformToPlatformInfo(customPlatform)
+        }
+      }
+
+      // 默认返回第一个平台
+      return PLATFORMS[0]
+    }, [selectedPlatformId, customPlatformsReady])
+
+    // 获取用户ID - 支持自定义平台
+    const userId = useMemo(() => {
+      // 预设平台
+      switch (selectedPlatformId) {
+        case 'bilibili':
+          return platformUserIds.bilibili_uid
+        case 'steam':
+          return platformUserIds.steam_id
+        case 'github':
+          return platformUserIds.github_username
+        case 'netease':
+          return platformUserIds.netease_user_id
+        default: {
+          // 自定义平台（确保数据已加载）
+          if (customPlatformsReady) {
+            const customPlatform = customPlatformsData.find(
+              (p) => p.id === selectedPlatformId,
+            )
+            if (customPlatform) {
+              // 信息弹窗类型返回特殊标识，表示已配置
+              if (customPlatform.linkType === 'popup') {
+                return '__popup__'
+              }
+              // 有用户名则返回用户名，否则如果有linkPattern则返回特殊标识表示直接访问
+              if (
+                customPlatform.username &&
+                customPlatform.username.trim() !== ''
+              ) {
+                return customPlatform.username
+              }
+              if (customPlatform.linkPattern) {
+                return '__direct_url__'
+              }
             }
           }
+          return undefined
         }
-        return undefined
       }
-    }
-  }, [selectedPlatformId, platformUserIds, customPlatformsReady])
+    }, [selectedPlatformId, platformUserIds, customPlatformsReady])
 
-  // 加载平台用户ID
-  useEffect(() => {
-    if (isPreview)
-      return
-    fetchPlatformUserIds().then(setPlatformUserIds)
-  }, [isPreview])
+    // 加载平台用户ID
+    useEffect(() => {
+      if (isPreview) return
+      fetchPlatformUserIds().then(setPlatformUserIds)
+    }, [isPreview])
 
-  // 同步配置中的 platformId
-  useEffect(() => {
-    if (config.config?.platformId && config.config.platformId !== selectedPlatformId) {
-      setSelectedPlatformId(config.config.platformId)
-    }
-  }, [config.config?.platformId])
+    // 同步配置中的 platformId
+    useEffect(() => {
+      if (
+        config.config?.platformId &&
+        config.config.platformId !== selectedPlatformId
+      ) {
+        setSelectedPlatformId(config.config.platformId)
+      }
+    }, [config.config?.platformId])
 
-  // 处理平台选择变化
-  const handleSelectPlatform = useCallback((platformId: string) => {
-    setSelectedPlatformId(platformId)
-    // 优先通过 props.onConfigChange 上报
-    if (typeof onConfigChange === 'function') {
-      onConfigChange({ ...config.config, platformId })
-    }
-    else {
-      // 兼容旧逻辑
-      window.dispatchEvent(new CustomEvent('widget-config-update', {
-        detail: {
-          widgetId: config.id,
-          config: { ...config.config, platformId },
-        },
-      }))
-    }
-  }, [config.id, config.config, onConfigChange])
-
-  // 打开设置弹窗
-  const openSettings = useCallback(() => {
-    if (!localRef.current)
-      return
-
-    openSettingsModal(
-      selectedPlatformId,
-      localRef.current.getBoundingClientRect(),
-      handleSelectPlatform,
+    // 处理平台选择变化
+    const handleSelectPlatform = useCallback(
+      (platformId: string) => {
+        setSelectedPlatformId(platformId)
+        // 优先通过 props.onConfigChange 上报
+        if (typeof onConfigChange === 'function') {
+          onConfigChange({ ...config.config, platformId })
+        } else {
+          // 兼容旧逻辑
+          window.dispatchEvent(
+            new CustomEvent('widget-config-update', {
+              detail: {
+                widgetId: config.id,
+                config: { ...config.config, platformId },
+              },
+            }),
+          )
+        }
+      },
+      [config.id, config.config, onConfigChange],
     )
-  }, [selectedPlatformId, handleSelectPlatform])
 
-  // 长按开始
-  const handlePressStart = useCallback(() => {
-    if (!isEditMode)
-      return
+    // 打开设置弹窗
+    const openSettings = useCallback(() => {
+      if (!localRef.current) return
 
-    isLongPressRef.current = false
-    longPressTimerRef.current = setTimeout(() => {
-      isLongPressRef.current = true
-      openSettings()
-    }, 500)
-  }, [isEditMode, openSettings])
+      openSettingsModal(
+        selectedPlatformId,
+        localRef.current.getBoundingClientRect(),
+        handleSelectPlatform,
+      )
+    }, [selectedPlatformId, handleSelectPlatform])
 
-  // 长按取消
-  const handlePressEnd = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-  }, [])
+    // 长按开始
+    const handlePressStart = useCallback(() => {
+      if (!isEditMode) return
 
-  // 获取弹窗类型平台数据（合并查找逻辑避免重复）
-  const popupPlatformData = useMemo(() => {
-    loadCustomPlatforms()
-    const customPlatform = customPlatformsData.find(p => p.id === selectedPlatformId)
-    if (customPlatform?.linkType === 'popup') {
-      return {
-        popupData: customPlatform.popupData || { type: 'text' as const, text: '' },
-        color: customPlatform.color,
-      }
-    }
-    return null
-  }, [selectedPlatformId])
-
-  // 是否为弹窗类型（直接从 popupPlatformData 派生）
-  const isPopupType = popupPlatformData !== null
-
-  // 点击处理（跳转到用户页面或复制信息）
-  const handleClick = useCallback(async () => {
-    // 如果是长按触发的设置弹窗，不处理点击
-    if (isLongPressRef.current) {
       isLongPressRef.current = false
-      return
-    }
+      longPressTimerRef.current = setTimeout(() => {
+        isLongPressRef.current = true
+        openSettings()
+      }, 500)
+    }, [isEditMode, openSettings])
 
-    // 编辑模式下不跳转
-    if (isEditMode)
-      return
-
-    // 信息弹窗类型：点击复制文本
-    if (popupPlatformData?.popupData.text) {
-      try {
-        const { textContent } = parsePopupContent(popupPlatformData.popupData.text)
-        if (textContent) {
-          await navigator.clipboard.writeText(textContent)
-        }
-      }
-      catch (err) {
-        console.error('Failed to copy:', err)
-      }
-      return
-    }
-
-    // 如果有用户ID，则跳转
-    if (userId && userId !== '__popup__') {
-      // __direct_url__ 表示直接访问URL模式（无用户名占位符）
-      const url = selectedPlatform.getUserUrl(userId === '__direct_url__' ? '' : userId)
-      if (url !== '#') {
-        window.open(url, '_blank', 'noopener,noreferrer')
-      }
-    }
-  }, [isEditMode, userId, selectedPlatform, popupPlatformData])
-
-  // 清理定时器
-  useEffect(() => {
-    return () => {
+    // 长按取消
+    const handlePressEnd = useCallback(() => {
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current)
+        longPressTimerRef.current = null
       }
-      if (hoverTimerRef.current) {
-        clearTimeout(hoverTimerRef.current)
-      }
-      if (tooltipHideTimerRef.current) {
-        clearTimeout(tooltipHideTimerRef.current)
-      }
-    }
-  }, [])
+    }, [])
 
-  // 计算图标颜色 - 使用 useMemo 避免重复计算
-  const iconColor = useMemo(() =>
-    isDark ? selectedPlatform.darkColor : selectedPlatform.color, [isDark, selectedPlatform.darkColor, selectedPlatform.color])
-
-  // 根据动画级别和调度器状态选择过渡配置
-  const canLoopAnimate = anim.loop && isAnimating
-  const loopTransitionFast = canLoopAnimate ? LOOP_TRANSITION_FAST : NO_LOOP_TRANSITION_FAST
-  const loopTransitionNormal = canLoopAnimate ? LOOP_TRANSITION_NORMAL : NO_LOOP_TRANSITION_NORMAL
-  const hintLoopTransition = canLoopAnimate ? HINT_LOOP_TRANSITION : HINT_NO_LOOP_TRANSITION
-
-  // 使用 useMemo 渲染内容区域，避免不必要的重渲染
-  const content = useMemo(() => {
-    // 1x1 尺寸 - 仅图标
-    if (config.size === '1x1') {
-      return (
-        <div className="h-full w-full flex items-center justify-center">
-          <motion.div
-            className="text-3xl"
-            layout={false}
-            style={{ color: iconColor }}
-            animate={isHovered ? ICON_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
-            transition={isHovered ? loopTransitionNormal : ICON_STATIC_TRANSITION}
-          >
-            {selectedPlatform.icon}
-          </motion.div>
-        </div>
+    // 获取弹窗类型平台数据（合并查找逻辑避免重复）
+    const popupPlatformData = useMemo(() => {
+      loadCustomPlatforms()
+      const customPlatform = customPlatformsData.find(
+        (p) => p.id === selectedPlatformId,
       )
-    }
+      if (customPlatform?.linkType === 'popup') {
+        return {
+          popupData: customPlatform.popupData || {
+            type: 'text' as const,
+            text: '',
+          },
+          color: customPlatform.color,
+        }
+      }
+      return null
+    }, [selectedPlatformId])
 
-    // 2x1 尺寸 - 图标 + 平台名称
-    if (config.size === '2x1') {
-      return (
-        <div className="h-full w-full flex items-center justify-center gap-3 px-4">
-          <motion.div
-            className="text-2xl shrink-0"
-            layout={false}
-            style={{ color: iconColor }}
-            animate={isHovered ? ICON_LARGE_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
-            transition={isHovered ? loopTransitionFast : ICON_STATIC_TRANSITION}
-          >
-            {selectedPlatform.icon}
-          </motion.div>
-          <span
-            className="font-bold text-gray-800 dark:text-gray-100 truncate"
-            style={{ fontSize: `${18 * fontScale}px` }}
-          >
-            {selectedPlatform.name}
-          </span>
-        </div>
-      )
-    }
+    // 是否为弹窗类型（直接从 popupPlatformData 派生）
+    const isPopupType = popupPlatformData !== null
 
-    // 2x2 尺寸 - popup 类型重视内容显示
-    const popupContent = popupPlatformData ? parsePopupContent(popupPlatformData.popupData.text) : null
-    const is2x2Popup = userId === '__popup__' && popupContent && popupPlatformData
+    // 点击处理（跳转到用户页面或复制信息）
+    const handleClick = useCallback(async () => {
+      // 如果是长按触发的设置弹窗，不处理点击
+      if (isLongPressRef.current) {
+        isLongPressRef.current = false
+        return
+      }
 
-    // 2x2 popup 类型：内容为主的布局
-    if (is2x2Popup) {
-      // 判断是否只有图片内容（没有文本）
-      const hasOnlyImages = !popupContent.textContent && (popupContent.imageUrls.length > 0 || popupPlatformData.popupData.qrcodeUrl)
+      // 编辑模式下不跳转
+      if (isEditMode) return
 
-      return (
-        <div className="h-full w-full relative flex flex-col p-3 cursor-pointer group">
-          {/* 右上角：复制提示 - 仅在有文本内容时显示 */}
-          {popupContent.textContent && (
-            <div className="absolute top-2 right-2 text-[10px] text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
-              <span>{t.socialNetwork.copy}</span>
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </div>
-          )}
+      // 信息弹窗类型：点击复制文本
+      if (popupPlatformData?.popupData.text) {
+        try {
+          const { textContent } = parsePopupContent(
+            popupPlatformData.popupData.text,
+          )
+          if (textContent) {
+            await navigator.clipboard.writeText(textContent)
+          }
+        } catch (err) {
+          console.error('Failed to copy:', err)
+        }
+        return
+      }
 
-          {/* 顶部：小图标 + 平台名 */}
-          <div className="flex items-center gap-2 mb-1">
-            <div
-              className="text-lg shrink-0"
+      // 如果有用户ID，则跳转
+      if (userId && userId !== '__popup__') {
+        // __direct_url__ 表示直接访问URL模式（无用户名占位符）
+        const url = selectedPlatform.getUserUrl(
+          userId === '__direct_url__' ? '' : userId,
+        )
+        if (url !== '#') {
+          window.open(url, '_blank', 'noopener,noreferrer')
+        }
+      }
+    }, [isEditMode, userId, selectedPlatform, popupPlatformData])
+
+    // 清理定时器
+    useEffect(() => {
+      return () => {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current)
+        }
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current)
+        }
+        if (tooltipHideTimerRef.current) {
+          clearTimeout(tooltipHideTimerRef.current)
+        }
+      }
+    }, [])
+
+    // 计算图标颜色 - 使用 useMemo 避免重复计算
+    const iconColor = useMemo(
+      () => (isDark ? selectedPlatform.darkColor : selectedPlatform.color),
+      [isDark, selectedPlatform.darkColor, selectedPlatform.color],
+    )
+
+    // 根据动画级别和调度器状态选择过渡配置
+    const canLoopAnimate = anim.loop && isAnimating
+    const loopTransitionFast = canLoopAnimate
+      ? LOOP_TRANSITION_FAST
+      : NO_LOOP_TRANSITION_FAST
+    const loopTransitionNormal = canLoopAnimate
+      ? LOOP_TRANSITION_NORMAL
+      : NO_LOOP_TRANSITION_NORMAL
+    const hintLoopTransition = canLoopAnimate
+      ? HINT_LOOP_TRANSITION
+      : HINT_NO_LOOP_TRANSITION
+
+    // 使用 useMemo 渲染内容区域，避免不必要的重渲染
+    const content = useMemo(() => {
+      // 1x1 尺寸 - 仅图标
+      if (config.size === '1x1') {
+        return (
+          <div className="h-full w-full flex items-center justify-center">
+            <motion.div
+              className="text-3xl"
+              layout={false}
               style={{ color: iconColor }}
+              animate={isHovered ? ICON_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
+              transition={
+                isHovered ? loopTransitionNormal : ICON_STATIC_TRANSITION
+              }
             >
               {selectedPlatform.icon}
-            </div>
+            </motion.div>
+          </div>
+        )
+      }
+
+      // 2x1 尺寸 - 图标 + 平台名称
+      if (config.size === '2x1') {
+        return (
+          <div className="h-full w-full flex items-center justify-center gap-3 px-4">
+            <motion.div
+              className="text-2xl shrink-0"
+              layout={false}
+              style={{ color: iconColor }}
+              animate={
+                isHovered ? ICON_LARGE_HOVER_ANIMATION : ICON_STATIC_ANIMATION
+              }
+              transition={
+                isHovered ? loopTransitionFast : ICON_STATIC_TRANSITION
+              }
+            >
+              {selectedPlatform.icon}
+            </motion.div>
             <span
-              className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate"
+              className="font-bold text-gray-800 dark:text-gray-100 truncate"
+              style={{ fontSize: `${18 * fontScale}px` }}
             >
               {selectedPlatform.name}
             </span>
           </div>
+        )
+      }
 
-          {/* 中间：主要内容区域 - 扩大显示 */}
-          <div className="flex-1 flex flex-col justify-center overflow-hidden">
+      // 2x2 尺寸 - popup 类型重视内容显示
+      const popupContent = popupPlatformData
+        ? parsePopupContent(popupPlatformData.popupData.text)
+        : null
+      const is2x2Popup =
+        userId === '__popup__' && popupContent && popupPlatformData
+
+      // 2x2 popup 类型：内容为主的布局
+      if (is2x2Popup) {
+        // 判断是否只有图片内容（没有文本）
+        const hasOnlyImages =
+          !popupContent.textContent &&
+          (popupContent.imageUrls.length > 0 ||
+            popupPlatformData.popupData.qrcodeUrl)
+
+        return (
+          <div className="h-full w-full relative flex flex-col p-3 cursor-pointer group">
+            {/* 右上角：复制提示 - 仅在有文本内容时显示 */}
             {popupContent.textContent && (
-              <p
-                className="text-base font-medium text-gray-800 dark:text-gray-100 wrap-break-word whitespace-pre-wrap leading-snug line-clamp-4 text-center"
-              >
-                {popupContent.textContent}
-              </p>
+              <div className="absolute top-2 right-2 text-[10px] text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                <span>{t.socialNetwork.copy}</span>
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
             )}
-            {popupContent.imageUrls.length > 0 && (
-              <div className={`flex justify-center gap-2 ${popupContent.textContent ? 'mt-2' : ''}`}>
-                {popupContent.imageUrls.slice(0, 2).map((url, index) => (
+
+            {/* 顶部：小图标 + 平台名 */}
+            <div className="flex items-center gap-2 mb-1">
+              <div className="text-lg shrink-0" style={{ color: iconColor }}>
+                {selectedPlatform.icon}
+              </div>
+              <span className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate">
+                {selectedPlatform.name}
+              </span>
+            </div>
+
+            {/* 中间：主要内容区域 - 扩大显示 */}
+            <div className="flex-1 flex flex-col justify-center overflow-hidden">
+              {popupContent.textContent && (
+                <p className="text-base font-medium text-gray-800 dark:text-gray-100 wrap-break-word whitespace-pre-wrap leading-snug line-clamp-4 text-center">
+                  {popupContent.textContent}
+                </p>
+              )}
+              {popupContent.imageUrls.length > 0 && (
+                <div
+                  className={`flex justify-center gap-2 ${popupContent.textContent ? 'mt-2' : ''}`}
+                >
+                  {popupContent.imageUrls.slice(0, 2).map((url, index) => (
+                    <img
+                      key={index}
+                      src={url}
+                      alt=""
+                      className={`rounded-lg object-contain ${hasOnlyImages ? 'max-h-24 max-w-[48%]' : 'max-h-20 max-w-[48%]'}`}
+                      loading="lazy"
+                    />
+                  ))}
+                </div>
+              )}
+              {popupPlatformData.popupData.qrcodeUrl && (
+                <div
+                  className={`flex justify-center ${popupContent.textContent || popupContent.imageUrls.length > 0 ? 'mt-2' : ''}`}
+                >
                   <img
-                    key={index}
-                    src={url}
-                    alt=""
-                    className={`rounded-lg object-contain ${hasOnlyImages ? 'max-h-24 max-w-[48%]' : 'max-h-20 max-w-[48%]'}`}
+                    src={popupPlatformData.popupData.qrcodeUrl}
+                    alt="QR"
+                    className={`rounded-lg object-contain ${hasOnlyImages ? 'w-24 h-24' : 'w-20 h-20'}`}
                     loading="lazy"
                   />
-                ))}
-              </div>
-            )}
-            {popupPlatformData.popupData.qrcodeUrl && (
-              <div className={`flex justify-center ${popupContent.textContent || popupContent.imageUrls.length > 0 ? 'mt-2' : ''}`}>
-                <img
-                  src={popupPlatformData.popupData.qrcodeUrl}
-                  alt="QR"
-                  className={`rounded-lg object-contain ${hasOnlyImages ? 'w-24 h-24' : 'w-20 h-20'}`}
-                  loading="lazy"
-                />
-              </div>
-            )}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
+
+      // 2x2 尺寸 - 普通类型：图标 + 平台名称 + 描述
+      return (
+        <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-4">
+          <motion.div
+            className="text-4xl"
+            layout={false}
+            style={{ color: iconColor }}
+            animate={
+              isHovered ? ICON_LARGE_HOVER_ANIMATION : ICON_STATIC_ANIMATION
+            }
+            transition={isHovered ? loopTransitionFast : ICON_STATIC_TRANSITION}
+          >
+            {selectedPlatform.icon}
+          </motion.div>
+          <div className="text-center w-full">
+            <div
+              className="font-bold text-gray-800 dark:text-gray-100"
+              style={{ fontSize: `${16 * fontScale}px` }}
+            >
+              {selectedPlatform.name}
+            </div>
+            <motion.div
+              className={`mt-1 flex items-center justify-center gap-1 ${userId ? 'text-gray-500 dark:text-gray-400' : 'text-amber-500 dark:text-amber-400'}`}
+              style={{ fontSize: `${10 * fontScale}px` }}
+              layout={false}
+              {...HINT_ANIMATION}
+            >
+              {userId ? (
+                <>
+                  <span>{t.socialNetwork.clickToVisit}</span>
+                  <motion.span
+                    layout={false}
+                    animate={anim.loop ? HINT_ARROW_ANIMATION : { x: 0 }}
+                    transition={hintLoopTransition}
+                  >
+                    →
+                  </motion.span>
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <span>{t.socialNetwork.notConfigured}</span>
+                </>
+              )}
+            </motion.div>
           </div>
         </div>
       )
-    }
+    }, [
+      config.size,
+      iconColor,
+      isHovered,
+      selectedPlatform,
+      fontScale,
+      userId,
+      popupPlatformData,
+      loopTransitionFast,
+      hintLoopTransition,
+      anim.loop,
+    ])
 
-    // 2x2 尺寸 - 普通类型：图标 + 平台名称 + 描述
-    return (
-      <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-4">
-        <motion.div
-          className="text-4xl"
-          layout={false}
-          style={{ color: iconColor }}
-          animate={isHovered ? ICON_LARGE_HOVER_ANIMATION : ICON_STATIC_ANIMATION}
-          transition={isHovered ? loopTransitionFast : ICON_STATIC_TRANSITION}
-        >
-          {selectedPlatform.icon}
-        </motion.div>
-        <div className="text-center w-full">
-          <div
-            className="font-bold text-gray-800 dark:text-gray-100"
-            style={{ fontSize: `${16 * fontScale}px` }}
-          >
-            {selectedPlatform.name}
-          </div>
-          <motion.div
-            className={`mt-1 flex items-center justify-center gap-1 ${userId ? 'text-gray-500 dark:text-gray-400' : 'text-amber-500 dark:text-amber-400'}`}
-            style={{ fontSize: `${10 * fontScale}px` }}
-            layout={false}
-            {...HINT_ANIMATION}
-          >
-            {userId
-              ? (
-                  <>
-                    <span>{t.socialNetwork.clickToVisit}</span>
-                    <motion.span
-                      layout={false}
-                      animate={anim.loop ? HINT_ARROW_ANIMATION : { x: 0 }}
-                      transition={hintLoopTransition}
-                    >
-                      →
-                    </motion.span>
-                  </>
-                )
-              : (
-                  <>
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <span>{t.socialNetwork.notConfigured}</span>
-                  </>
-                )}
-          </motion.div>
-        </div>
-      </div>
+    // 缓存容器的 hover/tap 动画配置 - 条件判断移到外部避免创建空对象
+    const hasInteraction = !isEditMode && !!userId
+    const containerHoverProps = useMemo(
+      () =>
+        hasInteraction
+          ? {
+              whileHover: { filter: 'brightness(1.03)' },
+              whileTap: { scale: 0.98 },
+            }
+          : {},
+      [hasInteraction],
     )
-  }, [config.size, iconColor, isHovered, selectedPlatform, fontScale, userId, popupPlatformData, loopTransitionFast, hintLoopTransition, anim.loop])
 
-  // 缓存容器的 hover/tap 动画配置 - 条件判断移到外部避免创建空对象
-  const hasInteraction = !isEditMode && !!userId
-  const containerHoverProps = useMemo(() =>
-    hasInteraction
-      ? {
-          whileHover: { filter: 'brightness(1.03)' },
-          whileTap: { scale: 0.98 },
-        }
-      : {}, [hasInteraction])
+    // 背景光晕动画 - 直接使用条件渲染，无需 useMemo
+    const shouldAnimateGlow = anim.loop
 
-  // 背景光晕动画 - 直接使用条件渲染，无需 useMemo
-  const shouldAnimateGlow = anim.loop
+    // tooltip 隐藏延迟计时器
+    const tooltipHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+      null,
+    )
 
-  // tooltip 隐藏延迟计时器
-  const tooltipHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // 缓存 onMouseLeave 和 onMouseEnter 回调
-  const handleMouseLeave = useCallback(() => {
-    handlePressEnd()
-    setIsHovered(false)
-    // 清除 hover 延迟计时器
-    if (hoverTimerRef.current) {
-      clearTimeout(hoverTimerRef.current)
-      hoverTimerRef.current = null
-    }
-    // 延迟隐藏 tooltip，给用户一点时间移动到 tooltip 上
-    if (tooltipHideTimerRef.current) {
-      clearTimeout(tooltipHideTimerRef.current)
-    }
-    tooltipHideTimerRef.current = setTimeout(() => {
-      setShowInfoTooltip(false)
-      tooltipHideTimerRef.current = null
-    }, 100)
-  }, [handlePressEnd])
-
-  const handleMouseEnter = useCallback(() => {
-    if (!isEditMode && userId) {
-      setIsHovered(true)
-    }
-    // 对于 popup 类型，hover 延迟显示 tooltip（仅非 2x2 尺寸）
-    // 2x2 尺寸直接在小组件内显示内容
-    if (!isEditMode && isPopupType && popupPlatformData && config.size !== '2x2') {
-      // 清除之前的计时器
+    // 缓存 onMouseLeave 和 onMouseEnter 回调
+    const handleMouseLeave = useCallback(() => {
+      handlePressEnd()
+      setIsHovered(false)
+      // 清除 hover 延迟计时器
       if (hoverTimerRef.current) {
         clearTimeout(hoverTimerRef.current)
+        hoverTimerRef.current = null
       }
-      // 300ms 延迟后显示 tooltip
-      hoverTimerRef.current = setTimeout(() => {
-        setShowInfoTooltip(true)
-      }, 300)
-    }
-  }, [isEditMode, userId, isPopupType, popupPlatformData, config.size])
+      // 延迟隐藏 tooltip，给用户一点时间移动到 tooltip 上
+      if (tooltipHideTimerRef.current) {
+        clearTimeout(tooltipHideTimerRef.current)
+      }
+      tooltipHideTimerRef.current = setTimeout(() => {
+        setShowInfoTooltip(false)
+        tooltipHideTimerRef.current = null
+      }, 100)
+    }, [handlePressEnd])
 
-  // 合并 ref 回调
-  const mergedRef = useCallback((node: HTMLDivElement | null) => {
-    // 设置本地 ref
-    localRef.current = node
-    // 调用 containerRef 回调
-    if (typeof containerRef === 'function') {
-      containerRef(node)
-    }
-  }, [containerRef])
+    const handleMouseEnter = useCallback(() => {
+      if (!isEditMode && userId) {
+        setIsHovered(true)
+      }
+      // 对于 popup 类型，hover 延迟显示 tooltip（仅非 2x2 尺寸）
+      // 2x2 尺寸直接在小组件内显示内容
+      if (
+        !isEditMode &&
+        isPopupType &&
+        popupPlatformData &&
+        config.size !== '2x2'
+      ) {
+        // 清除之前的计时器
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current)
+        }
+        // 300ms 延迟后显示 tooltip
+        hoverTimerRef.current = setTimeout(() => {
+          setShowInfoTooltip(true)
+        }, 300)
+      }
+    }, [isEditMode, userId, isPopupType, popupPlatformData, config.size])
 
-  return (
-    <>
-      <motion.div
-        ref={mergedRef}
-        className={`relative h-full w-full rounded-xl overflow-hidden glass ${
-          hasInteraction ? 'cursor-pointer' : ''
-        } ${isEditMode ? 'cursor-grab' : ''}`}
-        style={{
-          // 使用 filter 替代 box-shadow 避免布局影响
-          transition: 'filter 0.3s ease, border-color 0.3s ease',
-        }}
-        {...containerHoverProps}
-        onClick={handleClick}
-        onMouseDown={handlePressStart}
-        onMouseUp={handlePressEnd}
-        onMouseLeave={handleMouseLeave}
-        onMouseEnter={handleMouseEnter}
-        onTouchStart={handlePressStart}
-        onTouchEnd={handlePressEnd}
-        onTouchCancel={handlePressEnd}
-      >
-        {/* 背景装饰 - 平台色微光效果 (Memoized 组件避免重渲染) */}
-        <GlowBackground
-          color={selectedPlatform.color}
-          animLevel={anim.level}
-          shouldAnimate={shouldAnimateGlow}
-        />
+    // 合并 ref 回调
+    const mergedRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        // 设置本地 ref
+        localRef.current = node
+        // 调用 containerRef 回调
+        if (typeof containerRef === 'function') {
+          containerRef(node)
+        }
+      },
+      [containerRef],
+    )
 
-        {/* 内容区域 */}
-        {content}
-
-        {/* 编辑模式指示器 */}
-        {isEditMode && (
-          <div className="absolute inset-0 border-2 border-dashed border-blue-400/50 rounded-xl pointer-events-none" />
-        )}
-
-        {/* 长按设置提示（编辑模式）- 仅视觉提示，不可点击 */}
-        {isEditMode && (
-          <motion.div
-            className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md flex items-center justify-center bg-black/15 dark:bg-white/15 backdrop-blur-sm pointer-events-none"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-            title={t.socialNetwork.longPressToEdit}
-          >
-            <svg className="w-3 h-3 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </motion.div>
-        )}
-      </motion.div>
-
-      {/* 信息提示 - hover 触发，点击复制 */}
-      <AnimatePresence>
-        {showInfoTooltip && popupPlatformData && (
-          <InfoTooltip
-            isVisible={showInfoTooltip}
-            popupData={popupPlatformData.popupData}
-            anchorRef={localRef}
+    return (
+      <>
+        <motion.div
+          ref={mergedRef}
+          className={`relative h-full w-full rounded-xl overflow-hidden glass ${
+            hasInteraction ? 'cursor-pointer' : ''
+          } ${isEditMode ? 'cursor-grab' : ''}`}
+          style={{
+            // 使用 filter 替代 box-shadow 避免布局影响
+            transition: 'filter 0.3s ease, border-color 0.3s ease',
+          }}
+          {...containerHoverProps}
+          onClick={handleClick}
+          onMouseDown={handlePressStart}
+          onMouseUp={handlePressEnd}
+          onMouseLeave={handleMouseLeave}
+          onMouseEnter={handleMouseEnter}
+          onTouchStart={handlePressStart}
+          onTouchEnd={handlePressEnd}
+          onTouchCancel={handlePressEnd}
+        >
+          {/* 背景装饰 - 平台色微光效果 (Memoized 组件避免重渲染) */}
+          <GlowBackground
+            color={selectedPlatform.color}
+            animLevel={anim.level}
+            shouldAnimate={shouldAnimateGlow}
           />
-        )}
-      </AnimatePresence>
-    </>
-  )
-})
+
+          {/* 内容区域 */}
+          {content}
+
+          {/* 编辑模式指示器 */}
+          {isEditMode && (
+            <div className="absolute inset-0 border-2 border-dashed border-blue-400/50 rounded-xl pointer-events-none" />
+          )}
+
+          {/* 长按设置提示（编辑模式）- 仅视觉提示，不可点击 */}
+          {isEditMode && (
+            <motion.div
+              className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md flex items-center justify-center bg-black/15 dark:bg-white/15 backdrop-blur-sm pointer-events-none"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+              title={t.socialNetwork.longPressToEdit}
+            >
+              <svg
+                className="w-3 h-3 text-gray-700 dark:text-gray-200"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
+            </motion.div>
+          )}
+        </motion.div>
+
+        {/* 信息提示 - hover 触发，点击复制 */}
+        <AnimatePresence>
+          {showInfoTooltip && popupPlatformData && (
+            <InfoTooltip
+              isVisible={showInfoTooltip}
+              popupData={popupPlatformData.popupData}
+              anchorRef={localRef}
+            />
+          )}
+        </AnimatePresence>
+      </>
+    )
+  },
+)
 
 SocialNetworkWidget.displayName = 'SocialNetworkWidget'
 

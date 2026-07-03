@@ -6,12 +6,12 @@ export { CompactSettingGroup } from './CompactSettingGroup'
 
 export { InfoCard } from './InfoCard'
 export { ButtonItem } from './items/ButtonItem'
-export { CheckboxItem } from './items/CheckboxItem'
 export { CheckboxGroupItem } from './items/CheckboxGroupItem'
+export { CheckboxItem } from './items/CheckboxItem'
 export { InputItem } from './items/InputItem'
 
-export { NumberItem } from './items/NumberItem'
 export { NumberGroupItem } from './items/NumberGroupItem'
+export { NumberItem } from './items/NumberItem'
 export { ProviderItem } from './items/ProviderItem'
 export { SelectItem } from './items/SelectItem'
 // 具体设置项组件

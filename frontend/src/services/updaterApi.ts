@@ -22,87 +22,96 @@ const DIRECT_BASE = '/_updater'
 export type TransportMode = 'backend' | 'direct'
 
 export interface LatestAvailable {
-  version: string;
-  channel: string;
-  seen_at: string;
-  requires_self_update: boolean;
-  min_updater_version: string | null;
-  notes_url: string;
+  version: string
+  channel: string
+  seen_at: string
+  requires_self_update: boolean
+  min_updater_version: string | null
+  notes_url: string
 }
 
 export interface UpdaterStatus {
-  schema_version: number;
-  updater_version: string;
-  current_version: string | null;
-  channel: string;
-  maintenance_active: boolean;
-  maintenance_phase: string;
-  job_in_flight: string | null;
+  schema_version: number
+  updater_version: string
+  current_version: string | null
+  channel: string
+  maintenance_active: boolean
+  maintenance_phase: string
+  job_in_flight: string | null
   // 字段从 updater 0.2 起出现，旧 updater 不返回；UI 必须按可选处理。
-  latest_available?: LatestAvailable | null;
-  update_available?: boolean;
-  requires_self_update?: boolean;
-  last_checked_at?: string | null;
+  latest_available?: LatestAvailable | null
+  update_available?: boolean
+  requires_self_update?: boolean
+  last_checked_at?: string | null
 }
 
 export interface ImageRef {
-  ref: string;
-  digest: string;
+  ref: string
+  digest: string
 }
 
 export interface ReleaseManifest {
-  schema_version: number;
-  version: string;
-  channel: string;
-  released_at: string;
-  min_from_version?: string;
-  images: Record<string, ImageRef>;
+  schema_version: number
+  version: string
+  channel: string
+  released_at: string
+  min_from_version?: string
+  images: Record<string, ImageRef>
   env: {
-    required: string[];
-    new: Array<{ name: string; required: boolean; default?: string; description?: string }>;
-    removed: string[];
-  };
-  migrations: { irreversible: boolean; estimated_seconds: number; requires_full_backup: boolean };
-  updater: { min_updater_version: string; self_update_required: boolean };
-  postgres: { min_pg_version: string; max_pg_version: string };
-  notes_url: string;
-  signature: string | null;
+    required: string[]
+    new: Array<{
+      name: string
+      required: boolean
+      default?: string
+      description?: string
+    }>
+    removed: string[]
+  }
+  migrations: {
+    irreversible: boolean
+    estimated_seconds: number
+    requires_full_backup: boolean
+  }
+  updater: { min_updater_version: string; self_update_required: boolean }
+  postgres: { min_pg_version: string; max_pg_version: string }
+  notes_url: string
+  signature: string | null
 }
 
 export interface SnapshotMeta {
-  id: string;
-  created_at: string;
-  source_version: string | null;
-  size_bytes: number;
-  file_count: number;
-  keep: boolean;
-  sample_sha256: string | null;
+  id: string
+  created_at: string
+  source_version: string | null
+  size_bytes: number
+  file_count: number
+  keep: boolean
+  sample_sha256: string | null
 }
 
 export interface SnapshotsResponse {
-  schema_version: number;
-  items: SnapshotMeta[];
+  schema_version: number
+  items: SnapshotMeta[]
 }
 
 export interface JobStep {
-  phase: string;
-  started_at: string;
-  finished_at: string | null;
-  ok: boolean | null;
-  log_tail: string;
-  error: string | null;
+  phase: string
+  started_at: string
+  finished_at: string | null
+  ok: boolean | null
+  log_tail: string
+  error: string | null
 }
 
 export interface Job {
-  id: string;
-  kind: 'update' | 'rollback' | 'self_update';
-  created_at: string;
-  finished_at: string | null;
-  from_version: string | null;
-  to_version: string | null;
-  snapshot_id: string | null;
-  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'needs_manual';
-  steps: JobStep[];
+  id: string
+  kind: 'update' | 'rollback' | 'self_update'
+  created_at: string
+  finished_at: string | null
+  from_version: string | null
+  to_version: string | null
+  snapshot_id: string | null
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'needs_manual'
+  steps: JobStep[]
 }
 
 interface CallOptions {
@@ -122,20 +131,21 @@ async function call<T>(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    Accept: 'application/json',
   }
-  if (opts.token)
-    headers['X-Update-Token'] = opts.token
-  if (opts.idempotencyKey)
-    headers['Idempotency-Key'] = opts.idempotencyKey
+  if (opts.token) headers['X-Update-Token'] = opts.token
+  if (opts.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey
 
   // Backend mode + state-changing methods go through backend csrf_middleware.
   // Direct mode bypasses backend entirely so no CSRF token is required.
-  const stateChanging = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE'
+  const stateChanging =
+    method === 'POST' ||
+    method === 'PUT' ||
+    method === 'PATCH' ||
+    method === 'DELETE'
   if (mode === 'backend' && stateChanging) {
     const csrf = await getCSRFToken().catch(() => null)
-    if (csrf)
-      headers['X-CSRF-Token'] = csrf
+    if (csrf) headers['X-CSRF-Token'] = csrf
   }
 
   const resp = await fetch(`${base}${path}`, {
@@ -151,19 +161,20 @@ async function call<T>(
     let detail = text
     try {
       detail = JSON.parse(text).error ?? text
-    }
-    catch {
+    } catch {
       /* keep raw */
     }
     throw new UpdaterError(resp.status, detail || resp.statusText)
   }
-  if (resp.status === 204)
-    return undefined as T
+  if (resp.status === 204) return undefined as T
   return (await resp.json()) as T
 }
 
 export class UpdaterError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message)
     this.name = 'UpdaterError'
   }
@@ -176,25 +187,41 @@ export class UpdaterError extends Error {
  *   const api = makeUpdaterApi({ mode: 'backend' })       // default
  *   const api = makeUpdaterApi({ mode: 'direct', token }) // fallback
  */
-export function makeUpdaterApi(opts: { mode?: TransportMode, token?: string } = {}) {
+export function makeUpdaterApi(
+  opts: { mode?: TransportMode; token?: string } = {},
+) {
   const mode = opts.mode ?? 'backend'
   const token = opts.token
 
-  const wrap = <T>(method: string, path: string, body?: unknown, idempotencyKey?: string) =>
-    call<T>(method, path, body, { mode, token, idempotencyKey })
+  const wrap = <T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    idempotencyKey?: string,
+  ) => call<T>(method, path, body, { mode, token, idempotencyKey })
 
   return {
     mode,
     status: () => wrap<UpdaterStatus>('GET', '/status'),
     available: (channel?: string) =>
-      wrap<ReleaseManifest | null>('GET', `/available${channel ? `?channel=${channel}` : ''}`),
+      wrap<ReleaseManifest | null>(
+        'GET',
+        `/available${channel ? `?channel=${channel}` : ''}`,
+      ),
     jobs: () => wrap<string[]>('GET', '/jobs'),
     job: (id: string) => wrap<Job>('GET', `/jobs/${id}`),
     snapshots: () => wrap<SnapshotsResponse>('GET', '/snapshots'),
     triggerUpdate: (target: string, idemKey?: string) =>
-      wrap<{ job_id: string }>('POST', '/update', { target_version: target }, idemKey),
+      wrap<{ job_id: string }>(
+        'POST',
+        '/update',
+        { target_version: target },
+        idemKey,
+      ),
     rollback: (snapshotId: string) =>
-      wrap<{ job_id: string }>('POST', '/rollback', { snapshot_id: snapshotId }),
+      wrap<{ job_id: string }>('POST', '/rollback', {
+        snapshot_id: snapshotId,
+      }),
     diagnostics: () => wrap<unknown>('GET', '/diagnostics'),
     exitMaintenance: () =>
       wrap<{ ok: boolean }>('POST', '/rescue/exit-maintenance'),
@@ -202,7 +229,11 @@ export function makeUpdaterApi(opts: { mode?: TransportMode, token?: string } = 
       wrap<{ ok: boolean }>('POST', '/rescue/forget-current'),
     /** 触发 updater 自更新；旧 updater 几秒后会被 helper container 替换。 */
     triggerSelfUpdate: () =>
-      wrap<{ ok: boolean, helper_container_id: string, new_updater_tag: string }>(
+      wrap<{
+        ok: boolean
+        helper_container_id: string
+        new_updater_tag: string
+      }>(
         'POST',
         // backend mode: 走 backend 代理；direct mode: 直接命中 updater /admin/self-update
         mode === 'backend' ? '/self-update' : '/admin/self-update',
@@ -219,24 +250,26 @@ export const updaterApi = makeUpdaterApi()
  * the swap will keep running the old bundle. Use this on app load to nudge a reload.
  */
 export async function detectVersionDrift(): Promise<{
-  current: string;
-  build: string;
-  drift: boolean;
+  current: string
+  build: string
+  drift: boolean
 } | null> {
   try {
-    const built = document.querySelector('meta[name="myriad-version"]')?.getAttribute('content')
-    if (!built)
-      return null
+    const built = document
+      .querySelector('meta[name="myriad-version"]')
+      ?.getAttribute('content')
+    if (!built) return null
     const resp = await fetch('/health', { credentials: 'omit' })
-    if (!resp.ok)
-      return null
+    if (!resp.ok) return null
     const health = await resp.json()
     const current = String(health?.version ?? '')
-    if (!current)
-      return null
-    return { current, build: built, drift: current !== built && built !== 'dev' }
-  }
-  catch {
+    if (!current) return null
+    return {
+      current,
+      build: built,
+      drift: current !== built && built !== 'dev',
+    }
+  } catch {
     return null
   }
 }

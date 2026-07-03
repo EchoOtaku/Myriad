@@ -421,12 +421,12 @@ pub async fn maybe_cleanup_tasks() {
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     // 每 20 次请求清理一次过期任务
-    if n % 20 == 0 {
+    if n.is_multiple_of(20) {
         let mut store = TASK_STORE.write().await;
         store.cleanup_expired().await;
     }
     // 每 100 次请求清理一次空闲 Lane（防止 HashMap 无限增长）
-    if n % 100 == 0 {
+    if n.is_multiple_of(100) {
         crate::services::agent::LANE_QUEUE
             .cleanup_idle_lanes()
             .await;

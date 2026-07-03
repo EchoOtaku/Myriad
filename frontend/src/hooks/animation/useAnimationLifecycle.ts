@@ -140,15 +140,18 @@ export function useAnimationLifecycle(
   }, [])
 
   // 更新阶段
-  const updatePhase = useCallback((newPhase: AnimationLifecyclePhase) => {
-    setPhase((prev) => {
-      if (prev !== newPhase) {
-        onPhaseChange?.(newPhase)
-        return newPhase
-      }
-      return prev
-    })
-  }, [onPhaseChange])
+  const updatePhase = useCallback(
+    (newPhase: AnimationLifecyclePhase) => {
+      setPhase((prev) => {
+        if (prev !== newPhase) {
+          onPhaseChange?.(newPhase)
+          return newPhase
+        }
+        return prev
+      })
+    },
+    [onPhaseChange],
+  )
 
   // 完成动画
   const complete = useCallback(() => {
@@ -160,8 +163,7 @@ export function useAnimationLifecycle(
 
   // 开始动画
   const start = useCallback(() => {
-    if (phase !== AnimationLifecyclePhase.IDLE)
-      return
+    if (phase !== AnimationLifecyclePhase.IDLE) return
 
     updatePhase(AnimationLifecyclePhase.PREPARING)
 
@@ -174,8 +176,7 @@ export function useAnimationLifecycle(
 
     // 订阅状态变化
     const unsubscribe = coordinator.subscribe(animationId, (state) => {
-      if (!mountedRef.current)
-        return
+      if (!mountedRef.current) return
 
       if (state === AnimationState.READY || state === AnimationState.RUNNING) {
         startTimeRef.current = performance.now()
@@ -188,8 +189,7 @@ export function useAnimationLifecycle(
             complete()
           }
         }, duration)
-      }
-      else if (state === AnimationState.SKIPPED) {
+      } else if (state === AnimationState.SKIPPED) {
         // 被跳过，直接完成
         complete()
       }
@@ -197,7 +197,16 @@ export function useAnimationLifecycle(
 
     // 返回清理函数（存储到 ref 以便后续清理）
     return unsubscribe
-  }, [phase, animationId, priority, delay, duration, updatePhase, clearCompletionTimer, complete])
+  }, [
+    phase,
+    animationId,
+    priority,
+    delay,
+    duration,
+    updatePhase,
+    clearCompletionTimer,
+    complete,
+  ])
 
   // 重置
   const reset = useCallback(() => {
@@ -223,8 +232,7 @@ export function useAnimationLifecycle(
           mountedRef.current = false
           clearCompletionTimer()
         }
-      }
-      else {
+      } else {
         start()
       }
     }
@@ -236,8 +244,9 @@ export function useAnimationLifecycle(
   }, [autoStart, waitForPage, start, clearCompletionTimer])
 
   // 计算派生状态
-  const canAnimate = phase === AnimationLifecyclePhase.ACTIVE
-    || phase === AnimationLifecyclePhase.COMPLETED
+  const canAnimate =
+    phase === AnimationLifecyclePhase.ACTIVE ||
+    phase === AnimationLifecyclePhase.COMPLETED
   const isComplete = phase === AnimationLifecyclePhase.COMPLETED
   const isIdle = phase === AnimationLifecyclePhase.IDLE
 
@@ -360,12 +369,7 @@ export interface BatchAnimationResult {
 export function useBatchAnimationLifecycle(
   options: BatchAnimationOptions,
 ): BatchAnimationResult {
-  const {
-    count,
-    staggerDelay = 50,
-    duration = 300,
-    autoStart = true,
-  } = options
+  const { count, staggerDelay = 50, duration = 300, autoStart = true } = options
 
   // 存储每个元素的完成状态
   const [completedSet, setCompletedSet] = useState<Set<number>>(new Set())
@@ -373,7 +377,9 @@ export function useBatchAnimationLifecycle(
   const [started, setStarted] = useState(false)
 
   const mountedRef = useRef(true)
-  const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+  const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  )
 
   // 清理所有定时器
   const clearAllTimers = useCallback(() => {
@@ -385,8 +391,7 @@ export function useBatchAnimationLifecycle(
 
   // 开始所有动画
   const startAll = useCallback(() => {
-    if (started)
-      return
+    if (started) return
     setStarted(true)
 
     for (let i = 0; i < count; i++) {
@@ -394,15 +399,13 @@ export function useBatchAnimationLifecycle(
 
       // 延迟激活
       const activateTimer = setTimeout(() => {
-        if (!mountedRef.current)
-          return
-        setActiveSet(prev => new Set(prev).add(i))
+        if (!mountedRef.current) return
+        setActiveSet((prev) => new Set(prev).add(i))
 
         // 延迟完成
         const completeTimer = setTimeout(() => {
-          if (!mountedRef.current)
-            return
-          setCompletedSet(prev => new Set(prev).add(i))
+          if (!mountedRef.current) return
+          setCompletedSet((prev) => new Set(prev).add(i))
         }, duration)
 
         timersRef.current.set(i * 2 + 1, completeTimer)
@@ -444,24 +447,26 @@ export function useBatchAnimationLifecycle(
   }, [autoStart, startAll, clearAllTimers])
 
   // 获取单个元素状态
-  const getItemState = useCallback((index: number) => {
-    const isActive = activeSet.has(index)
-    const isComplete = completedSet.has(index)
+  const getItemState = useCallback(
+    (index: number) => {
+      const isActive = activeSet.has(index)
+      const isComplete = completedSet.has(index)
 
-    let className = 'anim-waiting'
-    if (isComplete) {
-      className = 'anim-done'
-    }
-    else if (isActive) {
-      className = 'anim-active'
-    }
+      let className = 'anim-waiting'
+      if (isComplete) {
+        className = 'anim-done'
+      } else if (isActive) {
+        className = 'anim-active'
+      }
 
-    return {
-      canAnimate: isActive || isComplete,
-      isComplete,
-      className,
-    }
-  }, [activeSet, completedSet])
+      return {
+        canAnimate: isActive || isComplete,
+        isComplete,
+        className,
+      }
+    },
+    [activeSet, completedSet],
+  )
 
   return {
     getItemState,

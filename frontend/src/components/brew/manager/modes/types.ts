@@ -8,16 +8,16 @@ import type { BrewSource, FeedType, SourceType } from '../../../../types/brew'
 export type SortMode = 'update' | 'custom' | 'category' | 'random' | 'pinyin'
 
 /** 控制岛模式 */
-export type ControlMode
-  = | 'default'
-    | 'search'
-    | 'edit'
-    | 'keyboard'
-    | 'add'
-    | 'feed'
-    | 'category-feed'
-    | 'starred'
-    | 'starred-edit'
+export type ControlMode =
+  | 'default'
+  | 'search'
+  | 'edit'
+  | 'keyboard'
+  | 'add'
+  | 'feed'
+  | 'category-feed'
+  | 'starred'
+  | 'starred-edit'
 
 /** 动态提示信息 */
 export interface DynamicTip {

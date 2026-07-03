@@ -35,10 +35,7 @@ export function useDebouncedCallback<T extends (...args: any[]) => any>(
   delay: number = 300,
   deps: React.DependencyList = [],
 ): T {
-  return useCallback(
-    debounce(callback, delay) as T,
-    [delay, ...deps],
-  )
+  return useCallback(debounce(callback, delay) as T, [delay, ...deps])
 }
 
 /**
@@ -53,10 +50,7 @@ export function useThrottledCallback<T extends (...args: any[]) => any>(
   limit: number = 300,
   deps: React.DependencyList = [],
 ): T {
-  return useCallback(
-    throttle(callback, limit) as T,
-    [limit, ...deps],
-  )
+  return useCallback(throttle(callback, limit) as T, [limit, ...deps])
 }
 
 /**

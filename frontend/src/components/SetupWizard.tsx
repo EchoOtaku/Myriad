@@ -1,4 +1,13 @@
-import { FaCheck, FaDatabase, FaExclamationTriangle, FaUser, LuClipboardList, LuDatabase, LuInfo, LuWrench } from '@lib/icons'
+import {
+  FaCheck,
+  FaDatabase,
+  FaExclamationTriangle,
+  FaUser,
+  LuClipboardList,
+  LuDatabase,
+  LuInfo,
+  LuWrench,
+} from '@lib/icons'
 import React, { useEffect, useState } from 'react'
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
@@ -55,7 +64,10 @@ const SetupWizard: React.FC = () => {
       const healthData = await healthResponse.json()
 
       // 如果处于配置模式(数据库未连接),显示数据库配置界面
-      if (healthData.mode === 'configuration' || !healthData.database_connected) {
+      if (
+        healthData.mode === 'configuration' ||
+        !healthData.database_connected
+      ) {
         setStatus({
           is_setup_required: true,
           has_database: false,
@@ -94,11 +106,9 @@ const SetupWizard: React.FC = () => {
       // 因为用户接下来就要初始化数据库
       setDbConfigured(healthData.database_connected)
       setAdminCreated(data.has_admin_user)
-    }
-    catch (_err) {
+    } catch (_err) {
       setError(t.setup.connectionFailedDesc)
-    }
-    finally {
+    } finally {
       setLoading(false)
     }
   }
@@ -133,16 +143,16 @@ const SetupWizard: React.FC = () => {
       const result = await response.json()
 
       if (result.restart_triggered || result.reload_triggered) {
-        alert(`${t.setup.dbConfigSaved}\n\n${t.setup.dbReconnecting}\n\n${t.setup.waitingForConnection}`)
+        alert(
+          `${t.setup.dbConfigSaved}\n\n${t.setup.dbReconnecting}\n\n${t.setup.waitingForConnection}`,
+        )
 
         // 后端会由受管环境重启；轮询直到新进程以完整路由表启动
         pollDatabaseConnection()
-      }
-      else {
+      } else {
         alert(`${t.setup.dbConfigSaved}\n\n${t.setup.restartRequired}`)
       }
-    }
-    catch (err: any) {
+    } catch (err: any) {
       alert(`${t.setup.saveConfigFailed}: ${err.message}`)
       setSavingDb(false)
     }
@@ -163,26 +173,31 @@ const SetupWizard: React.FC = () => {
           const healthData = await healthResponse.json()
 
           // 检查是否已经连接到数据库（不再是配置模式）
-          if (healthData.database_connected && healthData.mode !== 'configuration') {
-            alert(`${t.setup.dbConnectionSuccess}\n\n${t.setup.systemSwitchedToNormal}`)
+          if (
+            healthData.database_connected &&
+            healthData.mode !== 'configuration'
+          ) {
+            alert(
+              `${t.setup.dbConnectionSuccess}\n\n${t.setup.systemSwitchedToNormal}`,
+            )
             setSavingDb(false)
             setDbConfigured(true)
             checkSetupStatus()
             return
           }
         }
-      }
-      catch (_err) {
+      } catch (_err) {
         // 轮询检查失败，继续尝试
       }
 
       // 如果还没成功且未超过最大尝试次数，继续轮询
       if (attempts < maxAttempts) {
         setTimeout(checkConnection, pollInterval)
-      }
-      else {
+      } else {
         // 超时
-        alert(`${t.setup.dbConnectionTimeout}\n\n${t.setup.dbConnectionTimeoutDesc}`)
+        alert(
+          `${t.setup.dbConnectionTimeout}\n\n${t.setup.dbConnectionTimeoutDesc}`,
+        )
         setSavingDb(false)
         checkSetupStatus()
       }
@@ -222,11 +237,9 @@ const SetupWizard: React.FC = () => {
 
       // 重新检查状态以更新 UI
       await checkSetupStatus()
-    }
-    catch (err: any) {
+    } catch (err: any) {
       alert(`${t.setup.dbMigrationFailed}: ${err.message}`)
-    }
-    finally {
+    } finally {
       setMigratingDb(false)
     }
   }
@@ -273,11 +286,9 @@ const SetupWizard: React.FC = () => {
       alert(t.setup.adminCreated)
       setAdminCreated(true)
       checkSetupStatus()
-    }
-    catch (err: any) {
+    } catch (err: any) {
       alert(`${t.setup.createFailed}: ${err.message}`)
-    }
-    finally {
+    } finally {
       setCreatingAdmin(false)
     }
   }
@@ -293,8 +304,12 @@ const SetupWizard: React.FC = () => {
           <div className="w-14 h-14 sm:w-16 sm:h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
             <FaExclamationTriangle className="text-2xl sm:text-3xl text-red-600 dark:text-red-400" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">{t.setup.connectionFailed}</h2>
-          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6">{error}</p>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+            {t.setup.connectionFailed}
+          </h2>
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6">
+            {error}
+          </p>
           <button
             onClick={checkSetupStatus}
             className="px-6 py-3 text-white rounded-lg transition-colors setup-retry-button min-h-11 text-sm sm:text-base"
@@ -306,8 +321,7 @@ const SetupWizard: React.FC = () => {
     )
   }
 
-  if (!status)
-    return null
+  if (!status) return null
 
   // 如果设置完成，显示完成页面
   if (!status.is_setup_required) {
@@ -318,7 +332,9 @@ const SetupWizard: React.FC = () => {
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
               <FaCheck className="text-3xl sm:text-4xl text-green-600 dark:text-green-400" />
             </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">{t.setup.complete}</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">
+              {t.setup.complete}
+            </h2>
             <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6 sm:mb-8">
               {t.setup.completeDesc}
             </p>
@@ -347,7 +363,11 @@ const SetupWizard: React.FC = () => {
                   : 'setup-step-completed'
               }`}
             >
-              {dbConfigured ? <FaCheck className="text-green-600 dark:text-green-400" /> : <FaDatabase />}
+              {dbConfigured ? (
+                <FaCheck className="text-green-600 dark:text-green-400" />
+              ) : (
+                <FaDatabase />
+              )}
               <span className="hidden sm:inline">{t.setup.databaseConfig}</span>
               <span className="sm:hidden">{t.setup.database}</span>
             </div>
@@ -360,7 +380,11 @@ const SetupWizard: React.FC = () => {
                     : 'setup-step-disabled'
               }`}
             >
-              {adminCreated ? <FaCheck className="text-green-600 dark:text-green-400" /> : <FaUser />}
+              {adminCreated ? (
+                <FaCheck className="text-green-600 dark:text-green-400" />
+              ) : (
+                <FaUser />
+              )}
               <span className="hidden sm:inline">{t.setup.adminAccount}</span>
               <span className="sm:hidden">{t.auth.username}</span>
             </div>
@@ -374,14 +398,16 @@ const SetupWizard: React.FC = () => {
               <div className="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6">
                 <div className="flex-1 w-full md:w-auto">
                   <div className="flex items-center gap-3 mb-3 md:mb-4">
-                    <div
-                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl sm:text-2xl setup-db-icon-wrapper"
-                    >
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl sm:text-2xl setup-db-icon-wrapper">
                       <FaDatabase />
                     </div>
                     <div>
-                      <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">{t.setup.databaseConfig}</h2>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t.setup.databaseConfigDesc}</p>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">
+                        {t.setup.databaseConfig}
+                      </h2>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {t.setup.databaseConfigDesc}
+                      </p>
                     </div>
                   </div>
 
@@ -406,58 +432,89 @@ const SetupWizard: React.FC = () => {
 
                     {/* 配置表单 */}
                     <div className="bg-white/50 rounded-lg p-4 border border-gray-200/50">
-                      <h3 className="font-semibold text-gray-800 mb-3 text-sm">{t.setup.connectionInfo}</h3>
+                      <h3 className="font-semibold text-gray-800 mb-3 text-sm">
+                        {t.setup.connectionInfo}
+                      </h3>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.setup.host}</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            {t.setup.host}
+                          </label>
                           <input
                             type="text"
                             value={dbConfig.host}
-                            onChange={e => setDbConfig({ ...dbConfig, host: e.target.value })}
+                            onChange={(e) =>
+                              setDbConfig({ ...dbConfig, host: e.target.value })
+                            }
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder="localhost"
                             autoComplete="off"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.setup.port}</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            {t.setup.port}
+                          </label>
                           <input
                             type="text"
                             value={dbConfig.port}
-                            onChange={e => setDbConfig({ ...dbConfig, port: e.target.value })}
+                            onChange={(e) =>
+                              setDbConfig({ ...dbConfig, port: e.target.value })
+                            }
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder="5432"
                             autoComplete="off"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.setup.database}</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            {t.setup.database}
+                          </label>
                           <input
                             type="text"
                             value={dbConfig.database}
-                            onChange={e => setDbConfig({ ...dbConfig, database: e.target.value })}
+                            onChange={(e) =>
+                              setDbConfig({
+                                ...dbConfig,
+                                database: e.target.value,
+                              })
+                            }
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder="myriad"
                             autoComplete="off"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.setup.username}</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            {t.setup.username}
+                          </label>
                           <input
                             type="text"
                             value={dbConfig.username}
-                            onChange={e => setDbConfig({ ...dbConfig, username: e.target.value })}
+                            onChange={(e) =>
+                              setDbConfig({
+                                ...dbConfig,
+                                username: e.target.value,
+                              })
+                            }
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder="postgres"
                             autoComplete="off"
                           />
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">{t.auth.password}</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            {t.auth.password}
+                          </label>
                           <input
                             type="password"
                             value={dbConfig.password}
-                            onChange={e => setDbConfig({ ...dbConfig, password: e.target.value })}
+                            onChange={(e) =>
+                              setDbConfig({
+                                ...dbConfig,
+                                password: e.target.value,
+                              })
+                            }
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder={t.auth.enterPassword}
                             autoComplete="off"
@@ -473,8 +530,14 @@ const SetupWizard: React.FC = () => {
                         disabled={savingDb || !dbConfig.password}
                         className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg setup-save-button"
                       >
-                        {savingDb ? <Spinner size="sm" variant="white" /> : <LuDatabase size={16} />}
-                        <span>{savingDb ? t.setup.saving : t.setup.saveAndConnect}</span>
+                        {savingDb ? (
+                          <Spinner size="sm" variant="white" />
+                        ) : (
+                          <LuDatabase size={16} />
+                        )}
+                        <span>
+                          {savingDb ? t.setup.saving : t.setup.saveAndConnect}
+                        </span>
                       </button>
                     </div>
 
@@ -495,14 +558,16 @@ const SetupWizard: React.FC = () => {
               <div className="flex items-start justify-between gap-6">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-4">
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl setup-admin-icon-wrapper"
-                    >
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl setup-admin-icon-wrapper">
                       <FaUser />
                     </div>
                     <div>
-                      <h2 className="text-lg font-bold text-gray-800">{t.setup.adminAccount}</h2>
-                      <p className="text-xs text-gray-500 mt-0.5">{t.setup.adminAccountDesc}</p>
+                      <h2 className="text-lg font-bold text-gray-800">
+                        {t.setup.adminAccount}
+                      </h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {t.setup.adminAccountDesc}
+                      </p>
                     </div>
                   </div>
 
@@ -514,7 +579,10 @@ const SetupWizard: React.FC = () => {
                           <FaDatabase className="text-blue-600 mt-0.5 shrink-0" />
                           <div className="flex-1">
                             <p className="text-sm font-semibold text-blue-800 mb-2">
-                              <LuClipboardList size={14} className="inline mr-1" />
+                              <LuClipboardList
+                                size={14}
+                                className="inline mr-1"
+                              />
                               {t.setup.initDatabase}
                             </p>
                             <p className="text-xs text-blue-700 mb-3">
@@ -525,8 +593,16 @@ const SetupWizard: React.FC = () => {
                               disabled={migratingDb}
                               className="w-full py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-migrate-button"
                             >
-                              {migratingDb ? <Spinner size="sm" variant="white" /> : <FaDatabase />}
-                              <span>{migratingDb ? t.setup.initializing : t.setup.initDatabase}</span>
+                              {migratingDb ? (
+                                <Spinner size="sm" variant="white" />
+                              ) : (
+                                <FaDatabase />
+                              )}
+                              <span>
+                                {migratingDb
+                                  ? t.setup.initializing
+                                  : t.setup.initDatabase}
+                              </span>
                             </button>
                           </div>
                         </div>
@@ -552,14 +628,17 @@ const SetupWizard: React.FC = () => {
                           <div className="space-y-3">
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">
-                                {t.auth.username}
-                                {' '}
-                                *
+                                {t.auth.username} *
                               </label>
                               <input
                                 type="text"
                                 value={adminForm.username}
-                                onChange={e => setAdminForm({ ...adminForm, username: e.target.value })}
+                                onChange={(e) =>
+                                  setAdminForm({
+                                    ...adminForm,
+                                    username: e.target.value,
+                                  })
+                                }
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                 placeholder="admin"
                                 pattern="^[a-zA-Z0-9_]{3,20}$"
@@ -568,14 +647,17 @@ const SetupWizard: React.FC = () => {
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">
-                                {t.auth.password}
-                                {' '}
-                                *
+                                {t.auth.password} *
                               </label>
                               <input
                                 type="password"
                                 value={adminForm.password}
-                                onChange={e => setAdminForm({ ...adminForm, password: e.target.value })}
+                                onChange={(e) =>
+                                  setAdminForm({
+                                    ...adminForm,
+                                    password: e.target.value,
+                                  })
+                                }
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                 placeholder={t.setup.atLeast8Chars}
                                 minLength={8}
@@ -584,14 +666,17 @@ const SetupWizard: React.FC = () => {
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">
-                                {t.auth.confirmPassword}
-                                {' '}
-                                *
+                                {t.auth.confirmPassword} *
                               </label>
                               <input
                                 type="password"
                                 value={adminForm.confirmPassword}
-                                onChange={e => setAdminForm({ ...adminForm, confirmPassword: e.target.value })}
+                                onChange={(e) =>
+                                  setAdminForm({
+                                    ...adminForm,
+                                    confirmPassword: e.target.value,
+                                  })
+                                }
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                 placeholder={t.setup.enterPasswordAgain}
                                 minLength={8}
@@ -607,8 +692,16 @@ const SetupWizard: React.FC = () => {
                           disabled={creatingAdmin}
                           className="w-full py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-create-admin-button"
                         >
-                          {creatingAdmin ? <Spinner size="sm" variant="white" /> : <FaUser />}
-                          <span>{creatingAdmin ? t.setup.creating : t.setup.createAdmin}</span>
+                          {creatingAdmin ? (
+                            <Spinner size="sm" variant="white" />
+                          ) : (
+                            <FaUser />
+                          )}
+                          <span>
+                            {creatingAdmin
+                              ? t.setup.creating
+                              : t.setup.createAdmin}
+                          </span>
                         </button>
                       </>
                     )}

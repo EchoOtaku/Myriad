@@ -111,10 +111,10 @@ pub async fn execute(
     // 🔑 从 __directive (Planner 主 Agent 的具体指令) 和 __user_request 提取上下文
     // 用于补充 AI handler 缺失的具体指令
     let directive = params
-        .remove(&"__directive".to_string())
+        .remove("__directive")
         .and_then(|v| v.as_str().map(String::from));
     let user_request = params
-        .remove(&"__user_request".to_string())
+        .remove("__user_request")
         .and_then(|v| v.as_str().map(String::from));
 
     // 将主 Agent 指令注入到对应的 handler 参数中
@@ -1476,7 +1476,7 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
                         );
 
                         // 从响应中提取图片 URL，尝试多种字段路径
-                        let image_url = extract_pixai_image_url(&task_data);
+                        let image_url = extract_pixai_image_url(task_data);
 
                         if image_url.is_empty() {
                             tracing::warn!(

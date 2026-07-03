@@ -9,12 +9,12 @@
 // 导出类型
 // 导入用于聚合
 import type { ExampleTapp } from './tapps/types'
-import { helloWorldTapp } from './tapps/helloWorld'
 import { aroTapp } from './tapps/aro'
+import { helloWorldTapp } from './tapps/helloWorld'
 
+export { aroTapp } from './tapps/aro'
 // 导出示例
 export { helloWorldTapp } from './tapps/helloWorld'
-export { aroTapp } from './tapps/aro'
 
 export type { ExampleTapp } from './tapps/types'
 
@@ -22,16 +22,15 @@ export type { ExampleTapp } from './tapps/types'
  * 内置示例 Tapp（仅 Hello World）
  * 其他应用请从远程商店安装
  */
-export const EXAMPLE_TAPPS: ExampleTapp[] = [
-  helloWorldTapp,
-  aroTapp,
-]
+export const EXAMPLE_TAPPS: ExampleTapp[] = [helloWorldTapp, aroTapp]
 
 /**
  * 按分类获取示例
  */
-export function getExamplesByCategory(category: ExampleTapp['category']): ExampleTapp[] {
-  return EXAMPLE_TAPPS.filter(t => t.category === category)
+export function getExamplesByCategory(
+  category: ExampleTapp['category'],
+): ExampleTapp[] {
+  return EXAMPLE_TAPPS.filter((t) => t.category === category)
 }
 
 /**
@@ -71,7 +70,11 @@ export function getCategoryName(categoryId: string): string {
 /**
  * 获取所有分类
  */
-export function getAllCategories(): { id: string, name: string, count: number }[] {
+export function getAllCategories(): {
+  id: string
+  name: string
+  count: number
+}[] {
   const categories: Record<string, number> = {}
   EXAMPLE_TAPPS.forEach((t) => {
     categories[t.category] = (categories[t.category] || 0) + 1

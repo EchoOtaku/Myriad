@@ -14,20 +14,14 @@
  * - starred-edit: 收藏编辑模式
  */
 
-import * as brewApi from '../../../services/brewApi'
+import type {
+  BrewSource,
+  CardSize,
+  FeedType,
+  SourceType,
+} from '../../../types/brew'
 
-import {
-  AddMode,
-  CategoryFeedMode,
-  DefaultMode,
-  EditMode,
-  FeedMode,
-  KeyboardMode,
-  SearchMode,
-  StarredEditMode,
-  StarredMode,
-} from './modes'
-import type { BrewSource, CardSize, FeedType, SourceType } from '../../../types/brew'
+import type { ControlMode, DynamicTip, SortMode, SortOption } from './modes'
 import {
   LuClock as Clock,
   LuCloudSun as CloudSun,
@@ -43,24 +37,38 @@ import {
   LuSortAsc as SortAsc,
   LuSun as Sun,
 } from '@lib/icons'
-import type { ControlMode, DynamicTip, SortMode, SortOption } from './modes'
-import { useEffect, useMemo, useRef, useState } from 'react'
-
-import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard'
-import { IslandLayout, getIconUrl } from '../../shared/control-island'
 import JSZip from 'jszip'
-import RSSHubConfigComponent from './RSSHubConfig'
-import { useBrewAnimationConfig } from '../../../hooks/animation'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 
+import { useBrewAnimationConfig } from '../../../hooks/animation'
+import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard'
+import * as brewApi from '../../../services/brewApi'
+import { getIconUrl, IslandLayout } from '../../shared/control-island'
+import {
+  AddMode,
+  CategoryFeedMode,
+  DefaultMode,
+  EditMode,
+  FeedMode,
+  KeyboardMode,
+  SearchMode,
+  StarredEditMode,
+  StarredMode,
+} from './modes'
+import RSSHubConfigComponent from './RSSHubConfig'
+
 // 根据订阅源数据生成动态提示
-function generateDynamicTips(sources: BrewSource[], brewTranslations: Record<string, string>): DynamicTip[] {
+function generateDynamicTips(
+  sources: BrewSource[],
+  brewTranslations: Record<string, string>,
+): DynamicTip[] {
   const tips: DynamicTip[] = []
   const now = Date.now()
 
   // 找出未读最多的源
   const mostUnread = sources
-    .filter(s => s.unread_count > 0)
+    .filter((s) => s.unread_count > 0)
     .sort((a, b) => b.unread_count - a.unread_count)[0]
 
   if (mostUnread && mostUnread.unread_count > 0) {
@@ -68,13 +76,18 @@ function generateDynamicTips(sources: BrewSource[], brewTranslations: Record<str
       icon: <Folder size={16} />,
       iconUrl: mostUnread.icon || undefined,
       main: `${mostUnread.name}`,
-      sub: (brewTranslations.tipUnreadCount || '{count} 条未读').replace('{count}', String(mostUnread.unread_count)),
+      sub: (brewTranslations.tipUnreadCount || '{count} 条未读').replace(
+        '{count}',
+        String(mostUnread.unread_count),
+      ),
     })
   }
 
   // 找出最近更新的源（1小时内）
   const recentlyUpdated = sources
-    .filter(s => s.last_fetched_at && (now - s.last_fetched_at * 1000) < 3600000)
+    .filter(
+      (s) => s.last_fetched_at && now - s.last_fetched_at * 1000 < 3600000,
+    )
     .sort((a, b) => (b.last_fetched_at || 0) - (a.last_fetched_at || 0))
 
   if (recentlyUpdated.length > 0) {
@@ -88,17 +101,26 @@ function generateDynamicTips(sources: BrewSource[], brewTranslations: Record<str
   }
 
   // 找出有新文章的源
-  const withNewItems = sources.filter(s => s.recent_items && s.recent_items.some(item => !item.is_read))
+  const withNewItems = sources.filter(
+    (s) => s.recent_items && s.recent_items.some((item) => !item.is_read),
+  )
   if (withNewItems.length > 0) {
-    const randomSource = withNewItems[Math.floor(Math.random() * withNewItems.length)]
-    const newItem = randomSource.recent_items?.find(item => !item.is_read)
+    const randomSource =
+      withNewItems[Math.floor(Math.random() * withNewItems.length)]
+    const newItem = randomSource.recent_items?.find((item) => !item.is_read)
     if (newItem) {
-      const title = newItem.title.length > 16 ? `${newItem.title.slice(0, 16)}...` : newItem.title
+      const title =
+        newItem.title.length > 16
+          ? `${newItem.title.slice(0, 16)}...`
+          : newItem.title
       tips.push({
         icon: <Newspaper size={16} />,
         iconUrl: randomSource.icon || undefined,
         main: title,
-        sub: (brewTranslations.tipFromSource || '来自 {source}').replace('{source}', randomSource.name),
+        sub: (brewTranslations.tipFromSource || '来自 {source}').replace(
+          '{source}',
+          randomSource.name,
+        ),
       })
     }
   }
@@ -106,38 +128,67 @@ function generateDynamicTips(sources: BrewSource[], brewTranslations: Record<str
   // 计算总未读数
   const totalUnread = sources.reduce((acc, s) => acc + (s.unread_count || 0), 0)
   if (totalUnread > 0) {
-    tips.push({ icon: <Inbox size={16} />, main: (brewTranslations.tipUnreadCount || '{count} 条未读').replace('{count}', String(totalUnread)), sub: brewTranslations.tipClickToView || '点击卡片查看' })
+    tips.push({
+      icon: <Inbox size={16} />,
+      main: (brewTranslations.tipUnreadCount || '{count} 条未读').replace(
+        '{count}',
+        String(totalUnread),
+      ),
+      sub: brewTranslations.tipClickToView || '点击卡片查看',
+    })
   }
 
   // 基础统计
-  tips.push({ icon: <Rss size={16} />, main: (brewTranslations.tipSubscriptionCount || '{count} 个订阅').replace('{count}', String(sources.length)), sub: brewTranslations.tipManageSources || '管理你的信息源' })
+  tips.push({
+    icon: <Rss size={16} />,
+    main: (brewTranslations.tipSubscriptionCount || '{count} 个订阅').replace(
+      '{count}',
+      String(sources.length),
+    ),
+    sub: brewTranslations.tipManageSources || '管理你的信息源',
+  })
 
   // 时段问候（作为兜底）
   const hour = new Date().getHours()
   if (hour >= 5 && hour < 12) {
-    tips.push({ icon: <Sun size={16} />, main: brewTranslations.tipMorning || '早安', sub: brewTranslations.tipStartReading || '开启今日阅读' })
-  }
-  else if (hour >= 12 && hour < 18) {
-    tips.push({ icon: <CloudSun size={16} />, main: brewTranslations.tipAfternoon || '午后时光', sub: brewTranslations.tipRelaxReading || '适合轻松阅读' })
-  }
-  else {
-    tips.push({ icon: <Moon size={16} />, main: brewTranslations.tipEvening || '晚间阅读', sub: brewTranslations.tipQuietTime || '享受安静时刻' })
+    tips.push({
+      icon: <Sun size={16} />,
+      main: brewTranslations.tipMorning || '早安',
+      sub: brewTranslations.tipStartReading || '开启今日阅读',
+    })
+  } else if (hour >= 12 && hour < 18) {
+    tips.push({
+      icon: <CloudSun size={16} />,
+      main: brewTranslations.tipAfternoon || '午后时光',
+      sub: brewTranslations.tipRelaxReading || '适合轻松阅读',
+    })
+  } else {
+    tips.push({
+      icon: <Moon size={16} />,
+      main: brewTranslations.tipEvening || '晚间阅读',
+      sub: brewTranslations.tipQuietTime || '享受安静时刻',
+    })
   }
 
   return tips
 }
 
 // 动态提示 Hook
-function useDynamicTips(sources: BrewSource[], brewTranslations: Record<string, string>) {
-  const tips = useMemo(() => generateDynamicTips(sources, brewTranslations), [sources, brewTranslations])
+function useDynamicTips(
+  sources: BrewSource[],
+  brewTranslations: Record<string, string>,
+) {
+  const tips = useMemo(
+    () => generateDynamicTips(sources, brewTranslations),
+    [sources, brewTranslations],
+  )
   const [currentIndex, setCurrentIndex] = useState(0)
 
   useEffect(() => {
-    if (tips.length <= 1)
-      return
+    if (tips.length <= 1) return
 
     const interval = setInterval(() => {
-      setCurrentIndex(prev => (prev + 1) % tips.length)
+      setCurrentIndex((prev) => (prev + 1) % tips.length)
     }, 8000)
 
     return () => clearInterval(interval)
@@ -169,13 +220,12 @@ interface BrewExportManifest {
 
 // 判断是否为 base64 图片数据
 function isBase64Image(str: string | null): boolean {
-  if (!str)
-    return false
+  if (!str) return false
   return str.startsWith('data:image/')
 }
 
 // 从 base64 提取 MIME 类型和扩展名
-function getBase64Info(base64: string): { mime: string, ext: string } {
+function getBase64Info(base64: string): { mime: string; ext: string } {
   const match = base64.match(/^data:(image\/\w+);base64,/)
   if (match) {
     const mime = match[1]
@@ -201,7 +251,13 @@ interface ControlIslandProps {
   isEditMode?: boolean
   isDeleting?: boolean
   isRefreshing?: boolean
-  onAddSource?: (url: string, name?: string, category?: string, icon?: string, sourceType?: SourceType) => Promise<void>
+  onAddSource?: (
+    url: string,
+    name?: string,
+    category?: string,
+    icon?: string,
+    sourceType?: SourceType,
+  ) => Promise<void>
   onSourcesChange?: () => void
   sortMode?: SortMode
   onSortModeChange?: (mode: SortMode) => void
@@ -270,44 +326,47 @@ export default function ControlIsland({
 
   // 根据模式确定初始状态
   const getInitialMode = (): ControlMode => {
-    if (starredMode?.isEditMode)
-      return 'starred-edit'
-    if (starredMode)
-      return 'starred'
-    if (categoryFeedMode)
-      return 'category-feed'
-    if (feedMode)
-      return 'feed'
+    if (starredMode?.isEditMode) return 'starred-edit'
+    if (starredMode) return 'starred'
+    if (categoryFeedMode) return 'category-feed'
+    if (feedMode) return 'feed'
     return 'default'
   }
 
   const [mode, setMode] = useState<ControlMode>(getInitialMode)
-  const { tip, key: tipKey } = useDynamicTips(sources, t.brew as unknown as Record<string, string>)
+  const { tip, key: tipKey } = useDynamicTips(
+    sources,
+    t.brew as unknown as Record<string, string>,
+  )
 
   // 当模式变化时，自动切换
   useEffect(() => {
     if (starredMode?.isEditMode) {
       setMode('starred-edit')
-    }
-    else if (starredMode) {
+    } else if (starredMode) {
       setMode('starred')
-    }
-    else if (categoryFeedMode) {
+    } else if (categoryFeedMode) {
       setMode('category-feed')
-    }
-    else if (feedMode) {
+    } else if (feedMode) {
       setMode('feed')
-    }
-    else {
+    } else {
       setMode('default')
     }
   }, [feedMode, categoryFeedMode, starredMode, starredMode?.isEditMode])
 
   // 导入/导出状态
   const [importExportLoading, setImportExportLoading] = useState(false)
-  const [importExportError, setImportExportError] = useState<string | null>(null)
-  const [importExportSuccess, setImportExportSuccess] = useState<string | null>(null)
-  const [importProgress, setImportProgress] = useState<{ step: string, current: number, total: number } | null>(null)
+  const [importExportError, setImportExportError] = useState<string | null>(
+    null,
+  )
+  const [importExportSuccess, setImportExportSuccess] = useState<string | null>(
+    null,
+  )
+  const [importProgress, setImportProgress] = useState<{
+    step: string
+    current: number
+    total: number
+  } | null>(null)
   const [_exporting, setExporting] = useState(false)
 
   // Refs
@@ -319,11 +378,13 @@ export default function ControlIsland({
 
   // 点击外部关闭排序下拉菜单
   useEffect(() => {
-    if (!showSortDropdown)
-      return
+    if (!showSortDropdown) return
 
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target as Node)) {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(e.target as Node)
+      ) {
         setShowSortDropdown(false)
       }
     }
@@ -339,17 +400,38 @@ export default function ControlIsland({
 
   // 排序选项
   const allSortOptions: SortOption[] = [
-    { value: 'update', labelKey: 'sortByUpdate', icon: <Clock className="w-4 h-4" /> },
-    { value: 'custom', labelKey: 'sortByCustom', icon: <GripVertical className="w-4 h-4" /> },
-    { value: 'category', labelKey: 'sortByCategory', icon: <FolderOpen className="w-4 h-4" /> },
-    { value: 'random', labelKey: 'sortByRandom', icon: <Shuffle className="w-4 h-4" /> },
-    { value: 'pinyin', labelKey: 'sortByPinyin', icon: <SortAsc className="w-4 h-4" /> },
+    {
+      value: 'update',
+      labelKey: 'sortByUpdate',
+      icon: <Clock className="w-4 h-4" />,
+    },
+    {
+      value: 'custom',
+      labelKey: 'sortByCustom',
+      icon: <GripVertical className="w-4 h-4" />,
+    },
+    {
+      value: 'category',
+      labelKey: 'sortByCategory',
+      icon: <FolderOpen className="w-4 h-4" />,
+    },
+    {
+      value: 'random',
+      labelKey: 'sortByRandom',
+      icon: <Shuffle className="w-4 h-4" />,
+    },
+    {
+      value: 'pinyin',
+      labelKey: 'sortByPinyin',
+      icon: <SortAsc className="w-4 h-4" />,
+    },
   ]
   const sortOptions = isSubCategory
-    ? allSortOptions.filter(o => o.value !== 'custom')
+    ? allSortOptions.filter((o) => o.value !== 'custom')
     : allSortOptions
 
-  const currentSortOption = sortOptions.find(o => o.value === sortMode) || sortOptions[0]
+  const currentSortOption =
+    sortOptions.find((o) => o.value === sortMode) || sortOptions[0]
 
   // 预置分类
   const presetCategories = [t.brew.friendLinks, t.brew.me]
@@ -359,8 +441,7 @@ export default function ControlIsland({
   useEffect(() => {
     if (isEditMode && mode !== 'edit') {
       setMode('edit')
-    }
-    else if (!isEditMode && mode === 'edit') {
+    } else if (!isEditMode && mode === 'edit') {
       setMode('default')
     }
   }, [isEditMode, mode])
@@ -369,8 +450,7 @@ export default function ControlIsland({
   const handleModeChange = (newMode: ControlMode) => {
     if (newMode === 'edit') {
       onEnterEditMode?.()
-    }
-    else if (mode === 'edit') {
+    } else if (mode === 'edit') {
       onExitEditMode?.()
     }
     if (newMode === 'search') {
@@ -391,12 +471,15 @@ export default function ControlIsland({
   }
 
   // 分组快捷键
-  const groupedShortcuts = useMemo(() => ({
-    navigation: BREW_SHORTCUTS.filter(s => s.category === 'navigation'),
-    article: BREW_SHORTCUTS.filter(s => s.category === 'article'),
-    source: BREW_SHORTCUTS.filter(s => s.category === 'source'),
-    other: BREW_SHORTCUTS.filter(s => s.category === 'other'),
-  }), [])
+  const groupedShortcuts = useMemo(
+    () => ({
+      navigation: BREW_SHORTCUTS.filter((s) => s.category === 'navigation'),
+      article: BREW_SHORTCUTS.filter((s) => s.category === 'article'),
+      source: BREW_SHORTCUTS.filter((s) => s.category === 'source'),
+      other: BREW_SHORTCUTS.filter((s) => s.category === 'other'),
+    }),
+    [],
+  )
 
   const categoryLabels: Record<string, string> = {
     navigation: t.brew.shortcutNavigation,
@@ -426,8 +509,7 @@ export default function ControlIsland({
             iconFile = `icon_${i}.${ext}`
             const base64Data = s.icon.split(',')[1]
             iconsFolder?.file(iconFile, base64Data, { base64: true })
-          }
-          else {
+          } else {
             iconUrl = s.icon
           }
         }
@@ -467,42 +549,62 @@ export default function ControlIsland({
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
 
-      setImportExportSuccess(t.brew.exportSuccess?.replace('{count}', String(sources.length)) || `已导出 ${sources.length} 个订阅源`)
-      setTimeout(() => setImportExportSuccess(null), 3000)
-    }
-    catch (_err) {
+      setImportExportSuccess(
+        t.brew.exportSuccess?.replace('{count}', String(sources.length)) ||
+          `已导出 ${sources.length} 个订阅源`,
+      )
+      setTimeout(setImportExportSuccess, 3000, null)
+    } catch (_err) {
       setImportExportError(t.brew.errorExportFailed)
-    }
-    finally {
+    } finally {
       setImportExportLoading(false)
     }
   }
 
   // 导入 Brew 格式 (ZIP)
-  const handleBrewImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBrewImportFile = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = e.target.files?.[0]
-    if (!file)
-      return
+    if (!file) return
 
     setImportExportLoading(true)
     setImportExportError(null)
     setImportExportSuccess(null)
-    setImportProgress({ step: t.brew.importStepReading || '读取文件...', current: 0, total: 0 })
+    setImportProgress({
+      step: t.brew.importStepReading || '读取文件...',
+      current: 0,
+      total: 0,
+    })
 
     try {
-      setImportProgress({ step: t.brew.importStepUnzipping || '解压文件...', current: 0, total: 0 })
+      setImportProgress({
+        step: t.brew.importStepUnzipping || '解压文件...',
+        current: 0,
+        total: 0,
+      })
       const zip = await JSZip.loadAsync(file)
 
-      setImportProgress({ step: t.brew.importStepParsing || '解析配置...', current: 0, total: 0 })
+      setImportProgress({
+        step: t.brew.importStepParsing || '解析配置...',
+        current: 0,
+        total: 0,
+      })
       const manifestFile = zip.file('manifest.json')
       if (!manifestFile) {
-        throw new Error(t.brew.errorInvalidFormat || '无效的导入文件格式：缺少 manifest.json')
+        throw new Error(
+          t.brew.errorInvalidFormat || '无效的导入文件格式：缺少 manifest.json',
+        )
       }
 
       const manifestContent = await manifestFile.async('string')
       const manifest = JSON.parse(manifestContent) as BrewExportManifest
 
-      if (!manifest.version || !manifest.sources || !Array.isArray(manifest.sources)) {
+      if (
+        !manifest.version ||
+        !manifest.sources ||
+        !Array.isArray(manifest.sources)
+      ) {
         throw new Error(t.brew.errorInvalidFormat || '无效的导入文件格式')
       }
 
@@ -513,13 +615,15 @@ export default function ControlIsland({
       for (let i = 0; i < manifest.sources.length; i++) {
         const source = manifest.sources[i]
         setImportProgress({
-          step: t.brew.importStepImporting?.replace('{name}', source.name) || `导入: ${source.name}`,
+          step:
+            t.brew.importStepImporting?.replace('{name}', source.name) ||
+            `导入: ${source.name}`,
           current: i + 1,
           total,
         })
 
         try {
-          const exists = sources.some(s => s.url === source.url)
+          const exists = sources.some((s) => s.url === source.url)
           if (exists) {
             skipped++
             continue
@@ -534,8 +638,7 @@ export default function ControlIsland({
               const mimeType = ext === 'svg' ? 'image/svg+xml' : `image/${ext}`
               icon = `data:${mimeType};base64,${iconData}`
             }
-          }
-          else if (source.icon_url) {
+          } else if (source.icon_url) {
             icon = source.icon_url
           }
 
@@ -552,18 +655,18 @@ export default function ControlIsland({
           })
 
           // 更新额外字段（theme_color, card_size, ai_style_tags）
-          const hasExtraFields = source.theme_color || source.card_size || source.ai_style_tags
+          const hasExtraFields =
+            source.theme_color || source.card_size || source.ai_style_tags
           if (hasExtraFields && newSource?.id) {
             await brewApi.updateSource(newSource.id, {
               theme_color: source.theme_color || undefined,
-              card_size: source.card_size as CardSize || undefined,
+              card_size: (source.card_size as CardSize) || undefined,
               ai_style_tags: source.ai_style_tags || undefined,
             })
           }
 
           imported++
-        }
-        catch {
+        } catch {
           skipped++
         }
       }
@@ -574,14 +677,16 @@ export default function ControlIsland({
           .replace('{imported}', String(imported))
           .replace('{skipped}', String(skipped)),
       )
-      setTimeout(() => setImportExportSuccess(null), 3000)
+      setTimeout(setImportExportSuccess, 3000, null)
       onSourcesChange?.()
-    }
-    catch (err) {
+    } catch (err) {
       setImportProgress(null)
-      setImportExportError(err instanceof Error ? err.message : (t.brew.errorImportFailed || '导入失败'))
-    }
-    finally {
+      setImportExportError(
+        err instanceof Error
+          ? err.message
+          : t.brew.errorImportFailed || '导入失败',
+      )
+    } finally {
       setImportExportLoading(false)
       if (brewExportInputRef.current) {
         brewExportInputRef.current.value = ''
@@ -603,11 +708,9 @@ export default function ControlIsland({
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-    }
-    catch (err) {
+    } catch (err) {
       console.error('OPML export failed:', err)
-    }
-    finally {
+    } finally {
       setExporting(false)
     }
   }
@@ -682,8 +785,7 @@ export default function ControlIsland({
         )
 
       case 'feed':
-        if (!feedMode)
-          return null
+        if (!feedMode) return null
         return (
           <FeedMode
             variant={variant}
@@ -702,8 +804,7 @@ export default function ControlIsland({
         )
 
       case 'category-feed':
-        if (!categoryFeedMode)
-          return null
+        if (!categoryFeedMode) return null
         return (
           <CategoryFeedMode
             variant={variant}
@@ -719,8 +820,7 @@ export default function ControlIsland({
         )
 
       case 'starred':
-        if (!starredMode)
-          return null
+        if (!starredMode) return null
         return (
           <StarredMode
             variant={variant}
@@ -735,8 +835,7 @@ export default function ControlIsland({
         )
 
       case 'starred-edit':
-        if (!starredMode)
-          return null
+        if (!starredMode) return null
         return (
           <StarredEditMode
             variant={variant}
@@ -773,36 +872,42 @@ export default function ControlIsland({
             onClose={handleClose}
             allCategories={allAddCategories}
             sourcesCount={sources.length}
-            onSubmit={onAddSource
-              ? async (data: {
-                sourceType: 'rss' | 'brewlia' | 'link' | 'rsshub'
-                url: string
-                name: string
-                category: string
-                customIcon: string | null
-              }) => {
-                try {
-                  await onAddSource(
-                    data.url,
-                    data.name,
-                    data.category,
-                    data.customIcon || undefined,
-                    data.sourceType,
-                  )
-                  return { success: true }
-                }
-                catch (err) {
-                  return { success: false, error: err instanceof Error ? err.message : 'Failed' }
-                }
-              }
-              : undefined}
+            onSubmit={
+              onAddSource
+                ? async (data: {
+                    sourceType: 'rss' | 'brewlia' | 'link' | 'rsshub'
+                    url: string
+                    name: string
+                    category: string
+                    customIcon: string | null
+                  }) => {
+                    try {
+                      await onAddSource(
+                        data.url,
+                        data.name,
+                        data.category,
+                        data.customIcon || undefined,
+                        data.sourceType,
+                      )
+                      return { success: true }
+                    } catch (err) {
+                      return {
+                        success: false,
+                        error: err instanceof Error ? err.message : 'Failed',
+                      }
+                    }
+                  }
+                : undefined
+            }
             onDiscover={handleDiscover}
-            onImportOpml={handleOpmlImport
-              ? async (content: string) => {
-                const result = await handleOpmlImport(content)
-                return result || { imported: 0, skipped: 0 }
-              }
-              : undefined}
+            onImportOpml={
+              handleOpmlImport
+                ? async (content: string) => {
+                    const result = await handleOpmlImport(content)
+                    return result || { imported: 0, skipped: 0 }
+                  }
+                : undefined
+            }
             onExportOpml={handleOpmlExport}
             RSSHubConfigComponent={RSSHubConfigComponent}
             t={{
@@ -882,11 +987,7 @@ export default function ControlIsland({
     }
   }
 
-  return (
-    <IslandLayout>
-      {variant => renderModeContent(variant)}
-    </IslandLayout>
-  )
+  return <IslandLayout>{(variant) => renderModeContent(variant)}</IslandLayout>
 }
 
 // 导出类型

@@ -2,10 +2,37 @@ import React, { forwardRef } from 'react'
 import { useLazyMotion } from './lazyMotion'
 
 // 支持的 HTML 标签类型
-type SupportedTag
-  = | 'div' | 'span' | 'p' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
-    | 'button' | 'a' | 'ul' | 'li' | 'ol' | 'img' | 'section' | 'article' | 'header' | 'footer' | 'nav' | 'main' | 'aside'
-    | 'svg' | 'path' | 'g' | 'circle' | 'rect' | 'line' | 'polyline' | 'polygon'
+type SupportedTag =
+  | 'div'
+  | 'span'
+  | 'p'
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'h4'
+  | 'h5'
+  | 'h6'
+  | 'button'
+  | 'a'
+  | 'ul'
+  | 'li'
+  | 'ol'
+  | 'img'
+  | 'section'
+  | 'article'
+  | 'header'
+  | 'footer'
+  | 'nav'
+  | 'main'
+  | 'aside'
+  | 'svg'
+  | 'path'
+  | 'g'
+  | 'circle'
+  | 'rect'
+  | 'line'
+  | 'polyline'
+  | 'polygon'
 
 // Framer Motion 特有的 props，需要在回退到原生元素时过滤掉
 const MOTION_PROPS = [
@@ -65,8 +92,7 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
     initialState = props.initial
   }
 
-  if (!initialState)
-    return undefined
+  if (!initialState) return undefined
 
   // 将 motion 属性转换为 CSS 样式
   const style: React.CSSProperties = {}
@@ -90,11 +116,17 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
 
   // 平移 - 支持数字和字符串（如 '-100%'）
   if (initialState.y !== undefined) {
-    const yVal = typeof initialState.y === 'number' ? `${initialState.y}px` : initialState.y
+    const yVal =
+      typeof initialState.y === 'number'
+        ? `${initialState.y}px`
+        : initialState.y
     transforms.push(`translateY(${yVal})`)
   }
   if (initialState.x !== undefined) {
-    const xVal = typeof initialState.x === 'number' ? `${initialState.x}px` : initialState.x
+    const xVal =
+      typeof initialState.x === 'number'
+        ? `${initialState.x}px`
+        : initialState.x
     transforms.push(`translateX(${xVal})`)
   }
 
@@ -144,7 +176,10 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
   }
 
   // 🔧 新增：transformOrigin 支持
-  if (initialState.originX !== undefined || initialState.originY !== undefined) {
+  if (
+    initialState.originX !== undefined ||
+    initialState.originY !== undefined
+  ) {
     const ox = initialState.originX ?? 0.5
     const oy = initialState.originY ?? 0.5
     style.transformOrigin = `${ox * 100}% ${oy * 100}%`
@@ -158,15 +193,23 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
 function createShim(tag: SupportedTag) {
   const MotionShim = forwardRef<any, any>((props, ref) => {
     // 保守策略：只要传了动画相关 props 就认为需要动画
-    const hasAnimation = props?.initial || props?.animate || props?.transition || props?.variants || props?.whileHover || props?.whileTap || props?.whileFocus || props?.whileDrag || props?.exit
+    const hasAnimation =
+      props?.initial ||
+      props?.animate ||
+      props?.transition ||
+      props?.variants ||
+      props?.whileHover ||
+      props?.whileTap ||
+      props?.whileFocus ||
+      props?.whileDrag ||
+      props?.exit
     const { motion } = useLazyMotion(Boolean(hasAnimation))
 
     if (motion) {
       // motion 已加载，使用真实的 motion 组件
       const Comp: any = motion[tag]
       return <Comp ref={ref} {...props} />
-    }
-    else {
+    } else {
       // motion 未加载，使用原生元素
       // 重要：应用 initial 状态的样式，防止内容闪现
       const Tag = tag as any
@@ -227,7 +270,11 @@ export const motionShim = {
 // AnimatePresence 懒加载 shim：
 // 未加载 framer-motion 时直接渲染 children，加载后使用真实 AnimatePresence
 export function AnimatePresenceShim(props: any) {
-  const { AnimatePresence } = useLazyMotion(Boolean(props?.initial || props?.exit || props?.mode || props?.onExitComplete))
+  const { AnimatePresence } = useLazyMotion(
+    Boolean(
+      props?.initial || props?.exit || props?.mode || props?.onExitComplete,
+    ),
+  )
   if (AnimatePresence) {
     const AP: any = AnimatePresence
     return <AP {...props} />

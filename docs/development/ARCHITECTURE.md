@@ -6,7 +6,7 @@ Myriad is built as a modern full-stack application with a clear separation betwe
 
 There are two runtime topologies:
 
-- **Development**: Astro dev server on `4321` and Axum backend on `3000`; `/api/*`
+- **Development**: Astro dev server on `1102` and Axum backend on `1103`; `/api/*`
   is forwarded by the Astro dev proxy.
 - **Production**: `proxy` is the only host-facing service. It forwards page
   traffic to `frontend`, API traffic to `backend`, and shows the maintenance page
@@ -18,28 +18,28 @@ business slot plus immutable image tags and `pgdata` snapshots.
 ```
 Production:
 
-client ─► proxy(:80) ─┬─► frontend(:4321, internal)
-                      └─► backend(:3000, internal) ─► postgres
+client ─► proxy(:80) ─┬─► frontend(:1102, internal)
+                      └─► backend(:1103, internal) ─► postgres
 
 updater(internal) ─► docker compose / .env tag switch / pgdata snapshot
 
 Development:
 
-browser ─► astro dev(:4321) ─► /api/* proxy ─► backend(:3000) ─► dev postgres
+browser ─► astro dev(:1102) ─► /api/* proxy ─► backend(:1103) ─► dev postgres
 ```
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         Frontend                             │
 │              Astro + React + Tailwind CSS                    │
-│                   (Port 4321)                                │
+│                   (Port 1102)                                │
 └────────────────────┬────────────────────────────────────────┘
                      │ HTTP/REST API
                      │
 ┌────────────────────▼────────────────────────────────────────┐
 │                         Backend                              │
 │                  Rust + Axum + SeaORM                        │
-│                    (Port 3000)                               │
+│                    (Port 1103)                               │
 └────────┬──────────────────────────┬────────────────────┬────┘
          │                          │                    │
          │                          │                    │

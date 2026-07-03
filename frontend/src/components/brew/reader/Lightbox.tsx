@@ -3,8 +3,18 @@
  * 支持深浅双模式，优雅的动画效果
  */
 
-import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import { LuDownload as Download, LuRotateCw as RotateCw, LuX as X, LuZoomIn as ZoomIn, LuZoomOut as ZoomOut } from '@lib/icons'
+import type { MouseEvent } from 'react'
+import {
+  LuDownload as Download,
+  LuRotateCw as RotateCw,
+  LuX as X,
+  LuZoomIn as ZoomIn,
+  LuZoomOut as ZoomOut,
+} from '@lib/icons'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { useCallback, useEffect, useState } from 'react'
 
 interface LightboxProps {
@@ -46,22 +56,21 @@ export function Lightbox({ src, alt = '', isDark, onClose, t }: LightboxProps) {
 
   // 缩放控制
   const handleZoomIn = useCallback(() => {
-    setScale(prev => Math.min(prev + 0.25, 3))
+    setScale((prev) => Math.min(prev + 0.25, 3))
   }, [])
 
   const handleZoomOut = useCallback(() => {
-    setScale(prev => Math.max(prev - 0.25, 0.5))
+    setScale((prev) => Math.max(prev - 0.25, 0.5))
   }, [])
 
   // 旋转控制
   const handleRotate = useCallback(() => {
-    setRotation(prev => (prev + 90) % 360)
+    setRotation((prev) => (prev + 90) % 360)
   }, [])
 
   // 下载图片
   const handleDownload = useCallback(() => {
-    if (!src)
-      return
+    if (!src) return
     const link = document.createElement('a')
     link.href = src
     link.download = alt || 'image'
@@ -104,7 +113,7 @@ export function Lightbox({ src, alt = '', isDark, onClose, t }: LightboxProps) {
                 ? 'bg-neutral-900/80 border-neutral-700 text-white'
                 : 'bg-white/80 border-gray-200 text-gray-900'
             }`}
-            onClick={e => e.stopPropagation()}
+            onClick={(e: MouseEvent) => e.stopPropagation()}
           >
             {/* 缩小 */}
             <button
@@ -123,12 +132,12 @@ export function Lightbox({ src, alt = '', isDark, onClose, t }: LightboxProps) {
             </button>
 
             {/* 缩放比例 */}
-            <span className={`text-sm font-medium tabular-nums min-w-[3.5rem] text-center ${
-              isDark ? 'text-gray-300' : 'text-gray-600'
-            }`}
+            <span
+              className={`text-sm font-medium tabular-nums min-w-[3.5rem] text-center ${
+                isDark ? 'text-gray-300' : 'text-gray-600'
+              }`}
             >
-              {Math.round(scale * 100)}
-              %
+              {Math.round(scale * 100)}%
             </span>
 
             {/* 放大 */}
@@ -147,7 +156,9 @@ export function Lightbox({ src, alt = '', isDark, onClose, t }: LightboxProps) {
               <ZoomIn className="w-5 h-5" />
             </button>
 
-            <div className={`w-px h-6 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+            <div
+              className={`w-px h-6 ${isDark ? 'bg-white/10' : 'bg-black/10'}`}
+            />
 
             {/* 旋转 */}
             <button
@@ -171,7 +182,9 @@ export function Lightbox({ src, alt = '', isDark, onClose, t }: LightboxProps) {
               <Download className="w-5 h-5" />
             </button>
 
-            <div className={`w-px h-6 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+            <div
+              className={`w-px h-6 ${isDark ? 'bg-white/10' : 'bg-black/10'}`}
+            />
 
             {/* 关闭 */}
             <button
@@ -196,7 +209,7 @@ export function Lightbox({ src, alt = '', isDark, onClose, t }: LightboxProps) {
                 ? 'bg-neutral-900/80 border-neutral-700 text-white'
                 : 'bg-white/80 border-gray-200 text-gray-900'
             }`}
-            onClick={e => e.stopPropagation()}
+            onClick={(e: MouseEvent) => e.stopPropagation()}
           >
             {/* 关闭 */}
             <button
@@ -210,7 +223,9 @@ export function Lightbox({ src, alt = '', isDark, onClose, t }: LightboxProps) {
               <X className="w-5 h-5" />
             </button>
 
-            <div className={`w-px h-5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+            <div
+              className={`w-px h-5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`}
+            />
 
             {/* 下载 */}
             <button
@@ -232,7 +247,7 @@ export function Lightbox({ src, alt = '', isDark, onClose, t }: LightboxProps) {
             exit={{ opacity: 0, scale: 0.9 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className="relative flex items-center justify-center"
-            onClick={e => e.stopPropagation()}
+            onClick={(e: MouseEvent) => e.stopPropagation()}
           >
             <motion.img
               src={src}

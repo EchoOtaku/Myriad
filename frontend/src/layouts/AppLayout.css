@@ -4,6 +4,7 @@
 .dynamic-island {
   width: 65px; /* 桌面端默认宽度 */
   overflow: hidden;
+
   /* 容器尺寸过渡：与内容退出同时启动，回弹曲线营造弹性感
    * 补充 background/border-color 以修复 navigation-island.css 中 hover 状态的过渡被覆盖的问题 */
   transition:
@@ -26,17 +27,18 @@
 }
 
 /* 移动端横向布局时调整宽度 */
-@media (max-width: 767px) {
+@media (width <= 767px) {
   .dynamic-island {
     width: auto;
     height: auto;
     min-height: 65px;
+
     /* 移动端适配：允许横向滚动 */
     max-width: calc(100vw - 2rem);
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: auto hidden;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE 10+ */
+
     /* 确保滚动容器有弹性 */
     display: flex;
     justify-content: flex-start; /* 内容靠左（开始）对齐，允许滚动 */
@@ -72,12 +74,13 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+
   /* 确保内容始终可见，防止消失 */
   min-height: 36px;
 }
 
 /* 移动端横向布局 */
-@media (max-width: 767px) {
+@media (width <= 767px) {
   .nav-island-content {
     flex-direction: row;
   }
@@ -92,9 +95,11 @@
   0% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(0.96);
   }
+
   100% {
     transform: scale(1);
   }
@@ -105,7 +110,7 @@
   margin-left: 8px;
 }
 
-@media (min-width: 768px) {
+@media (width >= 768px) {
   .nav-group-spaced {
     margin-left: 0;
     margin-top: 8px;
@@ -192,7 +197,7 @@
 }
 
 /* --- 移动端覆盖：敏捷紧凑的节奏，水平方向 --- */
-@media (max-width: 767px) {
+@media (width <= 767px) {
   /* 基础态改为 translateX，与移动端动画方向一致，确保插值路径正确 */
   .nav-group {
     transform: scale(1) translateX(0) translateZ(0);
@@ -234,14 +239,15 @@
 .nav-item.active-secondary {
   color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 15%, white);
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  box-shadow: 0 2px 10px
+    color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
 
 html.dark .nav-item.active-secondary {
   background: color-mix(in srgb, var(--color-primary) 25%, transparent);
   box-shadow:
     0 2px 10px color-mix(in srgb, var(--color-primary) 35%, transparent),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+    inset 0 1px 0 0 rgb(255 255 255 / 10%);
 }
 
 /* 减少不必要的动画以提升性能 */

@@ -9,16 +9,16 @@ import type { CSSProperties, ReactNode } from 'react'
 // ==========================================
 
 /** 设置项类型枚举 */
-export type SettingType
-  = | 'switch' // 开关
-    | 'input' // 文本输入
-    | 'number' // 数字输入
-    | 'select' // 下拉选择
-    | 'provider' // 服务商选择器（带图标的按钮组）
-    | 'slider' // 滑动条
-    | 'button' // 操作按钮
-    | 'checkbox' // 复选框
-    | 'custom' // 自定义渲染
+export type SettingType =
+  | 'switch' // 开关
+  | 'input' // 文本输入
+  | 'number' // 数字输入
+  | 'select' // 下拉选择
+  | 'provider' // 服务商选择器（带图标的按钮组）
+  | 'slider' // 滑动条
+  | 'button' // 操作按钮
+  | 'checkbox' // 复选框
+  | 'custom' // 自定义渲染
 
 /** 设置项尺寸 */
 export type SettingSize = 'sm' | 'md' | 'lg'
@@ -130,7 +130,9 @@ export interface SelectSettingConfig<T = string> extends BaseSettingItemConfig {
 }
 
 /** 服务商选择器设置项配置 */
-export interface ProviderSettingConfig<T = string> extends BaseSettingItemConfig {
+export interface ProviderSettingConfig<
+  T = string,
+> extends BaseSettingItemConfig {
   type: 'provider'
   value: T
   onChange: (value: T) => void
@@ -154,7 +156,10 @@ export interface SliderSettingConfig extends BaseSettingItemConfig {
 }
 
 /** 按钮设置项配置 */
-export interface ButtonSettingConfig extends Omit<BaseSettingItemConfig, 'label'> {
+export interface ButtonSettingConfig extends Omit<
+  BaseSettingItemConfig,
+  'label'
+> {
   type: 'button'
   /** 可选标签（按钮可能不需要标签） */
   label?: string
@@ -175,16 +180,16 @@ export interface CustomSettingConfig extends BaseSettingItemConfig {
 }
 
 /** 设置项配置联合类型 */
-export type SettingItemConfig
-  = | SwitchSettingConfig
-    | CheckboxSettingConfig
-    | InputSettingConfig
-    | NumberSettingConfig
-    | SelectSettingConfig
-    | ProviderSettingConfig
-    | SliderSettingConfig
-    | ButtonSettingConfig
-    | CustomSettingConfig
+export type SettingItemConfig =
+  | SwitchSettingConfig
+  | CheckboxSettingConfig
+  | InputSettingConfig
+  | NumberSettingConfig
+  | SelectSettingConfig
+  | ProviderSettingConfig
+  | SliderSettingConfig
+  | ButtonSettingConfig
+  | CustomSettingConfig
 
 // ==========================================
 // 分组与区块
@@ -293,23 +298,36 @@ export interface InfoCardConfig {
 // ==========================================
 
 /** 根据类型获取设置项配置 */
-export type SettingConfigByType<T extends SettingType>
-  = T extends 'switch' ? SwitchSettingConfig
-    : T extends 'checkbox' ? CheckboxSettingConfig
-      : T extends 'input' ? InputSettingConfig
-        : T extends 'number' ? NumberSettingConfig
-          : T extends 'select' ? SelectSettingConfig
-            : T extends 'provider' ? ProviderSettingConfig
-              : T extends 'slider' ? SliderSettingConfig
-                : T extends 'button' ? ButtonSettingConfig
-                  : T extends 'custom' ? CustomSettingConfig
-                    : never
+export type SettingConfigByType<T extends SettingType> = T extends 'switch'
+  ? SwitchSettingConfig
+  : T extends 'checkbox'
+    ? CheckboxSettingConfig
+    : T extends 'input'
+      ? InputSettingConfig
+      : T extends 'number'
+        ? NumberSettingConfig
+        : T extends 'select'
+          ? SelectSettingConfig
+          : T extends 'provider'
+            ? ProviderSettingConfig
+            : T extends 'slider'
+              ? SliderSettingConfig
+              : T extends 'button'
+                ? ButtonSettingConfig
+                : T extends 'custom'
+                  ? CustomSettingConfig
+                  : never
 
 /** 设置值类型映射 */
-export type SettingValueType<T extends SettingType>
-  = T extends 'switch' | 'checkbox' ? boolean
-    : T extends 'input' ? string
-      : T extends 'number' | 'slider' ? number
-        : T extends 'select' | 'provider' ? string
-          : T extends 'button' | 'custom' ? never
-            : unknown
+export type SettingValueType<T extends SettingType> = T extends
+  'switch' | 'checkbox'
+  ? boolean
+  : T extends 'input'
+    ? string
+    : T extends 'number' | 'slider'
+      ? number
+      : T extends 'select' | 'provider'
+        ? string
+        : T extends 'button' | 'custom'
+          ? never
+          : unknown

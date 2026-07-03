@@ -31,8 +31,10 @@
 [data-scroll-optimized='true'] {
   /* 启用原生惯性滚动 */
   -webkit-overflow-scrolling: touch;
+
   /* 提示浏览器该区域会滚动 */
   will-change: scroll-position;
+
   /* 防止触摸操作被阻止 */
   touch-action: pan-y;
 }
@@ -40,8 +42,7 @@
 /* 横向滚动容器 */
 .scroll-horizontal {
   touch-action: pan-x;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto hidden;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -113,6 +114,7 @@
    ============================================ */
 
 /* 避免在这些属性上做动画 - 仅作为提示注释 */
+
 /*
  * 避免动画的属性（会触发 Layout/Paint）:
  * - width, height
@@ -183,6 +185,7 @@
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
@@ -231,14 +234,14 @@ img[loading='lazy'] {
   backdrop-filter: none !important;
 
   /* 使用更简单的阴影 */
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 10%) !important;
 
   /* 禁用复杂渐变 */
 }
 
 [data-low-end-device='true'] .blur-effect {
   backdrop-filter: none !important;
-  background-color: rgba(255, 255, 255, 0.95) !important;
+  background-color: rgb(255 255 255 / 95%) !important;
 }
 
 /* ============================================
@@ -252,8 +255,8 @@ img[loading='lazy'] {
   will-change: transform, opacity;
 
   /* 简化渲染 */
-  text-rendering: optimizeSpeed;
-  image-rendering: optimizeSpeed;
+  text-rendering: optimizespeed;
+  image-rendering: auto;
 }
 
 /* 长动画完成后清理 */
@@ -272,7 +275,7 @@ img[loading='lazy'] {
   }
 
   [data-low-end-device='true'] .blur-effect {
-    background-color: rgba(0, 0, 0, 0.95) !important;
+    background-color: rgb(0 0 0 / 95%) !important;
   }
 }
 
@@ -301,7 +304,7 @@ img[loading='lazy'] {
    常用样式工具类（避免内联 style）
    ============================================ */
 
-/* 🔧 Georgia 字体（用于引用等装饰性文字）*/
+/* 🔧 Georgia 字体（用于引用等装饰性文字） */
 .font-georgia {
   font-family: Georgia, serif;
 }
@@ -356,13 +359,15 @@ img[loading='lazy'] {
 /* 🔧 主题色透明混合文字 */
 .text-primary-mix {
   color: color-mix(in srgb, var(--color-primary) 70%, transparent);
-  -webkit-text-stroke: 0.5px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  -webkit-text-stroke: 0.5px
+    color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
 /* 🔧 强调色透明混合文字 */
 .text-accent-mix {
   color: color-mix(in srgb, var(--color-accent) 70%, transparent);
-  -webkit-text-stroke: 0.5px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  -webkit-text-stroke: 0.5px
+    color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
 /* 🔧 弹幕文字颜色 */

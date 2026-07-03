@@ -31,7 +31,9 @@ import { TappPageSandbox } from '../runtime/TappPageSandbox'
  */
 export const TappBackgroundRunner: React.FC = () => {
   const [backgroundTapps, setBackgroundTapps] = useState<TappInstance[]>([])
-  const [tappCodes, setTappCodes] = useState<Map<string, TappCodeStructure>>(new Map())
+  const [tappCodes, setTappCodes] = useState<Map<string, TappCodeStructure>>(
+    new Map(),
+  )
   const [_isLoading, setIsLoading] = useState(false)
   const loadingRef = useRef(false)
   const runtime = getTappRuntime()
@@ -39,8 +41,7 @@ export const TappBackgroundRunner: React.FC = () => {
   // 加载需要后台运行的 Tapp（有后台需求声明的）
   const loadBackgroundTapps = useCallback(async () => {
     // 防止并发加载
-    if (loadingRef.current)
-      return
+    if (loadingRef.current) return
     loadingRef.current = true
     setIsLoading(true)
 
@@ -72,20 +73,23 @@ export const TappBackgroundRunner: React.FC = () => {
             }
 
             codes.set(tapp.id, code)
-          }
-          catch (error) {
-            console.error(`[TappBackgroundRunner] Failed to load code for Tapp ${tapp.id}:`, error)
+          } catch (error) {
+            console.error(
+              `[TappBackgroundRunner] Failed to load code for Tapp ${tapp.id}:`,
+              error,
+            )
           }
         }),
       )
 
       setBackgroundTapps(tappsToRun)
       setTappCodes(codes)
-    }
-    catch (error) {
-      console.error('[TappBackgroundRunner] Failed to load background Tapps:', error)
-    }
-    finally {
+    } catch (error) {
+      console.error(
+        '[TappBackgroundRunner] Failed to load background Tapps:',
+        error,
+      )
+    } finally {
       loadingRef.current = false
       setIsLoading(false)
     }
@@ -128,8 +132,7 @@ export const TappBackgroundRunner: React.FC = () => {
     >
       {backgroundTapps.map((tapp) => {
         const code = tappCodes.get(tapp.id)
-        if (!code)
-          return null
+        if (!code) return null
 
         return (
           <TappPageSandbox
@@ -137,7 +140,10 @@ export const TappBackgroundRunner: React.FC = () => {
             tappInstance={tapp}
             code={code}
             onError={(error) => {
-              console.error(`[TappBackgroundRunner] Tapp ${tapp.id} error:`, error)
+              console.error(
+                `[TappBackgroundRunner] Tapp ${tapp.id} error:`,
+                error,
+              )
             }}
             className="w-px h-px"
           />

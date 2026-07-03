@@ -4,11 +4,11 @@
  * 支持多任务模式（无需指定 tappId）
  */
 
-import { TappRunPage, TappWindowManager } from '../tapp'
+import React from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
-import React from 'react'
 import { useBreakpoints } from '../hooks/useSharedEventListener'
+import { TappRunPage, TappWindowManager } from '../tapp'
 
 const TappRunView: React.FC = () => {
   // 从路由参数中获取 tappId
@@ -19,7 +19,8 @@ const TappRunView: React.FC = () => {
   const tappId = id ? decodeURIComponent(id) : ''
 
   // 检查是否是多任务模式（无 tappId 但有 multi=true 参数）
-  const isMultiWindowMode = !tappId && searchParams.get('multi') === 'true' && !isMobile
+  const isMultiWindowMode =
+    !tappId && searchParams.get('multi') === 'true' && !isMobile
 
   // 多任务模式 - 直接进入窗口管理器
   if (isMultiWindowMode) {
