@@ -5,8 +5,9 @@
  */
 
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
+import { API_URL } from '../config'
 
-const API_BASE = '/api/brewlia'
+const API_BASE = `${API_URL}/api/brewlia`
 
 /**
  * 注释类型

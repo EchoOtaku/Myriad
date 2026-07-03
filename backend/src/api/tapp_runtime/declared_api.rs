@@ -54,10 +54,13 @@ async fn get_tapp_apis(tapp_id: &str, manifest: &Value) -> HashMap<String, TappA
     // 写缓存
     {
         let mut cache = TAPP_APIS_CACHE.write().await;
-        cache.insert(tapp_id.to_string(), ApisCacheEntry {
-            apis: apis.clone(),
-            cached_at: Instant::now(),
-        });
+        cache.insert(
+            tapp_id.to_string(),
+            ApisCacheEntry {
+                apis: apis.clone(),
+                cached_at: Instant::now(),
+            },
+        );
     }
 
     apis
@@ -85,11 +88,16 @@ pub async fn execute_tapp_api(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!(
         "[TAPP API] Execute {} for tapp {} by user {}",
-        api_name, tapp_id, claims.username
+        api_name,
+        tapp_id,
+        claims.username
     );
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     // 1. 查找 Tapp
@@ -99,24 +107,37 @@ pub async fn execute_tapp_api(
         .await
         .map_err(|e| {
             tracing::error!("[TAPP API] Database error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?
         .ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({ "error": "Tapp not found" })))
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Tapp not found" })),
+            )
         })?;
 
     // 2. 解析 manifest 中的 APIs（带缓存）
     let apis = get_tapp_apis(&tapp_id, &tapp.manifest).await;
 
     let api_def = apis.get(&api_name).ok_or_else(|| {
-        (StatusCode::NOT_FOUND, Json(json!({ "error": format!("API '{}' not defined in manifest", api_name) })))
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("API '{}' not defined in manifest", api_name) })),
+        )
     })?;
 
     // 3. 获取用户已授权的权限
     let granted_permissions: Vec<String> = tapp
         .granted_permissions
         .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
 
     // 4. 获取客户端 IP
@@ -125,7 +146,12 @@ pub async fn execute_tapp_api(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.split(',').next())
         .map(|s| s.trim().to_string())
-        .or_else(|| headers.get("x-real-ip").and_then(|v| v.to_str().ok()).map(|s| s.to_string()));
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        });
 
     // 5. 确定用户角色
     let role = if claims.is_admin {
@@ -150,9 +176,14 @@ pub async fn execute_tapp_api(
     let result = TappApiService::execute(&tapp_id, &api_name, api_def, body.params, &context).await;
 
     if result.success {
-        Ok(Json(json!({ "success": true, "data": result.data, "cached": result.cached })))
+        Ok(Json(
+            json!({ "success": true, "data": result.data, "cached": result.cached }),
+        ))
     } else {
-        Err((StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": result.error }))))
+        Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "success": false, "error": result.error })),
+        ))
     }
 }
 
@@ -162,17 +193,27 @@ pub async fn list_tapp_apis(
     Extension(claims): Extension<Claims>,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    tracing::debug!("[TAPP API] List APIs for tapp {} by user {}", tapp_id, claims.username);
+    tracing::debug!(
+        "[TAPP API] List APIs for tapp {} by user {}",
+        tapp_id,
+        claims.username
+    );
 
     let tapp = tapps::Entity::find()
         .filter(tapps::Column::TappId.eq(&tapp_id))
         .one(&db)
         .await
         .map_err(|e| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Database error: {}", e) })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Database error: {}", e) })),
+            )
         })?
         .ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({ "error": "Tapp not found" })))
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Tapp not found" })),
+            )
         })?;
 
     let apis = get_tapp_apis(&tapp_id, &tapp.manifest).await;

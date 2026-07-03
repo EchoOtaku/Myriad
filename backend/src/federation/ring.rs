@@ -54,7 +54,6 @@ async fn resolve_user_id(
     }
 }
 
-
 // ==================== 请求/响应类型 ====================
 
 /// 创建 / 加入 Ring 请求
@@ -124,7 +123,13 @@ pub struct AddPeerRequest {
 // ==================== 辅助函数 ====================
 
 fn validate_ring_type(rt: &str) -> bool {
-    ["tapp-store", "brew-recommend", "library-exchange", "instance-directory"].contains(&rt)
+    [
+        "tapp-store",
+        "brew-recommend",
+        "library-exchange",
+        "instance-directory",
+    ]
+    .contains(&rt)
 }
 
 // ==================== Ring CRUD ====================
@@ -138,7 +143,9 @@ pub async fn create_ring(
     if !validate_ring_type(&req.ring_type) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid ring_type. Must be one of: tapp-store, brew-recommend, library-exchange, instance-directory"})),
+            Json(
+                json!({"error": "Invalid ring_type. Must be one of: tapp-store, brew-recommend, library-exchange, instance-directory"}),
+            ),
         ));
     }
 
@@ -194,14 +201,14 @@ pub async fn list_rings(
 
     let mut rings = Vec::new();
     for row in rows {
-        let peers: serde_json::Value = row
-            .try_get("", "known_peers")
-            .unwrap_or(json!([]));
+        let peers: serde_json::Value = row.try_get("", "known_peers").unwrap_or(json!([]));
         let peer_count = peers.as_array().map(|a| a.len() as i64).unwrap_or(0);
 
         rings.push(RingSummary {
             ring_id: row.try_get("", "ring_id").unwrap_or_default(),
-            ring_name: row.try_get::<Option<String>>("", "ring_name").unwrap_or(None),
+            ring_name: row
+                .try_get::<Option<String>>("", "ring_name")
+                .unwrap_or(None),
             ring_type: row.try_get("", "ring_type").unwrap_or_default(),
             peer_count,
             last_sync_at: row
@@ -241,19 +248,25 @@ pub async fn get_ring(
             )
         })?;
 
-    let peers_json: serde_json::Value = row
-        .try_get("", "known_peers")
-        .unwrap_or(json!([]));
+    let peers_json: serde_json::Value = row.try_get("", "known_peers").unwrap_or(json!([]));
     let known_peers: Vec<String> = peers_json
         .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
 
     Ok(RingDetail {
         ring_id: row.try_get("", "ring_id").unwrap_or_default(),
-        ring_name: row.try_get::<Option<String>>("", "ring_name").unwrap_or(None),
+        ring_name: row
+            .try_get::<Option<String>>("", "ring_name")
+            .unwrap_or(None),
         ring_type: row.try_get("", "ring_type").unwrap_or_default(),
-        gossip_config: row.try_get::<Option<serde_json::Value>>("", "gossip_config").unwrap_or(None),
+        gossip_config: row
+            .try_get::<Option<serde_json::Value>>("", "gossip_config")
+            .unwrap_or(None),
         known_peers,
         last_sync_at: row
             .try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "last_sync_at")
@@ -294,7 +307,11 @@ pub async fn leave_ring(
     let peers_json: serde_json::Value = ring_row.try_get("", "known_peers").unwrap_or(json!([]));
     let peers: Vec<String> = peers_json
         .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
 
     // 通知所有 peer 我们要离开
@@ -570,12 +587,22 @@ pub async fn trigger_sync(
         .unwrap_or(json!({"fanout": 3, "ttl": 5}));
     let peers_json: serde_json::Value = ring_row.try_get("", "known_peers").unwrap_or(json!([]));
 
-    let fanout = gossip_config.get("fanout").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
-    let ttl = gossip_config.get("ttl").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+    let fanout = gossip_config
+        .get("fanout")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3) as usize;
+    let ttl = gossip_config
+        .get("ttl")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(5) as u32;
 
     let peers: Vec<String> = peers_json
         .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
 
     if peers.is_empty() {
@@ -675,7 +702,12 @@ pub async fn trigger_sync(
         ))
         .await;
 
-    tracing::info!("[Ring] Synced ring {} to {} peers ({} entries)", ring_id, synced, entries.len());
+    tracing::info!(
+        "[Ring] Synced ring {} to {} peers ({} entries)",
+        ring_id,
+        synced,
+        entries.len()
+    );
 
     Ok(json!({
         "success": true,
@@ -844,12 +876,17 @@ pub async fn handle_ring_join(
         // 安全考量：自动加入任何远程 Ring 会允许恶意实例注入数据到本地 timeline
         tracing::warn!(
             "[Ring] Received RingJoin for unknown ring {} from {}, ignoring (auto-join disabled)",
-            ring_id, actor_url_str
+            ring_id,
+            actor_url_str
         );
         return Ok(());
     }
 
-    tracing::info!("[Ring] Received RingJoin for {} from {}", ring_id, actor_url_str);
+    tracing::info!(
+        "[Ring] Received RingJoin for {} from {}",
+        ring_id,
+        actor_url_str
+    );
     Ok(())
 }
 
@@ -886,7 +923,10 @@ pub async fn handle_ring_sync(
         .map_err(|e| e.to_string())?;
 
     if ring_exists.is_none() {
-        tracing::warn!("[Ring] Received sync for unknown ring {}, ignoring", ring_id);
+        tracing::warn!(
+            "[Ring] Received sync for unknown ring {}, ignoring",
+            ring_id
+        );
         return Ok(());
     }
 
@@ -905,7 +945,10 @@ pub async fn handle_ring_sync(
     // 处理收到的条目 — 存入 Timeline
     let mut imported = 0;
     for entry in &entries {
-        let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let entry_type = entry
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         let data = entry.get("data").cloned().unwrap_or(json!(null));
         let activity_id_val = entry
             .get("activity_id")
@@ -966,7 +1009,11 @@ pub async fn handle_ring_sync(
 
     tracing::info!(
         "[Ring] Sync from {} to ring {}: {} entries ({} imported), ttl={}",
-        actor_url_str, ring_id, entries.len(), imported, ttl
+        actor_url_str,
+        ring_id,
+        entries.len(),
+        imported,
+        ttl
     );
 
     // Gossip 转发（如果 TTL > 0 且有新数据导入，继续传播给其他 peer）
@@ -982,7 +1029,8 @@ pub async fn handle_ring_sync(
             .map_err(|e| e.to_string())?;
 
         if let Some(row) = ring_row {
-            let local_peers: serde_json::Value = row.try_get("", "known_peers").unwrap_or(json!([]));
+            let local_peers: serde_json::Value =
+                row.try_get("", "known_peers").unwrap_or(json!([]));
             let config: serde_json::Value = row.try_get("", "gossip_config").unwrap_or(json!({}));
             let fanout = config.get("fanout").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
 
@@ -1021,7 +1069,9 @@ pub async fn handle_ring_sync(
                         }
                     });
 
-                    if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, target).await {
+                    if let Ok(remote) =
+                        crate::federation::actor::fetch_remote_actor(db, target).await
+                    {
                         if !remote.inbox_url.is_empty() {
                             let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
                             let act_row = db
@@ -1051,7 +1101,12 @@ pub async fn handle_ring_sync(
                         }
                     }
                 }
-                tracing::info!("[Ring] Forwarded gossip for ring {} to {} peers, ttl={}", ring_id, targets.len(), ttl - 1);
+                tracing::info!(
+                    "[Ring] Forwarded gossip for ring {} to {} peers, ttl={}",
+                    ring_id,
+                    targets.len(),
+                    ttl - 1
+                );
             }
         }
     }

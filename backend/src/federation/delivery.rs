@@ -58,9 +58,7 @@ pub async fn process_delivery_queue(
             .await;
 
         // 投递前：目标实例信任策略检查（黑名单等）
-        if let Err(reason) =
-            crate::federation::trust::enforce_outbound(db, &target_domain).await
-        {
+        if let Err(reason) = crate::federation::trust::enforce_outbound(db, &target_domain).await {
             let _ = db
                 .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
@@ -87,7 +85,16 @@ pub async fn process_delivery_queue(
         // 获取用户密钥对
         match load_user_keypair(db, user_id).await {
             Ok(keypair) => {
-                match deliver_activity(&keypair, &base_url, &username, &target_inbox, &target_domain, &body_bytes).await {
+                match deliver_activity(
+                    &keypair,
+                    &base_url,
+                    &username,
+                    &target_inbox,
+                    &target_domain,
+                    &body_bytes,
+                )
+                .await
+                {
                     Ok(()) => {
                         // 投递成功
                         let _ = db
@@ -121,7 +128,12 @@ pub async fn process_delivery_queue(
                                     [new_attempts.into(), e.clone().into(), queue_id.into()],
                                 ))
                                 .await;
-                            tracing::warn!("💀 Delivery dead after {} attempts to {}: {}", new_attempts, target_inbox, e);
+                            tracing::warn!(
+                                "💀 Delivery dead after {} attempts to {}: {}",
+                                new_attempts,
+                                target_inbox,
+                                e
+                            );
                         } else {
                             // 指数退避：2^attempts 秒，最大 86400 秒 (24h)
                             let backoff_secs = std::cmp::min(2i64.pow(new_attempts as u32), 86400);
@@ -144,7 +156,10 @@ pub async fn process_delivery_queue(
 
                             tracing::warn!(
                                 "⚠️ Delivery failed (attempt {}/{}), retrying in {}s: {}",
-                                new_attempts, max_attempts, backoff_secs, e
+                                new_attempts,
+                                max_attempts,
+                                backoff_secs,
+                                e
                             );
                         }
                     }
@@ -198,7 +213,10 @@ async fn deliver_activity(
 ) -> Result<(), String> {
     // 纵深防御：即使 inbox URL 已入库，投递前仍验证不指向内网
     if is_internal_url(target_inbox) {
-        return Err(format!("Refusing to deliver to internal URL: {}", target_inbox));
+        return Err(format!(
+            "Refusing to deliver to internal URL: {}",
+            target_inbox
+        ));
     }
 
     let kid = key_id(base_url, username);
@@ -215,12 +233,15 @@ async fn deliver_activity(
         body: Some(body),
     };
 
-    let signed = sign_request(keypair, &params)
-        .map_err(|e| format!("Signing failed: {}", e))?;
+    let signed = sign_request(keypair, &params).map_err(|e| format!("Signing failed: {}", e))?;
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
-        .user_agent(format!("Myriad/{} (+{})", env!("CARGO_PKG_VERSION"), base_url))
+        .user_agent(format!(
+            "Myriad/{} (+{})",
+            env!("CARGO_PKG_VERSION"),
+            base_url
+        ))
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
@@ -241,17 +262,18 @@ async fn deliver_activity(
         Ok(())
     } else {
         let body_text = resp.text().await.unwrap_or_default();
-        Err(format!("HTTP {}: {}", status, body_text.chars().take(200).collect::<String>()))
+        Err(format!(
+            "HTTP {}: {}",
+            status,
+            body_text.chars().take(200).collect::<String>()
+        ))
     }
 }
 
 // ==================== 辅助函数 ====================
 
 /// 加载用户的密钥对
-async fn load_user_keypair(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<KeyPair, String> {
+async fn load_user_keypair(db: &DatabaseConnection, user_id: i32) -> Result<KeyPair, String> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -274,10 +296,7 @@ async fn load_user_keypair(
         .map_err(|e| format!("Key decryption failed: {}", e))
 }
 
-async fn get_username_by_id(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<String, String> {
+async fn get_username_by_id(db: &DatabaseConnection, user_id: i32) -> Result<String, String> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,

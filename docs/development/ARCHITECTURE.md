@@ -4,6 +4,30 @@
 
 Myriad is built as a modern full-stack application with a clear separation between frontend and backend, communicating via RESTful APIs.
 
+There are two runtime topologies:
+
+- **Development**: Astro dev server on `4321` and Axum backend on `3000`; `/api/*`
+  is forwarded by the Astro dev proxy.
+- **Production**: `proxy` is the only host-facing service. It forwards page
+  traffic to `frontend`, API traffic to `backend`, and shows the maintenance page
+  while `updater` is changing image tags or restoring a snapshot.
+
+The updater is not an A/B dual-live partition system. It uses one running
+business slot plus immutable image tags and `pgdata` snapshots.
+
+```
+Production:
+
+client ─► proxy(:80) ─┬─► frontend(:4321, internal)
+                      └─► backend(:3000, internal) ─► postgres
+
+updater(internal) ─► docker compose / .env tag switch / pgdata snapshot
+
+Development:
+
+browser ─► astro dev(:4321) ─► /api/* proxy ─► backend(:3000) ─► dev postgres
+```
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         Frontend                             │
@@ -244,7 +268,7 @@ User → Frontend → Backend API → Database Query
 Local Machine
 ├── PostgreSQL (Docker or local)
 ├── Backend (cargo run)
-└── Frontend (npm run dev)
+└── Frontend (pnpm run dev)
 ```
 
 ### Production (Docker)

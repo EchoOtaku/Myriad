@@ -9,7 +9,7 @@ param(
     [ValidateSet("start", "stop", "restart", "clean", "status", "logs", "help")]
     [string]$Command = "help",
     
-    [ValidateSet("backend", "frontend", "all")]
+    [ValidateSet("backend", "frontend", "updater", "all", "all-updater")]
     [string]$Service = "all",
     
     [switch]$Force
@@ -19,6 +19,8 @@ $ErrorActionPreference = "Stop"
 
 # Get project root
 $projectRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$devUpdaterDir = Join-Path $projectRoot ".dev-updater"
+$devUpdaterTokenDefault = "9xQ3vN8mP2rT5wY7zA1bC4dF6hJ8kL0n"
 
 # Helper functions
 function Write-Header {
@@ -43,11 +45,162 @@ function Write-Error {
     Write-Host "✗ $Message" -ForegroundColor Red
 }
 
+function Test-BackendHealth {
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:3000/health" -TimeoutSec 1 | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Wait-Backend {
+    param([int]$TimeoutSeconds = 90)
+
+    Write-Info "Waiting for backend health on http://127.0.0.1:3000/health ..."
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-BackendHealth) {
+            Write-Success "Backend is ready"
+            return $true
+        }
+        Start-Sleep -Seconds 1
+    }
+    return $false
+}
+
+function Get-DevUpdaterToken {
+    if ($env:MYRIAD_DEV_UPDATE_TOKEN) {
+        return $env:MYRIAD_DEV_UPDATE_TOKEN
+    }
+    return $devUpdaterTokenDefault
+}
+
+function Test-UpdaterHealth {
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:9090/healthz" -TimeoutSec 1 | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Wait-Updater {
+    param([int]$TimeoutSeconds = 120)
+
+    Write-Info "Waiting for updater health on http://127.0.0.1:9090/healthz ..."
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-UpdaterHealth) {
+            Write-Success "Updater is ready"
+            return $true
+        }
+        Start-Sleep -Seconds 1
+    }
+    return $false
+}
+
+function Test-UpdaterRunning {
+    $running = docker ps --filter "name=myriad-updater-dev" --format "{{.Names}}" 2>$null
+    return $running -match "myriad-updater-dev"
+}
+
+function Ensure-DevUpdaterFiles {
+    New-Item -ItemType Directory -Force -Path $devUpdaterDir | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $devUpdaterDir "state") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $devUpdaterDir "pgdata") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $devUpdaterDir "backups") | Out-Null
+
+    $envText = @"
+MYRIAD_TAG=v0.0.0-dev
+PROXY_TAG=v0.0.0-dev
+UPDATER_TAG=v0.0.0-dev
+COMPOSE_PROJECT_NAME=myriad-dev-updater
+POSTGRES_PASSWORD=devupdaterpostgres12345678901234567890
+JWT_SECRET=devupdaterjwtsecret12345678901234567890
+CORS_ORIGINS=http://localhost:4321,http://localhost:3000
+UPDATE_TOKEN=$(Get-DevUpdaterToken)
+CHANNEL=stable
+CHECK_INTERVAL_SECS=0
+"@
+    Set-Content -Path (Join-Path $devUpdaterDir ".env") -Value $envText -Encoding UTF8
+
+    $composeText = @"
+services:
+  postgres:
+    image: postgres:16-alpine
+  backend:
+    image: example/myriad-backend:`${MYRIAD_TAG}
+  frontend:
+    image: example/myriad-frontend:`${MYRIAD_TAG}
+  proxy:
+    image: example/myriad-proxy:`${PROXY_TAG}
+  updater:
+    image: example/myriad-updater:`${UPDATER_TAG}
+"@
+    Set-Content -Path (Join-Path $devUpdaterDir "docker-compose.yml") -Value $composeText -Encoding UTF8
+}
+
+function Start-Updater {
+    Write-Info "Starting updater dev harness..."
+    if (Test-UpdaterRunning) {
+        Write-Host "Updater harness is already running" -ForegroundColor Yellow
+        return $true
+    }
+
+    Ensure-DevUpdaterFiles
+    Push-Location $projectRoot
+    $prevUpdateToken = $env:UPDATE_TOKEN
+    try {
+        $env:UPDATE_TOKEN = Get-DevUpdaterToken
+        docker compose -f docker-compose.dev.yml --profile updater up -d updater
+    }
+    finally {
+        $env:UPDATE_TOKEN = $prevUpdateToken
+        Pop-Location
+    }
+
+    if (-not (Wait-Updater -TimeoutSeconds 120)) {
+        Write-Error "Updater did not become ready within 120s"
+        Write-Info "Check logs with: docker compose -f docker-compose.dev.yml --profile updater logs -f updater"
+        return $false
+    }
+    Write-Success "Updater harness started"
+    Write-Info "Backend will use it when started/restarted while the harness is running."
+    return $true
+}
+
+function Stop-Updater {
+    Write-Info "Stopping updater dev harness..."
+    Push-Location $projectRoot
+    try {
+        docker compose -f docker-compose.dev.yml --profile updater stop updater 2>$null | Out-Null
+        docker compose -f docker-compose.dev.yml --profile updater rm -f updater 2>$null | Out-Null
+    }
+    finally {
+        Pop-Location
+    }
+    Write-Success "Updater harness stopped"
+}
+
 # ====================
 # START Command
 # ====================
 function Start-Services {
     Write-Header "Starting Myriad Services"
+
+    $startUpdater = $Service -eq "updater" -or $Service -eq "all-updater"
+    $startBackend = $Service -eq "backend" -or $Service -eq "all" -or $Service -eq "all-updater"
+    $startFrontend = $Service -eq "frontend" -or $Service -eq "all" -or $Service -eq "all-updater"
+
+    if ($startUpdater) {
+        $ok = Start-Updater
+        if (-not $ok -or $Service -eq "updater") {
+            return
+        }
+    }
     
     # Check if services are already running
     $existingBackend = Get-Process -Name "myriad-backend", "cargo" -ErrorAction SilentlyContinue
@@ -59,8 +212,15 @@ function Start-Services {
         catch { $false }
     }
 
-    if (($existingBackend -and ($Service -eq "all" -or $Service -eq "backend")) -or 
-        ($existingFrontend -and ($Service -eq "all" -or $Service -eq "frontend"))) {
+    if ($Service -eq "all-updater" -and $existingBackend) {
+        Write-Info "Restarting backend so it picks up updater dev environment..."
+        $existingBackend | Stop-Process -Force
+        Start-Sleep -Seconds 1
+        $existingBackend = $null
+    }
+
+    if (($existingBackend -and $startBackend) -or
+        ($existingFrontend -and $startFrontend -and $Service -ne "all-updater")) {
         
         if (-not $Force) {
             Write-Host "⚠️  Warning: Some services are already running" -ForegroundColor Yellow
@@ -74,27 +234,49 @@ function Start-Services {
     }
 
     # Start Backend
-    if ($Service -eq "all" -or $Service -eq "backend") {
-        Write-Info "Starting Backend..."
-        $backendPath = Join-Path $projectRoot "backend"
-        
-        Start-Process powershell -ArgumentList `
-            "-NoExit", "-NoProfile", "-Command", `
-            "Write-Host '🦀 Myriad Backend' -ForegroundColor Cyan; Write-Host ''; Set-Location '$backendPath'; cargo run" `
-            -WindowStyle Normal -WorkingDirectory $backendPath
-        
-        Write-Success "Backend starting in new window"
-        Start-Sleep -Seconds 2
+    $backendReady = Test-BackendHealth
+    if ($startBackend) {
+        if ($backendReady) {
+            Write-Info "Backend is already healthy"
+        }
+        else {
+            Write-Info "Starting Backend..."
+            $backendPath = Join-Path $projectRoot "backend"
+            $backendCommand = "Write-Host '🦀 Myriad Backend' -ForegroundColor Cyan; Write-Host ''; Set-Location '$backendPath'; "
+            if (Test-UpdaterRunning) {
+                Ensure-DevUpdaterFiles
+                $backendCommand += "`$env:MYRIAD_UPDATER_URL='http://127.0.0.1:9090'; `$env:UPDATE_TOKEN='$(Get-DevUpdaterToken)'; "
+                Write-Info "Backend updater proxy enabled: http://127.0.0.1:9090"
+            }
+            $backendCommand += "cargo run"
+
+            Start-Process powershell -ArgumentList `
+                "-NoExit", "-NoProfile", "-Command", `
+                $backendCommand `
+                -WindowStyle Normal -WorkingDirectory $backendPath
+
+            Write-Success "Backend starting in new window"
+            $backendReady = Wait-Backend -TimeoutSeconds 90
+            if (-not $backendReady) {
+                Write-Error "Backend did not become ready within 90s"
+            }
+        }
+    }
+
+    if (($Service -eq "all" -or $Service -eq "all-updater") -and -not $backendReady) {
+        Write-Error "Frontend was not started to avoid 127.0.0.1:3000 ECONNREFUSED."
+        Write-Info "Fix the backend error first, then run: .\dev.ps1 start -Service frontend"
+        return
     }
 
     # Start Frontend
-    if ($Service -eq "all" -or $Service -eq "frontend") {
+    if ($startFrontend) {
         Write-Info "Starting Frontend..."
         $frontendPath = Join-Path $projectRoot "frontend"
         
         Start-Process powershell -ArgumentList `
             "-NoExit", "-NoProfile", "-Command", `
-            "Write-Host '⚡ Myriad Frontend' -ForegroundColor Cyan; Write-Host ''; Set-Location '$frontendPath'; npm run dev" `
+            "Write-Host '⚡ Myriad Frontend' -ForegroundColor Cyan; Write-Host ''; Set-Location '$frontendPath'; pnpm run dev" `
             -WindowStyle Normal -WorkingDirectory $frontendPath
         
         Write-Success "Frontend starting in new window"
@@ -106,6 +288,9 @@ function Start-Services {
     Write-Host "  Frontend: http://localhost:4321" -ForegroundColor White
     Write-Host "  Backend:  http://localhost:3000" -ForegroundColor White
     Write-Host "  Health:   http://localhost:3000/health" -ForegroundColor White
+    if (Test-UpdaterRunning) {
+        Write-Host "  Updater:  http://127.0.0.1:9090" -ForegroundColor White
+    }
     Write-Host ""
 }
 
@@ -116,9 +301,12 @@ function Stop-Services {
     Write-Header "Stopping Myriad Services"
     
     $stoppedCount = 0
+    $stopUpdater = $Service -eq "updater" -or $Service -eq "all" -or $Service -eq "all-updater"
+    $stopBackend = $Service -eq "backend" -or $Service -eq "all" -or $Service -eq "all-updater"
+    $stopFrontend = $Service -eq "frontend" -or $Service -eq "all" -or $Service -eq "all-updater"
 
     # Stop Backend
-    if ($Service -eq "all" -or $Service -eq "backend") {
+    if ($stopBackend) {
         Write-Info "Stopping backend services..."
         
         $cargoProcesses = Get-Process -Name "cargo" -ErrorAction SilentlyContinue
@@ -137,7 +325,7 @@ function Stop-Services {
     }
 
     # Stop Frontend
-    if ($Service -eq "all" -or $Service -eq "frontend") {
+    if ($stopFrontend) {
         Write-Info "Stopping frontend services..."
         
         $nodeProcesses = Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object {
@@ -154,6 +342,10 @@ function Stop-Services {
         }
         
         Write-Success "Frontend stopped"
+    }
+
+    if ($stopUpdater) {
+        Stop-Updater
     }
 
     Write-Host ""
@@ -309,6 +501,16 @@ function Show-Status {
         Write-Host "Frontend: " -NoNewline
         Write-Host "STOPPED" -ForegroundColor Red
     }
+
+    if (Test-UpdaterRunning) {
+        Write-Host "Updater:  " -NoNewline
+        Write-Host "RUNNING" -ForegroundColor Green
+        Write-Host "  URL: http://127.0.0.1:9090" -ForegroundColor Gray
+    }
+    else {
+        Write-Host "Updater:  " -NoNewline
+        Write-Host "STOPPED" -ForegroundColor Red
+    }
     
     Write-Host ""
 }
@@ -340,10 +542,12 @@ function Show-Help {
     Write-Host "  logs                         - Show logs info" -ForegroundColor White
     Write-Host "  help                         - Show this help" -ForegroundColor White
     Write-Host ""
-    Write-Host "Services: backend, frontend, all (default)" -ForegroundColor Yellow
+    Write-Host "Services: backend, frontend, updater, all, all-updater (default: all)" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Examples:" -ForegroundColor Yellow
     Write-Host "  .\dev.ps1 start                    # Start all services" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 start -Service all-updater # Start dev stack with updater harness" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 start -Service updater   # Start updater harness only" -ForegroundColor Gray
     Write-Host "  .\dev.ps1 start -Service backend   # Start backend only" -ForegroundColor Gray
     Write-Host "  .\dev.ps1 stop                     # Stop all services" -ForegroundColor Gray
     Write-Host "  .\dev.ps1 restart -Service frontend # Restart frontend" -ForegroundColor Gray
@@ -363,17 +567,19 @@ function Show-InteractiveMenu {
         Write-Host "================================" -ForegroundColor Cyan
         Write-Host ""
         Write-Host "1. Start all services" -ForegroundColor White
-        Write-Host "2. Start backend only" -ForegroundColor White
-        Write-Host "3. Start frontend only" -ForegroundColor White
-        Write-Host "4. Stop all services" -ForegroundColor White
-        Write-Host "5. Restart all services" -ForegroundColor White
-        Write-Host "6. Show status" -ForegroundColor White
-        Write-Host "7. Clean project" -ForegroundColor White
-        Write-Host "8. Show logs info" -ForegroundColor White
+        Write-Host "2. Start all services + updater harness" -ForegroundColor White
+        Write-Host "3. Start backend only" -ForegroundColor White
+        Write-Host "4. Start frontend only" -ForegroundColor White
+        Write-Host "5. Start updater harness only" -ForegroundColor White
+        Write-Host "6. Stop all services" -ForegroundColor White
+        Write-Host "7. Restart all services" -ForegroundColor White
+        Write-Host "8. Show status" -ForegroundColor White
+        Write-Host "9. Clean project" -ForegroundColor White
+        Write-Host "10. Show logs info" -ForegroundColor White
         Write-Host "0. Exit" -ForegroundColor Gray
         Write-Host ""
         
-        $choice = Read-Host "Select an option (0-8)"
+        $choice = Read-Host "Select an option (0-10)"
         
         switch ($choice) {
             "1" {
@@ -381,28 +587,36 @@ function Show-InteractiveMenu {
                 Start-Services
             }
             "2" {
-                $script:Service = "backend"
+                $script:Service = "all-updater"
                 Start-Services
             }
             "3" {
-                $script:Service = "frontend"
+                $script:Service = "backend"
                 Start-Services
             }
             "4" {
+                $script:Service = "frontend"
+                Start-Services
+            }
+            "5" {
+                $script:Service = "updater"
+                Start-Services
+            }
+            "6" {
                 $script:Service = "all"
                 Stop-Services
             }
-            "5" {
+            "7" {
                 $script:Service = "all"
                 Restart-Services
             }
-            "6" {
+            "8" {
                 Show-Status
             }
-            "7" {
+            "9" {
                 Clear-Project
             }
-            "8" {
+            "10" {
                 Show-Logs
             }
             "0" {
@@ -412,7 +626,7 @@ function Show-InteractiveMenu {
             }
             default {
                 Write-Host ""
-                Write-Host "Invalid option. Please select 0-8" -ForegroundColor Red
+                Write-Host "Invalid option. Please select 0-10" -ForegroundColor Red
             }
         }
         

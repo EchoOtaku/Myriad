@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useI18n } from '../../contexts/I18nContext'
 
 import { useHomeResizeObserver, useHomeVisibilityInterval } from '../../hooks/animation'
+import { API_URL as CONFIG_API_URL } from '../../config'
 import { getCSRFToken } from '../../utils/csrf'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
 import WidgetGrid from '../WidgetGrid'
@@ -18,7 +19,7 @@ import { WeatherWidget } from '../widgets/WeatherWidget'
 import { WelcomeWidget } from '../widgets/WelcomeWidget'
 import './ControlPanelWidgets.css'
 
-const API_URL = import.meta.env.PUBLIC_API_URL || ''
+const API_URL = CONFIG_API_URL
 
 // 小组件基础配置（不含翻译的名称）
 const WIDGET_BASE_CONFIG = {
@@ -33,6 +34,7 @@ const WIDGET_BASE_CONFIG = {
   'report-steam': { defaultSize: '4x2' as const, component: ReportCardWidget, supportedSizes: ['4x2'] as WidgetSize[] },
   'report-github': { defaultSize: '4x2' as const, component: ReportCardWidget, supportedSizes: ['4x2'] as WidgetSize[] },
   'report-netease': { defaultSize: '4x2' as const, component: ReportCardWidget, supportedSizes: ['4x2'] as WidgetSize[] },
+  'report-bangumi': { defaultSize: '4x2' as const, component: ReportCardWidget, supportedSizes: ['4x2'] as WidgetSize[] },
 }
 
 const DEFAULT_CONTROL_PANEL_LAYOUT: WidgetConfig[] = [
@@ -70,6 +72,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({ isAdmi
     { id: 'report-steam', name: t.widgets.reportSteam, ...WIDGET_BASE_CONFIG['report-steam'] },
     { id: 'report-github', name: t.widgets.reportGithub, ...WIDGET_BASE_CONFIG['report-github'] },
     { id: 'report-netease', name: t.widgets.reportNetease, ...WIDGET_BASE_CONFIG['report-netease'] },
+    { id: 'report-bangumi', name: t.widgets.reportBangumi, ...WIDGET_BASE_CONFIG['report-bangumi'] },
   ], [t.widgets])
 
   const [widgets, setWidgets] = useState<WidgetConfig[]>(DEFAULT_CONTROL_PANEL_LAYOUT)

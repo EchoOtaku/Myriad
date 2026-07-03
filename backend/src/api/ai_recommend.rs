@@ -1,5 +1,5 @@
 use axum::{http::StatusCode, Json};
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]

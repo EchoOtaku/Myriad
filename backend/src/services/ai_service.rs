@@ -115,7 +115,10 @@ impl AiService {
     }
 
     /// 创建指定层级的 AI 服务实例
-    pub async fn new_with_tier(_db: &DatabaseConnection, tier: ModelTier) -> Result<Self, AiServiceError> {
+    pub async fn new_with_tier(
+        _db: &DatabaseConnection,
+        tier: ModelTier,
+    ) -> Result<Self, AiServiceError> {
         let config = GLOBAL_DYNAMIC_CONFIG.read().await;
         let resolved = config.resolve_ai_config(tier);
 

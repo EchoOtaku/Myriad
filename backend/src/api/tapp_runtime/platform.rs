@@ -14,8 +14,8 @@ use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 
 use super::common::{
-    check_tapp_permission, get_cached_platform_data, parse_user_id,
-    validate_platform_name, verify_tapp_ownership,
+    check_tapp_permission, get_cached_platform_data, parse_user_id, validate_platform_name,
+    verify_tapp_ownership,
 };
 
 #[derive(Debug, Deserialize)]
@@ -35,7 +35,8 @@ pub async fn get_platform_data(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!(
         "[TAPP] get_platform_data - User: {}, Platform: {}",
-        claims.username, platform
+        claims.username,
+        platform
     );
 
     let data = match get_cached_platform_data(&platform).await {
@@ -48,7 +49,11 @@ pub async fn get_platform_data(
         }
     };
 
-    let items = data.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let items = data
+        .get("items")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     let total = items.len();
     let offset = query.offset.unwrap_or(0) as usize;
     let limit = (query.limit.unwrap_or(100) as usize).min(1000);
@@ -71,11 +76,18 @@ pub async fn get_platform_stats(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!(
         "[TAPP] get_platform_stats - User: {}, Platform: {}",
-        claims.username, platform
+        claims.username,
+        platform
     );
 
-    let data = get_cached_platform_data(&platform).await.unwrap_or(json!({ "items": [] }));
-    let items = data.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let data = get_cached_platform_data(&platform)
+        .await
+        .unwrap_or(json!({ "items": [] }));
+    let items = data
+        .get("items")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     let total = items.len();
 
     let mut type_distribution: HashMap<String, usize> = HashMap::new();
@@ -101,11 +113,19 @@ pub async fn get_platform_distribution(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!(
         "[TAPP] get_platform_distribution - User: {}, Platform: {}, Dimension: {}",
-        claims.username, platform, dimension
+        claims.username,
+        platform,
+        dimension
     );
 
-    let data = get_cached_platform_data(&platform).await.unwrap_or(json!({ "items": [] }));
-    let items = data.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let data = get_cached_platform_data(&platform)
+        .await
+        .unwrap_or(json!({ "items": [] }));
+    let items = data
+        .get("items")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
 
     let mut distribution: HashMap<String, usize> = HashMap::new();
     for item in &items {
@@ -166,26 +186,34 @@ pub async fn add_platform_item(
     let user_id = parse_user_id(&claims)?;
     verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
 
-    validate_platform_name(&req.item.platform).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(json!({ "error": e })))
-    })?;
+    validate_platform_name(&req.item.platform)
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
 
     tracing::info!(
         "[TAPP] add_platform_item - User: {}, Tapp: {}, Platform: {}",
-        claims.username, req.tapp_id, req.item.platform
+        claims.username,
+        req.tapp_id,
+        req.item.platform
     );
 
     let item_id = format!(
         "tapp_{}_{}_{}",
-        req.tapp_id, req.item.platform, chrono::Utc::now().timestamp_millis()
+        req.tapp_id,
+        req.item.platform,
+        chrono::Utc::now().timestamp_millis()
     );
 
     let cache_dir = std::path::Path::new("cache/platforms");
-    let cache_file = cache_dir.join(format!("{}_filtered.json", req.item.platform.to_lowercase()));
+    let cache_file = cache_dir.join(format!(
+        "{}_filtered.json",
+        req.item.platform.to_lowercase()
+    ));
 
     let mut data = if cache_file.exists() {
         match tokio::fs::read_to_string(&cache_file).await {
-            Ok(content) => serde_json::from_str::<Value>(&content).unwrap_or(json!({ "items": [] })),
+            Ok(content) => {
+                serde_json::from_str::<Value>(&content).unwrap_or(json!({ "items": [] }))
+            }
             Err(_) => json!({ "items": [] }),
         }
     } else {
@@ -254,7 +282,9 @@ pub async fn add_platform_items_batch(
 
     tracing::info!(
         "[TAPP] add_platform_items_batch - User: {}, Tapp: {}, Count: {}",
-        claims.username, req.tapp_id, req.items.len()
+        claims.username,
+        req.tapp_id,
+        req.items.len()
     );
 
     if req.items.len() > 500 {
@@ -265,14 +295,16 @@ pub async fn add_platform_items_batch(
     }
 
     for item in &req.items {
-        validate_platform_name(&item.platform).map_err(|e| {
-            (StatusCode::BAD_REQUEST, Json(json!({ "error": e })))
-        })?;
+        validate_platform_name(&item.platform)
+            .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
     }
 
     let mut grouped_items: HashMap<String, Vec<&NewPlatformItem>> = HashMap::new();
     for item in &req.items {
-        grouped_items.entry(item.platform.to_lowercase()).or_default().push(item);
+        grouped_items
+            .entry(item.platform.to_lowercase())
+            .or_default()
+            .push(item);
     }
 
     let mut results = Vec::new();
@@ -284,7 +316,9 @@ pub async fn add_platform_items_batch(
 
         let mut data = if cache_file.exists() {
             match tokio::fs::read_to_string(&cache_file).await {
-                Ok(content) => serde_json::from_str::<Value>(&content).unwrap_or(json!({ "items": [] })),
+                Ok(content) => {
+                    serde_json::from_str::<Value>(&content).unwrap_or(json!({ "items": [] }))
+                }
                 Err(_) => json!({ "items": [] }),
             }
         } else {
@@ -300,7 +334,9 @@ pub async fn add_platform_items_batch(
             for item in items {
                 let item_id = format!(
                     "tapp_{}_{}_{}",
-                    req.tapp_id, item.platform, chrono::Utc::now().timestamp_millis()
+                    req.tapp_id,
+                    item.platform,
+                    chrono::Utc::now().timestamp_millis()
                 );
 
                 let new_item = json!({
@@ -342,7 +378,11 @@ pub async fn add_platform_items_batch(
                 }
             },
             Err(e) => {
-                tracing::error!("[TAPP] Failed to write temp cache file for {}: {}", platform, e);
+                tracing::error!(
+                    "[TAPP] Failed to write temp cache file for {}: {}",
+                    platform,
+                    e
+                );
                 false
             }
         };

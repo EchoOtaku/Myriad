@@ -16,7 +16,8 @@ pub fn reset_config_reload_flag() {
 }
 
 /// POST /api/system/reload-config
-/// Reload configuration without restarting the server
+/// Reload runtime configuration without restarting the server.
+/// This does not rebuild the startup route table.
 pub async fn reload_config() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::info!("🔄 Configuration reload requested via API");
 
@@ -25,7 +26,7 @@ pub async fn reload_config() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
 
     Ok(Json(json!({
         "success": true,
-        "message": "Configuration will be reloaded. Database connection will be re-established if needed.",
+        "message": "Runtime configuration will be reloaded. Startup routes are not rebuilt; setup database changes require a restart.",
     })))
 }
 

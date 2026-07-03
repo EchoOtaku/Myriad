@@ -146,7 +146,10 @@ impl SkillRegistry {
         let mut result = HashMap::new();
 
         if !dir.exists() {
-            tracing::debug!("[SkillRegistry] Skills directory not found: {}", dir.display());
+            tracing::debug!(
+                "[SkillRegistry] Skills directory not found: {}",
+                dir.display()
+            );
             return result;
         }
 
@@ -174,7 +177,11 @@ impl SkillRegistry {
             }
         }
 
-        tracing::info!("[SkillRegistry] Loaded {} skills from {}", count, dir.display());
+        tracing::info!(
+            "[SkillRegistry] Loaded {} skills from {}",
+            count,
+            dir.display()
+        );
         result
     }
 
@@ -267,10 +274,10 @@ impl SkillRegistry {
                 });
                 // 添加参数提示
                 if !s.parameters.is_empty() {
-                    entry.as_object_mut().unwrap().insert(
-                        "params".to_string(),
-                        json!(s.parameters),
-                    );
+                    entry
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("params".to_string(), json!(s.parameters));
                 }
                 entry
             })
@@ -296,7 +303,8 @@ impl SkillRegistry {
         let mut scored: Vec<SkillMatch> = skills
             .values()
             .filter_map(|skill| {
-                let mut relevance = Self::compute_skill_relevance(skill, &input_lower, &input_tokens);
+                let mut relevance =
+                    Self::compute_skill_relevance(skill, &input_lower, &input_tokens);
                 if relevance > 0.05 {
                     // 质量加权：使用 Wilson score lower bound，对小样本更宽容
                     // 参考: https://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Wilson_score_interval
@@ -328,7 +336,11 @@ impl SkillRegistry {
             })
             .collect();
 
-        scored.sort_by(|a, b| b.relevance.partial_cmp(&a.relevance).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.relevance
+                .partial_cmp(&a.relevance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(limit);
         scored
     }
@@ -482,18 +494,32 @@ mod tests {
         let input_lower = input.to_lowercase();
         let tokens = SkillRegistry::simple_tokenize(&input_lower);
         let score = SkillRegistry::compute_skill_relevance(&skill, &input_lower, &tokens);
-        assert!(score >= 1.0, "exact trigger match should score >= 1.0, got {score}");
+        assert!(
+            score >= 1.0,
+            "exact trigger match should score >= 1.0, got {score}"
+        );
     }
 
     #[test]
     fn test_skill_relevance_partial_trigger() {
-        let skill = make_skill("img", &["generate beautiful image"], "image generation", "creative");
+        let skill = make_skill(
+            "img",
+            &["generate beautiful image"],
+            "image generation",
+            "creative",
+        );
         let input = "generate image";
         let input_lower = input.to_lowercase();
         let tokens = SkillRegistry::simple_tokenize(&input_lower);
         let score = SkillRegistry::compute_skill_relevance(&skill, &input_lower, &tokens);
-        assert!(score > 0.0, "partial trigger overlap should score > 0, got {score}");
-        assert!(score < 1.0, "partial trigger should score < 1.0, got {score}");
+        assert!(
+            score > 0.0,
+            "partial trigger overlap should score > 0, got {score}"
+        );
+        assert!(
+            score < 1.0,
+            "partial trigger should score < 1.0, got {score}"
+        );
     }
 
     #[test]
@@ -503,7 +529,10 @@ mod tests {
         let input_lower = input.to_lowercase();
         let tokens = SkillRegistry::simple_tokenize(&input_lower);
         let score = SkillRegistry::compute_skill_relevance(&skill, &input_lower, &tokens);
-        assert!(score < 0.1, "unrelated skill should score near 0, got {score}");
+        assert!(
+            score < 0.1,
+            "unrelated skill should score near 0, got {score}"
+        );
     }
 
     #[test]
@@ -513,7 +542,10 @@ mod tests {
         let input_lower = input.to_lowercase();
         let tokens = SkillRegistry::simple_tokenize(&input_lower);
         let score = SkillRegistry::compute_skill_relevance(&skill, &input_lower, &tokens);
-        assert!(score >= 0.2, "category match should contribute >= 0.2, got {score}");
+        assert!(
+            score >= 0.2,
+            "category match should contribute >= 0.2, got {score}"
+        );
     }
 
     #[test]
@@ -523,20 +555,24 @@ mod tests {
         let p = 1.0_f32;
         let z = 1.0_f32;
         let z2 = z * z;
-        let wilson = (p + z2 / (2.0 * n)
-            - z * ((p * (1.0 - p) + z2 / (4.0 * n)) / n).sqrt())
+        let wilson = (p + z2 / (2.0 * n) - z * ((p * (1.0 - p) + z2 / (4.0 * n)) / n).sqrt())
             / (1.0 + z2 / n);
         // All success: wilson should be high
         let multiplier = 0.6 + 0.4 * wilson.max(0.0);
-        assert!(multiplier >= 0.9, "all-success should give multiplier >= 0.9, got {multiplier}");
+        assert!(
+            multiplier >= 0.9,
+            "all-success should give multiplier >= 0.9, got {multiplier}"
+        );
 
         // All failure: p=0.0
         let p = 0.0_f32;
-        let wilson = (p + z2 / (2.0 * n)
-            - z * ((p * (1.0 - p) + z2 / (4.0 * n)) / n).sqrt())
+        let wilson = (p + z2 / (2.0 * n) - z * ((p * (1.0 - p) + z2 / (4.0 * n)) / n).sqrt())
             / (1.0 + z2 / n);
         let multiplier = 0.6 + 0.4 * wilson.max(0.0);
-        assert!(multiplier <= 0.7, "all-failure should give multiplier <= 0.7, got {multiplier}");
+        assert!(
+            multiplier <= 0.7,
+            "all-failure should give multiplier <= 0.7, got {multiplier}"
+        );
     }
 
     #[test]

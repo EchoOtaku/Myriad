@@ -762,6 +762,68 @@ async fn fetch_fresh_platform_data(
         }
     }
 
+    // 获取 Bangumi 收藏数据
+    if should_fetch("bangumi") {
+        let access_token = config.bangumi_access_token.as_deref();
+        let user_agent = config.bangumi_user_agent.as_deref();
+        let configured_username = config
+            .bangumi_username
+            .as_deref()
+            .filter(|username| !username.trim().is_empty());
+
+        let user_result = if let Some(username) = configured_username {
+            fetcher
+                .fetch_bangumi_user(username, access_token, user_agent)
+                .await
+        } else if let Some(token) = access_token {
+            fetcher.fetch_bangumi_me(token, user_agent).await
+        } else {
+            Err(anyhow::anyhow!(
+                "Bangumi username or access token is required"
+            ))
+        };
+
+        match user_result {
+            Ok(user_data) => {
+                let resolved_username = user_data
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .or(configured_username)
+                    .map(str::to_string);
+                all_data["bangumi"]["user"] = user_data;
+                tracing::info!("✓ Bangumi user data fetched");
+
+                if let Some(username) = resolved_username.as_deref() {
+                    match fetcher
+                        .fetch_bangumi_collections(username, access_token, user_agent)
+                        .await
+                    {
+                        Ok(collections) => {
+                            let total_count = collections.len();
+                            all_data["bangumi"]["collections"] = json!(collections);
+                            tracing::info!("✓ Bangumi collections fetched: {} items", total_count);
+                        }
+                        Err(e) => tracing::warn!("Bangumi collections fetch failed: {}", e),
+                    }
+                } else {
+                    tracing::warn!(
+                        "Bangumi user data did not include username; skipping collections"
+                    );
+                }
+            }
+            Err(e) => tracing::warn!("Bangumi user fetch failed: {}", e),
+        }
+
+        if !all_data["bangumi"].is_null() {
+            if let Err(e) = metadata_service
+                .save_platform_metadata(user_id, "bangumi", all_data["bangumi"].clone())
+                .await
+            {
+                tracing::error!("Failed to save Bangumi metadata to database: {}", e);
+            }
+        }
+    }
+
     // 数据清洗：移除无用信息，保留核心5W1H信息
     clean_platform_data(&mut all_data);
 
@@ -782,6 +844,7 @@ fn clean_platform_data(data: &mut Value) {
     const MAX_BILIBILI_VIDEOS: usize = 100;
     const MAX_BILIBILI_BANGUMI: usize = 100;
     const MAX_SONGS_TO_CLEAN: usize = 5000;
+    const MAX_BANGUMI_COLLECTIONS: usize = 1000;
 
     // 清洗 GitHub 仓库数据 - 原地修改
     if let Some(repos) = data["github"]["repos"].as_array_mut() {
@@ -1098,6 +1161,119 @@ fn clean_platform_data(data: &mut Value) {
                 });
                 if let Some(obj) = netease.as_object_mut() {
                     obj.insert("profile".to_string(), cleaned_profile);
+                }
+            }
+        }
+    }
+
+    // 清洗 Bangumi 收藏数据 - 保留资料库、报告和分析需要的核心字段
+    if let Some(bangumi) = data.get_mut("bangumi") {
+        if let Some(collections) = bangumi
+            .get_mut("collections")
+            .and_then(|value| value.as_array_mut())
+        {
+            if collections.len() > MAX_BANGUMI_COLLECTIONS {
+                tracing::warn!(
+                    "⚠️ Truncating Bangumi collections from {} to {}",
+                    collections.len(),
+                    MAX_BANGUMI_COLLECTIONS
+                );
+                collections.truncate(MAX_BANGUMI_COLLECTIONS);
+            }
+
+            for collection in collections.iter_mut() {
+                if let Some(obj) = collection.as_object_mut() {
+                    let subject_id = obj.get("subject_id").cloned();
+                    let subject_type = obj.get("subject_type").cloned();
+                    let rate = obj.get("rate").cloned();
+                    let collection_type = obj.get("type").cloned();
+                    let comment = obj.get("comment").cloned();
+                    let tags = obj.get("tags").cloned();
+                    let ep_status = obj.get("ep_status").cloned();
+                    let vol_status = obj.get("vol_status").cloned();
+                    let updated_at = obj.get("updated_at").cloned();
+                    let private = obj.get("private").cloned();
+                    let subject = obj.get("subject").cloned();
+
+                    obj.clear();
+
+                    if let Some(v) = subject_id {
+                        obj.insert("subject_id".to_string(), v);
+                    }
+                    if let Some(v) = subject_type {
+                        obj.insert("subject_type".to_string(), v);
+                    }
+                    if let Some(v) = rate {
+                        obj.insert("rate".to_string(), v);
+                    }
+                    if let Some(v) = collection_type {
+                        obj.insert("type".to_string(), v);
+                    }
+                    if let Some(v) = comment {
+                        obj.insert("comment".to_string(), v);
+                    }
+                    if let Some(v) = tags {
+                        obj.insert("tags".to_string(), v);
+                    }
+                    if let Some(v) = ep_status {
+                        obj.insert("ep_status".to_string(), v);
+                    }
+                    if let Some(v) = vol_status {
+                        obj.insert("vol_status".to_string(), v);
+                    }
+                    if let Some(v) = updated_at {
+                        obj.insert("updated_at".to_string(), v);
+                    }
+                    if let Some(v) = private {
+                        obj.insert("private".to_string(), v);
+                    }
+                    if let Some(mut subject_value) = subject {
+                        if let Some(subject_obj) = subject_value.as_object_mut() {
+                            let id = subject_obj.get("id").cloned();
+                            let subject_type = subject_obj.get("type").cloned();
+                            let name = subject_obj.get("name").cloned();
+                            let name_cn = subject_obj.get("name_cn").cloned();
+                            let images = subject_obj.get("images").cloned();
+                            let date = subject_obj.get("date").cloned();
+                            let platform = subject_obj.get("platform").cloned();
+                            let score = subject_obj.get("score").cloned();
+                            let rank = subject_obj.get("rank").cloned();
+                            let tags = subject_obj.get("tags").cloned();
+
+                            subject_obj.clear();
+                            if let Some(v) = id {
+                                subject_obj.insert("id".to_string(), v);
+                            }
+                            if let Some(v) = subject_type {
+                                subject_obj.insert("type".to_string(), v);
+                            }
+                            if let Some(v) = name {
+                                subject_obj.insert("name".to_string(), v);
+                            }
+                            if let Some(v) = name_cn {
+                                subject_obj.insert("name_cn".to_string(), v);
+                            }
+                            if let Some(v) = images {
+                                subject_obj.insert("images".to_string(), v);
+                            }
+                            if let Some(v) = date {
+                                subject_obj.insert("date".to_string(), v);
+                            }
+                            if let Some(v) = platform {
+                                subject_obj.insert("platform".to_string(), v);
+                            }
+                            if let Some(v) = score {
+                                subject_obj.insert("score".to_string(), v);
+                            }
+                            if let Some(v) = rank {
+                                subject_obj.insert("rank".to_string(), v);
+                            }
+                            if let Some(v) = tags {
+                                subject_obj.insert("tags".to_string(), v);
+                            }
+                        }
+                        obj.insert("subject".to_string(), subject_value);
+                    }
                 }
             }
         }
@@ -2217,6 +2393,95 @@ pub struct LibraryItem {
     pub metadata: Value,
 }
 
+fn bangumi_library_item_type(subject_type: i64, platform: Option<&str>) -> &'static str {
+    match subject_type {
+        1 => "book",
+        2 => "anime",
+        3 => "music",
+        4 => "game",
+        6 => {
+            let platform = platform.unwrap_or_default();
+            if platform.contains("TV")
+                || platform.contains("剧")
+                || platform.contains("Drama")
+                || platform.contains("电视剧")
+            {
+                "tv_series"
+            } else {
+                "video"
+            }
+        }
+        _ => "video",
+    }
+}
+
+fn append_bangumi_library_items(library_items: &mut Vec<LibraryItem>, bangumi_data: &Value) {
+    let Some(collections) = bangumi_data.get("collections").and_then(|c| c.as_array()) else {
+        return;
+    };
+
+    let mut added = 0usize;
+    for collection in collections {
+        let subject = collection.get("subject").unwrap_or(collection);
+        let subject_id = collection
+            .get("subject_id")
+            .and_then(|v| v.as_i64())
+            .or_else(|| subject.get("id").and_then(|v| v.as_i64()));
+        let Some(subject_id) = subject_id else {
+            continue;
+        };
+
+        let title = subject
+            .get("name_cn")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .or_else(|| subject.get("name").and_then(|v| v.as_str()))
+            .unwrap_or("Unknown");
+        let subject_type = collection
+            .get("subject_type")
+            .and_then(|v| v.as_i64())
+            .or_else(|| subject.get("type").and_then(|v| v.as_i64()))
+            .unwrap_or(0);
+        let subject_platform = subject.get("platform").and_then(|v| v.as_str());
+        let item_type = bangumi_library_item_type(subject_type, subject_platform);
+        let cover = subject
+            .get("images")
+            .and_then(|images| {
+                images
+                    .get("large")
+                    .or_else(|| images.get("common"))
+                    .or_else(|| images.get("medium"))
+                    .or_else(|| images.get("small"))
+            })
+            .and_then(|v| v.as_str())
+            .map(proxy_image_url);
+
+        let mut metadata = collection.clone();
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                "url".to_string(),
+                json!(format!("https://bgm.tv/subject/{}", subject_id)),
+            );
+            obj.insert(
+                "platform".to_string(),
+                json!(subject_platform.unwrap_or("Bangumi")),
+            );
+        }
+
+        library_items.push(LibraryItem {
+            id: format!("bangumi_subject_{}", subject_id),
+            item_type: item_type.to_string(),
+            title: title.to_string(),
+            cover,
+            platform: "Bangumi".to_string(),
+            metadata,
+        });
+        added += 1;
+    }
+
+    tracing::info!("✓ Loaded {} Bangumi collection items", added);
+}
+
 /// 获取资料库数据（游戏、视频、音乐）
 pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     let user_id = 1; // TODO: 从认证中获取真实用户ID
@@ -2421,6 +2686,10 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                     songs_vec.len()
                 );
             }
+
+            if let Some(bangumi_data) = db_data.get("bangumi") {
+                append_bangumi_library_items(&mut library_items, bangumi_data);
+            }
         }
         Ok(_) => {
             tracing::info!("📊 Database is empty, falling back to cache");
@@ -2608,6 +2877,10 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
                         });
                     }
                 }
+            }
+
+            if let Some(bangumi_data) = data.get("bangumi") {
+                append_bangumi_library_items(&mut library_items, bangumi_data);
             }
         }
     }

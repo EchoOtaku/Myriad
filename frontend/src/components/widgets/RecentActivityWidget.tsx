@@ -10,15 +10,16 @@
  * - 静态动画配置提取到组件外部
  */
 
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-
-import { API_URL } from '../../config'
 import type { TranslationKeys } from '../../i18n'
+
 import type { WidgetComponentProps } from '../WidgetGrid'
-import { hasSessionHint } from '../../utils/sessionDetection'
+import { SiBangumi } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { API_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { hasSessionHint } from '../../utils/sessionDetection'
 
 // 缓存配置
 const CACHE_KEY = 'recent_activities_cache'
@@ -41,6 +42,7 @@ interface Activity {
 // 平台图标组件 - 优化为独立组件避免重复渲染
 const PlatformIcon = memo(({ platformName }: { platformName: string }) => {
   const iconClass = 'w-4 h-4'
+  const isBangumi = platformName.toLowerCase() === 'bangumi'
 
   const icon = useMemo(() => {
     switch (platformName.toLowerCase()) {
@@ -57,6 +59,10 @@ const PlatformIcon = memo(({ platformName }: { platformName: string }) => {
         return <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
     }
   }, [platformName])
+
+  if (isBangumi) {
+    return <SiBangumi className={iconClass} />
+  }
 
   return (
     <svg className={iconClass} fill="currentColor" viewBox="0 0 24 24">
@@ -77,7 +83,7 @@ function formatValue(value: any, t: TranslationKeys): string {
     return value.toString()
   if (typeof value === 'string') {
     // 如果是时间戳或日期字符串
-    if (!Number.isNaN(Date.parse(value)) && value.match(/^\d{4}-\d{2}-\d{2}/)) {
+    if (!Number.isNaN(Date.parse(value)) && /^\d{4}-\d{2}-\d{2}/.test(value)) {
       const date = new Date(value)
       return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
     }

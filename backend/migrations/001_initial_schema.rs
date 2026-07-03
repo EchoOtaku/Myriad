@@ -94,6 +94,14 @@ impl MigrationTrait for Migration {
                         "user_id".into(),
                         false.into(),
                     ])
+                    .values_panic([
+                        "bangumi".into(),
+                        "Bangumi".into(),
+                        "bangumi".into(),
+                        "https://api.bgm.tv".into(),
+                        "access_token".into(),
+                        false.into(),
+                    ])
                     .on_conflict(OnConflict::column(Platforms::Name).do_nothing().to_owned())
                     .to_owned(),
             )

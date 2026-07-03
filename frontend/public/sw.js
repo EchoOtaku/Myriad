@@ -10,7 +10,7 @@ const IMAGE_CACHE = `${CACHE_VERSION}-images`
 // 需要预缓存的静态资源
 const STATIC_ASSETS = [
   '/',
-  '/logo.png',
+  '/logo.webp',
 ]
 
 // 缓存配置
@@ -148,39 +148,8 @@ globalThis.addEventListener('fetch', (event) => {
 
   // API 请求 - 网络优先策略
   if (url.pathname.startsWith('/api/')) {
-    // ✅ 安全修复 P0: 排除敏感API，防止XSS通过Cache API读取认证数据
-    const isSensitiveAPI
-      = url.pathname.includes('/auth/') // 认证相关
-        || url.pathname.includes('/config') // 配置信息
-        || url.pathname.includes('/profile/report') // 个人报告
-        || url.pathname.includes('/csrf-token') // CSRF Token
-        || url.pathname.includes('/setup/') // 设置接口
-
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // ✅ 安全修复 P0: 只缓存非敏感的成功 GET 请求（排除 206 响应）
-          if (request.method === 'GET' && response.ok && response.status !== 206 && !isSensitiveAPI) {
-            const responseClone = response.clone()
-            caches.open(DYNAMIC_CACHE).then((cache) => {
-              cache.put(request, responseClone)
-              limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE)
-            })
-          }
-          return response
-        })
-        .catch(() => {
-          // ✅ 安全修复 P0: 敏感API失败时不从缓存读取
-          if (isSensitiveAPI) {
-            return new Response(JSON.stringify({ error: 'Network error' }), {
-              status: 503,
-              headers: { 'Content-Type': 'application/json' },
-            })
-          }
-          // 网络失败时尝试从缓存获取（仅非敏感API）
-          return caches.match(request)
-        }),
-    )
+    // API responses are live application state. Let the browser hit the
+    // network directly so auth, proxy errors, and backend restarts stay honest.
     return
   }
 

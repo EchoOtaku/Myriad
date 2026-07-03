@@ -3,6 +3,8 @@
  * 为 Brew / Federation 等模块的控制岛提供统一的样式基础
  */
 
+import { API_URL as CONFIG_API_URL } from '../../../config'
+
 // ==================== 玻璃态容器样式 ====================
 
 /** 标准玻璃容器 — 高级毛玻璃 + 精细边框 + 多层投影 */
@@ -113,7 +115,7 @@ export const ISLAND_SELECT = [
 
 // ==================== API URL ====================
 
-export const API_URL = import.meta.env.PUBLIC_API_URL || ''
+export const API_URL = CONFIG_API_URL
 
 /**
  * 处理图标 URL - 确保正确的完整路径

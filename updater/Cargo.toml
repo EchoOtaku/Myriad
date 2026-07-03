@@ -28,17 +28,17 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 
 # HTTP client (GitHub API). rustls to keep the binary musl-static-friendly.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "gzip", "stream"] }
 
 # Docker engine API
-bollard = { version = "0.17", default-features = false, features = ["ssl"] }
+bollard = { version = "0.21", default-features = false, features = ["ssl", "pipe"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Errors
-thiserror = "1"
+thiserror = "2"
 anyhow = "1"
 
 # Logging
@@ -50,7 +50,7 @@ clap = { version = "4", features = ["derive", "env"] }
 
 # Filesystem & syscalls
 fs2 = "0.4"                                  # file locking (flock)
-nix = { version = "0.29", features = ["fs"] } # fsync directory, etc.
+nix = { version = "0.31", features = ["fs"] } # fsync directory, etc.
 tempfile = "3"
 walkdir = "2"
 
@@ -63,7 +63,7 @@ once_cell = "1"
 regex = "1"
 semver = "1"
 hex = "0.4"
-sha2 = "0.10"
+sha2 = "0.11"
 uuid = { version = "1", features = ["v4", "serde"] }
 url = "2"
 

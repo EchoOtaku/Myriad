@@ -74,10 +74,7 @@ impl OAuthUrlBuilder {
         }
 
         let cfg = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
-        let has_legacy_github = cfg
-            .github_client_id
-            .as_ref()
-            .is_some_and(|s| !s.is_empty())
+        let has_legacy_github = cfg.github_client_id.as_ref().is_some_and(|s| !s.is_empty())
             && cfg
                 .github_client_secret
                 .as_ref()

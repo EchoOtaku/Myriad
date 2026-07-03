@@ -83,7 +83,6 @@ impl Notification {
         self.metadata = Some(metadata);
         self
     }
-
 }
 
 /// SSE 推送事件（broadcast channel 传输类型）
@@ -135,9 +134,9 @@ impl NotificationManager {
         }
 
         // 广播到所有 SSE 订阅者
-        let _ = self.tx.send(NotificationEvent::NewNotification {
-            notification,
-        });
+        let _ = self
+            .tx
+            .send(NotificationEvent::NewNotification { notification });
     }
 
     /// 订阅通知流（用于 SSE endpoint）
@@ -177,8 +176,7 @@ impl NotificationManager {
     pub async fn mark_read(&self, notification_id: &str, user_id: i32) -> bool {
         let mut history = self.history.write().await;
         if let Some(n) = history.iter_mut().find(|n| {
-            n.id == notification_id
-                && (n.user_id.is_none() || n.user_id == Some(user_id))
+            n.id == notification_id && (n.user_id.is_none() || n.user_id == Some(user_id))
         }) {
             n.read = true;
             let _ = self.tx.send(NotificationEvent::NotificationRead {
@@ -195,9 +193,10 @@ impl NotificationManager {
         let marked_ids: Vec<String> = {
             let mut history = self.history.write().await;
             let mut ids = Vec::new();
-            for n in history.iter_mut().filter(|n| {
-                !n.read && (n.user_id.is_none() || n.user_id == Some(user_id))
-            }) {
+            for n in history
+                .iter_mut()
+                .filter(|n| !n.read && (n.user_id.is_none() || n.user_id == Some(user_id)))
+            {
                 n.read = true;
                 ids.push(n.id.clone());
             }
@@ -227,8 +226,8 @@ impl NotificationManager {
         } else {
             NotificationPriority::High
         };
-        let notification = Notification::new(ntype, priority, title, summary)
-            .with_metadata(serde_json::json!({
+        let notification =
+            Notification::new(ntype, priority, title, summary).with_metadata(serde_json::json!({
                 "task_id": task_id,
                 "success": success,
             }));
@@ -236,12 +235,7 @@ impl NotificationManager {
     }
 
     /// 便捷方法：发送 heartbeat 结果通知
-    pub async fn notify_heartbeat_result(
-        &self,
-        task_name: &str,
-        result: &str,
-        success: bool,
-    ) {
+    pub async fn notify_heartbeat_result(&self, task_name: &str, result: &str, success: bool) {
         let priority = if success {
             NotificationPriority::Low
         } else {

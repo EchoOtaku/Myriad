@@ -239,7 +239,9 @@ async fn execute_tapp_install(
         name: Set(name.to_string()),
         version: Set("1.0.0".to_string()),
         description: Set(None),
-        author: Set(Some(json!({"name": "Agent Install", "type": "user_install"}))),
+        author: Set(Some(
+            json!({"name": "Agent Install", "type": "user_install"}),
+        )),
         icon: Set(None),
         theme_color: Set(None),
         manifest: Set(manifest),
@@ -668,9 +670,12 @@ async fn execute_bookmark_save(
                 host != "localhost"
                     && !host.ends_with(".local")
                     && !host.ends_with(".internal")
-                    && !host.parse::<std::net::IpAddr>().map_or(false, |ip| ip.is_loopback() || match ip {
-                        std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
-                        std::net::IpAddr::V6(v6) => v6.is_loopback(),
+                    && !host.parse::<std::net::IpAddr>().map_or(false, |ip| {
+                        ip.is_loopback()
+                            || match ip {
+                                std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
+                                std::net::IpAddr::V6(v6) => v6.is_loopback(),
+                            }
                     })
             })
             .is_some();

@@ -46,9 +46,14 @@ const FilterIcons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125z" />
     </svg>
   ),
+  book: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+    </svg>
+  ),
 }
 
-type FilterType = 'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series'
+type FilterType = 'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
 
 export default function Library() {
   // 🆕 初始化资料库调度器（Resize + Intersection + Idle）
@@ -64,6 +69,7 @@ export default function Library() {
     { id: 'music', icon: FilterIcons.music, label: t.nav.music, title: t.nav.music, ariaLabel: t.nav.showMusic },
     { id: 'anime', icon: FilterIcons.anime, label: t.nav.anime, title: t.nav.anime, ariaLabel: t.nav.showAnime },
     { id: 'tv_series', icon: FilterIcons.tv_series, label: t.nav.tvSeries, title: t.nav.tvSeries, ariaLabel: t.nav.showTvSeries },
+    { id: 'book', icon: FilterIcons.book, label: t.nav.book, title: t.nav.book, ariaLabel: t.nav.showBook },
   ], [t])
 
   // 使用二级导航 Hook

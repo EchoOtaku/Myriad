@@ -3,38 +3,36 @@
 如何在自托管 Myriad 实例上启用 updater，并执行第一次升级。
 完整设计参考 [docs/updater-spec.md](./updater-spec.md)。
 
+> 运行模型：updater 不是 A/B 双活分区。Myriad 生产环境只有一套正在运行的
+> backend/frontend/postgres；更新时进入维护模式，停止业务容器，快照 `pgdata`，
+> 切换 `.env` 里的镜像 tag，再启动新版本。回滚依赖快照和旧 tag。
+
 ## 0. 准备
 
 - Docker Engine 20.10+ 且支持 `docker compose` v2 子命令
 - 单机部署（updater 当前只支持 single-node）
 - pgdata 在宿主文件系统的目录（不能是 docker named volume）
 
-## 1. 从旧布局迁移
-
-旧 Myriad（postgres named volume、`:latest` 镜像、直接暴露 backend/frontend 端口）需要先跑：
+## 1. 初始化当前生产布局
 
 ```bash
 cd /path/to/myriad
-YES=1 bash scripts/migrate-to-updater.sh
+bash scripts/docker/deploy.sh up
 ```
 
 脚本做的事：
 
-- 把 `myriad_postgres_data` named volume 复制到 `./pgdata`
-- 在 `.env` 写入 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME=myriad`、`UPDATE_TOKEN`（随机生成）等
-- 创建 `./state`、`./backups`
-- 校验 `.env` 没有重复 key
+- 如缺少 `.env`，从 `.env.production.example` 复制
+- 创建 `./pgdata`、`./state`、`./backups`
+- 补齐 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME=myriad` 等当前布局 key
+- 若 `UPDATE_TOKEN` 为空则随机生成
+- Docker 网络默认显式命名为 `myriad-net`；同机多套部署时可设置 `MYRIAD_DOCKER_NETWORK`
 
-脚本是幂等的，可以重复跑。
+旧的 direct-port / named-volume 迁移脚本已移除。当前仓库只保留 proxy + updater 生产布局。
 
-## 2. 拉镜像 + 启动
+## 2. 确认服务拓扑
 
-```bash
-docker compose pull
-docker compose up -d
-```
-
-此时栈的拓扑：
+`deploy.sh up` 会完成 bootstrap 并启动 compose stack。此时栈的拓扑：
 
 ```
 proxy (80) ─┬─► frontend

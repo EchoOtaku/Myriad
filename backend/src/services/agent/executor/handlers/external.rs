@@ -136,7 +136,10 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
     // 预检查 Content-Length，防止分配超大内存
     if let Some(content_length) = response.content_length() {
         if content_length > 10 * 1024 * 1024 {
-            return Err(format!("Response Content-Length ({} bytes) exceeds 10MB limit", content_length));
+            return Err(format!(
+                "Response Content-Length ({} bytes) exceeds 10MB limit",
+                content_length
+            ));
         }
     }
     // 限制响应体大小，防止 OOM
@@ -291,7 +294,10 @@ async fn execute_bilibili_video(params: &HashMap<String, Value>) -> Result<Value
     let aid = params.get("aid").and_then(|v| v.as_i64());
 
     let url = if let Some(bvid) = bvid {
-        format!("https://api.bilibili.com/x/web-interface/view?bvid={}", bvid)
+        format!(
+            "https://api.bilibili.com/x/web-interface/view?bvid={}",
+            bvid
+        )
     } else if let Some(aid) = aid {
         format!("https://api.bilibili.com/x/web-interface/view?aid={}", aid)
     } else {
@@ -704,13 +710,10 @@ async fn execute_mcp_tool(
         .strip_prefix("mcp.")
         .ok_or("Invalid MCP capability ID")?;
     // rest = "server_id.tool_name" — 找第一个 '.' 后的部分作为 tool_name
-    let tool_name = rest
-        .split_once('.')
-        .map(|(_, name)| name)
-        .unwrap_or(rest);
+    let tool_name = rest.split_once('.').map(|(_, name)| name).unwrap_or(rest);
 
-    let manager = crate::services::agent::mcp::get_mcp_manager()
-        .ok_or("MCP manager not initialized")?;
+    let manager =
+        crate::services::agent::mcp::get_mcp_manager().ok_or("MCP manager not initialized")?;
 
     let args = serde_json::to_value(params).unwrap_or_default();
     manager.call_tool(tool_name, args).await

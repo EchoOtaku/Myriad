@@ -1,6 +1,11 @@
 # API Documentation
 
-Base URL: `http://localhost:3000`
+Base URL:
+
+- Development backend direct: `http://localhost:3000`
+- Production through Myriad proxy: same-origin, for example `https://yourdomain.com`
+
+All endpoint paths are the same in both modes.
 
 ## Table of Contents
 
@@ -891,4 +896,4 @@ curl http://localhost:3000/api/config \
 
 **API Version**: 0.1.0  
 **Last Updated**: 2025-01-05  
-**Base URL**: http://localhost:3000
+**Base URL**: `http://localhost:3000` in development; same-origin through the Myriad proxy in production.

@@ -174,8 +174,7 @@ async fn list_sources(
     let (source_unread_counts, mut items_by_source) = tokio::join!(
         // (a) 未读数：LEFT JOIN brew_user_states，统计无已读状态的文章数
         async {
-            let mut counts: std::collections::HashMap<i32, i32> =
-                std::collections::HashMap::new();
+            let mut counts: std::collections::HashMap<i32, i32> = std::collections::HashMap::new();
             if let Some(uid) = user_id {
                 if !source_ids.is_empty() {
                     let src_ph = source_ids
@@ -193,13 +192,9 @@ async fn list_sources(
                          GROUP BY i.source_id"
                     );
                     let mut values: Vec<sea_orm::Value> = vec![uid.into()];
-                    values
-                        .extend(source_ids.iter().map(|&id| sea_orm::Value::Int(Some(id))));
-                    let stmt = Statement::from_sql_and_values(
-                        DatabaseBackend::Postgres,
-                        &sql,
-                        values,
-                    );
+                    values.extend(source_ids.iter().map(|&id| sea_orm::Value::Int(Some(id))));
+                    let stmt =
+                        Statement::from_sql_and_values(DatabaseBackend::Postgres, &sql, values);
                     if let Ok(rows) = db.query_all(stmt).await {
                         for row in &rows {
                             let src: i32 = row.try_get("", "source_id").unwrap_or(0);
@@ -241,11 +236,7 @@ async fn list_sources(
                 let uid_val: i32 = user_id.unwrap_or(-1);
                 let mut values: Vec<sea_orm::Value> = vec![uid_val.into()];
                 values.extend(source_ids.iter().map(|&id| sea_orm::Value::Int(Some(id))));
-                let stmt = Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    &sql,
-                    values,
-                );
+                let stmt = Statement::from_sql_and_values(DatabaseBackend::Postgres, &sql, values);
                 if let Ok(rows) = db.query_all(stmt).await {
                     for row in &rows {
                         let id: i32 = row.try_get("", "id").unwrap_or(0);
@@ -253,9 +244,8 @@ async fn list_sources(
                         let title: String = row.try_get("", "title").unwrap_or_default();
                         let summary: Option<String> = row.try_get("", "summary").ok().flatten();
                         let image: Option<String> = row.try_get("", "image").ok().flatten();
-                        let published_at: Option<
-                            sea_orm::entity::prelude::DateTimeWithTimeZone,
-                        > = row.try_get("", "published_at").ok();
+                        let published_at: Option<sea_orm::entity::prelude::DateTimeWithTimeZone> =
+                            row.try_get("", "published_at").ok();
                         let is_read: bool = row.try_get("", "is_read").unwrap_or(false);
                         map.entry(source_id).or_default().push(ItemPreview {
                             id,
@@ -277,8 +267,7 @@ async fn list_sources(
         .into_iter()
         .map(|s| {
             let source_id = s.id;
-            let real_unread_count =
-                source_unread_counts.get(&source_id).copied().unwrap_or(0);
+            let real_unread_count = source_unread_counts.get(&source_id).copied().unwrap_or(0);
             let mut response: brew_sources::SourceResponse = s.into();
             response.unread_count = real_unread_count;
             SourceWithRecentItems {
@@ -1240,8 +1229,8 @@ async fn list_items(
                         .select_only()
                         .column(brew_user_states::Column::ItemId)
                         .into_query(); // QueryTrait::into_query() 消耗 Select 返回 SelectStatement
-                    items_query = items_query
-                        .filter(brew_items::Column::Id.not_in_subquery(read_subquery));
+                    items_query =
+                        items_query.filter(brew_items::Column::Id.not_in_subquery(read_subquery));
                 }
             }
             _ => {}

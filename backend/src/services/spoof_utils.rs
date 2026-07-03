@@ -3,7 +3,7 @@
 //! 提供区域伪装功能，用于绕过地区限制
 //! 支持中国、日本、美国等地区的 IP 和 UA 伪装
 
-use rand::Rng;
+use rand::RngExt;
 use reqwest::header::{HeaderMap, HeaderValue};
 
 /// 伪装配置

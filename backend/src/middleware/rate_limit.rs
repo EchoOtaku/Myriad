@@ -153,12 +153,10 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
             let mut records = RATE_LIMITER.records.write().await;
             let now = std::time::Instant::now();
             let ip_records = records.entry(ip).or_insert_with(HashMap::new);
-            let record = ip_records
-                .entry(path.clone())
-                .or_insert(RequestRecord {
-                    count: 0,
-                    window_start: now,
-                });
+            let record = ip_records.entry(path.clone()).or_insert(RequestRecord {
+                count: 0,
+                window_start: now,
+            });
             // 敏感端点使用 5 分钟窗口
             if now.duration_since(record.window_start) > Duration::from_secs(300) {
                 record.count = 1;
@@ -175,12 +173,10 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
             let mut records = RATE_LIMITER.records.write().await;
             let now = std::time::Instant::now();
             let ip_records = records.entry(ip).or_insert_with(HashMap::new);
-            let record = ip_records
-                .entry(path.clone())
-                .or_insert(RequestRecord {
-                    count: 0,
-                    window_start: now,
-                });
+            let record = ip_records.entry(path.clone()).or_insert(RequestRecord {
+                count: 0,
+                window_start: now,
+            });
             if now.duration_since(record.window_start) > Duration::from_secs(60) {
                 record.count = 1;
                 record.window_start = now;

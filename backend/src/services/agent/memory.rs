@@ -171,9 +171,9 @@ impl TfIdfIndex {
 
     /// 中文高频停用词（过滤以提升 TF-IDF 质量）
     const CJK_STOP_CHARS: &'static [char] = &[
-        '的', '了', '是', '在', '和', '与', '也', '就', '都', '而', '及', '着',
-        '或', '一', '不', '有', '这', '那', '个', '为', '以', '到', '对', '被',
-        '从', '把', '让', '给', '向', '但', '又', '要', '会', '能', '可', '很',
+        '的', '了', '是', '在', '和', '与', '也', '就', '都', '而', '及', '着', '或', '一', '不',
+        '有', '这', '那', '个', '为', '以', '到', '对', '被', '从', '把', '让', '给', '向', '但',
+        '又', '要', '会', '能', '可', '很',
     ];
 
     /// 对文本做 token 化
@@ -275,8 +275,7 @@ impl TfIdfIndex {
         self.idf.clear();
         for (term, count) in df {
             // IDF = ln(N / df) + 1 (smoothed)
-            self.idf
-                .insert(term, (n / count as f32).ln() + 1.0);
+            self.idf.insert(term, (n / count as f32).ln() + 1.0);
         }
         self.idf_dirty = false;
     }
@@ -427,13 +426,32 @@ const INDEX_FILE: &str = "memory_index.json";
 
 /// 用户纠错模式的关键词
 const CORRECTION_PATTERNS_ZH: &[&str] = &[
-    "不是", "错了", "搞错", "弄错", "你搞混", "你搞反", "画错",
-    "识别错", "认错", "不对", "应该是", "其实是", "实际上是",
+    "不是",
+    "错了",
+    "搞错",
+    "弄错",
+    "你搞混",
+    "你搞反",
+    "画错",
+    "识别错",
+    "认错",
+    "不对",
+    "应该是",
+    "其实是",
+    "实际上是",
 ];
 const CORRECTION_PATTERNS_EN: &[&str] = &[
-    "that's wrong", "that is wrong", "you're wrong", "you are wrong",
-    "incorrect", "mistake", "actually is", "actually it's",
-    "should be", "confused with", "mixed up",
+    "that's wrong",
+    "that is wrong",
+    "you're wrong",
+    "you are wrong",
+    "incorrect",
+    "mistake",
+    "actually is",
+    "actually it's",
+    "should be",
+    "confused with",
+    "mixed up",
 ];
 
 impl AgentMemory {
@@ -487,8 +505,15 @@ impl AgentMemory {
         tier: MemoryTier,
         importance: f32,
     ) {
-        self.remember_full(content, memory_type, tier, importance, Vec::new(), Vec::new())
-            .await;
+        self.remember_full(
+            content,
+            memory_type,
+            tier,
+            importance,
+            Vec::new(),
+            Vec::new(),
+        )
+        .await;
     }
 
     /// 记住一条记忆（完整参数，带实体和能力关联）
@@ -572,7 +597,11 @@ impl AgentMemory {
     ) {
         // Short-circuit: 极简交互不需要触发 AI 提取
         let input_chars: usize = user_input.chars().count();
-        if input_chars < 6 && success && execution_results.len() <= 1 && capabilities_used.is_empty() {
+        if input_chars < 6
+            && success
+            && execution_results.len() <= 1
+            && capabilities_used.is_empty()
+        {
             tracing::debug!("[Memory] Skipping AI extraction for trivial interaction");
             return;
         }
@@ -590,7 +619,11 @@ impl AgentMemory {
                     let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("?");
                     let content = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
                     if content.len() > 200 {
-                        Some(format!("{}: {}...", role, &content.chars().take(200).collect::<String>()))
+                        Some(format!(
+                            "{}: {}...",
+                            role,
+                            &content.chars().take(200).collect::<String>()
+                        ))
                     } else {
                         Some(format!("{}: {}", role, content))
                     }
@@ -620,11 +653,13 @@ impl AgentMemory {
         let context = context_parts.join("\n\n");
 
         // 1. 检测纠错模式（规则匹配，不需要 AI）
-        self.detect_and_store_corrections(user_input, conversation_history).await;
+        self.detect_and_store_corrections(user_input, conversation_history)
+            .await;
 
         // 2. 如果失败，记录执行教训（规则匹配）
         if !success {
-            self.record_failure_lesson(user_input, execution_results, capabilities_used).await;
+            self.record_failure_lesson(user_input, execution_results, capabilities_used)
+                .await;
         }
 
         // 3. AI 提取深层记忆
@@ -654,7 +689,9 @@ impl AgentMemory {
         // 使用 Standard tier AI
         let analyzer = match crate::services::ai::create_ai_analyzer_for_tier(
             crate::config::ModelTier::Standard,
-        ).await {
+        )
+        .await
+        {
             Some(a) => a,
             None => {
                 tracing::debug!("[Memory] No AI analyzer available for memory extraction");
@@ -681,7 +718,8 @@ impl AgentMemory {
                             mem.importance.clamp(0.3, 1.0),
                             mem.entities,
                             mem.capabilities,
-                        ).await;
+                        )
+                        .await;
                     }
                     if count > 0 {
                         tracing::info!(
@@ -706,8 +744,12 @@ impl AgentMemory {
     ) {
         let input_lower = user_input.to_lowercase();
 
-        let is_correction = CORRECTION_PATTERNS_ZH.iter().any(|p| input_lower.contains(p))
-            || CORRECTION_PATTERNS_EN.iter().any(|p| input_lower.contains(p));
+        let is_correction = CORRECTION_PATTERNS_ZH
+            .iter()
+            .any(|p| input_lower.contains(p))
+            || CORRECTION_PATTERNS_EN
+                .iter()
+                .any(|p| input_lower.contains(p));
 
         if !is_correction {
             return;
@@ -720,7 +762,11 @@ impl AgentMemory {
                 .iter()
                 .rev()
                 .take(2)
-                .filter_map(|msg| msg.get("content").and_then(|c| c.as_str()).map(String::from))
+                .filter_map(|msg| {
+                    msg.get("content")
+                        .and_then(|c| c.as_str())
+                        .map(String::from)
+                })
                 .collect();
             format!(
                 "用户纠正: {} (上下文: {})",
@@ -738,11 +784,10 @@ impl AgentMemory {
             0.9, // 纠错信息高重要性
             Vec::new(),
             Vec::new(),
-        ).await;
+        )
+        .await;
 
-        tracing::info!(
-            "[Memory] Detected user correction, stored as EntityKnowledge"
-        );
+        tracing::info!("[Memory] Detected user correction, stored as EntityKnowledge");
     }
 
     /// 记录执行失败教训
@@ -753,22 +798,22 @@ impl AgentMemory {
         capabilities_used: &[String],
     ) {
         for (step_id, output) in execution_results {
-            let error = output
-                .get("error")
-                .and_then(|e| e.as_str())
-                .or_else(|| {
-                    // 检查是否是失败结果
-                    if output.get("success") == Some(&json!(false)) {
-                        output.get("message").and_then(|m| m.as_str())
-                    } else {
-                        None
-                    }
-                });
+            let error = output.get("error").and_then(|e| e.as_str()).or_else(|| {
+                // 检查是否是失败结果
+                if output.get("success") == Some(&json!(false)) {
+                    output.get("message").and_then(|m| m.as_str())
+                } else {
+                    None
+                }
+            });
 
             if let Some(error_msg) = error {
                 // 取第一个 capability（或用 step_id 作兜底），而不是用 step_id 去反向匹配
                 // step_id 通常是 "step1"/"search" 等名字，不含 capability ID
-                let cap_id = capabilities_used.first().cloned().unwrap_or_else(|| step_id.clone());
+                let cap_id = capabilities_used
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| step_id.clone());
 
                 let lesson = format!(
                     "执行 {} 时失败: {} (用户请求: {})",
@@ -784,7 +829,8 @@ impl AgentMemory {
                     0.8,
                     Vec::new(),
                     vec![cap_id],
-                ).await;
+                )
+                .await;
             }
         }
     }
@@ -797,7 +843,11 @@ impl AgentMemory {
             .values()
             .filter(|e| e.tier == MemoryTier::LongTerm && e.memory_type != MemoryType::Interaction)
             .collect();
-        filtered.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+        filtered.sort_by(|a, b| {
+            b.importance
+                .partial_cmp(&a.importance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let summaries: Vec<String> = filtered
             .into_iter()
@@ -963,7 +1013,11 @@ impl AgentMemory {
             return;
         }
         let to_remove = current_len - MAX_MEMORY_ENTRIES;
-        let ids_to_remove: Vec<String> = scored.into_iter().take(to_remove).map(|(id, _)| id).collect();
+        let ids_to_remove: Vec<String> = scored
+            .into_iter()
+            .take(to_remove)
+            .map(|(id, _)| id)
+            .collect();
 
         // Step 3: 按一致的顺序获取锁（index 先，entries 后）
         {
@@ -986,17 +1040,27 @@ impl AgentMemory {
 
     /// 按能力 ID 召回相关记忆（执行教训 + 有效模式）
     #[allow(dead_code)]
-    pub async fn recall_by_capability(&self, capability_ids: &[String], limit: usize) -> Vec<MemoryEntry> {
+    pub async fn recall_by_capability(
+        &self,
+        capability_ids: &[String],
+        limit: usize,
+    ) -> Vec<MemoryEntry> {
         let entries = self.entries.read().await;
         let mut results: Vec<&MemoryEntry> = entries
             .values()
             .filter(|e| {
                 (e.memory_type == MemoryType::ExecutionLesson
                     || e.memory_type == MemoryType::EffectivePattern)
-                    && e.related_capabilities.iter().any(|c| capability_ids.contains(c))
+                    && e.related_capabilities
+                        .iter()
+                        .any(|c| capability_ids.contains(c))
             })
             .collect();
-        results.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.importance
+                .partial_cmp(&a.importance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(limit);
         results.into_iter().cloned().collect()
     }
@@ -1018,12 +1082,16 @@ impl AgentMemory {
             .values()
             .filter_map(|e| {
                 let content_lower = e.content.to_lowercase();
-                let entity_names: Vec<String> = e.entities.iter().map(|ent| ent.to_lowercase()).collect();
+                let entity_names: Vec<String> =
+                    e.entities.iter().map(|ent| ent.to_lowercase()).collect();
 
                 let mut match_score: f32 = 0.0;
                 for token in &tokens {
                     // 实体名精确匹配（高权重）
-                    if entity_names.iter().any(|ent| ent.contains(token) || token.contains(ent.as_str())) {
+                    if entity_names
+                        .iter()
+                        .any(|ent| ent.contains(token) || token.contains(ent.as_str()))
+                    {
                         match_score += 2.0;
                     }
                     // 内容包含匹配（低权重）
@@ -1052,29 +1120,138 @@ impl AgentMemory {
         // 停用词（高频虚词 + 动作元词，避免匹配噪声）
         let stop_words: &[&str] = &[
             // 中文虚词
-            "的", "了", "是", "在", "和", "有", "我", "你", "他", "她", "它",
-            "这", "那", "就", "也", "都", "要", "会", "可以", "不", "很",
-            "吗", "呢", "吧", "啊", "哦", "嗯", "一下", "一个", "什么",
-            "看看", "帮我", "给我", "告诉我", "介绍", "关于", "最近",
-            "最新", "最热", "并", "然后", "以及", "或者", "还有",
+            "的",
+            "了",
+            "是",
+            "在",
+            "和",
+            "有",
+            "我",
+            "你",
+            "他",
+            "她",
+            "它",
+            "这",
+            "那",
+            "就",
+            "也",
+            "都",
+            "要",
+            "会",
+            "可以",
+            "不",
+            "很",
+            "吗",
+            "呢",
+            "吧",
+            "啊",
+            "哦",
+            "嗯",
+            "一下",
+            "一个",
+            "什么",
+            "看看",
+            "帮我",
+            "给我",
+            "告诉我",
+            "介绍",
+            "关于",
+            "最近",
+            "最新",
+            "最热",
+            "并",
+            "然后",
+            "以及",
+            "或者",
+            "还有",
             // 中文动作/元动词（不构成实体信息）
-            "想", "想要", "需要", "需", "做", "能", "能否", "是否",
-            "哪", "哪个", "谁", "怎样", "怎么", "如何", "为什么", "因为",
-            "请", "让", "把", "被", "从", "向", "对", "用", "去", "来",
-            "生成", "搜索", "查找", "查看", "打开", "执行",
+            "想",
+            "想要",
+            "需要",
+            "需",
+            "做",
+            "能",
+            "能否",
+            "是否",
+            "哪",
+            "哪个",
+            "谁",
+            "怎样",
+            "怎么",
+            "如何",
+            "为什么",
+            "因为",
+            "请",
+            "让",
+            "把",
+            "被",
+            "从",
+            "向",
+            "对",
+            "用",
+            "去",
+            "来",
+            "生成",
+            "搜索",
+            "查找",
+            "查看",
+            "打开",
+            "执行",
             // English stop words
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "and", "or", "but", "in", "on", "at", "to", "for", "of",
-            "with", "by", "from", "about", "into", "what", "how",
-            "show", "me", "please", "find", "get", "give", "tell",
-            "do", "can", "will", "would", "could", "should", "try",
-            "let", "make", "run", "use", "help", "want", "need",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "about",
+            "into",
+            "what",
+            "how",
+            "show",
+            "me",
+            "please",
+            "find",
+            "get",
+            "give",
+            "tell",
+            "do",
+            "can",
+            "will",
+            "would",
+            "could",
+            "should",
+            "try",
+            "let",
+            "make",
+            "run",
+            "use",
+            "help",
+            "want",
+            "need",
         ];
 
         let mut tokens = Vec::new();
 
         // 按空格/标点分割，过滤停用词和过短的 token
-        for segment in input_lower.split(|c: char| c.is_whitespace() || c == '，' || c == '。' || c == '、' || c == '！' || c == '？') {
+        for segment in input_lower.split(|c: char| {
+            c.is_whitespace() || c == '，' || c == '。' || c == '、' || c == '！' || c == '？'
+        }) {
             let segment = segment.trim();
             if segment.is_empty() {
                 continue;
@@ -1152,8 +1329,13 @@ impl AgentMemory {
         if summary.trim().is_empty() {
             return;
         }
-        self.remember_with_tier(summary, MemoryType::SessionInsight, MemoryTier::MediumTerm, 0.6)
-            .await;
+        self.remember_with_tier(
+            summary,
+            MemoryType::SessionInsight,
+            MemoryTier::MediumTerm,
+            0.6,
+        )
+        .await;
     }
 
     /// 提升高频访问的 MediumTerm 记忆到 LongTerm
@@ -1172,10 +1354,7 @@ impl AgentMemory {
             }
         }
         if promoted > 0 {
-            tracing::info!(
-                "[AgentMemory] Promoted {} memories to LongTerm",
-                promoted
-            );
+            tracing::info!("[AgentMemory] Promoted {} memories to LongTerm", promoted);
             self.save_all().await;
         }
         promoted
@@ -1297,7 +1476,11 @@ impl AgentMemory {
                 let (sim_w, rec_w, imp_w) = if entry.tier == MemoryTier::LongTerm {
                     (0.6, 0.1, 0.3)
                 } else {
-                    (params.similarity_weight, params.recency_weight, params.importance_weight)
+                    (
+                        params.similarity_weight,
+                        params.recency_weight,
+                        params.importance_weight,
+                    )
                 };
                 // 权重归一化：防止自定义调用方传入非 1.0 总和的权重
                 let w_sum = sim_w + rec_w + imp_w;
@@ -1310,10 +1493,16 @@ impl AgentMemory {
                 // 重要性时间衰减：基于最后访问时间，越久不访问重要性越低
                 let importance = {
                     // 使用 last_accessed_at（如有），否则使用 created_at
-                    let reference_time = entry.last_accessed_at.as_deref()
+                    let reference_time = entry
+                        .last_accessed_at
+                        .as_deref()
                         .unwrap_or(&entry.created_at);
                     let days_since = chrono::DateTime::parse_from_rfc3339(reference_time)
-                        .map(|dt| (chrono::Utc::now() - dt.with_timezone(&chrono::Utc)).num_days().max(0) as f32)
+                        .map(|dt| {
+                            (chrono::Utc::now() - dt.with_timezone(&chrono::Utc))
+                                .num_days()
+                                .max(0) as f32
+                        })
                         .unwrap_or(365.0);
 
                     // 访问越多衰减越慢：半衰期 = 90 天 * ln(access_count + 1)
@@ -1324,9 +1513,7 @@ impl AgentMemory {
                     entry.importance * decay
                 };
 
-                let final_score = sim_w * sim_score
-                    + rec_w * r_score
-                    + imp_w * importance;
+                let final_score = sim_w * sim_score + rec_w * r_score + imp_w * importance;
 
                 Some((final_score, id))
             })
@@ -1591,7 +1778,10 @@ pub fn summarize_value_for_memory(value: &Value) -> String {
             if let Some(error) = obj.get("error").and_then(|e| e.as_str()) {
                 format!("{{error: \"{}\"}}", error)
             } else if let Some(msg) = obj.get("message").and_then(|m| m.as_str()) {
-                format!("{{message: \"{}\"}}", msg.chars().take(80).collect::<String>())
+                format!(
+                    "{{message: \"{}\"}}",
+                    msg.chars().take(80).collect::<String>()
+                )
             } else {
                 format!("{{{} fields}}", obj.len())
             }
@@ -1604,8 +1794,7 @@ pub fn summarize_value_for_memory(value: &Value) -> String {
 
 // ==================== 全局实例 ====================
 
-static AGENT_MEMORY: once_cell::sync::OnceCell<Arc<AgentMemory>> =
-    once_cell::sync::OnceCell::new();
+static AGENT_MEMORY: once_cell::sync::OnceCell<Arc<AgentMemory>> = once_cell::sync::OnceCell::new();
 
 /// 初始化全局记忆管理器（含后台维护 worker）
 pub async fn init_memory(memory_dir: PathBuf) {
@@ -1715,8 +1904,14 @@ mod tests {
         let s1 = idx.similarity(&query_tokens, "doc1");
         let s2 = idx.similarity(&query_tokens, "doc2");
         let s3 = idx.similarity(&query_tokens, "doc3");
-        assert!(s1 > s2, "doc1 ({s1}) should be more relevant than doc2 ({s2})");
-        assert!(s3 > s2, "doc3 ({s3}) should be more relevant than doc2 ({s2})");
+        assert!(
+            s1 > s2,
+            "doc1 ({s1}) should be more relevant than doc2 ({s2})"
+        );
+        assert!(
+            s3 > s2,
+            "doc3 ({s3}) should be more relevant than doc2 ({s2})"
+        );
     }
 
     // ======== 重要性衰减测试 ========
@@ -1730,11 +1925,17 @@ mod tests {
 
         // access_count=5: ln_1p(5) = ln(6) ≈ 1.792 → half_life ≈ 161
         let hl5 = 90.0 * (5.0_f32).ln_1p();
-        assert!((hl5 - 161.2).abs() < 1.0, "half_life for access_count=5: {hl5}");
+        assert!(
+            (hl5 - 161.2).abs() < 1.0,
+            "half_life for access_count=5: {hl5}"
+        );
 
         // access_count=10: ln_1p(10) = ln(11) ≈ 2.398 → half_life ≈ 215
         let hl10 = 90.0 * (10.0_f32).ln_1p();
-        assert!((hl10 - 215.8).abs() < 1.0, "half_life for access_count=10: {hl10}");
+        assert!(
+            (hl10 - 215.8).abs() < 1.0,
+            "half_life for access_count=10: {hl10}"
+        );
     }
 
     #[test]
@@ -1743,6 +1944,9 @@ mod tests {
         let days_since = 10000.0_f32; // 极端：10000 天
         let half_life = 90.0_f32;
         let decay = (0.3_f32).max((-0.693 * days_since / half_life).exp());
-        assert!((decay - 0.3).abs() < f32::EPSILON, "decay should floor at 0.3, got {decay}");
+        assert!(
+            (decay - 0.3).abs() < f32::EPSILON,
+            "decay should floor at 0.3, got {decay}"
+        );
     }
 }

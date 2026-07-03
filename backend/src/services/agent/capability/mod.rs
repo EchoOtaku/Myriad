@@ -2,8 +2,8 @@
 //!
 //! 管理系统所有可用能力的注册、查询和匹配
 
-mod utils;
 pub mod definitions;
+mod utils;
 
 pub use utils::*;
 
@@ -59,7 +59,6 @@ impl CapabilityRegistry {
     pub fn get_all(&self) -> Vec<&Capability> {
         self.capabilities.values().collect()
     }
-
 }
 
 impl Default for CapabilityRegistry {
@@ -145,22 +144,16 @@ pub async fn get_compact_index() -> Value {
         // 提取必需参数名（帮助 AI 正确构建 params）
         let mut entry = json!({ "id": cap.id, "h": hint });
         if let Some(required) = cap.input_schema.get("required").and_then(|v| v.as_array()) {
-            let param_names: Vec<&str> = required
-                .iter()
-                .filter_map(|v| v.as_str())
-                .collect();
+            let param_names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
             if !param_names.is_empty() {
-                entry.as_object_mut().unwrap().insert(
-                    "p".to_string(),
-                    json!(param_names),
-                );
+                entry
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("p".to_string(), json!(param_names));
             }
         }
 
-        by_category
-            .entry(category)
-            .or_default()
-            .push(entry);
+        by_category.entry(category).or_default().push(entry);
     }
 
     // 合并动态 Skills 到索引
@@ -239,5 +232,4 @@ mod tests {
         assert!(registry.get("platform.read").is_some());
         assert!(registry.get("ai.summarize").is_some());
     }
-
 }

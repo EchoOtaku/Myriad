@@ -124,15 +124,20 @@ pub async fn initiate_transfer(
     if req.file_size <= 0 || req.file_size > MAX_FILE_SIZE {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("File size must be between 1 byte and {} bytes", MAX_FILE_SIZE)})),
+            Json(
+                json!({"error": format!("File size must be between 1 byte and {} bytes", MAX_FILE_SIZE)}),
+            ),
         ));
     }
 
     let remote_actor_url: String = ch_row.try_get("", "actor_url").unwrap_or_default();
-    let remote_inbox: Option<String> = ch_row.try_get::<Option<String>>("", "inbox_url").unwrap_or(None);
+    let remote_inbox: Option<String> = ch_row
+        .try_get::<Option<String>>("", "inbox_url")
+        .unwrap_or(None);
 
     // 计算分块数
-    let chunks_total = ((req.file_size + DEFAULT_CHUNK_SIZE - 1) / DEFAULT_CHUNK_SIZE).max(1) as i32;
+    let chunks_total =
+        ((req.file_size + DEFAULT_CHUNK_SIZE - 1) / DEFAULT_CHUNK_SIZE).max(1) as i32;
 
     // 创建传输记录
     let transfer_id = generate_transfer_id();
@@ -258,7 +263,10 @@ pub async fn upload_chunk(
         })?;
 
     let channel_user: i32 = row.try_get("", "user_id").map_err(|_| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to read channel ownership"})))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read channel ownership"})),
+        )
     })?;
     if channel_user != user_id {
         return Err((
@@ -370,8 +378,12 @@ pub async fn get_transfer(
         channel_id: row.try_get("", "channel_id").unwrap_or_default(),
         filename: row.try_get("", "filename").unwrap_or_default(),
         file_size: row.try_get("", "file_size").unwrap_or(0),
-        mime_type: row.try_get::<Option<String>>("", "mime_type").unwrap_or(None),
-        checksum: row.try_get::<Option<String>>("", "checksum_sha256").unwrap_or(None),
+        mime_type: row
+            .try_get::<Option<String>>("", "mime_type")
+            .unwrap_or(None),
+        checksum: row
+            .try_get::<Option<String>>("", "checksum_sha256")
+            .unwrap_or(None),
         status: row.try_get("", "status").unwrap_or_default(),
         direction: row.try_get("", "direction").unwrap_or_default(),
         chunks_total,
@@ -442,7 +454,11 @@ pub async fn list_transfers(
         .map(|r| {
             let ct: i32 = r.try_get("", "chunks_total").unwrap_or(1);
             let cr: i32 = r.try_get("", "chunks_completed").unwrap_or(0);
-            let progress = if ct > 0 { (cr as f64 / ct as f64) * 100.0 } else { 0.0 };
+            let progress = if ct > 0 {
+                (cr as f64 / ct as f64) * 100.0
+            } else {
+                0.0
+            };
             TransferSummary {
                 transfer_id: r.try_get("", "transfer_id").unwrap_or_default(),
                 channel_id: r.try_get("", "channel_id").unwrap_or_default(),
@@ -489,7 +505,10 @@ pub async fn cancel_transfer(
         })?;
 
     let channel_user: i32 = row.try_get("", "user_id").map_err(|_| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to read channel ownership"})))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read channel ownership"})),
+        )
     })?;
     if channel_user != user_id {
         return Err((
@@ -543,10 +562,7 @@ pub async fn handle_file_transfer(
         .get("filename")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    let file_size: i64 = object
-        .get("fileSize")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
+    let file_size: i64 = object.get("fileSize").and_then(|v| v.as_i64()).unwrap_or(0);
     let mime_type = object.get("mimeType").and_then(|v| v.as_str());
     let checksum = object.get("checksum").and_then(|v| v.as_str());
     let chunks_total: i32 = object
@@ -577,7 +593,11 @@ pub async fn handle_file_transfer(
 
     tracing::info!(
         "[FileTransfer] Inbound transfer {} from {} — {} ({} bytes, {} chunks)",
-        transfer_id, actor_url_str, filename, file_size, chunks_total
+        transfer_id,
+        actor_url_str,
+        filename,
+        file_size,
+        chunks_total
     );
 
     Ok(())

@@ -65,7 +65,10 @@ async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value
         match step_type {
             "filter" => {
                 let field = step.get("field").and_then(|v| v.as_str()).unwrap_or("");
-                let op = step.get("operator").and_then(|v| v.as_str()).unwrap_or("eq");
+                let op = step
+                    .get("operator")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("eq");
                 let value = step.get("value").cloned().unwrap_or(json!(null));
 
                 items.retain(|item| {
@@ -497,9 +500,11 @@ async fn execute_export_data(params: &HashMap<String, Value>) -> Result<Value, S
     };
 
     // Ensure dir exists and write
-    tokio::fs::create_dir_all("cache/exports").await
+    tokio::fs::create_dir_all("cache/exports")
+        .await
         .map_err(|e| format!("创建导出目录失败: {}", e))?;
-    tokio::fs::write(&export_path, &export_content).await
+    tokio::fs::write(&export_path, &export_content)
+        .await
         .map_err(|e| format!("写入导出文件失败: {}", e))?;
 
     Ok(json!({

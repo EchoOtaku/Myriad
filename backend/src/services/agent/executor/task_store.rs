@@ -62,7 +62,10 @@ impl TaskStore {
         // 先 insert 到内存，再从内存里借出一份 clone 给异步任务
         // 避免 task 被 move 前的额外 clone
         self.tasks.insert(task_id.clone(), task);
-        self.user_tasks.entry(user_id).or_default().push(task_id.clone());
+        self.user_tasks
+            .entry(user_id)
+            .or_default()
+            .push(task_id.clone());
 
         // 从内存中取出已存储的任务做一次 clone 用于持久化
         // 这样可在 TaskState 较大时只 clone 一次，而非两次
@@ -189,8 +192,7 @@ async fn load_pending_tasks_from_db(db: &DatabaseConnection) -> Result<(), Strin
                     "[TaskStore] Task interrupted by server restart, marking as Cancelled"
                 );
                 task_state.status = TaskStatus::Cancelled;
-                task_state.error =
-                    Some(crate::services::agent::response_agent::task_interrupted());
+                task_state.error = Some(crate::services::agent::response_agent::task_interrupted());
                 recovered += 1;
             }
             let user_id = task_model.user_id;
@@ -220,8 +222,8 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
         _ => TaskStatus::Pending,
     };
 
-    let step_results: HashMap<String, StepResult> = serde_json::from_value(model.step_results.clone())
-        .unwrap_or_default();
+    let step_results: HashMap<String, StepResult> =
+        serde_json::from_value(model.step_results.clone()).unwrap_or_default();
 
     let pending_question: Option<UserQuestion> = model
         .pending_question
@@ -254,9 +256,7 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
 /// 保存任务到数据库
 pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), String> {
     let db_guard = DB_FOR_TASKS.read().await;
-    let db = db_guard
-        .as_ref()
-        .ok_or("数据库连接未初始化")?;
+    let db = db_guard.as_ref().ok_or("数据库连接未初始化")?;
 
     let status_str = match task.status {
         TaskStatus::Pending => "pending",
@@ -311,7 +311,11 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
             lane_id: Set(task.lane_id.clone()),
             name: Set(None),
             total_steps: Set(Some(
-                task.recipe.as_ref().map(|r| r.steps.len()).unwrap_or(task.step_results.len()).max(1) as i32
+                task.recipe
+                    .as_ref()
+                    .map(|r| r.steps.len())
+                    .unwrap_or(task.step_results.len())
+                    .max(1) as i32,
             )),
         };
 
@@ -327,9 +331,7 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
 /// 从数据库清理过期任务
 async fn cleanup_expired_tasks_from_db(task_ids: &[String]) -> Result<(), String> {
     let db_guard = DB_FOR_TASKS.read().await;
-    let db = db_guard
-        .as_ref()
-        .ok_or("数据库连接未初始化")?;
+    let db = db_guard.as_ref().ok_or("数据库连接未初始化")?;
 
     for task_id in task_ids {
         agent_tasks::Entity::delete_by_id(task_id)
@@ -425,7 +427,9 @@ pub async fn maybe_cleanup_tasks() {
     }
     // 每 100 次请求清理一次空闲 Lane（防止 HashMap 无限增长）
     if n % 100 == 0 {
-        crate::services::agent::LANE_QUEUE.cleanup_idle_lanes().await;
+        crate::services::agent::LANE_QUEUE
+            .cleanup_idle_lanes()
+            .await;
     }
 }
 
@@ -455,7 +459,11 @@ mod tests {
 
         // 直接插入，不触发异步数据库保存
         store.tasks.insert(task.task_id.clone(), task.clone());
-        store.user_tasks.entry(1).or_default().push(task.task_id.clone());
+        store
+            .user_tasks
+            .entry(1)
+            .or_default()
+            .push(task.task_id.clone());
 
         assert!(store.get("test_task").is_some());
         assert_eq!(store.get_user_tasks(1).len(), 1);

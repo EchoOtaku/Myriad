@@ -45,9 +45,10 @@ import {
   usePodcast,
   useReaderSettings,
 } from './reader'
+import { API_URL as CONFIG_API_URL } from '../../config'
 
 // API URL
-const API_URL = import.meta.env.PUBLIC_API_URL || ''
+const API_URL = CONFIG_API_URL
 
 // === iframe 保存/恢复 ===
 // 在 innerHTML 更新前保存已加载的 iframe，更新后恢复，避免重新加载导致闪烁

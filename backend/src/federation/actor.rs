@@ -2,11 +2,7 @@
 //!
 //! 本地用户的 ActivityPub Actor 表示，以及远程 Actor 获取/缓存。
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::Path, http::StatusCode, Json};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
 
@@ -19,9 +15,9 @@ use crate::federation::types::*;
 pub async fn get_actor(
     Path(username): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db().await.map_err(|e| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e})))
-    })?;
+    let db = get_db()
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
 
     let base_url = get_base_url().await;
 
@@ -46,11 +42,17 @@ pub async fn get_actor(
         })?;
 
     let row = user.ok_or_else(|| {
-        (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "User not found"})),
+        )
     })?;
 
     let user_id: i32 = row.try_get("", "id").map_err(|_| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to read user ID"})))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read user ID"})),
+        )
     })?;
     let display_name: Option<String> = row.try_get("", "display_name").ok();
     let avatar_url: Option<String> = row.try_get("", "avatar_url").ok();
@@ -63,13 +65,19 @@ pub async fn get_actor(
         (Some(pk), Some(ki)) => (pk, ki),
         _ => {
             // 自动为该用户生成密钥对
-            generate_and_store_keys(&db, user_id, &base_url, &username).await.map_err(|e| {
-                tracing::error!("Failed to generate federation keys for user {}: {}", username, e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Failed to initialize federation identity"})),
-                )
-            })?
+            generate_and_store_keys(&db, user_id, &base_url, &username)
+                .await
+                .map_err(|e| {
+                    tracing::error!(
+                        "Failed to generate federation keys for user {}: {}",
+                        username,
+                        e
+                    );
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": "Failed to initialize federation identity"})),
+                    )
+                })?
         }
     };
 
@@ -111,9 +119,9 @@ pub async fn get_actor(
 pub async fn get_followers(
     Path(username): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db().await.map_err(|e| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e})))
-    })?;
+    let db = get_db()
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
     let base_url = get_base_url().await;
 
     // 验证用户存在
@@ -145,7 +153,10 @@ pub async fn get_followers(
         last: None,
     };
 
-    Ok((StatusCode::OK, Json(serde_json::to_value(collection).unwrap())))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::to_value(collection).unwrap()),
+    ))
 }
 
 /// GET /users/{username}/following
@@ -154,9 +165,9 @@ pub async fn get_followers(
 pub async fn get_following(
     Path(username): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db().await.map_err(|e| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e})))
-    })?;
+    let db = get_db()
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
     let base_url = get_base_url().await;
 
     let user = get_local_user(&db, &username).await?;
@@ -186,7 +197,10 @@ pub async fn get_following(
         last: None,
     };
 
-    Ok((StatusCode::OK, Json(serde_json::to_value(collection).unwrap())))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::to_value(collection).unwrap()),
+    ))
 }
 
 /// 获取远程 Actor 信息（带缓存）
@@ -240,7 +254,11 @@ pub async fn fetch_remote_actor(
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
-        .user_agent(format!("Myriad/{} (+{})", env!("CARGO_PKG_VERSION"), get_base_url().await))
+        .user_agent(format!(
+            "Myriad/{} (+{})",
+            env!("CARGO_PKG_VERSION"),
+            get_base_url().await
+        ))
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
@@ -262,7 +280,9 @@ pub async fn fetch_remote_actor(
 
     // 提取关键字段
     let domain = extract_domain(actor_url_str).unwrap_or_default();
-    let username_val = actor_json["preferredUsername"].as_str().map(|s| s.to_string());
+    let username_val = actor_json["preferredUsername"]
+        .as_str()
+        .map(|s| s.to_string());
     let display_name = actor_json["name"].as_str().map(|s| s.to_string());
     let avatar_url = actor_json["icon"]["url"].as_str().map(|s| s.to_string());
     let summary = actor_json["summary"].as_str().map(|s| s.to_string());
@@ -274,11 +294,17 @@ pub async fn fetch_remote_actor(
 
     // 验证 inbox URL 不指向内网（防止 SSRF 通过伪造 inbox）
     if !remote_inbox.is_empty() && is_internal_url(&remote_inbox) {
-        return Err(format!("Remote actor inbox points to internal URL: {}", remote_inbox));
+        return Err(format!(
+            "Remote actor inbox points to internal URL: {}",
+            remote_inbox
+        ));
     }
     if let Some(ref si) = shared_inbox {
         if is_internal_url(si) {
-            return Err(format!("Remote actor shared inbox points to internal URL: {}", si));
+            return Err(format!(
+                "Remote actor shared inbox points to internal URL: {}",
+                si
+            ));
         }
     }
     let pk_pem = actor_json["publicKey"]["publicKeyPem"]
@@ -438,7 +464,10 @@ async fn get_local_user(
         .await
         .map_err(db_err)?
         .ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "User not found"})),
+            )
         })?;
 
     Ok((
@@ -458,7 +487,10 @@ async fn get_base_url() -> String {
 async fn get_frontend_url() -> String {
     let config = crate::GLOBAL_CONFIG.read().await;
     config.frontend_url.clone().unwrap_or_else(|| {
-        config.base_url.clone().unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+        config
+            .base_url
+            .clone()
+            .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
     })
 }
 

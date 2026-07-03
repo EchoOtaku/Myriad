@@ -9,8 +9,8 @@
 use chrono::{Duration, Utc};
 use futures::stream::{self, StreamExt};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, sea_query::OnConflict,
+    sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

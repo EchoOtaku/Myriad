@@ -1360,7 +1360,9 @@ impl ExecutionContext {
         if remaining == 0 {
             tracing::warn!(
                 "[ExecutionContext] Dynamic steps queue full ({}/{}), rejecting {} new steps",
-                self.dynamic_steps_generated, MAX_DYNAMIC_QUEUE, steps.len()
+                self.dynamic_steps_generated,
+                MAX_DYNAMIC_QUEUE,
+                steps.len()
             );
             return;
         }
@@ -1682,9 +1684,7 @@ pub enum AgentProgressEvent {
         session_id: String,
     },
     /// 会话标题已生成（AI 并行生成）
-    SessionTitleUpdated {
-        title: String,
-    },
+    SessionTitleUpdated { title: String },
     /// AI 汇总流式 token（逐步推送主 Agent 生成的汇总文本）
     SummaryToken {
         /// 文本片段

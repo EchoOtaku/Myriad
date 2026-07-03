@@ -18,7 +18,8 @@ pub const MFP_CONTEXT: &str = "https://myriad.dev/ns/v1";
 /// ActivityPub Content-Type
 pub const AP_CONTENT_TYPE: &str = "application/activity+json";
 /// JSON-LD Content-Type
-pub const LD_CONTENT_TYPE: &str = "application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\"";
+pub const LD_CONTENT_TYPE: &str =
+    "application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\"";
 
 // ==================== Actor 相关类型 ====================
 
@@ -45,9 +46,15 @@ pub struct Actor {
     pub image: Option<MediaObject>,
 
     // MFP 扩展字段
-    #[serde(rename = "myriad:instanceVersion", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "myriad:instanceVersion",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub mfp_instance_version: Option<String>,
-    #[serde(rename = "myriad:tappCapabilities", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "myriad:tappCapabilities",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub mfp_tapp_capabilities: Option<Vec<TappCapability>>,
     #[serde(rename = "myriad:channels", skip_serializing_if = "Option::is_none")]
     pub mfp_channels_url: Option<String>,
@@ -303,7 +310,10 @@ pub struct ChannelOpenObject {
     pub protocol: String, // "mfp/1.0"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<Vec<String>>,
-    #[serde(rename = "transportPreference", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "transportPreference",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub transport_preference: Option<Vec<ChannelTransport>>,
 }
 
@@ -575,7 +585,7 @@ pub fn is_internal_url(url_str: &str) -> bool {
                 || v4.is_link_local()      // 169.254.0.0/16
                 || v4.is_unspecified()     // 0.0.0.0
                 || v4.is_broadcast()       // 255.255.255.255
-                || v4.is_documentation()   // 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
+                || v4.is_documentation() // 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
             }
             std::net::IpAddr::V6(v6) => {
                 // 检查 IPv4-mapped IPv6 地址 (::ffff:x.x.x.x)

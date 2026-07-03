@@ -7,8 +7,7 @@
 #
 # This script wraps docker compose with a few conveniences:
 #   - On first run, copies .env.production.example -> .env
-#   - On first run, invokes scripts/migrate-to-updater.sh to seed pgdata bind
-#     mount + updater env keys
+#   - Ensures current production directories and updater env keys exist
 #   - Provides quick subcommands: up / down / restart / logs / status / pull
 #
 # After this script bootstraps the stack, normal day-to-day operation is the
@@ -36,10 +35,10 @@ Commands:
   up        (default) Initialise .env / pgdata if needed, then \`docker compose up -d\`
   down      Stop and remove containers (volumes preserved)
   restart   docker compose restart
-  pull      docker compose pull
+  pull      Pull images pinned by .env tags
   logs      docker compose logs -f
   status    docker compose ps + image versions
-  upgrade   Pull latest images per .env tags + recreate (manual upgrade path)
+  upgrade   Pull images pinned by .env tags + recreate (manual upgrade path)
   help      Show this help
 
 Notes:
@@ -66,6 +65,49 @@ detect_compose() {
     fi
 }
 
+generate_secret() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -base64 36 | tr -d '\n=' | tr '+/' '-_'
+    else
+        head -c 48 /dev/urandom | base64 | tr -d '\n=' | tr '+/' '-_'
+    fi
+}
+
+ensure_key() {
+    local key="$1"
+    local default="$2"
+    if ! grep -qE "^${key}=" .env 2>/dev/null; then
+        echo "${key}=${default}" >> .env
+        info "  + appended ${key}"
+    fi
+}
+
+ensure_update_token() {
+    if grep -qE "^UPDATE_TOKEN=.+" .env 2>/dev/null; then
+        return 0
+    fi
+
+    local token
+    token="$(generate_secret)"
+    if grep -qE "^UPDATE_TOKEN=" .env 2>/dev/null; then
+        local tmp=".env.tmp.$$"
+        awk -v token="$token" '
+          BEGIN { replaced = 0 }
+          /^UPDATE_TOKEN=/ && replaced == 0 {
+            print "UPDATE_TOKEN=" token
+            replaced = 1
+            next
+          }
+          { print }
+        ' .env > "$tmp"
+        mv "$tmp" .env
+        info "  + filled empty UPDATE_TOKEN"
+    else
+        echo "UPDATE_TOKEN=${token}" >> .env
+        info "  + appended UPDATE_TOKEN"
+    fi
+}
+
 ensure_env() {
     if [ ! -f .env ]; then
         if [ ! -f .env.production.example ]; then
@@ -80,7 +122,7 @@ ensure_env() {
         warn "  - JWT_SECRET        (openssl rand -base64 32)"
         warn "  - CORS_ORIGINS      (your domain)"
         warn ""
-        warn "scripts/migrate-to-updater.sh will fill MYRIAD_TAG / UPDATER_TAG / UPDATE_TOKEN."
+        warn "This script will create pgdata/state/backups and fill an empty UPDATE_TOKEN."
         warn ""
         read -r -p "Open .env in \$EDITOR now? (y/N): " r
         if [[ "$r" =~ ^[Yy]$ ]]; then
@@ -89,17 +131,23 @@ ensure_env() {
     fi
 }
 
-ensure_pgdata_and_updater() {
-    if [ ! -d "./pgdata" ] || ! grep -qE "^MYRIAD_TAG=" .env 2>/dev/null; then
-        info "==> Running scripts/migrate-to-updater.sh (idempotent)"
-        YES=1 bash scripts/migrate-to-updater.sh
-        echo ""
-    fi
+ensure_current_layout() {
+    info "==> Ensuring current proxy + updater layout"
+    mkdir -p pgdata state state/snapshots state/cache backups
+    ensure_key MYRIAD_TAG v0.1.0
+    ensure_key PROXY_TAG v0.1.0
+    ensure_key UPDATER_TAG v0.1.0
+    ensure_key COMPOSE_PROJECT_NAME myriad
+    ensure_key CHANNEL stable
+    ensure_key MYRIAD_GITHUB_REPO Myriad-You/Myriad
+    ensure_key CHECK_INTERVAL_SECS 3600
+    ensure_key PROXY_ALLOW_DIRECT_UPDATER false
+    ensure_update_token
 }
 
 cmd_up() {
     ensure_env
-    ensure_pgdata_and_updater
+    ensure_current_layout
     info "==> docker compose up -d"
     $COMPOSE up -d
     echo ""

@@ -154,7 +154,8 @@ impl HeartbeatManager {
         let minute = now.format("%M").to_string();
         let hour = now.format("%H").to_string();
 
-        let minute_match = parts[0] == "*" || parts[0] == &minute
+        let minute_match = parts[0] == "*"
+            || parts[0] == &minute
             || parts[0].starts_with("*/") && {
                 let interval: u32 = parts[0][2..].parse().ok()?;
                 let current: u32 = minute.parse().ok()?;

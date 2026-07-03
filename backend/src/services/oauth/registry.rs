@@ -10,8 +10,7 @@ use tokio::sync::RwLock;
 
 use super::{github::GithubProvider, oidc::OidcProvider, OAuthProvider, ProviderDescriptor};
 
-pub static REGISTRY: Lazy<Arc<ProviderRegistry>> =
-    Lazy::new(|| Arc::new(ProviderRegistry::new()));
+pub static REGISTRY: Lazy<Arc<ProviderRegistry>> = Lazy::new(|| Arc::new(ProviderRegistry::new()));
 
 pub struct ProviderRegistry {
     inner: RwLock<HashMap<String, Arc<dyn OAuthProvider>>>,
@@ -78,10 +77,8 @@ impl ProviderRegistry {
                         );
                         continue;
                     }
-                    let provider = GithubProvider::new(
-                        entry.client_id.clone(),
-                        entry.client_secret.clone(),
-                    );
+                    let provider =
+                        GithubProvider::new(entry.client_id.clone(), entry.client_secret.clone());
                     new_map.insert(entry.slug.clone(), Arc::new(provider));
                     tracing::info!("🔐 OAuth provider loaded: {} (github)", entry.slug);
                 }

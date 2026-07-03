@@ -3,7 +3,7 @@
  */
 
 import type { WidgetComponentProps } from '../WidgetGrid'
-import { FaGithub, FaSteam, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
+import { FaGithub, FaSteam, SiBangumi, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -33,6 +33,12 @@ const PLATFORMS = [
     name: 'NetEase',
     icon: <SiNeteasecloudmusic />,
     color: 'from-red-500 to-red-600',
+  },
+  {
+    id: 'bangumi',
+    name: 'Bangumi',
+    icon: <SiBangumi />,
+    color: 'from-rose-400 to-pink-500',
   },
 ]
 

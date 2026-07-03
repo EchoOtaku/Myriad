@@ -16,6 +16,13 @@ export interface PlatformReport {
     languages?: { name: string, percentage: number }[]
     soul_color?: string
     mood_keywords?: string[]
+    status_counts?: Record<string, number>
+    subject_type_distribution?: Record<string, number>
+    collection_type_distribution?: Record<string, number>
+    score_distribution?: Record<string, number>
+    favorite_tags?: string[]
+    top_subjects?: Array<{ title?: string, rate?: number, type?: string }>
+    library_items?: Array<{ title: string, cover?: string, type: string, platform?: string, rate?: number }>
   }
   created_at: string
 }

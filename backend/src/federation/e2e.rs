@@ -112,7 +112,9 @@ fn x25519_scalar_mult(scalar: &[u8; 32], u_bytes: &[u8; 32]) -> [u8; 32] {
     type Fe = [u64; 5];
     const MASK51: u64 = (1u64 << 51) - 1;
 
-    fn fe_zero() -> Fe { [0; 5] }
+    fn fe_zero() -> Fe {
+        [0; 5]
+    }
 
     fn fe_one() -> Fe {
         let mut r = [0u64; 5];
@@ -177,7 +179,9 @@ fn x25519_scalar_mult(scalar: &[u8; 32], u_bytes: &[u8; 32]) -> [u8; 32] {
     #[inline]
     fn fe_add(a: &Fe, b: &Fe) -> Fe {
         let mut r = [0u64; 5];
-        for i in 0..5 { r[i] = a[i] + b[i]; }
+        for i in 0..5 {
+            r[i] = a[i] + b[i];
+        }
         r
     }
 
@@ -238,40 +242,54 @@ fn x25519_scalar_mult(scalar: &[u8; 32], u_bytes: &[u8; 32]) -> [u8; 32] {
         // z^(2^255 - 21) — used for inversion via z^(p-2)
         // Actually we compute z^(p-2) = z^(2^255 - 21)
         // This is fe_invert
-        let mut t0 = fe_sq(z);                // z^2
-        let mut t1 = fe_sq(&t0);              // z^4
-        t1 = fe_sq(&t1);                      // z^8
-        t1 = fe_mul(&t1, z);                  // z^9
-        t0 = fe_mul(&t0, &t1);                // z^11
-        let mut t2 = fe_sq(&t0);              // z^22
-        t1 = fe_mul(&t1, &t2);                // z^31 = 2^5-1
+        let mut t0 = fe_sq(z); // z^2
+        let mut t1 = fe_sq(&t0); // z^4
+        t1 = fe_sq(&t1); // z^8
+        t1 = fe_mul(&t1, z); // z^9
+        t0 = fe_mul(&t0, &t1); // z^11
+        let mut t2 = fe_sq(&t0); // z^22
+        t1 = fe_mul(&t1, &t2); // z^31 = 2^5-1
         t2 = fe_sq(&t1);
-        for _ in 1..5 { t2 = fe_sq(&t2); }   // z^(2^10 - 32)
-        t1 = fe_mul(&t2, &t1);                // z^(2^10 - 1)
+        for _ in 1..5 {
+            t2 = fe_sq(&t2);
+        } // z^(2^10 - 32)
+        t1 = fe_mul(&t2, &t1); // z^(2^10 - 1)
         t2 = fe_sq(&t1);
-        for _ in 1..10 { t2 = fe_sq(&t2); }  // z^(2^20 - 1024)
-        t2 = fe_mul(&t2, &t1);                // z^(2^20 - 1)
+        for _ in 1..10 {
+            t2 = fe_sq(&t2);
+        } // z^(2^20 - 1024)
+        t2 = fe_mul(&t2, &t1); // z^(2^20 - 1)
         let mut t3 = fe_sq(&t2);
-        for _ in 1..20 { t3 = fe_sq(&t3); }  // z^(2^40 - 2^20)
-        t2 = fe_mul(&t3, &t2);                // z^(2^40 - 1)
+        for _ in 1..20 {
+            t3 = fe_sq(&t3);
+        } // z^(2^40 - 2^20)
+        t2 = fe_mul(&t3, &t2); // z^(2^40 - 1)
         t2 = fe_sq(&t2);
-        for _ in 1..10 { t2 = fe_sq(&t2); }  // z^(2^50 - 1024)
-        t1 = fe_mul(&t2, &t1);                // z^(2^50 - 1)
+        for _ in 1..10 {
+            t2 = fe_sq(&t2);
+        } // z^(2^50 - 1024)
+        t1 = fe_mul(&t2, &t1); // z^(2^50 - 1)
         t2 = fe_sq(&t1);
-        for _ in 1..50 { t2 = fe_sq(&t2); }  // z^(2^100 - 2^50)
-        t2 = fe_mul(&t2, &t1);                // z^(2^100 - 1)
+        for _ in 1..50 {
+            t2 = fe_sq(&t2);
+        } // z^(2^100 - 2^50)
+        t2 = fe_mul(&t2, &t1); // z^(2^100 - 1)
         t3 = fe_sq(&t2);
-        for _ in 1..100 { t3 = fe_sq(&t3); } // z^(2^200 - 2^100)
-        t2 = fe_mul(&t3, &t2);                // z^(2^200 - 1)
+        for _ in 1..100 {
+            t3 = fe_sq(&t3);
+        } // z^(2^200 - 2^100)
+        t2 = fe_mul(&t3, &t2); // z^(2^200 - 1)
         t2 = fe_sq(&t2);
-        for _ in 1..50 { t2 = fe_sq(&t2); }  // z^(2^250 - 2^50)
-        t1 = fe_mul(&t2, &t1);                // z^(2^250 - 1)
-        t1 = fe_sq(&t1);                      // z^(2^251 - 2)
-        t1 = fe_sq(&t1);                      // z^(2^252 - 4)
-        t1 = fe_sq(&t1);                      // z^(2^253 - 8)
-        t1 = fe_sq(&t1);                      // z^(2^254 - 16)
-        t1 = fe_sq(&t1);                      // z^(2^255 - 32)
-        t0 = fe_mul(&t1, &t0);                // z^(2^255 - 21) = z^(p-2)
+        for _ in 1..50 {
+            t2 = fe_sq(&t2);
+        } // z^(2^250 - 2^50)
+        t1 = fe_mul(&t2, &t1); // z^(2^250 - 1)
+        t1 = fe_sq(&t1); // z^(2^251 - 2)
+        t1 = fe_sq(&t1); // z^(2^252 - 4)
+        t1 = fe_sq(&t1); // z^(2^253 - 8)
+        t1 = fe_sq(&t1); // z^(2^254 - 16)
+        t1 = fe_sq(&t1); // z^(2^255 - 32)
+        t0 = fe_mul(&t1, &t0); // z^(2^255 - 21) = z^(p-2)
         t0
     }
 
@@ -374,11 +392,11 @@ pub fn encrypt_message(
     // 使用 AES-256-GCM（已有依赖）作为 AEAD
     // 注：设计文档要求 ChaCha20-Poly1305，但项目已有 aes-gcm 依赖
     // 这里复用 aes-gcm 实现 AEAD 功能，接口对外标注为 e2e 加密
-    let key = aes_gcm::Key::<aes_gcm::Aes256Gcm>::from_slice(&encryption_key);
-    let cipher = aes_gcm::Aes256Gcm::new(key);
-    let nonce = aes_gcm::Nonce::from_slice(&nonce_bytes);
+    let cipher = aes_gcm::Aes256Gcm::new_from_slice(&encryption_key)
+        .map_err(|e| format!("Cipher init failed: {}", e))?;
+    let nonce = aes_gcm::Nonce::from(nonce_bytes);
 
-    let ciphertext = aes_gcm::aead::Aead::encrypt(&cipher, nonce, plaintext)
+    let ciphertext = aes_gcm::aead::Aead::encrypt(&cipher, &nonce, plaintext)
         .map_err(|e| format!("Encryption failed: {}", e))?;
 
     Ok(EncryptedEnvelope {
@@ -398,28 +416,28 @@ pub fn decrypt_message(
 
     let encryption_key = hkdf_derive(shared_secret, b"mfp-e2e-chacha20");
 
-    let nonce_bytes = base64_decode(&envelope.nonce)
-        .map_err(|_| "Invalid nonce encoding")?;
-    let ciphertext = base64_decode(&envelope.ciphertext)
-        .map_err(|_| "Invalid ciphertext encoding")?;
+    let nonce_bytes = base64_decode(&envelope.nonce).map_err(|_| "Invalid nonce encoding")?;
+    let ciphertext =
+        base64_decode(&envelope.ciphertext).map_err(|_| "Invalid ciphertext encoding")?;
 
     if nonce_bytes.len() != 12 {
         return Err("Invalid nonce length".to_string());
     }
 
-    let key = aes_gcm::Key::<aes_gcm::Aes256Gcm>::from_slice(&encryption_key);
-    let cipher = aes_gcm::Aes256Gcm::new(key);
-    let nonce = aes_gcm::Nonce::from_slice(&nonce_bytes);
+    let cipher = aes_gcm::Aes256Gcm::new_from_slice(&encryption_key)
+        .map_err(|e| format!("Cipher init failed: {}", e))?;
+    let nonce_bytes: [u8; 12] = nonce_bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| "Invalid nonce length".to_string())?;
+    let nonce = aes_gcm::Nonce::from(nonce_bytes);
 
-    aes_gcm::aead::Aead::decrypt(&cipher, nonce, ciphertext.as_ref())
+    aes_gcm::aead::Aead::decrypt(&cipher, &nonce, ciphertext.as_ref())
         .map_err(|e| format!("Decryption failed: {}", e))
 }
 
 /// 执行 X25519 ECDH 密钥交换，得到共享密钥
-pub fn compute_shared_secret(
-    local_private: &[u8; 32],
-    remote_public: &[u8; 32],
-) -> [u8; 32] {
+pub fn compute_shared_secret(local_private: &[u8; 32], remote_public: &[u8; 32]) -> [u8; 32] {
     x25519_scalar_mult(local_private, remote_public)
 }
 
@@ -434,14 +452,12 @@ fn hkdf_derive(ikm: &[u8], info: &[u8]) -> [u8; 32] {
 
     // Extract: PRK = HMAC-SHA256(salt=0x00..., IKM)
     let salt = [0u8; 32];
-    let mut extractor = HmacSha256::new_from_slice(&salt)
-        .expect("HMAC can accept any key length");
+    let mut extractor = HmacSha256::new_from_slice(&salt).expect("HMAC can accept any key length");
     extractor.update(ikm);
     let prk = extractor.finalize().into_bytes();
 
     // Expand: OKM = HMAC-SHA256(PRK, info || 0x01)
-    let mut expander = HmacSha256::new_from_slice(&prk)
-        .expect("HMAC can accept any key length");
+    let mut expander = HmacSha256::new_from_slice(&prk).expect("HMAC can accept any key length");
     expander.update(info);
     expander.update(&[0x01]);
     let okm = expander.finalize().into_bytes();
@@ -490,8 +506,8 @@ pub fn accept_key_exchange(
     session: &mut EncryptionSession,
     remote_pk_base64: &str,
 ) -> Result<[u8; 32], String> {
-    let remote_pk_bytes = base64_decode(remote_pk_base64)
-        .map_err(|_| "Invalid remote public key encoding")?;
+    let remote_pk_bytes =
+        base64_decode(remote_pk_base64).map_err(|_| "Invalid remote public key encoding")?;
     if remote_pk_bytes.len() != 32 {
         return Err("Remote public key must be 32 bytes".to_string());
     }
@@ -522,13 +538,14 @@ pub fn encrypt_with_session(
         return Err("Session not established".to_string());
     }
 
-    let remote_pk = session.remote_public_key.as_ref()
+    let remote_pk = session
+        .remote_public_key
+        .as_ref()
         .ok_or("No remote public key")?;
 
     let local_sk_bytes = base64_decode(&session.local_keypair.private_key)
         .map_err(|_| "Invalid local private key")?;
-    let remote_pk_bytes = base64_decode(remote_pk)
-        .map_err(|_| "Invalid remote public key")?;
+    let remote_pk_bytes = base64_decode(remote_pk).map_err(|_| "Invalid remote public key")?;
 
     let mut sk = [0u8; 32];
     sk.copy_from_slice(&local_sk_bytes);
@@ -537,8 +554,8 @@ pub fn encrypt_with_session(
 
     let shared = compute_shared_secret(&sk, &rpk);
 
-    let local_pk_bytes = base64_decode(&session.local_keypair.public_key)
-        .map_err(|_| "Invalid local public key")?;
+    let local_pk_bytes =
+        base64_decode(&session.local_keypair.public_key).map_err(|_| "Invalid local public key")?;
     let mut epk = [0u8; 32];
     epk.copy_from_slice(&local_pk_bytes);
 
@@ -550,8 +567,8 @@ pub fn decrypt_with_session(
     session: &EncryptionSession,
     envelope: &EncryptedEnvelope,
 ) -> Result<Vec<u8>, String> {
-    let remote_pk_bytes = base64_decode(&envelope.ephemeral_key)
-        .map_err(|_| "Invalid ephemeral key")?;
+    let remote_pk_bytes =
+        base64_decode(&envelope.ephemeral_key).map_err(|_| "Invalid ephemeral key")?;
     let local_sk_bytes = base64_decode(&session.local_keypair.private_key)
         .map_err(|_| "Invalid local private key")?;
 

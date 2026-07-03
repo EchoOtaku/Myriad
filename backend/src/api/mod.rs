@@ -6,13 +6,13 @@ pub mod ai_recommend; // ✅ AI图标推荐 API
 pub mod analysis;
 pub mod auth;
 pub mod auth_local;
-pub mod oauth; // 🔐 通用 OAuth handler (PR #2 — 取代 auth.rs 里的硬编码 GitHub 流)
 pub mod bilibili;
 pub mod brew; // ✅ Brew 阅读 RSS/Atom/JSON Feed 订阅 API
 pub mod brewlia; // ✅ Brewlia AI增强阅读 API
 pub mod cache; // ✅ 缓存管理 API
 pub mod config;
 pub mod metrics; // ✅ 系统监控指标 API (P2优化)
+pub mod oauth; // 🔐 通用 OAuth handler (PR #2 — 取代 auth.rs 里的硬编码 GitHub 流)
 pub mod platforms;
 pub mod profile;
 pub mod prompt;
@@ -65,10 +65,7 @@ pub async fn health() -> (StatusCode, Json<Value>) {
     // Falls back to crate version so local `cargo run` still works.
     let version = option_env!("MYRIAD_VERSION").unwrap_or(concat!("v", env!("CARGO_PKG_VERSION")));
 
-    let uptime = STARTED_AT
-        .get()
-        .map(|t| t.elapsed().as_secs())
-        .unwrap_or(0);
+    let uptime = STARTED_AT.get().map(|t| t.elapsed().as_secs()).unwrap_or(0);
 
     (
         StatusCode::OK,

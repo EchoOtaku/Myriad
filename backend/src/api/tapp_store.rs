@@ -20,13 +20,14 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait,
+    QueryFilter, Set,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs;
 
+use crate::api::tapp_runtime::common as tapp_common;
 use crate::middleware::auth::{auth_middleware, extract_optional_claims, Claims};
 use crate::models::entities::{
     tapp_storage, tapp_store_sources, tapp_user_activities, tapp_widgets, tapps,
@@ -34,11 +35,12 @@ use crate::models::entities::{
 use crate::services::data_paths::paths;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::GLOBAL_DYNAMIC_CONFIG;
-use crate::api::tapp_runtime::common as tapp_common;
 
 /// 获取管理员用户 ID（委托给 tapp_runtime::common 的缓存版本）
 async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, StatusCode> {
-    tapp_common::get_admin_user_id(db).await.map_err(|(status, _)| status)
+    tapp_common::get_admin_user_id(db)
+        .await
+        .map_err(|(status, _)| status)
 }
 
 /// 🔒 验证用户对 Tapp 的访问权限（委托给 tapp_runtime::common 的统一版本）
@@ -481,27 +483,42 @@ async fn fetch_from_store(
     if let Ok(parsed_url) = reqwest::Url::parse(base_url) {
         let scheme = parsed_url.scheme();
         if scheme != "https" && scheme != "http" {
-            return Err((StatusCode::BAD_REQUEST, api_error("Only HTTP(S) URLs are allowed")));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                api_error("Only HTTP(S) URLs are allowed"),
+            ));
         }
         if let Some(host) = parsed_url.host_str() {
-            if host == "localhost" || host == "127.0.0.1" || host == "::1"
-                || host.starts_with("10.") || host.starts_with("172.16.")
-                || host.starts_with("192.168.") || host == "0.0.0.0"
-                || host.ends_with(".local") || host.ends_with(".internal")
+            if host == "localhost"
+                || host == "127.0.0.1"
+                || host == "::1"
+                || host.starts_with("10.")
+                || host.starts_with("172.16.")
+                || host.starts_with("192.168.")
+                || host == "0.0.0.0"
+                || host.ends_with(".local")
+                || host.ends_with(".internal")
             {
-                return Err((StatusCode::BAD_REQUEST, api_error("Internal network URLs are not allowed")));
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    api_error("Internal network URLs are not allowed"),
+                ));
             }
         }
     }
 
     // 获取商店索引
     let index_url = format!("{}/index.json", base_url);
-    let index_resp = tapp_common::HTTP_CLIENT.get(&index_url).send().await.map_err(|e| {
-        (
-            StatusCode::BAD_GATEWAY,
-            api_error(format!("Failed to fetch store index: {}", e)),
-        )
-    })?;
+    let index_resp = tapp_common::HTTP_CLIENT
+        .get(&index_url)
+        .send()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                api_error(format!("Failed to fetch store index: {}", e)),
+            )
+        })?;
 
     if !index_resp.status().is_success() {
         return Err((
@@ -552,12 +569,16 @@ async fn fetch_from_store(
         .ok_or_else(|| (StatusCode::BAD_GATEWAY, api_error("No manifest path")))?;
     let manifest_url = format!("{}/{}", base_url, manifest_path);
 
-    let manifest_resp = tapp_common::HTTP_CLIENT.get(&manifest_url).send().await.map_err(|e| {
-        (
-            StatusCode::BAD_GATEWAY,
-            api_error(format!("Failed to fetch manifest: {}", e)),
-        )
-    })?;
+    let manifest_resp = tapp_common::HTTP_CLIENT
+        .get(&manifest_url)
+        .send()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                api_error(format!("Failed to fetch manifest: {}", e)),
+            )
+        })?;
 
     let manifest: TappManifest = manifest_resp.json().await.map_err(|e| {
         (
@@ -615,7 +636,11 @@ async fn fetch_from_store(
     // 下载 Widget 专用 CSS（分离模式）
     if let Some(widget_styles_path) = download.get("widget_styles").and_then(|v| v.as_str()) {
         let widget_styles_url = format!("{}/{}", base_url, widget_styles_path);
-        if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&widget_styles_url).send().await {
+        if let Ok(resp) = tapp_common::HTTP_CLIENT
+            .get(&widget_styles_url)
+            .send()
+            .await
+        {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     widget_styles_content = Some(content);
@@ -687,7 +712,11 @@ async fn fetch_from_store(
             }
         }
     }
-    let i18n_opt = if i18n_data.is_empty() { None } else { Some(i18n_data) };
+    let i18n_opt = if i18n_data.is_empty() {
+        None
+    } else {
+        Some(i18n_data)
+    };
 
     // 下载 Page 模块文件
     let mut page_modules_data: std::collections::HashMap<String, String> =
@@ -706,7 +735,11 @@ async fn fetch_from_store(
             }
         }
     }
-    let page_modules_opt = if page_modules_data.is_empty() { None } else { Some(page_modules_data) };
+    let page_modules_opt = if page_modules_data.is_empty() {
+        None
+    } else {
+        Some(page_modules_data)
+    };
 
     Ok((
         manifest,
@@ -779,79 +812,88 @@ async fn install_tapp(
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
 
     // 根据来源获取 manifest 和代码
-    let (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates, store_i18n, store_page_modules) =
-        match req.source.as_str() {
-            "direct" => {
-                // 直接安装：从请求中获取
-                let manifest = req.manifest.ok_or_else(|| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        api_error("manifest is required for direct install"),
-                    )
-                })?;
-                let code = req.code.ok_or_else(|| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        api_error("code is required for direct install"),
-                    )
-                })?;
+    let (
+        manifest,
+        code,
+        styles,
+        widget_styles,
+        page_styles,
+        page_template,
+        widget_templates,
+        store_i18n,
+        store_page_modules,
+    ) = match req.source.as_str() {
+        "direct" => {
+            // 直接安装：从请求中获取
+            let manifest = req.manifest.ok_or_else(|| {
                 (
-                    manifest,
-                    code,
-                    req.styles,
-                    None::<String>, // widget_styles - 直接安装暂不支持
-                    None::<String>, // page_styles - 直接安装暂不支持
-                    req.page_template,
-                    req.widget_templates,
-                    None::<std::collections::HashMap<String, serde_json::Value>>,
-                    None::<std::collections::HashMap<String, String>>,
-                )
-            }
-            "store" => {
-                // 从商店安装：下载文件
-                let store_source = req.store_source.ok_or_else(|| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        api_error("storeSource is required for store install"),
-                    )
-                })?;
-                let tapp_id = req.tapp_id.ok_or_else(|| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        api_error("tappId is required for store install"),
-                    )
-                })?;
-
-                let (
-                    manifest,
-                    code,
-                    styles,
-                    widget_styles,
-                    page_styles,
-                    page_template,
-                    widget_templates,
-                    i18n,
-                    page_modules,
-                ) = fetch_from_store(&db, &store_source, &tapp_id).await?;
-                (
-                    manifest,
-                    code,
-                    styles,
-                    widget_styles,
-                    page_styles,
-                    page_template,
-                    widget_templates,
-                    i18n,
-                    page_modules,
-                )
-            }
-            _ => {
-                return Err((
                     StatusCode::BAD_REQUEST,
-                    api_error("Invalid source, must be 'direct' or 'store'"),
-                ));
-            }
-        };
+                    api_error("manifest is required for direct install"),
+                )
+            })?;
+            let code = req.code.ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    api_error("code is required for direct install"),
+                )
+            })?;
+            (
+                manifest,
+                code,
+                req.styles,
+                None::<String>, // widget_styles - 直接安装暂不支持
+                None::<String>, // page_styles - 直接安装暂不支持
+                req.page_template,
+                req.widget_templates,
+                None::<std::collections::HashMap<String, serde_json::Value>>,
+                None::<std::collections::HashMap<String, String>>,
+            )
+        }
+        "store" => {
+            // 从商店安装：下载文件
+            let store_source = req.store_source.ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    api_error("storeSource is required for store install"),
+                )
+            })?;
+            let tapp_id = req.tapp_id.ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    api_error("tappId is required for store install"),
+                )
+            })?;
+
+            let (
+                manifest,
+                code,
+                styles,
+                widget_styles,
+                page_styles,
+                page_template,
+                widget_templates,
+                i18n,
+                page_modules,
+            ) = fetch_from_store(&db, &store_source, &tapp_id).await?;
+            (
+                manifest,
+                code,
+                styles,
+                widget_styles,
+                page_styles,
+                page_template,
+                widget_templates,
+                i18n,
+                page_modules,
+            )
+        }
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                api_error("Invalid source, must be 'direct' or 'store'"),
+            ));
+        }
+    };
 
     // 检查是否已安装
     let existing = tapps::Entity::find()
@@ -1179,12 +1221,18 @@ async fn install_tapp_file(
                     subdir.join(fname)
                 } else {
                     // 非白名单子目录 → 扁平化到根
-                    let safe_name = path.file_name().and_then(|n| n.to_str()).unwrap_or(&file_name);
+                    let safe_name = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&file_name);
                     tapp_dir_clone.join(safe_name)
                 }
             } else {
                 // 根目录文件或深层嵌套 → 只提取文件名
-                let safe_name = path.file_name().and_then(|n| n.to_str()).unwrap_or(&file_name);
+                let safe_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&file_name);
                 tapp_dir_clone.join(safe_name)
             };
 
@@ -1649,7 +1697,9 @@ async fn get_tapp_resources(
                     if path.extension().and_then(|e| e.to_str()) == Some("json") {
                         if let Some(lang) = path.file_stem().and_then(|s| s.to_str()) {
                             if let Ok(content) = fs::read_to_string(&path).await {
-                                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Ok(value) =
+                                    serde_json::from_str::<serde_json::Value>(&content)
+                                {
                                     translations.insert(lang.to_string(), value);
                                 }
                             }
@@ -1657,7 +1707,11 @@ async fn get_tapp_resources(
                     }
                 }
             }
-            if translations.is_empty() { None } else { Some(translations) }
+            if translations.is_empty() {
+                None
+            } else {
+                Some(translations)
+            }
         } else {
             None
         }
@@ -1681,7 +1735,11 @@ async fn get_tapp_resources(
                     }
                 }
             }
-            if modules.is_empty() { None } else { Some(modules) }
+            if modules.is_empty() {
+                None
+            } else {
+                Some(modules)
+            }
         } else {
             None
         }
@@ -1706,18 +1764,32 @@ async fn get_tapp_resources(
             // 从磁盘 manifest.json 读取 pageModules 加载顺序
             // 优先使用磁盘版本（始终最新），DB manifest 可能缺少此字段
             let manifest_path = tapp_dir.join("manifest.json");
-            std::fs::read_to_string(&manifest_path).ok().and_then(|content| {
-                serde_json::from_str::<serde_json::Value>(&content).ok().and_then(|v| {
-                    v.get("pageModules").and_then(|arr| arr.as_array()).map(|arr| {
-                        arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-                    })
+            std::fs::read_to_string(&manifest_path)
+                .ok()
+                .and_then(|content| {
+                    serde_json::from_str::<serde_json::Value>(&content)
+                        .ok()
+                        .and_then(|v| {
+                            v.get("pageModules")
+                                .and_then(|arr| arr.as_array())
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|v| v.as_str().map(String::from))
+                                        .collect()
+                                })
+                        })
                 })
-            }).or_else(|| {
-                // 回退到 DB manifest
-                manifest.get("pageModules").and_then(|arr| arr.as_array()).map(|arr| {
-                    arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                .or_else(|| {
+                    // 回退到 DB manifest
+                    manifest
+                        .get("pageModules")
+                        .and_then(|arr| arr.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        })
                 })
-            })
         }),
         page_modules,
     }))
@@ -2267,8 +2339,17 @@ async fn update_tapp(
         .ok_or_else(|| (StatusCode::NOT_FOUND, api_error("Tapp not installed")))?;
 
     // 从商店获取最新版本
-    let (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates, i18n_data, page_modules_data) =
-        fetch_from_store(&db, &store_source, &tapp_id).await?;
+    let (
+        manifest,
+        code,
+        styles,
+        widget_styles,
+        page_styles,
+        page_template,
+        widget_templates,
+        i18n_data,
+        page_modules_data,
+    ) = fetch_from_store(&db, &store_source, &tapp_id).await?;
 
     // 获取 Tapp 目录
     let tapp_dir = PathBuf::from(&existing_tapp.file_path)

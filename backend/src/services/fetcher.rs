@@ -82,6 +82,9 @@ pub struct SteamWishlistItem {
     pub priority: i32,
 }
 
+const BANGUMI_API_BASE: &str = "https://api.bgm.tv";
+const DEFAULT_BANGUMI_USER_AGENT: &str = "haru/Myriad";
+
 impl PlatformFetcher {
     pub async fn new() -> Self {
         Self {
@@ -728,5 +731,126 @@ impl PlatformFetcher {
     pub async fn fetch_netease_user(&self, user_id: i64) -> Result<serde_json::Value> {
         let netease_service = crate::services::netease_service::NeteaseService::new();
         netease_service.fetch_user_info(user_id).await
+    }
+
+    // ==================== Bangumi API ====================
+
+    fn bangumi_user_agent(user_agent: Option<&str>) -> &str {
+        user_agent
+            .filter(|ua| !ua.trim().is_empty())
+            .unwrap_or(DEFAULT_BANGUMI_USER_AGENT)
+    }
+
+    fn bangumi_request(
+        &self,
+        url: &str,
+        access_token: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> reqwest::RequestBuilder {
+        let mut request = self
+            .client
+            .get(url)
+            .header("User-Agent", Self::bangumi_user_agent(user_agent))
+            .header("Accept", "application/json");
+
+        if let Some(token) = access_token.filter(|token| !token.trim().is_empty()) {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
+
+        request
+    }
+
+    pub async fn fetch_bangumi_me(
+        &self,
+        access_token: &str,
+        user_agent: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let url = format!("{}/v0/me", BANGUMI_API_BASE);
+        let response = self
+            .bangumi_request(&url, Some(access_token), user_agent)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("Bangumi API error: {}", response.status()));
+        }
+
+        Ok(response.json().await?)
+    }
+
+    pub async fn fetch_bangumi_user(
+        &self,
+        username: &str,
+        access_token: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let encoded_username = urlencoding::encode(username);
+        let url = format!("{}/v0/users/{}", BANGUMI_API_BASE, encoded_username);
+        let response = self
+            .bangumi_request(&url, access_token, user_agent)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("Bangumi API error: {}", response.status()));
+        }
+
+        Ok(response.json().await?)
+    }
+
+    pub async fn fetch_bangumi_collections(
+        &self,
+        username: &str,
+        access_token: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> Result<Vec<serde_json::Value>> {
+        const PAGE_LIMIT: usize = 50;
+        const MAX_ITEMS: usize = 1000;
+
+        let mut collections = Vec::new();
+        let mut offset = 0usize;
+        let encoded_username = urlencoding::encode(username);
+
+        loop {
+            let url = format!(
+                "{}/v0/users/{}/collections?limit={}&offset={}",
+                BANGUMI_API_BASE, encoded_username, PAGE_LIMIT, offset
+            );
+            let response = self
+                .bangumi_request(&url, access_token, user_agent)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                return Err(anyhow!(
+                    "Bangumi collections API error: {}",
+                    response.status()
+                ));
+            }
+
+            let page: serde_json::Value = response.json().await?;
+            let mut data = page
+                .get("data")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            if data.is_empty() {
+                break;
+            }
+
+            let page_len = data.len();
+            collections.append(&mut data);
+
+            if page_len < PAGE_LIMIT || collections.len() >= MAX_ITEMS {
+                break;
+            }
+
+            offset += PAGE_LIMIT;
+            tokio::time::sleep(tokio::time::Duration::from_millis(350)).await;
+        }
+
+        collections.truncate(MAX_ITEMS);
+        Ok(collections)
     }
 }

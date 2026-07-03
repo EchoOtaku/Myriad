@@ -4,8 +4,8 @@
 
 use async_trait::async_trait;
 use oauth2::{
-    basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    RedirectUrl, Scope, TokenResponse, TokenUrl,
+    basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl,
+    Scope, TokenResponse, TokenUrl,
 };
 use serde::Deserialize;
 
@@ -46,12 +46,9 @@ impl GithubProvider {
 /// 返回类型用 macro 隐藏 — `BasicClient` 的 typestate 泛型不便于显式书写。
 macro_rules! build_github_client {
     ($self:expr, $redirect_uri:expr) => {{
-        let auth_url =
-            AuthUrl::new(GITHUB_AUTH_URL.to_string()).map_err(|e| e.to_string())?;
-        let token_url =
-            TokenUrl::new(GITHUB_TOKEN_URL.to_string()).map_err(|e| e.to_string())?;
-        let redirect =
-            RedirectUrl::new($redirect_uri.to_string()).map_err(|e| e.to_string())?;
+        let auth_url = AuthUrl::new(GITHUB_AUTH_URL.to_string()).map_err(|e| e.to_string())?;
+        let token_url = TokenUrl::new(GITHUB_TOKEN_URL.to_string()).map_err(|e| e.to_string())?;
+        let redirect = RedirectUrl::new($redirect_uri.to_string()).map_err(|e| e.to_string())?;
         BasicClient::new(ClientId::new($self.client_id.clone()))
             .set_client_secret(ClientSecret::new($self.client_secret.clone()))
             .set_auth_uri(auth_url)

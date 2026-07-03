@@ -4,7 +4,9 @@
 //! 包含完整的 Tapp UI 分析、交互和多窗口管理功能
 
 use super::HandlerContext;
-use crate::models::entities::{tapps, tapp_widgets, tapp_storage, tapp_scheduled_tasks, tapp_task_executions};
+use crate::models::entities::{
+    tapp_scheduled_tasks, tapp_storage, tapp_task_executions, tapp_widgets, tapps,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
@@ -12,16 +14,28 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 // HTML element parsing regexes (compiled once)
-static RE_BUTTON: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<button[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:class=[\"']([^\"']*)[\"'])?[^>]*(?:title=[\"']([^\"']*)[\"'])?[^>]*>([^<]*)"#).unwrap());
-static RE_INPUT: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<(?:input|textarea)[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:type=[\"']([^\"']*)[\"'])?[^>]*(?:placeholder=[\"']([^\"']*)[\"'])?[^>]*"#).unwrap());
-static RE_FORM: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<form[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:action=[\"']([^\"']*)[\"'])?[^>]*"#).unwrap());
-static RE_LINK: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<a[^>]*href=[\"']([^\"']*)[\"'][^>]*>([^<]*)"#).unwrap());
-static RE_ONCLICK: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<(\w+)[^>]*onclick=[\"']([^\"']*)[\"'][^>]*(?:id=[\"']([^\"']*)[\"'])?"#).unwrap());
+static RE_BUTTON: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"<button[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:class=[\"']([^\"']*)[\"'])?[^>]*(?:title=[\"']([^\"']*)[\"'])?[^>]*>([^<]*)"#).unwrap()
+});
+static RE_INPUT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"<(?:input|textarea)[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:type=[\"']([^\"']*)[\"'])?[^>]*(?:placeholder=[\"']([^\"']*)[\"'])?[^>]*"#).unwrap()
+});
+static RE_FORM: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"<form[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:action=[\"']([^\"']*)[\"'])?[^>]*"#)
+        .unwrap()
+});
+static RE_LINK: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"<a[^>]*href=[\"']([^\"']*)[\"'][^>]*>([^<]*)"#).unwrap());
+static RE_ONCLICK: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"<(\w+)[^>]*onclick=[\"']([^\"']*)[\"'][^>]*(?:id=[\"']([^\"']*)[\"'])?"#).unwrap()
+});
 
 // JS analysis regexes (compiled once)
-static RE_JS_FUNC: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?:async\s+)?function\s+(\w+)\s*\([^)]*\)"#).unwrap());
+static RE_JS_FUNC: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?:async\s+)?function\s+(\w+)\s*\([^)]*\)"#).unwrap());
 static RE_TAPP_API: Lazy<Regex> = Lazy::new(|| Regex::new(r#"Tapp\.(\w+)\.(\w+)"#).unwrap());
-static RE_ADDEVENT: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\.addEventListener\(['\"](\w+)['\"]"#).unwrap());
+static RE_ADDEVENT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\.addEventListener\(['\"](\w+)['\"]"#).unwrap());
 static RE_ON_PROP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\.on(\w+)\s*="#).unwrap());
 static RE_I18N_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r#"t\(['\"]([^'\"]+)['\"]\)"#).unwrap());
 static RE_FUNC_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\w+)\s*\("#).unwrap());
@@ -128,7 +142,11 @@ async fn execute_tapp_ui_analysis(
     // 解析 HTML 结构
     let structure = parse_html_structure(&html_content);
     let elements = parse_html_elements(&html_content, element_filter);
-    let functions = if include_code { parse_js_functions(&js_content) } else { vec![] };
+    let functions = if include_code {
+        parse_js_functions(&js_content)
+    } else {
+        vec![]
+    };
     let events = parse_js_events(&js_content);
     let i18n = parse_i18n(&js_content);
     let suggested_actions = generate_suggested_actions(&elements, &functions);
@@ -249,8 +267,18 @@ async fn execute_tapp_understand(
         });
 
     let frontend_action = if auto_execute {
-        if let Some(steps) = parsed.get("plan").and_then(|p| p.get("steps")).and_then(|s| s.as_array()) {
-            if !steps.is_empty() && parsed.get("plan").and_then(|p| p.get("canFulfill")).and_then(|c| c.as_bool()).unwrap_or(false) {
+        if let Some(steps) = parsed
+            .get("plan")
+            .and_then(|p| p.get("steps"))
+            .and_then(|s| s.as_array())
+        {
+            if !steps.is_empty()
+                && parsed
+                    .get("plan")
+                    .and_then(|p| p.get("canFulfill"))
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false)
+            {
                 let sequence: Vec<Value> = steps.iter().map(|step| {
                     json!({
                         "action": step.get("action").and_then(|a| a.as_str()).unwrap_or("click"),
@@ -267,9 +295,15 @@ async fn execute_tapp_understand(
                     "commands": sequence,
                     "timestamp": chrono::Utc::now().timestamp_millis()
                 }))
-            } else { None }
-        } else { None }
-    } else { None };
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     Ok(json!({
         "tappId": tapp_id,
@@ -320,7 +354,8 @@ async fn execute_tapp_interact(
             let op_value = op.get("value").and_then(|v| v.as_str());
             let op_delay = op.get("delay").and_then(|v| v.as_u64()).unwrap_or(0);
 
-            let (cmd, script) = generate_interaction_command(op_action, op_target, op_value, None, None, op_delay);
+            let (cmd, script) =
+                generate_interaction_command(op_action, op_target, op_value, None, None, op_delay);
 
             commands.push(json!({
                 "step": i + 1,
@@ -333,13 +368,17 @@ async fn execute_tapp_interact(
             script_parts.push(script);
         }
     } else if let Some(act) = action {
-        let (cmd, script) = generate_interaction_command(act, target.unwrap_or(""), value, function_name, args, 0);
+        let (cmd, script) =
+            generate_interaction_command(act, target.unwrap_or(""), value, function_name, args, 0);
         commands.push(json!({ "action": act, "target": target, "value": value, "command": cmd }));
         script_parts.push(script);
     }
 
     let full_script = if script_parts.len() > 1 {
-        format!("(async function() {{\n  {}\n}})();", script_parts.join("\n  "))
+        format!(
+            "(async function() {{\n  {}\n}})();",
+            script_parts.join("\n  ")
+        )
     } else {
         script_parts.join("")
     };
@@ -606,8 +645,8 @@ async fn execute_tapp_page_content(
             // 存储数据层级
             let tapp_id_str = tapp_id.ok_or("Missing tappId for storage level")?;
 
-            let mut query = tapp_storage::Entity::find()
-                .filter(tapp_storage::Column::TappId.eq(tapp_id_str));
+            let mut query =
+                tapp_storage::Entity::find().filter(tapp_storage::Column::TappId.eq(tapp_id_str));
             query = query.filter(tapp_storage::Column::UserId.eq(user_id));
 
             let storage_items = query
@@ -900,7 +939,10 @@ async fn execute_tapp_window_open(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if !has_page {
-        return Err(format!("Tapp '{}' does not have a page component", tapp.name));
+        return Err(format!(
+            "Tapp '{}' does not have a page component",
+            tapp.name
+        ));
     }
 
     Ok(json!({
@@ -980,9 +1022,14 @@ async fn execute_tapp_fill(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let target_window = params.get("targetWindow").ok_or("Missing targetWindow parameter")?;
+    let target_window = params
+        .get("targetWindow")
+        .ok_or("Missing targetWindow parameter")?;
     let data = params.get("data").ok_or("Missing data parameter")?;
-    let auto_submit = params.get("autoSubmit").and_then(|v| v.as_bool()).unwrap_or(false);
+    let auto_submit = params
+        .get("autoSubmit")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let window_target = resolve_window_target(target_window, ctx).await?;
 
@@ -993,29 +1040,40 @@ async fn execute_tapp_fill(
         for field in fields {
             let target = field.get("target").and_then(|t| t.as_str()).unwrap_or("");
             let value = field.get("value").and_then(|v| v.as_str()).unwrap_or("");
-            let field_type = field.get("type").and_then(|t| t.as_str()).unwrap_or("input");
+            let field_type = field
+                .get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or("input");
 
-            let (cmd, script) = generate_interaction_command(field_type, target, Some(value), None, None, 0);
+            let (cmd, script) =
+                generate_interaction_command(field_type, target, Some(value), None, None, 0);
 
-            commands.push(json!({ "action": field_type, "target": target, "value": value, "command": cmd }));
+            commands.push(
+                json!({ "action": field_type, "target": target, "value": value, "command": cmd }),
+            );
             script_parts.push(script);
         }
     }
 
     if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
-        let (cmd, script) = generate_interaction_command("input", "main-input", Some(content), None, None, 0);
+        let (cmd, script) =
+            generate_interaction_command("input", "main-input", Some(content), None, None, 0);
         commands.push(json!({ "action": "input", "target": "main-input", "value": content, "command": cmd, "autoDetect": true }));
         script_parts.push(script);
     }
 
     if auto_submit {
-        let (cmd, script) = generate_interaction_command("click", "submit-button", None, None, None, 100);
+        let (cmd, script) =
+            generate_interaction_command("click", "submit-button", None, None, None, 100);
         commands.push(json!({ "action": "submit", "target": "submit-button", "command": cmd, "autoDetect": true }));
         script_parts.push(script);
     }
 
     let full_script = if script_parts.len() > 1 {
-        format!("(async function() {{\n  {}\n}})();", script_parts.join("\n  "))
+        format!(
+            "(async function() {{\n  {}\n}})();",
+            script_parts.join("\n  ")
+        )
     } else {
         script_parts.join("")
     };
@@ -1041,8 +1099,13 @@ async fn execute_tapp_read(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let source_window = params.get("sourceWindow").ok_or("Missing sourceWindow parameter")?;
-    let read_type = params.get("readType").and_then(|v| v.as_str()).unwrap_or("all");
+    let source_window = params
+        .get("sourceWindow")
+        .ok_or("Missing sourceWindow parameter")?;
+    let read_type = params
+        .get("readType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("all");
     let selector = params.get("selector").and_then(|v| v.as_str());
 
     let window_target = resolve_window_target(source_window, ctx).await?;
@@ -1101,13 +1164,26 @@ async fn execute_router_navigate(params: &HashMap<String, Value>) -> Result<Valu
         .ok_or("Missing path parameter")?;
     let route_params = params.get("params").cloned().unwrap_or(json!({}));
     let query_params = params.get("query").cloned().unwrap_or(json!({}));
-    let replace = params.get("replace").and_then(|v| v.as_bool()).unwrap_or(false);
+    let replace = params
+        .get("replace")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // 验证路由路径
     let valid_prefixes = [
-        "/", "/home", "/brew", "/platform", "/tapp", "/report", "/settings", "/profile", "/agent",
+        "/",
+        "/home",
+        "/brew",
+        "/platform",
+        "/tapp",
+        "/report",
+        "/settings",
+        "/profile",
+        "/agent",
     ];
-    let is_valid = valid_prefixes.iter().any(|prefix| path.starts_with(prefix) || path == *prefix);
+    let is_valid = valid_prefixes
+        .iter()
+        .any(|prefix| path.starts_with(prefix) || path == *prefix);
 
     if !is_valid {
         return Err(format!("Invalid route path: {}", path));
@@ -1148,7 +1224,9 @@ async fn execute_page_interact(params: &HashMap<String, Value>) -> Result<Value,
     let target = params.get("target").ok_or("Missing target parameter")?;
     let value = params.get("value").and_then(|v| v.as_str());
 
-    let valid_actions = ["click", "hover", "focus", "scroll", "select", "toggle", "expand", "collapse"];
+    let valid_actions = [
+        "click", "hover", "focus", "scroll", "select", "toggle", "expand", "collapse",
+    ];
     if !valid_actions.contains(&action) {
         return Err(format!("Invalid action: {}", action));
     }
@@ -1219,11 +1297,14 @@ async fn execute_page_understand(
 
 /// 解析 HTML 结构概览
 fn parse_html_structure(html: &str) -> Value {
-    let has_background = html.contains("id=\"tapp-background\"") || html.contains("id='tapp-background'");
+    let has_background =
+        html.contains("id=\"tapp-background\"") || html.contains("id='tapp-background'");
     let has_content = html.contains("id=\"tapp-content\"") || html.contains("id='tapp-content'");
 
     let mut sections = vec![];
-    for tag in ["header", "main", "footer", "nav", "aside", "article", "section", "form"] {
+    for tag in [
+        "header", "main", "footer", "nav", "aside", "article", "section", "form",
+    ] {
         if html.contains(&format!("<{}", tag)) {
             sections.push(tag);
         }
@@ -1301,7 +1382,9 @@ fn parse_html_elements(html: &str, filter: &str) -> Value {
         "buttons" => json!({ "buttons": buttons }),
         "inputs" => json!({ "inputs": inputs }),
         "forms" => json!({ "forms": forms }),
-        "interactive" => json!({ "buttons": buttons, "inputs": inputs, "interactive": interactive }),
+        "interactive" => {
+            json!({ "buttons": buttons, "inputs": inputs, "interactive": interactive })
+        }
         _ => json!({
             "buttons": buttons, "inputs": inputs, "forms": forms, "links": links, "interactive": interactive,
             "summary": { "totalButtons": buttons.len(), "totalInputs": inputs.len(), "totalForms": forms.len(), "totalLinks": links.len() }
@@ -1313,27 +1396,48 @@ fn parse_html_elements(html: &str, filter: &str) -> Value {
 fn infer_button_action(id: &str, class: &str, title: &str, text: &str) -> String {
     let combined = format!("{} {} {} {}", id, class, title, text).to_lowercase();
 
-    if combined.contains("send") || combined.contains("submit") || combined.contains("发送") { "submit".to_string() }
-    else if combined.contains("add") || combined.contains("新增") || combined.contains("添加") { "add".to_string() }
-    else if combined.contains("delete") || combined.contains("remove") || combined.contains("删除") { "delete".to_string() }
-    else if combined.contains("search") || combined.contains("搜索") { "search".to_string() }
-    else if combined.contains("edit") || combined.contains("编辑") { "edit".to_string() }
-    else if combined.contains("save") || combined.contains("保存") { "save".to_string() }
-    else if combined.contains("cancel") || combined.contains("取消") { "cancel".to_string() }
-    else if combined.contains("close") || combined.contains("关闭") { "close".to_string() }
-    else { "click".to_string() }
+    if combined.contains("send") || combined.contains("submit") || combined.contains("发送") {
+        "submit".to_string()
+    } else if combined.contains("add") || combined.contains("新增") || combined.contains("添加")
+    {
+        "add".to_string()
+    } else if combined.contains("delete")
+        || combined.contains("remove")
+        || combined.contains("删除")
+    {
+        "delete".to_string()
+    } else if combined.contains("search") || combined.contains("搜索") {
+        "search".to_string()
+    } else if combined.contains("edit") || combined.contains("编辑") {
+        "edit".to_string()
+    } else if combined.contains("save") || combined.contains("保存") {
+        "save".to_string()
+    } else if combined.contains("cancel") || combined.contains("取消") {
+        "cancel".to_string()
+    } else if combined.contains("close") || combined.contains("关闭") {
+        "close".to_string()
+    } else {
+        "click".to_string()
+    }
 }
 
 /// 从输入框属性推断用途
 fn infer_input_purpose(id: &str, input_type: &str, placeholder: &str) -> String {
     let combined = format!("{} {} {}", id, input_type, placeholder).to_lowercase();
 
-    if combined.contains("search") || combined.contains("搜索") { "search".to_string() }
-    else if combined.contains("password") || combined.contains("密码") { "password".to_string() }
-    else if combined.contains("email") || combined.contains("邮箱") { "email".to_string() }
-    else if combined.contains("name") || combined.contains("姓名") { "name".to_string() }
-    else if combined.contains("note") || combined.contains("笔记") { "note".to_string() }
-    else { "text".to_string() }
+    if combined.contains("search") || combined.contains("搜索") {
+        "search".to_string()
+    } else if combined.contains("password") || combined.contains("密码") {
+        "password".to_string()
+    } else if combined.contains("email") || combined.contains("邮箱") {
+        "email".to_string()
+    } else if combined.contains("name") || combined.contains("姓名") {
+        "name".to_string()
+    } else if combined.contains("note") || combined.contains("笔记") {
+        "note".to_string()
+    } else {
+        "text".to_string()
+    }
 }
 
 /// 解析 JS 函数
@@ -1416,25 +1520,40 @@ fn parse_i18n(js: &str) -> Value {
 
 fn infer_function_purpose(name: &str) -> String {
     let lower = name.to_lowercase();
-    if lower.contains("init") { "initialization".to_string() }
-    else if lower.contains("render") { "rendering".to_string() }
-    else if lower.contains("update") { "update".to_string() }
-    else if lower.contains("add") { "add_item".to_string() }
-    else if lower.contains("delete") { "delete_item".to_string() }
-    else if lower.contains("save") { "save_data".to_string() }
-    else if lower.contains("load") { "load_data".to_string() }
-    else { "utility".to_string() }
+    if lower.contains("init") {
+        "initialization".to_string()
+    } else if lower.contains("render") {
+        "rendering".to_string()
+    } else if lower.contains("update") {
+        "update".to_string()
+    } else if lower.contains("add") {
+        "add_item".to_string()
+    } else if lower.contains("delete") {
+        "delete_item".to_string()
+    } else if lower.contains("save") {
+        "save_data".to_string()
+    } else if lower.contains("load") {
+        "load_data".to_string()
+    } else {
+        "utility".to_string()
+    }
 }
 
 fn infer_tapp_api_purpose(api: &str) -> String {
-    if api.contains("storage") { "data_persistence".to_string() }
-    else if api.contains("ui") { "user_interface".to_string() }
-    else if api.contains("lifecycle") { "lifecycle_management".to_string() }
-    else { "api_call".to_string() }
+    if api.contains("storage") {
+        "data_persistence".to_string()
+    } else if api.contains("ui") {
+        "user_interface".to_string()
+    } else if api.contains("lifecycle") {
+        "lifecycle_management".to_string()
+    } else {
+        "api_call".to_string()
+    }
 }
 
 fn extract_function_name(onclick: &str) -> String {
-    RE_FUNC_NAME.captures(onclick)
+    RE_FUNC_NAME
+        .captures(onclick)
         .and_then(|c| c.get(1))
         .map(|m| m.as_str().to_string())
         .unwrap_or_else(|| "inline".to_string())
@@ -1447,7 +1566,10 @@ fn generate_suggested_actions(elements: &Value, _functions: &[Value]) -> Vec<Val
     if let Some(buttons) = elements.get("buttons").and_then(|b| b.as_array()) {
         for btn in buttons {
             let id = btn.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let action = btn.get("action").and_then(|v| v.as_str()).unwrap_or("click");
+            let action = btn
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("click");
             let title = btn.get("title").and_then(|v| v.as_str()).unwrap_or("");
 
             if !id.is_empty() {
@@ -1464,7 +1586,10 @@ fn generate_suggested_actions(elements: &Value, _functions: &[Value]) -> Vec<Val
     if let Some(inputs) = elements.get("inputs").and_then(|i| i.as_array()) {
         for input in inputs {
             let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let purpose = input.get("purpose").and_then(|v| v.as_str()).unwrap_or("text");
+            let purpose = input
+                .get("purpose")
+                .and_then(|v| v.as_str())
+                .unwrap_or("text");
 
             if !id.is_empty() {
                 actions.push(json!({
@@ -1510,7 +1635,10 @@ fn generate_interaction_command(
         "input" => {
             let val = value.unwrap_or("");
             let escaped_val = sanitize_js_string(val);
-            let cmd = format!("document.getElementById('{}').value = '{}'", escaped_target, escaped_val);
+            let cmd = format!(
+                "document.getElementById('{}').value = '{}'",
+                escaped_target, escaped_val
+            );
             let script = format!(
                 "{}const input_{} = document.getElementById('{}');\n  if (input_{}) {{\n    input_{}.value = '{}';\n    input_{}.dispatchEvent(new Event('input', {{ bubbles: true }}));\n  }}",
                 delay_script, safe_target, escaped_target, safe_target, safe_target, escaped_val, safe_target
@@ -1528,14 +1656,25 @@ fn generate_interaction_command(
         "call" => {
             let func = function_name.unwrap_or(target);
             let safe_func = sanitize_js_string(func);
-            let args_str = args.map(|a| {
-                a.iter()
-                    .map(|v| if v.is_string() { format!("'{}'", sanitize_js_string(v.as_str().unwrap_or(""))) } else { v.to_string() })
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            }).unwrap_or_default();
+            let args_str = args
+                .map(|a| {
+                    a.iter()
+                        .map(|v| {
+                            if v.is_string() {
+                                format!("'{}'", sanitize_js_string(v.as_str().unwrap_or("")))
+                            } else {
+                                v.to_string()
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
             let cmd = format!("{}({})", safe_func, args_str);
-            let script = format!("{}if (typeof {} === 'function') {}({});", delay_script, safe_func, safe_func, args_str);
+            let script = format!(
+                "{}if (typeof {} === 'function') {}({});",
+                delay_script, safe_func, safe_func, args_str
+            );
             (cmd, script)
         }
         "focus" => {
@@ -1557,7 +1696,10 @@ fn generate_interaction_command(
         "select" => {
             let val = value.unwrap_or("");
             let escaped_val = sanitize_js_string(val);
-            let cmd = format!("document.getElementById('{}').value = '{}'", escaped_target, escaped_val);
+            let cmd = format!(
+                "document.getElementById('{}').value = '{}'",
+                escaped_target, escaped_val
+            );
             let script = format!(
                 "{}const select_{} = document.getElementById('{}');\n  if (select_{}) {{\n    select_{}.value = '{}';\n    select_{}.dispatchEvent(new Event('change', {{ bubbles: true }}));\n  }}",
                 delay_script, safe_target, escaped_target, safe_target, safe_target, escaped_val, safe_target
@@ -1604,7 +1746,10 @@ async fn resolve_window_target(target: &Value, ctx: &HandlerContext<'_>) -> Resu
 /// 从 AI 响应中提取 JSON
 fn extract_json_from_response(response: &str) -> Option<String> {
     if let Some(start) = response.find("```json") {
-        if let Some(end) = response[start..].find("```\n").or_else(|| response[start..].rfind("```")) {
+        if let Some(end) = response[start..]
+            .find("```\n")
+            .or_else(|| response[start..].rfind("```"))
+        {
             let json_start = start + 7;
             let json_content = &response[json_start..start + end];
             return Some(json_content.trim().to_string());
@@ -1910,23 +2055,21 @@ async fn execute_music_status() -> Result<Value, String> {
 
 /// 加载并播放歌单
 async fn execute_music_playlist(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let playlist_id = params
-        .get("playlistId")
-        .and_then(|v| {
-            if let Some(s) = v.as_str() {
-                if !s.is_empty() {
-                    Some(s.to_string())
-                } else {
-                    None
-                }
-            } else if let Some(n) = v.as_i64() {
-                Some(n.to_string())
-            } else if let Some(n) = v.as_u64() {
-                Some(n.to_string())
+    let playlist_id = params.get("playlistId").and_then(|v| {
+        if let Some(s) = v.as_str() {
+            if !s.is_empty() {
+                Some(s.to_string())
             } else {
                 None
             }
-        });
+        } else if let Some(n) = v.as_i64() {
+            Some(n.to_string())
+        } else if let Some(n) = v.as_u64() {
+            Some(n.to_string())
+        } else {
+            None
+        }
+    });
 
     let playlist_id = match playlist_id {
         Some(id) => id,
@@ -2032,21 +2175,17 @@ async fn execute_page_content(params: &HashMap<String, Value>) -> Result<Value, 
                 }))
             }
         }
-        "tapp" => {
-            Ok(json!({
-                "pageType": "tapp",
-                "hierarchy": { "level": "apps" },
-                "content": { "title": "Tapp 应用" },
-                "note": "详细内容请使用 tapp.page 能力"
-            }))
-        }
-        _ => {
-            Ok(json!({
-                "pageType": page_type,
-                "currentPath": current_path,
-                "content": { "title": "页面内容" },
-                "navigation": { "canGoBack": true }
-            }))
-        }
+        "tapp" => Ok(json!({
+            "pageType": "tapp",
+            "hierarchy": { "level": "apps" },
+            "content": { "title": "Tapp 应用" },
+            "note": "详细内容请使用 tapp.page 能力"
+        })),
+        _ => Ok(json!({
+            "pageType": page_type,
+            "currentPath": current_path,
+            "content": { "title": "页面内容" },
+            "navigation": { "canGoBack": true }
+        })),
     }
 }

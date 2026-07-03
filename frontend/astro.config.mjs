@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import react from '@astrojs/react'
@@ -51,6 +52,168 @@ function spaFallbackPlugin() {
         }
 
         next()
+      })
+    },
+  }
+}
+
+const BACKEND_TARGET = 'http://127.0.0.1:3000'
+
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+  'host',
+])
+
+async function readRequestBody(req) {
+  const chunks = []
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  return Buffer.concat(chunks)
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function proxyBackendRequest(targetUrl, method, headers, body) {
+  return new Promise((resolve, reject) => {
+    const requestHeaders = Object.fromEntries(headers.entries())
+    requestHeaders.connection = 'close'
+    if (body && body.length > 0) {
+      requestHeaders['content-length'] = String(body.length)
+    }
+
+    const backendReq = http.request(targetUrl, {
+      method,
+      headers: requestHeaders,
+      agent: false,
+      timeout: 30000,
+    }, (backendRes) => {
+      const chunks = []
+      backendRes.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))
+      backendRes.on('end', () => {
+        resolve({
+          statusCode: backendRes.statusCode || 502,
+          statusMessage: backendRes.statusMessage || 'Bad Gateway',
+          headers: backendRes.headers,
+          body: Buffer.concat(chunks),
+        })
+      })
+      backendRes.on('error', reject)
+    })
+
+    backendReq.on('timeout', () => {
+      backendReq.destroy(new Error('Backend proxy timeout'))
+    })
+    backendReq.on('error', reject)
+
+    if (body && body.length > 0) {
+      backendReq.end(body)
+    }
+    else {
+      backendReq.end()
+    }
+  })
+}
+
+/**
+ * Dev-only backend proxy implemented with one-shot node:http requests.
+ * This avoids Vite http-proxy and undici keep-alive socket reuse while
+ * preserving same-origin API URLs during local development.
+ */
+function backendDevProxyPlugin() {
+  return {
+    name: 'backend-dev-proxy',
+    apply: 'serve',
+    enforce: 'pre',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const originalUrl = req.url || ''
+        if (!originalUrl.startsWith('/api/') && originalUrl !== '/health') {
+          next()
+          return
+        }
+
+        try {
+          const targetUrl = new URL(originalUrl, BACKEND_TARGET)
+          const headers = new Headers()
+
+          for (const [name, value] of Object.entries(req.headers)) {
+            if (HOP_BY_HOP_HEADERS.has(name.toLowerCase()) || value == null) {
+              continue
+            }
+            if (Array.isArray(value)) {
+              for (const item of value) {
+                headers.append(name, item)
+              }
+            }
+            else {
+              headers.set(name, value)
+            }
+          }
+
+          const method = req.method || 'GET'
+          const hasBody = method !== 'GET' && method !== 'HEAD'
+          const body = hasBody ? await readRequestBody(req) : undefined
+          const retryable = method === 'GET' || method === 'HEAD'
+
+          let response
+          let lastError
+          for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+              response = await proxyBackendRequest(targetUrl, method, headers, body)
+              break
+            }
+            catch (error) {
+              lastError = error
+              if (!retryable || attempt === 3) {
+                throw error
+              }
+              await wait(120 * (attempt + 1))
+            }
+          }
+
+          if (!response) {
+            throw lastError || new Error('Backend proxy failed')
+          }
+
+          res.statusCode = response.statusCode
+          res.statusMessage = response.statusMessage
+          res.setHeader('x-myriad-dev-proxy', 'http')
+
+          for (const [name, value] of Object.entries(response.headers)) {
+            const lowerName = name.toLowerCase()
+            if (value != null && !HOP_BY_HOP_HEADERS.has(lowerName)) {
+              res.setHeader(name, value)
+            }
+          }
+
+          res.end(response.body)
+        }
+        catch (error) {
+          server.config.logger.error(
+            `[backend-dev-proxy] ${req.method || 'GET'} ${originalUrl} failed: ${
+              error instanceof Error ? `${error.message}\n${error.stack || ''}` : String(error)
+            }`,
+          )
+          if (!res.headersSent) {
+            res.statusCode = 502
+            res.setHeader('Content-Type', 'application/json')
+            res.setHeader('x-myriad-dev-proxy', 'http')
+          }
+          res.end(JSON.stringify({
+            error: 'Backend proxy failed',
+            message: error instanceof Error ? error.message : String(error),
+          }))
+        }
       })
     },
   }
@@ -163,13 +326,6 @@ export default defineConfig({
       fallbacks: ['serif'],
     },
   ],
-  // Astro 6: 实验性功能
-  experimental: {
-    // Rust 编译器：比 Go 编译器更快更可靠
-    rustCompiler: true,
-    // 队列渲染：两阶段渲染策略，基准测试提升 2x
-    queuedRendering: { enabled: true },
-  },
   // SPA 模式：所有路由都重定向到 index.html
   trailingSlash: 'never',
   vite: {
@@ -178,6 +334,7 @@ export default defineConfig({
     },
     plugins: [
       tailwindcss(), // Tailwind CSS v4 Vite plugin
+      backendDevProxyPlugin(), // 开发环境 API 转发，绕开 Vite http-proxy 的 socket 500
       spaFallbackPlugin(), // 自定义 SPA 路由回退
     ],
     resolve: {
@@ -257,18 +414,6 @@ export default defineConfig({
       // 启用 gzip 和 brotli 压缩报告
       reportCompressedSize: true,
       chunkSizeWarningLimit: 1000,
-    },
-    server: {
-      proxy: {
-        '/api': {
-          target: 'http://127.0.0.1:3000',
-          changeOrigin: true,
-        },
-        '/health': {
-          target: 'http://127.0.0.1:3000',
-          changeOrigin: true,
-        },
-      },
     },
   },
 })

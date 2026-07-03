@@ -9,6 +9,7 @@ import {
   FaTimes,
   LuGitFork,
   LuStar,
+  SiBangumi,
   SiBilibili,
   SiNeteasecloudmusic,
 } from '@lib/icons'
@@ -17,6 +18,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import AnimatedView from '../components/AnimatedView'
 import StageMode from '../components/StageMode'
+import { BangumiWidget } from '../components/StageWidgets'
 import Toast from '../components/Toast'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
@@ -81,6 +83,14 @@ interface PlatformReport {
     languages?: { name: string, percentage: number }[]
     soul_color?: string
     mood_keywords?: string[]
+    taste_profile?: string
+    status_counts?: Record<string, number>
+    subject_type_distribution?: Record<string, number>
+    collection_type_distribution?: Record<string, number>
+    score_distribution?: Record<string, number>
+    favorite_tags?: string[]
+    top_subjects?: Array<{ title?: string, rate?: number, type?: string }>
+    library_items?: Array<{ title: string, cover?: string, type: string, platform?: string, rate?: number }>
   }
   created_at: string
 }
@@ -161,6 +171,16 @@ const PLATFORMS = [
     text: 'text-red-500',
     border: 'border-red-200/20 dark:border-red-800/20',
     widgetType: 'music',
+  },
+  {
+    id: 'bangumi',
+    name: 'Bangumi',
+    icon: <SiBangumi />,
+    color: 'from-rose-400 to-pink-500',
+    bg: 'bg-rose-50/10 dark:bg-rose-900/10',
+    text: 'text-rose-500',
+    border: 'border-rose-200/20 dark:border-rose-800/20',
+    widgetType: 'book',
   },
 ]
 
@@ -1915,6 +1935,7 @@ export default function Reports() {
                           {selectedReport.platform === 'steam' && <SteamWidget data={selectedReport.card_visuals} showOverview={showOverview} defaultPlayerType={defaultPlayerType} />}
                           {selectedReport.platform === 'github' && <GithubWidget data={selectedReport.card_visuals} showOverview={showOverview} defaultLevel={defaultDevLevel} levelKeywords={levelKeywords} />}
                           {selectedReport.platform === 'netease' && <NeteaseWidget data={selectedReport.card_visuals} showOverview={showOverview} tenThousandSuffix={t.reportsPage.tenThousandSuffix} />}
+                          {selectedReport.platform === 'bangumi' && <BangumiWidget data={selectedReport.card_visuals} showOverview={showOverview} />}
                         </div>
                       </div>
                     </div>
@@ -2465,6 +2486,89 @@ export default function Reports() {
                                               {title}
                                             </div>
                                           ))}
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+                                </motion.div>
+                              </>
+                            ) : platform.id === 'bangumi' ? (
+                              <>
+                                <div className="flex-1 flex items-center justify-center overflow-hidden">
+                                  {isLoading
+                                    ? (
+                                        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className={platform.text}>
+                                          <FaChartPie size={20} />
+                                        </motion.div>
+                                      )
+                                    : !platformReport
+                                        ? (
+                                            <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
+                                              <div className="text-[10px] text-gray-400 font-medium">{isAdmin ? t.reportsPage.clickToGenerate : t.reportsPage.noReport}</div>
+                                            </div>
+                                          )
+                                        : (
+                                            <div className="w-full h-full">
+                                              <BangumiWidget
+                                                data={platformReport.card_visuals}
+                                                onContentChange={contentChangeHandlers[platform.id]}
+                                                showOverview={showOverview}
+                                              />
+                                            </div>
+                                          )}
+                                </div>
+
+                                <motion.div
+                                  className="absolute bottom-3 left-3 z-20"
+                                  initial={false}
+                                  animate={{
+                                    width: cardContents[platform.id] ? 'auto' : '32px',
+                                  }}
+                                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                                >
+                                  <div
+                                    className={`rounded-lg flex items-center gap-2 ${platform.text} backdrop-blur-sm shadow-lg transition-all overflow-hidden ${
+                                      cardContents[platform.id]
+                                        ? 'bg-white/95 dark:bg-black/95'
+                                        : ''
+                                    }`}
+                                    style={{
+                                      background: cardContents[platform.id]
+                                        ? undefined
+                                        : 'rgba(240, 145, 153, 0.15)',
+                                      border: '1px solid rgba(240, 145, 153, 0.3)',
+                                      padding: cardContents[platform.id] ? '4px 8px' : '0 8px',
+                                      height: cardContents[platform.id] ? 'auto' : '32px',
+                                    }}
+                                  >
+                                    <div className="text-base shrink-0">
+                                      {platform.icon}
+                                    </div>
+                                    <AnimatePresence>
+                                      {cardContents[platform.id] && (
+                                        <motion.div
+                                          initial={{ opacity: 0, width: 0 }}
+                                          animate={{ opacity: 1, width: 'auto' }}
+                                          exit={{ opacity: 0, width: 0 }}
+                                          transition={{ duration: 0.3 }}
+                                          className="flex flex-col gap-0.5 overflow-hidden py-0.5"
+                                        >
+                                          {cardContents[platform.id].titles.map((title: string, idx: number) => (
+                                            <div key={idx} className="text-[10px] font-bold text-gray-900 dark:text-gray-100 max-w-30 truncate leading-tight">
+                                              {title}
+                                            </div>
+                                          ))}
+                                          {cardContents[platform.id].type && (
+                                            <span className="text-[8px] text-gray-500 dark:text-gray-400">
+                                              {cardContents[platform.id].type === 'book'
+                                                ? t.library.book
+                                                : cardContents[platform.id].type === 'anime'
+                                                  ? t.reportsPage.anime
+                                                  : cardContents[platform.id].type === 'tv_series'
+                                                    ? t.reportsPage.tvSeries
+                                                    : t.reportsPage.video}
+                                            </span>
+                                          )}
                                         </motion.div>
                                       )}
                                     </AnimatePresence>

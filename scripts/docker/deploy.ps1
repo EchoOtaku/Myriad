@@ -33,10 +33,10 @@ Commands:
   up        (default) Initialise .env / pgdata if needed, then `docker compose up -d`
   down      Stop and remove containers (volumes preserved)
   restart   docker compose restart
-  pull      docker compose pull
+  pull      Pull images pinned by .env tags
   logs      docker compose logs -f
   status    docker compose ps + image versions
-  upgrade   Pull latest images per .env tags + recreate
+  upgrade   Pull images pinned by .env tags + recreate
   help      Show this help
 
 Examples:
@@ -59,6 +59,44 @@ function Invoke-Compose {
     & $cmd[0] @($cmd[1..($cmd.Count - 1)]) @args
 }
 
+function New-Secret {
+    $bytes = New-Object byte[] 36
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    return [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+}
+
+function Ensure-Key($key, $default) {
+    if (-not (Select-String -Path .env -Pattern "^$key=" -Quiet -ErrorAction SilentlyContinue)) {
+        Add-Content -Path .env -Value "$key=$default"
+        Write-Info "  + appended $key"
+    }
+}
+
+function Ensure-UpdateToken {
+    if (Select-String -Path .env -Pattern "^UPDATE_TOKEN=.+" -Quiet -ErrorAction SilentlyContinue) {
+        return
+    }
+
+    $token = New-Secret
+    if (Select-String -Path .env -Pattern "^UPDATE_TOKEN=" -Quiet -ErrorAction SilentlyContinue) {
+        $lines = Get-Content .env
+        $replaced = $false
+        $lines = $lines | ForEach-Object {
+            if (-not $replaced -and $_ -match "^UPDATE_TOKEN=") {
+                $replaced = $true
+                "UPDATE_TOKEN=$token"
+            } else {
+                $_
+            }
+        }
+        Set-Content -Path .env -Value $lines
+        Write-Info "  + filled empty UPDATE_TOKEN"
+    } else {
+        Add-Content -Path .env -Value "UPDATE_TOKEN=$token"
+        Write-Info "  + appended UPDATE_TOKEN"
+    }
+}
+
 function Ensure-Env {
     if (-not (Test-Path ".env")) {
         if (-not (Test-Path ".env.production.example")) {
@@ -73,7 +111,7 @@ function Ensure-Env {
         Write-Warn "  - JWT_SECRET"
         Write-Warn "  - CORS_ORIGINS"
         Write-Warn ""
-        Write-Warn "scripts/migrate-to-updater.sh will fill MYRIAD_TAG / UPDATER_TAG / UPDATE_TOKEN."
+        Write-Warn "This script will create pgdata/state/backups and fill an empty UPDATE_TOKEN."
         Write-Warn ""
         $r = Read-Host "Open .env in notepad? (y/N)"
         if ($r -match "^[Yy]$") {
@@ -82,29 +120,23 @@ function Ensure-Env {
     }
 }
 
-function Ensure-PgdataAndUpdater {
-    $hasMyriadTag = $false
-    if (Test-Path ".env") {
-        $hasMyriadTag = (Select-String -Path .env -Pattern "^MYRIAD_TAG=" -Quiet)
-    }
-    if (-not (Test-Path "./pgdata") -or -not $hasMyriadTag) {
-        Write-Info "==> Running scripts/migrate-to-updater.sh (idempotent)"
-        if (Get-Command bash -ErrorAction SilentlyContinue) {
-            $env:YES = "1"
-            bash scripts/migrate-to-updater.sh
-            Remove-Item Env:YES -ErrorAction SilentlyContinue
-        } else {
-            Write-Err "X bash not found. Install Git Bash or WSL, then run:"
-            Write-Err "    YES=1 bash scripts/migrate-to-updater.sh"
-            exit 2
-        }
-        Write-Host ""
-    }
+function Ensure-CurrentLayout {
+    Write-Info "==> Ensuring current proxy + updater layout"
+    New-Item -ItemType Directory -Force -Path pgdata, state, state/snapshots, state/cache, backups | Out-Null
+    Ensure-Key "MYRIAD_TAG" "v0.1.0"
+    Ensure-Key "PROXY_TAG" "v0.1.0"
+    Ensure-Key "UPDATER_TAG" "v0.1.0"
+    Ensure-Key "COMPOSE_PROJECT_NAME" "myriad"
+    Ensure-Key "CHANNEL" "stable"
+    Ensure-Key "MYRIAD_GITHUB_REPO" "Myriad-You/Myriad"
+    Ensure-Key "CHECK_INTERVAL_SECS" "3600"
+    Ensure-Key "PROXY_ALLOW_DIRECT_UPDATER" "false"
+    Ensure-UpdateToken
 }
 
 function Cmd-Up {
     Ensure-Env
-    Ensure-PgdataAndUpdater
+    Ensure-CurrentLayout
     Write-Info "==> docker compose up -d"
     Invoke-Compose up -d
     Write-Host ""

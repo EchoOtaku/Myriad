@@ -30,9 +30,9 @@ pub async fn get_outbox(
     Path(username): Path<String>,
     Query(query): Query<OutboxQuery>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db().await.map_err(|e| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e})))
-    })?;
+    let db = get_db()
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
     let base_url = get_base_url().await;
 
     let (user_id, _) = get_local_user(&db, &username).await?;
@@ -51,7 +51,11 @@ pub async fn get_outbox(
     let total_u64 = total.max(0) as u64;
 
     let outbox_id = outbox_url(&base_url, &username);
-    let last_page = if total == 0 { 1 } else { ((total - 1) / OUTBOX_PAGE_SIZE + 1) as u32 };
+    let last_page = if total == 0 {
+        1
+    } else {
+        ((total - 1) / OUTBOX_PAGE_SIZE + 1) as u32
+    };
 
     // 无 page 参数 → 返回 Collection 摘要
     let Some(page) = query.page else {
@@ -71,7 +75,10 @@ pub async fn get_outbox(
                 None
             },
         };
-        return Ok((StatusCode::OK, Json(serde_json::to_value(collection).unwrap())));
+        return Ok((
+            StatusCode::OK,
+            Json(serde_json::to_value(collection).unwrap()),
+        ));
     };
 
     let page = page.max(1);
@@ -93,7 +100,10 @@ pub async fn get_outbox(
 
     let items: Vec<serde_json::Value> = rows
         .iter()
-        .map(|r| r.try_get::<serde_json::Value>("", "object_json").unwrap_or(json!({})))
+        .map(|r| {
+            r.try_get::<serde_json::Value>("", "object_json")
+                .unwrap_or(json!({}))
+        })
         .collect();
 
     let page_id = format!("{}?page={}", outbox_id, page);
@@ -119,7 +129,10 @@ pub async fn get_outbox(
         prev,
     };
 
-    Ok((StatusCode::OK, Json(serde_json::to_value(page_doc).unwrap())))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::to_value(page_doc).unwrap()),
+    ))
 }
 
 // ==================== 辅助函数 ====================
@@ -152,7 +165,10 @@ async fn get_local_user(
         .await
         .map_err(db_err)?
         .ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "User not found"})),
+            )
         })?;
 
     Ok((

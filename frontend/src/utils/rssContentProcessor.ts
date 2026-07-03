@@ -21,6 +21,8 @@
  * - 来自各类源的特殊标签和样式
  */
 
+import { API_URL } from '../config'
+
 export interface ProcessOptions {
   /** 是否暗色模式 */
   isDark?: boolean
@@ -42,11 +44,6 @@ const DEFAULT_OPTIONS: ProcessOptions = {
   removeTrackingParams: true,
   removeEmptyTags: true,
 }
-
-// API URL for image proxy
-const API_URL = typeof window !== 'undefined'
-  ? (import.meta.env?.PUBLIC_API_URL || '')
-  : ''
 
 /**
  * 获取代理后的图片 URL

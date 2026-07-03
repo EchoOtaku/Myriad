@@ -38,7 +38,10 @@ pub fn get_capability_friendly_name(capability_id: &str) -> String {
             if let Some(skill_id) = capability_id.strip_prefix("skill:") {
                 let clean = skill_id.strip_prefix("_auto_").unwrap_or(skill_id);
                 // 将连字符和下划线替换为空格
-                let name: String = clean.chars().map(|c| if c == '-' || c == '_' { ' ' } else { c }).collect();
+                let name: String = clean
+                    .chars()
+                    .map(|c| if c == '-' || c == '_' { ' ' } else { c })
+                    .collect();
                 let trimmed = name.trim();
                 if !trimmed.is_empty() {
                     return format!("执行技能: {}", truncate_str(trimmed, 20));
@@ -182,7 +185,9 @@ pub fn get_step_description(step: &RecipeStep) -> String {
         }
         "ai.chat" => "AI 对话".to_string(),
         "ai.image" => {
-            let desc = params.get("description").and_then(|v| v.as_str())
+            let desc = params
+                .get("description")
+                .and_then(|v| v.as_str())
                 .or(params.get("prompt").and_then(|v| v.as_str()));
             if let Some(d) = desc {
                 format!("生成图片: {}", truncate_str(d, 20))

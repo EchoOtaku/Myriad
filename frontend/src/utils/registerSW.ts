@@ -8,7 +8,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   if (
     import.meta.env.PROD
       && 'serviceWorker' in navigator
-      && window.location.protocol === 'https:' || window.location.hostname === 'localhost'
+      && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')
   ) {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js', {

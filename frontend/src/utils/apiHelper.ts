@@ -55,8 +55,25 @@ export async function handleErrorResponse(
   throw new Error(errorMessage)
 }
 
+/** 开发代理或网络层可能短暂产生的瞬时状态码。 */
+const TRANSIENT_STATUSES = new Set([502, 503, 504])
+const MAX_RETRIES = 3
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/** 仅幂等方法可安全重试，避免 POST 等重复提交 */
+function isIdempotent(method?: string): boolean {
+  const m = (method ?? 'GET').toUpperCase()
+  return m === 'GET' || m === 'HEAD'
+}
+
 /**
  * 执行 API 请求并安全地处理响应
+ *
+ * 幂等请求（GET/HEAD）在遇到网络层错误或瞬时 5xx 时自动重试。
+ *
  * @param url 请求 URL
  * @param options Fetch 选项
  * @param errorMessage 错误时的默认消息
@@ -68,19 +85,37 @@ export async function fetchJson<T = any>(
   options?: RequestInit,
   errorMessage: string = '请求失败',
 ): Promise<T> {
-  try {
-    const response = await fetch(url, options)
+  const retryable = isIdempotent(options?.method)
 
-    if (!response.ok) {
-      await handleErrorResponse(response, errorMessage)
-    }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await fetch(url, {
+        credentials: 'include',
+        ...options,
+      })
 
-    return await parseJsonResponse(response)
-  }
-  catch (error) {
-    if (error instanceof Error) {
-      throw error
+      if (retryable && TRANSIENT_STATUSES.has(response.status) && attempt < MAX_RETRIES) {
+        await sleep(150 * (attempt + 1))
+        continue
+      }
+
+      if (!response.ok) {
+        await handleErrorResponse(response, errorMessage)
+      }
+
+      return await parseJsonResponse(response)
     }
-    throw new Error(errorMessage)
+    catch (error) {
+      // fetch 自身抛出 = 网络层错误（连接被拒 / socket hang up）。
+      const isNetworkError = error instanceof TypeError
+      if (retryable && isNetworkError && attempt < MAX_RETRIES) {
+        await sleep(150 * (attempt + 1))
+        continue
+      }
+      if (error instanceof Error) {
+        throw error
+      }
+      throw new Error(errorMessage)
+    }
   }
 }

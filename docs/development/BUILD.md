@@ -93,10 +93,10 @@ cargo build -j 2
 cd frontend
 
 # Install dependencies
-npm install
+pnpm install
 
 # Start development server (with hot reload)
-npm run dev
+pnpm run dev
 
 # The server will be available at http://localhost:4321
 ```
@@ -107,10 +107,10 @@ npm run dev
 cd frontend
 
 # Build static site
-npm run build
+pnpm run build
 
 # Preview the build
-npm run preview
+pnpm run preview
 
 # Output will be in: frontend/dist/
 ```
@@ -136,20 +136,20 @@ export default defineConfig({
 ```powershell
 # Clear node_modules and reinstall
 rm -r node_modules
-npm install
+pnpm install
 ```
 
 **Issue: TypeScript errors**
 ```powershell
 # Check types without building
-npm run astro check
+pnpm astro check
 ```
 
 **Issue: Memory issues during build**
 ```powershell
 # Increase Node.js memory limit
 $env:NODE_OPTIONS="--max-old-space-size=4096"
-npm run build
+pnpm run build
 ```
 
 ## Full Stack Build
@@ -196,11 +196,11 @@ cargo run --manifest-path migrations/Cargo.toml
 
 ```powershell
 # Build all services
-docker-compose build
+.\scripts\docker\build-and-push.ps1 -All
 
 # Build specific service
-docker-compose build backend
-docker-compose build frontend
+.\scripts\docker\build-and-push.ps1 -BackendOnly
+.\scripts\docker\build-and-push.ps1 -FrontendOnly
 ```
 
 ### Multi-stage Build Details
@@ -217,14 +217,13 @@ docker-compose build frontend
 
 ```powershell
 # Build without cache
-docker-compose build --no-cache
+.\scripts\docker\build-and-push.ps1 -All -NoBuildCache
 
 # Build with specific Docker file
 docker build -f docker/Dockerfile.backend -t myriad-backend .
 
 # Build and push to registry
-docker-compose build
-docker-compose push
+.\scripts\docker\build-and-push.ps1 -All -Push -Username your-registry-user
 ```
 
 ## Optimization Tips
@@ -266,7 +265,7 @@ docker-compose push
 
 3. **Minimize JavaScript**
    - Already done by Vite/Rollup
-   - Check output with `npm run build`
+   - Check output with `pnpm run build`
 
 ## Build Times (Reference)
 
@@ -278,7 +277,7 @@ docker-compose push
 - Release build: ~5-10 minutes
 
 **Frontend:**
-- npm install: ~1-2 minutes
+- pnpm install: ~1-2 minutes
 - Development build: ~5-15 seconds
 - Production build: ~30-60 seconds
 
@@ -311,7 +310,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 20
-      - run: cd frontend && npm ci && npm run build
+      - run: cd frontend && corepack enable && pnpm install --frozen-lockfile && pnpm run build
 ```
 
 ## Troubleshooting

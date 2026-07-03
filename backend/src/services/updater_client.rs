@@ -70,8 +70,12 @@ impl UpdaterClient {
     /// boot in setups without it (development, fresh installs that haven't migrated yet).
     pub fn from_env() -> Option<Self> {
         let base_url = std::env::var("MYRIAD_UPDATER_URL")
-            .unwrap_or_else(|_| "http://updater:9090".to_string());
-        let token = std::env::var("UPDATE_TOKEN").ok().filter(|s| !s.trim().is_empty());
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(default_container_updater_url)?;
+        let token = std::env::var("UPDATE_TOKEN")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
 
         // We accept a configuration in which only the base URL is set so admins can still
         // call read-only endpoints like /status from the backend. Mutating calls will fail
@@ -102,7 +106,8 @@ impl UpdaterClient {
 
     /// Forward a GET request. Token is attached if available.
     pub async fn get_json(&self, path: &str) -> Result<serde_json::Value, UpdaterClientError> {
-        self.call(Method::GET, path, Option::<&()>::None, None).await
+        self.call(Method::GET, path, Option::<&()>::None, None)
+            .await
     }
 
     /// Forward a POST request with a JSON body. `idempotency_key` becomes the
@@ -188,5 +193,20 @@ impl UpdaterClient {
             return Err(anyhow!("updater /healthz returned {}", resp.status()));
         }
         Ok(())
+    }
+}
+
+fn default_container_updater_url() -> Option<String> {
+    let production = std::env::var("ENVIRONMENT")
+        .map(|v| v.eq_ignore_ascii_case("production"))
+        .unwrap_or(false);
+    let in_container = std::path::Path::new("/.dockerenv").exists()
+        || std::env::var("container").is_ok()
+        || std::env::var("KUBERNETES_SERVICE_HOST").is_ok();
+
+    if production || in_container {
+        Some("http://updater:9090".to_string())
+    } else {
+        None
     }
 }

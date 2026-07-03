@@ -132,10 +132,10 @@ const SetupWizard: React.FC = () => {
 
       const result = await response.json()
 
-      if (result.reload_triggered) {
+      if (result.restart_triggered || result.reload_triggered) {
         alert(`${t.setup.dbConfigSaved}\n\n${t.setup.dbReconnecting}\n\n${t.setup.waitingForConnection}`)
 
-        // 开始轮询检查数据库连接状态
+        // 后端会由受管环境重启；轮询直到新进程以完整路由表启动
         pollDatabaseConnection()
       }
       else {

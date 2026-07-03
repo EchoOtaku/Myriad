@@ -40,10 +40,7 @@ impl AgentIdentity {
             tracing::info!("[Identity] Loaded USER.md from {}", dir.display());
         }
 
-        Self {
-            soul,
-            user_profile,
-        }
+        Self { soul, user_profile }
     }
 
     /// 获取 Role 提示词（SOUL.md 内容，或 None 使用默认模板）
@@ -123,7 +120,12 @@ impl IdentityManager {
                 .lines()
                 .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
                 .unwrap_or("(no description)");
-            summaries.push(format!("{} {}: {}", role.icon(), role.display_name(), first_line));
+            summaries.push(format!(
+                "{} {}: {}",
+                role.icon(),
+                role.display_name(),
+                first_line
+            ));
         }
         summaries.sort(); // 稳定排序
         summaries.join("\n")

@@ -71,6 +71,8 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
         return u.updaterErr409
       if (e.status === 412)
         return `${u.updaterErr412}: ${e.message}`
+      if (e.status === 503 && /not configured/i.test(e.message))
+        return u.updaterErrNotConfigured
       return `${e.status}: ${e.message}`
     }
     return String(e)
@@ -300,7 +302,11 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({ heading 
                 <span className="updater-row-value">
                   {status?.current_version
                     ? <code>{status.current_version}</code>
-                    : <span className="updater-row-value muted">{u.updaterStatusFirstRun}</span>}
+                    : (
+                        <span className="updater-row-value muted">
+                          {status ? u.updaterStatusFirstRun : u.updaterUnknown}
+                        </span>
+                      )}
                 </span>
               </li>
               <li className="updater-row">

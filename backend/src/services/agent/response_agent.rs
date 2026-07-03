@@ -39,7 +39,9 @@ pub struct StepOutput<'a> {
 /// 4. AI 失败时使用智能 fallback
 pub async fn generate_final_response(ctx: ResponseContext<'_>) -> String {
     // 过滤掉 skill planning 占位输出，提取有语义的文本内容（不带原始 JSON）
-    let step_data: Vec<String> = ctx.step_outputs.iter()
+    let step_data: Vec<String> = ctx
+        .step_outputs
+        .iter()
         .filter_map(|s| {
             if s.output.get("status").and_then(|v| v.as_str()) == Some("planned") {
                 return None;
@@ -69,19 +71,39 @@ pub async fn generate_final_response(ctx: ResponseContext<'_>) -> String {
 /// 为单步骤结果生成最终回复
 pub fn generate_single_step_response(result: &Value) -> Option<String> {
     // 优先展示 AI 生成的内容（这些本身就是有人格的）
-    if let Some(v) = result.get("aiSummary").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    if let Some(v) = result
+        .get("aiSummary")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         return Some(v.to_string());
     }
-    if let Some(v) = result.get("reply").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    if let Some(v) = result
+        .get("reply")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         return Some(v.to_string());
     }
-    if let Some(v) = result.get("analysis").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    if let Some(v) = result
+        .get("analysis")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         return Some(v.to_string());
     }
-    if let Some(v) = result.get("summary").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    if let Some(v) = result
+        .get("summary")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         return Some(v.to_string());
     }
-    if let Some(v) = result.get("message").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    if let Some(v) = result
+        .get("message")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         return Some(v.to_string());
     }
 
@@ -93,7 +115,11 @@ pub fn generate_single_step_response(result: &Value) -> Option<String> {
                     return Some("搜索了一圈，没有找到相关结果呢。".to_string());
                 }
                 let query = result.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                return Some(format!("找到了 {} 条关于「{}」的信息，来看看吧~", results.len(), query));
+                return Some(format!(
+                    "找到了 {} 条关于「{}」的信息，来看看吧~",
+                    results.len(),
+                    query
+                ));
             }
         }
     }
@@ -150,17 +176,19 @@ async fn ai_announce_plan(
     step_descriptions: &[String],
     progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
 ) -> Option<String> {
-    use crate::services::ai::create_ai_analyzer_for_tier;
     use crate::config::ModelTier;
+    use crate::services::ai::create_ai_analyzer_for_tier;
 
     let analyzer = create_ai_analyzer_for_tier(ModelTier::Standard).await?;
 
-    let soul = identity::get_identity().await
+    let soul = identity::get_identity()
+        .await
         .and_then(|id| id.soul)
         .unwrap_or_default();
     let soul: String = soul.chars().take(2000).collect();
 
-    let steps_list = step_descriptions.iter()
+    let steps_list = step_descriptions
+        .iter()
         .enumerate()
         .map(|(i, d)| format!("{}. {}", i + 1, d))
         .collect::<Vec<_>>()
@@ -183,13 +211,16 @@ async fn ai_announce_plan(
     );
 
     let tx = progress_tx.clone();
-    match analyzer.analyze_stream(&prompt, |token| {
-        let _ = tx.try_send(AgentProgressEvent::SummaryToken {
-            token: token.to_string(),
-            done: false,
-        });
-        true
-    }).await {
+    match analyzer
+        .analyze_stream(&prompt, |token| {
+            let _ = tx.try_send(AgentProgressEvent::SummaryToken {
+                token: token.to_string(),
+                done: false,
+            });
+            true
+        })
+        .await
+    {
         Ok(full_text) if !full_text.trim().is_empty() => {
             let _ = tx.try_send(AgentProgressEvent::SummaryToken {
                 token: String::new(),
@@ -238,7 +269,10 @@ pub fn execution_error(err: &str) -> String {
 
 /// 部分完成
 pub fn partial_completion(success: usize, total: usize, errors: &[String]) -> String {
-    let mut msg = format!("完成了大部分工作（{}/{}），不过有些步骤没能顺利执行", success, total);
+    let mut msg = format!(
+        "完成了大部分工作（{}/{}），不过有些步骤没能顺利执行",
+        success, total
+    );
     if !errors.is_empty() {
         msg.push_str(&format!("：{}", errors.join("；")));
     }
@@ -311,7 +345,8 @@ pub fn summarize_step_output(output: &Value) -> Option<String> {
             return Some(format!("搜索得到 {} 条结果", results.len()));
         }
         // 通用：显示有意义的字段名
-        let meaningful_keys: Vec<&str> = obj.keys()
+        let meaningful_keys: Vec<&str> = obj
+            .keys()
             .map(|k| k.as_str())
             .filter(|k| !["status", "provider", "model", "cached"].contains(k))
             .take(3)
@@ -332,7 +367,11 @@ pub fn summarize_step_output(output: &Value) -> Option<String> {
         return Some(s.to_string());
     }
     if let Some(b) = output.as_bool() {
-        return Some(if b { "操作成功".to_string() } else { "操作未成功".to_string() });
+        return Some(if b {
+            "操作成功".to_string()
+        } else {
+            "操作未成功".to_string()
+        });
     }
     None
 }
@@ -351,7 +390,11 @@ fn extract_step_text(output: &Value) -> String {
     // 提取文本字段
     let text_keys = ["analysis", "aiSummary", "reply", "summary", "message"];
     for key in &text_keys {
-        if let Some(text) = output.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        if let Some(text) = output
+            .get(key)
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             parts.push(text.to_string());
             // analysis / aiSummary / reply 通常已覆盖所有语义，取到就够了
             break;
@@ -359,12 +402,23 @@ fn extract_step_text(output: &Value) -> String {
     }
 
     // prompt.generate 结果
-    if let Some(prompt) = output.get("prompt").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
-        parts.push(format!("生成了图像提示词: {}", &prompt.chars().take(200).collect::<String>()));
+    if let Some(prompt) = output
+        .get("prompt")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        parts.push(format!(
+            "生成了图像提示词: {}",
+            &prompt.chars().take(200).collect::<String>()
+        ));
     }
 
     // 图片
-    if let Some(url) = output.get("imageUrl").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    if let Some(url) = output
+        .get("imageUrl")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         parts.push(format!("已生成图片: {}", url));
     }
 
@@ -389,23 +443,27 @@ async fn ai_summarize(
     step_data: &[String],
     progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
 ) -> Option<String> {
-    use crate::services::ai::create_ai_analyzer_for_tier;
     use crate::config::ModelTier;
+    use crate::services::ai::create_ai_analyzer_for_tier;
 
     let analyzer = match create_ai_analyzer_for_tier(ModelTier::Standard).await {
         Some(a) => a,
         None => {
-            tracing::warn!("[ResponseAgent] Standard AI analyzer not available, falling back to template");
+            tracing::warn!(
+                "[ResponseAgent] Standard AI analyzer not available, falling back to template"
+            );
             return None;
         }
     };
 
-    let soul = identity::get_identity().await
+    let soul = identity::get_identity()
+        .await
         .and_then(|id| id.soul)
         .unwrap_or_default();
     let soul: String = soul.chars().take(2000).collect();
 
-    let steps_text = step_data.iter()
+    let steps_text = step_data
+        .iter()
         .enumerate()
         .map(|(i, s)| format!("{}. {}", i + 1, s))
         .collect::<Vec<_>>()
@@ -440,13 +498,16 @@ async fn ai_summarize(
 
     if let Some(tx) = progress_tx {
         let tx = tx.clone();
-        match analyzer.analyze_stream(&prompt, |token| {
-            let _ = tx.try_send(AgentProgressEvent::SummaryToken {
-                token: token.to_string(),
-                done: false,
-            });
-            true
-        }).await {
+        match analyzer
+            .analyze_stream(&prompt, |token| {
+                let _ = tx.try_send(AgentProgressEvent::SummaryToken {
+                    token: token.to_string(),
+                    done: false,
+                });
+                true
+            })
+            .await
+        {
             Ok(full_text) if !full_text.trim().is_empty() => {
                 let _ = tx.try_send(AgentProgressEvent::SummaryToken {
                     token: String::new(),
@@ -487,7 +548,11 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
     // 第一轮：找 analysis（ai.analyze 产出的深度分析/介绍）
     for s in step_outputs.iter() {
         let o = s.output;
-        if let Some(text) = o.get("analysis").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        if let Some(text) = o
+            .get("analysis")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             best_text = Some(text.to_string());
             break;
         }
@@ -495,7 +560,12 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
     // 第二轮：找 reply（ai.chat 产出的回复）
     if best_text.is_none() {
         for s in step_outputs.iter() {
-            if let Some(text) = s.output.get("reply").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            if let Some(text) = s
+                .output
+                .get("reply")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
                 best_text = Some(text.to_string());
                 break;
             }
@@ -504,7 +574,12 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
     // 第三轮：找 summary（ai.summarize 产出的摘要）
     if best_text.is_none() {
         for s in step_outputs.iter() {
-            if let Some(text) = s.output.get("summary").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            if let Some(text) = s
+                .output
+                .get("summary")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
                 best_text = Some(text.to_string());
                 break;
             }
@@ -516,9 +591,15 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
         // 如果有，说明搜索步骤的数据已被消化，其 aiSummary 是冗余的
         let has_ai_processed = step_outputs.iter().any(|s| {
             let o = s.output;
-            o.get("analysis").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty())
-                || o.get("reply").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty())
-                || o.get("summary").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty())
+            o.get("analysis")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| !s.is_empty())
+                || o.get("reply")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| !s.is_empty())
+                || o.get("summary")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| !s.is_empty())
         });
         for s in step_outputs.iter() {
             let o = s.output;
@@ -526,7 +607,11 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
             if has_ai_processed && o.get("results").and_then(|v| v.as_array()).is_some() {
                 continue;
             }
-            if let Some(text) = o.get("aiSummary").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            if let Some(text) = o
+                .get("aiSummary")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
                 best_text = Some(text.to_string());
                 break;
             }
@@ -539,11 +624,15 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
     }
 
     // 2. 统计图片数量并追加提示
-    let image_count = step_outputs.iter()
+    let image_count = step_outputs
+        .iter()
         .filter(|s| s.output.get("imageUrl").and_then(|v| v.as_str()).is_some())
         .count();
     if image_count > 0 {
-        parts.push(format!("已为你生成 {} 张图片，点击可查看大图~", image_count));
+        parts.push(format!(
+            "已为你生成 {} 张图片，点击可查看大图~",
+            image_count
+        ));
     }
 
     if parts.is_empty() {
@@ -690,12 +779,8 @@ pub fn risk_impact(level: &str) -> Vec<String> {
             "🔴 此操作可能导致数据丢失".to_string(),
             "🔴 操作完成后无法撤销".to_string(),
         ],
-        "medium" => vec![
-            "🟡 此操作将修改数据或系统配置".to_string(),
-        ],
-        "low" => vec![
-            "🟢 此操作影响较小，可以恢复".to_string(),
-        ],
+        "medium" => vec!["🟡 此操作将修改数据或系统配置".to_string()],
+        "low" => vec!["🟢 此操作影响较小，可以恢复".to_string()],
         _ => vec![],
     }
 }
@@ -833,7 +918,10 @@ pub fn scheduled_task_schedule(schedule: &str) -> String {
 
 /// 网络搜索回退结果
 pub fn web_search_fallback(count: usize) -> String {
-    format!("数据库中未找到相关文章，已通过 AI 联网搜索获取 {} 条结果", count)
+    format!(
+        "数据库中未找到相关文章，已通过 AI 联网搜索获取 {} 条结果",
+        count
+    )
 }
 
 /// 未找到符合条件的文章
@@ -843,7 +931,10 @@ pub fn no_articles_found(criteria: &str) -> String {
 
 /// 未在已订阅源中找到
 pub fn not_found_in_feeds(query: &str) -> String {
-    format!("未在已订阅源中找到「{}」，可以使用 brew.discover 从 RSSHub 路由中搜索", query)
+    format!(
+        "未在已订阅源中找到「{}」，可以使用 brew.discover 从 RSSHub 路由中搜索",
+        query
+    )
 }
 
 /// 未能找到匹配的 RSS 源
@@ -913,12 +1004,18 @@ pub fn input_empty() -> String {
 
 /// 所有订阅 URL 都失败
 pub fn subscribe_all_failed(tried: usize, last_error: &str) -> String {
-    format!("尝试了 {} 个源都无法订阅。最后一个错误: {}", tried, last_error)
+    format!(
+        "尝试了 {} 个源都无法订阅。最后一个错误: {}",
+        tried, last_error
+    )
 }
 
 /// 文章摘要占位
 pub fn article_summary_placeholder(source: &str, title: &str) -> String {
-    format!("这是一篇来自 {} 的文章：{}。点击阅读原文获取完整内容。", source, title)
+    format!(
+        "这是一篇来自 {} 的文章：{}。点击阅读原文获取完整内容。",
+        source, title
+    )
 }
 
 /// 搜索空提示
@@ -951,5 +1048,9 @@ pub fn fields_returned(count: usize) -> String {
 
 /// 操作成功/失败（布尔结果）
 pub fn bool_result(success: bool) -> String {
-    if success { "成功".to_string() } else { "失败".to_string() }
+    if success {
+        "成功".to_string()
+    } else {
+        "失败".to_string()
+    }
 }

@@ -1,10 +1,6 @@
 //! 数据转换处理 API
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -12,7 +8,9 @@ use std::collections::HashMap;
 
 use crate::middleware::auth::Claims;
 
-use super::common::{get_cached_platform_data, parse_user_id, validate_platform_name, verify_tapp_ownership};
+use super::common::{
+    get_cached_platform_data, parse_user_id, validate_platform_name, verify_tapp_ownership,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct DataTransformRequest {
@@ -47,9 +45,16 @@ pub enum DataOutput {
 #[allow(dead_code)]
 pub enum ProcessStep {
     #[serde(rename = "filter")]
-    Filter { field: String, operator: String, value: Value },
+    Filter {
+        field: String,
+        operator: String,
+        value: Value,
+    },
     #[serde(rename = "sort")]
-    Sort { field: String, order: Option<String> },
+    Sort {
+        field: String,
+        order: Option<String>,
+    },
     #[serde(rename = "limit")]
     Limit { count: usize },
     #[serde(rename = "offset")]
@@ -59,7 +64,10 @@ pub enum ProcessStep {
     #[serde(rename = "group")]
     Group { by: String },
     #[serde(rename = "aggregate")]
-    Aggregate { operation: String, field: Option<String> },
+    Aggregate {
+        operation: String,
+        field: Option<String>,
+    },
     #[serde(rename = "dedupe")]
     Dedupe { key: String },
     #[serde(rename = "map")]
@@ -103,7 +111,11 @@ pub enum MapOp {
     Default { field: String, value: Value },
     /// 字段拼接：`{ "op": "concat", "fields": ["first", "last"], "separator": " ", "to": "name" }`
     #[serde(rename = "concat")]
-    Concat { fields: Vec<String>, separator: Option<String>, to: String },
+    Concat {
+        fields: Vec<String>,
+        separator: Option<String>,
+        to: String,
+    },
     /// 多字段取优先非空值：`{ "op": "coalesce", "fields": ["name_cn", "name_en", "id"], "to": "display_name" }`
     #[serde(rename = "coalesce")]
     Coalesce { fields: Vec<String>, to: String },
@@ -120,7 +132,9 @@ pub async fn data_transform(
 
     tracing::debug!(
         "[TAPP] data_transform - User: {}, Tapp: {}, Steps: {}",
-        claims.username, req.tapp_id, req.pipeline.len()
+        claims.username,
+        req.tapp_id,
+        req.pipeline.len()
     );
 
     if req.pipeline.len() > 20 {
@@ -133,8 +147,13 @@ pub async fn data_transform(
     // 1. 获取输入数据
     let mut items: Vec<Value> = match req.input {
         DataInput::Platform { platform } => {
-            let data = get_cached_platform_data(&platform).await.unwrap_or(json!({"items": []}));
-            data.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default()
+            let data = get_cached_platform_data(&platform)
+                .await
+                .unwrap_or(json!({"items": []}));
+            data.get("items")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default()
         }
         DataInput::Storage { key } => {
             use crate::models::entities::tapp_storage;
@@ -145,7 +164,10 @@ pub async fn data_transform(
                 .one(&db)
                 .await
                 .map_err(|_| {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to read storage" })))
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "error": "Failed to read storage" })),
+                    )
                 })?;
             match item {
                 Some(i) => i.value.as_array().cloned().unwrap_or_default(),
@@ -164,17 +186,20 @@ pub async fn data_transform(
     if let Some(output) = req.output {
         match output {
             DataOutput::Platform { platform } => {
-                validate_platform_name(&platform).map_err(|e| {
-                    (StatusCode::BAD_REQUEST, Json(json!({ "error": e })))
-                })?;
+                validate_platform_name(&platform)
+                    .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
                 let cache_dir = std::path::Path::new("cache/platforms");
-                let cache_file = cache_dir.join(format!("{}_filtered.json", platform.to_lowercase()));
+                let cache_file =
+                    cache_dir.join(format!("{}_filtered.json", platform.to_lowercase()));
                 let data = json!({ "items": items });
                 let _ = tokio::fs::create_dir_all(cache_dir).await;
                 tokio::fs::write(&cache_file, serde_json::to_string_pretty(&data).unwrap())
                     .await
                     .map_err(|_| {
-                        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to write platform data" })))
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({ "error": "Failed to write platform data" })),
+                        )
                     })?;
             }
             DataOutput::Storage { key } => {
@@ -189,7 +214,10 @@ pub async fn data_transform(
                     .one(&db)
                     .await
                     .map_err(|_| {
-                        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to check storage" })))
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({ "error": "Failed to check storage" })),
+                        )
                     })?;
 
                 if let Some(item) = existing {
@@ -197,7 +225,10 @@ pub async fn data_transform(
                     active.value = Set(json!(items));
                     active.updated_at = Set(now);
                     active.update(&db).await.map_err(|_| {
-                        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to update storage" })))
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({ "error": "Failed to update storage" })),
+                        )
                     })?;
                 } else {
                     let new_item = tapp_storage::ActiveModel {
@@ -210,7 +241,10 @@ pub async fn data_transform(
                         updated_at: Set(now),
                     };
                     new_item.insert(&db).await.map_err(|_| {
-                        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to save storage" })))
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({ "error": "Failed to save storage" })),
+                        )
                     })?;
                 }
             }
@@ -229,7 +263,11 @@ fn apply_process_step(
     step: ProcessStep,
 ) -> Result<Vec<Value>, (StatusCode, Json<Value>)> {
     match step {
-        ProcessStep::Filter { field, operator, value } => {
+        ProcessStep::Filter {
+            field,
+            operator,
+            value,
+        } => {
             items.retain(|item| {
                 let item_value = item.get(&field);
                 match operator.as_str() {
@@ -252,35 +290,54 @@ fn apply_process_step(
                 let va = a.get(&field);
                 let vb = b.get(&field);
                 let cmp = match (va, vb) {
-                    (Some(Value::Number(a)), Some(Value::Number(b))) => a.as_f64().partial_cmp(&b.as_f64()).unwrap_or(std::cmp::Ordering::Equal),
+                    (Some(Value::Number(a)), Some(Value::Number(b))) => a
+                        .as_f64()
+                        .partial_cmp(&b.as_f64())
+                        .unwrap_or(std::cmp::Ordering::Equal),
                     (Some(Value::String(a)), Some(Value::String(b))) => a.cmp(b),
                     _ => std::cmp::Ordering::Equal,
                 };
-                if desc { cmp.reverse() } else { cmp }
+                if desc {
+                    cmp.reverse()
+                } else {
+                    cmp
+                }
             });
         }
-        ProcessStep::Limit { count } => { items.truncate(count); }
-        ProcessStep::Offset { count } => { items = items.into_iter().skip(count).collect(); }
+        ProcessStep::Limit { count } => {
+            items.truncate(count);
+        }
+        ProcessStep::Offset { count } => {
+            items = items.into_iter().skip(count).collect();
+        }
         ProcessStep::Select { fields } => {
-            items = items.into_iter().map(|item| {
-                let mut new_item = json!({});
-                if let Some(obj) = item.as_object() {
-                    for field in &fields {
-                        if let Some(value) = obj.get(field) {
-                            new_item[field] = value.clone();
+            items = items
+                .into_iter()
+                .map(|item| {
+                    let mut new_item = json!({});
+                    if let Some(obj) = item.as_object() {
+                        for field in &fields {
+                            if let Some(value) = obj.get(field) {
+                                new_item[field] = value.clone();
+                            }
                         }
                     }
-                }
-                new_item
-            }).collect();
+                    new_item
+                })
+                .collect();
         }
         ProcessStep::Group { by } => {
             let mut groups: HashMap<String, Vec<Value>> = HashMap::new();
             for item in items {
-                let key = item.get(&by).and_then(|v| v.as_str()).unwrap_or("_unknown").to_string();
+                let key = item
+                    .get(&by)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("_unknown")
+                    .to_string();
                 groups.entry(key).or_default().push(item);
             }
-            items = groups.into_iter()
+            items = groups
+                .into_iter()
                 .map(|(key, values)| json!({ "key": key, "items": values, "count": values.len() }))
                 .collect();
         }
@@ -288,27 +345,55 @@ fn apply_process_step(
             let result = match operation.as_str() {
                 "count" => json!({ "count": items.len() }),
                 "sum" => {
-                    let sum: f64 = items.iter()
-                        .filter_map(|i| field.as_ref().and_then(|f| i.get(f)).and_then(|v| v.as_f64()))
+                    let sum: f64 = items
+                        .iter()
+                        .filter_map(|i| {
+                            field
+                                .as_ref()
+                                .and_then(|f| i.get(f))
+                                .and_then(|v| v.as_f64())
+                        })
                         .sum();
                     json!({ "sum": sum })
                 }
                 "avg" => {
-                    let values: Vec<f64> = items.iter()
-                        .filter_map(|i| field.as_ref().and_then(|f| i.get(f)).and_then(|v| v.as_f64()))
+                    let values: Vec<f64> = items
+                        .iter()
+                        .filter_map(|i| {
+                            field
+                                .as_ref()
+                                .and_then(|f| i.get(f))
+                                .and_then(|v| v.as_f64())
+                        })
                         .collect();
-                    let avg = if values.is_empty() { 0.0 } else { values.iter().sum::<f64>() / values.len() as f64 };
+                    let avg = if values.is_empty() {
+                        0.0
+                    } else {
+                        values.iter().sum::<f64>() / values.len() as f64
+                    };
                     json!({ "avg": avg })
                 }
                 "min" => {
-                    let min = items.iter()
-                        .filter_map(|i| field.as_ref().and_then(|f| i.get(f)).and_then(|v| v.as_f64()))
+                    let min = items
+                        .iter()
+                        .filter_map(|i| {
+                            field
+                                .as_ref()
+                                .and_then(|f| i.get(f))
+                                .and_then(|v| v.as_f64())
+                        })
                         .fold(f64::INFINITY, f64::min);
                     json!({ "min": if min.is_infinite() { Value::Null } else { json!(min) } })
                 }
                 "max" => {
-                    let max = items.iter()
-                        .filter_map(|i| field.as_ref().and_then(|f| i.get(f)).and_then(|v| v.as_f64()))
+                    let max = items
+                        .iter()
+                        .filter_map(|i| {
+                            field
+                                .as_ref()
+                                .and_then(|f| i.get(f))
+                                .and_then(|v| v.as_f64())
+                        })
                         .fold(f64::NEG_INFINITY, f64::max);
                     json!({ "max": if max.is_infinite() { Value::Null } else { json!(max) } })
                 }
@@ -330,12 +415,15 @@ fn apply_process_step(
                     Json(json!({ "error": "Too many map operations (max 50)" })),
                 ));
             }
-            items = items.into_iter().map(|mut item| {
-                for op in &operations {
-                    apply_map_op(&mut item, op);
-                }
-                item
-            }).collect();
+            items = items
+                .into_iter()
+                .map(|mut item| {
+                    for op in &operations {
+                        apply_map_op(&mut item, op);
+                    }
+                    item
+                })
+                .collect();
         }
     }
     Ok(items)
@@ -420,15 +508,22 @@ fn apply_map_op(item: &mut Value, op: &MapOp) {
                 obj.insert(field.clone(), value.clone());
             }
         }
-        MapOp::Concat { fields, separator, to } => {
+        MapOp::Concat {
+            fields,
+            separator,
+            to,
+        } => {
             let sep = separator.as_deref().unwrap_or("");
-            let parts: Vec<String> = fields.iter().filter_map(|f| {
-                obj.get(f.as_str()).and_then(|v| match v {
-                    Value::String(s) => Some(s.clone()),
-                    Value::Null => None,
-                    other => Some(other.to_string()),
+            let parts: Vec<String> = fields
+                .iter()
+                .filter_map(|f| {
+                    obj.get(f.as_str()).and_then(|v| match v {
+                        Value::String(s) => Some(s.clone()),
+                        Value::Null => None,
+                        other => Some(other.to_string()),
+                    })
                 })
-            }).collect();
+                .collect();
             if !parts.is_empty() {
                 obj.insert(to.clone(), json!(parts.join(sep)));
             }

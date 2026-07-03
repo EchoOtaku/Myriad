@@ -519,7 +519,9 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32) {
         "message": "Connected to scheduler"
     });
     if sender
-        .send(Message::Text(serde_json::to_string(&welcome).unwrap().into()))
+        .send(Message::Text(
+            serde_json::to_string(&welcome).unwrap().into(),
+        ))
         .await
         .is_err()
     {

@@ -5,8 +5,9 @@
  */
 
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
+import { API_URL } from '../config'
 
-const API_BASE = '/api/speech'
+const API_BASE = `${API_URL}/api/speech`
 
 /**
  * TTS 引擎类型

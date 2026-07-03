@@ -209,26 +209,25 @@ impl OAuthProvider for OidcProvider {
             .unwrap_or(serde_json::Value::Null);
 
         // 如果 id_token 没给齐档案，再去 userinfo
-        let userinfo: serde_json::Value = if id_claims.get("sub").is_some()
-            && id_claims.get("email").is_some()
-        {
-            id_claims.clone()
-        } else {
-            let doc = self.discovery().await?;
-            if let Some(url) = doc.userinfo_endpoint.as_ref() {
-                let http = crate::services::http_client::get_global_client().await;
-                http.get(url)
-                    .bearer_auth(&tokens.access_token)
-                    .send()
-                    .await
-                    .map_err(|e| format!("OIDC userinfo GET failed: {e:?}"))?
-                    .json::<serde_json::Value>()
-                    .await
-                    .map_err(|e| format!("OIDC userinfo parse failed: {e:?}"))?
-            } else {
+        let userinfo: serde_json::Value =
+            if id_claims.get("sub").is_some() && id_claims.get("email").is_some() {
                 id_claims.clone()
-            }
-        };
+            } else {
+                let doc = self.discovery().await?;
+                if let Some(url) = doc.userinfo_endpoint.as_ref() {
+                    let http = crate::services::http_client::get_global_client().await;
+                    http.get(url)
+                        .bearer_auth(&tokens.access_token)
+                        .send()
+                        .await
+                        .map_err(|e| format!("OIDC userinfo GET failed: {e:?}"))?
+                        .json::<serde_json::Value>()
+                        .await
+                        .map_err(|e| format!("OIDC userinfo parse failed: {e:?}"))?
+                } else {
+                    id_claims.clone()
+                }
+            };
 
         let sub = userinfo
             .get("sub")

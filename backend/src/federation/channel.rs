@@ -156,8 +156,12 @@ pub async fn create_channel(
             status: row.try_get::<String>("", "status").unwrap_or_default(),
             transport: row.try_get::<String>("", "transport").unwrap_or_default(),
             tapp_id: row.try_get::<Option<String>>("", "tapp_id").unwrap_or(None),
-            properties: row.try_get::<Option<serde_json::Value>>("", "properties").unwrap_or(None),
-            initiated_by: row.try_get::<String>("", "initiated_by").unwrap_or_default(),
+            properties: row
+                .try_get::<Option<serde_json::Value>>("", "properties")
+                .unwrap_or(None),
+            initiated_by: row
+                .try_get::<String>("", "initiated_by")
+                .unwrap_or_default(),
             last_activity_at: row
                 .try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "last_activity_at")
                 .ok()
@@ -248,7 +252,11 @@ pub async fn create_channel(
         }
     }
 
-    tracing::info!("[Channel] Created channel {} with remote {}", channel_id, req.remote_actor);
+    tracing::info!(
+        "[Channel] Created channel {} with remote {}",
+        channel_id,
+        req.remote_actor
+    );
 
     Ok(ChannelDetail {
         channel_id,
@@ -299,8 +307,12 @@ pub async fn list_channels(
         channels.push(ChannelSummary {
             channel_id: row.try_get("", "channel_id").unwrap_or_default(),
             remote_actor_url: row.try_get("", "actor_url").unwrap_or_default(),
-            remote_actor_name: row.try_get::<Option<String>>("", "preferred_username").unwrap_or(None),
-            remote_actor_avatar: row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+            remote_actor_name: row
+                .try_get::<Option<String>>("", "preferred_username")
+                .unwrap_or(None),
+            remote_actor_avatar: row
+                .try_get::<Option<String>>("", "avatar_url")
+                .unwrap_or(None),
             channel_type: row.try_get("", "channel_type").unwrap_or_default(),
             status: row.try_get("", "status").unwrap_or_default(),
             transport: row.try_get("", "transport").unwrap_or_default(),
@@ -350,13 +362,19 @@ pub async fn get_channel(
     Ok(ChannelDetail {
         channel_id: row.try_get("", "channel_id").unwrap_or_default(),
         remote_actor_url: row.try_get("", "actor_url").unwrap_or_default(),
-        remote_actor_name: row.try_get::<Option<String>>("", "preferred_username").unwrap_or(None),
-        remote_actor_avatar: row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+        remote_actor_name: row
+            .try_get::<Option<String>>("", "preferred_username")
+            .unwrap_or(None),
+        remote_actor_avatar: row
+            .try_get::<Option<String>>("", "avatar_url")
+            .unwrap_or(None),
         channel_type: row.try_get("", "channel_type").unwrap_or_default(),
         status: row.try_get("", "status").unwrap_or_default(),
         transport: row.try_get("", "transport").unwrap_or_default(),
         tapp_id: row.try_get::<Option<String>>("", "tapp_id").unwrap_or(None),
-        properties: row.try_get::<Option<serde_json::Value>>("", "properties").unwrap_or(None),
+        properties: row
+            .try_get::<Option<serde_json::Value>>("", "properties")
+            .unwrap_or(None),
         initiated_by: row.try_get("", "initiated_by").unwrap_or_default(),
         last_activity_at: row
             .try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "last_activity_at")
@@ -407,7 +425,9 @@ pub async fn close_channel(
     }
 
     let remote_actor_url: String = row.try_get("", "actor_url").unwrap_or_default();
-    let remote_inbox: Option<String> = row.try_get::<Option<String>>("", "inbox_url").unwrap_or(None);
+    let remote_inbox: Option<String> = row
+        .try_get::<Option<String>>("", "inbox_url")
+        .unwrap_or(None);
 
     // 更新状态
     db.execute(Statement::from_sql_and_values(
@@ -491,7 +511,9 @@ pub async fn send_message(
     if payload_size > MAX_MESSAGE_PAYLOAD {
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
-            Json(json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, MAX_MESSAGE_PAYLOAD)})),
+            Json(
+                json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, MAX_MESSAGE_PAYLOAD)}),
+            ),
         ));
     }
 
@@ -521,11 +543,15 @@ pub async fn send_message(
     if !["active", "accepted"].contains(&status.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("Channel is {}, cannot send messages (must be accepted first)", status)})),
+            Json(
+                json!({"error": format!("Channel is {}, cannot send messages (must be accepted first)", status)}),
+            ),
         ));
     }
 
-    let remote_inbox: Option<String> = ch_row.try_get::<Option<String>>("", "inbox_url").unwrap_or(None);
+    let remote_inbox: Option<String> = ch_row
+        .try_get::<Option<String>>("", "inbox_url")
+        .unwrap_or(None);
     let remote_actor_url: String = ch_row.try_get("", "actor_url").unwrap_or_default();
 
     // 存入消息
@@ -550,7 +576,11 @@ pub async fn send_message(
     .map_err(db_err)?;
 
     // 更新通道最后活动时间；如果 accepted → active
-    let new_status = if status == "accepted" { "active" } else { &status };
+    let new_status = if status == "accepted" {
+        "active"
+    } else {
+        &status
+    };
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_channels SET last_activity_at = NOW(), status = $2 WHERE channel_id = $1",
@@ -611,18 +641,21 @@ pub async fn send_message(
     }
 
     // 广播给该 Channel 的 WebSocket 连接
-    crate::federation::ws_gateway::broadcast_to_channel(channel_id, &json!({
-        "type": "message",
-        "channel_id": channel_id,
-        "message": {
-            "message_id": &message_id,
-            "sender_actor": &local_actor,
-            "message_type": message_type,
-            "payload": &req.payload,
-            "reply_to": &req.reply_to,
-            "created_at": now_iso8601()
-        }
-    }))
+    crate::federation::ws_gateway::broadcast_to_channel(
+        channel_id,
+        &json!({
+            "type": "message",
+            "channel_id": channel_id,
+            "message": {
+                "message_id": &message_id,
+                "sender_actor": &local_actor,
+                "message_type": message_type,
+                "payload": &req.payload,
+                "reply_to": &req.reply_to,
+                "created_at": now_iso8601()
+            }
+        }),
+    )
     .await;
 
     Ok(SendMessageResponse {
@@ -693,7 +726,9 @@ pub async fn get_messages(
             sender_actor: row.try_get("", "sender_actor").unwrap_or_default(),
             message_type: row.try_get("", "message_type").unwrap_or_default(),
             payload: row.try_get("", "payload").unwrap_or(json!(null)),
-            reply_to: row.try_get::<Option<String>>("", "reply_to").unwrap_or(None),
+            reply_to: row
+                .try_get::<Option<String>>("", "reply_to")
+                .unwrap_or(None),
             is_encrypted: row.try_get("", "is_encrypted").unwrap_or(false),
             created_at: row
                 .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
@@ -858,10 +893,7 @@ pub async fn handle_channel_message(
         .get("messageType")
         .and_then(|v| v.as_str())
         .unwrap_or("text");
-    let payload = object
-        .get("payload")
-        .cloned()
-        .unwrap_or(json!(null));
+    let payload = object.get("payload").cloned().unwrap_or(json!(null));
     let reply_to = object.get("replyTo").and_then(|v| v.as_str());
 
     // 存入消息
@@ -893,21 +925,28 @@ pub async fn handle_channel_message(
     .map_err(|e| e.to_string())?;
 
     // 广播到 WebSocket
-    crate::federation::ws_gateway::broadcast_to_channel(channel_id, &json!({
-        "type": "message",
-        "channel_id": channel_id,
-        "message": {
-            "message_id": message_id,
-            "sender_actor": sender,
-            "message_type": message_type,
-            "payload": payload,
-            "reply_to": reply_to,
-            "created_at": now_iso8601()
-        }
-    }))
+    crate::federation::ws_gateway::broadcast_to_channel(
+        channel_id,
+        &json!({
+            "type": "message",
+            "channel_id": channel_id,
+            "message": {
+                "message_id": message_id,
+                "sender_actor": sender,
+                "message_type": message_type,
+                "payload": payload,
+                "reply_to": reply_to,
+                "created_at": now_iso8601()
+            }
+        }),
+    )
     .await;
 
-    tracing::info!("[Channel] Received message {} in channel {}", message_id, channel_id);
+    tracing::info!(
+        "[Channel] Received message {} in channel {}",
+        message_id,
+        channel_id
+    );
 
     Ok(())
 }
@@ -952,10 +991,13 @@ pub async fn handle_channel_close(
     .map_err(|e| e.to_string())?;
 
     // 通知 WebSocket 连接
-    crate::federation::ws_gateway::broadcast_to_channel(channel_id, &json!({
-        "type": "channel_closed",
-        "channel_id": channel_id
-    }))
+    crate::federation::ws_gateway::broadcast_to_channel(
+        channel_id,
+        &json!({
+            "type": "channel_closed",
+            "channel_id": channel_id
+        }),
+    )
     .await;
 
     tracing::info!("[Channel] Channel {} closed by remote", channel_id);
@@ -999,7 +1041,9 @@ pub async fn accept_channel(
     }
 
     let remote_actor_url: String = row.try_get("", "actor_url").unwrap_or_default();
-    let remote_inbox: Option<String> = row.try_get::<Option<String>>("", "inbox_url").unwrap_or(None);
+    let remote_inbox: Option<String> = row
+        .try_get::<Option<String>>("", "inbox_url")
+        .unwrap_or(None);
 
     // 更新状态
     db.execute(Statement::from_sql_and_values(
@@ -1111,12 +1155,19 @@ pub async fn handle_channel_accept(
         .map_err(|e| e.to_string())?;
 
     if result.rows_affected() > 0 {
-        crate::federation::ws_gateway::broadcast_to_channel(channel_id, &json!({
-            "type": "channel_accepted",
-            "channel_id": channel_id
-        }))
+        crate::federation::ws_gateway::broadcast_to_channel(
+            channel_id,
+            &json!({
+                "type": "channel_accepted",
+                "channel_id": channel_id
+            }),
+        )
         .await;
-        tracing::info!("[Channel] {} accepted by remote {}", channel_id, actor_url_str);
+        tracing::info!(
+            "[Channel] {} accepted by remote {}",
+            channel_id,
+            actor_url_str
+        );
     }
 
     Ok(())
@@ -1191,15 +1242,22 @@ pub async fn handle_key_exchange(
     .await
     .map_err(|e| e.to_string())?;
 
-    crate::federation::ws_gateway::broadcast_to_channel(channel_id, &json!({
-        "type": "key_exchange",
-        "channel_id": channel_id,
-        "from": actor_url_str,
-        "publicKey": public_key,
-        "algorithm": algorithm
-    }))
+    crate::federation::ws_gateway::broadcast_to_channel(
+        channel_id,
+        &json!({
+            "type": "key_exchange",
+            "channel_id": channel_id,
+            "from": actor_url_str,
+            "publicKey": public_key,
+            "algorithm": algorithm
+        }),
+    )
     .await;
 
-    tracing::info!("[Channel] KeyExchange received in channel {} from {}", channel_id, actor_url_str);
+    tracing::info!(
+        "[Channel] KeyExchange received in channel {} from {}",
+        channel_id,
+        actor_url_str
+    );
     Ok(())
 }

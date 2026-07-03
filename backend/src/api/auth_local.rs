@@ -664,8 +664,7 @@ pub async fn register(
                     .unwrap_or(SeaValue::String(None)),
                 SeaValue::String(Some(Box::new(password_hash))),
                 SeaValue::String(Some(Box::new(
-                    "https://ui-avatars.com/api/?name=User&background=4f46e5&color=fff"
-                        .to_string(),
+                    "https://ui-avatars.com/api/?name=User&background=4f46e5&color=fff".to_string(),
                 ))),
             ],
         ))
@@ -684,14 +683,12 @@ pub async fn register(
             )
         })?;
 
-    let user_id: i32 = insert
-        .try_get("", "id")
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to read new user id"})),
-            )
-        })?;
+    let user_id: i32 = insert.try_get("", "id").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to read new user id"})),
+        )
+    })?;
 
     tracing::info!("✅ Public registration: {} (id={})", req.username, user_id);
 
@@ -866,10 +863,7 @@ pub async fn toggle_local_login(
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE users SET local_login_disabled = $1, updated_at = NOW() WHERE id = $2",
-        vec![
-            SeaValue::Bool(Some(disabled)),
-            SeaValue::Int(Some(user_id)),
-        ],
+        vec![SeaValue::Bool(Some(disabled)), SeaValue::Int(Some(user_id))],
     ))
     .await
     .map_err(|e| {
@@ -1077,10 +1071,7 @@ pub async fn admin_list_users(
         )
     })?;
     if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({"error": "Forbidden"})),
-        ));
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
     }
 
     let rows = db

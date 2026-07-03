@@ -11,8 +11,8 @@ use axum::{
 use chrono::Utc;
 use futures::stream::Stream;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -474,7 +474,11 @@ impl From<&TaskState> for TaskInfo {
                     },
                     duration_ms: Some(result.duration_ms),
                     output_summary,
-                    error: if result.success { None } else { result.error.clone() },
+                    error: if result.success {
+                        None
+                    } else {
+                        result.error.clone()
+                    },
                     image_url: result.output.as_ref().and_then(|o| {
                         crate::services::agent::executor::utils::extract_image_url(o)
                     }),
@@ -491,7 +495,11 @@ impl From<&TaskState> for TaskInfo {
                 .and_then(|v| v.as_str().map(String::from))
                 .unwrap_or_else(|| "free_text".to_string()),
             question: q.question.clone(),
-            context: if q.context.is_empty() { None } else { Some(q.context.clone()) },
+            context: if q.context.is_empty() {
+                None
+            } else {
+                Some(q.context.clone())
+            },
             options: q.options.as_ref().map(|opts| {
                 opts.iter()
                     .map(|o| QuestionOptionApi {
@@ -506,9 +514,10 @@ impl From<&TaskState> for TaskInfo {
         });
 
         // 序列化执行追踪
-        let execution_trace = state.execution_trace.as_ref().and_then(|et| {
-            serde_json::to_value(et).ok()
-        });
+        let execution_trace = state
+            .execution_trace
+            .as_ref()
+            .and_then(|et| serde_json::to_value(et).ok());
 
         Self {
             task_id: state.task_id.clone(),
@@ -537,16 +546,24 @@ fn summarize_output(output: &Value) -> Option<String> {
                 Some(s.clone())
             }
         }
-        Value::Array(arr) => Some(crate::services::agent::response_agent::data_returned(arr.len())),
+        Value::Array(arr) => Some(crate::services::agent::response_agent::data_returned(
+            arr.len(),
+        )),
         Value::Object(obj) => {
             if let Some(msg) = obj.get("message").and_then(|v| v.as_str()) {
                 Some(msg.to_string())
             } else if let Some(count) = obj.get("count").and_then(|v| v.as_u64()) {
-                Some(crate::services::agent::response_agent::records_processed(count))
+                Some(crate::services::agent::response_agent::records_processed(
+                    count,
+                ))
             } else if let Some(items) = obj.get("items").and_then(|v| v.as_array()) {
-                Some(crate::services::agent::response_agent::data_returned(items.len()))
+                Some(crate::services::agent::response_agent::data_returned(
+                    items.len(),
+                ))
             } else {
-                Some(crate::services::agent::response_agent::fields_returned(obj.len()))
+                Some(crate::services::agent::response_agent::fields_returned(
+                    obj.len(),
+                ))
             }
         }
         Value::Bool(b) => Some(crate::services::agent::response_agent::bool_result(*b)),
@@ -663,9 +680,7 @@ fn build_request_context(ctx: ProcessContext) -> RequestContext {
 }
 
 /// 将 DataDisplayHint 从 service 层转换为 API 层类型
-fn convert_data_display_hint(
-    hint: crate::services::agent::DataDisplayHint,
-) -> DataDisplayHintApi {
+fn convert_data_display_hint(hint: crate::services::agent::DataDisplayHint) -> DataDisplayHintApi {
     match hint {
         crate::services::agent::DataDisplayHint::Table { columns, data_path } => {
             DataDisplayHintApi::Table {
@@ -759,10 +774,7 @@ pub async fn process(
         "[Agent API] Processing request"
     );
 
-    let session_id = req
-        .context
-        .as_ref()
-        .and_then(|c| c.session_id.as_deref());
+    let session_id = req.context.as_ref().and_then(|c| c.session_id.as_deref());
     let lane_key = LaneQueue::make_lane_key(user_id, session_id);
 
     let mut user_request = UserRequest {
@@ -776,7 +788,11 @@ pub async fn process(
     if let Some(ref mut ctx) = user_request.context {
         if let Some(ref sid) = ctx.session_id {
             let history = load_session_history(&db, sid, 20).await;
-            ctx.conversation_history = if history.is_empty() { None } else { Some(history) };
+            ctx.conversation_history = if history.is_empty() {
+                None
+            } else {
+                Some(history)
+            };
         } else {
             ctx.conversation_history = None;
         }
@@ -795,10 +811,7 @@ pub async fn process(
     // 获取 Lane Queue 执行许可（同一用户串行，全局并发上限 4）
     let _guard = LANE_QUEUE.acquire(&lane_key).await.map_err(|e| {
         tracing::warn!(error = %e, "[Agent API] Queue acquisition failed");
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": e })),
-        )
+        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e })))
     })?;
 
     // 创建 Agent 并处理请求
@@ -950,7 +963,9 @@ pub async fn process_stream(
                 let success = api_response.success;
 
                 // 检查任务是否在等待用户输入
-                let is_waiting = api_response.task.as_ref()
+                let is_waiting = api_response
+                    .task
+                    .as_ref()
                     .map(|t| t.status == "waitingforinput")
                     .unwrap_or(false);
 
@@ -971,36 +986,42 @@ pub async fn process_stream(
                             Some(&task_id),
                             &api_response.message,
                             Some(metadata),
-                        ).await;
+                        )
+                        .await;
                     }
 
                     loop {
-                        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<serde_json::Value>();
+                        let (done_tx, done_rx) =
+                            tokio::sync::oneshot::channel::<serde_json::Value>();
                         {
                             let mut map = WAITING_TASKS.write().await;
-                            map.insert(task_id.clone(), WaitingTaskCtx {
-                                progress_tx: tx.clone(),
-                                done_tx,
-                                session_id: session_id_clone.clone(),
-                            });
+                            map.insert(
+                                task_id.clone(),
+                                WaitingTaskCtx {
+                                    progress_tx: tx.clone(),
+                                    done_tx,
+                                    session_id: session_id_clone.clone(),
+                                },
+                            );
                         }
                         tracing::info!(task_id = %task_id, "[Agent API] Task waiting for user input, holding SSE stream");
 
                         // 等待 answer_task_question_stream 回传结果（最长 10 分钟/轮）
-                        match tokio::time::timeout(
-                            tokio::time::Duration::from_secs(600),
-                            done_rx,
-                        ).await {
+                        match tokio::time::timeout(tokio::time::Duration::from_secs(600), done_rx)
+                            .await
+                        {
                             Ok(Ok(response_value)) => {
                                 // 检查任务是否仍在等待用户输入（多轮提问）
                                 let still_waiting = response_value
                                     .pointer("/task/status")
-                                    .and_then(|s| s.as_str()) == Some("waitingforinput");
+                                    .and_then(|s| s.as_str())
+                                    == Some("waitingforinput");
 
                                 if still_waiting {
                                     // 仍有新问题需要用户回答，持久化中间状态后继续等待
                                     if !session_id_clone.is_empty() {
-                                        let msg = response_value.get("message")
+                                        let msg = response_value
+                                            .get("message")
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("需要更多信息");
                                         let _ = persist_assistant_message(
@@ -1009,7 +1030,8 @@ pub async fn process_stream(
                                             Some(&task_id),
                                             msg,
                                             Some(response_value.clone()),
-                                        ).await;
+                                        )
+                                        .await;
                                     }
                                     tracing::info!(
                                         task_id = %task_id,
@@ -1019,13 +1041,18 @@ pub async fn process_stream(
                                 }
 
                                 // 任务真正完成
-                                tracing::info!("[Agent API] Answer result received, sending TaskCompleted");
-                                let task_success = response_value.get("success")
-                                    .and_then(|v| v.as_bool()).unwrap_or(true);
+                                tracing::info!(
+                                    "[Agent API] Answer result received, sending TaskCompleted"
+                                );
+                                let task_success = response_value
+                                    .get("success")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(true);
 
                                 // 持久化最终结果
                                 if !session_id_clone.is_empty() {
-                                    let final_msg = response_value.get("message")
+                                    let final_msg = response_value
+                                        .get("message")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("任务已完成");
                                     let _ = persist_assistant_message(
@@ -1034,21 +1061,43 @@ pub async fn process_stream(
                                         Some(&task_id),
                                         final_msg,
                                         Some(response_value.clone()),
-                                    ).await;
+                                    )
+                                    .await;
                                 }
 
-                                if let Some(nm) = crate::services::agent::notifications::get_notification_manager() {
-                                    let title = if task_success { "任务完成" } else { "任务失败" };
-                                    let summary = response_value.get("message")
-                                        .and_then(|v| v.as_str()).unwrap_or("").chars().take(120).collect::<String>();
-                                    nm.notify_task_completed(&task_id, title, &summary, task_success).await;
+                                if let Some(nm) =
+                                    crate::services::agent::notifications::get_notification_manager(
+                                    )
+                                {
+                                    let title = if task_success {
+                                        "任务完成"
+                                    } else {
+                                        "任务失败"
+                                    };
+                                    let summary = response_value
+                                        .get("message")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .chars()
+                                        .take(120)
+                                        .collect::<String>();
+                                    nm.notify_task_completed(
+                                        &task_id,
+                                        title,
+                                        &summary,
+                                        task_success,
+                                    )
+                                    .await;
                                 }
 
-                                if let Err(e) = tx.send(AgentProgressEvent::TaskCompleted {
-                                    task_id: task_id.clone(),
-                                    success: task_success,
-                                    response: Box::new(response_value),
-                                }).await {
+                                if let Err(e) = tx
+                                    .send(AgentProgressEvent::TaskCompleted {
+                                        task_id: task_id.clone(),
+                                        success: task_success,
+                                        response: Box::new(response_value),
+                                    })
+                                    .await
+                                {
                                     tracing::error!(
                                         task_id = %task_id,
                                         error = %e,
@@ -1060,7 +1109,9 @@ pub async fn process_stream(
                             Ok(Err(_)) => {
                                 // done_tx 被丢弃（answer stream 未找到对应的等待条目）
                                 tracing::warn!("[Agent API] Answer sender dropped unexpectedly");
-                                { WAITING_TASKS.write().await.remove(&task_id); }
+                                {
+                                    WAITING_TASKS.write().await.remove(&task_id);
+                                }
                                 break;
                             }
                             Err(_) => {
@@ -1068,11 +1119,14 @@ pub async fn process_stream(
                                     task_id = %task_id,
                                     "[Agent API] Timeout waiting for answer (600s)"
                                 );
-                                { WAITING_TASKS.write().await.remove(&task_id); }
+                                {
+                                    WAITING_TASKS.write().await.remove(&task_id);
+                                }
 
                                 // 检查任务的真实状态（可能在 timeout 前已被其他路径完成）
                                 let current_task = {
-                                    let store = crate::services::agent::executor::TASK_STORE.read().await;
+                                    let store =
+                                        crate::services::agent::executor::TASK_STORE.read().await;
                                     store.get(&task_id).cloned()
                                 };
 
@@ -1090,16 +1144,21 @@ pub async fn process_stream(
                                         serde_json::to_value(&task).unwrap_or_else(|_| json!({"error": "serialization failed"}))
                                     }
                                 } else {
-                                    serde_json::to_value(&api_response)
-                                        .unwrap_or_else(|_| json!({"error": "serialization failed"}))
+                                    serde_json::to_value(&api_response).unwrap_or_else(
+                                        |_| json!({"error": "serialization failed"}),
+                                    )
                                 };
 
-                                let task_success = response_value.get("timeout").is_none() && success;
-                                if let Err(e) = tx.send(AgentProgressEvent::TaskCompleted {
-                                    task_id: task_id.clone(),
-                                    success: task_success,
-                                    response: Box::new(response_value),
-                                }).await {
+                                let task_success =
+                                    response_value.get("timeout").is_none() && success;
+                                if let Err(e) = tx
+                                    .send(AgentProgressEvent::TaskCompleted {
+                                        task_id: task_id.clone(),
+                                        success: task_success,
+                                        response: Box::new(response_value),
+                                    })
+                                    .await
+                                {
                                     tracing::error!(
                                         task_id = %task_id,
                                         error = %e,
@@ -1124,20 +1183,34 @@ pub async fn process_stream(
                         if let Err(e) = persist_assistant_message(
                             &db_clone,
                             &session_id_clone,
-                            if task_id.is_empty() { None } else { Some(&task_id) },
+                            if task_id.is_empty() {
+                                None
+                            } else {
+                                Some(&task_id)
+                            },
                             &api_response.message,
                             Some(metadata),
                         )
                         .await
                         {
-                            tracing::warn!("[Agent API] Failed to persist assistant message: {}", e);
+                            tracing::warn!(
+                                "[Agent API] Failed to persist assistant message: {}",
+                                e
+                            );
                         }
                     }
 
-                    if let Some(nm) = crate::services::agent::notifications::get_notification_manager() {
-                        let title = if success { "任务完成" } else { "任务失败" };
+                    if let Some(nm) =
+                        crate::services::agent::notifications::get_notification_manager()
+                    {
+                        let title = if success {
+                            "任务完成"
+                        } else {
+                            "任务失败"
+                        };
                         let summary = api_response.message.chars().take(120).collect::<String>();
-                        nm.notify_task_completed(&task_id, title, &summary, success).await;
+                        nm.notify_task_completed(&task_id, title, &summary, success)
+                            .await;
                     }
 
                     let response_value = serde_json::to_value(&api_response)
@@ -1274,7 +1347,12 @@ pub async fn list_tasks(
     let limit = pagination.limit.min(100);
     let offset = pagination.offset;
 
-    tracing::debug!(user_id = user_id, limit = limit, offset = offset, "[Agent API] Listing user tasks");
+    tracing::debug!(
+        user_id = user_id,
+        limit = limit,
+        offset = offset,
+        "[Agent API] Listing user tasks"
+    );
 
     let agent = Agent::new(db).await;
     let all_tasks = agent.get_user_tasks(user_id).await;
@@ -1484,7 +1562,10 @@ pub async fn answer_task_question_stream(
         };
 
         // 持久化用户的回答到会话消息历史（确保后续 Planner 能看到完整对话）
-        let ctx_session_id = waiting_ctx.as_ref().map(|ctx| ctx.session_id.clone()).unwrap_or_default();
+        let ctx_session_id = waiting_ctx
+            .as_ref()
+            .map(|ctx| ctx.session_id.clone())
+            .unwrap_or_default();
         if !ctx_session_id.is_empty() {
             let _ = persist_user_message(&db_clone, &ctx_session_id, &req.answer).await;
         }
@@ -1496,18 +1577,28 @@ pub async fn answer_task_question_stream(
             skipped: false,
         };
 
-        let resume_tx = waiting_ctx.as_ref()
+        let resume_tx = waiting_ctx
+            .as_ref()
             .map(|ctx| ctx.progress_tx.clone())
             .unwrap_or_else(|| tx.clone());
 
-        match agent.resume_task_with_progress(&task_id, answer, user_id, resume_tx).await {
+        match agent
+            .resume_task_with_progress(&task_id, answer, user_id, resume_tx)
+            .await
+        {
             Ok(response) => {
                 let api_response: ApiResponse = response.into();
-                let final_task_id = api_response.task.as_ref().map(|t| t.task_id.clone()).unwrap_or_default();
+                let final_task_id = api_response
+                    .task
+                    .as_ref()
+                    .map(|t| t.task_id.clone())
+                    .unwrap_or_default();
                 let success = api_response.success;
 
                 // 检查任务是否仍然在等待用户输入（多轮提问场景）
-                let still_waiting = api_response.task.as_ref()
+                let still_waiting = api_response
+                    .task
+                    .as_ref()
                     .map(|t| t.status == "waitingforinput")
                     .unwrap_or(false);
 
@@ -1648,12 +1739,15 @@ pub async fn confirm_operation(
     };
 
     let agent = Agent::new(db).await;
-    let response = agent.process_confirmation(confirmation).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-    })?;
+    let response = agent
+        .process_confirmation(confirmation)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": e })),
+            )
+        })?;
 
     Ok(Json(response.into()))
 }
@@ -1821,10 +1915,9 @@ pub async fn create_preset(
             active_model.title = Set(req.title);
         }
         if req.conversation_data.is_some() {
-            active_model.conversation_data = Set(
-                req.conversation_data
-                    .map(|c| sea_orm::JsonValue::from(serde_json::to_value(&c).unwrap_or_default()))
-            );
+            active_model.conversation_data = Set(req
+                .conversation_data
+                .map(|c| sea_orm::JsonValue::from(serde_json::to_value(&c).unwrap_or_default())));
         }
 
         let updated = active_model.update(&db).await.map_err(|e| {
@@ -1850,10 +1943,9 @@ pub async fn create_preset(
         use_count: Set(1),
         created_at: Set(now),
         title: Set(req.title),
-        conversation_data: Set(
-            req.conversation_data
-                .map(|c| sea_orm::JsonValue::from(serde_json::to_value(&c).unwrap_or_default()))
-        ),
+        conversation_data: Set(req
+            .conversation_data
+            .map(|c| sea_orm::JsonValue::from(serde_json::to_value(&c).unwrap_or_default()))),
     };
 
     let created = new_preset.insert(&db).await.map_err(|e| {
@@ -2151,14 +2243,19 @@ pub async fn execute_preset(
                 task_id: recipe.id.clone(),
                 message: crate::services::agent::response_agent::executing_preset(&recipe.name),
                 total_steps: recipe.steps.len() as u32,
-                step_descriptions: recipe.steps.iter()
+                step_descriptions: recipe
+                    .steps
+                    .iter()
                     .map(|s| crate::services::agent::capability::get_step_description(s))
                     .collect(),
             })
             .await;
 
         // 直接执行已保存的 recipe（跳过意图分析）
-        match agent.execute_saved_recipe(&recipe, user_id, tx.clone()).await {
+        match agent
+            .execute_saved_recipe(&recipe, user_id, tx.clone())
+            .await
+        {
             Ok(response) => {
                 let api_response: ApiResponse = response.into();
                 let task_id = api_response
@@ -2169,7 +2266,9 @@ pub async fn execute_preset(
                 let success = api_response.success;
                 let response_value = serde_json::to_value(&api_response)
                     .unwrap_or_else(|_| json!({"error": "serialization failed"}));
-                tracing::info!("[Agent API] Preset execution completed, sending TaskCompleted event");
+                tracing::info!(
+                    "[Agent API] Preset execution completed, sending TaskCompleted event"
+                );
                 let _ = tx
                     .send(AgentProgressEvent::TaskCompleted {
                         task_id,
@@ -2394,12 +2493,9 @@ async fn delete_skill(
         )
     })?;
 
-    evo.delete_skill(&skill_id).await.map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": e })),
-        )
-    })?;
+    evo.delete_skill(&skill_id)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
 
     Ok(Json(json!({ "success": true })))
 }
@@ -2479,12 +2575,10 @@ async fn interrupt_session(
 
     // 提交新请求（通过 LaneQueue 保护并发）
     let lane_key = LaneQueue::make_lane_key(user_id, None);
-    let _guard = LANE_QUEUE.acquire(&lane_key).await.map_err(|e| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": e })),
-        )
-    })?;
+    let _guard = LANE_QUEUE
+        .acquire(&lane_key)
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))))?;
 
     let request = crate::services::agent::UserRequest {
         raw_input: new_input.clone(),
@@ -2597,8 +2691,12 @@ pub struct SessionListQuery {
     pub limit: u64,
 }
 
-fn default_page() -> u64 { 1 }
-fn default_limit() -> u64 { 20 }
+fn default_page() -> u64 {
+    1
+}
+fn default_limit() -> u64 {
+    20
+}
 
 /// 列出最近会话
 /// GET /api/agent/sessions
@@ -2805,10 +2903,12 @@ pub async fn generate_session_title(
         .filter(agent_sessions::Column::UserId.eq(user_id))
         .one(&db)
         .await
-        .map_err(|e| (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("DB error: {}", e)})),
-        ))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("DB error: {}", e)})),
+            )
+        })?;
 
     if session.is_none() {
         return Err((
@@ -2835,15 +2935,19 @@ pub async fn generate_session_title(
 
     let context: String = messages
         .iter()
-        .map(|m| format!("{}: {}", m.role, m.content.chars().take(200).collect::<String>()))
+        .map(|m| {
+            format!(
+                "{}: {}",
+                m.role,
+                m.content.chars().take(200).collect::<String>()
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
     // 调用 AI 生成标题
-    let analyzer = crate::services::ai::create_ai_analyzer_for_tier(
-        crate::config::ModelTier::Standard,
-    )
-    .await;
+    let analyzer =
+        crate::services::ai::create_ai_analyzer_for_tier(crate::config::ModelTier::Standard).await;
 
     let title = if let Some(analyzer) = analyzer {
         let prompt = format!(
@@ -2854,7 +2958,12 @@ pub async fn generate_session_title(
         match analyzer.analyze(&prompt).await {
             Ok(raw) => {
                 // 清理：去掉首尾引号、多余空白
-                let cleaned = raw.trim().trim_matches('"').trim_matches('\u{300c}').trim_matches('\u{300d}').trim();
+                let cleaned = raw
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\u{300c}')
+                    .trim_matches('\u{300d}')
+                    .trim();
                 if cleaned.is_empty() || cleaned.len() > 100 {
                     fallback_title(&messages)
                 } else {
@@ -2880,11 +2989,16 @@ pub async fn generate_session_title(
 
 /// 标题降级：截取第一条用户消息
 fn fallback_title(messages: &[agent_messages::Model]) -> String {
-    messages.iter()
+    messages
+        .iter()
         .find(|m| m.role == "user")
         .map(|m| {
             let s: String = m.content.chars().take(47).collect();
-            if m.content.chars().count() > 50 { format!("{}...", s) } else { s }
+            if m.content.chars().count() > 50 {
+                format!("{}...", s)
+            } else {
+                s
+            }
         })
         .unwrap_or_else(|| "New conversation".to_string())
 }
@@ -2935,10 +3049,7 @@ async fn persist_assistant_message(
         .map_err(|e| format!("Failed to persist assistant message: {}", e))?;
 
     // 更新会话消息计数和最后活跃时间
-    if let Ok(Some(session)) = agent_sessions::Entity::find_by_id(session_id)
-        .one(db)
-        .await
-    {
+    if let Ok(Some(session)) = agent_sessions::Entity::find_by_id(session_id).one(db).await {
         let mut active: agent_sessions::ActiveModel = session.into();
         active.last_active_at = Set(now);
         // message_count 用 raw SQL 更新可能更好，但这里简单处理
@@ -3074,9 +3185,9 @@ async fn notification_stream(
     let unread = manager.unread_count_for_user(user_id).await;
     let init_data = json!({"event": "init", "unread_count": unread});
     let _ = tx
-        .send(Ok(Event::default().data(
-            serde_json::to_string(&init_data).unwrap_or_default(),
-        )))
+        .send(Ok(
+            Event::default().data(serde_json::to_string(&init_data).unwrap_or_default())
+        ))
         .await;
 
     // 后台转发 broadcast → mpsc（过滤非当前用户的通知）
@@ -3258,7 +3369,8 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         // 回答任务问题 SSE 流式（需要认证）
         .route(
             "/tasks/{task_id}/answer/stream",
-            post(answer_task_question_stream).route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(answer_task_question_stream)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 中断当前会话并替换为新请求（需要认证）
         .route(
@@ -3301,8 +3413,7 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         // AI 生成会话标题
         .route(
             "/sessions/{session_id}/generate-title",
-            post(generate_session_title)
-                .route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(generate_session_title).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // ============ 任务预设路由 ============
         // 预设列表（需要认证）
@@ -3383,6 +3494,7 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         // 标记全部已读
         .route(
             "/notifications/read-all",
-            post(mark_all_notifications_read).route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(mark_all_notifications_read)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
 }

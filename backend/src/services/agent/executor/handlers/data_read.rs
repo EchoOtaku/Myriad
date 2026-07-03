@@ -3,7 +3,10 @@
 //! 处理 platform.read, brew.read, config.get, fuzzy.search 等读取类能力
 
 use super::HandlerContext;
-use crate::models::entities::{brew_items, brew_sources, brew_user_states, tapps, tapp_widgets, tapp_storage, tapp_scheduled_tasks};
+use crate::models::entities::{
+    brew_items, brew_sources, brew_user_states, tapp_scheduled_tasks, tapp_storage, tapp_widgets,
+    tapps,
+};
 use crate::services::agent::executor::utils::validate_platform_name;
 use crate::services::netease_utils::{get_random_china_ip, get_random_user_agent};
 use once_cell::sync::Lazy;
@@ -13,7 +16,6 @@ use std::collections::HashMap;
 
 static RE_HTML_TAG: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"<[^>]+>").unwrap());
 static RE_WHITESPACE: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"\s+").unwrap());
-
 
 /// 执行数据读取能力
 pub async fn execute(
@@ -58,7 +60,9 @@ pub async fn execute(
         "rsshub.instances" => execute_rsshub_instances(params).await,
         "context.reference" => execute_context_reference(params).await,
         // 补充的能力
-        "database.anime" | "database.game" | "database.artist" => execute_database_query(capability_id, params).await,
+        "database.anime" | "database.game" | "database.artist" => {
+            execute_database_query(capability_id, params).await
+        }
         "random.content" => execute_random_content(params).await,
         "report.list" => execute_report_list(params).await,
         _ => Err(format!("Unknown data_read capability: {}", capability_id)),
@@ -129,8 +133,8 @@ async fn execute_platform_stats(params: &HashMap<String, Value>) -> Result<Value
         .await
         .map_err(|e| format!("Failed to read {}: {}", cache_file, e))?;
 
-    let data: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    let data: Value =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
     // 根据平台类型使用专门的分析函数
     match platform.to_lowercase().as_str() {
@@ -461,7 +465,10 @@ async fn execute_brew_sources(_params: &HashMap<String, Value>) -> Result<Value,
     }))
 }
 
-async fn execute_brew_items(params: &HashMap<String, Value>, ctx: &HandlerContext<'_>) -> Result<Value, String> {
+async fn execute_brew_items(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
     use crate::services::agent::executor::utils::levenshtein_similar;
 
     let source_id = params.get("sourceId").and_then(|v| v.as_i64());
@@ -472,21 +479,38 @@ async fn execute_brew_items(params: &HashMap<String, Value>, ctx: &HandlerContex
     let keyword_param = params.get("keyword").and_then(|v| v.as_str());
     let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
     let action_type = params.get("action").and_then(|v| v.as_str()).unwrap_or("");
-    let select_first = params.get("selectFirst").and_then(|v| v.as_bool()).unwrap_or(false);
-    let open_article = params.get("openArticle").and_then(|v| v.as_bool()).unwrap_or(false);
+    let select_first = params
+        .get("selectFirst")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let open_article = params
+        .get("openArticle")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // 统一获取过滤名称
-    let filter_target = author_filter.or(source_name).or(name_param).or(query_param).or(keyword_param);
+    let filter_target = author_filter
+        .or(source_name)
+        .or(name_param)
+        .or(query_param)
+        .or(keyword_param);
 
     // 检测是否是"通用最新文章"请求
     let is_generic_latest_request = {
         let is_generic_keyword = filter_target
             .map(|t| {
                 let t_lower = t.to_lowercase();
-                t_lower == "latest_article" || t_lower == "latest" || t_lower == "newest"
-                    || t_lower == "recent" || t_lower == "最新" || t_lower == "最新文章"
-                    || t_lower == "最新的文章" || t_lower == "最近" || t_lower == "最近文章"
-                    || t_lower.contains("latest_article") || t_lower.contains("newest_article")
+                t_lower == "latest_article"
+                    || t_lower == "latest"
+                    || t_lower == "newest"
+                    || t_lower == "recent"
+                    || t_lower == "最新"
+                    || t_lower == "最新文章"
+                    || t_lower == "最新的文章"
+                    || t_lower == "最近"
+                    || t_lower == "最近文章"
+                    || t_lower.contains("latest_article")
+                    || t_lower.contains("newest_article")
             })
             .unwrap_or(false);
         let is_select_first_only = select_first && filter_target.is_none() && source_id.is_none();
@@ -505,8 +529,12 @@ async fn execute_brew_items(params: &HashMap<String, Value>, ctx: &HandlerContex
     let mut available_sources: Vec<String> = Vec::new();
     let mut all_authors: Vec<String> = Vec::new();
 
-    let sources = brew_sources::Entity::find().all(ctx.db).await.unwrap_or_default();
-    let source_map: std::collections::HashMap<i32, &brew_sources::Model> = sources.iter().map(|s| (s.id, s)).collect();
+    let sources = brew_sources::Entity::find()
+        .all(ctx.db)
+        .await
+        .unwrap_or_default();
+    let source_map: std::collections::HashMap<i32, &brew_sources::Model> =
+        sources.iter().map(|s| (s.id, s)).collect();
 
     for source in &sources {
         if !source.name.is_empty() {
@@ -557,8 +585,12 @@ async fn execute_brew_items(params: &HashMap<String, Value>, ctx: &HandlerContex
             .iter()
             .filter(|item| {
                 let author = item.get("author").and_then(|v| v.as_str()).unwrap_or("");
-                let feed_title = item.get("_feedTitle").and_then(|v| v.as_str()).unwrap_or("");
-                feed_title.to_lowercase().contains(&name_lower) || author.to_lowercase().contains(&name_lower)
+                let feed_title = item
+                    .get("_feedTitle")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                feed_title.to_lowercase().contains(&name_lower)
+                    || author.to_lowercase().contains(&name_lower)
             })
             .cloned()
             .collect();
@@ -566,9 +598,18 @@ async fn execute_brew_items(params: &HashMap<String, Value>, ctx: &HandlerContex
         if !strict_matches.is_empty() {
             all_items = strict_matches;
             if let Some(first) = all_items.first() {
-                let feed_title = first.get("_feedTitle").and_then(|v| v.as_str()).unwrap_or("");
+                let feed_title = first
+                    .get("_feedTitle")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let author = first.get("author").and_then(|v| v.as_str()).unwrap_or("");
-                matched_source = Some(if !feed_title.is_empty() { feed_title.to_string() } else if !author.is_empty() { author.to_string() } else { "unknown".to_string() });
+                matched_source = Some(if !feed_title.is_empty() {
+                    feed_title.to_string()
+                } else if !author.is_empty() {
+                    author.to_string()
+                } else {
+                    "unknown".to_string()
+                });
             }
         } else {
             // 尝试匹配 feed_url
@@ -584,8 +625,15 @@ async fn execute_brew_items(params: &HashMap<String, Value>, ctx: &HandlerContex
             if !url_matches.is_empty() {
                 all_items = url_matches;
                 if let Some(first) = all_items.first() {
-                    let feed_title = first.get("_feedTitle").and_then(|v| v.as_str()).unwrap_or("");
-                    matched_source = Some(if !feed_title.is_empty() { feed_title.to_string() } else { "unknown".to_string() });
+                    let feed_title = first
+                        .get("_feedTitle")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    matched_source = Some(if !feed_title.is_empty() {
+                        feed_title.to_string()
+                    } else {
+                        "unknown".to_string()
+                    });
                 }
             } else {
                 all_items.clear();
@@ -593,24 +641,36 @@ async fn execute_brew_items(params: &HashMap<String, Value>, ctx: &HandlerContex
         }
 
         if all_items.is_empty() {
-            let valid_sources: Vec<&String> = available_sources.iter().filter(|s| !s.is_empty()).collect();
-            let valid_authors: Vec<&String> = all_authors.iter().filter(|s| !s.is_empty()).collect();
+            let valid_sources: Vec<&String> =
+                available_sources.iter().filter(|s| !s.is_empty()).collect();
+            let valid_authors: Vec<&String> =
+                all_authors.iter().filter(|s| !s.is_empty()).collect();
 
             let suggestions: Vec<&str> = valid_sources
                 .iter()
                 .chain(valid_authors.iter())
                 .filter(|s| {
                     let s_lower = s.to_lowercase();
-                    s_lower.contains(&name_lower) || name_lower.contains(&s_lower) || levenshtein_similar(&s_lower, &name_lower)
+                    s_lower.contains(&name_lower)
+                        || name_lower.contains(&s_lower)
+                        || levenshtein_similar(&s_lower, &name_lower)
                 })
                 .map(|s| s.as_str())
                 .take(5)
                 .collect();
 
             let choices: Vec<Value> = if !suggestions.is_empty() {
-                suggestions.iter().map(|s| json!({ "value": s, "label": *s })).collect()
+                suggestions
+                    .iter()
+                    .map(|s| json!({ "value": s, "label": *s }))
+                    .collect()
             } else {
-                valid_sources.iter().chain(valid_authors.iter()).take(5).map(|s| json!({ "value": s, "label": s })).collect()
+                valid_sources
+                    .iter()
+                    .chain(valid_authors.iter())
+                    .take(5)
+                    .map(|s| json!({ "value": s, "label": s }))
+                    .collect()
             };
 
             return Ok(json!({
@@ -632,13 +692,30 @@ async fn execute_brew_items(params: &HashMap<String, Value>, ctx: &HandlerContex
     all_items.truncate(limit);
 
     // 如果需要打开第一篇文章
-    let should_open_first = (action_type == "navigate" || select_first || open_article || is_generic_latest_request) && !all_items.is_empty();
+    let should_open_first =
+        (action_type == "navigate" || select_first || open_article || is_generic_latest_request)
+            && !all_items.is_empty();
 
     if should_open_first {
         let first_item = &all_items[0];
-        let article_id = first_item.get("id").map(|v| if let Some(n) = v.as_i64() { n.to_string() } else { v.as_str().unwrap_or("").to_string() }).unwrap_or_default();
-        let article_link = first_item.get("link").and_then(|v| v.as_str()).unwrap_or("");
-        let article_title = first_item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let article_id = first_item
+            .get("id")
+            .map(|v| {
+                if let Some(n) = v.as_i64() {
+                    n.to_string()
+                } else {
+                    v.as_str().unwrap_or("").to_string()
+                }
+            })
+            .unwrap_or_default();
+        let article_link = first_item
+            .get("link")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let article_title = first_item
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
 
         Ok(json!({
             "items": all_items,
@@ -708,7 +785,10 @@ async fn execute_brew_article(params: &HashMap<String, Value>) -> Result<Value, 
         }
     }
 
-    Err(format!("未找到文章: id={:?}, url={:?}", article_id, article_url))
+    Err(format!(
+        "未找到文章: id={:?}, url={:?}",
+        article_id, article_url
+    ))
 }
 
 async fn execute_brew_stats(_params: &HashMap<String, Value>) -> Result<Value, String> {
@@ -750,25 +830,26 @@ async fn execute_brew_generate_reading_list(
         .and_then(|v| v.as_u64())
         .unwrap_or(10) as usize;
     let source_name_filter = params.get("sourceName").and_then(|v| v.as_str());
-    let days_back = params
-        .get("daysBack")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(7);
+    let days_back = params.get("daysBack").and_then(|v| v.as_i64()).unwrap_or(7);
 
     // 获取关键词过滤条件（支持多种参数名）
     let keyword = params
         .get("keyword")
         .and_then(|v| v.as_str())
-        .or_else(|| params.get("topic")
-            .and_then(|v| v.as_str()))
-        .or_else(|| params.get("filters")
-            .and_then(|v| v.get("keyword"))
-            .and_then(|v| v.as_str()))
-        .or_else(|| params.get("filters")
-            .and_then(|v| v.get("topic"))
-            .and_then(|v| v.as_str()))
-        .or_else(|| params.get("query")
-            .and_then(|v| v.as_str()))
+        .or_else(|| params.get("topic").and_then(|v| v.as_str()))
+        .or_else(|| {
+            params
+                .get("filters")
+                .and_then(|v| v.get("keyword"))
+                .and_then(|v| v.as_str())
+        })
+        .or_else(|| {
+            params
+                .get("filters")
+                .and_then(|v| v.get("topic"))
+                .and_then(|v| v.as_str())
+        })
+        .or_else(|| params.get("query").and_then(|v| v.as_str()))
         .unwrap_or("");
 
     tracing::info!(
@@ -781,7 +862,10 @@ async fn execute_brew_generate_reading_list(
     let cutoff_time = chrono::Utc::now() - chrono::Duration::days(days_back);
 
     // 从数据库获取文章
-    let sources = brew_sources::Entity::find().all(ctx.db).await.unwrap_or_default();
+    let sources = brew_sources::Entity::find()
+        .all(ctx.db)
+        .await
+        .unwrap_or_default();
     let source_map: std::collections::HashMap<i32, &brew_sources::Model> =
         sources.iter().map(|s| (s.id, s)).collect();
 
@@ -818,7 +902,8 @@ async fn execute_brew_generate_reading_list(
             .add(brew_items::Column::Title.like(&keyword_lower))
             .add(brew_items::Column::Content.like(&keyword_lower));
 
-        let keyword_items = base_query.clone()
+        let keyword_items = base_query
+            .clone()
             .filter(keyword_condition)
             .limit(fetch_limit)
             .all(ctx.db)
@@ -838,7 +923,7 @@ async fn execute_brew_generate_reading_list(
                 keyword = %keyword,
                 "[brew.generateReadingList] No keyword matches, will trigger AI web search"
             );
-            vec![]  // 返回空，触发 AI 搜索
+            vec![] // 返回空，触发 AI 搜索
         } else if keyword_items.len() < MIN_CANDIDATES {
             // 只有当有部分结果时才补充相关文章
             tracing::info!(
@@ -846,7 +931,8 @@ async fn execute_brew_generate_reading_list(
                 found = keyword_items.len(),
                 "[brew.generateReadingList] Keyword results insufficient, fetching more articles"
             );
-            let keyword_ids: std::collections::HashSet<i32> = keyword_items.iter().map(|i| i.id).collect();
+            let keyword_ids: std::collections::HashSet<i32> =
+                keyword_items.iter().map(|i| i.id).collect();
             let additional = base_query
                 .limit(fetch_limit)
                 .all(ctx.db)
@@ -866,7 +952,11 @@ async fn execute_brew_generate_reading_list(
         }
     } else {
         // 无关键词，直接取最新
-        base_query.limit(fetch_limit).all(ctx.db).await.unwrap_or_default()
+        base_query
+            .limit(fetch_limit)
+            .all(ctx.db)
+            .await
+            .unwrap_or_default()
     };
 
     // 如果数据库结果为空或不足，且有关键词，尝试 AI 联网搜索
@@ -924,7 +1014,11 @@ async fn execute_brew_generate_reading_list(
             "AI 联网搜索未返回结果，请检查 Gemini API 配置"
         };
 
-        let list_name = if !keyword.is_empty() { keyword } else { criteria };
+        let list_name = if !keyword.is_empty() {
+            keyword
+        } else {
+            criteria
+        };
 
         return Ok(json!({
             "readingList": [],
@@ -970,14 +1064,23 @@ async fn execute_brew_generate_reading_list(
         .map(|item| {
             let source = source_map.get(&item.source_id);
             // 提取纯文本摘要：简单去除HTML标签，取前50字符
-            let summary = item.content.as_ref()
+            let summary = item
+                .content
+                .as_ref()
                 .map(|c| {
                     // 简单的HTML标签去除
                     let mut in_tag = false;
-                    let text: String = c.chars()
+                    let text: String = c
+                        .chars()
                         .filter(|&ch| {
-                            if ch == '<' { in_tag = true; return false; }
-                            if ch == '>' { in_tag = false; return false; }
+                            if ch == '<' {
+                                in_tag = true;
+                                return false;
+                            }
+                            if ch == '>' {
+                                in_tag = false;
+                                return false;
+                            }
                             !in_tag && ch != '\n' && ch != '\r'
                         })
                         .take(50)
@@ -1042,11 +1145,13 @@ async fn execute_brew_generate_reading_list(
     // 解析 AI 响应
     let ai_result: Value = extract_json_from_response(&ai_response)
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| json!({
-            "selectedIds": items.iter().take(max_items).map(|i| i.id).collect::<Vec<_>>(),
-            "listName": format!("阅读列表 - {}", criteria),
-            "reasons": {}
-        }));
+        .unwrap_or_else(|| {
+            json!({
+                "selectedIds": items.iter().take(max_items).map(|i| i.id).collect::<Vec<_>>(),
+                "listName": format!("阅读列表 - {}", criteria),
+                "reasons": {}
+            })
+        });
 
     let selected_ids: Vec<i64> = ai_result
         .get("selectedIds")
@@ -1060,10 +1165,7 @@ async fn execute_brew_generate_reading_list(
         .unwrap_or("智能阅读列表")
         .to_string();
 
-    let reasons = ai_result
-        .get("reasons")
-        .cloned()
-        .unwrap_or(json!({}));
+    let reasons = ai_result.get("reasons").cloned().unwrap_or(json!({}));
 
     // 构建最终阅读列表
     let reading_list: Vec<Value> = selected_ids
@@ -1192,7 +1294,7 @@ async fn execute_auth_status(_params: &HashMap<String, Value>) -> Result<Value, 
     Ok(json!({
         "isAuthenticated": true,
         "message": "Auth status check - requires session context",
-        "linkedPlatforms": ["steam", "bilibili", "github", "netease"]
+        "linkedPlatforms": ["steam", "bilibili", "github", "netease", "bangumi"]
     }))
 }
 
@@ -1269,13 +1371,31 @@ fn extract_platform_items(platform: &str, data: &Value) -> Vec<Value> {
             }
             items
         }
-        _ => {
-            data.get("items")
-                .or_else(|| data.get("data"))
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default()
+        "bangumi" => {
+            let mut items = Vec::new();
+            let content = data.get("content_analysis");
+            for key in ["top_rated_subjects", "watching_subjects", "recent_updates"] {
+                if let Some(subjects) = content.and_then(|v| v.get(key)).and_then(|v| v.as_array())
+                {
+                    for subject in subjects {
+                        items.push(json!({
+                            "type": subject.get("subject_type").and_then(|v| v.as_str()).unwrap_or("subject"),
+                            "title": subject.get("title"),
+                            "rate": subject.get("rate"),
+                            "collection_type": subject.get("collection_type"),
+                            "subject_id": subject.get("subject_id")
+                        }));
+                    }
+                }
+            }
+            items
         }
+        _ => data
+            .get("items")
+            .or_else(|| data.get("data"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default(),
     }
 }
 
@@ -1285,7 +1405,11 @@ fn extract_json_from_response(response: &str) -> Option<String> {
     if let Some(start) = response.find("```json") {
         let content_start = start + 7;
         if let Some(end) = response[content_start..].find("```") {
-            return Some(response[content_start..content_start + end].trim().to_string());
+            return Some(
+                response[content_start..content_start + end]
+                    .trim()
+                    .to_string(),
+            );
         }
     }
 
@@ -1298,7 +1422,11 @@ fn extract_json_from_response(response: &str) -> Option<String> {
             .map(|n| content_start + n + 1)
             .unwrap_or(content_start);
         if let Some(end) = response[actual_start..].find("```") {
-            return Some(response[actual_start..actual_start + end].trim().to_string());
+            return Some(
+                response[actual_start..actual_start + end]
+                    .trim()
+                    .to_string(),
+            );
         }
     }
 
@@ -1471,7 +1599,8 @@ async fn execute_fuzzy_search(
     }
 
     // 搜索 Tapp 应用
-    if (scope == "all" || scope == "tapp") && (search_type.is_none() || search_type == Some("app")) {
+    if (scope == "all" || scope == "tapp") && (search_type.is_none() || search_type == Some("app"))
+    {
         let apps = tapps::Entity::find()
             .all(ctx.db)
             .await
@@ -1511,7 +1640,9 @@ async fn execute_fuzzy_search(
     results.sort_by(|a, b| {
         let score_a = a.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let score_b = b.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+        score_b
+            .partial_cmp(&score_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     results.truncate(limit);
@@ -1654,9 +1785,14 @@ async fn execute_brew_discover(
                     match try_parse_feed(route_url).await {
                         Ok(verified_info) => {
                             route["verified"] = json!(true);
-                            route["title"] = verified_info.get("title").cloned().unwrap_or(json!(null));
-                            route["itemCount"] = verified_info.get("itemCount").cloned().unwrap_or(json!(0));
-                            route["feedType"] = verified_info.get("feedType").cloned().unwrap_or(json!("unknown"));
+                            route["title"] =
+                                verified_info.get("title").cloned().unwrap_or(json!(null));
+                            route["itemCount"] =
+                                verified_info.get("itemCount").cloned().unwrap_or(json!(0));
+                            route["feedType"] = verified_info
+                                .get("feedType")
+                                .cloned()
+                                .unwrap_or(json!("unknown"));
                         }
                         Err(_) => {
                             route["verified"] = json!(false);
@@ -1754,8 +1890,7 @@ async fn ai_search_rss_feeds(query: &str, ctx: &HandlerContext<'_>) -> Result<Ve
 
     // 预编译正则表达式
     let url_re =
-        regex::Regex::new(r#"https?://[^\s<>"')\]]+(?:rss|feed|atom|xml)[^\s<>"')\]]*"#)
-            .unwrap();
+        regex::Regex::new(r#"https?://[^\s<>"')\]]+(?:rss|feed|atom|xml)[^\s<>"')\]]*"#).unwrap();
 
     // 从 AI 响应中提取 RSS URL
     for cap in url_re.captures_iter(&result) {
@@ -1919,14 +2054,22 @@ async fn query_rsshub_routes(query: &str) -> Result<Vec<Value>, String> {
             ("知乎热榜", "/zhihu/hotlist", "知乎热门话题榜单"),
             ("微博热搜", "/weibo/search/hot", "微博实时热搜榜"),
             ("B站排行榜", "/bilibili/ranking/0/3/1", "B站全站排行榜"),
-            ("GitHub Trending", "/github/trending/daily/any", "GitHub 每日趋势项目"),
+            (
+                "GitHub Trending",
+                "/github/trending/daily/any",
+                "GitHub 每日趋势项目",
+            ),
             ("Hacker News", "/hackernews/best", "Hacker News 最佳"),
             ("少数派首页", "/sspai/index", "少数派首页文章"),
             ("IT之家", "/ithome", "IT之家最新资讯"),
             ("36氪", "/36kr/newsflashes", "36氪快讯"),
             ("豆瓣电影", "/douban/movie/playing", "豆瓣正在上映"),
             ("抖音热搜", "/douyin/trending", "抖音热搜榜"),
-            ("即刻精选", "/jike/topic/text/553870e8e4b0cafb0a1bef68", "即刻精选内容"),
+            (
+                "即刻精选",
+                "/jike/topic/text/553870e8e4b0cafb0a1bef68",
+                "即刻精选内容",
+            ),
         ];
 
         for (name, path, desc) in popular_routes {
@@ -2017,7 +2160,8 @@ async fn fetch_rsshub_routes() -> Result<Value, String> {
                 let _ = tokio::fs::create_dir_all(paths().cache.clone()).await;
                 let _ = tokio::fs::write(
                     &cache_path,
-                    serde_json::to_string_pretty(&cache_data).unwrap_or_else(|_| cache_data.to_string()),
+                    serde_json::to_string_pretty(&cache_data)
+                        .unwrap_or_else(|_| cache_data.to_string()),
                 )
                 .await;
 
@@ -2044,8 +2188,7 @@ fn parse_rsshub_radar_rules(content: &str) -> Value {
     // 使用正则提取域名和路由信息
     let domain_re = regex::Regex::new(r#"'([^']+\.[^']+)':\s*\{"#).unwrap();
     let name_re = regex::Regex::new(r#"_name:\s*['"]([^'"]+)['"]"#).unwrap();
-    let route_re =
-        regex::Regex::new(r#"(\w+):\s*\[\s*\{\s*title:\s*['"]([^'"]+)['"]"#).unwrap();
+    let route_re = regex::Regex::new(r#"(\w+):\s*\[\s*\{\s*title:\s*['"]([^'"]+)['"]"#).unwrap();
     let target_re = regex::Regex::new(r#"target:\s*['"]([^'"]+)['"]"#).unwrap();
 
     // 按域名块分割
@@ -2104,14 +2247,22 @@ fn parse_rsshub_radar_rules(content: &str) -> Value {
         ("知乎热榜", "/zhihu/hotlist", "知乎热门话题榜单"),
         ("微博热搜", "/weibo/search/hot", "微博实时热搜榜"),
         ("B站排行榜", "/bilibili/ranking/0/3/1", "B站全站排行榜"),
-        ("GitHub Trending", "/github/trending/daily/any", "GitHub 每日趋势项目"),
+        (
+            "GitHub Trending",
+            "/github/trending/daily/any",
+            "GitHub 每日趋势项目",
+        ),
         ("Hacker News", "/hackernews/best", "Hacker News 最佳"),
         ("少数派首页", "/sspai/index", "少数派首页文章"),
         ("IT之家", "/ithome", "IT之家最新资讯"),
         ("36氪", "/36kr/newsflashes", "36氪快讯"),
         ("抖音热搜", "/douyin/trending", "抖音热搜榜"),
         ("豆瓣电影", "/douban/movie/playing", "豆瓣正在上映"),
-        ("即刻精选", "/jike/topic/text/553870e8e4b0cafb0a1bef68", "即刻精选内容"),
+        (
+            "即刻精选",
+            "/jike/topic/text/553870e8e4b0cafb0a1bef68",
+            "即刻精选内容",
+        ),
     ];
 
     for (name, path, desc) in popular_routes {
@@ -2179,7 +2330,9 @@ async fn discover_rss_from_website(url: &str) -> Result<Vec<Value>, String> {
             let feed_url = if href.as_str().starts_with("http") {
                 href.as_str().to_string()
             } else if let Some(ref base) = base_url {
-                base.join(href.as_str()).map(|u| u.to_string()).unwrap_or_default()
+                base.join(href.as_str())
+                    .map(|u| u.to_string())
+                    .unwrap_or_default()
             } else {
                 continue;
             };
@@ -2369,11 +2522,14 @@ async fn execute_brew_page_content(
             };
 
             let word_count = item.word_count.unwrap_or_else(|| {
-                item.content.as_ref().map(|c| c.chars().count() as i32).unwrap_or(0)
+                item.content
+                    .as_ref()
+                    .map(|c| c.chars().count() as i32)
+                    .unwrap_or(0)
             });
-            let reading_time = item.reading_time.unwrap_or_else(|| {
-                (word_count as f32 / 500.0).ceil() as i32
-            });
+            let reading_time = item
+                .reading_time
+                .unwrap_or_else(|| (word_count as f32 / 500.0).ceil() as i32);
 
             Ok(json!({
                 "level": "reader",
@@ -2675,10 +2831,7 @@ async fn execute_netease_search_playlist(
         .get("keyword")
         .and_then(|v| v.as_str())
         .unwrap_or("轻音乐");
-    let limit = params
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(10) as usize;
+    let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
     tracing::info!(
         keyword = %keyword,
@@ -2702,7 +2855,7 @@ async fn execute_netease_search_playlist(
                     );
                     ai_category
                 }
-                Err(_) => "轻音乐".to_string()
+                Err(_) => "轻音乐".to_string(),
             }
         } else {
             "轻音乐".to_string()
@@ -2874,7 +3027,10 @@ fn map_keyword_to_netease_category(keyword: &str) -> String {
 
     // 关键词到网易云分类的映射
     let mappings: Vec<(&[&str], &str)> = vec![
-        (&["工作", "办公", "专注", "学习", "编程", "coding"], "轻音乐"),
+        (
+            &["工作", "办公", "专注", "学习", "编程", "coding"],
+            "轻音乐",
+        ),
         (&["睡眠", "睡前", "入睡", "助眠", "安静"], "轻音乐"),
         (&["放松", "舒缓", "休闲", "轻松"], "轻音乐"),
         (&["运动", "健身", "跑步", "动感", "激情"], "电子"),
@@ -2968,17 +3124,29 @@ fn score_playlist_relevance(playlist: &Value, keyword: &str) -> i32 {
 fn get_related_terms(keyword: &str) -> Vec<&'static str> {
     let term_groups: &[&[&str]] = &[
         // 放松相关
-        &["放松", "轻松", "舒缓", "休息", "休闲", "慵懒", "惬意", "chill"],
+        &[
+            "放松", "轻松", "舒缓", "休息", "休闲", "慵懒", "惬意", "chill",
+        ],
         // 安静相关
         &["安静", "静心", "静谧", "宁静", "平静", "冥想", "禅"],
         // 学习/工作相关
-        &["学习", "阅读", "读书", "看书", "工作", "专注", "集中", "效率", "coding", "编程"],
+        &[
+            "学习", "阅读", "读书", "看书", "工作", "专注", "集中", "效率", "coding", "编程",
+        ],
         // 睡眠相关
         &["睡眠", "助眠", "入睡", "晚安", "深夜", "夜晚", "催眠"],
         // 运动相关
         &["运动", "健身", "跑步", "锻炼", "燃脂", "有氧", "gym"],
         // 轻音乐相关
-        &["轻音乐", "纯音乐", "器乐", "钢琴", "吉他", "小提琴", "无人声"],
+        &[
+            "轻音乐",
+            "纯音乐",
+            "器乐",
+            "钢琴",
+            "吉他",
+            "小提琴",
+            "无人声",
+        ],
         // 治愈相关
         &["治愈", "温暖", "温馨", "舒适", "暖心", "感动"],
         // 伤感相关
@@ -2990,7 +3158,10 @@ fn get_related_terms(keyword: &str) -> Vec<&'static str> {
     ];
 
     for group in term_groups {
-        if group.iter().any(|t| keyword.contains(t) || t.contains(keyword)) {
+        if group
+            .iter()
+            .any(|t| keyword.contains(t) || t.contains(keyword))
+        {
             return group.iter().filter(|&&t| t != keyword).copied().collect();
         }
     }
@@ -3018,8 +3189,21 @@ async fn ai_understand_music_intent(
             let category = response.trim().to_string();
             // 验证返回的分类是否有效
             let valid_categories = [
-                "流行", "轻音乐", "电子", "摇滚", "民谣", "说唱", "古风",
-                "古典", "爵士", "蓝调", "ACG", "华语", "欧美", "日语", "韩语"
+                "流行",
+                "轻音乐",
+                "电子",
+                "摇滚",
+                "民谣",
+                "说唱",
+                "古风",
+                "古典",
+                "爵士",
+                "蓝调",
+                "ACG",
+                "华语",
+                "欧美",
+                "日语",
+                "韩语",
             ];
             if valid_categories.contains(&category.as_str()) {
                 Ok(category)
@@ -3236,9 +3420,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
     });
 
     // Steam 统计
-    if let Ok(content) =
-        tokio::fs::read_to_string("cache/platforms/steam_filtered.json").await
-    {
+    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/steam_filtered.json").await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             if let Some(games) = data
                 .get("content_analysis")
@@ -3256,9 +3438,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
     }
 
     // Bilibili 统计
-    if let Ok(content) =
-        tokio::fs::read_to_string("cache/platforms/bilibili_filtered.json").await
-    {
+    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/bilibili_filtered.json").await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             if let Some(anime) = data
                 .get("content_analysis")
@@ -3271,9 +3451,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
     }
 
     // GitHub 统计
-    if let Ok(content) =
-        tokio::fs::read_to_string("cache/platforms/github_filtered.json").await
-    {
+    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/github_filtered.json").await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             if let Some(repos) = data
                 .get("content_analysis")
@@ -3286,9 +3464,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
     }
 
     // Netease 统计
-    if let Ok(content) =
-        tokio::fs::read_to_string("cache/platforms/netease_filtered.json").await
-    {
+    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/netease_filtered.json").await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             if let Some(songs) = data
                 .get("content_analysis")
@@ -3371,7 +3547,7 @@ async fn execute_search_global(params: &HashMap<String, Value>) -> Result<Value,
             "results": [],
             "total": 0,
             "message": crate::services::agent::response_agent::search_empty_hint(),
-            "supportedPlatforms": ["steam", "bilibili", "github", "netease"],
+            "supportedPlatforms": ["steam", "bilibili", "github", "netease", "bangumi"],
             "hint": "试试搜索你已有数据中的内容，例如：'搜索我的 Steam 游戏'、'查看 GitHub 仓库'"
         }));
     }
@@ -3491,9 +3667,7 @@ async fn execute_tapp_list(params: &HashMap<String, Value>) -> Result<Value, Str
                     let manifest_path = path.join("manifest.json");
                     if manifest_path.exists() {
                         if let Ok(content) = std::fs::read_to_string(&manifest_path) {
-                            if let Ok(manifest) =
-                                serde_json::from_str::<Value>(&content)
-                            {
+                            if let Ok(manifest) = serde_json::from_str::<Value>(&content) {
                                 tapps.push(json!({
                                     "id": path.file_name().and_then(|n| n.to_str()).unwrap_or(""),
                                     "name": manifest.get("name"),
@@ -3517,8 +3691,8 @@ async fn execute_tapp_list(params: &HashMap<String, Value>) -> Result<Value, Str
 /// 定时任务列表
 async fn execute_scheduler_list(params: &HashMap<String, Value>) -> Result<Value, String> {
     let _ = params; // 未使用参数
-    // 定时任务列表 - 简化实现
-    // 实际应该从数据库读取 tapp_scheduled_tasks 表
+                    // 定时任务列表 - 简化实现
+                    // 实际应该从数据库读取 tapp_scheduled_tasks 表
     Ok(json!({
         "tasks": [],
         "total": 0,
@@ -3529,7 +3703,7 @@ async fn execute_scheduler_list(params: &HashMap<String, Value>) -> Result<Value
 /// RSSHub 实例列表
 async fn execute_rsshub_instances(params: &HashMap<String, Value>) -> Result<Value, String> {
     let _ = params; // 未使用参数
-    // RSSHub 实例列表 - 简化实现
+                    // RSSHub 实例列表 - 简化实现
     Ok(json!({
         "instances": [],
         "healthyCount": 0,
@@ -3549,7 +3723,10 @@ async fn execute_context_reference(_params: &HashMap<String, Value>) -> Result<V
 // ============================================================================
 
 /// 数据库查询 (anime/game/artist)
-async fn execute_database_query(capability_id: &str, params: &HashMap<String, Value>) -> Result<Value, String> {
+async fn execute_database_query(
+    capability_id: &str,
+    params: &HashMap<String, Value>,
+) -> Result<Value, String> {
     let db_type = capability_id.split('.').next_back().unwrap_or("anime");
     let title_query = params
         .get("title")
@@ -3558,9 +3735,12 @@ async fn execute_database_query(capability_id: &str, params: &HashMap<String, Va
     let genre_query = params.get("genre").and_then(|v| v.as_str());
 
     let db_file = format!("data/{}_database.json", db_type);
-    let content = tokio::fs::read_to_string(&db_file)
-        .await
-        .map_err(|_| format!("{} 数据库文件不存在（{}）。请先导入相关数据。", db_type, db_file))?;
+    let content = tokio::fs::read_to_string(&db_file).await.map_err(|_| {
+        format!(
+            "{} 数据库文件不存在（{}）。请先导入相关数据。",
+            db_type, db_file
+        )
+    })?;
 
     let data: Value = serde_json::from_str(&content).unwrap_or(json!({}));
     let entries = data
@@ -3628,7 +3808,7 @@ async fn execute_random_content(params: &HashMap<String, Value>) -> Result<Value
             use rand::seq::IndexedRandom;
             let mut rng = rand::rng();
             let selected: Vec<_> = items
-                .choose_multiple(&mut rng, count.min(items.len()))
+                .sample(&mut rng, count.min(items.len()))
                 .cloned()
                 .collect();
 
@@ -3666,6 +3846,12 @@ fn extract_platform_items_for_random(platform: &str, data: &Value) -> Vec<Value>
             .unwrap_or_default(),
         "netease" => data
             .get("songs")
+            .or(data.get("items"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default(),
+        "bangumi" => data
+            .get("collections")
             .or(data.get("items"))
             .and_then(|v| v.as_array())
             .cloned()
@@ -3746,7 +3932,8 @@ async fn trigger_ai_web_search_for_reading_list(
 
     let api_key = config.gemini_api_key.clone().ok_or_else(|| {
         tracing::error!("[AI Web Search] Gemini API Key is not configured");
-        crate::services::agent::response_agent::api_key_not_configured("Gemini") + "，请在设置中配置 API Key"
+        crate::services::agent::response_agent::api_key_not_configured("Gemini")
+            + "，请在设置中配置 API Key"
     })?;
 
     if api_key.is_empty() {
@@ -3798,7 +3985,8 @@ async fn trigger_ai_web_search_for_reading_list(
 [{{"id":1,"title":"完整的文章标题","link":"https://www.example.com/news/article-123","summary":"这篇文章详细介绍了...（150-300字的详细摘要）","sourceName":"Example新闻","author":"张三","publishedAt":"2026-01-10T12:00:00Z","relevanceReason":"推荐理由"}}]
 
 现在请搜索并返回 JSON 数组："#,
-        query = query, max_items = max_items
+        query = query,
+        max_items = max_items
     );
 
     // 构建 Gemini API 请求（带 Google Search grounding）
@@ -3868,7 +4056,8 @@ async fn trigger_ai_web_search_for_reading_list(
         tracing::info!("[AI Web Search] Trying to extract from grounding metadata");
 
         // 先收集 grounding supports 中的内容片段（用于生成摘要）
-        let mut content_snippets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut content_snippets: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
 
         if let Some(grounding_supports) = response_json
             .get("candidates")
@@ -3879,8 +4068,13 @@ async fn trigger_ai_web_search_for_reading_list(
         {
             for support in grounding_supports {
                 if let (Some(segment), Some(chunk_indices)) = (
-                    support.get("segment").and_then(|s| s.get("text")).and_then(|t| t.as_str()),
-                    support.get("groundingChunkIndices").and_then(|i| i.as_array())
+                    support
+                        .get("segment")
+                        .and_then(|s| s.get("text"))
+                        .and_then(|t| t.as_str()),
+                    support
+                        .get("groundingChunkIndices")
+                        .and_then(|i| i.as_array()),
                 ) {
                     for idx in chunk_indices {
                         if let Some(idx_num) = idx.as_u64() {
@@ -3906,7 +4100,10 @@ async fn trigger_ai_web_search_for_reading_list(
                 for (idx, chunk) in chunks.iter().enumerate().take(max_items) {
                     if let Some(web) = chunk.get("web") {
                         let uri = web.get("uri").and_then(|u| u.as_str()).unwrap_or("");
-                        let title = web.get("title").and_then(|t| t.as_str()).unwrap_or("未知标题");
+                        let title = web
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("未知标题");
 
                         // 跳过 Google 搜索结果页和 AMP 链接
                         if uri.is_empty()
@@ -3922,7 +4119,9 @@ async fn trigger_ai_web_search_for_reading_list(
                             .get(&idx.to_string())
                             .map(|snippets| snippets.join(" "))
                             .filter(|s| s.len() > 20)
-                            .unwrap_or_else(|| format!("来自 {} 的文章: {}", extract_domain_from_url(uri), title));
+                            .unwrap_or_else(|| {
+                                format!("来自 {} 的文章: {}", extract_domain_from_url(uri), title)
+                            });
 
                         results.push(json!({
                             "id": results.len() + 1,
@@ -3951,13 +4150,19 @@ async fn trigger_ai_web_search_for_reading_list(
         .enumerate()
         .filter_map(|(idx, mut item)| {
             // 确保有 id（转为数字）
-            let id = item.get("id")
+            let id = item
+                .get("id")
                 .and_then(|v| v.as_i64())
                 .unwrap_or((idx + 1) as i64);
             item["id"] = json!(id);
 
             // 确保 title 存在
-            if item.get("title").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            if item
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+            {
                 item["title"] = json!("未知标题");
             }
 
@@ -3976,7 +4181,12 @@ async fn trigger_ai_web_search_for_reading_list(
             item["link"] = json!(cleaned_link);
 
             // 确保 sourceName 存在
-            if item.get("sourceName").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            if item
+                .get("sourceName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+            {
                 item["sourceName"] = json!(extract_domain_from_url(&cleaned_link));
             }
 
@@ -3984,12 +4194,24 @@ async fn trigger_ai_web_search_for_reading_list(
             let summary = item.get("summary").and_then(|v| v.as_str()).unwrap_or("");
             if summary.is_empty() || summary.len() < 30 {
                 let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
-                let source = item.get("sourceName").and_then(|v| v.as_str()).unwrap_or("");
-                item["summary"] = json!(crate::services::agent::response_agent::article_summary_placeholder(source, title));
+                let source = item
+                    .get("sourceName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                item["summary"] = json!(
+                    crate::services::agent::response_agent::article_summary_placeholder(
+                        source, title
+                    )
+                );
             }
 
             // 确保 publishedAt 存在
-            if item.get("publishedAt").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            if item
+                .get("publishedAt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+            {
                 item["publishedAt"] = json!(chrono::Utc::now().to_rfc3339());
             }
 
@@ -3999,7 +4221,12 @@ async fn trigger_ai_web_search_for_reading_list(
             }
 
             // 确保 relevanceReason 存在
-            if item.get("relevanceReason").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            if item
+                .get("relevanceReason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+            {
                 item["relevanceReason"] = json!("AI 联网搜索推荐");
             }
 
@@ -4011,10 +4238,7 @@ async fn trigger_ai_web_search_for_reading_list(
         .take(max_items)
         .collect();
 
-    tracing::info!(
-        results = results.len(),
-        "[AI Web Search] Search completed"
-    );
+    tracing::info!(results = results.len(), "[AI Web Search] Search completed");
 
     Ok(results)
 }
@@ -4027,7 +4251,12 @@ fn clean_search_result_url(url: &str) -> String {
     if url.contains("google.com/url?") {
         // 尝试从 Google 重定向链接中提取真实 URL
         if let Some(start) = url.find("url=").or_else(|| url.find("q=")) {
-            let param_start = start + if url[start..].starts_with("url=") { 4 } else { 2 };
+            let param_start = start
+                + if url[start..].starts_with("url=") {
+                    4
+                } else {
+                    2
+                };
             let param_value = &url[param_start..];
             let end = param_value.find('&').unwrap_or(param_value.len());
             let decoded = urlencoding::decode(&param_value[..end]).unwrap_or_default();
@@ -4071,10 +4300,22 @@ fn clean_search_result_url(url: &str) -> String {
         let query = &url[query_start + 1..];
 
         // 保留必要的参数，移除追踪参数
-        let tracking_params = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
-                               "fbclid", "gclid", "ref", "source", "mc_cid", "mc_eid"];
+        let tracking_params = [
+            "utm_source",
+            "utm_medium",
+            "utm_campaign",
+            "utm_content",
+            "utm_term",
+            "fbclid",
+            "gclid",
+            "ref",
+            "source",
+            "mc_cid",
+            "mc_eid",
+        ];
 
-        let clean_params: Vec<&str> = query.split('&')
+        let clean_params: Vec<&str> = query
+            .split('&')
             .filter(|param| {
                 let key = param.split('=').next().unwrap_or("");
                 !tracking_params.iter().any(|&t| key == t)

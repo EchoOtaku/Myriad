@@ -200,6 +200,9 @@ pub struct DynamicConfig {
     pub steam_api_key: Option<String>,
     pub steam_id: Option<String>,
     pub netease_user_id: Option<String>,
+    pub bangumi_username: Option<String>,
+    pub bangumi_access_token: Option<String>,
+    pub bangumi_user_agent: Option<String>,
 
     // Tapp 外部 API 密钥（用于 Tapp API 声明系统）
     pub openweather_api_key: Option<String>,
@@ -400,6 +403,9 @@ impl Default for DynamicConfig {
             steam_api_key: None,
             steam_id: None,
             netease_user_id: None,
+            bangumi_username: None,
+            bangumi_access_token: None,
+            bangumi_user_agent: Some("haru/Myriad".to_string()),
 
             // Tapp 外部 API 密钥
             openweather_api_key: None,
@@ -528,7 +534,9 @@ impl DynamicConfig {
         if tier == ModelTier::Pro && self.pro_enabled {
             let provider = &self.pro_ai_provider;
             let (api_key, model, base_url) = if provider == "openai" {
-                let key = self.pro_openai_api_key.clone()
+                let key = self
+                    .pro_openai_api_key
+                    .clone()
                     .filter(|k| !k.is_empty())
                     .or_else(|| self.openai_api_key.clone());
                 let model = if self.pro_openai_model.is_empty() {
@@ -544,7 +552,9 @@ impl DynamicConfig {
                 (key, model, base_url)
             } else {
                 // gemini
-                let key = self.pro_gemini_api_key.clone()
+                let key = self
+                    .pro_gemini_api_key
+                    .clone()
                     .filter(|k| !k.is_empty())
                     .or_else(|| self.gemini_api_key.clone());
                 let model = if self.pro_gemini_model.is_empty() {
@@ -554,16 +564,34 @@ impl DynamicConfig {
                 };
                 (key, model, String::new())
             };
-            return ResolvedAiConfig { provider: provider.clone(), api_key, model, base_url };
+            return ResolvedAiConfig {
+                provider: provider.clone(),
+                api_key,
+                model,
+                base_url,
+            };
         }
 
         // 标准层级
         let provider = &self.ai_provider;
         let (api_key, model, base_url) = if provider == "openai" {
-            (self.openai_api_key.clone(), self.openai_model.clone(), self.openai_base_url.clone())
+            (
+                self.openai_api_key.clone(),
+                self.openai_model.clone(),
+                self.openai_base_url.clone(),
+            )
         } else {
-            (self.gemini_api_key.clone(), self.gemini_model.clone(), String::new())
+            (
+                self.gemini_api_key.clone(),
+                self.gemini_model.clone(),
+                String::new(),
+            )
         };
-        ResolvedAiConfig { provider: provider.clone(), api_key, model, base_url }
+        ResolvedAiConfig {
+            provider: provider.clone(),
+            api_key,
+            model,
+            base_url,
+        }
     }
 }

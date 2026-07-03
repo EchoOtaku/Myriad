@@ -154,6 +154,7 @@ import {
   FaClock,
   FaCloud,
   FaCode,
+  FaCodepen,
   FaCoffee,
   FaCog,
   FaComments,
@@ -279,7 +280,6 @@ import {
   SiBluesky,
   SiBuymeacoffee,
   SiCloudflare,
-  SiCodepen,
   SiDevdotto,
   SiDeviantart,
   SiDiscord,
@@ -314,7 +314,6 @@ import {
   SiNiconico,
   SiNotion,
   SiOdnoklassniki,
-  SiOpenai,
   SiOrigin,
   SiPatreon,
   SiPinterest,
@@ -348,6 +347,55 @@ import {
   SiZhihu,
 } from 'react-icons/si'
 
+const SiCodepen = FaCodepen
+const SiOpenai = FaRobot
+
+const SiBangumi: IconType = ({ size, style, title, ...props }) => {
+  const iconSize = size ?? '1em'
+
+  return (
+    <svg
+      viewBox="-2.5 -2 28 28"
+      width={iconSize}
+      height={iconSize}
+      role={title ? 'img' : undefined}
+      aria-hidden={title ? undefined : true}
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ verticalAlign: 'middle', ...style }}
+      {...props}
+    >
+      {title ? <title>{title}</title> : null}
+      <path
+        d="M7.2 7.05 3.25 .75M12.05 7.05 16.45 .75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="square"
+        strokeWidth="2.35"
+      />
+      <path
+        d="M6.85 7.05a3.05 3.05 0 0 1 6.1 0"
+        fill="currentColor"
+      />
+      <path
+        d="M0 7.05h20.55A2.45 2.45 0 0 1 23 9.5v8.05A2.45 2.45 0 0 1 20.55 20H10.8L5.1 23.55 7.35 20H0"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="square"
+        strokeLinejoin="round"
+        strokeWidth="2.7"
+      />
+      <path
+        d="m.2 10.9 4.2 1.8-4.2 1.8M18.85 10.9l-4.2 1.8 4.2 1.8M.15 16.05h4.5M.15 17.35h4.5M15.4 16.05h4.5M15.4 17.35h4.5M8.2 12.35h5.2l-2.6 4.55Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+        strokeWidth="1.05"
+      />
+    </svg>
+  )
+}
+
 // 导出 Simple Icons
 export {
   SiAnilist,
@@ -356,6 +404,7 @@ export {
   SiArtstation,
   SiBaidu,
   SiBandcamp,
+  SiBangumi,
   SiBehance,
   SiBilibili,
   SiBitbucket,

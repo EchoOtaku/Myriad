@@ -241,7 +241,11 @@ mod tests {
         assert!(scheduler.is_parallel_mode());
 
         let ready = scheduler.get_ready_steps();
-        assert_eq!(ready.len(), 3, "All independent steps should be ready simultaneously");
+        assert_eq!(
+            ready.len(),
+            3,
+            "All independent steps should be ready simultaneously"
+        );
     }
 
     #[test]
@@ -305,7 +309,10 @@ mod tests {
 
         // analyze should NOT be ready (fetch_steam failed with Abort)
         let ready = scheduler.get_ready_steps();
-        assert!(ready.is_empty(), "analyze should be blocked by failed dependency");
+        assert!(
+            ready.is_empty(),
+            "analyze should be blocked by failed dependency"
+        );
     }
 
     #[test]

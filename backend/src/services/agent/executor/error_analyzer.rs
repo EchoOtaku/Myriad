@@ -246,7 +246,12 @@ impl ErrorAnalyzer {
             let prefix = "disallowed content:";
             let after = &error_lower[pos + prefix.len()..];
             // 截取到句号/分号/换行为止的整个短语
-            let phrase = after.trim().split(|c: char| c == '.' || c == ';' || c == '\n').next().unwrap_or("").trim();
+            let phrase = after
+                .trim()
+                .split(|c: char| c == '.' || c == ';' || c == '\n')
+                .next()
+                .unwrap_or("")
+                .trim();
             // 按逗号拆分每个关键词
             for part in phrase.split(',') {
                 let word = part.trim().trim_start_matches("and ").trim();
@@ -257,7 +262,15 @@ impl ErrorAnalyzer {
         }
 
         // 通用敏感关键词列表（会被从 prompt 中移除）
-        let common_sensitive = ["sex", "nude", "naked", "explicit", "nsfw", "erotic", "pornographic"];
+        let common_sensitive = [
+            "sex",
+            "nude",
+            "naked",
+            "explicit",
+            "nsfw",
+            "erotic",
+            "pornographic",
+        ];
         for w in &common_sensitive {
             if error_lower.contains(w) {
                 keywords.push(w.to_string());
@@ -270,7 +283,11 @@ impl ErrorAnalyzer {
     }
 
     /// 检测参数缺失错误并生成修复建议
-    fn check_missing_param(error_lower: &str, capability_id: &str, params: &HashMap<String, Value>) -> Option<ErrorAnalysis> {
+    fn check_missing_param(
+        error_lower: &str,
+        capability_id: &str,
+        params: &HashMap<String, Value>,
+    ) -> Option<ErrorAnalysis> {
         let is_missing = (error_lower.contains("missing")
             && (error_lower.contains("parameter") || error_lower.contains("param")))
             || error_lower.contains("缺少")
@@ -291,7 +308,8 @@ impl ErrorAnalyzer {
                 if error_lower.contains("playlistid") {
                     suggested_prepend = Some("netease.searchPlaylist".to_string());
                     // 从原始参数中提取搜索关键词
-                    let keyword = params.get("keyword")
+                    let keyword = params
+                        .get("keyword")
                         .or_else(|| params.get("query"))
                         .or_else(|| params.get("name"))
                         .cloned()
@@ -301,12 +319,18 @@ impl ErrorAnalyzer {
             }
             "music.control" => {
                 if error_lower.contains("action") {
-                    param_fixes.insert("action".to_string(), ParamFix::SetValue(serde_json::json!("play")));
+                    param_fixes.insert(
+                        "action".to_string(),
+                        ParamFix::SetValue(serde_json::json!("play")),
+                    );
                 }
             }
             "brew.discover" => {
                 if error_lower.contains("url") || error_lower.contains("query") {
-                    param_fixes.insert("query".to_string(), ParamFix::SetValue(serde_json::json!("*")));
+                    param_fixes.insert(
+                        "query".to_string(),
+                        ParamFix::SetValue(serde_json::json!("*")),
+                    );
                 }
             }
             _ => {}
@@ -406,7 +430,8 @@ impl ErrorAnalyzer {
                                     let char_start = lower[..byte_pos].chars().count();
                                     let char_len = word_lower.chars().count();
                                     let before: String = cleaned.chars().take(char_start).collect();
-                                    let after: String = cleaned.chars().skip(char_start + char_len).collect();
+                                    let after: String =
+                                        cleaned.chars().skip(char_start + char_len).collect();
                                     cleaned = format!("{}{}", before, after);
                                 } else {
                                     break;
@@ -427,16 +452,14 @@ impl ErrorAnalyzer {
                                 let char_start = lower[..byte_pos].chars().count();
                                 let char_len = from_lower.chars().count();
                                 let before: String = result.chars().take(char_start).collect();
-                                let after: String = result.chars().skip(char_start + char_len).collect();
+                                let after: String =
+                                    result.chars().skip(char_start + char_len).collect();
                                 result = format!("{}{}{}", before, to, after);
                             } else {
                                 break;
                             }
                         }
-                        new_params.insert(
-                            param_name.to_string(),
-                            Value::String(result),
-                        );
+                        new_params.insert(param_name.to_string(), Value::String(result));
                     }
                 }
                 ParamFix::SetValue(val) => {
@@ -452,10 +475,7 @@ impl ErrorAnalyzer {
                     } else {
                         format!("{} {}", existing, text)
                     };
-                    new_params.insert(
-                        param_name.to_string(),
-                        Value::String(appended),
-                    );
+                    new_params.insert(param_name.to_string(), Value::String(appended));
                 }
             }
         }
@@ -464,15 +484,18 @@ impl ErrorAnalyzer {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_content_policy_detection() {
-        let params: HashMap<String, Value> = [("prompt".into(), Value::String("test prompt with sex content".into()))].into_iter().collect();
+        let params: HashMap<String, Value> = [(
+            "prompt".into(),
+            Value::String("test prompt with sex content".into()),
+        )]
+        .into_iter()
+        .collect();
         let analysis = ErrorAnalyzer::analyze(
             "Prompt contains disallowed content: sex",
             "ai.image",
@@ -505,8 +528,18 @@ mod tests {
 
     #[test]
     fn test_apply_fixes_remove_from_prompt() {
-        let params: HashMap<String, Value> = [("prompt".into(), Value::String("a beautiful sex scene in studio".into()))].into_iter().collect();
-        let fixes: HashMap<String, ParamFix> = [("prompt".into(), ParamFix::RemoveFromPrompt(vec!["sex ".into()]))].into_iter().collect();
+        let params: HashMap<String, Value> = [(
+            "prompt".into(),
+            Value::String("a beautiful sex scene in studio".into()),
+        )]
+        .into_iter()
+        .collect();
+        let fixes: HashMap<String, ParamFix> = [(
+            "prompt".into(),
+            ParamFix::RemoveFromPrompt(vec!["sex ".into()]),
+        )]
+        .into_iter()
+        .collect();
         let result = ErrorAnalyzer::apply_fixes(&params, &fixes);
         let prompt = result.get("prompt").unwrap().as_str().unwrap();
         assert!(!prompt.contains("sex"));
@@ -519,11 +552,15 @@ mod tests {
         let params = HashMap::new();
         // "blocked" 单独出现不应匹配 ContentPolicy
         let analysis = ErrorAnalyzer::analyze("Request blocked by firewall", "ai.image", &params);
-        assert_ne!(analysis.category, ErrorCategory::ContentPolicy,
-            "'blocked by firewall' should NOT be ContentPolicy");
+        assert_ne!(
+            analysis.category,
+            ErrorCategory::ContentPolicy,
+            "'blocked by firewall' should NOT be ContentPolicy"
+        );
 
         // "content blocked" 应匹配
-        let analysis = ErrorAnalyzer::analyze("content blocked by safety filter", "ai.image", &params);
+        let analysis =
+            ErrorAnalyzer::analyze("content blocked by safety filter", "ai.image", &params);
         assert_eq!(analysis.category, ErrorCategory::ContentPolicy);
     }
 
@@ -532,8 +569,11 @@ mod tests {
         let params = HashMap::new();
         // "not allowed" 单独出现不应匹配 ContentPolicy
         let analysis = ErrorAnalyzer::analyze("Method not allowed (405)", "ai.image", &params);
-        assert_ne!(analysis.category, ErrorCategory::ContentPolicy,
-            "'Method not allowed' should NOT be ContentPolicy");
+        assert_ne!(
+            analysis.category,
+            ErrorCategory::ContentPolicy,
+            "'Method not allowed' should NOT be ContentPolicy"
+        );
 
         // "image not allowed" 应匹配
         let analysis = ErrorAnalyzer::analyze("This image is not allowed", "ai.image", &params);
@@ -551,13 +591,19 @@ mod tests {
     #[test]
     fn test_not_found_detection() {
         let params = HashMap::new();
-        let analysis = ErrorAnalyzer::analyze("404 Not Found: resource does not exist", "data.read", &params);
+        let analysis = ErrorAnalyzer::analyze(
+            "404 Not Found: resource does not exist",
+            "data.read",
+            &params,
+        );
         assert_eq!(analysis.category, ErrorCategory::NotFound);
     }
 
     #[test]
     fn test_pixai_content_policy() {
-        let params: HashMap<String, Value> = [("prompt".into(), Value::String("test".into()))].into_iter().collect();
+        let params: HashMap<String, Value> = [("prompt".into(), Value::String("test".into()))]
+            .into_iter()
+            .collect();
         let analysis = ErrorAnalyzer::analyze(
             "PixAI image generation failed: content moderation violation",
             "ai.image",

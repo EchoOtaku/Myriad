@@ -10,16 +10,15 @@
 #   updater (内网) — 负责拉取镜像/快照 pgdata/切换版本
 #
 # 升级流程见 docs/updater-spec.md。
-# 老版本（直接暴露 backend/frontend 端口、使用 :latest 镜像）已废弃，
-# 迁移请使用 scripts/migrate-to-updater.sh。
+# 直连 backend/frontend 端口和 :latest 镜像的旧布局已移除。
 #
 # ============================================================================
-# 必需 .env 变量
+# 必需 .env 变量（deploy.sh / deploy.ps1 会补齐当前布局所需目录与空 UPDATE_TOKEN）
 # ============================================================================
 # MYRIAD_TAG             业务镜像版本，由 updater 维护
 # PROXY_TAG              代理镜像版本（少有变化）
 # UPDATER_TAG            updater 镜像版本（独立节奏）
-# COMPOSE_PROJECT_NAME=myriad  （updater 依赖这个）
+# COMPOSE_PROJECT_NAME=myriad  （compose/updater 使用这个定位同一套 stack）
 #
 # POSTGRES_PASSWORD      数据库密码（≥32 字符）
 # JWT_SECRET             JWT 密钥（≥32 字符）
@@ -30,6 +29,7 @@
 # GITHUB_TOKEN           可选：提升 GitHub API rate limit
 # REGISTRY_MIRROR        可选：镜像 mirror 前缀
 # MYRIAD_GITHUB_REPO     默认 Myriad-You/Myriad
+# MYRIAD_DOCKER_NETWORK  可选：实际 Docker 网络名，默认 myriad-net
 # ============================================================================
 
 services:
@@ -190,11 +190,13 @@ services:
       REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
       MYRIAD_GITHUB_REPO: ${MYRIAD_GITHUB_REPO:-Myriad-You/Myriad}
       CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-3600}
+      UPDATER_ENV_FILE: /host/compose/.env
       # cosign signature policy: off (default) | soft | strict
       # Strict requires release.json.sig + release.json.pem assets to be present and
       # the OIDC subject to match the configured repo's workflows.
       COSIGN_VERIFY: ${COSIGN_VERIFY:-off}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
+      MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
       MYRIAD_VERSION: ${UPDATER_TAG}
       TZ: Asia/Shanghai
     volumes:
@@ -202,7 +204,6 @@ services:
       - ./pgdata:/host/pgdata
       - ./state:/state
       - ./backups:/backups
-      - ./.env:/host/.env
       - ./:/host/compose
     networks: [myriad-net]
     restart: unless-stopped
@@ -217,6 +218,7 @@ volumes:
 
 networks:
   myriad-net:
+    name: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
     driver: bridge
     ipam:
       config:

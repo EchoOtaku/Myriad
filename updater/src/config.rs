@@ -1,4 +1,5 @@
-//! Runtime configuration loaded from `.env.updater` (passed in as real env vars by docker).
+//! Runtime configuration loaded from process environment variables.
+//! In production compose these come from the host `.env`.
 
 use crate::error::UpdaterError;
 use serde::{Deserialize, Serialize};
@@ -96,10 +97,10 @@ impl Config {
             .unwrap_or_else(|_| "stable".into())
             .parse()?;
 
-        let github_repo = std::env::var("MYRIAD_GITHUB_REPO")
-            .unwrap_or_else(|_| "Myriad-You/Myriad".into());
+        let github_repo =
+            std::env::var("MYRIAD_GITHUB_REPO").unwrap_or_else(|_| "Myriad-You/Myriad".into());
 
-        let github_token = std::env::var("GITHUB_TOKEN").ok().map(SecretString::new);
+        let github_token = optional_secret(std::env::var("GITHUB_TOKEN").ok());
 
         let registry_mirror = std::env::var("REGISTRY_MIRROR")
             .ok()
@@ -139,6 +140,13 @@ fn is_weak_token(s: &str) -> bool {
     WEAK.iter().any(|w| lower.contains(w))
 }
 
+fn optional_secret(value: Option<String>) -> Option<SecretString> {
+    value
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(SecretString::new)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,5 +162,18 @@ mod tests {
         assert!(is_weak_token("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
         assert!(is_weak_token("MyPassword12345678901234567890123"));
         assert!(!is_weak_token("9xQ3vN8mP2rT5wY7zA1bC4dF6hJ8kL0n"));
+    }
+
+    #[test]
+    fn optional_secret_ignores_empty_values() {
+        assert!(optional_secret(None).is_none());
+        assert!(optional_secret(Some("".into())).is_none());
+        assert!(optional_secret(Some("   ".into())).is_none());
+        assert_eq!(
+            optional_secret(Some(" token-value ".into()))
+                .expect("token")
+                .expose(),
+            "token-value"
+        );
     }
 }

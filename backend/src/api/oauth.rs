@@ -34,7 +34,7 @@ use crate::services::oauth::{
 // ---------- 工具函数 ----------
 
 fn random_state() -> String {
-    use rand::RngCore;
+    use rand::Rng;
     let mut buf = [0u8; 32];
     rand::rng().fill_bytes(&mut buf);
     hex::encode(buf)
@@ -593,7 +593,9 @@ async fn ensure_unique_username(
         }
         candidate = format!("{}_{}", base, n + 2);
     }
-    Err(err_500("Failed to generate unique username after 100 tries"))
+    Err(err_500(
+        "Failed to generate unique username after 100 tries",
+    ))
 }
 
 // ---------- DELETE /api/auth/oauth/:slug/unlink/:identity_id ----------

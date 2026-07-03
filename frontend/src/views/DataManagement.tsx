@@ -3,7 +3,7 @@
  * 统一管理平台数据缓存和智能过滤
  */
 
-import { FaGithub, FaSteam, FaSyncAlt, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
+import { FaGithub, FaSteam, FaSyncAlt, SiBangumi, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 
 import { motionShim as motion } from '@lib/motionShim'
 import { useEffect, useState } from 'react'
@@ -28,6 +28,7 @@ const PLATFORMS = [
   { id: 'github', name: 'GitHub', icon: FaGithub, color: '#181717' },
   { id: 'netease', name: 'NetEase Music', nameKey: 'neteaseMusic', icon: SiNeteasecloudmusic, color: '#C20C0C' },
   { id: 'steam', name: 'Steam', icon: FaSteam, color: '#00ADEE' },
+  { id: 'bangumi', name: 'Bangumi', icon: SiBangumi, color: '#F09199' },
 ]
 
 interface CacheInfo {

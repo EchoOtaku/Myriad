@@ -1,10 +1,6 @@
 //! AI API（生成、分析、对话、图片）
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -80,8 +76,12 @@ pub async fn ai_generate(
     };
     let ai_config = get_ai_config_for_tier(tier).await?;
     let analyzer = AiAnalyzer::new(
-        ai_config.provider, ai_config.api_key, ai_config.model, ai_config.base_url,
-    ).await;
+        ai_config.provider,
+        ai_config.api_key,
+        ai_config.model,
+        ai_config.base_url,
+    )
+    .await;
 
     let system_prompt = format!(
         "You are an AI assistant helping a third-party app (Tapp ID: {}). \
@@ -95,7 +95,10 @@ pub async fn ai_generate(
         req.tapp_id
     );
 
-    match analyzer.analyze_with_system(&system_prompt, &req.prompt).await {
+    match analyzer
+        .analyze_with_system(&system_prompt, &req.prompt)
+        .await
+    {
         Ok(result) => {
             let duration_ms = start.elapsed().as_millis() as u64;
             record_metric("ai.generate", duration_ms, false).await;
@@ -167,7 +170,9 @@ pub async fn ai_analyze(
 
     tracing::info!(
         "[TAPP] ai_analyze - User: {}, Tapp: {}, Type: {}",
-        claims.username, req.tapp_id, req.analyze_type
+        claims.username,
+        req.tapp_id,
+        req.analyze_type
     );
 
     let tier = if req.prefer_pro.unwrap_or(false) {
@@ -229,12 +234,17 @@ pub async fn ai_analyze(
     };
 
     let analyzer = AiAnalyzer::new(
-        ai_config.provider, ai_config.api_key, ai_config.model, ai_config.base_url,
-    ).await;
+        ai_config.provider,
+        ai_config.api_key,
+        ai_config.model,
+        ai_config.base_url,
+    )
+    .await;
 
     match analyzer.analyze(&analysis_prompt).await {
         Ok(result) => {
-            let analysis = serde_json::from_str::<Value>(&result).unwrap_or(json!({ "result": result }));
+            let analysis =
+                serde_json::from_str::<Value>(&result).unwrap_or(json!({ "result": result }));
             Ok(Json(json!({
                 "success": true,
                 "analysis": analysis,
@@ -311,7 +321,9 @@ pub async fn ai_chat(
 
     tracing::debug!(
         "[TAPP] ai_chat - User: {}, Tapp: {}, Messages: {}",
-        claims.username, req.tapp_id, req.messages.len()
+        claims.username,
+        req.tapp_id,
+        req.messages.len()
     );
 
     let tier = if req.prefer_pro.unwrap_or(false) {
@@ -327,13 +339,20 @@ pub async fn ai_chat(
 
         if context.include_platform_stats.unwrap_or(false) {
             let platforms = get_available_platforms().await;
-            let futures: Vec<_> = platforms.iter().map(|p| get_cached_platform_data(p)).collect();
+            let futures: Vec<_> = platforms
+                .iter()
+                .map(|p| get_cached_platform_data(p))
+                .collect();
             let results = futures::future::join_all(futures).await;
 
             for (platform, result) in platforms.iter().zip(results.iter()) {
                 if let Ok(data) = result {
                     if let Some(items) = data.get("items").and_then(|v| v.as_array()) {
-                        system_context.push_str(&format!("\n{} 平台有 {} 条数据。", platform, items.len()));
+                        system_context.push_str(&format!(
+                            "\n{} 平台有 {} 条数据。",
+                            platform,
+                            items.len()
+                        ));
                     }
                 }
             }
@@ -352,23 +371,32 @@ pub async fn ai_chat(
             if let Some(reason) = validate_prompt_security(&custom_str) {
                 return Err((
                     StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "custom_data contains disallowed content", "reason": reason })),
+                    Json(
+                        json!({ "error": "custom_data contains disallowed content", "reason": reason }),
+                    ),
                 ));
             }
             system_context.push_str(&format!("\n自定义数据: {}", custom_str));
         }
 
         if !system_context.is_empty() {
-            full_messages.insert(0, ChatMessage {
-                role: "system".to_string(),
-                content: format!("以下是用户的上下文信息：{}", system_context),
-            });
+            full_messages.insert(
+                0,
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: format!("以下是用户的上下文信息：{}", system_context),
+                },
+            );
         }
     }
 
     let analyzer = AiAnalyzer::new(
-        ai_config.provider, ai_config.api_key, ai_config.model, ai_config.base_url,
-    ).await;
+        ai_config.provider,
+        ai_config.api_key,
+        ai_config.model,
+        ai_config.base_url,
+    )
+    .await;
 
     // 构建提示词，保留角色结构
     let mut prompt_parts: Vec<String> = Vec::new();
@@ -496,11 +524,17 @@ pub async fn ai_image_generate(
         }
         "pixai" => {
             let api_key = image_config.pixai_api_key.ok_or_else(|| {
-                (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "PixAI API key not configured" })))
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(json!({ "error": "PixAI API key not configured" })),
+                )
             })?;
 
             if api_key.is_empty() {
-                return Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "PixAI API key not configured" }))));
+                return Err((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(json!({ "error": "PixAI API key not configured" })),
+                ));
             }
 
             let client = &*HTTP_CLIENT;
@@ -523,7 +557,10 @@ pub async fn ai_image_generate(
                 .await
                 .map_err(|e| {
                     tracing::error!("[TAPP] PixAI API request failed: {}", e);
-                    (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("PixAI API error: {}", e) })))
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(json!({ "error": format!("PixAI API error: {}", e) })),
+                    )
                 })?;
 
             if !pixai_response.status().is_success() {
@@ -531,12 +568,18 @@ pub async fn ai_image_generate(
                 let body = pixai_response.text().await.unwrap_or_default();
                 tracing::error!("[TAPP] PixAI API error: {} - {}", status, body);
                 record_metric("ai.image", start.elapsed().as_millis() as u64, true).await;
-                return Err((StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("PixAI API error: {}", status) }))));
+                return Err((
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({ "error": format!("PixAI API error: {}", status) })),
+                ));
             }
 
             let result: Value = pixai_response.json().await.map_err(|e| {
                 tracing::error!("[TAPP] Failed to parse PixAI response: {}", e);
-                (StatusCode::BAD_GATEWAY, Json(json!({ "error": "Failed to parse PixAI response" })))
+                (
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({ "error": "Failed to parse PixAI response" })),
+                )
             })?;
 
             let duration_ms = start.elapsed().as_millis() as u64;
@@ -560,7 +603,9 @@ pub async fn ai_image_generate(
             record_metric("ai.image", start.elapsed().as_millis() as u64, true).await;
             Err((
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({ "error": format!("Unknown image provider: {}", image_config.provider) })),
+                Json(
+                    json!({ "error": format!("Unknown image provider: {}", image_config.provider) }),
+                ),
             ))
         }
     }
@@ -586,7 +631,10 @@ pub async fn ai_image_task_status(
 
     let image_config = get_ai_image_config().await?;
     let api_key = image_config.pixai_api_key.ok_or_else(|| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "PixAI API key not configured" })))
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "PixAI API key not configured" })),
+        )
     })?;
 
     let client = &*HTTP_CLIENT;
@@ -599,19 +647,28 @@ pub async fn ai_image_task_status(
         .await
         .map_err(|e| {
             tracing::error!("[TAPP] PixAI task status request failed: {}", e);
-            (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("PixAI API error: {}", e) })))
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "error": format!("PixAI API error: {}", e) })),
+            )
         })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         tracing::error!("[TAPP] PixAI task status error: {} - {}", status, body);
-        return Err((StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("PixAI API error: {}", status) }))));
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": format!("PixAI API error: {}", status) })),
+        ));
     }
 
     let result: Value = response.json().await.map_err(|e| {
         tracing::error!("[TAPP] Failed to parse PixAI task status response: {}", e);
-        (StatusCode::BAD_GATEWAY, Json(json!({ "error": "Failed to parse PixAI response" })))
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "Failed to parse PixAI response" })),
+        )
     })?;
 
     Ok(Json(json!({

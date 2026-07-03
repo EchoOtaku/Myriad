@@ -2,10 +2,7 @@
 //!
 //! 本地用户发起关注远程 Actor、取消关注等操作
 
-use axum::{
-    http::StatusCode,
-    Json,
-};
+use axum::{http::StatusCode, Json};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -142,11 +139,7 @@ pub async fn follow_remote(
     .await
     .map_err(db_err)?;
 
-    tracing::info!(
-        "📤 Follow queued: {} → {}",
-        username,
-        target_url
-    );
+    tracing::info!("📤 Follow queued: {} → {}", username, target_url);
 
     Ok(FollowResponse {
         status: "pending".to_string(),

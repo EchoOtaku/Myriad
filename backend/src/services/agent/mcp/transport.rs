@@ -90,8 +90,8 @@ impl StdioTransport {
         let request = JsonRpcRequest::new(id, method, params);
 
         // 序列化 + 换行
-        let mut payload = serde_json::to_string(&request)
-            .map_err(|e| format!("JSON serialize error: {}", e))?;
+        let mut payload =
+            serde_json::to_string(&request).map_err(|e| format!("JSON serialize error: {}", e))?;
         payload.push('\n');
 
         // 写入 stdin
@@ -116,8 +116,13 @@ impl StdioTransport {
         read_result?;
 
         // 解析 JSON-RPC 响应
-        let response: JsonRpcResponse = serde_json::from_str(line.trim())
-            .map_err(|e| format!("Invalid JSON-RPC response: {} | raw: {}", e, &line[..line.len().min(200)]))?;
+        let response: JsonRpcResponse = serde_json::from_str(line.trim()).map_err(|e| {
+            format!(
+                "Invalid JSON-RPC response: {} | raw: {}",
+                e,
+                &line[..line.len().min(200)]
+            )
+        })?;
 
         if let Some(err) = response.error {
             return Err(format!("MCP error ({}): {}", err.code, err.message));
@@ -150,7 +155,10 @@ impl StdioTransport {
             .write_all(payload.as_bytes())
             .await
             .map_err(|e| format!("Failed to write notification: {}", e))?;
-        self.stdin.flush().await.map_err(|e| format!("Flush error: {}", e))?;
+        self.stdin
+            .flush()
+            .await
+            .map_err(|e| format!("Flush error: {}", e))?;
 
         Ok(())
     }
@@ -187,7 +195,7 @@ impl StdioTransport {
     /// 检查子进程是否存活
     pub fn is_alive(&mut self) -> bool {
         match self.child.try_wait() {
-            Ok(None) => true,   // 仍在运行
+            Ok(None) => true,     // 仍在运行
             Ok(Some(_)) => false, // 已退出
             Err(_) => false,
         }
@@ -196,7 +204,9 @@ impl StdioTransport {
     /// 优雅关闭
     pub async fn shutdown(&mut self) {
         // 尝试发送 shutdown 通知
-        let _ = self.send_notification("notifications/cancelled", None).await;
+        let _ = self
+            .send_notification("notifications/cancelled", None)
+            .await;
         // 等待 2 秒后强制 kill
         let _ = tokio::time::timeout(std::time::Duration::from_secs(2), self.child.wait()).await;
         let _ = self.child.kill().await;

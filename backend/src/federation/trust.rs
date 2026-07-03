@@ -121,9 +121,7 @@ pub async fn check_instance_policy(
     }
 
     // 2. 白名单检查（如果白名单非空，则只允许白名单中的域名）
-    if !policy.allowed_domains.is_empty()
-        && !policy.allowed_domains.iter().any(|d| d == domain)
-    {
+    if !policy.allowed_domains.is_empty() && !policy.allowed_domains.iter().any(|d| d == domain) {
         return PolicyCheckResult {
             allowed: false,
             reason: Some(format!("Domain {} is not in allowed list", domain)),
@@ -162,10 +160,7 @@ pub async fn check_instance_policy(
 }
 
 /// 获取实例的信任层级
-pub async fn get_instance_trust_level(
-    db: &DatabaseConnection,
-    domain: &str,
-) -> TrustLevel {
+pub async fn get_instance_trust_level(db: &DatabaseConnection, domain: &str) -> TrustLevel {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -250,9 +245,7 @@ pub async fn check_rate_limit(
         .ok()
         .flatten();
 
-    let count: i64 = row
-        .and_then(|r| r.try_get("", "cnt").ok())
-        .unwrap_or(0);
+    let count: i64 = row.and_then(|r| r.try_get("", "cnt").ok()).unwrap_or(0);
 
     if count >= max_requests {
         PolicyCheckResult {
@@ -285,10 +278,7 @@ pub fn apply_content_filters(
     domain_trust: TrustLevel,
     rules: &[ContentFilterRule],
 ) -> FilterVerdict {
-    let activity_type = activity
-        .get("type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let activity_type = activity.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
     for rule in rules {
         if !rule.enabled {
@@ -556,10 +546,7 @@ pub async fn enforce_inbound(
 /// 出站投递策略检查（delivery 调用）
 ///
 /// 仅检查目标实例是否被封禁 —— 投递不消耗入站速率配额。
-pub async fn enforce_outbound(
-    db: &DatabaseConnection,
-    target_domain: &str,
-) -> Result<(), String> {
+pub async fn enforce_outbound(db: &DatabaseConnection, target_domain: &str) -> Result<(), String> {
     if target_domain.is_empty() {
         return Err("Empty target domain".to_string());
     }
@@ -575,4 +562,3 @@ pub async fn enforce_outbound(
 async fn load_content_filter_rules(_db: &DatabaseConnection) -> Vec<ContentFilterRule> {
     Vec::new()
 }
-

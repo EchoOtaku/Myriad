@@ -47,7 +47,10 @@ Requirements:
 
     // 尝试使用 AI 生成高质量提示词
     if let Some(analyzer) = create_ai_analyzer().await {
-        match analyzer.analyze_with_system(system_prompt, &user_prompt).await {
+        match analyzer
+            .analyze_with_system(system_prompt, &user_prompt)
+            .await
+        {
             Ok(result) => {
                 let cleaned = result.trim().trim_matches('"').trim_matches('`').trim();
                 if !cleaned.is_empty() {

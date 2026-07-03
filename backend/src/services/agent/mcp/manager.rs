@@ -24,11 +24,8 @@ impl McpManager {
     pub async fn init(config_path: &Path) -> Arc<Self> {
         let config = load_config(config_path).await;
 
-        let enabled: Vec<McpServerConfig> = config
-            .servers
-            .into_iter()
-            .filter(|s| s.enabled)
-            .collect();
+        let enabled: Vec<McpServerConfig> =
+            config.servers.into_iter().filter(|s| s.enabled).collect();
 
         if enabled.is_empty() {
             tracing::debug!("[MCP] No enabled servers configured");

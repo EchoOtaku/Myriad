@@ -599,18 +599,19 @@ impl TappApiService {
 
     /// 解析模板变量 {{varName}}
     fn resolve_template(template: &str, context: &HashMap<String, Value>) -> String {
-        TEMPLATE_RE.replace_all(template, |caps: &regex::Captures| {
-            let path = caps.get(1).map_or("", |m| m.as_str()).trim();
-            context
-                .get(path)
-                .map(|v| match v {
-                    Value::String(s) => s.clone(),
-                    Value::Null => String::new(),
-                    other => other.to_string(),
-                })
-                .unwrap_or_else(|| format!("{{{{{}}}}}", path))
-        })
-        .to_string()
+        TEMPLATE_RE
+            .replace_all(template, |caps: &regex::Captures| {
+                let path = caps.get(1).map_or("", |m| m.as_str()).trim();
+                context
+                    .get(path)
+                    .map(|v| match v {
+                        Value::String(s) => s.clone(),
+                        Value::Null => String::new(),
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_else(|| format!("{{{{{}}}}}", path))
+            })
+            .to_string()
     }
 
     /// 解析 JSON 中的模板变量

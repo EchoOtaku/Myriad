@@ -40,7 +40,7 @@ pub async fn submit_task(
     let platform = payload.platform.to_lowercase();
 
     // 验证平台名称
-    let valid_platforms = ["netease", "bilibili", "github", "steam"];
+    let valid_platforms = ["netease", "bilibili", "github", "steam", "bangumi"];
     if !valid_platforms.contains(&platform.as_str()) {
         return (
             StatusCode::BAD_REQUEST,
@@ -170,7 +170,7 @@ pub async fn list_tasks(State(_db): State<DatabaseConnection>) -> (StatusCode, J
         Json(json!({
             "success": true,
             "message": "Use GET /api/tasks/platform/{platform} to check specific platform tasks",
-            "supported_platforms": ["netease", "bilibili", "github", "steam"]
+            "supported_platforms": ["netease", "bilibili", "github", "steam", "bangumi"]
         })),
     )
 }

@@ -149,12 +149,11 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
 
     // ✅ SSRF 防护：阻止请求内网地址
     if crate::federation::types::is_internal_url(&url) {
-        tracing::warn!("🚨 Rejected proxy request: SSRF attempt to internal URL - {}", url);
-        return (
-            StatusCode::FORBIDDEN,
-            "Cannot proxy internal URLs",
-        )
-            .into_response();
+        tracing::warn!(
+            "🚨 Rejected proxy request: SSRF attempt to internal URL - {}",
+            url
+        );
+        return (StatusCode::FORBIDDEN, "Cannot proxy internal URLs").into_response();
     }
 
     // ✅ 限流保护：等待获取令牌
@@ -997,21 +996,23 @@ pub struct FetchWebContentQuery {
 /// 返回清理后的文章内容，适合在阅读器中显示
 pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Response {
     let url = &params.url;
-    
+
     // 安全检查：URL 长度
     if url.len() > 2048 {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "URL too long"})),
-        ).into_response();
+        )
+            .into_response();
     }
-    
+
     // 安全检查：必须是 http/https
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Invalid URL scheme"})),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // SSRF 防护：阻止请求内网地址
@@ -1020,18 +1021,19 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
         return (
             StatusCode::FORBIDDEN,
             Json(json!({"error": "Cannot fetch internal URLs"})),
-        ).into_response();
+        )
+            .into_response();
     }
-    
+
     tracing::info!(url = %url, "[FetchWebContent] Fetching external content");
-    
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()
         .unwrap();
-    
+
     match client.get(url).send().await {
         Ok(resp) => {
             if !resp.status().is_success() {
@@ -1043,16 +1045,17 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
                         "status": resp.status().as_u16(),
                         "fallbackUrl": url
                     })),
-                ).into_response();
+                )
+                    .into_response();
             }
-            
+
             // 获取内容类型
             let content_type = resp
                 .headers()
                 .get(reqwest::header::CONTENT_TYPE)
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("text/html");
-            
+
             // 只处理 HTML 内容
             if !content_type.contains("text/html") && !content_type.contains("text/plain") {
                 return (
@@ -1062,9 +1065,10 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
                         "contentType": content_type,
                         "fallbackUrl": url
                     })),
-                ).into_response();
+                )
+                    .into_response();
             }
-            
+
             match resp.text().await {
                 Ok(html) => {
                     // 限制大小（最大 5MB）
@@ -1075,19 +1079,20 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
                                 "error": "Page too large",
                                 "fallbackUrl": url
                             })),
-                        ).into_response();
+                        )
+                            .into_response();
                     }
-                    
+
                     // 提取文章内容
                     let extracted = extract_article_content(&html, url);
-                    
+
                     tracing::info!(
                         url = %url,
                         title_len = extracted.title.len(),
                         content_len = extracted.content.len(),
                         "[FetchWebContent] Content extracted successfully"
                     );
-                    
+
                     (
                         StatusCode::OK,
                         [
@@ -1105,7 +1110,8 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
                             "siteName": extracted.site_name,
                             "fromWebSearch": true
                         })),
-                    ).into_response()
+                    )
+                        .into_response()
                 }
                 Err(e) => {
                     tracing::error!(url = %url, error = %e, "[FetchWebContent] Failed to read response");
@@ -1115,7 +1121,8 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
                             "error": "Failed to read page content",
                             "fallbackUrl": url
                         })),
-                    ).into_response()
+                    )
+                        .into_response()
                 }
             }
         }
@@ -1127,7 +1134,8 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
                     "error": format!("Failed to fetch: {}", e),
                     "fallbackUrl": url
                 })),
-            ).into_response()
+            )
+                .into_response()
         }
     }
 }
@@ -1149,28 +1157,28 @@ fn extract_article_content(html: &str, url: &str) -> ExtractedArticle {
         .or_else(|| extract_meta_content(html, "twitter:title"))
         .or_else(|| extract_tag_content(html, "title"))
         .unwrap_or_else(|| "未知标题".to_string());
-    
+
     // 提取作者
     let author = extract_meta_content(html, "author")
         .or_else(|| extract_meta_content(html, "article:author"));
-    
+
     // 提取发布时间
     let published_at = extract_meta_content(html, "article:published_time")
         .or_else(|| extract_meta_content(html, "datePublished"));
-    
+
     // 提取站点名称
-    let site_name = extract_meta_content(html, "og:site_name")
-        .or_else(|| extract_domain_from_url_simple(url));
-    
+    let site_name =
+        extract_meta_content(html, "og:site_name").or_else(|| extract_domain_from_url_simple(url));
+
     // 提取描述/摘要
     let excerpt = extract_meta_content(html, "og:description")
         .or_else(|| extract_meta_content(html, "description"))
         .or_else(|| extract_meta_content(html, "twitter:description"))
         .unwrap_or_default();
-    
+
     // 提取正文内容
     let content = extract_main_content(html);
-    
+
     ExtractedArticle {
         title,
         content,
@@ -1185,12 +1193,24 @@ fn extract_article_content(html: &str, url: &str) -> ExtractedArticle {
 fn extract_meta_content(html: &str, name: &str) -> Option<String> {
     // 匹配 <meta property="xxx" content="yyy"> 或 <meta name="xxx" content="yyy">
     let patterns = [
-        format!(r#"<meta[^>]*property=["']{}["'][^>]*content=["']([^"']+)["']"#, regex::escape(name)),
-        format!(r#"<meta[^>]*name=["']{}["'][^>]*content=["']([^"']+)["']"#, regex::escape(name)),
-        format!(r#"<meta[^>]*content=["']([^"']+)["'][^>]*property=["']{}["']"#, regex::escape(name)),
-        format!(r#"<meta[^>]*content=["']([^"']+)["'][^>]*name=["']{}["']"#, regex::escape(name)),
+        format!(
+            r#"<meta[^>]*property=["']{}["'][^>]*content=["']([^"']+)["']"#,
+            regex::escape(name)
+        ),
+        format!(
+            r#"<meta[^>]*name=["']{}["'][^>]*content=["']([^"']+)["']"#,
+            regex::escape(name)
+        ),
+        format!(
+            r#"<meta[^>]*content=["']([^"']+)["'][^>]*property=["']{}["']"#,
+            regex::escape(name)
+        ),
+        format!(
+            r#"<meta[^>]*content=["']([^"']+)["'][^>]*name=["']{}["']"#,
+            regex::escape(name)
+        ),
     ];
-    
+
     for pattern in &patterns {
         if let Ok(re) = regex::Regex::new(pattern) {
             if let Some(caps) = re.captures(html) {
@@ -1203,7 +1223,7 @@ fn extract_meta_content(html: &str, name: &str) -> Option<String> {
             }
         }
     }
-    
+
     None
 }
 
@@ -1233,23 +1253,23 @@ fn extract_main_content(html: &str) -> String {
     let html = remove_tags(&html, "footer");
     let html = remove_tags(&html, "aside");
     let html = remove_tags(&html, "noscript");
-    
+
     // 尝试找到 article 标签
     if let Some(article) = extract_tag_block(&html, "article") {
         return clean_html_content(&article);
     }
-    
+
     // 尝试找到 main 标签
     if let Some(main) = extract_tag_block(&html, "main") {
         return clean_html_content(&main);
     }
-    
+
     // 尝试找到常见的内容容器
     let content_patterns = [
         r#"<div[^>]*class="[^"]*(?:article|content|post|entry|main)[^"]*"[^>]*>"#,
         r#"<div[^>]*id="[^"]*(?:article|content|post|entry|main)[^"]*"[^>]*>"#,
     ];
-    
+
     for pattern in &content_patterns {
         if let Ok(re) = regex::Regex::new(pattern) {
             if let Some(m) = re.find(&html) {
@@ -1263,12 +1283,12 @@ fn extract_main_content(html: &str) -> String {
             }
         }
     }
-    
+
     // 最后尝试提取 body 内容
     if let Some(body) = extract_tag_block(&html, "body") {
         return clean_html_content(&body);
     }
-    
+
     // 如果都失败，清理整个 HTML
     clean_html_content(&html)
 }
@@ -1287,7 +1307,7 @@ fn remove_tags(html: &str, tag: &str) -> String {
 fn extract_tag_block(html: &str, tag: &str) -> Option<String> {
     let start_pattern = format!(r"(?i)<{}\b[^>]*>", tag);
     let end_tag = format!("</{}>", tag);
-    
+
     if let Ok(re) = regex::Regex::new(&start_pattern) {
         if let Some(m) = re.find(html) {
             let start = m.end();
@@ -1306,7 +1326,7 @@ fn extract_div_block(html: &str) -> Option<String> {
     let mut tag_start = 0;
     let mut content_start = 0;
     let chars: Vec<char> = html.chars().collect();
-    
+
     for (i, &ch) in chars.iter().enumerate() {
         if ch == '<' {
             in_tag = true;
@@ -1315,7 +1335,7 @@ fn extract_div_block(html: &str) -> Option<String> {
             in_tag = false;
             let tag_content: String = chars[tag_start..=i].iter().collect();
             let tag_lower = tag_content.to_lowercase();
-            
+
             if tag_lower.starts_with("<div") {
                 if depth == 0 {
                     content_start = i + 1;
@@ -1339,34 +1359,34 @@ fn clean_html_content(html: &str) -> String {
         Ok(re) => re.replace_all(html, "\n").to_string(),
         Err(_) => html.to_string(),
     };
-    
+
     // 保留列表项标记
     let html = match regex::Regex::new(r"(?i)<li[^>]*>") {
         Ok(re) => re.replace_all(&html, "\n• ").to_string(),
         Err(_) => html,
     };
-    
+
     // 移除所有 HTML 标签
     let html = match regex::Regex::new(r"<[^>]+>") {
         Ok(re) => re.replace_all(&html, "").to_string(),
         Err(_) => html,
     };
-    
+
     // HTML 实体解码
     let html = html_decode(&html);
-    
+
     // 合并多个空白字符
     let html = match regex::Regex::new(r"[ \t]+") {
         Ok(re) => re.replace_all(&html, " ").to_string(),
         Err(_) => html,
     };
-    
+
     // 合并多个换行
     let html = match regex::Regex::new(r"\n\s*\n+") {
         Ok(re) => re.replace_all(&html, "\n\n").to_string(),
         Err(_) => html,
     };
-    
+
     html.trim().to_string()
 }
 
@@ -1392,9 +1412,10 @@ fn html_decode(s: &str) -> String {
 
 /// 从 URL 提取域名
 fn extract_domain_from_url_simple(url: &str) -> Option<String> {
-    let url = url.trim_start_matches("https://")
+    let url = url
+        .trim_start_matches("https://")
         .trim_start_matches("http://")
         .trim_start_matches("www.");
-    
+
     url.split('/').next().map(|s| s.to_string())
 }

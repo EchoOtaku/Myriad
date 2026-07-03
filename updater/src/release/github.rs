@@ -35,6 +35,7 @@ pub struct Release {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Asset {
+    pub url: String,
     pub name: String,
     pub browser_download_url: String,
     #[serde(default)]
@@ -176,7 +177,7 @@ impl GithubClient {
         headers.insert(ACCEPT, HeaderValue::from_static("application/octet-stream"));
         let resp = self
             .client
-            .get(&asset.browser_download_url)
+            .get(&asset.url)
             .headers(headers)
             .send()
             .await
@@ -222,7 +223,8 @@ impl GithubClient {
         let etag_path = self.cache_dir.join(format!("release-{tag}.etag"));
 
         let mut headers = self.auth_headers();
-        // The asset download URL returns the binary; accept octet-stream.
+        // Use the GitHub API asset URL, not browser_download_url. The browser URL is
+        // not token-authenticated reliably for private repositories.
         headers.insert(ACCEPT, HeaderValue::from_static("application/octet-stream"));
         if let Ok(etag) = std::fs::read_to_string(&etag_path) {
             if let Ok(v) = HeaderValue::from_str(etag.trim()) {
@@ -232,7 +234,7 @@ impl GithubClient {
 
         let resp = self
             .client
-            .get(&asset.browser_download_url)
+            .get(&asset.url)
             .headers(headers)
             .send()
             .await

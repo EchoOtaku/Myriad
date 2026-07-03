@@ -1,10 +1,6 @@
 //! 运行上下文 API
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -43,7 +39,10 @@ pub async fn get_context_user(
     tracing::debug!("[TAPP] get_context_user - User: {}", claims.username);
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let connected_platforms = get_available_platforms().await;
@@ -118,20 +117,23 @@ pub async fn get_context_system(
     let cache_dir = std::path::Path::new("cache/platforms");
 
     let mut last_fetch: HashMap<String, Option<String>> = HashMap::new();
-    let futures: Vec<_> = platforms.iter().map(|platform| {
-        let file = cache_dir.join(format!("{}_filtered.json", platform));
-        async move {
-            if file.exists() {
-                if let Ok(metadata) = tokio::fs::metadata(&file).await {
-                    if let Ok(modified) = metadata.modified() {
-                        let datetime: chrono::DateTime<chrono::Utc> = modified.into();
-                        return Some(datetime.to_rfc3339());
+    let futures: Vec<_> = platforms
+        .iter()
+        .map(|platform| {
+            let file = cache_dir.join(format!("{}_filtered.json", platform));
+            async move {
+                if file.exists() {
+                    if let Ok(metadata) = tokio::fs::metadata(&file).await {
+                        if let Ok(modified) = metadata.modified() {
+                            let datetime: chrono::DateTime<chrono::Utc> = modified.into();
+                            return Some(datetime.to_rfc3339());
+                        }
                     }
                 }
+                None
             }
-            None
-        }
-    }).collect();
+        })
+        .collect();
 
     let results = futures::future::join_all(futures).await;
     for (platform, result) in platforms.iter().zip(results) {
@@ -159,7 +161,12 @@ pub async fn get_context_geo(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.split(',').next())
         .map(|s| s.trim().to_string())
-        .or_else(|| headers.get("x-real-ip").and_then(|v| v.to_str().ok()).map(|s| s.to_string()))
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        })
         .unwrap_or_else(|| addr.ip().to_string());
 
     tracing::debug!("[TAPP] get_context_geo for IP: {}", client_ip);
@@ -192,7 +199,9 @@ pub async fn get_context_geo(
     let result = TappApiService::execute("system", "geo", &geo_api, None, &context).await;
 
     if result.success {
-        Ok(Json(json!({ "success": true, "data": result.data, "cached": result.cached })))
+        Ok(Json(
+            json!({ "success": true, "data": result.data, "cached": result.cached }),
+        ))
     } else {
         Err((
             StatusCode::INTERNAL_SERVER_ERROR,

@@ -1,4 +1,4 @@
-import { FaGithub, FaSteam, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
+import { FaGithub, FaSteam, SiBangumi, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 
 import React from 'react'
 
@@ -24,8 +24,9 @@ const PlatformIcon: React.FC<PlatformIconProps> = React.memo(({ platform, classN
     case 'netease':
     case '网易云音乐':
       return <SiNeteasecloudmusic className={className} style={style} />
+    case 'bangumi':
+      return <SiBangumi className={className} style={style} />
     default:
-      // @ts-expect-error - Style prop needs to be passed through
       return <span className={className} style={style}>?</span>
   }
 })

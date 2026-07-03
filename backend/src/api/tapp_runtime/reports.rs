@@ -24,7 +24,10 @@ pub async fn list_reports(
     use crate::models::entities::platform_reports;
 
     let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let reports = platform_reports::Entity::find()
@@ -34,7 +37,10 @@ pub async fn list_reports(
         .await
         .map_err(|e| {
             tracing::error!("[TAPP] Failed to fetch reports: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to fetch reports" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to fetch reports" })),
+            )
         })?;
 
     let report_list: Vec<Value> = reports
@@ -89,7 +95,9 @@ pub async fn create_report(
 
     tracing::info!(
         "[TAPP] create_report - User: {}, Tapp: {}, Type: {}",
-        claims.username, req.tapp_id, req.report_type
+        claims.username,
+        req.tapp_id,
+        req.report_type
     );
 
     use crate::models::entities::tapp_storage;
@@ -121,7 +129,10 @@ pub async fn create_report(
 
     storage.insert(&db).await.map_err(|e| {
         tracing::error!("[TAPP] Failed to create report: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to create report" })))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to create report" })),
+        )
     })?;
 
     Ok(Json(json!({
@@ -144,13 +155,17 @@ pub async fn list_tapp_reports(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!(
         "[TAPP] list_tapp_reports - User: {}, Tapp: {}",
-        claims.username, tapp_id
+        claims.username,
+        tapp_id
     );
 
     use crate::models::entities::tapp_storage;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let limit = query.limit.unwrap_or(50).min(100) as u64;
@@ -166,7 +181,10 @@ pub async fn list_tapp_reports(
         .all(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     let reports: Vec<Value> = items
@@ -196,12 +214,19 @@ pub async fn get_tapp_report(
     Extension(claims): Extension<Claims>,
     Path((tapp_id, report_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    tracing::debug!("[TAPP] get_tapp_report - User: {}, Report: {}", claims.username, report_id);
+    tracing::debug!(
+        "[TAPP] get_tapp_report - User: {}, Report: {}",
+        claims.username,
+        report_id
+    );
 
     use crate::models::entities::tapp_storage;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let storage_key = format!("_report:{}", report_id);
@@ -213,10 +238,16 @@ pub async fn get_tapp_report(
         .one(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?
         .ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({ "error": "Report not found" })))
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Report not found" })),
+            )
         })?;
 
     Ok(Json(json!({ "success": true, "report": item.value })))
@@ -229,13 +260,20 @@ pub async fn update_tapp_report(
     Path((tapp_id, report_id)): Path<(String, String)>,
     Json(req): Json<UpdateReportRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    tracing::info!("[TAPP] update_tapp_report - User: {}, Report: {}", claims.username, report_id);
+    tracing::info!(
+        "[TAPP] update_tapp_report - User: {}, Report: {}",
+        claims.username,
+        report_id
+    );
 
     use crate::models::entities::tapp_storage;
     use sea_orm::{ActiveModelTrait, Set};
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let storage_key = format!("_report:{}", report_id);
@@ -247,10 +285,16 @@ pub async fn update_tapp_report(
         .one(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?
         .ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({ "error": "Report not found" })))
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Report not found" })),
+            )
         })?;
 
     let now = chrono::Utc::now().fixed_offset();
@@ -272,7 +316,10 @@ pub async fn update_tapp_report(
     active.updated_at = Set(now);
 
     active.update(&db).await.map_err(|_| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to update report" })))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to update report" })),
+        )
     })?;
 
     Ok(Json(json!({ "success": true, "report": report_data })))
@@ -284,12 +331,19 @@ pub async fn delete_tapp_report(
     Extension(claims): Extension<Claims>,
     Path((tapp_id, report_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    tracing::info!("[TAPP] delete_tapp_report - User: {}, Report: {}", claims.username, report_id);
+    tracing::info!(
+        "[TAPP] delete_tapp_report - User: {}, Report: {}",
+        claims.username,
+        report_id
+    );
 
     use crate::models::entities::tapp_storage;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let storage_key = format!("_report:{}", report_id);
@@ -301,11 +355,17 @@ pub async fn delete_tapp_report(
         .exec(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to delete report" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to delete report" })),
+            )
         })?;
 
     if result.rows_affected == 0 {
-        return Err((StatusCode::NOT_FOUND, Json(json!({ "error": "Report not found" }))));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Report not found" })),
+        ));
     }
 
     Ok(Json(json!({ "success": true, "deleted": report_id })))

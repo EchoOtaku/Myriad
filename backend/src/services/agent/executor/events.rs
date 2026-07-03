@@ -147,11 +147,7 @@ impl StepEventEmitter {
     }
 
     /// 发送 WaitingForInput 事件
-    pub async fn waiting_for_input(
-        &self,
-        task_id: &str,
-        question: &UserQuestion,
-    ) {
+    pub async fn waiting_for_input(&self, task_id: &str, question: &UserQuestion) {
         if let Some(ref tx) = self.tx {
             let _ = tx
                 .send(AgentProgressEvent::WaitingForInput {
@@ -182,5 +178,4 @@ impl StepEventEmitter {
                 .await;
         }
     }
-
 }

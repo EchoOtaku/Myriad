@@ -66,6 +66,8 @@ export interface TranslationKeys {
     showAnime: string
     tvSeries: string
     showTvSeries: string
+    book: string
+    showBook: string
     currentFilterAll: string
     currentFilterGame: string
     currentFilterVideo: string
@@ -310,12 +312,10 @@ export interface TranslationKeys {
     updaterDriftWarn: string
     updaterDriftAction: string
     updaterSelfUpdateRequired: string
-    updaterSelfUpdateCmd: string
     updaterSelfUpdateButton: string
     updaterSelfUpdateConfirm: string
     updaterSelfUpdateDispatching: string
     updaterSelfUpdateDispatched: string
-    updaterSelfUpdateHint: string
     updaterUpdateAvailable: string
     updaterUpdateAvailableCurrent: string
     updaterReleaseNotes: string
@@ -326,6 +326,7 @@ export interface TranslationKeys {
     updaterErr403: string
     updaterErr409: string
     updaterErr412: string
+    updaterErrNotConfigured: string
     // 状态徽章
     updaterStatusHealthy: string
     updaterStatusHealthyDesc: string
@@ -716,6 +717,7 @@ export interface TranslationKeys {
     reportSteam: string
     reportGithub: string
     reportNetease: string
+    reportBangumi: string
     socialNetwork: string
     library: string
     dataReport: string
@@ -789,6 +791,7 @@ export interface TranslationKeys {
     // 内容类型
     anime: string
     tvSeries: string
+    book: string
   }
 
   // 报告

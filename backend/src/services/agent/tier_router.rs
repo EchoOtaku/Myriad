@@ -79,9 +79,7 @@ impl TierRouter {
             "tapp.list" | "tapp.page" | "tapp.widget" | "tapp.windows" | "tapp.read"
             | "tapp.pageContent" => TaskComplexity::Simple,
             // tapp 交互和理解需要 AI
-            "tapp.ui" | "tapp.understand" | "tapp.interact" | "tapp.fill" => {
-                TaskComplexity::Medium
-            }
+            "tapp.ui" | "tapp.understand" | "tapp.interact" | "tapp.fill" => TaskComplexity::Medium,
             // 音乐控制和状态
             id if id.starts_with("music.") => TaskComplexity::Simple,
             // 网易云音乐查询
@@ -101,11 +99,19 @@ impl TierRouter {
                 TaskComplexity::Simple
             }
             // 外部集成（纯数据获取）
-            "http.fetch" | "hitokoto.get" | "weather.get" | "proxy.image" | "bilibili.user"
-            | "bilibili.video" | "bilibili.bangumi" | "steam.user" | "steam.game"
-            | "steam.wishlist" | "github.repos" | "netease.song" | "netease.playlist.detail" => {
-                TaskComplexity::Simple
-            }
+            "http.fetch"
+            | "hitokoto.get"
+            | "weather.get"
+            | "proxy.image"
+            | "bilibili.user"
+            | "bilibili.video"
+            | "bilibili.bangumi"
+            | "steam.user"
+            | "steam.game"
+            | "steam.wishlist"
+            | "github.repos"
+            | "netease.song"
+            | "netease.playlist.detail" => TaskComplexity::Simple,
             // Notion 查询
             "notion.query" => TaskComplexity::Simple,
             // 数据写入
@@ -244,8 +250,7 @@ impl CircuitBreaker {
     /// 记录失败
     pub fn record_failure(&self) {
         let count = self.failure_count.fetch_add(1, Ordering::AcqRel) + 1;
-        self.last_failure
-            .store(Self::now_ms(), Ordering::Release);
+        self.last_failure.store(Self::now_ms(), Ordering::Release);
 
         if count >= self.threshold {
             let prev = self.state.load(Ordering::Acquire);
@@ -397,5 +402,4 @@ mod tests {
             ModelTier::Pro
         );
     }
-
 }

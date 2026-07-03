@@ -4,7 +4,7 @@
  */
 
 import type { WidgetConfig } from '../WidgetGrid'
-import { FaGithub, FaSteam, LuGitFork, LuStar, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
+import { FaGithub, FaSteam, LuGitFork, LuStar, SiBangumi, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -717,7 +717,73 @@ const PLATFORM_CONFIG: Record<string, { icon: React.ReactNode, color: string, bg
   steam: { icon: <FaSteam />, color: '#1b2838', bgColor: 'rgba(27, 40, 56, 0.15)', borderColor: 'rgba(27, 40, 56, 0.3)', label: 'Steam', textColor: 'text-gray-700 dark:text-gray-300' },
   github: { icon: <FaGithub />, color: '#24292e', bgColor: 'rgba(36, 41, 46, 0.15)', borderColor: 'rgba(36, 41, 46, 0.3)', label: 'GitHub', textColor: 'text-gray-900 dark:text-gray-100' },
   netease: { icon: <SiNeteasecloudmusic />, color: '#e60026', bgColor: 'rgba(230, 0, 38, 0.15)', borderColor: 'rgba(230, 0, 38, 0.3)', label: 'NetEase', textColor: 'text-red-600' },
+  bangumi: { icon: <SiBangumi />, color: '#f09199', bgColor: 'rgba(240, 145, 153, 0.15)', borderColor: 'rgba(240, 145, 153, 0.3)', label: 'Bangumi', textColor: 'text-rose-500' },
 }
+
+const BangumiWidget = memo(({ data, showOverview, onContentChange }: any) => {
+  const { t } = useI18n()
+  const libraryItems = data?.library_items || []
+  const statusCounts = data?.status_counts || data?.collection_type_distribution || {}
+  const [currentIndex, setCurrentIndex] = useState(0)
+
+  useEffect(() => {
+    if (showOverview || libraryItems.length === 0)
+      return
+    const timer = window.setInterval(() => {
+      setCurrentIndex(prev => (prev + 1) % libraryItems.length)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [showOverview, libraryItems.length])
+
+  const currentItem = libraryItems[currentIndex]
+
+  useEffect(() => {
+    if (!showOverview && currentItem) {
+      onContentChange?.({ title: currentItem.title, type: currentItem.type || 'book' })
+    }
+    else {
+      onContentChange?.(null)
+    }
+  }, [showOverview, currentItem, onContentChange])
+
+  if (!showOverview && currentItem) {
+    return (
+      <div className="h-full w-full p-3 flex gap-3 items-center">
+        <div className="h-full aspect-[3/4] rounded-xl overflow-hidden bg-rose-100 dark:bg-rose-950/30 shrink-0">
+          {currentItem.cover
+            ? <img src={currentItem.cover} alt={currentItem.title} className="w-full h-full object-cover" loading="lazy" />
+            : <div className="w-full h-full flex items-center justify-center text-3xl text-rose-500"><SiBangumi /></div>}
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-widest text-rose-500 font-bold mb-1">Bangumi</div>
+          <div className="text-base font-bold text-gray-900 dark:text-white line-clamp-3">{currentItem.title}</div>
+          {currentItem.rate ? <div className="mt-2 text-xs text-gray-500">{currentItem.rate}/10</div> : null}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full w-full p-4 flex flex-col justify-center">
+      <div className="text-[10px] uppercase tracking-widest text-rose-500 font-bold mb-2">Bangumi</div>
+      <div className="text-lg font-bold text-gray-900 dark:text-white line-clamp-2">
+        {data?.taste_profile || t.widgets.reportBangumi}
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-4">
+        {[
+          ['Done', statusCounts.done || 0],
+          ['Doing', statusCounts.doing || 0],
+          ['Wish', statusCounts.wish || 0],
+        ].map(([label, count]) => (
+          <div key={label} className="rounded-lg bg-white/70 dark:bg-white/5 p-2">
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{count}</div>
+            <div className="text-[10px] text-gray-500">{label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+})
 
 // ==================== 主组件 ====================
 export const ReportCardWidget = memo(({ config, isEditMode: _isEditMode, isPreview }: ReportCardWidgetProps) => {
@@ -860,6 +926,7 @@ export const ReportCardWidget = memo(({ config, isEditMode: _isEditMode, isPrevi
         {platformId === 'steam' && <SteamWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} />}
         {platformId === 'github' && <GithubWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} />}
         {platformId === 'netease' && <NeteaseWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} allowLoop={animLevel.loop} />}
+        {platformId === 'bangumi' && <BangumiWidget data={reportData} showOverview={showOverview} onContentChange={handleContentChange} />}
       </div>
 
       {/* 左下角浮动Logo */}

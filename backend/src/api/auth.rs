@@ -64,7 +64,6 @@ pub async fn github_login(_headers: HeaderMap) -> Response {
 /// **DEPRECATED**: 旧端点 → 重定向到 `/api/auth/oauth/github/callback?code=...&state=...`
 pub async fn github_callback(
     Query(params): Query<AuthCallbackQuery>,
-    State(_db): State<DatabaseConnection>,
     _headers: HeaderMap,
 ) -> Response {
     tracing::debug!("legacy /api/auth/github/callback hit; redirecting");
@@ -251,7 +250,8 @@ pub async fn logout() -> impl IntoResponse {
     tracing::info!("🚪 User logout - clearing auth cookie");
     let cookie_value = "auth_token=deleted; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; \
                         Expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    let mut response = Json(json!({"success": true, "message": "Logged out successfully"})).into_response();
+    let mut response =
+        Json(json!({"success": true, "message": "Logged out successfully"})).into_response();
     response
         .headers_mut()
         .insert(header::SET_COOKIE, cookie_value.parse().unwrap());

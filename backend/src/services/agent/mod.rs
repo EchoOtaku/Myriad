@@ -156,7 +156,9 @@ impl Agent {
             PlannerStatus::Chat => {
                 return Ok(AgentResponse {
                     response_type: AgentResponseType::Answer,
-                    message: planner_output.chat_reply.unwrap_or_else(|| response_agent::greeting()),
+                    message: planner_output
+                        .chat_reply
+                        .unwrap_or_else(|| response_agent::greeting()),
                     data: Some(json!({ "type": "chat" })),
                     data_display: None,
                     suggestions: vec![],
@@ -166,10 +168,12 @@ impl Agent {
                 });
             }
             PlannerStatus::Clarify => {
-                let clarification = planner_output.clarification.unwrap_or(PlannerClarification {
-                    message: response_agent::need_clarification(),
-                    options: vec![],
-                });
+                let clarification = planner_output
+                    .clarification
+                    .unwrap_or(PlannerClarification {
+                        message: response_agent::need_clarification(),
+                        options: vec![],
+                    });
                 return Ok(AgentResponse {
                     response_type: AgentResponseType::Clarification,
                     message: clarification.message.clone(),
@@ -188,7 +192,9 @@ impl Agent {
                 });
             }
             PlannerStatus::Unsupported => {
-                let reason = planner_output.unsupported_reason.unwrap_or_else(|| response_agent::unsupported_operation());
+                let reason = planner_output
+                    .unsupported_reason
+                    .unwrap_or_else(|| response_agent::unsupported_operation());
 
                 // 记录能力缺口
                 if let Some(evo) = skill_evolution::get_skill_evolution() {
@@ -221,7 +227,11 @@ impl Agent {
         }
 
         // 3. 转换步骤为 Recipe
-        let cap_ids: Vec<String> = planner_output.steps.iter().map(|s| s.capability_id.clone()).collect();
+        let cap_ids: Vec<String> = planner_output
+            .steps
+            .iter()
+            .map(|s| s.capability_id.clone())
+            .collect();
         let cap_schemas = capability::get_capabilities_by_ids(&cap_ids).await;
         let recipe_steps = recipe::validate_and_convert_steps(
             planner_output.steps.clone(),
@@ -231,7 +241,10 @@ impl Agent {
 
         let recipe = Self::build_recipe_from_steps(
             recipe_steps,
-            planner_output.reasoning.clone().unwrap_or_else(|| request.raw_input.clone()),
+            planner_output
+                .reasoning
+                .clone()
+                .unwrap_or_else(|| request.raw_input.clone()),
             &request,
         );
 
@@ -244,7 +257,10 @@ impl Agent {
         }
 
         // 4.5 检查必需参数缺失
-        if let Some(missing_response) = self.check_missing_required_parameters(&recipe, &planner_output, user_id, None).await? {
+        if let Some(missing_response) = self
+            .check_missing_required_parameters(&recipe, &planner_output, user_id, None)
+            .await?
+        {
             return Ok(missing_response);
         }
 
@@ -262,32 +278,42 @@ impl Agent {
             success: ok,
             error_msg: task_state.error.as_deref(),
             log_prefix: "",
-            conversation_context: request.context.as_ref()
+            conversation_context: request
+                .context
+                .as_ref()
                 .and_then(|c| c.conversation_history.as_deref()),
             step_results: Some(&task_state.step_results),
-        }).await;
+        })
+        .await;
 
         // Skill 自动创建（成功的多步骤 Recipe → 泛化 Skill）
         if ok && recipe.steps.len() >= 2 {
             if let Some(evolution) = skill_evolution::get_skill_evolution() {
                 let evo = evolution.clone();
                 let request_text = request.raw_input.clone();
-                let step_caps: Vec<String> = recipe.steps.iter()
+                let step_caps: Vec<String> = recipe
+                    .steps
+                    .iter()
                     .map(|s| s.capability_id.clone())
                     .collect();
-                let step_descriptions: String = recipe.steps.iter()
+                let step_descriptions: String = recipe
+                    .steps
+                    .iter()
                     .enumerate()
                     .map(|(i, s)| format!("{}. {} ({})", i + 1, s.action, s.capability_id))
                     .collect::<Vec<_>>()
                     .join("\n");
                 tokio::spawn(async move {
-                    match evo.auto_create_skill_abstracted(
-                        &request_text,
-                        &step_descriptions,
-                        &step_caps,
-                    ).await {
-                        Ok(skill) => tracing::info!(skill_id = %skill.id, "[Agent] Auto-created skill from recipe"),
-                        Err(e) => tracing::debug!(error = %e, "[Agent] Skill auto-creation skipped"),
+                    match evo
+                        .auto_create_skill_abstracted(&request_text, &step_descriptions, &step_caps)
+                        .await
+                    {
+                        Ok(skill) => {
+                            tracing::info!(skill_id = %skill.id, "[Agent] Auto-created skill from recipe")
+                        }
+                        Err(e) => {
+                            tracing::debug!(error = %e, "[Agent] Skill auto-creation skipped")
+                        }
                     }
                 });
             }
@@ -299,7 +325,9 @@ impl Agent {
 
         Ok(AgentResponse {
             response_type: AgentResponseType::Answer,
-            message: self.generate_response_message_v2(&planner_output, &task_state, None).await,
+            message: self
+                .generate_response_message_v2(&planner_output, &task_state, None)
+                .await,
             data: Some(result),
             data_display,
             suggestions: vec![],
@@ -346,14 +374,16 @@ impl Agent {
         );
 
         // 发送 Planner 决策调试事件
-        let planner_step_summaries: Vec<types::PlannerStepSummary> = planner_output.steps.iter().map(|s| {
-            types::PlannerStepSummary {
+        let planner_step_summaries: Vec<types::PlannerStepSummary> = planner_output
+            .steps
+            .iter()
+            .map(|s| types::PlannerStepSummary {
                 id: s.id.clone(),
                 capability_id: s.capability_id.clone(),
                 action: s.action.clone(),
                 params: serde_json::to_value(&s.params).ok(),
-            }
-        }).collect();
+            })
+            .collect();
         let _planner_decision_info = types::PlannerDecisionInfo {
             status: format!("{:?}", planner_output.status),
             reasoning: planner_output.reasoning.clone(),
@@ -380,8 +410,8 @@ impl Agent {
                 let title_input = request.raw_input.clone();
                 let title_reasoning = planner_output.reasoning.clone();
                 tokio::spawn(async move {
-                    use sea_orm::{EntityTrait, ActiveModelTrait, ActiveValue};
                     use crate::models::entities::agent_sessions;
+                    use sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait};
 
                     // 检查 session 是否已有标题（续对话不需要重新生成）
                     if let Ok(Some(session)) = agent_sessions::Entity::find_by_id(&title_session_id)
@@ -393,7 +423,8 @@ impl Agent {
                         }
                     }
 
-                    let title = generate_session_title_ai(&title_input, title_reasoning.as_deref()).await;
+                    let title =
+                        generate_session_title_ai(&title_input, title_reasoning.as_deref()).await;
 
                     // 持久化到数据库
                     if let Ok(Some(session)) = agent_sessions::Entity::find_by_id(&title_session_id)
@@ -405,7 +436,9 @@ impl Agent {
                         let _ = active.update(&title_db).await;
                     }
 
-                    let _ = title_tx.send(AgentProgressEvent::SessionTitleUpdated { title }).await;
+                    let _ = title_tx
+                        .send(AgentProgressEvent::SessionTitleUpdated { title })
+                        .await;
                 });
             }
         }
@@ -413,14 +446,14 @@ impl Agent {
         // 2. 根据状态分流
         match planner_output.status {
             PlannerStatus::Chat => {
-                let planner_reply = planner_output.chat_reply.unwrap_or_else(|| response_agent::greeting());
+                let planner_reply = planner_output
+                    .chat_reply
+                    .unwrap_or_else(|| response_agent::greeting());
 
                 // 尝试真正的流式 AI 回复（token-by-token from model）
-                let reply = self.stream_chat_response(
-                    &request,
-                    &planner_reply,
-                    &progress_tx,
-                ).await;
+                let reply = self
+                    .stream_chat_response(&request, &planner_reply, &progress_tx)
+                    .await;
 
                 let _ = progress_tx
                     .send(AgentProgressEvent::Progress {
@@ -442,10 +475,12 @@ impl Agent {
                 });
             }
             PlannerStatus::Clarify => {
-                let clarification = planner_output.clarification.unwrap_or(PlannerClarification {
-                    message: response_agent::need_clarification(),
-                    options: vec![],
-                });
+                let clarification = planner_output
+                    .clarification
+                    .unwrap_or(PlannerClarification {
+                        message: response_agent::need_clarification(),
+                        options: vec![],
+                    });
 
                 // 流式推送澄清消息
                 Self::stream_text_as_tokens(&progress_tx, &clarification.message).await;
@@ -467,7 +502,9 @@ impl Agent {
                 });
             }
             PlannerStatus::Unsupported => {
-                let reason = planner_output.unsupported_reason.unwrap_or_else(|| response_agent::unsupported_operation());
+                let reason = planner_output
+                    .unsupported_reason
+                    .unwrap_or_else(|| response_agent::unsupported_operation());
 
                 // 记录能力缺口
                 if let Some(evo) = skill_evolution::get_skill_evolution() {
@@ -528,7 +565,11 @@ impl Agent {
             })
             .await;
 
-        let cap_ids: Vec<String> = planner_output.steps.iter().map(|s| s.capability_id.clone()).collect();
+        let cap_ids: Vec<String> = planner_output
+            .steps
+            .iter()
+            .map(|s| s.capability_id.clone())
+            .collect();
         let cap_schemas = capability::get_capabilities_by_ids(&cap_ids).await;
         let recipe_steps = recipe::validate_and_convert_steps(
             planner_output.steps.clone(),
@@ -538,7 +579,10 @@ impl Agent {
 
         let mut recipe = Self::build_recipe_from_steps(
             recipe_steps,
-            planner_output.reasoning.clone().unwrap_or_else(|| request.raw_input.clone()),
+            planner_output
+                .reasoning
+                .clone()
+                .unwrap_or_else(|| request.raw_input.clone()),
             &request,
         );
 
@@ -552,10 +596,9 @@ impl Agent {
                 .iter()
                 .map(|(role, ctx)| (format!("{:?}", role), Value::String(ctx.clone())))
                 .collect();
-            recipe.metadata.insert(
-                "role_contexts".to_string(),
-                Value::Object(ctx_map),
-            );
+            recipe
+                .metadata
+                .insert("role_contexts".to_string(), Value::Object(ctx_map));
         }
 
         if assignment.is_multi_agent {
@@ -588,9 +631,14 @@ impl Agent {
             );
             return self
                 .execute_simple_query_v2(
-                    &recipe, &planner_output, user_id, progress_tx,
+                    &recipe,
+                    &planner_output,
+                    user_id,
+                    progress_tx,
                     &request.raw_input,
-                    request.context.as_ref()
+                    request
+                        .context
+                        .as_ref()
                         .and_then(|c| c.conversation_history.as_deref()),
                 )
                 .await;
@@ -598,7 +646,9 @@ impl Agent {
         // ========== 快速路径优化结束 ==========
 
         // 发送任务创建事件（多步骤任务，附带步骤描述供前端展示执行计划）
-        let step_descs: Vec<String> = recipe.steps.iter()
+        let step_descs: Vec<String> = recipe
+            .steps
+            .iter()
             .map(|s| capability::get_step_description(s))
             .collect();
         let _ = progress_tx
@@ -611,11 +661,8 @@ impl Agent {
             .await;
 
         // 副 Agent 生成计划说明（AI 流式推送，告诉用户即将做什么）
-        let _plan_msg = response_agent::announce_plan(
-            &request.raw_input,
-            &step_descs,
-            &progress_tx,
-        ).await;
+        let _plan_msg =
+            response_agent::announce_plan(&request.raw_input, &step_descs, &progress_tx).await;
 
         // 4. 检查敏感操作
         let sensitive_steps = self.check_sensitive_steps(&recipe).await;
@@ -626,29 +673,57 @@ impl Agent {
         }
 
         // 4.5 检查必需参数缺失 — 执行前收集用户信息
-        if let Some(missing_response) = self.check_missing_required_parameters(&recipe, &planner_output, user_id, Some(&progress_tx)).await? {
+        if let Some(missing_response) = self
+            .check_missing_required_parameters(
+                &recipe,
+                &planner_output,
+                user_id,
+                Some(&progress_tx),
+            )
+            .await?
+        {
             return Ok(missing_response);
         }
 
         // 5. 执行方案（带进度回调和升级）
         let result = self
-            .execute_recipe_with_progress_v2(&recipe, &planner_output, &request, user_id, progress_tx.clone())
+            .execute_recipe_with_progress_v2(
+                &recipe,
+                &planner_output,
+                &request,
+                user_id,
+                progress_tx.clone(),
+            )
             .await;
 
         // 5.5 Orchestrator 结果摘要（多 Agent 时）
         if assignment.is_multi_agent {
             let orch_result = orchestrator::OrchestratorResult {
                 total_steps: recipe.steps.len(),
-                successful_steps: if result.is_ok() { recipe.steps.len() } else { 0 },
-                participating_roles: role_groups.iter().map(|g| g.role.display_name().to_string()).collect(),
+                successful_steps: if result.is_ok() {
+                    recipe.steps.len()
+                } else {
+                    0
+                },
+                participating_roles: role_groups
+                    .iter()
+                    .map(|g| g.role.display_name().to_string())
+                    .collect(),
                 used_parallel: orchestrator::Orchestrator::can_parallelize(&role_groups),
-                role_summaries: role_groups.iter().map(|g| orchestrator::RoleSummary {
-                    role: g.role.display_name().to_string(),
-                    icon: g.role.icon().to_string(),
-                    steps_count: g.step_indices.len(),
-                    success_count: if result.is_ok() { g.step_indices.len() } else { 0 },
-                    identity_used: true,
-                }).collect(),
+                role_summaries: role_groups
+                    .iter()
+                    .map(|g| orchestrator::RoleSummary {
+                        role: g.role.display_name().to_string(),
+                        icon: g.role.icon().to_string(),
+                        steps_count: g.step_indices.len(),
+                        success_count: if result.is_ok() {
+                            g.step_indices.len()
+                        } else {
+                            0
+                        },
+                        identity_used: true,
+                    })
+                    .collect(),
             };
             orchestrator::Orchestrator::notify_multi_agent_complete(&orch_result, &recipe.id).await;
         }
@@ -658,23 +733,30 @@ impl Agent {
             if let Some(evolution) = skill_evolution::get_skill_evolution() {
                 let evo = evolution.clone();
                 let request_text = request.raw_input.clone();
-                let step_caps: Vec<String> = recipe.steps.iter()
+                let step_caps: Vec<String> = recipe
+                    .steps
+                    .iter()
                     .map(|s| s.capability_id.clone())
                     .collect();
-                let step_descriptions: String = recipe.steps.iter()
+                let step_descriptions: String = recipe
+                    .steps
+                    .iter()
                     .enumerate()
                     .map(|(i, s)| format!("{}. {} ({})", i + 1, s.action, s.capability_id))
                     .collect::<Vec<_>>()
                     .join("\n");
 
                 tokio::spawn(async move {
-                    match evo.auto_create_skill_abstracted(
-                        &request_text,
-                        &step_descriptions,
-                        &step_caps,
-                    ).await {
-                        Ok(skill) => tracing::info!(skill_id = %skill.id, "[Agent] AI-abstracted skill created from recipe"),
-                        Err(e) => tracing::debug!(error = %e, "[Agent] Skill auto-creation skipped"),
+                    match evo
+                        .auto_create_skill_abstracted(&request_text, &step_descriptions, &step_caps)
+                        .await
+                    {
+                        Ok(skill) => {
+                            tracing::info!(skill_id = %skill.id, "[Agent] AI-abstracted skill created from recipe")
+                        }
+                        Err(e) => {
+                            tracing::debug!(error = %e, "[Agent] Skill auto-creation skipped")
+                        }
                     }
                 });
             }
@@ -683,7 +765,9 @@ impl Agent {
         // 6. AI 驱动的记忆提取 + 会话记忆归档
         {
             let ok = result.is_ok();
-            let step_results_ref = result.as_ref().ok()
+            let step_results_ref = result
+                .as_ref()
+                .ok()
                 .and_then(|r| r.task.as_ref())
                 .map(|t| &t.step_results);
             record_execution_memory(MemoryRecordParams {
@@ -694,10 +778,13 @@ impl Agent {
                 success: ok,
                 error_msg: result.as_ref().err().map(|e| e.as_str()),
                 log_prefix: "",
-                conversation_context: request.context.as_ref()
+                conversation_context: request
+                    .context
+                    .as_ref()
                     .and_then(|c| c.conversation_history.as_deref()),
                 step_results: step_results_ref,
-            }).await;
+            })
+            .await;
         }
 
         result
@@ -724,12 +811,16 @@ impl Agent {
                 status: format!("{:?}", planner_output.status),
                 reasoning: planner_output.reasoning.clone(),
                 confidence: planner_output.confidence,
-                planned_steps: planner_output.steps.iter().map(|s| types::PlannerStepSummary {
-                    id: s.id.clone(),
-                    capability_id: s.capability_id.clone(),
-                    action: s.action.clone(),
-                    params: serde_json::to_value(&s.params).ok(),
-                }).collect(),
+                planned_steps: planner_output
+                    .steps
+                    .iter()
+                    .map(|s| types::PlannerStepSummary {
+                        id: s.id.clone(),
+                        capability_id: s.capability_id.clone(),
+                        action: s.action.clone(),
+                        params: serde_json::to_value(&s.params).ok(),
+                    })
+                    .collect(),
             });
         }
 
@@ -739,7 +830,10 @@ impl Agent {
         // WaitingForInput 时直接返回，不进行升级评估（结果不完整是正常的）
         if task_state.status == TaskStatus::WaitingForInput {
             if let Some(obj) = result.as_object_mut() {
-                obj.insert("recipe".to_string(), serde_json::to_value(recipe).unwrap_or_default());
+                obj.insert(
+                    "recipe".to_string(),
+                    serde_json::to_value(recipe).unwrap_or_default(),
+                );
             }
             let frontend_action = self.extract_frontend_action(&result);
             return Ok(AgentResponse {
@@ -770,8 +864,15 @@ impl Agent {
 
             // 使用 Planner.replan
             match self.planner.replan(original_request, &hint).await {
-                Ok(replan_output) if replan_output.status == PlannerStatus::Plan && !replan_output.steps.is_empty() => {
-                    let cap_ids: Vec<String> = replan_output.steps.iter().map(|s| s.capability_id.clone()).collect();
+                Ok(replan_output)
+                    if replan_output.status == PlannerStatus::Plan
+                        && !replan_output.steps.is_empty() =>
+                {
+                    let cap_ids: Vec<String> = replan_output
+                        .steps
+                        .iter()
+                        .map(|s| s.capability_id.clone())
+                        .collect();
                     let cap_schemas = capability::get_capabilities_by_ids(&cap_ids).await;
 
                     if let Ok(new_steps) = recipe::validate_and_convert_steps(
@@ -781,7 +882,10 @@ impl Agent {
                     ) {
                         let new_recipe = Self::build_recipe_from_steps(
                             new_steps,
-                            replan_output.reasoning.clone().unwrap_or_else(|| response_agent::escalation_retry()),
+                            replan_output
+                                .reasoning
+                                .clone()
+                                .unwrap_or_else(|| response_agent::escalation_retry()),
                             original_request,
                         );
 
@@ -797,12 +901,25 @@ impl Agent {
                         let data_display = self.infer_data_display_v2(&result, &replan_output);
 
                         if let Some(obj) = result.as_object_mut() {
-                            obj.insert("recipe".to_string(), serde_json::to_value(&new_recipe).unwrap_or_default());
+                            obj.insert(
+                                "recipe".to_string(),
+                                serde_json::to_value(&new_recipe).unwrap_or_default(),
+                            );
                         }
 
                         return Ok(AgentResponse {
-                            response_type: if new_task_state.status == TaskStatus::Failed { AgentResponseType::Error } else { AgentResponseType::Answer },
-                            message: self.generate_response_message_v2(&replan_output, &new_task_state, Some(&progress_tx_for_summary)).await,
+                            response_type: if new_task_state.status == TaskStatus::Failed {
+                                AgentResponseType::Error
+                            } else {
+                                AgentResponseType::Answer
+                            },
+                            message: self
+                                .generate_response_message_v2(
+                                    &replan_output,
+                                    &new_task_state,
+                                    Some(&progress_tx_for_summary),
+                                )
+                                .await,
                             data: Some(result),
                             data_display,
                             suggestions: vec![],
@@ -813,7 +930,9 @@ impl Agent {
                     }
                 }
                 _ => {
-                    tracing::info!("[Agent] Replan failed or returned non-plan, using original result");
+                    tracing::info!(
+                        "[Agent] Replan failed or returned non-plan, using original result"
+                    );
                 }
             }
         }
@@ -823,13 +942,22 @@ impl Agent {
         let data_display = self.infer_data_display_v2(&result, planner_output);
 
         if let Some(obj) = result.as_object_mut() {
-            obj.insert("recipe".to_string(), serde_json::to_value(recipe).unwrap_or_default());
+            obj.insert(
+                "recipe".to_string(),
+                serde_json::to_value(recipe).unwrap_or_default(),
+            );
         }
 
         let is_failed = task_state.status == TaskStatus::Failed;
         Ok(AgentResponse {
-            response_type: if is_failed { AgentResponseType::Error } else { AgentResponseType::Answer },
-            message: self.generate_response_message_v2(planner_output, &task_state, Some(&progress_tx)).await,
+            response_type: if is_failed {
+                AgentResponseType::Error
+            } else {
+                AgentResponseType::Answer
+            },
+            message: self
+                .generate_response_message_v2(planner_output, &task_state, Some(&progress_tx))
+                .await,
             data: Some(result),
             data_display,
             suggestions: vec![],
@@ -916,13 +1044,19 @@ impl Agent {
 
         // 添加 recipe 到结果
         if let Some(obj) = result.as_object_mut() {
-            obj.insert("recipe".to_string(), serde_json::to_value(recipe).unwrap_or_default());
+            obj.insert(
+                "recipe".to_string(),
+                serde_json::to_value(recipe).unwrap_or_default(),
+            );
         }
 
         // 为已保存的 recipe 生成消息（委托 response_agent）
         let message = match task_state.status {
             types::TaskStatus::Completed => response_agent::recipe_completed(&recipe.name),
-            types::TaskStatus::Failed => response_agent::recipe_failed(&recipe.name, &task_state.error.clone().unwrap_or_default()),
+            types::TaskStatus::Failed => response_agent::recipe_failed(
+                &recipe.name,
+                &task_state.error.clone().unwrap_or_default(),
+            ),
             _ => response_agent::in_progress(&recipe.name),
         };
 
@@ -939,7 +1073,8 @@ impl Agent {
                 log_prefix: "saved:",
                 conversation_context: None,
                 step_results: Some(&task_state.step_results),
-            }).await;
+            })
+            .await;
         }
 
         Ok(AgentResponse {
@@ -988,7 +1123,10 @@ impl Agent {
             .await;
 
         // 带进度执行（Skill 可能展开为多个动态子步骤，需要把 progress_tx 传下去）
-        let task_state = self.executor.execute_with_progress(recipe, user_id, Some(progress_tx.clone())).await?;
+        let task_state = self
+            .executor
+            .execute_with_progress(recipe, user_id, Some(progress_tx.clone()))
+            .await?;
 
         // 获取执行结果
         let step_result = task_state.step_results.get(&step.id);
@@ -1010,7 +1148,10 @@ impl Agent {
         let data_display = self.infer_data_display_v2(&result, planner_output);
 
         if let Some(obj) = result.as_object_mut() {
-            obj.insert("recipe".to_string(), serde_json::to_value(recipe).unwrap_or_default());
+            obj.insert(
+                "recipe".to_string(),
+                serde_json::to_value(recipe).unwrap_or_default(),
+            );
         }
 
         // v3 记忆记录（单步查询也需要记录）
@@ -1025,13 +1166,20 @@ impl Agent {
                 log_prefix: "",
                 conversation_context,
                 step_results: Some(&task_state.step_results),
-            }).await;
+            })
+            .await;
         }
 
         let is_failed = task_state.status == TaskStatus::Failed;
         Ok(AgentResponse {
-            response_type: if is_failed { AgentResponseType::Error } else { AgentResponseType::Answer },
-            message: self.generate_response_message_v2(planner_output, &task_state, Some(&progress_tx)).await,
+            response_type: if is_failed {
+                AgentResponseType::Error
+            } else {
+                AgentResponseType::Answer
+            },
+            message: self
+                .generate_response_message_v2(planner_output, &task_state, Some(&progress_tx))
+                .await,
             data: Some(result),
             data_display,
             suggestions: vec![],
@@ -1112,10 +1260,10 @@ impl Agent {
                 );
 
                 // 直接执行已确认的配方
-                let task_state = self.executor.execute(
-                    &pending_confirmation.recipe,
-                    pending_confirmation.user_id,
-                ).await?;
+                let task_state = self
+                    .executor
+                    .execute(&pending_confirmation.recipe, pending_confirmation.user_id)
+                    .await?;
 
                 let result = self.extract_final_result(&task_state);
                 let frontend_action = self.extract_frontend_action(&result);
@@ -1133,16 +1281,19 @@ impl Agent {
                         log_prefix: "confirmed:",
                         conversation_context: None,
                         step_results: Some(&task_state.step_results),
-                    }).await;
+                    })
+                    .await;
                 }
 
                 Ok(AgentResponse {
                     response_type: AgentResponseType::Answer,
-                    message: self.generate_response_message_v2(
-                        &pending_confirmation.planner_output,
-                        &task_state,
-                        None,
-                    ).await,
+                    message: self
+                        .generate_response_message_v2(
+                            &pending_confirmation.planner_output,
+                            &task_state,
+                            None,
+                        )
+                        .await,
                     data: Some(result),
                     data_display: None,
                     suggestions: vec![],
@@ -1190,15 +1341,23 @@ impl Agent {
                             "[Agent] Checking skill parameters"
                         );
                         for param_name in &sk.parameters {
-                            let has_value = step.params.get(param_name.as_str())
-                                .map(|v: &serde_json::Value| !v.is_null() && v.as_str().map_or(true, |s| !s.is_empty()))
+                            let has_value = step
+                                .params
+                                .get(param_name.as_str())
+                                .map(|v: &serde_json::Value| {
+                                    !v.is_null() && v.as_str().map_or(true, |s| !s.is_empty())
+                                })
                                 .unwrap_or(false);
                             // xxxFrom 引用（如 dataFrom: "step_1"）在执行时会解析为实际值
                             let has_from = step.params.contains_key(&format!("{}From", param_name));
                             if !has_value && !has_from {
                                 // Skill 参数名本身就是描述
                                 let description = param_name.replace('_', " ");
-                                missing.push((step.id.clone(), param_name.to_string(), description));
+                                missing.push((
+                                    step.id.clone(),
+                                    param_name.to_string(),
+                                    description,
+                                ));
                             }
                         }
                     }
@@ -1206,11 +1365,14 @@ impl Agent {
             }
             // 普通 Capability 步骤：从 input_schema.required 检查
             else if let Some(cap) = registry.get(&step.capability_id) {
-                if let Some(required) = cap.input_schema.get("required").and_then(|v| v.as_array()) {
+                if let Some(required) = cap.input_schema.get("required").and_then(|v| v.as_array())
+                {
                     let properties = cap.input_schema.get("properties");
                     for req_val in required {
                         if let Some(param_name) = req_val.as_str() {
-                            let has_value = step.params.get(param_name)
+                            let has_value = step
+                                .params
+                                .get(param_name)
                                 .map(|v| !v.is_null() && v.as_str().map_or(true, |s| !s.is_empty()))
                                 .unwrap_or(false);
                             // xxxFrom 引用（如 promptFrom: "step_3"）在执行时会解析为实际值
@@ -1224,7 +1386,11 @@ impl Agent {
                                     .and_then(|d| d.as_str())
                                     .unwrap_or(param_name)
                                     .to_string();
-                                missing.push((step.id.clone(), param_name.to_string(), description));
+                                missing.push((
+                                    step.id.clone(),
+                                    param_name.to_string(),
+                                    description,
+                                ));
                             }
                         }
                     }
@@ -1262,7 +1428,8 @@ impl Agent {
                 expires_at: question_expires,
             }
         } else {
-            let prompts: Vec<String> = missing.iter()
+            let prompts: Vec<String> = missing
+                .iter()
                 .map(|(_, _, desc)| format!("- {}", desc))
                 .collect();
             types::UserQuestion {
@@ -1295,26 +1462,30 @@ impl Agent {
 
         // 发送 SSE 事件（仅 streaming 路径有 progress_tx）
         if let Some(tx) = progress_tx {
-            let _ = tx.send(AgentProgressEvent::TaskCreated {
-                task_id: task_state.task_id.clone(),
-                message: String::new(),
-                total_steps: recipe.steps.len() as u32,
-                step_descriptions: Vec::new(),
-            }).await;
+            let _ = tx
+                .send(AgentProgressEvent::TaskCreated {
+                    task_id: task_state.task_id.clone(),
+                    message: String::new(),
+                    total_steps: recipe.steps.len() as u32,
+                    step_descriptions: Vec::new(),
+                })
+                .await;
 
-            let _ = tx.send(AgentProgressEvent::WaitingForInput {
-                task_id: task_state.task_id.clone(),
-                question_id: question.question_id.clone(),
-                question_type: serde_json::to_value(&question.question_type)
-                    .ok()
-                    .and_then(|v| v.as_str().map(String::from))
-                    .unwrap_or_else(|| "free_text".to_string()),
-                question: question.question.clone(),
-                context: None,
-                options: None,
-                required: question.required,
-                default_value: None,
-            }).await;
+            let _ = tx
+                .send(AgentProgressEvent::WaitingForInput {
+                    task_id: task_state.task_id.clone(),
+                    question_id: question.question_id.clone(),
+                    question_type: serde_json::to_value(&question.question_type)
+                        .ok()
+                        .and_then(|v| v.as_str().map(String::from))
+                        .unwrap_or_else(|| "free_text".to_string()),
+                    question: question.question.clone(),
+                    context: None,
+                    options: None,
+                    required: question.required,
+                    default_value: None,
+                })
+                .await;
         }
 
         // 构建响应 — task 就是 TaskState，前端通过 SSE 得到 WaitingForInput
@@ -1506,10 +1677,7 @@ impl Agent {
         name: String,
         request: &UserRequest,
     ) -> Recipe {
-        let estimated_duration_ms: u64 = steps
-            .iter()
-            .map(|s| s.timeout_ms.unwrap_or(15000))
-            .sum();
+        let estimated_duration_ms: u64 = steps.iter().map(|s| s.timeout_ms.unwrap_or(15000)).sum();
 
         let page_context = request
             .context
@@ -1522,10 +1690,7 @@ impl Agent {
             .as_ref()
             .and_then(|c| c.conversation_history.clone());
 
-        let lane_key = request
-            .context
-            .as_ref()
-            .and_then(|c| c.lane_key.clone());
+        let lane_key = request.context.as_ref().and_then(|c| c.lane_key.clone());
 
         Recipe {
             id: format!("recipe_{}", uuid::Uuid::new_v4()),
@@ -1551,7 +1716,11 @@ impl Agent {
         progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
     ) -> String {
         if task_state.status == TaskStatus::Failed {
-            let err = task_state.error.as_ref().map(|s| s.as_str()).unwrap_or("未知错误");
+            let err = task_state
+                .error
+                .as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or("未知错误");
             return response_agent::error_message(err);
         }
 
@@ -1566,14 +1735,17 @@ impl Agent {
 
         // ⭐ 多步骤结果汇总：交给 response_agent AI 流式生成
         let successful_results: Vec<_> = {
-            let mut r: Vec<_> = task_state.step_results.values()
+            let mut r: Vec<_> = task_state
+                .step_results
+                .values()
                 .filter(|r| r.success)
                 .collect();
             r.sort_by_key(|r| &r.step_id);
             r
         };
         if successful_results.len() > 1 {
-            let step_outputs: Vec<response_agent::StepOutput<'_>> = successful_results.iter()
+            let step_outputs: Vec<response_agent::StepOutput<'_>> = successful_results
+                .iter()
                 .filter_map(|r| {
                     r.output.as_ref().map(|o| response_agent::StepOutput {
                         step_id: &r.step_id,
@@ -1583,7 +1755,8 @@ impl Agent {
                 .collect();
 
             if !step_outputs.is_empty() {
-                let user_request = task_state.recipe
+                let user_request = task_state
+                    .recipe
                     .as_ref()
                     .map(|r| r.original_request.as_str())
                     .unwrap_or("");
@@ -1603,10 +1776,15 @@ impl Agent {
 
         // 检查是否有部分步骤失败
         let total_steps = task_state.step_results.len();
-        let failed_steps: Vec<_> = task_state.step_results.values().filter(|r| !r.success).collect();
+        let failed_steps: Vec<_> = task_state
+            .step_results
+            .values()
+            .filter(|r| !r.success)
+            .collect();
         if !failed_steps.is_empty() && failed_steps.len() < total_steps {
             let success_count = total_steps - failed_steps.len();
-            let fail_info: Vec<String> = failed_steps.iter()
+            let fail_info: Vec<String> = failed_steps
+                .iter()
                 .filter_map(|r| r.error.clone())
                 .collect();
             return response_agent::partial_completion(success_count, total_steps, &fail_info);
@@ -1616,7 +1794,11 @@ impl Agent {
     }
 
     /// 智能推断数据展示类型（v2 — Planner 版）
-    fn infer_data_display_v2(&self, data: &Value, _planner_output: &PlannerOutput) -> Option<DataDisplayHint> {
+    fn infer_data_display_v2(
+        &self,
+        data: &Value,
+        _planner_output: &PlannerOutput,
+    ) -> Option<DataDisplayHint> {
         // 复用现有的数据结构推断逻辑，但不依赖 ParsedIntent
         match data {
             Value::Array(arr) if !arr.is_empty() => {
@@ -1624,34 +1806,68 @@ impl Agent {
                     let fields: Vec<&str> = obj.keys().map(|k| k.as_str()).collect();
 
                     // 时间线数据
-                    if fields.iter().any(|f| f.contains("time") || f.contains("date") || f.contains("created"))
-                        && fields.iter().any(|f| f.contains("title") || f.contains("content") || f.contains("message"))
+                    if fields
+                        .iter()
+                        .any(|f| f.contains("time") || f.contains("date") || f.contains("created"))
+                        && fields.iter().any(|f| {
+                            f.contains("title") || f.contains("content") || f.contains("message")
+                        })
                     {
-                        let time_field = fields.iter()
-                            .find(|f| f.contains("time") || f.contains("date") || f.contains("created"))
-                            .map(|s| s.to_string()).unwrap_or_else(|| "time".to_string());
-                        let content_field = fields.iter()
-                            .find(|f| f.contains("title") || f.contains("content") || f.contains("name"))
-                            .map(|s| s.to_string()).unwrap_or_else(|| "content".to_string());
-                        return Some(DataDisplayHint::Timeline { time_field, content_field });
+                        let time_field = fields
+                            .iter()
+                            .find(|f| {
+                                f.contains("time") || f.contains("date") || f.contains("created")
+                            })
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "time".to_string());
+                        let content_field = fields
+                            .iter()
+                            .find(|f| {
+                                f.contains("title") || f.contains("content") || f.contains("name")
+                            })
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "content".to_string());
+                        return Some(DataDisplayHint::Timeline {
+                            time_field,
+                            content_field,
+                        });
                     }
 
                     // 卡片列表
-                    if fields.iter().any(|f| f.contains("title") || f.contains("name")) {
-                        let title_field = fields.iter()
+                    if fields
+                        .iter()
+                        .any(|f| f.contains("title") || f.contains("name"))
+                    {
+                        let title_field = fields
+                            .iter()
                             .find(|f| f.contains("title") || f.contains("name"))
-                            .map(|s| s.to_string()).unwrap_or_else(|| "title".to_string());
-                        let description_field = fields.iter()
-                            .find(|f| f.contains("desc") || f.contains("summary") || f.contains("content"))
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "title".to_string());
+                        let description_field = fields
+                            .iter()
+                            .find(|f| {
+                                f.contains("desc") || f.contains("summary") || f.contains("content")
+                            })
                             .map(|s| s.to_string());
-                        let image_field = fields.iter()
-                            .find(|f| f.contains("image") || f.contains("cover") || f.contains("thumbnail"))
+                        let image_field = fields
+                            .iter()
+                            .find(|f| {
+                                f.contains("image")
+                                    || f.contains("cover")
+                                    || f.contains("thumbnail")
+                            })
                             .map(|s| s.to_string());
-                        return Some(DataDisplayHint::CardList { title_field, description_field, image_field });
+                        return Some(DataDisplayHint::CardList {
+                            title_field,
+                            description_field,
+                            image_field,
+                        });
                     }
 
                     // 默认表格
-                    let columns: Vec<ColumnDef> = fields.iter().take(6)
+                    let columns: Vec<ColumnDef> = fields
+                        .iter()
+                        .take(6)
                         .map(|f| ColumnDef {
                             field: f.to_string(),
                             title: humanize_field_name(f),
@@ -1659,11 +1875,17 @@ impl Agent {
                             sortable: true,
                         })
                         .collect();
-                    return Some(DataDisplayHint::Table { columns, data_path: None });
+                    return Some(DataDisplayHint::Table {
+                        columns,
+                        data_path: None,
+                    });
                 }
             }
             Value::Object(obj) => {
-                if obj.contains_key("aiSummary") || obj.contains_key("analysis") || obj.contains_key("summary") {
+                if obj.contains_key("aiSummary")
+                    || obj.contains_key("analysis")
+                    || obj.contains_key("summary")
+                {
                     return Some(DataDisplayHint::Markdown);
                 }
                 if obj.contains_key("source") && obj.contains_key("results") {
@@ -1682,8 +1904,11 @@ impl Agent {
                     if let Value::Array(arr) = value {
                         if !arr.is_empty() {
                             if let Some(Value::Object(inner)) = arr.first() {
-                                let inner_fields: Vec<&str> = inner.keys().map(|k| k.as_str()).collect();
-                                let columns: Vec<ColumnDef> = inner_fields.iter().take(6)
+                                let inner_fields: Vec<&str> =
+                                    inner.keys().map(|k| k.as_str()).collect();
+                                let columns: Vec<ColumnDef> = inner_fields
+                                    .iter()
+                                    .take(6)
                                     .map(|f| ColumnDef {
                                         field: f.to_string(),
                                         title: humanize_field_name(f),
@@ -1691,13 +1916,18 @@ impl Agent {
                                         sortable: true,
                                     })
                                     .collect();
-                                return Some(DataDisplayHint::Table { columns, data_path: Some(key.clone()) });
+                                return Some(DataDisplayHint::Table {
+                                    columns,
+                                    data_path: Some(key.clone()),
+                                });
                             }
                         }
                     }
                 }
                 if obj.contains_key("markdown") || obj.contains_key("content") {
-                    if let Some(Value::String(s)) = obj.get("markdown").or_else(|| obj.get("content")) {
+                    if let Some(Value::String(s)) =
+                        obj.get("markdown").or_else(|| obj.get("content"))
+                    {
                         if s.contains('#') || s.contains('*') || s.contains('`') {
                             return Some(DataDisplayHint::Markdown);
                         }
@@ -1757,7 +1987,7 @@ impl Agent {
 
         // 从 task_state 中取出保存的 recipe
         let recipe = task.recipe.as_ref().ok_or(
-            "Recipe not available for resume (task may have been loaded from DB after restart)"
+            "Recipe not available for resume (task may have been loaded from DB after restart)",
         )?;
 
         let task_state = self
@@ -1777,7 +2007,8 @@ impl Agent {
                 log_prefix: "resume:",
                 conversation_context: None,
                 step_results: Some(&task_state.step_results),
-            }).await;
+            })
+            .await;
         }
 
         // 提取结果
@@ -1820,9 +2051,10 @@ impl Agent {
             return Err("Task is not waiting for input".to_string());
         }
 
-        let recipe = task.recipe.as_ref().ok_or(
-            "Recipe not available for resume"
-        )?;
+        let recipe = task
+            .recipe
+            .as_ref()
+            .ok_or("Recipe not available for resume")?;
 
         let task_state = self
             .executor
@@ -1841,7 +2073,8 @@ impl Agent {
                 log_prefix: "resume:",
                 conversation_context: None,
                 step_results: Some(&task_state.step_results),
-            }).await;
+            })
+            .await;
         }
 
         let result = self.extract_final_result(&task_state);
@@ -1881,8 +2114,8 @@ impl Agent {
         planner_reply: &str,
         progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
     ) -> String {
-        use crate::services::ai::create_ai_analyzer_for_tier;
         use crate::config::ModelTier;
+        use crate::services::ai::create_ai_analyzer_for_tier;
 
         let analyzer = match create_ai_analyzer_for_tier(ModelTier::Standard).await {
             Some(a) => a,
@@ -1894,17 +2127,28 @@ impl Agent {
         };
 
         // 加载 Agent 人格
-        let soul = identity::get_identity().await
+        let soul = identity::get_identity()
+            .await
             .and_then(|id| id.soul)
             .unwrap_or_default();
         let soul: String = soul.chars().take(2000).collect();
 
         // 构建对话历史
-        let history_text = request.context.as_ref()
+        let history_text = request
+            .context
+            .as_ref()
             .and_then(|c| c.conversation_history.as_ref())
             .map(|history| {
-                let recent: Vec<_> = history.iter().rev().take(10).collect::<Vec<_>>().into_iter().rev().collect();
-                recent.iter()
+                let recent: Vec<_> = history
+                    .iter()
+                    .rev()
+                    .take(10)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
+                recent
+                    .iter()
                     .map(|msg| format!("{}：{}", msg.role, msg.content))
                     .collect::<Vec<_>>()
                     .join("\n")
@@ -1932,13 +2176,16 @@ impl Agent {
         };
 
         let tx = progress_tx.clone();
-        match analyzer.analyze_stream(&prompt, |token| {
-            let _ = tx.try_send(AgentProgressEvent::SummaryToken {
-                token: token.to_string(),
-                done: false,
-            });
-            true
-        }).await {
+        match analyzer
+            .analyze_stream(&prompt, |token| {
+                let _ = tx.try_send(AgentProgressEvent::SummaryToken {
+                    token: token.to_string(),
+                    done: false,
+                });
+                true
+            })
+            .await
+        {
             Ok(full_text) if !full_text.trim().is_empty() => {
                 let _ = tx.try_send(AgentProgressEvent::SummaryToken {
                     token: String::new(),
@@ -1948,7 +2195,9 @@ impl Agent {
             }
             _ => {
                 // 流式失败，回退到 planner 的回复 + 模拟流式
-                tracing::warn!("[Agent] Streaming chat response failed, falling back to planner reply");
+                tracing::warn!(
+                    "[Agent] Streaming chat response failed, falling back to planner reply"
+                );
                 Self::stream_text_as_tokens(progress_tx, planner_reply).await;
                 planner_reply.to_string()
             }
@@ -1959,19 +2208,17 @@ impl Agent {
     ///
     /// 将文本按句/标点拆分为自然片段，逐个发送给前端，
     /// 让用户看到"AI 在打字"的效果而非一次性出现全部内容。
-    async fn stream_text_as_tokens(
-        tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
-        text: &str,
-    ) {
+    async fn stream_text_as_tokens(tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>, text: &str) {
         // 按自然断点切分（标点、换行）
         let mut chunks = Vec::new();
         let mut current = String::new();
         for ch in text.chars() {
             current.push(ch);
             // 在句号、逗号、换行、感叹号、问号等处断开
-            if matches!(ch, '。' | '，' | '！' | '？' | '\n' | '；' | '：'
-                | '.' | ',' | '!' | '?' | ';' | ':')
-                || current.len() > 40
+            if matches!(
+                ch,
+                '。' | '，' | '！' | '？' | '\n' | '；' | '：' | '.' | ',' | '!' | '?' | ';' | ':'
+            ) || current.len() > 40
             {
                 chunks.push(std::mem::take(&mut current));
             }
@@ -2013,7 +2260,9 @@ impl Agent {
 
         // 如果没有成功的步骤，返回失败信息
         if results.is_empty() {
-            let errors: Vec<String> = task_state.step_results.values()
+            let errors: Vec<String> = task_state
+                .step_results
+                .values()
                 .filter_map(|r| r.error.clone())
                 .collect();
             let error_msg = if errors.is_empty() {
@@ -2318,24 +2567,34 @@ struct MemoryRecordParams<'a> {
 /// 提取自 process / process_with_progress / execute_saved_recipe /
 /// execute_simple_query_v2 / process_confirmation 中的重复逻辑。
 async fn record_execution_memory(params: MemoryRecordParams<'_>) {
-    let Some(mem) = memory::get_memory() else { return };
+    let Some(mem) = memory::get_memory() else {
+        return;
+    };
 
     let ok = params.success;
-    let step_caps: Vec<String> = params.recipe.steps.iter()
+    let step_caps: Vec<String> = params
+        .recipe
+        .steps
+        .iter()
         .map(|s| s.capability_id.clone())
         .collect();
 
     // 1. AI 提取多维度记忆
-    let exec_results: std::collections::HashMap<String, serde_json::Value> = params.recipe.steps.iter()
+    let exec_results: std::collections::HashMap<String, serde_json::Value> = params
+        .recipe
+        .steps
+        .iter()
         .enumerate()
         .map(|(i, s)| {
             let step_key = format!("step_{}", i + 1);
             // 从实际 step_results 中查找对应输出摘要
-            let output_summary = params.step_results
+            let output_summary = params
+                .step_results
                 .and_then(|sr| sr.get(&s.id))
                 .and_then(|r| r.output.as_ref())
                 .map(|v| memory::summarize_value_for_memory(v));
-            let step_success = params.step_results
+            let step_success = params
+                .step_results
                 .and_then(|sr| sr.get(&s.id))
                 .map(|r| r.success)
                 .unwrap_or(ok);
@@ -2347,27 +2606,31 @@ async fn record_execution_memory(params: MemoryRecordParams<'_>) {
             if let Some(summary) = output_summary {
                 val["output_summary"] = serde_json::Value::String(summary);
             }
-            if let Some(err) = params.step_results
+            if let Some(err) = params
+                .step_results
                 .and_then(|sr| sr.get(&s.id))
-                .and_then(|r| r.error.as_ref()) {
+                .and_then(|r| r.error.as_ref())
+            {
                 val["error"] = serde_json::Value::String(err.clone());
             }
             (step_key, val)
         })
         .collect();
     // 将会话上下文转换为 Value 格式供记忆提取 AI 使用
-    let conversation_values: Option<Vec<serde_json::Value>> = params.conversation_context.map(|msgs| {
-        msgs.iter()
-            .filter_map(|m| serde_json::to_value(m).ok())
-            .collect()
-    });
+    let conversation_values: Option<Vec<serde_json::Value>> =
+        params.conversation_context.map(|msgs| {
+            msgs.iter()
+                .filter_map(|m| serde_json::to_value(m).ok())
+                .collect()
+        });
     mem.extract_memories_from_execution(
         params.user_input,
         conversation_values.as_deref(),
         &exec_results,
         ok,
         &step_caps,
-    ).await;
+    )
+    .await;
 
     // 2. 失败教训
     if !ok {
@@ -2386,12 +2649,17 @@ async fn record_execution_memory(params: MemoryRecordParams<'_>) {
             0.8,
             Vec::new(),
             step_caps.clone(),
-        ).await;
+        )
+        .await;
     }
 
     // 3. 日志
-    let first_cap = params.recipe.steps.first()
-        .map(|s| s.capability_id.as_str()).unwrap_or("?");
+    let first_cap = params
+        .recipe
+        .steps
+        .first()
+        .map(|s| s.capability_id.as_str())
+        .unwrap_or("?");
     let summary = format!(
         "{}{} | {} 步 ({}, ...) → {}",
         params.log_prefix,
@@ -2450,10 +2718,23 @@ pub async fn get_user_permissions(
 
     // 所有已认证用户默认拥有的权限
     for p in &[
-        "platform:read", "steam:read", "bilibili:read", "github:read",
-        "netease:read", "ai:analyze", "ai:chat", "ai:search", "ai:image",
-        "http:fetch", "web:scrape", "brew:read", "brew:write",
-        "report:read", "report:write", "tapp:read", "tapp:write",
+        "platform:read",
+        "steam:read",
+        "bilibili:read",
+        "github:read",
+        "netease:read",
+        "ai:analyze",
+        "ai:chat",
+        "ai:search",
+        "ai:image",
+        "http:fetch",
+        "web:scrape",
+        "brew:read",
+        "brew:write",
+        "report:read",
+        "report:write",
+        "tapp:read",
+        "tapp:write",
         "system:read",
     ] {
         perms.insert(p.to_string());
@@ -2497,8 +2778,8 @@ pub async fn get_pending_confirmation_count() -> usize {
 /// 将字段名转换为用户友好的标题
 /// 子任务：AI 生成会话标题（在 tokio::spawn 中调用，与 executor 并行）
 async fn generate_session_title_ai(user_input: &str, reasoning: Option<&str>) -> String {
-    use crate::services::ai::create_ai_analyzer_for_tier;
     use crate::config::ModelTier;
+    use crate::services::ai::create_ai_analyzer_for_tier;
 
     let truncated: String = user_input.chars().take(300).collect();
 
@@ -2519,7 +2800,12 @@ async fn generate_session_title_ai(user_input: &str, reasoning: Option<&str>) ->
         );
         match analyzer.analyze(&prompt).await {
             Ok(raw) => {
-                let cleaned = raw.trim().trim_matches('"').trim_matches('\u{300c}').trim_matches('\u{300d}').trim();
+                let cleaned = raw
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\u{300c}')
+                    .trim_matches('\u{300d}')
+                    .trim();
                 if cleaned.is_empty() || cleaned.len() > 100 {
                     fallback_title_text(&truncated)
                 } else {
@@ -2603,5 +2889,3 @@ fn humanize_field_name(field: &str) -> String {
     }
     result
 }
-
-

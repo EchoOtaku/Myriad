@@ -1,5 +1,17 @@
 # ⚡ Myriad 快速开始指南
 
+Myriad 生产部署默认使用 **proxy + updater** 拓扑：
+
+```text
+proxy(唯一宿主端口，默认 80) ─┬─► frontend
+                              └─► backend ─► postgres
+updater(内网) ─► docker compose / pgdata snapshot / tag switch
+```
+
+开发环境才直接访问前端 `4321` 和后端 `3000`。生产环境不要暴露
+backend/frontend 端口，也不要用 `:latest` 直接覆盖容器。
+完整端口表见 [deployment/PORTS.md](./deployment/PORTS.md)。
+
 ## 🚀 生产环境部署（3 分钟）
 
 ### 1️⃣ 准备环境
@@ -49,8 +61,7 @@ bash scripts/check-security.sh
 
 ```bash
 # 拉取镜像并启动
-docker compose pull
-docker compose up -d
+bash scripts/docker/deploy.sh up
 
 # 查看日志（可选）
 docker compose logs -f
@@ -58,7 +69,7 @@ docker compose logs -f
 
 ### 5️⃣ 访问应用
 
-打开浏览器访问 `http://localhost:4321`
+打开浏览器访问 `http://localhost`（或 `.env` 里的 `HTTP_PORT` 对应端口）。
 
 首次访问会进入初始化向导，按提示完成：
 1. 创建管理员账户
@@ -70,22 +81,30 @@ docker compose logs -f
 ## 🔧 开发环境部署
 
 ```bash
-# 1. 创建开发配置
-cp .env.production.example .env
+# 日常开发：只启动 PostgreSQL，不启动 proxy/updater
+docker compose -f docker-compose.dev.yml up -d postgres
 
-# 2. 使用简单密钥（仅开发环境）
-cat >> .env << EOF
-POSTGRES_PASSWORD=dev_password_123
-JWT_SECRET=dev_jwt_secret_key_at_least_32_chars
-CORS_ORIGINS=http://localhost:4321
-EOF
+# 后端：读取 backend/.env，监听 3000
+(cd backend && cp .env.example .env && cargo run)
 
-# 3. 启动服务
-docker compose up -d
-
-# 4. 查看日志
-docker compose logs -f
+# 前端：监听 4321，/api/* 通过 Astro dev proxy 转发到 3000
+(cd frontend && pnpm install && pnpm dev)
 ```
+
+需要在开发 UI 里测试“更新管理”时，启动 updater harness：
+
+```bash
+# 一次性启动 DB + updater harness + backend + frontend
+./scripts/dev/dev.sh start all-updater
+
+# 或只启动 updater harness，再重启 backend 让它读取 MYRIAD_UPDATER_URL/UPDATE_TOKEN
+./scripts/dev/dev.sh start updater
+./scripts/dev/dev.sh restart backend
+```
+
+这个 harness 监听 `127.0.0.1:9090`，运行数据放在 `.dev-updater/`，用于验证
+backend `/api/admin/updater/*` 和前端更新管理面板。真实镜像替换/生产拓扑仍使用
+`scripts/docker/deploy.sh`。
 
 ---
 
@@ -117,16 +136,10 @@ docker compose logs -f postgres
 
 ### 更新应用
 
-```bash
-# 拉取最新镜像
-docker compose pull
-
-# 重新创建容器
-docker compose up -d --force-recreate
-
-# 清理旧镜像
-docker image prune -f
-```
+生产环境的常规更新从管理员界面执行：设置 → 关于 → 更新管理。
+它会通过 backend 的 `/api/admin/updater/*` 通道调用 updater，浏览器不会接触
+`UPDATE_TOKEN`。命令行只用于 bootstrap 或救援，详见
+[UPDATER_QUICKSTART.md](./UPDATER_QUICKSTART.md)。
 
 ### 数据备份
 
@@ -146,8 +159,8 @@ docker compose exec -T postgres psql -U myriad myriad < backup_20240101.sql
 # 停止并删除所有容器、卷
 docker compose down -v
 
-# 删除数据库卷
-docker volume rm myriad_postgres_data
+# 删除 bind-mounted 数据目录
+rm -rf pgdata
 
 # 完全清理后重新开始
 docker compose up -d
@@ -161,13 +174,11 @@ docker compose up -d
 
 ```bash
 # 查看端口占用
-sudo lsof -i :3000
-sudo lsof -i :4321
+sudo lsof -i :80
 sudo lsof -i :5432
 
-# 修改端口（在 .env 中添加）
-BACKEND_PORT=3001
-FRONTEND_PORT=4322
+# 修改生产入口端口（在 .env 中添加）
+HTTP_PORT=8080
 ```
 
 ### 问题 2: 容器启动失败
@@ -203,10 +214,10 @@ docker compose exec backend env | grep DATABASE_URL
 确保 `.env` 中 `CORS_ORIGINS` 配置正确：
 
 ```bash
-# 开发环境
+# 开发环境后端允许前端 dev origin
 CORS_ORIGINS=http://localhost:4321
 
-# 生产环境（必须是 https）
+# 生产环境（必须是你的真实域名，通常由 proxy/外层 TLS 入口访问）
 CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 ```
 
@@ -232,7 +243,8 @@ bash scripts/check-security.sh
 
 ## 📚 更多文档
 
-- [完整部署指南](DEPLOYMENT.md) - 生产环境详细配置
+- [Docker 部署](deployment/DOCKER_DEPLOYMENT.md) - 当前 proxy + updater 生产栈
+- [Updater 快速开始](UPDATER_QUICKSTART.md) - 生产更新、回滚与 tag 管理
 - [README](README.md) - 项目介绍和功能说明
 - [Issues](https://github.com/yourusername/Myriad/issues) - 问题反馈
 

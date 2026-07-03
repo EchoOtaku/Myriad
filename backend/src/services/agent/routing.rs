@@ -420,18 +420,9 @@ mod tests {
             router.route_capability("platform.read"),
             AgentRole::DataWorker
         );
-        assert_eq!(
-            router.route_capability("brew.items"),
-            AgentRole::DataWorker
-        );
-        assert_eq!(
-            router.route_capability("http.fetch"),
-            AgentRole::DataWorker
-        );
-        assert_eq!(
-            router.route_capability("steam.user"),
-            AgentRole::DataWorker
-        );
+        assert_eq!(router.route_capability("brew.items"), AgentRole::DataWorker);
+        assert_eq!(router.route_capability("http.fetch"), AgentRole::DataWorker);
+        assert_eq!(router.route_capability("steam.user"), AgentRole::DataWorker);
     }
 
     #[test]
@@ -507,14 +498,10 @@ mod tests {
     #[test]
     fn test_task_assignment_summary() {
         let router = AgentRouter::new();
-        let caps = vec![
-            "platform.read".to_string(),
-            "ai.summarize".to_string(),
-        ];
+        let caps = vec!["platform.read".to_string(), "ai.summarize".to_string()];
         let assignment = router.summarize_assignment(&caps);
 
         assert_eq!(assignment.total_agents, 2);
         assert!(assignment.is_multi_agent);
     }
-
 }

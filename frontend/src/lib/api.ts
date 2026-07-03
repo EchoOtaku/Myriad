@@ -4,11 +4,11 @@ import { clearCSRFToken, getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
 import type { AxiosError } from 'axios'
 import TokenManager from '../utils/tokenManager'
 import axios from 'axios'
+import { API_URL } from '../config'
 
 // 智能 API URL 检测（与 config.ts 保持一致）
 // 生产环境使用相对路径（空字符串），开发环境使用 localhost
-const API_BASE_URL = (import.meta.env.PUBLIC_API_URL || '').trim()
-  || (typeof window !== 'undefined' ? window.location.origin : '')
+const API_BASE_URL = API_URL || (typeof window !== 'undefined' ? window.location.origin : '')
 
 // 验证 API URL 格式
 function isValidUrl(url: string): boolean {

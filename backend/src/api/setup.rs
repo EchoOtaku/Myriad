@@ -800,9 +800,16 @@ pub async fn save_database_config(
                 ));
             }
 
+            schedule_setup_restart();
+
             return Ok(Json(json!({
                 "success": true,
-                "message": "Database configuration saved successfully."
+                "message": "Database configuration saved successfully. Backend will restart to apply the full route table.",
+                "path": env_path.display().to_string(),
+                "database_url_set": true,
+                "restart_triggered": true,
+                "reload_triggered": false,
+                "note": "The service must restart because routes are built at process startup."
             })));
         }
     }
@@ -830,26 +837,16 @@ pub async fn save_database_config(
         Ok(_) => {
             tracing::info!("✅ Database configuration saved successfully");
 
-            // Reload environment variables from the file
-            if let Err(e) = dotenvy::from_path_override(&env_path) {
-                tracing::warn!("⚠️ Failed to reload .env file: {}", e);
-            } else {
-                tracing::info!("♻️ Environment variables reloaded from .env");
-            }
-
-            // Trigger configuration reload
-            crate::api::system::CONFIG_RELOAD_REQUESTED
-                .store(true, std::sync::atomic::Ordering::Relaxed);
-
-            tracing::info!("🔄 Configuration reload triggered");
+            schedule_setup_restart();
 
             Ok(Json(json!({
                 "success": true,
-                "message": "Database configuration saved successfully. Reconnecting to database automatically...",
+                "message": "Database configuration saved successfully. Backend will restart to apply the full route table.",
                 "path": env_path.display().to_string(),
                 "database_url_set": true,
-                "reload_triggered": true,
-                "note": "Configuration will be applied within 2-3 seconds."
+                "restart_triggered": true,
+                "reload_triggered": false,
+                "note": "The service must restart because routes are built at process startup."
             })))
         }
         Err(e) => {
@@ -863,6 +860,18 @@ pub async fn save_database_config(
             ))
         }
     }
+}
+
+fn schedule_setup_restart() {
+    tracing::info!(
+        "🔁 Database config saved in CONFIG_MODE; exiting shortly so the supervisor can restart with the full route table"
+    );
+
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+        tracing::info!("🔁 Exiting for setup restart");
+        std::process::exit(0);
+    });
 }
 
 // Helper functions

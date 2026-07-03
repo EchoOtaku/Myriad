@@ -66,11 +66,8 @@ pub trait OAuthProvider: Send + Sync {
     async fn build_auth_url(&self, state: &str, redirect_uri: &str) -> Result<String, String>;
 
     /// 交换 code 换 token
-    async fn exchange_code(
-        &self,
-        code: &str,
-        redirect_uri: &str,
-    ) -> Result<ProviderTokens, String>;
+    async fn exchange_code(&self, code: &str, redirect_uri: &str)
+        -> Result<ProviderTokens, String>;
 
     /// 拉取用户档案
     async fn fetch_profile(&self, tokens: &ProviderTokens) -> Result<NormalizedProfile, String>;

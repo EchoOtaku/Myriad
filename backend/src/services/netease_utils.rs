@@ -1,7 +1,7 @@
 // 网易云音乐 API 工具函数
 // 提供 IP 伪装、User-Agent 生成等防封技术
 
-use rand::Rng;
+use rand::RngExt;
 
 /// 生成随机设备ID (模拟Android设备)
 pub fn generate_device_id() -> String {

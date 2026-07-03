@@ -3,6 +3,7 @@
  */
 
 import type { CardSize } from '../../types/brew'
+import { API_URL as CONFIG_API_URL } from '../../config'
 
 // ==================== 预设分类 ====================
 
@@ -50,7 +51,7 @@ export const TRANSITION_SLOW = { duration: 0.25, ease: 'easeOut' } as const
 // ==================== API 配置 ====================
 
 /** API 基础 URL */
-export const API_URL = import.meta.env.PUBLIC_API_URL || ''
+export const API_URL = CONFIG_API_URL
 
 // ==================== 工具函数 ====================
 

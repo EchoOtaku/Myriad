@@ -12,7 +12,10 @@
 
 use axum::{http::StatusCode, Json};
 use once_cell::sync::Lazy;
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, Statement};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    Statement,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -58,10 +61,13 @@ impl<V: Clone> TtlCache<V> {
     }
 
     pub fn set(&mut self, key: String, value: V) {
-        self.data.insert(key, CacheEntry {
-            value,
-            created_at: Instant::now(),
-        });
+        self.data.insert(
+            key,
+            CacheEntry {
+                value,
+                created_at: Instant::now(),
+            },
+        );
     }
 
     #[allow(dead_code)]
@@ -71,7 +77,8 @@ impl<V: Clone> TtlCache<V> {
 
     #[allow(dead_code)]
     pub fn cleanup(&mut self) {
-        self.data.retain(|_, entry| entry.created_at.elapsed() < self.ttl);
+        self.data
+            .retain(|_, entry| entry.created_at.elapsed() < self.ttl);
     }
 
     pub fn len(&self) -> usize {
@@ -175,7 +182,10 @@ pub fn validate_platform_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name.len() > 64 {
         return Err("Invalid platform name length".to_string());
     }
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err("Platform name contains invalid characters".to_string());
     }
     Ok(())
@@ -260,7 +270,9 @@ pub async fn get_ai_config() -> Result<AiConfig, (StatusCode, Json<Value>)> {
 }
 
 /// 获取指定层级的 AI 配置（带缓存）
-pub async fn get_ai_config_for_tier(tier: crate::config::ModelTier) -> Result<AiConfig, (StatusCode, Json<Value>)> {
+pub async fn get_ai_config_for_tier(
+    tier: crate::config::ModelTier,
+) -> Result<AiConfig, (StatusCode, Json<Value>)> {
     let cache_ref = match tier {
         crate::config::ModelTier::Standard => &*AI_CONFIG_CACHE,
         crate::config::ModelTier::Pro => &*AI_PRO_CONFIG_CACHE,
@@ -369,25 +381,24 @@ impl TappRateLimiter {
         }
     }
 
-    fn check_and_record(
-        &mut self,
-        key: &str,
-        limit: u32,
-        window_secs: u64,
-    ) -> (bool, u32, u64) {
+    fn check_and_record(&mut self, key: &str, limit: u32, window_secs: u64) -> (bool, u32, u64) {
         let window = Duration::from_secs(window_secs);
         let now = Instant::now();
 
         // 定期清理过期记录（每5分钟）
         if now.duration_since(self.last_cleanup) > Duration::from_secs(300) {
-            self.limits.retain(|_, entry| now.duration_since(entry.window_start) <= window);
+            self.limits
+                .retain(|_, entry| now.duration_since(entry.window_start) <= window);
             self.last_cleanup = now;
         }
 
-        let entry = self.limits.entry(key.to_string()).or_insert_with(|| RateLimitEntry {
-            count: 0,
-            window_start: now,
-        });
+        let entry = self
+            .limits
+            .entry(key.to_string())
+            .or_insert_with(|| RateLimitEntry {
+                count: 0,
+                window_start: now,
+            });
 
         if now.duration_since(entry.window_start) > window {
             entry.count = 0;
@@ -468,7 +479,11 @@ pub async fn check_rate_limit(
 }
 
 /// 获取速率限制状态（只读，不记录）
-pub async fn get_rate_limit_status_for(user_id: i32, tapp_id: &str, operation: &str) -> (u32, u32, u64) {
+pub async fn get_rate_limit_status_for(
+    user_id: i32,
+    tapp_id: &str,
+    operation: &str,
+) -> (u32, u32, u64) {
     let (limit, window_secs) = get_rate_limit_config(operation);
     let key = format!("{}:{}:{}", user_id, tapp_id, operation);
     let limiter = TAPP_RATE_LIMITER.read().await;
@@ -497,7 +512,10 @@ impl ApiMetrics {
     }
 
     pub fn record(&mut self, operation: &str, duration_ms: u64, is_error: bool) {
-        let entry = self.operations.entry(operation.to_string()).or_insert((0, 0, 0));
+        let entry = self
+            .operations
+            .entry(operation.to_string())
+            .or_insert((0, 0, 0));
         entry.0 += 1;
         entry.1 += duration_ms;
         if is_error {
@@ -507,21 +525,27 @@ impl ApiMetrics {
 
     pub fn get_summary(&self) -> Value {
         let uptime = self.last_reset.elapsed().as_secs();
-        let mut ops: Vec<Value> = self.operations.iter().map(|(op, (count, total_ms, errors))| {
-            json!({
-                "operation": op,
-                "count": count,
-                "avgMs": if *count > 0 { total_ms / count } else { 0 },
-                "errors": errors,
-                "errorRate": if *count > 0 {
-                    format!("{:.2}%", (*errors as f64 / *count as f64) * 100.0)
-                } else {
-                    "0%".to_string()
-                }
+        let mut ops: Vec<Value> = self
+            .operations
+            .iter()
+            .map(|(op, (count, total_ms, errors))| {
+                json!({
+                    "operation": op,
+                    "count": count,
+                    "avgMs": if *count > 0 { total_ms / count } else { 0 },
+                    "errors": errors,
+                    "errorRate": if *count > 0 {
+                        format!("{:.2}%", (*errors as f64 / *count as f64) * 100.0)
+                    } else {
+                        "0%".to_string()
+                    }
+                })
             })
-        }).collect();
+            .collect();
         ops.sort_by(|a, b| {
-            b.get("count").and_then(|v| v.as_u64()).unwrap_or(0)
+            b.get("count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
                 .cmp(&a.get("count").and_then(|v| v.as_u64()).unwrap_or(0))
         });
         json!({ "uptimeSeconds": uptime, "operations": ops })
@@ -567,15 +591,24 @@ pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCo
         .await
         .map_err(|e| {
             tracing::error!("[TAPP] Database error fetching admin ID: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?
         .ok_or_else(|| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "No admin user found" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "No admin user found" })),
+            )
         })?;
 
     let id = result.try_get::<i32>("", "id").map_err(|e| {
         tracing::error!("[TAPP] Error parsing admin ID: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Database error" })),
+        )
     })?;
 
     // 写入缓存
@@ -616,13 +649,18 @@ pub async fn verify_tapp_ownership(
             .await
             .map_err(|e| {
                 tracing::error!("[TAPP] Database error in ownership verification: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "Database error" })),
+                )
             })?;
 
         if admin_tapp.is_none() {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "Access denied", "message": "This Tapp is not available for guest access" })),
+                Json(
+                    json!({ "error": "Access denied", "message": "This Tapp is not available for guest access" }),
+                ),
             ));
         }
         return Ok(());
@@ -652,19 +690,26 @@ pub async fn verify_tapp_ownership(
     let tapp = tapps::Entity::find()
         .filter(tapps::Column::TappId.eq(tapp_id))
         .filter(
-            tapps::Column::UserId.eq(user_id).or(tapps::Column::UserId.eq(admin_id)),
+            tapps::Column::UserId
+                .eq(user_id)
+                .or(tapps::Column::UserId.eq(admin_id)),
         )
         .one(db)
         .await
         .map_err(|e| {
             tracing::error!("[TAPP] Database error in ownership verification: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     if tapp.is_none() {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "Access denied", "message": "You do not have permission to access this Tapp" })),
+            Json(
+                json!({ "error": "Access denied", "message": "You do not have permission to access this Tapp" }),
+            ),
         ));
     }
 
@@ -674,7 +719,10 @@ pub async fn verify_tapp_ownership(
 /// 从 Claims 解析 user_id
 pub fn parse_user_id(claims: &Claims) -> Result<i32, (StatusCode, Json<Value>)> {
     claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user ID" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user ID" })),
+        )
     })
 }
 
@@ -686,7 +734,11 @@ pub async fn check_tapp_permission(
     let role = if claims.is_admin {
         UserRole::Admin
     } else if let Ok(user_id) = claims.sub.parse::<i32>() {
-        if user_id < 0 { UserRole::Guest } else { UserRole::User }
+        if user_id < 0 {
+            UserRole::Guest
+        } else {
+            UserRole::User
+        }
     } else {
         UserRole::Guest
     };
@@ -723,9 +775,15 @@ pub fn validate_prompt_security(prompt: &str) -> Option<String> {
     let prompt_lower = prompt.to_lowercase();
 
     let role_override_patterns = [
-        "ignore previous", "ignore all previous", "ignore above",
-        "forget your instructions", "you are now", "new instructions:",
-        "system prompt:", "[system]", "disregard",
+        "ignore previous",
+        "ignore all previous",
+        "ignore above",
+        "forget your instructions",
+        "you are now",
+        "new instructions:",
+        "system prompt:",
+        "[system]",
+        "disregard",
     ];
     for pattern in role_override_patterns {
         if prompt_lower.contains(pattern) {
@@ -734,8 +792,12 @@ pub fn validate_prompt_security(prompt: &str) -> Option<String> {
     }
 
     let jailbreak_patterns = [
-        "jailbreak", "dan mode", "developer mode",
-        "bypass safety", "bypass filter", "uncensored mode",
+        "jailbreak",
+        "dan mode",
+        "developer mode",
+        "bypass safety",
+        "bypass filter",
+        "uncensored mode",
     ];
     for pattern in jailbreak_patterns {
         if prompt_lower.contains(pattern) {
@@ -743,9 +805,12 @@ pub fn validate_prompt_security(prompt: &str) -> Option<String> {
         }
     }
 
-    if prompt_lower.contains("api_key") || prompt_lower.contains("api-key")
-        || prompt_lower.contains("apikey") || prompt_lower.contains("private_key")
-        || prompt_lower.contains("secret_key") || prompt_lower.contains("access_token")
+    if prompt_lower.contains("api_key")
+        || prompt_lower.contains("api-key")
+        || prompt_lower.contains("apikey")
+        || prompt_lower.contains("private_key")
+        || prompt_lower.contains("secret_key")
+        || prompt_lower.contains("access_token")
     {
         return Some("Sensitive information probe detected".to_string());
     }
@@ -781,7 +846,13 @@ pub fn validate_image_prompt_security(prompt: &str) -> Option<String> {
     }
 
     let violence_patterns = [
-        "gore", "blood", "murder", "torture", "mutilation", "dismember", "decapitat",
+        "gore",
+        "blood",
+        "murder",
+        "torture",
+        "mutilation",
+        "dismember",
+        "decapitat",
     ];
     for pattern in &violence_patterns {
         if prompt_lower.contains(pattern) {

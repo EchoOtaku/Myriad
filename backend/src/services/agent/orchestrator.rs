@@ -147,10 +147,7 @@ impl Orchestrator {
     }
 
     /// 发送多 Agent 协作开始通知
-    pub async fn notify_multi_agent_start(
-        assignment: &TaskAssignment,
-        task_id: &str,
-    ) {
+    pub async fn notify_multi_agent_start(assignment: &TaskAssignment, task_id: &str) {
         if !assignment.is_multi_agent {
             return;
         }
@@ -175,10 +172,7 @@ impl Orchestrator {
     }
 
     /// 发送多 Agent 协作完成通知
-    pub async fn notify_multi_agent_complete(
-        result: &OrchestratorResult,
-        task_id: &str,
-    ) {
+    pub async fn notify_multi_agent_complete(result: &OrchestratorResult, task_id: &str) {
         if let Some(nm) = get_notification_manager() {
             let summary = format!(
                 "任务 {} 完成: {}/{} 步骤成功, {} 个角色参与{}",

@@ -5,7 +5,11 @@ use clap::Parser;
 use tracing::{error, info, warn};
 
 use myriad_updater::{
-    api, config::Config, docker::DockerClient, log as logging, probe, self_version, state::StateDir,
+    api,
+    config::Config,
+    docker::DockerClient,
+    log as logging, probe, self_version,
+    state::StateDir,
     worker::{Worker, WorkerCli},
 };
 
@@ -50,7 +54,7 @@ async fn main() -> Result<()> {
 
     // Phase 1: load config & open state. Failures here are fatal.
     let config = Config::load_from_env().map_err(|e| {
-        error!(err = %e, "failed to load updater config (.env.updater)");
+        error!(err = %e, "failed to load updater config from environment");
         e
     })?;
     let state = Arc::new(StateDir::open(&cli.state_dir)?);
@@ -87,7 +91,12 @@ async fn main() -> Result<()> {
         pgdata: cli.pgdata.clone(),
         listen: cli.listen.clone(),
     };
-    let worker = Arc::new(Worker::new(state.clone(), docker.clone(), config.clone(), worker_cli));
+    let worker = Arc::new(Worker::new(
+        state.clone(),
+        docker.clone(),
+        config.clone(),
+        worker_cli,
+    ));
     let worker_handle = worker.clone().spawn();
 
     // Phase 6: serve API.

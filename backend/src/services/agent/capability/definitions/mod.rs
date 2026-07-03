@@ -2,13 +2,13 @@
 //!
 //! 按类别组织所有能力定义
 
-mod platform;
-mod brew;
 mod ai;
-mod tapp;
+mod brew;
+mod external;
+mod platform;
 mod report;
 mod system;
-mod external;
+mod tapp;
 mod ui;
 
 use super::CapabilityRegistry;

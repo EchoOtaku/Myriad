@@ -238,23 +238,38 @@ pub async fn create_room(
 
     // 验证名称和描述长度
     if req.name.is_empty() || req.name.len() > 500 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Room name must be 1-500 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Room name must be 1-500 characters"})),
+        ));
     }
     if req.description.as_ref().map_or(false, |d| d.len() > 5000) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Description must be at most 5000 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Description must be at most 5000 characters"})),
+        ));
     }
 
     // 验证 max_members 范围
     if max_members < 2 || max_members > 5000 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "max_members must be between 2 and 5000"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "max_members must be between 2 and 5000"})),
+        ));
     }
 
     // 验证枚举值
     if !["owner", "democratic", "open"].contains(&governance) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid governance_type"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid governance_type"})),
+        ));
     }
     if !["admin-only", "member-invite", "open"].contains(&invite_policy) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid invite_policy"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid invite_policy"})),
+        ));
     }
 
     // 创建 Room
@@ -286,7 +301,11 @@ pub async fn create_room(
         r#"INSERT INTO federation_room_members
            (room_id, actor_url, is_local, local_user_id, role, joined_at)
            VALUES ($1, $2, true, $3, 'owner', NOW())"#,
-        [room_id.clone().into(), local_actor.clone().into(), user_id.into()],
+        [
+            room_id.clone().into(),
+            local_actor.clone().into(),
+            user_id.into(),
+        ],
     ))
     .await
     .map_err(db_err)?;
@@ -328,36 +347,59 @@ pub async fn update_room(
     let my_role = get_member_role(db, room_id, &local_actor)
         .await
         .map_err(db_err)?
-        .ok_or_else(|| (StatusCode::FORBIDDEN, Json(json!({"error": "Not a member of this room"}))))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a member of this room"})),
+            )
+        })?;
 
     if !is_admin_role(&my_role) {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Only owner or admin can update room"}))));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Only owner or admin can update room"})),
+        ));
     }
 
     // 验证字段
     if let Some(ref name) = req.name {
         if name.is_empty() || name.len() > 500 {
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Room name must be 1-500 characters"}))));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Room name must be 1-500 characters"})),
+            ));
         }
     }
     if let Some(ref desc) = req.description {
         if desc.len() > 5000 {
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Description must be at most 5000 characters"}))));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Description must be at most 5000 characters"})),
+            ));
         }
     }
     if let Some(ref avatar) = req.avatar_url {
         if avatar.len() > 2048 {
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Avatar URL too long"}))));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Avatar URL too long"})),
+            ));
         }
     }
     if let Some(ref policy) = req.invite_policy {
         if !["admin-only", "member-invite", "open"].contains(&policy.as_str()) {
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid invite_policy"}))));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid invite_policy"})),
+            ));
         }
     }
     if let Some(max) = req.max_members {
         if max < 2 || max > 5000 {
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "max_members must be between 2 and 5000"}))));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "max_members must be between 2 and 5000"})),
+            ));
         }
     }
 
@@ -398,7 +440,10 @@ pub async fn update_room(
     }
 
     if set_parts.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "No fields to update"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "No fields to update"})),
+        ));
     }
 
     set_parts.push(format!("updated_at = NOW()"));
@@ -465,8 +510,12 @@ pub async fn list_rooms(
         rooms.push(RoomSummary {
             room_id: row.try_get("", "room_id").unwrap_or_default(),
             name: row.try_get("", "name").unwrap_or_default(),
-            description: row.try_get::<Option<String>>("", "description").unwrap_or(None),
-            avatar_url: row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+            description: row
+                .try_get::<Option<String>>("", "description")
+                .unwrap_or(None),
+            avatar_url: row
+                .try_get::<Option<String>>("", "avatar_url")
+                .unwrap_or(None),
             owner_actor: row.try_get("", "owner_actor").unwrap_or_default(),
             governance_type: row.try_get("", "governance_type").unwrap_or_default(),
             invite_policy: row.try_get("", "invite_policy").unwrap_or_default(),
@@ -526,17 +575,25 @@ pub async fn get_room(
     Ok(RoomDetail {
         room_id: row.try_get("", "room_id").unwrap_or_default(),
         name: row.try_get("", "name").unwrap_or_default(),
-        description: row.try_get::<Option<String>>("", "description").unwrap_or(None),
-        avatar_url: row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+        description: row
+            .try_get::<Option<String>>("", "description")
+            .unwrap_or(None),
+        avatar_url: row
+            .try_get::<Option<String>>("", "avatar_url")
+            .unwrap_or(None),
         owner_actor: row.try_get("", "owner_actor").unwrap_or_default(),
         home_server: row.try_get("", "home_server").unwrap_or_default(),
         governance_type: row.try_get("", "governance_type").unwrap_or_default(),
-        governance_config: row.try_get::<Option<serde_json::Value>>("", "governance_config").unwrap_or(None),
+        governance_config: row
+            .try_get::<Option<serde_json::Value>>("", "governance_config")
+            .unwrap_or(None),
         invite_policy: row.try_get("", "invite_policy").unwrap_or_default(),
         distribution_strategy: row.try_get("", "distribution_strategy").unwrap_or_default(),
         max_members: row.try_get::<i32>("", "max_members").unwrap_or(50),
         is_public: row.try_get::<bool>("", "is_public").unwrap_or(false),
-        enabled_tapps: row.try_get::<Option<serde_json::Value>>("", "enabled_tapps").unwrap_or(None),
+        enabled_tapps: row
+            .try_get::<Option<serde_json::Value>>("", "enabled_tapps")
+            .unwrap_or(None),
         my_role: row.try_get::<Option<String>>("", "my_role").unwrap_or(None),
         member_count: row.try_get::<i64>("", "member_count").unwrap_or(0),
         created_at: row
@@ -557,7 +614,9 @@ pub async fn get_members(
     let local_actor = actor_url(&base_url, username);
 
     // 验证用户是成员
-    let is_member = get_member_role(db, room_id, &local_actor).await.map_err(db_err)?;
+    let is_member = get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?;
     if is_member.is_none() {
         // 检查是否是公开 Room
         let is_public = db
@@ -569,7 +628,10 @@ pub async fn get_members(
             .await
             .map_err(db_err)?;
         if is_public.is_none() {
-            return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Not a member of this room"}))));
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a member of this room"})),
+            ));
         }
     }
 
@@ -595,13 +657,17 @@ pub async fn get_members(
         .map(|r| RoomMember {
             actor_url: r.try_get("", "actor_url").unwrap_or_default(),
             is_local: r.try_get::<bool>("", "is_local").unwrap_or(false),
-            display_name: r.try_get::<Option<String>>("", "display_name").unwrap_or(None),
+            display_name: r
+                .try_get::<Option<String>>("", "display_name")
+                .unwrap_or(None),
             role: r.try_get("", "role").unwrap_or_default(),
             joined_at: r
                 .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "joined_at")
                 .map(|t| t.to_rfc3339())
                 .unwrap_or_default(),
-            invited_by: r.try_get::<Option<String>>("", "invited_by").unwrap_or(None),
+            invited_by: r
+                .try_get::<Option<String>>("", "invited_by")
+                .unwrap_or(None),
         })
         .collect();
 
@@ -625,7 +691,12 @@ pub async fn invite_member(
     let my_role = get_member_role(db, room_id, &local_actor)
         .await
         .map_err(db_err)?
-        .ok_or_else(|| (StatusCode::FORBIDDEN, Json(json!({"error": "Not a member"}))))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a member"})),
+            )
+        })?;
 
     // 检查 invite_policy
     let room_row = db
@@ -636,19 +707,30 @@ pub async fn invite_member(
         ))
         .await
         .map_err(db_err)?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Room not found"}))))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Room not found"})),
+            )
+        })?;
 
     let policy: String = room_row.try_get("", "invite_policy").unwrap_or_default();
     let max_members: i32 = room_row.try_get("", "max_members").unwrap_or(50);
 
     match policy.as_str() {
         "admin-only" if !is_admin_role(&my_role) => {
-            return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Only admins can invite"}))));
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Only admins can invite"})),
+            ));
         }
         "member-invite" => {} // 任何成员可邀请
-        "open" => {} // 无限制
+        "open" => {}          // 无限制
         _ if !is_admin_role(&my_role) => {
-            return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Insufficient permissions"}))));
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Insufficient permissions"})),
+            ));
         }
         _ => {}
     }
@@ -668,12 +750,18 @@ pub async fn invite_member(
         .unwrap_or(0);
 
     if current_count >= max_members {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Room is full"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Room is full"})),
+        ));
     }
 
     let role = req.role.as_deref().unwrap_or("member");
     if !["member", "admin", "observer"].contains(&role) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid role"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid role"})),
+        ));
     }
 
     // 解析目标 Actor
@@ -686,7 +774,10 @@ pub async fn invite_member(
             .await
             .map_err(|e| {
                 tracing::error!("[Room] Failed to fetch remote actor: {}", e);
-                (StatusCode::BAD_REQUEST, Json(json!({"error": format!("Cannot resolve actor: {}", e)})))
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": format!("Cannot resolve actor: {}", e)})),
+                )
             })?;
 
         // 添加远程成员
@@ -749,7 +840,12 @@ pub async fn invite_member(
             }
         }
 
-        tracing::info!("[Room] Invited remote {} to room {} as {}", remote.actor_url, room_id, role);
+        tracing::info!(
+            "[Room] Invited remote {} to room {} as {}",
+            remote.actor_url,
+            room_id,
+            role
+        );
     } else {
         // 本地成员 — 解析用户名 → actor_url
         let local_target_actor = actor_url(&base_url, target_actor);
@@ -782,7 +878,12 @@ pub async fn invite_member(
         .await
         .map_err(db_err)?;
 
-        tracing::info!("[Room] Invited local {} to room {} as {}", target_actor, room_id, role);
+        tracing::info!(
+            "[Room] Invited local {} to room {} as {}",
+            target_actor,
+            room_id,
+            role
+        );
     }
 
     // 广播系统消息
@@ -819,10 +920,18 @@ pub async fn remove_member(
     let my_role = get_member_role(db, room_id, &local_actor)
         .await
         .map_err(db_err)?
-        .ok_or_else(|| (StatusCode::FORBIDDEN, Json(json!({"error": "Not a member"}))))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a member"})),
+            )
+        })?;
 
     if !is_admin_role(&my_role) {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Only admins can remove members"}))));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Only admins can remove members"})),
+        ));
     }
 
     // 不能移除 owner
@@ -831,7 +940,10 @@ pub async fn remove_member(
         .map_err(db_err)?;
 
     if target_role.as_deref() == Some("owner") {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Cannot remove the room owner"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Cannot remove the room owner"})),
+        ));
     }
 
     let _ = user_id; // validated via my_role check
@@ -872,10 +984,18 @@ pub async fn leave_room(
     let my_role = get_member_role(db, room_id, &local_actor)
         .await
         .map_err(db_err)?
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(json!({"error": "Not a member"}))))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Not a member"})),
+            )
+        })?;
 
     if my_role == "owner" {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Owner cannot leave. Transfer ownership or delete the room."}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Owner cannot leave. Transfer ownership or delete the room."})),
+        ));
     }
 
     let _ = user_id;
@@ -920,7 +1040,9 @@ pub async fn send_room_message(
     if payload_size > MAX_ROOM_MESSAGE_PAYLOAD {
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
-            Json(json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, MAX_ROOM_MESSAGE_PAYLOAD)})),
+            Json(
+                json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, MAX_ROOM_MESSAGE_PAYLOAD)}),
+            ),
         ));
     }
 
@@ -932,11 +1054,19 @@ pub async fn send_room_message(
     let my_role = get_member_role(db, room_id, &local_actor)
         .await
         .map_err(db_err)?
-        .ok_or_else(|| (StatusCode::FORBIDDEN, Json(json!({"error": "Not a member"}))))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a member"})),
+            )
+        })?;
 
     // observer 不能发消息
     if my_role == "observer" {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Observers cannot send messages"}))));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Observers cannot send messages"})),
+        ));
     }
 
     let message_id = generate_message_id();
@@ -997,7 +1127,13 @@ pub async fn send_room_message(
     });
 
     let _ = fanout_to_remote_members(
-        db, user_id, room_id, &activity_id, &msg_activity, "RoomMessage", "RoomMessage",
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &msg_activity,
+        "RoomMessage",
+        "RoomMessage",
     )
     .await;
 
@@ -1021,9 +1157,14 @@ pub async fn get_room_messages(
     let local_actor = actor_url(&base_url, username);
 
     // 验证成员身份
-    let is_member = get_member_role(db, room_id, &local_actor).await.map_err(db_err)?;
+    let is_member = get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?;
     if is_member.is_none() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Not a member"}))));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Not a member"})),
+        ));
     }
 
     let _ = user_id;
@@ -1090,8 +1231,14 @@ pub async fn handle_room_invite(
     activity: &serde_json::Value,
 ) -> Result<(), String> {
     let object = activity.get("object").ok_or("Missing object")?;
-    let room_id = object.get("id").and_then(|v| v.as_str()).ok_or("Missing room id")?;
-    let role = object.get("role").and_then(|v| v.as_str()).unwrap_or("member");
+    let room_id = object
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing room id")?;
+    let role = object
+        .get("role")
+        .and_then(|v| v.as_str())
+        .unwrap_or("member");
 
     // 查找本地接收者（从 "to" 字段推断）
     let to = activity.get("to").and_then(|v| v.as_array());
@@ -1207,7 +1354,11 @@ pub async fn handle_room_invite(
     .await
     .map_err(|e| e.to_string())?;
 
-    tracing::info!("[Room] Received invite to room {} from {}", room_id, actor_url_str);
+    tracing::info!(
+        "[Room] Received invite to room {} from {}",
+        room_id,
+        actor_url_str
+    );
     Ok(())
 }
 
@@ -1218,10 +1369,16 @@ pub async fn handle_room_message(
     activity: &serde_json::Value,
 ) -> Result<(), String> {
     let object = activity.get("object").ok_or("Missing object")?;
-    let room_id = object.get("room").and_then(|v| v.as_str()).ok_or("Missing room")?;
+    let room_id = object
+        .get("room")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing room")?;
 
     // 验证发送方是该 Room 的成员
-    let sender_actor = object.get("from").and_then(|v| v.as_str()).unwrap_or(actor_url_str);
+    let sender_actor = object
+        .get("from")
+        .and_then(|v| v.as_str())
+        .unwrap_or(actor_url_str);
     let is_member = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -1239,9 +1396,18 @@ pub async fn handle_room_message(
     }
 
     let fallback_msg_id = generate_message_id();
-    let message_id = object.get("messageId").and_then(|v| v.as_str()).unwrap_or(&fallback_msg_id);
-    let sender = object.get("from").and_then(|v| v.as_str()).unwrap_or("unknown");
-    let message_type = object.get("messageType").and_then(|v| v.as_str()).unwrap_or("text");
+    let message_id = object
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&fallback_msg_id);
+    let sender = object
+        .get("from")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let message_type = object
+        .get("messageType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("text");
     let payload = object.get("payload").cloned().unwrap_or(json!(null));
     let thread_id = object.get("threadId").and_then(|v| v.as_str());
     let reply_to = object.get("replyTo").and_then(|v| v.as_str());
@@ -1267,19 +1433,22 @@ pub async fn handle_room_message(
     .map_err(|e| e.to_string())?;
 
     // 广播到本地 WebSocket
-    crate::federation::ws_gateway::broadcast_to_room(room_id, &json!({
-        "type": "message",
-        "room_id": room_id,
-        "message": {
-            "message_id": message_id,
-            "sender_actor": sender,
-            "message_type": message_type,
-            "payload": payload,
-            "thread_id": thread_id,
-            "reply_to": reply_to,
-            "created_at": now_iso8601()
-        }
-    }))
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "message",
+            "room_id": room_id,
+            "message": {
+                "message_id": message_id,
+                "sender_actor": sender,
+                "message_type": message_type,
+                "payload": payload,
+                "thread_id": thread_id,
+                "reply_to": reply_to,
+                "created_at": now_iso8601()
+            }
+        }),
+    )
     .await;
 
     tracing::info!("[Room] Received message {} in room {}", message_id, room_id);
@@ -1293,7 +1462,10 @@ pub async fn handle_room_leave(
     activity: &serde_json::Value,
 ) -> Result<(), String> {
     let object = activity.get("object").ok_or("Missing object")?;
-    let room_id = object.get("id").and_then(|v| v.as_str()).ok_or("Missing room id")?;
+    let room_id = object
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing room id")?;
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -1303,12 +1475,15 @@ pub async fn handle_room_leave(
     .await
     .map_err(|e| e.to_string())?;
 
-    crate::federation::ws_gateway::broadcast_to_room(room_id, &json!({
-        "type": "system",
-        "room_id": room_id,
-        "event": "member_left",
-        "actor": actor_url_str
-    }))
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "member_left",
+            "actor": actor_url_str
+        }),
+    )
     .await;
 
     tracing::info!("[Room] {} left room {}", actor_url_str, room_id);
@@ -1329,7 +1504,10 @@ pub async fn handle_room_join(
         .and_then(|v| v.as_str())
         .or_else(|| object.get("room").and_then(|v| v.as_str()))
         .ok_or("Missing room id")?;
-    let role = object.get("role").and_then(|v| v.as_str()).unwrap_or("member");
+    let role = object
+        .get("role")
+        .and_then(|v| v.as_str())
+        .unwrap_or("member");
 
     // 验证 Room 存在
     let room_exists = db
@@ -1359,16 +1537,24 @@ pub async fn handle_room_join(
     .await
     .map_err(|e| e.to_string())?;
 
-    crate::federation::ws_gateway::broadcast_to_room(room_id, &json!({
-        "type": "system",
-        "room_id": room_id,
-        "event": "member_joined",
-        "actor": actor_url_str,
-        "role": role
-    }))
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "member_joined",
+            "actor": actor_url_str,
+            "role": role
+        }),
+    )
     .await;
 
-    tracing::info!("[Room] {} joined room {} as {}", actor_url_str, room_id, role);
+    tracing::info!(
+        "[Room] {} joined room {} as {}",
+        actor_url_str,
+        room_id,
+        role
+    );
     Ok(())
 }
 
@@ -1404,7 +1590,12 @@ pub async fn handle_room_governance(
         ))
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Actor {} is not a member of room {}", actor_url_str, room_id))?;
+        .ok_or_else(|| {
+            format!(
+                "Actor {} is not a member of room {}",
+                actor_url_str, room_id
+            )
+        })?;
 
     let role: String = sender_row.try_get("", "role").unwrap_or_default();
     let owner: String = sender_row.try_get("", "owner_actor").unwrap_or_default();
@@ -1466,18 +1657,23 @@ pub async fn handle_room_governance(
         .map_err(|e| e.to_string())?;
     }
 
-    crate::federation::ws_gateway::broadcast_to_room(room_id, &json!({
-        "type": "system",
-        "room_id": room_id,
-        "event": "governance_changed",
-        "actor": actor_url_str,
-        "changes": changes
-    }))
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "governance_changed",
+            "actor": actor_url_str,
+            "changes": changes
+        }),
+    )
     .await;
 
     tracing::info!(
         "[Room] Governance change in {} by {}: {:?}",
-        room_id, actor_url_str, changes
+        room_id,
+        actor_url_str,
+        changes
     );
     Ok(())
 }

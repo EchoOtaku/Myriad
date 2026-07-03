@@ -92,9 +92,7 @@ impl McpServer {
             }
         });
 
-        let result = transport
-            .send_request("initialize", Some(params))
-            .await?;
+        let result = transport.send_request("initialize", Some(params)).await?;
 
         let init_result: McpInitializeResult = serde_json::from_value(result)
             .map_err(|e| format!("Invalid initialize response: {}", e))?;
@@ -117,9 +115,7 @@ impl McpServer {
     async fn do_tools_list(&mut self) -> Result<(), String> {
         let transport = self.transport.as_mut().ok_or("No transport")?;
 
-        let result = transport
-            .send_request("tools/list", None)
-            .await?;
+        let result = transport.send_request("tools/list", None).await?;
 
         #[derive(serde::Deserialize)]
         struct ToolsListResult {

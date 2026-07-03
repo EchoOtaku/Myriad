@@ -174,7 +174,7 @@ if (typeof document !== 'undefined' && !document.getElementById('library-grid-st
 
 interface LibraryItem {
   id: string
-  item_type: 'game' | 'video' | 'music' | 'anime' | 'tv_series'
+  item_type: 'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
   title: string
   cover: string | null
   platform: string
@@ -199,7 +199,7 @@ interface CardLayout {
 }
 
 interface LibraryGridProps {
-  filter: 'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series'
+  filter: 'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
 }
 
 // 获取项目在网格中的尺寸 (w, h)
@@ -210,6 +210,7 @@ function getItemGridSize(type: string) {
       return { w: 2, h: 1 }
     case 'anime':
     case 'tv_series':
+    case 'book':
       return { w: 1, h: 2 }
     case 'music':
     default:
@@ -221,7 +222,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   const [allItems, setAllItems] = useState<LibraryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [prevFilter, setPrevFilter] = useState<'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series'>('all')
+  const [prevFilter, setPrevFilter] = useState<'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'>('all')
   const [isTransitioning, setIsTransitioning] = useState(false)
 
   // 布局状态
@@ -550,6 +551,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       music: [],
       anime: [],
       tv_series: [],
+      book: [],
     }
 
     items.forEach((item) => {
@@ -570,10 +572,11 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       groups.music.length,
       groups.anime.length,
       groups.tv_series.length,
+      groups.book.length,
     )
 
     for (let i = 0; i < maxLength; i++) {
-      const typeOrder = ['game', 'video', 'music', 'anime', 'tv_series'].sort(() => Math.random() - 0.5)
+      const typeOrder = ['game', 'video', 'music', 'anime', 'tv_series', 'book'].sort(() => Math.random() - 0.5)
       typeOrder.forEach((type) => {
         if (groups[type][i]) {
           result.push(groups[type][i])
@@ -601,6 +604,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       case 'netease music':
       case 'netease': return '#d33a31'
       case 'github': return '#24292e'
+      case 'bangumi': return '#f09199'
       default: return '#6b7280'
     }
   }, [])
@@ -613,6 +617,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       case 'tv_series':
         return <FaVideo />
       case 'music': return <FaMusic />
+      case 'book': return <FaBook />
       default: return <FaBook />
     }
   }, [])
@@ -633,6 +638,12 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     }
     if ((item.item_type === 'video' || item.item_type === 'anime' || item.item_type === 'tv_series') && item.metadata.progress) {
       return item.metadata.progress
+    }
+    if (item.item_type === 'book') {
+      if (item.metadata.rate)
+        return `${item.metadata.rate}/10`
+      if (item.metadata.ep_status || item.metadata.vol_status)
+        return `${item.metadata.ep_status || 0}/${item.metadata.vol_status || 0}`
     }
     return null
   }, [t])
@@ -856,7 +867,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                             )}
                           </div>
                         )
-                      : item.item_type === 'anime' || item.item_type === 'tv_series'
+                      : item.item_type === 'anime' || item.item_type === 'tv_series' || item.item_type === 'book'
                         ? (
                             <div className="relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
                               <a
@@ -894,10 +905,12 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                         <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${
                                           item.item_type === 'anime'
                                             ? 'bg-pink-100 text-pink-700'
-                                            : 'bg-purple-100 text-purple-700'
+                                            : item.item_type === 'book'
+                                              ? 'bg-amber-100 text-amber-700'
+                                              : 'bg-purple-100 text-purple-700'
                                         }`}
                                         >
-                                          {item.item_type === 'anime' ? t.library.anime : t.library.tvSeries}
+                                          {item.item_type === 'anime' ? t.library.anime : item.item_type === 'book' ? t.library.book : t.library.tvSeries}
                                         </span>
                                       </div>
                                       {getExtraInfo(item) && (

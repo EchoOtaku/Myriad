@@ -9,9 +9,9 @@ Welcome to Myriad documentation! This is your central hub for all project docume
 | **Deploy Myriad now!**    | [Quick Start →](../QUICKSTART.md)                         |
 | **Understand the system** | [Architecture →](../development/ARCHITECTURE.md)          |
 | **Use the API**           | [API Docs →](../API.md)                                   |
-| **Deploy with Docker**    | [Docker Deployment →](../deployment/DOCKER_DEPLOYMENT.md) |
+| **Deploy with Docker**    | [Docker Deployment →](../deployment/DOCKER_DEPLOYMENT.md)  |
 | **Build from source**     | [Build Guide →](../development/BUILD.md)                  |
-| **See what changed**      | [Changelog →](../CHANGELOG.md)                            |
+| **Check ports**           | [Ports →](../deployment/PORTS.md)                         |
 
 ---
 
@@ -20,22 +20,25 @@ Welcome to Myriad documentation! This is your central hub for all project docume
 ```
 docs/
 ├── API.md                    # Complete API reference with examples
-├── CHANGELOG.md              # Version history and release notes
 ├── QUICKSTART.md             # ⭐ Quick start guide (START HERE)
+├── UPDATER_QUICKSTART.md     # Update, rollback, and rescue flow
+├── updater-spec.md           # Updater protocol and failure-mode design
 │
-├── deployment/               # Deployment Documentation
-│   ├── DOCKER_DEPLOYMENT.md # Docker deployment & configuration
-│   └── DEPLOYMENT_1PANEL.md # 1Panel deployment guide
+├── deployment/               # Current deployment documentation
+│   ├── DOCKER_DEPLOYMENT.md # proxy + updater production stack
+│   └── PORTS.md             # dev/prod port map
 │
 ├── development/              # Development Documentation
 │   ├── ARCHITECTURE.md      # System architecture & design
-│   └── BUILD.md             # Build from source instructions
+│   ├── BUILD.md             # Build from source instructions
+│   ├── TAPP_DEVELOPMENT.md  # Tapp development guide
+│   └── tapp/                # Tapp reference docs
 │
 ├── features/                 # Feature Documentation
-│   └── LIBRARY.md           # Library feature guide
+│   ├── LIBRARY.md           # Library feature guide
+│   └── TAPP_FILE_FORMAT.md  # Tapp file format
 │
 ├── guides/                   # User Guides
-│   ├── EXTENSIONS.md        # Browser extensions
 │   └── SECURITY_HEADERS.md  # Security configuration
 │
 └── quick-reference/          # THIS FILE - Documentation portal
@@ -53,8 +56,8 @@ docs/
 ```
 1. Install Docker Desktop
 2. Read: QUICKSTART.md
-3. Run: scripts/docker/deploy.ps1 -Mode prebuilt
-4. Visit: http://localhost:4321
+3. Run: bash scripts/docker/deploy.sh up
+4. Visit: http://localhost
 5. Complete setup wizard
 ```
 
@@ -75,10 +78,10 @@ docs/
 **Goal:** Deploy and manage in production
 
 ```
-1. Read: deployment/DOCKER_DEPLOYMENT.md
-2. Set up CI/CD with GitHub Actions
-3. Configure monitoring and backups
-4. Review: guides/SECURITY_HEADERS.md
+1. Read: QUICKSTART.md
+2. Read: deployment/DOCKER_DEPLOYMENT.md
+3. Configure proxy/TLS at the host edge
+4. Configure monitoring and backups
 ```
 
 ### Path 4: API Consumer (15 minutes)
@@ -104,10 +107,10 @@ Myriad/
 ├── README.md                    # Project overview
 ├── LICENSE                      # GPL-3.0 license
 ├── Makefile                     # Quick commands (Linux/Mac)
-├── docker-compose.yml           # Local build config
-├── docker-compose.prebuilt.yml  # Pre-built images config
-├── .env.docker                  # Environment template (local build)
-└── .env.prebuilt                # Environment template (pre-built)
+├── docker-compose.yml           # Production proxy + updater stack
+├── docker-compose.dev.yml       # Development PostgreSQL only
+├── .env.production.example      # Production environment template
+└── docker/                      # Component Dockerfiles
 ```
 
 ### Scripts Directory
@@ -179,22 +182,25 @@ frontend/
 ```
 docs/
 ├── API.md                      # 📡 Complete API reference
-├── CHANGELOG.md                # 📝 Version history
 ├── QUICKSTART.md               # ⭐ Quick start guide
+├── UPDATER_QUICKSTART.md       # 🔁 Update operations
+├── updater-spec.md             # 🔧 Updater design
 │
-├── deployment/                 # 🚀 Deployment Guides
-│   ├── DOCKER_DEPLOYMENT.md   # Docker deployment
-│   └── DEPLOYMENT_1PANEL.md   # 1Panel guide
+├── deployment/                 # 🚀 Current deployment guides
+│   ├── DOCKER_DEPLOYMENT.md   # proxy + updater production stack
+│   └── PORTS.md               # dev/prod port map
 │
 ├── development/                # 💻 Developer Guides
 │   ├── ARCHITECTURE.md        # System design
-│   └── BUILD.md               # Build instructions
+│   ├── BUILD.md               # Build instructions
+│   ├── TAPP_DEVELOPMENT.md    # Tapp guide
+│   └── tapp/                  # Tapp reference docs
 │
 ├── features/                   # 📖 Feature Docs
-│   └── LIBRARY.md             # Library feature
+│   ├── LIBRARY.md             # Library feature
+│   └── TAPP_FILE_FORMAT.md    # Tapp file format
 │
 ├── guides/                     # 📚 User Guides
-│   ├── EXTENSIONS.md          # Browser extensions
 │   └── SECURITY_HEADERS.md    # Security setup
 │
 └── quick-reference/            # 📖 Quick Reference
@@ -209,14 +215,12 @@ docs/
 
 | Task                         | Windows                                                    | Linux/Mac                                           |
 | ---------------------------- | ---------------------------------------------------------- | --------------------------------------------------- |
-| **Quick Deploy (Pre-built)** | `.\scripts\docker\deploy.ps1 -Mode prebuilt`               | `./scripts/docker/deploy.sh --mode prebuilt`        |
-| **Local Build Deploy**       | `.\scripts\docker\deploy.ps1 -Mode build`                  | `./scripts/docker/deploy.sh --mode build`           |
-| **Rebuild & Deploy**         | `.\scripts\docker\deploy.ps1 -Mode build -Rebuild`         | `./scripts/docker/deploy.sh --mode build --rebuild` |
-| **Build & Push Images**      | `.\scripts\docker\build-and-push.ps1 -Username USER -Push` | `./scripts/docker/build-and-push.sh -u USER -p`     |
-| **View Status**              | `.\scripts\docker\deploy.ps1 -Mode build -Status`          | `./scripts/docker/deploy.sh --mode build --status`  |
-| **View Logs**                | `.\scripts\docker\deploy.ps1 -Mode build -Logs`            | `./scripts/docker/deploy.sh --mode build --logs`    |
-| **Stop Services**            | `.\scripts\docker\deploy.ps1 -Mode build -Stop`            | `./scripts/docker/deploy.sh --mode build --stop`    |
-| **Clean Up**                 | `.\scripts\docker\deploy.ps1 -Mode build -Clean`           | `./scripts/docker/deploy.sh --mode build --clean`   |
+| **Bootstrap / Start**        | `.\scripts\docker\deploy.ps1 up`                           | `bash scripts/docker/deploy.sh up`                  |
+| **Manual Tag Upgrade**       | `.\scripts\docker\deploy.ps1 upgrade`                      | `bash scripts/docker/deploy.sh upgrade`             |
+| **View Status**              | `.\scripts\docker\deploy.ps1 status`                       | `bash scripts/docker/deploy.sh status`              |
+| **View Logs**                | `.\scripts\docker\deploy.ps1 logs`                         | `bash scripts/docker/deploy.sh logs`                |
+| **Restart Stack**            | `.\scripts\docker\deploy.ps1 restart`                      | `bash scripts/docker/deploy.sh restart`             |
+| **Stop Services**            | `.\scripts\docker\deploy.ps1 down`                         | `bash scripts/docker/deploy.sh down`                |
 
 ### Development Scripts
 
@@ -267,8 +271,9 @@ make backup      # Backup database
 | Document                                                   | Description                | Audience              |
 | ---------------------------------------------------------- | -------------------------- | --------------------- |
 | [QUICKSTART.md](../QUICKSTART.md)                          | Quick start guide          | Everyone              |
-| [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) | Docker deployment & config | DevOps, System Admins |
-| [DEPLOYMENT_1PANEL.md](../DEPLOYMENT_1PANEL.md)            | 1Panel deployment guide    | 1Panel Users          |
+| [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) | Current proxy + updater Docker stack | Operators |
+| [PORTS.md](../deployment/PORTS.md)                          | Development and production port map | Operators, Developers |
+| [UPDATER_QUICKSTART.md](../UPDATER_QUICKSTART.md)          | Update, rollback, rescue flow | Operators |
 
 **Start with:** QUICKSTART.md
 
@@ -278,6 +283,8 @@ make backup      # Backup database
 | ------------------------------------------------- | ---------------------------- | ---------- |
 | [ARCHITECTURE.md](../development/ARCHITECTURE.md) | System architecture & design | Developers |
 | [BUILD.md](../development/BUILD.md)               | Build from source            | Developers |
+| [TAPP_DEVELOPMENT.md](../development/TAPP_DEVELOPMENT.md) | Tapp development guide | Developers |
+| [development/tapp/](../development/tapp/QUICKSTART.md) | Tapp reference docs | Developers |
 
 **Start with:** ARCHITECTURE.md
 
@@ -293,14 +300,14 @@ make backup      # Backup database
 
 | Document                                             | Description                | Audience      |
 | ---------------------------------------------------- | -------------------------- | ------------- |
-| [EXTENSIONS.md](../guides/EXTENSIONS.md)             | Browser extension features | End Users     |
 | [SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md) | Security configuration     | System Admins |
 
 ### 📝 Reference
 
 | Document                        | Description                     | Audience |
 | ------------------------------- | ------------------------------- | -------- |
-| [CHANGELOG.md](../CHANGELOG.md) | Version history & release notes | Everyone |
+| [updater-spec.md](../updater-spec.md) | Updater design reference | Operators, Developers |
+| [oauth-refactor-plan.md](../oauth-refactor-plan.md) | OAuth refactor plan | Developers |
 | [LICENSE](../../LICENSE)        | GPL-3.0 license terms           | Everyone |
 
 ---
@@ -311,17 +318,17 @@ make backup      # Backup database
 
 → [QUICKSTART.md](../QUICKSTART.md)
 
-### "I want to use pre-built Docker images"
+### "I want to use versioned Docker images"
 
-→ [deployment/DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) - Quick Start section
+→ [QUICKSTART.md](../QUICKSTART.md) - Production quick start
 
 ### "How do I build Docker images?"
 
-→ [deployment/DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) - Building section
+→ [UPDATER_QUICKSTART.md](../UPDATER_QUICKSTART.md) - Versioned image and updater flow
 
 ### "What configuration options are available?"
 
-→ [deployment/DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) - Configuration section
+→ [deployment/DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) - Current production configuration
 
 ### "How do I use the API?"
 
@@ -335,9 +342,9 @@ make backup      # Backup database
 
 → [development/BUILD.md](../development/BUILD.md)
 
-### "What changed in the latest version?"
+### "What ports does each service use?"
 
-→ [CHANGELOG.md](../CHANGELOG.md)
+→ [deployment/PORTS.md](../deployment/PORTS.md)
 
 ### "How do I contribute?"
 
@@ -373,7 +380,8 @@ make backup      # Backup database
 
 1. **Quick deploy:** [QUICKSTART.md](../QUICKSTART.md)
 2. **Production setup:** [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md)
-3. **Security:** [SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md)
+3. **Ports:** [PORTS.md](../deployment/PORTS.md)
+4. **Security:** [SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md)
 
 ---
 
@@ -381,14 +389,14 @@ make backup      # Backup database
 
 ### Documentation Issues
 
-- **Outdated info?** Check [CHANGELOG.md](../CHANGELOG.md) for recent changes
+- **Outdated info?** Check the deployment and updater docs for the current production layout
 - **Missing details?** Search within documents (Ctrl+F)
 - **Need examples?** See [API.md](../API.md) for code samples
 
 ### Technical Issues
 
 1. Check relevant troubleshooting section in docs
-2. View logs: `docker-compose logs`
+2. View logs: `bash scripts/docker/deploy.sh logs` or `docker compose logs`
 3. Search [GitHub Issues](https://github.com/mirai-mamori/Myriad/issues)
 4. Open new issue with details
 
@@ -408,12 +416,13 @@ Found an error or want to improve documentation?
 
 | Category        | Files | Total Lines     |
 | --------------- | ----- | --------------- |
-| **Deployment**  | 2     | ~1200           |
-| **Development** | 2     | ~800            |
-| **API**         | 1     | ~700            |
-| **Guides**      | 2     | ~400            |
-| **Reference**   | 2     | ~500            |
-| **Total**       | **9** | **~3600 lines** |
+| **Deployment**  | 4     | ~610            |
+| **Development** | 12    | ~5870           |
+| **API**         | 1     | ~900            |
+| **Features**    | 2     | ~310            |
+| **Guides**      | 1     | ~200            |
+| **Reference**   | 3     | ~1375           |
+| **Total**       | **23** | **~9270 lines** |
 
 ---
 
@@ -423,7 +432,7 @@ Found an error or want to improve documentation?
 - [ ] Repository cloned
 - [ ] Read [QUICKSTART.md](../QUICKSTART.md)
 - [ ] Run deployment script
-- [ ] Access http://localhost:4321
+- [ ] Access http://localhost
 - [ ] Complete setup wizard
 - [ ] Configure platform integrations
 - [ ] Explore dashboard
@@ -432,7 +441,7 @@ Found an error or want to improve documentation?
 ---
 
 **Documentation Version:** 1.1  
-**Last Updated:** 2025-01-05  
+**Last Updated:** 2026-07-03
 **Maintainer:** Myriad Team
 
 **Have questions?** Open an issue on [GitHub](https://github.com/mirai-mamori/Myriad/issues)

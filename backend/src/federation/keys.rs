@@ -6,7 +6,9 @@
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand_core::OsRng;
-use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding};
+use rsa::pkcs8::{
+    DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding,
+};
 use rsa::{Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey};
 use sha2::{Digest, Sha256};
 
@@ -61,14 +63,13 @@ impl KeyPair {
 
         let pem = self.private_key_pem()?;
         let aes_key = derive_aes_key(jwt_secret);
-        let cipher = Aes256Gcm::new_from_slice(&aes_key)
-            .context("Failed to create AES cipher")?;
+        let cipher = Aes256Gcm::new_from_slice(&aes_key).context("Failed to create AES cipher")?;
 
         let nonce_bytes = rand::random::<[u8; AES_NONCE_LEN]>();
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
         let ciphertext = cipher
-            .encrypt(nonce, pem.as_bytes())
+            .encrypt(&nonce, pem.as_bytes())
             .map_err(|e| anyhow::anyhow!("AES-GCM encryption failed: {}", e))?;
 
         // nonce || ciphertext → base64
@@ -99,13 +100,14 @@ impl KeyPair {
         }
 
         let (nonce_bytes, ciphertext) = combined.split_at(AES_NONCE_LEN);
+        let nonce_bytes: [u8; AES_NONCE_LEN] =
+            nonce_bytes.try_into().context("Invalid AES nonce length")?;
         let aes_key = derive_aes_key(jwt_secret);
-        let cipher = Aes256Gcm::new_from_slice(&aes_key)
-            .context("Failed to create AES cipher")?;
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let cipher = Aes256Gcm::new_from_slice(&aes_key).context("Failed to create AES cipher")?;
+        let nonce = Nonce::from(nonce_bytes);
 
         let plaintext = cipher
-            .decrypt(nonce, ciphertext)
+            .decrypt(&nonce, ciphertext)
             .map_err(|e| anyhow::anyhow!("AES-GCM decryption failed: {}", e))?;
 
         let pem = String::from_utf8(plaintext).context("Decrypted key is not valid UTF-8")?;

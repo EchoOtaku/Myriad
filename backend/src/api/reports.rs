@@ -330,6 +330,42 @@ async fn generate_platform_reports_internal(
                 }
             }
 
+            // 9. 对于 Bangumi 平台，额外添加资料库内容和稳定统计数据
+            if platform == "bangumi" {
+                if !card_visuals.is_object() {
+                    card_visuals = json!({});
+                }
+
+                if let Ok(library_items) = extract_bangumi_library_items(&metadata).await {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("library_items".to_string(), json!(library_items));
+                    }
+                }
+
+                if let crate::services::smart_filter::ContentAnalysis::Bangumi(analysis) =
+                    &metadata.content_analysis
+                {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert(
+                            "subject_type_distribution".to_string(),
+                            json!(analysis.subject_type_distribution),
+                        );
+                        obj.insert(
+                            "collection_type_distribution".to_string(),
+                            json!(analysis.collection_type_distribution),
+                        );
+                        obj.insert(
+                            "favorite_tags".to_string(),
+                            json!(analysis.tag_distribution),
+                        );
+                        obj.insert(
+                            "top_subjects".to_string(),
+                            json!(analysis.top_rated_subjects),
+                        );
+                    }
+                }
+            }
+
             let mut insights = ai_insights;
 
             // 如果AI没有生成洞察，使用备用逻辑
@@ -371,6 +407,16 @@ async fn generate_platform_reports_internal(
                                 "最爱歌手：{}",
                                 analysis.artist_analysis.favorite_artists.join("、")
                             ));
+                        }
+                    }
+                    crate::services::smart_filter::ContentAnalysis::Bangumi(analysis) => {
+                        insights.push(analysis.collection_summary.clone());
+                        if let Some((tag, _)) = analysis
+                            .tag_distribution
+                            .iter()
+                            .max_by_key(|(_, count)| *count)
+                        {
+                            insights.push(format!("常见标签：{}", tag));
                         }
                     }
                 }
@@ -587,6 +633,12 @@ pub async fn generate_comprehensive_report(
                     all_interests.push(genre.genre.clone());
                 }
             }
+            crate::services::smart_filter::ContentAnalysis::Bangumi(analysis) => {
+                all_activities.push("追番与收藏".to_string());
+                for tag in analysis.tag_distribution.keys() {
+                    all_interests.push(tag.clone());
+                }
+            }
         }
     }
 
@@ -724,6 +776,7 @@ pub async fn generate_all_reports(
         "steam".to_string(),
         "github".to_string(),
         "netease".to_string(),
+        "bangumi".to_string(),
     ];
 
     // 2. 生成平台报告 (使用内部函数，避免序列化开销)
@@ -1087,6 +1140,11 @@ async fn generate_ai_report(
             "用文艺感性的口吻，解读用户的听歌品味、情感倾向和深夜听歌习惯。",
             "card_visuals必须包含 'soul_color' (十六进制颜色), 'mood_keywords' (对象数组，每个对象包含 'tag' 和 'color' 字段，例如 [{\"tag\": \"感性\", \"color\": \"#7B68EE\"}, {\"tag\": \"深夜\", \"color\": \"#FF6B9D\"}])，'level' (数字1-10，根据用户的歌曲数量、歌单数量、听歌品味的广度和深度综合评估，越资深等级越高)。根据每个标签的情感色彩选择合适的颜色。"
         ),
+        "bangumi" => (
+            "你是一个熟悉动画、漫画、游戏与影像作品的资深 ACG 评论者，能从收藏状态、评分和标签里读出审美轨迹。",
+            "用温和但有洞察力的口吻，分析用户在 Bangumi 上的收藏结构、评分偏好、正在追的作品和长期兴趣。",
+            "card_visuals必须包含 'taste_profile' (字符串), 'status_counts' (对象), 'score_distribution' (对象), 'favorite_tags' (字符串数组), 'top_subjects' (对象数组，字段至少包含 title 和 rate)。"
+        ),
         _ => (
             "你是一个专业的数据分析师，客观理性。",
             "用专业客观的口吻分析用户数据。",
@@ -1341,6 +1399,48 @@ fn generate_mock_report(
                         {"tag": "怀旧", "color": "#FFB347"}
                     ],
                     "level": level
+                }),
+            )
+        }
+        crate::services::smart_filter::ContentAnalysis::Bangumi(analysis) => {
+            let done = analysis
+                .collection_type_distribution
+                .get("done")
+                .copied()
+                .unwrap_or_default();
+            let doing = analysis
+                .collection_type_distribution
+                .get("doing")
+                .copied()
+                .unwrap_or_default();
+            let top_title = analysis
+                .top_rated_subjects
+                .first()
+                .map(|item| item.title.as_str())
+                .unwrap_or("收藏作品");
+            let favorite_tags = analysis
+                .tag_distribution
+                .iter()
+                .take(6)
+                .map(|(tag, _)| tag.clone())
+                .collect::<Vec<_>>();
+
+            (
+                format!(
+                    "{} 的 Bangumi 书架透露出稳定的审美坐标。",
+                    metadata.user_summary.username
+                ),
+                vec![
+                    format!("收藏概况：{}", analysis.collection_summary),
+                    format!("完成 {} 部，正在进行 {} 部", done, doing),
+                    format!("高分代表作：{}", top_title),
+                ],
+                json!({
+                    "taste_profile": "细腻的 ACG 收藏家",
+                    "status_counts": analysis.collection_type_distribution,
+                    "subject_type_distribution": analysis.subject_type_distribution,
+                    "favorite_tags": favorite_tags,
+                    "top_subjects": analysis.top_rated_subjects.iter().take(5).collect::<Vec<_>>()
                 }),
             )
         }
@@ -2158,6 +2258,69 @@ async fn extract_netease_library_items(metadata: &SmartFilteredData) -> Result<V
         );
     } else {
         println!("❌ Not Netease analysis!");
+    }
+
+    Ok(library_items)
+}
+
+async fn extract_bangumi_library_items(metadata: &SmartFilteredData) -> Result<Vec<Value>, String> {
+    let mut library_items = Vec::new();
+
+    if let crate::services::smart_filter::ContentAnalysis::Bangumi(analysis) =
+        &metadata.content_analysis
+    {
+        let mut candidates = analysis
+            .top_rated_subjects
+            .iter()
+            .filter(|item| item.rate >= 8)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        if candidates.len() < 10 {
+            for item in &analysis.watching_subjects {
+                if !candidates
+                    .iter()
+                    .any(|candidate| candidate.subject_id == item.subject_id)
+                {
+                    candidates.push(item.clone());
+                }
+                if candidates.len() >= 10 {
+                    break;
+                }
+            }
+        }
+
+        if candidates.len() < 10 {
+            for item in &analysis.recent_updates {
+                if !candidates
+                    .iter()
+                    .any(|candidate| candidate.subject_id == item.subject_id)
+                {
+                    candidates.push(item.clone());
+                }
+                if candidates.len() >= 10 {
+                    break;
+                }
+            }
+        }
+
+        for item in candidates.into_iter().take(10) {
+            library_items.push(json!({
+                "title": item.title,
+                "cover": item.cover.map(|cover| crate::api::profile::proxy_image_url(&cover)).unwrap_or_default(),
+                "type": match item.subject_type.as_str() {
+                    "book" => "book",
+                    "anime" => "anime",
+                    "game" => "game",
+                    "music" => "music",
+                    "real" => "tv_series",
+                    _ => "video",
+                },
+                "platform": "bangumi",
+                "rate": item.rate,
+                "url": format!("https://bgm.tv/subject/{}", item.subject_id)
+            }));
+        }
     }
 
     Ok(library_items)

@@ -1,5 +1,5 @@
+import { LuGitFork, LuStar, SiBangumi } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
-import { LuGitFork, LuStar } from '@lib/icons'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { API_URL } from '../config'
 
@@ -935,5 +935,84 @@ export const NeteaseWidget = memo(({
             </motion.div>
           )}
     </AnimatePresence>
+  )
+})
+
+export const BangumiWidget = memo(({
+  data,
+  showOverview,
+  onContentChange,
+}: {
+  data?: {
+    taste_profile?: string
+    status_counts?: Record<string, number>
+    collection_type_distribution?: Record<string, number>
+    library_items?: Array<{ title: string, cover?: string, type?: string, rate?: number }>
+  }
+  showOverview: boolean
+  onContentChange?: (content: any) => void
+}) => {
+  const { t } = useI18n()
+  const libraryItems = useMemo(() => data?.library_items || [], [data?.library_items])
+  const statusCounts = data?.status_counts || data?.collection_type_distribution || {}
+  const done = statusCounts.done || 0
+  const doing = statusCounts.doing || 0
+  const wish = statusCounts.wish || 0
+  const [currentIndex, setCurrentIndex] = useState(0)
+
+  useReportsVisibilityInterval(
+    () => setCurrentIndex(prev => (libraryItems.length ? (prev + 1) % libraryItems.length : 0)),
+    !showOverview && libraryItems.length > 0 ? 5000 : null,
+  )
+
+  const currentItem = libraryItems[currentIndex]
+
+  useEffect(() => {
+    if (!showOverview && currentItem) {
+      onContentChange?.({ title: currentItem.title, type: currentItem.type || 'book' })
+    }
+    else {
+      onContentChange?.(null)
+    }
+  }, [showOverview, currentItem, onContentChange])
+
+  if (!showOverview && currentItem) {
+    return (
+      <div className="h-full w-full p-3 flex items-center gap-3">
+        <div className="h-full aspect-[3/4] rounded-xl overflow-hidden bg-rose-100 dark:bg-rose-950/30 shrink-0">
+          {currentItem.cover
+            ? <img src={currentItem.cover} alt={currentItem.title} className="w-full h-full object-cover" loading="lazy" />
+            : <div className="w-full h-full flex items-center justify-center text-3xl text-rose-500"><SiBangumi /></div>}
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs uppercase tracking-widest text-rose-500 font-bold mb-2">Bangumi</div>
+          <div className="text-lg font-bold text-gray-900 dark:text-white line-clamp-3">{currentItem.title}</div>
+          {currentItem.rate ? <div className="mt-2 text-sm text-gray-500">{currentItem.rate}/10</div> : null}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full w-full p-4 flex flex-col justify-center">
+      <div className="text-xs uppercase tracking-widest text-rose-500 font-bold mb-2">Bangumi</div>
+      <div className="text-xl font-bold text-gray-900 dark:text-white line-clamp-2">
+        {data?.taste_profile || t.widgets.reportBangumi}
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-4">
+        <div className="rounded-lg bg-white/70 dark:bg-white/5 p-2">
+          <div className="text-lg font-bold">{done}</div>
+          <div className="text-[10px] text-gray-500">Done</div>
+        </div>
+        <div className="rounded-lg bg-white/70 dark:bg-white/5 p-2">
+          <div className="text-lg font-bold">{doing}</div>
+          <div className="text-[10px] text-gray-500">Doing</div>
+        </div>
+        <div className="rounded-lg bg-white/70 dark:bg-white/5 p-2">
+          <div className="text-lg font-bold">{wish}</div>
+          <div className="text-[10px] text-gray-500">Wish</div>
+        </div>
+      </div>
+    </div>
   )
 })

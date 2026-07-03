@@ -86,7 +86,8 @@ impl ResultEvaluator {
             eval.satisfaction_score = 0.0;
             eval.reason = Some(self.describe_failure_patterns(&eval.failure_patterns));
             eval.suggests_web_search = true;
-            eval.improvement_hints.push("本地数据不足，尝试联网搜索".to_string());
+            eval.improvement_hints
+                .push("本地数据不足，尝试联网搜索".to_string());
             return eval;
         }
 
@@ -101,7 +102,8 @@ impl ResultEvaluator {
                 data_count, self.min_data_count
             ));
             eval.suggests_web_search = true;
-            eval.improvement_hints.push("需要从网络获取实时数据".to_string());
+            eval.improvement_hints
+                .push("需要从网络获取实时数据".to_string());
             return eval;
         }
 
@@ -129,7 +131,8 @@ impl ResultEvaluator {
 
         // 4. 检测 AI 总结了"没有数据"
         if self.is_summarized_nothing(result) {
-            eval.failure_patterns.push(FailurePattern::SummarizedNothing);
+            eval.failure_patterns
+                .push(FailurePattern::SummarizedNothing);
         }
 
         // 5. 检测显式的 count=0
@@ -345,8 +348,8 @@ impl ResultEvaluator {
 
                 // 如果是包含内容的对象，视为 1 条数据
                 // 但要排除只有 summary 的情况（因为 summary 可能是对"空数据"的总结）
-                let has_only_summary = obj.len() <= 2
-                    && (obj.contains_key("summary") || obj.contains_key("style"));
+                let has_only_summary =
+                    obj.len() <= 2 && (obj.contains_key("summary") || obj.contains_key("style"));
 
                 if has_only_summary {
                     0
@@ -441,7 +444,9 @@ mod tests {
         let eval = evaluator.evaluate_result(&result);
 
         assert!(!eval.is_satisfied);
-        assert!(eval.failure_patterns.contains(&FailurePattern::EmptyDataSource));
+        assert!(eval
+            .failure_patterns
+            .contains(&FailurePattern::EmptyDataSource));
         assert!(eval.suggests_web_search);
     }
 
@@ -456,7 +461,9 @@ mod tests {
         let eval = evaluator.evaluate_result(&result);
 
         assert!(!eval.is_satisfied);
-        assert!(eval.failure_patterns.contains(&FailurePattern::NotFoundSemantic));
+        assert!(eval
+            .failure_patterns
+            .contains(&FailurePattern::NotFoundSemantic));
     }
 
     #[test]
@@ -473,7 +480,8 @@ mod tests {
 
         assert!(!eval.is_satisfied, "应该检测到总结了空数据");
         assert!(
-            eval.failure_patterns.contains(&FailurePattern::SummarizedNothing),
+            eval.failure_patterns
+                .contains(&FailurePattern::SummarizedNothing),
             "应该包含 SummarizedNothing 模式: {:?}",
             eval.failure_patterns
         );
@@ -510,7 +518,9 @@ mod tests {
         assert!(!eval.is_satisfied);
         assert!(
             eval.failure_patterns.contains(&FailurePattern::ZeroCount)
-                || eval.failure_patterns.contains(&FailurePattern::EmptyDataSource)
+                || eval
+                    .failure_patterns
+                    .contains(&FailurePattern::EmptyDataSource)
         );
     }
 
@@ -524,7 +534,9 @@ mod tests {
         let eval = evaluator.evaluate_result(&result);
 
         assert!(!eval.is_satisfied);
-        assert!(eval.failure_patterns.contains(&FailurePattern::NotFoundSemantic));
+        assert!(eval
+            .failure_patterns
+            .contains(&FailurePattern::NotFoundSemantic));
     }
 
     #[test]
@@ -540,8 +552,11 @@ mod tests {
 
         assert!(!eval.is_satisfied, "这个案例应该被检测为失败");
         assert!(
-            eval.failure_patterns.contains(&FailurePattern::SummarizedNothing)
-                || eval.failure_patterns.contains(&FailurePattern::NotFoundSemantic),
+            eval.failure_patterns
+                .contains(&FailurePattern::SummarizedNothing)
+                || eval
+                    .failure_patterns
+                    .contains(&FailurePattern::NotFoundSemantic),
             "应该检测到失败模式: {:?}",
             eval.failure_patterns
         );

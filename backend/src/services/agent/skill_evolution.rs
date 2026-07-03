@@ -324,7 +324,9 @@ impl SkillEvolution {
                                     &skill_id_owned,
                                     &old_instructions,
                                     failure_reason_owned.as_deref(),
-                                ).await {
+                                )
+                                .await
+                                {
                                     Ok(()) => {
                                         // 成功：确认改进时间戳
                                         let mut stats = evo.stats.lock().await;
@@ -378,7 +380,8 @@ impl SkillEvolution {
         use crate::config::ModelTier;
         use crate::services::ai::create_ai_analyzer_for_tier;
 
-        let analyzer = create_ai_analyzer_for_tier(ModelTier::Standard).await
+        let analyzer = create_ai_analyzer_for_tier(ModelTier::Standard)
+            .await
             .ok_or("AI analyzer not available")?;
 
         let prompt = format!(
@@ -400,7 +403,9 @@ impl SkillEvolution {
             capabilities_used.join(", ")
         );
 
-        let ai_result = analyzer.analyze(&prompt).await
+        let ai_result = analyzer
+            .analyze(&prompt)
+            .await
             .map_err(|e| format!("AI abstraction failed: {}", e))?;
 
         // 解析 AI 输出的 JSON
@@ -415,20 +420,32 @@ impl SkillEvolution {
         let category = parsed["category"].as_str().unwrap_or("auto").to_string();
         let triggers: Vec<String> = parsed["triggers"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let parameters: Vec<String> = parsed["parameters"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
-        let instructions = parsed["instructions"].as_str().unwrap_or(step_descriptions).to_string();
+        let instructions = parsed["instructions"]
+            .as_str()
+            .unwrap_or(step_descriptions)
+            .to_string();
 
         if triggers.is_empty() || instructions.len() < 20 {
             return Err("AI abstraction produced insufficient content".to_string());
         }
 
         // 验证 triggers 质量：过短的触发词无效（容易误触发）
-        let valid_triggers: Vec<String> = triggers.into_iter()
+        let valid_triggers: Vec<String> = triggers
+            .into_iter()
             .filter(|t| t.chars().count() >= 2)
             .collect();
         if valid_triggers.is_empty() {
@@ -436,7 +453,8 @@ impl SkillEvolution {
         }
 
         // 验证参数在 instructions 中被引用
-        let unreferenced: Vec<&str> = parameters.iter()
+        let unreferenced: Vec<&str> = parameters
+            .iter()
             .filter(|p| !instructions.contains(&format!("${{{}}}", p)))
             .map(|p| p.as_str())
             .collect();
@@ -467,7 +485,10 @@ impl SkillEvolution {
                 }
             }
             if unclosed > 0 {
-                return Err(format!("Instructions have {} unclosed ${{}} placeholders", unclosed));
+                return Err(format!(
+                    "Instructions have {} unclosed ${{}} placeholders",
+                    unclosed
+                ));
             }
         }
 
@@ -480,7 +501,8 @@ impl SkillEvolution {
             &instructions,
             capabilities_used,
             &parameters,
-        ).await
+        )
+        .await
     }
 
     // ==================== AI 驱动的改进 ====================
@@ -495,7 +517,8 @@ impl SkillEvolution {
         use crate::config::ModelTier;
         use crate::services::ai::create_ai_analyzer_for_tier;
 
-        let analyzer = create_ai_analyzer_for_tier(ModelTier::Standard).await
+        let analyzer = create_ai_analyzer_for_tier(ModelTier::Standard)
+            .await
             .ok_or("AI analyzer not available")?;
 
         let reason_ctx = failure_reason
@@ -544,7 +567,16 @@ impl SkillEvolution {
         required_capabilities: &[String],
         parameters: &[String],
     ) -> Result<Skill, String> {
-        self.auto_create_skill_inner(name, description, triggers, category, instructions, required_capabilities, parameters).await
+        self.auto_create_skill_inner(
+            name,
+            description,
+            triggers,
+            category,
+            instructions,
+            required_capabilities,
+            parameters,
+        )
+        .await
     }
 
     /// 自动创建 Skill 内部实现
@@ -623,7 +655,13 @@ impl SkillEvolution {
         // 生成安全文件名
         let safe_name = name
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
             .collect::<String>();
         let file_name = format!("_auto_{}.md", safe_name);
         let file_path = self.skills_dir.join(&file_name);
@@ -1010,7 +1048,10 @@ origin: agent_generated
             r.reload().await;
         }
 
-        tracing::info!(skill_id = skill_id, "[SkillEvolution] Manually deleted skill");
+        tracing::info!(
+            skill_id = skill_id,
+            "[SkillEvolution] Manually deleted skill"
+        );
         Ok(())
     }
 

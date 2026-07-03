@@ -16,9 +16,10 @@ import type {
   UpdateSourceRequest,
 } from '../types/brew'
 import { getCSRFToken } from '../utils/csrf'
+import { API_URL } from '../config'
 import { requestCache } from '../utils/requestCache'
 
-const API_BASE = '/api/brew'
+const API_BASE = `${API_URL}/api/brew`
 
 // 缓存 TTL 配置（毫秒）
 const CACHE_TTL = {

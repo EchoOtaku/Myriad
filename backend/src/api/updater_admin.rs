@@ -238,10 +238,7 @@ pub async fn self_update() -> Response {
     if !c.has_token() {
         return token_missing();
     }
-    match c
-        .post_json::<Value>("/admin/self-update", None, None)
-        .await
-    {
+    match c.post_json::<Value>("/admin/self-update", None, None).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => err_to_response(e),
     }

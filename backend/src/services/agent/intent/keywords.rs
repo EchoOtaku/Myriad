@@ -11,8 +11,7 @@ pub enum Language {
     Japanese,
 }
 
-impl Language {
-}
+impl Language {}
 
 /// 语言检测器（用于选择 prompt 语言）
 #[derive(Debug, Clone, Default)]

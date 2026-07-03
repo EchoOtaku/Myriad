@@ -11,12 +11,12 @@
  * 请参考 docs/SECURITY_HEADERS.md 了解如何在后端配置这些响应头
  */
 
+import { API_URL } from '../config'
+
 // 动态获取 API URL
 function getApiUrl(): string {
-  // 优先使用环境变量（去除首尾空格）
-  const envUrl = (import.meta.env.PUBLIC_API_URL || '').trim()
-  if (envUrl) {
-    return envUrl
+  if (API_URL) {
+    return API_URL
   }
 
   // 浏览器环境：使用当前域名（空字符串表示相对路径）

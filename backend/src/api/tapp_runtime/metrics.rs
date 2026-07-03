@@ -1,17 +1,13 @@
 //! 性能指标与速率限制状态 API
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::Path, http::StatusCode, Extension, Json};
 use serde_json::{json, Value};
 
 use crate::middleware::auth::Claims;
 
 use super::common::{
-    get_rate_limit_config, get_rate_limit_status_for, get_rate_limiter_active_count,
-    API_METRICS, PLATFORM_CACHE,
+    get_rate_limit_config, get_rate_limit_status_for, get_rate_limiter_active_count, API_METRICS,
+    PLATFORM_CACHE,
 };
 
 /// GET /api/tapp/metrics
@@ -19,7 +15,10 @@ pub async fn get_tapp_metrics(
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(json!({ "error": "Admin access required" }))));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "Admin access required" })),
+        ));
     }
 
     let metrics = API_METRICS.read().await;
@@ -43,7 +42,10 @@ pub async fn reset_tapp_metrics(
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(json!({ "error": "Admin access required" }))));
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "Admin access required" })),
+        ));
     }
 
     let mut metrics = API_METRICS.write().await;
@@ -51,7 +53,9 @@ pub async fn reset_tapp_metrics(
 
     tracing::info!(admin = %claims.username, "[TAPP] Metrics reset by admin");
 
-    Ok(Json(json!({ "success": true, "message": "Metrics reset successfully" })))
+    Ok(Json(
+        json!({ "success": true, "message": "Metrics reset successfully" }),
+    ))
 }
 
 /// GET /api/tapp/rate-limit/{tapp_id}
@@ -60,7 +64,10 @@ pub async fn get_rate_limit_status(
     Path(tapp_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let operations = ["ai.generate", "platform.write", "storage.set"];

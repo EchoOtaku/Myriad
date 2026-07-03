@@ -5,7 +5,7 @@
 //!  - When `active=true`, all non-allowlisted requests are served the embedded maintenance page.
 //!  - Otherwise, forwards to backend/frontend over plain HTTP via internal docker network DNS.
 //!  - `/healthz` (proxy itself) always returns 200.
-//!  - `/_updater/*` is forwarded to the updater service (so the UI can call updater APIs).
+//!  - `/_updater/*` can forward to the updater service when explicitly enabled for rescue.
 //!
 //! Fail-open: if the state file disappears, requests are forwarded normally. The proxy
 //! is the user's only rescue path, so it MUST NOT trap traffic by accident.
@@ -78,12 +78,12 @@ async fn main() -> anyhow::Result<()> {
     let state_path = std::env::var("PROXY_STATE_FILE")
         .unwrap_or_else(|_| "/state/maintenance.json".into())
         .into();
-    let backend_upstream = std::env::var("PROXY_BACKEND_UPSTREAM")
-        .unwrap_or_else(|_| "http://backend:3000".into());
-    let frontend_upstream = std::env::var("PROXY_FRONTEND_UPSTREAM")
-        .unwrap_or_else(|_| "http://frontend:4321".into());
-    let updater_upstream = std::env::var("PROXY_UPDATER_UPSTREAM")
-        .unwrap_or_else(|_| "http://updater:9090".into());
+    let backend_upstream =
+        std::env::var("PROXY_BACKEND_UPSTREAM").unwrap_or_else(|_| "http://backend:3000".into());
+    let frontend_upstream =
+        std::env::var("PROXY_FRONTEND_UPSTREAM").unwrap_or_else(|_| "http://frontend:4321".into());
+    let updater_upstream =
+        std::env::var("PROXY_UPDATER_UPSTREAM").unwrap_or_else(|_| "http://updater:9090".into());
     let allow_direct_updater = std::env::var("PROXY_ALLOW_DIRECT_UPDATER")
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(false);
@@ -143,9 +143,11 @@ async fn handle(State(state): State<Arc<AppState>>, req: Request) -> Result<Resp
             )
                 .into_response());
         }
-        return Ok(forward(&state, &state.updater_upstream, &format!("/{rest}"), req)
-            .await
-            .unwrap_or_else(bad_gateway));
+        return Ok(
+            forward(&state, &state.updater_upstream, &format!("/{rest}"), req)
+                .await
+                .unwrap_or_else(bad_gateway),
+        );
     }
 
     let maint = read_maintenance(&state.state_path).await;
@@ -239,7 +241,10 @@ fn maintenance_response(m: &MaintenanceFile) -> Response {
         .unwrap_or(false);
     let body = MAINTENANCE_HTML
         .replace("{{PHASE}}", m.phase.as_deref().unwrap_or("unknown"))
-        .replace("{{MESSAGE_KEY}}", m.message_key.as_deref().unwrap_or("updater.phase.unknown"))
+        .replace(
+            "{{MESSAGE_KEY}}",
+            m.message_key.as_deref().unwrap_or("updater.phase.unknown"),
+        )
         .replace("{{FROM}}", m.from_version.as_deref().unwrap_or("-"))
         .replace("{{TO}}", m.to_version.as_deref().unwrap_or("-"))
         .replace(

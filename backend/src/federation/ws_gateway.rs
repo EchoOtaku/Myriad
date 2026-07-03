@@ -50,10 +50,7 @@ async fn get_or_create_channel_tx(channel_id: &str) -> broadcast::Sender<String>
     }
 
     let (tx, _) = broadcast::channel(256);
-    registry.insert(
-        channel_id.to_string(),
-        ChannelBroadcast { tx: tx.clone() },
-    );
+    registry.insert(channel_id.to_string(), ChannelBroadcast { tx: tx.clone() });
     tx
 }
 
@@ -173,11 +170,7 @@ async fn handle_channel_socket(
     drop(db_opt);
 
     if !owns_channel {
-        tracing::warn!(
-            "[WS] User {} does not own channel {}",
-            user_id,
-            channel_id
-        );
+        tracing::warn!("[WS] User {} does not own channel {}", user_id, channel_id);
         return;
     }
 
@@ -198,7 +191,9 @@ async fn handle_channel_socket(
         "actor": &local_actor
     });
     if ws_sender
-        .send(Message::Text(serde_json::to_string(&welcome).unwrap_or_default().into()))
+        .send(Message::Text(
+            serde_json::to_string(&welcome).unwrap_or_default().into(),
+        ))
         .await
         .is_err()
     {
@@ -270,7 +265,11 @@ async fn handle_channel_socket(
         }
     }
 
-    tracing::info!("[WS] Channel {} disconnected: user={}", channel_id_clone, user_id);
+    tracing::info!(
+        "[WS] Channel {} disconnected: user={}",
+        channel_id_clone,
+        user_id
+    );
     cleanup_channel(&channel_id_clone).await;
 }
 
@@ -290,13 +289,13 @@ pub async fn room_websocket(
 }
 
 /// 处理单个 Room WebSocket 连接
-async fn handle_room_socket(
-    socket: WebSocket,
-    user_id: i32,
-    username: String,
-    room_id: String,
-) {
-    tracing::info!("[WS] Room {} connected: user={} ({})", room_id, username, user_id);
+async fn handle_room_socket(socket: WebSocket, user_id: i32, username: String, room_id: String) {
+    tracing::info!(
+        "[WS] Room {} connected: user={} ({})",
+        room_id,
+        username,
+        user_id
+    );
 
     let base_url = get_base_url().await;
     let local_actor = crate::federation::types::actor_url(&base_url, &username);
@@ -343,7 +342,9 @@ async fn handle_room_socket(
         "actor": &local_actor
     });
     if ws_sender
-        .send(Message::Text(serde_json::to_string(&welcome).unwrap_or_default().into()))
+        .send(Message::Text(
+            serde_json::to_string(&welcome).unwrap_or_default().into(),
+        ))
         .await
         .is_err()
     {
@@ -426,13 +427,17 @@ async fn handle_ws_room_client_message(
             let db_opt = crate::DB_CONNECTION.read().await;
             if let Some(db) = db_opt.as_ref() {
                 let req = crate::federation::room::SendRoomMessageRequest {
-                    message_type: msg.get("message_type").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    message_type: msg
+                        .get("message_type")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                     payload,
                     thread_id: thread_id.map(|s| s.to_string()),
                     reply_to: reply_to.map(|s| s.to_string()),
                 };
                 if let Err((status, json_err)) =
-                    crate::federation::room::send_room_message(user_id, username, room_id, db, &req).await
+                    crate::federation::room::send_room_message(user_id, username, room_id, db, &req)
+                        .await
                 {
                     // 错误仅回复给发送者，不广播给其他人
                     let err_msg = json!({
@@ -459,7 +464,10 @@ async fn handle_ws_room_client_message(
         }
         "ping" => {
             // 应用层 ping — 仅回复给发送者
-            Some(serde_json::to_string(&json!({"type": "pong", "room_id": room_id})).unwrap_or_default())
+            Some(
+                serde_json::to_string(&json!({"type": "pong", "room_id": room_id}))
+                    .unwrap_or_default(),
+            )
         }
         _ => {
             tracing::debug!("[WS] Unknown room message type: {}", msg_type);
@@ -478,10 +486,7 @@ async fn handle_ws_client_message(
     msg: &serde_json::Value,
     tx: &broadcast::Sender<String>,
 ) -> Option<String> {
-    let msg_type = msg
-        .get("type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("text");
+    let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("text");
 
     match msg_type {
         "message" => {
@@ -492,11 +497,18 @@ async fn handle_ws_client_message(
             let db_opt = crate::DB_CONNECTION.read().await;
             if let Some(db) = db_opt.as_ref() {
                 let req = crate::federation::channel::SendMessageRequest {
-                    message_type: msg.get("message_type").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    message_type: msg
+                        .get("message_type")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                     payload,
                     reply_to: reply_to.map(|s| s.to_string()),
                 };
-                match crate::federation::channel::send_message(user_id, username, channel_id, db, &req).await {
+                match crate::federation::channel::send_message(
+                    user_id, username, channel_id, db, &req,
+                )
+                .await
+                {
                     Ok(_resp) => {
                         // send_message 内部已经调用了 broadcast_to_channel
                     }
@@ -528,7 +540,10 @@ async fn handle_ws_client_message(
         }
         "ping" => {
             // 应用层 ping — 仅回复给发送者
-            Some(serde_json::to_string(&json!({"type": "pong", "channel_id": channel_id})).unwrap_or_default())
+            Some(
+                serde_json::to_string(&json!({"type": "pong", "channel_id": channel_id}))
+                    .unwrap_or_default(),
+            )
         }
         _ => {
             tracing::debug!("[WS] Unknown message type: {}", msg_type);

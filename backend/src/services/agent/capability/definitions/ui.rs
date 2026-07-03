@@ -86,13 +86,13 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "type": "object",
             "properties": {
                 "playlistId": { "type": "string", "description": "歌单 ID" },
-                "source": { 
-                    "type": "string", 
+                "source": {
+                    "type": "string",
                     "enum": ["netease", "qq"],
                     "description": "音乐平台来源"
                 },
-                "autoPlay": { 
-                    "type": "boolean", 
+                "autoPlay": {
+                    "type": "boolean",
                     "default": true,
                     "description": "是否自动开始播放"
                 }
@@ -166,7 +166,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "router.navigate".to_string(),
         name: "路由导航".to_string(),
-        description: "导航到指定页面，支持主应用的所有路由，包括首页、平台页、Brew、Tapp、设置等".to_string(),
+        description: "导航到指定页面，支持主应用的所有路由，包括首页、平台页、Brew、Tapp、设置等"
+            .to_string(),
         category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Execute],
         input_schema: json!({
@@ -299,7 +300,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "page.understand".to_string(),
         name: "页面 UI 智能理解".to_string(),
-        description: "使用 AI 分析当前页面的 UI 结构，理解各元素的用途，并根据用户意图生成操作指令".to_string(),
+        description: "使用 AI 分析当前页面的 UI 结构，理解各元素的用途，并根据用户意图生成操作指令"
+            .to_string(),
         category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Analyze, IntentAction::Execute],
         input_schema: json!({
@@ -364,7 +366,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "page.content".to_string(),
         name: "页面内容".to_string(),
-        description: "读取当前页面显示的实际内容，支持 Brew/平台/Tapp 等多种页面类型的层级结构".to_string(),
+        description: "读取当前页面显示的实际内容，支持 Brew/平台/Tapp 等多种页面类型的层级结构"
+            .to_string(),
         category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({
@@ -451,7 +454,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "search.fuzzy".to_string(),
         name: "模糊搜索".to_string(),
-        description: "在 Brew 订阅源、Tapp 应用、内容等中进行模糊名称搜索，支持用户口语化查询".to_string(),
+        description: "在 Brew 订阅源、Tapp 应用、内容等中进行模糊名称搜索，支持用户口语化查询"
+            .to_string(),
         category: CapabilityCategory::DataRead,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({

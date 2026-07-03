@@ -25,10 +25,14 @@ pub async fn media_control(
 
     tracing::info!(
         "[TAPP] media_control - User: {}, Tapp: {}, Action: {}",
-        claims.username, req.tapp_id, req.action
+        claims.username,
+        req.tapp_id,
+        req.action
     );
 
-    let valid_actions = ["play", "pause", "next", "prev", "seek", "volume", "mode", "mute", "unmute"];
+    let valid_actions = [
+        "play", "pause", "next", "prev", "seek", "volume", "mode", "mute", "unmute",
+    ];
     if !valid_actions.contains(&req.action.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -39,14 +43,20 @@ pub async fn media_control(
     match req.action.as_str() {
         "seek" => {
             if req.value.is_none() {
-                return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": "Seek action requires a position value" }))));
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "Seek action requires a position value" })),
+                ));
             }
         }
         "volume" => {
             if let Some(val) = &req.value {
                 if let Some(v) = val.as_f64() {
                     if !(0.0..=100.0).contains(&v) {
-                        return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": "Volume must be between 0 and 100" }))));
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({ "error": "Volume must be between 0 and 100" })),
+                        ));
                     }
                 }
             }
@@ -56,7 +66,10 @@ pub async fn media_control(
                 let valid_modes = ["sequence", "loop", "shuffle", "single"];
                 if let Some(mode) = val.as_str() {
                     if !valid_modes.contains(&mode) {
-                        return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": format!("Invalid mode: {}", mode) }))));
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({ "error": format!("Invalid mode: {}", mode) })),
+                        ));
                     }
                 }
             }

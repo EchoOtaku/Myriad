@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use bollard::auth::DockerCredentials;
-use bollard::image::CreateImageOptions;
+use bollard::query_parameters::CreateImageOptions;
 use bollard::Docker;
 use futures::StreamExt;
 use tracing::debug;
@@ -37,8 +37,8 @@ impl DockerClient {
     pub async fn pull(&self, image_ref: &str, creds: Option<DockerCredentials>) -> Result<String> {
         let (image, tag) = parse_image_ref(image_ref);
         let opts = CreateImageOptions {
-            from_image: image.clone(),
-            tag: tag.clone(),
+            from_image: Some(image.clone()),
+            tag: Some(tag.clone()),
             ..Default::default()
         };
         let mut stream = self.inner.create_image(Some(opts), None, creds);
@@ -48,8 +48,9 @@ impl DockerClient {
                     if let Some(status) = info.status {
                         debug!(image = %image_ref, %status, "pull progress");
                     }
-                    if let Some(err) = info.error {
-                        return Err(UpdaterError::Docker(format!("pull {image_ref}: {err}")));
+                    if let Some(err) = info.error_detail {
+                        let msg = err.message.unwrap_or_default();
+                        return Err(UpdaterError::Docker(format!("pull {image_ref}: {msg}")));
                     }
                 }
                 Err(e) => return Err(UpdaterError::Docker(format!("pull stream: {e}"))),
@@ -73,16 +74,17 @@ impl DockerClient {
         Ok(digest)
     }
 
-    /// Probe an HTTP endpoint inside the docker network. We don't have direct access by default
-    /// (the updater runs on host network), so we shell out to a one-shot curl container.
+    /// Probe an HTTP endpoint inside the compose network by shelling out to a one-shot curl
+    /// container attached to the same Docker network as the managed services.
     /// Returns (status_code, body_truncated_to_8k).
     pub async fn http_probe(&self, target: &str, timeout: Duration) -> Result<(u16, String)> {
-        use bollard::container::{
-            Config, CreateContainerOptions, LogOutput, LogsOptions, StartContainerOptions,
-            WaitContainerOptions,
+        use bollard::container::LogOutput;
+        use bollard::models::ContainerCreateBody;
+        use bollard::query_parameters::{
+            CreateContainerOptions, LogsOptions, StartContainerOptions, WaitContainerOptions,
         };
         let name = format!("myriad-probe-{}", uuid::Uuid::new_v4().simple());
-        let cfg = Config {
+        let cfg = ContainerCreateBody {
             image: Some("curlimages/curl:8.5.0".to_string()),
             cmd: Some(vec![
                 "-sS".to_string(),
@@ -94,9 +96,9 @@ impl DockerClient {
                 "%{http_code}".to_string(),
                 target.to_string(),
             ]),
-            host_config: Some(bollard::secret::HostConfig {
+            host_config: Some(bollard::models::HostConfig {
                 auto_remove: Some(true),
-                network_mode: Some("myriad_default".to_string()), // configurable
+                network_mode: Some(compose_network_name()),
                 ..Default::default()
             }),
             ..Default::default()
@@ -105,29 +107,26 @@ impl DockerClient {
             .inner
             .create_container(
                 Some(CreateContainerOptions {
-                    name: name.clone(),
-                    platform: None,
+                    name: Some(name.clone()),
+                    ..Default::default()
                 }),
                 cfg,
             )
             .await
             .map_err(|e| UpdaterError::Docker(format!("create probe: {e}")))?;
         self.inner
-            .start_container(&created.id, None::<StartContainerOptions<String>>)
+            .start_container(&created.id, None::<StartContainerOptions>)
             .await
             .map_err(|e| UpdaterError::Docker(format!("start probe: {e}")))?;
         let _ = self
             .inner
-            .wait_container(
-                &created.id,
-                None::<WaitContainerOptions<String>>,
-            )
+            .wait_container(&created.id, None::<WaitContainerOptions>)
             .collect::<Vec<_>>()
             .await;
 
         let mut stream = self.inner.logs(
             &created.id,
-            Some(LogsOptions::<String> {
+            Some(LogsOptions {
                 stdout: true,
                 stderr: true,
                 ..Default::default()
@@ -161,11 +160,7 @@ impl DockerClient {
             .inspect_container(name, None)
             .await
             .map_err(|e| UpdaterError::Docker(format!("inspect {name}: {e}")))?;
-        Ok(info
-            .state
-            .as_ref()
-            .and_then(|s| s.running)
-            .unwrap_or(false))
+        Ok(info.state.as_ref().and_then(|s| s.running).unwrap_or(false))
     }
 
     pub async fn ping(&self) -> Result<()> {
@@ -179,7 +174,7 @@ impl DockerClient {
 }
 
 /// Split "registry/image:tag" into (image_without_tag, tag).
-/// Falls back to tag = "latest" if absent — but the updater rejects ":latest" elsewhere.
+/// Falls back to tag = "latest" if absent; release preflight rejects latest for managed components.
 fn parse_image_ref(s: &str) -> (String, String) {
     // We must avoid splitting on ":" inside the registry port (e.g. "host:5000/img:tag").
     // Strategy: split off everything after the last '/' first.
@@ -196,6 +191,21 @@ fn parse_image_ref(s: &str) -> (String, String) {
         None => img_name,
     };
     (full_image, tag)
+}
+
+fn compose_network_name() -> String {
+    compose_network_name_from_env(std::env::var("MYRIAD_DOCKER_NETWORK").ok())
+}
+
+fn compose_network_name_from_env(explicit_network: Option<String>) -> String {
+    if let Some(name) = explicit_network {
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    "myriad-net".to_string()
 }
 
 #[cfg(test)]
@@ -223,6 +233,19 @@ mod tests {
         assert_eq!(
             parse_image_ref("alpine"),
             ("alpine".to_string(), "latest".to_string())
+        );
+    }
+
+    #[test]
+    fn compose_network_defaults_to_explicit_compose_network_name() {
+        assert_eq!(compose_network_name_from_env(None), "myriad-net");
+    }
+
+    #[test]
+    fn compose_network_allows_explicit_override() {
+        assert_eq!(
+            compose_network_name_from_env(Some("external_net".to_string())),
+            "external_net"
         );
     }
 }

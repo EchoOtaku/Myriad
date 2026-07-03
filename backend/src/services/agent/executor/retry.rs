@@ -145,13 +145,9 @@ impl Executor {
                     retry_errors.push(e.clone());
 
                     // 智能错误分析
-                    let effective_params =
-                        retry_params_override.as_ref().unwrap_or(&step.params);
-                    let analysis = ErrorAnalyzer::analyze(
-                        &e,
-                        &step.capability_id,
-                        effective_params,
-                    );
+                    let effective_params = retry_params_override.as_ref().unwrap_or(&step.params);
+                    let analysis =
+                        ErrorAnalyzer::analyze(&e, &step.capability_id, effective_params);
 
                     let should_retry = retry_count < config.max_attempts
                         && config.global_budget > 0
@@ -231,8 +227,7 @@ impl Executor {
                         } else {
                             base_delay
                         };
-                        let adjusted =
-                            (delay as f64 * analysis.delay_multiplier) as u64;
+                        let adjusted = (delay as f64 * analysis.delay_multiplier) as u64;
                         tracing::warn!(
                             step_id = %step.id,
                             retry = retry_count,
@@ -246,10 +241,8 @@ impl Executor {
                             retry_count,
                             config.max_attempts
                         );
-                        tokio::time::sleep(std::time::Duration::from_millis(
-                            adjusted.min(30_000),
-                        ))
-                        .await;
+                        tokio::time::sleep(std::time::Duration::from_millis(adjusted.min(30_000)))
+                            .await;
 
                         continue; // 重试
                     }

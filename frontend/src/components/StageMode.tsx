@@ -1,10 +1,10 @@
-import { FaBook, FaGamepad, FaGithub, FaMusic, FaSteam, FaVideo, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
+import { FaBook, FaGamepad, FaGithub, FaMusic, FaSteam, FaVideo, SiBangumi, SiBilibili, SiNeteasecloudmusic } from '@lib/icons'
 import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@lib/motionShim'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 
 import { useReportsVisibilityInterval } from '../hooks/animation'
-import { BilibiliWidget, GithubWidget, NeteaseWidget, SteamWidget } from './StageWidgets'
+import { BangumiWidget, BilibiliWidget, GithubWidget, NeteaseWidget, SteamWidget } from './StageWidgets'
 
 const DARK_ORIGINAL_BG = 'linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(10, 10, 10, 0.3) 45%, rgba(10, 10, 10, 0.5) 55%, rgba(10, 10, 10, 0.75) 70%, rgba(10, 10, 10, 0.9) 85%, rgba(10, 10, 10, 0.95) 100%)'
 const LIGHT_ORIGINAL_BG = 'linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.4) 55%, rgba(255, 255, 255, 0.9) 85%, rgba(255, 255, 255, 0.9) 100%)'
@@ -250,6 +250,8 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
       case 'netease':
       case 'netease music':
         return <SiNeteasecloudmusic className="w-4 h-4" />
+      case 'bangumi':
+        return <SiBangumi className="w-4 h-4" />
       default:
         return null
     }
@@ -268,6 +270,8 @@ const ComprehensiveLibraryWidget = memo(({ libraryItems }: { libraryItems: Array
       case 'netease':
       case 'netease music':
         return '#d33a31'
+      case 'bangumi':
+        return '#f09199'
       default:
         return '#6b7280'
     }
@@ -501,6 +505,7 @@ export default function StageMode({ isOpen, onClose, reportData, onRefresh: _onR
       case 'steam': return <SteamWidget data={reportData.card_visuals} showOverview={showOverview} />
       case 'github': return <GithubWidget data={reportData.card_visuals} showOverview={showOverview} />
       case 'netease': return <NeteaseWidget data={reportData.card_visuals} showOverview={showOverview} />
+      case 'bangumi': return <BangumiWidget data={reportData.card_visuals} showOverview={showOverview} />
       default: return null
     }
   }

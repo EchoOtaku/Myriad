@@ -46,6 +46,9 @@ pub static GLOBAL_DYNAMIC_CONFIG: once_cell::sync::Lazy<Arc<RwLock<DynamicConfig
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Load .env before any component reads environment variables.
+    dotenvy::dotenv().ok();
+
     // Initialize tracing
     tracing_subscriber::registry()
         .with(
@@ -91,7 +94,6 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run_server() -> anyhow::Result<()> {
     // Load configuration
-    dotenvy::dotenv().ok();
     let config = AppConfig::from_env()?;
 
     // Initialize global config
@@ -359,20 +361,25 @@ async fn run_server() -> anyhow::Result<()> {
             Err(e) => {
                 tracing::warn!("⚠️  Database connection failed: {}", e);
                 tracing::info!("🔧 Starting in CONFIGURATION MODE");
-                tracing::info!("📝 Only setup and configuration endpoints are available");
-                tracing::info!("💡 Configure database via: POST /api/setup/database-config");
+                tracing::info!("📝 Only setup/status/bootstrap auth endpoints are available");
+                tracing::info!(
+                    "💡 Configure database via POST /api/setup/database-config; the service will restart to load the full route table"
+                );
                 CONFIG_MODE.store(true, Ordering::Relaxed);
             }
         }
     } else {
         tracing::warn!("⚠️  No database URL configured");
         tracing::info!("🔧 Starting in CONFIGURATION MODE");
-        tracing::info!("📝 Only setup and configuration endpoints are available");
-        tracing::info!("💡 Configure database via: POST /api/setup/database-config");
+        tracing::info!("📝 Only setup/status/bootstrap auth endpoints are available");
+        tracing::info!(
+            "💡 Configure database via POST /api/setup/database-config; the service will restart to load the full route table"
+        );
         CONFIG_MODE.store(true, Ordering::Relaxed);
     }
 
-    // Start unified server with all routes (middleware will block based on CONFIG_MODE)
+    // Start the unified server. If this process booted without a DB, setup writes
+    // DATABASE_URL and exits so the supervisor can restart with the full route table.
     start_unified_server(config).await
 }
 
@@ -391,7 +398,6 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
         "/api/setup/init-database",
         "/api/setup/create-admin",
         "/api/system/status",
-        "/api/system/reload-config",
         "/api/auth/login",           // Allow login endpoint
         "/api/auth/me",              // Allow user info endpoint (for login state check)
         "/api/auth/logout",          // Allow logout endpoint
@@ -408,7 +414,7 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
                 "error": "Service in configuration mode",
                 "message": "服务器正在配置模式，请先完成数据库配置和初始化",
                 "configure_endpoint": "/api/setup/database-config",
-                "hint": "After configuration, the service will automatically reload"
+                "hint": "After configuration, the service restarts to load the full route table"
             })),
         )
             .into_response();
@@ -666,7 +672,7 @@ async fn get_site_metadata_wrapper() -> Response {
                 Json(json!({
                     "site_title": "Myriad - A myriad of lights, in one place.",
                     "site_description": "A myriad of lights, in one place.",
-                    "site_favicon": "/logo.png"
+                    "site_favicon": "/favicon.webp"
                 })),
             )
                 .into_response()
@@ -952,6 +958,89 @@ async fn get_current_user_wrapper(headers: axum::http::HeaderMap) -> Response {
 /// Wrapper for logout - no auth required, just clear cookie
 async fn logout_wrapper() -> Response {
     api::auth::logout().await.into_response()
+}
+
+/// Wrapper for OAuth callback that gets DB from global state.
+///
+/// Keep the route registered even when DB is temporarily unavailable, so the
+/// login surface gets a clear 503 instead of a route-table 404.
+async fn oauth_provider_callback_wrapper(
+    axum::extract::Path(slug): axum::extract::Path<String>,
+    axum::extract::Query(params): axum::extract::Query<api::oauth::CallbackQuery>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match api::oauth::provider_callback(
+            axum::extract::Path(slug),
+            axum::extract::Query(params),
+            axum::extract::State(db.clone()),
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err((status, json)) => (status, json).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，OAuth 回调暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for OAuth identity unlink that gets DB from global state.
+async fn oauth_provider_unlink_wrapper(
+    axum::extract::Path((slug, identity_id)): axum::extract::Path<(String, i32)>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match api::oauth::provider_unlink(
+            axum::extract::Path((slug, identity_id)),
+            axum::extract::State(db.clone()),
+            headers,
+        )
+        .await
+        {
+            Ok(json) => json.into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，OAuth 身份解绑暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for listing the current user's linked OAuth identities.
+async fn oauth_list_my_identities_wrapper(headers: axum::http::HeaderMap) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match api::oauth::list_my_identities(
+            axum::extract::State(db.clone()),
+            headers,
+        )
+        .await
+        {
+            Ok(json) => json.into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，OAuth 身份列表暂不可用"
+            })),
+        )
+            .into_response(),
+    }
 }
 
 /// Wrapper for get_user_info that gets DB from global state
@@ -2376,9 +2465,9 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // Get database connection (might be None in config mode)
     let db_opt = DB_CONNECTION.read().await.clone();
 
-    // Build unified API router with all routes
-    // All routes are registered, but DB-dependent routes use wrappers
-    // that dynamically fetch DB connection from global state
+    // Build the unified API router. Core setup/auth/config routes are always
+    // registered through wrappers. Larger DB route groups are added on full-mode
+    // startup, so setup-mode database changes restart the process.
     let api_router = Router::new()
         .route("/health", get(api::health))
         // Setup routes (always available)
@@ -2414,6 +2503,38 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route(
             "/api/auth/logout",
             post(logout_wrapper), // 不需要认证中间件
+        )
+        // OAuth routes stay registered even if DB is temporarily unavailable,
+        // keeping login/setup surfaces on 503 responses instead of 404s.
+        .route("/api/auth/oauth/providers", get(api::oauth::list_providers))
+        .route(
+            "/api/auth/oauth/{slug}/login",
+            get(api::oauth::provider_login),
+        )
+        .route(
+            "/api/auth/oauth/{slug}/callback",
+            get(oauth_provider_callback_wrapper),
+        )
+        .route(
+            "/api/auth/oauth/{slug}/link",
+            get(api::oauth::provider_link).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/auth/oauth/{slug}/unlink/{identity_id}",
+            axum::routing::delete(oauth_provider_unlink_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/auth/identities",
+            get(oauth_list_my_identities_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // ↓ 兼容层：旧 GitHub 路由 302 重定向到新通用路由
+        .route("/api/auth/github/login", get(api::auth::github_login))
+        .route("/api/auth/github/callback", get(api::auth::github_callback))
+        .route(
+            "/api/auth/github/link",
+            get(api::auth::github_link).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
             "/api/auth/change-password",
@@ -2741,38 +2862,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/reports/comprehensive/{id}/delete",
                 delete(api::reports::delete_comprehensive_report)
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
-            )
-            // 🔐 通用 OAuth handler（PR #2 抽象层）
-            .route("/api/auth/oauth/providers", get(api::oauth::list_providers))
-            .route(
-                "/api/auth/oauth/{slug}/login",
-                get(api::oauth::provider_login),
-            )
-            .route(
-                "/api/auth/oauth/{slug}/callback",
-                get(api::oauth::provider_callback),
-            )
-            .route(
-                "/api/auth/oauth/{slug}/link",
-                get(api::oauth::provider_link)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route(
-                "/api/auth/oauth/{slug}/unlink/{identity_id}",
-                axum::routing::delete(api::oauth::provider_unlink)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route(
-                "/api/auth/identities",
-                get(api::oauth::list_my_identities)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            // ↓ 兼容层：旧 GitHub 路由 302 重定向到新通用路由
-            .route("/api/auth/github/login", get(api::auth::github_login))
-            .route("/api/auth/github/callback", get(api::auth::github_callback))
-            .route(
-                "/api/auth/github/link",
-                get(api::auth::github_link).route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/auth/link-github",

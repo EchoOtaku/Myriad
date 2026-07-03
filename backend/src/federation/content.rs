@@ -80,7 +80,16 @@ pub async fn publish_content(
     }
 
     // 获取内容为 AP 对象
-    let ap_object = build_ap_object(db, user_id, username, &base_url, &req.content_type, &req.content_id, visibility).await?;
+    let ap_object = build_ap_object(
+        db,
+        user_id,
+        username,
+        &base_url,
+        &req.content_type,
+        &req.content_id,
+        visibility,
+    )
+    .await?;
 
     // 生成 Activity
     let activity_id = generate_activity_id(&base_url);
@@ -395,7 +404,9 @@ async fn build_ap_object(
             // Library 条目 — library_items 表尚未创建，返回明确错误
             Err((
                 StatusCode::NOT_IMPLEMENTED,
-                Json(json!({"error": "Library content publishing is not yet supported (library_items table not available)"})),
+                Json(
+                    json!({"error": "Library content publishing is not yet supported (library_items table not available)"}),
+                ),
             ))
         }
         _ => Err((
@@ -453,16 +464,17 @@ async fn fan_out_to_followers(
 // ==================== 辅助函数 ====================
 
 /// 解析观众列表
-fn resolve_audience(visibility: &str, base_url: &str, username: &str) -> (Vec<String>, Vec<String>) {
+fn resolve_audience(
+    visibility: &str,
+    base_url: &str,
+    username: &str,
+) -> (Vec<String>, Vec<String>) {
     match visibility {
         "public" => (
             vec![AP_PUBLIC.to_string()],
             vec![followers_url(base_url, username)],
         ),
-        "followers" => (
-            vec![followers_url(base_url, username)],
-            vec![],
-        ),
+        "followers" => (vec![followers_url(base_url, username)], vec![]),
         _ => (vec![], vec![]),
     }
 }

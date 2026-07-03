@@ -75,3 +75,4 @@ out/
 /state/
 /backups/
 /pgdata/
+/.dev-updater/

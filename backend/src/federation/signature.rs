@@ -150,11 +150,7 @@ pub fn verify_signature(
 
     for header_name in &parsed.headers {
         let part = if header_name == "(request-target)" {
-            format!(
-                "(request-target): {} {}",
-                method.to_lowercase(),
-                path
-            )
+            format!("(request-target): {} {}", method.to_lowercase(), path)
         } else {
             let value = headers
                 .get(header_name.as_str())
@@ -269,8 +265,7 @@ mod tests {
         headers.insert("digest".to_string(), signed.digest.unwrap());
 
         let pem = kp.public_key_pem().unwrap();
-        let valid =
-            verify_signature(&pem, &parsed, "POST", "/users/bob/inbox", &headers).unwrap();
+        let valid = verify_signature(&pem, &parsed, "POST", "/users/bob/inbox", &headers).unwrap();
         assert!(valid);
     }
 

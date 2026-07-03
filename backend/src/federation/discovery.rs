@@ -3,11 +3,7 @@
 //! WebFinger (RFC 7033) + NodeInfo 2.1 端点
 //! 这些端点不需要认证，是联邦互通的入口。
 
-use axum::{
-    extract::Query,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::Query, http::StatusCode, Json};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde::Deserialize;
 use serde_json::json;
@@ -29,13 +25,12 @@ pub async fn webfinger(
     let resource = &query.resource;
 
     // 解析 acct:username@domain 格式
-    let (username, domain) = parse_acct_uri(resource)
-        .ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid resource format. Expected acct:user@domain"})),
-            )
-        })?;
+    let (username, domain) = parse_acct_uri(resource).ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid resource format. Expected acct:user@domain"})),
+        )
+    })?;
 
     // 获取本实例域名
     let base_url = get_base_url().await;
@@ -50,9 +45,9 @@ pub async fn webfinger(
     }
 
     // 查询本地用户是否存在
-    let db = get_db().await.map_err(|e| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e})))
-    })?;
+    let db = get_db()
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
 
     let user_exists = db
         .query_one(Statement::from_sql_and_values(
@@ -96,14 +91,16 @@ pub async fn webfinger(
         ],
     };
 
-    Ok((StatusCode::OK, Json(serde_json::to_value(response).unwrap())))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::to_value(response).unwrap()),
+    ))
 }
 
 /// GET /.well-known/nodeinfo
 ///
 /// NodeInfo 发现文档 — 告知其他实例 NodeInfo 端点位置
-pub async fn nodeinfo_wellknown(
-) -> (StatusCode, Json<serde_json::Value>) {
+pub async fn nodeinfo_wellknown() -> (StatusCode, Json<serde_json::Value>) {
     let base_url = get_base_url().await;
 
     let response = NodeInfoWellKnown {
@@ -113,7 +110,10 @@ pub async fn nodeinfo_wellknown(
         }],
     };
 
-    (StatusCode::OK, Json(serde_json::to_value(response).unwrap()))
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(response).unwrap()),
+    )
 }
 
 /// GET /nodeinfo/2.1
@@ -121,9 +121,9 @@ pub async fn nodeinfo_wellknown(
 /// NodeInfo 2.1 实例信息 — 公开实例的基本统计和能力
 pub async fn nodeinfo(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db().await.map_err(|e| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e})))
-    })?;
+    let db = get_db()
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
 
     // 查询用户统计
     let (total_users, active_month) = get_user_stats(&db).await.unwrap_or((0, 0));
@@ -160,7 +160,10 @@ pub async fn nodeinfo(
         }),
     };
 
-    Ok((StatusCode::OK, Json(serde_json::to_value(response).unwrap())))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::to_value(response).unwrap()),
+    ))
 }
 
 // ==================== 辅助函数 ====================
@@ -179,15 +182,12 @@ fn parse_acct_uri(resource: &str) -> Option<(String, String)> {
 /// 获取前端 URL
 async fn get_frontend_url() -> String {
     let config = crate::GLOBAL_CONFIG.read().await;
-    config
-        .frontend_url
-        .clone()
-        .unwrap_or_else(|| {
-            config
-                .base_url
-                .clone()
-                .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
-        })
+    config.frontend_url.clone().unwrap_or_else(|| {
+        config
+            .base_url
+            .clone()
+            .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+    })
 }
 
 /// 获取数据库连接
@@ -199,9 +199,7 @@ async fn get_db() -> Result<sea_orm::DatabaseConnection, String> {
 }
 
 /// 查询用户统计
-async fn get_user_stats(
-    db: &sea_orm::DatabaseConnection,
-) -> Result<(u64, u64), sea_orm::DbErr> {
+async fn get_user_stats(db: &sea_orm::DatabaseConnection) -> Result<(u64, u64), sea_orm::DbErr> {
     let total = db
         .query_one(Statement::from_string(
             DatabaseBackend::Postgres,
@@ -224,9 +222,7 @@ async fn get_user_stats(
 }
 
 /// 查询本地发布数
-async fn get_local_post_count(
-    db: &sea_orm::DatabaseConnection,
-) -> Result<u64, sea_orm::DbErr> {
+async fn get_local_post_count(db: &sea_orm::DatabaseConnection) -> Result<u64, sea_orm::DbErr> {
     let count = db
         .query_one(Statement::from_string(
             DatabaseBackend::Postgres,

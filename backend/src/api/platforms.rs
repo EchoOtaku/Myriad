@@ -11,6 +11,7 @@ fn get_platform_description(name: &str) -> &'static str {
         "bilibili" => "Track your favorites, bangumi, and viewing history",
         "steam" => "Sync your game library and wishlist",
         "netease_music" => "Analyze your music taste and playlists",
+        "bangumi" => "Sync your Bangumi collection, ratings, and watching status",
         _ => "Connect and sync your data",
     }
 }
@@ -23,18 +24,32 @@ pub async fn list_platforms(State(db): State<DatabaseConnection>) -> (StatusCode
         .await
     {
         Ok(platform_list) => {
-            let platforms: Vec<Value> = platform_list
-                .into_iter()
+            let has_bangumi = platform_list.iter().any(|p| p.name == "bangumi");
+            let fallback_bangumi_id =
+                platform_list.iter().map(|p| p.id).max().unwrap_or_default() + 1;
+
+            let mut platforms: Vec<Value> = platform_list
+                .iter()
                 .map(|p| {
                     json!({
                         "id": p.id,
                         "name": p.display_name,
                         "enabled": p.enabled.unwrap_or(false),
-                        "icon": p.icon.unwrap_or_else(|| p.name.clone()),
+                        "icon": p.icon.as_ref().unwrap_or(&p.name),
                         "description": get_platform_description(&p.name),
                     })
                 })
                 .collect();
+
+            if !has_bangumi {
+                platforms.push(json!({
+                    "id": fallback_bangumi_id,
+                    "name": "Bangumi",
+                    "enabled": false,
+                    "icon": "bangumi",
+                    "description": get_platform_description("bangumi"),
+                }));
+            }
 
             (StatusCode::OK, Json(json!({ "platforms": platforms })))
         }
@@ -69,6 +84,13 @@ pub async fn list_platforms(State(db): State<DatabaseConnection>) -> (StatusCode
                     "enabled": false,
                     "icon": "netease",
                     "description": "Analyze your music taste and playlists",
+                }),
+                json!({
+                    "id": 5,
+                    "name": "Bangumi",
+                    "enabled": false,
+                    "icon": "bangumi",
+                    "description": "Sync your Bangumi collection, ratings, and watching status",
                 }),
             ];
             (StatusCode::OK, Json(json!({ "platforms": platforms })))

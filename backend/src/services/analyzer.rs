@@ -162,8 +162,7 @@ impl AiAnalyzer {
                 2. Notable highlights\n\
                 3. Actionable insights\n\n\
                 Data:\n{}",
-                system_prompt,
-                truncated
+                system_prompt, truncated
             )
         };
 
@@ -434,7 +433,11 @@ impl AiAnalyzer {
                 if !response.status().is_success() {
                     let status = response.status();
                     let error_text = response.text().await.unwrap_or_default();
-                    return Err(anyhow::anyhow!("Gemini streaming API error {}: {}", status, error_text));
+                    return Err(anyhow::anyhow!(
+                        "Gemini streaming API error {}: {}",
+                        status,
+                        error_text
+                    ));
                 }
 
                 let mut buffer = String::new();
@@ -487,7 +490,10 @@ impl AiAnalyzer {
                     stream: true,
                 };
 
-                let base_url = self.base_url.as_deref().unwrap_or("https://api.openai.com/v1");
+                let base_url = self
+                    .base_url
+                    .as_deref()
+                    .unwrap_or("https://api.openai.com/v1");
                 let url = if base_url.ends_with("/chat/completions") {
                     base_url.to_string()
                 } else if base_url.ends_with('/') {
@@ -509,7 +515,11 @@ impl AiAnalyzer {
                 if !response.status().is_success() {
                     let status = response.status();
                     let error_text = response.text().await.unwrap_or_default();
-                    return Err(anyhow::anyhow!("OpenAI streaming API error {}: {}", status, error_text));
+                    return Err(anyhow::anyhow!(
+                        "OpenAI streaming API error {}: {}",
+                        status,
+                        error_text
+                    ));
                 }
 
                 let mut buffer = String::new();

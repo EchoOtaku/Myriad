@@ -37,14 +37,19 @@ pub async fn register_shortcut(
 
     tracing::info!(
         "[TAPP] register_shortcut - User: {}, Tapp: {}, Keys: {}",
-        claims.username, req.tapp_id, req.keys
+        claims.username,
+        req.tapp_id,
+        req.keys
     );
 
     use crate::models::entities::tapp_storage;
     use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, Set};
 
     if !validate_shortcut_keys(&req.keys) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": "Invalid shortcut key format" }))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid shortcut key format" })),
+        ));
     }
 
     let now = chrono::Utc::now().fixed_offset();
@@ -68,7 +73,10 @@ pub async fn register_shortcut(
         .all(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     for item in existing {
@@ -78,7 +86,9 @@ pub async fn register_shortcut(
                     if id != req.shortcut_id {
                         return Err((
                             StatusCode::CONFLICT,
-                            Json(json!({ "error": "Shortcut key conflict", "conflicting_shortcut": id })),
+                            Json(
+                                json!({ "error": "Shortcut key conflict", "conflicting_shortcut": id }),
+                            ),
                         ));
                     }
                 }
@@ -94,7 +104,10 @@ pub async fn register_shortcut(
         .one(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     if let Some(existing_item) = existing_item {
@@ -102,7 +115,10 @@ pub async fn register_shortcut(
         active.value = Set(shortcut_data.clone());
         active.updated_at = Set(now);
         active.update(&db).await.map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to update shortcut" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to update shortcut" })),
+            )
         })?;
     } else {
         let storage = tapp_storage::ActiveModel {
@@ -115,7 +131,10 @@ pub async fn register_shortcut(
             updated_at: Set(now),
         };
         storage.insert(&db).await.map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to register shortcut" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to register shortcut" })),
+            )
         })?;
     }
 
@@ -130,13 +149,18 @@ pub async fn unregister_shortcut(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::info!(
         "[TAPP] unregister_shortcut - User: {}, Tapp: {}, ID: {}",
-        claims.username, tapp_id, shortcut_id
+        claims.username,
+        tapp_id,
+        shortcut_id
     );
 
     use crate::models::entities::tapp_storage;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let storage_key = format!("_shortcut:{}", shortcut_id);
@@ -148,14 +172,22 @@ pub async fn unregister_shortcut(
         .exec(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to unregister shortcut" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to unregister shortcut" })),
+            )
         })?;
 
     if result.rows_affected == 0 {
-        return Err((StatusCode::NOT_FOUND, Json(json!({ "error": "Shortcut not found" }))));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Shortcut not found" })),
+        ));
     }
 
-    Ok(Json(json!({ "success": true, "unregistered": shortcut_id })))
+    Ok(Json(
+        json!({ "success": true, "unregistered": shortcut_id }),
+    ))
 }
 
 /// GET /api/tapp/shortcuts
@@ -169,7 +201,10 @@ pub async fn list_shortcuts(
     use crate::models::entities::tapp_storage;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let mut query = tapp_storage::Entity::find()
@@ -185,7 +220,10 @@ pub async fn list_shortcuts(
         .all(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     let shortcuts: Vec<Value> = items.into_iter().map(|item| item.value).collect();
@@ -211,7 +249,23 @@ fn validate_shortcut_keys(keys: &str) -> bool {
         if i == parts.len() - 1 {
             if lower.len() == 1
                 || lower.starts_with('f') && lower.len() <= 3
-                || ["enter", "escape", "space", "tab", "backspace", "delete", "up", "down", "left", "right", "home", "end", "pageup", "pagedown"].contains(&lower.as_str())
+                || [
+                    "enter",
+                    "escape",
+                    "space",
+                    "tab",
+                    "backspace",
+                    "delete",
+                    "up",
+                    "down",
+                    "left",
+                    "right",
+                    "home",
+                    "end",
+                    "pageup",
+                    "pagedown",
+                ]
+                .contains(&lower.as_str())
             {
                 has_key = true;
             }

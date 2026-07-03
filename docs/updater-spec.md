@@ -1,7 +1,12 @@
 # Myriad Updater Spec
 
-> 自托管 Myriad 实例的"维护模式 + 单运行槽 + 版本槽位"更新系统设计规范。
+> 自托管 Myriad 实例的"维护模式 + 单运行槽 + 版本标签 + 数据快照"更新系统设计规范。
 > 本文档是 updater / proxy / release 流水线之间的契约，所有实现必须以此为准。
+
+**重要边界**：Myriad updater 不是双活 A/B 分区系统。运行时始终只有一套
+`backend` / `frontend` / `postgres` 业务容器；updater 只在维护模式下停止业务容器、
+创建 `pgdata` 快照、切换 `.env` 中的镜像 tag，然后启动新版本。回滚依赖快照和旧
+tag，而不是并行保留 A/B 两套在线分区。
 
 ## 0. 设计原则
 
@@ -30,15 +35,15 @@
 ┌──────────────────────────────────────────────────────┐
 │ 用户宿主机 (docker compose)                           │
 │                                                        │
-│   proxy ─┬─► frontend                                  │
-│          └─► backend ─► postgres                       │
+│   proxy (only published port) ─┬─► frontend            │
+│                                └─► backend ─► postgres │
 │                                                        │
-│   updater (mounts docker.sock + pgdata path + state)  │
+│   updater (internal; docker.sock + pgdata + state)     │
 └──────────────────────────────────────────────────────┘
 ```
 
 - `proxy`：唯一对外暴露端口的组件，负责维护页与反向代理。极少更新。
-- `updater`:接收更新指令，执行更新/回滚流程。拥有 docker.sock。
+- `updater`：接收更新指令，执行更新/回滚流程。拥有 docker.sock。
 - `backend` / `frontend`：业务组件，由 updater 拉取并启停。
 - `postgres`：数据存储。更新前后由 updater 做文件级快照。
 
@@ -157,16 +162,30 @@ services:
 
   updater:
     image: <registry>/myriad-updater:${UPDATER_TAG}
-    env_file: .env.updater
+    environment:
+      UPDATE_TOKEN: ${UPDATE_TOKEN}
+      CHANNEL: ${CHANNEL:-stable}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
+      UPDATER_ENV_FILE: /host/compose/.env
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
+      MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./pgdata:/host/pgdata
       - ./state:/state
       - ./backups:/backups
-      - ./.env:/host/.env
-      - .:/host/compose
-    network_mode: host
+      - ./:/host/compose
+    networks: [myriad-net]
+
+networks:
+  myriad-net:
+    name: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
 ```
+
+当前仓库的 `docker-compose.yml` 使用单个宿主 `.env` 作为部署契约。它同时保存业务
+镜像 tag、数据库/JWT 配置，以及 updater 所需的 token/channel。updater 只改写
+`MYRIAD_TAG` / `PROXY_TAG` / `UPDATER_TAG` 和 release 声明的新 env key。
 
 `.env` 必须包含：
 
@@ -175,15 +194,11 @@ MYRIAD_TAG=v1.2.3
 PROXY_TAG=v1.0.0
 UPDATER_TAG=v0.3.0
 COMPOSE_PROJECT_NAME=myriad
-```
-
-`.env.updater`（**独立文件**，token 等敏感信息）：
-
-```
 UPDATE_TOKEN=<32+ char random>
 CHANNEL=stable
 GITHUB_TOKEN=    # 可选，提升 rate limit
 REGISTRY_MIRROR= # 可选
+# MYRIAD_DOCKER_NETWORK=myriad-net # 可选；默认固定 Docker 网络名
 ```
 
 ## 6. 状态持久化
@@ -350,8 +365,9 @@ docker-compose (v1)   ← fallback
 
 ### 10.4 容器名/项目名
 
-- 固定 `COMPOSE_PROJECT_NAME=myriad`
-- 所有 docker 命令带 `-p myriad`
+- 默认 `COMPOSE_PROJECT_NAME=myriad`
+- 所有 docker compose 命令带 `-p <COMPOSE_PROJECT_NAME>`
+- Docker 网络显式命名为 `MYRIAD_DOCKER_NETWORK`，默认 `myriad-net`
 
 ### 10.5 rootless/podman
 
@@ -615,16 +631,16 @@ E2E 实际覆盖（10 项 / 全过，2026-05-17）：
 - rootless docker
 - 离线包
 
-## 19. 当前部署的迁移路径
+## 19. 当前部署基线
 
-现有 Myriad 部署需要的一次性改造：
+当前仓库只保留 proxy + updater 生产布局：
 
-1. `postgres_data` named volume → `./pgdata` bind mount（迁移脚本：`docker run` busybox 拷数据）
-2. `.env` 加入 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME`
-3. compose 文件 image 由 `:latest` → `:${MYRIAD_TAG}`
-4. 加入 `proxy` 服务，端口从 backend/frontend 移到 proxy
-5. 加入 `updater` 服务
-6. 创建 `./state` 和 `./backups` 目录
-7. 生成并写入 `.env.updater`
+1. `pgdata` 使用 `./pgdata` bind mount
+2. `.env` 包含 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME`、`UPDATE_TOKEN`，可选 `MYRIAD_DOCKER_NETWORK`
+3. compose 文件 image 使用 immutable tag 变量，不使用 `:latest`
+4. 只有 `proxy` 暴露宿主端口
+5. `updater`、`backend`、`frontend`、`postgres` 都在 Docker 网络内
+6. `./state` 和 `./backups` 由部署脚本创建
+7. `UPDATE_TOKEN` 保存在同一个 `.env`，不暴露给浏览器
 
-迁移脚本：`scripts/migrate-to-updater.sh`，幂等。
+`scripts/docker/deploy.sh` 和 `scripts/docker/deploy.ps1` 是当前生产布局的 bootstrap 入口。

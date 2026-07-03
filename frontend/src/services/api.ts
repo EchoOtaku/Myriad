@@ -5,8 +5,9 @@
  */
 
 import { getCSRFToken } from '../utils/csrf'
+import { API_URL } from '../config'
 
-const API_BASE = '/api'
+const API_BASE = `${API_URL}/api`
 
 export interface ApiRequestOptions extends RequestInit {
   /** 是否需要认证 */
@@ -63,7 +64,7 @@ async function request<T>(
   options: ApiRequestOptions = {},
 ): Promise<T> {
   const {
-    _requireAuth = false,
+    requireAuth: _requireAuth = false,
     timeout = 30000,
     params,
     ...fetchOptions

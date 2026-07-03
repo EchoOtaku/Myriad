@@ -62,7 +62,9 @@ fn validate_subscribe_url(url: &str) -> Result<(), String> {
     }
 
     // 解析 IP 并阻止内网地址
-    let port = parsed.port().unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
+    let port = parsed
+        .port()
+        .unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
     let addr_str = format!("{}:{}", host, port);
     if let Ok(addrs) = addr_str.to_socket_addrs() {
         for addr in addrs {
@@ -146,9 +148,12 @@ async fn execute_platform_write(params: &HashMap<String, Value>) -> Result<Value
     }
 
     // 写入文件
-    tokio::fs::write(&cache_file, serde_json::to_string_pretty(&data).unwrap_or_else(|_| data.to_string()))
-        .await
-        .map_err(|e| format!("Failed to write data: {}", e))?;
+    tokio::fs::write(
+        &cache_file,
+        serde_json::to_string_pretty(&data).unwrap_or_else(|_| data.to_string()),
+    )
+    .await
+    .map_err(|e| format!("Failed to write data: {}", e))?;
 
     Ok(json!({
         "success": true,
@@ -194,7 +199,10 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
         }
     }
 
-    let submitted = results.iter().filter(|r| r["status"] == "submitted").count();
+    let submitted = results
+        .iter()
+        .filter(|r| r["status"] == "submitted")
+        .count();
     Ok(json!({
         "success": submitted > 0,
         "message": crate::services::agent::response_agent::refresh_submitted_summary(submitted, platforms_to_refresh.len()),
@@ -390,7 +398,7 @@ async fn execute_brew_subscribe(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     let user_id = ctx.user_id;
-    
+
     // 调试：打印收到的参数
     tracing::debug!(
         params_keys = ?params.keys().collect::<Vec<_>>(),
@@ -621,10 +629,7 @@ async fn execute_brew_subscribe(
     }
 
     // 所有 URL 都失败了
-    Err(crate::services::agent::response_agent::subscribe_all_failed(
-        tried_urls.len(),
-        &last_error,
-    ))
+    Err(crate::services::agent::response_agent::subscribe_all_failed(tried_urls.len(), &last_error))
 }
 
 /// 从 feeds 数组中提取并排序 URL

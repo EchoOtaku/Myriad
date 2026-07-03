@@ -1,26 +1,20 @@
 # Frontend Dockerfile - Multi-stage build
 ARG NODE_VERSION=22
-ARG PNPM_VERSION=9.15.9
-ARG PACKAGE_MANAGER=pnpm
+ARG PNPM_VERSION=10.28.2
 FROM node:${NODE_VERSION}-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
-COPY frontend/package.json frontend/pnpm-lock.yaml* frontend/package-lock.json* ./
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
 
 # Disable husky in Docker (no .git directory)
 ENV HUSKY=0
 
-# Install dependencies (use npm install if lock file doesn't exist)
+# Install dependencies. pnpm is the canonical frontend package manager.
 ARG PNPM_VERSION
-ARG PACKAGE_MANAGER
-RUN if [ "$PACKAGE_MANAGER" = "pnpm" ]; then \
-      corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate && \
-      if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi; \
-    else \
-      if [ -f package-lock.json ]; then npm ci; else npm install; fi; \
-    fi
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate && \
+    pnpm install --frozen-lockfile
 
 # Copy source code and config
 COPY frontend/ ./
@@ -35,7 +29,7 @@ ARG MYRIAD_VERSION=v0.0.0-dev
 ENV PUBLIC_MYRIAD_VERSION=${MYRIAD_VERSION}
 
 # Build the application
-RUN if [ "$PACKAGE_MANAGER" = "pnpm" ]; then pnpm run build; else npm run build; fi
+RUN pnpm run build
 
 # Runtime stage - lightweight server
 FROM node:${NODE_VERSION}-alpine

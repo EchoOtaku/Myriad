@@ -69,17 +69,19 @@ pub fn validate_and_convert_steps(
                         }
                     }
                     // 增加 count
-                    let current_count = first.params.get("count")
+                    let current_count = first
+                        .params
+                        .get("count")
                         .and_then(|v| v.as_u64())
                         .unwrap_or(1);
-                    first.params.insert("count".to_string(), serde_json::json!(current_count + 1));
-                }
-                else {
+                    first
+                        .params
+                        .insert("count".to_string(), serde_json::json!(current_count + 1));
+                } else {
                     seen_skills.insert(step.capability_id.clone(), deduped.len());
                     deduped.push(step);
                 }
-            }
-            else {
+            } else {
                 deduped.push(step);
             }
         }
@@ -270,7 +272,12 @@ mod tests {
             id: id.to_string(),
             capability_id: cap.to_string(),
             action: "test".to_string(),
-            params: params.as_object().cloned().unwrap_or_default().into_iter().collect(),
+            params: params
+                .as_object()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
             depends_on: vec![],
             on_failure: "abort".to_string(),
             retry: None,
@@ -297,19 +304,25 @@ mod tests {
             make_ai_step("s2", "ai.analyze", json!({"dataFrom": "s1"})),
         ];
         let result = validate_and_convert_steps(steps, None, &caps).unwrap();
-        assert!(result[1].depends_on.contains(&"s1".to_string()),
-            "s2 should auto-depend on s1 via dataFrom");
+        assert!(
+            result[1].depends_on.contains(&"s1".to_string()),
+            "s2 should auto-depend on s1 via dataFrom"
+        );
     }
 
     #[test]
     fn test_xxxfrom_invalid_reference_warns() {
         let caps = vec![make_cap("ai.analyze")];
-        let steps = vec![
-            make_ai_step("s1", "ai.analyze", json!({"dataFrom": "nonexistent"})),
-        ];
+        let steps = vec![make_ai_step(
+            "s1",
+            "ai.analyze",
+            json!({"dataFrom": "nonexistent"}),
+        )];
         let result = validate_and_convert_steps(steps, None, &caps).unwrap();
-        assert!(result[0].depends_on.is_empty(),
-            "invalid xxxFrom should not add depends_on");
+        assert!(
+            result[0].depends_on.is_empty(),
+            "invalid xxxFrom should not add depends_on"
+        );
     }
 
     #[test]

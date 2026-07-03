@@ -229,7 +229,12 @@ pub fn register(registry: &mut CapabilityRegistry) {
         name: "Tapp 存储操作".to_string(),
         description: "读写 Tapp 应用的键值存储数据".to_string(),
         category: CapabilityCategory::DataWrite,
-        supported_actions: vec![IntentAction::Query, IntentAction::Create, IntentAction::Update, IntentAction::Delete],
+        supported_actions: vec![
+            IntentAction::Query,
+            IntentAction::Create,
+            IntentAction::Update,
+            IntentAction::Delete,
+        ],
         input_schema: json!({
             "type": "object",
             "properties": {
@@ -327,7 +332,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "tapp.understand".to_string(),
         name: "Tapp UI 智能理解".to_string(),
-        description: "使用 AI 分析 Tapp 的 UI 结构，理解每个控件的用途，并根据用户意图生成操作指令序列".to_string(),
+        description:
+            "使用 AI 分析 Tapp 的 UI 结构，理解每个控件的用途，并根据用户意图生成操作指令序列"
+                .to_string(),
         category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Analyze, IntentAction::Execute],
         input_schema: json!({

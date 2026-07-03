@@ -155,6 +155,18 @@ impl ConfigService {
             config.netease_user_id = v.as_str().map(|s| s.to_string());
         }
 
+        if let Some(v) = map.get("bangumi_username") {
+            config.bangumi_username = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("bangumi_access_token") {
+            config.bangumi_access_token = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("bangumi_user_agent") {
+            config.bangumi_user_agent = v.as_str().map(|s| s.to_string());
+        }
+
         // UI 配置
         if let Some(v) = map.get("ui_wallpaper_url") {
             config.ui_wallpaper_url = v.as_str().map(|s| s.to_string());
@@ -271,7 +283,9 @@ impl ConfigService {
             {
                 config.oauth_providers = parsed;
             } else {
-                tracing::warn!("oauth_providers config exists but failed to parse as Vec<OAuthProviderEntry>");
+                tracing::warn!(
+                    "oauth_providers config exists but failed to parse as Vec<OAuthProviderEntry>"
+                );
             }
         }
 

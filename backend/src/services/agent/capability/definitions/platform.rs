@@ -367,13 +367,15 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "netease.searchPlaylist".to_string(),
         name: "搜索网易云歌单".to_string(),
-        description: "搜索网易云音乐歌单，支持关键词搜索（如轻音乐、放松、工作等），返回歌单列表及ID".to_string(),
+        description:
+            "搜索网易云音乐歌单，支持关键词搜索（如轻音乐、放松、工作等），返回歌单列表及ID"
+                .to_string(),
         category: CapabilityCategory::DataRead,
         supported_actions: vec![IntentAction::Query, IntentAction::Recommend],
         input_schema: json!({
             "type": "object",
             "properties": {
-                "keyword": { 
+                "keyword": {
                     "type": "string",
                     "description": "搜索关键词，如：轻音乐、放松、工作、睡眠、纯音乐等"
                 },
@@ -388,7 +390,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         output_schema: json!({
             "type": "object",
             "properties": {
-                "playlists": { 
+                "playlists": {
                     "type": "array",
                     "items": {
                         "type": "object",
@@ -401,7 +403,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
                         }
                     }
                 },
-                "recommendedPlaylistId": { 
+                "recommendedPlaylistId": {
                     "type": "string",
                     "description": "推荐的歌单ID（可直接用于播放）"
                 }

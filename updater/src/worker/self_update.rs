@@ -17,8 +17,8 @@
 
 use std::sync::Arc;
 
-use bollard::container::{Config, CreateContainerOptions, StartContainerOptions};
-use bollard::secret::HostConfig;
+use bollard::models::{ContainerCreateBody, HostConfig};
+use bollard::query_parameters::{CreateContainerOptions, StartContainerOptions};
 use tracing::{info, warn};
 
 use crate::env_file::EnvFile;
@@ -107,7 +107,7 @@ async fn launch_helper(worker: Arc<Worker>, helper_image: &str) -> Result<String
         project = project,
     );
 
-    let container_cfg = Config {
+    let container_cfg = ContainerCreateBody {
         image: Some(helper_image.to_string()),
         entrypoint: Some(vec!["sh".into(), "-c".into()]),
         cmd: Some(vec![script]),
@@ -128,8 +128,8 @@ async fn launch_helper(worker: Arc<Worker>, helper_image: &str) -> Result<String
         .raw()
         .create_container(
             Some(CreateContainerOptions {
-                name: name.clone(),
-                platform: None,
+                name: Some(name.clone()),
+                ..Default::default()
             }),
             container_cfg,
         )
@@ -145,7 +145,7 @@ async fn launch_helper(worker: Arc<Worker>, helper_image: &str) -> Result<String
     worker
         .docker()
         .raw()
-        .start_container(&created.id, None::<StartContainerOptions<String>>)
+        .start_container(&created.id, None::<StartContainerOptions>)
         .await
         .map_err(|e| UpdaterError::Docker(format!("start self-update helper: {e}")))?;
 

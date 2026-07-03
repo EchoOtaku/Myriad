@@ -36,6 +36,7 @@ import { AnimatePresenceShim as AnimatePresence, motionShim as motion } from '@l
 import type { RSSHubConfig, RSSHubQueryParams } from '../../../types/brew'
 import { getCSRFHeaderName, getCSRFToken } from '../../../utils/csrf'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { API_URL } from '../../../config'
 
 import { useI18n } from '../../../contexts/I18nContext'
 
@@ -44,7 +45,7 @@ const TRANSITION_NORMAL = { duration: 0.15 } as const
 const TRANSITION_SLOW = { duration: 0.2 } as const
 
 // API 基础路径
-const API_BASE = '/api/brew'
+const API_BASE = `${API_URL}/api/brew`
 
 // RSSHub 实例类型（统一使用后端类型）
 interface RsshubInstance {

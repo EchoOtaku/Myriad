@@ -6,9 +6,7 @@
 use std::collections::HashMap;
 
 use crate::config::ModelTier;
-use crate::services::agent::capability::{
-    get_capabilities_by_ids, get_compact_index,
-};
+use crate::services::agent::capability::{get_capabilities_by_ids, get_compact_index};
 use crate::services::agent::identity;
 use crate::services::agent::intent::keywords::LanguageDetector;
 use crate::services::agent::memory;
@@ -78,7 +76,9 @@ impl Planner {
         let language = self.language_detector.detect(input);
 
         // 构建 prompt
-        let system_prompt = self.build_system_prompt(request, language, escalation_hint).await;
+        let system_prompt = self
+            .build_system_prompt(request, language, escalation_hint)
+            .await;
         let user_prompt = self.build_user_prompt(request, escalation_hint);
         let full_prompt = format!("{}\n\n---\n\n{}", system_prompt, user_prompt);
 
@@ -188,9 +188,13 @@ impl Planner {
                 let age_tag = chrono::DateTime::parse_from_rfc3339(&m.created_at)
                     .map(|dt| {
                         let days = (chrono::Utc::now() - dt.with_timezone(&chrono::Utc)).num_days();
-                        if days <= 1 { String::new() }
-                        else if days < 30 { format!(" ({}天前)", days) }
-                        else { format!(" ({}个月前)", days / 30) }
+                        if days <= 1 {
+                            String::new()
+                        } else if days < 30 {
+                            format!(" ({}天前)", days)
+                        } else {
+                            format!(" ({}个月前)", days / 30)
+                        }
                     })
                     .unwrap_or_default();
                 // 截断过长的记忆内容，防止上下文爆炸
@@ -238,7 +242,10 @@ impl Planner {
                 ));
             }
             if !lesson_lines.is_empty() {
-                sections.push(format!("## 注意事项（历史教训）\n<lessons>\n{}\n</lessons>", lesson_lines.join("\n")));
+                sections.push(format!(
+                    "## 注意事项（历史教训）\n<lessons>\n{}\n</lessons>",
+                    lesson_lines.join("\n")
+                ));
             }
         }
 
@@ -254,10 +261,7 @@ impl Planner {
             if let Some(ref history) = context.conversation_history {
                 let exec_summary = Self::extract_execution_summary(history);
                 if !exec_summary.is_empty() {
-                    sections.push(format!(
-                        "## 本轮对话执行记录\n{}",
-                        exec_summary
-                    ));
+                    sections.push(format!("## 本轮对话执行记录\n{}", exec_summary));
                 }
             }
         }
@@ -292,10 +296,7 @@ impl Planner {
 
         // 4. 升级提示
         if let Some(hint) = escalation_hint {
-            sections.push(format!(
-                "## 升级上下文\n前次执行结果不满意。{}",
-                hint
-            ));
+            sections.push(format!("## 升级上下文\n前次执行结果不满意。{}", hint));
         }
 
         // 5. 输出格式与规则
@@ -324,7 +325,14 @@ impl Planner {
             if let Some(history) = &context.conversation_history {
                 if !history.is_empty() {
                     prompt.push_str("\n\n<conversation_history>");
-                    for msg in history.iter().rev().take(20).collect::<Vec<_>>().into_iter().rev() {
+                    for msg in history
+                        .iter()
+                        .rev()
+                        .take(20)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                    {
                         prompt.push_str(&format!("\n{}：{}", msg.role, msg.content));
                     }
                     prompt.push_str("\n</conversation_history>");
@@ -358,10 +366,7 @@ impl Planner {
                                 let names: Vec<&str> =
                                     platforms.iter().filter_map(|p| p.as_str()).collect();
                                 if !names.is_empty() {
-                                    prompt.push_str(&format!(
-                                        "\n- 常用平台：{}",
-                                        names.join(", ")
-                                    ));
+                                    prompt.push_str(&format!("\n- 常用平台：{}", names.join(", ")));
                                 }
                             }
                         }
@@ -501,7 +506,12 @@ impl Planner {
         let mut summaries: Vec<String> = Vec::new();
 
         // 仅检查最近 10 条 assistant 消息
-        for msg in history.iter().rev().filter(|m| m.role == "assistant").take(10) {
+        for msg in history
+            .iter()
+            .rev()
+            .filter(|m| m.role == "assistant")
+            .take(10)
+        {
             let content = &msg.content;
             // 检测常见的执行结果标记词
             let has_exec_markers = content.contains("执行")
@@ -515,7 +525,11 @@ impl Planner {
             if has_exec_markers && content.len() > 10 {
                 // 截取摘要（最多 120 字符）
                 let preview: String = content.chars().take(120).collect();
-                let suffix = if content.chars().count() > 120 { "..." } else { "" };
+                let suffix = if content.chars().count() > 120 {
+                    "..."
+                } else {
+                    ""
+                };
                 summaries.push(format!("- {}{}", preview, suffix));
             }
         }

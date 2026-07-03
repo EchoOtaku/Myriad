@@ -2,13 +2,13 @@
 //!
 //! 按能力类别分发执行逻辑
 
+mod ai_process;
 mod data_read;
 mod data_write;
-mod ai_process;
-mod resource_create;
-mod ui_control;
 mod external;
+mod resource_create;
 mod system_op;
+mod ui_control;
 
 use crate::services::agent::types::*;
 use crate::services::analyzer::AiAnalyzer;
@@ -26,8 +26,7 @@ pub struct HandlerContext<'a> {
     pub execution_context: Option<ExecutionContext>,
 }
 
-impl<'a> HandlerContext<'a> {
-}
+impl<'a> HandlerContext<'a> {}
 
 /// 根据能力类别分发执行
 pub async fn execute_capability(
@@ -38,26 +37,18 @@ pub async fn execute_capability(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     match category {
-        CapabilityCategory::DataRead => {
-            data_read::execute(capability_id, params, ctx).await
-        }
-        CapabilityCategory::DataWrite => {
-            data_write::execute(capability_id, params, ctx).await
-        }
+        CapabilityCategory::DataRead => data_read::execute(capability_id, params, ctx).await,
+        CapabilityCategory::DataWrite => data_write::execute(capability_id, params, ctx).await,
         CapabilityCategory::AiProcess => {
             ai_process::execute(capability_id, action, params, ctx).await
         }
         CapabilityCategory::ResourceCreate => {
             resource_create::execute(capability_id, params, ctx).await
         }
-        CapabilityCategory::SystemOp => {
-            system_op::execute(capability_id, params, ctx).await
-        }
+        CapabilityCategory::SystemOp => system_op::execute(capability_id, params, ctx).await,
         CapabilityCategory::ExternalIntegration => {
             external::execute(capability_id, params, ctx).await
         }
-        CapabilityCategory::UiControl => {
-            ui_control::execute(capability_id, params, ctx).await
-        }
+        CapabilityCategory::UiControl => ui_control::execute(capability_id, params, ctx).await,
     }
 }

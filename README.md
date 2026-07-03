@@ -80,11 +80,15 @@ cd Myriad
 
 cp .env.production.example .env
 # 编辑 .env：POSTGRES_PASSWORD / JWT_SECRET / CORS_ORIGINS
+# UPDATE_TOKEN 留空时会由 deploy 脚本生成
 
-docker compose up -d
+bash scripts/docker/deploy.sh up
 ```
 
-打开 `http://localhost:4321`，按引导完成初始化（数据库 + 管理员）。
+打开 `http://localhost`（或 `.env` 中的 `HTTP_PORT`），按引导完成初始化（数据库 + 管理员）。
+
+生产拓扑只有 `proxy` 暴露宿主端口；`backend`、`frontend` 和 `updater` 都在内部网络中。
+更新通过管理员界面的 updater 通道完成，不再手动覆盖 `:latest` 镜像。
 
 ### 本地开发
 
@@ -155,7 +159,9 @@ Myriad/
 - [Tapp 开发](docs/development/TAPP_DEVELOPMENT.md)
 - [构建说明](docs/development/BUILD.md)
 - [API](docs/API.md)
-- [Docker 部署](docs/deployment/DOCKER_DEPLOYMENT.md)
+- [生产部署](docs/deployment/DOCKER_DEPLOYMENT.md)
+- [端口清单](docs/deployment/PORTS.md)
+- [Updater 运维](docs/UPDATER_QUICKSTART.md)
 
 ---
 

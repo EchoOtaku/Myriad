@@ -43,7 +43,8 @@ fn inject_role_identity(
     }
 
     // 2. 注入记忆上下文（对话/分析/推荐类能力，帮助 AI 基于用户历史偏好生成回复）
-    let needs_memory = matches!(capability_id,
+    let needs_memory = matches!(
+        capability_id,
         "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content" | "prompt.generate"
     );
     if needs_memory {
@@ -55,14 +56,18 @@ fn inject_role_identity(
             let with_memory = if existing.is_empty() {
                 format!("参考记忆（仅供参考，不要照搬）：\n{}", mem_ctx)
             } else {
-                format!("{}\n\n参考记忆（仅供参考，不要照搬）：\n{}", existing, mem_ctx)
+                format!(
+                    "{}\n\n参考记忆（仅供参考，不要照搬）：\n{}",
+                    existing, mem_ctx
+                )
             };
             params.insert("systemPrompt".to_string(), Value::String(with_memory));
         }
     }
 
     // 3. 注入对话历史（仅对话/分析类能力需要，纯处理类不注入）
-    let needs_context = matches!(capability_id,
+    let needs_context = matches!(
+        capability_id,
         "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content"
     );
     if needs_context && !params.contains_key("context") {
@@ -76,10 +81,12 @@ fn inject_role_identity(
                     .collect::<Vec<_>>()
                     .into_iter()
                     .rev()
-                    .map(|msg| serde_json::json!({
-                        "role": msg.role,
-                        "content": msg.content,
-                    }))
+                    .map(|msg| {
+                        serde_json::json!({
+                            "role": msg.role,
+                            "content": msg.content,
+                        })
+                    })
                     .collect();
                 params.insert("context".to_string(), Value::Array(ctx_array));
             }
@@ -96,18 +103,18 @@ pub async fn execute(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let analyzer = ctx
-        .ai_analyzer
-        .ok_or("AI analyzer not configured")?;
+    let analyzer = ctx.ai_analyzer.ok_or("AI analyzer not configured")?;
 
     // 注入角色身份上下文到 systemPrompt（如果 Orchestrator 提供了角色 identity）
     let mut params = inject_role_identity(capability_id, params, ctx);
 
     // 🔑 从 __directive (Planner 主 Agent 的具体指令) 和 __user_request 提取上下文
     // 用于补充 AI handler 缺失的具体指令
-    let directive = params.remove(&"__directive".to_string())
+    let directive = params
+        .remove(&"__directive".to_string())
         .and_then(|v| v.as_str().map(String::from));
-    let user_request = params.remove(&"__user_request".to_string())
+    let user_request = params
+        .remove(&"__user_request".to_string())
         .and_then(|v| v.as_str().map(String::from));
 
     // 将主 Agent 指令注入到对应的 handler 参数中
@@ -120,7 +127,9 @@ pub async fn execute(
         "ai.analyze" => execute_ai_analyze(&params, analyzer).await,
         "ai.recommend" => execute_ai_recommend(&params, analyzer).await,
         "ai.chat" => execute_ai_chat(&params, analyzer).await,
-        "ai.webSearch" | "ai.groundingSearch" => execute_gemini_grounding_search_wrapper(&params).await,
+        "ai.webSearch" | "ai.groundingSearch" => {
+            execute_gemini_grounding_search_wrapper(&params).await
+        }
         "brewlia.annotate" => execute_brewlia_annotate(&params, analyzer, ctx).await,
         "brewlia.podcast" => execute_brewlia_podcast(&params, analyzer, ctx).await,
         "speech.tts" => execute_speech_tts(&params).await,
@@ -185,11 +194,23 @@ fn inject_directive_to_params(
         // 不是画面内容。真正的内容通过 titleFrom/descriptionFrom 传入。
         // 仅当没有任何内容参数时才用 directive 兜底。
         "prompt.generate" => {
-            let has_content = params.get("title").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty())
-                || params.get("description").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty())
-                || params.get("summary").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty());
+            let has_content = params
+                .get("title")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| !s.is_empty())
+                || params
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| !s.is_empty())
+                || params
+                    .get("summary")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| !s.is_empty());
             if !has_content {
-                params.insert("description".to_string(), Value::String(directive.to_string()));
+                params.insert(
+                    "description".to_string(),
+                    Value::String(directive.to_string()),
+                );
             }
         }
         _ => {}
@@ -205,7 +226,8 @@ async fn execute_ai_summarize(
     analyzer: &crate::services::analyzer::AiAnalyzer,
 ) -> Result<Value, String> {
     // schema 声明 "content"，兼容历史 key "input"
-    let input = params.get("content")
+    let input = params
+        .get("content")
         .or_else(|| params.get("input"))
         .cloned()
         .unwrap_or(json!(null));
@@ -224,10 +246,7 @@ async fn execute_ai_summarize(
             "要点式总结",
             "请以要点列表形式返回，每个要点一行（使用 - 开头），提取 5-10 个最重要的要点。",
         ),
-        _ => (
-            "简要总结",
-            "请用 2-3 句话概括核心内容，抓住最关键的信息。",
-        ),
+        _ => ("简要总结", "请用 2-3 句话概括核心内容，抓住最关键的信息。"),
     };
 
     let length_hint = match max_length {
@@ -264,7 +283,8 @@ async fn execute_ai_analyze(
     analyzer: &crate::services::analyzer::AiAnalyzer,
 ) -> Result<Value, String> {
     // schema 声明 "data"，兼容历史 key "input"
-    let input = params.get("data")
+    let input = params
+        .get("data")
         .or_else(|| params.get("input"))
         .cloned()
         .unwrap_or(json!(null));
@@ -385,7 +405,11 @@ async fn execute_ai_recommend(
     // 尝试解析 JSON 数组，否则回退到文本
     let recommendations: Value = {
         let arr = extract_json_array_from_text(&result);
-        if arr.is_empty() { json!(result) } else { json!(arr) }
+        if arr.is_empty() {
+            json!(result)
+        } else {
+            json!(arr)
+        }
     };
 
     Ok(json!({
@@ -415,7 +439,14 @@ async fn execute_ai_chat(
 
     if let Some(history) = context {
         // 限制对话历史条数，防止 token 超限和费用滥用
-        for msg in history.iter().rev().take(50).collect::<Vec<_>>().into_iter().rev() {
+        for msg in history
+            .iter()
+            .rev()
+            .take(50)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+        {
             if let (Some(role), Some(content)) = (
                 msg.get("role").and_then(|v| v.as_str()),
                 msg.get("content").and_then(|v| v.as_str()),
@@ -456,7 +487,8 @@ async fn execute_gemini_grounding_search_wrapper(
         .and_then(|v| v.as_u64())
         .unwrap_or(5) as usize;
 
-    let (ai_text, results) = execute_gemini_grounding_search(query, search_type, max_results).await?;
+    let (ai_text, results) =
+        execute_gemini_grounding_search(query, search_type, max_results).await?;
 
     Ok(json!({
         "success": true,
@@ -480,7 +512,15 @@ fn extract_semantic_text(value: &Value) -> String {
 
     // 对象：提取有语义的文本字段
     if let Some(obj) = value.as_object() {
-        let text_keys = ["aiSummary", "analysis", "reply", "summary", "description", "message", "content"];
+        let text_keys = [
+            "aiSummary",
+            "analysis",
+            "reply",
+            "summary",
+            "description",
+            "message",
+            "content",
+        ];
         let mut parts: Vec<String> = Vec::new();
 
         for key in &text_keys {
@@ -496,12 +536,27 @@ fn extract_semantic_text(value: &Value) -> String {
             for item in results.iter().take(10) {
                 let mut item_parts: Vec<String> = Vec::new();
                 for key in &["name", "title"] {
-                    if let Some(v) = item.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                    if let Some(v) = item
+                        .get(key)
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    {
                         item_parts.push(v.to_string());
                     }
                 }
-                for key in &["description", "snippet", "status", "reason", "source", "expectation"] {
-                    if let Some(v) = item.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                for key in &[
+                    "description",
+                    "snippet",
+                    "status",
+                    "reason",
+                    "source",
+                    "expectation",
+                ] {
+                    if let Some(v) = item
+                        .get(key)
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    {
                         item_parts.push(v.to_string());
                     }
                 }
@@ -509,13 +564,17 @@ fn extract_semantic_text(value: &Value) -> String {
                 for arr_key in &["rankings", "hot_topics", "anticipated_characters"] {
                     if let Some(arr) = item.get(arr_key).and_then(|v| v.as_array()) {
                         for entry in arr.iter().take(10) {
-                            let name = entry.get("name")
+                            let name = entry
+                                .get("name")
                                 .or_else(|| entry.get("character"))
-                                .and_then(|v| v.as_str()).unwrap_or("");
-                            let desc = entry.get("status")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let desc = entry
+                                .get("status")
                                 .or_else(|| entry.get("reason"))
                                 .or_else(|| entry.get("expectation"))
-                                .and_then(|v| v.as_str()).unwrap_or("");
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
                             let src = entry.get("source").and_then(|v| v.as_str()).unwrap_or("");
                             if !name.is_empty() {
                                 if !src.is_empty() {
@@ -643,7 +702,10 @@ async fn execute_gemini_grounding_search(
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    tracing::info!("Calling Gemini Grounding Search for query length={}", safe_query.len());
+    tracing::info!(
+        "Calling Gemini Grounding Search for query length={}",
+        safe_query.len()
+    );
 
     let response = client
         .post(&url)
@@ -1021,25 +1083,26 @@ async fn execute_icon_recommend(params: &HashMap<String, Value>) -> Result<Value
         .unwrap_or("");
     let platform_lower = platform_name.to_lowercase();
 
-    let (icon_name, color) = if platform_lower.contains("bilibili") || platform_lower.contains("b站") {
-        ("SiBilibili", "#00A1D6")
-    } else if platform_lower.contains("steam") {
-        ("SiSteam", "#000000")
-    } else if platform_lower.contains("github") {
-        ("SiGithub", "#181717")
-    } else if platform_lower.contains("netease") || platform_lower.contains("网易") {
-        ("SiNeteasecloudmusic", "#C20C0C")
-    } else if platform_lower.contains("twitter") || platform_lower.contains("x") {
-        ("SiX", "#000000")
-    } else if platform_lower.contains("youtube") {
-        ("SiYoutube", "#FF0000")
-    } else if platform_lower.contains("spotify") {
-        ("SiSpotify", "#1DB954")
-    } else if platform_lower.contains("discord") {
-        ("SiDiscord", "#5865F2")
-    } else {
-        ("FaGlobe", "#6B7280")
-    };
+    let (icon_name, color) =
+        if platform_lower.contains("bilibili") || platform_lower.contains("b站") {
+            ("SiBilibili", "#00A1D6")
+        } else if platform_lower.contains("steam") {
+            ("SiSteam", "#000000")
+        } else if platform_lower.contains("github") {
+            ("SiGithub", "#181717")
+        } else if platform_lower.contains("netease") || platform_lower.contains("网易") {
+            ("SiNeteasecloudmusic", "#C20C0C")
+        } else if platform_lower.contains("twitter") || platform_lower.contains("x") {
+            ("SiX", "#000000")
+        } else if platform_lower.contains("youtube") {
+            ("SiYoutube", "#FF0000")
+        } else if platform_lower.contains("spotify") {
+            ("SiSpotify", "#1DB954")
+        } else if platform_lower.contains("discord") {
+            ("SiDiscord", "#5865F2")
+        } else {
+            ("FaGlobe", "#6B7280")
+        };
 
     Ok(json!({
         "platformName": platform_name,
@@ -1055,14 +1118,19 @@ async fn execute_prompt_generate(
 ) -> Result<Value, String> {
     let title = params.get("title").and_then(|v| v.as_str()).unwrap_or("");
     let summary = params.get("summary").and_then(|v| v.as_str()).unwrap_or("");
-    let description = params.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let description = params
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let category = params.get("category").and_then(|v| v.as_str());
     let style = params.get("style").and_then(|v| v.as_str());
 
     let style_hint = match style {
         Some(s) => format!("Preferred style: {}", s),
         None => match category {
-            Some("anime") => "Preferred style: high quality anime illustration, anime key visual".to_string(),
+            Some("anime") => {
+                "Preferred style: high quality anime illustration, anime key visual".to_string()
+            }
             Some("photo") => "Preferred style: photorealistic, 8k UHD, DSLR".to_string(),
             _ => "Preferred style: detailed digital art, high quality".to_string(),
         },
@@ -1212,7 +1280,9 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
         .and_then(|v| {
             v.as_str().map(|s| s.to_string()).or_else(|| {
                 // 如果是对象（如 prompt.generate 的输出），尝试提取 .prompt 字段
-                v.get("prompt").and_then(|inner| inner.as_str()).map(|s| s.to_string())
+                v.get("prompt")
+                    .and_then(|inner| inner.as_str())
+                    .map(|s| s.to_string())
             })
         })
         .ok_or("Missing prompt parameter")?;
@@ -1288,10 +1358,7 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
             });
             if let Some(ref neg) = negative_prompt {
                 if let Some(obj) = pixai_params.as_object_mut() {
-                    obj.insert(
-                        "negativePrompt".to_string(),
-                        Value::String(neg.clone()),
-                    );
+                    obj.insert("negativePrompt".to_string(), Value::String(neg.clone()));
                 }
             }
             let response = client
@@ -1316,8 +1383,10 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
                 .await
                 .map_err(|e| format!("Failed to parse PixAI response: {}", e))?;
 
-            tracing::info!("[ai.image] PixAI create task response: {}",
-                serde_json::to_string(&raw_result).unwrap_or_default());
+            tracing::info!(
+                "[ai.image] PixAI create task response: {}",
+                serde_json::to_string(&raw_result).unwrap_or_default()
+            );
 
             // PixAI 可能返回 GraphQL 格式 {"data": {"task": {...}}} 或 REST 格式 {...}
             let result = raw_result
@@ -1366,7 +1435,11 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
                 };
 
                 if !status_resp.status().is_success() {
-                    tracing::warn!("[ai.image] PixAI poll #{} HTTP {}", attempt, status_resp.status());
+                    tracing::warn!(
+                        "[ai.image] PixAI poll #{} HTTP {}",
+                        attempt,
+                        status_resp.status()
+                    );
                     continue;
                 }
 
@@ -1387,21 +1460,28 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown");
 
-                tracing::debug!("[ai.image] PixAI poll #{}: status={}, raw: {}",
-                    attempt, status,
-                    serde_json::to_string(&raw_data).unwrap_or_default());
+                tracing::debug!(
+                    "[ai.image] PixAI poll #{}: status={}, raw: {}",
+                    attempt,
+                    status,
+                    serde_json::to_string(&raw_data).unwrap_or_default()
+                );
 
                 match status {
                     "completed" => {
                         // 记录完整响应以便调试
-                        tracing::info!("[ai.image] PixAI task completed, full response: {}",
-                            serde_json::to_string(&task_data).unwrap_or_default());
+                        tracing::info!(
+                            "[ai.image] PixAI task completed, full response: {}",
+                            serde_json::to_string(&task_data).unwrap_or_default()
+                        );
 
                         // 从响应中提取图片 URL，尝试多种字段路径
                         let image_url = extract_pixai_image_url(&task_data);
 
                         if image_url.is_empty() {
-                            tracing::warn!("[ai.image] PixAI completed but could not extract image URL");
+                            tracing::warn!(
+                                "[ai.image] PixAI completed but could not extract image URL"
+                            );
                             // 返回任务数据让前端自行处理
                             return Ok(json!({
                                 "provider": "pixai",

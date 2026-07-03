@@ -46,15 +46,24 @@ pub async fn register_component(
 
     tracing::info!(
         "[TAPP] register_component - User: {}, Tapp: {}, Type: {}",
-        claims.username, req.tapp_id, type_str
+        claims.username,
+        req.tapp_id,
+        type_str
     );
 
     use crate::models::entities::tapp_storage;
     use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, Set};
 
-    let component_id = req.config.get("id").and_then(|v| v.as_str()).ok_or_else(|| {
-        (StatusCode::BAD_REQUEST, Json(json!({ "error": "Component config must include 'id'" })))
-    })?;
+    let component_id = req
+        .config
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Component config must include 'id'" })),
+            )
+        })?;
 
     let now = chrono::Utc::now().fixed_offset();
     let storage_key = format!("_component:{}:{}", type_str, component_id);
@@ -75,7 +84,10 @@ pub async fn register_component(
         .one(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     if let Some(existing) = existing {
@@ -83,7 +95,10 @@ pub async fn register_component(
         active.value = Set(component_data.clone());
         active.updated_at = Set(now);
         active.update(&db).await.map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to update component" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to update component" })),
+            )
         })?;
     } else {
         let storage = tapp_storage::ActiveModel {
@@ -96,7 +111,10 @@ pub async fn register_component(
             updated_at: Set(now),
         };
         storage.insert(&db).await.map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to register component" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to register component" })),
+            )
         })?;
     }
 
@@ -119,13 +137,19 @@ pub async fn unregister_component(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::info!(
         "[TAPP] unregister_component - User: {}, Tapp: {}, Type: {}, ID: {}",
-        claims.username, tapp_id, component_type, component_id
+        claims.username,
+        tapp_id,
+        component_type,
+        component_id
     );
 
     use crate::models::entities::tapp_storage;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let storage_key = format!("_component:{}:{}", component_type, component_id);
@@ -137,11 +161,17 @@ pub async fn unregister_component(
         .exec(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to unregister component" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to unregister component" })),
+            )
         })?;
 
     if result.rows_affected == 0 {
-        return Err((StatusCode::NOT_FOUND, Json(json!({ "error": "Component not found" }))));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Component not found" })),
+        ));
     }
 
     Ok(Json(json!({
@@ -157,12 +187,19 @@ pub async fn list_components(
     Path(tapp_id): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    tracing::debug!("[TAPP] list_components - User: {}, Tapp: {}", claims.username, tapp_id);
+    tracing::debug!(
+        "[TAPP] list_components - User: {}, Tapp: {}",
+        claims.username,
+        tapp_id
+    );
 
     use crate::models::entities::tapp_storage;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let type_filter = params.get("type");
@@ -180,7 +217,10 @@ pub async fn list_components(
         .all(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     let components: Vec<Value> = items.into_iter().map(|item| item.value).collect();
@@ -196,13 +236,17 @@ pub async fn list_all_components_by_type(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!(
         "[TAPP] list_all_components_by_type - User: {}, Type: {}",
-        claims.username, component_type
+        claims.username,
+        component_type
     );
 
     use crate::models::entities::tapp_storage;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let key_prefix = format!("_component:{}:", component_type);
@@ -214,10 +258,15 @@ pub async fn list_all_components_by_type(
         .all(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     let components: Vec<Value> = items.into_iter().map(|item| item.value).collect();
 
-    Ok(Json(json!({ "success": true, "type": component_type, "components": components })))
+    Ok(Json(
+        json!({ "success": true, "type": component_type, "components": components }),
+    ))
 }

@@ -32,7 +32,9 @@ pub async fn publish_event(
 
     tracing::info!(
         "[TAPP] publish_event - User: {}, Tapp: {}, Event: {}",
-        claims.username, req.tapp_id, req.event_type
+        claims.username,
+        req.tapp_id,
+        req.event_type
     );
 
     let event_id = format!("evt_{}_{}", req.event_type, uuid::Uuid::new_v4());
@@ -59,13 +61,17 @@ pub async fn get_event_subscriptions(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!(
         "[TAPP] get_event_subscriptions - User: {}, Tapp: {}",
-        claims.username, tapp_id
+        claims.username,
+        tapp_id
     );
 
     use crate::models::entities::tapp_storage;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let item = tapp_storage::Entity::find()
@@ -75,12 +81,17 @@ pub async fn get_event_subscriptions(
         .one(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     let subscriptions = item.map(|i| i.value).unwrap_or_else(|| json!([]));
 
-    Ok(Json(json!({ "success": true, "tappId": tapp_id, "subscriptions": subscriptions })))
+    Ok(Json(
+        json!({ "success": true, "tappId": tapp_id, "subscriptions": subscriptions }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,14 +108,19 @@ pub async fn update_event_subscriptions(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::info!(
         "[TAPP] update_event_subscriptions - User: {}, Tapp: {}, Count: {}",
-        claims.username, tapp_id, req.subscriptions.len()
+        claims.username,
+        tapp_id,
+        req.subscriptions.len()
     );
 
     use crate::models::entities::tapp_storage;
     use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, Set};
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid user" })))
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
     })?;
 
     let now = chrono::Utc::now().fixed_offset();
@@ -117,7 +133,10 @@ pub async fn update_event_subscriptions(
         .one(&db)
         .await
         .map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
         })?;
 
     let subscriptions_value = json!(req.subscriptions);
@@ -127,7 +146,10 @@ pub async fn update_event_subscriptions(
         active.value = Set(subscriptions_value);
         active.updated_at = Set(now);
         active.update(&db).await.map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to update subscriptions" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to update subscriptions" })),
+            )
         })?;
     } else {
         let storage = tapp_storage::ActiveModel {
@@ -140,9 +162,14 @@ pub async fn update_event_subscriptions(
             updated_at: Set(now),
         };
         storage.insert(&db).await.map_err(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to save subscriptions" })))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to save subscriptions" })),
+            )
         })?;
     }
 
-    Ok(Json(json!({ "success": true, "tappId": tapp_id, "subscriptions": req.subscriptions })))
+    Ok(Json(
+        json!({ "success": true, "tappId": tapp_id, "subscriptions": req.subscriptions }),
+    ))
 }

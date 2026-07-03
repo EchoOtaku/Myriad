@@ -34,6 +34,6 @@ pub mod room;
 pub mod ring;
 
 // Phase 5 补全: 安全增强 + 文件传输 + E2E 加密
-pub mod trust;
 pub mod e2e;
 pub mod file_transfer;
+pub mod trust;

@@ -17,7 +17,7 @@ pub fn truncate_str(s: &str, max_bytes: usize) -> &str {
 }
 
 /// 支持的平台名称列表
-pub const VALID_PLATFORMS: &[&str] = &["steam", "bilibili", "github", "netease"];
+pub const VALID_PLATFORMS: &[&str] = &["steam", "bilibili", "github", "netease", "bangumi"];
 
 /// 验证平台名称是否在白名单中（含 "all"），返回 Result
 pub fn validate_platform_name(platform: &str) -> Result<&str, String> {
@@ -61,10 +61,12 @@ pub fn levenshtein_similar(a: &str, b: &str) -> bool {
     for i in 1..=m {
         curr[0] = i;
         for j in 1..=n {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1)
-                .min(curr[j - 1] + 1)
-                .min(prev[j - 1] + cost);
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }

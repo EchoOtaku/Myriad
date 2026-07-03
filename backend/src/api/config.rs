@@ -230,6 +230,66 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     required: true,
                 }],
             },
+            PlatformConfig {
+                name: "Bangumi".to_string(),
+                enabled: db_config
+                    .as_ref()
+                    .and_then(|c| c.bangumi_username.as_ref())
+                    .is_some()
+                    || db_config
+                        .as_ref()
+                        .and_then(|c| c.bangumi_access_token.as_ref())
+                        .is_some()
+                    || std::env::var("BANGUMI_USERNAME").is_ok()
+                    || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok(),
+                has_token: db_config
+                    .as_ref()
+                    .and_then(|c| c.bangumi_access_token.as_ref())
+                    .is_some()
+                    || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok(),
+                icon: "".to_string(),
+                description: "Sync your Bangumi collection, ratings, and watching status"
+                    .to_string(),
+                config_fields: vec![
+                    ConfigField {
+                        key: "username".to_string(),
+                        label: "Bangumi Username".to_string(),
+                        field_type: "text".to_string(),
+                        value: get_value(
+                            db_config.as_ref().and_then(|c| c.bangumi_username.clone()),
+                            "BANGUMI_USERNAME",
+                        ),
+                        placeholder: "your Bangumi username".to_string(),
+                        required: false,
+                    },
+                    ConfigField {
+                        key: "access_token".to_string(),
+                        label: "Access Token".to_string(),
+                        field_type: "password".to_string(),
+                        value: mask_sensitive(get_value(
+                            db_config
+                                .as_ref()
+                                .and_then(|c| c.bangumi_access_token.clone()),
+                            "BANGUMI_ACCESS_TOKEN",
+                        )),
+                        placeholder: "Bearer token for private collections".to_string(),
+                        required: false,
+                    },
+                    ConfigField {
+                        key: "user_agent".to_string(),
+                        label: "User-Agent".to_string(),
+                        field_type: "text".to_string(),
+                        value: get_value(
+                            db_config
+                                .as_ref()
+                                .and_then(|c| c.bangumi_user_agent.clone()),
+                            "BANGUMI_USER_AGENT",
+                        ),
+                        placeholder: "haru/Myriad".to_string(),
+                        required: true,
+                    },
+                ],
+            },
         ],
         ai_config: AiConfig {
             provider: db_config
@@ -242,7 +302,8 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                 .as_ref()
                 .map(|c| c.gemini_model.clone())
                 .unwrap_or_else(|| {
-                    std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3-flash-preview".to_string())
+                    std::env::var("GEMINI_MODEL")
+                        .unwrap_or_else(|_| "gemini-3-flash-preview".to_string())
                 }),
             api_key: get_value(
                 db_config.as_ref().and_then(|c| c.gemini_api_key.clone()),
@@ -294,7 +355,9 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                             std::env::var("GEMINI_MODEL")
                                 .unwrap_or_else(|_| "gemini-3-flash-preview".to_string())
                         }),
-                    placeholder: "gemini-3-flash-preview, gemini-3.1-pro-preview, gemini-2.5-flash, etc.".to_string(),
+                    placeholder:
+                        "gemini-3-flash-preview, gemini-3.1-pro-preview, gemini-2.5-flash, etc."
+                            .to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -357,7 +420,8 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .as_ref()
                         .map(|c| c.pro_ai_provider.clone())
                         .unwrap_or_else(|| {
-                            std::env::var("PRO_AI_PROVIDER").unwrap_or_else(|_| "gemini".to_string())
+                            std::env::var("PRO_AI_PROVIDER")
+                                .unwrap_or_else(|_| "gemini".to_string())
                         }),
                     placeholder: "gemini".to_string(),
                     required: true,
@@ -367,10 +431,13 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     label: "【Pro Model】Gemini API Key".to_string(),
                     field_type: "password".to_string(),
                     value: mask_sensitive(get_value(
-                        db_config.as_ref().and_then(|c| c.pro_gemini_api_key.clone()),
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.pro_gemini_api_key.clone()),
                         "PRO_GEMINI_API_KEY",
                     )),
-                    placeholder: "Pro model Gemini API Key (leave empty to reuse standard)".to_string(),
+                    placeholder: "Pro model Gemini API Key (leave empty to reuse standard)"
+                        .to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -392,10 +459,13 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     label: "【Pro Model】OpenAI API Key".to_string(),
                     field_type: "password".to_string(),
                     value: mask_sensitive(get_value(
-                        db_config.as_ref().and_then(|c| c.pro_openai_api_key.clone()),
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.pro_openai_api_key.clone()),
                         "PRO_OPENAI_API_KEY",
                     )),
-                    placeholder: "Pro model OpenAI API Key (leave empty to reuse standard)".to_string(),
+                    placeholder: "Pro model OpenAI API Key (leave empty to reuse standard)"
+                        .to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -423,7 +493,8 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                             std::env::var("PRO_OPENAI_BASE_URL")
                                 .unwrap_or_else(|_| "https://api.openai.com/v1".to_string())
                         }),
-                    placeholder: "https://api.openai.com/v1 (leave empty to reuse standard)".to_string(),
+                    placeholder: "https://api.openai.com/v1 (leave empty to reuse standard)"
+                        .to_string(),
                     required: false,
                 },
                 // AI 图片生成配置
@@ -486,9 +557,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                     label: "PixAI API Key".to_string(),
                     field_type: "password".to_string(),
                     value: mask_sensitive(get_value(
-                        db_config
-                            .as_ref()
-                            .and_then(|c| c.pixai_api_key.clone()),
+                        db_config.as_ref().and_then(|c| c.pixai_api_key.clone()),
                         "PIXAI_API_KEY",
                     )),
                     placeholder: "Get from platform.pixai.art".to_string(),
@@ -841,7 +910,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         db_config.as_ref().and_then(|c| c.site_favicon.clone()),
                         "SITE_FAVICON",
                     ),
-                    placeholder: "/logo.png 或 https://example.com/icon.png（支持站外链接）"
+                    placeholder: "/favicon.webp 或 https://example.com/icon.png（支持站外链接）"
                         .to_string(),
                     required: false,
                 },
@@ -1143,6 +1212,19 @@ async fn save_to_database(
                     }
                 }
             }
+            "Bangumi" => {
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "username" => "bangumi_username",
+                        "access_token" => "bangumi_access_token",
+                        "user_agent" => "bangumi_user_agent",
+                        _ => continue,
+                    };
+                    if !field.value.is_empty() && !is_masked(&field.value) {
+                        updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -1163,7 +1245,10 @@ async fn save_to_database(
             "pro_gemini_model" => ("pro_gemini_model", JsonValue::String(field.value.clone())),
             "pro_openai_api_key" => ("pro_openai_api_key", JsonValue::String(field.value.clone())),
             "pro_openai_model" => ("pro_openai_model", JsonValue::String(field.value.clone())),
-            "pro_openai_base_url" => ("pro_openai_base_url", JsonValue::String(field.value.clone())),
+            "pro_openai_base_url" => (
+                "pro_openai_base_url",
+                JsonValue::String(field.value.clone()),
+            ),
             // AI 图片生成配置
             "ai_image_provider" => ("ai_image_provider", JsonValue::String(field.value.clone())),
             "ai_image_model" => ("ai_image_model", JsonValue::String(field.value.clone())),
@@ -1353,6 +1438,17 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
                     if field.key == "user_id" {
                         env_content = update_env_var(&env_content, "NETEASE_USER_ID", &field.value);
                     }
+                }
+            }
+            "Bangumi" => {
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "username" => "BANGUMI_USERNAME",
+                        "access_token" => "BANGUMI_ACCESS_TOKEN",
+                        "user_agent" => "BANGUMI_USER_AGENT",
+                        _ => continue,
+                    };
+                    env_content = update_env_var(&env_content, key, &field.value);
                 }
             }
             _ => {}
@@ -1665,6 +1761,55 @@ pub async fn test_platform(
                 ),
             }
         }
+        "Bangumi" => {
+            let username = config["username"].as_str().unwrap_or("");
+            let access_token = config["access_token"]
+                .as_str()
+                .filter(|s| !s.is_empty() && !s.contains('•') && !s.contains('*'));
+            let user_agent = config["user_agent"].as_str().filter(|s| !s.is_empty());
+            if username.is_empty() && access_token.is_none() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(
+                        json!({"success": false, "message": "Username or access token is required"}),
+                    ),
+                );
+            }
+
+            let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
+            let result = if username.is_empty() {
+                fetcher
+                    .fetch_bangumi_me(access_token.unwrap_or_default(), user_agent)
+                    .await
+            } else {
+                fetcher
+                    .fetch_bangumi_user(username, access_token, user_agent)
+                    .await
+            };
+
+            match result {
+                Ok(user_info) => {
+                    let display_name = user_info["nickname"]
+                        .as_str()
+                        .or_else(|| user_info["username"].as_str())
+                        .unwrap_or(username);
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!("✓ Bangumi user '{}' verified", display_name)
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": format!("✗ Failed to verify Bangumi user: {}", e)
+                    })),
+                ),
+            }
+        }
         _ => (
             StatusCode::OK,
             Json(json!({"success": false, "message": "Platform test not implemented yet"})),
@@ -1712,7 +1857,7 @@ pub async fn get_site_metadata(State(db): State<DatabaseConnection>) -> (StatusC
         "site_favicon": get_value(
             db_config.as_ref().and_then(|c| c.site_favicon.clone()),
             "SITE_FAVICON",
-            "/logo.png"
+            "/favicon.webp"
         ),
     });
 
@@ -1823,7 +1968,33 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
                 required: false,
             }],
         },
-        // Pixiv 暂不支持（DynamicConfig 中没有对应字段）
+        PlatformConfig {
+            name: "Bangumi".to_string(),
+            enabled: db_config
+                .as_ref()
+                .and_then(|c| c.bangumi_username.as_ref())
+                .is_some()
+                || db_config
+                    .as_ref()
+                    .and_then(|c| c.bangumi_access_token.as_ref())
+                    .is_some()
+                || std::env::var("BANGUMI_USERNAME").is_ok()
+                || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok(),
+            has_token: false,
+            icon: "".to_string(),
+            description: "".to_string(),
+            config_fields: vec![ConfigField {
+                key: "username".to_string(),
+                label: "".to_string(),
+                field_type: "text".to_string(),
+                value: get_value(
+                    db_config.as_ref().and_then(|c| c.bangumi_username.clone()),
+                    "BANGUMI_USERNAME",
+                ),
+                placeholder: "".to_string(),
+                required: false,
+            }],
+        },
     ];
 
     let response = json!({

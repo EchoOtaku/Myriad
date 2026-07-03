@@ -25,9 +25,9 @@ pub async fn post_inbox(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db().await.map_err(|e| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e})))
-    })?;
+    let db = get_db()
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
 
     // 验证用户存在
     let (user_id, _) = get_local_user(&db, &username).await?;
@@ -40,14 +40,8 @@ pub async fn post_inbox(
         )
     })?;
 
-    let activity_type = activity["type"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    let actor_url_str = activity["actor"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let activity_type = activity["type"].as_str().unwrap_or("").to_string();
+    let actor_url_str = activity["actor"].as_str().unwrap_or("").to_string();
 
     if actor_url_str.is_empty() || activity_type.is_empty() {
         return Err((
@@ -132,9 +126,9 @@ pub async fn post_shared_inbox(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db().await.map_err(|e| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e})))
-    })?;
+    let db = get_db()
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
 
     let activity: serde_json::Value = serde_json::from_slice(&body).map_err(|_| {
         (
@@ -182,7 +176,10 @@ pub async fn post_shared_inbox(
     if matches!(activity_type.as_str(), "Create" | "Announce") {
         let remote = fetch_remote_actor(&db, &actor_url_str).await.map_err(|e| {
             tracing::warn!("Failed to fetch remote actor {}: {}", actor_url_str, e);
-            (StatusCode::BAD_REQUEST, Json(json!({"error": "Unknown actor"})))
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Unknown actor"})),
+            )
         })?;
         distribute_to_followers(&db, remote.id, &activity_type, &activity).await?;
     }
@@ -246,11 +243,7 @@ async fn handle_follow(
     // 入队投递
     enqueue_delivery(db, local_user_id, &accept, &remote.inbox_url).await?;
 
-    tracing::info!(
-        "✅ Follow accepted: {} → {}",
-        actor_url_str,
-        local_username
-    );
+    tracing::info!("✅ Follow accepted: {} → {}", actor_url_str, local_username);
 
     Ok(StatusCode::ACCEPTED)
 }
@@ -288,7 +281,10 @@ async fn handle_accept(
             if result.rows_affected() > 0 {
                 tracing::info!("✅ Channel accepted: {}", channel_id);
             } else {
-                tracing::debug!("Channel accept no-op (not pending or not owner): {}", channel_id);
+                tracing::debug!(
+                    "Channel accept no-op (not pending or not owner): {}",
+                    channel_id
+                );
             }
         }
     } else {
@@ -335,7 +331,11 @@ async fn handle_undo(
             .await
             .map_err(db_err)?;
 
-            tracing::info!("🔓 Follow removed: {} unfollowed user {}", actor_url_str, local_user_id);
+            tracing::info!(
+                "🔓 Follow removed: {} unfollowed user {}",
+                actor_url_str,
+                local_user_id
+            );
         }
         _ => {
             tracing::debug!("Undo for unsupported type: {}", inner_type);
@@ -521,12 +521,14 @@ async fn verify_request_signature(
     let header_map: std::collections::HashMap<String, String> = headers
         .iter()
         .filter_map(|(k, v)| {
-            v.to_str().ok().map(|val| (k.as_str().to_lowercase(), val.to_string()))
+            v.to_str()
+                .ok()
+                .map(|val| (k.as_str().to_lowercase(), val.to_string()))
         })
         .collect();
 
-    let valid = verify_signature(&public_key_pem, &parsed, method, path, &header_map)
-        .map_err(|e| {
+    let valid =
+        verify_signature(&public_key_pem, &parsed, method, path, &header_map).map_err(|e| {
             (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({"error": format!("Signature verification failed: {}", e)})),
@@ -622,7 +624,10 @@ async fn get_local_user(
         .await
         .map_err(db_err)?
         .ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "User not found"})),
+            )
         })?;
 
     Ok((
@@ -644,7 +649,10 @@ async fn get_username_by_id(
         .await
         .map_err(db_err)?
         .ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"})))
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "User not found"})),
+            )
         })?;
 
     Ok(row.try_get("", "username").unwrap_or_default())
@@ -659,7 +667,11 @@ async fn handle_mfp_activity(
     activity_type: &str,
     activity: &serde_json::Value,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    tracing::info!("📬 MFP activity received: type={}, actor={}", activity_type, actor_url_str);
+    tracing::info!(
+        "📬 MFP activity received: type={}, actor={}",
+        activity_type,
+        actor_url_str
+    );
 
     match activity_type {
         "myriad:ChannelOpen" => {

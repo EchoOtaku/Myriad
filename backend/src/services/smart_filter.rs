@@ -45,6 +45,7 @@ pub enum ContentAnalysis {
     Steam(SteamAnalysis),
     GitHub(GitHubAnalysis),
     Netease(NeteaseAnalysis),
+    Bangumi(BangumiAnalysis),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +107,28 @@ pub struct NeteaseAnalysis {
 pub struct SongItem {
     pub title: String,
     pub artist: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BangumiAnalysis {
+    pub collection_summary: String,
+    pub subject_type_distribution: std::collections::HashMap<String, usize>,
+    pub collection_type_distribution: std::collections::HashMap<String, usize>,
+    pub tag_distribution: std::collections::HashMap<String, usize>,
+    pub top_rated_subjects: Vec<BangumiSubjectItem>,
+    pub watching_subjects: Vec<BangumiSubjectItem>,
+    pub recent_updates: Vec<BangumiSubjectItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BangumiSubjectItem {
+    pub subject_id: i64,
+    pub title: String,
+    pub subject_type: String,
+    pub collection_type: String,
+    pub rate: i64,
+    pub cover: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -268,6 +291,17 @@ impl SmartFilter {
             }
         }
 
+        // 5. Process Bangumi
+        if let Some(bangumi_data) = all_data.get("bangumi") {
+            match SmartFilter::filter("bangumi", bangumi_data) {
+                Ok(result) => {
+                    Self::save_platform_cache_atomic("bangumi", &result)?;
+                    processed_count += 1;
+                }
+                Err(e) => tracing::warn!("Bangumi filter failed: {}", e),
+            }
+        }
+
         // Flush unknown content stats to disk
         super::content_databases::learning::flush_unknown_stats();
 
@@ -313,6 +347,7 @@ impl SmartFilter {
             "steam" => Self::filter_steam(raw_data),
             "github" => Self::filter_github(raw_data),
             "netease" => Self::filter_netease(raw_data),
+            "bangumi" => Self::filter_bangumi(raw_data),
             _ => Err(format!("Unsupported platform: {}", platform)),
         }
     }
@@ -763,6 +798,179 @@ impl SmartFilter {
         })
     }
 
+    fn filter_bangumi(data: &Value) -> Result<SmartFilteredData, String> {
+        let user = data.get("user");
+        let collections = data
+            .get("collections")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let user_summary = UserSummary {
+            username: user
+                .and_then(|u| u.get("nickname"))
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    user.and_then(|u| u.get("username"))
+                        .and_then(|v| v.as_str())
+                })
+                .unwrap_or("Bangumi 用户")
+                .to_string(),
+            user_id: user
+                .and_then(|u| u.get("id"))
+                .and_then(|v| v.as_i64())
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
+            level: None,
+            stats: UserStats {
+                follower_count: None,
+                following_count: None,
+                total_content: collections.len(),
+            },
+        };
+
+        let mut subject_type_distribution = std::collections::HashMap::new();
+        let mut collection_type_distribution = std::collections::HashMap::new();
+        let mut tag_distribution = std::collections::HashMap::new();
+        let mut subjects = Vec::new();
+
+        for collection in &collections {
+            let subject_id = collection
+                .get("subject_id")
+                .and_then(|v| v.as_i64())
+                .or_else(|| {
+                    collection
+                        .get("subject")
+                        .and_then(|s| s.get("id"))
+                        .and_then(|v| v.as_i64())
+                })
+                .unwrap_or(0);
+            let subject_type = collection
+                .get("subject_type")
+                .and_then(|v| v.as_i64())
+                .map(Self::bangumi_subject_type_label)
+                .unwrap_or("unknown");
+            let collection_type = collection
+                .get("type")
+                .and_then(|v| v.as_i64())
+                .map(Self::bangumi_collection_type_label)
+                .unwrap_or("unknown");
+            let rate = collection.get("rate").and_then(|v| v.as_i64()).unwrap_or(0);
+            let subject = collection.get("subject");
+            let title = subject
+                .and_then(|s| s.get("name_cn"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .or_else(|| subject.and_then(|s| s.get("name")).and_then(|v| v.as_str()))
+                .unwrap_or("Unknown")
+                .to_string();
+            let cover = subject
+                .and_then(|s| s.get("images"))
+                .and_then(|images| {
+                    images
+                        .get("large")
+                        .or_else(|| images.get("common"))
+                        .or_else(|| images.get("medium"))
+                })
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let updated_at = collection
+                .get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            *subject_type_distribution
+                .entry(subject_type.to_string())
+                .or_insert(0) += 1;
+            *collection_type_distribution
+                .entry(collection_type.to_string())
+                .or_insert(0) += 1;
+
+            if let Some(tags) = collection.get("tags").and_then(|v| v.as_array()) {
+                for tag in tags {
+                    if let Some(tag) = tag.as_str().filter(|s| !s.is_empty()) {
+                        *tag_distribution.entry(tag.to_string()).or_insert(0) += 1;
+                    }
+                }
+            }
+
+            subjects.push(BangumiSubjectItem {
+                subject_id,
+                title,
+                subject_type: subject_type.to_string(),
+                collection_type: collection_type.to_string(),
+                rate,
+                cover,
+                updated_at,
+            });
+        }
+
+        let mut top_rated_subjects = subjects.clone();
+        top_rated_subjects.sort_by(|a, b| b.rate.cmp(&a.rate));
+        top_rated_subjects.truncate(20);
+
+        let watching_subjects = subjects
+            .iter()
+            .filter(|item| item.collection_type == "doing")
+            .take(20)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut recent_updates = subjects.clone();
+        recent_updates.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        recent_updates.truncate(20);
+
+        let collection_summary = format!(
+            "Bangumi 收藏 {} 个条目，其中看过/读过/玩过 {} 个，正在进行 {} 个",
+            collections.len(),
+            collection_type_distribution
+                .get("done")
+                .copied()
+                .unwrap_or_default(),
+            collection_type_distribution
+                .get("doing")
+                .copied()
+                .unwrap_or_default()
+        );
+
+        Ok(SmartFilteredData {
+            platform: "bangumi".to_string(),
+            user_summary,
+            content_analysis: ContentAnalysis::Bangumi(BangumiAnalysis {
+                collection_summary,
+                subject_type_distribution,
+                collection_type_distribution,
+                tag_distribution,
+                top_rated_subjects,
+                watching_subjects,
+                recent_updates,
+            }),
+            raw_unknown_content: vec![],
+        })
+    }
+
+    fn bangumi_subject_type_label(subject_type: i64) -> &'static str {
+        match subject_type {
+            1 => "book",
+            2 => "anime",
+            3 => "music",
+            4 => "game",
+            6 => "real",
+            _ => "unknown",
+        }
+    }
+
+    fn bangumi_collection_type_label(collection_type: i64) -> &'static str {
+        match collection_type {
+            1 => "wish",
+            2 => "done",
+            3 => "doing",
+            4 => "on_hold",
+            5 => "dropped",
+            _ => "unknown",
+        }
+    }
+
     /// 估算过滤后数据的 Token 大小
     pub fn estimate_token_size(filtered_data: &SmartFilteredData) -> usize {
         let json_str = serde_json::to_string(filtered_data).unwrap_or_default();
@@ -859,6 +1067,9 @@ impl SmartFilter {
             }
             "github" => {
                 // GitHub 数据通常不需要特殊预处理
+            }
+            "bangumi" => {
+                // Bangumi 数据已按 { user, collections } 保存，不需要特殊预处理
             }
             _ => {}
         }

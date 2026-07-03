@@ -33,6 +33,7 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 // CSRF 防护
 import { getCSRFToken } from '../../utils/csrf'
 // API 配置
+import { API_URL as CONFIG_API_URL } from '../../config'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
 import { useWindowAgentHandler } from '../hooks/useWindowAgentHandler'
 import { getTappRuntime } from '../runtime'
@@ -41,7 +42,7 @@ import { TappPageSandbox } from '../runtime/TappPageSandbox'
 import { getTappIconStyle } from '../utils/tappColors'
 import { TappIcon } from './TappIcon'
 
-const API_URL = import.meta.env.PUBLIC_API_URL || ''
+const API_URL = CONFIG_API_URL
 
 /** 窗口状态 */
 export interface TappWindow {
