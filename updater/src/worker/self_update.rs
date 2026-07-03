@@ -15,6 +15,7 @@
 //!
 //! 失败时不修改 .env，旧 updater 继续跑。
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bollard::models::{ContainerCreateBody, HostConfig};
@@ -64,11 +65,9 @@ pub async fn run(worker: Arc<Worker>) -> Result<SelfUpdateReport> {
     }
 
     let helper_id = launch_helper(worker.clone(), &updater_img.r#ref).await?;
-    worker
-        .state()
-        .append_history(&format!(
-            "self-update launched: new_tag={target_tag} helper={helper_id}"
-        ))?;
+    worker.state().append_history(&format!(
+        "self-update launched: new_tag={target_tag} helper={helper_id}"
+    ))?;
     info!(helper_id = %helper_id, "self-update: helper container started — this updater will be replaced");
 
     Ok(SelfUpdateReport {
@@ -80,6 +79,8 @@ pub async fn run(worker: Arc<Worker>) -> Result<SelfUpdateReport> {
 async fn launch_helper(worker: Arc<Worker>, helper_image: &str) -> Result<String> {
     let project = std::env::var("COMPOSE_PROJECT_NAME").unwrap_or_else(|_| "myriad".into());
     let name = format!("{HELPER_NAME_PREFIX}{}", uuid::Uuid::new_v4().simple());
+    let compose_source = resolve_host_bind_source(&worker, &worker.cli().compose_dir).await?;
+    let env_source = resolve_host_bind_source(&worker, &worker.cli().env_file).await?;
 
     // 用 host 网络省去网络配置（helper 只跟 docker.sock 交互，不需要业务网络）。
     let host_cfg = HostConfig {
@@ -87,11 +88,8 @@ async fn launch_helper(worker: Arc<Worker>, helper_image: &str) -> Result<String
         network_mode: Some("host".into()),
         binds: Some(vec![
             "/var/run/docker.sock:/var/run/docker.sock".into(),
-            format!(
-                "{}:/host/compose",
-                worker.cli().compose_dir.to_string_lossy()
-            ),
-            format!("{}:/host/.env", worker.cli().env_file.to_string_lossy()),
+            format!("{}:/host/compose", compose_source.to_string_lossy()),
+            format!("{}:/host/.env", env_source.to_string_lossy()),
         ]),
         ..Default::default()
     };
@@ -150,6 +148,63 @@ async fn launch_helper(worker: Arc<Worker>, helper_image: &str) -> Result<String
         .map_err(|e| UpdaterError::Docker(format!("start self-update helper: {e}")))?;
 
     Ok(created.id)
+}
+
+async fn resolve_host_bind_source(worker: &Arc<Worker>, container_path: &Path) -> Result<PathBuf> {
+    let container_id = current_container_id()?;
+    let info = worker
+        .docker()
+        .raw()
+        .inspect_container(&container_id, None)
+        .await
+        .map_err(|e| UpdaterError::Docker(format!("inspect current updater container: {e}")))?;
+
+    let mut best: Option<(usize, PathBuf)> = None;
+    for mount in info.mounts.unwrap_or_default() {
+        let (Some(source), Some(destination)) = (mount.source, mount.destination) else {
+            continue;
+        };
+        let destination = PathBuf::from(destination);
+        if !container_path.starts_with(&destination) {
+            continue;
+        }
+        let rel = container_path
+            .strip_prefix(&destination)
+            .unwrap_or_else(|_| Path::new(""));
+        let score = destination.as_os_str().len();
+        if best
+            .as_ref()
+            .is_none_or(|(best_score, _)| score > *best_score)
+        {
+            best = Some((score, PathBuf::from(source).join(rel)));
+        }
+    }
+
+    best.map(|(_, source)| source).ok_or_else(|| {
+        UpdaterError::Precondition(format!(
+            "could not map container path {} to a host bind mount source; \
+             self-update requires the updater compose/env paths to come from bind mounts",
+            container_path.display()
+        ))
+    })
+}
+
+fn current_container_id() -> Result<String> {
+    if let Ok(hostname) = std::env::var("HOSTNAME") {
+        let hostname = hostname.trim();
+        if !hostname.is_empty() {
+            return Ok(hostname.to_string());
+        }
+    }
+
+    let hostname = std::fs::read_to_string("/etc/hostname")?;
+    let hostname = hostname.trim();
+    if hostname.is_empty() {
+        return Err(UpdaterError::Precondition(
+            "could not determine current updater container id".into(),
+        ));
+    }
+    Ok(hostname.to_string())
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
