@@ -124,7 +124,8 @@ jobs:
             MYRIAD_VERSION=${{ needs.resolve.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.component }}
           cache-to:   type=gha,scope=${{ matrix.component }},mode=max
-          platforms: linux/amd64,linux/arm64
+          # Keep production release builds aligned with the verified beta image workflow.
+          platforms: linux/amd64
           provenance: false
 
       - name: Emit digest artifact
