@@ -69,9 +69,6 @@ export class TappBridge {
 
   private eventListeners: Map<string, Set<(data: unknown) => void>> = new Map()
 
-  /** 请求超时时间 */
-  private readonly REQUEST_TIMEOUT = 30000
-
   /** 允许的 origin（用于验证接收消息的来源） */
   private allowedOrigin: string = ''
 
@@ -91,20 +88,6 @@ export class TappBridge {
 
   /** 最小请求间隔（毫秒） */
   private readonly MIN_REQUEST_INTERVAL = 10
-
-  /** 敏感操作列表（需要审计日志） */
-  private readonly SENSITIVE_ACTIONS = new Set([
-    'ai.generate',
-    'ai.analyze',
-    'ai.chat',
-    'platform.addItem',
-    'platform.addItems',
-    'storage.set',
-    'storage.clear',
-    'report.create',
-    'report.update',
-    'report.delete',
-  ])
 
   constructor() {
     // 绑定消息处理器
@@ -509,13 +492,6 @@ export class TappBridge {
     }
 
     return { allowed: true, requiredPermission }
-  }
-
-  /**
-   * 检查权限（简化版，向后兼容）
-   */
-  private checkPermission(action: string): boolean {
-    return this.checkPermissionDetailed(action).allowed
   }
 
   /**

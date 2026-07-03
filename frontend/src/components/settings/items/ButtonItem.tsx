@@ -45,13 +45,13 @@ export const ButtonItem = React.memo<ButtonItemProps>(
     const [internalLoading, setInternalLoading] = useState(false)
     const loading = externalLoading || internalLoading
 
-    const handleClick = useCallback(async () => {
+    const handleClick = useCallback(() => {
       if (disabled || loading) return
 
       if (asyncAction) {
         setInternalLoading(true)
         try {
-          await onClick()
+          onClick()
         } finally {
           setInternalLoading(false)
         }

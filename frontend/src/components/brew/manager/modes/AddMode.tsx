@@ -284,11 +284,11 @@ export function AddMode({
     }
   }
 
-  const handleExport = async () => {
+  const handleExport = () => {
     if (!onExportOpml) return
     setExporting(true)
     try {
-      await onExportOpml()
+      onExportOpml()
     } finally {
       setExporting(false)
     }

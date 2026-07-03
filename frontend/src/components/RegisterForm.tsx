@@ -1,5 +1,5 @@
-import { FaLock, FaUser } from '@lib/icons'
 import type { FC, SubmitEvent } from 'react'
+import { FaLock, FaUser } from '@lib/icons'
 import { useState } from 'react'
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'

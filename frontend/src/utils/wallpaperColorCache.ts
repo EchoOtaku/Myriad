@@ -53,8 +53,6 @@ const CACHE_VERSION = 5 // 升级版本号
 const CACHE_DURATION_MS = 6 * 60 * 60 * 1000 // 6小时
 const CACHE_KEY = 'myriad_wallpaper_color_cache_v5'
 const MAX_CACHE_ITEMS = 10
-const MIN_IMAGE_SIZE = 100 // 最小图片尺寸（降低要求以支持更多图片源）
-
 // ============================================================================
 // 缓存存储操作
 // ============================================================================
@@ -177,42 +175,6 @@ export async function shouldApplyColorExtraction(
     shouldApply: true,
     cacheKey: normalizeWallpaperUrl(url),
   }
-}
-
-/**
- * 验证图片是否有效
- */
-async function _validateImage(
-  url: string,
-): Promise<{ valid: boolean; reason?: string }> {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-
-    const timeout = setTimeout(() => {
-      img.src = ''
-      resolve({ valid: false, reason: '图片加载超时' })
-    }, 10000)
-
-    img.onload = () => {
-      clearTimeout(timeout)
-      if (img.width < MIN_IMAGE_SIZE || img.height < MIN_IMAGE_SIZE) {
-        resolve({
-          valid: false,
-          reason: `图片太小: ${img.width}x${img.height}`,
-        })
-      } else {
-        resolve({ valid: true })
-      }
-    }
-
-    img.onerror = () => {
-      clearTimeout(timeout)
-      resolve({ valid: false, reason: '图片加载失败' })
-    }
-
-    img.src = url
-  })
 }
 
 /**

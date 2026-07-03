@@ -137,15 +137,6 @@ function getAppIconStyle(app: UnifiedAppItem): {
   return { className: getCategoryGradient(app.category) }
 }
 
-/** 获取应用图标背景色（优先使用主题色） - 兼容旧代码 */
-function _getAppIconGradient(app: UnifiedAppItem): string {
-  if (app.themeColor) {
-    // 返回空字符串，实际样式通过 style prop 设置
-    return ''
-  }
-  return getCategoryGradient(app.category)
-}
-
 /** 获取各权限等级的数量统计 */
 function getPermissionCounts(permissions: string[]): {
   basic: number

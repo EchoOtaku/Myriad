@@ -1,7 +1,7 @@
-import type { User } from '../../contexts/AuthContext'
-
-import type { RecentTappItem, TappListItem } from '../../tapp'
 import type { FC, SubmitEvent } from 'react'
+
+import type { User } from '../../contexts/AuthContext'
+import type { RecentTappItem, TappListItem } from '../../tapp'
 import { LuCrown, LuUser, SiAppstore } from '@lib/icons'
 import { useEffect, useState } from 'react'
 

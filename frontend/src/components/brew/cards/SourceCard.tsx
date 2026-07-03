@@ -205,11 +205,11 @@ export const SourceCard = React.memo(
 
       // 刷新处理
       const handleRefresh = useCallback(
-        async (e: React.MouseEvent) => {
+        (e: React.MouseEvent) => {
           e.stopPropagation()
           setRefreshing(true)
           try {
-            await onRefreshSource(source.id)
+            onRefreshSource(source.id)
           } finally {
             setRefreshing(false)
           }

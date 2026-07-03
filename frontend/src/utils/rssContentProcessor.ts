@@ -385,34 +385,6 @@ function processAudio(html: string): string {
 }
 
 /**
- * 处理 iframe 嵌入
- */
-function _processIframes(html: string): string {
-  return html.replace(/<iframe([^>]*)>/gi, (match, attrs) => {
-    // 提取 src
-    const srcMatch = attrs.match(/src\s*=\s*["']([^"']+)["']/i)
-    if (!srcMatch) return match
-
-    const src = srcMatch[1]
-
-    // 根据来源添加不同样式
-    let aspectClass = 'aspect-video' // 默认 16:9
-
-    // 音乐类嵌入使用不同比例
-    if (
-      src.includes('music.163.com') ||
-      src.includes('xiami.com') ||
-      src.includes('spotify.com')
-    ) {
-      aspectClass = 'aspect-wide' // 音乐播放器更扁 (3:1)
-    }
-
-    return `<div class="rss-content-iframe-wrapper ${aspectClass} my-4 rounded-xl overflow-hidden">
-      <iframe${attrs} class="w-full h-full border-0" allowfullscreen loading="lazy">`
-  })
-}
-
-/**
  * 处理引用块
  */
 function processBlockquotes(html: string, isDark: boolean): string {
@@ -688,7 +660,7 @@ function processAbbr(html: string, isDark: boolean): string {
 function processHr(html: string, isDark: boolean): string {
   const bgClass = isDark ? 'bg-white/10' : 'bg-black/10'
 
-  return html.replace(/<hr([^>]*)>/gi, (match, attrs) => {
+  return html.replace(/<hr([^>]*)>/gi, (_match, attrs) => {
     return `<hr${attrs} class="rss-content-hr border-0 h-px ${bgClass} my-8">`
   })
 }
@@ -887,22 +859,6 @@ function fixMalformedHtml(html: string): string {
 }
 
 /**
- * 清理多余的空白和换行
- */
-function _normalizeWhitespace(html: string): string {
-  // 移除标签之间的多余换行
-  let result = html.replace(/>\s+</g, '> <')
-
-  // 但保留 pre 内的空白
-  // 这个需要更复杂的处理，暂时跳过
-
-  // 移除开头和结尾的空白
-  result = result.trim()
-
-  return result
-}
-
-/**
  * 转换 RSSHub 特定的内容格式
  */
 function processRssHubSpecific(html: string): string {
@@ -912,7 +868,7 @@ function processRssHubSpecific(html: string): string {
   // 通常格式如: <time datetime="2024-01-01T00:00:00Z">
   result = result.replace(
     /<time([^>]*)>([^<]*)<\/time>/gi,
-    (match, attrs, content) => {
+    (_match, attrs, content) => {
       // 保留 time 标签但添加样式
       return `<time${attrs} class="rss-content-time tabular-nums">${content}</time>`
     },

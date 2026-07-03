@@ -268,12 +268,11 @@ export async function measurePerformance<T>(
  * 预加载图片（使用对象池）
  * @param src 图片URL
  */
-export function preloadImage(src: string): Promise<void> {
-  return loadImagePooled(src).then((success) => {
-    if (!success) {
-      throw new Error(`Failed to preload image: ${src}`)
-    }
-  })
+export async function preloadImage(src: string): Promise<void> {
+  const success = await loadImagePooled(src)
+  if (!success) {
+    throw new Error(`Failed to preload image: ${src}`)
+  }
 }
 
 /**

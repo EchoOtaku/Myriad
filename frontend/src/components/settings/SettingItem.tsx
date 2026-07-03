@@ -47,7 +47,7 @@ export const SettingItem: React.FC<SettingItemConfig> = (props) => {
       return null
 
     default: {
-      const _exhaustive: never = props
+      props satisfies never
       return null
     }
   }

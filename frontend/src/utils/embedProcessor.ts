@@ -280,66 +280,6 @@ function generateBilibiliIframe(videoId: {
 }
 
 /**
- * 生成 Bilibili 视频卡片 HTML - 与资料库视频卡片风格一致
- * 横版封面，悬停显示信息（保留但不再使用）
- */
-function _generateBilibiliVideoCard(
-  videoId: { type: 'bv' | 'av'; id: string },
-  _isDark: boolean,
-): string {
-  const videoUrl =
-    videoId.type === 'bv'
-      ? `https://www.bilibili.com/video/${videoId.id}`
-      : `https://www.bilibili.com/video/av${videoId.id}`
-
-  // 使用与其他卡片一致的结构：外层 div 作为 brew-embed-card
-  return `
-    <div class="brew-embed-card brew-bilibili-video brew-embed-exempt not-prose block group"
-         data-embed-type="bilibili-video" 
-         data-video-id="${videoId.id}"
-         data-video-type="${videoId.type}"
-         data-embed-exempt="true"
-         style="width: 240px; height: 150px;">
-      <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="block no-underline h-full">
-        <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
-          <div class="block w-full h-full relative">
-            <!-- 视频占位封面 -->
-            <div class="w-full h-full bg-linear-to-br from-[#00A1D6] to-[#0086B3] flex items-center justify-center">
-              <svg class="w-16 h-16 text-white/80" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            </div>
-            
-            <!-- 播放按钮遮罩 -->
-            <div class="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <div class="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                <svg class="w-7 h-7 text-[#00A1D6] ml-1" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-              </div>
-            </div>
-            
-            <!-- 底部信息栏 - 与资料库视频卡片一致 -->
-            <div class="absolute bottom-3 left-3 right-3">
-              <div class="inline-flex items-start max-w-full">
-                <div class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg">
-                  <h3 class="font-bold text-gray-900 dark:text-white text-sm line-clamp-1 leading-snug">
-                    ${videoId.type.toUpperCase()}: ${videoId.id}
-                  </h3>
-                  <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                    点击查看视频
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </a>
-    </div>
-  `
-}
-
-/**
  * 生成 GitHub 仓库卡片 HTML - 简洁风格
  * 显示仓库基本信息，与阅读器风格统一
  * margin 由 BrewReader 统一控制

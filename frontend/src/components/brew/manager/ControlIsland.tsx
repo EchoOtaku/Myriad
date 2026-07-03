@@ -41,7 +41,6 @@ import JSZip from 'jszip'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 
-import { useBrewAnimationConfig } from '../../../hooks/animation'
 import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard'
 import * as brewApi from '../../../services/brewApi'
 import { getIconUrl, IslandLayout } from '../../shared/control-island'
@@ -321,8 +320,6 @@ export default function ControlIsland({
   isAuthenticated = false,
 }: ControlIslandProps) {
   const { t } = useI18n()
-  const animConfig = useBrewAnimationConfig()
-  const _enableAnimations = animConfig.level !== 'none'
 
   // 根据模式确定初始状态
   const getInitialMode = (): ControlMode => {

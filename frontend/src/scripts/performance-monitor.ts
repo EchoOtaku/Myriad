@@ -125,9 +125,8 @@ class PerformanceMonitor {
     }
 
     // Time to First Byte (TTFB)
-    const navigationEntry = performance.getEntriesByType(
-      'navigation',
-    )[0] as PerformanceNavigationTiming | undefined
+    const navigationEntry = performance.getEntriesByType('navigation')[0] as
+      PerformanceNavigationTiming | undefined
     if (navigationEntry) {
       const ttfb = navigationEntry.responseStart - navigationEntry.requestStart
       this.metrics.ttfb = ttfb
