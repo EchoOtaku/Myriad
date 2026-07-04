@@ -638,8 +638,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       // WebKit 存在合成层 bug：当 iframe 嵌套在含 opacity 动画、overflow:hidden 的祖先链中时，
       // iframe 内容无法被绘制到屏幕上。
       // 解决方案：将 iframe 挂载到 body，使用 position:fixed + ResizeObserver 同步位置和尺寸。
+      // z-index 60：需高于全局 NavigationIsland（fixed z-50，移动端横在底部），
+      // 否则岛浮在 iframe 上、挡住 tapp 底部控制区的点击（按钮可见但点不到）
       iframe.style.cssText =
-        'position:fixed;border:none;display:block;z-index:40;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
+        'position:fixed;border:none;display:block;z-index:60;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
 
       let lastRect = ''
       const syncPosition = () => {

@@ -1154,7 +1154,9 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   }, [availableTapps])
 
   return (
-    <div className="fixed inset-0 overflow-hidden" data-no-ripple>
+    // z-100：窗口管理器整体需高于全局 NavigationIsland（fixed z-50，移动端在底部），
+    // 否则岛会浮在 tapp 窗口上、挡住底部控制区的点击（按钮可见但点不到）
+    <div className="fixed inset-0 overflow-hidden z-100" data-no-ripple>
       {/* 顶部工具栏 - 简化合并 */}
       <div className="absolute top-4 left-4 z-1000">
         <div

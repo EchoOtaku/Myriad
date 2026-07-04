@@ -258,6 +258,9 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
         bottom: 0,
         left: 0,
         overflow: 'hidden',
+        // z 60：tapp 运行页需整体高于全局 NavigationIsland（fixed z-50，移动端横在底部），
+        // 否则岛浮在页面上、挡住 tapp 底部控制区的点击（按钮可见但点不到）
+        zIndex: 60,
       }}
     >
       {/* 全屏模式工具栏 */}

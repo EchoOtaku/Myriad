@@ -44,10 +44,10 @@ export const PERMISSION_LEVELS: Record<TappPermission, PermissionLevel> = {
   'brew:comment': 'elevated',
   'brew:manage': 'privileged',
   'federation:read': 'basic',
-  'federation:write': 'elevated',
-  'federation:message': 'elevated',
+  'federation:write': 'basic',
+  'federation:message': 'basic',
   'federation:trust': 'privileged',
-  'federation:files': 'elevated',
+  'federation:files': 'basic',
 }
 
 /**
@@ -193,6 +193,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['media.jumpToIndex', 'media:control'],
     ['media.getSpectrum', 'media:read'],
     ['media.getLyrics', 'media:read'],
+    ['media.getBeatGrid', 'media:read'],
     ['media.loadNeteasePlaylist', 'media:control'],
     ['media.getSkipVip', 'media:read'],
     ['media.setSkipVip', 'media:control'],

@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 // 导入网易云音乐统一服务
+use crate::services::kugou_service::KugouService;
 use crate::services::netease_service::{CacheEntry, NeteaseService, MUSIC_CACHE, RATE_LIMITER};
 
 // ===== 简单的令牌桶限流器 =====
@@ -421,6 +422,48 @@ pub async fn proxy_netease_lyrics_verbatim(Path(song_id): Path<String>) -> Respo
                     "error": "Failed to fetch verbatim lyrics",
                     "message": e.to_string()
                 })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// 酷狗逐字歌词查询参数
+#[derive(Deserialize)]
+pub struct KugouLyricsQuery {
+    /// 搜索关键词，建议「歌名 歌手」
+    pub keyword: String,
+    /// 歌曲时长（毫秒），用于在候选中挑最接近的版本；缺省 0 表示不匹配
+    #[serde(default)]
+    pub duration: i64,
+}
+
+/// 代理酷狗逐字歌词（KRC）- 网易云 yrc 缺失时的补充源
+/// 返回 { krc: "<解码后的 KRC 文本>" }，由前端 parseKrc 解析
+pub async fn proxy_kugou_lyrics_verbatim(Query(q): Query<KugouLyricsQuery>) -> Response {
+    if q.keyword.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "keyword required"})),
+        )
+            .into_response();
+    }
+
+    let service = KugouService::new();
+    match service.fetch_verbatim_lyrics(&q.keyword, q.duration).await {
+        Ok(krc) => (
+            StatusCode::OK,
+            [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+            Json(json!({ "krc": krc })),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::debug!("KuGou verbatim lyrics miss for {}: {}", q.keyword, e);
+            // 未命中不是错误：返回空 krc，前端据此回退逐行
+            (
+                StatusCode::OK,
+                [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+                Json(json!({ "krc": "" })),
             )
                 .into_response()
         }

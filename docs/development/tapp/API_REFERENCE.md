@@ -483,20 +483,35 @@ const unsubscribe = Tapp.media.onStateChange((state) => {
 // 实时频谱分析（需要 media:read）
 // 返回归一化 0-1 的频段数据，播放任意音乐时均可用（无需首页频谱组件在场）
 const s = await Tapp.media.getSpectrum();
-// 返回: { spectrum: number[], energy, bass, mid, high }
-// 典型用法：requestAnimationFrame 中轮询驱动可视化
+// 返回: {
+//   spectrum: number[4],  // 为 4 柱视觉重排的数据（低-高-高-低对称，适合简单柱状）
+//   bands: number[8],     // 原始 8 频段（bass→high 自然顺序，适合频谱可视化）
+//   energy, bass, mid, high
+// }
+// 建议架构：~15fps 轮询数据 + 本地攻击/释放包络 60fps 渲染（postMessage 有成本）
 
-// 获取歌词：逐字(yrc) + 逐行兜底（需要 media:read）
+// 获取歌词：逐字 + 逐行兜底（需要 media:read）
+// 多源逐字：网易云 yrc（按 id）→ 酷狗 KRC（按 歌名+歌手+时长）→ 逐行
 // 不传参数默认取当前播放曲目；也可指定 { songId, source }
 const ly = await Tapp.media.getLyrics();
 // 返回: {
 //   lines:    [{ time, text }],                         // 逐行 LRC（始终尝试提供）
 //   verbatim: [{ time, duration, text,
-//               words: [{ time, duration, text }] }],   // 逐字（网易云 yrc，可能为空）
+//               words: [{ time, duration, text }] }],   // 逐字（word.time 为绝对秒）
 //   hasVerbatim: boolean,                               // 是否含逐字数据
-//   source: "netease" | "qq"
+//   source: "netease" | "qq",                           // 曲目来源
+//   verbatimSource: "netease" | "kugou" | ""            // 逐字实际命中源
 // }
 // verbatim 为空时消费方应回退到 lines 做逐行高亮
+// 说明：网易云 yrc 覆盖较少，酷狗 KRC 覆盖最广（尤其日系/番剧），故作为回退源
+
+// 节拍网格：预载全曲离线分析（需要 media:read）
+// 主应用对当前歌曲做一次性节拍跟踪（Ellis 2007 风格：谱通量 + 自相关 + comb 相位），
+// 返回精确拍点时间戳——可视化可按网格预测踩拍，消除实时检测的固有滞后
+const grid = await Tapp.media.getBeatGrid();
+// 返回: { available: boolean, bpm, beats: number[]（秒）, confidence: 0-1 }
+// available=false 或 confidence 低时应回退到实时频谱检测
+// 注意：首次调用会触发全曲下载+分析（约 1-3s），结果按歌缓存
 
 // VIP 歌曲开关（读 media:read / 写 media:control）
 const { skipVip } = await Tapp.media.getSkipVip();

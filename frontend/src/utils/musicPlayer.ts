@@ -229,11 +229,63 @@ export function parseYrc(yrcText: string): WordLyricLine[] {
     let text = ''
     wordRe.lastIndex = 0
     let m: RegExpExecArray | null
-    // biome-ignore lint/suspicious/noAssignInExpressions: 正则逐个 exec 是标准写法
+    // 正则逐个 exec：赋值置于括号内并与 null 比较，符合 no-cond-assign except-parens
     while ((m = wordRe.exec(line)) !== null) {
       const wordText = m[3]
       words.push({
         time: Number(m[1]) / 1000,
+        duration: Number(m[2]) / 1000,
+        text: wordText,
+      })
+      text += wordText
+    }
+
+    if (words.length === 0) continue
+    result.push({
+      time: lineStart,
+      duration: lineDuration,
+      text: text.trim(),
+      words,
+    })
+  }
+
+  return result.sort((a, b) => a.time - b.time)
+}
+
+/**
+ * 解析酷狗 KRC 逐字歌词格式
+ *
+ * 行格式: `[行起始ms,行时长ms]<字偏移ms,字时长ms,0>字<字偏移ms,字时长ms,0>字...`
+ * 注意：字偏移是相对「行起始」的，绝对时间 = 行起始 + 字偏移（与网易云 yrc 的绝对时间不同）。
+ * 以 `[ti:]` `[ar:]` `[offset:]` 等元数据行不匹配 `[数字,数字]`，自动跳过。
+ */
+export function parseKrc(krcText: string): WordLyricLine[] {
+  if (!krcText) return []
+
+  const result: WordLyricLine[] = []
+  const headerRe = /^\[(\d+),(\d+)\]/
+  // token: <偏移ms,时长ms,附加>文本 —— 文本读到下一个 `<` 前
+  const wordRe = /<(\d+),(\d+),\d+>([^<]*)/g
+
+  for (const raw of krcText.split('\n')) {
+    const line = raw.trim()
+    if (!line || line.charAt(0) !== '[') continue
+
+    const header = headerRe.exec(line)
+    if (!header) continue // 跳过 [ti:]/[ar:]/[offset:] 等元数据行
+
+    const lineStart = Number(header[1]) / 1000
+    const lineDuration = Number(header[2]) / 1000
+
+    const words: WordLyricToken[] = []
+    let text = ''
+    wordRe.lastIndex = 0
+    let m: RegExpExecArray | null
+    // 赋值置于括号内并与 null 比较，符合 no-cond-assign except-parens
+    while ((m = wordRe.exec(line)) !== null) {
+      const wordText = m[3]
+      words.push({
+        time: lineStart + Number(m[1]) / 1000, // 相对偏移转绝对时间
         duration: Number(m[2]) / 1000,
         text: wordText,
       })
@@ -354,6 +406,7 @@ export function clearPlaylistCache(): void {
 export function clearLyricsCache(): void {
   lyricsCache.clear()
   verbatimLyricsCache.clear()
+  kugouVerbatimCache.clear()
 }
 
 /**
@@ -596,6 +649,52 @@ export async function getNeteaseVerbatimLyrics(
   } catch (error) {
     console.error('Error fetching Netease verbatim lyrics:', error)
     return { lines: [], verbatim: [] }
+  }
+}
+
+// 酷狗逐字歌词缓存（按 关键词|时长秒 缓存）
+const kugouVerbatimCache = new Map<string, WordLyricLine[]>()
+
+/**
+ * 获取酷狗逐字歌词（KRC）—— 网易云 yrc 缺失时的补充第三方源
+ *
+ * @param keyword 建议「歌名 歌手」
+ * @param durationSec 歌曲时长（秒），用于挑最接近的版本
+ */
+export async function getKugouVerbatimLyrics(
+  keyword: string,
+  durationSec = 0,
+): Promise<WordLyricLine[]> {
+  const kw = (keyword || '').trim()
+  if (!kw) return []
+
+  const cacheKey = `${kw}|${Math.round(durationSec)}`
+  const cached = kugouVerbatimCache.get(cacheKey)
+  if (cached) return cached
+
+  try {
+    const params = new URLSearchParams({
+      keyword: kw,
+      duration: String(Math.round(durationSec * 1000)),
+    })
+    const response = await fetch(
+      `${API_URL}/api/proxy/music/kugou/lyrics-verbatim?${params.toString()}`,
+    )
+    if (!response.ok) throw new Error('Failed to fetch kugou verbatim lyrics')
+
+    const data = await response.json()
+    const verbatim: WordLyricLine[] = data.krc ? parseKrc(data.krc) : []
+
+    if (kugouVerbatimCache.size >= MAX_LYRICS_CACHE_SIZE) {
+      const firstKey = kugouVerbatimCache.keys().next().value
+      if (firstKey) kugouVerbatimCache.delete(firstKey)
+    }
+    kugouVerbatimCache.set(cacheKey, verbatim)
+
+    return verbatim
+  } catch (error) {
+    console.error('Error fetching KuGou verbatim lyrics:', error)
+    return []
   }
 }
 
@@ -1219,6 +1318,26 @@ class GlobalAudioManager {
       this.spectrumResult.fill(0)
       return this.spectrumResult
     }
+  }
+
+  /**
+   * 获取原始 8 频段数据（bass→high 自然顺序，0-1 归一化）
+   * 与 getSpectrumData 不同：后者是为 4 根柱视觉重排过的（低-高-高-低），
+   * 不适合做频谱可视化；此方法返回未重排的频段，供 Tapp 可视化使用
+   */
+  private bandsResult: number[] = [0, 0, 0, 0, 0, 0, 0, 0]
+
+  getSpectrumBands(): number[] {
+    // 刷新 tempBands（内部自带 50ms 节流）
+    this.getSpectrumData()
+    if (!this.analyser || !this.frequencyData) {
+      this.bandsResult.fill(0)
+      return this.bandsResult
+    }
+    for (let i = 0; i < 8; i++) {
+      this.bandsResult[i] = this.tempBands[i]
+    }
+    return this.bandsResult
   }
 
   /**

@@ -9,7 +9,9 @@ import type { TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
 import type { AnimationConfigRef } from '../types'
 import { getDynamicContentProvider } from '../../../../services/DynamicContentProvider'
+import { analyzeBeatGrid } from '../../../../utils/beatAnalyzer'
 import {
+  getKugouVerbatimLyrics,
   getNeteaseVerbatimLyrics,
   getQQLyrics,
 } from '../../../../utils/musicPlayer'
@@ -294,21 +296,33 @@ export function registerMediaHandlers(
 
     // 从Myriad的audioManager获取频谱数据
     const audioManager = (
-      window as { audioManager?: { getSpectrumData: () => number[] } }
+      window as {
+        audioManager?: {
+          getSpectrumData: () => number[]
+          getSpectrumBands?: () => number[]
+        }
+      }
     ).audioManager
     if (audioManager && typeof audioManager.getSpectrumData === 'function') {
       const spectrum = audioManager.getSpectrumData()
+      // 原始 8 频段（bass→high 自然顺序）——供可视化使用；
+      // spectrum 是为 4 根柱重排过的（低-高-高-低），不适合按频率取值
+      const bands =
+        typeof audioManager.getSpectrumBands === 'function'
+          ? audioManager.getSpectrumBands()
+          : []
       // 计算能量值（低频平均）
       const energy =
         spectrum.length >= 4
           ? (spectrum[0] + spectrum[1] + spectrum[2] + spectrum[3]) * 0.25 // 乘法比除法快
           : 0
       const result = {
-        spectrum, // 完整频谱数据 (0-1 范围)
+        spectrum, // 4 柱视觉重排数据 (0-1 范围，兼容旧消费方)
+        bands, // 原始 8 频段 (0-1 范围，bass→high)
         energy, // 能量值 (0-1 范围)
-        bass: spectrum[0] || 0, // 低频
-        mid: spectrum[2] || 0, // 中频
-        high: spectrum[5] || 0, // 高频
+        bass: bands.length >= 8 ? (bands[0] + bands[1]) * 0.5 : spectrum[0] || 0,
+        mid: bands.length >= 8 ? (bands[3] + bands[4]) * 0.5 : spectrum[2] || 0,
+        high: bands.length >= 8 ? (bands[6] + bands[7]) * 0.5 : 0,
       }
       // 更新缓存
       spectrumCache = { data: result, timestamp: now }
@@ -316,11 +330,12 @@ export function registerMediaHandlers(
     }
     return {
       success: true,
-      data: { spectrum: [], energy: 0, bass: 0, mid: 0, high: 0 },
+      data: { spectrum: [], bands: [], energy: 0, bass: 0, mid: 0, high: 0 },
     }
   })
 
-  // 获取歌词（逐字 yrc + 逐行兜底）通用能力
+  // 获取歌词（逐字 + 逐行兜底）通用能力
+  // 多源逐字：网易云 yrc（按 id）→ 酷狗 KRC（按 歌名+歌手+时长）→ 逐行
   // 默认取当前播放歌曲，也可通过 { songId, source } 指定
   bridge.registerHandler('media.getLyrics', async (message) => {
     const [params] = (message.payload as { args: unknown[] }).args || []
@@ -332,7 +347,14 @@ export function registerMediaHandlers(
       window as { __musicPlayerState?: Record<string, unknown> }
     ).__musicPlayerState
     const currentSong = globalState?.currentSong as
-      | { id?: string; source?: string }
+      | {
+          id?: string
+          source?: string
+          name?: string
+          title?: string
+          artist?: string
+          duration?: number
+        }
       | undefined
     const id = songId || currentSong?.id
     const src = source || currentSong?.source || 'netease'
@@ -342,22 +364,54 @@ export function registerMediaHandlers(
     }
 
     try {
+      let lines: Array<{ time: number; text: string }> = []
+      let verbatim: Array<unknown> = []
+      let verbatimSource = ''
+
+      // 1) 主源：网易云 yrc（按 id）/ QQ 逐行
       if (src === 'qq') {
-        // QQ 暂无逐字，回退逐行
-        const lines = await getQQLyrics(String(id))
-        return {
-          success: true,
-          data: { lines, verbatim: [], hasVerbatim: false, source: 'qq' },
+        lines = await getQQLyrics(String(id))
+      } else {
+        const r = await getNeteaseVerbatimLyrics(String(id))
+        lines = r.lines
+        verbatim = r.verbatim
+        if (verbatim.length > 0) verbatimSource = 'netease'
+      }
+
+      // 2) 逐字回退：酷狗 KRC（按 歌名+歌手+时长）
+      //    仅当查询的是当前曲目时才有 name/artist 信息可用
+      const isCurrent = !songId || String(songId) === String(currentSong?.id)
+      if (verbatim.length === 0 && isCurrent && currentSong) {
+        const name = currentSong.name || currentSong.title || ''
+        const artist = currentSong.artist || ''
+        if (name) {
+          const keyword = artist ? `${name} ${artist}` : name
+          const kugou = await getKugouVerbatimLyrics(
+            keyword,
+            currentSong.duration || 0,
+          )
+          if (kugou.length > 0) {
+            verbatim = kugou
+            verbatimSource = 'kugou'
+            // 无逐行时，用逐字派生逐行兜底
+            if (lines.length === 0) {
+              lines = kugou.map((v) => {
+                const w = v as { time: number; text: string }
+                return { time: w.time, text: w.text }
+              })
+            }
+          }
         }
       }
-      const { lines, verbatim } = await getNeteaseVerbatimLyrics(String(id))
+
       return {
         success: true,
         data: {
           lines,
           verbatim,
           hasVerbatim: verbatim.length > 0,
-          source: 'netease',
+          source: src,
+          verbatimSource, // 'netease' | 'kugou' | ''
         },
       }
     } catch (error) {
@@ -366,6 +420,38 @@ export function registerMediaHandlers(
         error:
           error instanceof Error ? error.message : 'Failed to fetch lyrics',
       }
+    }
+  })
+
+  // 节拍网格：预载全曲离线分析（BPM + 每拍时间戳），供可视化精确跟拍
+  // 分析在主应用做（每首歌一次，带缓存），tapp 只拿结果
+  bridge.registerHandler('media.getBeatGrid', async () => {
+    const globalState = (
+      window as { __musicPlayerState?: Record<string, unknown> }
+    ).__musicPlayerState
+    const currentSong = globalState?.currentSong as
+      | { id?: string; source?: string; url?: string }
+      | undefined
+    if (!currentSong?.url || !currentSong?.id) {
+      return { success: true, data: { available: false } }
+    }
+    const grid = await analyzeBeatGrid(
+      currentSong.url,
+      `${currentSong.source || 'netease'}-${currentSong.id}`,
+    )
+    if (!grid || grid.beats.length < 8) {
+      return { success: true, data: { available: false } }
+    }
+    return {
+      success: true,
+      data: {
+        available: true,
+        songId: currentSong.id,
+        bpm: grid.bpm,
+        beats: grid.beats,
+        accents: grid.accents,
+        confidence: grid.confidence,
+      },
     }
   })
 

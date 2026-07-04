@@ -1252,21 +1252,11 @@ async fn get_comprehensive_report_by_id_wrapper(
 
 // ==================== Federation Wrappers ====================
 
-fn federation_admin_required(claims: &middleware::auth::Claims) -> Option<Response> {
-    if claims.is_admin {
-        return None;
+async fn federation_admin_required(claims: &middleware::auth::Claims) -> Option<Response> {
+    match middleware::auth::ensure_current_admin(claims).await {
+        Ok(()) => None,
+        Err((status, body)) => Some((status, body).into_response()),
     }
-
-    Some(
-        (
-            StatusCode::FORBIDDEN,
-            Json(json!({
-                "error": "Forbidden",
-                "message": "Administrator access required for instance-level federation ring changes"
-            })),
-        )
-            .into_response(),
-    )
 }
 
 /// GET /api/federation/identity — 获取当前登录用户的联邦地址
@@ -2549,7 +2539,7 @@ async fn federation_create_ring_wrapper(req: axum::extract::Request) -> Response
                 .into_response()
         }
     };
-    if let Some(resp) = federation_admin_required(&claims) {
+    if let Some(resp) = federation_admin_required(&claims).await {
         return resp;
     }
     let body = match axum::body::to_bytes(req.into_body(), 65536).await {
@@ -2642,7 +2632,7 @@ async fn federation_leave_ring_wrapper(req: axum::extract::Request) -> Response 
                 .into_response()
         }
     };
-    if let Some(resp) = federation_admin_required(&claims) {
+    if let Some(resp) = federation_admin_required(&claims).await {
         return resp;
     }
     let path = req.uri().path().to_string();
@@ -2703,7 +2693,7 @@ async fn federation_add_ring_peer_wrapper(req: axum::extract::Request) -> Respon
                 .into_response()
         }
     };
-    if let Some(resp) = federation_admin_required(&claims) {
+    if let Some(resp) = federation_admin_required(&claims).await {
         return resp;
     }
     let path = req.uri().path().to_string();
@@ -2760,7 +2750,7 @@ async fn federation_remove_ring_peer_wrapper(req: axum::extract::Request) -> Res
                 .into_response()
         }
     };
-    if let Some(resp) = federation_admin_required(&claims) {
+    if let Some(resp) = federation_admin_required(&claims).await {
         return resp;
     }
     let path = req.uri().path().to_string();
@@ -2796,7 +2786,7 @@ async fn federation_trigger_ring_sync_wrapper(req: axum::extract::Request) -> Re
                 .into_response()
         }
     };
-    if let Some(resp) = federation_admin_required(&claims) {
+    if let Some(resp) = federation_admin_required(&claims).await {
         return resp;
     }
     let path = req.uri().path().to_string();
@@ -4195,6 +4185,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/proxy/music/qq/lyrics/{id}",
                 get(api::proxy::proxy_qq_lyrics),
+            )
+            .route(
+                "/api/proxy/music/kugou/lyrics-verbatim",
+                get(api::proxy::proxy_kugou_lyrics_verbatim),
             )
             // Bilibili API routes
             .route("/api/bilibili/user", get(api::bilibili::get_bilibili_user))
