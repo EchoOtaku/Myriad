@@ -1252,6 +1252,40 @@ async fn get_comprehensive_report_by_id_wrapper(
 
 // ==================== Federation Wrappers ====================
 
+fn federation_admin_required(claims: &middleware::auth::Claims) -> Option<Response> {
+    if claims.is_admin {
+        return None;
+    }
+
+    Some(
+        (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Forbidden",
+                "message": "Administrator access required for instance-level federation ring changes"
+            })),
+        )
+            .into_response(),
+    )
+}
+
+/// GET /api/federation/identity — 获取当前登录用户的联邦地址
+async fn federation_identity_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+
+    let identity = federation::actor::get_local_identity(&claims.username).await;
+    (StatusCode::OK, Json(identity)).into_response()
+}
+
 /// POST /api/federation/follow — 关注远程用户
 async fn federation_follow_wrapper(req: axum::extract::Request) -> Response {
     let claims = req.extensions().get::<middleware::auth::Claims>().cloned();
@@ -2104,6 +2138,39 @@ async fn federation_update_room_wrapper(req: axum::extract::Request) -> Response
     }
 }
 
+async fn federation_delete_room_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+    let path = req.uri().path().to_string();
+    let room_id = path
+        .strip_prefix("/api/federation/rooms/")
+        .unwrap_or("")
+        .to_string();
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::room::delete_room(user_id, &claims.username, &room_id, db).await {
+                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
 async fn federation_get_room_members_wrapper(req: axum::extract::Request) -> Response {
     let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
         Some(c) => c,
@@ -2399,6 +2466,76 @@ async fn federation_get_room_messages_wrapper(req: axum::extract::Request) -> Re
     }
 }
 
+async fn federation_pin_room_message_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+    let path = req.uri().path().to_string();
+    let after_rooms = path.strip_prefix("/api/federation/rooms/").unwrap_or("");
+    let parts: Vec<&str> = after_rooms.splitn(2, "/messages/").collect();
+    let room_id = parts.first().copied().unwrap_or("").to_string();
+    let message_encoded = parts
+        .get(1)
+        .copied()
+        .unwrap_or("")
+        .strip_suffix("/pin")
+        .unwrap_or("");
+    let message_id = urlencoding::decode(message_encoded)
+        .unwrap_or_default()
+        .to_string();
+    let body = match axum::body::to_bytes(req.into_body(), 1024 * 16).await {
+        Ok(b) => b,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid body"})),
+            )
+                .into_response()
+        }
+    };
+    let parsed: federation::room::PinRoomMessageRequest = match serde_json::from_slice(&body) {
+        Ok(p) => p,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid JSON"})),
+            )
+                .into_response()
+        }
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::room::pin_room_message(
+                user_id,
+                &claims.username,
+                &room_id,
+                &message_id,
+                db,
+                &parsed,
+            )
+            .await
+            {
+                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
 // ==================== Phase 5: Ring 去中心化环网 ====================
 
 async fn federation_create_ring_wrapper(req: axum::extract::Request) -> Response {
@@ -2412,6 +2549,9 @@ async fn federation_create_ring_wrapper(req: axum::extract::Request) -> Response
                 .into_response()
         }
     };
+    if let Some(resp) = federation_admin_required(&claims) {
+        return resp;
+    }
     let body = match axum::body::to_bytes(req.into_body(), 65536).await {
         Ok(b) => b,
         Err(_) => {
@@ -2502,6 +2642,9 @@ async fn federation_leave_ring_wrapper(req: axum::extract::Request) -> Response 
                 .into_response()
         }
     };
+    if let Some(resp) = federation_admin_required(&claims) {
+        return resp;
+    }
     let path = req.uri().path().to_string();
     let ring_id = path
         .strip_prefix("/api/federation/rings/")
@@ -2560,6 +2703,9 @@ async fn federation_add_ring_peer_wrapper(req: axum::extract::Request) -> Respon
                 .into_response()
         }
     };
+    if let Some(resp) = federation_admin_required(&claims) {
+        return resp;
+    }
     let path = req.uri().path().to_string();
     let ring_id = path
         .strip_prefix("/api/federation/rings/")
@@ -2604,6 +2750,19 @@ async fn federation_add_ring_peer_wrapper(req: axum::extract::Request) -> Respon
 }
 
 async fn federation_remove_ring_peer_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+    if let Some(resp) = federation_admin_required(&claims) {
+        return resp;
+    }
     let path = req.uri().path().to_string();
     let rest = path.strip_prefix("/api/federation/rings/").unwrap_or("");
     let parts: Vec<&str> = rest.splitn(3, '/').collect();
@@ -2637,6 +2796,9 @@ async fn federation_trigger_ring_sync_wrapper(req: axum::extract::Request) -> Re
                 .into_response()
         }
     };
+    if let Some(resp) = federation_admin_required(&claims) {
+        return resp;
+    }
     let path = req.uri().path().to_string();
     let ring_id = path
         .strip_prefix("/api/federation/rings/")
@@ -2978,8 +3140,14 @@ async fn federation_upload_chunk_wrapper(req: axum::extract::Request) -> Respons
     match db_opt.as_ref() {
         Some(db) => {
             let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::file_transfer::upload_chunk(user_id, &transfer_id, db, &chunk_req)
-                .await
+            match federation::file_transfer::upload_chunk(
+                user_id,
+                &claims.username,
+                &transfer_id,
+                db,
+                &chunk_req,
+            )
+            .await
             {
                 Ok(v) => (StatusCode::OK, Json(v)).into_response(),
                 Err((status, json)) => (status, json).into_response(),
@@ -3254,13 +3422,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             get(oauth_list_my_identities_wrapper)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
-        // ↓ 兼容层：旧 GitHub 路由 302 重定向到新通用路由
-        .route("/api/auth/github/login", get(api::auth::github_login))
-        .route("/api/auth/github/callback", get(api::auth::github_callback))
-        .route(
-            "/api/auth/github/link",
-            get(api::auth::github_link).route_layer(from_fn(middleware::auth::auth_middleware)),
-        )
         .route(
             "/api/auth/change-password",
             post(change_password_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
@@ -3384,6 +3545,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/inbox", post(federation::inbox::post_shared_inbox))
         // ==================== Federation API（需认证）====================
         .route(
+            "/api/federation/identity",
+            get(federation_identity_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
             "/api/federation/follow",
             post(federation_follow_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
@@ -3467,6 +3633,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/federation/rooms/{room_id}",
             get(federation_get_room_wrapper)
                 .put(federation_update_room_wrapper)
+                .delete(federation_delete_room_wrapper)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
@@ -3493,6 +3660,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/federation/rooms/{room_id}/messages",
             get(federation_get_room_messages_wrapper)
                 .post(federation_send_room_message_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/federation/rooms/{room_id}/messages/{message_id}/pin",
+            post(federation_pin_room_message_wrapper)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
@@ -3603,11 +3775,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/reports/comprehensive/{id}/delete",
                 delete(api::reports::delete_comprehensive_report)
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
-            )
-            .route(
-                "/api/auth/link-github",
-                post(api::auth::link_github_account)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // Note: /api/auth/me and /api/auth/logout are now registered above with wrappers
             // Note: /api/config routes are now registered above with wrappers, not here
@@ -4008,6 +4175,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/proxy/music/netease/lyrics/{id}",
                 get(api::proxy::proxy_netease_lyrics),
+            )
+            .route(
+                "/api/proxy/music/netease/lyrics-verbatim/{id}",
+                get(api::proxy::proxy_netease_lyrics_verbatim),
             )
             .route(
                 "/api/proxy/music/netease/song/{id}",

@@ -272,7 +272,7 @@ export const UserModal: FC<UserModalProps> = ({
           {/* 绑定 GitHub - 仅本地账户（未绑定 GitHub）显示 */}
           {user.auth_provider === 'local' && !user.linked_github_id && (
             <a
-              href={`${API_URL}/api/auth/github/link`}
+              href={`${API_URL}/api/auth/oauth/github/link`}
               className="user-modal-action-btn action-github"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

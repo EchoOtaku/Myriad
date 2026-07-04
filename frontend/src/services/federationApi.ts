@@ -9,6 +9,7 @@ import type {
   CreateChannelRequest,
   CreateRingRequest,
   CreateRoomRequest,
+  FederationIdentity,
   FollowListResponse,
   FollowRequest,
   FollowResponse,
@@ -154,6 +155,14 @@ function createMockWs(): WebSocket {
 }
 
 export const federationApi = {
+  /** 获取当前用户联邦身份 */
+  getIdentity(): Promise<FederationIdentity> {
+    return withDevFallback(
+      () => apiService.get<FederationIdentity>(`${PREFIX}/identity`),
+      () => federationMock.getIdentity(),
+    )
+  },
+
   // ==================== 关注管理 ====================
 
   /** 关注远程用户 */

@@ -668,6 +668,7 @@ pub async fn update_env_file(
                         // Reload dynamic config
                         if let Ok(new_config) = config_service.load_config().await {
                             *crate::GLOBAL_DYNAMIC_CONFIG.write().await = new_config;
+                            crate::services::oauth::registry::REGISTRY.reload().await;
                             tracing::info!("Dynamic configuration reloaded");
                         }
                     }

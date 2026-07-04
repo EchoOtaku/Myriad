@@ -44,19 +44,21 @@ updater (内网) — docker.sock + pgdata + state
 
 ## 3. 打开 updater UI
 
-浏览器访问：
+浏览器访问你的 Myriad 站点，登录管理员账户后进入：
 
-```
-http(s)://<host>/admin/updater
+```text
+/config -> 关于 -> 更新管理
 ```
 
-需要管理员登录。**默认走 backend 通道**：backend 持有 `UPDATE_TOKEN`，浏览器只携带 admin session cookie，整个流程不需要手动输入 token。
+需要管理员登录。**默认走 backend 通道**：backend 持有 `UPDATE_TOKEN`，
+浏览器只携带 admin session cookie，整个流程不需要手动输入 token。
 
 如果 backend 本身挂了（极端情况），可以在 UI 的"高级：直连模式"切到 `direct` 并手输 `UPDATE_TOKEN`。前提是宿主机管理员显式启用了直连通道：
 
 ```bash
-# 在 .env 里加这一行，然后 docker compose up -d proxy
+# 在 .env 里加这一行，然后重启 proxy/stack
 PROXY_ALLOW_DIRECT_UPDATER=true
+bash scripts/docker/deploy.sh restart
 ```
 
 默认 `PROXY_ALLOW_DIRECT_UPDATER=false`，`/_updater/*` 返回 404，强制走 backend。
@@ -149,7 +151,7 @@ docker exec myriad-updater myriad-rescue rollback --snapshot snap-<job-id>
 ### 5.3 把诊断包给开发者
 
 ```bash
-docker exec myriad-updater myriad-rescue diagnose
+docker exec myriad-updater myriad-rescue diagnose --output /myriad-diagnostics.tar.gz
 docker cp myriad-updater:/myriad-diagnostics.tar.gz .
 ```
 
@@ -191,7 +193,13 @@ releases 自 v0.1.0 起由 GitHub Actions OIDC keyless 签名（`release.json.si
 COSIGN_VERIFY=strict
 ```
 
-随后 `docker compose up -d updater` 重启 updater。从此每次拉 release.json 时：
+随后重启 updater/stack：
+
+```bash
+bash scripts/docker/deploy.sh restart
+```
+
+从此每次拉 release.json 时：
 
 - 缺失 `.sig`/`.pem` → 拒绝升级（"strict"）
 - 签名校验失败 → 拒绝升级（"strict"）

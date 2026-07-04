@@ -37,11 +37,7 @@ pub async fn follow_remote(
     let base_url = get_base_url().await;
 
     // 解析目标：支持 acct:user@domain 和直接 URL
-    let target_url = if target.starts_with("acct:") || target.contains('@') {
-        resolve_acct_to_url(target).await?
-    } else {
-        target.to_string()
-    };
+    let target_url = resolve_actor_reference(target).await?;
 
     // 获取远程 Actor 信息
     let remote = fetch_remote_actor(db, &target_url).await.map_err(|e| {
@@ -159,11 +155,7 @@ pub async fn unfollow_remote(
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
 
-    let target_url = if target.starts_with("acct:") || target.contains('@') {
-        resolve_acct_to_url(target).await?
-    } else {
-        target.to_string()
-    };
+    let target_url = resolve_actor_reference(target).await?;
 
     // 查找关注关系
     let follow_row = db
@@ -248,6 +240,29 @@ pub async fn unfollow_remote(
         .await;
 
     Ok(json!({"status": "unfollowed", "target": target_url}))
+}
+
+/// 解析 Actor 引用：支持直接 Actor URL 或 acct:user@domain / user@domain。
+pub async fn resolve_actor_reference(
+    reference: &str,
+) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
+    let trimmed = reference.trim();
+    if trimmed.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Actor reference is required"})),
+        ));
+    }
+
+    if trimmed.starts_with("acct:")
+        || (trimmed.contains('@')
+            && !trimmed.starts_with("http://")
+            && !trimmed.starts_with("https://"))
+    {
+        return resolve_acct_to_url(trimmed).await;
+    }
+
+    Ok(trimmed.to_string())
 }
 
 /// WebFinger 查询：acct:user@domain → Actor URL

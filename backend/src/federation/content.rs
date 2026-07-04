@@ -1,6 +1,6 @@
 //! 联邦内容发布模块（Phase 2 — Layer 4）
 //!
-//! 将本地内容（Report / Brew / Library）发布为 AP Activity，
+//! 将本地内容（Report / Brew / Tapp / Library）发布为 AP Activity，
 //! 自动推送给所有关注者。
 
 use axum::{http::StatusCode, Json};
@@ -15,7 +15,7 @@ use crate::federation::types::*;
 /// 发布内容请求
 #[derive(Debug, Deserialize)]
 pub struct PublishRequest {
-    /// 内容类型: report, brew-article, library
+    /// 内容类型: report, brew-article, tapp, library
     pub content_type: String,
     /// 内容 ID（本地数据库 ID 或标识符）
     pub content_id: String,
@@ -98,7 +98,7 @@ pub async fn publish_content(
     let (to, cc) = resolve_audience(visibility, &base_url, username);
 
     let activity_json = json!({
-        "@context": build_ap_context(),
+        "@context": build_context(),
         "type": "Create",
         "id": &activity_id,
         "actor": &local_actor,
@@ -398,6 +398,49 @@ async fn build_ap_object(
                 "mfp:contentId": content_id,
                 "mfp:source": source_name,
                 "mfp:author": author,
+            }))
+        }
+        "tapp" => {
+            // Tapp 应用 → AP Application。仅发布清单元数据，不发布代码包。
+            let row = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"SELECT tapp_id, name, version, description, author, icon, manifest
+                       FROM tapps
+                       WHERE tapp_id = $1 AND user_id = $2"#,
+                    [content_id.into(), user_id.into()],
+                ))
+                .await
+                .map_err(db_err)?
+                .ok_or_else(|| not_found("Tapp not found"))?;
+
+            let tapp_id: String = row.try_get("", "tapp_id").unwrap_or_default();
+            let name: String = row.try_get("", "name").unwrap_or_default();
+            let version: String = row.try_get("", "version").unwrap_or_default();
+            let description: Option<String> = row.try_get("", "description").ok();
+            let author: Option<serde_json::Value> = row.try_get("", "author").ok();
+            let icon: Option<String> = row.try_get("", "icon").ok();
+            let manifest: serde_json::Value = row.try_get("", "manifest").unwrap_or(json!({}));
+            let encoded_id = urlencoding::encode(&tapp_id);
+
+            Ok(json!({
+                "type": "Application",
+                "id": format!("{}/tapps/{}", base_url, encoded_id),
+                "attributedTo": &local_actor,
+                "name": name,
+                "summary": description,
+                "icon": icon.map(|url| json!({
+                    "type": "Image",
+                    "url": url
+                })),
+                "published": now_iso8601(),
+                "to": to,
+                "cc": cc,
+                "mfp:contentType": "tapp",
+                "mfp:contentId": tapp_id,
+                "mfp:version": version,
+                "mfp:author": author,
+                "mfp:manifest": manifest,
             }))
         }
         "library" => {

@@ -16,7 +16,11 @@ export function EmptyComprehensiveReport({
 
   return (
     <motion.div
-      className="shrink-0 snap-center w-70 lg:w-full"
+      className="shrink-0 min-w-0 snap-start"
+      style={{
+        flexBasis:
+          'calc((100dvw - calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem) - var(--report-right-padding) - (var(--report-visible-cards) - 1) * 1rem) / var(--report-visible-cards))',
+      }}
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.4 }}

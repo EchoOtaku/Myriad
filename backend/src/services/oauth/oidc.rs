@@ -5,13 +5,17 @@
 //!   缓存 24h（lazy 刷新）。
 //! - **Token 交换**: 标准 OAuth2 `authorization_code` flow，POST 到 `token_endpoint`。
 //! - **Profile**: 优先解析 `id_token` 的 claims；缺失字段再去 `userinfo_endpoint` 拉。
-//! - **id_token 验证**: 当前依赖 HTTPS + discovery 的信任链（与 Authentik / Keycloak / Auth0 等
-//!   典型部署一致）。完整 JWKS 签名验证留待后续 PR（标 TODO）。
+//! - **id_token 验证**: 通过 discovery 的 `jwks_uri` 拉取 JWKS，校验签名、
+//!   `iss`、`aud`、`exp`、`sub` 和 `azp`。
 //!
 //! 详见 docs/oauth-refactor-plan.md §6.3
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use jsonwebtoken::{
+    decode, decode_header,
+    jwk::{AlgorithmParameters, Jwk, JwkSet, PublicKeyUse},
+    Algorithm, DecodingKey, Validation,
+};
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -29,10 +33,8 @@ struct DiscoveryDoc {
     #[serde(default)]
     userinfo_endpoint: Option<String>,
     #[serde(default)]
-    #[allow(dead_code)] // 未来 JWKS 验签时启用
     jwks_uri: Option<String>,
     #[serde(default)]
-    #[allow(dead_code)]
     issuer: Option<String>,
 }
 
@@ -115,6 +117,58 @@ impl OidcProvider {
             s.extend(self.scopes.iter().cloned());
             s.join(" ")
         }
+    }
+
+    async fn fetch_jwks(&self, doc: &DiscoveryDoc) -> Result<JwkSet, String> {
+        let jwks_uri = doc
+            .jwks_uri
+            .as_deref()
+            .ok_or_else(|| "OIDC discovery missing 'jwks_uri'".to_string())?;
+        let http = crate::services::http_client::get_global_client().await;
+        let resp = http
+            .get(jwks_uri)
+            .send()
+            .await
+            .map_err(|e| format!("OIDC JWKS GET failed: {e:?}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("OIDC JWKS endpoint returned {status}: {body}"));
+        }
+
+        resp.json::<JwkSet>()
+            .await
+            .map_err(|e| format!("OIDC JWKS JSON parse failed: {e:?}"))
+    }
+
+    async fn verify_id_token(&self, id_token: &str) -> Result<serde_json::Value, String> {
+        let doc = self.discovery().await?;
+        let issuer = doc
+            .issuer
+            .as_deref()
+            .ok_or_else(|| "OIDC discovery missing 'issuer'".to_string())?;
+        let header =
+            decode_header(id_token).map_err(|e| format!("OIDC id_token header invalid: {e}"))?;
+
+        ensure_asymmetric_id_token_alg(header.alg)?;
+
+        let jwks = self.fetch_jwks(&doc).await?;
+        let jwk = select_jwk(&jwks, header.kid.as_deref())?;
+        ensure_jwk_matches_id_token(jwk, header.alg)?;
+
+        let key = DecodingKey::from_jwk(jwk)
+            .map_err(|e| format!("OIDC JWK decoding key invalid: {e}"))?;
+        let mut validation = Validation::new(header.alg);
+        validation.set_audience(&[self.client_id.as_str()]);
+        validation.set_issuer(&[issuer]);
+        validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
+        validation.validate_nbf = true;
+
+        let data = decode::<serde_json::Value>(id_token, &key, &validation)
+            .map_err(|e| format!("OIDC id_token verification failed: {e}"))?;
+        validate_authorized_party(&data.claims, &self.client_id)?;
+        Ok(data.claims)
     }
 }
 
@@ -201,18 +255,16 @@ impl OAuthProvider for OidcProvider {
     }
 
     async fn fetch_profile(&self, tokens: &ProviderTokens) -> Result<NormalizedProfile, String> {
-        // 先解析 id_token（无验签 — TODO: PR #N 加 JWKS 验签）
-        let id_claims: serde_json::Value = tokens
+        let id_token = tokens
             .id_token
-            .as_ref()
-            .and_then(|t| decode_jwt_claims(t).ok())
-            .unwrap_or(serde_json::Value::Null);
+            .as_deref()
+            .ok_or_else(|| "OIDC token response missing 'id_token'".to_string())?;
+        let id_claims = self.verify_id_token(id_token).await?;
 
         // 如果 id_token 没给齐档案，再去 userinfo
-        let userinfo: serde_json::Value =
-            if id_claims.get("sub").is_some() && id_claims.get("email").is_some() {
-                id_claims.clone()
-            } else {
+        let userinfo: serde_json::Value = match id_claims.get("email") {
+            Some(_) => id_claims.clone(),
+            _ => {
                 let doc = self.discovery().await?;
                 if let Some(url) = doc.userinfo_endpoint.as_ref() {
                     let http = crate::services::http_client::get_global_client().await;
@@ -227,7 +279,17 @@ impl OAuthProvider for OidcProvider {
                 } else {
                     id_claims.clone()
                 }
-            };
+            }
+        };
+
+        if let (Some(id_sub), Some(userinfo_sub)) = (
+            id_claims.get("sub").and_then(|v| v.as_str()),
+            userinfo.get("sub").and_then(|v| v.as_str()),
+        ) {
+            if id_sub != userinfo_sub {
+                return Err("OIDC userinfo 'sub' does not match id_token".to_string());
+            }
+        }
 
         let sub = userinfo
             .get("sub")
@@ -241,28 +303,35 @@ impl OAuthProvider for OidcProvider {
             .and_then(|v| v.as_str())
             .or_else(|| userinfo.get("name").and_then(|v| v.as_str()))
             .or_else(|| userinfo.get("email").and_then(|v| v.as_str()))
+            .or_else(|| id_claims.get("preferred_username").and_then(|v| v.as_str()))
+            .or_else(|| id_claims.get("name").and_then(|v| v.as_str()))
+            .or_else(|| id_claims.get("email").and_then(|v| v.as_str()))
             .unwrap_or(&sub)
             .to_string();
 
         let email = userinfo
             .get("email")
             .and_then(|v| v.as_str())
+            .or_else(|| id_claims.get("email").and_then(|v| v.as_str()))
             .map(|s| s.to_string());
 
         // email_verified: 优先 userinfo 显式声明，缺省 false（保守 — 不会触发自动 merge）
         let email_verified = userinfo
             .get("email_verified")
             .and_then(|v| v.as_bool())
+            .or_else(|| id_claims.get("email_verified").and_then(|v| v.as_bool()))
             .unwrap_or(false);
 
         let avatar_url = userinfo
             .get("picture")
             .and_then(|v| v.as_str())
+            .or_else(|| id_claims.get("picture").and_then(|v| v.as_str()))
             .map(|s| s.to_string());
 
         let profile_url = userinfo
             .get("profile")
             .and_then(|v| v.as_str())
+            .or_else(|| id_claims.get("profile").and_then(|v| v.as_str()))
             .map(|s| s.to_string());
 
         Ok(NormalizedProfile {
@@ -277,14 +346,84 @@ impl OAuthProvider for OidcProvider {
     }
 }
 
-/// 解析 JWT 的 claims 部分（中段），不验签
-/// TODO: 后续 PR 引入 JWKS 验签
-fn decode_jwt_claims(jwt: &str) -> Result<serde_json::Value, String> {
-    let mut parts = jwt.split('.');
-    let _header = parts.next().ok_or("missing JWT header")?;
-    let payload = parts.next().ok_or("missing JWT payload")?;
-    let bytes = URL_SAFE_NO_PAD
-        .decode(payload)
-        .map_err(|e| format!("JWT base64 decode failed: {e}"))?;
-    serde_json::from_slice(&bytes).map_err(|e| format!("JWT payload JSON parse failed: {e}"))
+fn ensure_asymmetric_id_token_alg(alg: Algorithm) -> Result<(), String> {
+    match alg {
+        Algorithm::RS256
+        | Algorithm::RS384
+        | Algorithm::RS512
+        | Algorithm::PS256
+        | Algorithm::PS384
+        | Algorithm::PS512
+        | Algorithm::ES256
+        | Algorithm::ES384
+        | Algorithm::EdDSA => Ok(()),
+        Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512 => Err(format!(
+            "OIDC id_token algorithm {:?} is not accepted; configure provider for asymmetric signing",
+            alg
+        )),
+    }
+}
+
+fn select_jwk<'a>(jwks: &'a JwkSet, kid: Option<&str>) -> Result<&'a Jwk, String> {
+    if let Some(kid) = kid {
+        return jwks
+            .find(kid)
+            .ok_or_else(|| format!("OIDC JWKS does not contain kid '{kid}'"));
+    }
+
+    let mut candidates = jwks
+        .keys
+        .iter()
+        .filter(|jwk| !matches!(&jwk.algorithm, AlgorithmParameters::OctetKey(_)));
+    match (candidates.next(), candidates.next()) {
+        (Some(jwk), None) => Ok(jwk),
+        (None, _) => Err("OIDC id_token missing 'kid' and JWKS has no asymmetric keys".to_string()),
+        (Some(_), Some(_)) => {
+            Err("OIDC id_token missing 'kid' and JWKS has multiple keys".to_string())
+        }
+    }
+}
+
+fn ensure_jwk_matches_id_token(jwk: &Jwk, alg: Algorithm) -> Result<(), String> {
+    if let Some(key_use) = jwk.common.public_key_use.as_ref() {
+        if key_use != &PublicKeyUse::Signature {
+            return Err("OIDC JWK is not marked for signature use".to_string());
+        }
+    }
+
+    if matches!(&jwk.algorithm, AlgorithmParameters::OctetKey(_)) {
+        return Err("OIDC JWK uses a symmetric key, which is not accepted".to_string());
+    }
+
+    if let Some(key_alg) = jwk.common.key_algorithm.as_ref() {
+        let key_alg = key_alg.to_string();
+        let token_alg = format!("{:?}", alg);
+        if key_alg != token_alg {
+            return Err(format!(
+                "OIDC JWK alg '{key_alg}' does not match id_token alg '{token_alg}'"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_authorized_party(claims: &serde_json::Value, client_id: &str) -> Result<(), String> {
+    let azp = claims.get("azp").and_then(|v| v.as_str());
+    if let Some(azp) = azp {
+        if azp != client_id {
+            return Err("OIDC id_token 'azp' does not match client_id".to_string());
+        }
+    }
+
+    let aud_count = match claims.get("aud") {
+        Some(serde_json::Value::Array(values)) => values.len(),
+        Some(_) => 1,
+        None => 0,
+    };
+    if aud_count > 1 && azp.is_none() {
+        return Err("OIDC id_token has multiple audiences but no 'azp'".to_string());
+    }
+
+    Ok(())
 }

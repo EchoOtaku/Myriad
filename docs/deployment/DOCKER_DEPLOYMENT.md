@@ -55,20 +55,24 @@ On Windows:
 
 Open `http://localhost` or the port configured by `HTTP_PORT`.
 
-## Required Environment
+## Environment
 
-| Variable | Purpose |
-| --- | --- |
-| `MYRIAD_TAG` | Backend/frontend image tag, maintained by updater |
-| `PROXY_TAG` | Proxy image tag |
-| `UPDATER_TAG` | Updater image tag |
-| `COMPOSE_PROJECT_NAME` | Compose project name, default `myriad` |
-| `MYRIAD_DOCKER_NETWORK` | Optional Docker network override, default `myriad-net` |
-| `POSTGRES_PASSWORD` | PostgreSQL password |
-| `JWT_SECRET` | JWT signing secret |
-| `CORS_ORIGINS` | Public frontend origins |
-| `UPDATE_TOKEN` | Server-side updater token |
-| `HTTP_PORT` | Published proxy port, default `80` |
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `POSTGRES_PASSWORD` | yes | PostgreSQL password; set this yourself before first start |
+| `JWT_SECRET` | yes | JWT signing secret; set this yourself before first start |
+| `CORS_ORIGINS` | yes | Public frontend origins |
+| `MYRIAD_TAG` | yes | Backend/frontend image tag, maintained by updater |
+| `PROXY_TAG` | yes | Proxy image tag |
+| `UPDATER_TAG` | yes | Updater image tag |
+| `COMPOSE_PROJECT_NAME` | yes | Compose project name, default `myriad` |
+| `UPDATE_TOKEN` | yes | Server-side updater token; deploy script fills it if empty |
+| `HTTP_PORT` | no | Published proxy port, default `80` |
+| `CHANNEL` | no | Release channel, default `stable` |
+| `MYRIAD_GITHUB_REPO` | no | Release source repo, default `Myriad-You/Myriad` |
+| `MYRIAD_DOCKER_NETWORK` | no | Docker network override, default `myriad-net` |
+| `PROXY_ALLOW_DIRECT_UPDATER` | no | Enables `/_updater/*` rescue path, default `false` |
+| `COSIGN_VERIFY` | no | Release signature policy: `off`, `soft`, or `strict` |
 
 Do not set `BACKEND_PORT` or `FRONTEND_PORT` for production. Those are internal
 container ports.
@@ -94,7 +98,7 @@ bash scripts/docker/deploy.sh upgrade
 Day-to-day updates should be started from the admin UI:
 
 ```text
-Settings -> About -> Update Management
+/config -> About/关于 -> Update Management/更新管理
 ```
 
 The updater then handles maintenance mode, container stop/start, `pgdata`

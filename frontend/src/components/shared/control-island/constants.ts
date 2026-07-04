@@ -1,6 +1,6 @@
 /**
  * Control Island 共享常量
- * 为 Brew / Federation 等模块的控制岛提供统一的样式基础
+ * 为 Brew 等模块的控制岛提供统一的样式基础
  */
 
 import { API_URL as CONFIG_API_URL } from '../../../config'

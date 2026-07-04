@@ -39,10 +39,8 @@ pub async fn auth_middleware(req: Request, next: Next) -> Response {
 /// Admin-only middleware - verifies JWT token and checks admin status
 /// Returns 403 if user is not an admin
 ///
-/// ✅ SECURITY: Checks if username is "admin" (simple but effective)
+/// ✅ SECURITY: Checks the signed `is_admin` claim.
 /// Used for dangerous operations like deleting all reports
-///
-/// TODO: For production, consider checking is_admin field from database or JWT claims
 pub async fn admin_middleware(req: Request, next: Next) -> Response {
     let headers = req.headers();
 
@@ -170,7 +168,7 @@ pub async fn optional_auth_middleware(req: Request, next: Next) -> Response {
 }
 
 /// Verify JWT token from Authorization header or Cookie
-/// ✅ Made public for use in other modules (e.g., auth.rs link_github_account)
+/// Verify JWT for handlers that need claims outside the middleware pipeline.
 pub fn verify_jwt_token(headers: &HeaderMap) -> Result<Claims, Box<Response>> {
     // Extract token from Authorization header or Cookie (优先 Header)
     let token = headers

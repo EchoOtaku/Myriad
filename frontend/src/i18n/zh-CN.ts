@@ -2223,7 +2223,7 @@ export const zhCN: TranslationKeys = {
     published: '已发布',
     channels: '通道',
     followBtn: '关注',
-    followPlaceholder: 'user@instance.social 或 Actor URL',
+    followPlaceholder: 'Actor URL 或 user@domain',
     emptyTimeline: '时间线为空',
     emptyTimelineHint: '关注远程用户后，他们的动态将显示在这里',
     emptyFollowing: '还没有关注任何远程用户',

@@ -2303,7 +2303,7 @@ export const enUS: TranslationKeys = {
     published: 'Published',
     channels: 'Channels',
     followBtn: 'Follow',
-    followPlaceholder: 'user@instance.social or Actor URL',
+    followPlaceholder: 'Actor URL or user@domain',
     emptyTimeline: 'Timeline is empty',
     emptyTimelineHint: 'Follow remote users to see their activities here',
     emptyFollowing: 'Not following any remote users yet',

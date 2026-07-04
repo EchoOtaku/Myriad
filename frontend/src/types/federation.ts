@@ -14,6 +14,20 @@ export interface FollowResponse {
   activity_id: string
 }
 
+export interface FederationIdentity {
+  username: string
+  domain: string
+  handle: string
+  acct: string
+  webfinger_resource: string
+  actor_url: string
+  inbox_url: string
+  outbox_url: string
+  followers_url: string
+  following_url: string
+  profile_url: string
+}
+
 export interface RemoteActor {
   actor_url: string
   username?: string
@@ -53,7 +67,7 @@ export interface TimelineResponse {
 // ==================== 内容发布 ====================
 
 export interface PublishRequest {
-  content_type: 'report' | 'brew-article' | 'library'
+  content_type: 'report' | 'brew-article' | 'tapp' | 'library'
   content_id: string
   visibility?: 'public' | 'followers' | 'direct'
 }

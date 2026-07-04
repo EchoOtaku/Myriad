@@ -327,7 +327,7 @@ export function NavigationIsland() {
   const secondaryNavRef = useRef(secondaryNav)
   secondaryNavRef.current = secondaryNav
 
-  // 当前是否显示二级导航（子路由也匹配，如 /federation/room/xxx 匹配 /federation）
+  // 当前是否显示二级导航（子路由也匹配，如 /brew/item/xxx 匹配 /brew）
   const showSecondary =
     secondaryNav?.expanded &&
     location.pathname.startsWith(secondaryNav.routePath)
@@ -435,7 +435,7 @@ export function NavigationIsland() {
         }
       }
 
-      // 判断是否在同一二级导航组内导航（如 /federation → /federation/room/xxx）
+      // 判断是否在同一二级导航组内导航（如 /brew → /brew/item/xxx）
       const nav = secondaryNavRef.current
       const stayingInSecondary =
         nav?.expanded &&
@@ -902,7 +902,7 @@ export function NavigationIsland() {
                   <button
                     onClick={() => {
                       secondaryNav.onChange(item.id)
-                      // 在子路由（如 /federation/room/xxx）点击导航项时，返回基础路由
+                      // 在子路由（如 /brew/item/xxx）点击导航项时，返回基础路由
                       if (
                         location.pathname !== secondaryNav.routePath &&
                         location.pathname.startsWith(

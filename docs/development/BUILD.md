@@ -5,7 +5,7 @@ This document provides detailed build and compilation instructions for the Myria
 ## Prerequisites
 
 ### Required Tools
-- **Rust**: 1.75 or later ([install](https://rustup.rs/))
+- **Rust**: 1.88 or later; 1.90 recommended ([install](https://rustup.rs/))
 - **Node.js**: 20 or later ([install](https://nodejs.org/))
 - **PostgreSQL**: 16 or later ([install](https://www.postgresql.org/download/))
 - **Git**: Latest version
@@ -142,7 +142,7 @@ pnpm install
 **Issue: TypeScript errors**
 ```powershell
 # Check types without building
-pnpm astro check
+pnpm run typecheck
 ```
 
 **Issue: Memory issues during build**
@@ -154,17 +154,20 @@ pnpm run build
 
 ## Full Stack Build
 
-Use the provided build script:
+Build the frontend and backend separately:
 
-```powershell
-# From project root
-.\scripts\build.ps1
+```bash
+(cd frontend && pnpm install --frozen-lockfile && pnpm run build)
+(cd backend && cargo build --release)
 ```
 
-This will:
-1. Build the frontend (static site)
-2. Build the backend (release mode)
-3. Backend will serve frontend files from `frontend/dist/`
+This creates:
+
+1. `frontend/dist/` for the frontend static build.
+2. `backend/target/release/myriad-backend` for the backend binary.
+
+The default production deployment does not run these artifacts directly. It uses
+versioned Docker images through `docker-compose.yml` and `scripts/docker/deploy.sh`.
 
 ## Database Setup
 
@@ -195,13 +198,26 @@ cargo run --manifest-path migrations/Cargo.toml
 ### Build Images
 
 ```powershell
-# Build all services
+# Windows: build all services
 .\scripts\docker\build-and-push.ps1 -All
 
 # Build specific service
 .\scripts\docker\build-and-push.ps1 -BackendOnly
 .\scripts\docker\build-and-push.ps1 -FrontendOnly
 ```
+
+```bash
+# Linux/macOS: build all services
+bash scripts/docker/build-and-push.sh --all
+
+# Build specific service
+bash scripts/docker/build-and-push.sh --backend-only
+bash scripts/docker/build-and-push.sh --frontend-only
+```
+
+Production releases should normally be built by GitHub Actions `release.yml`
+after pushing a `v*` tag. That workflow builds backend/frontend/proxy/updater
+images, generates `release.json`, signs it, and publishes a GitHub Release.
 
 ### Multi-stage Build Details
 
@@ -334,7 +350,7 @@ jobs:
    cargo update
    
    # Frontend
-   npm update
+   pnpm update
    ```
 
 3. **Check versions**
@@ -342,7 +358,7 @@ jobs:
    rustc --version
    cargo --version
    node --version
-   npm --version
+   pnpm --version
    ```
 
 ## Next Steps
@@ -350,7 +366,7 @@ jobs:
 After building:
 1. Configure `.env` files
 2. Set up database
-3. Run tests: `cargo test` (backend), `npm test` (frontend)
-4. Start development: `.\scripts\dev.ps1`
+3. Run tests: `cargo test` (backend), `pnpm test` (frontend)
+4. Start development: `./scripts/dev/dev.sh start` or `.\scripts\dev\dev.ps1 start`
 
-For deployment instructions, see [docs/DEPLOYMENT.md](DEPLOYMENT.md).
+For deployment instructions, see [Docker Deployment](../deployment/DOCKER_DEPLOYMENT.md).

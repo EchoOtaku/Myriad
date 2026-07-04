@@ -129,7 +129,8 @@ scripts/
     └── build.sh                # Build backend (Linux/Mac)
 ```
 
-**Total Scripts:** 7 (4 Docker + 3 Development)
+**Core Scripts Listed:** 7 (4 Docker + 3 Development). Updater smoke/e2e test scripts
+also live directly under `scripts/`.
 
 ### Backend Structure
 
@@ -251,15 +252,15 @@ docs/
 ### Makefile Commands (Linux/Mac)
 
 ```bash
-make deploy      # One-click deployment
-make start       # Start services
-make stop        # Stop services
-make restart     # Restart services
-make logs        # View logs
-make status      # View status
-make build       # Rebuild images
-make clean       # Full cleanup
-make backup      # Backup database
+make deploy      # Bootstrap and start through scripts/docker/deploy.sh
+make start       # Start through scripts/docker/deploy.sh
+make stop        # Stop containers, preserving volumes
+make restart     # Restart the stack
+make logs        # View stack logs
+make status      # View status and image versions
+make build       # Build all component images locally
+make clean       # Full cleanup, including pgdata/state/backups
+make backup      # Backup PostgreSQL into ./backups
 ```
 
 ---
@@ -396,8 +397,8 @@ make backup      # Backup database
 ### Technical Issues
 
 1. Check relevant troubleshooting section in docs
-2. View logs: `bash scripts/docker/deploy.sh logs` or `docker compose logs`
-3. Search [GitHub Issues](https://github.com/mirai-mamori/Myriad/issues)
+2. View logs: `bash scripts/docker/deploy.sh logs`
+3. Search [GitHub Issues](https://github.com/myriad-you/Myriad/issues)
 4. Open new issue with details
 
 ### Contributing to Docs
@@ -444,4 +445,4 @@ Found an error or want to improve documentation?
 **Last Updated:** 2026-07-03
 **Maintainer:** Myriad Team
 
-**Have questions?** Open an issue on [GitHub](https://github.com/mirai-mamori/Myriad/issues)
+**Have questions?** Open an issue on [GitHub](https://github.com/myriad-you/Myriad/issues)

@@ -2301,7 +2301,7 @@ export const jaJP: TranslationKeys = {
     published: '公開済み',
     channels: 'チャンネル',
     followBtn: 'フォロー',
-    followPlaceholder: 'user@instance.social またはActor URL',
+    followPlaceholder: 'Actor URL または user@domain',
     emptyTimeline: 'タイムラインは空です',
     emptyTimelineHint:
       'リモートユーザーをフォローすると、ここにアクティビティが表示されます',

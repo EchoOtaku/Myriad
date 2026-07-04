@@ -2279,8 +2279,29 @@ async fn do_uninstall_tapp(
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateTappRequest {
-    /// 安装来源: "store"
+    /// 更新来源: "store" | "direct"
     source: String,
+    // ===== direct 模式需要的字段 =====
+    /// Tapp 清单（direct 模式必需）
+    manifest: Option<TappManifest>,
+    /// 主代码（direct 模式必需）
+    code: Option<String>,
+    /// CSS 样式（可选）
+    styles: Option<String>,
+    /// 页面 HTML 模板（可选）
+    page_template: Option<String>,
+    /// 小组件 HTML 模板（可选，按尺寸）
+    widget_templates: Option<std::collections::HashMap<String, String>>,
+    /// Widget 专用 Tailwind CSS（可选）
+    widget_css: Option<String>,
+    /// Page 专用 Tailwind CSS（可选）
+    page_css: Option<String>,
+    /// i18n 翻译数据（可选，lang_code → JSON 对象）
+    i18n: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Page 模块文件（可选，filename → code）
+    page_modules: Option<std::collections::HashMap<String, String>>,
+
+    // ===== store 模式需要的字段 =====
     /// 商店源 URL 或 ID
     store_source: Option<String>,
     /// 授权的权限列表（可选，保留原有权限）
@@ -2305,20 +2326,20 @@ async fn update_tapp(
         .parse()
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
 
-    // 验证来源类型
-    if req.source != "store" {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            api_error("Currently only 'store' source is supported for updates"),
-        ));
-    }
-
-    let store_source = req.store_source.ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            api_error("storeSource is required for store update"),
-        )
-    })?;
+    let UpdateTappRequest {
+        source,
+        manifest: req_manifest,
+        code: req_code,
+        styles: req_styles,
+        page_template: req_page_template,
+        widget_templates: req_widget_templates,
+        widget_css: req_widget_css,
+        page_css: req_page_css,
+        i18n: req_i18n,
+        page_modules: req_page_modules,
+        store_source,
+        permissions,
+    } = req;
 
     // 查找用户已安装的 Tapp
     let existing_tapp = tapps::Entity::find()
@@ -2334,7 +2355,6 @@ async fn update_tapp(
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, api_error("Tapp not installed")))?;
 
-    // 从商店获取最新版本
     let (
         manifest,
         code,
@@ -2345,7 +2365,55 @@ async fn update_tapp(
         widget_templates,
         i18n_data,
         page_modules_data,
-    ) = fetch_from_store(&db, &store_source, &tapp_id).await?;
+    ) = match source.as_str() {
+        "direct" => {
+            let manifest = req_manifest.ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    api_error("manifest is required for direct update"),
+                )
+            })?;
+            let code = req_code.ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    api_error("code is required for direct update"),
+                )
+            })?;
+            (
+                manifest,
+                code,
+                req_styles,
+                req_widget_css,
+                req_page_css,
+                req_page_template,
+                req_widget_templates,
+                req_i18n,
+                req_page_modules,
+            )
+        }
+        "store" => {
+            let store_source = store_source.ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    api_error("storeSource is required for store update"),
+                )
+            })?;
+            fetch_from_store(&db, &store_source, &tapp_id).await?
+        }
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                api_error("Invalid source, must be 'direct' or 'store'"),
+            ));
+        }
+    };
+
+    if manifest.id != tapp_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            api_error("manifest id does not match target tapp id"),
+        ));
+    }
 
     // 获取 Tapp 目录
     let tapp_dir = PathBuf::from(&existing_tapp.file_path)
@@ -2433,7 +2501,7 @@ async fn update_tapp(
         })?;
 
     // 确定授权的权限（保留原有权限或使用新权限）
-    let granted: Vec<String> = if let Some(perms) = req.permissions {
+    let granted: Vec<String> = if let Some(perms) = permissions {
         if perms.is_empty() {
             manifest.permissions.clone()
         } else {

@@ -347,6 +347,9 @@ export default defineConfig({
     define: {
       __APP_VERSION__: JSON.stringify(APP_VERSION),
     },
+    optimizeDeps: {
+      include: ['jszip'],
+    },
     plugins: [
       tailwindcss(), // Tailwind CSS v4 Vite plugin
       backendDevProxyPlugin(), // 开发环境 API 转发，绕开 Vite http-proxy 的 socket 500

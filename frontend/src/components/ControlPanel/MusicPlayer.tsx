@@ -633,21 +633,15 @@ const MusicPlaylistView: React.FC<{ player: UseMusicPlayerReturn }> = ({
         {/* 排除VIP开关 */}
         <button
           onClick={() => setExcludeVipSongs(!excludeVipSongs)}
-          className={`music-vip-filter-toggle ${excludeVipSongs ? 'active' : ''}`}
+          className={`music-vip-filter-toggle ${!excludeVipSongs ? 'active' : ''}`}
           aria-label={
             excludeVipSongs ? t.music.showVipSongs : t.music.hideVipSongs
           }
           title={excludeVipSongs ? t.music.showVipSongs : t.music.hideVipSongs}
         >
-          {excludeVipSongs ? (
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          )}
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M5 16L3 7l5.5 4L12 5l3.5 6L21 7l-2 9H5zm0 2h14v2H5v-2z" />
+          </svg>
         </button>
 
         {/* 搜索框 */}

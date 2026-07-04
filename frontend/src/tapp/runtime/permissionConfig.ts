@@ -192,7 +192,10 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['media.playTrack', 'media:control'],
     ['media.jumpToIndex', 'media:control'],
     ['media.getSpectrum', 'media:read'],
+    ['media.getLyrics', 'media:read'],
     ['media.loadNeteasePlaylist', 'media:control'],
+    ['media.getSkipVip', 'media:read'],
+    ['media.setSkipVip', 'media:control'],
 
     // 组件权限
     ['component.registerTheme', 'component:theme'],
@@ -237,6 +240,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['speech.asr', 'speech:asr'],
 
     // 联邦权限
+    ['federation.getIdentity', 'federation:read'],
     ['federation.getTimeline', 'federation:read'],
     ['federation.getFollowing', 'federation:read'],
     ['federation.getFollowers', 'federation:read'],

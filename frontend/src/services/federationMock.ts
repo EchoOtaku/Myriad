@@ -9,6 +9,7 @@ import type {
   ChannelDetail,
   ChannelListResponse,
   ChannelSummary,
+  FederationIdentity,
   FollowListResponse,
   MessageItem,
   MessageListResponse,
@@ -34,6 +35,20 @@ import type {
 } from '../types/federation'
 
 // ==================== 远程用户 ====================
+
+const MOCK_IDENTITY: FederationIdentity = {
+  username: 'me',
+  domain: 'myriad.local',
+  handle: '@me@myriad.local',
+  acct: 'me@myriad.local',
+  webfinger_resource: 'acct:me@myriad.local',
+  actor_url: 'https://myriad.local/users/me',
+  inbox_url: 'https://myriad.local/users/me/inbox',
+  outbox_url: 'https://myriad.local/users/me/outbox',
+  followers_url: 'https://myriad.local/users/me/followers',
+  following_url: 'https://myriad.local/users/me/following',
+  profile_url: 'https://myriad.local/profile/me',
+}
 
 const MOCK_ACTORS: RemoteActor[] = [
   {
@@ -1029,10 +1044,49 @@ function delay(ms = 60): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function mockActorFromReference(reference: string): {
+  actorUrl: string
+  username: string
+  domain: string
+} {
+  const trimmed = reference.trim().replace(/^acct:/, '')
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    try {
+      const url = new URL(trimmed)
+      const username = url.pathname.split('/').filter(Boolean).at(-1) || trimmed
+      return {
+        actorUrl: trimmed,
+        username,
+        domain: url.host,
+      }
+    } catch {
+      return {
+        actorUrl: trimmed,
+        username: trimmed,
+        domain: 'unknown.social',
+      }
+    }
+  }
+
+  const parts = trimmed.split('@')
+  const username = parts[0] || trimmed
+  const domain = parts[1] || 'unknown.social'
+  return {
+    actorUrl: `https://${domain}/users/${username}`,
+    username,
+    domain,
+  }
+}
+
 let _msgCounter = 100
 
 export const federationMock = {
   // ---- 列表 ----
+
+  async getIdentity(): Promise<FederationIdentity> {
+    await delay()
+    return MOCK_IDENTITY
+  },
 
   async getTimeline(): Promise<TimelineResponse> {
     await delay()
@@ -1240,10 +1294,7 @@ export const federationMock = {
   }): Promise<{ channel_id: string }> {
     await delay()
     const id = `ch-mock-${++_msgCounter}`
-    const parts = req.remote_actor.split('@')
-    const username = parts[0] || req.remote_actor
-    const domain = parts[1] || 'unknown.social'
-    const actorUrl = `https://${domain}/users/${username}`
+    const { actorUrl, username } = mockActorFromReference(req.remote_actor)
     const ch: ChannelSummary = {
       channel_id: id,
       remote_actor_url: actorUrl,

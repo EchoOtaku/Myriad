@@ -568,6 +568,85 @@ impl NeteaseService {
         Ok(data)
     }
 
+    /// 获取逐字歌词（网易云 yrc 格式）
+    ///
+    /// 使用 `song/lyric/v1` 接口并请求 `yv`/`ytv`/`yrv` 字段，返回体在包含普通
+    /// `lrc`（逐行）之外，还含 `yrc`（逐字）、`ytlrc`（逐字翻译）、`yromalrc`（逐字罗马音）。
+    /// 与旧 `fetch_lyrics` 分离，避免影响已稳定的逐行歌词链路。
+    pub async fn fetch_lyrics_verbatim(&self, song_id: i64) -> Result<Value> {
+        let cache_key = format!("lyrics_verbatim:{}", song_id);
+
+        // 检查限流
+        {
+            let mut limiter = RATE_LIMITER.write().await;
+            if !limiter.check_rate_limit(&cache_key) {
+                return Err(anyhow!("Rate limit exceeded for lyrics {}", song_id));
+            }
+        }
+
+        // 检查缓存
+        {
+            let cache = MUSIC_CACHE.read().await;
+            if let Some(entry) = cache.get(&cache_key) {
+                if entry.expires_at > Instant::now() {
+                    return Ok(entry.data.clone());
+                }
+            }
+        }
+
+        let device_id = generate_device_id();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+
+        let url = format!(
+            "https://music.163.com/api/song/lyric/v1?id={}&cp=false&lv=0&kv=0&tv=0&yv=0&ytv=0&yrv=0",
+            song_id
+        );
+
+        let client_ip = get_random_china_ip();
+        let proxy_ip = get_random_china_ip();
+        let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Referer", "https://music.163.com/")
+            .header("Accept", "*/*")
+            .header("User-Agent", get_random_user_agent())
+            .header(
+                "Cookie",
+                format!(
+                    "osver=android; appver=8.7.01; os=android; deviceId={}; channel=netease; requestId={}_{}",
+                    device_id,
+                    timestamp,
+                    rand::random::<u16>() % 10000
+                ),
+            )
+            .header("X-Forwarded-For", forwarded_for)
+            .header("X-Real-IP", client_ip)
+            .send()
+            .await?;
+
+        let mut data: Value = response.json().await?;
+        convert_http_to_https(&mut data);
+
+        // 存入缓存（24小时）
+        {
+            let mut cache = MUSIC_CACHE.write().await;
+            cache.insert(
+                cache_key,
+                CacheEntry {
+                    data: data.clone(),
+                    expires_at: Instant::now() + Duration::from_secs(86400),
+                },
+            );
+        }
+
+        Ok(data)
+    }
+
     /// 获取单首歌曲详情
     pub async fn fetch_song_detail(&self, song_id: i64) -> Result<Value> {
         let cache_key = format!("song:{}", song_id);

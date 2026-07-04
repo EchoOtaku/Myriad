@@ -76,11 +76,11 @@ pub struct LibraryItem {
 
 ### 样式系统
 
-所有样式集成在 `Layout.astro` 的全局样式中：
+资料库样式由 `LibraryGrid.tsx` 组件内的样式和 Tailwind class 组合维护：
 
-- `.library-masonry-grid` - 瀑布流容器
-- `.library-card` - 卡片基础样式
-- `.game-card`, `.video-card`, `.music-card` - 不同类型卡片
+- `.library-card-container` - 卡片容器和悬停状态
+- 绝对定位网格布局 - 根据卡片高度计算瀑布流位置
+- 平台/内容类型相关的图标、色彩和元信息
 - 悬停效果、动画、响应式断点
 
 ## 使用方法

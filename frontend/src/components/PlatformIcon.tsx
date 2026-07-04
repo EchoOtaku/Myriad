@@ -1,7 +1,7 @@
 import {
+  BangumiIcon,
   FaGithub,
   FaSteam,
-  SiBangumi,
   SiBilibili,
   SiNeteasecloudmusic,
 } from '@lib/icons'
@@ -32,7 +32,7 @@ const PlatformIcon: React.FC<PlatformIconProps> = React.memo(
       case '网易云音乐':
         return <SiNeteasecloudmusic className={className} style={style} />
       case 'bangumi':
-        return <SiBangumi className={className} style={style} />
+        return <BangumiIcon className={className} style={style} />
       default:
         return (
           <span className={className} style={style}>

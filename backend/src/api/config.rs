@@ -1132,6 +1132,11 @@ pub async fn update_config(
             // 3.1 重载全局 HTTP 客户端（以应用新的代理配置）
             crate::services::http_client::reload_global_client().await;
             tracing::info!("✅ Global HTTP client reloaded with new proxy settings");
+
+            // 3.2 兼容旧配置保存路径：如果 github_client_id/secret 仍由
+            // /api/config 写入，也要让 OAuth provider 列表立即生效。
+            crate::services::oauth::registry::REGISTRY.reload().await;
+            tracing::info!("✅ OAuth provider registry reloaded");
         }
         Err(e) => {
             tracing::warn!("⚠️ Failed to reload dynamic config into cache: {}", e);
@@ -2466,8 +2471,9 @@ pub async fn update_permissions(
 // ============================================================================
 // 详见 docs/oauth-refactor-plan.md §5、§7
 //
-// GitHub 仍走旧的 github_client_id/github_client_secret 字段（OAuthConfigSection
-// 已经有对应输入），这里专门给"通用 OIDC providers 列表 + 注册开关"用。
+// GitHub 可以作为 kind="github" 的 provider entry 配置；旧的
+// github_client_id/github_client_secret 字段保留为兼容镜像。
+// 这里集中处理 provider 列表 + 注册开关。
 
 /// GET /api/config/oauth-providers
 ///
@@ -2542,7 +2548,7 @@ pub struct UpdateOAuthProvidersPayload {
 ///
 /// 全量覆盖 providers 列表 + 注册开关。
 /// 校验：
-/// 1. slug 必填、不能是保留值 "github"、不能重复
+/// 1. slug 必填、URL-safe、不能重复
 /// 2. kind="oidc" 时 discovery_url 必填
 /// 3. client_secret 若为掩码 `***`，沿用现有 secret
 ///

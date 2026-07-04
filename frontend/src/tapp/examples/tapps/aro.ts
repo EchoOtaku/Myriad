@@ -132,6 +132,17 @@ const PAGE_HTML = `\
               <div id="feed-handle" class="feed-handle"></div>
             </div>
           </div>
+          <div class="feed-identity-card" data-fed-identity>
+            <div class="feed-identity-top">
+              <span class="feed-identity-label" data-fed-label>联邦地址</span>
+              <button class="feed-identity-copy" data-copy-fed="handle" title="复制">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              </button>
+            </div>
+            <button class="feed-identity-value" data-copy-fed="handle" type="button" data-fed-handle></button>
+            <div class="feed-identity-actor-label" data-fed-actor-label>Actor URL</div>
+            <button class="feed-identity-actor" data-copy-fed="actor" type="button" data-fed-actor></button>
+          </div>
           <div class="feed-sidebar-stats">
             <div class="feed-sidebar-stat">
               <span class="feed-stat-num" id="feed-count-following">0</span>
@@ -162,8 +173,19 @@ const PAGE_HTML = `\
           <button class="feed-mobile-tab" data-sub="followers" id="feed-tab-followers">粉丝</button>
           <button class="feed-mobile-tab" data-sub="published" id="feed-tab-published">已发布</button>
         </div>
+        <div class="feed-identity-card feed-identity-mobile" data-fed-identity>
+          <div class="feed-identity-top">
+            <span class="feed-identity-label" data-fed-label>联邦地址</span>
+            <button class="feed-identity-copy" data-copy-fed="handle" title="复制">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+          </div>
+          <button class="feed-identity-value" data-copy-fed="handle" type="button" data-fed-handle></button>
+          <div class="feed-identity-actor-label" data-fed-actor-label>Actor URL</div>
+          <button class="feed-identity-actor" data-copy-fed="actor" type="button" data-fed-actor></button>
+        </div>
         <div id="feed-follow-bar" class="feed-follow-bar" style="display:none">
-          <input id="feed-follow-input" class="feed-follow-input" type="text" placeholder="user@instance.social" />
+          <input id="feed-follow-input" class="feed-follow-input" type="text" placeholder="Actor URL 或 user@domain" />
           <button id="feed-follow-btn" class="feed-follow-btn">关注</button>
         </div>
         <div id="feed-content" class="feed-content"></div>
@@ -223,7 +245,7 @@ const PAGE_HTML = `\
           <div id="ring-sync-status" class="ring-sync-bar" style="display:none"></div>
           <!-- 添加节点 -->
           <div class="invite-bar" id="ring-peer-bar">
-            <input id="ring-peer-input" class="invite-input" type="text" placeholder="https://instance.social" />
+            <input id="ring-peer-input" class="invite-input" type="text" placeholder="Actor URL 或 user@domain" />
             <button id="ring-add-peer-btn" class="invite-btn">添加</button>
           </div>
           <!-- 节点列表 -->
@@ -268,7 +290,7 @@ const PAGE_HTML = `\
         <button id="create-tab-room" class="create-tab" data-tab="room">群聊</button>
       </div>
       <div id="create-form-channel" class="create-form">
-        <input id="create-channel-input" class="create-input" type="text" placeholder="user@instance.social" />
+        <input id="create-channel-input" class="create-input" type="text" placeholder="Actor URL 或 user@domain" />
         <button id="create-channel-btn" class="create-submit">创建通道</button>
       </div>
       <div id="create-form-room" class="create-form" style="display:none">
@@ -360,6 +382,16 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .feed-sidebar-stat{display:flex;align-items:center;gap:3px;font-size:12px;color:var(--text-secondary,#536471)}
 .feed-stat-num{font-weight:700;color:var(--text-primary,#0f1419)}
 .feed-stat-lbl{font-weight:400}
+.feed-identity-card{display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid rgba(128,128,128,.12);border-radius:8px;background:rgba(128,128,128,.035);min-width:0}
+.feed-identity-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.feed-identity-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary,#536471)}
+.feed-identity-copy{width:24px;height:24px;border:none;border-radius:6px;background:rgba(var(--tapp-primary-rgb,100,100,255),.08);color:var(--tapp-primary,#6366f1);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.feed-identity-copy:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.14)}
+.feed-identity-value,.feed-identity-actor{width:100%;padding:0;border:none;background:none;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.feed-identity-value{font-size:12px;font-weight:700;color:var(--text-primary,#0f1419)}
+.feed-identity-actor-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary,#536471);opacity:.75}
+.feed-identity-actor{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:10px;line-height:1.35;color:var(--text-secondary,#536471)}
+.feed-identity-mobile{display:none;margin:10px 16px 0;flex-shrink:0}
 /* Feed Main */
 .feed-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;position:relative}
 /* Floating action buttons */
@@ -422,6 +454,9 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .dark .feed-mobile-tabs{background:rgba(21,32,43,.85)}
 .dark .feed-mobile-tab-active{color:rgba(255,255,255,.95)!important}
 .dark .feed-stat-num{color:rgba(255,255,255,.92)}
+.dark .feed-identity-card{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.035)}
+.dark .feed-identity-value{color:rgba(255,255,255,.92)}
+.dark .feed-identity-actor,.dark .feed-identity-actor-label,.dark .feed-identity-label{color:rgba(255,255,255,.5)}
 .dark .feed-item-name{color:rgba(255,255,255,.92)}
 .dark .feed-item-text{color:rgba(255,255,255,.85)}
 .dark .feed-item:hover{background:rgba(255,255,255,.03)}
@@ -434,6 +469,7 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
   .aro-nav{justify-content:center;gap:4px}
   .feed-sidebar{display:none}
   .feed-mobile-tabs{display:flex}
+  .feed-identity-mobile{display:flex}
   .feed-main{max-width:none}
 }
 
@@ -885,7 +921,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     create: '新建',
     newChannel: '新建私信',
     newRoom: '新建群聊',
-    channelPlaceholder: 'user@instance.social',
+    channelPlaceholder: 'Actor URL 或 user@domain',
     roomPlaceholder: '房间名称',
     createChannel: '创建通道',
     createRoom: '创建房间',
@@ -895,7 +931,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     accept: '接受',
     acceptFail: '接受失败',
     inviteBtn: '邀请',
-    invitePlaceholder: 'user@instance.social',
+    invitePlaceholder: 'Actor URL 或 user@domain',
     inviting: '邀请中...',
     inviteFail: '邀请失败',
     inviteSuccess: '已邀请',
@@ -929,9 +965,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     activityType: '活动类型',
     unfollowBtn: '取消关注',
     removeBtn: '取消发布',
-    followPlaceholder: 'user@instance.social',
+    followPlaceholder: 'Actor URL 或 user@domain',
     followBtn: '关注',
     followFail: '关注失败',
+    federationAddress: '联邦地址',
+    actorUrl: 'Actor URL',
+    copy: '复制',
+    copied: '已复制',
+    copyFail: '复制失败',
     unfollowFail: '取消关注失败',
     unpublishFail: '取消发布失败',
     emptyRings: '暂无环网',
@@ -942,7 +983,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     createRingFail: '创建失败',
     leaveRingFail: '退出失败',
     peers: '节点',
-    addPeerPlaceholder: 'https://instance.social',
+    addPeerPlaceholder: 'Actor URL 或 user@domain',
     addPeerBtn: '添加',
     addPeerFail: '添加失败',
     removePeerFail: '移除失败',
@@ -1033,7 +1074,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     create: 'New',
     newChannel: 'New DM',
     newRoom: 'New Room',
-    channelPlaceholder: 'user@instance.social',
+    channelPlaceholder: 'Actor URL or user@domain',
     roomPlaceholder: 'Room name',
     createChannel: 'Create Channel',
     createRoom: 'Create Room',
@@ -1043,7 +1084,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     accept: 'Accept',
     acceptFail: 'Accept failed',
     inviteBtn: 'Invite',
-    invitePlaceholder: 'user@instance.social',
+    invitePlaceholder: 'Actor URL or user@domain',
     inviting: 'Inviting...',
     inviteFail: 'Invite failed',
     inviteSuccess: 'Invited',
@@ -1078,9 +1119,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     activityType: 'Activity',
     unfollowBtn: 'Unfollow',
     removeBtn: 'Unpublish',
-    followPlaceholder: 'user@instance.social',
+    followPlaceholder: 'Actor URL or user@domain',
     followBtn: 'Follow',
     followFail: 'Follow failed',
+    federationAddress: 'Federation address',
+    actorUrl: 'Actor URL',
+    copy: 'Copy',
+    copied: 'Copied',
+    copyFail: 'Copy failed',
     unfollowFail: 'Unfollow failed',
     unpublishFail: 'Unpublish failed',
     emptyRings: 'No rings',
@@ -1091,7 +1137,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     createRingFail: 'Create failed',
     leaveRingFail: 'Leave failed',
     peers: 'peers',
-    addPeerPlaceholder: 'https://instance.social',
+    addPeerPlaceholder: 'Actor URL or user@domain',
     addPeerBtn: 'Add',
     addPeerFail: 'Add failed',
     removePeerFail: 'Remove failed',
@@ -1182,7 +1228,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     create: '新規',
     newChannel: '新規DM',
     newRoom: '新規ルーム',
-    channelPlaceholder: 'user@instance.social',
+    channelPlaceholder: 'Actor URL または user@domain',
     roomPlaceholder: 'ルーム名',
     createChannel: 'チャンネル作成',
     createRoom: 'ルーム作成',
@@ -1192,7 +1238,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     accept: '承認',
     acceptFail: '承認失敗',
     inviteBtn: '招待',
-    invitePlaceholder: 'user@instance.social',
+    invitePlaceholder: 'Actor URL または user@domain',
     inviting: '招待中...',
     inviteFail: '招待失敗',
     inviteSuccess: '招待済み',
@@ -1226,9 +1272,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     activityType: 'アクティビティ',
     unfollowBtn: 'フォロー解除',
     removeBtn: '公開取消',
-    followPlaceholder: 'user@instance.social',
+    followPlaceholder: 'Actor URL または user@domain',
     followBtn: 'フォロー',
     followFail: 'フォロー失敗',
+    federationAddress: '連合アドレス',
+    actorUrl: 'Actor URL',
+    copy: 'コピー',
+    copied: 'コピーしました',
+    copyFail: 'コピー失敗',
     unfollowFail: 'フォロー解除失敗',
     unpublishFail: '公開取消失敗',
     emptyRings: 'リングなし',
@@ -1239,7 +1290,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     createRingFail: '作成失敗',
     leaveRingFail: '退出失敗',
     peers: 'ピア',
-    addPeerPlaceholder: 'https://instance.social',
+    addPeerPlaceholder: 'Actor URL または user@domain',
     addPeerBtn: '追加',
     addPeerFail: '追加失敗',
     removePeerFail: '削除失敗',
@@ -1340,6 +1391,7 @@ var state = {
   pollTimer: null,
   pollInterval: 15000,
   localActorUrl: null,
+  identity: null,
   // Attachment
   pendingAttach: null, // { type: 'image'|'file'|'tapp'|'brew'|'library'|'report', data, name, size, mime }
   // Aro views
@@ -1403,6 +1455,135 @@ function formatFileSize(bytes) {
   return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
+function getIdentityHandle() {
+  var identity = state.identity || {};
+  if (identity.handle) return identity.handle;
+  if (identity.acct) return '@' + identity.acct;
+  if (identity.username && identity.domain) return '@' + identity.username + '@' + identity.domain;
+  return '';
+}
+
+function synthesizeFederationIdentityFromUser(user) {
+  if (state.identity || !user) return;
+  var rawUsername = user.username || user.display_name || user.name || '';
+  rawUsername = String(rawUsername).replace(/^@/, '').split('@')[0];
+  if (!rawUsername) return;
+
+  var actorUrl = user.actor_url || state.localActorUrl || '';
+  var domain = '';
+  if (actorUrl) {
+    try { domain = new URL(actorUrl).host; } catch (e) {}
+  }
+  if (!domain) domain = location.host || 'local';
+  if (!actorUrl && location.origin) actorUrl = location.origin + '/users/' + encodeURIComponent(rawUsername);
+
+  var acct = rawUsername + '@' + domain;
+  state.identity = {
+    username: rawUsername,
+    domain: domain,
+    handle: '@' + acct,
+    acct: acct,
+    webfinger_resource: 'acct:' + acct,
+    actor_url: actorUrl,
+    inbox_url: actorUrl ? actorUrl + '/inbox' : '',
+    outbox_url: actorUrl ? actorUrl + '/outbox' : '',
+    followers_url: actorUrl ? actorUrl + '/followers' : '',
+    following_url: actorUrl ? actorUrl + '/following' : '',
+    profile_url: location.origin ? location.origin + '/profile/' + encodeURIComponent(rawUsername) : ''
+  };
+  if (actorUrl) state.localActorUrl = actorUrl;
+}
+
+function renderFederationIdentity() {
+  var identity = state.identity || {};
+  var handle = getIdentityHandle();
+  var actorUrl = identity.actor_url || state.localActorUrl || '';
+  var visible = !!(handle || actorUrl);
+
+  if (actorUrl) state.localActorUrl = actorUrl;
+
+  document.querySelectorAll('[data-fed-identity]').forEach(function (card) {
+    card.style.display = visible ? '' : 'none';
+    var handleEl = card.querySelector('[data-fed-handle]');
+    var actorEl = card.querySelector('[data-fed-actor]');
+    if (handleEl) handleEl.textContent = handle || actorUrl;
+    if (actorEl) actorEl.textContent = actorUrl;
+  });
+
+  var profileHandle = $('feed-handle');
+  if (profileHandle && handle) profileHandle.textContent = handle;
+}
+
+async function loadFederationIdentity() {
+  if (!Tapp.federation || typeof Tapp.federation.getIdentity !== 'function') {
+    try {
+      var fallbackUser = await Tapp.context.getUser();
+      synthesizeFederationIdentityFromUser(fallbackUser);
+    } catch (e) {}
+    renderFederationIdentity();
+    return;
+  }
+  try {
+    var identity = await Tapp.federation.getIdentity();
+    if (identity) {
+      state.identity = identity;
+      if (identity.actor_url) state.localActorUrl = identity.actor_url;
+    }
+  } catch (e) {
+    console.warn('[Aro] federation identity unavailable:', e);
+  }
+  if (!state.identity) {
+    try {
+      var fallbackUser2 = await Tapp.context.getUser();
+      synthesizeFederationIdentityFromUser(fallbackUser2);
+    } catch (e2) {}
+  }
+  renderFederationIdentity();
+}
+
+function fallbackCopyText(text) {
+  var area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', 'readonly');
+  area.style.position = 'fixed';
+  area.style.left = '-9999px';
+  document.body.appendChild(area);
+  area.select();
+  area.setSelectionRange(0, text.length);
+  var ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch (e) {
+    ok = false;
+  } finally {
+    area.remove();
+  }
+  return ok;
+}
+
+async function copyFederationIdentity(kind) {
+  var identity = state.identity || {};
+  var text = kind === 'actor' ? (identity.actor_url || state.localActorUrl || '') : getIdentityHandle();
+  if (!text) return;
+  var ok = false;
+  // Tapp 运行在 opaque-origin 的沙箱 iframe 中，异步 Clipboard API 会被
+  // 浏览器以 NotAllowedError 拒绝，因此拒绝后必须回退到 execCommand。
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }
+  } catch (e) {
+    ok = false;
+  }
+  if (!ok) ok = fallbackCopyText(text);
+  if (ok) {
+    try { Tapp.ui.showNotification({ title: lang.copied, message: text, type: 'success' }); } catch (e2) {}
+  } else {
+    try { Tapp.ui.showNotification({ title: lang.copyFail, type: 'error' }); } catch (e3) {}
+  }
+}
+
 function isLocalActor(actor) {
   if (!actor) return false;
   if (state.localActorUrl) return actor === state.localActorUrl;
@@ -1437,11 +1618,16 @@ function applyLabels() {
   el = $('feed-lbl-published'); if (el) el.textContent = lang.feedPublished;
   el = $('feed-follow-input'); if (el) el.placeholder = lang.followPlaceholder;
   el = $('feed-follow-btn'); if (el) el.textContent = lang.followBtn;
+  document.querySelectorAll('[data-fed-label]').forEach(function (node) { node.textContent = lang.federationAddress; });
+  document.querySelectorAll('[data-fed-actor-label]').forEach(function (node) { node.textContent = lang.actorUrl; });
+  document.querySelectorAll('[data-copy-fed]').forEach(function (node) { node.setAttribute('title', lang.copy); });
   el = $('ring-sidebar-title'); if (el) el.textContent = lang.navRings;
   el = $('ring-select-hint'); if (el) el.textContent = lang.selectRing;
   el = $('ring-create-title'); if (el) el.textContent = lang.createRingTitle;
   el = $('ring-name-input'); if (el) el.placeholder = lang.ringNamePlaceholder;
   el = $('create-ring-btn'); if (el) el.textContent = lang.createRingBtn;
+  el = $('ring-peer-input'); if (el) el.placeholder = lang.addPeerPlaceholder;
+  el = $('ring-add-peer-btn'); if (el) el.textContent = lang.addPeerBtn;
 }
 
 function applyDialogLabels() {
@@ -2940,7 +3126,7 @@ function ensureInvitePopover() {
     + '<div class="invite-pop-section">'
     + '<div class="invite-pop-label" id="invite-pop-manual-label">' + esc(lang.inviteManual) + '</div>'
     + '<div class="invite-pop-manual">'
-    + '<input id="invite-input" class="invite-input" type="text" placeholder="user@instance.social" />'
+    + '<input id="invite-input" class="invite-input" type="text" placeholder="' + esc(lang.invitePlaceholder) + '" />'
     + '<button id="invite-btn" class="invite-pop-send">'
     + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>'
     + '</button>'
@@ -3260,6 +3446,7 @@ const PAGE_MOD_VIEWS = `\
 
 // ==================== Feed View (merged Timeline + Profile) ====================
 async function loadFeed() {
+  renderFederationIdentity();
   updateFeedProfileHeader();
   loadFeedSubTab();
 }
@@ -3429,7 +3616,7 @@ function renderActorItem(actor, context) {
 }
 
 function renderPublishedItem(item) {
-  var typeIcons = { 'report': SVG_ICONS.report, 'brew-article': SVG_ICONS.memo, 'library': SVG_ICONS.library };
+  var typeIcons = { 'report': SVG_ICONS.report, 'brew-article': SVG_ICONS.memo, 'tapp': SVG_ICONS.tapp, 'library': SVG_ICONS.library };
   var icon = typeIcons[item.content_type] || SVG_ICONS.page;
   var dateStr = '';
   try { dateStr = timeAgo(item.published_at); } catch (e) {}
@@ -3830,6 +4017,12 @@ const PAGE_MOD_EVENTS = `\
   if (feedFollowInput) feedFollowInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); doFollow(); }
   });
+  document.querySelectorAll('[data-copy-fed]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      copyFederationIdentity(btn.dataset.copyFed);
+    });
+  });
 
   // Messenger events
   var sendBtn = $('send-btn');
@@ -3958,31 +4151,34 @@ const PAGE_MOD_INDEX = `\
     }
   } catch (e) { /* ignore */ }
 
+  await loadFederationIdentity();
   applyLabels();
 
   // -- Populate feed profile header from user context --
   try {
     var user = await Tapp.context.getUser();
     if (user) {
+      synthesizeFederationIdentityFromUser(user);
       var avatarEl = $('feed-avatar');
       if (avatarEl) {
-        if (user.avatar_url) avatarEl.innerHTML = '<img src="' + esc(user.avatar_url) + '" alt="" />';
+        if (user.avatar_url || user.avatar) avatarEl.innerHTML = '<img src="' + esc(user.avatar_url || user.avatar) + '" alt="" />';
         else avatarEl.textContent = ((user.display_name || user.username || '?')[0] || '?').toUpperCase();
       }
       var nameEl = $('feed-display-name');
       if (nameEl) nameEl.textContent = user.display_name || user.username || '';
       var handleEl = $('feed-handle');
-      if (handleEl) handleEl.textContent = user.username ? '@' + user.username : '';
+      if (handleEl && !state.identity) handleEl.textContent = user.username ? '@' + user.username : '';
       // Update nav feed tab avatar + username
       var navAvatar = $('nav-feed-avatar');
       if (navAvatar) {
-        if (user.avatar_url) navAvatar.innerHTML = '<img src="' + esc(user.avatar_url) + '" alt="" />';
+        if (user.avatar_url || user.avatar) navAvatar.innerHTML = '<img src="' + esc(user.avatar_url || user.avatar) + '" alt="" />';
         else navAvatar.textContent = ((user.display_name || user.username || '?')[0] || '?').toUpperCase();
       }
       var navName = $('nav-feed-label');
       if (navName) navName.textContent = user.display_name || user.username || '';
     }
   } catch (e) { /* ignore */ }
+  renderFederationIdentity();
 
   bindEvents();
   await loadConversations();
@@ -4012,6 +4208,7 @@ const PAGE_MOD_INDEX = `\
     renderConvList();
     renderChatHeader();
     renderMembers();
+    renderFederationIdentity();
     if (state.currentView === 'feed') { renderFeedContent(); }
     else if (state.currentView === 'rings') { renderRingsSidebar(); if (state.activeRingId) renderRingDetail(); }
   });
@@ -4096,7 +4293,7 @@ const CORE_CODE = buildCoreCode()
 const manifest: TappManifest = {
   id: 'com.myriad.aro',
   name: 'Aro',
-  version: '1.0.0',
+  version: '1.0.1',
   description: 'Aro — 社交中心，统一管理消息、时间线、环网和个人资料。',
   category: 'social',
   main: 'index.js',

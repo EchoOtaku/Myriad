@@ -184,8 +184,9 @@ networks:
 ```
 
 当前仓库的 `docker-compose.yml` 使用单个宿主 `.env` 作为部署契约。它同时保存业务
-镜像 tag、数据库/JWT 配置，以及 updater 所需的 token/channel。updater 只改写
-`MYRIAD_TAG` / `PROXY_TAG` / `UPDATER_TAG` 和 release 声明的新 env key。
+镜像 tag、数据库/JWT 配置，以及 updater 所需的 token/channel。普通业务更新只改写
+`MYRIAD_TAG`；updater 自更新只改写 `UPDATER_TAG`。`PROXY_TAG` 目前走手动 tag
+升级路径。
 
 `.env` 必须包含：
 
@@ -301,14 +302,15 @@ idle
 
 ```
 bind mount, 同设备     → 支持 (cp -a --reflink=auto)
-bind mount, 跨设备     → 拒绝
+bind mount, 跨设备     → 支持，但 warning；回滚走 copy 兜底
 docker named volume    → 拒绝 (M1)
 btrfs subvolume        → 支持，可选用 btrfs snapshot
 zfs dataset            → 支持，可选用 zfs snapshot
 其他                   → cp -a 兜底
 ```
 
-**M1 仅支持 bind mount + 同设备。** 其他情况启动时报错并打印迁移步骤。
+**M1 要求 pgdata 是 bind mount。** 跨设备会降级为 copy 兜底并写入 warning；
+docker named volume、rootless Docker、Podman 仍会启动时报错。
 
 ### 9.2 快照流程
 
@@ -348,7 +350,9 @@ docker-compose (v1)   ← fallback
 ### 10.2 不假设 compose 文件结构
 
 - 不直接修改 `compose.yaml`
-- 只修改 `.env` 中的 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`
+- 普通更新只修改 `.env` 中的 `MYRIAD_TAG`
+- self-update 只修改 `.env` 中的 `UPDATER_TAG`
+- `PROXY_TAG` 目前由人工编辑 `.env` 后运行 `scripts/docker/deploy.sh upgrade`
 - compose 文件必须用 `${MYRIAD_TAG}` 引用版本变量
 - 启动时验证 compose 引用了这些变量，没有则拒绝启动
 
@@ -448,9 +452,10 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 | GET | `/jobs/{id}` | 公开 | 任务详细 log |
 | POST | `/update` | token | `{target_version, allow_skip_versions: false}` |
 | POST | `/rollback` | token | `{snapshot_id}` |
+| POST | `/admin/self-update` | token | updater 自更新 |
 | GET | `/snapshots` | 公开 | 可恢复快照 |
 | POST | `/rescue/exit-maintenance` | token + manual | 强制清维护 |
-| POST | `/rescue/continue` | token + manual | needs_manual 续跑 |
+| POST | `/rescue/continue` | token + manual | 预留；当前返回 501 |
 | POST | `/rescue/forget-current` | token + manual | 放弃当前 job |
 | GET | `/diagnostics` | token | 环境探测报告 |
 | GET | `/healthz` | 公开 | updater 自己活着 |
@@ -545,7 +550,7 @@ M2：cosign 签名（已实现）
 
 ### 16.2 诊断包
 
-`GET /diagnostics` 或 `myriad-rescue diagnose` 输出 tar.gz：
+`GET /diagnostics` 返回 JSON 诊断摘要；`myriad-rescue diagnose` 输出 tar.gz：
 
 - updater 版本、配置
 - env-probe 结果
@@ -564,7 +569,7 @@ M2：cosign 签名（已实现）
 myriad-rescue status
 myriad-rescue exit-maintenance --force
 myriad-rescue rollback --snapshot=<id>
-myriad-rescue diagnose > diag.tar.gz
+myriad-rescue diagnose --output diag.tar.gz
 myriad-rescue forget-job
 myriad-rescue clean-snapshots --keep=3
 ```

@@ -10,7 +10,7 @@
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](backend/Cargo.toml)
-[![Astro](https://img.shields.io/badge/Astro-6-blueviolet.svg)](frontend/package.json)
+[![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](frontend/package.json)
 [![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](frontend/package.json)
 
 [在线体验](#) · [快速开始](#-快速开始) · [文档](docs/) · [反馈](https://github.com/myriad-you/Myriad/issues)
@@ -93,7 +93,7 @@ bash scripts/docker/deploy.sh up
 ### 本地开发
 
 ```bash
-# 后端（需要 Rust 1.75+、PostgreSQL 16+）
+# 后端（需要 Rust 1.88+，推荐 1.90；PostgreSQL 16+）
 cd backend && cp .env.example .env && cargo run
 
 # 前端（需要 Node 20+、pnpm）
@@ -113,7 +113,7 @@ cd frontend && pnpm install && pnpm dev
 
 <table>
 <tr>
-<td><b>前端</b></td><td>Astro 6 · React 19 · Tailwind 4 · TypeScript</td>
+<td><b>前端</b></td><td>Astro 7 · React 19 · Tailwind 4 · TypeScript</td>
 </tr>
 <tr>
 <td><b>后端</b></td><td>Rust · Axum 0.8 · SeaORM · Tokio</td>

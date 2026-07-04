@@ -1132,55 +1132,58 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
         return
       }
 
-      // 只支持远程应用更新
-      if (app.source !== 'remote' || !app.remoteApp) {
-        alert('只支持从商店更新应用')
-        return
-      }
-
       setUpdating(app.id)
       try {
-        // 找到该应用所在商店源的数据库 ID
-        const source = sources.find((s) => s.url === app.remoteApp!.sourceUrl)
-        if (!source?.id && !source?.url) {
-          throw new Error('无法找到商店源')
-        }
-
-        // 调用更新 API
-        const { updateTappFromStore, getTappResources, updateSeparatedCSS } =
-          await import('../services/TappApiService')
-        await updateTappFromStore(app.id, {
-          source: source.id ? String(source.id) : source.url,
-        })
-
-        // 更新完成后，重新生成分离式 CSS
-        try {
-          const resources = await getTappResources(app.id)
-          if (!resources.widgetCSS && !resources.pageCSS) {
-            const { generateOnDemandTailwindCSS } =
-              await import('../runtime/sandbox/styles')
-
-            const widgetSources = [
-              resources.code || '',
-              resources.styles || '',
-              ...Object.values(resources.widgetTemplates || {}),
-            ].join('\n')
-            const widgetCss = generateOnDemandTailwindCSS(widgetSources)
-
-            const pageSources = [
-              resources.code || '',
-              resources.styles || '',
-              resources.pageTemplate || '',
-            ].join('\n')
-            const pageCss = generateOnDemandTailwindCSS(pageSources)
-
-            if (widgetCss || pageCss) {
-              await updateSeparatedCSS(app.id, { widgetCss, pageCss })
-              runtime.clearCodeCache(app.id)
-            }
+        if (app.source === 'local' && app.localTapp) {
+          const { updateTappFromCode } =
+            await import('../services/TappApiService')
+          await updateTappFromCode(app.localTapp.manifest, app.localTapp.code)
+          runtime.clearCodeCache(app.id)
+        } else if (app.source === 'remote' && app.remoteApp) {
+          // 找到该应用所在商店源的数据库 ID
+          const source = sources.find((s) => s.url === app.remoteApp!.sourceUrl)
+          if (!source?.id && !source?.url) {
+            throw new Error('无法找到商店源')
           }
-        } catch (cssError) {
-          console.warn('Failed to generate separated CSS:', cssError)
+
+          // 调用更新 API
+          const { updateTappFromStore, getTappResources, updateSeparatedCSS } =
+            await import('../services/TappApiService')
+          await updateTappFromStore(app.id, {
+            source: source.id ? String(source.id) : source.url,
+          })
+
+          // 更新完成后，重新生成分离式 CSS
+          try {
+            const resources = await getTappResources(app.id)
+            if (!resources.widgetCSS && !resources.pageCSS) {
+              const { generateOnDemandTailwindCSS } =
+                await import('../runtime/sandbox/styles')
+
+              const widgetSources = [
+                resources.code || '',
+                resources.styles || '',
+                ...Object.values(resources.widgetTemplates || {}),
+              ].join('\n')
+              const widgetCss = generateOnDemandTailwindCSS(widgetSources)
+
+              const pageSources = [
+                resources.code || '',
+                resources.styles || '',
+                resources.pageTemplate || '',
+              ].join('\n')
+              const pageCss = generateOnDemandTailwindCSS(pageSources)
+
+              if (widgetCss || pageCss) {
+                await updateSeparatedCSS(app.id, { widgetCss, pageCss })
+                runtime.clearCodeCache(app.id)
+              }
+            }
+          } catch (cssError) {
+            console.warn('Failed to generate separated CSS:', cssError)
+          }
+        } else {
+          throw new Error('Unsupported update source')
         }
 
         // 刷新 runtime 缓存
@@ -1474,7 +1477,9 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
                         tappInfo.isTemporary === true)
                     : false
                   const canUpdate =
-                    app.source === 'remote' && app.remoteApp && tappInfo
+                    !!tappInfo &&
+                    ((app.source === 'remote' && !!app.remoteApp) ||
+                      (app.source === 'local' && !!app.localTapp))
                   return (
                     <UnifiedAppCard
                       key={app.id}

@@ -12,7 +12,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
     Json,
 };
@@ -365,9 +365,11 @@ async fn handle_login(
         <script>window.location.href=\"/?auth=success\";</script></body></html>";
 
     let mut response = axum::response::Html(html).into_response();
+    let set_cookie = HeaderValue::from_str(&cookie_value)
+        .map_err(|e| err_500(format!("invalid auth cookie header: {e}")))?;
     response
         .headers_mut()
-        .insert(header::SET_COOKIE, cookie_value.parse().unwrap());
+        .insert(header::SET_COOKIE, set_cookie);
     Ok(response)
 }
 

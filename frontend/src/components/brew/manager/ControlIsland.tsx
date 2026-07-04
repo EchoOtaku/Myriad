@@ -37,7 +37,6 @@ import {
   LuSortAsc as SortAsc,
   LuSun as Sun,
 } from '@lib/icons'
-import JSZip from 'jszip'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 
@@ -215,6 +214,11 @@ interface BrewExportManifest {
     ai_style_tags: string[] | null
     admin_only: boolean
   }>
+}
+
+async function loadJSZip() {
+  const module = await import('jszip')
+  return module.default
 }
 
 // 判断是否为 base64 图片数据
@@ -490,6 +494,7 @@ export default function ControlIsland({
     setImportExportLoading(true)
     setImportExportError(null)
     try {
+      const JSZip = await loadJSZip()
       const zip = new JSZip()
       const iconsFolder = zip.folder('icons')
 
@@ -580,6 +585,7 @@ export default function ControlIsland({
         current: 0,
         total: 0,
       })
+      const JSZip = await loadJSZip()
       const zip = await JSZip.loadAsync(file)
 
       setImportProgress({

@@ -1412,6 +1412,11 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       const g = (window as any).__musicPlayerState
       if (g) g.isPlaying = true
       audioManager.setPlaybackState('playing')
+      // 频谱分析中央接入点：play 事件必然发生在用户手势之后，此处 resume 安全。
+      // 之前仅首页频谱组件挂载时才接入 analyser，导致 Tapp 全屏（组件未挂载）时
+      // media.getSpectrum 恒返回 0。在此统一接入，使频谱对所有消费方（首页组件 / Tapp）可用。
+      audioManager.connectAudioToAnalyser(audio)
+      void audioManager.resumeAudioContext()
     }
 
     audio.addEventListener('timeupdate', handleTimeUpdate)
@@ -1729,12 +1734,21 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       }
     }
 
+    // 跳过/禁止播放 VIP 歌曲开关（供 Tapp 控制）
+    const handleTappSkipVip = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail && typeof detail.value === 'boolean') {
+        setExcludeVipSongs(detail.value)
+      }
+    }
+
     window.addEventListener('music-player-next', handleTappNext)
     window.addEventListener('music-player-prev', handleTappPrev)
     window.addEventListener('music-player-seek', handleTappSeek)
     window.addEventListener('music-player-volume', handleTappVolume)
     window.addEventListener('music-player-mute', handleTappMute)
     window.addEventListener('music-player-mode', handleTappMode)
+    window.addEventListener('music-player-set-skip-vip', handleTappSkipVip)
 
     return () => {
       window.removeEventListener('music-player-next', handleTappNext)
@@ -1743,8 +1757,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       window.removeEventListener('music-player-volume', handleTappVolume)
       window.removeEventListener('music-player-mute', handleTappMute)
       window.removeEventListener('music-player-mode', handleTappMode)
+      window.removeEventListener('music-player-set-skip-vip', handleTappSkipVip)
     }
   }, []) // 只在挂载时设置一次
+
+  // 同步「跳过 VIP」开关到全局状态，供 Tapp media API 读取
+  useEffect(() => {
+    setGlobalState({ excludeVipSongs })
+  }, [excludeVipSongs])
 
   // 监听 Tapp/Agent 加载歌单事件
   useEffect(() => {

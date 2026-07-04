@@ -479,6 +479,28 @@ const playlist = await Tapp.media.getPlaylist();
 const unsubscribe = Tapp.media.onStateChange((state) => {
   console.log("播放状态:", state.isPlaying);
 });
+
+// 实时频谱分析（需要 media:read）
+// 返回归一化 0-1 的频段数据，播放任意音乐时均可用（无需首页频谱组件在场）
+const s = await Tapp.media.getSpectrum();
+// 返回: { spectrum: number[], energy, bass, mid, high }
+// 典型用法：requestAnimationFrame 中轮询驱动可视化
+
+// 获取歌词：逐字(yrc) + 逐行兜底（需要 media:read）
+// 不传参数默认取当前播放曲目；也可指定 { songId, source }
+const ly = await Tapp.media.getLyrics();
+// 返回: {
+//   lines:    [{ time, text }],                         // 逐行 LRC（始终尝试提供）
+//   verbatim: [{ time, duration, text,
+//               words: [{ time, duration, text }] }],   // 逐字（网易云 yrc，可能为空）
+//   hasVerbatim: boolean,                               // 是否含逐字数据
+//   source: "netease" | "qq"
+// }
+// verbatim 为空时消费方应回退到 lines 做逐行高亮
+
+// VIP 歌曲开关（读 media:read / 写 media:control）
+const { skipVip } = await Tapp.media.getSkipVip();
+await Tapp.media.setSkipVip(true); // true=跳过VIP歌曲
 ```
 
 ---

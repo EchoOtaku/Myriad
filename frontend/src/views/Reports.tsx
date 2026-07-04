@@ -2609,7 +2609,15 @@ export default function Reports() {
                     </motion.div>
                   </motion.div>
                   <motion.div
-                    className={`flex lg:grid lg:grid-cols-4 gap-4 overflow-x-auto lg:overflow-x-visible scrollbar-hide snap-x snap-mandatory lg:snap-none ${isStageMode ? 'hidden md:flex' : ''}`}
+                    className={`${isStageMode ? 'hidden md:flex' : 'flex'} relative left-1/2 w-[100dvw] max-w-none -translate-x-1/2 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pt-8 pb-12 -mt-7 -mb-11 pr-3 xs:pr-4 sm:pr-6 md:pr-8 [--report-page-padding:0.75rem] xs:[--report-page-padding:1rem] sm:[--report-page-padding:1.5rem] [--report-right-padding:0.75rem] xs:[--report-right-padding:1rem] sm:[--report-right-padding:1.5rem] md:[--report-right-padding:2rem] [--report-visible-cards:1] sm:[--report-visible-cards:2] md:[--report-visible-cards:3] lg:[--report-visible-cards:4]`}
+                    style={
+                      {
+                        paddingLeft:
+                          'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
+                        scrollPaddingLeft:
+                          'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
+                      } as React.CSSProperties
+                    }
                     initial={{ opacity: 0 }}
                     animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
                     exit={{ opacity: 0 }}
@@ -2649,9 +2657,13 @@ export default function Reports() {
                     relative aspect-2/1 rounded-2xl overflow-hidden cursor-pointer group
                     glass
                     hover:shadow-xl transition-shadow
-                    shrink-0 w-70 lg:w-auto snap-center
+                    shrink-0 min-w-0 snap-start
                   `}
-                          style={{ willChange: 'transform, opacity' }} // 🚀 GPU加速
+                          style={{
+                            flexBasis:
+                              'calc((100dvw - calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem) - var(--report-right-padding) - (var(--report-visible-cards) - 1) * 1rem) / var(--report-visible-cards))',
+                            willChange: 'transform, opacity',
+                          }} // 🚀 GPU加速
                           onClick={() => {
                             if (platformReport) {
                               openStageMode(platform.id)
@@ -3433,7 +3445,15 @@ export default function Reports() {
                     </motion.div>
                   </motion.div>
                   <motion.div
-                    className={`flex lg:grid lg:grid-cols-4 gap-4 overflow-x-auto lg:overflow-x-visible scrollbar-hide snap-x snap-mandatory lg:snap-none ${isStageMode ? 'hidden md:flex' : ''}`}
+                    className={`${isStageMode ? 'hidden md:flex' : 'flex'} relative left-1/2 w-[100dvw] max-w-none -translate-x-1/2 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pt-8 pb-12 -mt-7 -mb-11 pr-3 xs:pr-4 sm:pr-6 md:pr-8 [--report-page-padding:0.75rem] xs:[--report-page-padding:1rem] sm:[--report-page-padding:1.5rem] [--report-right-padding:0.75rem] xs:[--report-right-padding:1rem] sm:[--report-right-padding:1.5rem] md:[--report-right-padding:2rem] [--report-visible-cards:1] sm:[--report-visible-cards:2] md:[--report-visible-cards:3] lg:[--report-visible-cards:4]`}
+                    style={
+                      {
+                        paddingLeft:
+                          'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
+                        scrollPaddingLeft:
+                          'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
+                      } as React.CSSProperties
+                    }
                     initial={{ opacity: 0 }}
                     animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
                     exit={{ opacity: 0 }}

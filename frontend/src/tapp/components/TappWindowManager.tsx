@@ -44,6 +44,7 @@ import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
 import { getTappIconStyle } from '../utils/tappColors'
 import { TappIcon } from './TappIcon'
+import './TappWindowManager.css'
 
 const API_URL = CONFIG_API_URL
 
@@ -84,8 +85,8 @@ export interface TappWindowManagerProps {
 /** 最大窗口数量 */
 const MAX_WINDOWS = 3
 
-/** 默认窗口尺寸 */
-const DEFAULT_WINDOW_SIZE = { width: 600, height: 500 }
+/** 默认窗口尺寸（移动端竖屏比例） */
+const DEFAULT_WINDOW_SIZE = { width: 400, height: 600 }
 
 /** 窗口方案中的窗口配置 */
 interface WindowSchemeItem {
@@ -102,8 +103,30 @@ interface WindowScheme {
   createdAt: number
 }
 
-/** 最小窗口尺寸 */
-const MIN_WINDOW_SIZE = { width: 320, height: 240 }
+/** 最小窗口尺寸（与默认尺寸同步） */
+const MIN_WINDOW_SIZE = { ...DEFAULT_WINDOW_SIZE }
+
+const WINDOW_CONTROL_HOVER_CLASS = 'tapp-window-control'
+const WINDOW_CONTROL_TEXT_HOVER_CLASS =
+  'tapp-window-control tapp-window-control-text'
+const WINDOW_CONTROL_DANGER_HOVER_CLASS =
+  'tapp-window-control tapp-window-control-danger'
+
+const WINDOW_CONTROL_HOVER_STYLE = {
+  '--tapp-window-control-hover-bg': 'var(--bg-hover)',
+} as React.CSSProperties
+
+const WINDOW_CONTROL_PRIMARY_HOVER_STYLE = {
+  '--tapp-window-control-hover-bg':
+    'color-mix(in srgb, var(--color-primary) 15%, transparent)',
+} as React.CSSProperties
+
+const WINDOW_CONTROL_DANGER_HOVER_STYLE = {
+  '--tapp-window-control-hover-bg':
+    'color-mix(in srgb, var(--color-error, #ef4444) 12%, transparent)',
+  '--tapp-window-control-danger-color': 'var(--color-error, #ef4444)',
+  color: 'var(--text-muted)',
+} as React.CSSProperties
 
 /**
  * 生成唯一窗口ID
@@ -1147,9 +1170,11 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
           {onBack && (
             <motion.button
               onClick={onBack}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors"
-              style={{ color: 'var(--text-secondary)' }}
-              whileHover={{ backgroundColor: 'var(--bg-hover)' }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
+              style={{
+                ...WINDOW_CONTROL_HOVER_STYLE,
+                color: 'var(--text-secondary)',
+              }}
               whileTap={noAnimation ? undefined : { scale: 0.95 }}
               title={t.tapp.back}
             >
@@ -1182,9 +1207,11 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               <div className="relative" ref={schemeMenuRef}>
                 <motion.button
                   onClick={() => setShowSchemeMenu(!showSchemeMenu)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors"
-                  style={{ color: 'var(--text-secondary)' }}
-                  whileHover={{ backgroundColor: 'var(--bg-hover)' }}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
+                  style={{
+                    ...WINDOW_CONTROL_HOVER_STYLE,
+                    color: 'var(--text-secondary)',
+                  }}
                   whileTap={noAnimation ? undefined : { scale: 0.9 }}
                   title={t.tapp.windowScheme}
                 >
@@ -1212,13 +1239,15 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                         <motion.button
                           onClick={saveCurrentScheme}
                           disabled={isSaving}
-                          className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors disabled:opacity-50"
-                          style={{ color: 'var(--text-primary)' }}
-                          whileHover={
+                          className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors disabled:opacity-50 ${
                             isSaving
-                              ? undefined
-                              : { backgroundColor: 'var(--bg-hover)' }
-                          }
+                              ? 'bg-transparent'
+                              : WINDOW_CONTROL_HOVER_CLASS
+                          }`}
+                          style={{
+                            ...WINDOW_CONTROL_HOVER_STYLE,
+                            color: 'var(--text-primary)',
+                          }}
                         >
                           {isSaving ? (
                             <FaSpinner
@@ -1279,11 +1308,8 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                                   e.stopPropagation()
                                   deleteScheme(scheme.id)
                                 }}
-                                className="p-1.5 opacity-0 group-hover:opacity-100 transition-opacity rounded"
-                                style={{ color: 'var(--text-muted)' }}
-                                whileHover={{
-                                  color: 'var(--color-error, #ef4444)',
-                                }}
+                                className={`p-1.5 opacity-0 group-hover:opacity-100 rounded transition-all ${WINDOW_CONTROL_DANGER_HOVER_CLASS}`}
+                                style={WINDOW_CONTROL_DANGER_HOVER_STYLE}
                                 whileTap={{ scale: 0.9 }}
                                 title={t.tapp.deleteScheme}
                               >
@@ -1325,11 +1351,10 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             {windows.length < MAX_WINDOWS && (
               <motion.button
                 onClick={() => setShowTappSelector(true)}
-                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
-                style={{ color: 'var(--color-primary)' }}
-                whileHover={{
-                  backgroundColor:
-                    'color-mix(in srgb, var(--color-primary) 15%, transparent)',
+                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
+                style={{
+                  ...WINDOW_CONTROL_PRIMARY_HOVER_STYLE,
+                  color: 'var(--color-primary)',
                 }}
                 whileTap={noAnimation ? undefined : { scale: 0.9 }}
                 title={t.tapp.addWindow}
@@ -1433,11 +1458,10 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                   </h3>
                   <motion.button
                     onClick={() => setShowTappSelector(false)}
-                    className="p-1.5 rounded-lg transition-colors"
-                    style={{ color: 'var(--text-muted)' }}
-                    whileHover={{
-                      backgroundColor: 'var(--bg-hover)',
-                      color: 'var(--text-primary)',
+                    className={`p-1.5 rounded-lg transition-colors ${WINDOW_CONTROL_TEXT_HOVER_CLASS}`}
+                    style={{
+                      ...WINDOW_CONTROL_HOVER_STYLE,
+                      color: 'var(--text-muted)',
                     }}
                     whileTap={{ scale: 0.9 }}
                   >
@@ -1461,8 +1485,8 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                           <motion.button
                             key={tapp.id}
                             onClick={() => openTappWindow(tapp.id)}
-                            className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors"
-                            whileHover={{ backgroundColor: 'var(--bg-hover)' }}
+                            className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
+                            style={WINDOW_CONTROL_HOVER_STYLE}
                             whileTap={{ scale: 0.95 }}
                             title={tapp.manifest.description}
                           >

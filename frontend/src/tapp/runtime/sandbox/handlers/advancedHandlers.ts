@@ -9,6 +9,10 @@ import type { TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
 import type { AnimationConfigRef } from '../types'
 import { getDynamicContentProvider } from '../../../../services/DynamicContentProvider'
+import {
+  getNeteaseVerbatimLyrics,
+  getQQLyrics,
+} from '../../../../utils/musicPlayer'
 import * as TappApiService from '../../../services/TappApiService'
 import { getTappRuntime } from '../../TappRuntime'
 
@@ -167,6 +171,8 @@ export function registerMediaHandlers(
                 cover: currentSong.cover || '',
                 duration: currentSong.duration || 0,
                 source: currentSong.source || 'unknown',
+                isVip: currentSong.isVip || false,
+                isTrial: currentSong.isTrial || false,
               }
             : null,
           progress: {
@@ -237,6 +243,8 @@ export function registerMediaHandlers(
         cover: song.cover || '',
         duration: song.duration || 0,
         source: song.source || 'unknown',
+        isVip: song.isVip || false,
+        isTrial: song.isTrial || false,
         isCurrent: index === globalState.currentSongIndex,
       }))
       return {
@@ -249,6 +257,27 @@ export function registerMediaHandlers(
       }
     }
     return { success: true, data: { tracks: [], currentIndex: 0, total: 0 } }
+  })
+
+  // 读取「跳过/禁止播放 VIP 歌曲」开关（默认开启）
+  bridge.registerHandler('media.getSkipVip', async () => {
+    const globalState = (
+      window as { __musicPlayerState?: Record<string, unknown> }
+    ).__musicPlayerState
+    // excludeVipSongs 未定义时默认为 true（与系统播放器默认一致）
+    const skipVip = globalState ? globalState.excludeVipSongs !== false : true
+    return { success: true, data: { skipVip } }
+  })
+
+  // 设置「跳过/禁止播放 VIP 歌曲」开关
+  bridge.registerHandler('media.setSkipVip', async (message) => {
+    const [params] = (message.payload as { args: unknown[] }).args || []
+    const { value } = (params || {}) as { value?: boolean }
+    const skipVip = !!value
+    window.dispatchEvent(
+      new CustomEvent('music-player-set-skip-vip', { detail: { value: skipVip } }),
+    )
+    return { success: true, data: { skipVip } }
   })
 
   // 频谱数据缓存 - 避免高频调用时重复计算
@@ -288,6 +317,55 @@ export function registerMediaHandlers(
     return {
       success: true,
       data: { spectrum: [], energy: 0, bass: 0, mid: 0, high: 0 },
+    }
+  })
+
+  // 获取歌词（逐字 yrc + 逐行兜底）通用能力
+  // 默认取当前播放歌曲，也可通过 { songId, source } 指定
+  bridge.registerHandler('media.getLyrics', async (message) => {
+    const [params] = (message.payload as { args: unknown[] }).args || []
+    const { songId, source } = (params || {}) as {
+      songId?: string
+      source?: string
+    }
+    const globalState = (
+      window as { __musicPlayerState?: Record<string, unknown> }
+    ).__musicPlayerState
+    const currentSong = globalState?.currentSong as
+      | { id?: string; source?: string }
+      | undefined
+    const id = songId || currentSong?.id
+    const src = source || currentSong?.source || 'netease'
+
+    if (!id) {
+      return { success: false, error: 'No song id available' }
+    }
+
+    try {
+      if (src === 'qq') {
+        // QQ 暂无逐字，回退逐行
+        const lines = await getQQLyrics(String(id))
+        return {
+          success: true,
+          data: { lines, verbatim: [], hasVerbatim: false, source: 'qq' },
+        }
+      }
+      const { lines, verbatim } = await getNeteaseVerbatimLyrics(String(id))
+      return {
+        success: true,
+        data: {
+          lines,
+          verbatim,
+          hasVerbatim: verbatim.length > 0,
+          source: 'netease',
+        },
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to fetch lyrics',
+      }
     }
   })
 
@@ -1052,6 +1130,8 @@ export function registerContextHandlers(
                 cover: currentSong.cover || '',
                 duration: currentSong.duration || 0,
                 source: currentSong.source || 'unknown',
+                isVip: currentSong.isVip || false,
+                isTrial: currentSong.isTrial || false,
               }
             : null,
           progress: {

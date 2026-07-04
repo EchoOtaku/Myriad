@@ -275,21 +275,28 @@ Local Machine
 
 ```
 Docker Host
-├── PostgreSQL Container
-├── Backend Container
-│   └── Serves static frontend files
-└── Optional: Reverse Proxy (nginx)
+├── proxy Container (only published port)
+├── frontend Container (internal 1102)
+├── backend Container (internal 1103)
+├── PostgreSQL Container (internal 5432, ./pgdata bind mount)
+└── updater Container (internal 1101, tag switch + snapshots)
 ```
 
-### Production (Traditional)
+Production Docker is managed by `scripts/docker/deploy.sh` or
+`scripts/docker/deploy.ps1`. Updates normally run from `/config` -> About/关于 ->
+Update Management/更新管理.
+
+### Traditional / Source Deployment
 
 ```
 Server
 ├── PostgreSQL Service
-├── Backend Binary
-│   └── Systemd service
-└── Static Files (served by backend)
+├── Backend Binary (systemd or equivalent)
+└── Frontend Static Build (served by an external web server)
 ```
+
+This path is for development or custom operators. The documented production path
+is the Docker proxy + updater stack.
 
 ## Technology Choices Rationale
 
@@ -329,8 +336,8 @@ Server
 
 1. **Local Development**
 
-   - Use `./scripts/dev.ps1` to start both servers
-   - Backend proxies to frontend in development
+   - Use `./scripts/dev/dev.sh` or `.\scripts\dev\dev.ps1` to start services
+   - The Astro dev server proxies `/api/*` to the backend in development
    - Hot reload for both frontend and backend
 
 2. **Testing**
@@ -341,13 +348,13 @@ Server
 
 3. **Building**
 
-   - `./scripts/build.ps1` creates production builds
-   - Frontend compiled to static files
-   - Backend compiled with optimizations
+   - `pnpm run build` creates the frontend static build
+   - `cargo build --release` creates the backend binary
+   - `scripts/docker/build-and-push.*` can build component images locally
 
 4. **Deployment**
-   - Docker Compose for easy deployment
-   - Or traditional server deployment
+   - `scripts/docker/deploy.sh up` for production bootstrap
+   - Admin UI updater for normal version changes
    - Database migrations run automatically
 
 ## Future Enhancements

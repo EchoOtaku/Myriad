@@ -19,11 +19,13 @@
 
 | 位置 | 现状 |
 |---|---|
-| `backend/src/api/auth.rs` | `github_login` / `github_callback` / `github_link` 三个 handler，GitHub URL 硬编码 |
-| `backend/src/oauth_url_builder.rs` | 单 provider 的配置读取 (`get_github_oauth_config`) |
-| `backend/src/config.rs:226-227` | `DynamicConfig.github_client_id` / `github_client_secret` 平铺字段 |
+| `backend/src/api/oauth.rs` | 通用 OAuth handler，按 provider slug 路由 |
+| `backend/src/services/oauth/github.rs` | 新 GitHub provider 实现，挂在 `/api/auth/oauth/github/*` |
+| `backend/src/services/oauth/oidc.rs` | 通用 OIDC provider，实现 discovery、JWKS 验签和 userinfo |
+| `backend/src/oauth_url_builder.rs` | 只保留 `SiteConfig` / 启动日志辅助 |
+| `backend/src/config.rs` | `oauth_providers` 为主，`github_client_id` / `github_client_secret` 作为兼容镜像 |
 | `backend/migrations/001_initial_schema.rs:116-152` | `users` 表硬编码 `github_id` `linked_github_id` `github_profile_url`；CHECK 约束 `auth_provider IN ('local','github')` |
-| `frontend/src/components/LoginForm.tsx:213-231` | 只渲染 GitHub 按钮 |
+| `frontend/src/components/LoginForm.tsx` | 从 `/api/auth/oauth/providers` 动态渲染登录方式 |
 
 ### 2.2 本地账号限制
 
@@ -40,7 +42,7 @@
 
 ## 3. 总体策略
 
-- 一次重构到位，保留 `/api/auth/github/*` 旧路由作为 302 兼容层（2 个 minor 版本后下线）。
+- 一次重构到位；旧 `/api/auth/github/*` 兼容层已删除，统一使用 `/api/auth/oauth/:slug/*`。
 - 数据层：新增 `user_identities` 表为主权威源；`users.github_id` `linked_github_id` `github_profile_url` 降级为冗余镜像，PR #6 中 drop。
 - Provider 模型：trait 化。GitHub 为内置硬编码 provider；OIDC 为配置驱动的动态 provider，支持多实例（slug 区分）。
 - 本地账号：去掉数据库层硬限制，加 `allow_local_registration` 开关，提供后补密码 / 本地登录开关端点。
@@ -206,15 +208,16 @@ PATCH  /api/auth/me/local-login               开关本地登录  NEW
 POST   /api/admin/users                       admin 直接建本地号  NEW
 ```
 
-### 7.3 兼容层
+### 7.3 旧 GitHub 兼容层
+
+旧 `/api/auth/github/{login,callback,link}` 和 `/api/auth/link-github` 已删除。
+调用方应直接使用：
 
 ```text
-GET /api/auth/github/login      → 302 /api/auth/oauth/github/login
-GET /api/auth/github/callback   → 302 /api/auth/oauth/github/callback
-GET /api/auth/github/link       → 302 /api/auth/oauth/github/link
+GET /api/auth/oauth/github/login
+GET /api/auth/oauth/github/callback
+GET /api/auth/oauth/github/link
 ```
-
-附 `Sunset` header，2 个 minor 版本后删除。
 
 ## 8. 核心逻辑：账户匹配策略
 

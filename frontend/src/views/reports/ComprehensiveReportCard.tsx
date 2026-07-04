@@ -127,6 +127,11 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(
     return (
       <motion.div
         layout
+        className="shrink-0 min-w-0 snap-start"
+        style={{
+          flexBasis:
+            'calc((100dvw - calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem) - var(--report-right-padding) - (var(--report-visible-cards) - 1) * 1rem) / var(--report-visible-cards))',
+        }}
         initial={{ opacity: 0, y: 20, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -20, scale: 0.95 }}
@@ -141,7 +146,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(
           whileHover={{ y: -4, scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="relative overflow-hidden rounded-2xl cursor-pointer glass shrink-0 snap-center w-70 lg:w-full"
+          className="relative overflow-hidden rounded-2xl cursor-pointer glass w-full"
           style={{
             aspectRatio: '2 / 1',
             willChange: 'transform',

@@ -392,6 +392,41 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
     }
 }
 
+/// 代理网易云音乐逐字歌词请求（yrc）- 使用统一服务层
+pub async fn proxy_netease_lyrics_verbatim(Path(song_id): Path<String>) -> Response {
+    let song_id_i64 = match song_id.parse::<i64>() {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid song ID"})),
+            )
+                .into_response();
+        }
+    };
+
+    let service = NeteaseService::new();
+    match service.fetch_lyrics_verbatim(song_id_i64).await {
+        Ok(data) => (
+            StatusCode::OK,
+            [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+            Json(data),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to fetch Netease verbatim lyrics {}: {}", song_id, e);
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({
+                    "error": "Failed to fetch verbatim lyrics",
+                    "message": e.to_string()
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
 /// 代理网易云音乐单曲详情请求 - 使用统一服务层
 pub async fn proxy_netease_song(Path(song_id): Path<String>) -> Response {
     let song_id_i64 = match song_id.parse::<i64>() {

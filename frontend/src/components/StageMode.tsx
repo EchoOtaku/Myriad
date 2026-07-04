@@ -1,13 +1,8 @@
 import {
   FaBook,
   FaGamepad,
-  FaGithub,
   FaMusic,
-  FaSteam,
   FaVideo,
-  SiBangumi,
-  SiBilibili,
-  SiNeteasecloudmusic,
 } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -17,6 +12,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 
 import { useReportsVisibilityInterval } from '../hooks/animation'
+import PlatformIcon from './PlatformIcon'
 import {
   BangumiWidget,
   BilibiliWidget,
@@ -321,26 +317,6 @@ const ComprehensiveLibraryWidget = memo(
 
     const currentItem = shuffledItems[currentIndex]
 
-    // 获取平台图标
-    const getPlatformIcon = () => {
-      const platform = currentItem.platform?.toLowerCase()
-      switch (platform) {
-        case 'bilibili':
-          return <SiBilibili className="w-4 h-4" />
-        case 'steam':
-          return <FaSteam className="w-4 h-4" />
-        case 'github':
-          return <FaGithub className="w-4 h-4" />
-        case 'netease':
-        case 'netease music':
-          return <SiNeteasecloudmusic className="w-4 h-4" />
-        case 'bangumi':
-          return <SiBangumi className="w-4 h-4" />
-        default:
-          return null
-      }
-    }
-
     // 获取平台颜色
     const getPlatformColor = () => {
       const platform = currentItem.platform?.toLowerCase()
@@ -397,7 +373,7 @@ const ComprehensiveLibraryWidget = memo(
                     {currentItem.title}
                   </h3>
                   <div className="flex items-center gap-2">
-                    {currentItem.platform && getPlatformIcon() && (
+                    {currentItem.platform && (
                       <div
                         className="flex items-center justify-center w-6 h-6 rounded-md"
                         style={{
@@ -405,7 +381,10 @@ const ComprehensiveLibraryWidget = memo(
                           color: getPlatformColor(),
                         }}
                       >
-                        {getPlatformIcon()}
+                        <PlatformIcon
+                          platform={currentItem.platform}
+                          className="w-4 h-4"
+                        />
                       </div>
                     )}
                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300">

@@ -208,6 +208,19 @@ export async function installTapp(
   code: TappCodeStructure,
   permissions?: string[],
 ): Promise<TappListItem> {
+  const requestBody = buildDirectTappRequest(manifest, code, permissions)
+
+  return apiRequest('/api/tapps/install', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  })
+}
+
+function buildDirectTappRequest(
+  manifest: TappManifest,
+  code: TappCodeStructure,
+  permissions?: string[],
+): InstallTappRequest {
   // 有 pageModules 时，main.js 只存 widget 相关代码（模块化的页面代码已在 pageModules 中）
   // 无 pageModules 时，main.js 存完整合并代码（core + widget + page 单体回退）
   const hasPageModules =
@@ -268,10 +281,7 @@ export async function installTapp(
     requestBody.pageModules = code.pageModules
   }
 
-  return apiRequest('/api/tapps/install', {
-    method: 'POST',
-    body: JSON.stringify(requestBody),
-  })
+  return requestBody
 }
 
 /**
@@ -307,6 +317,56 @@ export async function installFromCode(
   const result = await installTapp(manifest, code, manifest.permissions)
 
   // 安装成功后更新分离式 CSS
+  if (result && result.id) {
+    try {
+      await updateSeparatedCSS(result.id, { widgetCss, pageCss })
+    } catch (cssError) {
+      console.warn('Failed to update separated CSS:', cssError)
+    }
+  }
+
+  return result
+}
+
+/**
+ * 从代码和清单更新 Tapp（用于内置示例 Tapp）。
+ *
+ * 保留后端存储数据，仅覆盖 manifest、代码和资源。
+ */
+export async function updateTappFromCode(
+  manifest: TappManifest,
+  code: TappCodeStructure,
+): Promise<TappListItem> {
+  const widgetSources = [
+    code.widgetHtml || '',
+    code.styles || '',
+    code.core || '',
+    code.widget || '',
+  ].join('\n')
+  const widgetCss = generateOnDemandTailwindCSS(widgetSources)
+
+  const pageSources = [
+    code.pageHtml || '',
+    code.styles || '',
+    code.core || '',
+    code.page || '',
+    ...Object.values(code.pageModules || {}),
+  ].join('\n')
+  const pageCss = generateOnDemandTailwindCSS(pageSources)
+
+  const requestBody = buildDirectTappRequest(
+    manifest,
+    code,
+    manifest.permissions,
+  )
+  const result = await apiRequest<TappListItem>(
+    `/api/tapps/${encodeURIComponent(manifest.id)}/update`,
+    {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    },
+  )
+
   if (result && result.id) {
     try {
       await updateSeparatedCSS(result.id, { widgetCss, pageCss })
@@ -1055,6 +1115,7 @@ export default {
   installTappFile,
   installFromCode,
   installFromStore,
+  updateTappFromCode,
   updateTappFromStore,
   getTapp,
   getTappCode,

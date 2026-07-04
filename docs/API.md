@@ -26,8 +26,12 @@ Check if the API server is running.
 ```json
 {
   "status": "ok",
-  "service": "myriad-backend",
-  "version": "0.1.0"
+  "schema_version": 1,
+  "version": "v0.1.0",
+  "db_connected": true,
+  "migrations_applied": true,
+  "uptime_seconds": 123,
+  "database_connected": true
 }
 ```
 
@@ -917,6 +921,8 @@ curl http://localhost:1103/api/config \
 
 ---
 
-**API Version**: 0.1.0  
-**Last Updated**: 2025-01-05  
+**API Version**: 0.1.0
+
+**Last Updated**: 2026-07-03
+
 **Base URL**: `http://localhost:1103` in development; same-origin through the Myriad proxy in production.

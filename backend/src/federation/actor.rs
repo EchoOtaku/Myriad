@@ -4,6 +4,7 @@
 
 use axum::{extract::Path, http::StatusCode, Json};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use serde::Serialize;
 use serde_json::json;
 
 use crate::federation::types::*;
@@ -382,6 +383,44 @@ pub struct RemoteActorInfo {
     pub public_key_pem: Option<String>,
     pub public_key_id: Option<String>,
     pub mfp_version: Option<String>,
+}
+
+/// 本地登录用户的联邦身份摘要。
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalFederationIdentity {
+    pub username: String,
+    pub domain: String,
+    pub handle: String,
+    pub acct: String,
+    pub webfinger_resource: String,
+    pub actor_url: String,
+    pub inbox_url: String,
+    pub outbox_url: String,
+    pub followers_url: String,
+    pub following_url: String,
+    pub profile_url: String,
+}
+
+/// 构造当前用户可分享给远端的联邦身份。
+pub async fn get_local_identity(username: &str) -> LocalFederationIdentity {
+    let base_url = get_base_url().await;
+    let frontend_url = get_frontend_url().await;
+    let domain = extract_domain(&base_url).unwrap_or_else(|| base_url.clone());
+    let acct = format!("{}@{}", username, domain);
+
+    LocalFederationIdentity {
+        username: username.to_string(),
+        domain: domain.clone(),
+        handle: format!("@{}", acct),
+        acct: acct.clone(),
+        webfinger_resource: format!("acct:{}", acct),
+        actor_url: actor_url(&base_url, username),
+        inbox_url: inbox_url(&base_url, username),
+        outbox_url: outbox_url(&base_url, username),
+        followers_url: followers_url(&base_url, username),
+        following_url: following_url(&base_url, username),
+        profile_url: format!("{}/profile/{}", frontend_url, username),
+    }
 }
 
 // ==================== 辅助函数 ====================

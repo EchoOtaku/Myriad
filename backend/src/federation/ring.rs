@@ -116,7 +116,7 @@ pub struct SyncDataRequest {
 /// 添加 Peer 请求
 #[derive(Debug, Deserialize)]
 pub struct AddPeerRequest {
-    /// 远程 Actor URL 或实例域名
+    /// 远程 Actor URL 或 acct:user@domain / user@domain
     pub peer: String,
 }
 
@@ -444,8 +444,10 @@ pub async fn add_peer(
 
     let peers_json: serde_json::Value = ring_row.try_get("", "known_peers").unwrap_or(json!([]));
 
+    let peer_url = crate::federation::follow::resolve_actor_reference(&req.peer).await?;
+
     // 验证远程 actor 存在
-    let remote = crate::federation::actor::fetch_remote_actor(db, &req.peer)
+    let remote = crate::federation::actor::fetch_remote_actor(db, &peer_url)
         .await
         .map_err(|e| {
             (
@@ -456,7 +458,7 @@ pub async fn add_peer(
 
     // 检查是否已存在
     if let Some(arr) = peers_json.as_array() {
-        if arr.iter().any(|v| v.as_str() == Some(&req.peer)) {
+        if arr.iter().any(|v| v.as_str() == Some(&peer_url)) {
             return Err((
                 StatusCode::CONFLICT,
                 Json(json!({"error": "Peer already in ring"})),
@@ -468,7 +470,7 @@ pub async fn add_peer(
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_ring_memberships SET known_peers = known_peers || $2::jsonb WHERE ring_id = $1",
-        [ring_id.into(), json!([&req.peer]).into()],
+        [ring_id.into(), json!([&peer_url]).into()],
     ))
     .await
     .map_err(db_err)?;
@@ -481,7 +483,7 @@ pub async fn add_peer(
         "type": "myriad:RingJoin",
         "id": &activity_id,
         "actor": &local_actor,
-        "to": [&req.peer],
+        "to": [&peer_url],
         "object": {
             "type": "myriad:Ring",
             "id": ring_id,
@@ -517,9 +519,9 @@ pub async fn add_peer(
         }
     }
 
-    tracing::info!("[Ring] Added peer {} to ring {}", req.peer, ring_id);
+    tracing::info!("[Ring] Added peer {} to ring {}", peer_url, ring_id);
 
-    Ok(json!({"success": true, "ring_id": ring_id, "peer": req.peer}))
+    Ok(json!({"success": true, "ring_id": ring_id, "peer": peer_url}))
 }
 
 /// 移除 Peer（原子操作，避免并发读-改-写竞争）
@@ -645,13 +647,20 @@ pub async fn trigger_sync(
     let mut synced = 0;
 
     for peer in &selected {
+        let peer_url = match crate::federation::follow::resolve_actor_reference(peer).await {
+            Ok(url) => url,
+            Err(_) => {
+                tracing::warn!("[Ring] Skipping unresolved peer {} during sync", peer);
+                continue;
+            }
+        };
         let activity_id = generate_activity_id(&base_url);
         let sync_activity = json!({
             "@context": build_context(),
             "type": "myriad:RingSync",
             "id": &activity_id,
             "actor": &local_actor,
-            "to": [peer],
+            "to": [&peer_url],
             "object": {
                 "type": "myriad:RingSyncPayload",
                 "ring": ring_id,
@@ -661,7 +670,7 @@ pub async fn trigger_sync(
             }
         });
 
-        if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, peer).await {
+        if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, &peer_url).await {
             if !remote.inbox_url.is_empty() {
                 let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
                 let local_user_id = resolve_user_id(db, username).await?;
@@ -726,7 +735,7 @@ async fn collect_sync_entries(ring_type: &str, db: &DatabaseConnection) -> Vec<s
                     DatabaseBackend::Postgres,
                     r#"SELECT activity_id, object_json
                        FROM federation_activities
-                       WHERE activity_type = 'Create' AND object_type = 'Brew' AND is_local = true
+                       WHERE activity_type = 'Create' AND object_type = 'brew-article' AND is_local = true
                        ORDER BY published_at DESC LIMIT 20"#,
                     [],
                 ))
@@ -750,7 +759,7 @@ async fn collect_sync_entries(ring_type: &str, db: &DatabaseConnection) -> Vec<s
                     DatabaseBackend::Postgres,
                     r#"SELECT activity_id, object_json
                        FROM federation_activities
-                       WHERE activity_type = 'Create' AND object_type = 'Tapp' AND is_local = true
+                       WHERE activity_type = 'Create' AND object_type = 'tapp' AND is_local = true
                        ORDER BY published_at DESC LIMIT 20"#,
                     [],
                 ))
@@ -773,7 +782,7 @@ async fn collect_sync_entries(ring_type: &str, db: &DatabaseConnection) -> Vec<s
                     DatabaseBackend::Postgres,
                     r#"SELECT activity_id, object_json
                        FROM federation_activities
-                       WHERE activity_type = 'Create' AND object_type = 'Library' AND is_local = true
+                       WHERE activity_type = 'Create' AND object_type = 'library' AND is_local = true
                        ORDER BY published_at DESC LIMIT 20"#,
                     [],
                 ))

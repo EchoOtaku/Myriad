@@ -35,6 +35,12 @@ interface FloatingChar {
   seed: number
 }
 
+interface FloatingLyricPage {
+  index: number
+  startTime: number
+  chars: FloatingChar[]
+}
+
 // 确定性随机函数 - 模块级别，避免在每次渲染时重新创建
 function seededRandom(seed: number): number {
   const x = Math.sin(seed * 9999) * 10000
@@ -84,17 +90,19 @@ function computeCharPositions(
 }
 
 // 批次检查间隔（毫秒）
-const BATCH_CHECK_MS = 200
+const BATCH_CHECK_MS = 80
 // 动画更新间隔（毫秒）~20fps，足够柔和
 const ANIM_UPDATE_MS = 50
 // 每批显示的最大字符数
 const MAX_CHARS_PER_BATCH = 10
+// 单页歌词最多停留多久后进入下一页，避免长间奏把翻页拖得很慢
+const MAX_LYRIC_PAGE_SECONDS = 3.2
 
 // 漂浮歌词显示组件 - 逐字淡入，分批显示
 const FloatingLyrics = memo(
   ({
     lyrics,
-    currentLyricIndex: _currentLyricIndex,
+    currentLyricIndex,
     isPlaying,
     themeColor,
     fontScale,
@@ -111,8 +119,6 @@ const FloatingLyrics = memo(
     const phaseRef = useRef(0)
     const currentTimeRef = useRef(0)
     const currentBatchIndexRef = useRef(-1)
-    // 淡出状态用 ref 而非 state — 在 RAF 内读写，无需触发渲染
-    const isFadingOutRef = useRef(false)
     // 当前批次数据存于 ref，渲染时读取
     const visibleCharsRef = useRef<FloatingChar[]>([])
     const charPositionsRef = useRef<
@@ -123,13 +129,13 @@ const FloatingLyrics = memo(
     const lastBeatTimeRef = useRef(0)
     const energyHistoryRef = useRef<number[]>([])
 
-    // 唯一触发 React 重渲染的 state — 只在批次真正切换时递增（约每4秒）
-    const [batchVersion, setBatchVersion] = useState(0)
+    // 唯一触发 React 重渲染的 state — 只在批次真正切换时递增
+    const [, setBatchVersion] = useState(0)
 
-    // 构建所有字符的时间映射 — 仅歌词变化时重算
-    const allCharsWithTime = useMemo(() => {
-      const chars: FloatingChar[] = []
-      if (lyrics.length === 0) return chars
+    // 构建歌词页映射 — 每句歌词单独分页，避免跨多句累计 token 导致翻页滞后
+    const lyricPages = useMemo(() => {
+      const pages: FloatingLyricPage[] = []
+      if (lyrics.length === 0) return pages
 
       const tokenize = (text: string): string[] => {
         const tokens: string[] = []
@@ -159,46 +165,61 @@ const FloatingLyrics = memo(
       }
 
       let globalIndex = 0
-      const CHAR_DISPLAY_TIME = 0.35
-      const DEVIATION_THRESHOLD = 2.0
+      let pageIndex = 0
 
       lyrics.forEach((line, lineIdx) => {
         const nextLine = lyrics[lineIdx + 1]
         const lineStartTime = line.time
         const lineEndTime = nextLine ? nextLine.time : lineStartTime + 5
-        const actualDuration = lineEndTime - lineStartTime
-        const text = line.text
-        const charCount = text.replace(/\s/g, '').length
-        const recommendedDuration = charCount * CHAR_DISPLAY_TIME
-        const lineDuration =
-          actualDuration > recommendedDuration * DEVIATION_THRESHOLD
-            ? recommendedDuration * 1.4
-            : actualDuration
-        const tokens = tokenize(text)
-        const tokenCount = tokens.length
-        if (tokenCount === 0) return
+        const actualDuration = Math.max(0.6, lineEndTime - lineStartTime)
+        const tokens = tokenize(line.text)
+        if (tokens.length === 0) return
 
-        tokens.forEach((token, tokenIdx) => {
-          const tokenTime =
-            lineStartTime + (tokenIdx / tokenCount) * lineDuration
-          const seed = globalIndex * 17 + token.charCodeAt(0)
-          chars.push({
-            char: token,
-            index: globalIndex,
-            absoluteTime: tokenTime,
-            seed,
+        const pageCount = Math.ceil(tokens.length / MAX_CHARS_PER_BATCH)
+        const pageDuration = Math.min(
+          MAX_LYRIC_PAGE_SECONDS,
+          actualDuration / pageCount,
+        )
+
+        for (let pageOffset = 0; pageOffset < pageCount; pageOffset++) {
+          const pageStart = pageOffset * MAX_CHARS_PER_BATCH
+          const pageTokens = tokens.slice(
+            pageStart,
+            pageStart + MAX_CHARS_PER_BATCH,
+          )
+          const pageStartTime = lineStartTime + pageOffset * pageDuration
+          const revealDuration = Math.min(pageDuration * 0.75, 1.4)
+
+          const chars = pageTokens.map((token, tokenIdx) => {
+            const tokenTime =
+              pageStartTime + (tokenIdx / pageTokens.length) * revealDuration
+            const seed = globalIndex * 17 + token.charCodeAt(0)
+            const charConfig = {
+              char: token,
+              index: globalIndex,
+              absoluteTime: tokenTime,
+              seed,
+            }
+            globalIndex++
+            return charConfig
           })
-          globalIndex++
-        })
+
+          pages.push({
+            index: pageIndex,
+            startTime: pageStartTime,
+            chars,
+          })
+          pageIndex++
+        }
       })
 
-      return chars
+      return pages
     }, [lyrics])
 
     // 计算指定时间点应显示的批次 — 在 RAF 内调用的纯计算
     const computeCurrentBatch = useCallback(
       (time: number) => {
-        if (allCharsWithTime.length === 0) {
+        if (lyricPages.length === 0) {
           return {
             chars: [] as FloatingChar[],
             positions: [] as ReturnType<typeof computeCharPositions>,
@@ -206,34 +227,34 @@ const FloatingLyrics = memo(
           }
         }
 
-        let currentCharIndex = 0
-        for (let i = 0; i < allCharsWithTime.length; i++) {
-          if (allCharsWithTime[i].absoluteTime <= time) {
-            currentCharIndex = i
+        let page = lyricPages[0]
+        for (let i = 0; i < lyricPages.length; i++) {
+          if (lyricPages[i].startTime <= time) {
+            page = lyricPages[i]
           } else {
             break
           }
         }
 
-        const batchIndex = Math.floor(currentCharIndex / MAX_CHARS_PER_BATCH)
-        const batchStart = batchIndex * MAX_CHARS_PER_BATCH
-        const batchEnd = Math.min(
-          batchStart + MAX_CHARS_PER_BATCH,
-          allCharsWithTime.length,
-        )
-        const chars = allCharsWithTime.slice(batchStart, batchEnd)
-        return { chars, positions: computeCharPositions(chars), batchIndex }
+        return {
+          chars: page.chars,
+          positions: computeCharPositions(page.chars),
+          batchIndex: page.index,
+        }
       },
-      [allCharsWithTime],
+      [lyricPages],
     )
 
     // 歌词变化时初始化第一批（非播放状态下也需要显示内容）
     useEffect(() => {
       currentBatchIndexRef.current = -1
-      if (allCharsWithTime.length > 0) {
-        const { chars, positions, batchIndex } = computeCurrentBatch(
-          currentTimeRef.current,
-        )
+      if (lyricPages.length > 0) {
+        const fallbackTime =
+          currentLyricIndex >= 0
+            ? lyrics[currentLyricIndex]?.time ?? currentTimeRef.current
+            : currentTimeRef.current
+        const { chars, positions, batchIndex } =
+          computeCurrentBatch(fallbackTime)
         visibleCharsRef.current = chars
         charPositionsRef.current = positions
         currentBatchIndexRef.current = batchIndex
@@ -242,7 +263,7 @@ const FloatingLyrics = memo(
         charPositionsRef.current = []
       }
       setBatchVersion((v) => v + 1)
-    }, [allCharsWithTime, computeCurrentBatch])
+    }, [lyricPages, lyrics, currentLyricIndex, computeCurrentBatch])
 
     // 统一 RAF 循环：合并时间同步 + 批次检查 + 动画更新
     // 重渲染触发从每200ms降为批次切换时（约每4秒）
@@ -285,17 +306,10 @@ const FloatingLyrics = memo(
             batchIndex !== currentBatchIndexRef.current &&
             batchIndex !== -1
           ) {
-            const prevValid = currentBatchIndexRef.current !== -1
             currentBatchIndexRef.current = batchIndex
             visibleCharsRef.current = chars
             charPositionsRef.current = positions
-            if (prevValid && chars.length > 0) {
-              isFadingOutRef.current = true
-              setBatchVersion((v) => v + 1)
-              setTimeout(() => {
-                isFadingOutRef.current = false
-              }, 300)
-            } else if (chars.length > 0) {
+            if (chars.length > 0) {
               setBatchVersion((v) => v + 1)
             }
           }
@@ -371,8 +385,6 @@ const FloatingLyrics = memo(
               el.style.textShadow = 'none'
             }
 
-            if (isFadingOutRef.current) opacity = 0
-
             const rotation = el.dataset.rotation || '0'
             el.style.transform = `translate(${floatX}px, ${floatY}px) scale(${scale}) rotate(${rotation}deg)`
             el.style.opacity = `${opacity}`
@@ -394,11 +406,6 @@ const FloatingLyrics = memo(
         }
       }
     }, [isPlaying, computeCurrentBatch, themeColor])
-
-    // 批次切换时重置 charsRef（新 span 元素已挂载）
-    useEffect(() => {
-      charsRef.current = []
-    }, [batchVersion])
 
     const visibleChars = visibleCharsRef.current
     const charPositions = charPositionsRef.current
@@ -442,7 +449,7 @@ const FloatingLyrics = memo(
                 left: `${pos.x}%`,
                 top: `${pos.y}%`,
                 fontSize: `${22 * fontScale * pos.fontSize}px`,
-                opacity: 0,
+                opacity: isPlaying ? 0 : 0.75,
                 transform: `translate(0, 0) scale(1) rotate(${pos.rotation}deg)`,
                 willChange: 'transform, opacity',
                 transition:

@@ -1,112 +1,77 @@
-# Myriad Docker Deployment Makefile
-# Provides simplified commands to manage Docker deployment
+# Myriad Docker deployment shortcuts.
+# The canonical production entrypoint is scripts/docker/deploy.sh.
 
-.PHONY: help deploy start stop restart logs status clean build ps
+.PHONY: help deploy start stop restart logs status ps pull upgrade build clean backup shell-backend shell-db shell-frontend
 
-# Default target
 .DEFAULT_GOAL := help
 
-# Help information
+DEPLOY := bash scripts/docker/deploy.sh
+
 help:
 	@echo "Myriad Docker Deployment Commands"
 	@echo ""
 	@echo "Usage: make [command]"
 	@echo ""
 	@echo "Available commands:"
-	@echo "  deploy     - One-click deployment (first time)"
-	@echo "  start      - Start all services"
-	@echo "  stop       - Stop all services"
-	@echo "  restart    - Restart all services"
-	@echo "  logs       - View real-time logs"
-	@echo "  status     - View service status"
-	@echo "  ps         - View container list"
-	@echo "  build      - Rebuild images"
-	@echo "  clean      - Clean all resources"
-	@echo ""
+	@echo "  deploy   - Bootstrap and start the proxy + updater stack"
+	@echo "  start    - Start the stack"
+	@echo "  stop     - Stop containers (volumes preserved)"
+	@echo "  restart  - Restart the stack"
+	@echo "  logs     - View stack logs"
+	@echo "  status   - View service status and image versions"
+	@echo "  pull     - Pull images pinned by .env tags"
+	@echo "  upgrade  - Pull and recreate after editing .env tags"
+	@echo "  build    - Build all component images locally"
+	@echo "  backup   - Dump PostgreSQL into ./backups"
+	@echo "  clean    - Delete containers, volumes, pgdata, state, and backups"
 
-# One-click deployment
-deploy:
-	@echo "Starting Myriad deployment..."
-	@if [ ! -f .env ]; then \
-		echo "Creating .env file..."; \
-		cp .env.docker .env; \
-		echo ""; \
-		echo "⚠️  Please edit .env file first, modify passwords and keys"; \
-		echo ""; \
-		read -p "Press Enter to continue editing..." dummy; \
-		$${EDITOR:-nano} .env; \
-	fi
-	@docker-compose up -d --build
-	@echo ""
-	@echo "✓ Deployment complete!"
-	@echo ""
-	@echo "Access URLs:"
-	@echo "  Frontend: http://localhost:1102"
-	@echo "  Backend:  http://localhost:1103"
+deploy start:
+	$(DEPLOY) up
 
-# Start services
-start:
-	docker-compose up -d
-	@echo "✓ Services started"
-
-# Stop services
 stop:
-	docker-compose down
-	@echo "✓ Services stopped"
+	$(DEPLOY) down
 
-# Restart services
 restart:
-	docker-compose restart
-	@echo "✓ Services restarted"
+	$(DEPLOY) restart
 
-# View logs
 logs:
-	docker-compose logs -f
+	$(DEPLOY) logs
 
-# View status
-status:
-	@docker-compose ps
-	@echo ""
-	@echo "Health status:"
-	@docker inspect myriad-postgres --format='PostgreSQL: {{.State.Health.Status}}' 2>/dev/null || true
-	@docker inspect myriad-backend --format='Backend: {{.State.Health.Status}}' 2>/dev/null || true
-	@docker inspect myriad-frontend --format='Frontend: {{.State.Health.Status}}' 2>/dev/null || true
+status ps:
+	$(DEPLOY) status
 
-# View container list
-ps:
-	docker-compose ps
+pull:
+	$(DEPLOY) pull
 
-# Rebuild
+upgrade:
+	$(DEPLOY) upgrade
+
 build:
-	docker-compose build --no-cache
-	docker-compose up -d
-	@echo "✓ Rebuild complete"
+	bash scripts/docker/build-and-push.sh --all
 
-# Clean resources
 clean:
-	@echo "⚠️  This will delete all containers, images and volumes"
-	@read -p "Confirm to continue? (yes/N): " confirm; \
+	@echo "This will delete containers, Docker volumes, ./pgdata, ./state, and ./backups."
+	@read -p "Type yes to continue: " confirm; \
 	if [ "$$confirm" = "yes" ]; then \
-		docker-compose down -v --rmi all; \
-		echo "✓ Cleanup complete"; \
+		$(DEPLOY) down; \
+		docker compose down -v; \
+		rm -rf pgdata state backups; \
+		echo "Cleanup complete"; \
 	else \
 		echo "Cancelled"; \
 	fi
 
-# Database backup
 backup:
 	@mkdir -p backups
-	@docker exec myriad-postgres pg_dump -U myriad myriad > backups/backup_$$(date +%Y%m%d_%H%M%S).sql
-	@echo "✓ Backup complete: backups/backup_$$(date +%Y%m%d_%H%M%S).sql"
+	@ts=$$(date +%Y%m%d_%H%M%S); \
+	docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$$ts.sql"; \
+	echo "Backup complete: backups/backup_$$ts.sql"
 
-# Enter backend container
 shell-backend:
 	docker exec -it myriad-backend sh
 
-# Enter database
 shell-db:
 	docker exec -it myriad-postgres psql -U myriad -d myriad
 
-# Enter frontend container
 shell-frontend:
 	docker exec -it myriad-frontend sh

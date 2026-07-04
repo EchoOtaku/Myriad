@@ -1,0 +1,20 @@
+.tapp-window-control {
+  background-color: transparent;
+}
+
+@media (hover: hover) {
+  .tapp-window-control:hover {
+    background-color: var(--tapp-window-control-hover-bg, var(--bg-hover));
+  }
+
+  .tapp-window-control-text:hover {
+    color: var(--text-primary) !important;
+  }
+
+  .tapp-window-control-danger:hover {
+    color: var(
+      --tapp-window-control-danger-color,
+      var(--color-error, #ef4444)
+    ) !important;
+  }
+}

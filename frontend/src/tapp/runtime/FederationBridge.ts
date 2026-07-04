@@ -106,6 +106,21 @@ export function registerFederationHandlers(
     })
   }
 
+  // ==================== 身份 ====================
+
+  bridge.registerHandler('federation.getIdentity', async () => {
+    try {
+      const data = await federationApi.getIdentity()
+      return { success: true, data }
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to get identity',
+      }
+    }
+  })
+
   // ==================== 时间线 ====================
 
   bridge.registerHandler('federation.getTimeline', async () => {

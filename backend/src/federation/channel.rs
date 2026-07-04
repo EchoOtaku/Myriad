@@ -15,7 +15,7 @@ use crate::federation::types::*;
 /// 创建 Channel 请求
 #[derive(Debug, Deserialize)]
 pub struct CreateChannelRequest {
-    /// 远程 Actor URL
+    /// 远程 Actor URL 或 acct:user@domain / user@domain
     pub remote_actor: String,
     /// 通道类型: text, file-transfer, rpc, data-exchange, stream
     pub channel_type: Option<String>,
@@ -118,8 +118,11 @@ pub async fn create_channel(
         ));
     }
 
+    let remote_actor_url =
+        crate::federation::follow::resolve_actor_reference(&req.remote_actor).await?;
+
     // 确保远程 Actor 已缓存
-    let remote = crate::federation::actor::fetch_remote_actor(db, &req.remote_actor)
+    let remote = crate::federation::actor::fetch_remote_actor(db, &remote_actor_url)
         .await
         .map_err(|e| {
             tracing::error!("[Channel] Failed to fetch remote actor: {}", e);
@@ -149,7 +152,7 @@ pub async fn create_channel(
     if let Some(row) = existing {
         return Ok(ChannelDetail {
             channel_id: row.try_get("", "channel_id").unwrap_or_default(),
-            remote_actor_url: req.remote_actor.clone(),
+            remote_actor_url: remote_actor_url.clone(),
             remote_actor_name: remote.username.clone(),
             remote_actor_avatar: None,
             channel_type: channel_type.to_string(),
@@ -208,7 +211,7 @@ pub async fn create_channel(
         "type": "myriad:ChannelOpen",
         "id": &activity_id,
         "actor": &local_actor,
-        "to": [&req.remote_actor],
+        "to": [&remote_actor_url],
         "object": {
             "type": "myriad:Channel",
             "id": &channel_id,
@@ -255,12 +258,12 @@ pub async fn create_channel(
     tracing::info!(
         "[Channel] Created channel {} with remote {}",
         channel_id,
-        req.remote_actor
+        remote_actor_url
     );
 
     Ok(ChannelDetail {
         channel_id,
-        remote_actor_url: req.remote_actor.clone(),
+        remote_actor_url,
         remote_actor_name: remote.username.clone(),
         remote_actor_avatar: None,
         channel_type: channel_type.to_string(),

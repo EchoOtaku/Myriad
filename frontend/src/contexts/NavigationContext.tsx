@@ -89,7 +89,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const unregisterSecondaryNav = useCallback((routePath: string) => {
     setSecondaryNav((prev) => {
       if (prev?.routePath === routePath) {
-        // 如果当前在子路由（如 /federation/room/xxx），保留二级导航
+        // 如果当前在子路由（如 /brew/item/xxx），保留二级导航
         if (window.location.pathname.startsWith(`${routePath}/`)) {
           return prev
         }

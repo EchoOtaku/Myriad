@@ -116,22 +116,17 @@ pub async fn csrf_middleware(req: Request, next: Next) -> Response {
 
     let headers = req.headers();
 
-    // 提取会话 ID
-    let session_id = extract_session_id(headers);
-
     // 如果没有 session（游客），跳过 CSRF 验证
     // 理由：CSRF 攻击的目的是劫持已登录用户的 session 执行操作
     // 游客没有 session，无法被 CSRF 攻击利用
     // 后端 API 会通过权限下放配置决定游客能访问什么
-    if session_id.is_none() {
+    let Some(session_id) = extract_session_id(headers) else {
         tracing::debug!(
             "⏭️ CSRF check skipped: No session (guest user) for {}",
             path
         );
         return next.run(req).await;
-    }
-
-    let session_id = session_id.unwrap();
+    };
 
     // 从请求头获取 CSRF Token
     let client_token = headers
@@ -207,7 +202,6 @@ fn is_csrf_exempt(path: &str) -> bool {
     // 公开接口、登录接口、健康检查等不需要 CSRF 保护
     path.starts_with("/api/auth/login")
         || path.starts_with("/api/auth/logout") // 退出登录不需要 CSRF（已经在退出了）
-        || path.starts_with("/api/auth/github/")
         || path.starts_with("/api/setup/")
         || path.starts_with("/health")
         || path.starts_with("/api/proxy/") // 图片代理等公开接口
@@ -306,12 +300,12 @@ mod tests {
     #[test]
     fn test_is_csrf_exempt() {
         assert!(is_csrf_exempt("/api/auth/login"));
-        assert!(is_csrf_exempt("/api/auth/github/callback"));
         assert!(is_csrf_exempt("/api/setup/init-database"));
         assert!(is_csrf_exempt("/health"));
         assert!(is_csrf_exempt("/api/proxy/image"));
 
         // Tapp API 不在豁免列表（通过 session 检查决定是否需要 CSRF）
+        assert!(!is_csrf_exempt("/api/auth/oauth/github/callback"));
         assert!(!is_csrf_exempt("/api/tapp/ai/chat"));
         assert!(!is_csrf_exempt("/api/tapps/install"));
         assert!(!is_csrf_exempt("/api/tapps/my-app/start"));

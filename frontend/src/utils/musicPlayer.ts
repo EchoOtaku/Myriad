@@ -116,6 +116,27 @@ export interface LyricLine {
   text: string
 }
 
+// 逐字歌词单个 token（一个字/词）
+export interface WordLyricToken {
+  time: number // 秒，绝对开始时间
+  duration: number // 秒，该字/词的持续时长
+  text: string
+}
+
+// 逐字歌词单行（含逐字 token）
+export interface WordLyricLine {
+  time: number // 秒，行开始时间
+  duration: number // 秒，行持续时长
+  text: string // 整行文本（token 拼接）
+  words: WordLyricToken[]
+}
+
+// 逐字歌词结果：逐行(lines) 作为兜底 + 逐字(verbatim) 作为增强
+export interface VerbatimLyricsResult {
+  lines: LyricLine[]
+  verbatim: WordLyricLine[]
+}
+
 // 歌词缓存（限制最大100首，使用LRU策略）
 const lyricsCache = new Map<string, LyricLine[]>()
 const MAX_LYRICS_CACHE_SIZE = 100
@@ -177,6 +198,58 @@ export function parseLyrics(lrcText: string): LyricLine[] {
 
   // 按时间排序
   return lyrics.sort((a, b) => a.time - b.time)
+}
+
+/**
+ * 解析网易云 yrc 逐字歌词格式
+ *
+ * 行格式: `[行起始ms,行时长ms](字起始ms,字时长ms,0)字(字起始ms,字时长ms,0)字...`
+ * 以 `{` 开头的行是 JSON 元数据（作词/翻译等），跳过。
+ */
+export function parseYrc(yrcText: string): WordLyricLine[] {
+  if (!yrcText) return []
+
+  const rawLines = yrcText.split('\n')
+  const result: WordLyricLine[] = []
+  const headerRe = /^\[(\d+),(\d+)\]/
+  // 每个 token: (起始ms,时长ms,附加)文本 —— 文本读到下一个左括号前
+  const wordRe = /\((\d+),(\d+),\d+\)([^(]*)/g
+
+  for (const raw of rawLines) {
+    const line = raw.trim()
+    if (!line || line.charAt(0) === '{') continue
+
+    const header = headerRe.exec(line)
+    if (!header) continue
+
+    const lineStart = Number(header[1]) / 1000
+    const lineDuration = Number(header[2]) / 1000
+
+    const words: WordLyricToken[] = []
+    let text = ''
+    wordRe.lastIndex = 0
+    let m: RegExpExecArray | null
+    // biome-ignore lint/suspicious/noAssignInExpressions: 正则逐个 exec 是标准写法
+    while ((m = wordRe.exec(line)) !== null) {
+      const wordText = m[3]
+      words.push({
+        time: Number(m[1]) / 1000,
+        duration: Number(m[2]) / 1000,
+        text: wordText,
+      })
+      text += wordText
+    }
+
+    if (words.length === 0) continue
+    result.push({
+      time: lineStart,
+      duration: lineDuration,
+      text: text.trim(),
+      words,
+    })
+  }
+
+  return result.sort((a, b) => a.time - b.time)
 }
 
 /**
@@ -280,6 +353,7 @@ export function clearPlaylistCache(): void {
  */
 export function clearLyricsCache(): void {
   lyricsCache.clear()
+  verbatimLyricsCache.clear()
 }
 
 /**
@@ -474,6 +548,54 @@ export async function getNeteaseLyrics(songId: string): Promise<LyricLine[]> {
   } catch (error) {
     console.error('Error fetching Netease lyrics:', error)
     return []
+  }
+}
+
+// 逐字歌词缓存（复用 LRU 大小上限）
+const verbatimLyricsCache = new Map<string, VerbatimLyricsResult>()
+
+/**
+ * 获取网易云逐字歌词（yrc）+ 逐行兜底
+ *
+ * 返回 { lines, verbatim }：verbatim 为空时消费方应回退到 lines。
+ */
+export async function getNeteaseVerbatimLyrics(
+  songId: string,
+): Promise<VerbatimLyricsResult> {
+  const cacheKey = `netease-v1-${songId}`
+
+  const cached = verbatimLyricsCache.get(cacheKey)
+  if (cached) return cached
+
+  try {
+    const response = await fetch(
+      `${API_URL}/api/proxy/music/netease/lyrics-verbatim/${songId}`,
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch verbatim lyrics')
+    }
+
+    const data = await response.json()
+
+    const lines: LyricLine[] = data.lrc?.lyric ? parseLyrics(data.lrc.lyric) : []
+    const verbatim: WordLyricLine[] = data.yrc?.lyric
+      ? parseYrc(data.yrc.lyric)
+      : []
+
+    const result: VerbatimLyricsResult = { lines, verbatim }
+
+    // LRU：超上限删最旧
+    if (verbatimLyricsCache.size >= MAX_LYRICS_CACHE_SIZE) {
+      const firstKey = verbatimLyricsCache.keys().next().value
+      if (firstKey) verbatimLyricsCache.delete(firstKey)
+    }
+    verbatimLyricsCache.set(cacheKey, result)
+
+    return result
+  } catch (error) {
+    console.error('Error fetching Netease verbatim lyrics:', error)
+    return { lines: [], verbatim: [] }
   }
 }
 

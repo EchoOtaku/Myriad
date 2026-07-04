@@ -1,4 +1,4 @@
-import { LuGitFork, LuStar, SiBangumi } from '@lib/icons'
+import { BangumiIcon, LuGitFork, LuStar } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
@@ -1160,7 +1160,7 @@ export const BangumiWidget = memo(
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-3xl text-rose-500">
-                <SiBangumi />
+                <BangumiIcon />
               </div>
             )}
           </div>

@@ -444,9 +444,12 @@ export function generateFullSDK(
       getStatus: () => sendRequest('media', 'getStatus', []),
       getPlaylist: () => sendRequest('media', 'getPlaylist', []),
       getSpectrum: () => sendRequest('media', 'getSpectrum', []),
+      getLyrics: (opts) => sendRequest('media', 'getLyrics', [opts || {}]),
       playTrack: (id, idx) => sendRequest('media', 'playTrack', [{ trackId: id, trackIndex: idx }]),
       jumpToIndex: (idx) => sendRequest('media', 'jumpToIndex', [{ index: idx }]),
       loadNeteasePlaylist: (playlistId) => sendRequest('media', 'loadNeteasePlaylist', [{ playlistId }]),
+      getSkipVip: () => sendRequest('media', 'getSkipVip', []),
+      setSkipVip: (value) => sendRequest('media', 'setSkipVip', [{ value: value }]),
       onStateChange: (cb) => addEventListener('mediaStateChange', cb),
       onProgress: (cb) => addEventListener('mediaProgress', cb),
     },
@@ -567,6 +570,8 @@ export function generateFullSDK(
     },
 
     federation: {
+      // 身份
+      getIdentity: () => sendRequest('federation', 'getIdentity', []),
       // 时间线
       getTimeline: () => sendRequest('federation', 'getTimeline', []),
       // 关注
@@ -932,9 +937,12 @@ export function generateWidgetSDK(
       getStatus: function() { return sendRequest('media', 'getStatus', []); },
       getPlaylist: function() { return sendRequest('media', 'getPlaylist', []); },
       getSpectrum: function() { return sendRequest('media', 'getSpectrum', []); },
+      getLyrics: function(opts) { return sendRequest('media', 'getLyrics', [opts || {}]); },
       playTrack: function(id, idx) { return sendRequest('media', 'playTrack', [{ trackId: id, trackIndex: idx }]); },
       jumpToIndex: function(idx) { return sendRequest('media', 'jumpToIndex', [{ index: idx }]); },
       loadNeteasePlaylist: function(playlistId) { return sendRequest('media', 'loadNeteasePlaylist', [{ playlistId: playlistId }]); },
+      getSkipVip: function() { return sendRequest('media', 'getSkipVip', []); },
+      setSkipVip: function(value) { return sendRequest('media', 'setSkipVip', [{ value: value }]); },
       onStateChange: function(cb) { return addEventListener('mediaStateChange', cb); },
       onProgress: function(cb) { return addEventListener('mediaProgress', cb); }
     },

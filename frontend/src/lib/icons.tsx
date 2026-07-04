@@ -350,7 +350,7 @@ import {
 const SiCodepen = FaCodepen
 const SiOpenai = FaRobot
 
-const SiBangumi: IconType = ({ size, style, title, ...props }) => {
+const BangumiIcon: IconType = ({ size, style, title, ...props }) => {
   const iconSize = size ?? '1em'
 
   return (
@@ -385,6 +385,8 @@ const SiBangumi: IconType = ({ size, style, title, ...props }) => {
   )
 }
 
+const SiBangumi = BangumiIcon
+
 // 导出 Simple Icons
 export {
   SiAnilist,
@@ -393,6 +395,7 @@ export {
   SiArtstation,
   SiBaidu,
   SiBandcamp,
+  BangumiIcon,
   SiBangumi,
   SiBehance,
   SiBilibili,

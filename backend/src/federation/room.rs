@@ -129,6 +129,12 @@ pub struct SendRoomMessageResponse {
     pub room_id: String,
 }
 
+/// Pin/Unpin Room 消息请求
+#[derive(Debug, Deserialize)]
+pub struct PinRoomMessageRequest {
+    pub pinned: bool,
+}
+
 // ==================== 辅助函数 ====================
 
 /// 检查用户在 Room 中的角色
@@ -468,6 +474,81 @@ pub async fn update_room(
     get_room(user_id, username, room_id, db).await
 }
 
+/// 解散 Room（仅 owner 可操作）
+pub async fn delete_room(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    db: &DatabaseConnection,
+) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT owner_actor FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Room not found"})),
+            )
+        })?;
+
+    let owner_actor: String = row.try_get("", "owner_actor").unwrap_or_default();
+    let my_role = get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .unwrap_or_default();
+
+    if owner_actor != local_actor || my_role != "owner" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Only the room owner can delete room"})),
+        ));
+    }
+
+    let delete_notice = json!({
+        "type": "room_deleted",
+        "room_id": room_id,
+        "deleted_by": local_actor
+    });
+    crate::federation::ws_gateway::broadcast_to_room(room_id, &delete_notice).await;
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM federation_room_messages WHERE room_id = $1",
+        [room_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM federation_room_members WHERE room_id = $1",
+        [room_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM federation_rooms WHERE room_id = $1",
+        [room_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    tracing::info!("[Room] Deleted room {} by {}", room_id, username);
+
+    let _ = user_id;
+    Ok(json!({ "success": true, "room_id": room_id }))
+}
+
 /// 获取用户参与的所有 Room
 pub async fn list_rooms(
     user_id: i32,
@@ -764,13 +845,28 @@ pub async fn invite_member(
         ));
     }
 
-    // 解析目标 Actor
-    let target_actor = &req.actor;
-    let is_remote = target_actor.starts_with("http://") || target_actor.starts_with("https://");
+    // 解析目标 Actor：本地用户名保持原逻辑，远端支持 Actor URL / acct:user@domain / user@domain。
+    let raw_target_actor = req.actor.trim();
+    if raw_target_actor.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Actor reference is required"})),
+        ));
+    }
 
-    if is_remote {
+    let resolved_remote_actor = if raw_target_actor.starts_with("http://")
+        || raw_target_actor.starts_with("https://")
+        || raw_target_actor.starts_with("acct:")
+        || raw_target_actor.contains('@')
+    {
+        Some(crate::federation::follow::resolve_actor_reference(raw_target_actor).await?)
+    } else {
+        None
+    };
+
+    if let Some(target_actor) = resolved_remote_actor {
         // 远程成员：fetch actor + 添加记录
-        let remote = crate::federation::actor::fetch_remote_actor(db, target_actor)
+        let remote = crate::federation::actor::fetch_remote_actor(db, &target_actor)
             .await
             .map_err(|e| {
                 tracing::error!("[Room] Failed to fetch remote actor: {}", e);
@@ -848,13 +944,13 @@ pub async fn invite_member(
         );
     } else {
         // 本地成员 — 解析用户名 → actor_url
-        let local_target_actor = actor_url(&base_url, target_actor);
+        let local_target_actor = actor_url(&base_url, raw_target_actor);
         // 查找本地用户 ID
         let local_row = db
             .query_one(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT id FROM users WHERE username = $1",
-                [target_actor.into()],
+                [raw_target_actor.into()],
             ))
             .await
             .map_err(db_err)?;
@@ -880,7 +976,7 @@ pub async fn invite_member(
 
         tracing::info!(
             "[Room] Invited local {} to room {} as {}",
-            target_actor,
+            raw_target_actor,
             room_id,
             role
         );
@@ -1220,6 +1316,79 @@ pub async fn get_room_messages(
 
     messages.reverse();
     Ok(messages)
+}
+
+/// Pin/Unpin Room 消息（owner/admin 可操作）
+pub async fn pin_room_message(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    message_id: &str,
+    db: &DatabaseConnection,
+    req: &PinRoomMessageRequest,
+) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    let my_role = get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a member of this room"})),
+            )
+        })?;
+
+    if !is_admin_role(&my_role) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Only owner or admin can pin messages"})),
+        ));
+    }
+
+    let updated = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_room_messages
+               SET is_pinned = $3
+               WHERE room_id = $1 AND message_id = $2
+               RETURNING message_id"#,
+            [room_id.into(), message_id.into(), req.pinned.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Message not found"})),
+            )
+        })?;
+
+    let pinned_message_id: String = updated.try_get("", "message_id").unwrap_or_default();
+    let ws_msg = json!({
+        "type": "room_message_pinned",
+        "room_id": room_id,
+        "message_id": pinned_message_id,
+        "is_pinned": req.pinned
+    });
+    crate::federation::ws_gateway::broadcast_to_room(room_id, &ws_msg).await;
+
+    tracing::info!(
+        "[Room] {} set pinned={} for message {} in room {}",
+        username,
+        req.pinned,
+        message_id,
+        room_id
+    );
+
+    let _ = user_id;
+    Ok(json!({
+        "success": true,
+        "room_id": room_id,
+        "message_id": message_id,
+        "is_pinned": req.pinned
+    }))
 }
 
 // ==================== Inbox 处理（远程 Room 事件）====================
