@@ -114,6 +114,7 @@ export interface Song {
 export interface LyricLine {
   time: number // 秒
   text: string
+  translation?: string // 整行翻译（按时间就近对齐挂载，见 attachLyricTranslation）
 }
 
 // 逐字歌词单个 token（一个字/词）
@@ -129,12 +130,27 @@ export interface WordLyricLine {
   duration: number // 秒，行持续时长
   text: string // 整行文本（token 拼接）
   words: WordLyricToken[]
+  translation?: string // 整行翻译（按时间就近对齐挂载）
 }
 
 // 逐字歌词结果：逐行(lines) 作为兜底 + 逐字(verbatim) 作为增强
 export interface VerbatimLyricsResult {
   lines: LyricLine[]
   verbatim: WordLyricLine[]
+  // 逐行翻译原始数组（网易 ytlrc 优先、tlyric 兜底，目前恒为中文）。
+  // 已按时间就近挂到 lines/verbatim 各行 translation 字段；保留原始数组
+  // 供跨源（酷狗）verbatim 采纳后再次对齐
+  translation: LyricLine[]
+}
+
+export type VerbatimLyricsSource = 'netease' | 'kugou' | ''
+
+export interface LyricsWithVerbatimResult extends VerbatimLyricsResult {
+  source: MusicSource
+  hasVerbatim: boolean
+  verbatimSource: VerbatimLyricsSource
+  hasTranslation: boolean
+  translationLang: 'zh' | '' // 翻译目标语言（Phase 1 只有网易中文翻译源）
 }
 
 // 歌词缓存（限制最大100首，使用LRU策略）
@@ -640,7 +656,16 @@ export async function getNeteaseVerbatimLyrics(
       ? parseYrc(data.yrc.lyric)
       : []
 
-    const result: VerbatimLyricsResult = { lines, verbatim }
+    // 逐行翻译：ytlrc 与 yrc 同轴（优先），tlyric 与 lrc 同轴（兜底）。
+    // 均为标准 LRC 文本；非中文歌通常有，中文歌为空
+    const translationRaw = data.ytlrc?.lyric || data.tlyric?.lyric || ''
+    const translation: LyricLine[] = translationRaw
+      ? parseLyrics(translationRaw)
+      : []
+    attachLyricTranslation(lines, translation)
+    attachLyricTranslation(verbatim, translation)
+
+    const result: VerbatimLyricsResult = { lines, verbatim, translation }
 
     // LRU：超上限删最旧
     if (verbatimLyricsCache.size >= MAX_LYRICS_CACHE_SIZE) {
@@ -652,7 +677,40 @@ export async function getNeteaseVerbatimLyrics(
     return result
   } catch (error) {
     console.error('Error fetching Netease verbatim lyrics:', error)
-    return { lines: [], verbatim: [] }
+    return { lines: [], verbatim: [], translation: [] }
+  }
+}
+
+/**
+ * 把逐行翻译按时间就近挂到歌词行的 translation 字段
+ *
+ * 翻译（tlyric）时间戳与 lrc 逐行一致，但展示行可能来自 yrc/KRC（同一行
+ * 起始时间有数百毫秒级出入），所以按「最近时间 + 容差」匹配而不按索引对位。
+ * 每条翻译只认领一个最近的行（更近者胜出），避免密集行重复同一条翻译。
+ */
+export function attachLyricTranslation(
+  entries: Array<{ time: number; translation?: string }>,
+  translation: LyricLine[],
+  toleranceSec = 1.0,
+): void {
+  if (entries.length === 0 || translation.length === 0) return
+  const claimed = new Map<number, number>() // 行下标 → 已挂翻译的时间差
+  for (const t of translation) {
+    let best = -1
+    let bestD = toleranceSec
+    for (let i = 0; i < entries.length; i++) {
+      const d = Math.abs(entries[i].time - t.time)
+      if (d < bestD) {
+        bestD = d
+        best = i
+      }
+    }
+    if (best < 0) continue
+    const prev = claimed.get(best)
+    if (prev === undefined || bestD < prev) {
+      claimed.set(best, bestD)
+      entries[best].translation = t.text
+    }
   }
 }
 
@@ -779,6 +837,73 @@ export async function getQQLyrics(songId: string): Promise<LyricLine[]> {
   } catch (error) {
     console.error('Error fetching QQ lyrics:', error)
     return []
+  }
+}
+
+/**
+ * 获取歌曲歌词：逐字优先，多源兜底。
+ *
+ * 主源：网易云 yrc / QQ 逐行；逐字兜底：酷狗 KRC（按歌名 + 主歌手 + 时长）。
+ * 返回的 lines 始终是逐行兜底，verbatim 为空时消费方应退回 lines。
+ */
+export async function getLyricsWithVerbatim(
+  song: Pick<Song, 'id' | 'source' | 'name' | 'artist' | 'duration'>,
+): Promise<LyricsWithVerbatimResult> {
+  let lines: LyricLine[] = []
+  let verbatim: WordLyricLine[] = []
+  let verbatimSource: VerbatimLyricsSource = ''
+  let translation: LyricLine[] = []
+
+  if (song.source === 'qq') {
+    lines = await getQQLyrics(song.id)
+  } else {
+    const result = await getNeteaseVerbatimLyrics(song.id)
+    lines = result.lines
+    verbatim = result.verbatim
+    translation = result.translation
+    if (verbatim.length > 0) {
+      verbatimSource = 'netease'
+    }
+  }
+
+  if (verbatim.length === 0 && song.name) {
+    const mainArtist = (song.artist || '').split(/[,/、&×]/)[0].trim()
+    const keyword = mainArtist ? `${song.name} ${mainArtist}` : song.name
+    const kugou = await getKugouVerbatimLyrics(keyword, song.duration || 0)
+
+    if (kugou.length > 0) {
+      const aligned = alignVerbatimToLines(kugou, lines)
+      if (aligned) {
+        verbatim = aligned
+        verbatimSource = 'kugou'
+        // 酷狗行已校准到网易时间轴，翻译（网易）可直接就近挂载
+        attachLyricTranslation(verbatim, translation)
+      } else {
+        console.debug(
+          '[MusicPlayer] KuGou verbatim rejected: timeline mismatch for',
+          keyword,
+        )
+      }
+    }
+  }
+
+  if (lines.length === 0 && verbatim.length > 0) {
+    lines = verbatim.map((line) => ({
+      time: line.time,
+      text: line.text,
+      translation: line.translation,
+    }))
+  }
+
+  return {
+    lines,
+    verbatim,
+    translation,
+    source: song.source,
+    hasVerbatim: verbatim.length > 0,
+    verbatimSource,
+    hasTranslation: translation.length > 0,
+    translationLang: translation.length > 0 ? 'zh' : '',
   }
 }
 

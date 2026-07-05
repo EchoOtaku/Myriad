@@ -10,12 +10,7 @@ import type { TappBridge } from '../../TappBridge'
 import type { AnimationConfigRef } from '../types'
 import { getDynamicContentProvider } from '../../../../services/DynamicContentProvider'
 import { analyzeBeatGrid } from '../../../../utils/beatAnalyzer'
-import {
-  alignVerbatimToLines,
-  getKugouVerbatimLyrics,
-  getNeteaseVerbatimLyrics,
-  getQQLyrics,
-} from '../../../../utils/musicPlayer'
+import { getLyricsWithVerbatim } from '../../../../utils/musicPlayer'
 import * as TappApiService from '../../../services/TappApiService'
 import { getTappRuntime } from '../../TappRuntime'
 
@@ -365,63 +360,27 @@ export function registerMediaHandlers(
     }
 
     try {
-      let lines: Array<{ time: number; text: string }> = []
-      let verbatim: Array<unknown> = []
-      let verbatimSource = ''
-
-      // 1) 主源：网易云 yrc（按 id）/ QQ 逐行
-      if (src === 'qq') {
-        lines = await getQQLyrics(String(id))
-      } else {
-        const r = await getNeteaseVerbatimLyrics(String(id))
-        lines = r.lines
-        verbatim = r.verbatim
-        if (verbatim.length > 0) verbatimSource = 'netease'
-      }
-
-      // 2) 逐字回退：酷狗 KRC（按 歌名+歌手+时长）
-      //    仅当查询的是当前曲目时才有 name/artist 信息可用
+      const lyricSource = src === 'qq' ? 'qq' : 'netease'
       const isCurrent = !songId || String(songId) === String(currentSong?.id)
-      if (verbatim.length === 0 && isCurrent && currentSong) {
-        const name = currentSong.name || currentSong.title || ''
-        const artist = currentSong.artist || ''
-        if (name) {
-          // 多歌手串（Aimer,EGOIST / A/B / A×B）会让酷狗搜索直接不命中，只用主歌手
-          const mainArtist = artist.split(/[,/、&×]/)[0].trim()
-          const keyword = mainArtist ? `${name} ${mainArtist}` : name
-          const kugou = await getKugouVerbatimLyrics(
-            keyword,
-            currentSong.duration || 0,
-          )
-          if (kugou.length > 0) {
-            // 跨源时间轴校准：酷狗可能命中不同版本（时间轴整体偏移/结构不符）。
-            // 用网易云逐行时间轴做中位数对齐；结构不符则拒绝（回退逐行，保证不乱轴）
-            const aligned = alignVerbatimToLines(kugou, lines)
-            if (aligned) {
-              verbatim = aligned
-              verbatimSource = 'kugou'
-              // 无逐行时，用逐字派生逐行兜底
-              if (lines.length === 0) {
-                lines = aligned.map((v) => ({ time: v.time, text: v.text }))
-              }
-            } else {
-              console.debug(
-                '[media.getLyrics] KuGou verbatim rejected: timeline mismatch for',
-                keyword,
-              )
-            }
-          }
-        }
-      }
+      const result = await getLyricsWithVerbatim({
+        id: String(id),
+        source: lyricSource,
+        name: isCurrent ? currentSong?.name || currentSong?.title || '' : '',
+        artist: isCurrent ? currentSong?.artist || '' : '',
+        duration: isCurrent ? currentSong?.duration || 0 : 0,
+      })
 
       return {
         success: true,
         data: {
-          lines,
-          verbatim,
-          hasVerbatim: verbatim.length > 0,
+          lines: result.lines,
+          verbatim: result.verbatim,
+          hasVerbatim: result.hasVerbatim,
           source: src,
-          verbatimSource, // 'netease' | 'kugou' | ''
+          verbatimSource: result.verbatimSource, // 'netease' | 'kugou' | ''
+          // 逐行翻译已嵌入 lines/verbatim 各行的 translation 字段
+          hasTranslation: result.hasTranslation,
+          translationLang: result.translationLang, // 'zh' | ''
         },
       }
     } catch (error) {

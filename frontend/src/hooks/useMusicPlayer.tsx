@@ -3,7 +3,13 @@
  * 从 GlobalControlPanel 分离出来的音乐播放器核心逻辑
  */
 
-import type { LyricLine, MusicSource, Song } from '../utils/musicPlayer'
+import type {
+  LyricLine,
+  MusicSource,
+  Song,
+  VerbatimLyricsSource,
+  WordLyricLine,
+} from '../utils/musicPlayer'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_URL } from '../config'
 
@@ -12,9 +18,8 @@ import {
   audioManager,
   filterPlaylist,
   getCurrentLyricIndex,
-  getNeteaseLyrics,
+  getLyricsWithVerbatim,
   getNeteasePlaylist,
-  getQQLyrics,
   getQQPlaylist,
   throttle,
 } from '../utils/musicPlayer'
@@ -57,6 +62,9 @@ export interface UseMusicPlayerReturn {
   audioDuration: number
   volume: number
   lyrics: LyricLine[]
+  verbatimLyrics: WordLyricLine[]
+  hasVerbatimLyrics: boolean
+  verbatimLyricsSource: VerbatimLyricsSource
   currentLyricIndex: number
   musicEnabled: boolean
   musicSource: MusicSource
@@ -139,6 +147,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   const [audioDuration, setAudioDuration] = useState(0)
   const [volume, setVolume] = useState(0.7)
   const [lyrics, setLyrics] = useState<LyricLine[]>([])
+  const [verbatimLyrics, setVerbatimLyrics] = useState<WordLyricLine[]>([])
+  const [verbatimLyricsSource, setVerbatimLyricsSource] =
+    useState<VerbatimLyricsSource>('')
   const [currentLyricIndex, setCurrentLyricIndex] = useState(-1)
   const [musicEnabled, setMusicEnabled] = useState(false)
   const [musicSource, setMusicSource] = useState<MusicSource>('netease')
@@ -163,6 +174,13 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       if (globalState.currentSong) setCurrentSong(globalState.currentSong)
       if (typeof globalState.isEnabled === 'boolean')
         setMusicEnabled(globalState.isEnabled)
+      if (Array.isArray(globalState.lyrics)) setLyrics(globalState.lyrics)
+      if (Array.isArray(globalState.verbatimLyrics))
+        setVerbatimLyrics(globalState.verbatimLyrics)
+      if (typeof globalState.verbatimLyricsSource === 'string')
+        setVerbatimLyricsSource(globalState.verbatimLyricsSource)
+      if (typeof globalState.currentLyricIndex === 'number')
+        setCurrentLyricIndex(globalState.currentLyricIndex)
     }
   }, [])
 
@@ -185,6 +203,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
   // 歌词相关 Refs（避免频繁触发 effect）
   const lyricsRef = useRef<LyricLine[]>([])
+  const verbatimLyricsRef = useRef<WordLyricLine[]>([])
   const currentLyricIndexRef = useRef<number>(-1)
 
   // 封面颜色缓存
@@ -192,6 +211,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
   // Timeout 追踪
   const timeoutIdsRef = useRef<number[]>([])
+  const lyricRequestKeyRef = useRef('')
 
   // 预加载系统
   const [preloadedSongIndex, setPreloadedSongIndex] = useState<number>(-1)
@@ -235,6 +255,16 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     const g = (window as any).__musicPlayerState
     if (g) g.lyrics = lyrics
   }, [lyrics])
+
+  useEffect(() => {
+    verbatimLyricsRef.current = verbatimLyrics
+    const g = (window as any).__musicPlayerState
+    if (g) {
+      g.verbatimLyrics = verbatimLyrics
+      g.hasVerbatimLyrics = verbatimLyrics.length > 0
+      g.verbatimLyricsSource = verbatimLyricsSource
+    }
+  }, [verbatimLyrics, verbatimLyricsSource])
 
   useEffect(() => {
     currentLyricIndexRef.current = currentLyricIndex
@@ -517,6 +547,10 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       time: Math.floor(currentTime), // 按秒取整
       volume: Math.round(volume * 100),
       mode: playMode,
+      lyrics: lyrics.length,
+      lyricIndex: currentLyricIndex,
+      verbatim: verbatimLyrics.length,
+      verbatimSource: verbatimLyricsSource,
     })
 
     // 如果状态没有变化，跳过广播
@@ -542,6 +576,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       volume,
       playMode,
       lyrics,
+      verbatimLyrics,
+      hasVerbatimLyrics: verbatimLyrics.length > 0,
+      verbatimLyricsSource,
       currentLyricIndex,
     }
 
@@ -564,6 +601,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           playMode,
           // 🎯 添加歌词信息
           lyrics,
+          verbatimLyrics,
+          hasVerbatimLyrics: verbatimLyrics.length > 0,
+          verbatimLyricsSource,
           currentLyricIndex,
         },
       }),
@@ -580,8 +620,49 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     volume,
     playMode,
     lyrics,
+    verbatimLyrics,
+    verbatimLyricsSource,
     currentLyricIndex,
   ])
+
+  const resetLyrics = useCallback(() => {
+    setLyrics([])
+    setVerbatimLyrics([])
+    setVerbatimLyricsSource('')
+    setCurrentLyricIndex(-1)
+    const g = (window as any).__musicPlayerState
+    if (g) {
+      g.lyrics = []
+      g.verbatimLyrics = []
+      g.hasVerbatimLyrics = false
+      g.verbatimLyricsSource = ''
+      g.currentLyricIndex = -1
+    }
+  }, [])
+
+  const loadLyricsForSong = useCallback(
+    (song: Song) => {
+      const requestKey = `${song.source}-${song.id}`
+      lyricRequestKeyRef.current = requestKey
+      resetLyrics()
+
+      loadResource.low(`lyrics-${requestKey}`, async () => {
+        try {
+          const result = await getLyricsWithVerbatim(song)
+          if (lyricRequestKeyRef.current !== requestKey) return
+
+          setLyrics(result.lines)
+          setVerbatimLyrics(result.verbatim)
+          setVerbatimLyricsSource(result.verbatimSource)
+          setCurrentLyricIndex(-1)
+        } catch (_error) {
+          if (lyricRequestKeyRef.current !== requestKey) return
+          resetLyrics()
+        }
+      })
+    },
+    [resetLyrics],
+  )
 
   // 选择歌曲
   const selectSong = useCallback(
@@ -610,6 +691,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         playlistLength: playlist.length,
         playlist,
       })
+
+      // 加载歌词（低优先级）：逐字优先，逐行兜底；先重置，避免切歌时残留上一首
+      loadLyricsForSong(song)
 
       // 立即触发状态更新
       window.dispatchEvent(
@@ -674,29 +758,6 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       } else {
         setMusicColors(null)
       }
-
-      // 加载歌词（低优先级）
-      setLyrics([])
-      setCurrentLyricIndex(-1)
-
-      loadResource.low(`lyrics-${song.id}`, async () => {
-        try {
-          const fetchedLyrics =
-            song.source === 'netease'
-              ? await getNeteaseLyrics(song.id)
-              : await getQQLyrics(song.id)
-
-          if (fetchedLyrics && fetchedLyrics.length > 0) {
-            setLyrics(fetchedLyrics)
-            setCurrentLyricIndex(-1)
-          } else {
-            setLyrics([])
-          }
-        } catch (_error) {
-          setLyrics([])
-          setCurrentLyricIndex(-1)
-        }
-      })
 
       // 加载歌曲
       if (audioRef.current) {
@@ -770,6 +831,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       playMode,
       excludeVipSongs,
       generateNextShuffleIndex,
+      loadLyricsForSong,
     ],
   )
 
@@ -1334,6 +1396,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           setCurrentSongIndex(newIndex)
           setCurrentTime(0)
 
+          // 加载歌词
+          loadLyricsForSong(nextSong)
+
           // 提取颜色
           if (nextSong.cover) {
             try {
@@ -1362,25 +1427,6 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           } else {
             setMusicColors(null)
           }
-
-          // 加载歌词
-          setLyrics([])
-          setCurrentLyricIndex(-1)
-          loadResource.low(`lyrics-${nextSong.id}`, async () => {
-            try {
-              const fetchedLyrics =
-                nextSong.source === 'netease'
-                  ? await getNeteaseLyrics(nextSong.id)
-                  : await getQQLyrics(nextSong.id)
-
-              if (fetchedLyrics && fetchedLyrics.length > 0) {
-                setLyrics(fetchedLyrics)
-                setCurrentLyricIndex(-1)
-              }
-            } catch (_error) {
-              setLyrics([])
-            }
-          })
 
           // 随机模式确定下一首
           if (playMode === 'shuffle' && playlist.length > 1) {
@@ -1443,6 +1489,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     selectSong,
     preloadedSongIndex,
     preloadNextSong,
+    loadLyricsForSong,
     playMode,
     generateNextShuffleIndex,
     excludeVipSongs,
@@ -1644,7 +1691,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
   useEffect(() => {
     // 构建关键状态快照（不含 currentTime，进度由 music-player-progress 实时推送）
-    const keyState = `${currentSong?.id}|${musicEnabled}|${isPlaying}|${musicColors?.primary}|${currentSongIndex}|${playlist.length}|${volume}|${playMode}`
+    const keyState = `${currentSong?.id}|${musicEnabled}|${isPlaying}|${musicColors?.primary}|${currentSongIndex}|${playlist.length}|${volume}|${playMode}|${lyrics.length}|${currentLyricIndex}|${verbatimLyrics.length}|${verbatimLyricsSource}`
 
     if (prevKeyStateRef.current === keyState) {
       return
@@ -1662,6 +1709,10 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     playlist.length,
     volume,
     playMode,
+    lyrics.length,
+    currentLyricIndex,
+    verbatimLyrics.length,
+    verbatimLyricsSource,
     broadcastStateChange,
   ])
 
@@ -1821,6 +1872,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     audioDuration,
     volume,
     lyrics,
+    verbatimLyrics,
+    hasVerbatimLyrics: verbatimLyrics.length > 0,
+    verbatimLyricsSource,
     currentLyricIndex,
     musicEnabled,
     musicSource,

@@ -495,15 +495,19 @@ const s = await Tapp.media.getSpectrum();
 // 不传参数默认取当前播放曲目；也可指定 { songId, source }
 const ly = await Tapp.media.getLyrics();
 // 返回: {
-//   lines:    [{ time, text }],                         // 逐行 LRC（始终尝试提供）
-//   verbatim: [{ time, duration, text,
+//   lines:    [{ time, text, translation? }],           // 逐行 LRC（始终尝试提供）
+//   verbatim: [{ time, duration, text, translation?,
 //               words: [{ time, duration, text }] }],   // 逐字（word.time 为绝对秒）
 //   hasVerbatim: boolean,                               // 是否含逐字数据
 //   source: "netease" | "qq",                           // 曲目来源
-//   verbatimSource: "netease" | "kugou" | ""            // 逐字实际命中源
+//   verbatimSource: "netease" | "kugou" | "",           // 逐字实际命中源
+//   hasTranslation: boolean,                            // 是否含逐行翻译
+//   translationLang: "zh" | ""                          // 翻译语言（当前仅网易中文翻译源）
 // }
 // verbatim 为空时消费方应回退到 lines 做逐行高亮
 // 说明：网易云 yrc 覆盖较少，酷狗 KRC 覆盖最广（尤其日系/番剧），故作为回退源
+// 翻译：整行级（无逐字翻译），已按时间就近对齐挂在各行 translation 字段；
+//      建议仅当 translationLang 与用户界面语言一致时展示翻译开关
 
 // 节拍网格：预载全曲离线分析（需要 media:read）
 // 主应用对当前歌曲做一次性节拍跟踪（Ellis 2007 风格：谱通量 + 自相关 + comb 相位），
