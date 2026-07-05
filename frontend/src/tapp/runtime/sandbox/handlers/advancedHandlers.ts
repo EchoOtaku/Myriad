@@ -386,7 +386,9 @@ export function registerMediaHandlers(
         const name = currentSong.name || currentSong.title || ''
         const artist = currentSong.artist || ''
         if (name) {
-          const keyword = artist ? `${name} ${artist}` : name
+          // 多歌手串（Aimer,EGOIST / A/B / A×B）会让酷狗搜索直接不命中，只用主歌手
+          const mainArtist = artist.split(/[,/、&×]/)[0].trim()
+          const keyword = mainArtist ? `${name} ${mainArtist}` : name
           const kugou = await getKugouVerbatimLyrics(
             keyword,
             currentSong.duration || 0,

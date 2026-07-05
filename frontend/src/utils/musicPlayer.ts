@@ -169,6 +169,11 @@ const playlistMemoryCache = new Map<string, PlaylistCacheEntry>()
 const PLAYLIST_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000 // 7天
 const PLAYLIST_STORAGE_KEY = 'myriad_playlist_cache'
 
+// 头部制作信息行（制作人/作词/作曲/编曲…）：网易云 lrc 常把 credit 挤在 0~10s，
+// 它们不是歌词——最后一行 credit 会作为「歌词」高亮挂到真人声进来为止（乱轴观感）
+const CREDIT_LINE_RE =
+  /^(制作人|出品|监制|作词|作曲|编曲|歌词|翻译|混音|母带|录音|和声|吉他|贝斯|键盘|弦乐|鼓|企划|统筹|发行|词|曲|OP|SP|Produce[rd]?|Lyric(?:s|ist)?|Compose[rd]?|Arrange[rd]?|Mix(?:ing)?|Master(?:ing)?)\s*[:：]/i
+
 /**
  * 解析LRC格式歌词
  */
@@ -186,12 +191,11 @@ export function parseLyrics(lrcText: string): LyricLine[] {
         ? Number.parseInt(match[3].padEnd(3, '0'), 10)
         : 0
       const text = match[4].trim()
+      const time = minutes * 60 + seconds + milliseconds / 1000
 
-      if (text) {
-        lyrics.push({
-          time: minutes * 60 + seconds + milliseconds / 1000,
-          text,
-        })
+      // 过滤头部 credit 行（双条件：前 15s + 命中制作信息模式，避免误杀真歌词）
+      if (text && !(time < 15 && CREDIT_LINE_RE.test(text))) {
+        lyrics.push({ time, text })
       }
     }
   }
