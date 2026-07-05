@@ -652,6 +652,51 @@ export async function getNeteaseVerbatimLyrics(
   }
 }
 
+/**
+ * 跨源歌词时间轴校准
+ *
+ * 酷狗 KRC 按「歌名+时长」匹配，可能命中不同版本（现场/remix/不同剪辑），
+ * 时间轴相对当前音频整体偏移甚至结构不符 → 歌词「乱轴」。
+ * 用同源可信的逐行时间轴（网易云 lrc）做中位数对齐：
+ *  - 常数偏移 → 整体平移校正（含逐字 token）
+ *  - 平移后残差仍大（结构不符 = 不同版本/不同歌）→ 返回 null 拒绝
+ */
+export function alignVerbatimToLines(
+  verbatim: WordLyricLine[],
+  lines: LyricLine[],
+): WordLyricLine[] | null {
+  if (verbatim.length < 4 || lines.length < 4) return verbatim // 样本不足，无法校验
+
+  // 每条可信行找最近的 verbatim 行，收集时间差
+  const diffs: number[] = []
+  for (const ln of lines) {
+    let bestDiff = Infinity
+    for (const v of verbatim) {
+      const d = v.time - ln.time
+      if (Math.abs(d) < Math.abs(bestDiff)) bestDiff = d
+    }
+    if (Number.isFinite(bestDiff)) diffs.push(bestDiff)
+  }
+  if (diffs.length < 4) return verbatim
+
+  diffs.sort((a, b) => a - b)
+  const median = diffs[Math.floor(diffs.length / 2)]
+  const residuals = diffs
+    .map((d) => Math.abs(d - median))
+    .sort((a, b) => a - b)
+  const medResidual = residuals[Math.floor(residuals.length / 2)]
+
+  if (medResidual > 1.2) return null // 结构不符：拒绝该源
+  if (Math.abs(median) < 0.08) return verbatim // 已对齐
+
+  // 常数偏移：整体平移
+  return verbatim.map((v) => ({
+    ...v,
+    time: Math.max(0, v.time - median),
+    words: v.words.map((w) => ({ ...w, time: Math.max(0, w.time - median) })),
+  }))
+}
+
 // 酷狗逐字歌词缓存（按 关键词|时长秒 缓存）
 const kugouVerbatimCache = new Map<string, WordLyricLine[]>()
 

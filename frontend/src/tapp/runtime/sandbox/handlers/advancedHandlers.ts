@@ -11,6 +11,7 @@ import type { AnimationConfigRef } from '../types'
 import { getDynamicContentProvider } from '../../../../services/DynamicContentProvider'
 import { analyzeBeatGrid } from '../../../../utils/beatAnalyzer'
 import {
+  alignVerbatimToLines,
   getKugouVerbatimLyrics,
   getNeteaseVerbatimLyrics,
   getQQLyrics,
@@ -391,14 +392,21 @@ export function registerMediaHandlers(
             currentSong.duration || 0,
           )
           if (kugou.length > 0) {
-            verbatim = kugou
-            verbatimSource = 'kugou'
-            // 无逐行时，用逐字派生逐行兜底
-            if (lines.length === 0) {
-              lines = kugou.map((v) => {
-                const w = v as { time: number; text: string }
-                return { time: w.time, text: w.text }
-              })
+            // 跨源时间轴校准：酷狗可能命中不同版本（时间轴整体偏移/结构不符）。
+            // 用网易云逐行时间轴做中位数对齐；结构不符则拒绝（回退逐行，保证不乱轴）
+            const aligned = alignVerbatimToLines(kugou, lines)
+            if (aligned) {
+              verbatim = aligned
+              verbatimSource = 'kugou'
+              // 无逐行时，用逐字派生逐行兜底
+              if (lines.length === 0) {
+                lines = aligned.map((v) => ({ time: v.time, text: v.text }))
+              }
+            } else {
+              console.debug(
+                '[media.getLyrics] KuGou verbatim rejected: timeline mismatch for',
+                keyword,
+              )
             }
           }
         }
