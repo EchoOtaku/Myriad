@@ -2303,7 +2303,7 @@ export const enUS: TranslationKeys = {
     published: 'Published',
     channels: 'Channels',
     followBtn: 'Follow',
-    followPlaceholder: 'Actor URL or user@domain',
+    followPlaceholder: 'Actor URL or @user@domain',
     emptyTimeline: 'Timeline is empty',
     emptyTimelineHint: 'Follow remote users to see their activities here',
     emptyFollowing: 'Not following any remote users yet',
@@ -2312,7 +2312,7 @@ export const enUS: TranslationKeys = {
     emptyPublishedHint:
       'Click the "Federate" button on reports or Brew articles',
     // Phase 3: Channel
-    channelPlaceholder: 'Remote Actor URL or user@domain',
+    channelPlaceholder: 'Remote Actor URL or @user@domain',
     newChannelBtn: 'New Channel',
     emptyChannels: 'No channels yet',
     emptyChannelsHint:
@@ -2332,7 +2332,7 @@ export const enUS: TranslationKeys = {
     roomMembers: 'Members',
     leaveRoom: 'Leave Room',
     emptyRoomHint: 'Send a message to start the group chat',
-    invitePlaceholder: 'Enter Actor URL to invite',
+    invitePlaceholder: 'Actor URL or @user@domain',
     rings: 'Rings',
     ringNamePlaceholder: 'Ring name',
     newRingBtn: 'New Ring',
@@ -2340,7 +2340,7 @@ export const enUS: TranslationKeys = {
     emptyRingsHint: 'Create a ring to start decentralized data sync',
     leaveRing: 'Leave Ring',
     ringPeers: 'Peers',
-    addPeerPlaceholder: 'Actor URL or user@domain',
+    addPeerPlaceholder: 'Actor URL or @user@domain',
     addPeerBtn: 'Add',
     removePeer: 'Remove',
     emptyPeers: 'No peers yet',

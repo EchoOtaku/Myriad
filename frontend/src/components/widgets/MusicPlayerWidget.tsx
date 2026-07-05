@@ -4,7 +4,7 @@
  */
 
 import type { AnimationConfig } from '../../hooks/useAnimationLevel'
-import type { LyricLine } from '../../utils/musicPlayer'
+import type { LyricLine, WordLyricLine } from '../../utils/musicPlayer'
 import type { WidgetConfig } from '../WidgetGrid'
 
 import { LuMusic } from '@lib/icons'
@@ -19,12 +19,7 @@ import {
 } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
-import {
-  audioManager,
-  getCurrentLyricIndex,
-  getNeteaseLyrics,
-  getQQLyrics,
-} from '../../utils/musicPlayer'
+import { audioManager } from '../../utils/musicPlayer'
 
 // ==================== 漂浮歌词组件 ====================
 
@@ -32,6 +27,7 @@ interface FloatingChar {
   char: string
   index: number
   absoluteTime: number
+  duration: number
   seed: number
 }
 
@@ -95,19 +91,37 @@ const BATCH_CHECK_MS = 80
 const ANIM_UPDATE_MS = 50
 // 每批显示的最大字符数
 const MAX_CHARS_PER_BATCH = 10
-// 单页歌词最多停留多久后进入下一页，避免长间奏把翻页拖得很慢
-const MAX_LYRIC_PAGE_SECONDS = 3.2
+// 回退估算模式下单页歌词最长停留时间。真实逐字歌词不走这个限制。
+const MAX_ESTIMATED_LYRIC_PAGE_SECONDS = 4.8
+const MAX_ESTIMATED_LINE_SECONDS = 14
+const FALLBACK_LAST_LINE_SECONDS = 6
+
+function getEstimatedTokenWeight(token: string): number {
+  if (!token.trim()) return 0.15
+  if (/^[，。！？、,.!?;:：；'"“”‘’()[\]{}<>《》…-]+$/.test(token)) {
+    return 0.35
+  }
+  if (/^[a-z']/i.test(token)) {
+    return Math.min(2.6, 0.75 + token.length * 0.22)
+  }
+  if (/^\d/.test(token)) {
+    return Math.min(2, 0.8 + token.length * 0.18)
+  }
+  return 1
+}
 
 // 漂浮歌词显示组件 - 逐字淡入，分批显示
 const FloatingLyrics = memo(
   ({
     lyrics,
+    verbatimLyrics,
     currentLyricIndex,
     isPlaying,
     themeColor,
     fontScale,
   }: {
     lyrics: LyricLine[]
+    verbatimLyrics: WordLyricLine[]
     currentLyricIndex: number
     isPlaying: boolean
     themeColor: string
@@ -132,10 +146,10 @@ const FloatingLyrics = memo(
     // 唯一触发 React 重渲染的 state — 只在批次真正切换时递增
     const [, setBatchVersion] = useState(0)
 
-    // 构建歌词页映射 — 每句歌词单独分页，避免跨多句累计 token 导致翻页滞后
+    // 构建歌词页映射 — 逐字优先，逐行歌词兜底
     const lyricPages = useMemo(() => {
       const pages: FloatingLyricPage[] = []
-      if (lyrics.length === 0) return pages
+      if (lyrics.length === 0 && verbatimLyrics.length === 0) return pages
 
       const tokenize = (text: string): string[] => {
         const tokens: string[] = []
@@ -167,19 +181,62 @@ const FloatingLyrics = memo(
       let globalIndex = 0
       let pageIndex = 0
 
+      if (verbatimLyrics.length > 0) {
+        verbatimLyrics.forEach((line) => {
+          const words = line.words.filter((word) => word.text)
+          if (words.length === 0) return
+
+          for (
+            let pageStart = 0;
+            pageStart < words.length;
+            pageStart += MAX_CHARS_PER_BATCH
+          ) {
+            const pageWords = words.slice(
+              pageStart,
+              pageStart + MAX_CHARS_PER_BATCH,
+            )
+            const firstWord = pageWords[0]
+            const chars = pageWords.map((word) => {
+              const seed = globalIndex * 17 + word.text.charCodeAt(0)
+              const charConfig = {
+                char: word.text,
+                index: globalIndex,
+                absoluteTime: word.time,
+                duration: Math.max(0.08, word.duration || 0.18),
+                seed,
+              }
+              globalIndex++
+              return charConfig
+            })
+
+            pages.push({
+              index: pageIndex,
+              startTime: firstWord?.time ?? line.time,
+              chars,
+            })
+            pageIndex++
+          }
+        })
+
+        return pages
+      }
+
       lyrics.forEach((line, lineIdx) => {
         const nextLine = lyrics[lineIdx + 1]
         const lineStartTime = line.time
-        const lineEndTime = nextLine ? nextLine.time : lineStartTime + 5
-        const actualDuration = Math.max(0.6, lineEndTime - lineStartTime)
+        const rawDuration = nextLine
+          ? nextLine.time - lineStartTime
+          : FALLBACK_LAST_LINE_SECONDS
         const tokens = tokenize(line.text)
         if (tokens.length === 0) return
 
         const pageCount = Math.ceil(tokens.length / MAX_CHARS_PER_BATCH)
-        const pageDuration = Math.min(
-          MAX_LYRIC_PAGE_SECONDS,
-          actualDuration / pageCount,
+        const estimatedLineDuration = Math.min(
+          MAX_ESTIMATED_LINE_SECONDS,
+          Math.max(0.9, rawDuration),
+          pageCount * MAX_ESTIMATED_LYRIC_PAGE_SECONDS,
         )
+        const pageDuration = estimatedLineDuration / pageCount
 
         for (let pageOffset = 0; pageOffset < pageCount; pageOffset++) {
           const pageStart = pageOffset * MAX_CHARS_PER_BATCH
@@ -188,16 +245,30 @@ const FloatingLyrics = memo(
             pageStart + MAX_CHARS_PER_BATCH,
           )
           const pageStartTime = lineStartTime + pageOffset * pageDuration
-          const revealDuration = Math.min(pageDuration * 0.75, 1.4)
+          const revealDuration = Math.min(
+            Math.max(0.6, pageDuration * 0.78),
+            pageDuration,
+          )
+          const tokenWeights = pageTokens.map(getEstimatedTokenWeight)
+          const totalWeight = tokenWeights.reduce((sum, w) => sum + w, 0) || 1
+          let cumulativeWeight = 0
 
           const chars = pageTokens.map((token, tokenIdx) => {
+            const tokenStartRatio = cumulativeWeight / totalWeight
+            cumulativeWeight += tokenWeights[tokenIdx]
+            const tokenEndRatio = cumulativeWeight / totalWeight
             const tokenTime =
-              pageStartTime + (tokenIdx / pageTokens.length) * revealDuration
+              pageStartTime + tokenStartRatio * revealDuration
+            const estimatedDuration = Math.max(
+              0.08,
+              (tokenEndRatio - tokenStartRatio) * revealDuration,
+            )
             const seed = globalIndex * 17 + token.charCodeAt(0)
             const charConfig = {
               char: token,
               index: globalIndex,
               absoluteTime: tokenTime,
+              duration: estimatedDuration,
               seed,
             }
             globalIndex++
@@ -214,7 +285,7 @@ const FloatingLyrics = memo(
       })
 
       return pages
-    }, [lyrics])
+    }, [lyrics, verbatimLyrics])
 
     // 计算指定时间点应显示的批次 — 在 RAF 内调用的纯计算
     const computeCurrentBatch = useCallback(
@@ -355,8 +426,10 @@ const FloatingLyrics = memo(
               return
             }
 
-            const baseTimeDiff = charData.absoluteTime - currentTimeRef.current
-            const timeDiff = baseTimeDiff - rhythmModulation * 0.5
+            const wordStart =
+              charData.absoluteTime - Math.min(0.12, rhythmModulation * 0.4)
+            const wordEnd = charData.absoluteTime + charData.duration
+            const timeUntilStart = wordStart - currentTimeRef.current
             const { seed } = charData
 
             const floatAmplitude = 3 + seededRandom(seed + 500) * 2
@@ -364,18 +437,29 @@ const FloatingLyrics = memo(
             const floatX =
               Math.cos(phase * 0.7 + seed * 0.15) * (floatAmplitude * 0.6)
 
-            const isActive = timeDiff >= -0.2 && timeDiff <= 0.1
-            const isPast = timeDiff < -0.2
+            const isFuture = currentTimeRef.current < wordStart - 0.06
+            const isActive =
+              currentTimeRef.current >= wordStart - 0.06 &&
+              currentTimeRef.current <= wordEnd + 0.08
+            const isPast = currentTimeRef.current > wordEnd + 0.08
 
             let opacity = 1
             let scale = 1
 
-            if (timeDiff > 0.1) {
+            if (isFuture) {
               opacity = isBeat ? 0.15 : 0
               scale = 0.95
             } else if (isActive) {
+              const activeProgress = Math.min(
+                1,
+                Math.max(
+                  0,
+                  (currentTimeRef.current - wordStart) /
+                    Math.max(0.08, charData.duration),
+                ),
+              )
               opacity = 1
-              scale = 1.02 + (isBeat ? 0.05 : 0)
+              scale = 1.02 + activeProgress * 0.08 + (isBeat ? 0.05 : 0)
               el.style.color = themeColor
               el.style.textShadow = `0 0 ${isBeat ? 12 : 8}px ${themeColor}60, 0 1px 2px rgba(0,0,0,0.1)`
             } else if (isPast) {
@@ -383,6 +467,9 @@ const FloatingLyrics = memo(
               scale = 1
               el.style.color = ''
               el.style.textShadow = 'none'
+            } else if (timeUntilStart <= 0) {
+              opacity = 0.85
+              scale = 1
             }
 
             const rotation = el.dataset.rotation || '0'
@@ -409,8 +496,9 @@ const FloatingLyrics = memo(
 
     const visibleChars = visibleCharsRef.current
     const charPositions = charPositionsRef.current
+    const hasLyrics = lyrics.length > 0 || verbatimLyrics.length > 0
 
-    if (visibleChars.length === 0 && lyrics.length > 0) {
+    if (visibleChars.length === 0 && hasLyrics) {
       return (
         <div className="text-sm text-gray-400 dark:text-gray-500 opacity-40">
           ...
@@ -418,7 +506,7 @@ const FloatingLyrics = memo(
       )
     }
 
-    if (lyrics.length === 0) {
+    if (!hasLyrics) {
       return (
         <div className="text-sm text-gray-500 dark:text-gray-400">暂无歌词</div>
       )
@@ -781,73 +869,24 @@ export const MusicPlayerWidget = memo(
 
     const themeColor = currentSong ? musicColor : '#ef4444'
 
-    // 歌词状态
-    const [lyrics, setLyrics] = useState<LyricLine[]>([])
-    const [currentLyricIndex, setCurrentLyricIndex] = useState(-1)
+    const previewLyrics = useMemo<LyricLine[]>(
+      () => [
+        { time: 0, text: t.musicPlayer.sampleLyricPrev },
+        { time: 5, text: t.musicPlayer.sampleLyricCurrent },
+        { time: 10, text: t.musicPlayer.sampleLyricNext },
+      ],
+      [
+        t.musicPlayer.sampleLyricCurrent,
+        t.musicPlayer.sampleLyricNext,
+        t.musicPlayer.sampleLyricPrev,
+      ],
+    )
 
-    // 获取歌词
-    useEffect(() => {
-      if (isPreview) {
-        setLyrics([
-          { time: 0, text: t.musicPlayer.sampleLyricPrev },
-          { time: 5, text: t.musicPlayer.sampleLyricCurrent },
-          { time: 10, text: t.musicPlayer.sampleLyricNext },
-        ])
-        setCurrentLyricIndex(1)
-        return
-      }
-
-      if (!currentSong) {
-        setLyrics([])
-        setCurrentLyricIndex(-1)
-        return
-      }
-
-      const fetchLyrics = async () => {
-        let lines: LyricLine[] = []
-        try {
-          if (currentSong.source === 'netease') {
-            lines = await getNeteaseLyrics(currentSong.id)
-          } else if (currentSong.source === 'qq') {
-            lines = await getQQLyrics(currentSong.id)
-          }
-        } catch (e) {
-          console.error('Failed to fetch lyrics', e)
-        }
-        setLyrics(lines)
-      }
-
-      fetchLyrics()
-    }, [currentSong?.id, currentSong?.source, isPreview])
-
-    // 同步歌词进度 - 添加节流优化
-    useEffect(() => {
-      if (isPreview) return
-
-      if (!isPlaying || !currentSong || lyrics.length === 0) return
-
-      const audio = audioManager.getCurrentAudio()
-      if (!audio) return
-
-      // 使用节流避免过于频繁的状态更新
-      let lastUpdateTime = 0
-      const THROTTLE_MS = 100 // 100ms 节流
-
-      const handleTimeUpdate = () => {
-        const now = Date.now()
-        if (now - lastUpdateTime < THROTTLE_MS) return
-        lastUpdateTime = now
-
-        const index = getCurrentLyricIndex(lyrics, audio.currentTime)
-        setCurrentLyricIndex((prev) => {
-          if (prev !== index) return index
-          return prev
-        })
-      }
-
-      audio.addEventListener('timeupdate', handleTimeUpdate)
-      return () => audio.removeEventListener('timeupdate', handleTimeUpdate)
-    }, [isPlaying, currentSong, lyrics, isPreview])
+    const lyrics = isPreview ? previewLyrics : playerControl.lyrics
+    const verbatimLyrics = isPreview ? [] : playerControl.verbatimLyrics
+    const currentLyricIndex = isPreview
+      ? 1
+      : playerControl.currentLyricIndex
 
     if (!isEnabled) {
       return (
@@ -1011,6 +1050,7 @@ export const MusicPlayerWidget = memo(
             <div className="relative z-10 w-full h-full flex items-center justify-center">
               <FloatingLyrics
                 lyrics={lyrics}
+                verbatimLyrics={verbatimLyrics}
                 currentLyricIndex={currentLyricIndex}
                 isPlaying={isPlaying}
                 themeColor={themeColor}

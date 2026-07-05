@@ -3,7 +3,7 @@
 use axum::{extract::Path, http::StatusCode, Extension, Json};
 use serde_json::{json, Value};
 
-use crate::middleware::auth::Claims;
+use crate::middleware::auth::{ensure_current_admin, Claims};
 
 use super::common::{
     get_rate_limit_config, get_rate_limit_status_for, get_rate_limiter_active_count, API_METRICS,
@@ -14,12 +14,7 @@ use super::common::{
 pub async fn get_tapp_metrics(
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({ "error": "Admin access required" })),
-        ));
-    }
+    ensure_current_admin(&claims).await?;
 
     let metrics = API_METRICS.read().await;
     let summary = metrics.get_summary();
@@ -41,12 +36,7 @@ pub async fn get_tapp_metrics(
 pub async fn reset_tapp_metrics(
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({ "error": "Admin access required" })),
-        ));
-    }
+    ensure_current_admin(&claims).await?;
 
     let mut metrics = API_METRICS.write().await;
     metrics.reset();

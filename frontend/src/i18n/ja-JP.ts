@@ -2301,7 +2301,7 @@ export const jaJP: TranslationKeys = {
     published: '公開済み',
     channels: 'チャンネル',
     followBtn: 'フォロー',
-    followPlaceholder: 'Actor URL または user@domain',
+    followPlaceholder: 'Actor URL または @user@domain',
     emptyTimeline: 'タイムラインは空です',
     emptyTimelineHint:
       'リモートユーザーをフォローすると、ここにアクティビティが表示されます',
@@ -2310,7 +2310,7 @@ export const jaJP: TranslationKeys = {
     emptyPublished: '連合ネットワークにまだコンテンツを公開していません',
     emptyPublishedHint: 'レポートやBrew記事の「連合公開」ボタンをクリック',
     // Phase 3: Channel
-    channelPlaceholder: 'リモートActor URL または user@domain',
+    channelPlaceholder: 'リモートActor URL または @user@domain',
     newChannelBtn: '新規チャンネル',
     emptyChannels: 'チャンネルはまだありません',
     emptyChannelsHint:
@@ -2330,7 +2330,7 @@ export const jaJP: TranslationKeys = {
     roomMembers: 'メンバー',
     leaveRoom: 'ルームを退出',
     emptyRoomHint: '最初のメッセージを送信してグループチャットを開始',
-    invitePlaceholder: 'Actor URLを入力して招待',
+    invitePlaceholder: 'Actor URL または @user@domain',
     rings: 'リング',
     ringNamePlaceholder: 'リング名',
     newRingBtn: '新規リング',
@@ -2338,7 +2338,7 @@ export const jaJP: TranslationKeys = {
     emptyRingsHint: 'リングを作成して分散型データ同期を開始',
     leaveRing: 'リングを退出',
     ringPeers: 'ピア',
-    addPeerPlaceholder: 'Actor URLまたはuser@domain',
+    addPeerPlaceholder: 'Actor URL または @user@domain',
     addPeerBtn: '追加',
     removePeer: '削除',
     emptyPeers: 'ピアなし',

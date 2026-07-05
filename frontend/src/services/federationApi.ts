@@ -48,20 +48,17 @@ const PREFIX = '/federation'
 
 /**
  * 开发环境 mock 模式控制。
- * 默认在 dev 环境启用 mock，后端联邦可用时可通过 localStorage 关闭：
- *   localStorage.setItem('federation-real', '1')
+ * 默认使用真实后端；只有显式打开 mock 时才使用演示数据：
+ *   localStorage.setItem('federation-mock', '1')
+ *
+ * 兼容旧开关：localStorage.setItem('federation-real', '1') 会强制使用真实后端。
  */
 function shouldUseMock(): boolean {
   try {
     if (!import.meta.env.DEV) return false
-    // 开发者可手动切换回真实 API
-    if (
-      typeof localStorage !== 'undefined' &&
-      localStorage.getItem('federation-real') === '1'
-    ) {
-      return false
-    }
-    return true
+    if (typeof localStorage === 'undefined') return false
+    if (localStorage.getItem('federation-real') === '1') return false
+    return localStorage.getItem('federation-mock') === '1'
   } catch {
     return false
   }

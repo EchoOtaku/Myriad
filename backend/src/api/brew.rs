@@ -22,7 +22,9 @@ use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
-use crate::middleware::auth::verify_jwt_token;
+use crate::middleware::auth::{
+    ensure_current_admin, verify_current_admin_from_headers, verify_jwt_token,
+};
 use crate::models::entities::{
     brew_annotations, brew_categories, brew_comments, brew_items, brew_podcasts, brew_sources,
     brew_user_states, rsshub_instances,
@@ -145,7 +147,7 @@ async fn list_sources(
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     // 获取用户 ID 和管理员状态
-    let (user_id, is_admin) = get_user_and_admin_status(&headers);
+    let (user_id, is_admin) = get_user_and_admin_status(&headers).await;
 
     // 获取订阅源（非管理员过滤掉 admin_only=true 的源）
     let mut query = brew_sources::Entity::find().order_by_asc(brew_sources::Column::Name);
@@ -2122,11 +2124,12 @@ fn get_optional_user_id_from_headers(headers: &axum::http::HeaderMap) -> Option<
 
 /// 检查请求头中的用户是否为管理员
 /// 返回 (Option<user_id>, is_admin)
-fn get_user_and_admin_status(headers: &axum::http::HeaderMap) -> (Option<i32>, bool) {
+async fn get_user_and_admin_status(headers: &axum::http::HeaderMap) -> (Option<i32>, bool) {
     match verify_jwt_token(headers) {
         Ok(claims) => {
             let user_id = claims.sub.parse::<i32>().ok();
-            (user_id, claims.is_admin)
+            let is_admin = ensure_current_admin(&claims).await.is_ok();
+            (user_id, is_admin)
         }
         Err(_) => (None, false),
     }
@@ -2138,31 +2141,17 @@ async fn get_admin_user_id_from_headers(
     headers: &axum::http::HeaderMap,
     _db: &DatabaseConnection,
 ) -> Result<i32, axum::response::Response> {
-    match verify_jwt_token(headers) {
-        Ok(claims) => {
-            // 检查是否是管理员
-            if !claims.is_admin {
-                return Err((
-                    StatusCode::FORBIDDEN,
-                    Json(json!({ "success": false, "error": "Administrator access required" })),
-                )
-                    .into_response());
-            }
-            // 从 claims.sub (String) 解析为 i32
-            claims.sub.parse::<i32>().map_err(|_| {
-                (
-                    StatusCode::UNAUTHORIZED,
-                    Json(json!({ "success": false, "error": "Invalid user ID" })),
-                )
-                    .into_response()
-            })
-        }
-        Err(_) => Err((
+    let claims = verify_current_admin_from_headers(headers)
+        .await
+        .map_err(|(status, body)| (status, body).into_response())?;
+
+    claims.sub.parse::<i32>().map_err(|_| {
+        (
             StatusCode::UNAUTHORIZED,
-            Json(json!({ "success": false, "error": "Unauthorized" })),
+            Json(json!({ "success": false, "error": "Invalid user ID" })),
         )
-            .into_response()),
-    }
+            .into_response()
+    })
 }
 
 /// 解析 OPML 文件

@@ -181,20 +181,9 @@ export class TappRuntime {
               const userRole =
                 (detail.user_role as 'guest' | 'user' | 'admin') || 'guest'
 
-              // 权限自动同步：当 manifest 声明了新权限但 grantedPermissions 中缺少时，自动补齐
-              // 这解决了 Tapp 更新后新增权限未同步到数据库的问题
               const backendPerms =
                 detail.granted_permissions as TappPermission[]
               const manifest = detail.manifest as TappManifest
-              const manifestPerms = (manifest.permissions ||
-                []) as TappPermission[]
-              const missingPerms = manifestPerms.filter(
-                (p) => !backendPerms.includes(p),
-              )
-              const reconciledPerms =
-                missingPerms.length > 0
-                  ? [...backendPerms, ...missingPerms]
-                  : backendPerms
 
               const instance: TappInstance = {
                 id: detail.id,
@@ -202,7 +191,7 @@ export class TappRuntime {
                 status: detail.status as TappStatus,
                 installedAt: detail.installed_at,
                 lastRunAt: detail.last_run_at,
-                grantedPermissions: reconciledPerms,
+                grantedPermissions: backendPerms,
                 userRole,
                 isTemporary: detail.is_temporary ?? tapp.is_temporary ?? false,
                 isAdminTapp:
@@ -373,14 +362,7 @@ export class TappRuntime {
     // 将后端返回的 user_role 转换为 UserRole 类型
     const userRole = (detail.user_role as 'guest' | 'user' | 'admin') || 'guest'
 
-    // 权限同步：确保 manifest 中声明的权限都在 grantedPermissions 中
     const backendPerms = detail.granted_permissions as TappPermission[]
-    const manifestPerms = (manifest.permissions || []) as TappPermission[]
-    const missingPerms = manifestPerms.filter((p) => !backendPerms.includes(p))
-    const reconciledPerms =
-      missingPerms.length > 0
-        ? [...backendPerms, ...missingPerms]
-        : backendPerms
 
     const instance: TappInstance = {
       id: detail.id,
@@ -388,7 +370,7 @@ export class TappRuntime {
       status: detail.status as TappStatus,
       installedAt: detail.installed_at,
       lastRunAt: detail.last_run_at,
-      grantedPermissions: reconciledPerms,
+      grantedPermissions: backendPerms,
       userRole,
       isTemporary: detail.is_temporary ?? result.is_temporary ?? false,
       isAdminTapp: detail.is_admin_tapp ?? result.is_admin_tapp ?? false,

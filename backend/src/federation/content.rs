@@ -544,11 +544,7 @@ fn extract_report_summary(report_json: &serde_json::Value) -> String {
 }
 
 async fn get_base_url() -> String {
-    let config = crate::GLOBAL_CONFIG.read().await;
-    config
-        .base_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+    crate::federation::types::get_base_url().await
 }
 
 fn not_found(msg: &str) -> (StatusCode, Json<serde_json::Value>) {

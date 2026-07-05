@@ -185,7 +185,7 @@ const PAGE_HTML = `\
           <button class="feed-identity-actor" data-copy-fed="actor" type="button" data-fed-actor></button>
         </div>
         <div id="feed-follow-bar" class="feed-follow-bar" style="display:none">
-          <input id="feed-follow-input" class="feed-follow-input" type="text" placeholder="Actor URL 或 user@domain" />
+          <input id="feed-follow-input" class="feed-follow-input" type="text" placeholder="Actor URL 或 @user@domain" />
           <button id="feed-follow-btn" class="feed-follow-btn">关注</button>
         </div>
         <div id="feed-content" class="feed-content"></div>
@@ -245,7 +245,7 @@ const PAGE_HTML = `\
           <div id="ring-sync-status" class="ring-sync-bar" style="display:none"></div>
           <!-- 添加节点 -->
           <div class="invite-bar" id="ring-peer-bar">
-            <input id="ring-peer-input" class="invite-input" type="text" placeholder="Actor URL 或 user@domain" />
+            <input id="ring-peer-input" class="invite-input" type="text" placeholder="Actor URL 或 @user@domain" />
             <button id="ring-add-peer-btn" class="invite-btn">添加</button>
           </div>
           <!-- 节点列表 -->
@@ -290,7 +290,7 @@ const PAGE_HTML = `\
         <button id="create-tab-room" class="create-tab" data-tab="room">群聊</button>
       </div>
       <div id="create-form-channel" class="create-form">
-        <input id="create-channel-input" class="create-input" type="text" placeholder="Actor URL 或 user@domain" />
+        <input id="create-channel-input" class="create-input" type="text" placeholder="Actor URL 或 @user@domain" />
         <button id="create-channel-btn" class="create-submit">创建通道</button>
       </div>
       <div id="create-form-room" class="create-form" style="display:none">
@@ -921,7 +921,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     create: '新建',
     newChannel: '新建私信',
     newRoom: '新建群聊',
-    channelPlaceholder: 'Actor URL 或 user@domain',
+    channelPlaceholder: 'Actor URL 或 @user@domain',
     roomPlaceholder: '房间名称',
     createChannel: '创建通道',
     createRoom: '创建房间',
@@ -931,7 +931,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     accept: '接受',
     acceptFail: '接受失败',
     inviteBtn: '邀请',
-    invitePlaceholder: 'Actor URL 或 user@domain',
+    invitePlaceholder: 'Actor URL 或 @user@domain',
     inviting: '邀请中...',
     inviteFail: '邀请失败',
     inviteSuccess: '已邀请',
@@ -965,7 +965,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     activityType: '活动类型',
     unfollowBtn: '取消关注',
     removeBtn: '取消发布',
-    followPlaceholder: 'Actor URL 或 user@domain',
+    followPlaceholder: 'Actor URL 或 @user@domain',
     followBtn: '关注',
     followFail: '关注失败',
     federationAddress: '联邦地址',
@@ -983,7 +983,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     createRingFail: '创建失败',
     leaveRingFail: '退出失败',
     peers: '节点',
-    addPeerPlaceholder: 'Actor URL 或 user@domain',
+    addPeerPlaceholder: 'Actor URL 或 @user@domain',
     addPeerBtn: '添加',
     addPeerFail: '添加失败',
     removePeerFail: '移除失败',
@@ -992,6 +992,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     syncSuccess: '同步完成',
     syncFail: '同步失败',
     leaveRingConfirm: '确定退出此环网？',
+    adminRequired: '需要管理员权限',
     ringType: '类型',
     ringPeersTitle: '节点',
     emptyPeers: '暂无节点',
@@ -1074,7 +1075,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     create: 'New',
     newChannel: 'New DM',
     newRoom: 'New Room',
-    channelPlaceholder: 'Actor URL or user@domain',
+    channelPlaceholder: 'Actor URL or @user@domain',
     roomPlaceholder: 'Room name',
     createChannel: 'Create Channel',
     createRoom: 'Create Room',
@@ -1084,7 +1085,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     accept: 'Accept',
     acceptFail: 'Accept failed',
     inviteBtn: 'Invite',
-    invitePlaceholder: 'Actor URL or user@domain',
+    invitePlaceholder: 'Actor URL or @user@domain',
     inviting: 'Inviting...',
     inviteFail: 'Invite failed',
     inviteSuccess: 'Invited',
@@ -1119,7 +1120,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     activityType: 'Activity',
     unfollowBtn: 'Unfollow',
     removeBtn: 'Unpublish',
-    followPlaceholder: 'Actor URL or user@domain',
+    followPlaceholder: 'Actor URL or @user@domain',
     followBtn: 'Follow',
     followFail: 'Follow failed',
     federationAddress: 'Federation address',
@@ -1137,7 +1138,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     createRingFail: 'Create failed',
     leaveRingFail: 'Leave failed',
     peers: 'peers',
-    addPeerPlaceholder: 'Actor URL or user@domain',
+    addPeerPlaceholder: 'Actor URL or @user@domain',
     addPeerBtn: 'Add',
     addPeerFail: 'Add failed',
     removePeerFail: 'Remove failed',
@@ -1146,6 +1147,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     syncSuccess: 'Sync complete',
     syncFail: 'Sync failed',
     leaveRingConfirm: 'Leave this ring?',
+    adminRequired: 'Administrator access required',
     ringType: 'Type',
     ringPeersTitle: 'Peers',
     emptyPeers: 'No peers',
@@ -1228,7 +1230,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     create: '新規',
     newChannel: '新規DM',
     newRoom: '新規ルーム',
-    channelPlaceholder: 'Actor URL または user@domain',
+    channelPlaceholder: 'Actor URL または @user@domain',
     roomPlaceholder: 'ルーム名',
     createChannel: 'チャンネル作成',
     createRoom: 'ルーム作成',
@@ -1238,7 +1240,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     accept: '承認',
     acceptFail: '承認失敗',
     inviteBtn: '招待',
-    invitePlaceholder: 'Actor URL または user@domain',
+    invitePlaceholder: 'Actor URL または @user@domain',
     inviting: '招待中...',
     inviteFail: '招待失敗',
     inviteSuccess: '招待済み',
@@ -1272,7 +1274,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     activityType: 'アクティビティ',
     unfollowBtn: 'フォロー解除',
     removeBtn: '公開取消',
-    followPlaceholder: 'Actor URL または user@domain',
+    followPlaceholder: 'Actor URL または @user@domain',
     followBtn: 'フォロー',
     followFail: 'フォロー失敗',
     federationAddress: '連合アドレス',
@@ -1290,7 +1292,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     createRingFail: '作成失敗',
     leaveRingFail: '退出失敗',
     peers: 'ピア',
-    addPeerPlaceholder: 'Actor URL または user@domain',
+    addPeerPlaceholder: 'Actor URL または @user@domain',
     addPeerBtn: '追加',
     addPeerFail: '追加失敗',
     removePeerFail: '削除失敗',
@@ -1299,6 +1301,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     syncSuccess: '同期完了',
     syncFail: '同期失敗',
     leaveRingConfirm: 'このリングから退出しますか？',
+    adminRequired: '管理者権限が必要です',
     ringType: 'タイプ',
     ringPeersTitle: 'ピア',
     emptyPeers: 'ピアなし',
@@ -1392,6 +1395,7 @@ var state = {
   pollInterval: 15000,
   localActorUrl: null,
   identity: null,
+  isAdmin: false,
   // Attachment
   pendingAttach: null, // { type: 'image'|'file'|'tapp'|'brew'|'library'|'report', data, name, size, mime }
   // Aro views
@@ -1453,6 +1457,69 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function getErrorMessage(error) {
+  if (!error) return '';
+  if (typeof error === 'string') return error;
+  if (error.message) return String(error.message);
+  if (error.error) return String(error.error);
+  try { return JSON.stringify(error); } catch (e) { return ''; }
+}
+
+function errorSuffix(error) {
+  var message = getErrorMessage(error);
+  return message ? ': ' + message : '';
+}
+
+function notifyError(title, error) {
+  var message = getErrorMessage(error);
+  try {
+    Tapp.ui.showNotification({ title: title, message: message || undefined, type: 'error' });
+  } catch (e) {}
+}
+
+function requireAdminAction() {
+  if (state.isAdmin) return true;
+  notifyError(lang.adminRequired);
+  return false;
+}
+
+function setAdminElementVisible(selector, visible) {
+  document.querySelectorAll(selector).forEach(function (el) {
+    el.style.display = visible ? '' : 'none';
+  });
+}
+
+function applyAdminControls() {
+  var visible = !!state.isAdmin;
+  setAdminElementVisible('#ring-create-open-btn', visible);
+  setAdminElementVisible('#ring-sync-btn', visible);
+  setAdminElementVisible('#ring-peer-bar', visible);
+  setAdminElementVisible('.ring-peer-remove-btn', visible);
+  var manageBtn = $('ring-manage-btn');
+  var manageWrap = manageBtn ? manageBtn.closest('.manage-wrap') : null;
+  if (manageWrap) manageWrap.style.display = visible ? '' : 'none';
+  if (!visible) {
+    var createDialog = $('ring-create-dialog');
+    if (createDialog) createDialog.style.display = 'none';
+    var dropdown = $('ring-manage-dropdown');
+    if (dropdown) dropdown.classList.remove('open');
+  }
+}
+
+async function loadUserRole() {
+  state.isAdmin = false;
+  try {
+    if (Tapp.user && typeof Tapp.user.isAdmin === 'function') {
+      state.isAdmin = !!(await Tapp.user.isAdmin());
+    } else if (Tapp.user && typeof Tapp.user.getRole === 'function') {
+      state.isAdmin = (await Tapp.user.getRole()) === 'admin';
+    }
+  } catch (e) {
+    state.isAdmin = false;
+  }
+  applyAdminControls();
 }
 
 function getIdentityHandle() {
@@ -2311,7 +2378,7 @@ function doForward(msg) {
         }
         try { Tapp.ui.showNotification({ title: lang.forwardSuccess, type: 'success' }); } catch (e2) {}
       } catch (e) {
-        try { Tapp.ui.showNotification({ title: lang.sendFail, type: 'error' }); } catch (e2) {}
+        notifyError(lang.sendFail, e);
       }
     });
     listEl.appendChild(btn);
@@ -3037,7 +3104,7 @@ async function doSend() {
     await pollMessages();
   } catch (e) {
     if (text) input.value = text;
-    try { Tapp.ui.showNotification({ title: lang.sendFail, type: 'error' }); } catch (e2) { /* ignore */ }
+    notifyError(lang.sendFail, e);
   } finally {
     state.sending = false;
     input.focus();
@@ -3104,7 +3171,7 @@ async function doInviteMember(actorUrl) {
       renderInvitePopoverContacts();
     } catch (e2) {}
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.inviteFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.inviteFail, e);
   }
 }
 
@@ -3264,7 +3331,7 @@ async function doSaveRoom() {
     renderChatHeader();
     renderConvList();
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.saveFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.saveFail, e);
   } finally {
     btn && (btn.disabled = false, btn.textContent = lang.save);
   }
@@ -3283,7 +3350,7 @@ async function doKickMember(actorUrl) {
     renderMembers();
     renderChatHeader();
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.kickFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.kickFail, e);
   }
 }
 
@@ -3303,7 +3370,7 @@ async function doDissolveRoom() {
     $('sidebar').classList.remove('sidebar-hidden-mobile');
     loadConversations();
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.dissolveFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.dissolveFail, e);
   }
 }
 
@@ -3321,7 +3388,7 @@ async function doAcceptChannel() {
     renderChatHeader();
     renderConvList();
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.acceptFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.acceptFail, e);
   }
 }
 
@@ -3392,7 +3459,7 @@ async function doCreateChannel() {
     }
   } catch (e) {
     console.error('[Aro] createChannel error:', e);
-    try { Tapp.ui.showNotification({ title: lang.createFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.createFail, e);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = lang.createChannel; }
   }
@@ -3414,7 +3481,7 @@ async function doCreateRoom() {
     }
   } catch (e) {
     console.error('[Aro] createRoom error:', e);
-    try { Tapp.ui.showNotification({ title: lang.createFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.createFail, e);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = lang.createRoom; }
   }
@@ -3680,7 +3747,7 @@ async function doFollow() {
     loadFeedSubTab();
     updateFeedProfileHeader();
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.followFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.followFail, e);
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -3692,7 +3759,7 @@ async function doUnfollow(actorUrl) {
     loadFeedSubTab();
     updateFeedProfileHeader();
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.unfollowFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.unfollowFail, e);
   }
 }
 
@@ -3702,7 +3769,7 @@ async function doUnpublish(contentType, contentId) {
     loadFeedSubTab();
     updateFeedProfileHeader();
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.unpublishFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.unpublishFail, e);
   }
 }
 
@@ -3751,6 +3818,7 @@ function renderRingsSidebar() {
 }
 
 async function doCreateRing() {
+  if (!requireAdminAction()) return;
   var input = $('ring-name-input');
   var btn = $('create-ring-btn');
   if (!input) return;
@@ -3764,19 +3832,20 @@ async function doCreateRing() {
     var d = $('ring-create-dialog'); if (d) d.style.display = 'none';
     loadRings();
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.createRingFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.createRingFail, e);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = lang.createRingBtn; }
   }
 }
 
 async function doLeaveRing(ringId) {
+  if (!requireAdminAction()) return;
   try {
     await Tapp.federation.leaveRing(ringId);
     hideRingDetail();
     loadRings();
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.leaveRingFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.leaveRingFail, e);
   }
 }
 
@@ -3859,6 +3928,7 @@ function renderRingDetail() {
   if (peerInput) peerInput.placeholder = lang.addPeerPlaceholder;
   var addPeerBtn = $('ring-add-peer-btn');
   if (addPeerBtn) addPeerBtn.textContent = lang.addPeerBtn;
+  applyAdminControls();
 
   // Render peers as member-item style
   var peersList = $('ring-peers-list');
@@ -3882,12 +3952,13 @@ function renderRingDetail() {
       + '<div class="member-info">'
       + '<div class="member-name">' + esc(urlStr) + '</div>'
       + '</div>'
-      + '<button class="member-kick ring-peer-remove-btn" data-peer-url="' + esc(typeof url === 'string' ? url : '') + '" title="Remove">'
+      + (state.isAdmin ? '<button class="member-kick ring-peer-remove-btn" data-peer-url="' + esc(typeof url === 'string' ? url : '') + '" title="Remove">'
       + '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
-      + '</button>'
+      + '</button>' : '')
       + '</div>';
   });
   peersList.innerHTML = html;
+  applyAdminControls();
 
   peersList.querySelectorAll('.ring-peer-remove-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -3897,6 +3968,7 @@ function renderRingDetail() {
 }
 
 async function doAddPeer() {
+  if (!requireAdminAction()) return;
   var input = $('ring-peer-input');
   var btn = $('ring-add-peer-btn');
   if (!input || !state.activeRingId) return;
@@ -3908,23 +3980,25 @@ async function doAddPeer() {
     input.value = '';
     loadRingDetail(state.activeRingId);
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.addPeerFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.addPeerFail, e);
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
 async function doRemovePeer(peerUrl) {
+  if (!requireAdminAction()) return;
   if (!state.activeRingId || !peerUrl) return;
   try {
     await Tapp.federation.removePeer(state.activeRingId, peerUrl);
     loadRingDetail(state.activeRingId);
   } catch (e) {
-    try { Tapp.ui.showNotification({ title: lang.removePeerFail, type: 'error' }); } catch (e2) {}
+    notifyError(lang.removePeerFail, e);
   }
 }
 
 async function doTriggerSync() {
+  if (!requireAdminAction()) return;
   if (!state.activeRingId) return;
   var btn = $('ring-sync-btn');
   var statusEl = $('ring-sync-status');
@@ -3936,7 +4010,7 @@ async function doTriggerSync() {
     // Refresh detail after sync
     loadRingDetail(state.activeRingId);
   } catch (e) {
-    if (statusEl) { statusEl.className = 'ring-sync-bar ring-sync-err'; statusEl.textContent = lang.syncFail; }
+    if (statusEl) { statusEl.className = 'ring-sync-bar ring-sync-err'; statusEl.textContent = lang.syncFail + errorSuffix(e); }
   } finally {
     if (btn) btn.disabled = false;
     // Auto-hide status after 3s
@@ -3956,6 +4030,7 @@ function bindEvents() {
   // Ring create dialog
   var ringCreateOpenBtn = $('ring-create-open-btn');
   if (ringCreateOpenBtn) ringCreateOpenBtn.addEventListener('click', function () {
+    if (!requireAdminAction()) return;
 `
 
 const PAGE_MOD_EVENTS = `\
@@ -4151,6 +4226,7 @@ const PAGE_MOD_INDEX = `\
     }
   } catch (e) { /* ignore */ }
 
+  await loadUserRole();
   await loadFederationIdentity();
   applyLabels();
 
@@ -4179,6 +4255,7 @@ const PAGE_MOD_INDEX = `\
     }
   } catch (e) { /* ignore */ }
   renderFederationIdentity();
+  applyAdminControls();
 
   bindEvents();
   await loadConversations();
@@ -4293,7 +4370,7 @@ const CORE_CODE = buildCoreCode()
 const manifest: TappManifest = {
   id: 'com.myriad.aro',
   name: 'Aro',
-  version: '1.0.1',
+  version: '1.0.2',
   description: 'Aro — 社交中心，统一管理消息、时间线、环网和个人资料。',
   category: 'social',
   main: 'index.js',

@@ -15,7 +15,7 @@ use crate::federation::types::*;
 /// 创建 Channel 请求
 #[derive(Debug, Deserialize)]
 pub struct CreateChannelRequest {
-    /// 远程 Actor URL 或 acct:user@domain / user@domain
+    /// 远程 Actor URL 或 acct:user@domain / @user@domain / user@domain
     pub remote_actor: String,
     /// 通道类型: text, file-transfer, rpc, data-exchange, stream
     pub channel_type: Option<String>,
@@ -120,6 +120,13 @@ pub async fn create_channel(
 
     let remote_actor_url =
         crate::federation::follow::resolve_actor_reference(&req.remote_actor).await?;
+    let local_actor = actor_url(&base_url, username);
+    if same_actor_url(&remote_actor_url, &local_actor) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Cannot create a channel with your own federation actor"})),
+        ));
+    }
 
     // 确保远程 Actor 已缓存
     let remote = crate::federation::actor::fetch_remote_actor(db, &remote_actor_url)
@@ -203,7 +210,6 @@ pub async fn create_channel(
     .map_err(db_err)?;
 
     // 向远程 Actor 发送 ChannelOpen Activity
-    let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);
 
     let channel_open = json!({

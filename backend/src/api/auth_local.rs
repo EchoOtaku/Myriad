@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env;
 
+use crate::middleware::auth::ensure_current_admin;
+
 use super::auth::Claims;
 
 /// Request to create admin account
@@ -961,12 +963,7 @@ pub async fn admin_create_user(
             Json(json!({"error": "Unauthorized"})),
         )
     })?;
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({"error": "Forbidden", "message": "Admin only"})),
-        ));
-    }
+    ensure_current_admin(&claims).await?;
 
     validate_username(&req.username)?;
     validate_password(&req.password)?;
@@ -1070,9 +1067,7 @@ pub async fn admin_list_users(
             Json(json!({"error": "Unauthorized"})),
         )
     })?;
-    if !claims.is_admin {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
-    }
+    ensure_current_admin(&claims).await?;
 
     let rows = db
         .query_all(Statement::from_sql_and_values(

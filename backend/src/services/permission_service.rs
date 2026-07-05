@@ -9,28 +9,31 @@
 //! - **privileged**: 特权权限，始终仅管理员可用
 //!
 //! ## 设计原则
-//! - basic 级别权限（10个）默认对所有用户开放，无需配置
-//! - elevated 级别权限（9个）可由管理员选择性下放给普通用户或游客
-//! - privileged 级别权限（3个）始终仅限管理员
+//! - basic 级别权限默认对所有用户开放，无需配置
+//! - elevated 级别权限可由管理员选择性下放给普通用户或游客
+//! - privileged 级别权限始终仅限管理员
 //!
-//! ## Tapp 权限完整列表（22个）
+//! ## Tapp 权限完整列表
 //!
-//! ### Basic（10个）- 默认开放
-//! - widget:register, platform:read, report:read, storage
+//! ### Basic - 默认开放
+//! - widget:register, platform:read, tappList:read, brew:read, report:read, storage
 //! - ui:notification, ui:fullscreen, ui:theme, ui:confirm
 //! - media:read, event:subscribe
+//! - federation:read, federation:write, federation:message, federation:files
 //!
-//! ### Elevated（9个）- 可配置下放
-//! - ai:generate, ai:analyze, ai:chat
-//! - report:write
+//! ### Elevated - 可配置下放
+//! - ai:generate, ai:analyze, ai:chat, ai:image
+//! - report:write, brew:write, brew:comment
 //! - network:fetch
 //! - media:control
 //! - component:theme
 //! - shortcut:register
 //! - event:publish
+//! - scheduler:register, speech:tts, speech:asr
 //!
-//! ### Privileged（3个）- 仅管理员
+//! ### Privileged - 仅管理员
 //! - platform:write, platform:register, component:agent
+//! - tappList:manage, brew:manage, federation:trust
 
 use crate::config::DynamicConfig;
 use serde::{Deserialize, Serialize};
@@ -92,6 +95,14 @@ pub enum TappPermission {
     MediaRead,
     #[serde(rename = "event:subscribe")]
     EventSubscribe,
+    #[serde(rename = "federation:read")]
+    FederationRead,
+    #[serde(rename = "federation:write")]
+    FederationWrite,
+    #[serde(rename = "federation:message")]
+    FederationMessage,
+    #[serde(rename = "federation:files")]
+    FederationFiles,
 
     // Elevated 级别（10个）
     #[serde(rename = "ai:generate")]
@@ -136,6 +147,8 @@ pub enum TappPermission {
     TappListManage,
     #[serde(rename = "brew:manage")]
     BrewManage,
+    #[serde(rename = "federation:trust")]
+    FederationTrust,
 }
 
 impl TappPermission {
@@ -154,7 +167,11 @@ impl TappPermission {
             | TappPermission::UiTheme
             | TappPermission::UiConfirm
             | TappPermission::MediaRead
-            | TappPermission::EventSubscribe => PermissionLevel::Basic,
+            | TappPermission::EventSubscribe
+            | TappPermission::FederationRead
+            | TappPermission::FederationWrite
+            | TappPermission::FederationMessage
+            | TappPermission::FederationFiles => PermissionLevel::Basic,
 
             // Elevated
             TappPermission::AiGenerate
@@ -178,7 +195,8 @@ impl TappPermission {
             | TappPermission::PlatformRegister
             | TappPermission::ComponentAgent
             | TappPermission::TappListManage
-            | TappPermission::BrewManage => PermissionLevel::Privileged,
+            | TappPermission::BrewManage
+            | TappPermission::FederationTrust => PermissionLevel::Privileged,
         }
     }
 
@@ -218,10 +236,15 @@ impl TappPermission {
             TappPermission::EventSubscribe => "订阅事件",
             TappPermission::SpeechTts => "文本转语音",
             TappPermission::SpeechAsr => "语音转文本",
+            TappPermission::FederationRead => "读取联邦数据",
+            TappPermission::FederationWrite => "联邦个人操作",
+            TappPermission::FederationMessage => "联邦消息",
+            TappPermission::FederationFiles => "联邦文件传输",
+            TappPermission::FederationTrust => "联邦信任管理",
         }
     }
 
-    /// 获取所有 elevated 级别权限 (10个)
+    /// 获取所有可配置下放的 elevated 级别权限
     pub fn all_elevated() -> Vec<TappPermission> {
         vec![
             TappPermission::AiGenerate,
@@ -275,6 +298,11 @@ impl TappPermission {
             "scheduler:register" => Some(TappPermission::SchedulerRegister),
             "speech:tts" => Some(TappPermission::SpeechTts),
             "speech:asr" => Some(TappPermission::SpeechAsr),
+            "federation:read" => Some(TappPermission::FederationRead),
+            "federation:write" => Some(TappPermission::FederationWrite),
+            "federation:message" => Some(TappPermission::FederationMessage),
+            "federation:files" => Some(TappPermission::FederationFiles),
+            "federation:trust" => Some(TappPermission::FederationTrust),
             _ => None,
         }
     }
@@ -315,6 +343,11 @@ impl TappPermission {
             TappPermission::SchedulerRegister => "scheduler:register",
             TappPermission::SpeechTts => "speech:tts",
             TappPermission::SpeechAsr => "speech:asr",
+            TappPermission::FederationRead => "federation:read",
+            TappPermission::FederationWrite => "federation:write",
+            TappPermission::FederationMessage => "federation:message",
+            TappPermission::FederationFiles => "federation:files",
+            TappPermission::FederationTrust => "federation:trust",
         }
     }
 }
@@ -333,6 +366,20 @@ pub enum PermissionLevel {
 pub struct TappPermissionService;
 
 impl TappPermissionService {
+    /// Filter manifest/requested permissions by the user's current role.
+    pub fn filter_permissions_for_role(
+        config: &DynamicConfig,
+        role: UserRole,
+        permissions: &[String],
+    ) -> Vec<String> {
+        permissions
+            .iter()
+            .filter_map(|permission| TappPermission::from_str(permission))
+            .filter(|permission| Self::check(config, role, *permission))
+            .map(|permission| permission.as_str().to_string())
+            .collect()
+    }
+
     /// 检查用户是否拥有特定 Tapp 权限
     pub fn check(config: &DynamicConfig, role: UserRole, permission: TappPermission) -> bool {
         // 管理员拥有所有权限
@@ -650,5 +697,50 @@ mod tests {
             UserRole::Guest,
             TappPermission::ComponentAgent
         ));
+    }
+
+    #[test]
+    fn test_federation_permissions_are_filtered_for_users() {
+        let config = DynamicConfig::default();
+        let requested = vec![
+            "federation:read".to_string(),
+            "federation:write".to_string(),
+            "federation:message".to_string(),
+            "federation:files".to_string(),
+            "federation:trust".to_string(),
+        ];
+
+        let granted =
+            TappPermissionService::filter_permissions_for_role(&config, UserRole::User, &requested);
+
+        assert_eq!(
+            granted,
+            vec![
+                "federation:read",
+                "federation:write",
+                "federation:message",
+                "federation:files"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_federation_permissions_are_unfiltered_for_admin() {
+        let config = DynamicConfig::default();
+        let requested = vec![
+            "federation:read".to_string(),
+            "federation:write".to_string(),
+            "federation:message".to_string(),
+            "federation:files".to_string(),
+            "federation:trust".to_string(),
+        ];
+
+        let granted = TappPermissionService::filter_permissions_for_role(
+            &config,
+            UserRole::Admin,
+            &requested,
+        );
+
+        assert_eq!(granted, requested);
     }
 }

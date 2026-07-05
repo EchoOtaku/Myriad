@@ -13,7 +13,7 @@ use crate::federation::types::*;
 /// 关注远程用户请求
 #[derive(Debug, Deserialize)]
 pub struct FollowRequest {
-    /// 远程 Actor URL 或 acct:user@domain 格式
+    /// 远程 Actor URL 或 acct:user@domain / @user@domain 格式
     pub target: String,
 }
 
@@ -36,8 +36,15 @@ pub async fn follow_remote(
 ) -> Result<FollowResponse, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
 
-    // 解析目标：支持 acct:user@domain 和直接 URL
+    // 解析目标：支持 acct:user@domain / @user@domain 和直接 URL
     let target_url = resolve_actor_reference(target).await?;
+    let local_actor = actor_url(&base_url, username);
+    if same_actor_url(&target_url, &local_actor) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Cannot follow your own federation actor"})),
+        ));
+    }
 
     // 获取远程 Actor 信息
     let remote = fetch_remote_actor(db, &target_url).await.map_err(|e| {
@@ -69,7 +76,6 @@ pub async fn follow_remote(
     }
 
     // 构造 Follow Activity
-    let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);
 
     let follow_activity = serde_json::json!({
@@ -242,7 +248,7 @@ pub async fn unfollow_remote(
     Ok(json!({"status": "unfollowed", "target": target_url}))
 }
 
-/// 解析 Actor 引用：支持直接 Actor URL 或 acct:user@domain / user@domain。
+/// 解析 Actor 引用：支持直接 Actor URL 或 acct:user@domain / @user@domain / user@domain。
 pub async fn resolve_actor_reference(
     reference: &str,
 ) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
@@ -267,20 +273,7 @@ pub async fn resolve_actor_reference(
 
 /// WebFinger 查询：acct:user@domain → Actor URL
 async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
-    let stripped = acct.strip_prefix("acct:").unwrap_or(acct);
-    let parts: Vec<&str> = stripped.splitn(2, '@').collect();
-    if parts.len() != 2 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid acct format"})),
-        ));
-    }
-
-    let domain = parts[1];
-    let webfinger_url = format!(
-        "https://{}/.well-known/webfinger?resource=acct:{}",
-        domain, stripped
-    );
+    let webfinger_url = build_webfinger_url(acct)?;
 
     // 防止 SSRF：验证 WebFinger URL 不指向内网
     if is_internal_url(&webfinger_url) {
@@ -343,12 +336,87 @@ async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<ser
     ))
 }
 
+fn build_webfinger_url(acct: &str) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
+    let trimmed = acct.trim();
+    let without_scheme = trimmed.strip_prefix("acct:").unwrap_or(trimmed);
+    let stripped = without_scheme.strip_prefix('@').unwrap_or(without_scheme);
+    let parts: Vec<&str> = stripped.splitn(2, '@').collect();
+    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid acct format"})),
+        ));
+    }
+
+    let domain = parts[1].trim();
+    if domain.is_empty()
+        || domain.contains('/')
+        || domain.contains('?')
+        || domain.contains('#')
+        || domain.contains('@')
+        || domain.chars().any(char::is_whitespace)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid acct domain"})),
+        ));
+    }
+
+    let resource = format!("acct:{}", stripped);
+    url::Url::parse_with_params(
+        &format!("https://{}/.well-known/webfinger", domain),
+        &[("resource", resource.as_str())],
+    )
+    .map(|u| u.to_string())
+    .map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid acct domain"})),
+        )
+    })
+}
+
 // ==================== 辅助函数 ====================
 
 async fn get_base_url() -> String {
-    let config = crate::GLOBAL_CONFIG.read().await;
-    config
-        .base_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+    crate::federation::types::get_base_url().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_webfinger_url_encodes_acct_resource() {
+        let url = build_webfinger_url("alice@example.com").unwrap();
+        assert_eq!(
+            url,
+            "https://example.com/.well-known/webfinger?resource=acct%3Aalice%40example.com"
+        );
+    }
+
+    #[test]
+    fn build_webfinger_url_accepts_domain_port() {
+        let url = build_webfinger_url("acct:alice@example.com:8443").unwrap();
+        assert_eq!(
+            url,
+            "https://example.com:8443/.well-known/webfinger?resource=acct%3Aalice%40example.com%3A8443"
+        );
+    }
+
+    #[test]
+    fn build_webfinger_url_accepts_display_handle() {
+        let url = build_webfinger_url("@alice@example.com").unwrap();
+        assert_eq!(
+            url,
+            "https://example.com/.well-known/webfinger?resource=acct%3Aalice%40example.com"
+        );
+    }
+
+    #[test]
+    fn build_webfinger_url_rejects_invalid_domain() {
+        assert!(build_webfinger_url("acct:alice@example.com/path").is_err());
+        assert!(build_webfinger_url("acct:alice@example.com?x=1").is_err());
+        assert!(build_webfinger_url("acct:alice@").is_err());
+    }
 }

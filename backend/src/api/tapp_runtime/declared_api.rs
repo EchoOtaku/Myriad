@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::api::tapp_store::{TappApiAccess, TappApiDef};
-use crate::middleware::auth::Claims;
+use crate::middleware::auth::{ensure_current_admin, Claims};
 use crate::models::entities::tapps;
 use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
 
@@ -154,7 +154,8 @@ pub async fn execute_tapp_api(
         });
 
     // 5. 确定用户角色
-    let role = if claims.is_admin {
+    let is_current_admin = claims.is_admin && ensure_current_admin(&claims).await.is_ok();
+    let role = if is_current_admin {
         crate::services::permission_service::UserRole::Admin
     } else if user_id < 0 {
         crate::services::permission_service::UserRole::Guest
@@ -166,7 +167,7 @@ pub async fn execute_tapp_api(
     let context = ApiExecutionContext {
         user_id,
         username: claims.username.clone(),
-        is_admin: claims.is_admin,
+        is_admin: is_current_admin,
         role,
         client_ip,
         granted_permissions,

@@ -516,21 +516,18 @@ async fn get_local_user(
 }
 
 async fn get_base_url() -> String {
-    let config = crate::GLOBAL_CONFIG.read().await;
-    config
-        .base_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+    crate::federation::types::get_base_url().await
 }
 
 async fn get_frontend_url() -> String {
     let config = crate::GLOBAL_CONFIG.read().await;
-    config.frontend_url.clone().unwrap_or_else(|| {
+    let frontend_url = config.frontend_url.clone().unwrap_or_else(|| {
         config
             .base_url
             .clone()
             .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
-    })
+    });
+    frontend_url.trim_end_matches('/').to_string()
 }
 
 async fn get_db() -> Result<DatabaseConnection, String> {

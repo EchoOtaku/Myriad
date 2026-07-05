@@ -116,7 +116,7 @@ pub struct SyncDataRequest {
 /// 添加 Peer 请求
 #[derive(Debug, Deserialize)]
 pub struct AddPeerRequest {
-    /// 远程 Actor URL 或 acct:user@domain / user@domain
+    /// 远程 Actor URL 或 acct:user@domain / @user@domain / user@domain
     pub peer: String,
 }
 
@@ -445,6 +445,13 @@ pub async fn add_peer(
     let peers_json: serde_json::Value = ring_row.try_get("", "known_peers").unwrap_or(json!([]));
 
     let peer_url = crate::federation::follow::resolve_actor_reference(&req.peer).await?;
+    let local_actor = actor_url(&base_url, username);
+    if same_actor_url(&peer_url, &local_actor) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Cannot add this instance as its own ring peer"})),
+        ));
+    }
 
     // 验证远程 actor 存在
     let remote = crate::federation::actor::fetch_remote_actor(db, &peer_url)
@@ -469,14 +476,19 @@ pub async fn add_peer(
     // 原子追加到 known_peers，避免并发读-改-写竞争
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        "UPDATE federation_ring_memberships SET known_peers = known_peers || $2::jsonb WHERE ring_id = $1",
+        r#"UPDATE federation_ring_memberships
+           SET known_peers = CASE
+             WHEN NOT (known_peers @> $2::jsonb)
+             THEN known_peers || $2::jsonb
+             ELSE known_peers
+           END
+           WHERE ring_id = $1"#,
         [ring_id.into(), json!([&peer_url]).into()],
     ))
     .await
     .map_err(db_err)?;
 
     // 发送 RingJoin Activity 通知新 peer
-    let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);
     let join_activity = json!({
         "@context": build_context(),

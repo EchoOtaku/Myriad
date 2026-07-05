@@ -32,6 +32,8 @@ cp .env.production.example .env
 POSTGRES_PASSWORD=<32+ chars>
 JWT_SECRET=<32+ chars>
 CORS_ORIGINS=https://yourdomain.com
+BASE_URL=https://yourdomain.com
+FRONTEND_URL=https://yourdomain.com
 ```
 
 可用下面的命令生成密码，然后把结果填进 `.env`：
@@ -42,6 +44,10 @@ openssl rand -base64 32  # JWT_SECRET
 ```
 
 `UPDATE_TOKEN` 可以留空；`scripts/docker/deploy.sh up` 会在首次启动时生成。
+
+`BASE_URL` 是联邦发现地址的来源。Aro 里显示的 Actor URL 会形如
+`https://yourdomain.com/users/<username>`，别人可以用这个 Actor URL 或
+`@<username>@yourdomain.com` 来关注、建频道、邀请进房间或加入环网。
 
 ### 2. 启动
 

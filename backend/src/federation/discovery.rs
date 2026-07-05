@@ -37,7 +37,7 @@ pub async fn webfinger(
     let our_domain = extract_domain(&base_url).unwrap_or_default();
 
     // 仅处理本实例的用户
-    if domain != our_domain {
+    if !domain.eq_ignore_ascii_case(&our_domain) {
         return Err((
             StatusCode::NOT_FOUND,
             Json(json!({"error": "User not found on this instance"})),
@@ -170,10 +170,12 @@ pub async fn nodeinfo(
 
 /// 解析 acct:user@domain 格式
 fn parse_acct_uri(resource: &str) -> Option<(String, String)> {
-    let stripped = resource.strip_prefix("acct:")?;
+    let stripped = resource.trim().strip_prefix("acct:")?;
     let parts: Vec<&str> = stripped.splitn(2, '@').collect();
-    if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
-        Some((parts[0].to_string(), parts[1].to_string()))
+    let username = parts.first()?.trim();
+    let domain = parts.get(1)?.trim();
+    if !username.is_empty() && !domain.is_empty() {
+        Some((username.to_string(), domain.to_ascii_lowercase()))
     } else {
         None
     }
@@ -182,12 +184,13 @@ fn parse_acct_uri(resource: &str) -> Option<(String, String)> {
 /// 获取前端 URL
 async fn get_frontend_url() -> String {
     let config = crate::GLOBAL_CONFIG.read().await;
-    config.frontend_url.clone().unwrap_or_else(|| {
+    let frontend_url = config.frontend_url.clone().unwrap_or_else(|| {
         config
             .base_url
             .clone()
             .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
-    })
+    });
+    frontend_url.trim_end_matches('/').to_string()
 }
 
 /// 获取数据库连接
@@ -243,6 +246,10 @@ mod tests {
     fn test_parse_acct_uri() {
         assert_eq!(
             parse_acct_uri("acct:alice@example.com"),
+            Some(("alice".to_string(), "example.com".to_string()))
+        );
+        assert_eq!(
+            parse_acct_uri(" acct:alice@EXAMPLE.com "),
             Some(("alice".to_string(), "example.com".to_string()))
         );
         assert_eq!(parse_acct_uri("alice@example.com"), None);

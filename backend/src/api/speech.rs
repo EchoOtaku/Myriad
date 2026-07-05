@@ -9,9 +9,8 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use serde_json::json;
 
-use crate::middleware::auth::verify_jwt_token;
+use crate::middleware::auth::verify_current_admin_from_headers;
 use crate::services::data_paths::paths;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
@@ -26,27 +25,13 @@ use crate::services::tencent_speech_service::{
 /// TTS 子目录名
 const TTS_SUBDIR: &str = "tts";
 
-/// 验证管理员身份
+/// 验证当前管理员身份
 #[allow(clippy::result_large_err)]
-fn verify_admin(headers: &axum::http::HeaderMap) -> Result<(), axum::response::Response> {
-    match verify_jwt_token(headers) {
-        Ok(claims) => {
-            if !claims.is_admin {
-                Err((
-                    StatusCode::FORBIDDEN,
-                    Json(json!({ "success": false, "error": "Administrator access required" })),
-                )
-                    .into_response())
-            } else {
-                Ok(())
-            }
-        }
-        Err(_) => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "success": false, "error": "Unauthorized" })),
-        )
-            .into_response()),
-    }
+async fn verify_admin(headers: &axum::http::HeaderMap) -> Result<(), axum::response::Response> {
+    verify_current_admin_from_headers(headers)
+        .await
+        .map(|_| ())
+        .map_err(|(status, body)| (status, body).into_response())
 }
 
 /// 创建语音服务 API 路由
@@ -1656,7 +1641,7 @@ pub async fn clear_article_voice_cache(
     Query(query): Query<ClearArticleVoiceCacheQuery>,
 ) -> impl IntoResponse {
     // 验证管理员身份
-    if let Err(e) = verify_admin(&headers) {
+    if let Err(e) = verify_admin(&headers).await {
         return e;
     }
 

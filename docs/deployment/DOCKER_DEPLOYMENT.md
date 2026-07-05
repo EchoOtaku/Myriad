@@ -62,6 +62,8 @@ Open `http://localhost` or the port configured by `HTTP_PORT`.
 | `POSTGRES_PASSWORD` | yes | PostgreSQL password; set this yourself before first start |
 | `JWT_SECRET` | yes | JWT signing secret; set this yourself before first start |
 | `CORS_ORIGINS` | yes | Public frontend origins |
+| `BASE_URL` | no | Public HTTPS origin used for federation Actor URLs and OAuth fallback; required for federation |
+| `FRONTEND_URL` | no | Public frontend origin for redirects/profile links; usually the same as `BASE_URL` |
 | `MYRIAD_TAG` | yes | Backend/frontend image tag, maintained by updater |
 | `PROXY_TAG` | yes | Proxy image tag |
 | `UPDATER_TAG` | yes | Updater image tag |

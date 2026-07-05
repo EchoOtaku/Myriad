@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
-use crate::middleware::auth::Claims;
+use crate::middleware::auth::{ensure_current_admin, Claims};
 use crate::models::entities::tapps;
 use crate::services::analyzer::AiProvider;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
@@ -731,7 +731,7 @@ pub async fn check_tapp_permission(
     claims: &Claims,
     permission: TappPermission,
 ) -> Result<(), (StatusCode, Json<Value>)> {
-    let role = if claims.is_admin {
+    let role = if claims.is_admin && ensure_current_admin(claims).await.is_ok() {
         UserRole::Admin
     } else if let Ok(user_id) = claims.sub.parse::<i32>() {
         if user_id < 0 {

@@ -5,7 +5,7 @@ use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-use crate::middleware::auth::Claims;
+use crate::middleware::auth::{ensure_current_admin, Claims};
 use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
@@ -46,13 +46,14 @@ pub async fn get_context_user(
     })?;
 
     let connected_platforms = get_available_platforms().await;
-    let role = if claims.is_admin { "admin" } else { "user" };
+    let is_current_admin = claims.is_admin && ensure_current_admin(&claims).await.is_ok();
+    let role = if is_current_admin { "admin" } else { "user" };
 
     Ok(Json(json!({
         "id": format!("user_{}", user_id),
         "username": claims.username,
         "avatar": null,
-        "isAdmin": claims.is_admin,
+        "isAdmin": is_current_admin,
         "role": role,
         "connectedPlatforms": connected_platforms,
         "preferences": {

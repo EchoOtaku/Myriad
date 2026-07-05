@@ -311,9 +311,5 @@ async fn get_username_by_id(db: &DatabaseConnection, user_id: i32) -> Result<Str
 }
 
 async fn get_base_url() -> String {
-    let config = crate::GLOBAL_CONFIG.read().await;
-    config
-        .base_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+    crate::federation::types::get_base_url().await
 }

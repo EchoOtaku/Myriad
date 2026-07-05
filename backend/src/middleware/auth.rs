@@ -6,6 +6,7 @@ use axum::{
     Json,
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
@@ -39,29 +40,20 @@ pub async fn auth_middleware(req: Request, next: Next) -> Response {
 /// Admin-only middleware - verifies JWT token and checks admin status
 /// Returns 403 if user is not an admin
 ///
-/// ✅ SECURITY: Checks the signed `is_admin` claim.
+/// ✅ SECURITY: Checks both the signed claim and the current database role.
 /// Used for dangerous operations like deleting all reports
 pub async fn admin_middleware(req: Request, next: Next) -> Response {
     let headers = req.headers();
 
     match verify_jwt_token(headers) {
         Ok(claims) => {
-            // ✅ 安全修复 P0: 检查 is_admin 字段而不是用户名
-            // 这防止 GitHub 用户名为 "admin" 的用户获得管理员权限
-            if !claims.is_admin {
+            if let Err((status, body)) = ensure_current_admin(&claims).await {
                 tracing::warn!(
                     "⚠️  User {} (is_admin={}) attempted to access admin-only endpoint (Forbidden)",
                     claims.username,
                     claims.is_admin
                 );
-                return (
-                    StatusCode::FORBIDDEN,
-                    Json(json!({
-                        "error": "Forbidden",
-                        "message": "Administrator access required. Only admin users can perform this action."
-                    })),
-                )
-                    .into_response();
+                return (status, body).into_response();
             }
 
             tracing::info!(
@@ -77,6 +69,95 @@ pub async fn admin_middleware(req: Request, next: Next) -> Response {
         }
         Err(error_response) => *error_response,
     }
+}
+
+/// Verify the signed admin claim against the current database state.
+///
+/// This prevents a demoted admin from keeping admin access until the old JWT
+/// expires.
+pub async fn ensure_current_admin(
+    claims: &Claims,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    if !claims.is_admin {
+        return Err(admin_forbidden());
+    }
+
+    let user_id: i32 = claims.sub.parse().map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "error": "Unauthorized",
+                "message": "Invalid user ID in authorization token."
+            })),
+        )
+    })?;
+
+    let db_guard = crate::DB_CONNECTION.read().await;
+    let db = db_guard.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "Administrator status cannot be verified."
+            })),
+        )
+    })?;
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT is_admin FROM users WHERE id = $1 LIMIT 1",
+            [user_id.into()],
+        ))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to verify current admin status: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": "Database error",
+                    "message": "Administrator status cannot be verified."
+                })),
+            )
+        })?;
+
+    let is_admin = row
+        .and_then(|r| r.try_get::<bool>("", "is_admin").ok())
+        .unwrap_or(false);
+
+    if is_admin {
+        Ok(())
+    } else {
+        Err(admin_forbidden())
+    }
+}
+
+/// Verify JWT headers and re-check the admin flag against the current database.
+pub async fn verify_current_admin_from_headers(
+    headers: &HeaderMap,
+) -> Result<Claims, (StatusCode, Json<serde_json::Value>)> {
+    let claims = verify_jwt_token(headers).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "error": "Unauthorized",
+                "message": "Please login before using administrator functions."
+            })),
+        )
+    })?;
+
+    ensure_current_admin(&claims).await?;
+    Ok(claims)
+}
+
+fn admin_forbidden() -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::FORBIDDEN,
+        Json(json!({
+            "error": "Forbidden",
+            "message": "Administrator access required. Only current admin users can perform this action."
+        })),
+    )
 }
 
 /// 从请求中提取客户端 IP 地址

@@ -509,6 +509,11 @@ pub fn actor_url(base_url: &str, username: &str) -> String {
     format!("{}/users/{}", base_url, username)
 }
 
+/// 比较 Actor URL 时忽略末尾斜杠，避免把自己的地址当作远程对象。
+pub fn same_actor_url(left: &str, right: &str) -> bool {
+    left.trim_end_matches('/') == right.trim_end_matches('/')
+}
+
 /// 构造 Key ID
 pub fn key_id(base_url: &str, username: &str) -> String {
     format!("{}/users/{}#main-key", base_url, username)
@@ -537,10 +542,12 @@ pub fn following_url(base_url: &str, username: &str) -> String {
 /// 获取联邦协议使用的 base_url（从全局配置读取）
 pub async fn get_base_url() -> String {
     let config = crate::GLOBAL_CONFIG.read().await;
-    config
+    let base_url = config
         .base_url
         .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+        .or_else(|| config.frontend_url.clone())
+        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port));
+    base_url.trim_end_matches('/').to_string()
 }
 
 /// ISO 8601 当前时间字符串

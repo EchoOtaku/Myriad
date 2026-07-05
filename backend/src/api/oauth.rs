@@ -101,21 +101,9 @@ pub async fn provider_link(
     Path(slug): Path<String>,
     headers: HeaderMap,
 ) -> Result<Redirect, (StatusCode, Json<Value>)> {
-    use crate::middleware::auth::verify_jwt_token;
+    use crate::middleware::auth::verify_current_admin_from_headers;
 
-    let claims = verify_jwt_token(&headers).map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Unauthorized", "message": "Please login before linking"})),
-        )
-    })?;
-
-    if !claims.is_admin {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({"error": "Forbidden", "message": "Admin only"})),
-        ));
-    }
+    let claims = verify_current_admin_from_headers(&headers).await?;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
 

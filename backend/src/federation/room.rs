@@ -845,7 +845,7 @@ pub async fn invite_member(
         ));
     }
 
-    // 解析目标 Actor：本地用户名保持原逻辑，远端支持 Actor URL / acct:user@domain / user@domain。
+    // 解析目标 Actor：本地用户名保持原逻辑，远端支持 Actor URL / acct:user@domain / @user@domain / user@domain。
     let raw_target_actor = req.actor.trim();
     if raw_target_actor.is_empty() {
         return Err((
@@ -865,6 +865,13 @@ pub async fn invite_member(
     };
 
     if let Some(target_actor) = resolved_remote_actor {
+        if same_actor_url(&target_actor, &local_actor) {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(json!({"error": "You are already a member of this room"})),
+            ));
+        }
+
         // 远程成员：fetch actor + 添加记录
         let remote = crate::federation::actor::fetch_remote_actor(db, &target_actor)
             .await
@@ -877,21 +884,29 @@ pub async fn invite_member(
             })?;
 
         // 添加远程成员
-        db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"INSERT INTO federation_room_members
-               (room_id, actor_url, is_local, role, invited_by, joined_at)
+        let insert_result = db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"INSERT INTO federation_room_members
+	               (room_id, actor_url, is_local, role, invited_by, joined_at)
                VALUES ($1, $2, false, $3, $4, NOW())
                ON CONFLICT (room_id, actor_url) DO NOTHING"#,
-            [
-                room_id.into(),
-                remote.actor_url.clone().into(),
-                role.into(),
-                local_actor.clone().into(),
-            ],
-        ))
-        .await
-        .map_err(db_err)?;
+                [
+                    room_id.into(),
+                    remote.actor_url.clone().into(),
+                    role.into(),
+                    local_actor.clone().into(),
+                ],
+            ))
+            .await
+            .map_err(db_err)?;
+
+        if insert_result.rows_affected() == 0 {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(json!({"error": "Actor is already a room member"})),
+            ));
+        }
 
         // 发送 RoomInvite Activity 给远程方
         let activity_id = generate_activity_id(&base_url);
@@ -945,6 +960,13 @@ pub async fn invite_member(
     } else {
         // 本地成员 — 解析用户名 → actor_url
         let local_target_actor = actor_url(&base_url, raw_target_actor);
+        if same_actor_url(&local_target_actor, &local_actor) {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(json!({"error": "You are already a member of this room"})),
+            ));
+        }
+
         // 查找本地用户 ID
         let local_row = db
             .query_one(Statement::from_sql_and_values(
@@ -956,23 +978,37 @@ pub async fn invite_member(
             .map_err(db_err)?;
 
         let target_user_id: Option<i32> = local_row.and_then(|r| r.try_get("", "id").ok());
+        let target_user_id = target_user_id.ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Local user not found. Use Actor URL or @user@domain for remote users"})),
+            )
+        })?;
 
-        db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"INSERT INTO federation_room_members
-               (room_id, actor_url, is_local, local_user_id, role, invited_by, joined_at)
+        let insert_result = db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"INSERT INTO federation_room_members
+	               (room_id, actor_url, is_local, local_user_id, role, invited_by, joined_at)
                VALUES ($1, $2, true, $3, $4, $5, NOW())
                ON CONFLICT (room_id, actor_url) DO NOTHING"#,
-            [
-                room_id.into(),
-                local_target_actor.into(),
-                target_user_id.into(),
-                role.into(),
-                local_actor.clone().into(),
-            ],
-        ))
-        .await
-        .map_err(db_err)?;
+                [
+                    room_id.into(),
+                    local_target_actor.into(),
+                    target_user_id.into(),
+                    role.into(),
+                    local_actor.clone().into(),
+                ],
+            ))
+            .await
+            .map_err(db_err)?;
+
+        if insert_result.rows_affected() == 0 {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(json!({"error": "Actor is already a room member"})),
+            ));
+        }
 
         tracing::info!(
             "[Room] Invited local {} to room {} as {}",

@@ -190,12 +190,12 @@ const PERMISSION_INFO: Record<
   'federation:write': {
     title: '联邦操作',
     description: '允许此应用创建频道/房间、关注/取消关注、发布内容',
-    level: 'elevated',
+    level: 'basic',
   },
   'federation:message': {
     title: '联邦消息',
     description: '允许此应用发送联邦消息（频道和房间）',
-    level: 'elevated',
+    level: 'basic',
   },
   'federation:trust': {
     title: '联邦信任管理',
@@ -205,7 +205,7 @@ const PERMISSION_INFO: Record<
   'federation:files': {
     title: '联邦文件传输',
     description: '允许此应用通过联邦频道发起或接收文件传输',
-    level: 'elevated',
+    level: 'basic',
   },
 }
 

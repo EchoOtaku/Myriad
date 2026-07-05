@@ -138,11 +138,7 @@ pub async fn get_outbox(
 // ==================== 辅助函数 ====================
 
 async fn get_base_url() -> String {
-    let config = crate::GLOBAL_CONFIG.read().await;
-    config
-        .base_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+    crate::federation::types::get_base_url().await
 }
 
 async fn get_db() -> Result<sea_orm::DatabaseConnection, String> {

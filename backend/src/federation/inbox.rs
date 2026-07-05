@@ -598,10 +598,12 @@ async fn enqueue_delivery(
 
 fn get_base_url() -> String {
     let config = crate::GLOBAL_CONFIG.blocking_read();
-    config
+    let base_url = config
         .base_url
         .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
+        .or_else(|| config.frontend_url.clone())
+        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port));
+    base_url.trim_end_matches('/').to_string()
 }
 
 async fn get_db() -> Result<DatabaseConnection, String> {

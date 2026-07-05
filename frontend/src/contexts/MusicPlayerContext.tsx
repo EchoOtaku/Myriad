@@ -1,5 +1,10 @@
 import type { ReactNode } from 'react'
-import type { Song } from '../utils/musicPlayer'
+import type {
+  LyricLine,
+  Song,
+  VerbatimLyricsSource,
+  WordLyricLine,
+} from '../utils/musicPlayer'
 import {
   createContext,
   useCallback,
@@ -26,6 +31,11 @@ interface MusicPlayerState {
   currentSongIndex: number
   playlistLength: number
   playlist: Song[]
+  lyrics: LyricLine[]
+  verbatimLyrics: WordLyricLine[]
+  hasVerbatimLyrics: boolean
+  verbatimLyricsSource: VerbatimLyricsSource
+  currentLyricIndex: number
 }
 
 interface MusicPlayerContextType extends MusicPlayerState {
@@ -48,6 +58,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     currentSongIndex: 0,
     playlistLength: 0,
     playlist: [],
+    lyrics: [],
+    verbatimLyrics: [],
+    hasVerbatimLyrics: false,
+    verbatimLyricsSource: '',
+    currentLyricIndex: -1,
   })
 
   // 在客户端初始化时从全局状态读取
@@ -64,6 +79,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
           currentSongIndex: globalState.currentSongIndex || 0,
           playlistLength: globalState.playlistLength || 0,
           playlist: globalState.playlist || [],
+          lyrics: globalState.lyrics || [],
+          verbatimLyrics: globalState.verbatimLyrics || [],
+          hasVerbatimLyrics: globalState.hasVerbatimLyrics || false,
+          verbatimLyricsSource: globalState.verbatimLyricsSource || '',
+          currentLyricIndex: globalState.currentLyricIndex ?? -1,
         })
       }
     }
@@ -84,6 +104,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
         currentSongIndex: detail?.currentSongIndex || 0,
         playlistLength: detail?.playlistLength || 0,
         playlist: detail?.playlist || [],
+        lyrics: detail?.lyrics || [],
+        verbatimLyrics: detail?.verbatimLyrics || [],
+        hasVerbatimLyrics: detail?.hasVerbatimLyrics || false,
+        verbatimLyricsSource: detail?.verbatimLyricsSource || '',
+        currentLyricIndex: detail?.currentLyricIndex ?? -1,
       })
     }
 
@@ -155,6 +180,11 @@ let globalMusicState: MusicPlayerState = {
   currentSongIndex: 0,
   playlistLength: 0,
   playlist: [],
+  lyrics: [],
+  verbatimLyrics: [],
+  hasVerbatimLyrics: false,
+  verbatimLyricsSource: '',
+  currentLyricIndex: -1,
 }
 
 /** 状态变化监听器集合 */

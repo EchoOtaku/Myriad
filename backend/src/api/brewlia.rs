@@ -21,7 +21,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::middleware::auth::verify_jwt_token;
+use crate::middleware::auth::verify_current_admin_from_headers;
 use crate::models::entities::brew_annotations::{self, AnnotationType};
 use crate::services::ai_service::AiService;
 use crate::services::data_paths::paths;
@@ -30,25 +30,11 @@ use crate::services::data_paths::paths;
 
 /// 验证是否是管理员（用于生成/编辑操作）
 #[allow(clippy::result_large_err)]
-fn verify_admin(headers: &axum::http::HeaderMap) -> Result<(), axum::response::Response> {
-    match verify_jwt_token(headers) {
-        Ok(claims) => {
-            if !claims.is_admin {
-                Err((
-                    StatusCode::FORBIDDEN,
-                    Json(json!({ "success": false, "error": "Administrator access required" })),
-                )
-                    .into_response())
-            } else {
-                Ok(())
-            }
-        }
-        Err(_) => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "success": false, "error": "Unauthorized" })),
-        )
-            .into_response()),
-    }
+async fn verify_admin(headers: &axum::http::HeaderMap) -> Result<(), axum::response::Response> {
+    verify_current_admin_from_headers(headers)
+        .await
+        .map(|_| ())
+        .map_err(|(status, body)| (status, body).into_response())
 }
 
 /// 创建 Brewlia API 路由
@@ -180,7 +166,7 @@ async fn get_annotations(
     }
 
     // 数据库没有缓存，检查是否是管理员（只有管理员可以生成新注释）
-    if verify_admin(&headers).is_err() {
+    if verify_admin(&headers).await.is_err() {
         // 非管理员返回空数组（不生成新内容）
         return (
             StatusCode::OK,
@@ -236,7 +222,7 @@ async fn regenerate_annotations(
     Path(item_id): Path<i32>,
 ) -> impl IntoResponse {
     // 验证管理员身份
-    if let Err(e) = verify_admin(&headers) {
+    if let Err(e) = verify_admin(&headers).await {
         return e.into_response();
     }
 
@@ -807,7 +793,7 @@ async fn get_podcast_script(
     }
 
     // 没有缓存时，验证管理员身份才能生成
-    if verify_admin(&headers).is_err() {
+    if verify_admin(&headers).await.is_err() {
         // 非管理员返回空结果而不是错误
         return (
             StatusCode::OK,
@@ -953,7 +939,7 @@ async fn regenerate_podcast_script(
     Path(item_id): Path<i32>,
 ) -> axum::response::Response {
     // 验证管理员身份
-    if let Err(e) = verify_admin(&headers) {
+    if let Err(e) = verify_admin(&headers).await {
         return e.into_response();
     }
 
@@ -1217,7 +1203,7 @@ async fn generate_style_tags(
     Path(source_id): Path<i32>,
 ) -> impl IntoResponse {
     // 验证管理员身份
-    if let Err(e) = verify_admin(&headers) {
+    if let Err(e) = verify_admin(&headers).await {
         return e.into_response();
     }
 

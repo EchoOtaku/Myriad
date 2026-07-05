@@ -28,7 +28,9 @@ use std::path::PathBuf;
 use tokio::fs;
 
 use crate::api::tapp_runtime::common as tapp_common;
-use crate::middleware::auth::{auth_middleware, extract_optional_claims, Claims};
+use crate::middleware::auth::{
+    auth_middleware, ensure_current_admin, extract_optional_claims, Claims,
+};
 use crate::models::entities::{
     tapp_storage, tapp_store_sources, tapp_user_activities, tapp_widgets, tapps,
 };
@@ -41,6 +43,31 @@ async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, StatusCode> {
     tapp_common::get_admin_user_id(db)
         .await
         .map_err(|(status, _)| status)
+}
+
+async fn current_is_admin(claims: &Claims) -> bool {
+    ensure_current_admin(claims).await.is_ok()
+}
+
+async fn current_user_role(claims: &Claims) -> UserRole {
+    if current_is_admin(claims).await {
+        UserRole::Admin
+    } else {
+        UserRole::User
+    }
+}
+
+async fn require_current_admin(claims: &Claims) -> Result<(), StatusCode> {
+    ensure_current_admin(claims)
+        .await
+        .map_err(|(status, _)| status)
+}
+
+async fn filter_install_permissions(role: UserRole, permissions: Vec<String>) -> Vec<String> {
+    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let granted = TappPermissionService::filter_permissions_for_role(&config, role, &permissions);
+    drop(config);
+    granted
 }
 
 /// 🔒 验证用户对 Tapp 的访问权限（委托给 tapp_runtime::common 的统一版本）
@@ -98,6 +125,11 @@ pub struct TappManifest {
     pub description: Option<String>,
     pub author: Option<TappAuthor>,
     pub main: String,
+    pub styles: Option<String>,
+    pub widget_styles: Option<String>,
+    pub page_styles: Option<String>,
+    pub page_template: Option<String>,
+    pub css_mode: Option<String>,
     pub permissions: Vec<String>,
     #[serde(default)]
     pub optional_permissions: Vec<String>,
@@ -360,7 +392,10 @@ async fn list_tapps(
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
     let user_id: Option<i32> = claims.as_ref().and_then(|c| c.sub.parse().ok());
-    let is_admin = claims.as_ref().map(|c| c.is_admin).unwrap_or(false);
+    let is_admin = match claims.as_ref() {
+        Some(claims) => current_is_admin(claims).await,
+        None => false,
+    };
 
     // 获取管理员用户 ID
     let admin_id = get_admin_user_id(&db).await?;
@@ -806,6 +841,8 @@ async fn install_tapp(
         .sub
         .parse()
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
+    let role = current_user_role(&claims).await;
+    let is_current_admin = role == UserRole::Admin;
 
     // 根据来源获取 manifest 和代码
     let (
@@ -1003,7 +1040,7 @@ async fn install_tapp(
 
     // 确定授权的权限
     let permissions = req.permissions.unwrap_or_default();
-    let granted: Vec<String> = if permissions.is_empty() {
+    let requested_permissions: Vec<String> = if permissions.is_empty() {
         manifest.permissions.clone()
     } else {
         manifest
@@ -1013,6 +1050,7 @@ async fn install_tapp(
             .cloned()
             .collect()
     };
+    let granted = filter_install_permissions(role, requested_permissions).await;
 
     // 保存到数据库
     let now = Utc::now().fixed_offset();
@@ -1048,7 +1086,7 @@ async fn install_tapp(
     })?;
 
     // 普通用户安装的 Tapp 都是临时的
-    let is_temporary = !claims.is_admin;
+    let is_temporary = !is_current_admin;
 
     // 从 manifest 中提取 iconSvg
     let icon_svg = result
@@ -1068,7 +1106,7 @@ async fn install_tapp(
         installed_at: result.installed_at.to_rfc3339(),
         last_run_at: None,
         is_temporary,
-        is_admin_tapp: claims.is_admin,
+        is_admin_tapp: is_current_admin,
     })))
 }
 
@@ -1084,6 +1122,8 @@ async fn install_tapp_file(
         .sub
         .parse()
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
+    let role = current_user_role(&claims).await;
+    let is_current_admin = role == UserRole::Admin;
 
     // 读取上传的文件
     let mut file_data: Option<Vec<u8>> = None;
@@ -1261,7 +1301,7 @@ async fn install_tapp_file(
     };
 
     // 确定授权的权限
-    let granted: Vec<String> = if permissions.is_empty() {
+    let requested_permissions: Vec<String> = if permissions.is_empty() {
         manifest.permissions.clone()
     } else {
         manifest
@@ -1271,6 +1311,7 @@ async fn install_tapp_file(
             .cloned()
             .collect()
     };
+    let granted = filter_install_permissions(role, requested_permissions).await;
 
     // 保存到数据库
     let manifest_path = tapp_dir.join("manifest.json");
@@ -1307,7 +1348,7 @@ async fn install_tapp_file(
     })?;
 
     // 普通用户安装的 Tapp 都是临时的
-    let is_temporary = !claims.is_admin;
+    let is_temporary = !is_current_admin;
 
     // 从 manifest 中提取 iconSvg
     let icon_svg = result
@@ -1327,7 +1368,7 @@ async fn install_tapp_file(
         installed_at: result.installed_at.to_rfc3339(),
         last_run_at: None,
         is_temporary,
-        is_admin_tapp: claims.is_admin,
+        is_admin_tapp: is_current_admin,
     })))
 }
 
@@ -1344,7 +1385,10 @@ async fn get_tapp(
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
     let user_id: Option<i32> = claims.as_ref().and_then(|c| c.sub.parse().ok());
-    let is_admin = claims.as_ref().map(|c| c.is_admin).unwrap_or(false);
+    let is_admin = match claims.as_ref() {
+        Some(claims) => current_is_admin(claims).await,
+        None => false,
+    };
     let admin_id = get_admin_user_id(&db).await?;
 
     // 先尝试从管理员的 Tapp 中查找
@@ -1900,6 +1944,7 @@ async fn start_tapp(
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
     let admin_id = get_admin_user_id(&db).await?;
     let now = Utc::now().fixed_offset();
+    let is_current_admin = current_is_admin(&claims).await;
 
     // 先尝试从管理员的 Tapp 中查找
     let admin_tapp = tapps::Entity::find()
@@ -1911,7 +1956,7 @@ async fn start_tapp(
 
     if let Some(tapp) = admin_tapp {
         // 管理员的 Tapp
-        if claims.is_admin {
+        if is_current_admin {
             // 管理员启动自己的 Tapp，更新数据库状态
             let mut active: tapps::ActiveModel = tapp.into();
             active.status = Set(tapps::TappStatus::Running);
@@ -2011,6 +2056,7 @@ async fn stop_tapp(
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
     let admin_id = get_admin_user_id(&db).await?;
+    let is_current_admin = current_is_admin(&claims).await;
 
     // 先尝试从管理员的 Tapp 中查找
     let admin_tapp = tapps::Entity::find()
@@ -2022,7 +2068,7 @@ async fn stop_tapp(
 
     if let Some(tapp) = admin_tapp {
         // 管理员的 Tapp
-        if claims.is_admin {
+        if is_current_admin {
             // 管理员停止自己的 Tapp，更新数据库状态
             let now = Utc::now().fixed_offset();
             let mut active: tapps::ActiveModel = tapp.into();
@@ -2204,10 +2250,7 @@ async fn uninstall_tapp(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     {
         // 这是管理员的 Tapp
-        if !claims.is_admin {
-            // 普通用户不能卸载管理员的 Tapp
-            return Err(StatusCode::FORBIDDEN);
-        }
+        require_current_admin(&claims).await?;
         // 管理员可以卸载自己的 Tapp
         return do_uninstall_tapp(&db, &tapp, keep_data).await;
     }
@@ -2308,7 +2351,7 @@ struct UpdateTappRequest {
     permissions: Option<Vec<String>>,
 }
 
-/// 更新 Tapp（从远程商店获取最新版本）
+/// 更新 Tapp（从远程商店或内置代码获取最新版本）
 ///
 /// 保留用户数据，仅更新代码和资源
 ///
@@ -2325,6 +2368,8 @@ async fn update_tapp(
         .sub
         .parse()
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
+    let role = current_user_role(&claims).await;
+    let is_current_admin = role == UserRole::Admin;
 
     let UpdateTappRequest {
         source,
@@ -2501,7 +2546,7 @@ async fn update_tapp(
         })?;
 
     // 确定授权的权限（保留原有权限或使用新权限）
-    let granted: Vec<String> = if let Some(perms) = permissions {
+    let requested_permissions: Vec<String> = if let Some(perms) = permissions {
         if perms.is_empty() {
             manifest.permissions.clone()
         } else {
@@ -2523,6 +2568,7 @@ async fn update_tapp(
             .cloned()
             .collect()
     };
+    let granted = filter_install_permissions(role, requested_permissions).await;
 
     // 更新数据库记录
     let now = Utc::now().fixed_offset();
@@ -2552,7 +2598,7 @@ async fn update_tapp(
     crate::api::tapp_runtime::invalidate_tapp_apis_cache(&tapp_id).await;
 
     // 普通用户安装的 Tapp 都是临时的
-    let is_temporary = !claims.is_admin;
+    let is_temporary = !is_current_admin;
 
     tracing::info!(
         "[TAPP] Updated Tapp {} from {} to {} for user {}",
@@ -2580,7 +2626,7 @@ async fn update_tapp(
         installed_at: result.installed_at.to_rfc3339(),
         last_run_at: result.last_run_at.map(|dt| dt.to_rfc3339()),
         is_temporary,
-        is_admin_tapp: claims.is_admin,
+        is_admin_tapp: is_current_admin,
     })))
 }
 
@@ -3125,9 +3171,7 @@ async fn add_store_source(
     Json(req): Json<AddStoreSourceRequest>,
 ) -> Result<Json<ApiResponse<StoreSourceResponse>>, StatusCode> {
     // 检查管理员权限
-    if !claims.is_admin {
-        return Err(StatusCode::FORBIDDEN);
-    }
+    require_current_admin(&claims).await?;
 
     // 检查 URL 是否已存在
     let existing = tapp_store_sources::Entity::find()
@@ -3177,9 +3221,7 @@ async fn update_store_source(
     Json(req): Json<UpdateStoreSourceRequest>,
 ) -> Result<Json<ApiResponse<StoreSourceResponse>>, StatusCode> {
     // 检查管理员权限
-    if !claims.is_admin {
-        return Err(StatusCode::FORBIDDEN);
-    }
+    require_current_admin(&claims).await?;
 
     // 获取现有源
     let source = tapp_store_sources::Entity::find_by_id(source_id)
@@ -3236,9 +3278,7 @@ async fn delete_store_source(
     Path(source_id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     // 检查管理员权限
-    if !claims.is_admin {
-        return Err(StatusCode::FORBIDDEN);
-    }
+    require_current_admin(&claims).await?;
 
     // 获取源信息
     let source = tapp_store_sources::Entity::find_by_id(source_id)
