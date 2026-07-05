@@ -454,7 +454,16 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       if (!detail || !bridgeRef.current) return
       const currentTapp = tappInstanceRef.current
       if (!currentTapp?.grantedPermissions?.includes('media:read')) return
-      bridgeRef.current.emit('mediaStateChange', buildMediaState(detail))
+      // 部分派发（如 selectSong 只带曲目字段）缺 lyrics/currentTime——
+      // 用全局状态兜底合并，避免 buildMediaState 把缺失字段编造成
+      // 「歌词清空/进度归零」传给 tapp（歌词高亮会闪没/跳回开头）
+      const globalState =
+        (window as { __musicPlayerState?: Record<string, unknown> })
+          .__musicPlayerState || {}
+      bridgeRef.current.emit(
+        'mediaStateChange',
+        buildMediaState({ ...globalState, ...detail }),
+      )
     }
 
     // 先注册监听，再触发同步（确保不会错过同步事件）
