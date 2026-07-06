@@ -32,8 +32,28 @@ export default function LoadingToast({ message, show }: LoadingToastProps) {
       }`}
     >
       <div className="loading-toast-container glass rounded-xl px-4 py-3 shadow-lg border flex items-center gap-3 backdrop-blur-md">
-        {/* 简约圆圈加载环 */}
-        <div className="loading-toast-spinner"></div>
+        <svg
+          className="loading-toast-spinner"
+          width="18"
+          height="18"
+          viewBox="0 0 20 20"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle
+            className="loading-toast-spinner-track"
+            cx="10"
+            cy="10"
+            r="8"
+            strokeWidth="2.5"
+          />
+          <path
+            className="loading-toast-spinner-segment"
+            d="M18 10a8 8 0 0 0-8-8"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+        </svg>
 
         {/* 加载文字 */}
         <span className="text-sm font-medium text-gray-700 dark:text-gray-200">

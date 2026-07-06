@@ -14,6 +14,7 @@
  */
 
 import type { TappCodeStructure } from '../examples/tapps/types'
+import { TAPP_ICON_TOKENS } from '../constants/icons'
 import type {
   BackgroundRequirement,
   CustomPlatformConfig,
@@ -250,7 +251,8 @@ export class TappRuntime {
                   id: widgetDef.id,
                   name: widgetDef.name,
                   description: widgetDef.description || '',
-                  icon: widgetDef.icon || manifest.icon || '📦',
+                  icon:
+                    widgetDef.icon || manifest.icon || TAPP_ICON_TOKENS.package,
                   sizes: widgetDef.sizes,
                   defaultSize: widgetDef.defaultSize,
                   category: widgetDef.category || 'utility',
@@ -422,7 +424,7 @@ export class TappRuntime {
           id: widgetDef.id,
           name: widgetDef.name,
           description: widgetDef.description || '',
-          icon: widgetDef.icon || manifest.icon || '📦',
+          icon: widgetDef.icon || manifest.icon || TAPP_ICON_TOKENS.package,
           sizes: widgetDef.sizes,
           defaultSize: widgetDef.defaultSize,
           category: widgetDef.category || 'utility',

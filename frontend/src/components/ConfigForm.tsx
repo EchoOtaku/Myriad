@@ -42,7 +42,7 @@ import {
   UiConfigSection,
 } from './config'
 import PlatformIcon from './PlatformIcon'
-import Toast from './Toast'
+import Toast, { type ToastType } from './Toast'
 import './ConfigForm.css'
 
 // 导入迁移后的配置区块组件
@@ -155,6 +155,7 @@ const ModernConfigForm: React.FC = () => {
   const [initialConfig, setInitialConfig] = useState<Config | null>(null)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState<ToastType>('info')
   const [activeSection, setActiveSection] = useState<string>('platforms')
   const [platformModalOpen, setPlatformModalOpen] = useState<string | null>(
     null,
@@ -206,6 +207,17 @@ const ModernConfigForm: React.FC = () => {
   })
   const [permissionLoading, setPermissionLoading] = useState(false)
 
+  const showMessage = useCallback(
+    (nextMessage: string, nextType: ToastType = 'info', duration = 3000) => {
+      setMessageType(nextType)
+      setMessage(nextMessage)
+      if (duration > 0) {
+        window.setTimeout(() => setMessage(''), duration)
+      }
+    },
+    [],
+  )
+
   // 更新权限配置
   const updatePermissionConfig = useCallback(
     async (key: string, value: boolean | number) => {
@@ -219,19 +231,18 @@ const ModernConfigForm: React.FC = () => {
         const response = await updatePermissionsConfig({ [key]: value })
 
         if (response.success) {
-          setMessage(t.config.permissionsSaved)
-          setTimeout(setMessage, 2000, '')
+          showMessage(t.config.permissionsSaved, 'success', 2000)
         } else {
           throw new Error(response.message || 'Failed')
         }
       } catch (error) {
         console.error('Failed to save permission:', error)
-        setMessage(t.config.permissionsSaveFailed)
+        showMessage(t.config.permissionsSaveFailed, 'error')
         // 回滚
         setPermissionConfig((prev) => ({ ...prev, [key]: prevValue }))
       }
     },
-    [t, permissionConfig],
+    [t, permissionConfig, showMessage],
   )
 
   // 加载权限配置
@@ -646,7 +657,7 @@ const ModernConfigForm: React.FC = () => {
       return
     }
 
-    setMessage(t.config.savingConfig)
+    showMessage(t.config.savingConfig, 'info', 0)
 
     try {
       // 获取 CSRF Token
@@ -654,7 +665,11 @@ const ModernConfigForm: React.FC = () => {
 
       const result = await updateConfig(config)
 
-      setMessage(`✓ ${t.config.configSaved} ${t.config.refreshing}`)
+      showMessage(
+        `${t.config.configSaved} ${t.config.refreshing}`,
+        'success',
+        0,
+      )
       setInitialConfig(JSON.parse(JSON.stringify(config)))
       notifyDirtyState(false)
       window.dispatchEvent(
@@ -671,22 +686,22 @@ const ModernConfigForm: React.FC = () => {
         await getCSRFToken(true)
         await reloadSystemConfig()
 
-        setMessage(`✓ ${t.config.savedSuccess}`)
+        showMessage(t.config.savedSuccess, 'success', 0)
 
         // 等待后端完成配置保存和环境变量重新加载，然后刷新页面
         setTimeout(() => {
           window.location.reload()
         }, 2000)
       } catch (_restartError) {
-        setMessage(`✓ ${t.config.savedSuccess}`)
+        showMessage(t.config.savedSuccess, 'success', 0)
         // 即使刷新配置失败，仍然刷新页面以应用数据库中的新配置
         setTimeout(() => {
           window.location.reload()
         }, 2000)
       }
     } catch (error) {
-      const errorMsg = `✗ ${t.config.configSaveFailed}: ${error instanceof Error ? error.message : t.errors.networkError}`
-      setMessage(errorMsg)
+      const errorMsg = `${t.config.configSaveFailed}: ${error instanceof Error ? error.message : t.errors.networkError}`
+      showMessage(errorMsg, 'error', 0)
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
           detail: { success: false, message: errorMsg },
@@ -696,7 +711,7 @@ const ModernConfigForm: React.FC = () => {
   }, [config])
 
   const handleReset = React.useCallback(async () => {
-    setMessage(t.config.resettingConfig)
+    showMessage(t.config.resettingConfig, 'info', 0)
 
     try {
       const data = await fetchConfig()
@@ -747,15 +762,14 @@ const ModernConfigForm: React.FC = () => {
 
       await new Promise((resolve) => setTimeout(resolve, 200))
 
-      setMessage(t.config.savingDefault)
+      showMessage(t.config.savingDefault, 'info', 0)
 
       // 获取 CSRF Token
       await getCSRFToken(true)
 
       const saveResult = await updateConfig(clearedData)
 
-      setMessage(`✓ ${t.config.configReset}`)
-      setTimeout(setMessage, 5000, '')
+      showMessage(t.config.configReset, 'success', 5000)
 
       window.dispatchEvent(
         new CustomEvent('config-reset-result', {
@@ -767,7 +781,7 @@ const ModernConfigForm: React.FC = () => {
       )
     } catch (error) {
       const errorMsg = `${t.config.resetFailed}${error instanceof Error ? error.message : t.errors.unknown}`
-      setMessage(errorMsg)
+      showMessage(errorMsg, 'error', 0)
       window.dispatchEvent(
         new CustomEvent('config-reset-result', {
           detail: { success: false, message: errorMsg },
@@ -795,7 +809,7 @@ const ModernConfigForm: React.FC = () => {
       const event = new CustomEvent('config-loaded', { detail: data })
       window.dispatchEvent(event)
     } catch (_error) {
-      setMessage(t.config.loadConfigFailed)
+      showMessage(t.config.loadConfigFailed, 'error')
     } finally {
       setLoading(false)
     }
@@ -1011,8 +1025,8 @@ const ModernConfigForm: React.FC = () => {
                             className={`status-badge ${isPlatformConfigured(platform) ? 'configured' : 'unconfigured'}`}
                           >
                             {isPlatformConfigured(platform)
-                              ? `✓ ${t.config.configured}`
-                              : `⚠ ${t.config.notConfigured}`}
+                              ? t.config.configured
+                              : t.config.notConfigured}
                           </span>
                         </div>
                         <p className="platform-desc">
@@ -1074,8 +1088,7 @@ const ModernConfigForm: React.FC = () => {
             configFields={config.ui_config.config_fields}
             updateValue={updateUiFieldValue}
             onMessage={(msg) => {
-              setMessage(msg)
-              setTimeout(setMessage, 3000, '')
+              showMessage(msg, 'success')
             }}
             {...props}
           />
@@ -1101,7 +1114,7 @@ const ModernConfigForm: React.FC = () => {
         return (
           <AdvancedConfigSection
             onReset={handleReset}
-            onMessage={setMessage}
+            onMessage={(msg, type = 'info') => showMessage(msg, type)}
             {...props}
           />
         )
@@ -1134,7 +1147,7 @@ const ModernConfigForm: React.FC = () => {
       transition={{ duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
     >
       {/* 消息提示 */}
-      {message && <Toast message={message} />}
+      {message && <Toast message={message} type={messageType} />}
 
       {/* 配置导航卡片 */}
       <motion.div

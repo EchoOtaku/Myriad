@@ -32,7 +32,7 @@ import {
   FaTools,
   FaTrash,
   FaWrench,
-  SiAppstore,
+  MyriadStoreIcon,
 } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -45,6 +45,7 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { EXAMPLE_TAPPS, getCategoryName } from '../examples'
+import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { getTappRuntime } from '../runtime'
 import { RemoteStoreService } from '../services/RemoteStoreService'
 import { getCategoryGradient } from '../utils/tappColors'
@@ -342,7 +343,7 @@ const UnifiedAppCard = forwardRef<
                   )}
                 </span>
                 {app.source === 'remote' && (
-                  <SiAppstore
+                  <MyriadStoreIcon
                     className="w-3 h-3 text-indigo-400"
                     title={t.tapp.remoteStore}
                   />
@@ -727,8 +728,18 @@ function SourcesSettingsModal({
                 key={source.url}
                 className="p-4 bg-white/50 dark:bg-neutral-800/50 rounded-xl flex items-center gap-3"
               >
-                <div className="text-2xl shrink-0">
-                  {source.icon || (source.official ? '🏪' : '📦')}
+                <div className="w-9 h-9 shrink-0 flex items-center justify-center">
+                  <TappIcon
+                    icon={
+                      source.icon ||
+                      (source.official
+                        ? TAPP_ICON_TOKENS.store
+                        : TAPP_ICON_TOKENS.package)
+                    }
+                    name={source.name}
+                    sizeClass="w-8 h-8"
+                    textSizeClass="text-2xl"
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -1332,12 +1343,10 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
         <div className="px-6 py-4 border-b border-gray-200/50 dark:border-neutral-700/50">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-              <SiAppstore
-                className="w-5 h-5"
-                style={{
-                  color:
-                    'var(--bg-accent, rgb(var(--color-accent, 99 102 241)))',
-                }}
+              <TappIcon
+                icon={TAPP_ICON_TOKENS.store}
+                name={t.tapp.storeTitle}
+                sizeClass="w-7 h-7"
               />
               {t.tapp.storeTitle}
             </h2>

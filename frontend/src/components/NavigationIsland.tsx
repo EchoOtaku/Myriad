@@ -7,12 +7,13 @@
  * - 处理一二级导航的切换动画
  */
 
-import { SiAppstore } from '@lib/icons'
+import { MyriadStoreIcon } from '@lib/icons'
 import {
   memo,
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -25,6 +26,22 @@ import { useNavigation } from '../contexts/NavigationContext'
 interface ModeMetrics {
   height?: number
   width?: number
+}
+
+/** 一级导航项定义 - 数据驱动渲染，避免重复 JSX */
+interface PrimaryNavItem {
+  id: string
+  path: string
+  icon: React.ReactNode
+  tooltip: string
+  ariaLabel: string
+  /** true → active 用前缀匹配（如 /tapp 匹配 /tapp/xxx） */
+  matchPrefix?: boolean
+  /**
+   * true → 渲染为 <a>（利于 SEO / 中键新开），点击直接 navigate；
+   * false → 渲染为 <button>，点击走 handleNavToPage（可触发二级导航自动展开）
+   */
+  asAnchor?: boolean
 }
 
 // 常量
@@ -857,6 +874,51 @@ export function NavigationIsland() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [currentRenderMode, isAnimating, handleCollapse])
 
+  // 一级导航项 - 数据驱动，仅随语言变化重建（active 在渲染时按当前路由计算）
+  const primaryNavItems = useMemo<PrimaryNavItem[]>(
+    () => [
+      {
+        id: 'main',
+        path: '/',
+        icon: IconHome,
+        tooltip: t.nav.home,
+        ariaLabel: t.nav.backToHome,
+        asAnchor: true,
+      },
+      {
+        id: 'library',
+        path: '/library',
+        icon: IconLibrary,
+        tooltip: t.nav.library,
+        ariaLabel: t.nav.library,
+      },
+      {
+        id: 'brew',
+        path: '/brew',
+        icon: IconBrew,
+        tooltip: t.nav.brewReading,
+        ariaLabel: t.nav.brewReading,
+      },
+      {
+        id: 'reports',
+        path: '/reports',
+        icon: IconReports,
+        tooltip: t.nav.reports,
+        ariaLabel: t.nav.reports,
+      },
+      {
+        id: 'tapp',
+        path: '/tapp',
+        icon: <MyriadStoreIcon className="w-5 h-5" />,
+        tooltip: t.nav.tappStore,
+        ariaLabel: t.nav.openTappStore,
+        matchPrefix: true,
+        asAnchor: true,
+      },
+    ],
+    [t],
+  )
+
   return (
     <nav
       ref={navContainerRef}
@@ -930,89 +992,47 @@ export function NavigationIsland() {
               role="toolbar"
               aria-label={t.nav.mainNavigation}
             >
-              {/* 主页按钮 */}
-              <div className="nav-group" data-group="main">
-                <a
-                  href="/"
-                  className={`nav-item ${location.pathname === '/' ? 'active' : ''}`}
-                  data-tooltip={t.nav.home}
-                  aria-label={t.nav.backToHome}
-                  aria-current={location.pathname === '/' ? 'page' : undefined}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    navigate('/')
-                  }}
-                >
-                  {IconHome}
-                </a>
-              </div>
-
-              {/* 资料库按钮 */}
-              <div className="nav-group nav-group-spaced" data-group="library">
-                <button
-                  className={`nav-item ${location.pathname === '/library' ? 'active' : ''}`}
-                  data-tooltip={t.nav.library}
-                  aria-label={t.nav.library}
-                  aria-current={
-                    location.pathname === '/library' ? 'page' : undefined
-                  }
-                  onClick={() => handleNavToPage('/library')}
-                >
-                  {IconLibrary}
-                </button>
-              </div>
-
-              {/* Brew 阅读按钮 - 使用咖啡杯图标契合 Brew 品牌 */}
-              <div className="nav-group nav-group-spaced" data-group="brew">
-                <button
-                  className={`nav-item ${location.pathname === '/brew' ? 'active' : ''}`}
-                  data-tooltip={t.nav.brewReading}
-                  aria-label={t.nav.brewReading}
-                  aria-current={
-                    location.pathname === '/brew' ? 'page' : undefined
-                  }
-                  onClick={() => handleNavToPage('/brew')}
-                >
-                  {IconBrew}
-                </button>
-              </div>
-
-              {/* 报告按钮 */}
-              <div className="nav-group nav-group-spaced" data-group="reports">
-                <button
-                  className={`nav-item ${location.pathname === '/reports' ? 'active' : ''}`}
-                  data-tooltip={t.nav.reports}
-                  aria-label={t.nav.reports}
-                  aria-current={
-                    location.pathname === '/reports' ? 'page' : undefined
-                  }
-                  onClick={() => handleNavToPage('/reports')}
-                >
-                  {IconReports}
-                </button>
-              </div>
-
-              {/* Tapp 应用商店按钮 */}
-              <div className="nav-group nav-group-spaced" data-group="tapp">
-                <a
-                  href="/tapp"
-                  className={`nav-item ${location.pathname === '/tapp' || location.pathname.startsWith('/tapp/') ? 'active' : ''}`}
-                  data-tooltip={t.nav.tappStore}
-                  aria-label={t.nav.openTappStore}
-                  aria-current={
-                    location.pathname === '/tapp' ||
-                    location.pathname.startsWith('/tapp/')
-                      ? 'page'
-                      : undefined
-                  }
-                  onClick={(e) => {
-                    e.preventDefault()
-                    navigate('/tapp')
-                  }}
-                >
-                  <SiAppstore className="w-5 h-5" />
-                </a>
-              </div>
+              {primaryNavItems.map((item, i) => {
+                const active = item.matchPrefix
+                  ? location.pathname === item.path ||
+                    location.pathname.startsWith(`${item.path}/`)
+                  : location.pathname === item.path
+                const className = `nav-item ${active ? 'active' : ''}`
+                const ariaCurrent = active ? 'page' : undefined
+                return (
+                  <div
+                    key={item.id}
+                    className={`nav-group${i > 0 ? ' nav-group-spaced' : ''}`}
+                    data-group={item.id}
+                  >
+                    {item.asAnchor ? (
+                      <a
+                        href={item.path}
+                        className={className}
+                        data-tooltip={item.tooltip}
+                        aria-label={item.ariaLabel}
+                        aria-current={ariaCurrent}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          navigate(item.path)
+                        }}
+                      >
+                        {item.icon}
+                      </a>
+                    ) : (
+                      <button
+                        className={className}
+                        data-tooltip={item.tooltip}
+                        aria-label={item.ariaLabel}
+                        aria-current={ariaCurrent}
+                        onClick={() => handleNavToPage(item.path)}
+                      >
+                        {item.icon}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

@@ -3,7 +3,7 @@
  * 16x4 网格布局，支持拖拽编辑
  */
 
-import { FaTimes, LuPackage } from '@lib/icons'
+import { FaTimes } from '@lib/icons'
 
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -216,7 +216,7 @@ const WidgetGridItem = React.memo(
                   e.stopPropagation()
                   onRemove(widget.id)
                 }}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-30 transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
+                className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center shadow-md z-30 transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
                 title={t.widgetGrid.deleteWidget}
                 aria-label={t.widgetGrid.deleteWidget}
               >
@@ -1171,7 +1171,14 @@ export default function WidgetGrid({
         <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200/30 dark:border-white/5">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
-              <LuPackage size={18} />
+              <img
+                src="/icons/widgets/library.png"
+                alt=""
+                aria-hidden="true"
+                className="h-5 w-5 object-contain"
+                draggable={false}
+                decoding="async"
+              />
               <span className="font-bold">{t.widgetGrid.widgetLibrary}</span>
             </div>
 

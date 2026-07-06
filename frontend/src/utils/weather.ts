@@ -5,6 +5,27 @@ import {
 } from './geoLocation'
 import { dedupedFetch } from './requestDedup'
 
+const WEATHER_ICON_BASE = '/icons/weather'
+
+export const WEATHER_ICON_ASSETS = {
+  sunny: `${WEATHER_ICON_BASE}/sunny.png`,
+  partlyCloudy: `${WEATHER_ICON_BASE}/partly-cloudy.png`,
+  cloudy: `${WEATHER_ICON_BASE}/cloudy.png`,
+  fog: `${WEATHER_ICON_BASE}/fog.png`,
+  drizzle: `${WEATHER_ICON_BASE}/drizzle.png`,
+  rain: `${WEATHER_ICON_BASE}/rain.png`,
+  snow: `${WEATHER_ICON_BASE}/snow.png`,
+  thunderstorm: `${WEATHER_ICON_BASE}/thunderstorm.png`,
+} as const
+
+export const WEATHER_DETAIL_ICON_ASSETS = {
+  humidity: `${WEATHER_ICON_BASE}/humidity.png`,
+  wind: `${WEATHER_ICON_BASE}/wind.png`,
+  airGood: `${WEATHER_ICON_BASE}/air-good.png`,
+  airModerate: `${WEATHER_ICON_BASE}/air-moderate.png`,
+  airPoor: `${WEATHER_ICON_BASE}/air-poor.png`,
+} as const
+
 export interface ForecastDay {
   date: string
   maxTemp: number
@@ -131,7 +152,7 @@ async function getWeatherDataWithCache(location: {
     const cacheAge = Date.now() - Number.parseInt(cacheTime)
     // 天气数据缓存30分钟（天气会变化）
     if (cacheAge < 30 * 60 * 1000) {
-      return JSON.parse(cached)
+      return normalizeWeatherIconAssets(JSON.parse(cached))
     }
   }
 
@@ -263,37 +284,54 @@ function getWeatherTextFromWMO(code: number): string {
 /**
  * WMO 天气代码转图标
  */
-function getWeatherIconFromWMO(code: number): string {
+export function getWeatherIconFromWMO(code: number): string {
   const iconMap: Record<number, string> = {
-    0: '☀️',
-    1: '🌤️',
-    2: '⛅',
-    3: '☁️',
-    45: '🌫️',
-    48: '🌫️',
-    51: '🌦️',
-    53: '🌦️',
-    55: '🌦️',
-    56: '🌧️',
-    57: '🌧️',
-    61: '🌧️',
-    63: '🌧️',
-    65: '🌧️',
-    66: '🌧️',
-    67: '🌧️',
-    71: '🌨️',
-    73: '🌨️',
-    75: '❄️',
-    77: '🌨️',
-    80: '🌦️',
-    81: '🌧️',
-    82: '⛈️',
-    85: '🌨️',
-    86: '❄️',
-    95: '⛈️',
-    96: '⛈️',
-    99: '⛈️',
+    0: WEATHER_ICON_ASSETS.sunny,
+    1: WEATHER_ICON_ASSETS.partlyCloudy,
+    2: WEATHER_ICON_ASSETS.partlyCloudy,
+    3: WEATHER_ICON_ASSETS.cloudy,
+    45: WEATHER_ICON_ASSETS.fog,
+    48: WEATHER_ICON_ASSETS.fog,
+    51: WEATHER_ICON_ASSETS.drizzle,
+    53: WEATHER_ICON_ASSETS.drizzle,
+    55: WEATHER_ICON_ASSETS.drizzle,
+    56: WEATHER_ICON_ASSETS.drizzle,
+    57: WEATHER_ICON_ASSETS.drizzle,
+    61: WEATHER_ICON_ASSETS.rain,
+    63: WEATHER_ICON_ASSETS.rain,
+    65: WEATHER_ICON_ASSETS.rain,
+    66: WEATHER_ICON_ASSETS.rain,
+    67: WEATHER_ICON_ASSETS.rain,
+    71: WEATHER_ICON_ASSETS.snow,
+    73: WEATHER_ICON_ASSETS.snow,
+    75: WEATHER_ICON_ASSETS.snow,
+    77: WEATHER_ICON_ASSETS.snow,
+    80: WEATHER_ICON_ASSETS.drizzle,
+    81: WEATHER_ICON_ASSETS.rain,
+    82: WEATHER_ICON_ASSETS.thunderstorm,
+    85: WEATHER_ICON_ASSETS.snow,
+    86: WEATHER_ICON_ASSETS.snow,
+    95: WEATHER_ICON_ASSETS.thunderstorm,
+    96: WEATHER_ICON_ASSETS.thunderstorm,
+    99: WEATHER_ICON_ASSETS.thunderstorm,
   }
 
-  return iconMap[code] || '🌤️'
+  return iconMap[code] || WEATHER_ICON_ASSETS.partlyCloudy
+}
+
+export function getAirQualityIcon(aqi: number): string {
+  if (aqi <= 50) return WEATHER_DETAIL_ICON_ASSETS.airGood
+  if (aqi <= 100) return WEATHER_DETAIL_ICON_ASSETS.airModerate
+  return WEATHER_DETAIL_ICON_ASSETS.airPoor
+}
+
+export function normalizeWeatherIconAssets(data: WeatherData): WeatherData {
+  return {
+    ...data,
+    icon: getWeatherIconFromWMO(data.weatherCode),
+    forecast: data.forecast?.map((day) => ({
+      ...day,
+      icon: getWeatherIconFromWMO(day.weatherCode),
+    })),
+  }
 }

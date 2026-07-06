@@ -16,8 +16,17 @@ import {
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
-import { getWeatherInfo } from '../../utils/dynamicContent'
+import {
+  getAirQualityIcon,
+  getWeatherInfo,
+  normalizeWeatherIconAssets,
+  WEATHER_DETAIL_ICON_ASSETS,
+  WEATHER_ICON_ASSETS,
+} from '../../utils/dynamicContent'
+import { WeatherAssetIcon } from '../weather/WeatherAssetIcon'
+import { FitText } from './shared/FitText'
 import { GlowBackground } from './shared/GlowBackground'
+import { WidgetShell } from './shared/WidgetShell'
 
 // 缓存配置
 const CACHE_KEY = 'weather_data_cache'
@@ -103,9 +112,6 @@ export const WeatherWidget = memo(
     // framer-motion 动态模块（仅在需要动画时加载）
     const [FM, setFM] = useState<null | { motion: any }>(null)
 
-    // 非中文语言时减小标题字体（英文等语言单词较长）
-    const isNonChinese = !locale.startsWith('zh')
-
     // 🆕 使用触发式动画 - 组件挂载时播放一次天气图标动画
     const { isAnimating } = useLoopAnimation({
       duration: 3000, // 天气图标摇摆约3秒周期
@@ -144,7 +150,7 @@ export const WeatherWidget = memo(
         if (cached) {
           const { data, timestamp } = JSON.parse(cached)
           if (Date.now() - timestamp < CACHE_DURATION) {
-            setWeatherData(data)
+            setWeatherData(normalizeWeatherIconAssets(data))
             return true
           }
         }
@@ -192,7 +198,7 @@ export const WeatherWidget = memo(
           temperature: '24°',
           weather: t.weatherWidget.sunny,
           city: t.weatherWidget.sampleCity,
-          icon: '☀️',
+          icon: WEATHER_ICON_ASSETS.sunny,
           humidity: 45,
           windSpeed: 12,
           weatherCode: 0,
@@ -252,57 +258,65 @@ export const WeatherWidget = memo(
     // 4x2 宽版布局 - 左右结构重构 (左3/5 右2/5)
     if (config.size === '4x2') {
       return (
-        <div
-          ref={containerRef}
-          className="relative h-full w-full rounded-xl overflow-hidden glass"
+        <WidgetShell
+          containerRef={containerRef}
+          padding={{ x: 16, y: 12 }}
+          contentClassName="flex flex-row"
+          background={
+            <GlowBackground
+              color={themeColor}
+              animLevel={anim.level}
+              shouldAnimate={anim.loop}
+              variant="single"
+              size="lg"
+            />
+          }
         >
-          {/* 动态背景光效 */}
-          <GlowBackground
-            color={themeColor}
-            animLevel={anim.level}
-            shouldAnimate={anim.loop}
-            variant="single"
-            size="lg"
-          />
-
-          <div className="absolute inset-0 flex flex-row px-4 py-3">
-            {/* 左侧：主要信息 (60%) */}
-            <div className="w-[60%] flex flex-col justify-between border-r border-gray-200/10 dark:border-white/10">
-              {/* 顶部：城市 */}
+          {/* 左侧：主要信息 (60%) */}
+          <div className="w-[60%] flex flex-col justify-between">
+              {/* 顶部：城市（flex-1 拿到确定宽度，避免 fit-content 测量陷阱） */}
               <div className="flex justify-between items-start">
-                <div
-                  className="font-bold text-gray-700 dark:text-gray-200 truncate"
-                  style={{ fontSize: isNonChinese ? '0.75rem' : '1rem' }}
+                <FitText
+                  as="div"
+                  className="font-bold text-gray-700 dark:text-gray-200 flex-1 min-w-0"
+                  max={16}
+                  min={11}
                 >
                   {weatherData.city}
-                </div>
+                </FitText>
               </div>
 
               {/* 中部：温度和图标 */}
               <div className="flex items-center gap-3 my-auto">
                 <MDiv
-                  className="text-4xl drop-shadow-md shrink-0"
+                  className="shrink-0"
                   initial={{ scale: 0.5, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                 >
-                  {weatherData.icon}
+                  <WeatherAssetIcon
+                    icon={weatherData.icon}
+                    className="h-12 w-12 object-contain drop-shadow-md"
+                    fallbackClassName="text-4xl leading-none drop-shadow-md"
+                  />
                 </MDiv>
-                <div className="flex flex-col justify-center min-w-0">
+                <div className="flex flex-col justify-center min-w-0 flex-1">
                   <div className="flex items-baseline gap-2 overflow-hidden">
-                    <span
-                      className="font-black text-gray-800 dark:text-gray-100 leading-none tracking-tight truncate"
-                      style={{ fontSize: isNonChinese ? '1.75rem' : '2.25rem' }}
+                    <FitText
+                      className="font-black text-gray-800 dark:text-gray-100 tracking-tight flex-1 min-w-0"
+                      max={42}
+                      min={26}
                     >
                       {weatherData.temperature}
-                    </span>
+                    </FitText>
                   </div>
                   <div className="flex items-baseline gap-2 mt-1 overflow-hidden whitespace-nowrap">
-                    <span
-                      className="text-gray-600 dark:text-gray-400 font-medium truncate"
-                      style={{ fontSize: isNonChinese ? '0.7rem' : '0.875rem' }}
+                    <FitText
+                      className="text-gray-600 dark:text-gray-400 font-medium flex-1"
+                      max={14}
+                      min={10}
                     >
                       {weatherText}
-                    </span>
+                    </FitText>
                     {weatherData.feelsLike !== undefined && (
                       <span className="text-xs text-gray-500 dark:text-gray-500 shrink-0">
                         {t.weather.feelsLike} {weatherData.feelsLike}°
@@ -322,7 +336,10 @@ export const WeatherWidget = memo(
                     className="flex items-center gap-1"
                     title={t.weather.humidity}
                   >
-                    <span>💧</span>
+                    <WeatherAssetIcon
+                      icon={WEATHER_DETAIL_ICON_ASSETS.humidity}
+                      className="h-3.5 w-3.5 shrink-0 object-contain"
+                    />
                     <span>{weatherData.humidity}%</span>
                   </div>
                 )}
@@ -331,7 +348,10 @@ export const WeatherWidget = memo(
                     className="flex items-center gap-1"
                     title={t.weather.windSpeed}
                   >
-                    <span>🍃</span>
+                    <WeatherAssetIcon
+                      icon={WEATHER_DETAIL_ICON_ASSETS.wind}
+                      className="h-3.5 w-3.5 shrink-0 object-contain"
+                    />
                     <span>
                       {Math.round(weatherData.windSpeed)}
                       km/h
@@ -343,13 +363,10 @@ export const WeatherWidget = memo(
                     className="flex items-center gap-1"
                     title={t.weather.airQuality}
                   >
-                    <span>
-                      {weatherData.aqi <= 50
-                        ? '🌿'
-                        : weatherData.aqi <= 100
-                          ? '🌫️'
-                          : '😷'}
-                    </span>
+                    <WeatherAssetIcon
+                      icon={getAirQualityIcon(weatherData.aqi)}
+                      className="h-3.5 w-3.5 shrink-0 object-contain"
+                    />
                     <span
                       className={
                         weatherData.aqi <= 50
@@ -387,8 +404,12 @@ export const WeatherWidget = memo(
                         weekday: 'short',
                       })}
                     </div>
-                    <div className="shrink-0 leading-none mx-1 text-base">
-                      {day.icon}
+                    <div className="shrink-0 leading-none mx-1">
+                      <WeatherAssetIcon
+                        icon={day.icon}
+                        className="h-5 w-5 object-contain"
+                        fallbackClassName="text-base leading-none"
+                      />
                     </div>
                     <div className="flex items-center gap-1 justify-end flex-1">
                       <span
@@ -415,8 +436,7 @@ export const WeatherWidget = memo(
                 </div>
               )}
             </div>
-          </div>
-        </div>
+        </WidgetShell>
       )
     }
 
@@ -429,59 +449,75 @@ export const WeatherWidget = memo(
           : null
 
       return (
-        <div
-          ref={containerRef}
-          className="relative h-full w-full rounded-xl overflow-hidden glass"
+        <WidgetShell
+          containerRef={containerRef}
+          padding={{ x: 16, y: 8 }}
+          contentClassName="flex flex-row"
+          background={
+            <GlowBackground
+              color={themeColor}
+              animLevel={anim.level}
+              shouldAnimate={anim.loop}
+              variant="single"
+              size="lg"
+            />
+          }
         >
-          {/* 动态背景光效 */}
-          <GlowBackground
-            color={themeColor}
-            animLevel={anim.level}
-            shouldAnimate={anim.loop}
-            variant="single"
-            size="lg"
-          />
-
-          <div className="absolute inset-0 flex flex-row px-4 py-2">
-            {/* 左侧：主要信息 (75%) */}
-            <div className="w-[75%] flex items-center pr-3 border-r border-gray-200/10 dark:border-white/10 gap-3">
+          {/* 左侧：主要信息 (75%) */}
+          <div className="w-[75%] flex items-center pr-3 gap-3">
               {/* 图标 & 温度 */}
               <div className="flex items-center gap-2 shrink-0">
-                <div className="text-3xl">{weatherData.icon}</div>
-                <div className="flex flex-col justify-center">
-                  <div
-                    className="font-black text-gray-800 dark:text-gray-100 leading-none"
-                    style={{ fontSize: isNonChinese ? '1.25rem' : '1.5rem' }}
+                <WeatherAssetIcon
+                  icon={weatherData.icon}
+                  className="h-10 w-10 shrink-0 object-contain drop-shadow-sm"
+                  fallbackClassName="text-3xl leading-none"
+                />
+                <div className="flex flex-col justify-center max-w-26">
+                  <FitText
+                    as="div"
+                    className="font-black text-gray-800 dark:text-gray-100"
+                    max={26}
+                    min={18}
                   >
                     {weatherData.temperature}
-                  </div>
-                  <div
+                  </FitText>
+                  <FitText
+                    as="div"
                     className="text-gray-500 dark:text-gray-400 mt-0.5 font-medium"
-                    style={{ fontSize: isNonChinese ? '0.625rem' : '0.75rem' }}
+                    max={10}
+                    min={9}
                   >
                     {weatherText}
-                  </div>
+                  </FitText>
                 </div>
               </div>
 
               {/* 城市 & 详情 */}
               <div className="flex flex-col justify-center gap-1 min-w-0 flex-1">
-                <div
-                  className="font-bold text-gray-700 dark:text-gray-200 truncate"
-                  style={{ fontSize: isNonChinese ? '0.7rem' : '0.875rem' }}
+                <FitText
+                  as="div"
+                  className="font-bold text-gray-700 dark:text-gray-200"
+                  max={12}
+                  min={10}
                 >
                   {weatherData.city}
-                </div>
+                </FitText>
                 <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                   {weatherData.humidity !== undefined && (
                     <span className="flex items-center gap-0.5 whitespace-nowrap">
-                      <span>💧</span>
+                      <WeatherAssetIcon
+                        icon={WEATHER_DETAIL_ICON_ASSETS.humidity}
+                        className="h-3.5 w-3.5 shrink-0 object-contain"
+                      />
                       {weatherData.humidity}%
                     </span>
                   )}
                   {weatherData.windSpeed !== undefined && (
                     <span className="flex items-center gap-0.5 whitespace-nowrap">
-                      <span>🍃</span>
+                      <WeatherAssetIcon
+                        icon={WEATHER_DETAIL_ICON_ASSETS.wind}
+                        className="h-3.5 w-3.5 shrink-0 object-contain"
+                      />
                       {Math.round(weatherData.windSpeed)}
                     </span>
                   )}
@@ -497,9 +533,11 @@ export const WeatherWidget = memo(
                     {t.weather.tomorrow}
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="leading-none text-base">
-                      {tomorrow.icon}
-                    </span>
+                    <WeatherAssetIcon
+                      icon={tomorrow.icon}
+                      className="h-5 w-5 shrink-0 object-contain"
+                      fallbackClassName="text-base leading-none"
+                    />
                     <div className="flex flex-col items-end leading-none gap-0.5">
                       <span className="font-bold text-gray-800 dark:text-gray-100 text-xs">
                         {tomorrow.maxTemp}°
@@ -516,31 +554,29 @@ export const WeatherWidget = memo(
                 </div>
               )}
             </div>
-          </div>
-        </div>
+        </WidgetShell>
       )
     }
 
     return (
-      <div
-        ref={containerRef}
-        className="relative h-full w-full rounded-xl overflow-hidden glass"
+      <WidgetShell
+        containerRef={containerRef}
+        padding={{ x: 14, y: 12 }}
+        contentClassName="flex flex-col"
+        background={
+          <GlowBackground
+            color={themeColor}
+            animLevel={anim.level}
+            shouldAnimate={anim.loop}
+            variant="single"
+            size="md"
+          />
+        }
       >
-        {/* 动态背景光效 - 呼吸效果 */}
-        <GlowBackground
-          color={themeColor}
-          animLevel={anim.level}
-          shouldAnimate={anim.loop}
-          variant="single"
-          size="md"
-        />
-
-        {/* 主内容区：2x2紧凑布局 */}
-        <div className="absolute inset-0 flex flex-col p-3">
-          {/* 顶部：图标 - 轻微摆动 */}
-          <div className="h-9 shrink-0">
+        {/* 图标：与温度紧邻，整组内容在卡内垂直居中 */}
+        <div className="h-9 shrink-0 mb-1">
             <MSpan
-              className="text-3xl leading-none inline-block origin-center"
+              className="inline-flex h-9 w-9 items-center justify-center origin-center"
               style={{ transformOrigin: 'center center' }}
               initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
               animate={
@@ -558,63 +594,70 @@ export const WeatherWidget = memo(
                   : { duration: 0.4 }
               }
             >
-              {weatherData.icon}
+              <WeatherAssetIcon
+                icon={weatherData.icon}
+                className="h-9 w-9 object-contain drop-shadow-sm"
+                fallbackClassName="text-3xl leading-none"
+              />
             </MSpan>
           </div>
 
-          {/* 主要信息：温度和天气状态 */}
-          <div className="flex-1 flex flex-col justify-center">
-            <MDiv
-              className="flex items-baseline gap-2 mb-1"
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{
-                duration: 0.6,
-                delay: 0.2,
-                ease: [0.34, 1.56, 0.64, 1],
-              }}
+          {/* 主视觉：温度 + 状态同一基线横排，吃满整行宽度（右侧不留死区）。
+              温度是数字与语言无关，固定大号；状态 FitText 占余下宽度自适应。
+              不加 overflow 裁剪，绝不拆切字形 */}
+          <MDiv
+            className="flex items-baseline gap-2 min-w-0 mb-1.5 shrink-0"
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{
+              duration: 0.6,
+              delay: 0.2,
+              ease: [0.34, 1.56, 0.64, 1],
+            }}
+          >
+            <div
+              className="font-black text-gray-800 dark:text-gray-100 leading-none shrink-0"
+              style={{ fontSize: '2.125rem' }}
             >
-              <span
-                className="font-black text-gray-800 dark:text-gray-100 leading-none"
-                style={{ fontSize: isNonChinese ? '1.75rem' : '2.25rem' }}
-              >
-                {weatherData.temperature}
-              </span>
-              <MSpan
-                className="text-gray-600 dark:text-gray-400 font-medium"
-                style={{ fontSize: isNonChinese ? '0.7rem' : '0.875rem' }}
-                initial={{ opacity: 0 }}
-                animate={
-                  canAnimate ? { opacity: [0.6, 1, 0.6] } : { opacity: 1 }
-                }
-                transition={
-                  canAnimate
-                    ? { duration: 3, repeat: 2, ease: 'easeInOut' }
-                    : { duration: 0.3 }
-                }
-              >
-                {weatherText}
-              </MSpan>
-            </MDiv>
-            <MDiv
-              className="text-xs text-gray-600 dark:text-gray-400 mb-2"
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{
-                duration: 0.6,
-                delay: 0.3,
-                ease: [0.34, 1.56, 0.64, 1],
-              }}
+              {weatherData.temperature}
+            </div>
+            {/* 状态：占满温度右侧余宽，任何语言单行自适应 */}
+            <FitText
+              className="flex-1 text-gray-600 dark:text-gray-400 font-medium"
+              max={13}
+              min={10}
+            >
+              {weatherText}
+            </FitText>
+          </MDiv>
+
+          {/* 底部信息组：城市 + 详情，次级信息收在底部，弱化颜色拉开层级 */}
+          <MDiv
+            className="shrink-0 mb-1"
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{
+              duration: 0.6,
+              delay: 0.3,
+              ease: [0.34, 1.56, 0.64, 1],
+            }}
+          >
+            <FitText
+              as="div"
+              className="text-gray-500 dark:text-gray-500"
+              max={10}
+              min={9}
             >
               {weatherData.city}
-            </MDiv>
-          </div>
+            </FitText>
+          </MDiv>
 
-          {/* 次要信息：湿度/风速 - 横向紧凑排列 */}
+          {/* 次要信息：湿度/风速/空气质量 - 横向紧凑排列，shrink-0 保证不被主区挤出 */}
           {(weatherData.humidity !== undefined ||
-            weatherData.windSpeed !== undefined) && (
+            weatherData.windSpeed !== undefined ||
+            weatherData.aqi !== undefined) && (
             <MDiv
-              className="flex items-center gap-2 text-[10px]"
+              className="flex items-center gap-1.5 text-[10px] shrink-0 overflow-hidden whitespace-nowrap mt-auto"
               initial={{ y: 10, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={
@@ -628,7 +671,10 @@ export const WeatherWidget = memo(
                   className="flex items-center gap-0.5"
                   title={t.weather.humidity}
                 >
-                  <span>💧</span>
+                  <WeatherAssetIcon
+                    icon={WEATHER_DETAIL_ICON_ASSETS.humidity}
+                    className="h-3.5 w-3.5 shrink-0 object-contain"
+                  />
                   <span className="text-gray-600 dark:text-gray-400">
                     {weatherData.humidity}%
                   </span>
@@ -639,17 +685,43 @@ export const WeatherWidget = memo(
                   className="flex items-center gap-0.5"
                   title={t.weather.windSpeed}
                 >
-                  <span>🍃</span>
+                  <WeatherAssetIcon
+                    icon={WEATHER_DETAIL_ICON_ASSETS.wind}
+                    className="h-3.5 w-3.5 shrink-0 object-contain"
+                  />
+                  {/* 2x2 空间紧，只显数字，单位收进 title 提示 */}
                   <span className="text-gray-600 dark:text-gray-400">
                     {Math.round(weatherData.windSpeed)}
-                    km/h
+                  </span>
+                </div>
+              )}
+              {weatherData.aqi !== undefined && (
+                <div
+                  className="flex items-center gap-0.5"
+                  title={t.weather.airQuality}
+                >
+                  <WeatherAssetIcon
+                    icon={getAirQualityIcon(weatherData.aqi)}
+                    className="h-3.5 w-3.5 shrink-0 object-contain"
+                  />
+                  <span
+                    className={
+                      weatherData.aqi <= 50
+                        ? 'text-green-500'
+                        : weatherData.aqi <= 100
+                          ? 'text-yellow-500'
+                          : weatherData.aqi <= 150
+                            ? 'text-orange-500'
+                            : 'text-red-500'
+                    }
+                  >
+                    {weatherData.aqi}
                   </span>
                 </div>
               )}
             </MDiv>
           )}
-        </div>
-      </div>
+        </WidgetShell>
     )
   },
 )

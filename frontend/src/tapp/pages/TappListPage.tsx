@@ -18,7 +18,7 @@ import {
   FaTimes,
   FaTrash,
   FaUpload,
-  SiAppstore,
+  MyriadStoreIcon,
 } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -28,7 +28,7 @@ import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import AnimatedView from '../../components/AnimatedView'
-import Toast from '../../components/Toast'
+import Toast, { type ToastType } from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { useTappScheduler, useTappStagger } from '../../hooks/animation'
@@ -39,6 +39,7 @@ import { useTitleFont } from '../../hooks/useTitleFont'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { TappIcon } from '../components/TappIcon'
 import { TappStore } from '../components/TappStore'
+import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { getTappRuntime } from '../runtime'
 import { isWebKit } from '../runtime/TappPageSandbox'
@@ -688,6 +689,7 @@ export function TappListPage() {
   const [showInstallModal, setShowInstallModal] = useState(false)
   const [showStore, setShowStore] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState<ToastType>('info')
   // 卸载确认对话框状态
   const [showUninstallDialog, setShowUninstallDialog] = useState(false)
   const [uninstallTargetId, setUninstallTargetId] = useState<string | null>(
@@ -695,6 +697,14 @@ export function TappListPage() {
   )
   const [uninstallTargetName, setUninstallTargetName] = useState('')
   const runtime = getTappRuntime()
+
+  const showToastMessage = useCallback(
+    (message: string, type: ToastType = 'info') => {
+      setToastType(type)
+      setToastMessage(message)
+    },
+    [],
+  )
 
   // 馃幀 鍒濆鍖?Tapp 椤甸潰璋冨害鍣紙缁熶竴鍔ㄧ敾鍗忚皟锛?
   useTappScheduler()
@@ -803,7 +813,7 @@ export function TappListPage() {
       setUninstallTargetId(null)
     } catch (error) {
       console.error('Failed to uninstall Tapp:', error)
-      setToastMessage(t.tapp.uninstallFailed || 'Uninstall failed')
+      showToastMessage(t.tapp.uninstallFailed || 'Uninstall failed', 'error')
       throw error // 让组件处理 loading 状态
     }
   }
@@ -849,9 +859,10 @@ export function TappListPage() {
             <div className="h-full flex items-center justify-between">
               {/* 宸︿晶淇℃伅鍗＄墖 */}
               <div className="h-full glass rounded-xl px-4 py-1 flex items-center gap-3 shadow-sm relative z-10">
-                <SiAppstore
-                  className="w-5 h-5"
-                  style={{ color: 'var(--color-primary)' }}
+                <TappIcon
+                  icon={TAPP_ICON_TOKENS.store}
+                  name={t.tapp.storeTitle}
+                  sizeClass="w-7 h-7"
                 />
                 <div className="flex flex-col justify-center">
                   <div className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight">
@@ -872,7 +883,7 @@ export function TappListPage() {
                     className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
                     style={{ color: 'var(--color-primary)' }}
                   >
-                    <SiAppstore className="w-3 h-3" />
+                    <MyriadStoreIcon className="w-4 h-4" />
                     {t.tapp.store}
                   </button>
                   {/* 多任务入口 - 仅平板和PC端显示，Safari 不支持 */}
@@ -908,7 +919,7 @@ export function TappListPage() {
                   className="p-2 rounded-lg glass shadow-sm"
                   title={t.tapp.storeTitle}
                 >
-                  <SiAppstore
+                  <MyriadStoreIcon
                     className="w-5 h-5"
                     style={{ color: 'var(--color-primary)' }}
                   />
@@ -969,7 +980,7 @@ export function TappListPage() {
                     whileHover={{ scale: 1.02, y: -1 }}
                     whileTap={{ scale: 0.98 }}
                   >
-                    <SiAppstore className="w-4 h-4" />
+                    <MyriadStoreIcon className="w-4 h-4" />
                     {t.tapp.browseStore}
                   </motion.button>
                   {isAdmin && (
@@ -1021,8 +1032,9 @@ export function TappListPage() {
             onClose={() => setShowInstallModal(false)}
             onInstall={() => loadTapps(true)}
             onSuccess={(name) =>
-              setToastMessage(
-                `✓ ${t.tapp.installSuccess.replace('{name}', name)}`,
+              showToastMessage(
+                t.tapp.installSuccess.replace('{name}', name),
+                'success',
               )
             }
           />
@@ -1050,7 +1062,11 @@ export function TappListPage() {
 
       {/* Toast 提示 */}
       {toastMessage && (
-        <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setToastMessage('')}
+        />
       )}
     </AnimatedView>
   )

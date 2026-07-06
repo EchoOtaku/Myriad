@@ -3,100 +3,6 @@
    从 index.astro 提取
    ============================================ */
 
-/* 动画类 */
-@keyframes blob {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-
-  33% {
-    transform: translate3d(30px, -50px, 0) scale(1.1);
-  }
-
-  66% {
-    transform: translate3d(-20px, 20px, 0) scale(0.9);
-  }
-}
-
-/* 高性能 blob 动画 - 用于高端 GPU */
-@keyframes blob-fast {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-
-  25% {
-    transform: translate3d(40px, -60px, 0) scale(1.15);
-  }
-
-  50% {
-    transform: translate3d(-30px, 30px, 0) scale(0.85);
-  }
-
-  75% {
-    transform: translate3d(20px, 40px, 0) scale(1.1);
-  }
-}
-
-@keyframes gradient-shift {
-  0% {
-    background-position: 0% 50%;
-    filter: hue-rotate(0deg) brightness(1.1);
-  }
-
-  50% {
-    background-position: 100% 50%;
-    filter: hue-rotate(60deg) brightness(1.15);
-  }
-
-  100% {
-    background-position: 0% 50%;
-    filter: hue-rotate(0deg) brightness(1.1);
-  }
-}
-
-.animate-blob {
-  animation: blob 7s infinite;
-
-  /* GPU加速优化 */
-  will-change: transform;
-  backface-visibility: hidden;
-  transform-style: preserve-3d;
-
-  /* 强制提升为独立合成层 */
-  isolation: isolate;
-}
-
-/* 高性能模式 blob 动画 - 更快更流畅 */
-.animate-blob-fast {
-  animation: blob-fast 5s infinite;
-  will-change: transform;
-  backface-visibility: hidden;
-  transform-style: preserve-3d;
-  isolation: isolate;
-}
-
-/* 背景动画容器 - GPU 优化 */
-.bg-animation-container {
-  isolation: isolate;
-}
-
-/* 背景动画元素 - 强制 GPU 合成层 */
-.bg-blob-element {
-  will-change: transform;
-  backface-visibility: hidden;
-  transform-style: preserve-3d;
-}
-
-.animation-delay-2000 {
-  animation-delay: 2s;
-}
-
-.animation-delay-4000 {
-  animation-delay: 4s;
-}
-
 /* Line clamp */
 .line-clamp-1 {
   display: -webkit-box;
@@ -381,14 +287,6 @@
 }
 
 /* 低帧率模式 - 全局降级 */
-.low-fps-mode .animate-blob,
-.low-fps-mode .animate-blob-fast,
-.low-fps-mode .animation-delay-2000,
-.low-fps-mode .animation-delay-4000 {
-  animation: none !important;
-  will-change: auto;
-}
-
 .low-fps-mode [class*='backdrop-blur'],
 .low-fps-mode [class*='blur-'] {
   backdrop-filter: none !important;
@@ -396,16 +294,6 @@
 }
 
 /* 滚动时降级（通过 JS 添加） */
-.is-scrolling .animate-blob,
-.is-scrolling .animate-blob-fast {
-  animation-play-state: paused;
-  will-change: auto;
-}
-
-.is-scrolling .bg-blob-element {
-  will-change: auto;
-}
-
 .is-scrolling [class*='transition-'] {
   transition-duration: 0s !important;
 }
@@ -531,11 +419,6 @@
     -webkit-touch-callout: none;
   }
 
-  .animate-blob {
-    animation: none;
-    opacity: 0.1;
-  }
-
   /* 移动端减少 blur */
   [class*='backdrop-blur-xl'],
   [class*='backdrop-blur-2xl'],
@@ -557,9 +440,5 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
-  }
-
-  .animate-blob {
-    animation: none !important;
   }
 }

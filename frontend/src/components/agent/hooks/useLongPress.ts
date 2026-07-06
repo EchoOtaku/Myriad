@@ -17,7 +17,7 @@ interface LongPressIndicator {
 }
 
 const EXCLUDED_SELECTORS =
-  '.arael-panel, input, textarea, button, a, [contenteditable], .tapp-window'
+  '.arael-panel, input, textarea, button, a, [contenteditable], .tapp-window, .global-control-bar, .control-panel-overlay'
 
 export function useLongPress(
   duration: number,

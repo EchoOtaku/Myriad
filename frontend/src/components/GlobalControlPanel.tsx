@@ -21,27 +21,17 @@ import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useMusicPlayer } from '../hooks/useMusicPlayer'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
-import {
-  LuImage,
-  LuLanguages,
-  LuLeaf,
-  LuMessageCircle,
-  LuMoon,
-  LuMusic,
-  LuPause,
-  LuSettings,
-  LuSun,
-  LuZap,
-} from '../lib/icons'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
   getGreeting,
   getRandomQuote,
   getWeatherInfo,
+  WEATHER_ICON_ASSETS,
 } from '../utils/dynamicContent'
 import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
 import { UserSection } from './ControlPanel/UserSection'
+import { WeatherAssetIcon } from './weather/WeatherAssetIcon'
 import './GlobalControlPanel.css'
 
 // 懒加载展开面板子组件 — 仅在用户展开面板时加载
@@ -55,6 +45,62 @@ const MusicPlayer = lazy(() =>
     default: m.MusicPlayer,
   })),
 )
+
+const GREETING_ICON_ASSETS = {
+  sunrise: '/icons/greeting/sunrise.png',
+  sun: WEATHER_ICON_ASSETS.sunny,
+  cloudSun: WEATHER_ICON_ASSETS.partlyCloudy,
+  sunset: '/icons/greeting/sunset.png',
+  moon: '/icons/greeting/night.png',
+} as const
+
+const CONTROL_PANEL_ICON_ASSETS = {
+  appearanceLight: WEATHER_ICON_ASSETS.sunny,
+  appearanceDark: GREETING_ICON_ASSETS.moon,
+  animationStandard: '/icons/control-panel/animation-standard.png',
+  animationLight: '/icons/control-panel/animation-light.png',
+  language: '/icons/control-panel/language.png',
+  wallpaper: '/icons/control-panel/wallpaper.png',
+  config: '/icons/control-panel/config.png',
+} as const
+
+const DYNAMIC_ICON_ASSETS = {
+  quote: '/icons/dynamic/quote.png',
+  music: '/icons/dynamic/music.png',
+  musicPaused: '/icons/dynamic/music-paused.png',
+} as const
+
+/** 外观偏好：浅色 / 深色 / 跟随系统 */
+type ThemePreference = 'light' | 'dark' | 'auto'
+
+const THEME_CYCLE: ThemePreference[] = ['light', 'dark', 'auto']
+
+function getStoredThemePreference(): ThemePreference {
+  if (typeof localStorage === 'undefined') return 'auto'
+  const stored = localStorage.getItem('theme')
+  return stored === 'light' || stored === 'dark' ? stored : 'auto'
+}
+
+/** 应用主题 class 并同步 meta theme-color */
+function applyThemeClass(dark: boolean) {
+  const html = document.documentElement
+  if (dark) {
+    html.classList.add('dark')
+    html.classList.remove('light')
+  } else {
+    html.classList.add('light')
+    html.classList.remove('dark')
+  }
+
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]')
+  if (metaThemeColor) {
+    const primaryColor =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-primary')
+        .trim() || '#94a3b8'
+    metaThemeColor.setAttribute('content', primaryColor)
+  }
+}
 
 /** 扩展的动态内容类型（包含 Tapp 自定义类型） */
 interface DynamicContent {
@@ -284,6 +330,26 @@ const GlobalControlPanel: React.FC = () => {
     [t.weather],
   )
 
+  const renderWeatherIcon = useCallback((icon: string) => {
+    return (
+      <WeatherAssetIcon
+        icon={icon}
+        className="h-6 w-6 object-contain drop-shadow-sm"
+        fallbackClassName="dynamic-icon-emoji"
+      />
+    )
+  }, [])
+
+  const renderDynamicAssetIcon = useCallback((icon: string) => {
+    return (
+      <WeatherAssetIcon
+        icon={icon}
+        className="h-6 w-6 object-contain drop-shadow-sm"
+        fallbackClassName="dynamic-icon-emoji"
+      />
+    )
+  }, [])
+
   // 加载动态内容
   const loadDynamicContents = useCallback(async () => {
     const contents: DynamicContent[] = []
@@ -291,34 +357,42 @@ const GlobalControlPanel: React.FC = () => {
     // 1. 问候语（始终显示，立即加载）
     const greetingTranslations = {
       morning: t.greeting?.morning ?? 'Good morning',
+      forenoon: t.greeting?.forenoon ?? t.greeting?.morning ?? 'Good morning',
       noon: t.greeting?.noon ?? 'Good afternoon',
       afternoon: t.greeting?.afternoon ?? 'Good afternoon',
+      dusk: t.greeting?.dusk ?? t.greeting?.evening ?? 'Good evening',
       evening: t.greeting?.evening ?? 'Good evening',
       night: t.greeting?.night ?? 'Good night',
     }
     const greeting = getGreeting(user?.username, greetingTranslations, locale)
-    let greetingEmoji: string
+    let greetingIcon: string
     switch (greeting.icon) {
       case 'sunrise':
-        greetingEmoji = '🌅'
+        greetingIcon = GREETING_ICON_ASSETS.sunrise
         break
       case 'sunset':
-        greetingEmoji = '🌆'
+        greetingIcon = GREETING_ICON_ASSETS.sunset
         break
       case 'moon':
-        greetingEmoji = '🌙'
+        greetingIcon = GREETING_ICON_ASSETS.moon
         break
       case 'cloud-sun':
-        greetingEmoji = '🌤️'
+        greetingIcon = GREETING_ICON_ASSETS.cloudSun
         break
       case 'sun':
       default:
-        greetingEmoji = '☀️'
+        greetingIcon = GREETING_ICON_ASSETS.sun
         break
     }
     contents.push({
       type: 'greeting',
-      icon: <span className="dynamic-icon-emoji">{greetingEmoji}</span>,
+      icon: (
+        <WeatherAssetIcon
+          icon={greetingIcon}
+          className="h-6 w-6 object-contain drop-shadow-sm"
+          fallbackClassName="dynamic-icon-emoji"
+        />
+      ),
       text: greeting.text || greetingTranslations.afternoon,
       subtext: greeting.time,
     })
@@ -355,7 +429,7 @@ const GlobalControlPanel: React.FC = () => {
         const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0
         filtered.splice(insertIndex, 0, {
           type: 'weather',
-          icon: weatherData.icon,
+          icon: renderWeatherIcon(weatherData.icon),
           text: weatherText,
           subtext: weatherCity,
           showSubtext: true,
@@ -393,7 +467,7 @@ const GlobalControlPanel: React.FC = () => {
               const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0
               filtered.splice(insertIndex, 0, {
                 type: 'weather',
-                icon: weather.icon,
+                icon: renderWeatherIcon(weather.icon),
                 text: weatherText,
                 subtext: weatherCity,
                 showSubtext: true,
@@ -428,7 +502,7 @@ const GlobalControlPanel: React.FC = () => {
           ...filtered,
           {
             type: 'quote',
-            icon: <LuMessageCircle size={14} />,
+            icon: renderDynamicAssetIcon(DYNAMIC_ICON_ASSETS.quote),
             text: quoteData.text,
             subtext: quoteData.author || undefined,
             showSubtext: false,
@@ -459,7 +533,7 @@ const GlobalControlPanel: React.FC = () => {
                 ...filtered,
                 {
                   type: 'quote',
-                  icon: <LuMessageCircle size={14} />,
+                  icon: renderDynamicAssetIcon(DYNAMIC_ICON_ASSETS.quote),
                   text: quote.text,
                   subtext: quote.author || undefined,
                   showSubtext: false,
@@ -496,6 +570,8 @@ const GlobalControlPanel: React.FC = () => {
     weatherData,
     quoteData,
     getWeatherText,
+    renderWeatherIcon,
+    renderDynamicAssetIcon,
   ])
 
   // 当用户信息更新时，重新加载动态内容
@@ -769,31 +845,24 @@ const GlobalControlPanel: React.FC = () => {
     }
   }, [isExpanded, perf.lowEndDevice, perf.isMobile, anim.level])
 
-  const toggleTheme = useCallback(() => {
-    const html = document.documentElement
-    const newIsDark = !isDark
+  // 外观偏好（浅色/深色/自动），isDark 始终反映当前实际外观
+  const [themePreference, setThemePreference] = useState<ThemePreference>(
+    getStoredThemePreference,
+  )
 
-    if (newIsDark) {
-      html.classList.add('dark')
-      html.classList.remove('light')
-      localStorage.setItem('theme', 'dark')
-    } else {
-      html.classList.add('light')
-      html.classList.remove('dark')
-      localStorage.setItem('theme', 'light')
-    }
+  const cycleTheme = useCallback(() => {
+    const next =
+      THEME_CYCLE[(THEME_CYCLE.indexOf(themePreference) + 1) % THEME_CYCLE.length]
+    setThemePreference(next)
+    localStorage.setItem('theme', next)
+
+    const dark =
+      next === 'auto'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        : next === 'dark'
     // isDark 状态由 useThemeMode() hook 自动响应 class 变化，无需手动 setIsDark
-
-    // 更新 meta theme-color - 使用壁纸颜色
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]')
-    if (metaThemeColor) {
-      const primaryColor =
-        getComputedStyle(document.documentElement)
-          .getPropertyValue('--color-primary')
-          .trim() || '#94a3b8'
-      metaThemeColor.setAttribute('content', primaryColor)
-    }
-  }, [isDark])
+    applyThemeClass(dark)
+  }, [themePreference])
 
   const handleTogglePanel = useCallback(() => {
     // 🔧 通知子组件动画开始
@@ -892,7 +961,7 @@ const GlobalControlPanel: React.FC = () => {
         return [
           {
             type: 'music' as const,
-            icon: <LuMusic size={14} />,
+            icon: renderDynamicAssetIcon(DYNAMIC_ICON_ASSETS.music),
             text: currentLyric.text,
             subtext: `${currentSong.name} - ${currentSong.artist}`,
             lyricDuration, // 传入歌词持续时间
@@ -920,7 +989,11 @@ const GlobalControlPanel: React.FC = () => {
         return [
           {
             type: 'music' as const,
-            icon: isPlaying ? <LuMusic size={14} /> : <LuPause size={14} />,
+            icon: renderDynamicAssetIcon(
+              isPlaying
+                ? DYNAMIC_ICON_ASSETS.music
+                : DYNAMIC_ICON_ASSETS.musicPaused,
+            ),
             text: currentSong.name,
             subtext: currentSong.artist,
           },
@@ -941,6 +1014,7 @@ const GlobalControlPanel: React.FC = () => {
     musicPlayer.isPlaying,
     isExpanded,
     safeSetDynamicContents,
+    renderDynamicAssetIcon,
   ])
 
   // 确保索引在有效范围内
@@ -1217,27 +1291,50 @@ const GlobalControlPanel: React.FC = () => {
 
               {/* 控制项网格 - 一行两个 */}
               <div className="control-items-grid">
-                {/* 主题切换 */}
+                {/* 主题切换 - 循环：浅色 → 深色 → 自动；图标始终反映当前实际外观 */}
                 <div className="control-item control-item-compact">
                   <div className="control-item-info">
                     <div className="control-item-icon icon-theme">
-                      {isDark ? <LuMoon /> : <LuSun />}
+                      <WeatherAssetIcon
+                        icon={
+                          isDark
+                            ? CONTROL_PANEL_ICON_ASSETS.appearanceDark
+                            : CONTROL_PANEL_ICON_ASSETS.appearanceLight
+                        }
+                        className="h-full w-full object-contain"
+                      />
                     </div>
                     <div>
                       <h4 className="control-item-title">
                         {t.controlPanel.appearance}
                       </h4>
                       <p className="control-item-desc">
-                        {isDark ? t.controlPanel.dark : t.controlPanel.light}
+                        {themePreference === 'auto'
+                          ? t.controlPanel.auto
+                          : themePreference === 'dark'
+                            ? t.controlPanel.dark
+                            : t.controlPanel.light}
                       </p>
                     </div>
                   </div>
                   <button
-                    onClick={toggleTheme}
-                    className={`control-toggle theme-toggle ${isDark ? 'active theme-dark' : 'theme-light'}`}
+                    onClick={cycleTheme}
+                    className="control-action-btn"
                     aria-label={t.controlPanel.themeSwitch}
                   >
-                    <span className="control-toggle-slider"></span>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
                   </button>
                 </div>
 
@@ -1247,7 +1344,14 @@ const GlobalControlPanel: React.FC = () => {
                     <div
                       className={`control-item-icon icon-performance ${animationModeClass}`}
                     >
-                      {isStandardAnimation ? <LuZap /> : <LuLeaf />}
+                      <WeatherAssetIcon
+                        icon={
+                          isStandardAnimation
+                            ? CONTROL_PANEL_ICON_ASSETS.animationStandard
+                            : CONTROL_PANEL_ICON_ASSETS.animationLight
+                        }
+                        className="h-full w-full object-contain"
+                      />
                     </div>
                     <div>
                       <h4 className="control-item-title">
@@ -1277,7 +1381,10 @@ const GlobalControlPanel: React.FC = () => {
                 <div className="control-item control-item-compact">
                   <div className="control-item-info">
                     <div className="control-item-icon icon-language">
-                      <LuLanguages />
+                      <WeatherAssetIcon
+                        icon={CONTROL_PANEL_ICON_ASSETS.language}
+                        className="h-full w-full object-contain"
+                      />
                     </div>
                     <div>
                       <h4 className="control-item-title">
@@ -1330,7 +1437,10 @@ const GlobalControlPanel: React.FC = () => {
                   <div className="control-item control-item-compact">
                     <div className="control-item-info">
                       <div className="control-item-icon icon-wallpaper">
-                        <LuImage />
+                        <WeatherAssetIcon
+                          icon={CONTROL_PANEL_ICON_ASSETS.wallpaper}
+                          className="h-full w-full object-contain"
+                        />
                       </div>
                       <div>
                         <h4 className="control-item-title">
@@ -1368,7 +1478,10 @@ const GlobalControlPanel: React.FC = () => {
                   <div className="control-item control-item-compact">
                     <div className="control-item-info">
                       <div className="control-item-icon icon-config">
-                        <LuSettings />
+                        <WeatherAssetIcon
+                          icon={CONTROL_PANEL_ICON_ASSETS.config}
+                          className="h-full w-full object-contain"
+                        />
                       </div>
                       <div>
                         <h4 className="control-item-title">

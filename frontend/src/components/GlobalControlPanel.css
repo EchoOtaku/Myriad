@@ -157,10 +157,22 @@ html.dark .control-bar-trigger.expanded {
 }
 
 .dynamic-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
   font-size: 1.25rem;
   line-height: 1;
   flex-shrink: 0;
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dynamic-icon > img {
+  display: block;
+  width: 1.35rem;
+  height: 1.35rem;
+  object-fit: contain;
 }
 
 .control-bar-trigger:not(.expanded):hover .dynamic-icon {
@@ -734,6 +746,13 @@ html.dark .control-item:hover {
   stroke-width: 2.25;
 }
 
+.control-item-icon > img {
+  display: block;
+  width: 2.05rem;
+  height: 2.05rem;
+  object-fit: contain;
+}
+
 .control-item-compact .control-item-icon {
   width: 2.375rem;
   height: 2.375rem;
@@ -747,6 +766,11 @@ html.dark .control-item:hover {
 .control-item-compact .control-item-icon svg {
   width: 1.3rem;
   height: 1.3rem;
+}
+
+.control-item-compact .control-item-icon > img {
+  width: 2.05rem;
+  height: 2.05rem;
 }
 
 .icon-theme {
@@ -840,44 +864,29 @@ html.dark .icon-theme {
   background: var(--color-primary, #94a3b8);
 }
 
-.control-toggle.theme-light {
-  background: rgb(245 158 11 / 28%);
-  box-shadow: inset 0 0 0 1px rgb(245 158 11 / 12%);
-}
-
-.control-toggle.theme-light:hover {
-  background: rgb(245 158 11 / 38%);
-}
-
-.control-toggle.theme-dark.active {
-  background: #4f46e5;
-  box-shadow: 0 0 0 3px rgb(79 70 229 / 12%);
-}
-
+/* 动效开关 - 配色跟随系统全局壁纸色（--color-primary） */
 .control-toggle.animation-toggle.performance-light {
-  background: rgb(34 197 94 / 32%);
-  box-shadow: inset 0 0 0 1px rgb(34 197 94 / 12%);
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 32%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--color-primary, #94a3b8) 12%, transparent);
 }
 
 .control-toggle.animation-toggle.performance-light:hover {
-  background: rgb(34 197 94 / 42%);
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 42%, transparent);
 }
 
 .control-toggle.animation-toggle.performance-standard.active {
-  background: #f97316;
-  box-shadow: 0 0 0 3px rgb(249 115 22 / 12%);
+  background: var(--color-primary, #94a3b8);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-primary, #94a3b8) 12%, transparent);
 }
 
 .control-toggle.active:hover {
   background: color-mix(in srgb, var(--color-primary, #94a3b8) 90%, black);
 }
 
-.control-toggle.theme-dark.active:hover {
-  background: #4338ca;
-}
-
 .control-toggle.animation-toggle.performance-standard.active:hover {
-  background: #ea580c;
+  background: color-mix(in srgb, var(--color-primary, #94a3b8) 90%, black);
 }
 
 .control-toggle-slider {

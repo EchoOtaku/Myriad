@@ -92,8 +92,10 @@ export const jaJP: TranslationKeys = {
   // 挨拶
   greeting: {
     morning: 'おはようございます',
+    forenoon: 'おはようございます',
     noon: 'こんにちは',
     afternoon: 'こんにちは',
+    dusk: 'こんばんは',
     evening: 'こんばんは',
     night: 'おやすみなさい',
     lateNight: '夜更かしですね',
@@ -105,6 +107,7 @@ export const jaJP: TranslationKeys = {
     appearance: '外観',
     dark: 'ダーク',
     light: 'ライト',
+    auto: '自動',
     animation: 'アニメーション',
     lowPerformance: '低',
     highPerformance: '高',
@@ -587,8 +590,8 @@ export const jaJP: TranslationKeys = {
     tencentRegionChongqing: '中国西南部 (重慶)',
     tencentRegionNanjing: '中国東部 (南京)',
     speechTestAvailability: '接続テスト',
-    speechTestSuccess: '✓ 音声サービス接続成功',
-    speechTestFailed: '✗ 音声サービス接続失敗',
+    speechTestSuccess: '音声サービス接続成功',
+    speechTestFailed: '音声サービス接続失敗',
     speechTestTesting: 'テスト中...',
     speechNotConfigured: '先にTencent Cloud認証情報を設定してください',
     // プラットフォーム設定
@@ -600,8 +603,8 @@ export const jaJP: TranslationKeys = {
     platformDescBangumi: 'Bangumiのコレクション、評価、視聴状態を同期',
     platformDescSteam: 'ゲームライブラリ、ウィッシュリスト、ゲーム統計を同期',
     platformDescNetease: 'お気に入りの曲と音楽の好みを同期',
-    configuredStatus: '✓ 設定済み',
-    unconfiguredStatus: '⚠ 未設定',
+    configuredStatus: '設定済み',
+    unconfiguredStatus: '未設定',
     enablePlatform: '{platform}プラットフォームを有効化',
     testingConnection: 'テスト中...',
     howToGetToken: 'トークンの取得方法',
@@ -703,7 +706,7 @@ export const jaJP: TranslationKeys = {
       'ローカル音楽キャッシュをクリアし、プレイリストデータを強制リロード',
     clearMusicCacheBtn: '音楽キャッシュをクリア',
     musicCacheCleared:
-      '✓ 音楽キャッシュをクリアしました。次回読み込み時にデータを再取得します',
+      '音楽キャッシュをクリアしました。次回読み込み時にデータを再取得します',
     wallpaperParallaxHint:
       '有効にすると、マウス移動やデバイス傾きに応じて壁紙がわずかに移動し、立体的な空間感を演出します',
     neteasePlaylistExample: '例：2884035',
@@ -1041,7 +1044,7 @@ export const jaJP: TranslationKeys = {
     localAccount: 'ローカルアカウント',
     githubAccount: 'GitHubアカウント',
     githubBinding: 'GitHub連携',
-    githubLinked: '✓ 連携済み',
+    githubLinked: '連携済み',
     githubNotLinked: '未連携',
     hybridAccount: 'ローカル + GitHub',
     bindGithub: 'GitHubアカウントを連携',
@@ -1057,7 +1060,7 @@ export const jaJP: TranslationKeys = {
     passwordSameAsOld: '新しいパスワードは現在のパスワードと同じにできません',
     cannotGetCsrf:
       'CSRFトークンを取得できません。ページを更新して再試行してください',
-    passwordChanged: '✓ パスワードを変更しました！',
+    passwordChanged: 'パスワードを変更しました！',
     changing: '変更中...',
     confirmChange: '変更を確認',
     networkError: 'ネットワークエラー、後でもう一度お試しください',
@@ -1079,7 +1082,7 @@ export const jaJP: TranslationKeys = {
     redo: 'やり直す',
     deleteWidget: 'ウィジェットを削除',
     positionConflict: '✖ 位置競合',
-    canPlace: '✓ 配置可能',
+    canPlace: '配置可能',
   },
 
   // ソーシャルネットワークウィジェット
@@ -1258,16 +1261,16 @@ export const jaJP: TranslationKeys = {
   // データ管理ページ
   dataManagement: {
     neteaseMusic: 'NetEase Music',
-    loadStatusFailed: '✗ 状態の読み込みに失敗しました',
+    loadStatusFailed: '状態の読み込みに失敗しました',
     confirmRefreshData: '{platform}の元データを更新してもよろしいですか？',
-    csrfTokenError: '✗ CSRFトークンを取得できません',
-    dataRefreshed: '✓ {platform}データを更新しました',
-    refreshFailed: '✗ 更新失敗',
-    submitTaskFailed: '✗ {platform}処理タスクの送信に失敗しました',
+    csrfTokenError: 'CSRFトークンを取得できません',
+    dataRefreshed: '{platform}データを更新しました',
+    refreshFailed: '更新失敗',
+    submitTaskFailed: '{platform}処理タスクの送信に失敗しました',
     confirmClearCache:
       '{platform}のスマートフィルターキャッシュをクリアしてもよろしいですか？',
-    cacheCleared: '✓ {platform}キャッシュをクリアしました',
-    clearCacheFailed: '✗ {platform}キャッシュのクリアに失敗しました',
+    cacheCleared: '{platform}キャッシュをクリアしました',
+    clearCacheFailed: '{platform}キャッシュのクリアに失敗しました',
     unknown: '不明',
     backToConfig: '設定に戻る',
     refreshData: 'データ更新',

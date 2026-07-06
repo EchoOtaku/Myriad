@@ -203,6 +203,13 @@ html.dark .toast-message.toast-info .toast-icon-wrapper {
   flex-shrink: 0;
 }
 
+.toast-icon-asset {
+  display: block;
+  width: 1.625rem;
+  height: 1.625rem;
+  object-fit: contain;
+}
+
 .toast-icon-custom {
   font-size: 1.125rem;
   line-height: 1;

@@ -12,7 +12,10 @@ interface AdvancedConfigSectionProps {
   icon: React.ReactNode
   description: string
   sectionId?: string
-  onMessage?: (msg: string) => void
+  onMessage?: (
+    msg: string,
+    type?: 'success' | 'error' | 'warning' | 'info',
+  ) => void
 }
 
 export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
@@ -42,7 +45,7 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      onMessage?.(t.config.exportConfigSuccess)
+      onMessage?.(t.config.exportConfigSuccess, 'success')
     } catch (error) {
       console.error('Export failed:', error)
     }
@@ -69,13 +72,13 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
             !data.ai_config ||
             !data.ui_config
           ) {
-            onMessage?.(t.config.importConfigInvalid)
+            onMessage?.(t.config.importConfigInvalid, 'error')
             return
           }
           setPendingImportData(data)
           setImportConfirmOpen(true)
         } catch {
-          onMessage?.(t.config.importConfigInvalid)
+          onMessage?.(t.config.importConfigInvalid, 'error')
         }
       }
       reader.readAsText(file)
@@ -92,7 +95,7 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
     try {
       await getCSRFToken(true)
       await updateConfig(pendingImportData)
-      onMessage?.(t.config.importConfigSuccess)
+      onMessage?.(t.config.importConfigSuccess, 'success')
       setTimeout(() => {
         window.location.reload()
       }, 2000)
@@ -100,6 +103,7 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
       console.error('Import failed:', error)
       onMessage?.(
         `${t.config.importConfigFailed}: ${error instanceof Error ? error.message : ''}`,
+        'error',
       )
     } finally {
       setPendingImportData(null)

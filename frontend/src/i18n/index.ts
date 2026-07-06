@@ -93,8 +93,10 @@ export interface TranslationKeys {
   // 问候语
   greeting: {
     morning: string
+    forenoon: string
     noon: string
     afternoon: string
+    dusk: string
     evening: string
     night: string
     lateNight: string
@@ -106,6 +108,7 @@ export interface TranslationKeys {
     appearance: string
     dark: string
     light: string
+    auto: string
     animation: string
     lowPerformance: string
     highPerformance: string

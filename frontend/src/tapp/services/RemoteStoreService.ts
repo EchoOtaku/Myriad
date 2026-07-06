@@ -8,6 +8,7 @@
 
 import type { TappManifest } from '../types'
 import api from '../../lib/api'
+import { TAPP_ICON_TOKENS } from '../constants/icons'
 
 // ============ 类型定义 ============
 
@@ -133,7 +134,7 @@ export const OFFICIAL_STORE: RemoteStoreSource = {
   url: 'https://raw.githubusercontent.com/Myriad-You/tapp-store/main/index.json',
   enabled: true,
   official: true,
-  icon: '🏪',
+  icon: TAPP_ICON_TOKENS.store,
 }
 
 // ============ 缓存配置 ============

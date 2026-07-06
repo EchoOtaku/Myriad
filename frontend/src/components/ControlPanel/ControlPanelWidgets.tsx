@@ -553,7 +553,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = ({
           {/* 底部拉伸条 - 仅在编辑模式下显示 */}
           {isEditMode && (
             <div
-              className="absolute bottom-0 left-0 right-0 h-4 cursor-ns-resize z-20 flex items-end justify-center opacity-0 group-hover/container:opacity-100 transition-opacity hover:!opacity-100"
+              className="absolute bottom-0 left-0 right-0 h-4 cursor-ns-resize z-20 flex items-end justify-center opacity-0 group-hover/container:opacity-100 transition-opacity hover:opacity-100!"
               onMouseDown={handleResizeStart}
               onClick={(e) => {
                 e.stopPropagation()

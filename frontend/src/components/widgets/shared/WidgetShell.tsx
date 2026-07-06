@@ -1,0 +1,85 @@
+/**
+ * 小组件外壳 - 统一的「四周溢出保护区」
+ *
+ * 提供所有小组件共同的容器约定：
+ * - 玻璃圆角根节点 + `overflow: hidden`（内容永远被裁在圆角内，不外溢）
+ * - 一层**边到边的背景**（如 GlowBackground），铺满不受安全区影响
+ * - 一层带**安全内边距**的内容区：四周留出随尺寸缩放的保护间距，
+ *   文本/图标不会贴边或被圆角切到
+ * - 编辑态虚线边框
+ *
+ * 各小组件把根 `div.relative.h-full.w-full.rounded-xl.overflow-hidden.glass`
+ * 换成本组件即可获得一致的保护区，内容排版通过 `contentClassName` 传入。
+ */
+
+import type { CSSProperties, ReactNode, Ref } from 'react'
+
+/** 安全区基准内边距（px，会乘以 scale） */
+export const WIDGET_SAFE_PADDING = 14
+
+export interface WidgetShellProps {
+  children: ReactNode
+  /** 边到边的背景层（如 GlowBackground），不受安全内边距影响 */
+  background?: ReactNode
+  /** 尺寸缩放，用于按比例计算安全区内边距 */
+  scale?: number
+  /**
+   * 四周安全内边距（溢出保护区）。number = 四边同一基准 px；
+   * `{ x, y }` 分别指定横/纵。最终会乘以 scale。默认 {@link WIDGET_SAFE_PADDING}。
+   */
+  padding?: number | { x: number; y: number }
+  /** 内容层排版类名（flex 方向等） */
+  contentClassName?: string
+  /** 内容层内联样式 */
+  contentStyle?: CSSProperties
+  className?: string
+  style?: CSSProperties
+  containerRef?: Ref<HTMLDivElement>
+  isEditMode?: boolean
+}
+
+function cx(...parts: (string | false | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
+
+export function WidgetShell({
+  children,
+  background,
+  scale = 1,
+  padding = WIDGET_SAFE_PADDING,
+  contentClassName,
+  contentStyle,
+  className,
+  style,
+  containerRef,
+  isEditMode,
+}: WidgetShellProps) {
+  const px = typeof padding === 'number' ? padding : padding.x
+  const py = typeof padding === 'number' ? padding : padding.y
+
+  return (
+    <div
+      ref={containerRef}
+      className={cx(
+        'relative h-full w-full overflow-hidden rounded-xl glass',
+        className,
+      )}
+      style={style}
+    >
+      {background}
+      <div
+        className={cx('relative z-[1] h-full w-full min-w-0', contentClassName)}
+        style={{
+          paddingInline: `${Math.round(px * scale)}px`,
+          paddingBlock: `${Math.round(py * scale)}px`,
+          ...contentStyle,
+        }}
+      >
+        {children}
+      </div>
+      {isEditMode && (
+        <div className="pointer-events-none absolute inset-0 z-[2] rounded-xl border-2 border-dashed border-blue-400" />
+      )}
+    </div>
+  )
+}

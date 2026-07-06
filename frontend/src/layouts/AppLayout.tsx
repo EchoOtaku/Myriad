@@ -242,16 +242,6 @@ export function AppLayout({ children }: AppLayoutProps) {
           id="bg-gradient"
           className="absolute inset-0 bg-linear-to-b from-transparent from-35% via-white/40 via-55% to-white/90 to-85% transition-opacity duration-500 ease-out"
         ></div>
-        {/* ⚠️ 性能优化: 只在标准设备上渲染动画背景
-            🔥 使用 GPU 加速的独立合成层，避免 mix-blend-mode 导致的 CPU 回退 */}
-        {anim.level === 'standard' && (
-          <div className="absolute inset-0 opacity-20 transition-opacity duration-700 bg-animation-container">
-            {/* 🔥 移除 mix-blend-multiply，改用 opacity 叠加，确保 GPU 合成 */}
-            <div className="absolute top-[40%] left-10 w-96 h-96 bg-green-400/40 rounded-full filter blur-3xl animate-blob-fast bg-blob-element" />
-            <div className="absolute top-[40%] right-10 w-96 h-96 bg-pink-400/40 rounded-full filter blur-3xl animate-blob-fast animation-delay-2000 bg-blob-element" />
-            <div className="absolute top-[60%] left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-400/35 rounded-full filter blur-3xl animate-blob-fast animation-delay-4000 bg-blob-element" />
-          </div>
-        )}
         {anim.level !== 'none' && (
           <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]"></div>
         )}

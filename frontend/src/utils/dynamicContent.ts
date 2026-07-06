@@ -21,8 +21,10 @@ export interface GreetingData {
 
 export interface GreetingTranslations {
   morning: string
+  forenoon: string
   noon: string
   afternoon: string
+  dusk: string
   evening: string
   night: string
 }
@@ -50,23 +52,33 @@ export function getGreeting(
   // 默认中文翻译
   const t = translations || {
     morning: '早上好',
+    forenoon: '上午好',
     noon: '中午好',
     afternoon: '下午好',
+    dusk: '傍晚好',
     evening: '晚上好',
     night: '夜深了',
   }
 
-  if (hour >= 5 && hour < 12) {
+  // 细分时间段：图标跟随太阳实际状态
+  // 日出仅清晨显示，临近正午用太阳；日落仅傍晚显示，入夜后用月亮
+  if (hour >= 5 && hour < 8) {
     icon = 'sunrise'
     text = t.morning
-  } else if (hour >= 12 && hour < 14) {
+  } else if (hour >= 8 && hour < 11) {
+    icon = 'sun'
+    text = t.forenoon
+  } else if (hour >= 11 && hour < 13) {
     icon = 'sun'
     text = t.noon
-  } else if (hour >= 14 && hour < 18) {
+  } else if (hour >= 13 && hour < 17) {
     icon = 'cloud-sun'
     text = t.afternoon
-  } else if (hour >= 18 && hour < 22) {
+  } else if (hour >= 17 && hour < 19) {
     icon = 'sunset'
+    text = t.dusk
+  } else if (hour >= 19 && hour < 22) {
+    icon = 'moon'
     text = t.evening
   } else {
     icon = 'moon'

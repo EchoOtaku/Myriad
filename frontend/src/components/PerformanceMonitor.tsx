@@ -270,7 +270,6 @@ function getElementSelector(el: Element): string {
 /** 已知的优化过的动画名称（使用 transform/opacity，无需标记） */
 const OPTIMIZED_ANIMATIONS = new Set([
   'spin',
-  'blob',
   'fadeIn',
   'fadeInUp',
   'fadeOut',

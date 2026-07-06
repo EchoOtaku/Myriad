@@ -6,10 +6,11 @@
  */
 
 import React, { useMemo } from 'react'
+import { resolveTappIconAsset } from '../constants/icons'
 
 /** 图标属性 */
 export interface TappIconProps {
-  /** emoji 或 URL 图标 */
+  /** emoji、URL 或 Myriad 图标 token */
   icon?: string
   /** 内联 SVG 代码（优先于 icon） */
   iconSvg?: string
@@ -74,7 +75,7 @@ function svgToDataUri(svg: string, color: string = 'white'): string {
 
 /**
  * 渲染 Tapp 图标
- * 优先级：iconSvg > icon (URL) > icon (emoji) > 名称首字母
+ * 优先级：iconSvg > icon (URL/token) > icon (emoji) > 名称首字母
  */
 export function TappIcon({
   icon,
@@ -85,6 +86,8 @@ export function TappIcon({
   className = '',
   svgColor = 'white',
 }: TappIconProps): React.ReactElement {
+  const assetIcon = resolveTappIconAsset(icon)
+
   // 将 SVG 转换为 data URI（使用 useMemo 避免重复计算）
   const svgDataUri = useMemo(() => {
     if (iconSvg && isIconSvg(iconSvg)) {
@@ -111,12 +114,14 @@ export function TappIcon({
     )
   }
 
-  // 2. 检查 icon 是否为 URL
-  if (icon && isIconUrl(icon)) {
+  // 2. 检查 icon 是否为 URL 或 Myriad 图标 token
+  if (assetIcon || (icon && isIconUrl(icon))) {
     return (
       <img
-        src={icon}
+        src={assetIcon ?? icon}
         alt=""
+        draggable={false}
+        decoding="async"
         className={`object-contain ${sizeClass} ${className}`}
       />
     )

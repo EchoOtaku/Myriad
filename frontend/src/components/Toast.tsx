@@ -13,7 +13,7 @@
  * - 可选标题和消息组合
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { TappIcon } from '../tapp'
 
@@ -21,6 +21,13 @@ import './Toast.css'
 
 /** Toast 消息类型 */
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
+
+const STATUS_ICON_ASSETS = {
+  success: '/icons/status/success.png',
+  error: '/icons/status/error.png',
+  warning: '/icons/status/warning.png',
+  info: '/icons/status/info.png',
+} satisfies Record<ToastType, string>
 
 /** Toast 配置接口 */
 export interface ToastProps {
@@ -43,49 +50,34 @@ export interface ToastProps {
 /** 类型配置映射 */
 const TYPE_CONFIG = {
   success: {
-    iconPath: 'M16.6667 5L7.50004 14.1667L3.33337 10',
+    icon: STATUS_ICON_ASSETS.success,
     colorClass: 'toast-success',
-    defaultIcon: '✓',
   },
   error: {
-    iconPath: 'M15 5L5 15M5 5L15 15',
+    icon: STATUS_ICON_ASSETS.error,
     colorClass: 'toast-error',
-    defaultIcon: '✗',
   },
   warning: {
-    iconPath: 'M10 6V10M10 14H10.01',
+    icon: STATUS_ICON_ASSETS.warning,
     colorClass: 'toast-warning',
-    defaultIcon: '⚠',
   },
   info: {
-    iconPath: 'M10 14V10M10 6H10.01',
+    icon: STATUS_ICON_ASSETS.info,
     colorClass: 'toast-info',
-    defaultIcon: 'ℹ',
   },
 } as const
 
-/**
- * 从消息内容自动推断类型
- */
-function inferTypeFromMessage(message: string): ToastType {
-  if (message.startsWith('✓') || message.startsWith('✔')) return 'success'
-  if (
-    message.startsWith('✗') ||
-    message.startsWith('✘') ||
-    message.startsWith('❌')
-  ) {
-    return 'error'
-  }
-  if (message.startsWith('⚠') || message.startsWith('⚡')) return 'warning'
-  if (message.startsWith('ℹ') || message.startsWith('💡')) return 'info'
-  return 'info' // 默认为 info 类型
-}
-
-/**
- * 清理消息中的前缀符号
- */
-function cleanMessagePrefix(message: string): string {
-  return message.replace(/^[✓✔✗✘❌⚠⚡ℹ💡]\s*/u, '')
+function renderToastAssetIcon(type: ToastType) {
+  return (
+    <img
+      src={TYPE_CONFIG[type].icon}
+      alt=""
+      aria-hidden="true"
+      className="toast-icon toast-icon-asset"
+      draggable={false}
+      decoding="async"
+    />
+  )
 }
 
 /**
@@ -94,7 +86,7 @@ function cleanMessagePrefix(message: string): string {
 export default function Toast({
   message,
   title,
-  type,
+  type = 'info',
   onClose,
   duration = 3000,
   showCloseButton = false,
@@ -103,17 +95,8 @@ export default function Toast({
   const [isHiding, setIsHiding] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
 
-  // 自动推断类型
-  const toastType = useMemo(
-    () => type || inferTypeFromMessage(message),
-    [type, message],
-  )
-
-  // 清理消息前缀
-  const cleanMessage = useMemo(() => cleanMessagePrefix(message), [message])
-
   // 获取类型配置
-  const config = TYPE_CONFIG[toastType]
+  const config = TYPE_CONFIG[type]
 
   // 处理关闭
   const handleClose = useCallback(() => {
@@ -152,25 +135,7 @@ export default function Toast({
       return <span className="toast-icon toast-icon-custom">{icon}</span>
     }
 
-    // 使用 SVG 图标
-    return (
-      <svg
-        className="toast-icon"
-        width="18"
-        height="18"
-        viewBox="0 0 20 20"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d={config.iconPath}
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    )
+    return renderToastAssetIcon(type)
   }
 
   return (
@@ -186,7 +151,7 @@ export default function Toast({
         {/* 内容区域 */}
         <div className="toast-content">
           {title && <div className="toast-title">{title}</div>}
-          <div className="toast-text">{cleanMessage}</div>
+          <div className="toast-text">{message}</div>
         </div>
 
         {/* 关闭按钮（可选） */}
@@ -303,23 +268,7 @@ export function TappToast({
         )}
 
         {/* 图标 */}
-        <div className="toast-icon-wrapper">
-          <svg
-            className="toast-icon"
-            width="18"
-            height="18"
-            viewBox="0 0 20 20"
-            fill="none"
-          >
-            <path
-              d={config.iconPath}
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
+        <div className="toast-icon-wrapper">{renderToastAssetIcon(type)}</div>
 
         {/* 内容 */}
         <div className="toast-content">

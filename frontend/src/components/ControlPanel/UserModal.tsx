@@ -2,7 +2,7 @@ import type { FC, SubmitEvent } from 'react'
 
 import type { User } from '../../contexts/AuthContext'
 import type { RecentTappItem, TappListItem } from '../../tapp'
-import { LuCrown, LuUser, SiAppstore } from '@lib/icons'
+import { LuCrown, LuUser, MyriadStoreIcon } from '@lib/icons'
 import { useEffect, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
@@ -396,7 +396,7 @@ export const UserModal: FC<UserModalProps> = ({
       <div className="user-modal-tapps">
         <div className="user-modal-tapps-header">
           <div className="user-modal-tapps-title">
-            <SiAppstore className="w-4 h-4" />
+            <MyriadStoreIcon className="w-4 h-4" />
             <span>Tapp</span>
           </div>
           {/* 已安装数 + 查看全部合并 */}

@@ -19,7 +19,7 @@ import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../components/AnimatedView'
 import { ButtonSpinner } from '../components/Spinner'
 import { TaskStatus } from '../components/TaskStatus'
-import Toast from '../components/Toast'
+import Toast, { type ToastType } from '../components/Toast'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -74,6 +74,7 @@ export default function DataManagement() {
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
   const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState<ToastType>('info')
 
   const [platformStatuses, setPlatformStatuses] = useState<PlatformStatus[]>([])
   const [cacheStatuses, setCacheStatuses] = useState<CacheInfo[]>([])
@@ -89,6 +90,16 @@ export default function DataManagement() {
 
   const { getCacheStatus, clearPlatformCache, submitTask } =
     useBackgroundTasks()
+
+  const showMessage = (
+    nextMessage: string,
+    nextType: ToastType,
+    duration = 3000,
+  ) => {
+    setMessageType(nextType)
+    setMessage(nextMessage)
+    window.setTimeout(() => setMessage(''), duration)
+  }
 
   // 使用 AuthContext 检查管理员权限
   useEffect(() => {
@@ -155,8 +166,7 @@ export default function DataManagement() {
         setCacheStatuses(cacheData.caches)
       }
     } catch (_error) {
-      setMessage(t.dataManagement.loadStatusFailed)
-      setTimeout(setMessage, 3000, '')
+      showMessage(t.dataManagement.loadStatusFailed, 'error')
     } finally {
       setStatusLoading(false)
     }
@@ -179,8 +189,7 @@ export default function DataManagement() {
     try {
       const csrfToken = await getCSRFToken(true)
       if (!csrfToken) {
-        setMessage(t.dataManagement.csrfTokenError)
-        setTimeout(setMessage, 5000, '')
+        showMessage(t.dataManagement.csrfTokenError, 'error', 5000)
         return
       }
 
@@ -197,24 +206,29 @@ export default function DataManagement() {
       const data = await response.json()
 
       if (data.success) {
-        setMessage(
+        showMessage(
           t.dataManagement.dataRefreshed.replace('{platform}', platformName),
+          'success',
+          5000,
         )
         setTimeout(loadAllStatuses, 500)
       } else {
-        setMessage(
+        showMessage(
           t.dataManagement.refreshFailed +
             (data.message ? `: ${data.message}` : ''),
+          'error',
+          5000,
         )
       }
     } catch (error: any) {
-      setMessage(
+      showMessage(
         t.dataManagement.refreshFailed +
           (error.message ? `: ${error.message}` : ''),
+        'error',
+        5000,
       )
     } finally {
       setRefreshingPlatform(null)
-      setTimeout(setMessage, 5000, '')
     }
   }
 
@@ -229,10 +243,10 @@ export default function DataManagement() {
       setActiveTask(taskId)
       setProcessingPlatform(platformId)
     } else {
-      setMessage(
+      showMessage(
         t.dataManagement.submitTaskFailed.replace('{platform}', platformName),
+        'error',
       )
-      setTimeout(setMessage, 3000, '')
     }
   }
 
@@ -251,18 +265,19 @@ export default function DataManagement() {
       const success = await clearPlatformCache(platformId)
 
       if (success) {
-        setMessage(
+        showMessage(
           t.dataManagement.cacheCleared.replace('{platform}', platformName),
+          'success',
         )
         await loadAllStatuses()
       } else {
-        setMessage(
+        showMessage(
           t.dataManagement.clearCacheFailed.replace('{platform}', platformName),
+          'error',
         )
       }
     } finally {
       setClearingPlatform(null)
-      setTimeout(setMessage, 3000, '')
     }
   }
 
@@ -302,7 +317,7 @@ export default function DataManagement() {
 
   return (
     <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
-      {message && <Toast message={message} />}
+      {message && <Toast message={message} type={messageType} />}
 
       <div className="modern-config-container">
         {/* 返回按钮 */}

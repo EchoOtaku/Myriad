@@ -93,8 +93,10 @@ export const enUS: TranslationKeys = {
   // Greetings
   greeting: {
     morning: 'Good morning',
+    forenoon: 'Good morning',
     noon: 'Good noon',
     afternoon: 'Good afternoon',
+    dusk: 'Good evening',
     evening: 'Good evening',
     night: 'Good night',
     lateNight: 'Late night',
@@ -106,6 +108,7 @@ export const enUS: TranslationKeys = {
     appearance: 'Appearance',
     dark: 'Dark',
     light: 'Light',
+    auto: 'Auto',
     animation: 'Animation',
     lowPerformance: 'Low',
     highPerformance: 'High',
@@ -600,8 +603,8 @@ export const enUS: TranslationKeys = {
     tencentRegionChongqing: 'Southwest (Chongqing)',
     tencentRegionNanjing: 'East China (Nanjing)',
     speechTestAvailability: 'Test Availability',
-    speechTestSuccess: '✓ Speech service connected',
-    speechTestFailed: '✗ Speech service connection failed',
+    speechTestSuccess: 'Speech service connected',
+    speechTestFailed: 'Speech service connection failed',
     speechTestTesting: 'Testing...',
     speechNotConfigured: 'Please configure Tencent Cloud credentials first',
     // Platform configuration
@@ -616,8 +619,8 @@ export const enUS: TranslationKeys = {
     platformDescSteam: 'Sync your Steam library, wishlist, and gaming stats',
     platformDescNetease:
       'Sync your liked songs and music taste from Netease Cloud Music',
-    configuredStatus: '✓ Configured',
-    unconfiguredStatus: '⚠ Not Configured',
+    configuredStatus: 'Configured',
+    unconfiguredStatus: 'Not Configured',
     enablePlatform: 'Enable {platform} platform',
     testingConnection: 'Testing...',
     howToGetToken: 'How to get Token?',
@@ -720,7 +723,7 @@ export const enUS: TranslationKeys = {
       'Clear local music cache to force reload playlist data',
     clearMusicCacheBtn: 'Clear Music Cache',
     musicCacheCleared:
-      '✓ Music cache cleared, data will be refetched on next load',
+      'Music cache cleared, data will be refetched on next load',
     wallpaperParallaxHint:
       'When enabled, wallpaper will shift slightly based on mouse movement/device tilt for a 3D effect',
     neteasePlaylistExample: 'e.g. 2884035',
@@ -1058,7 +1061,7 @@ export const enUS: TranslationKeys = {
     localAccount: 'Local Account',
     githubAccount: 'GitHub Account',
     githubBinding: 'GitHub Binding',
-    githubLinked: '✓ Linked',
+    githubLinked: 'Linked',
     githubNotLinked: 'Not Linked',
     hybridAccount: 'Local + GitHub',
     bindGithub: 'Link GitHub Account',
@@ -1073,7 +1076,7 @@ export const enUS: TranslationKeys = {
     passwordMismatch: 'Passwords do not match',
     passwordSameAsOld: 'New password cannot be the same as current password',
     cannotGetCsrf: 'Cannot get CSRF Token, please refresh and try again',
-    passwordChanged: '✓ Password changed successfully!',
+    passwordChanged: 'Password changed successfully!',
     changing: 'Changing...',
     confirmChange: 'Confirm',
     networkError: 'Network error, please try again later',
@@ -1095,7 +1098,7 @@ export const enUS: TranslationKeys = {
     redo: 'Redo',
     deleteWidget: 'Delete widget',
     positionConflict: '✖ Position conflict',
-    canPlace: '✓ Can place',
+    canPlace: 'Can place',
   },
 
   // Social Network Widget
@@ -1274,16 +1277,16 @@ export const enUS: TranslationKeys = {
   // Data management page
   dataManagement: {
     neteaseMusic: 'NetEase Music',
-    loadStatusFailed: '✗ Failed to load status',
+    loadStatusFailed: 'Failed to load status',
     confirmRefreshData: 'Are you sure you want to refresh {platform} raw data?',
-    csrfTokenError: '✗ Unable to get CSRF Token',
-    dataRefreshed: '✓ {platform} data refreshed',
-    refreshFailed: '✗ Refresh failed',
-    submitTaskFailed: '✗ Failed to submit {platform} processing task',
+    csrfTokenError: 'Unable to get CSRF Token',
+    dataRefreshed: '{platform} data refreshed',
+    refreshFailed: 'Refresh failed',
+    submitTaskFailed: 'Failed to submit {platform} processing task',
     confirmClearCache:
       'Are you sure you want to clear {platform} smart filter cache?',
-    cacheCleared: '✓ {platform} cache cleared',
-    clearCacheFailed: '✗ Failed to clear {platform} cache',
+    cacheCleared: '{platform} cache cleared',
+    clearCacheFailed: 'Failed to clear {platform} cache',
     unknown: 'Unknown',
     backToConfig: 'Back to Config',
     refreshData: 'Refresh Data',

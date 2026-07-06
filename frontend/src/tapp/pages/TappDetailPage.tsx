@@ -30,7 +30,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import AnimatedView from '../../components/AnimatedView'
-import Toast from '../../components/Toast'
+import Toast, { type ToastType } from '../../components/Toast'
 import { useI18n } from '../../contexts/I18nContext'
 import { TappIcon } from '../components/TappIcon'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
@@ -305,9 +305,18 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
   >({})
   // Toast 消息
   const [toastMessage, setToastMessage] = useState<string>('')
+  const [toastType, setToastType] = useState<ToastType>('info')
   // 卸载确认对话框状态
   const [showUninstallDialog, setShowUninstallDialog] = useState(false)
   const runtime = getTappRuntime()
+
+  const showToastMessage = useCallback(
+    (message: string, type: ToastType = 'info') => {
+      setToastType(type)
+      setToastMessage(message)
+    },
+    [],
+  )
 
   // 鍔犺浇璁剧疆鍊?- 骞惰鍔犺浇浼樺寲
   const loadSettings = useCallback(
@@ -351,11 +360,11 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         delete pendingChangesRef.current[key]
         // 显示保存成功 Toast
         if (showHint) {
-          setToastMessage(`✓ ${t.tapp.settingSaved}`)
+          showToastMessage(t.tapp.settingSaved, 'success')
         }
       } catch (err) {
         console.error('Failed to save setting:', err)
-        setToastMessage(`✗ ${t.tapp.settingSaveFailed}`)
+        showToastMessage(t.tapp.settingSaveFailed, 'error')
       } finally {
         setSettingsSaving(null)
       }
@@ -529,7 +538,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         goBack()
       } catch (err) {
         console.error('Failed to uninstall Tapp:', err)
-        setToastMessage(t.tapp.uninstallFailed || 'Uninstall failed')
+        showToastMessage(t.tapp.uninstallFailed || 'Uninstall failed', 'error')
         throw err // 让组件处理 loading 状态
       }
     },
@@ -1027,7 +1036,11 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
 
       {/* Toast 提示 */}
       {toastMessage && (
-        <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setToastMessage('')}
+        />
       )}
 
       {/* 卸载确认对话框 */}

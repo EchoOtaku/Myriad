@@ -22,7 +22,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import StageMode from '../components/StageMode'
 import { BangumiWidget } from '../components/StageWidgets'
-import Toast from '../components/Toast'
+import Toast, { type ToastType } from '../components/Toast'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -1566,6 +1566,7 @@ export default function Reports() {
   const [stagePaused, setStagePaused] = useState(false) // 舞台模式暂停状态
   const [refreshingStage, setRefreshingStage] = useState(false) // 刷新舞台报告加载状态
   const [toastMessage, setToastMessage] = useState<string>('') // Toast消息
+  const [toastType, setToastType] = useState<ToastType>('info')
   const [playAllMode, setPlayAllMode] = useState(false) // 播放所有模式
   const [_playAllQueue, setPlayAllQueue] = useState<string[]>([]) // 播放队列
   const playAllQueueRef = useRef<string[]>([]) // 用ref保存队列，避免闭包问题
@@ -1585,6 +1586,14 @@ export default function Reports() {
     type?: 'platform' | 'comprehensive'
     title?: string // 综合报告标题
   } | null>(null)
+
+  const showToastMessage = useCallback(
+    (message: string, type: ToastType = 'info') => {
+      setToastType(type)
+      setToastMessage(message)
+    },
+    [],
+  )
 
   // 新增：全局卡片状态切换控制
   const [showOverview, setShowOverview] = useState(true)
@@ -1780,7 +1789,7 @@ export default function Reports() {
     ).map((p) => p.id)
 
     if (platformsWithReports.length === 0) {
-      setToastMessage(`✗ ${t.reportsPage.noPlatformReports}`)
+      showToastMessage(t.reportsPage.noPlatformReports, 'error')
       return
     }
 
@@ -1810,7 +1819,7 @@ export default function Reports() {
     if (playAllQueueRef.current.length === 0) {
       // 所有平台播放完毕，退出舞台模式
       closeStageMode()
-      setToastMessage(`✓ ${t.reportsPage.allPlaybackComplete}`)
+      showToastMessage(t.reportsPage.allPlaybackComplete, 'success')
       return
     }
 
@@ -1866,13 +1875,14 @@ export default function Reports() {
     try {
       const csrfToken = await getCSRFToken(true)
       if (!csrfToken) {
-        setToastMessage(`✗ ${t.reportsPage.getTokenFailed}`)
+        showToastMessage(t.reportsPage.getTokenFailed, 'error')
         setRefreshingStage(false)
         return
       }
 
-      setToastMessage(
-        `✓ ${t.reportsPage.refreshingReport.replace('{platform}', platformName)}`,
+      showToastMessage(
+        t.reportsPage.refreshingReport.replace('{platform}', platformName),
+        'success',
       )
 
       // 1. 刷新该平台的数据
@@ -1930,22 +1940,27 @@ export default function Reports() {
               insights: updatedPlatformReport.insights,
               card_visuals: updatedPlatformReport.card_visuals,
             })
-            setToastMessage(
-              `✓ ${t.reportsPage.reportRefreshSuccess.replace('{platform}', platformName)}`,
+            showToastMessage(
+              t.reportsPage.reportRefreshSuccess.replace(
+                '{platform}',
+                platformName,
+              ),
+              'success',
             )
           } else {
-            setToastMessage(`✗ ${t.reportsPage.reportRefreshNoData}`)
+            showToastMessage(t.reportsPage.reportRefreshNoData, 'error')
           }
         } else {
-          setToastMessage(`✗ ${t.reportsPage.getLatestReportFailed}`)
+          showToastMessage(t.reportsPage.getLatestReportFailed, 'error')
         }
       } else {
-        setToastMessage(`✗ ${t.reportsPage.getLatestReportFailed}`)
+        showToastMessage(t.reportsPage.getLatestReportFailed, 'error')
       }
     } catch (err) {
       console.error('Refresh stage report failed:', err)
-      setToastMessage(
-        `✗ ${t.reportsPage.refreshReportFailed.replace('{platform}', platformName)}`,
+      showToastMessage(
+        t.reportsPage.refreshReportFailed.replace('{platform}', platformName),
+        'error',
       )
     } finally {
       setRefreshingStage(false)
@@ -2220,7 +2235,11 @@ export default function Reports() {
     <AnimatedView className="min-h-screen md:h-screen md:overflow-hidden">
       {/* Toast提示 */}
       {toastMessage && (
-        <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setToastMessage('')}
+        />
       )}
 
       {/* 🎭 舞台模式组件 - 固定在顶部 */}
@@ -2670,8 +2689,9 @@ export default function Reports() {
                             } else if (isAdmin) {
                               generatePlatformReport(platform.id)
                             } else {
-                              setToastMessage(
-                                `⛗ ${t.reportsPage.adminOnlyGenerate}`,
+                              showToastMessage(
+                                t.reportsPage.adminOnlyGenerate,
+                                'warning',
                               )
                             }
                           }}
