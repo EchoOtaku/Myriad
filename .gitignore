@@ -76,3 +76,4 @@ out/
 /backups/
 /pgdata/
 /.dev-updater/
+/.pnpm-store

@@ -366,7 +366,7 @@ const ActivityItem = memo(
 ActivityItem.displayName = 'ActivityItem'
 
 export const RecentActivityWidget = memo(
-  ({ config: _config, isEditMode, isPreview }: WidgetComponentProps) => {
+  ({ config: _config, isPreview }: WidgetComponentProps) => {
     const {
       isAuthenticated,
       isLoading: authLoading,
@@ -626,10 +626,6 @@ export const RecentActivityWidget = memo(
             )}
           </div>
         </div>
-
-        {isEditMode && (
-          <div className="absolute inset-0 border-2 border-dashed border-violet-400 rounded-xl pointer-events-none" />
-        )}
       </div>
     )
   },

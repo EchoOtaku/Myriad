@@ -100,10 +100,6 @@ export function PlatformCardWidget({
           <div className="text-5xl opacity-20">{platform.icon}</div>
         </div>
       </div>
-
-      {isEditMode && (
-        <div className="absolute inset-0 border-2 border-dashed border-white/50 rounded-xl pointer-events-none" />
-      )}
     </motion.div>
   )
 }

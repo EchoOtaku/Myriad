@@ -6,7 +6,6 @@
  * - 一层**边到边的背景**（如 GlowBackground），铺满不受安全区影响
  * - 一层带**安全内边距**的内容区：四周留出随尺寸缩放的保护间距，
  *   文本/图标不会贴边或被圆角切到
- * - 编辑态虚线边框
  *
  * 各小组件把根 `div.relative.h-full.w-full.rounded-xl.overflow-hidden.glass`
  * 换成本组件即可获得一致的保护区，内容排版通过 `contentClassName` 传入。
@@ -35,7 +34,6 @@ export interface WidgetShellProps {
   className?: string
   style?: CSSProperties
   containerRef?: Ref<HTMLDivElement>
-  isEditMode?: boolean
 }
 
 function cx(...parts: (string | false | undefined)[]): string {
@@ -52,7 +50,6 @@ export function WidgetShell({
   className,
   style,
   containerRef,
-  isEditMode,
 }: WidgetShellProps) {
   const px = typeof padding === 'number' ? padding : padding.x
   const py = typeof padding === 'number' ? padding : padding.y
@@ -77,9 +74,6 @@ export function WidgetShell({
       >
         {children}
       </div>
-      {isEditMode && (
-        <div className="pointer-events-none absolute inset-0 z-[2] rounded-xl border-2 border-dashed border-blue-400" />
-      )}
     </div>
   )
 }

@@ -44,8 +44,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { hasSessionHint } from '../../utils/sessionDetection'
-import { EXAMPLE_TAPPS, getCategoryName } from '../examples'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
+import { EXAMPLE_TAPPS, getCategoryName } from '../examples'
 import { getTappRuntime } from '../runtime'
 import { RemoteStoreService } from '../services/RemoteStoreService'
 import { getCategoryGradient } from '../utils/tappColors'
@@ -1070,11 +1070,15 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
             permissions: app.permissions,
           })
 
-          // 🎯 安装完成后，获取资源并生成分离式预编译 CSS（widget.css 和 page.css）
+          // 仅统一模式需要回写前端生成的 Tailwind CSS。
+          // separated 模式的 page.css/widget.css 来自商店资源，不能在这里覆盖。
           try {
             const resources = await getTappResources(app.id)
-            // 如果没有分离式 CSS，前端生成并更新
-            if (!resources.widgetCSS && !resources.pageCSS) {
+            if (
+              resources.cssMode !== 'separated' &&
+              !resources.widgetCSS &&
+              !resources.pageCSS
+            ) {
               const { generateOnDemandTailwindCSS } =
                 await import('../runtime/sandbox/styles')
 
@@ -1164,10 +1168,15 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
             source: source.id ? String(source.id) : source.url,
           })
 
-          // 更新完成后，重新生成分离式 CSS
+          // 仅统一模式需要回写前端生成的 Tailwind CSS。
+          // separated 模式的 page.css/widget.css 来自商店资源，不能在这里覆盖。
           try {
             const resources = await getTappResources(app.id)
-            if (!resources.widgetCSS && !resources.pageCSS) {
+            if (
+              resources.cssMode !== 'separated' &&
+              !resources.widgetCSS &&
+              !resources.pageCSS
+            ) {
               const { generateOnDemandTailwindCSS } =
                 await import('../runtime/sandbox/styles')
 

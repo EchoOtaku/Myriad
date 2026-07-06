@@ -3339,6 +3339,15 @@ async fn update_separated_css(
         .parent()
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let manifest: serde_json::Value = tapp.manifest.clone();
+    let is_separated = manifest.get("cssMode").and_then(|v| v.as_str()) == Some("separated");
+
+    // separated 模式下，widget.css/page.css 是商店或安装包提供的原始样式文件。
+    // 这里的补写用于 unified 模式的预编译 Tailwind CSS，不能覆盖 separated 资源。
+    if is_separated {
+        return Ok(Json(ApiResponse::success(())));
+    }
+
     // 保存 Widget CSS
     if let Some(widget_css) = &req.widget_css {
         let widget_css_path = tapp_dir.join("widget.css");

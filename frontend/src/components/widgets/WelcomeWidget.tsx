@@ -226,7 +226,6 @@ export const WelcomeWidget = memo(
       return (
         <WidgetShell
           containerRef={containerRef}
-          isEditMode={isEditMode}
           scale={scale}
           padding={16}
           contentClassName="flex flex-col justify-start"
@@ -284,7 +283,6 @@ export const WelcomeWidget = memo(
     return (
       <WidgetShell
         containerRef={containerRef}
-        isEditMode={isEditMode}
         scale={scale}
         padding={16}
         contentClassName="flex flex-row"

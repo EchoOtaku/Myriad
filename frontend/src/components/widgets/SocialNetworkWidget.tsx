@@ -1937,12 +1937,6 @@ export const SocialNetworkWidget = memo(
 
           {/* 内容区域 */}
           {content}
-
-          {/* 编辑模式指示器 */}
-          {isEditMode && (
-            <div className="absolute inset-0 border-2 border-dashed border-blue-400/50 rounded-xl pointer-events-none" />
-          )}
-
           {/* 长按设置提示（编辑模式）- 仅视觉提示，不可点击 */}
           {isEditMode && (
             <motion.div

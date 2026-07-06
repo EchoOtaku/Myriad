@@ -186,7 +186,7 @@ const StatCard = memo(
 StatCard.displayName = 'StatCard'
 
 export const QuickStatsWidget = memo(
-  ({ config, isEditMode, isPreview }: WidgetComponentProps) => {
+  ({ config, isPreview }: WidgetComponentProps) => {
     const { containerRef, scale, fontScale } = useWidgetSize(
       config.size,
       isPreview ? 1 : undefined,
@@ -391,10 +391,6 @@ export const QuickStatsWidget = memo(
             ))}
           </div>
         </div>
-
-        {isEditMode && (
-          <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-xl pointer-events-none" />
-        )}
       </div>
     )
   },

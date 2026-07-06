@@ -12,22 +12,6 @@
   grid-template-rows: repeat(4, 1fr);
 }
 
-/* 拖拽虚线动画 - 使用 opacity 脉动效果提高性能 */
-@keyframes dash {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-dash {
-  animation: dash 1.5s ease-in-out infinite;
-}
-
 /* 拖拽时的流畅过渡 */
 .widget-drag-preview {
   transition: transform 0.1s ease-out;

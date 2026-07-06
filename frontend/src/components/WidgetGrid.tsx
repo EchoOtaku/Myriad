@@ -192,7 +192,7 @@ const WidgetGridItem = React.memo(
       >
         <div className="relative h-full w-full p-1 group">
           <div
-            className={`h-full w-full rounded-xl overflow-hidden transition-all ${
+            className={`relative h-full w-full rounded-xl overflow-hidden transition-all ${
               isEditMode
                 ? 'cursor-move ring-1 ring-transparent hover:ring-blue-400/50'
                 : ''
@@ -1358,15 +1358,6 @@ export default function WidgetGrid({
                 height: `${(dragPreview.size.h / currentGridHeight) * 100}%`,
               }}
             >
-              {/* 虚线边框动画 */}
-              <div
-                className={`absolute inset-0 rounded-xl border-2 border-dashed animate-dash ${
-                  dragPreview.hasCollision
-                    ? 'border-red-500/60'
-                    : 'border-blue-500/60'
-                }`}
-              />
-
               {/* 状态提示 */}
               <div className="absolute inset-0 flex items-center justify-center">
                 <div
