@@ -125,23 +125,40 @@ const PAGE_HTML = `\
           </button>
         </nav>
         <div class="feed-sidebar-footer">
-          <div class="feed-sidebar-footer-profile">
-            <div id="feed-avatar" class="feed-avatar">?</div>
-            <div class="feed-sidebar-footer-info">
-              <div id="feed-display-name" class="feed-display-name"></div>
-              <div id="feed-handle" class="feed-handle"></div>
-            </div>
-          </div>
-          <div class="feed-identity-card" data-fed-identity>
-            <div class="feed-identity-top">
-              <span class="feed-identity-label" data-fed-label>联邦地址</span>
-              <button class="feed-identity-copy" data-copy-fed="handle" title="复制">
+          <div class="feed-profile-card" data-fed-profile>
+            <div class="feed-profile-summary" data-fed-toggle role="button" tabindex="0" aria-expanded="false">
+              <div id="feed-avatar" class="feed-avatar" data-feed-avatar>?</div>
+              <div class="feed-profile-info">
+                <div id="feed-display-name" class="feed-display-name" data-feed-display-name></div>
+                <div id="feed-handle" class="feed-handle" data-fed-handle-summary></div>
+              </div>
+              <button class="feed-profile-copy" data-copy-fed="handle" title="复制">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
               </button>
+              <button class="feed-profile-toggle" data-fed-toggle-button title="展开">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
             </div>
-            <button class="feed-identity-value" data-copy-fed="handle" type="button" data-fed-handle></button>
-            <div class="feed-identity-actor-label" data-fed-actor-label>Actor URL</div>
-            <button class="feed-identity-actor" data-copy-fed="actor" type="button" data-fed-actor></button>
+            <div class="feed-profile-details" data-fed-details>
+              <button class="feed-identity-actor" data-copy-fed="actor" type="button" data-fed-actor></button>
+            </div>
+            <div class="feed-profile-tablet-popover" data-fed-tablet-popover>
+              <div class="feed-profile-tablet-main">
+                <div class="feed-profile-info">
+                  <div class="feed-display-name" data-feed-display-name></div>
+                  <div class="feed-handle" data-fed-handle-summary></div>
+                </div>
+                <button class="feed-profile-copy" data-copy-fed="handle" title="复制">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                </button>
+                <button class="feed-profile-toggle" data-fed-toggle-button title="展开">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+              </div>
+              <div class="feed-profile-details" data-fed-details>
+                <button class="feed-identity-actor" data-copy-fed="actor" type="button" data-fed-actor></button>
+              </div>
+            </div>
           </div>
           <div class="feed-sidebar-stats">
             <div class="feed-sidebar-stat">
@@ -161,10 +178,16 @@ const PAGE_HTML = `\
       </aside>
       <!-- Main content -->
       <main class="feed-main">
-        <div class="feed-fab-group">
-          <button id="refresh-feed-btn" class="feed-fab" title="刷新">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          </button>
+        <div class="feed-main-header">
+          <div class="feed-main-heading">
+            <div id="feed-section-title" class="feed-section-title">动态</div>
+            <div id="feed-section-meta" class="feed-section-meta"></div>
+          </div>
+          <div class="feed-header-actions">
+            <button id="refresh-feed-btn" class="feed-refresh-btn" title="刷新">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </button>
+          </div>
         </div>
         <!-- Mobile tabs (visible only on small screens) -->
         <div class="feed-mobile-tabs" id="feed-mobile-tabs">
@@ -172,17 +195,41 @@ const PAGE_HTML = `\
           <button class="feed-mobile-tab" data-sub="following" id="feed-tab-following">关注</button>
           <button class="feed-mobile-tab" data-sub="followers" id="feed-tab-followers">粉丝</button>
           <button class="feed-mobile-tab" data-sub="published" id="feed-tab-published">已发布</button>
+          <button id="refresh-feed-mobile-btn" class="feed-mobile-refresh" title="刷新">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          </button>
         </div>
-        <div class="feed-identity-card feed-identity-mobile" data-fed-identity>
-          <div class="feed-identity-top">
-            <span class="feed-identity-label" data-fed-label>联邦地址</span>
-            <button class="feed-identity-copy" data-copy-fed="handle" title="复制">
+        <div class="feed-profile-card feed-profile-mobile" data-fed-profile>
+          <div class="feed-profile-summary" data-fed-toggle role="button" tabindex="0" aria-expanded="false">
+            <div class="feed-avatar" data-feed-avatar>?</div>
+            <div class="feed-profile-info">
+              <div class="feed-display-name" data-feed-display-name></div>
+              <div class="feed-handle" data-fed-handle-summary></div>
+            </div>
+            <button class="feed-profile-copy" data-copy-fed="handle" title="复制">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
             </button>
+            <button class="feed-profile-toggle" data-fed-toggle-button title="展开">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
           </div>
-          <button class="feed-identity-value" data-copy-fed="handle" type="button" data-fed-handle></button>
-          <div class="feed-identity-actor-label" data-fed-actor-label>Actor URL</div>
-          <button class="feed-identity-actor" data-copy-fed="actor" type="button" data-fed-actor></button>
+          <div class="feed-profile-details" data-fed-details>
+            <button class="feed-identity-actor" data-copy-fed="actor" type="button" data-fed-actor></button>
+          </div>
+        </div>
+        <div class="feed-mobile-stats">
+          <div class="feed-mobile-stat">
+            <span class="feed-stat-num" id="feed-mobile-count-following">0</span>
+            <span class="feed-stat-lbl" id="feed-mobile-lbl-following">关注</span>
+          </div>
+          <div class="feed-mobile-stat">
+            <span class="feed-stat-num" id="feed-mobile-count-followers">0</span>
+            <span class="feed-stat-lbl" id="feed-mobile-lbl-followers">粉丝</span>
+          </div>
+          <div class="feed-mobile-stat">
+            <span class="feed-stat-num" id="feed-mobile-count-published">0</span>
+            <span class="feed-stat-lbl" id="feed-mobile-lbl-published">已发布</span>
+          </div>
         </div>
         <div id="feed-follow-bar" class="feed-follow-bar" style="display:none">
           <input id="feed-follow-input" class="feed-follow-input" type="text" placeholder="Actor URL 或 @user@domain" />
@@ -190,7 +237,8 @@ const PAGE_HTML = `\
         </div>
         <div id="feed-content" class="feed-content"></div>
         <div id="feed-empty" class="feed-empty" style="display:none">
-          <div class="empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1l2.8-2.8M7 4l3.5 3.5M16.5 20l-3.5-3.5M2 12h3M19 12h3M12 2v3M12 19v3"/><circle cx="12" cy="12" r="4"/></svg></div>
+          <div class="aro-empty-mark feed-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a14 14 0 0114 14"/><path d="M5 11a8 8 0 018 8"/><circle cx="6" cy="18" r="1.6"/></svg></div>
+          <div id="feed-empty-title" class="feed-empty-title">动态</div>
           <span id="feed-empty-text">暂无内容</span>
         </div>
       </main>
@@ -207,9 +255,6 @@ const PAGE_HTML = `\
           <button id="ring-create-open-btn" class="create-btn" title="新建">+</button>
         </div>
         <div id="ring-list" class="conv-list"></div>
-        <div id="ring-empty" class="conv-empty" style="display:none">
-          <span id="ring-empty-text">暂无环网</span>
-        </div>
       </aside>
       <!-- 右侧：环网详情 -->
       <main class="panel-main">
@@ -317,7 +362,6 @@ const PAGE_HTML = `\
     </div>
   </div>
 </div>
-
 `
 
 const STYLES = `\
@@ -330,13 +374,13 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 #tapp-content{display:flex!important;flex-direction:column!important;overflow:hidden!important}
 
 /* ===== Aro Nav ===== */
-.aro-nav{display:flex;gap:2px;padding:6px 8px;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0;background:var(--bg-primary,#fff)}
-.aro-nav-item{display:flex;align-items:center;gap:6px;padding:6px 14px;border:none;background:none;border-radius:10px;font-size:12px;font-weight:500;color:var(--text-secondary,#999);cursor:pointer;transition:all .15s;white-space:nowrap}
-.aro-nav-item:hover{background:rgba(128,128,128,.06);color:var(--text-primary,#333)}
-.aro-nav-active{background:rgba(var(--tapp-primary-rgb,100,100,255),.08)!important;color:var(--tapp-primary,#6366f1)!important;font-weight:600}
+.aro-nav{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0;background:rgba(255,255,255,.72);backdrop-filter:blur(16px)}
+.aro-nav-item{height:34px;display:flex;align-items:center;gap:7px;padding:0 12px;border:none;background:none;border-radius:12px;font-size:12px;font-weight:600;color:var(--text-secondary,#999);cursor:pointer;transition:background .15s,color .15s,box-shadow .15s;white-space:nowrap}
+.aro-nav-item:hover{background:rgba(128,128,128,.08);color:var(--text-primary,#333)}
+.aro-nav-active{background:rgba(var(--tapp-primary-rgb,100,100,255),.14)!important;color:var(--tapp-primary,#6366f1)!important;box-shadow:inset 0 0 0 1px rgba(var(--tapp-primary-rgb,100,100,255),.08)}
 .aro-nav-item svg{flex-shrink:0}
 /* Nav Feed Avatar */
-.nav-feed-avatar{width:22px;height:22px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;overflow:hidden}
+.nav-feed-avatar{width:22px;height:22px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.14);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;overflow:hidden}
 .nav-feed-avatar img{width:100%;height:100%;object-fit:cover}
 .nav-feed-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px}
 
@@ -362,66 +406,82 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 /* ===== Feed Layout (X-style sidebar + content) ===== */
 .feed-layout{display:flex;flex:1;min-height:0;overflow:hidden}
 /* Feed Sidebar */
-.feed-sidebar{width:220px;flex-shrink:0;border-right:1px solid rgba(128,128,128,.08);display:flex;flex-direction:column;padding:12px;overflow:hidden}
+.feed-sidebar{width:232px;flex-shrink:0;border-right:1px solid rgba(128,128,128,.08);display:flex;flex-direction:column;padding:14px 12px;overflow:hidden}
 .feed-avatar{width:36px;height:36px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;overflow:hidden}
 .feed-avatar img{width:100%;height:100%;object-fit:cover}
 .feed-display-name{font-size:13px;font-weight:700;color:var(--text-primary,#0f1419);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .feed-handle{font-size:11px;color:var(--text-secondary,#536471);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 /* Sidebar Nav */
-.feed-sidebar-nav{display:flex;flex-direction:column;gap:2px;padding:4px 0;flex:1;overflow-y:auto;min-height:0}
-.feed-nav-item{display:flex;align-items:center;gap:14px;padding:10px 14px;border:none;background:none;border-radius:24px;font-size:15px;font-weight:400;color:var(--text-primary,#0f1419);cursor:pointer;transition:background .15s;white-space:nowrap;text-align:left;width:100%}
+.feed-sidebar-nav{display:flex;flex-direction:column;gap:4px;padding:2px 0 8px;flex:1;overflow-y:auto;min-height:0}
+.feed-nav-item{display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;background:none;border-radius:14px;font-size:14px;font-weight:600;color:var(--text-primary,#0f1419);cursor:pointer;transition:background .15s,color .15s;white-space:nowrap;text-align:left;width:100%}
 .feed-nav-item:hover{background:rgba(128,128,128,.08)}
-.feed-nav-active{font-weight:700!important}
+.feed-nav-active{background:rgba(var(--tapp-primary-rgb,100,100,255),.1)!important;color:var(--tapp-primary,#6366f1);font-weight:700!important}
 .feed-nav-active svg{stroke-width:2.5}
 .feed-nav-item svg{flex-shrink:0}
 /* Sidebar Footer (profile + stats) */
 .feed-sidebar-footer{flex-shrink:0;border-top:1px solid rgba(128,128,128,.06);padding-top:12px;display:flex;flex-direction:column;gap:10px}
-.feed-sidebar-footer-profile{display:flex;align-items:center;gap:10px}
-.feed-sidebar-footer-info{min-width:0;flex:1}
-.feed-sidebar-stats{display:flex;flex-wrap:wrap;gap:10px}
-.feed-sidebar-stat{display:flex;align-items:center;gap:3px;font-size:12px;color:var(--text-secondary,#536471)}
+.feed-sidebar-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.feed-sidebar-stat{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:7px 8px;border-radius:9px;background:rgba(128,128,128,.045);font-size:12px;color:var(--text-secondary,#536471)}
 .feed-stat-num{font-weight:700;color:var(--text-primary,#0f1419)}
-.feed-stat-lbl{font-weight:400}
-.feed-identity-card{display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid rgba(128,128,128,.12);border-radius:8px;background:rgba(128,128,128,.035);min-width:0}
-.feed-identity-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.feed-identity-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary,#536471)}
-.feed-identity-copy{width:24px;height:24px;border:none;border-radius:6px;background:rgba(var(--tapp-primary-rgb,100,100,255),.08);color:var(--tapp-primary,#6366f1);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
-.feed-identity-copy:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.14)}
-.feed-identity-value,.feed-identity-actor{width:100%;padding:0;border:none;background:none;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.feed-identity-value{font-size:12px;font-weight:700;color:var(--text-primary,#0f1419)}
-.feed-identity-actor-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary,#536471);opacity:.75}
-.feed-identity-actor{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:10px;line-height:1.35;color:var(--text-secondary,#536471)}
-.feed-identity-card.feed-identity-actor-missing{gap:4px}
-.feed-identity-card.feed-identity-actor-missing .feed-identity-top{margin-bottom:2px}
+.feed-stat-lbl{max-width:100%;font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-profile-card{display:flex;flex-direction:column;gap:0;padding:8px;border:1px solid rgba(128,128,128,.12);border-radius:12px;background:rgba(128,128,128,.035);min-width:0}
+.feed-profile-summary{min-width:0;display:flex;align-items:center;gap:9px;border-radius:10px;cursor:pointer;outline:none}
+.feed-profile-summary:focus-visible{box-shadow:0 0 0 2px rgba(var(--tapp-primary-rgb,100,100,255),.35)}
+.feed-profile-info{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
+.feed-profile-copy,.feed-profile-toggle{width:28px;height:28px;border:none;border-radius:9px;background:rgba(var(--tapp-primary-rgb,100,100,255),.08);color:var(--tapp-primary,#6366f1);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .15s,transform .15s}
+.feed-profile-copy:hover,.feed-profile-toggle:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.14)}
+.feed-profile-toggle{background:rgba(128,128,128,.06);color:var(--text-secondary,#536471)}
+.feed-profile-card.feed-profile-expanded .feed-profile-toggle svg{transform:rotate(180deg)}
+.feed-profile-details{max-height:0;overflow:hidden;opacity:0;transition:max-height .18s ease,opacity .15s ease,padding-top .18s ease}
+.feed-profile-card.feed-profile-expanded .feed-profile-details{max-height:56px;opacity:1;padding-top:8px}
+.feed-identity-actor{width:100%;padding:9px 10px;border:none;border-radius:9px;background:rgba(128,128,128,.06);text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;line-height:1.35;color:var(--text-primary,#0f1419)}
+.feed-profile-card.feed-identity-actor-missing .feed-profile-details{display:none}
 .feed-identity-actor:disabled{cursor:default}
-.feed-identity-mobile{display:none;margin:10px 16px 0;flex-shrink:0}
+.feed-profile-tablet-popover{display:none}
+.feed-profile-tablet-main{display:flex;align-items:center;gap:9px;min-width:0}
+.feed-profile-mobile{display:none;margin:10px 16px 0;flex-shrink:0}
+.feed-mobile-stats{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 16px 0;flex-shrink:0}
+.feed-mobile-stat{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;border-radius:10px;background:rgba(128,128,128,.04);color:var(--text-secondary,#536471);font-size:11px}
 /* Feed Main */
 .feed-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;position:relative}
-/* Floating action buttons */
-.feed-fab-group{position:absolute;bottom:16px;right:16px;z-index:10;display:flex;gap:8px;pointer-events:none}
-.feed-fab{width:40px;height:40px;border:none;border-radius:50%;background:var(--tapp-primary,#6366f1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .18s;flex-shrink:0;pointer-events:auto;box-shadow:0 2px 8px rgba(var(--tapp-primary-rgb,100,100,255),.3)}
-.feed-fab:hover{opacity:.85;box-shadow:0 4px 14px rgba(var(--tapp-primary-rgb,100,100,255),.4);transform:scale(1.05)}
-.feed-fab:active{transform:scale(.95)}
-.feed-fab:disabled{opacity:.7;cursor:default;transform:none}
-.feed-fab-loading svg{animation:aroSpin .8s linear infinite}
+/* Feed header */
+.feed-main-header{min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;background:rgba(255,255,255,.45);backdrop-filter:blur(12px)}
+.feed-main-heading{min-width:0;display:flex;flex-direction:column;gap:2px}
+.feed-section-title{font-size:16px;font-weight:750;color:var(--text-primary,#0f1419);line-height:1.2}
+.feed-section-meta{min-height:15px;font-size:11px;font-weight:500;color:var(--text-secondary,#536471);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.feed-refresh-btn{width:34px;height:34px;border:none;border-radius:10px;background:rgba(128,128,128,.07);color:var(--text-secondary,#536471);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s,transform .15s;flex-shrink:0}
+.feed-refresh-btn:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.11);color:var(--tapp-primary,#6366f1)}
+.feed-refresh-btn:active{transform:scale(.96)}
+.feed-refresh-btn:disabled{opacity:.65;cursor:default;transform:none}
+.feed-refresh-loading svg{animation:aroSpin .8s linear infinite}
 @keyframes aroSpin{to{transform:rotate(360deg)}}
 /* Feed Mobile Tabs (hidden on desktop) */
-.feed-mobile-tabs{display:none;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0}
+.feed-mobile-tabs{display:none;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0;background:rgba(255,255,255,.45)}
 .feed-mobile-tab{flex:1;padding:12px 4px;border:none;background:none;font-size:13px;font-weight:500;color:var(--text-secondary,#536471);cursor:pointer;text-align:center;transition:all .15s;border-bottom:2px solid transparent}
 .feed-mobile-tab:hover{background:rgba(128,128,128,.04)}
 .feed-mobile-tab-active{color:var(--text-primary,#0f1419)!important;font-weight:700;border-bottom-color:var(--tapp-primary,#6366f1)!important}
+.feed-mobile-refresh{width:44px;border:none;background:none;color:var(--text-secondary,#536471);display:flex;align-items:center;justify-content:center;cursor:pointer;border-bottom:2px solid transparent}
+.feed-mobile-refresh:hover{background:rgba(128,128,128,.04);color:var(--tapp-primary,#6366f1)}
+.feed-mobile-refresh:disabled{opacity:.55;cursor:default}
+.feed-mobile-refresh.feed-refresh-loading svg{animation:aroSpin .8s linear infinite}
 /* Follow bar */
-.feed-follow-bar{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0}
-.feed-follow-input{flex:1;height:36px;padding:0 14px;border-radius:20px;border:1px solid rgba(128,128,128,.15);background:rgba(128,128,128,.03);color:var(--text-primary,#0f1419);font-size:13px;outline:none;transition:border-color .2s}
+.feed-follow-bar{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;background:rgba(128,128,128,.02)}
+.feed-follow-input{flex:1;height:36px;padding:0 14px;border-radius:12px;border:1px solid rgba(128,128,128,.15);background:rgba(128,128,128,.04);color:var(--text-primary,#0f1419);font-size:13px;outline:none;transition:border-color .2s,background .2s}
 .feed-follow-input:focus{border-color:rgba(var(--tapp-primary-rgb,100,100,255),.5)}
 .feed-follow-input::placeholder{color:var(--text-secondary,#bbb)}
-.feed-follow-btn{padding:0 16px;height:36px;border-radius:20px;border:none;background:var(--tapp-primary,#6366f1);color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .15s}
+.feed-follow-btn{padding:0 16px;height:36px;border-radius:12px;border:none;background:var(--tapp-primary,#6366f1);color:#fff;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;transition:opacity .15s}
 .feed-follow-btn:hover{opacity:.85}
 .feed-follow-btn:disabled{opacity:.5;cursor:not-allowed}
 /* Feed content / empty */
 .feed-content{flex:1;min-height:0}
-.feed-empty{padding:48px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text-secondary,#536471);font-size:13px}
-.feed-empty-error .empty-icon{background:rgba(239,68,68,.08);color:#ef4444}
+.feed-empty{min-height:260px;padding:48px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text-secondary,#536471);font-size:13px}
+.feed-main.feed-empty-visible .feed-content{display:none}
+.feed-main.feed-empty-visible .feed-empty{flex:1;min-height:0}
+.aro-empty-mark{width:44px;height:44px;border-radius:13px;background:rgba(128,128,128,.06);color:var(--text-secondary,#536471);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.aro-empty-mark svg{width:21px;height:21px}
+.feed-empty-title{font-size:14px;font-weight:700;color:var(--text-primary,#0f1419)}
+.feed-empty-error .aro-empty-mark{background:rgba(239,68,68,.08);color:#ef4444}
 .feed-empty-error #feed-empty-text{color:#ef4444}
 .feed-skeleton-item{display:flex;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(128,128,128,.06)}
 .feed-skeleton-avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;background:linear-gradient(90deg,rgba(128,128,128,.08),rgba(128,128,128,.16),rgba(128,128,128,.08));background-size:200% 100%;animation:aroSkeleton 1.1s ease-in-out infinite}
@@ -459,23 +519,33 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .aro-unread-dot{width:7px;height:7px;border-radius:50%;background:var(--tapp-primary,#6366f1);flex-shrink:0;box-shadow:0 0 4px rgba(var(--tapp-primary-rgb,100,100,255),.4)}
 
 /* ===== Dark Mode Overrides for Aro ===== */
-.dark .aro-nav{background:var(--bg-primary,#1a1a1a)}
+.dark .aro-nav{background:rgba(10,10,10,.78)}
 .dark .feed-sidebar{border-color:rgba(255,255,255,.06)}
 .dark .feed-display-name{color:rgba(255,255,255,.92)}
 .dark .feed-nav-item{color:rgba(255,255,255,.85)}
 .dark .feed-nav-active{color:rgba(255,255,255,.95)!important}
 .dark .feed-sidebar-footer{border-color:rgba(255,255,255,.06)}
-.dark .feed-fab{background:var(--tapp-primary,#6366f1);color:#fff;box-shadow:0 2px 8px rgba(var(--tapp-primary-rgb,100,100,255),.35)}
-.dark .feed-mobile-tabs{background:rgba(21,32,43,.85)}
+.dark .feed-main-header{background:rgba(10,10,10,.52);border-color:rgba(255,255,255,.06)}
+.dark .feed-section-title{color:rgba(255,255,255,.92)}
+.dark .feed-section-meta{color:rgba(255,255,255,.45)}
+.dark .feed-refresh-btn{background:rgba(255,255,255,.06);color:rgba(255,255,255,.56)}
+.dark .feed-refresh-btn:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.16);color:var(--tapp-primary,#818cf8)}
+.dark .feed-mobile-tabs{background:rgba(10,10,10,.5)}
 .dark .feed-mobile-tab-active{color:rgba(255,255,255,.95)!important}
+.dark .feed-mobile-refresh{color:rgba(255,255,255,.5)}
+.dark .feed-mobile-refresh:hover{background:rgba(255,255,255,.04);color:var(--tapp-primary,#818cf8)}
 .dark .feed-stat-num{color:rgba(255,255,255,.92)}
-.dark .feed-identity-card{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.035)}
-.dark .feed-identity-value{color:rgba(255,255,255,.92)}
-.dark .feed-identity-actor,.dark .feed-identity-actor-label,.dark .feed-identity-label{color:rgba(255,255,255,.5)}
+.dark .feed-sidebar-stat{background:rgba(255,255,255,.045)}
+.dark .feed-mobile-stat{background:rgba(255,255,255,.035);color:rgba(255,255,255,.48)}
+.dark .feed-profile-card{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.035)}
+.dark .feed-profile-toggle{background:rgba(255,255,255,.045);color:rgba(255,255,255,.48)}
+.dark .feed-identity-actor{background:rgba(255,255,255,.06);color:rgba(255,255,255,.68)}
 .dark .feed-item-name{color:rgba(255,255,255,.92)}
 .dark .feed-item-text{color:rgba(255,255,255,.85)}
 .dark .feed-item:hover{background:rgba(255,255,255,.03)}
 .dark .feed-follow-input{background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+.dark .aro-empty-mark{background:rgba(255,255,255,.055);color:rgba(255,255,255,.42)}
+.dark .feed-empty-title{color:rgba(255,255,255,.86)}
 
 /* ===== Responsive for Aro Nav ===== */
 @media(max-width:768px){
@@ -483,8 +553,10 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
   .aro-nav-item{padding:8px 12px}
   .aro-nav{justify-content:center;gap:4px}
   .feed-sidebar{display:none}
+  .feed-main-header{display:none}
   .feed-mobile-tabs{display:flex}
-  .feed-identity-mobile{display:flex}
+  .feed-profile-mobile{display:flex}
+  .feed-mobile-stats{display:grid}
   .feed-main{max-width:none}
 }
 
@@ -495,7 +567,7 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .sidebar-title{margin:0;font-size:15px;font-weight:600;color:var(--text-primary,#1a1a1a);letter-spacing:-.01em}
 .create-btn{width:28px;height:28px;border-radius:50%;border:none;background:var(--tapp-primary,#888);color:#fff;font-size:18px;font-weight:300;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s;flex-shrink:0;line-height:1}
 .create-btn:hover{opacity:.85}
-.conv-list{flex:1;overflow-y:auto;padding:4px 0}
+.conv-list{flex:1;min-height:0;overflow-y:auto;padding:4px 0;display:flex;flex-direction:column}
 .chat-main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .member-panel{display:flex;flex-direction:column;width:220px;border-left:1px solid rgba(128,128,128,.08);flex-shrink:0;overflow:hidden;transition:width .2s}
 .member-panel.member-collapsed{width:0;border-left:none;overflow:hidden}
@@ -550,10 +622,12 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .conv-closed{font-size:10px;color:var(--text-secondary,#999);background:rgba(128,128,128,.08);padding:2px 6px;border-radius:6px;flex-shrink:0}
 .conv-pending{font-size:10px;color:#f59e0b;background:rgba(245,158,11,.1);padding:2px 6px;border-radius:6px;flex-shrink:0}
 .conv-empty{padding:40px 16px;text-align:center;font-size:13px;color:var(--text-secondary,#999)}
+.conv-empty-fill{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 16px}
 
 /* ===== Empty State ===== */
 .empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-secondary,#999)}
-.empty-icon{width:56px;height:56px;border-radius:14px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:12px}
+.empty-icon{width:44px;height:44px;border-radius:13px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:0;margin-bottom:10px;color:var(--text-secondary,#999)}
+.empty-icon svg{width:21px;height:21px;stroke-width:1.8}
 .empty-text{font-size:13px;font-weight:400;color:var(--text-secondary,#999)}
 
 /* ===== Chat Container ===== */
@@ -601,7 +675,8 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 /* ===== Messages ===== */
 .messages-area{flex:1;overflow-y:auto;padding:16px;padding-bottom:72px;display:flex;flex-direction:column;gap:4px}
 .messages-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-secondary,#999)}
-.messages-empty-icon{width:48px;height:48px;border-radius:14px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:10px}
+.messages-empty-icon{width:44px;height:44px;border-radius:13px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:0;margin-bottom:10px}
+.messages-empty-icon svg{width:21px;height:21px;stroke-width:1.8}
 .msg-row{display:flex;gap:8px;align-items:flex-end}
 .msg-local{justify-content:flex-end;padding-left:48px}
 .msg-remote{justify-content:flex-start;padding-right:48px}
@@ -879,13 +954,19 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 @media(min-width:769px) and (max-width:1024px){
   .member-panel{width:0;border-left:none;overflow:hidden}
   .member-panel.member-expanded-tablet{width:180px;border-left:1px solid rgba(128,128,128,.08);overflow:hidden}
-  .feed-sidebar{width:68px;padding:12px 8px}
+  .feed-sidebar{width:68px;padding:12px 8px;overflow:visible;position:relative;z-index:5}
   .feed-nav-item span{display:none}
   .feed-nav-item{justify-content:center;padding:10px}
-  .feed-sidebar-footer{align-items:center}
-  .feed-sidebar-footer-profile{justify-content:center}
-  .feed-sidebar-footer-info{display:none}
-  .feed-sidebar .feed-identity-card{display:none!important}
+  .feed-sidebar-footer{align-items:center;position:relative}
+  .feed-profile-card{width:40px;height:40px;padding:0;border:none;background:none;overflow:visible}
+  .feed-profile-summary{width:40px;height:40px;justify-content:center}
+  .feed-profile-card>.feed-profile-summary .feed-profile-info,.feed-profile-card>.feed-profile-summary .feed-profile-copy,.feed-profile-card>.feed-profile-summary .feed-profile-toggle,.feed-profile-card>.feed-profile-details{display:none!important}
+  .feed-profile-card.feed-profile-popover-open .feed-profile-tablet-popover{position:absolute;left:54px;bottom:0;width:232px;padding:9px;border:1px solid rgba(128,128,128,.12);border-radius:12px;background:var(--bg-primary,#fff);box-shadow:0 12px 36px rgba(0,0,0,.18);z-index:40;display:flex;flex-direction:column}
+  .feed-profile-card.feed-profile-popover-open .feed-profile-tablet-popover .feed-profile-info{display:flex!important}
+  .feed-profile-card.feed-profile-popover-open .feed-profile-tablet-popover .feed-profile-copy,.feed-profile-card.feed-profile-popover-open .feed-profile-tablet-popover .feed-profile-toggle{display:flex!important}
+  .feed-profile-card.feed-profile-popover-open .feed-profile-tablet-popover .feed-profile-details{display:block!important}
+  .feed-profile-card.feed-profile-popover-open.feed-profile-expanded .feed-profile-tablet-popover .feed-profile-details{max-height:56px;opacity:1;padding-top:8px}
+  .dark .feed-profile-card.feed-profile-popover-open .feed-profile-tablet-popover{background:var(--bg-primary,#0a0a0a);border-color:rgba(255,255,255,.08);box-shadow:0 16px 44px rgba(0,0,0,.38)}
   .feed-sidebar-stats{display:none}
 }
 
@@ -923,7 +1004,6 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "acceptFail": "Accept failed",
     "acceptTapp": "Accept",
     "activityType": "Activity",
-    "actorUrl": "Actor URL",
     "addPeerBtn": "Add",
     "addPeerFail": "Add failed",
     "addPeerPlaceholder": "Actor URL or @user@domain",
@@ -947,6 +1027,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "copied": "Copied",
     "copy": "Copy",
     "copyFail": "Copy failed",
+    "collapseDetails": "Collapse",
     "create": "New",
     "createChannel": "Create Channel",
     "createFail": "Create failed",
@@ -956,6 +1037,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "createRoom": "Create Room",
     "creating": "Creating...",
     "disconnected": "Disconnected",
+    "expandDetails": "Expand",
     "dissolve": "Dissolve Group",
     "dissolveConfirm": "Are you sure you want to dissolve this group? This cannot be undone.",
     "dissolveFail": "Dissolve failed",
@@ -969,10 +1051,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "emptyRings": "No rings",
     "emptyRoomHint": "Send the first message to start group chat",
     "emptyTimeline": "No activity",
-    "federationAddress": "Federation address",
-    "feedLoadFail": "Failed to load feed",
     "feedFollowers": "Followers",
     "feedFollowing": "Following",
+    "feedItems": "items",
+    "feedLoadFail": "Failed to load feed",
     "feedPublished": "Published",
     "feedTimeline": "Feed",
     "fileTooLarge": "File too large (max 10MB)",
@@ -1078,7 +1160,6 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "acceptFail": "承認失敗",
     "acceptTapp": "承認",
     "activityType": "アクティビティ",
-    "actorUrl": "Actor URL",
     "addPeerBtn": "追加",
     "addPeerFail": "追加失敗",
     "addPeerPlaceholder": "Actor URL または @user@domain",
@@ -1102,6 +1183,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "copied": "コピーしました",
     "copy": "コピー",
     "copyFail": "コピー失敗",
+    "collapseDetails": "閉じる",
     "create": "新規",
     "createChannel": "チャンネル作成",
     "createFail": "作成失敗",
@@ -1111,6 +1193,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "createRoom": "ルーム作成",
     "creating": "作成中...",
     "disconnected": "切断",
+    "expandDetails": "展開",
     "dissolve": "グループ解散",
     "dissolveConfirm": "このグループを解散しますか？この操作は元に戻せません。",
     "dissolveFail": "解散失敗",
@@ -1124,10 +1207,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "emptyRings": "リングなし",
     "emptyRoomHint": "最初のメッセージを送信してグループチャットを始めましょう",
     "emptyTimeline": "アクティビティなし",
-    "federationAddress": "連合アドレス",
-    "feedLoadFail": "フィードの読み込みに失敗",
     "feedFollowers": "フォロワー",
     "feedFollowing": "フォロー中",
+    "feedItems": "件",
+    "feedLoadFail": "フィードの読み込みに失敗",
     "feedPublished": "公開済み",
     "feedTimeline": "フィード",
     "fileTooLarge": "ファイルが大きすぎます（最大10MB）",
@@ -1233,7 +1316,6 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "acceptFail": "接受失败",
     "acceptTapp": "接受",
     "activityType": "活动类型",
-    "actorUrl": "Actor URL",
     "addPeerBtn": "添加",
     "addPeerFail": "添加失败",
     "addPeerPlaceholder": "Actor URL 或 @user@domain",
@@ -1257,6 +1339,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "copied": "已复制",
     "copy": "复制",
     "copyFail": "复制失败",
+    "collapseDetails": "收起",
     "create": "新建",
     "createChannel": "创建通道",
     "createFail": "创建失败",
@@ -1266,6 +1349,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "createRoom": "创建房间",
     "creating": "创建中...",
     "disconnected": "未连接",
+    "expandDetails": "展开",
     "dissolve": "解散群组",
     "dissolveConfirm": "确定要解散此群组吗？此操作不可撤销。",
     "dissolveFail": "解散失败",
@@ -1279,10 +1363,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "emptyRings": "暂无环网",
     "emptyRoomHint": "发送第一条消息开始群聊",
     "emptyTimeline": "暂无动态",
-    "federationAddress": "联邦地址",
-    "feedLoadFail": "动态加载失败",
     "feedFollowers": "粉丝",
     "feedFollowing": "关注",
+    "feedItems": "项",
+    "feedLoadFail": "动态加载失败",
     "feedPublished": "已发布",
     "feedTimeline": "动态",
     "fileTooLarge": "文件过大（最大 10MB）",
@@ -1662,23 +1746,95 @@ function renderFederationIdentity() {
   if (actorUrl) state.localActorUrl = actorUrl;
   else if (state.localActorUrl && !normalizeFederationUrl(state.localActorUrl)) state.localActorUrl = null;
 
-  document.querySelectorAll('[data-fed-identity]').forEach(function (card) {
+  document.querySelectorAll('[data-fed-profile]').forEach(function (card) {
     card.style.display = visible ? '' : 'none';
     card.classList.toggle('feed-identity-actor-missing', !actorUrl);
-    var handleEl = card.querySelector('[data-fed-handle]');
-    var actorEl = card.querySelector('[data-fed-actor]');
-    var actorLabel = card.querySelector('[data-fed-actor-label]');
-    if (handleEl) handleEl.textContent = handle || actorUrl;
-    if (actorEl) {
+    card.querySelectorAll('[data-fed-handle-summary]').forEach(function (handleEl) {
+      handleEl.textContent = handle || actorUrl;
+    });
+    card.querySelectorAll('[data-fed-actor]').forEach(function (actorEl) {
       actorEl.textContent = actorUrl;
       actorEl.disabled = !actorUrl;
       actorEl.style.display = actorUrl ? '' : 'none';
-    }
-    if (actorLabel) actorLabel.style.display = actorUrl ? '' : 'none';
+    });
+    card.querySelectorAll('[data-fed-toggle-button]').forEach(function (toggleBtn) {
+      toggleBtn.style.display = actorUrl ? '' : 'none';
+    });
+    if (!actorUrl) setFeedProfileExpanded(card, false);
   });
 
   var profileHandle = $('feed-handle');
   if (profileHandle && handle) profileHandle.textContent = handle;
+}
+
+function renderFeedProfileUser(user) {
+  if (!user) return;
+  var name = user.display_name || user.username || '';
+  var avatar = user.avatar_url || user.avatar || '';
+  var initial = ((name || user.username || '?')[0] || '?').toUpperCase();
+  document.querySelectorAll('[data-feed-avatar]').forEach(function (avatarEl) {
+    if (avatar) avatarEl.innerHTML = '<img src="' + esc(avatar) + '" alt="" />';
+    else avatarEl.textContent = initial;
+  });
+  document.querySelectorAll('[data-feed-display-name]').forEach(function (nameEl) {
+    nameEl.textContent = name;
+  });
+  var fallbackHandle = user.username ? '@' + user.username : '';
+  if (!state.identity && fallbackHandle) {
+    document.querySelectorAll('[data-fed-handle-summary]').forEach(function (handleEl) {
+      handleEl.textContent = fallbackHandle;
+    });
+  }
+}
+
+function setFeedProfileExpanded(card, expanded) {
+  if (!card) return;
+  if (expanded && card.classList.contains('feed-identity-actor-missing')) return;
+  card.classList.toggle('feed-profile-expanded', !!expanded);
+  var summary = card.querySelector('[data-fed-toggle]');
+  if (summary) summary.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  card.querySelectorAll('[data-fed-toggle-button]').forEach(function (toggleBtn) {
+    toggleBtn.setAttribute('title', expanded ? (lang.collapseDetails || '收起') : (lang.expandDetails || '展开'));
+  });
+}
+
+function isTabletFeedProfileCard(card) {
+  return !!(card && card.closest('.feed-sidebar') && window.matchMedia && window.matchMedia('(min-width: 769px) and (max-width: 1024px)').matches);
+}
+
+function closeFeedProfilePopovers(exceptCard) {
+  document.querySelectorAll('.feed-profile-popover-open').forEach(function (card) {
+    if (card !== exceptCard) {
+      card.classList.remove('feed-profile-popover-open');
+      setFeedProfileExpanded(card, false);
+    }
+  });
+}
+
+function setFeedProfilePopoverOpen(card, open) {
+  if (!card) return;
+  if (open) {
+    closeFeedProfilePopovers(card);
+    card.classList.add('feed-profile-popover-open');
+    setFeedProfileExpanded(card, false);
+  } else {
+    card.classList.remove('feed-profile-popover-open');
+    setFeedProfileExpanded(card, false);
+  }
+}
+
+function toggleFeedProfileDetails(card) {
+  if (!card || card.classList.contains('feed-identity-actor-missing')) return;
+  setFeedProfileExpanded(card, !card.classList.contains('feed-profile-expanded'));
+}
+
+function toggleFeedProfileSummary(card) {
+  if (!card) return;
+  if (isTabletFeedProfileCard(card)) {
+    setFeedProfilePopoverOpen(card, !card.classList.contains('feed-profile-popover-open'));
+    return;
+  }
+  toggleFeedProfileDetails(card);
 }
 
 async function loadFederationIdentity() {
@@ -1785,11 +1941,18 @@ function applyLabels() {
   el = $('feed-lbl-following'); if (el) el.textContent = lang.feedFollowing;
   el = $('feed-lbl-followers'); if (el) el.textContent = lang.feedFollowers;
   el = $('feed-lbl-published'); if (el) el.textContent = lang.feedPublished;
+  el = $('feed-mobile-lbl-following'); if (el) el.textContent = lang.feedFollowing;
+  el = $('feed-mobile-lbl-followers'); if (el) el.textContent = lang.feedFollowers;
+  el = $('feed-mobile-lbl-published'); if (el) el.textContent = lang.feedPublished;
   el = $('feed-follow-input'); if (el) el.placeholder = lang.followPlaceholder;
   el = $('feed-follow-btn'); if (el) el.textContent = lang.followBtn;
-  document.querySelectorAll('[data-fed-label]').forEach(function (node) { node.textContent = lang.federationAddress; });
-  document.querySelectorAll('[data-fed-actor-label]').forEach(function (node) { node.textContent = lang.actorUrl; });
+  el = $('refresh-feed-btn'); if (el) el.setAttribute('title', lang.refresh);
+  el = $('refresh-feed-mobile-btn'); if (el) el.setAttribute('title', lang.refresh);
   document.querySelectorAll('[data-copy-fed]').forEach(function (node) { node.setAttribute('title', lang.copy); });
+  document.querySelectorAll('[data-fed-profile]').forEach(function (card) {
+    setFeedProfileExpanded(card, card.classList.contains('feed-profile-expanded'));
+  });
+  updateFeedHeader();
   el = $('ring-sidebar-title'); if (el) el.textContent = lang.navRings;
   el = $('ring-select-hint'); if (el) el.textContent = lang.selectRing;
   el = $('ring-create-title'); if (el) el.textContent = lang.createRingTitle;
@@ -2243,7 +2406,7 @@ function renderConvList() {
   items.sort(function (a, b) { return (b.sortTime || '').localeCompare(a.sortTime || ''); });
 
   if (items.length === 0) {
-    list.innerHTML = '<div class="conv-empty">' + esc(lang.noConv) + '</div>';
+    list.innerHTML = '<div class="conv-empty conv-empty-fill">' + esc(lang.noConv) + '</div>';
     return;
   }
 
@@ -3072,7 +3235,7 @@ const PAGE_MOD_API = `\
     renderConvList();
     if (errors.length > 0 && state.channels.length === 0 && state.rooms.length === 0) {
       var list = $('conv-list');
-      if (list) list.innerHTML = '<div class="conv-empty" style="color:#ef4444;font-size:12px;white-space:pre-wrap">' + esc(errors.join('\\n')) + '</div>';
+      if (list) list.innerHTML = '<div class="conv-empty conv-empty-fill" style="color:#ef4444;font-size:12px;white-space:pre-wrap">' + esc(errors.join('\\n')) + '</div>';
     }
   } catch (e) {
     console.error('[Aro] loadConversations error:', e);
@@ -3635,6 +3798,10 @@ function updateFeedProfileHeader() {
     el = $('feed-count-following'); if (el) el.textContent = state.following.length;
     el = $('feed-count-followers'); if (el) el.textContent = state.followers.length;
     el = $('feed-count-published'); if (el) el.textContent = state.published.length;
+    el = $('feed-mobile-count-following'); if (el) el.textContent = state.following.length;
+    el = $('feed-mobile-count-followers'); if (el) el.textContent = state.followers.length;
+    el = $('feed-mobile-count-published'); if (el) el.textContent = state.published.length;
+    updateFeedHeader();
   });
 }
 
@@ -3646,6 +3813,7 @@ async function loadFeedSubTab() {
   state.feedLoading = true;
   state.feedError = null;
   updateFeedLoadingState();
+  updateFeedHeader();
   renderFeedContent();
 
   try {
@@ -3673,16 +3841,48 @@ async function loadFeedSubTab() {
     if (state.feedSubTab === sub) {
       state.feedLoading = false;
       updateFeedLoadingState();
+      updateFeedHeader();
       renderFeedContent();
     }
   }
 }
 
 function updateFeedLoadingState() {
-  var refreshBtn = $('refresh-feed-btn');
-  if (!refreshBtn) return;
-  refreshBtn.classList.toggle('feed-fab-loading', !!state.feedLoading);
-  refreshBtn.disabled = !!state.feedLoading;
+  ['refresh-feed-btn', 'refresh-feed-mobile-btn'].forEach(function (id) {
+    var refreshBtn = $(id);
+    if (!refreshBtn) return;
+    refreshBtn.classList.toggle('feed-refresh-loading', !!state.feedLoading);
+    refreshBtn.disabled = !!state.feedLoading;
+  });
+}
+
+function getFeedTitle(sub) {
+  if (sub === 'following') return lang.feedFollowing;
+  if (sub === 'followers') return lang.feedFollowers;
+  if (sub === 'published') return lang.feedPublished;
+  return lang.feedTimeline;
+}
+
+function updateFeedHeader() {
+  var title = $('feed-section-title');
+  var meta = $('feed-section-meta');
+  var sub = state.feedSubTab;
+  if (title) title.textContent = getFeedTitle(sub);
+  if (!meta) return;
+  if (state.feedLoading && !state.feedLoaded[sub]) {
+    meta.textContent = lang.pickerLoading || '加载中...';
+    return;
+  }
+  if (state.feedError && !state.feedLoaded[sub]) {
+    meta.textContent = lang.feedLoadFail || lang.disconnected || '加载失败';
+    return;
+  }
+  var items = getFeedItems(sub) || [];
+  if (state.feedLoaded[sub]) {
+    meta.textContent = items.length + ' ' + (lang.feedItems || '项');
+    return;
+  }
+  meta.textContent = getIdentityHandle() || '';
 }
 
 function getFeedItems(sub) {
@@ -3702,9 +3902,13 @@ function getFeedEmptyText(sub) {
 function showFeedEmpty(message, kind) {
   var empty = $('feed-empty');
   if (!empty) return;
+  var main = empty.closest('.feed-main');
+  if (main) main.classList.add('feed-empty-visible');
   empty.style.display = '';
   empty.classList.toggle('feed-empty-error', kind === 'error');
   empty.classList.toggle('feed-empty-loading', kind === 'loading');
+  var title = $('feed-empty-title');
+  if (title) title.textContent = kind === 'error' ? (lang.feedLoadFail || lang.disconnected || '加载失败') : getFeedTitle(state.feedSubTab);
   var text = $('feed-empty-text');
   if (text) text.textContent = message;
 }
@@ -3740,6 +3944,8 @@ function renderFeedContent() {
   var content = $('feed-content');
   var empty = $('feed-empty');
   if (!content) return;
+  var main = content.closest('.feed-main');
+  if (main) main.classList.remove('feed-empty-visible');
 
   var sub = state.feedSubTab;
   var items = getFeedItems(sub);
@@ -3887,6 +4093,7 @@ function timeAgo(iso) {
 
 function switchFeedSubTab(sub) {
   state.feedSubTab = sub;
+  updateFeedHeader();
   // Update sidebar nav
   document.querySelectorAll('.feed-nav-item').forEach(function (btn) {
     btn.classList.toggle('feed-nav-active', btn.dataset.sub === sub);
@@ -3950,14 +4157,11 @@ async function loadRings() {
 
 function renderRingsSidebar() {
   var list = $('ring-list');
-  var empty = $('ring-empty');
   if (!list) return;
   if (state.rings.length === 0) {
-    list.innerHTML = '';
-    if (empty) { empty.style.display = ''; $('ring-empty-text').textContent = lang.emptyRings; }
+    list.innerHTML = '<div class="conv-empty conv-empty-fill"><span id="ring-empty-text">' + esc(lang.emptyRings) + '</span></div>';
     return;
   }
-  if (empty) empty.style.display = 'none';
   var typeIcons = { 'brew-recommend': SVG_ICONS.coffee, 'tapp-store': SVG_ICONS.puzzle, 'library-exchange': SVG_ICONS.library, 'instance-directory': SVG_ICONS.globe };
   var html = '';
   state.rings.forEach(function (ring) {
@@ -4244,6 +4448,8 @@ const PAGE_MOD_EVENTS = `\
   // Feed: refresh, tabs, follow, stat clicks
   var refreshFeedBtn = $('refresh-feed-btn');
   if (refreshFeedBtn) refreshFeedBtn.addEventListener('click', function () { loadFeed(); });
+  var refreshFeedMobileBtn = $('refresh-feed-mobile-btn');
+  if (refreshFeedMobileBtn) refreshFeedMobileBtn.addEventListener('click', function () { loadFeed(); });
   document.querySelectorAll('.feed-nav-item').forEach(function (btn) {
     btn.addEventListener('click', function () { switchFeedSubTab(btn.dataset.sub); });
   });
@@ -4256,12 +4462,37 @@ const PAGE_MOD_EVENTS = `\
   if (feedFollowInput) feedFollowInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); doFollow(); }
   });
+  document.querySelectorAll('[data-fed-toggle]').forEach(function (summary) {
+    summary.addEventListener('click', function (e) {
+      if (e.target && (e.target.closest('[data-copy-fed]') || e.target.closest('[data-fed-toggle-button]'))) return;
+      toggleFeedProfileSummary(summary.closest('[data-fed-profile]'));
+    });
+    summary.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleFeedProfileSummary(summary.closest('[data-fed-profile]'));
+      }
+    });
+  });
+  document.querySelectorAll('[data-fed-toggle-button]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleFeedProfileDetails(btn.closest('[data-fed-profile]'));
+    });
+  });
   document.querySelectorAll('[data-copy-fed]').forEach(function (btn) {
     btn.addEventListener('click', function (e) {
       e.preventDefault();
+      e.stopPropagation();
       copyFederationIdentity(btn.dataset.copyFed);
     });
   });
+  document.addEventListener('click', function (e) {
+    if (e.target && e.target.closest('[data-fed-profile]')) return;
+    closeFeedProfilePopovers();
+  });
+  window.addEventListener('resize', function () { closeFeedProfilePopovers(); });
 
   // Messenger events
   var sendBtn = $('send-btn');
@@ -4400,15 +4631,7 @@ const PAGE_MOD_INDEX = `\
     var user = await Tapp.context.getUser();
     if (user) {
       synthesizeFederationIdentityFromUser(user);
-      var avatarEl = $('feed-avatar');
-      if (avatarEl) {
-        if (user.avatar_url || user.avatar) avatarEl.innerHTML = '<img src="' + esc(user.avatar_url || user.avatar) + '" alt="" />';
-        else avatarEl.textContent = ((user.display_name || user.username || '?')[0] || '?').toUpperCase();
-      }
-      var nameEl = $('feed-display-name');
-      if (nameEl) nameEl.textContent = user.display_name || user.username || '';
-      var handleEl = $('feed-handle');
-      if (handleEl && !state.identity) handleEl.textContent = user.username ? '@' + user.username : '';
+      renderFeedProfileUser(user);
       // Update nav feed tab avatar + username
       var navAvatar = $('nav-feed-avatar');
       if (navAvatar) {
