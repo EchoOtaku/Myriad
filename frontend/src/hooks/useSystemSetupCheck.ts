@@ -8,7 +8,11 @@ export function useSystemSetupCheck() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (location.pathname === '/setup') return
+    // The backend serves the SPA via tower-http ServeDir, which 307-redirects
+    // /setup -> /setup/. React Router's location.pathname can therefore be either
+    // form, so normalise the trailing slash before comparing — otherwise the guard
+    // never matches on /setup/ and we redirect in an infinite reload loop.
+    if (location.pathname.replace(/\/+$/, '') === '/setup') return
 
     async function checkSetup() {
       try {
@@ -18,7 +22,10 @@ export function useSystemSetupCheck() {
         const data = await response.json()
         if (data.is_setup_required) {
           console.warn('System not setup, redirecting to setup wizard...')
-          // Use hard redirect to avoid conflicts with router/animations during init
+          // Use hard redirect to avoid conflicts with router/animations during init.
+          // Target the canonical '/setup' (Astro trailingSlash: 'never' 404s on
+          // '/setup/' in dev). The guard above tolerates the '/setup/' that ServeDir
+          // resolves to on the native backend.
           window.location.replace('/setup')
         }
       } catch (error) {
