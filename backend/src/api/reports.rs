@@ -771,13 +771,44 @@ pub async fn generate_all_reports(
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     // 1. 获取用户启用的所有平台
-    let enabled_platforms = vec![
-        "bilibili".to_string(),
-        "steam".to_string(),
-        "github".to_string(),
-        "netease".to_string(),
-        "bangumi".to_string(),
-    ];
+    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let enabled_platforms = [
+        (
+            "bilibili",
+            config
+                .bilibili_enabled
+                .unwrap_or(config.bilibili_uid.as_ref().is_some()),
+        ),
+        (
+            "steam",
+            config
+                .steam_enabled
+                .unwrap_or(config.steam_api_key.as_ref().is_some()),
+        ),
+        (
+            "github",
+            config
+                .github_enabled
+                .unwrap_or(config.github_username.as_ref().is_some()),
+        ),
+        (
+            "netease",
+            config
+                .netease_enabled
+                .unwrap_or(config.netease_user_id.as_ref().is_some()),
+        ),
+        (
+            "bangumi",
+            config.bangumi_enabled.unwrap_or(
+                config.bangumi_username.as_ref().is_some()
+                    || config.bangumi_access_token.as_ref().is_some(),
+            ),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(platform, enabled)| enabled.then(|| platform.to_string()))
+    .collect::<Vec<_>>();
+    drop(config);
 
     // 2. 生成平台报告 (使用内部函数，避免序列化开销)
     let platform_reports =

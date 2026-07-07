@@ -1,3 +1,4 @@
+import type { ToastType } from './Toast'
 import {
   FaExclamationTriangle,
   FaInfoCircle,
@@ -42,7 +43,7 @@ import {
   UiConfigSection,
 } from './config'
 import PlatformIcon from './PlatformIcon'
-import Toast, { type ToastType } from './Toast'
+import Toast from './Toast'
 import './ConfigForm.css'
 
 // 导入迁移后的配置区块组件
@@ -102,6 +103,31 @@ interface QuickAccessItem {
   icon: React.ReactNode
   section: string
   subsection?: string
+}
+
+function isMaskedValue(value: string) {
+  return (
+  value.includes('••') || value.includes('**') || value === '********'
+  )
+}
+
+function hasFieldValue(field?: ConfigField) {
+  return Boolean(field && String(field.value).trim().length > 0)
+}
+
+function isBangumiPlatform(platform: PlatformConfig) {
+  return platform.name.toLowerCase() === 'bangumi'
+}
+
+function hasBangumiCredential(platform: PlatformConfig) {
+  const username = platform.config_fields.find(
+    (field) => field.key === 'username',
+  )
+  const accessToken = platform.config_fields.find(
+    (field) => field.key === 'access_token',
+  )
+
+  return hasFieldValue(username) || hasFieldValue(accessToken)
 }
 
 // 优化：提取为独立的 memo 组件避免不必要的重渲染
@@ -212,7 +238,7 @@ const ModernConfigForm: React.FC = () => {
       setMessageType(nextType)
       setMessage(nextMessage)
       if (duration > 0) {
-        window.setTimeout(() => setMessage(''), duration)
+        window.setTimeout(setMessage, duration, '')
       }
     },
     [],
@@ -316,6 +342,10 @@ const ModernConfigForm: React.FC = () => {
     if (!platform.config_fields || platform.config_fields.length === 0)
       return true
 
+    if (isBangumiPlatform(platform)) {
+      return hasBangumiCredential(platform)
+    }
+
     return platform.config_fields.every((field) => {
       if (!field.required) return true
       return field.value && String(field.value).trim().length > 0
@@ -354,6 +384,34 @@ const ModernConfigForm: React.FC = () => {
         pet_image_url: t.config.placeholderPetImageUrl,
       }
       return placeholders[fieldKey] || originalPlaceholder
+    },
+    [t],
+  )
+
+  const getPlatformFieldLabel = useCallback(
+    (platform: PlatformConfig, field: ConfigField): string => {
+      if (!isBangumiPlatform(platform)) return field.label
+
+      const labels: Record<string, string> = {
+        username: t.config.bangumiUsernameLabel,
+        access_token: t.config.bangumiAccessTokenLabel,
+        user_agent: t.config.bangumiUserAgentLabel,
+      }
+      return labels[field.key] || field.label
+    },
+    [t],
+  )
+
+  const getPlatformFieldPlaceholder = useCallback(
+    (platform: PlatformConfig, field: ConfigField): string => {
+      if (!isBangumiPlatform(platform)) return field.placeholder
+
+      const placeholders: Record<string, string> = {
+        username: t.config.bangumiUsernamePlaceholder,
+        access_token: t.config.bangumiAccessTokenPlaceholder,
+        user_agent: t.config.bangumiUserAgentPlaceholder,
+      }
+      return placeholders[field.key] || field.placeholder
     },
     [t],
   )
@@ -657,6 +715,25 @@ const ModernConfigForm: React.FC = () => {
       return
     }
 
+    const invalidBangumi = config.platforms.find(
+      (platform) =>
+        platform.enabled &&
+        isBangumiPlatform(platform) &&
+        !hasBangumiCredential(platform),
+    )
+    if (invalidBangumi) {
+      showMessage(t.config.bangumiCredentialMissing, 'error', 0)
+      window.dispatchEvent(
+        new CustomEvent('config-save-result', {
+          detail: {
+            success: false,
+            message: t.config.bangumiCredentialMissing,
+          },
+        }),
+      )
+      return
+    }
+
     showMessage(t.config.savingConfig, 'info', 0)
 
     try {
@@ -875,9 +952,11 @@ const ModernConfigForm: React.FC = () => {
 
       if (field) {
         // 🔒 安全措施：如果新值包含掩码字符，说明用户在掩码上直接输入，需要清除掩码
-        const isMasked = (val: string) =>
-          val.includes('••') || val.includes('**') || val === '********'
-        if (isMasked(value) && value !== '••••••••' && value !== '********') {
+        if (
+          isMaskedValue(value) &&
+          value !== '••••••••' &&
+          value !== '********'
+        ) {
           // 移除所有掩码字符，只保留用户新输入的内容
           field.value = value.replace(/[•*]+/g, '')
         } else {
@@ -916,9 +995,11 @@ const ModernConfigForm: React.FC = () => {
       if (field) {
         // 🔒 安全措施：如果新值包含掩码字符，说明用户在掩码上直接输入，需要清除掩码
         // 检测是否在掩码基础上输入（例如 "a••••••••"）
-        const isMasked = (val: string) =>
-          val.includes('••') || val.includes('**') || val === '********'
-        if (isMasked(value) && value !== '••••••••' && value !== '********') {
+        if (
+          isMaskedValue(value) &&
+          value !== '••••••••' &&
+          value !== '********'
+        ) {
           // 移除所有掩码字符，只保留用户新输入的内容
           field.value = value.replace(/[•*]+/g, '')
         } else {
@@ -954,7 +1035,7 @@ const ModernConfigForm: React.FC = () => {
       setConfig({ ...config, platforms: newPlatforms })
       notifyDirtyState(true)
     },
-    [config],
+    [config, notifyDirtyState],
   )
 
   const isConfigDirty = useMemo(() => {
@@ -1001,56 +1082,66 @@ const ModernConfigForm: React.FC = () => {
 
             <div className="platforms-grid">
               {config.platforms.map((platform, index) => (
-                <motion.div
-                  key={platform.name}
-                  className="platform-card"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 + index * 0.05, duration: 0.3 }}
-                  onClick={() => setPlatformModalOpen(platform.name)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="platform-header">
-                    <div className="platform-info">
-                      <div className="platform-icon-wrapper">
-                        <PlatformIcon
-                          platform={platform.name}
-                          className="platform-icon"
-                        />
-                      </div>
-                      <div className="platform-details">
-                        <div className="platform-title-row">
-                          <h3 className="platform-name">{platform.name}</h3>
-                          <span
-                            className={`status-badge ${isPlatformConfigured(platform) ? 'configured' : 'unconfigured'}`}
-                          >
-                            {isPlatformConfigured(platform)
-                              ? t.config.configured
-                              : t.config.notConfigured}
-                          </span>
+                (() => {
+                  const platformConfigured = isPlatformConfigured(platform)
+                  const toggleTitle = !platformConfigured
+                    ? t.config.notConfigured
+                    : undefined
+
+                  return (
+                    <motion.div
+                      key={platform.name}
+                      className="platform-card"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 + index * 0.05, duration: 0.3 }}
+                      onClick={() => setPlatformModalOpen(platform.name)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div className="platform-header">
+                        <div className="platform-info">
+                          <div className="platform-icon-wrapper">
+                            <PlatformIcon
+                              platform={platform.name}
+                              className="platform-icon"
+                            />
+                          </div>
+                          <div className="platform-details">
+                            <div className="platform-title-row">
+                              <h3 className="platform-name">{platform.name}</h3>
+                              <span
+                                className={`status-badge ${platformConfigured ? 'configured' : 'unconfigured'}`}
+                              >
+                                {platformConfigured
+                                  ? t.config.configured
+                                  : t.config.notConfigured}
+                              </span>
+                            </div>
+                            <p className="platform-desc">
+                              {getPlatformDescription(platform)}
+                            </p>
+                          </div>
                         </div>
-                        <p className="platform-desc">
-                          {getPlatformDescription(platform)}
-                        </p>
+                        <div className="platform-actions">
+                          <label
+                            className={`toggle-switch ${platformConfigured ? '' : 'disabled'}`}
+                            onClick={(e) => e.stopPropagation()}
+                            title={toggleTitle}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={platform.enabled}
+                              onChange={() => togglePlatform(index)}
+                              aria-label={`Enable ${platform.name}`}
+                              disabled={!platformConfigured}
+                            />
+                            <span className="toggle-slider"></span>
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                    <div className="platform-actions">
-                      <label
-                        className={`toggle-switch ${isPlatformConfigured(platform) ? '' : 'disabled'}`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={platform.enabled}
-                          onChange={() => togglePlatform(index)}
-                          aria-label={`Enable ${platform.name}`}
-                          disabled={!isPlatformConfigured(platform)}
-                        />
-                        <span className="toggle-slider"></span>
-                      </label>
-                    </div>
-                  </div>
-                </motion.div>
+                    </motion.div>
+                  )
+                })()
               ))}
             </div>
           </div>
@@ -1319,13 +1410,23 @@ const ModernConfigForm: React.FC = () => {
                 </div>
 
                 <div className="modal-body">
+                  {isBangumiPlatform(platform) && (
+                    <div
+                      className={`platform-requirement-hint ${
+                        hasBangumiCredential(platform) ? 'is-ok' : 'is-warning'
+                      }`}
+                    >
+                      {t.config.bangumiCredentialRequirement}
+                    </div>
+                  )}
+
                   {platform.config_fields.map((field) => (
                     <div key={field.key} className="config-field">
                       <label
                         htmlFor={`modal-platform-${platformIndex}-${field.key}`}
                         className="field-label"
                       >
-                        {field.label}
+                        {getPlatformFieldLabel(platform, field)}
                         {field.required && <span className="required">*</span>}
                       </label>
                       <input
@@ -1348,7 +1449,10 @@ const ModernConfigForm: React.FC = () => {
                             e.target.select()
                           }
                         }}
-                        placeholder={field.placeholder}
+                        placeholder={getPlatformFieldPlaceholder(
+                          platform,
+                          field,
+                        )}
                         className="field-input"
                       />
                     </div>

@@ -37,7 +37,7 @@ pub async fn create_ai_analyzer_with_provider(provider: AiProvider) -> Option<Ai
         AiProvider::OpenAI => {
             let key = config.openai_api_key.clone().filter(|k| !k.is_empty())?;
             let model = if config.openai_model.is_empty() {
-                "gpt-5-mini".to_string()
+                "minimax/minimax-m3".to_string()
             } else {
                 config.openai_model.clone()
             };
@@ -51,7 +51,7 @@ pub async fn create_ai_analyzer_with_provider(provider: AiProvider) -> Option<Ai
         AiProvider::Gemini => {
             let key = config.gemini_api_key.clone().filter(|k| !k.is_empty())?;
             let model = if config.gemini_model.is_empty() {
-                "gemini-3-flash-preview".to_string()
+                "gemini-3.5-flash".to_string()
             } else {
                 config.gemini_model.clone()
             };
@@ -67,7 +67,7 @@ pub async fn get_gemini_config() -> Option<(String, String)> {
 
     let key = config.gemini_api_key.clone().filter(|k| !k.is_empty())?;
     let model = if config.gemini_model.is_empty() {
-        "gemini-3-flash-preview".to_string()
+        "gemini-3.5-flash".to_string()
     } else {
         config.gemini_model.clone()
     };

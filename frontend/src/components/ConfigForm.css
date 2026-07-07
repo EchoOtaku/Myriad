@@ -3458,6 +3458,39 @@ html.dark .modal-close-button:hover {
   flex: 1;
 }
 
+.platform-requirement-hint {
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.875rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  border: 1px solid transparent;
+}
+
+.platform-requirement-hint.is-warning {
+  background: rgb(245 158 11 / 12%);
+  border-color: rgb(245 158 11 / 28%);
+  color: #92400e;
+}
+
+.platform-requirement-hint.is-ok {
+  background: rgb(16 185 129 / 10%);
+  border-color: rgb(16 185 129 / 24%);
+  color: #047857;
+}
+
+html.dark .platform-requirement-hint.is-warning {
+  background: rgb(245 158 11 / 14%);
+  border-color: rgb(245 158 11 / 32%);
+  color: #fbbf24;
+}
+
+html.dark .platform-requirement-hint.is-ok {
+  background: rgb(16 185 129 / 13%);
+  border-color: rgb(16 185 129 / 30%);
+  color: #6ee7b7;
+}
+
 .modal-footer {
   display: flex;
   align-items: center;

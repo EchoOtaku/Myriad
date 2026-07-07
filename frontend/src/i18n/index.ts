@@ -547,6 +547,14 @@ export interface TranslationKeys {
     platformDescBangumi: string
     platformDescSteam: string
     platformDescNetease: string
+    bangumiCredentialRequirement: string
+    bangumiCredentialMissing: string
+    bangumiUsernameLabel: string
+    bangumiAccessTokenLabel: string
+    bangumiUserAgentLabel: string
+    bangumiUsernamePlaceholder: string
+    bangumiAccessTokenPlaceholder: string
+    bangumiUserAgentPlaceholder: string
     configuredStatus: string
     unconfiguredStatus: string
     enablePlatform: string
@@ -1096,6 +1104,8 @@ export interface TranslationKeys {
     regenerateReport: string
     aiSummary: string
     deepInsightReport: string
+    noEnabledPlatforms: string
+    noEnabledPlatformsDesc: string
     platformReport: string
     clickToView: string
     stagePlaying: string

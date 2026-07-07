@@ -97,8 +97,8 @@ Test-Docker
 # Resolve which targets to build.
 $buildBackend  = $true
 $buildFrontend = $true
-$buildProxy    = $false
-$buildUpdater  = $false
+$buildProxy    = $true
+$buildUpdater  = $true
 
 if ($Backend)     { $buildBackend  = $true }
 if ($Frontend)    { $buildFrontend = $true }

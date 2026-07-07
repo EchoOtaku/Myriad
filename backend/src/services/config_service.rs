@@ -131,6 +131,14 @@ impl ConfigService {
         }
 
         // 平台配置
+        if let Some(v) = map.get("github_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.github_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.github_enabled = Some(s == "true");
+            }
+        }
+
         if let Some(v) = map.get("github_token") {
             config.github_token = v.as_str().map(|s| s.to_string());
         }
@@ -139,8 +147,24 @@ impl ConfigService {
             config.github_username = v.as_str().map(|s| s.to_string());
         }
 
+        if let Some(v) = map.get("bilibili_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.bilibili_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.bilibili_enabled = Some(s == "true");
+            }
+        }
+
         if let Some(v) = map.get("bilibili_uid") {
             config.bilibili_uid = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("steam_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.steam_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.steam_enabled = Some(s == "true");
+            }
         }
 
         if let Some(v) = map.get("steam_api_key") {
@@ -151,8 +175,24 @@ impl ConfigService {
             config.steam_id = v.as_str().map(|s| s.to_string());
         }
 
+        if let Some(v) = map.get("netease_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.netease_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.netease_enabled = Some(s == "true");
+            }
+        }
+
         if let Some(v) = map.get("netease_user_id") {
             config.netease_user_id = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("bangumi_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.bangumi_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.bangumi_enabled = Some(s == "true");
+            }
         }
 
         if let Some(v) = map.get("bangumi_username") {

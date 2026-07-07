@@ -14,6 +14,7 @@ import {
   LuZap,
   SiGooglegemini,
   SiOpenai,
+  SiOpenrouter,
 } from '@lib/icons'
 import React, { useCallback, useMemo, useState } from 'react'
 
@@ -37,6 +38,29 @@ interface ConfigField {
   value: string
   placeholder: string
   required: boolean
+}
+
+// OpenAI 兼容服务的 Base URL / 默认模型预设
+const OPENAI_BASE_URL = 'https://api.openai.com/v1'
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+const OPENAI_MODEL = 'gpt-5.5'
+// OpenRouter 默认模型：标准层级用 MiniMax M3，Pro 层级用 Opus 4.8
+const OPENROUTER_MODEL_STANDARD = 'minimax/minimax-m3'
+const OPENROUTER_MODEL_PRO = 'anthropic/claude-opus-4.8'
+
+/**
+ * 推断展示用的 Provider。
+ * OpenRouter 是 OpenAI 兼容服务，后端仍以 provider=openai + openai_base_url 处理，
+ * 因此这里根据 base_url 反推该高亮 OpenAI 还是 OpenRouter。
+ */
+const resolveProvider = (rawProvider: string, openaiBaseUrl: string): string => {
+  if (
+    rawProvider === 'openai' &&
+    openaiBaseUrl.trim().toLowerCase().includes('openrouter.ai')
+  ) {
+    return 'openrouter'
+  }
+  return rawProvider
 }
 
 interface AiConfigSectionProps {
@@ -76,11 +100,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     [configFields],
   )
 
-  // 当前 AI Provider (标准模型)
-  const currentProvider = useMemo(
-    () => getFieldValue('provider', 'gemini'),
-    [getFieldValue],
-  )
+  // 当前 AI Provider (标准模型)。OpenRouter 依据 base_url 从 openai 中区分出来，未配置时默认 OpenRouter
+  const currentProvider = useMemo(() => {
+    const raw = getFieldValue('provider')
+    if (!raw) return 'openrouter'
+    return resolveProvider(raw, getFieldValue('openai_base_url'))
+  }, [getFieldValue])
 
   // Pro 模型是否启用
   const proEnabled = useMemo(() => {
@@ -88,10 +113,41 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     return val === 'true' || val === '1'
   }, [getFieldValue])
 
-  // 当前 Pro AI Provider
-  const currentProProvider = useMemo(
-    () => getFieldValue('pro_provider', 'gemini'),
-    [getFieldValue],
+  // 当前 Pro AI Provider（同样未配置时默认 OpenRouter）
+  const currentProProvider = useMemo(() => {
+    const raw = getFieldValue('pro_provider')
+    if (!raw) return 'openrouter'
+    return resolveProvider(raw, getFieldValue('pro_openai_base_url'))
+  }, [getFieldValue])
+
+  /**
+   * 切换 Provider。OpenRouter 落到 provider=openai，并把对应的 base_url 与默认模型
+   * 在 OpenAI 官方与 OpenRouter 之间切换（用户手填的自定义地址不覆盖）。
+   */
+  const handleProviderChange = useCallback(
+    (
+      providerKey: string,
+      baseUrlKey: string,
+      modelKey: string,
+      openrouterModel: string,
+      next: string,
+    ) => {
+      if (next === 'openrouter') {
+        updateValue(providerKey, 'openai')
+        updateValue(baseUrlKey, OPENROUTER_BASE_URL)
+        updateValue(modelKey, openrouterModel)
+      } else if (next === 'openai') {
+        updateValue(providerKey, 'openai')
+        // 从 OpenRouter 切回时重置为官方地址与默认模型
+        if (getFieldValue(baseUrlKey).toLowerCase().includes('openrouter.ai')) {
+          updateValue(baseUrlKey, OPENAI_BASE_URL)
+          updateValue(modelKey, OPENAI_MODEL)
+        }
+      } else {
+        updateValue(providerKey, next)
+      }
+    },
+    [getFieldValue, updateValue],
   )
 
   // 当前图片生成 Provider
@@ -100,13 +156,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     [getFieldValue],
   )
 
-  // AI Provider 选项
+  // AI Provider 选项。OpenRouter 默认在前，其次 OpenAI 兼容，最后 Gemini
   const aiProviderOptions: SettingOption<string>[] = useMemo(
     () => [
+      { value: 'openrouter', label: 'OpenRouter', icon: <SiOpenrouter /> },
+      { value: 'openai', label: t.config.openaiCompatible, icon: <SiOpenai /> },
       { value: 'gemini', label: 'Gemini', icon: <SiGooglegemini /> },
-      { value: 'openai', label: 'OpenAI', icon: <SiOpenai /> },
     ],
-    [],
+    [t.config.openaiCompatible],
   )
 
   // 图片生成 Provider 选项
@@ -170,8 +227,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
       if (currentProvider === 'gemini') {
         return field.key.startsWith('gemini_')
-      } else if (currentProvider === 'openai') {
-        return field.key.startsWith('openai_')
+      } else if (currentProvider === 'openai' || currentProvider === 'openrouter') {
+        // OpenRouter 复用 OpenAI 兼容字段，但 Base URL 固定无需展示
+        if (!field.key.startsWith('openai_')) return false
+        if (currentProvider === 'openrouter' && field.key === 'openai_base_url')
+          return false
+        return true
       }
       return false
     })
@@ -185,8 +246,18 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
       if (currentProProvider === 'gemini') {
         return field.key.startsWith('pro_gemini_')
-      } else if (currentProProvider === 'openai') {
-        return field.key.startsWith('pro_openai_')
+      } else if (
+        currentProProvider === 'openai' ||
+        currentProProvider === 'openrouter'
+      ) {
+        // OpenRouter 复用 OpenAI 兼容字段，但 Base URL 固定无需展示
+        if (!field.key.startsWith('pro_openai_')) return false
+        if (
+          currentProProvider === 'openrouter' &&
+          field.key === 'pro_openai_base_url'
+        )
+          return false
+        return true
       }
       return false
     })
@@ -242,7 +313,15 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           itemKey="ai_provider"
           label={t.config.aiProvider}
           value={currentProvider}
-          onChange={(v) => updateValue('provider', v)}
+          onChange={(v) =>
+            handleProviderChange(
+              'provider',
+              'openai_base_url',
+              'openai_model',
+              OPENROUTER_MODEL_STANDARD,
+              v,
+            )
+          }
           options={aiProviderOptions}
           hint={t.config.aiProviderHint}
           layout="horizontal"
@@ -290,7 +369,15 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               itemKey="pro_ai_provider"
               label={t.config.aiProvider}
               value={currentProProvider}
-              onChange={(v) => updateValue('pro_provider', v)}
+              onChange={(v) =>
+                handleProviderChange(
+                  'pro_provider',
+                  'pro_openai_base_url',
+                  'pro_openai_model',
+                  OPENROUTER_MODEL_PRO,
+                  v,
+                )
+              }
               options={aiProviderOptions}
               hint={t.config.aiProProviderHint}
               layout="horizontal"

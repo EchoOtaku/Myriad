@@ -127,10 +127,15 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(
     return (
       <motion.div
         layout
-        className="shrink-0 min-w-0 snap-start"
+        onClick={handleClick}
+        whileHover={{ y: -4, scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="relative aspect-2/1 rounded-2xl overflow-hidden cursor-pointer group glass hover:shadow-xl transition-shadow shrink-0 min-w-0 snap-start"
         style={{
           flexBasis:
             'calc((100dvw - calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem) - var(--report-right-padding) - (var(--report-visible-cards) - 1) * 1rem) / var(--report-visible-cards))',
+          willChange: 'transform, opacity',
         }}
         initial={{ opacity: 0, y: 20, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -141,17 +146,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(
           ease: [0.4, 0, 0.2, 1],
         }}
       >
-        <motion.div
-          onClick={handleClick}
-          whileHover={{ y: -4, scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="relative overflow-hidden rounded-2xl cursor-pointer glass w-full"
-          style={{
-            aspectRatio: '2 / 1',
-            willChange: 'transform',
-          }}
-        >
+        <div className="absolute inset-0">
           <div
             className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-3xl opacity-20"
             style={{ background: themeColor }}
@@ -361,7 +356,7 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(
                 </>
               )}
           </div>
-        </motion.div>
+        </div>
       </motion.div>
     )
   },

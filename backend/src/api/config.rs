@@ -1,7 +1,7 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigResponse {
@@ -72,6 +72,10 @@ pub struct UiConfig {
     pub config_fields: Vec<ConfigField>,
 }
 
+fn resolve_platform_enabled(explicit_enabled: Option<bool>, fallback_enabled: bool) -> bool {
+    explicit_enabled.unwrap_or(fallback_enabled)
+}
+
 pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     // 优先从数据库读取配置
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
@@ -96,15 +100,59 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
         }
     };
 
+    let has_bangumi_username = db_config
+        .as_ref()
+        .and_then(|c| c.bangumi_username.as_ref())
+        .is_some()
+        || std::env::var("BANGUMI_USERNAME").is_ok();
+    let has_bangumi_access_token = db_config
+        .as_ref()
+        .and_then(|c| c.bangumi_access_token.as_ref())
+        .is_some()
+        || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok();
+    let has_bangumi_identity = has_bangumi_username || has_bangumi_access_token;
+    let github_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.github_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.github_username.as_ref())
+            .is_some()
+            || std::env::var("GITHUB_USERNAME").is_ok(),
+    );
+    let bilibili_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.bilibili_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.bilibili_uid.as_ref())
+            .is_some()
+            || std::env::var("BILIBILI_UID").is_ok(),
+    );
+    let steam_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.steam_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.steam_api_key.as_ref())
+            .is_some()
+            || std::env::var("STEAM_API_KEY").is_ok(),
+    );
+    let netease_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.netease_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.netease_user_id.as_ref())
+            .is_some()
+            || std::env::var("NETEASE_USER_ID").is_ok(),
+    );
+    let bangumi_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.bangumi_enabled),
+        has_bangumi_identity,
+    );
+
     let config = ConfigResponse {
         platforms: vec![
             PlatformConfig {
                 name: "GitHub".to_string(),
-                enabled: db_config
-                    .as_ref()
-                    .and_then(|c| c.github_username.as_ref())
-                    .is_some()
-                    || std::env::var("GITHUB_USERNAME").is_ok(),
+                enabled: github_enabled,
                 has_token: db_config
                     .as_ref()
                     .and_then(|c| c.github_token.as_ref())
@@ -139,11 +187,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
             },
             PlatformConfig {
                 name: "Bilibili".to_string(),
-                enabled: db_config
-                    .as_ref()
-                    .and_then(|c| c.bilibili_uid.as_ref())
-                    .is_some()
-                    || std::env::var("BILIBILI_UID").is_ok(),
+                enabled: bilibili_enabled,
                 has_token: db_config
                     .as_ref()
                     .and_then(|c| c.bilibili_uid.as_ref())
@@ -166,11 +210,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
             },
             PlatformConfig {
                 name: "Steam".to_string(),
-                enabled: db_config
-                    .as_ref()
-                    .and_then(|c| c.steam_api_key.as_ref())
-                    .is_some()
-                    || std::env::var("STEAM_API_KEY").is_ok(),
+                enabled: steam_enabled,
                 has_token: db_config
                     .as_ref()
                     .and_then(|c| c.steam_api_key.as_ref())
@@ -205,11 +245,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
             },
             PlatformConfig {
                 name: "Netease Music".to_string(),
-                enabled: db_config
-                    .as_ref()
-                    .and_then(|c| c.netease_user_id.as_ref())
-                    .is_some()
-                    || std::env::var("NETEASE_USER_ID").is_ok(),
+                enabled: netease_enabled,
                 has_token: db_config
                     .as_ref()
                     .and_then(|c| c.netease_user_id.as_ref())
@@ -232,21 +268,8 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
             },
             PlatformConfig {
                 name: "Bangumi".to_string(),
-                enabled: db_config
-                    .as_ref()
-                    .and_then(|c| c.bangumi_username.as_ref())
-                    .is_some()
-                    || db_config
-                        .as_ref()
-                        .and_then(|c| c.bangumi_access_token.as_ref())
-                        .is_some()
-                    || std::env::var("BANGUMI_USERNAME").is_ok()
-                    || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok(),
-                has_token: db_config
-                    .as_ref()
-                    .and_then(|c| c.bangumi_access_token.as_ref())
-                    .is_some()
-                    || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok(),
+                enabled: bangumi_enabled,
+                has_token: has_bangumi_identity,
                 icon: "".to_string(),
                 description: "Sync your Bangumi collection, ratings, and watching status"
                     .to_string(),
@@ -286,7 +309,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                             "BANGUMI_USER_AGENT",
                         ),
                         placeholder: "haru/Myriad".to_string(),
-                        required: true,
+                        required: false,
                     },
                 ],
             },
@@ -328,9 +351,9 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .as_ref()
                         .map(|c| c.ai_provider.clone())
                         .unwrap_or_else(|| {
-                            std::env::var("AI_PROVIDER").unwrap_or_else(|_| "gemini".to_string())
+                            std::env::var("AI_PROVIDER").unwrap_or_else(|_| "openai".to_string())
                         }),
-                    placeholder: "gemini".to_string(),
+                    placeholder: "openai".to_string(),
                     required: true,
                 },
                 ConfigField {
@@ -353,10 +376,10 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .map(|c| c.gemini_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("GEMINI_MODEL")
-                                .unwrap_or_else(|_| "gemini-3-flash-preview".to_string())
+                                .unwrap_or_else(|_| "gemini-3.5-flash".to_string())
                         }),
                     placeholder:
-                        "gemini-3-flash-preview, gemini-3.1-pro-preview, gemini-2.5-flash, etc."
+                        "gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, etc."
                             .to_string(),
                     required: false,
                 },
@@ -380,9 +403,9 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .map(|c| c.openai_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("OPENAI_MODEL")
-                                .unwrap_or_else(|_| "gpt-5-mini".to_string())
+                                .unwrap_or_else(|_| "minimax/minimax-m3".to_string())
                         }),
-                    placeholder: "gpt-5-mini, gpt-5.4, etc.".to_string(),
+                    placeholder: "minimax/minimax-m3, gpt-5.5, etc.".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -394,10 +417,11 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .map(|c| c.openai_base_url.clone())
                         .unwrap_or_else(|| {
                             std::env::var("OPENAI_BASE_URL")
-                                .unwrap_or_else(|_| "https://api.openai.com/v1".to_string())
+                                .unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_string())
                         }),
-                    placeholder: "https://api.openai.com/v1 (base URL only, no /chat/completions)"
-                        .to_string(),
+                    placeholder:
+                        "https://openrouter.ai/api/v1 (base URL only, no /chat/completions)"
+                            .to_string(),
                     required: false,
                 },
                 // Pro 模型配置
@@ -421,9 +445,9 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .map(|c| c.pro_ai_provider.clone())
                         .unwrap_or_else(|| {
                             std::env::var("PRO_AI_PROVIDER")
-                                .unwrap_or_else(|_| "gemini".to_string())
+                                .unwrap_or_else(|_| "openai".to_string())
                         }),
-                    placeholder: "gemini".to_string(),
+                    placeholder: "openai".to_string(),
                     required: true,
                 },
                 ConfigField {
@@ -477,9 +501,9 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .map(|c| c.pro_openai_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("PRO_OPENAI_MODEL")
-                                .unwrap_or_else(|_| "gpt-5.4".to_string())
+                                .unwrap_or_else(|_| "anthropic/claude-opus-4.8".to_string())
                         }),
-                    placeholder: "gpt-5.4, gpt-5-mini, etc.".to_string(),
+                    placeholder: "anthropic/claude-opus-4.8, gpt-5.5, etc.".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -491,7 +515,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         .map(|c| c.pro_openai_base_url.clone())
                         .unwrap_or_else(|| {
                             std::env::var("PRO_OPENAI_BASE_URL")
-                                .unwrap_or_else(|_| "https://api.openai.com/v1".to_string())
+                                .unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_string())
                         }),
                     placeholder: "https://api.openai.com/v1 (leave empty to reuse standard)"
                         .to_string(),
@@ -1172,6 +1196,7 @@ async fn save_to_database(
     for platform in &config.platforms {
         match platform.name.as_str() {
             "GitHub" => {
+                updates.insert("github_enabled".to_string(), JsonValue::Bool(platform.enabled));
                 for field in &platform.config_fields {
                     let key = match field.key.as_str() {
                         "username" => "github_username",
@@ -1185,6 +1210,7 @@ async fn save_to_database(
                 }
             }
             "Bilibili" => {
+                updates.insert("bilibili_enabled".to_string(), JsonValue::Bool(platform.enabled));
                 for field in &platform.config_fields {
                     if field.key == "uid" && !field.value.is_empty() {
                         updates.insert(
@@ -1195,6 +1221,7 @@ async fn save_to_database(
                 }
             }
             "Steam" => {
+                updates.insert("steam_enabled".to_string(), JsonValue::Bool(platform.enabled));
                 for field in &platform.config_fields {
                     let key = match field.key.as_str() {
                         "api_key" => "steam_api_key",
@@ -1208,6 +1235,7 @@ async fn save_to_database(
                 }
             }
             "Netease Music" => {
+                updates.insert("netease_enabled".to_string(), JsonValue::Bool(platform.enabled));
                 for field in &platform.config_fields {
                     if field.key == "user_id" && !field.value.is_empty() {
                         updates.insert(
@@ -1218,6 +1246,7 @@ async fn save_to_database(
                 }
             }
             "Bangumi" => {
+                updates.insert("bangumi_enabled".to_string(), JsonValue::Bool(platform.enabled));
                 for field in &platform.config_fields {
                     let key = match field.key.as_str() {
                         "username" => "bangumi_username",
@@ -1668,7 +1697,7 @@ pub async fn test_platform(
                     return (
                         StatusCode::BAD_REQUEST,
                         Json(json!({"success": false, "message": "Invalid UID format"})),
-                    )
+                    );
                 }
             };
 
@@ -1736,7 +1765,7 @@ pub async fn test_platform(
                     return (
                         StatusCode::BAD_REQUEST,
                         Json(json!({"success": false, "message": "Invalid User ID format"})),
-                    )
+                    );
                 }
             };
 
@@ -1883,15 +1912,57 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
             .unwrap_or_else(|| std::env::var(env_key).unwrap_or_default())
     };
 
+    let github_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.github_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.github_username.as_ref())
+            .is_some()
+            || std::env::var("GITHUB_USERNAME").is_ok(),
+    );
+    let bilibili_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.bilibili_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.bilibili_uid.as_ref())
+            .is_some()
+            || std::env::var("BILIBILI_UID").is_ok(),
+    );
+    let steam_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.steam_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.steam_id.as_ref())
+            .is_some()
+            || std::env::var("STEAM_ID").is_ok(),
+    );
+    let netease_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.netease_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.netease_user_id.as_ref())
+            .is_some()
+            || std::env::var("NETEASE_USER_ID").is_ok(),
+    );
+    let bangumi_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.bangumi_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.bangumi_username.as_ref())
+            .is_some()
+            || db_config
+                .as_ref()
+                .and_then(|c| c.bangumi_access_token.as_ref())
+                .is_some()
+            || std::env::var("BANGUMI_USERNAME").is_ok()
+            || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok(),
+    );
+
     // 只返回公开可见的平台配置字段（不包含 API 密钥等敏感信息）
     let public_platforms = vec![
         PlatformConfig {
             name: "GitHub".to_string(),
-            enabled: db_config
-                .as_ref()
-                .and_then(|c| c.github_username.as_ref())
-                .is_some()
-                || std::env::var("GITHUB_USERNAME").is_ok(),
+            enabled: github_enabled,
             has_token: false, // 不暴露是否有 token
             icon: "".to_string(),
             description: "".to_string(),
@@ -1909,11 +1980,7 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
         },
         PlatformConfig {
             name: "Bilibili".to_string(),
-            enabled: db_config
-                .as_ref()
-                .and_then(|c| c.bilibili_uid.as_ref())
-                .is_some()
-                || std::env::var("BILIBILI_UID").is_ok(),
+            enabled: bilibili_enabled,
             has_token: false,
             icon: "".to_string(),
             description: "".to_string(),
@@ -1931,11 +1998,7 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
         },
         PlatformConfig {
             name: "Steam".to_string(),
-            enabled: db_config
-                .as_ref()
-                .and_then(|c| c.steam_id.as_ref())
-                .is_some()
-                || std::env::var("STEAM_ID").is_ok(),
+            enabled: steam_enabled,
             has_token: false,
             icon: "".to_string(),
             description: "".to_string(),
@@ -1953,11 +2016,7 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
         },
         PlatformConfig {
             name: "Netease Music".to_string(),
-            enabled: db_config
-                .as_ref()
-                .and_then(|c| c.netease_user_id.as_ref())
-                .is_some()
-                || std::env::var("NETEASE_USER_ID").is_ok(),
+            enabled: netease_enabled,
             has_token: false,
             icon: "".to_string(),
             description: "".to_string(),
@@ -1975,16 +2034,7 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
         },
         PlatformConfig {
             name: "Bangumi".to_string(),
-            enabled: db_config
-                .as_ref()
-                .and_then(|c| c.bangumi_username.as_ref())
-                .is_some()
-                || db_config
-                    .as_ref()
-                    .and_then(|c| c.bangumi_access_token.as_ref())
-                    .is_some()
-                || std::env::var("BANGUMI_USERNAME").is_ok()
-                || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok(),
+            enabled: bangumi_enabled,
             has_token: false,
             icon: "".to_string(),
             description: "".to_string(),

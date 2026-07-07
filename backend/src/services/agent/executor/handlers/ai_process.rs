@@ -638,7 +638,7 @@ async fn execute_gemini_grounding_search(
     }
 
     let model = if config.gemini_model.is_empty() {
-        "gemini-3-flash-preview".to_string() // 使用支持 grounding 的模型
+        "gemini-3.5-flash".to_string() // 使用支持 grounding 的模型
     } else {
         config.gemini_model.clone()
     };

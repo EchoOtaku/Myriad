@@ -619,6 +619,16 @@ export const enUS: TranslationKeys = {
     platformDescSteam: 'Sync your Steam library, wishlist, and gaming stats',
     platformDescNetease:
       'Sync your liked songs and music taste from Netease Cloud Music',
+    bangumiCredentialRequirement:
+      'Enter either Bangumi Username or Access Token. Public profiles can use only Username; private collections should use Access Token.',
+    bangumiCredentialMissing:
+      'Enter a Bangumi Username or Access Token before enabling and saving Bangumi.',
+    bangumiUsernameLabel: 'Bangumi Username',
+    bangumiAccessTokenLabel: 'Access Token',
+    bangumiUserAgentLabel: 'User-Agent',
+    bangumiUsernamePlaceholder: 'your Bangumi username',
+    bangumiAccessTokenPlaceholder: 'Bearer token for private collections',
+    bangumiUserAgentPlaceholder: 'haru/Myriad',
     configuredStatus: 'Configured',
     unconfiguredStatus: 'Not Configured',
     enablePlatform: 'Enable {platform} platform',
@@ -1206,6 +1216,9 @@ export const enUS: TranslationKeys = {
     regenerateReport: 'Regenerate report',
     aiSummary: 'AI Summary',
     deepInsightReport: 'Deep Insight Report',
+    noEnabledPlatforms: 'No data platforms are enabled yet',
+    noEnabledPlatformsDesc:
+      'Enable at least one data platform in settings before platform cards can appear here.',
     platformReport: 'Platform Reports',
     clickToView: 'Click card to view',
     stagePlaying: 'Stage mode playing',

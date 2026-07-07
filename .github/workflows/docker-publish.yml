@@ -20,10 +20,11 @@ on:
       components:
         description: "Comma-separated components: backend,frontend,proxy,updater (default: all)"
         required: false
-        default: "backend,frontend"
+        default: "backend,frontend,proxy,updater"
 
 env:
   REGISTRY: docker.io
+  DEFAULT_COMPONENTS: backend,frontend,proxy,updater
 
 jobs:
   resolve:
@@ -34,14 +35,13 @@ jobs:
     steps:
       - id: gen
         run: |
-          # On branch push we only build backend + frontend (proxy/updater change
-          # rarely; their dev versions can be built on demand via workflow_dispatch).
-          # workflow_dispatch lets the caller pick which components.
+          # Branch pushes and manual runs default to the same four-component
+          # DockerHub set as release.yml. workflow_dispatch can narrow it.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             INPUT="${{ inputs.components }}"
-            INPUT="${INPUT:-backend,frontend}"
+            INPUT="${INPUT:-$DEFAULT_COMPONENTS}"
           else
-            INPUT="backend,frontend"
+            INPUT="$DEFAULT_COMPONENTS"
           fi
           # Convert "backend,frontend,proxy" to JSON array.
           MATRIX=$(echo "$INPUT" | tr ',' '\n' | sed 's/[[:space:]]//g' | grep -v '^$' \

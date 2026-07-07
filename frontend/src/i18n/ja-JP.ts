@@ -603,6 +603,16 @@ export const jaJP: TranslationKeys = {
     platformDescBangumi: 'Bangumiのコレクション、評価、視聴状態を同期',
     platformDescSteam: 'ゲームライブラリ、ウィッシュリスト、ゲーム統計を同期',
     platformDescNetease: 'お気に入りの曲と音楽の好みを同期',
+    bangumiCredentialRequirement:
+      'Bangumi ユーザー名またはアクセストークンのどちらか一方を入力してください。公開プロフィールはユーザー名のみ、非公開コレクションはアクセストークンを推奨します。',
+    bangumiCredentialMissing:
+      'Bangumi を有効化して保存する前にユーザー名またはアクセストークンを入力してください。',
+    bangumiUsernameLabel: 'Bangumi ユーザー名',
+    bangumiAccessTokenLabel: 'アクセストークン',
+    bangumiUserAgentLabel: 'User-Agent',
+    bangumiUsernamePlaceholder: 'Bangumi ユーザー名',
+    bangumiAccessTokenPlaceholder: '非公開コレクション用の Bearer Token',
+    bangumiUserAgentPlaceholder: 'haru/Myriad',
     configuredStatus: '設定済み',
     unconfiguredStatus: '未設定',
     enablePlatform: '{platform}プラットフォームを有効化',
@@ -1190,6 +1200,9 @@ export const jaJP: TranslationKeys = {
     regenerateReport: 'レポートを再生成',
     aiSummary: 'AI要約',
     deepInsightReport: 'ディープインサイトレポート',
+    noEnabledPlatforms: '有効なデータプラットフォームがまだありません',
+    noEnabledPlatformsDesc:
+      '設定で少なくとも1つのデータプラットフォームを有効にすると、ここに対応するカードが表示されます。',
     platformReport: 'プラットフォームレポート',
     clickToView: 'カードをクリックして表示',
     stagePlaying: 'ステージモード再生中',

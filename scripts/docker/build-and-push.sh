@@ -23,8 +23,8 @@ TAG="latest"
 PUSH=false
 BUILD_BACKEND=true
 BUILD_FRONTEND=true
-BUILD_PROXY=false
-BUILD_UPDATER=false
+BUILD_PROXY=true
+BUILD_UPDATER=true
 NO_BUILD_CACHE=false
 MYRIAD_VERSION=""
 
@@ -97,8 +97,8 @@ show_help() {
   -p, --push             构建后推送
   --backend              构建 backend（默认 ON）
   --frontend             构建 frontend（默认 ON）
-  --proxy                构建 proxy
-  --updater              构建 updater
+  --proxy                构建 proxy（默认 ON）
+  --updater              构建 updater（默认 ON）
   --all                  构建全部 4 个组件
   --backend-only         仅 backend
   --frontend-only        仅 frontend
@@ -108,8 +108,8 @@ show_help() {
   -h, --help             显示帮助
 
 示例:
-  $0 -u myuser --all -p                  # 推 4 个组件
-  $0 -u myuser -t v0.2.0-rc.1 --all -p   # 推一个 rc tag
+  $0 -u myuser -p                        # 推 4 个组件
+  $0 -u myuser -t v0.2.0-rc.1 -p         # 推一个 rc tag
   $0 --proxy-only                        # 本地仅构建 proxy 测试
 EOF
 }

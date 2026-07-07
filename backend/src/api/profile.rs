@@ -555,12 +555,31 @@ async fn fetch_fresh_platform_data(
 
     // 辅助闭包：判断是否应该获取该平台
     let should_fetch = |p: &str| target_platform.is_none() || target_platform == Some(p);
+    let is_platform_enabled = |p: &str| match p {
+        "github" => config
+            .github_enabled
+            .unwrap_or(config.github_username.as_ref().is_some()),
+        "bilibili" => config
+            .bilibili_enabled
+            .unwrap_or(config.bilibili_uid.as_ref().is_some()),
+        "steam" => config
+            .steam_enabled
+            .unwrap_or(config.steam_api_key.as_ref().is_some()),
+        "netease" => config
+            .netease_enabled
+            .unwrap_or(config.netease_user_id.as_ref().is_some()),
+        "bangumi" => config.bangumi_enabled.unwrap_or(
+            config.bangumi_username.as_ref().is_some()
+                || config.bangumi_access_token.as_ref().is_some(),
+        ),
+        _ => false,
+    };
 
     // 创建元数据服务
     let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
 
     // 获取GitHub数据（包含仓库信息）
-    if should_fetch("github") {
+    if should_fetch("github") && is_platform_enabled("github") {
         if let Some(github_username) = &config.github_username {
             let github_token = config.github_token.as_deref();
 
@@ -620,7 +639,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取Bilibili数据
-    if should_fetch("bilibili") {
+    if should_fetch("bilibili") && is_platform_enabled("bilibili") {
         if let Some(uid_str) = &config.bilibili_uid {
             if let Ok(uid) = uid_str.parse::<i64>() {
                 match fetcher.fetch_bilibili_user(uid).await {
@@ -667,7 +686,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取Steam数据（只保留游玩时间>=3小时的游戏）
-    if should_fetch("steam") {
+    if should_fetch("steam") && is_platform_enabled("steam") {
         if let (Some(api_key), Some(steam_id)) = (&config.steam_api_key, &config.steam_id) {
             match fetcher.fetch_steam_user(api_key, steam_id).await {
                 Ok(user_data) => {
@@ -708,7 +727,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取网易云音乐数据
-    if should_fetch("netease") {
+    if should_fetch("netease") && is_platform_enabled("netease") {
         tracing::info!("🎵 Should fetch netease: checking config...");
         tracing::info!("🎵 Config netease_user_id: {:?}", config.netease_user_id);
 
@@ -763,7 +782,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取 Bangumi 收藏数据
-    if should_fetch("bangumi") {
+    if should_fetch("bangumi") && is_platform_enabled("bangumi") {
         let access_token = config.bangumi_access_token.as_deref();
         let user_agent = config.bangumi_user_agent.as_deref();
         let configured_username = config

@@ -1,6 +1,6 @@
+import type { ToastType } from '../components/Toast'
 import type { SecondaryNavItem } from '../contexts/NavigationContext'
 import {
-  FaChartPie,
   FaGithub,
   FaMagic,
   FaRobot,
@@ -8,6 +8,7 @@ import {
   FaSync,
   FaTimes,
   LuGitFork,
+  LuGlobe,
   LuStar,
   SiBangumi,
   SiBilibili,
@@ -22,7 +23,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import StageMode from '../components/StageMode'
 import { BangumiWidget } from '../components/StageWidgets'
-import Toast, { type ToastType } from '../components/Toast'
+import Toast from '../components/Toast'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -197,6 +198,31 @@ const PLATFORMS = [
     widgetType: 'book',
   },
 ]
+
+const PLATFORM_NAME_TO_ID: Record<string, string> = {
+  bilibili: 'bilibili',
+  steam: 'steam',
+  github: 'github',
+  bangumi: 'bangumi',
+  'netease music': 'netease',
+  'netease cloud music': 'netease',
+  'netease cloudmusic': 'netease',
+  '网易云': 'netease',
+  '网易云音乐': 'netease',
+}
+
+function resolvePlatformId(platformName: string): string | null {
+  const normalizedName = platformName.trim().toLowerCase().replace(/\s+/g, ' ')
+  return PLATFORM_NAME_TO_ID[normalizedName] ?? null
+}
+
+function PlatformReportGeneratingSpin({
+  className = '',
+}: {
+  className?: string
+}) {
+  return <FaSync size={18} className={`${className} animate-spin`} />
+}
 
 // 🔧 工具函数：处理B站图片URL，使用后端代理
 function getBilibiliProxyUrl(cover?: string, title?: string): string {
@@ -1560,6 +1586,9 @@ export default function Reports() {
   const anim = useAnimationLevel()
   const [isAdmin, setIsAdmin] = useState(false)
   const [comprehensiveReports, setComprehensiveReports] = useState<any[]>([]) // 所有综合报告列表
+  const [enabledPlatformIds, setEnabledPlatformIds] = useState<string[]>([])
+  const [platformVisibilityReady, setPlatformVisibilityReady] =
+    useState(false)
 
   // 🎭 舞台模式状态
   const [isStageMode, setIsStageMode] = useState(false)
@@ -1621,6 +1650,16 @@ export default function Reports() {
       t.reportsPage.github,
     ],
   )
+
+  const visiblePlatforms = useMemo(
+    () =>
+      translatedPlatforms.filter((platform) =>
+        enabledPlatformIds.includes(platform.id),
+      ),
+    [enabledPlatformIds, translatedPlatforms],
+  )
+
+  const hasEnabledPlatforms = visiblePlatforms.length > 0
 
   // i18n: 默认弹幕文本
   const defaultDanmaku = useMemo(
@@ -1781,10 +1820,36 @@ export default function Reports() {
     closeStageMode()
   }, [closeStageMode])
 
+  useEffect(() => {
+    if (!platformVisibilityReady) {
+      return
+    }
+
+    if (selectedPlatform && !enabledPlatformIds.includes(selectedPlatform)) {
+      setSelectedPlatform(null)
+    }
+
+    if (
+      isStageMode &&
+      stageReportData?.type === 'platform' &&
+      stageReportData.platform &&
+      !enabledPlatformIds.includes(stageReportData.platform)
+    ) {
+      closeStageMode()
+    }
+  }, [
+    closeStageMode,
+    enabledPlatformIds,
+    isStageMode,
+    platformVisibilityReady,
+    selectedPlatform,
+    stageReportData,
+  ])
+
   // 🎭 开始播放所有平台
   const startPlayAll = useCallback(() => {
     // 获取所有有报告的平台
-    const platformsWithReports = PLATFORMS.filter((p) =>
+    const platformsWithReports = visiblePlatforms.filter((p) =>
       platformReportsMap.has(p.id),
     ).map((p) => p.id)
 
@@ -1812,7 +1877,7 @@ export default function Reports() {
         card_visuals: platformReport.card_visuals,
       })
     }
-  }, [platformReportsMap])
+  }, [platformReportsMap, t.reportsPage.noPlatformReports, visiblePlatforms])
 
   // 🎭 播放下一个平台（播放所有模式）
   const playNextPlatform = useCallback(() => {
@@ -1981,6 +2046,54 @@ export default function Reports() {
       checkAuth()
     }
   }, [hasChecked, checkAuth])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const fetchEnabledPlatforms = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/config/public`, {
+          credentials: 'include',
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch public config: ${response.status}`)
+        }
+
+        const data = await response.json()
+        if (!Array.isArray(data.platforms)) {
+          throw new TypeError('Public config does not contain platforms')
+        }
+
+        const nextPlatformIds = data.platforms
+          .filter((platform: any) => platform?.enabled)
+          .map((platform: any) =>
+            typeof platform?.name === 'string'
+              ? resolvePlatformId(platform.name)
+              : null,
+          )
+          .filter((platformId): platformId is string => Boolean(platformId))
+
+        if (!cancelled) {
+          setEnabledPlatformIds(nextPlatformIds)
+          setPlatformVisibilityReady(true)
+        }
+      } catch (err) {
+        console.error('获取已启用数据平台失败:', err)
+
+        if (!cancelled) {
+          setEnabledPlatformIds(PLATFORMS.map((platform) => platform.id))
+          setPlatformVisibilityReady(true)
+        }
+      }
+    }
+
+    fetchEnabledPlatforms()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     setIsAdmin(authIsAdmin)
@@ -2231,6 +2344,14 @@ export default function Reports() {
     [selectedPlatform, report],
   )
 
+  const canShowSelectedReport = useMemo(
+    () =>
+      !!selectedReport &&
+      (!platformVisibilityReady ||
+        enabledPlatformIds.includes(selectedReport.platform)),
+    [enabledPlatformIds, platformVisibilityReady, selectedReport],
+  )
+
   return (
     <AnimatedView className="min-h-screen md:h-screen md:overflow-hidden">
       {/* Toast提示 */}
@@ -2255,7 +2376,7 @@ export default function Reports() {
           {/* 上半部分：报告详情展示区域 - 移动端弹性占位抨卡片到底部，桌面端60% */}
           <div className="flex-1 md:flex-none md:h-[60%] rounded-2xl relative overflow-hidden">
             {/* 原有详情展示（舞台模式未激活时） */}
-            {!isStageMode && activeTab === 'platform' && selectedReport ? (
+            {!isStageMode && activeTab === 'platform' && canShowSelectedReport ? (
               <div className="h-full glass rounded-2xl">
                 {/* 关闭按钮 */}
                 <button
@@ -2450,7 +2571,7 @@ export default function Reports() {
               </>
             )}
             <div className="flex flex-col gap-3 relative z-10">
-              {activeTab === 'platform' && (
+              {activeTab === 'platform' && platformVisibilityReady && (
                 <>
                   {/* 平台报告提示条 */}
                   <motion.div
@@ -2515,24 +2636,28 @@ export default function Reports() {
                               {t.reportsPage.platformReport}
                             </div>
                             <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                              {t.reportsPage.clickToView}
+                              {hasEnabledPlatforms
+                                ? t.reportsPage.clickToView
+                                : t.reportsPage.noEnabledPlatforms}
                             </div>
                           </div>
 
                           {/* 播放全部按钮 */}
-                          <button
-                            onClick={startPlayAll}
-                            className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
-                            title={t.reportsPage.playAllReports}
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="currentColor"
-                              viewBox="0 0 24 24"
+                          {hasEnabledPlatforms && (
+                            <button
+                              onClick={startPlayAll}
+                              className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
+                              title={t.reportsPage.playAllReports}
                             >
-                              <path d="M8 5v14l11-7z" />
-                            </svg>
-                          </button>
+                              <svg
+                                className="w-4 h-4"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </button>
+                          )}
                         </>
                       )}
 
@@ -2627,75 +2752,72 @@ export default function Reports() {
                       )}
                     </motion.div>
                   </motion.div>
-                  <motion.div
-                    className={`${isStageMode ? 'hidden md:flex' : 'flex'} relative left-1/2 w-[100dvw] max-w-none -translate-x-1/2 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pt-8 pb-12 -mt-7 -mb-11 pr-3 xs:pr-4 sm:pr-6 md:pr-8 [--report-page-padding:0.75rem] xs:[--report-page-padding:1rem] sm:[--report-page-padding:1.5rem] [--report-right-padding:0.75rem] xs:[--report-right-padding:1rem] sm:[--report-right-padding:1.5rem] md:[--report-right-padding:2rem] [--report-visible-cards:1] sm:[--report-visible-cards:2] md:[--report-visible-cards:3] lg:[--report-visible-cards:4]`}
-                    style={
-                      {
-                        paddingLeft:
-                          'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
-                        scrollPaddingLeft:
-                          'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
-                      } as React.CSSProperties
-                    }
-                    initial={{ opacity: 0 }}
-                    animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{
-                      duration: 0.3,
-                      delay: isPageReady ? 0.15 : 0,
-                    }}
-                  >
-                    {PLATFORMS.map((platform) => {
-                      const isLoading = loadingPlatform === platform.id
-                      // 🚀 性能优化：使用 Map 查找，O(1) 复杂度
-                      const platformReport = platformReportsMap.get(platform.id)
+                  {hasEnabledPlatforms && (
+                    <motion.div
+                      className={`${isStageMode ? 'hidden md:flex' : 'flex'} relative left-1/2 w-dvw max-w-none -translate-x-1/2 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pt-8 pb-12 -mt-7 -mb-11 pr-3 xs:pr-4 sm:pr-6 md:pr-8 [--report-page-padding:0.75rem] xs:[--report-page-padding:1rem] sm:[--report-page-padding:1.5rem] [--report-right-padding:0.75rem] xs:[--report-right-padding:1rem] sm:[--report-right-padding:1.5rem] md:[--report-right-padding:2rem] [--report-visible-cards:1] sm:[--report-visible-cards:2] md:[--report-visible-cards:3] lg:[--report-visible-cards:4]`}
+                      style={
+                        {
+                          paddingLeft:
+                            'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
+                          scrollPaddingLeft:
+                            'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
+                        } as React.CSSProperties
+                      }
+                      initial={{ opacity: 0 }}
+                      animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{
+                        duration: 0.3,
+                        delay: isPageReady ? 0.15 : 0,
+                      }}
+                    >
+                      {visiblePlatforms.map((platform, cardIndex) => {
+                        const isLoading = loadingPlatform === platform.id
+                        // 🚀 性能优化：使用 Map 查找，O(1) 复杂度
+                        const platformReport = platformReportsMap.get(platform.id)
 
-                      const cardIndex = PLATFORMS.findIndex(
-                        (p) => p.id === platform.id,
-                      )
-
-                      return (
-                        <motion.div
-                          key={platform.id}
-                          layout
-                          initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                          animate={
-                            isPageReady
-                              ? { opacity: 1, y: 0, scale: 1 }
-                              : { opacity: 0, y: 20, scale: 0.95 }
-                          }
-                          exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                          transition={{
-                            duration: 0.4,
-                            delay: isPageReady ? cardIndex * 0.08 + 0.2 : 0,
-                            ease: [0.4, 0, 0.2, 1],
-                          }}
-                          whileHover={{ scale: 1.02, y: -4 }}
-                          whileTap={{ scale: 0.98 }}
-                          className={`
+                        return (
+                          <motion.div
+                            key={platform.id}
+                            layout
+                            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                            animate={
+                              isPageReady
+                                ? { opacity: 1, y: 0, scale: 1 }
+                                : { opacity: 0, y: 20, scale: 0.95 }
+                            }
+                            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                            transition={{
+                              duration: 0.4,
+                              delay: isPageReady ? cardIndex * 0.08 + 0.2 : 0,
+                              ease: [0.4, 0, 0.2, 1],
+                            }}
+                            whileHover={{ scale: 1.02, y: -4 }}
+                            whileTap={{ scale: 0.98 }}
+                            className={`
                     relative aspect-2/1 rounded-2xl overflow-hidden cursor-pointer group
                     glass
                     hover:shadow-xl transition-shadow
                     shrink-0 min-w-0 snap-start
                   `}
-                          style={{
-                            flexBasis:
-                              'calc((100dvw - calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem) - var(--report-right-padding) - (var(--report-visible-cards) - 1) * 1rem) / var(--report-visible-cards))',
-                            willChange: 'transform, opacity',
-                          }} // 🚀 GPU加速
-                          onClick={() => {
-                            if (platformReport) {
-                              openStageMode(platform.id)
-                            } else if (isAdmin) {
-                              generatePlatformReport(platform.id)
-                            } else {
-                              showToastMessage(
-                                t.reportsPage.adminOnlyGenerate,
-                                'warning',
-                              )
-                            }
-                          }}
-                        >
+                            style={{
+                              flexBasis:
+                                'calc((100dvw - calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem) - var(--report-right-padding) - (var(--report-visible-cards) - 1) * 1rem) / var(--report-visible-cards))',
+                              willChange: 'transform, opacity',
+                            }} // 🚀 GPU加速
+                            onClick={() => {
+                              if (platformReport) {
+                                openStageMode(platform.id)
+                              } else if (isAdmin) {
+                                generatePlatformReport(platform.id)
+                              } else {
+                                showToastMessage(
+                                  t.reportsPage.adminOnlyGenerate,
+                                  'warning',
+                                )
+                              }
+                            }}
+                          >
                           {/* 动态背景光效 */}
                           <div
                             className={`absolute -right-10 -top-10 w-40 h-40 bg-linear-to-br ${platform.color} opacity-10 rounded-full blur-3xl group-hover:opacity-20 transition-opacity`}
@@ -2708,16 +2830,9 @@ export default function Reports() {
                                 {/* 动态内容区 - 占满整个卡片 */}
                                 <div className="flex-1 flex items-center justify-center overflow-hidden">
                                   {isLoading ? (
-                                    <motion.div
-                                      animate={{ rotate: 360 }}
-                                      transition={{
-                                        repeat: Infinity,
-                                        duration: 1,
-                                      }}
+                                    <PlatformReportGeneratingSpin
                                       className={platform.text}
-                                    >
-                                      <FaChartPie size={20} />
-                                    </motion.div>
+                                    />
                                   ) : !platformReport ? (
                                     <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
                                       <div className="text-[10px] text-gray-400 font-medium">
@@ -2817,16 +2932,9 @@ export default function Reports() {
                                 {/* 动态内容区 - 占满整个卡片 */}
                                 <div className="flex-1 flex items-center justify-center overflow-hidden">
                                   {isLoading ? (
-                                    <motion.div
-                                      animate={{ rotate: 360 }}
-                                      transition={{
-                                        repeat: Infinity,
-                                        duration: 1,
-                                      }}
+                                    <PlatformReportGeneratingSpin
                                       className={platform.text}
-                                    >
-                                      <FaChartPie size={20} />
-                                    </motion.div>
+                                    />
                                   ) : !platformReport ? (
                                     <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
                                       <div className="text-[10px] text-gray-400 font-medium">
@@ -2909,16 +3017,9 @@ export default function Reports() {
                                 {/* 动态内容区 - 占满整个卡片 */}
                                 <div className="flex-1 flex items-center justify-center overflow-hidden">
                                   {isLoading ? (
-                                    <motion.div
-                                      animate={{ rotate: 360 }}
-                                      transition={{
-                                        repeat: Infinity,
-                                        duration: 1,
-                                      }}
+                                    <PlatformReportGeneratingSpin
                                       className={platform.text}
-                                    >
-                                      <FaChartPie size={20} />
-                                    </motion.div>
+                                    />
                                   ) : !platformReport ? (
                                     <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
                                       <div className="text-[10px] text-gray-400 font-medium">
@@ -3015,16 +3116,9 @@ export default function Reports() {
                                 {/* 动态内容区 - 占满整个卡片 */}
                                 <div className="flex-1 flex items-center justify-center overflow-hidden">
                                   {isLoading ? (
-                                    <motion.div
-                                      animate={{ rotate: 360 }}
-                                      transition={{
-                                        repeat: Infinity,
-                                        duration: 1,
-                                      }}
+                                    <PlatformReportGeneratingSpin
                                       className={platform.text}
-                                    >
-                                      <FaChartPie size={20} />
-                                    </motion.div>
+                                    />
                                   ) : !platformReport ? (
                                     <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
                                       <div className="text-[10px] text-gray-400 font-medium">
@@ -3117,16 +3211,9 @@ export default function Reports() {
                               <>
                                 <div className="flex-1 flex items-center justify-center overflow-hidden">
                                   {isLoading ? (
-                                    <motion.div
-                                      animate={{ rotate: 360 }}
-                                      transition={{
-                                        repeat: Infinity,
-                                        duration: 1,
-                                      }}
+                                    <PlatformReportGeneratingSpin
                                       className={platform.text}
-                                    >
-                                      <FaChartPie size={20} />
-                                    </motion.div>
+                                    />
                                   ) : !platformReport ? (
                                     <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
                                       <div className="text-[10px] text-gray-400 font-medium">
@@ -3247,16 +3334,9 @@ export default function Reports() {
                                 {/* 中间动态内容区 */}
                                 <div className="flex-1 flex items-center justify-center overflow-hidden py-0.5">
                                   {isLoading ? (
-                                    <motion.div
-                                      animate={{ rotate: 360 }}
-                                      transition={{
-                                        repeat: Infinity,
-                                        duration: 1,
-                                      }}
+                                    <PlatformReportGeneratingSpin
                                       className={platform.text}
-                                    >
-                                      <FaChartPie size={20} />
-                                    </motion.div>
+                                    />
                                   ) : !platformReport ? (
                                     <div className="text-center opacity-50 group-hover:opacity-80 transition-opacity">
                                       <div className="text-[10px] text-gray-400 font-medium">
@@ -3276,33 +3356,80 @@ export default function Reports() {
                               </div>
                             )}
                           </div>
-                        </motion.div>
-                      )
-                    })}
-                  </motion.div>
+                          </motion.div>
+                        )
+                      })}
+                    </motion.div>
+                  )}
                 </>
               )}
+
+              {activeTab === 'platform' &&
+                platformVisibilityReady &&
+                !hasEnabledPlatforms && (
+                  <div className="pt-8 pb-12 -mt-7 -mb-11">
+                    <motion.div
+                      className="relative rounded-2xl overflow-hidden min-h-55"
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={
+                        isPageReady
+                          ? { opacity: 1, y: 0 }
+                          : { opacity: 0, y: 12 }
+                      }
+                      transition={{
+                        duration: 0.3,
+                        delay: isPageReady ? 0.15 : 0,
+                      }}
+                    >
+                      <div className="absolute inset-0 bg-white/70 dark:bg-black/80 backdrop-blur-xl" />
+                      <div
+                        className="absolute -right-20 -top-20 w-48 h-48 rounded-full blur-3xl opacity-20"
+                        style={{ background: 'var(--color-primary)' }}
+                      />
+                      <div
+                        className="absolute -left-16 -bottom-16 w-32 h-32 rounded-full blur-2xl opacity-15"
+                        style={{ background: 'var(--color-primary)' }}
+                      />
+
+                      <div className="relative z-10 h-full p-8 md:p-12 text-center flex flex-col items-center justify-center">
+                        <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-linear-to-br from-gray-100 to-gray-200 dark:from-white/10 dark:to-white/5 flex items-center justify-center shadow-lg">
+                          <LuGlobe className="w-10 h-10 text-gray-400 dark:text-gray-500" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-2">
+                          {t.reportsPage.noEnabledPlatforms}
+                        </h3>
+                        <p className="text-gray-500 dark:text-gray-400 text-sm max-w-sm mx-auto leading-6">
+                          {t.reportsPage.noEnabledPlatformsDesc}
+                        </p>
+                      </div>
+
+                      <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-black/5 dark:ring-white/10 pointer-events-none" />
+                    </motion.div>
+                  </div>
+                )}
 
               {activeTab === 'comprehensive' && (
                 <>
                   {/* 综合报告提示条 */}
                   <motion.div
                     className={`h-12.5 ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
-                    initial={{ opacity: 0, y: -10 }}
+                    initial={{ opacity: 0, x: -20 }}
                     animate={
                       isPageReady
-                        ? { opacity: 1, y: 0 }
-                        : { opacity: 0, y: -10 }
+                        ? { opacity: 1, x: 0 }
+                        : { opacity: 0, x: -20 }
                     }
-                    transition={{ duration: 0.3, delay: isPageReady ? 0.1 : 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{
+                      duration: 0.3,
+                      ease: 'easeOut',
+                      delay: isPageReady ? 0.1 : 0,
+                    }}
                   >
                     <motion.div
                       className="w-full md:w-[24%] h-full glass rounded-xl px-4 flex items-center gap-2 shadow-sm"
-                      whileHover={{
-                        scale: 1.02,
-                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)',
-                        transition: { duration: 0.2 },
-                      }}
+                      whileHover={{ scale: 1.02 }}
+                      transition={{ duration: 0.2 }}
                     >
                       {isStageMode &&
                       stageReportData?.type === 'comprehensive' ? (
@@ -3464,27 +3591,27 @@ export default function Reports() {
                       )}
                     </motion.div>
                   </motion.div>
-                  <motion.div
-                    className={`${isStageMode ? 'hidden md:flex' : 'flex'} relative left-1/2 w-[100dvw] max-w-none -translate-x-1/2 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pt-8 pb-12 -mt-7 -mb-11 pr-3 xs:pr-4 sm:pr-6 md:pr-8 [--report-page-padding:0.75rem] xs:[--report-page-padding:1rem] sm:[--report-page-padding:1.5rem] [--report-right-padding:0.75rem] xs:[--report-right-padding:1rem] sm:[--report-right-padding:1.5rem] md:[--report-right-padding:2rem] [--report-visible-cards:1] sm:[--report-visible-cards:2] md:[--report-visible-cards:3] lg:[--report-visible-cards:4]`}
-                    style={
-                      {
-                        paddingLeft:
-                          'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
-                        scrollPaddingLeft:
-                          'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
-                      } as React.CSSProperties
-                    }
-                    initial={{ opacity: 0 }}
-                    animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{
-                      duration: 0.3,
-                      delay: isPageReady ? 0.15 : 0,
-                    }}
-                  >
-                    <AnimatePresence mode="popLayout">
-                      {displayedComprehensiveReports.length > 0 ? (
-                        displayedComprehensiveReports.map(
+                  {displayedComprehensiveReports.length > 0 ? (
+                    <motion.div
+                      className={`${isStageMode ? 'hidden md:flex' : 'flex'} relative left-1/2 w-dvw max-w-none -translate-x-1/2 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pt-8 pb-12 -mt-7 -mb-11 pr-3 xs:pr-4 sm:pr-6 md:pr-8 [--report-page-padding:0.75rem] xs:[--report-page-padding:1rem] sm:[--report-page-padding:1.5rem] [--report-right-padding:0.75rem] xs:[--report-right-padding:1rem] sm:[--report-right-padding:1.5rem] md:[--report-right-padding:2rem] [--report-visible-cards:1] sm:[--report-visible-cards:2] md:[--report-visible-cards:3] lg:[--report-visible-cards:4]`}
+                      style={
+                        {
+                          paddingLeft:
+                            'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
+                          scrollPaddingLeft:
+                            'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
+                        } as React.CSSProperties
+                      }
+                      initial={{ opacity: 0 }}
+                      animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{
+                        duration: 0.3,
+                        delay: isPageReady ? 0.15 : 0,
+                      }}
+                    >
+                      <AnimatePresence mode="popLayout">
+                        {displayedComprehensiveReports.map(
                           (compReport: any, index: number) => (
                             <ComprehensiveReportCard
                               key={compReport.id}
@@ -3541,12 +3668,17 @@ export default function Reports() {
                               }}
                             />
                           ),
-                        )
-                      ) : (
-                        <EmptyComprehensiveReport isAdmin={isAdmin} />
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  ) : (
+                    <div className="pt-8 pb-12 -mt-7 -mb-11">
+                      <EmptyComprehensiveReport
+                        isAdmin={isAdmin}
+                        isPageReady={isPageReady}
+                      />
+                    </div>
+                  )}
                 </>
               )}
             </div>
