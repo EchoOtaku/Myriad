@@ -7,6 +7,7 @@ import type { WidgetConfig } from '../WidgetGrid'
 import {
   FaGithub,
   FaSteam,
+  FaTimes,
   LuGitFork,
   LuStar,
   SiBangumi,
@@ -19,6 +20,8 @@ import {
 } from '@lib/motionShim'
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { useLoopAnimation } from '../../hooks/animation'
@@ -33,6 +36,8 @@ interface LangSegment {
   delay: number
   duration: number
 }
+
+type ReportCardClickAction = 'report' | 'social'
 
 // 🔧 性能优化：预生成热力图网格索引，避免在渲染时调用 Array.from
 const HEATMAP_WEEKS = Array.from({ length: 12 }, (_, i) => i)
@@ -71,7 +76,278 @@ export interface ReportCardWidgetProps {
   data?: any
   /** 去掉自带 glass 外壳与背景光效，供已有外壳的容器内嵌 */
   bare?: boolean
+  /** 小组件配置变更回调（用于持久化长按设置） */
+  onConfigChange?: (newConfig: any) => void
 }
+
+// 各平台社交主页链接（长按设置里“打开社交主页”用）
+const PLATFORM_SOCIAL: Record<
+  string,
+  { publicName: string, fieldKey: string, getUserUrl: (id: string) => string }
+> = {
+  bilibili: {
+    publicName: 'Bilibili',
+    fieldKey: 'uid',
+    getUserUrl: (u) => `https://space.bilibili.com/${u}`,
+  },
+  steam: {
+    publicName: 'Steam',
+    fieldKey: 'steam_id',
+    getUserUrl: (u) => `https://steamcommunity.com/profiles/${u}`,
+  },
+  github: {
+    publicName: 'GitHub',
+    fieldKey: 'username',
+    getUserUrl: (u) => `https://github.com/${u}`,
+  },
+  netease: {
+    publicName: 'Netease Music',
+    fieldKey: 'user_id',
+    getUserUrl: (u) => `https://music.163.com/#/user/home?id=${u}`,
+  },
+  bangumi: {
+    publicName: 'Bangumi',
+    fieldKey: 'username',
+    getUserUrl: (u) => `https://bgm.tv/user/${u}`,
+  },
+}
+
+// 从公开配置取各平台用户ID（模块级缓存，避免重复请求）
+let cachedUserIds: Record<string, string> | null = null
+let userIdsPromise: Promise<Record<string, string>> | null = null
+async function fetchPlatformUserIds(): Promise<Record<string, string>> {
+  if (cachedUserIds) return cachedUserIds
+  if (userIdsPromise) return userIdsPromise
+  userIdsPromise = (async () => {
+    const map: Record<string, string> = {}
+    try {
+      const res = await fetch(`${API_URL}/api/config/public`)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data.platforms)) {
+          for (const p of data.platforms) {
+            if (!p.enabled) continue
+            const entry = Object.entries(PLATFORM_SOCIAL).find(
+              ([, s]) => s.publicName === p.name,
+            )
+            if (!entry) continue
+            const [pid, s] = entry
+            const field = (p.config_fields || []).find(
+              (f: { key: string, value?: string }) =>
+                f.key === s.fieldKey && f.value,
+            )
+            if (field) map[pid] = field.value as string
+          }
+        }
+      }
+    } catch {
+      // 静默：拿不到就走报告页兜底
+    }
+    cachedUserIds = map
+    return map
+  })()
+  return userIdsPromise
+}
+
+interface ReportCardSettingsModalState {
+  isOpen: boolean
+  selectedAction: ReportCardClickAction
+  anchorRect?: DOMRect
+  onSelect?: (action: ReportCardClickAction) => void
+  onClose?: () => void
+}
+
+let reportCardSettingsModalState: ReportCardSettingsModalState = {
+  isOpen: false,
+  selectedAction: 'report',
+}
+
+const reportCardSettingsModalListeners: Set<() => void> = new Set()
+const REPORT_CARD_SETTINGS_MODAL_WIDTH = 286
+const REPORT_CARD_SETTINGS_MODAL_HEIGHT = 106
+const REPORT_CARD_SETTINGS_MODAL_PADDING = 12
+
+function openReportCardSettingsModal(
+  selectedAction: ReportCardClickAction,
+  anchorRect: DOMRect,
+  onSelect: (action: ReportCardClickAction) => void,
+  onClose?: () => void,
+) {
+  reportCardSettingsModalState = {
+    isOpen: true,
+    selectedAction,
+    anchorRect,
+    onSelect,
+    onClose,
+  }
+  reportCardSettingsModalListeners.forEach((listener) => listener())
+}
+
+function closeReportCardSettingsModal() {
+  const onClose = reportCardSettingsModalState.onClose
+  reportCardSettingsModalState = {
+    ...reportCardSettingsModalState,
+    isOpen: false,
+    onClose: undefined,
+  }
+  onClose?.()
+  reportCardSettingsModalListeners.forEach((listener) => listener())
+}
+
+function subscribeToReportCardSettingsModal(listener: () => void) {
+  reportCardSettingsModalListeners.add(listener)
+  return () => {
+    reportCardSettingsModalListeners.delete(listener)
+  }
+}
+
+const ReportCardSettingsModal = memo(() => {
+  const [, forceUpdate] = useState({})
+  const { t } = useI18n()
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    return subscribeToReportCardSettingsModal(() => {
+      forceUpdate({})
+    })
+  }, [])
+
+  const { isOpen, selectedAction, anchorRect, onSelect } =
+    reportCardSettingsModalState
+
+  const position = useMemo(() => {
+    if (!anchorRect) return { top: 0, left: 0 }
+
+    let top = anchorRect.bottom + 8
+    let left =
+      anchorRect.left +
+      (anchorRect.width - REPORT_CARD_SETTINGS_MODAL_WIDTH) / 2
+
+    if (
+      left + REPORT_CARD_SETTINGS_MODAL_WIDTH >
+      window.innerWidth - REPORT_CARD_SETTINGS_MODAL_PADDING
+    ) {
+      left =
+        window.innerWidth -
+        REPORT_CARD_SETTINGS_MODAL_WIDTH -
+        REPORT_CARD_SETTINGS_MODAL_PADDING
+    }
+    if (left < REPORT_CARD_SETTINGS_MODAL_PADDING) {
+      left = REPORT_CARD_SETTINGS_MODAL_PADDING
+    }
+    if (
+      top + REPORT_CARD_SETTINGS_MODAL_HEIGHT >
+      window.innerHeight - REPORT_CARD_SETTINGS_MODAL_PADDING
+    ) {
+      top = anchorRect.top - REPORT_CARD_SETTINGS_MODAL_HEIGHT - 8
+    }
+    if (top < REPORT_CARD_SETTINGS_MODAL_PADDING) {
+      top = REPORT_CARD_SETTINGS_MODAL_PADDING
+    }
+
+    return { top, left }
+  }, [anchorRect])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+        closeReportCardSettingsModal()
+      }
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeReportCardSettingsModal()
+      }
+    }
+
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside, {
+        passive: true,
+      })
+      document.addEventListener('keydown', handleKeyDown)
+    }, 100)
+
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen])
+
+  const handleSelect = useCallback(
+    (action: ReportCardClickAction) => {
+      onSelect?.(action)
+      closeReportCardSettingsModal()
+    },
+    [onSelect],
+  )
+
+  if (!isOpen) return null
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-10000"
+      style={{ pointerEvents: 'none' }}
+    >
+      <motion.div
+        ref={modalRef}
+        initial={{ opacity: 0, scale: 0.95, y: -5 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: -5 }}
+        transition={{ duration: 0.15 }}
+        className="absolute glass rounded-xl shadow-xl overflow-hidden border border-white/15 dark:border-white/10 p-3"
+        style={{
+          top: position.top,
+          left: position.left,
+          width: REPORT_CARD_SETTINGS_MODAL_WIDTH,
+          pointerEvents: 'auto',
+        }}
+      >
+        <div className="flex items-center justify-between gap-2 px-1 pb-2">
+          <span className="text-sm font-bold text-gray-800 dark:text-gray-200">
+            {t.platformCard.settingsTitle}
+          </span>
+          <button
+            type="button"
+            onClick={closeReportCardSettingsModal}
+            className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            aria-label="Close"
+          >
+            <FaTimes className="w-2.5 h-2.5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="flex gap-2.5">
+          {(['social', 'report'] as const).map((action) => (
+            <button
+              key={action}
+              type="button"
+              onClick={() => handleSelect(action)}
+              className={`flex-1 px-4 py-3 rounded-lg text-xs font-bold text-center transition-all ${
+                selectedAction === action
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'bg-black/5 dark:bg-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/10 dark:hover:bg-white/15'
+              }`}
+            >
+              {action === 'social'
+                ? t.platformCard.clickToSocial
+                : t.platformCard.clickToReport}
+            </button>
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body,
+  )
+})
+
+ReportCardSettingsModal.displayName = 'ReportCardSettingsModal'
 
 // ==================== 工具函数 ====================
 function getBilibiliProxyUrl(cover?: string, title?: string): string {
@@ -1483,13 +1759,16 @@ const BangumiWidget = memo(({ data, showOverview, onContentChange }: any) => {
 export const ReportCardWidget = memo(
   ({
     config,
-    isEditMode: _isEditMode,
+    isEditMode,
     isPreview,
     data: externalData,
     bare = false,
+    onConfigChange,
   }: ReportCardWidgetProps) => {
     const animLevel = useAnimationLevel()
     const { t } = useI18n()
+    const navigate = useNavigate()
+    const localRef = useRef<HTMLDivElement | null>(null)
     const platformId = (config.config?.platformId || 'bilibili') as string
     const [reportData, setReportData] = useState<any>(null)
     const [loading, setLoading] = useState(true)
@@ -1623,6 +1902,120 @@ export const ReportCardWidget = memo(
       setCardContent(content)
     }, [])
 
+    // ===== 长按点击行为设置（参考社交组件：编辑模式下按住 500ms 打开设置）=====
+    // 仅作为仪表盘小组件时启用（报告页 bare / 预览态不干预）
+    const interactive = !bare && !isPreview
+    const clickAction: ReportCardClickAction =
+      config.config?.clickAction === 'social' ? 'social' : 'report'
+
+    const [socialUserId, setSocialUserId] = useState<string | undefined>(
+      undefined,
+    )
+    useEffect(() => {
+      if (!interactive || clickAction !== 'social') return
+      let alive = true
+      fetchPlatformUserIds().then((m) => {
+        if (alive) setSocialUserId(m[platformId])
+      })
+      return () => {
+        alive = false
+      }
+    }, [interactive, clickAction, platformId])
+
+    const isLongPressRef = useRef(false)
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const applyClickAction = useCallback(
+      (action: ReportCardClickAction) => {
+        const nextConfig = { ...config.config, platformId, clickAction: action }
+        if (typeof onConfigChange === 'function') {
+          onConfigChange(nextConfig)
+        } else {
+          window.dispatchEvent(
+            new CustomEvent('widget-config-update', {
+              detail: {
+                widgetId: config.id,
+                config: nextConfig,
+              },
+            }),
+          )
+        }
+        isLongPressRef.current = false
+      },
+      [config.id, config.config, onConfigChange, platformId],
+    )
+
+    const openSettings = useCallback(() => {
+      if (!localRef.current) return
+      openReportCardSettingsModal(
+        clickAction,
+        localRef.current.getBoundingClientRect(),
+        applyClickAction,
+        () => {
+          isLongPressRef.current = false
+        },
+      )
+    }, [applyClickAction, clickAction])
+
+    const handlePressStart = useCallback(() => {
+      if (!interactive || !isEditMode) return
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
+      }
+      isLongPressRef.current = false
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null
+        isLongPressRef.current = true
+        openSettings()
+      }, 500)
+    }, [interactive, isEditMode, openSettings])
+
+    const handlePressEnd = useCallback(() => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current)
+        longPressTimerRef.current = null
+      }
+    }, [])
+
+    useEffect(() => {
+      return () => {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current)
+        }
+        isLongPressRef.current = false
+      }
+    }, [])
+
+    const handleCardClick = useCallback(() => {
+      // 长按触发的设置不当作点击
+      if (isLongPressRef.current) {
+        isLongPressRef.current = false
+        return
+      }
+      if (!interactive || isEditMode) return
+      if (clickAction === 'social' && socialUserId) {
+        window.open(
+          PLATFORM_SOCIAL[platformId]?.getUserUrl(socialUserId) || '#',
+          '_blank',
+          'noopener,noreferrer',
+        )
+        return
+      }
+      // report 模式，或社交模式下未配置用户ID的兜底
+      navigate('/reports')
+    }, [
+      interactive,
+      isEditMode,
+      clickAction,
+      socialUserId,
+      platformId,
+      navigate,
+    ])
+
+    const handleMouseLeave = useCallback(() => {
+      handlePressEnd()
+    }, [handlePressEnd])
+
     if (loading) {
       return (
         <div className="h-full w-full flex items-center justify-center">
@@ -1643,7 +2036,15 @@ export const ReportCardWidget = memo(
 
     return (
       <div
-        className={`relative h-full w-full rounded-xl overflow-hidden ${bare ? '' : 'glass'}`}
+        ref={localRef}
+        className={`relative h-full w-full rounded-xl overflow-hidden ${bare ? '' : 'glass'} ${interactive && !isEditMode ? 'cursor-pointer' : ''}`}
+        onClick={interactive ? handleCardClick : undefined}
+        onMouseDown={interactive ? handlePressStart : undefined}
+        onMouseUp={interactive ? handlePressEnd : undefined}
+        onMouseLeave={interactive ? handleMouseLeave : undefined}
+        onTouchStart={interactive ? handlePressStart : undefined}
+        onTouchEnd={interactive ? handlePressEnd : undefined}
+        onTouchCancel={interactive ? handlePressEnd : undefined}
       >
         {/* 动态背景光效（bare 模式下由外层容器负责，避免重复叠加） */}
         {!bare && (
@@ -1745,9 +2146,42 @@ export const ReportCardWidget = memo(
             </AnimatePresence>
           </div>
         </motion.div>
+
+        {/* 长按设置提示（编辑模式）- 与社交网络小组件保持一致 */}
+        {interactive && isEditMode && (
+          <motion.div
+            className="absolute top-1.5 right-1.5 z-30 w-5 h-5 rounded-md flex items-center justify-center bg-black/15 dark:bg-white/15 backdrop-blur-sm pointer-events-none"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+            title={t.platformCard.longPressHint}
+          >
+            <svg
+              className="w-3 h-3 text-gray-700 dark:text-gray-200"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+          </motion.div>
+        )}
       </div>
     )
   },
 )
 
 ReportCardWidget.displayName = 'ReportCardWidget'
+
+export { ReportCardSettingsModal }

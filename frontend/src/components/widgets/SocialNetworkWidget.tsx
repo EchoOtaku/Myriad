@@ -17,6 +17,7 @@ import {
   FaSteam,
   FaTimes,
   getIconByName,
+  SiBangumi,
   SiBilibili,
   SiNeteasecloudmusic,
 } from '@lib/icons'
@@ -194,6 +195,15 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
       `https://music.163.com/#/user/home?id=${userId}`,
     configKey: 'netease_user_id',
   },
+  {
+    id: 'bangumi',
+    name: 'Bangumi',
+    icon: <SiBangumi />,
+    color: '#F09199',
+    darkColor: '#F09199',
+    getUserUrl: (username: string) => `https://bgm.tv/user/${username}`,
+    configKey: 'bangumi_username',
+  },
 ])
 
 // 平台ID到索引的映射 - 避免重复查找
@@ -202,6 +212,7 @@ const PLATFORM_INDEX_MAP: Record<string, number> = {
   steam: 1,
   github: 2,
   netease: 3,
+  bangumi: 4,
 }
 
 // 静态动画配置常量 - 避免每次渲染创建新对象
@@ -468,6 +479,7 @@ interface PlatformUserIds {
   steam_id?: string
   github_username?: string
   netease_user_id?: string
+  bangumi_username?: string
 }
 
 // 全局缓存 - 避免重复请求
@@ -526,6 +538,12 @@ async function fetchPlatformUserIds(): Promise<PlatformUserIds> {
               field.value
             ) {
               result.netease_user_id = field.value
+            } else if (
+              platform.name === 'Bangumi' &&
+              field.key === 'username' &&
+              field.value
+            ) {
+              result.bangumi_username = field.value
             }
           }
         }
@@ -1436,6 +1454,8 @@ export const SocialNetworkWidget = memo(
           return platformUserIds.github_username
         case 'netease':
           return platformUserIds.netease_user_id
+        case 'bangumi':
+          return platformUserIds.bangumi_username
         default: {
           // 自定义平台（确保数据已加载）
           if (customPlatformsReady) {

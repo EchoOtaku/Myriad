@@ -1431,7 +1431,14 @@ export const jaJP: TranslationKeys = {
     noLyrics: '歌詞なし',
   },
 
-  // プラットフォームカードウィジェット
+  // プラットフォームレポートカード：長押しクリック動作設定
+  platformCard: {
+    clickToSocial: 'プロフィールを開く',
+    clickToReport: 'レポートを開く',
+    settingsTitle: 'クリック動作',
+    longPressHint: '長押しで設定',
+  },
+
   // レポートカードウィジェット拡張
   reportCardWidget: {
     bilibili: 'Bilibili',

@@ -1323,6 +1323,14 @@ export interface TranslationKeys {
     noLyrics: string
   }
 
+  // 平台报告卡片：长按点击行为设置
+  platformCard: {
+    clickToSocial: string
+    clickToReport: string
+    settingsTitle: string
+    longPressHint: string
+  }
+
   // 报告卡片小组件扩展
   reportCardWidget: {
     bilibili: string

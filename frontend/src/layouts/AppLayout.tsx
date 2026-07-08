@@ -42,6 +42,11 @@ const SocialNetworkSettingsModal = lazy(() =>
     default: m.SocialNetworkSettingsModal,
   })),
 )
+const ReportCardSettingsModal = lazy(() =>
+  import('../components/widgets/ReportCardWidget').then((m) => ({
+    default: m.ReportCardSettingsModal,
+  })),
+)
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -296,6 +301,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* 全局设置弹窗 - 懒加载，整个应用只渲染一次 */}
       <Suspense fallback={null}>
         <SocialNetworkSettingsModal />
+        <ReportCardSettingsModal />
       </Suspense>
 
       {/* 站点底部信息 */}

@@ -1447,7 +1447,14 @@ export const enUS: TranslationKeys = {
     noLyrics: 'No lyrics',
   },
 
-  // Platform Card Widget
+  // Platform report card: long-press click-action settings
+  platformCard: {
+    clickToSocial: 'Open profile',
+    clickToReport: 'Open reports',
+    settingsTitle: 'Click action',
+    longPressHint: 'Hold to set',
+  },
+
   // Report Card Widget Extended
   reportCardWidget: {
     bilibili: 'Bilibili',

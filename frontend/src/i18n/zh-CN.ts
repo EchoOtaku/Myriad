@@ -1375,7 +1375,14 @@ export const zhCN: TranslationKeys = {
     noLyrics: '暂无歌词',
   },
 
-  // 平台卡片小组件
+  // 平台报告卡片：长按点击行为设置
+  platformCard: {
+    clickToSocial: '打开社交主页',
+    clickToReport: '进入报告页',
+    settingsTitle: '点击行为',
+    longPressHint: '长按设置',
+  },
+
   // 报告卡片小组件扩展
   reportCardWidget: {
     bilibili: 'B站',
