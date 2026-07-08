@@ -49,13 +49,18 @@ export const DanmakuWidget = memo(
     })
 
     // 🆕 低性能模式：限制弹幕数量不超过3条
-    const maxDanmakuCount = anim.loop
-      ? Math.random() < 0.7
-        ? Math.random() < 0.5
-          ? 3
-          : 4
-        : 5
-      : 3
+    // 🔧 用 useMemo 锁定：仅在 loop 状态变化时重算随机，避免每次渲染重新洗牌弹幕
+    const maxDanmakuCount = useMemo(
+      () =>
+        anim.loop
+          ? Math.random() < 0.7
+            ? Math.random() < 0.5
+              ? 3
+              : 4
+            : 5
+          : 3,
+      [anim.loop],
+    )
 
     const animations = useMemo(() => {
       const lanes = 5
@@ -573,9 +578,8 @@ export const GithubStatsWidget = memo(
                 {HEATMAP_WEEKS.map((week) => (
                   <div key={week} className="flex flex-col gap-[2.5px]">
                     {HEATMAP_DAYS.map((day) => {
-                      const cell = heatmapData.find(
-                        (c) => c.week === week && c.day === day,
-                      )
+                      // heatmapData 按 week*5+day 顺序生成，直接下标取，避免 O(n²) find
+                      const cell = heatmapData[week * 5 + day]
                       return (
                         <motion.div
                           key={`${week}-${day}`}

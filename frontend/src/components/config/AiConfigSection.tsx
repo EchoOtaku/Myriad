@@ -53,7 +53,7 @@ const OPENROUTER_MODEL_PRO = 'anthropic/claude-opus-4.8'
  * OpenRouter 是 OpenAI 兼容服务，后端仍以 provider=openai + openai_base_url 处理，
  * 因此这里根据 base_url 反推该高亮 OpenAI 还是 OpenRouter。
  */
-const resolveProvider = (rawProvider: string, openaiBaseUrl: string): string => {
+function resolveProvider(rawProvider: string, openaiBaseUrl: string): string {
   if (
     rawProvider === 'openai' &&
     openaiBaseUrl.trim().toLowerCase().includes('openrouter.ai')
@@ -255,8 +255,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         if (
           currentProProvider === 'openrouter' &&
           field.key === 'pro_openai_base_url'
-        )
+        ) {
           return false
+}
         return true
       }
       return false

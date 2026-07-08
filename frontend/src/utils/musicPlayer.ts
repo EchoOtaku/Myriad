@@ -188,7 +188,7 @@ const PLAYLIST_STORAGE_KEY = 'myriad_playlist_cache'
 // 头部制作信息行（制作人/作词/作曲/编曲…）：网易云 lrc 常把 credit 挤在 0~10s，
 // 它们不是歌词——最后一行 credit 会作为「歌词」高亮挂到真人声进来为止（乱轴观感）
 const CREDIT_LINE_RE =
-  /^(制作人|出品|监制|作词|作曲|编曲|歌词|翻译|混音|母带|录音|和声|吉他|贝斯|键盘|弦乐|鼓|企划|统筹|发行|词|曲|OP|SP|Produce[rd]?|Lyric(?:s|ist)?|Compose[rd]?|Arrange[rd]?|Mix(?:ing)?|Master(?:ing)?)\s*[:：]/i
+  /^(制作人|出品|监制|作词|作曲|编曲|歌词|翻译|混音|母带|录音|和声|吉他|贝斯|键盘|弦乐|[鼓词曲]|企划|统筹|发行|OP|SP|Produce[rd]?|Lyric(?:s|ist)?|Compose[rd]?|Arrange[rd]?|Mix(?:ing)?|Master(?:ing)?)\s*[:：]/i
 
 /**
  * 解析LRC格式歌词
@@ -248,9 +248,9 @@ export function parseYrc(yrcText: string): WordLyricLine[] {
     const words: WordLyricToken[] = []
     let text = ''
     wordRe.lastIndex = 0
-    let m: RegExpExecArray | null
-    // 正则逐个 exec：赋值置于括号内并与 null 比较，符合 no-cond-assign except-parens
-    while ((m = wordRe.exec(line)) !== null) {
+    // 正则逐个 exec：赋值移出条件，满足 no-cond-assign
+    let m: RegExpExecArray | null = wordRe.exec(line)
+    while (m !== null) {
       const wordText = m[3]
       words.push({
         time: Number(m[1]) / 1000,
@@ -258,6 +258,7 @@ export function parseYrc(yrcText: string): WordLyricLine[] {
         text: wordText,
       })
       text += wordText
+      m = wordRe.exec(line)
     }
 
     if (words.length === 0) continue
@@ -300,9 +301,9 @@ export function parseKrc(krcText: string): WordLyricLine[] {
     const words: WordLyricToken[] = []
     let text = ''
     wordRe.lastIndex = 0
-    let m: RegExpExecArray | null
-    // 赋值置于括号内并与 null 比较，符合 no-cond-assign except-parens
-    while ((m = wordRe.exec(line)) !== null) {
+    // 赋值移出条件，满足 no-cond-assign
+    let m: RegExpExecArray | null = wordRe.exec(line)
+    while (m !== null) {
       const wordText = m[3]
       words.push({
         time: lineStart + Number(m[1]) / 1000, // 相对偏移转绝对时间
@@ -310,6 +311,7 @@ export function parseKrc(krcText: string): WordLyricLine[] {
         text: wordText,
       })
       text += wordText
+      m = wordRe.exec(line)
     }
 
     if (words.length === 0) continue

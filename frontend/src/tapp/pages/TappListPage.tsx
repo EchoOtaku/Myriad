@@ -3,8 +3,9 @@
  * 鏄剧ず宸插畨瑁呯殑 Tapp 鍜屽彲鐢ㄧ殑 Tapp
  */
 
-import type { TappInstance, TappManifest } from '../types'
+import type { ToastType } from '../../components/Toast'
 
+import type { TappInstance, TappManifest } from '../types'
 import type { IconStyle } from '../utils/tappColors'
 import {
   FaCog,
@@ -25,10 +26,10 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
+import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../../components/AnimatedView'
-import Toast, { type ToastType } from '../../components/Toast'
+import Toast from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { useTappScheduler, useTappStagger } from '../../hooks/animation'
@@ -39,8 +40,8 @@ import { useTitleFont } from '../../hooks/useTitleFont'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { TappIcon } from '../components/TappIcon'
 import { TappStore } from '../components/TappStore'
-import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
+import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { getTappRuntime } from '../runtime'
 import { isWebKit } from '../runtime/TappPageSandbox'
 import * as TappApiService from '../services/TappApiService'

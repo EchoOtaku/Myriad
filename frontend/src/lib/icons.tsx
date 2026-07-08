@@ -459,12 +459,13 @@ const MyriadStoreIcon: IconType = ({ size, style, title, ...props }) => {
 
 // 导出 Simple Icons
 export {
+  BangumiIcon,
+  MyriadStoreIcon,
   SiAnilist,
   SiApple,
   SiArtstation,
   SiBaidu,
   SiBandcamp,
-  BangumiIcon,
   SiBangumi,
   SiBehance,
   SiBilibili,
@@ -541,7 +542,6 @@ export {
   SiYcombinator,
   SiYoutube,
   SiZhihu,
-  MyriadStoreIcon,
 }
 
 // 导出 Font Awesome

@@ -14,7 +14,6 @@
  */
 
 import type { TappCodeStructure } from '../examples/tapps/types'
-import { TAPP_ICON_TOKENS } from '../constants/icons'
 import type {
   BackgroundRequirement,
   CustomPlatformConfig,
@@ -25,6 +24,7 @@ import type {
   TappStatus,
   WidgetRegistration,
 } from '../types'
+import { TAPP_ICON_TOKENS } from '../constants/icons'
 import * as TappApiService from '../services/TappApiService'
 import { TappPermissionController } from './TappPermission'
 

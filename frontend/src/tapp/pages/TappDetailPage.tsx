@@ -3,8 +3,9 @@
  * 鏄剧ず Tapp 璇︾粏淇℃伅鍜岄厤缃€夐」
  */
 
-import type { TappInstance, TappPermission, TappSettingItem } from '../types'
+import type { ToastType } from '../../components/Toast'
 
+import type { TappInstance, TappPermission, TappSettingItem } from '../types'
 import {
   FaArrowLeft,
   FaBell,
@@ -27,10 +28,10 @@ import {
   FaTrash,
 } from '@lib/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
+import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../../components/AnimatedView'
-import Toast, { type ToastType } from '../../components/Toast'
+import Toast from '../../components/Toast'
 import { useI18n } from '../../contexts/I18nContext'
 import { TappIcon } from '../components/TappIcon'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'

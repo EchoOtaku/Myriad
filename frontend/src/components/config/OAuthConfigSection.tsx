@@ -129,7 +129,9 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
           credentials: 'include',
         })
         if (cancelled) return
-        const normalizedProviders = Array.isArray(data?.providers)
+        const normalizedProviders: OAuthProviderEntry[] = Array.isArray(
+          data?.providers,
+        )
           ? data.providers.map(normalizeProviderEntry)
           : []
         preloadOAuthIcons(normalizedProviders.map((provider) => provider.icon_url))
@@ -215,7 +217,8 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
         },
       )
       if (Array.isArray(refreshed?.providers)) {
-        const normalizedProviders = refreshed.providers.map(normalizeProviderEntry)
+        const normalizedProviders: OAuthProviderEntry[] =
+          refreshed.providers.map(normalizeProviderEntry)
         preloadOAuthIcons(normalizedProviders.map((provider) => provider.icon_url))
         setProviders(normalizedProviders)
         setAllowRegister(Boolean(refreshed?.allow_local_registration))

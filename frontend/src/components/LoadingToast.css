@@ -13,7 +13,7 @@
 }
 
 .loading-toast-spinner-segment {
-  stroke: currentColor;
+  stroke: currentcolor;
 }
 
 html.dark .loading-toast-spinner-track {

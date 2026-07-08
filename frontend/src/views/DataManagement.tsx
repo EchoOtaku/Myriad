@@ -3,6 +3,8 @@
  * 统一管理平台数据缓存和智能过滤
  */
 
+import type { ToastType } from '../components/Toast'
+
 import {
   FaGithub,
   FaSteam,
@@ -11,15 +13,14 @@ import {
   SiBilibili,
   SiNeteasecloudmusic,
 } from '@lib/icons'
-
 import { motionShim as motion } from '@lib/motionShim'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
+import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../components/AnimatedView'
 import { ButtonSpinner } from '../components/Spinner'
 import { TaskStatus } from '../components/TaskStatus'
-import Toast, { type ToastType } from '../components/Toast'
+import Toast from '../components/Toast'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -98,7 +99,7 @@ export default function DataManagement() {
   ) => {
     setMessageType(nextType)
     setMessage(nextMessage)
-    window.setTimeout(() => setMessage(''), duration)
+    window.setTimeout(setMessage, duration, '')
   }
 
   // 使用 AuthContext 检查管理员权限

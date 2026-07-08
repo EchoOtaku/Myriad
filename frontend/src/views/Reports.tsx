@@ -1,4 +1,5 @@
 import type { ToastType } from '../components/Toast'
+import type { WidgetConfig } from '../components/WidgetGrid'
 import type { SecondaryNavItem } from '../contexts/NavigationContext'
 import {
   FaGithub,
@@ -15,13 +16,12 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import StageMode from '../components/StageMode'
-import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
-import type { WidgetConfig } from '../components/WidgetGrid'
 import Toast from '../components/Toast'
+import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -422,42 +422,6 @@ export default function Reports() {
 
   const hasEnabledPlatforms = visiblePlatforms.length > 0
 
-  // i18n: 默认弹幕文本
-  const defaultDanmaku = useMemo(
-    () => t.reportsPage.danmakuDefaults,
-    [t.reportsPage.danmakuDefaults],
-  )
-
-  // i18n: 默认玩家类型
-  const defaultPlayerType = useMemo(
-    () => t.reportsPage.casualPlayer,
-    [t.reportsPage.casualPlayer],
-  )
-
-  // i18n: 默认开发者级别
-  const defaultDevLevel = useMemo(
-    () => t.reportsPage.activeDeveloper,
-    [t.reportsPage.activeDeveloper],
-  )
-
-  // i18n: 级别关键词（用于颜色匹配）
-  const levelKeywords = useMemo(
-    () => ({
-      legendary: t.reportsPage.legendary,
-      core: t.reportsPage.core,
-      senior: t.reportsPage.senior,
-      prolific: t.reportsPage.prolific,
-      active: t.reportsPage.active,
-    }),
-    [
-      t.reportsPage.legendary,
-      t.reportsPage.core,
-      t.reportsPage.senior,
-      t.reportsPage.prolific,
-      t.reportsPage.active,
-    ],
-  )
-
   // 🚀 性能优化：监听舞台暂停状态
   useEffect(() => {
     const handlePauseStateChange = (e: CustomEvent<{ isPaused: boolean }>) => {
@@ -793,7 +757,9 @@ export default function Reports() {
               ? resolvePlatformId(platform.name)
               : null,
           )
-          .filter((platformId): platformId is string => Boolean(platformId))
+          .filter((platformId: string | null): platformId is string =>
+            Boolean(platformId),
+          )
 
         if (!cancelled) {
           setEnabledPlatformIds(nextPlatformIds)
