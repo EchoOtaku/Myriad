@@ -61,21 +61,6 @@ export const routeComponents = {
 }
 
 /**
- * 组件懒加载配置
- */
-export const componentLazy = {
-  // 大型组件
-  LibraryGrid: lazyWithPreload(() => import('../components/LibraryGrid')),
-  ConfigForm: lazyWithPreload(() => import('../components/ConfigForm')),
-  GlobalControlPanel: lazyWithPreload(
-    () => import('../components/GlobalControlPanel'),
-  ),
-
-  // 辅助组件
-  SetupWizard: lazyWithPreload(() => import('../components/SetupWizard')),
-}
-
-/**
  * 预加载关键路由
  */
 export function preloadCriticalRoutes(): void {
