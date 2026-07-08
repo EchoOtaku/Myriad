@@ -232,6 +232,7 @@ export interface TranslationKeys {
     title: string
     platforms: string
     platformsDesc: string
+    dragToReorder: string
     ai: string
     aiDesc: string
     basic: string
@@ -647,6 +648,23 @@ export interface TranslationKeys {
     // Tapp permission delegation settings
     permissions: string
     permissionsDesc: string
+    // Module settings
+    moduleSettings: string
+    moduleSettingsDesc: string
+    libraryModuleTitle: string
+    libraryModuleDesc: string
+    librarySourceVisibleCount: string
+    librarySourceNoData: string
+    librarySourceSaved: string
+    librarySourceSaveFailed: string
+    librarySourceLoadFailed: string
+    moduleVisibilityTitle: string
+    moduleVisibilityDesc: string
+    moduleVisibilityAll: string
+    moduleVisibilityAuthenticated: string
+    moduleVisibilityAdmin: string
+    moduleVisibilitySaved: string
+    moduleVisibilityLoadFailed: string
     permissionsTitle: string
     tappPermissionsInfoTitle: string
     tappPermissionsInfo: string
@@ -804,6 +822,8 @@ export interface TranslationKeys {
     anime: string
     tvSeries: string
     book: string
+    game: string
+    music: string
   }
 
   // 报告
@@ -1077,6 +1097,7 @@ export interface TranslationKeys {
     playtime: string
     commits: string
     repos: string
+    stars: string
     fans: string
     lists: string
 
@@ -1138,6 +1159,9 @@ export interface TranslationKeys {
     useInputToGenerate: string
     adminNotGenerated: string
     waitingGenerate: string
+    bangumiDone: string
+    bangumiDoing: string
+    bangumiWish: string
   }
 
   // 账户页面
@@ -1214,6 +1238,7 @@ export interface TranslationKeys {
     music: string
     anime: string
     tvSeries: string
+    book: string
     loadCacheFailed: string
     saveCacheFailed: string
     fetchStatsFailed: string

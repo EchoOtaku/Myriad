@@ -1,7 +1,7 @@
 //! 运行上下文 API
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -33,7 +33,7 @@ pub async fn get_context_app(
 
 /// GET /api/tapp/context/user
 pub async fn get_context_user(
-    State(_db): State<DatabaseConnection>,
+    State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!("[TAPP] get_context_user - User: {}", claims.username);
@@ -48,11 +48,53 @@ pub async fn get_context_user(
     let connected_platforms = get_available_platforms().await;
     let is_current_admin = claims.is_admin && ensure_current_admin(&claims).await.is_ok();
     let role = if is_current_admin { "admin" } else { "user" };
+    let mut display_name: Option<String> = None;
+    let mut avatar_url: Option<String> = None;
+
+    if user_id > 0 {
+        if let Ok(Some(row)) = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT display_name,
+                          COALESCE(
+                              NULLIF(
+                                  CASE
+                                      WHEN avatar_url LIKE 'https://ui-avatars.com/%'
+                                           OR avatar_url LIKE 'http://ui-avatars.com/%'
+                                      THEN NULL
+                                      ELSE avatar_url
+                                  END,
+                                  ''
+                              ),
+                              (
+                                  SELECT NULLIF(ui.avatar_url, '')
+                                  FROM user_identities ui
+                                  WHERE ui.user_id = users.id
+                                    AND ui.avatar_url IS NOT NULL
+                                    AND ui.avatar_url <> ''
+                                  ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
+                                  LIMIT 1
+                              ),
+                              NULLIF(avatar_url, '')
+                          ) AS avatar_url
+                   FROM users
+                   WHERE id = $1
+                   LIMIT 1"#,
+                [user_id.into()],
+            ))
+            .await
+        {
+            display_name = row.try_get("", "display_name").ok();
+            avatar_url = row.try_get("", "avatar_url").ok();
+        }
+    }
 
     Ok(Json(json!({
         "id": format!("user_{}", user_id),
         "username": claims.username,
-        "avatar": null,
+        "display_name": display_name,
+        "avatar": avatar_url.clone(),
+        "avatar_url": avatar_url,
         "isAdmin": is_current_admin,
         "role": role,
         "connectedPlatforms": connected_platforms,

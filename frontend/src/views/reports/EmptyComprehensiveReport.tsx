@@ -49,7 +49,7 @@ export function EmptyComprehensiveReport({
         <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-2">
           {t.reportsPage.noComprehensiveReport}
         </h3>
-        <p className="text-gray-500 dark:text-gray-400 text-sm max-w-sm mx-auto leading-6">
+        <p className="text-gray-500 dark:text-gray-400 text-sm max-w-sm mx-auto leading-6 line-clamp-2 min-h-12">
           {description}
         </p>
       </div>

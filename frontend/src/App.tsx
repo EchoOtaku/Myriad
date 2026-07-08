@@ -4,6 +4,7 @@
  * 优化: 代码分割 + 预加载 + 性能监控
  */
 
+import type { ModuleVisibilityKey } from './utils/moduleVisibility'
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
@@ -31,6 +32,10 @@ import { useRouteScheduler } from './hooks/animation'
 import { AppLayout } from './layouts/AppLayout'
 import { recordNavigation } from './router/navigationHistory'
 import { preloadCriticalRoutes } from './utils/codeSplitting'
+import {
+  canAccessModuleVisibility,
+  useModuleVisibilityPreferences,
+} from './utils/moduleVisibility'
 import './styles/fonts.css'
 import './styles/theme.css'
 import './styles/animations.css'
@@ -94,6 +99,37 @@ function RequireAuth({
   }
 
   return children
+}
+
+function ModuleVisibilityGuard({
+  moduleKey,
+  children,
+}: {
+  moduleKey: ModuleVisibilityKey
+  children: React.ReactNode
+}) {
+  const { isAuthenticated, isAdmin, hasChecked } = useAuth()
+  const { preferences, isLoading } = useModuleVisibilityPreferences()
+  const visibility = preferences.modules[moduleKey]
+
+  if (!hasChecked || isLoading) {
+    return <LoadingFallback />
+  }
+
+  if (
+    canAccessModuleVisibility(visibility, {
+      isAuthenticated,
+      isAdmin,
+    })
+  ) {
+    return children
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <Navigate to="/" replace />
 }
 
 /**
@@ -254,26 +290,32 @@ function AppRoutes() {
         <Route
           path="/library"
           element={
-            <SuspensePage>
-              <Library />
-            </SuspensePage>
+            <ModuleVisibilityGuard moduleKey="library">
+              <SuspensePage>
+                <Library />
+              </SuspensePage>
+            </ModuleVisibilityGuard>
           }
         />
         {/* Brew 页面允许游客访问（只读），登录用户可使用已读/收藏，管理员可管理 */}
         <Route
           path="/brew"
           element={
-            <SuspensePage>
-              <Brew />
-            </SuspensePage>
+            <ModuleVisibilityGuard moduleKey="brew">
+              <SuspensePage>
+                <Brew />
+              </SuspensePage>
+            </ModuleVisibilityGuard>
           }
         />
         <Route
           path="/reports"
           element={
-            <SuspensePage>
-              <Reports />
-            </SuspensePage>
+            <ModuleVisibilityGuard moduleKey="reports">
+              <SuspensePage>
+                <Reports />
+              </SuspensePage>
+            </ModuleVisibilityGuard>
           }
         />
         <Route
@@ -325,33 +367,41 @@ function AppRoutes() {
         <Route
           path="/tapp"
           element={
-            <SuspensePage>
-              <TappList />
-            </SuspensePage>
+            <ModuleVisibilityGuard moduleKey="tapp">
+              <SuspensePage>
+                <TappList />
+              </SuspensePage>
+            </ModuleVisibilityGuard>
           }
         />
         <Route
           path="/tapp/run"
           element={
-            <SuspensePage>
-              <TappRun />
-            </SuspensePage>
+            <ModuleVisibilityGuard moduleKey="tapp">
+              <SuspensePage>
+                <TappRun />
+              </SuspensePage>
+            </ModuleVisibilityGuard>
           }
         />
         <Route
           path="/tapp/run/:id"
           element={
-            <SuspensePage>
-              <TappRun />
-            </SuspensePage>
+            <ModuleVisibilityGuard moduleKey="tapp">
+              <SuspensePage>
+                <TappRun />
+              </SuspensePage>
+            </ModuleVisibilityGuard>
           }
         />
         <Route
           path="/tapp/detail/:id"
           element={
-            <SuspensePage>
-              <TappDetail />
-            </SuspensePage>
+            <ModuleVisibilityGuard moduleKey="tapp">
+              <SuspensePage>
+                <TappDetail />
+              </SuspensePage>
+            </ModuleVisibilityGuard>
           }
         />
 

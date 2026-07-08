@@ -245,7 +245,9 @@ export const enUS: TranslationKeys = {
   config: {
     title: 'System Configuration',
     platforms: 'Data Platforms',
-    platformsDesc: 'Configure access credentials for data source platforms',
+    platformsDesc:
+      'Configure access credentials for data source platforms; the order here sets the report card order',
+    dragToReorder: 'Hold to drag & reorder',
     ai: 'AI Config',
     aiDesc: 'Configure AI model and API key',
     basic: 'Basic Config',
@@ -792,6 +794,26 @@ export const enUS: TranslationKeys = {
     permissionsSaved: 'Permission settings saved',
     permissionsSaveFailed: 'Failed to save permission settings',
     loadPermissionsFailed: 'Failed to load permission settings',
+    // Module settings
+    moduleSettings: 'Module Settings',
+    moduleSettingsDesc: 'Manage display and behavior for app modules',
+    libraryModuleTitle: 'Library',
+    libraryModuleDesc: 'Choose which platform sources appear in each category',
+    librarySourceVisibleCount:
+      'Showing {shown} items from {total} before filtering',
+    librarySourceNoData:
+      'No library source data yet. Fetch platform data first.',
+    librarySourceSaved: 'Library source settings saved',
+    librarySourceSaveFailed: 'Failed to save library source settings',
+    librarySourceLoadFailed: 'Failed to load library source settings',
+    moduleVisibilityTitle: 'Page Visibility',
+    moduleVisibilityDesc:
+      'Set who can see Library, Brew, Reports, and Tapp pages',
+    moduleVisibilityAll: 'Everyone',
+    moduleVisibilityAuthenticated: 'Signed In',
+    moduleVisibilityAdmin: 'Admins',
+    moduleVisibilitySaved: 'Page visibility settings saved',
+    moduleVisibilityLoadFailed: 'Failed to load page visibility settings',
     // AI Quota Configuration
     aiQuotaTitle: 'AI Usage Limits',
     aiQuotaDesc:
@@ -914,6 +936,8 @@ export const enUS: TranslationKeys = {
     anime: 'Anime',
     tvSeries: 'TV Series',
     book: 'Books',
+    game: 'Games',
+    music: 'Music',
   },
 
   // Reports
@@ -1189,6 +1213,7 @@ export const enUS: TranslationKeys = {
     playtime: 'PLAYTIME',
     commits: 'Commits',
     repos: 'Repos',
+    stars: 'Stars',
     fans: 'Fans',
     lists: 'Lists',
 
@@ -1253,6 +1278,9 @@ export const enUS: TranslationKeys = {
       'Use the input above to generate your first comprehensive report',
     adminNotGenerated: 'Admin has not generated a comprehensive report yet',
     waitingGenerate: 'Waiting to generate',
+    bangumiDone: 'Done',
+    bangumiDoing: 'Doing',
+    bangumiWish: 'Wish',
   },
 
   // Account page
@@ -1334,6 +1362,7 @@ export const enUS: TranslationKeys = {
     music: 'Music',
     anime: 'Anime',
     tvSeries: 'TV Series',
+    book: 'Book',
     loadCacheFailed: 'Failed to load cache',
     saveCacheFailed: 'Failed to save cache',
     fetchStatsFailed: 'Failed to fetch library stats',

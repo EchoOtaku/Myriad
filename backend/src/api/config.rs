@@ -1,7 +1,7 @@
-use axum::{Json, extract::State, http::StatusCode};
-use sea_orm::DatabaseConnection;
+use axum::{extract::State, http::StatusCode, Json};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigResponse {
@@ -74,6 +74,20 @@ pub struct UiConfig {
 
 fn resolve_platform_enabled(explicit_enabled: Option<bool>, fallback_enabled: bool) -> bool {
     explicit_enabled.unwrap_or(fallback_enabled)
+}
+
+/// 按管理员配置的平台顺序对平台列表排序。
+/// `order` 中的平台按其顺序排在前面，未列出的平台保持原有默认顺序排在最后。
+fn sort_platforms_by_order(platforms: &mut [PlatformConfig], order: Option<&Vec<String>>) {
+    let Some(order) = order else { return };
+    let rank = |name: &str| -> usize {
+        order
+            .iter()
+            .position(|n| n.eq_ignore_ascii_case(name))
+            .unwrap_or(usize::MAX)
+    };
+    // 稳定排序：未列出的平台（rank == MAX）保持彼此间的默认相对顺序
+    platforms.sort_by_key(|p| rank(&p.name));
 }
 
 pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
@@ -378,9 +392,8 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                             std::env::var("GEMINI_MODEL")
                                 .unwrap_or_else(|_| "gemini-3.5-flash".to_string())
                         }),
-                    placeholder:
-                        "gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, etc."
-                            .to_string(),
+                    placeholder: "gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, etc."
+                        .to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -1100,6 +1113,12 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
         },
     };
 
+    let mut config = config;
+    sort_platforms_by_order(
+        &mut config.platforms,
+        db_config.as_ref().and_then(|c| c.platform_order.as_ref()),
+    );
+
     (StatusCode::OK, Json(json!(config)))
 }
 
@@ -1196,7 +1215,10 @@ async fn save_to_database(
     for platform in &config.platforms {
         match platform.name.as_str() {
             "GitHub" => {
-                updates.insert("github_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                updates.insert(
+                    "github_enabled".to_string(),
+                    JsonValue::Bool(platform.enabled),
+                );
                 for field in &platform.config_fields {
                     let key = match field.key.as_str() {
                         "username" => "github_username",
@@ -1210,7 +1232,10 @@ async fn save_to_database(
                 }
             }
             "Bilibili" => {
-                updates.insert("bilibili_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                updates.insert(
+                    "bilibili_enabled".to_string(),
+                    JsonValue::Bool(platform.enabled),
+                );
                 for field in &platform.config_fields {
                     if field.key == "uid" && !field.value.is_empty() {
                         updates.insert(
@@ -1221,7 +1246,10 @@ async fn save_to_database(
                 }
             }
             "Steam" => {
-                updates.insert("steam_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                updates.insert(
+                    "steam_enabled".to_string(),
+                    JsonValue::Bool(platform.enabled),
+                );
                 for field in &platform.config_fields {
                     let key = match field.key.as_str() {
                         "api_key" => "steam_api_key",
@@ -1235,7 +1263,10 @@ async fn save_to_database(
                 }
             }
             "Netease Music" => {
-                updates.insert("netease_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                updates.insert(
+                    "netease_enabled".to_string(),
+                    JsonValue::Bool(platform.enabled),
+                );
                 for field in &platform.config_fields {
                     if field.key == "user_id" && !field.value.is_empty() {
                         updates.insert(
@@ -1246,7 +1277,10 @@ async fn save_to_database(
                 }
             }
             "Bangumi" => {
-                updates.insert("bangumi_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                updates.insert(
+                    "bangumi_enabled".to_string(),
+                    JsonValue::Bool(platform.enabled),
+                );
                 for field in &platform.config_fields {
                     let key = match field.key.as_str() {
                         "username" => "bangumi_username",
@@ -1260,6 +1294,14 @@ async fn save_to_database(
                 }
             }
             _ => {}
+        }
+    }
+
+    // 保存平台展示顺序（按前端提交的平台数组顺序）
+    if !config.platforms.is_empty() {
+        let platform_order: Vec<String> = config.platforms.iter().map(|p| p.name.clone()).collect();
+        if let Ok(order_value) = serde_json::to_value(&platform_order) {
+            updates.insert("platform_order".to_string(), order_value);
         }
     }
 
@@ -2052,6 +2094,12 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
         },
     ];
 
+    let mut public_platforms = public_platforms;
+    sort_platforms_by_order(
+        &mut public_platforms,
+        db_config.as_ref().and_then(|c| c.platform_order.as_ref()),
+    );
+
     let response = json!({
         "platforms": public_platforms
     });
@@ -2272,6 +2320,139 @@ pub async fn update_tapp_window_schemes(
             "message": "Tapp window schemes updated successfully"
         })),
     )
+}
+
+const MODULE_VISIBILITY_PREFERENCES_KEY: &str = "module_visibility_preferences";
+const MODULE_VISIBILITY_KEYS: [&str; 4] = ["library", "brew", "reports", "tapp"];
+const MODULE_VISIBILITY_LEVELS: [&str; 3] = ["all", "authenticated", "admin"];
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModuleVisibilityPreferences {
+    #[serde(default = "default_module_visibility_modules")]
+    pub modules: std::collections::HashMap<String, String>,
+}
+
+fn default_module_visibility_modules() -> std::collections::HashMap<String, String> {
+    std::collections::HashMap::from([
+        ("library".to_string(), "all".to_string()),
+        ("brew".to_string(), "all".to_string()),
+        ("reports".to_string(), "all".to_string()),
+        ("tapp".to_string(), "all".to_string()),
+    ])
+}
+
+impl Default for ModuleVisibilityPreferences {
+    fn default() -> Self {
+        Self {
+            modules: default_module_visibility_modules(),
+        }
+    }
+}
+
+impl ModuleVisibilityPreferences {
+    fn normalized(mut self) -> Self {
+        let defaults = default_module_visibility_modules();
+        let mut normalized = std::collections::HashMap::new();
+
+        for key in MODULE_VISIBILITY_KEYS {
+            let value = self
+                .modules
+                .remove(key)
+                .unwrap_or_else(|| defaults.get(key).cloned().unwrap_or_else(|| "all".into()));
+            let value = if MODULE_VISIBILITY_LEVELS.contains(&value.as_str()) {
+                value
+            } else {
+                defaults.get(key).cloned().unwrap_or_else(|| "all".into())
+            };
+            normalized.insert(key.to_string(), value);
+        }
+
+        self.modules = normalized;
+        self
+    }
+}
+
+async fn load_module_visibility_preferences(
+    db: &DatabaseConnection,
+) -> ModuleVisibilityPreferences {
+    let sql = "SELECT value FROM configurations WHERE key = $1";
+    let result = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            vec![MODULE_VISIBILITY_PREFERENCES_KEY.into()],
+        ))
+        .await;
+
+    match result {
+        Ok(Some(row)) => match row.try_get::<Value>("", "value") {
+            Ok(value) => serde_json::from_value::<ModuleVisibilityPreferences>(value)
+                .map(ModuleVisibilityPreferences::normalized)
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Invalid module visibility preferences, using defaults: {}",
+                        e
+                    );
+                    ModuleVisibilityPreferences::default()
+                }),
+            Err(e) => {
+                tracing::warn!("Failed to read module visibility preferences: {}", e);
+                ModuleVisibilityPreferences::default()
+            }
+        },
+        Ok(None) => ModuleVisibilityPreferences::default(),
+        Err(e) => {
+            tracing::warn!("Failed to load module visibility preferences: {}", e);
+            ModuleVisibilityPreferences::default()
+        }
+    }
+}
+
+pub async fn get_module_visibility_preferences(
+    State(db): State<DatabaseConnection>,
+) -> (StatusCode, Json<Value>) {
+    let preferences = load_module_visibility_preferences(&db).await;
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "preferences": preferences
+        })),
+    )
+}
+
+pub async fn update_module_visibility_preferences(
+    State(db): State<DatabaseConnection>,
+    Json(payload): Json<ModuleVisibilityPreferences>,
+) -> (StatusCode, Json<Value>) {
+    let preferences = payload.normalized();
+    let config_service = crate::services::config_service::ConfigService::new(db);
+
+    match config_service
+        .update_config(
+            MODULE_VISIBILITY_PREFERENCES_KEY,
+            serde_json::to_value(&preferences).unwrap_or_else(|_| json!({})),
+        )
+        .await
+    {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "preferences": preferences
+            })),
+        ),
+        Err(e) => {
+            tracing::error!("Failed to save module visibility preferences: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": "Failed to save module visibility preferences"
+                })),
+            )
+        }
+    }
 }
 
 // ========== 权限配置 API ==========

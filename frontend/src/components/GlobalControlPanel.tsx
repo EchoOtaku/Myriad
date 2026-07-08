@@ -207,6 +207,8 @@ const GlobalControlPanel: React.FC = () => {
 
   // 音乐播放器 Hook（从 GlobalControlPanel 分离）
   const musicPlayer = useMusicPlayer()
+  // 解构出稳定引用，供 expand/collapse 回调使用而不引入 musicPlayer 对象依赖
+  const { setProgressUiVisible } = musicPlayer
 
   // 音量弹窗状态（UI相关，保留在这里）
   const [showVolumePopup, setShowVolumePopup] = useState(false)
@@ -215,6 +217,10 @@ const GlobalControlPanel: React.FC = () => {
   const triggerRef = useRef<HTMLDivElement>(null)
   const expandedContentRef = useRef<HTMLDivElement>(null)
   const volumeControlRef = useRef<HTMLDivElement>(null)
+  // 展开状态镜像（供 popstate 等原生事件回调读取，避免闭包过期）
+  const isExpandedRef = useRef(false)
+  // 是否已压入哨兵历史记录（面板展开时移动端系统返回应先收起面板）
+  const historyArmedRef = useRef(false)
   const perf = usePerformanceProfile()
   const anim = useAnimationLevel()
   const { preference: animPreference, togglePerformanceMode } =
@@ -704,62 +710,32 @@ const GlobalControlPanel: React.FC = () => {
       }
       lastUpdateTime = now
 
-      // 计算目标宽度用于测量（避免动画过程中的宽度变化导致高度计算错误）
-      const isMobile = window.innerWidth <= 640
-      // Desktop: 400px - padding(1.375rem * 2 = 44px) = 356px
-      // Mobile: (100vw - 1.5rem) - padding(1rem * 2 = 32px) = 100vw - 56px
-      const targetWidth = isMobile ? window.innerWidth - 56 : 356
-
-      // 🔧 优化：使用轻量级测量方式
-      // 对于播放列表视图，使用估算高度而非完整克隆
-      const playlistScroll = contentEl.querySelector('.music-playlist-scroll')
-      let raw: number
-
-      if (playlistScroll && playlistScroll.children.length > 15) {
-        // 🔧 播放列表超过 15 项时，使用估算而非克隆
-        // 估算：头部约 40px，每项约 52px，底部边距约 16px
-        const playlistHeader = contentEl.querySelector('.music-playlist-header')
-        const headerHeight =
-          playlistHeader?.getBoundingClientRect().height ?? 40
-        const itemCount = Math.min(playlistScroll.children.length, 8) // 最多显示 8 项
-        const estimatedPlaylistHeight = headerHeight + itemCount * 52 + 16
-
-        // 测量除播放列表外的其他内容
-        const otherContent = contentEl.cloneNode(true) as HTMLElement
-        const clonedPlaylist = otherContent.querySelector(
-          '.music-view-playlist',
+      // 🔒 DEV 契约断言：scrollHeight 直读的正确性依赖 CSS 把内容宽度
+      // 固定为展开终值（.expanded-panel-content 的 width + flex-shrink: 0）。
+      // 若被改回 100% 或恢复 flex 压缩，高度会按动画中间帧计算——
+      // 在开发环境立即暴露，生产零开销
+      if (import.meta.env.DEV) {
+        const rootFontSize = Number.parseFloat(
+          getComputedStyle(document.documentElement).fontSize,
         )
-        if (clonedPlaylist) {
-          ;(clonedPlaylist as HTMLElement).style.height =
-            `${estimatedPlaylistHeight}px`
-          const clonedScroll = clonedPlaylist.querySelector(
-            '.music-playlist-scroll',
+        // 桌面 356px；移动端 calc(100vw - 4.25rem)，与 CSS 保持一致
+        const expectedWidth =
+          window.innerWidth <= 640
+            ? window.innerWidth - 4.25 * rootFontSize
+            : 356
+        if (Math.abs(contentEl.offsetWidth - expectedWidth) > 2) {
+          console.warn(
+            `[GlobalControlPanel] 面板内容宽度 ${contentEl.offsetWidth}px 偏离预期终值 ${Math.round(expectedWidth)}px：` +
+              'scrollHeight 高度测量依赖 .expanded-panel-content 的固定宽度契约' +
+              '（GlobalControlPanel.css），请勿改回 width: 100% 或移除 flex-shrink: 0',
           )
-          if (clonedScroll) {
-            clonedScroll.innerHTML = '' // 清空列表项
-          }
         }
-
-        otherContent.style.position = 'absolute'
-        otherContent.style.visibility = 'hidden'
-        otherContent.style.height = 'auto'
-        otherContent.style.width = `${targetWidth}px`
-
-        document.body.appendChild(otherContent)
-        raw = otherContent.offsetHeight
-        document.body.removeChild(otherContent)
-      } else {
-        // 常规克隆测量
-        const clone = contentEl.cloneNode(true) as HTMLElement
-        clone.style.position = 'absolute'
-        clone.style.visibility = 'hidden'
-        clone.style.height = 'auto'
-        clone.style.width = `${targetWidth}px`
-
-        document.body.appendChild(clone)
-        raw = clone.offsetHeight
-        document.body.removeChild(clone)
       }
+
+      // 🔧 内容宽度已由 CSS 固定为展开终值（不随容器动画变化），
+      // 直接读取真实布局高度即可 —— 无需克隆整棵面板到 body 测量，
+      // 每次测量从"深克隆 + 插入 + 强制布局 + 移除"降为一次布局读取
+      const raw = contentEl.scrollHeight
 
       // 适当补偿 (考虑内边距 + 过渡)
       const compensated = Math.ceil(raw * 1.08)
@@ -843,7 +819,20 @@ const GlobalControlPanel: React.FC = () => {
         clearTimeout(measureTimeout)
       }
     }
-  }, [isExpanded, perf.lowEndDevice, perf.isMobile, anim.level])
+    // canRefreshWallpaper / user?.is_admin：壁纸配置与用户信息均为异步加载，
+    // 壁纸切换/系统配置两个控制项会在面板展开后才出现。它们渲染在
+    // .control-items-grid 内部（contentEl 的孙节点），MutationObserver
+    // （仅监听直接子节点）观察不到，移动端又没有 ResizeObserver 兜底——
+    // 历史上全靠 ×1.08 的冗余高度硬扛，不够时按钮被裁掉"第一时间不显示"。
+    // 加入 deps 后翻转即触发 measure(true) 精确重测
+  }, [
+    isExpanded,
+    perf.lowEndDevice,
+    perf.isMobile,
+    anim.level,
+    canRefreshWallpaper,
+    user?.is_admin,
+  ])
 
   // 外观偏好（浅色/深色/自动），isDark 始终反映当前实际外观
   const [themePreference, setThemePreference] = useState<ThemePreference>(
@@ -864,43 +853,130 @@ const GlobalControlPanel: React.FC = () => {
     applyThemeClass(dark)
   }, [themePreference])
 
-  const handleTogglePanel = useCallback(() => {
+  // 动画期间给智能岛挂 gcp-animating 类：移动端 Chrome 的 backdrop-filter 元素
+  // 在尺寸动画期间会因合成层重建而闪烁，CSS 侧仅在触屏设备上临时冻结模糊
+  // （容器背景本身 90% 不透明，冻结期间观感差异可忽略）。
+  // 用计数器配对 start/end：快速连续切换时，前一次动画的 end 事件
+  // 不会提前摘掉本次动画仍需要的类
+  useEffect(() => {
+    const el = triggerRef.current
+    if (!el) return
+
+    let activeCount = 0
+    const handleStart = () => {
+      activeCount++
+      el.classList.add('gcp-animating')
+    }
+    const handleEnd = () => {
+      activeCount = Math.max(0, activeCount - 1)
+      if (activeCount === 0) {
+        el.classList.remove('gcp-animating')
+      }
+    }
+    window.addEventListener('gcp-animation-start', handleStart)
+    window.addEventListener('gcp-animation-end', handleEnd)
+    return () => {
+      window.removeEventListener('gcp-animation-start', handleStart)
+      window.removeEventListener('gcp-animation-end', handleEnd)
+      el.classList.remove('gcp-animating')
+    }
+  }, [])
+
+  // 收起动画（时序与曲线保持不变：0.7s 容器收缩，400ms 中点切换内容）
+  const collapsePanel = useCallback(() => {
     // 🔧 通知子组件动画开始
     window.dispatchEvent(new CustomEvent('gcp-animation-start'))
+    isExpandedRef.current = false
 
-    if (isExpanded) {
-      // 收缩：面板内容立即淡出，容器开始收缩，动态内容在中途淡入
-      setShowPanelContent(false)
-      setShowOverlay(false) // 遮罩层开始淡出
-      setIsExpanded(false)
-      setTimeout(() => {
-        setShowDynamicContent(true)
-      }, 400) // 容器收缩到一半时显示（0.7s 动画的中点）
-      // 🔧 动画结束后通知
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('gcp-animation-end'))
-      }, 700)
-    } else {
-      // 展开：动态内容立即淡出，容器开始展开，面板内容在中途淡入
-      setShowDynamicContent(false)
-      setIsExpanded(true)
-      // 遮罩层立即显示但透明，然后淡入
-      setTimeout(() => {
-        setShowOverlay(true)
-      }, 0)
-      setTimeout(() => {
-        setShowPanelContent(true)
-      }, 400) // 容器展开到一半时显示（0.7s 动画的中点）
-      // 🔧 动画结束后通知
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('gcp-animation-end'))
-      }, 700)
+    // 收缩：面板内容立即淡出，容器开始收缩，动态内容在中途淡入
+    setShowPanelContent(false)
+    setShowOverlay(false) // 遮罩层开始淡出
+    setIsExpanded(false)
+    setProgressUiVisible(false) // 进度条不可见，停止 currentTime 状态更新
+    setTimeout(() => {
+      setShowDynamicContent(true)
+    }, 400) // 容器收缩到一半时显示（0.7s 动画的中点）
+    // 🔧 动画结束后通知
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('gcp-animation-end'))
+    }, 700)
+  }, [setProgressUiVisible])
+
+  const expandPanel = useCallback(() => {
+    // 🔧 通知子组件动画开始
+    window.dispatchEvent(new CustomEvent('gcp-animation-start'))
+    isExpandedRef.current = true
+
+    // 压入哨兵历史记录：移动端系统返回时先收起面板，而非直接离开页面
+    // 保留 react-router 写入的 state（usr/key/idx），避免破坏其内部索引
+    try {
+      const st = window.history.state
+      window.history.pushState(
+        { ...(st ?? {}), idx: (st?.idx ?? 0) + 1, __gcpPanel: true },
+        '',
+      )
+      historyArmedRef.current = true
+    } catch {
+      historyArmedRef.current = false
     }
-  }, [isExpanded])
+
+    // 展开：动态内容立即淡出，容器开始展开，面板内容在中途淡入
+    setShowDynamicContent(false)
+    setIsExpanded(true)
+    // 遮罩层立即显示但透明，然后淡入
+    setTimeout(() => {
+      setShowOverlay(true)
+    }, 0)
+    setTimeout(() => {
+      setShowPanelContent(true)
+      setProgressUiVisible(true) // 内容开始淡入，恢复进度条状态更新
+    }, 400) // 容器展开到一半时显示（0.7s 动画的中点）
+    // 🔧 动画结束后通知
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('gcp-animation-end'))
+    }, 700)
+  }, [setProgressUiVisible])
 
   const handleClosePanel = useCallback(() => {
-    handleTogglePanel()
-  }, [handleTogglePanel])
+    if (!isExpandedRef.current) return
+    if (historyArmedRef.current) {
+      // 先解除武装再消费哨兵记录，随后到达的 popstate 不会重复触发收起
+      historyArmedRef.current = false
+      window.history.back()
+    }
+    collapsePanel()
+  }, [collapsePanel])
+
+  const handleTogglePanel = useCallback(() => {
+    if (isExpanded) {
+      handleClosePanel()
+    } else {
+      expandPanel()
+    }
+  }, [isExpanded, handleClosePanel, expandPanel])
+
+  // 系统返回（popstate）时收起面板 — 复用同一条收起动画路径
+  useEffect(() => {
+    const handlePopState = () => {
+      if (!historyArmedRef.current) return
+      historyArmedRef.current = false
+      if (isExpandedRef.current) collapsePanel()
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [collapsePanel])
+
+  // 从面板内部导航到其他页面：收起面板，并用目标路由替换哨兵记录
+  // （不能走 handleClosePanel 的 history.back()——异步回退会吞掉紧随其后的 push）
+  const handleNavigateFromPanel = useCallback(
+    (path: string) => {
+      const wasArmed = historyArmedRef.current
+      historyArmedRef.current = false
+      collapsePanel()
+      navigate(path, { replace: wasArmed })
+    },
+    [collapsePanel, navigate],
+  )
 
   // 监听打开控制面板事件（来自音乐小组件等点击）
   useEffect(() => {
@@ -1493,10 +1569,7 @@ const GlobalControlPanel: React.FC = () => {
                       </div>
                     </div>
                     <button
-                      onClick={() => {
-                        handleClosePanel()
-                        navigate('/config')
-                      }}
+                      onClick={() => handleNavigateFromPanel('/config')}
                       className="control-action-btn"
                       aria-label={t.controlPanel.configuration}
                     >

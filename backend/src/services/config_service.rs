@@ -207,6 +207,25 @@ impl ConfigService {
             config.bangumi_user_agent = v.as_str().map(|s| s.to_string());
         }
 
+        // 平台展示顺序（JSON 数组，或历史上误存为 JSON 字符串）
+        if let Some(v) = map.get("platform_order") {
+            let order = if let Some(arr) = v.as_array() {
+                Some(
+                    arr.iter()
+                        .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>(),
+                )
+            } else {
+                v.as_str()
+                    .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+            };
+            if let Some(order) = order {
+                if !order.is_empty() {
+                    config.platform_order = Some(order);
+                }
+            }
+        }
+
         // UI 配置
         if let Some(v) = map.get("ui_wallpaper_url") {
             config.ui_wallpaper_url = v.as_str().map(|s| s.to_string());

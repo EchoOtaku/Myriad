@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     middleware::{from_fn, Next},
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use serde_json::json;
@@ -12,6 +12,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -840,6 +841,52 @@ async fn update_tapp_window_schemes_wrapper(
             Json(json!({
                 "error": "Database not connected",
                 "message": "数据库未连接，配置功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for get_module_visibility_preferences that gets DB from global state
+async fn get_module_visibility_preferences_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::config::get_module_visibility_preferences(axum::extract::State(db.clone()))
+                    .await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，模块可见性功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for update_module_visibility_preferences that gets DB from global state
+async fn update_module_visibility_preferences_wrapper(
+    Json(payload): Json<api::config::ModuleVisibilityPreferences>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) = api::config::update_module_visibility_preferences(
+                axum::extract::State(db.clone()),
+                Json(payload),
+            )
+            .await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，模块可见性功能暂不可用"
             })),
         )
             .into_response(),
@@ -3456,6 +3503,15 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             post(update_tapp_window_schemes_wrapper)
                 .route_layer(from_fn(middleware::auth::auth_middleware)), // 登录用户可保存
         )
+        .route(
+            "/api/config/module-visibility",
+            get(get_module_visibility_preferences_wrapper),
+        )
+        .route(
+            "/api/config/module-visibility",
+            put(update_module_visibility_preferences_wrapper)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
         // 权限配置 API
         .route("/api/config/permissions", get(get_permissions_wrapper)) // 🔓 公开端点：获取当前用户权限
         .route(
@@ -3515,6 +3571,19 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/nodeinfo/2.1", get(federation::discovery::nodeinfo))
         // Layer 2: Actor + Outbox + Collections（无需认证，AP 标准端点）
         .route("/users/{username}", get(federation::actor::get_actor))
+        .route(
+            "/users/{username}/avatar",
+            get(federation::actor::get_avatar),
+        )
+        .nest_service(
+            "/api/federation/avatar-cache",
+            tower::ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("public, max-age=604800, immutable"),
+                ))
+                .service(ServeDir::new(&services::data_paths::paths().cache_images)),
+        )
         .route(
             "/users/{username}/outbox",
             get(federation::outbox::get_outbox),
@@ -3875,6 +3944,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             )
             // Library data route (公开访问 - 单用户系统)
             .route("/api/library", get(api::profile::get_library_data))
+            .route(
+                "/api/library/preferences",
+                get(api::profile::get_library_source_preferences)
+                    .put(api::profile::update_library_source_preferences),
+            )
             // Recent activities route (公开访问 - 单用户系统)
             .route("/api/activities", get(api::profile::get_recent_activities))
             // Reports routes (读取端点公开访问，支持未认证用户)

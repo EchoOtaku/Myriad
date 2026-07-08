@@ -77,9 +77,31 @@ pub async fn get_current_user(
     let user_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, username, auth_provider, is_admin, avatar_url, github_id, \
-                    linked_github_id, bio \
-             FROM users WHERE id = $1",
+            r#"SELECT u.id, u.username, u.auth_provider, u.is_admin,
+                      COALESCE(
+                          NULLIF(
+                              CASE
+                                  WHEN u.avatar_url LIKE 'https://ui-avatars.com/%'
+                                       OR u.avatar_url LIKE 'http://ui-avatars.com/%'
+                                  THEN NULL
+                                  ELSE u.avatar_url
+                              END,
+                              ''
+                          ),
+                          (
+                              SELECT NULLIF(ui.avatar_url, '')
+                              FROM user_identities ui
+                              WHERE ui.user_id = u.id
+                                AND ui.avatar_url IS NOT NULL
+                                AND ui.avatar_url <> ''
+                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
+                              LIMIT 1
+                          ),
+                          NULLIF(u.avatar_url, '')
+                      ) AS avatar_url,
+                      u.github_id, u.linked_github_id, u.bio
+               FROM users u
+               WHERE u.id = $1"#,
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await

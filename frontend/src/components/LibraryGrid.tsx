@@ -53,6 +53,11 @@ if (
         /* 卡片容器样式 */
         .library-card-container {
             transition: left 0.4s ease-out, top 0.4s ease-out, width 0.4s ease-out, height 0.4s ease-out;
+            /* 固定 GPU 合成层，避免卡片滚出/滚入视口时
+               backdrop-filter 触发浏览器丢弃并重建绘制层（表现为瞬间透明再恢复） */
+            transform: translateZ(0);
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
         }
 
         /* 平台图标背景 */
@@ -61,6 +66,8 @@ if (
             height: 2.5rem;
             border-radius: 9999px;
             backdrop-filter: blur(12px);
+            /* 让模糊层拥有独立稳定的合成层，消除滚动闪烁 */
+            transform: translateZ(0);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -171,6 +178,41 @@ if (
             color: var(--music-color, var(--platform-color, #ef4444)) !important;
             filter: drop-shadow(0 0 4px color-mix(in srgb, var(--music-color, #ef4444) 40%, transparent));
         }
+
+        /* 高分评分徽章 - 呼吸光晕 */
+        @keyframes ratingGlow {
+            0%, 100% {
+                box-shadow: 0 2px 8px 0 color-mix(in srgb, #f59e0b 40%, transparent);
+            }
+            50% {
+                box-shadow: 0 2px 18px 2px color-mix(in srgb, #f59e0b 75%, transparent);
+            }
+        }
+
+        .rating-badge-anim {
+            animation: ratingGlow 2.4s ease-in-out infinite;
+        }
+
+        /* 满分（10）更强更快 */
+        .rating-badge-anim-max {
+            animation: ratingGlow 1.8s ease-in-out infinite;
+        }
+
+        /* 高分评分徽章 - 流光扫过 */
+        @keyframes ratingShine {
+            0% { transform: translateX(-180%) skewX(-20deg); }
+            16%, 100% { transform: translateX(320%) skewX(-20deg); }
+        }
+
+        .rating-badge-shine {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 45%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.75), transparent);
+            animation: ratingShine 8s ease-in-out infinite;
+            pointer-events: none;
+        }
     `
   document.head.appendChild(style)
 }
@@ -205,11 +247,70 @@ interface LibraryGridProps {
   filter: 'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
 }
 
+// 判断是否为 Bangumi 平台
+function isBangumiPlatform(platform: string) {
+  return platform.toLowerCase() === 'bangumi'
+}
+
+// Bangumi 用户评分徽章样式（仿 Metacritic 分色标记）
+// 分数越高越推荐 —— 色彩越暖、尺寸越大、越醒目
+function getRatingBadgeStyle(rate: number) {
+  // 满分（10）：金色渐变，最大最亮，双环 + 光晕，独享的稀有感
+  if (rate >= 10)
+    return {
+      box: 'w-10 h-10 text-xl bg-linear-to-br from-amber-300 via-yellow-400 to-orange-500 text-white ring-2 ring-amber-200/80 ring-offset-1 ring-offset-amber-500/30 shadow-amber-400/60',
+      gloss: true,
+    }
+  // 神作（9）：金色渐变 + 光晕
+  if (rate >= 9)
+    return {
+      box: 'w-9 h-9 text-lg bg-linear-to-br from-amber-300 to-orange-500 text-white ring-2 ring-amber-200/70 shadow-amber-500/50',
+      gloss: true,
+    }
+  // 力荐（8）
+  if (rate >= 8)
+    return {
+      box: 'w-8 h-8 text-base bg-emerald-500 text-white ring-1 ring-emerald-300/50 shadow-emerald-500/40',
+      gloss: false,
+    }
+  // 推荐（7）
+  if (rate >= 7)
+    return {
+      box: 'w-8 h-8 text-base bg-green-500 text-white shadow-green-500/30',
+      gloss: false,
+    }
+  // 还行（6）
+  if (rate >= 6)
+    return {
+      box: 'w-7 h-7 text-sm bg-lime-500 text-white',
+      gloss: false,
+    }
+  // 不过不失（5）
+  if (rate >= 5)
+    return {
+      box: 'w-7 h-7 text-sm bg-amber-500 text-white',
+      gloss: false,
+    }
+  // 较差（3-4）
+  if (rate >= 3)
+    return {
+      box: 'w-7 h-7 text-sm bg-orange-500 text-white',
+      gloss: false,
+    }
+  // 差评（1-2）
+  return {
+    box: 'w-7 h-7 text-sm bg-rose-500 text-white',
+    gloss: false,
+  }
+}
+
 // 获取项目在网格中的尺寸 (w, h)
-function getItemGridSize(type: string) {
+function getItemGridSize(type: string, platform: string) {
   switch (type) {
-    case 'video':
     case 'game':
+      // Bangumi 游戏使用竖版封面，其余（如 Steam）保持横版
+      return isBangumiPlatform(platform) ? { w: 1, h: 2 } : { w: 2, h: 1 }
+    case 'video':
       return { w: 2, h: 1 }
     case 'anime':
     case 'tv_series':
@@ -282,14 +383,16 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     let startOffset = 0
     let layoutColumns = columns
 
-    // 如果是游戏或视频分类（只有宽2的卡片），且列数是奇数
+    // 如果当前筛选下只有宽2的卡片（如纯 Steam 游戏或视频分类），且列数是奇数
     // 那么最后一列无法被填满（因为没有宽1的卡片），导致整体偏左
     // 需要计算偏移量使内容居中
-    if (
-      (filter === 'game' || filter === 'video') &&
-      columns % 2 !== 0 &&
-      columns > 1
-    ) {
+    // 注意：Bangumi 游戏为竖版（宽1），与 Steam 游戏混排时不应触发此居中
+    const allWideCards =
+      filteredAllItems.length > 0 &&
+      filteredAllItems.every(
+        (item) => getItemGridSize(item.item_type, item.platform).w === 2,
+      )
+    if (allWideCards && columns % 2 !== 0 && columns > 1) {
       layoutColumns = columns - 1
       // 剩余空间 = 1个列宽 + 1个间隙
       // 偏移量 = 剩余空间 / 2
@@ -308,7 +411,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     }
 
     filteredAllItems.forEach((item, index) => {
-      const size = getItemGridSize(item.item_type)
+      const size = getItemGridSize(item.item_type, item.platform)
       const key = `${size.w}x${size.h}`
       if (queues[key]) {
         queues[key].push({ item, originalIndex: index })
@@ -710,7 +813,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         return item.metadata.progress
       }
       if (item.item_type === 'book') {
-        if (item.metadata.rate) return `${item.metadata.rate}/10`
+        // 评分已由左上角徽章展示，此处不再重复
         if (item.metadata.ep_status || item.metadata.vol_status)
           return `${item.metadata.ep_status || 0}/${item.metadata.vol_status || 0}`
       }
@@ -856,6 +959,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 const rowIndex = Math.floor(layout.top / 300)
                 const animationDelay = rowIndex * 0.05
 
+                // Bangumi 用户评分（0 表示未评分），显示在卡片左上角
+                const isBangumi = isBangumiPlatform(item.platform)
+                const userRate = isBangumi ? Number(item.metadata.rate) || 0 : 0
+                // Bangumi 游戏使用竖版，渲染为封面卡片
+                const isBangumiGame =
+                  isBangumi && item.item_type === 'game'
+
                 return (
                   <div
                     key={item.id}
@@ -870,6 +980,14 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                         animationDelay: `${animationDelay}s`,
                       } as React.CSSProperties
                     }
+                    // 入场动画播放一次后移除，避免卡片滚出视口再回来时
+                    // 浏览器重建绘制层导致 fadeInUp 重播（表现为瞬间透明再恢复）
+                    onAnimationEnd={(e) => {
+                      if (e.target === e.currentTarget) {
+                        ;(e.currentTarget as HTMLElement).style.animation =
+                          'none'
+                      }
+                    }}
                   >
                     {item.item_type === 'music' ? (
                       <div className="relative bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02] overflow-hidden h-full">
@@ -964,7 +1082,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                       </div>
                     ) : item.item_type === 'anime' ||
                       item.item_type === 'tv_series' ||
-                      item.item_type === 'book' ? (
+                      item.item_type === 'book' ||
+                      isBangumiGame ? (
                       <div className="relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden h-full">
                         <a
                           href={item.metadata.url || '#'}
@@ -1009,14 +1128,18 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                                         ? 'bg-pink-100 text-pink-700'
                                         : item.item_type === 'book'
                                           ? 'bg-amber-100 text-amber-700'
-                                          : 'bg-purple-100 text-purple-700'
+                                          : item.item_type === 'game'
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : 'bg-purple-100 text-purple-700'
                                     }`}
                                   >
                                     {item.item_type === 'anime'
                                       ? t.library.anime
                                       : item.item_type === 'book'
                                         ? t.library.book
-                                        : t.library.tvSeries}
+                                        : item.item_type === 'game'
+                                          ? t.library.game
+                                          : t.library.tvSeries}
                                   </span>
                                 </div>
                                 {getExtraInfo(item) && (
@@ -1161,6 +1284,30 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                         </div>
                       </div>
                     )}
+
+                    {/* Bangumi 用户评分徽章 - 左上角，分色分级（分数越高越醒目） */}
+                    {userRate > 0 &&
+                      (() => {
+                        const rs = getRatingBadgeStyle(userRate)
+                        const animClass = rs.gloss
+                          ? userRate >= 10
+                            ? 'rating-badge-anim-max'
+                            : 'rating-badge-anim'
+                          : ''
+                        return (
+                          <div
+                            className={`absolute top-2.5 left-2.5 z-20 flex items-center justify-center overflow-hidden rounded-lg font-extrabold leading-none shadow-lg pointer-events-none ${rs.box} ${animClass}`}
+                          >
+                            {rs.gloss && (
+                              <>
+                                <span className="absolute inset-x-0 top-0 h-1/2 bg-linear-to-b from-white/45 to-transparent" />
+                                <span className="rating-badge-shine" />
+                              </>
+                            )}
+                            <span className="relative">{userRate}</span>
+                          </div>
+                        )
+                      })()}
                   </div>
                 )
               })}

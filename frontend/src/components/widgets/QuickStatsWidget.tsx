@@ -21,6 +21,7 @@ interface LibraryStats {
   music: number
   anime: number
   tv_series: number
+  book: number
 }
 
 // 统计卡片组件 - 避免重复渲染
@@ -138,6 +139,23 @@ const StatCard = memo(
                 />
               </svg>
             )
+          case 'book':
+            return (
+              <svg
+                className="w-5 h-5"
+                style={style}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"
+                />
+              </svg>
+            )
           default:
             return null
         }
@@ -199,6 +217,7 @@ export const QuickStatsWidget = memo(
       music: 0,
       anime: 0,
       tv_series: 0,
+      book: 0,
     })
     const [loading, setLoading] = useState(true)
 
@@ -260,6 +279,7 @@ export const QuickStatsWidget = memo(
               music: 0,
               anime: 0,
               tv_series: 0,
+              book: 0,
             },
           )
 
@@ -280,10 +300,11 @@ export const QuickStatsWidget = memo(
         setStats({
           total: 1234,
           game: 120,
-          video: 450,
+          video: 400,
           music: 300,
           anime: 200,
           tv_series: 164,
+          book: 50,
         })
         setLoading(false)
         return
@@ -306,9 +327,18 @@ export const QuickStatsWidget = memo(
         { key: 'music', label: t.quickStats.music, color: '#d33a31' },
         { key: 'anime', label: t.quickStats.anime, color: '#fb7299' },
         { key: 'tv_series', label: t.quickStats.tvSeries, color: '#6366f1' },
+        { key: 'book', label: t.quickStats.book, color: '#059669' },
       ],
       [t],
     )
+
+    // 有数据的分类才显示；加载中或资料库为空时显示全部，避免空白
+    const visibleCategories = useMemo(() => {
+      const withData = categories.filter(
+        cat => ((stats as any)[cat.key] ?? 0) > 0,
+      )
+      return withData.length > 0 ? withData : categories
+    }, [categories, stats])
 
     return (
       <div
@@ -369,10 +399,13 @@ export const QuickStatsWidget = memo(
 
           {/* 分类统计 */}
           <div
-            className="flex-1 grid grid-cols-5 gap-1.5"
-            style={{ gap: `${6 * scale}px` }}
+            className="flex-1 grid gap-1.5"
+            style={{
+              gap: `${6 * scale}px`,
+              gridTemplateColumns: `repeat(${visibleCategories.length}, minmax(0, 1fr))`,
+            }}
           >
-            {categories.map((cat, index) => (
+            {visibleCategories.map((cat, index) => (
               <motion.div
                 key={cat.key}
                 initial={{ y: 10, opacity: 0 }}

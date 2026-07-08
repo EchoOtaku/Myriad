@@ -202,6 +202,9 @@ pub struct DynamicConfig {
     pub bangumi_enabled: Option<bool>,
     pub bangumi_username: Option<String>,
     pub bangumi_access_token: Option<String>,
+    /// 平台展示顺序（平台名称列表，如 ["Steam", "GitHub", ...]）
+    /// 决定报告页平台卡片的出现顺序，未列出的平台按默认顺序排在最后
+    pub platform_order: Option<Vec<String>>,
     pub bangumi_user_agent: Option<String>,
 
     // Tapp 外部 API 密钥（用于 Tapp API 声明系统）
@@ -411,6 +414,7 @@ impl Default for DynamicConfig {
             bangumi_enabled: None,
             bangumi_username: None,
             bangumi_access_token: None,
+            platform_order: None,
             bangumi_user_agent: Some("haru/Myriad".to_string()),
 
             // Tapp 外部 API 密钥

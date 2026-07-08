@@ -116,6 +116,13 @@ export interface UseMusicPlayerReturn {
     icon: React.ReactNode
     textKey: 'singleRepeat' | 'shuffle' | 'listRepeat'
   }
+
+  /**
+   * 进度条 UI 可见性开关：不可见时 timeupdate 跳过 setCurrentTime，
+   * 避免宿主组件（GlobalControlPanel）在面板收起时仍以 5次/秒 重渲染。
+   * 对外的进度同步（Tapp 广播 / Media Session / 全局状态）不受影响。
+   */
+  setProgressUiVisible: (visible: boolean) => void
 }
 
 // 全局状态恢复（跨页面切换）- SSR 安全
@@ -200,6 +207,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   const musicContainerRef = useRef<HTMLDivElement>(null)
   const volumeControlRef = useRef<HTMLDivElement>(null)
   const seekingRef = useRef<boolean>(false)
+
+  // 进度条 UI 是否可见（面板收起时为 false，timeupdate 跳过 setCurrentTime）
+  const progressUiVisibleRef = useRef<boolean>(false)
 
   // 歌词相关 Refs（避免频繁触发 effect）
   const lyricsRef = useRef<LyricLine[]>([])
@@ -385,6 +395,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     }
 
     breathAnimationRef.current = requestAnimationFrame(animate)
+  }, [])
+
+  // 进度条 UI 可见性开关；恢复可见时立即同步一次进度，避免展示过期值
+  const setProgressUiVisible = useCallback((visible: boolean) => {
+    progressUiVisibleRef.current = visible
+    if (visible && audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime)
+    }
   }, [])
 
   const stopProgressBreathAnimation = useCallback(() => {
@@ -1197,7 +1215,11 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
     const handleTimeUpdate = throttle(() => {
       const currentTime = audio.currentTime
-      setCurrentTime(currentTime)
+      // 进度条不可见时跳过 React 状态更新，避免宿主组件每 200ms 重渲染；
+      // 下方的全局状态 / Media Session / 进度事件广播照常执行
+      if (progressUiVisibleRef.current) {
+        setCurrentTime(currentTime)
+      }
 
       // 更新 Media Session 位置状态（移动端后台播放关键）
       if (audio.duration && Number.isFinite(audio.duration)) {
@@ -1923,5 +1945,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
     // 播放模式相关
     getPlayModeInfo,
+
+    // 进度条 UI 可见性
+    setProgressUiVisible,
   }
 }

@@ -6,6 +6,13 @@ export { default as AboutConfigSection } from './AboutConfigSection'
 export { AdvancedConfigSection } from './AdvancedConfigSection'
 export { default as AiConfigSection } from './AiConfigSection'
 export { default as GenericConfigSection } from './GenericConfigSection'
+export {
+  areLibrarySourcePreferencesEqual,
+  DEFAULT_LIBRARY_SOURCE_PREFERENCES,
+  default as ModuleConfigSection,
+  normalizeLibraryPreferences,
+} from './ModuleConfigSection'
+export type { LibrarySourcePreferences } from './ModuleConfigSection'
 export { default as MusicConfigSection } from './MusicConfigSection'
 export { default as NetworkConfigSection } from './NetworkConfigSection'
 export { default as OAuthConfigSection } from './OAuthConfigSection'

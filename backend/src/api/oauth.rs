@@ -58,6 +58,64 @@ fn err_404(msg: impl Into<String>) -> (StatusCode, Json<Value>) {
     (StatusCode::NOT_FOUND, Json(json!({"error": msg.into()})))
 }
 
+async fn sync_user_oauth_profile_snapshot(
+    db: &DatabaseConnection,
+    user_id: i32,
+    slug: &str,
+    profile: &NormalizedProfile,
+) {
+    let avatar_url = profile
+        .avatar_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    if slug == "github" {
+        let github_id = profile.provider_user_id.parse::<i64>().ok();
+        if avatar_url.is_none() && github_id.is_none() {
+            return;
+        }
+
+        if let Err(e) = db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE users SET linked_github_id = COALESCE($1, linked_github_id), \
+                 avatar_url = COALESCE($2, avatar_url), updated_at = NOW() WHERE id = $3",
+                vec![
+                    SeaValue::BigInt(github_id),
+                    avatar_url
+                        .map(|s| SeaValue::String(Some(Box::new(s))))
+                        .unwrap_or(SeaValue::String(None)),
+                    SeaValue::Int(Some(user_id)),
+                ],
+            ))
+            .await
+        {
+            tracing::warn!("Failed to sync GitHub OAuth snapshot to user: {}", e);
+        }
+        return;
+    }
+
+    let Some(avatar_url) = avatar_url else {
+        return;
+    };
+
+    if let Err(e) = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2",
+            vec![
+                SeaValue::String(Some(Box::new(avatar_url))),
+                SeaValue::Int(Some(user_id)),
+            ],
+        ))
+        .await
+    {
+        tracing::warn!("Failed to sync OAuth avatar to user: {}", e);
+    }
+}
+
 // ---------- GET /api/auth/oauth/providers ----------
 
 pub async fn list_providers() -> Json<Value> {
@@ -268,28 +326,7 @@ async fn handle_link(
     }
 
     upsert_identity(db, slug, admin_id, profile).await?;
-
-    // 兼容层：GitHub 时同步双写到 users.linked_github_id / avatar_url
-    if slug == "github" {
-        if let Ok(gid) = profile.provider_user_id.parse::<i64>() {
-            let _ = db
-                .execute(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "UPDATE users SET linked_github_id = $1, avatar_url = COALESCE($2, avatar_url), \
-                     updated_at = NOW() WHERE id = $3",
-                    vec![
-                        SeaValue::BigInt(Some(gid)),
-                        profile
-                            .avatar_url
-                            .clone()
-                            .map(|s| SeaValue::String(Some(Box::new(s))))
-                            .unwrap_or(SeaValue::String(None)),
-                        SeaValue::Int(Some(admin_id)),
-                    ],
-                ))
-                .await;
-        }
-    }
+    sync_user_oauth_profile_snapshot(db, admin_id, slug, profile).await;
 
     let url = format!(
         "{}/?link=success&provider={}&username={}",
@@ -416,6 +453,7 @@ async fn find_or_create_user(
                 ],
             ))
             .await;
+        sync_user_oauth_profile_snapshot(db, uid, slug, profile).await;
         // 更新 users 的 last_login_at
         let _ = db
             .execute(Statement::from_sql_and_values(
@@ -443,6 +481,7 @@ async fn find_or_create_user(
                     .try_get("", "id")
                     .map_err(|e| err_500(format!("failed to read id: {e}")))?;
                 upsert_identity(db, slug, uid, profile).await?;
+                sync_user_oauth_profile_snapshot(db, uid, slug, profile).await;
                 return Ok(uid);
             }
         }

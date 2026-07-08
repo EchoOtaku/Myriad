@@ -1,3 +1,5 @@
+import type { ModuleVisibilityPreferences } from '../utils/moduleVisibility'
+import type { LibrarySourcePreferences } from './config'
 import type { ToastType } from './Toast'
 import {
   FaExclamationTriangle,
@@ -7,9 +9,11 @@ import {
   FaTimes,
   LuDatabase,
   LuGlobe,
+  LuGripVertical,
   LuLink,
   LuLock,
   LuMusic,
+  LuPackage,
   LuSettings,
   LuSlidersHorizontal,
   LuSparkles,
@@ -20,6 +24,7 @@ import {
 import { motionShim as motion } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 
 import { useDebounce } from '../hooks/useDebounce'
@@ -31,13 +36,27 @@ import {
   updateConfig,
   updatePermissionsConfig,
 } from '../lib/api'
+import apiService from '../services/api'
 import { getCSRFToken } from '../utils/csrf'
+import {
+  areModuleVisibilityPreferencesEqual,
+  DEFAULT_MODULE_VISIBILITY_PREFERENCES,
+  dispatchModuleVisibilityPreferencesUpdated,
+  fetchModuleVisibilityPreferences,
+  normalizeModuleVisibilityPreferences,
+  updateModuleVisibilityPreferences,
+} from '../utils/moduleVisibility'
+import { clearDedupCache } from '../utils/requestDedup'
 import {
   AboutConfigSection,
   AdvancedConfigSection,
   AiConfigSection,
+  areLibrarySourcePreferencesEqual,
+  DEFAULT_LIBRARY_SOURCE_PREFERENCES,
+  ModuleConfigSection,
   MusicConfigSection,
   NetworkConfigSection,
+  normalizeLibraryPreferences,
   OAuthConfigSection,
   PermissionsConfigSection,
   UiConfigSection,
@@ -103,6 +122,12 @@ interface QuickAccessItem {
   icon: React.ReactNode
   section: string
   subsection?: string
+}
+
+interface SaveLibrarySourcePreferencesResponse {
+  success: boolean
+  preferences?: LibrarySourcePreferences
+  message?: string
 }
 
 function isMaskedValue(value: string) {
@@ -186,6 +211,10 @@ const ModernConfigForm: React.FC = () => {
   const [platformModalOpen, setPlatformModalOpen] = useState<string | null>(
     null,
   )
+  // 🆕 平台拖拽排序状态：仅在按住拖拽手柄时才允许拖动
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [dragArmedIndex, setDragArmedIndex] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (typeof window === 'undefined') return ['platforms', 'ai']
@@ -232,6 +261,19 @@ const ModernConfigForm: React.FC = () => {
     guest_ai_cooldown_seconds: 10,
   })
   const [permissionLoading, setPermissionLoading] = useState(false)
+  const [librarySourceDraft, setLibrarySourceDraft] =
+    useState<LibrarySourcePreferences>(DEFAULT_LIBRARY_SOURCE_PREFERENCES)
+  const [savedLibrarySourcePreferences, setSavedLibrarySourcePreferences] =
+    useState<LibrarySourcePreferences>(DEFAULT_LIBRARY_SOURCE_PREFERENCES)
+  const [librarySourceSaveRevision, setLibrarySourceSaveRevision] = useState(0)
+  const [moduleVisibilityDraft, setModuleVisibilityDraft] =
+    useState<ModuleVisibilityPreferences>(
+      DEFAULT_MODULE_VISIBILITY_PREFERENCES,
+    )
+  const [savedModuleVisibilityPreferences, setSavedModuleVisibilityPreferences] =
+    useState<ModuleVisibilityPreferences>(
+      DEFAULT_MODULE_VISIBILITY_PREFERENCES,
+    )
 
   const showMessage = useCallback(
     (nextMessage: string, nextType: ToastType = 'info', duration = 3000) => {
@@ -471,6 +513,12 @@ const ModernConfigForm: React.FC = () => {
         section: 'permissions',
       },
       {
+        id: 'modules',
+        label: t.config.moduleSettings,
+        icon: <LuPackage size={15} style={{ color: '#14b8a6' }} />,
+        section: 'modules',
+      },
+      {
         id: 'advanced',
         label: t.config.advanced,
         icon: <LuWrench size={15} style={{ color: '#ef4444' }} />,
@@ -662,6 +710,28 @@ const ModernConfigForm: React.FC = () => {
       ],
     })
 
+    // 模块设置
+    items.push({
+      type: 'section',
+      section: 'modules',
+      title: t.config.moduleSettings,
+      description: t.config.moduleSettingsDesc,
+      keywords: [
+        '模块',
+        'module',
+        '资料库',
+        'library',
+        '来源',
+        'source',
+        '平台',
+        '分类',
+        '可见性',
+        'visibility',
+        '登录用户',
+        '管理员',
+      ],
+    })
+
     return items
   }, [config, t])
 
@@ -705,6 +775,67 @@ const ModernConfigForm: React.FC = () => {
     [navigate],
   )
 
+  const notifyDirtyState = React.useCallback((dirty: boolean) => {
+    window.dispatchEvent(
+      new CustomEvent('config-dirty-state', {
+        detail: { dirty },
+      }),
+    )
+  }, [])
+
+  const handleLibrarySourcePreferencesLoaded = React.useCallback(
+    (
+      preferences: LibrarySourcePreferences,
+      options: { resetDraft?: boolean } = {},
+    ) => {
+      const normalized = normalizeLibraryPreferences(preferences)
+      setSavedLibrarySourcePreferences(normalized)
+      if (options.resetDraft) {
+        setLibrarySourceDraft(normalized)
+      }
+    },
+    [],
+  )
+
+  const saveLibrarySourcePreferences = React.useCallback(async () => {
+    const saved = await apiService.put<SaveLibrarySourcePreferencesResponse>(
+      '/library/preferences',
+      librarySourceDraft,
+    )
+    if (!saved.success) {
+      throw new Error(saved.message || t.config.librarySourceSaveFailed)
+    }
+
+    const preferences = normalizeLibraryPreferences(saved.preferences)
+    setLibrarySourceDraft(preferences)
+    setSavedLibrarySourcePreferences(preferences)
+    setLibrarySourceSaveRevision((revision) => revision + 1)
+    clearDedupCache(`${API_URL}/api/library`)
+  }, [librarySourceDraft, t])
+
+  const loadModuleVisibilityPreferences = React.useCallback(async () => {
+    try {
+      const preferences = await fetchModuleVisibilityPreferences()
+      setSavedModuleVisibilityPreferences(preferences)
+      setModuleVisibilityDraft(preferences)
+    } catch {
+      showMessage(t.config.moduleVisibilityLoadFailed, 'error')
+    }
+  }, [showMessage, t])
+
+  const saveModuleVisibilityPreferences = React.useCallback(async () => {
+    const saved = await updateModuleVisibilityPreferences(moduleVisibilityDraft)
+    const preferences = normalizeModuleVisibilityPreferences(saved)
+    setModuleVisibilityDraft(preferences)
+    setSavedModuleVisibilityPreferences(preferences)
+    dispatchModuleVisibilityPreferencesUpdated(preferences)
+  }, [moduleVisibilityDraft])
+
+  const handleModuleMessage = React.useCallback(
+    (msg: string, type: ToastType = 'info') => showMessage(msg, type),
+    [showMessage],
+  )
+
   const handleSave = React.useCallback(async () => {
     if (!config) {
       window.dispatchEvent(
@@ -715,12 +846,40 @@ const ModernConfigForm: React.FC = () => {
       return
     }
 
-    const invalidBangumi = config.platforms.find(
-      (platform) =>
-        platform.enabled &&
-        isBangumiPlatform(platform) &&
-        !hasBangumiCredential(platform),
+    const hasConfigChanges =
+      Boolean(initialConfig) &&
+      JSON.stringify(config) !== JSON.stringify(initialConfig)
+    const hasLibrarySourceChanges = !areLibrarySourcePreferencesEqual(
+      librarySourceDraft,
+      savedLibrarySourcePreferences,
     )
+    const hasModuleVisibilityChanges = !areModuleVisibilityPreferencesEqual(
+      moduleVisibilityDraft,
+      savedModuleVisibilityPreferences,
+    )
+
+    if (
+      !hasConfigChanges &&
+      !hasLibrarySourceChanges &&
+      !hasModuleVisibilityChanges
+    ) {
+      notifyDirtyState(false)
+      window.dispatchEvent(
+        new CustomEvent('config-save-result', {
+          detail: { success: true, message: t.config.configSaved },
+        }),
+      )
+      return
+    }
+
+    const invalidBangumi = hasConfigChanges
+      ? config.platforms.find(
+          (platform) =>
+            platform.enabled &&
+            isBangumiPlatform(platform) &&
+            !hasBangumiCredential(platform),
+        )
+      : undefined
     if (invalidBangumi) {
       showMessage(t.config.bangumiCredentialMissing, 'error', 0)
       window.dispatchEvent(
@@ -737,25 +896,50 @@ const ModernConfigForm: React.FC = () => {
     showMessage(t.config.savingConfig, 'info', 0)
 
     try {
-      // 获取 CSRF Token
-      await getCSRFToken(true)
+      let resultMessage = t.config.configSaved
 
-      const result = await updateConfig(config)
+      if (hasConfigChanges) {
+        // 获取 CSRF Token
+        await getCSRFToken(true)
 
-      showMessage(
-        `${t.config.configSaved} ${t.config.refreshing}`,
-        'success',
-        0,
-      )
-      setInitialConfig(JSON.parse(JSON.stringify(config)))
+        const result = await updateConfig(config)
+        resultMessage = result.message || t.config.configSaved
+        setInitialConfig(JSON.parse(JSON.stringify(config)))
+      }
+
+      if (hasLibrarySourceChanges) {
+        await saveLibrarySourcePreferences()
+        resultMessage = hasConfigChanges
+          ? resultMessage
+          : t.config.librarySourceSaved
+      }
+
+      if (hasModuleVisibilityChanges) {
+        await saveModuleVisibilityPreferences()
+        resultMessage = hasConfigChanges
+          ? resultMessage
+          : t.config.moduleVisibilitySaved
+      }
+
       notifyDirtyState(false)
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
           detail: {
             success: true,
-            message: result.message || t.config.configSaved,
+            message: resultMessage,
           },
         }),
+      )
+
+      if (!hasConfigChanges) {
+        showMessage(resultMessage, 'success', 3000)
+        return
+      }
+
+      showMessage(
+        `${t.config.configSaved} ${t.config.refreshing}`,
+        'success',
+        0,
       )
 
       try {
@@ -785,7 +969,19 @@ const ModernConfigForm: React.FC = () => {
         }),
       )
     }
-  }, [config])
+  }, [
+    config,
+    initialConfig,
+    librarySourceDraft,
+    moduleVisibilityDraft,
+    notifyDirtyState,
+    saveLibrarySourcePreferences,
+    saveModuleVisibilityPreferences,
+    savedLibrarySourcePreferences,
+    savedModuleVisibilityPreferences,
+    showMessage,
+    t,
+  ])
 
   const handleReset = React.useCallback(async () => {
     showMessage(t.config.resettingConfig, 'info', 0)
@@ -867,14 +1063,6 @@ const ModernConfigForm: React.FC = () => {
     }
   }, [])
 
-  const notifyDirtyState = React.useCallback((dirty: boolean) => {
-    window.dispatchEvent(
-      new CustomEvent('config-dirty-state', {
-        detail: { dirty },
-      }),
-    )
-  }, [])
-
   const loadConfig = React.useCallback(async () => {
     setLoading(true)
     try {
@@ -895,7 +1083,8 @@ const ModernConfigForm: React.FC = () => {
   useEffect(() => {
     loadConfig()
     loadPermissionConfig()
-  }, [loadConfig, loadPermissionConfig])
+    loadModuleVisibilityPreferences()
+  }, [loadConfig, loadPermissionConfig, loadModuleVisibilityPreferences])
 
   useEffect(() => {
     const handleSaveEvent = () => handleSave()
@@ -1038,10 +1227,59 @@ const ModernConfigForm: React.FC = () => {
     [config, notifyDirtyState],
   )
 
-  const isConfigDirty = useMemo(() => {
+  // 🆕 调整平台顺序（拖拽排序）：该顺序会作为报告页平台卡片的出现顺序保存
+  // fromIndex 的卡片移动到 toIndex 位置
+  const reorderPlatform = React.useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (!config) return
+      if (
+        fromIndex === toIndex ||
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= config.platforms.length ||
+        toIndex >= config.platforms.length
+      ) {
+        return
+      }
+
+      const newPlatforms = [...config.platforms]
+      const [moved] = newPlatforms.splice(fromIndex, 1)
+      newPlatforms.splice(toIndex, 0, moved)
+      setConfig({ ...config, platforms: newPlatforms })
+      notifyDirtyState(true)
+    },
+    [config, notifyDirtyState],
+  )
+
+  const isBaseConfigDirty = useMemo(() => {
     if (!config || !initialConfig) return false
     return JSON.stringify(config) !== JSON.stringify(initialConfig)
   }, [config, initialConfig])
+
+  const isLibrarySourceDirty = useMemo(
+    () =>
+      !areLibrarySourcePreferencesEqual(
+        librarySourceDraft,
+        savedLibrarySourcePreferences,
+      ),
+    [librarySourceDraft, savedLibrarySourcePreferences],
+  )
+
+  const isModuleVisibilityDirty = useMemo(
+    () =>
+      !areModuleVisibilityPreferencesEqual(
+        moduleVisibilityDraft,
+        savedModuleVisibilityPreferences,
+      ),
+    [moduleVisibilityDraft, savedModuleVisibilityPreferences],
+  )
+
+  const isConfigDirty =
+    isBaseConfigDirty || isLibrarySourceDirty || isModuleVisibilityDirty
+
+  useEffect(() => {
+    notifyDirtyState(isConfigDirty)
+  }, [isConfigDirty, notifyDirtyState])
 
   const getSectionProps = (sectionId: string) => {
     const item = quickAccessItems.find((i) => i.id === sectionId)
@@ -1088,18 +1326,61 @@ const ModernConfigForm: React.FC = () => {
                     ? t.config.notConfigured
                     : undefined
 
+                  const isDragging = dragIndex === index
+                  const isDragOver =
+                    dragOverIndex === index && dragIndex !== index
+
                   return (
-                    <motion.div
+                    <div
                       key={platform.name}
-                      className="platform-card"
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 + index * 0.05, duration: 0.3 }}
+                      className={`platform-card platform-card-enter${
+                        isDragging ? ' dragging' : ''
+                      }${isDragOver ? ' drag-over' : ''}`}
+                      style={{
+                        cursor: 'pointer',
+                        animationDelay: `${0.2 + index * 0.05}s`,
+                      }}
+                      draggable={dragArmedIndex === index}
                       onClick={() => setPlatformModalOpen(platform.name)}
-                      style={{ cursor: 'pointer' }}
+                      onDragStart={(e) => {
+                        setDragIndex(index)
+                        e.dataTransfer.effectAllowed = 'move'
+                      }}
+                      onDragOver={(e) => {
+                        if (dragIndex === null) return
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = 'move'
+                        if (dragOverIndex !== index) setDragOverIndex(index)
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        if (dragIndex !== null) reorderPlatform(dragIndex, index)
+                        setDragIndex(null)
+                        setDragOverIndex(null)
+                        setDragArmedIndex(null)
+                      }}
+                      onDragEnd={() => {
+                        setDragIndex(null)
+                        setDragOverIndex(null)
+                        setDragArmedIndex(null)
+                      }}
                     >
                       <div className="platform-header">
                         <div className="platform-info">
+                          <button
+                            type="button"
+                            className="platform-drag-handle"
+                            aria-label={t.config.dragToReorder}
+                            title={t.config.dragToReorder}
+                            onClick={(e) => e.stopPropagation()}
+                            onPointerDown={() => setDragArmedIndex(index)}
+                            onPointerUp={() => setDragArmedIndex(null)}
+                          >
+                            <span className="platform-order-num">
+                              {index + 1}
+                            </span>
+                            <LuGripVertical className="platform-drag-grip" />
+                          </button>
                           <div className="platform-icon-wrapper">
                             <PlatformIcon
                               platform={platform.name}
@@ -1139,7 +1420,7 @@ const ModernConfigForm: React.FC = () => {
                           </label>
                         </div>
                       </div>
-                    </motion.div>
+                    </div>
                   )
                 })()
               ))}
@@ -1198,6 +1479,20 @@ const ModernConfigForm: React.FC = () => {
             permissionConfig={permissionConfig}
             updatePermissionConfig={updatePermissionConfig}
             loading={permissionLoading}
+            {...props}
+          />
+        )
+      case 'modules':
+        return (
+          <ModuleConfigSection
+            sourceDraft={librarySourceDraft}
+            setSourceDraft={setLibrarySourceDraft}
+            visibilityDraft={moduleVisibilityDraft}
+            setVisibilityDraft={setModuleVisibilityDraft}
+            isSourceDirty={isLibrarySourceDirty}
+            saveRevision={librarySourceSaveRevision}
+            onSourcePreferencesLoaded={handleLibrarySourcePreferencesLoaded}
+            onMessage={handleModuleMessage}
             {...props}
           />
         )

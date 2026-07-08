@@ -2,12 +2,18 @@
 //!
 //! 本地用户的 ActivityPub Actor 表示，以及远程 Actor 获取/缓存。
 
-use axum::{extract::Path, http::StatusCode, Json};
+use axum::{
+    extract::Path,
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
+    Json,
+};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::Serialize;
 use serde_json::json;
 
 use crate::federation::types::*;
+use crate::services::image_cache::ImageCacheService;
 
 /// GET /users/{username}
 ///
@@ -26,7 +32,29 @@ pub async fn get_actor(
     let user = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio,
+            r#"SELECT u.id, u.username, u.display_name,
+                      COALESCE(
+                          NULLIF(
+                              CASE
+                                  WHEN u.avatar_url LIKE 'https://ui-avatars.com/%'
+                                       OR u.avatar_url LIKE 'http://ui-avatars.com/%'
+                                  THEN NULL
+                                  ELSE u.avatar_url
+                              END,
+                              ''
+                          ),
+                          (
+                              SELECT NULLIF(ui.avatar_url, '')
+                              FROM user_identities ui
+                              WHERE ui.user_id = u.id
+                                AND ui.avatar_url IS NOT NULL
+                                AND ui.avatar_url <> ''
+                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
+                              LIMIT 1
+                          ),
+                          NULLIF(u.avatar_url, '')
+                      ) AS avatar_url,
+                      u.bio,
                       fk.public_key_pem, fk.key_id
                FROM users u
                LEFT JOIN federation_keys fk ON fk.user_id = u.id
@@ -100,10 +128,10 @@ pub async fn get_actor(
             owner: actor_id,
             public_key_pem: pub_key,
         },
-        icon: avatar_url.map(|url| MediaObject {
+        icon: avatar_url.map(|_| MediaObject {
             media_type: "Image".to_string(),
-            mime_type: Some("image/png".to_string()),
-            url,
+            mime_type: None,
+            url: avatar_proxy_url(&base_url, &username),
         }),
         image: None,
         mfp_instance_version: Some(env!("CARGO_PKG_VERSION").to_string()),
@@ -112,6 +140,79 @@ pub async fn get_actor(
     };
 
     Ok((StatusCode::OK, Json(serde_json::to_value(actor).unwrap())))
+}
+
+/// GET /users/{username}/avatar
+///
+/// Proxies the local user's avatar so federated instances only see this Myriad
+/// instance URL, not the upstream OAuth/provider avatar URL.
+pub async fn get_avatar(Path(username): Path<String>) -> Response {
+    let db = match get_db().await {
+        Ok(db) => db,
+        Err(e) => {
+            return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))).into_response()
+        }
+    };
+
+    let avatar_url = match get_local_avatar_url(&db, &username).await {
+        Ok(Some(url)) => url,
+        Ok(None) => return (StatusCode::NOT_FOUND, "Avatar not found").into_response(),
+        Err(response) => return response,
+    };
+
+    if avatar_url.len() > 2048 {
+        tracing::warn!(
+            "Rejected federation avatar proxy for {}: source URL too long",
+            username
+        );
+        return (StatusCode::BAD_REQUEST, "Avatar URL too long").into_response();
+    }
+
+    let base_url = get_base_url().await;
+    if avatar_url.starts_with(&format!("{}/users/", base_url)) || avatar_url.starts_with("/users/")
+    {
+        tracing::warn!(
+            "Rejected federation avatar proxy loop for {}: {}",
+            username,
+            avatar_url
+        );
+        return (StatusCode::BAD_GATEWAY, "Avatar proxy loop rejected").into_response();
+    }
+
+    let cache = ImageCacheService::new();
+    let cached_path = match cache.cache_image(&avatar_url).await {
+        Ok(path) => path,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to cache proxied federation avatar for {}: {}",
+                username,
+                e
+            );
+            return (StatusCode::BAD_GATEWAY, "Failed to fetch avatar").into_response();
+        }
+    };
+    let cached_path = cached_path
+        .strip_prefix("/api/brew/image-cache")
+        .map(|path| format!("/api/federation/avatar-cache{}", path))
+        .unwrap_or(cached_path);
+
+    let location = if cached_path.starts_with("http://") || cached_path.starts_with("https://") {
+        cached_path
+    } else {
+        format!("{}{}", base_url, cached_path)
+    };
+
+    (
+        StatusCode::FOUND,
+        [
+            (header::LOCATION, location),
+            (
+                header::CACHE_CONTROL,
+                "public, max-age=3600, stale-while-revalidate=86400".to_string(),
+            ),
+        ],
+    )
+        .into_response()
 }
 
 /// GET /users/{username}/followers
@@ -389,6 +490,10 @@ pub struct RemoteActorInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct LocalFederationIdentity {
     pub username: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
     pub domain: String,
     pub handle: String,
     pub acct: String,
@@ -407,9 +512,51 @@ pub async fn get_local_identity(username: &str) -> LocalFederationIdentity {
     let frontend_url = get_frontend_url().await;
     let domain = extract_domain(&base_url).unwrap_or_else(|| base_url.clone());
     let acct = format!("{}@{}", username, domain);
+    let mut display_name: Option<String> = None;
+    let mut avatar_url: Option<String> = None;
+
+    if let Ok(db) = get_db().await {
+        if let Ok(Some(row)) = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT display_name,
+                          COALESCE(
+                              NULLIF(
+                                  CASE
+                                      WHEN avatar_url LIKE 'https://ui-avatars.com/%'
+                                           OR avatar_url LIKE 'http://ui-avatars.com/%'
+                                      THEN NULL
+                                      ELSE avatar_url
+                                  END,
+                                  ''
+                              ),
+                              (
+                                  SELECT NULLIF(ui.avatar_url, '')
+                                  FROM user_identities ui
+                                  WHERE ui.user_id = users.id
+                                    AND ui.avatar_url IS NOT NULL
+                                    AND ui.avatar_url <> ''
+                                  ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
+                                  LIMIT 1
+                              ),
+                              NULLIF(avatar_url, '')
+                          ) AS avatar_url
+                   FROM users
+                   WHERE username = $1
+                   LIMIT 1"#,
+                [username.to_string().into()],
+            ))
+            .await
+        {
+            display_name = row.try_get("", "display_name").ok();
+            avatar_url = row.try_get("", "avatar_url").ok();
+        }
+    }
 
     LocalFederationIdentity {
         username: username.to_string(),
+        display_name,
+        avatar_url: avatar_url.map(|_| avatar_proxy_url(&base_url, username)),
         domain: domain.clone(),
         handle: format!("@{}", acct),
         acct: acct.clone(),
@@ -421,6 +568,59 @@ pub async fn get_local_identity(username: &str) -> LocalFederationIdentity {
         following_url: following_url(&base_url, username),
         profile_url: format!("{}/profile/{}", frontend_url, username),
     }
+}
+
+fn avatar_proxy_url(base_url: &str, username: &str) -> String {
+    format!(
+        "{}/users/{}/avatar",
+        base_url,
+        urlencoding::encode(username)
+    )
+}
+
+async fn get_local_avatar_url(
+    db: &DatabaseConnection,
+    username: &str,
+) -> Result<Option<String>, Response> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT COALESCE(
+                      NULLIF(
+                          CASE
+                              WHEN avatar_url LIKE 'https://ui-avatars.com/%'
+                                   OR avatar_url LIKE 'http://ui-avatars.com/%'
+                              THEN NULL
+                              ELSE avatar_url
+                          END,
+                          ''
+                      ),
+                      (
+                          SELECT NULLIF(ui.avatar_url, '')
+                          FROM user_identities ui
+                          WHERE ui.user_id = users.id
+                            AND ui.avatar_url IS NOT NULL
+                            AND ui.avatar_url <> ''
+                          ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
+                          LIMIT 1
+                      ),
+                      NULLIF(avatar_url, '')
+                  ) AS avatar_url
+               FROM users
+               WHERE username = $1
+               LIMIT 1"#,
+            [username.to_string().into()],
+        ))
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database query failed"})),
+            )
+                .into_response()
+        })?;
+
+    Ok(row.and_then(|r| r.try_get::<Option<String>>("", "avatar_url").ok().flatten()))
 }
 
 // ==================== 辅助函数 ====================

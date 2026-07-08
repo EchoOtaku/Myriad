@@ -12,10 +12,7 @@
  * 渲染时会被替换成 <code> 元素。
  */
 
-/** 用 Google s2 favicon 服务取任意域名的 favicon — 可靠、统一尺寸、无 CORS */
-function favicon(domain: string) {
-  return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
-}
+import { getOAuthIconAsset } from '../../utils/oauthIcons'
 
 export interface OAuthPreset {
   /** 预设 ID，仅用于前端 UI 选择 */
@@ -57,7 +54,7 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     discovery_url:
       'https://accounts.google.com/.well-known/openid-configuration',
     scopes: ['openid', 'email', 'profile'],
-    icon_url: favicon('google.com'),
+    icon_url: getOAuthIconAsset('google'),
     docs_url: 'https://console.cloud.google.com/apis/credentials',
     hintKey: 'oauthPresetHintGoogle',
   },
@@ -69,7 +66,7 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     discovery_url:
       'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
     scopes: ['openid', 'email', 'profile', 'User.Read'],
-    icon_url: favicon('microsoft.com'),
+    icon_url: getOAuthIconAsset('microsoft'),
     docs_url:
       'https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
     hintKey: 'oauthPresetHintMicrosoft',
@@ -81,7 +78,7 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     display_name: 'GitLab',
     discovery_url: 'https://gitlab.com/.well-known/openid-configuration',
     scopes: ['openid', 'email', 'profile'],
-    icon_url: favicon('gitlab.com'),
+    icon_url: getOAuthIconAsset('gitlab'),
     docs_url: 'https://gitlab.com/-/user_settings/applications',
     hintKey: 'oauthPresetHintGitlab',
   },
@@ -92,7 +89,7 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     display_name: 'Discord',
     discovery_url: 'https://discord.com/.well-known/openid-configuration',
     scopes: ['openid', 'email', 'identify'],
-    icon_url: favicon('discord.com'),
+    icon_url: getOAuthIconAsset('discord'),
     docs_url: 'https://discord.com/developers/applications',
     hintKey: 'oauthPresetHintDiscord',
   },
@@ -103,7 +100,7 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     display_name: 'Authentik',
     discovery_url: '',
     scopes: ['openid', 'email', 'profile'],
-    icon_url: favicon('goauthentik.io'),
+    icon_url: getOAuthIconAsset('authentik'),
     docs_url: 'https://goauthentik.io/docs/providers/oauth2',
     hintKey: 'oauthPresetHintAuthentik',
   },
@@ -114,7 +111,7 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     display_name: 'Keycloak',
     discovery_url: '',
     scopes: ['openid', 'email', 'profile'],
-    icon_url: favicon('keycloak.org'),
+    icon_url: getOAuthIconAsset('keycloak'),
     docs_url: 'https://www.keycloak.org/docs/latest/server_admin/index.html',
     hintKey: 'oauthPresetHintKeycloak',
   },
@@ -125,7 +122,7 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     display_name: 'Auth0',
     discovery_url: '',
     scopes: ['openid', 'email', 'profile'],
-    icon_url: favicon('auth0.com'),
+    icon_url: getOAuthIconAsset('auth0'),
     docs_url: 'https://auth0.com/docs/get-started/applications',
     hintKey: 'oauthPresetHintAuth0',
   },

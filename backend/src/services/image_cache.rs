@@ -11,9 +11,6 @@ use std::time::Duration;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-/// 图片缓存目录
-const CACHE_DIR: &str = "cache/images";
-
 /// 最大图片大小 (10MB)
 const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 
@@ -37,7 +34,7 @@ impl ImageCacheService {
             .build()
             .unwrap_or_else(|_| Client::new());
 
-        let cache_dir = PathBuf::from(CACHE_DIR);
+        let cache_dir = crate::services::data_paths::paths().cache_images.clone();
 
         Self { client, cache_dir }
     }

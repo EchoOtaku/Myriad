@@ -1127,6 +1127,15 @@ html.dark .config-section:hover {
   color: #6366f1;
 }
 
+.section-icon.icon-modules {
+  background: linear-gradient(
+    135deg,
+    rgb(20 184 166 / 18%),
+    rgb(20 184 166 / 8%)
+  );
+  color: #14b8a6;
+}
+
 .section-icon.icon-advanced {
   background: linear-gradient(
     135deg,
@@ -1206,6 +1215,14 @@ html.dark .section-icon.icon-permissions {
     135deg,
     rgb(99 102 241 / 25%),
     rgb(99 102 241 / 10%)
+  );
+}
+
+html.dark .section-icon.icon-modules {
+  background: linear-gradient(
+    135deg,
+    rgb(20 184 166 / 25%),
+    rgb(20 184 166 / 10%)
   );
 }
 
@@ -1819,6 +1836,109 @@ html.dark .platform-card:hover {
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
+}
+
+/* 🆕 平台拖拽排序：手柄（默认显示顺序数字，hover 时淡出为拖拽图标）+ 拖拽态 */
+.platform-drag-handle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 28px;
+  margin-left: -4px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary, #9ca3af);
+  cursor: grab;
+  flex-shrink: 0;
+  touch-action: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+/* 数字与图标叠放在同一网格单元，保证 hover 切换时位置完全一致 */
+.platform-order-num,
+.platform-drag-grip {
+  display: block;
+  grid-area: 1 / 1;
+  transition: opacity 0.15s ease;
+}
+
+/* 顺序数字：低调的序号提示，帮助用户理解当前排序 */
+.platform-order-num {
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
+  opacity: 0.4;
+}
+
+/* 拖拽图标：默认叠在数字上方且隐藏，hover 时淡入提示可拖动 */
+.platform-drag-grip {
+  opacity: 0;
+}
+
+.platform-drag-handle:hover .platform-order-num {
+  opacity: 0;
+}
+
+.platform-drag-handle:hover .platform-drag-grip {
+  opacity: 1;
+}
+
+.platform-drag-handle:hover {
+  background: rgb(0 0 0 / 5%);
+  color: var(--text-primary, #111827);
+}
+
+.platform-drag-handle:active {
+  cursor: grabbing;
+}
+
+html.dark .platform-drag-handle {
+  color: rgb(255 255 255 / 45%);
+}
+
+html.dark .platform-drag-handle:hover {
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 90%);
+}
+
+/* 被拖拽的卡片 */
+.platform-card.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+/* 拖拽悬停的目标卡片：顶部高亮指示插入位置 */
+.platform-card.drag-over {
+  box-shadow: inset 0 3px 0 0 var(--color-primary, #6366f1);
+}
+
+/* 卡片入场动画（原 motion.div 迁移到 CSS，保留错位淡入效果） */
+@keyframes platformCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.platform-card-enter {
+  animation: platformCardEnter 0.3s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .platform-card-enter {
+    animation: none;
+  }
 }
 
 .platform-icon-wrapper {

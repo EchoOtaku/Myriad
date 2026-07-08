@@ -20,8 +20,16 @@ export interface PlatformReport {
     subject_type_distribution?: Record<string, number>
     collection_type_distribution?: Record<string, number>
     score_distribution?: Record<string, number>
-    favorite_tags?: string[]
-    top_subjects?: Array<{ title?: string; rate?: number; type?: string }>
+    // 后端下发的是 { 标签: 次数 } 的分布对象，而非字符串数组
+    favorite_tags?: Record<string, number>
+    top_subjects?: Array<{
+      subject_id?: number
+      title?: string
+      rate?: number
+      subject_type?: string
+      collection_type?: string
+      cover?: string
+    }>
     library_items?: Array<{
       title: string
       cover?: string

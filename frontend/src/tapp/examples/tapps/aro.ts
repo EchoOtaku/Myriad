@@ -1688,6 +1688,7 @@ function sanitizeFederationIdentity(identity) {
   if (!clean.handle && clean.acct) clean.handle = '@' + String(clean.acct).replace(/^@/, '');
   if (!clean.handle && clean.username && clean.domain) clean.handle = '@' + clean.username + '@' + clean.domain;
   if (!clean.acct && clean.handle) clean.acct = String(clean.handle).replace(/^@/, '');
+  if (!clean.avatar_url && clean.avatar) clean.avatar_url = clean.avatar;
   if (!clean.actor_url) {
     clean.inbox_url = '';
     clean.outbox_url = '';
@@ -1731,7 +1732,9 @@ function synthesizeFederationIdentityFromUser(user) {
     outbox_url: actorUrl ? actorUrl + '/outbox' : '',
     followers_url: actorUrl ? actorUrl + '/followers' : '',
     following_url: actorUrl ? actorUrl + '/following' : '',
-    profile_url: ''
+    profile_url: '',
+    display_name: user.display_name || user.name || rawUsername,
+    avatar_url: user.avatar_url || user.avatar || ''
   };
   if (actorUrl) state.localActorUrl = actorUrl;
 }
@@ -1765,6 +1768,13 @@ function renderFederationIdentity() {
 
   var profileHandle = $('feed-handle');
   if (profileHandle && handle) profileHandle.textContent = handle;
+  if (identity.display_name || identity.username || identity.avatar_url) {
+    renderFeedProfileUser({
+      display_name: identity.display_name || identity.name || identity.username,
+      username: identity.username,
+      avatar_url: identity.avatar_url
+    });
+  }
 }
 
 function renderFeedProfileUser(user) {

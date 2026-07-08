@@ -24,6 +24,11 @@ import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { fetchJson } from '../../utils/apiHelper'
 import { getCSRFToken } from '../../utils/csrf'
+import {
+  normalizeOAuthIconUrl,
+  preloadOAuthIcons,
+} from '../../utils/oauthIcons'
+import OAuthIconImage from '../OAuthIconImage'
 import { InfoCard, InputItem, SettingSection, SwitchItem } from '../settings'
 import { findPreset, OAUTH_PRESETS } from './oauthPresets'
 
@@ -68,6 +73,23 @@ interface OAuthProviderEntry {
   icon_url?: string | null
 }
 
+function normalizeProviderEntry(
+  provider: OAuthProviderEntry,
+): OAuthProviderEntry {
+  return {
+    ...provider,
+    icon_url: normalizeOAuthIconUrl(provider.icon_url),
+  }
+}
+
+function openPresetPicker(
+  setPicker: React.Dispatch<React.SetStateAction<boolean>>,
+  iconUrls: Array<string | null | undefined>,
+) {
+  preloadOAuthIcons(iconUrls)
+  setPicker(true)
+}
+
 export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
   configFields,
   updateValue: _updateValue,
@@ -107,7 +129,11 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
           credentials: 'include',
         })
         if (cancelled) return
-        setProviders(Array.isArray(data?.providers) ? data.providers : [])
+        const normalizedProviders = Array.isArray(data?.providers)
+          ? data.providers.map(normalizeProviderEntry)
+          : []
+        preloadOAuthIcons(normalizedProviders.map((provider) => provider.icon_url))
+        setProviders(normalizedProviders)
         setAllowRegister(Boolean(data?.allow_local_registration))
       } catch (e: any) {
         if (!cancelled) setError(e?.message || 'Load failed')
@@ -163,7 +189,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
         providers: providers.map((p) => ({
           ...p,
           discovery_url: p.discovery_url || null,
-          icon_url: p.icon_url || null,
+          icon_url: normalizeOAuthIconUrl(p.icon_url),
           scopes: p.scopes.filter(Boolean),
         })),
         allow_local_registration: allowRegister,
@@ -189,7 +215,9 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
         },
       )
       if (Array.isArray(refreshed?.providers)) {
-        setProviders(refreshed.providers)
+        const normalizedProviders = refreshed.providers.map(normalizeProviderEntry)
+        preloadOAuthIcons(normalizedProviders.map((provider) => provider.icon_url))
+        setProviders(normalizedProviders)
         setAllowRegister(Boolean(refreshed?.allow_local_registration))
       }
       setSaved(true)
@@ -208,6 +236,21 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
     )
     return OAUTH_PRESETS.filter((p) => !(p.id === 'github' && hasGithub))
   }, [providers])
+
+  const handleOpenPicker = useCallback(() => {
+    openPresetPicker(
+      setPicker,
+      availablePresets.map((preset) => preset.icon_url),
+    )
+  }, [availablePresets])
+
+  const handleTogglePicker = useCallback(() => {
+    if (picker) {
+      setPicker(false)
+      return
+    }
+    handleOpenPicker()
+  }, [handleOpenPicker, picker])
 
   return (
     <SettingSection
@@ -251,7 +294,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
           <button
             type="button"
             className="btn-base btn-secondary btn-sm"
-            onClick={() => setPicker((v) => !v)}
+            onClick={handleTogglePicker}
           >
             <FaPlus />
             {t.config.oauthAddLoginMethod}
@@ -273,7 +316,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
           <button
             type="button"
             className="oidc-empty oidc-empty-clickable"
-            onClick={() => setPicker(true)}
+            onClick={handleOpenPicker}
           >
             <FaPlus />
             <span>{t.config.oauthProvidersEmpty}</span>
@@ -484,12 +527,18 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
 }
 
 const ProviderIcon: React.FC<{ entry: OAuthProviderEntry }> = ({ entry }) => {
+  const iconSrc = normalizeOAuthIconUrl(entry.icon_url)
   if (entry.kind === 'github' || entry.slug === 'github') {
     return <FaGithub className="oidc-provider-icon-img" />
   }
-  if (entry.icon_url) {
+  if (iconSrc) {
     return (
-      <img src={entry.icon_url} alt="" className="oidc-provider-icon-img" />
+      <OAuthIconImage
+        src={iconSrc}
+        size={20}
+        className="oidc-provider-icon-img"
+        fetchPriority="low"
+      />
     )
   }
   return (
@@ -601,7 +650,12 @@ const PresetPicker: React.FC<PresetPickerProps> = ({
             {p.id === 'github' ? (
               <FaGithub className="oidc-preset-icon" />
             ) : p.icon_url ? (
-              <img src={p.icon_url} alt="" className="oidc-preset-icon" />
+              <OAuthIconImage
+                src={normalizeOAuthIconUrl(p.icon_url) ?? p.icon_url}
+                size={32}
+                className="oidc-preset-icon"
+                fetchPriority="low"
+              />
             ) : (
               <span className="oidc-preset-icon oidc-preset-icon-placeholder">
                 {p.display_name[0]}

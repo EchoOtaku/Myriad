@@ -1251,7 +1251,9 @@ export interface AppContext {
 export interface UserContext {
   id: string
   username: string
+  display_name?: string | null
   avatar: string | null
+  avatar_url?: string | null
   /** 是否为管理员 */
   isAdmin: boolean
   /** 用户角色: "guest" | "user" | "admin" */

@@ -16,6 +16,8 @@ export interface FollowResponse {
 
 export interface FederationIdentity {
   username: string
+  display_name?: string
+  avatar_url?: string
   domain: string
   handle: string
   acct: string

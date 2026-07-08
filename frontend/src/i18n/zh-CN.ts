@@ -231,7 +231,8 @@ export const zhCN: TranslationKeys = {
   config: {
     title: '系统配置',
     platforms: '数据平台',
-    platformsDesc: '配置各个数据源平台的访问凭证',
+    platformsDesc: '配置各个数据源平台的访问凭证，拖动排序决定报告页卡片顺序',
+    dragToReorder: '按住拖动排序',
     ai: 'AI配置',
     aiDesc: '配置AI模型和API密钥',
     basic: '基础配置',
@@ -735,6 +736,23 @@ export const zhCN: TranslationKeys = {
     permissionsSaved: '权限设置已保存',
     permissionsSaveFailed: '保存权限设置失败',
     loadPermissionsFailed: '加载权限设置失败',
+    // 模块设置
+    moduleSettings: '模块设置',
+    moduleSettingsDesc: '管理各个功能模块的显示和行为',
+    libraryModuleTitle: '资料库',
+    libraryModuleDesc: '按分类选择资料库要显示的平台来源',
+    librarySourceVisibleCount: '当前显示 {shown} 项，来源过滤前 {total} 项',
+    librarySourceNoData: '暂无资料库来源数据，请先获取平台数据',
+    librarySourceSaved: '资料库来源设置已保存',
+    librarySourceSaveFailed: '保存资料库来源设置失败',
+    librarySourceLoadFailed: '加载资料库来源设置失败',
+    moduleVisibilityTitle: '页面可见性',
+    moduleVisibilityDesc: '设置资料库、Brew、数据报告和 Tapp 对哪些用户显示',
+    moduleVisibilityAll: '全体',
+    moduleVisibilityAuthenticated: '登录用户',
+    moduleVisibilityAdmin: '管理员用户',
+    moduleVisibilitySaved: '页面可见性设置已保存',
+    moduleVisibilityLoadFailed: '加载页面可见性设置失败',
     // AI 使用限额配置
     aiQuotaTitle: 'AI 使用限额',
     aiQuotaDesc: '配置非管理员用户使用 AI 功能的限制（管理员无限制）',
@@ -854,6 +872,8 @@ export const zhCN: TranslationKeys = {
     anime: '追番',
     tvSeries: '追剧',
     book: '书籍',
+    game: '游戏',
+    music: '音乐',
   },
 
   // 报告
@@ -1128,6 +1148,7 @@ export const zhCN: TranslationKeys = {
     playtime: '游玩时长',
     commits: '提交',
     repos: '仓库',
+    stars: 'Star',
     fans: '粉丝',
     lists: '歌单',
 
@@ -1189,6 +1210,9 @@ export const zhCN: TranslationKeys = {
     useInputToGenerate: '使用上方的输入框生成你的第一份综合报告',
     adminNotGenerated: '管理员还未生成综合报告',
     waitingGenerate: '等待生成',
+    bangumiDone: '看过',
+    bangumiDoing: '在看',
+    bangumiWish: '想看',
   },
 
   // 账户页面
@@ -1266,6 +1290,7 @@ export const zhCN: TranslationKeys = {
     music: '音乐',
     anime: '动漫',
     tvSeries: '剧集',
+    book: '书籍',
     loadCacheFailed: '加载缓存失败',
     saveCacheFailed: '保存缓存失败',
     fetchStatsFailed: '获取资料库统计失败',

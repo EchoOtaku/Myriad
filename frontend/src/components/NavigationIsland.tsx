@@ -7,6 +7,7 @@
  * - 处理一二级导航的切换动画
  */
 
+import type { ModuleVisibilityKey } from '../utils/moduleVisibility'
 import { MyriadStoreIcon } from '@lib/icons'
 import {
   memo,
@@ -20,8 +21,13 @@ import {
 
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useNavigation } from '../contexts/NavigationContext'
+import {
+  canAccessModuleVisibility,
+  useModuleVisibilityPreferences,
+} from '../utils/moduleVisibility'
 
 interface ModeMetrics {
   height?: number
@@ -37,6 +43,8 @@ interface PrimaryNavItem {
   ariaLabel: string
   /** true → active 用前缀匹配（如 /tapp 匹配 /tapp/xxx） */
   matchPrefix?: boolean
+  /** 绑定到模块可见性设置；主页不设置 */
+  moduleKey?: ModuleVisibilityKey
   /**
    * true → 渲染为 <a>（利于 SEO / 中键新开），点击直接 navigate；
    * false → 渲染为 <button>，点击走 handleNavToPage（可触发二级导航自动展开）
@@ -322,6 +330,9 @@ export function NavigationIsland() {
   const location = useLocation()
   const navigate = useNavigate()
   const { t } = useI18n()
+  const { isAuthenticated, isAdmin, hasChecked } = useAuth()
+  const { preferences: moduleVisibilityPreferences } =
+    useModuleVisibilityPreferences()
   const {
     secondaryNav,
     isAnimating,
@@ -345,9 +356,12 @@ export function NavigationIsland() {
   secondaryNavRef.current = secondaryNav
 
   // 当前是否显示二级导航（子路由也匹配，如 /brew/item/xxx 匹配 /brew）
-  const showSecondary =
+  // 强制转为 boolean：secondaryNav 注销时若从 false 变为 undefined，
+  // 会导致进入动画 effect 的 deps 变化而中断进行中的动画（导航项卡在不可见态）
+  const showSecondary = Boolean(
     secondaryNav?.expanded &&
-    location.pathname.startsWith(secondaryNav.routePath)
+      location.pathname.startsWith(secondaryNav.routePath),
+  )
 
   // 动画期间锁定的渲染模式
   const currentRenderMode = isAnimating
@@ -418,7 +432,12 @@ export function NavigationIsland() {
   )
 
   // 路由切换时重置状态
-  useEffect(() => {
+  // 必须用 useLayoutEffect：本 effect 定义在进入动画 effect 之前，
+  // 同为 layout effect 时按定义顺序先执行——先清理残留标记、解锁渲染模式，
+  // 再由进入动画 effect 设置新标记。若用 useEffect（paint 之后执行），
+  // 会反过来摘掉进入动画刚设置的 data-transitioning，导致呼吸动画被中途
+  // 砍断、内容硬切闪屏（移动端系统返回时最明显）
+  useLayoutEffect(() => {
     if (prevPathnameRef.current !== location.pathname) {
       const prevPath = prevPathnameRef.current
       prevPathnameRef.current = location.pathname
@@ -461,15 +480,16 @@ export function NavigationIsland() {
 
       if (stayingInSecondary) {
         // 同组内导航：保持二级模式，不触发过渡动画
-        lastModeRef.current = 'secondary'
         renderModeRef.current = 'secondary'
-        setIsAnimating(false)
       } else {
-        // 离开二级导航组：完整重置为正常模式
-        lastModeRef.current = 'normal'
+        // 离开二级导航组：解锁渲染模式为正常模式。
+        // 注意不改写 lastModeRef —— 它表示"屏幕上当前渲染的模式"，
+        // 由进入动画 effect 对比 lastModeRef 与新模式检测到 secondary → normal
+        // 的切换后，播放完整的进入动画（呼吸 + 交错淡入 + 尺寸过渡），
+        // 而不是内容硬切（系统返回时退出动画丢失/闪屏的根因）
         renderModeRef.current = 'normal'
-        setIsAnimating(false)
       }
+      setIsAnimating(false)
       // 重置自动展开标记，允许新页面自动展开
       autoExpandedRef.current = null
     }
@@ -757,6 +777,12 @@ export function NavigationIsland() {
         island.removeAttribute('data-transitioning')
         island.removeAttribute('data-entering')
       }
+      // 同时清理组标记：进入动画被中断时若残留 enter-initial（opacity: 0），
+      // 导航项会不可见直至 force-visible 兜底动画（约 2s）才恢复；
+      // 移除标记后 .nav-group:not([data-animation]) 的过渡会平滑淡回可见态
+      groups.forEach((group) => {
+        ;(group as HTMLElement).removeAttribute('data-animation')
+      })
     }
     // deps: showSecondary 是模式切换的唯一信号；不包含 secondaryNav 以避免
     // activeId 变化时触发 cleanup（会中断进行中的进入动画）。
@@ -876,47 +902,70 @@ export function NavigationIsland() {
 
   // 一级导航项 - 数据驱动，仅随语言变化重建（active 在渲染时按当前路由计算）
   const primaryNavItems = useMemo<PrimaryNavItem[]>(
-    () => [
-      {
-        id: 'main',
-        path: '/',
-        icon: IconHome,
-        tooltip: t.nav.home,
-        ariaLabel: t.nav.backToHome,
-        asAnchor: true,
-      },
-      {
-        id: 'library',
-        path: '/library',
-        icon: IconLibrary,
-        tooltip: t.nav.library,
-        ariaLabel: t.nav.library,
-      },
-      {
-        id: 'brew',
-        path: '/brew',
-        icon: IconBrew,
-        tooltip: t.nav.brewReading,
-        ariaLabel: t.nav.brewReading,
-      },
-      {
-        id: 'reports',
-        path: '/reports',
-        icon: IconReports,
-        tooltip: t.nav.reports,
-        ariaLabel: t.nav.reports,
-      },
-      {
-        id: 'tapp',
-        path: '/tapp',
-        icon: <MyriadStoreIcon className="w-5 h-5" />,
-        tooltip: t.nav.tappStore,
-        ariaLabel: t.nav.openTappStore,
-        matchPrefix: true,
-        asAnchor: true,
-      },
+    () => {
+      const items: PrimaryNavItem[] = [
+        {
+          id: 'main',
+          path: '/',
+          icon: IconHome,
+          tooltip: t.nav.home,
+          ariaLabel: t.nav.backToHome,
+          asAnchor: true,
+        },
+        {
+          id: 'library',
+          path: '/library',
+          icon: IconLibrary,
+          tooltip: t.nav.library,
+          ariaLabel: t.nav.library,
+          moduleKey: 'library',
+        },
+        {
+          id: 'brew',
+          path: '/brew',
+          icon: IconBrew,
+          tooltip: t.nav.brewReading,
+          ariaLabel: t.nav.brewReading,
+          moduleKey: 'brew',
+        },
+        {
+          id: 'reports',
+          path: '/reports',
+          icon: IconReports,
+          tooltip: t.nav.reports,
+          ariaLabel: t.nav.reports,
+          moduleKey: 'reports',
+        },
+        {
+          id: 'tapp',
+          path: '/tapp',
+          icon: <MyriadStoreIcon className="w-5 h-5" />,
+          tooltip: t.nav.tappStore,
+          ariaLabel: t.nav.openTappStore,
+          matchPrefix: true,
+          asAnchor: true,
+          moduleKey: 'tapp',
+        },
+      ]
+
+      return items.filter((item) => {
+        if (!item.moduleKey || !hasChecked) return true
+        return canAccessModuleVisibility(
+          moduleVisibilityPreferences.modules[item.moduleKey],
+          {
+            isAuthenticated,
+            isAdmin,
+          },
+        )
+      })
+    },
+    [
+      t,
+      hasChecked,
+      isAuthenticated,
+      isAdmin,
+      moduleVisibilityPreferences,
     ],
-    [t],
   )
 
   return (

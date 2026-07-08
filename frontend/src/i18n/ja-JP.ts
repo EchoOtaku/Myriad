@@ -240,7 +240,9 @@ export const jaJP: TranslationKeys = {
   config: {
     title: 'システム設定',
     platforms: 'データプラットフォーム',
-    platformsDesc: '各データソースプラットフォームのアクセス認証情報を設定',
+    platformsDesc:
+      '各データソースプラットフォームのアクセス認証情報を設定。並び順がレポートのカード順になります',
+    dragToReorder: '長押しでドラッグ並べ替え',
     ai: 'AI設定',
     aiDesc: 'AIモデルとAPIキーを設定',
     basic: '基本設定',
@@ -772,6 +774,25 @@ export const jaJP: TranslationKeys = {
     permissionsSaved: '権限設定を保存しました',
     permissionsSaveFailed: '権限設定の保存に失敗しました',
     loadPermissionsFailed: '権限設定の読み込みに失敗しました',
+    // モジュール設定
+    moduleSettings: 'モジュール設定',
+    moduleSettingsDesc: '各機能モジュールの表示と動作を管理',
+    libraryModuleTitle: 'ライブラリ',
+    libraryModuleDesc: 'カテゴリごとに表示するプラットフォームソースを選択',
+    librarySourceVisibleCount: '現在 {shown} 件を表示中（フィルター前 {total} 件）',
+    librarySourceNoData:
+      'ライブラリソースデータがありません。先にプラットフォームデータを取得してください',
+    librarySourceSaved: 'ライブラリソース設定を保存しました',
+    librarySourceSaveFailed: 'ライブラリソース設定の保存に失敗しました',
+    librarySourceLoadFailed: 'ライブラリソース設定の読み込みに失敗しました',
+    moduleVisibilityTitle: 'ページ表示範囲',
+    moduleVisibilityDesc:
+      'ライブラリ、Brew、レポート、Tappページを表示できるユーザーを設定',
+    moduleVisibilityAll: '全員',
+    moduleVisibilityAuthenticated: 'ログインユーザー',
+    moduleVisibilityAdmin: '管理者ユーザー',
+    moduleVisibilitySaved: 'ページ表示範囲設定を保存しました',
+    moduleVisibilityLoadFailed: 'ページ表示範囲設定の読み込みに失敗しました',
     // AI 使用制限設定
     aiQuotaTitle: 'AI 使用制限',
     aiQuotaDesc: '非管理者ユーザーのAI使用制限を設定（管理者は無制限）',
@@ -893,6 +914,8 @@ export const jaJP: TranslationKeys = {
     anime: 'アニメ',
     tvSeries: 'ドラマ',
     book: '書籍',
+    game: 'ゲーム',
+    music: '音楽',
   },
 
   // レポート
@@ -1173,6 +1196,7 @@ export const jaJP: TranslationKeys = {
     playtime: 'プレイ時間',
     commits: 'コミット',
     repos: 'リポジトリ',
+    stars: 'スター',
     fans: 'ファン',
     lists: 'リスト',
 
@@ -1237,6 +1261,9 @@ export const jaJP: TranslationKeys = {
       '上の入力ボックスを使って最初の総合レポートを生成しましょう',
     adminNotGenerated: '管理者がまだ総合レポートを生成していません',
     waitingGenerate: '生成待ち',
+    bangumiDone: '視聴済',
+    bangumiDoing: '視聴中',
+    bangumiWish: '視聴予定',
   },
 
   // アカウントページ
@@ -1319,6 +1346,7 @@ export const jaJP: TranslationKeys = {
     music: '音楽',
     anime: 'アニメ',
     tvSeries: 'ドラマ',
+    book: '書籍',
     loadCacheFailed: 'キャッシュの読み込みに失敗しました',
     saveCacheFailed: 'キャッシュの保存に失敗しました',
     fetchStatsFailed: 'ライブラリ統計の取得に失敗しました',

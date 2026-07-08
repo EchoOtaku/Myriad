@@ -241,6 +241,11 @@ export default defineConfig({
   },
   build: {
     inlineStylesheets: 'auto',
+    // 与下方 trailingSlash: 'never' 配对：产出 dist/setup.html 而非
+    // dist/setup/index.html。否则每个预渲染路由都是目录，后端 tower-http
+    // ServeDir 对无斜杠的目录请求会 307 到 /setup/，与前端"URL 不带斜杠"
+    // 的约定冲突，触发 /setup ↔ /setup/ 无限重定向。file 格式下无目录、无 307。
+    format: 'file',
   },
   // Astro 6: 内置 Fonts API - 自动下载并自托管 Google Fonts，优化性能和隐私
   // 所有字体均通过此 API 自托管，消除对 Google Fonts CDN 的运行时请求

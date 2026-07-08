@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
@@ -56,7 +56,7 @@ pub struct CardContent {
 }
 
 // 持久化缓存（保存到磁盘，重启后依然有效）
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 const CACHE_FILE_PATH: &str = "./cache/reports.json";
@@ -486,6 +486,39 @@ pub async fn refresh_platform_data(
     }
 }
 
+/// 检查抓取回来的平台数据是否为空/缺失，返回给用户的可读提示。
+/// 返回 None 表示数据看起来正常。
+fn platform_data_warning(platform: &str, data: Option<&Value>) -> Option<String> {
+    let Some(data) = data.filter(|v| !v.is_null()) else {
+        return Some(format!(
+            "{} 未返回任何数据。请确认该平台已启用且账号/令牌配置正确。",
+            platform
+        ));
+    };
+
+    // 各平台核心数组为空时给出针对性提示
+    let is_empty_array = |key: &str| {
+        data.get(key)
+            .and_then(|v| v.as_array())
+            .map(|a| a.is_empty())
+            .unwrap_or(true)
+    };
+
+    match platform {
+        "bangumi" => is_empty_array("collections").then(|| {
+            "Bangumi 收藏为空。可能是收藏设为私密、用户名/访问令牌不正确，或该账号确实没有收藏。".to_string()
+        }),
+        "steam" => is_empty_array("games")
+            .then(|| "Steam 未返回游戏数据。请确认 API Key、SteamID 正确且个人资料设为公开。".to_string()),
+        "github" => data
+            .get("user")
+            .filter(|v| !v.is_null())
+            .is_none()
+            .then(|| "GitHub 未返回用户数据。请检查用户名与令牌。".to_string()),
+        _ => None,
+    }
+}
+
 /// 刷新单个平台数据
 pub async fn fetch_single_platform_data(
     State(db): State<DatabaseConnection>,
@@ -503,6 +536,25 @@ pub async fn fetch_single_platform_data(
                 if let Err(e) = save_platform_data_cache(&single_platform_data) {
                     tracing::error!("Failed to save platform cache: {}", e);
                 }
+            }
+
+            // 检测该平台是否真的取到可用数据，空数据不再伪装成成功
+            let warning = platform_data_warning(&req.platform, data.get(&req.platform));
+            if let Some(warning) = warning {
+                tracing::warn!(
+                    "⚠️ {} fetched but data looks empty: {}",
+                    req.platform,
+                    warning
+                );
+                return (
+                    StatusCode::OK,
+                    Json(json!({
+                        "success": false,
+                        "message": warning,
+                        "data": data,
+                        "fetched_at": chrono::Utc::now().to_rfc3339()
+                    })),
+                );
             }
 
             (
@@ -2417,6 +2469,243 @@ pub struct LibraryItem {
     pub metadata: Value,
 }
 
+const LIBRARY_SOURCE_PREFERENCES_KEY: &str = "library_source_preferences";
+const LIBRARY_ITEM_TYPES: [&str; 6] = ["game", "video", "music", "anime", "tv_series", "book"];
+const LIBRARY_PLATFORMS: [&str; 4] = ["Steam", "Bilibili", "Bangumi", "Netease"];
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LibrarySourcePreferences {
+    #[serde(default = "default_library_source_categories")]
+    pub categories: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+struct LibrarySourceOption {
+    source: String,
+    count: usize,
+}
+
+fn default_library_source_categories() -> HashMap<String, Vec<String>> {
+    HashMap::from([
+        (
+            "game".to_string(),
+            vec!["Steam".to_string(), "Bangumi".to_string()],
+        ),
+        (
+            "video".to_string(),
+            vec!["Bilibili".to_string(), "Bangumi".to_string()],
+        ),
+        (
+            "music".to_string(),
+            vec!["Netease".to_string(), "Bangumi".to_string()],
+        ),
+        (
+            "anime".to_string(),
+            vec!["Bangumi".to_string(), "Bilibili".to_string()],
+        ),
+        (
+            "tv_series".to_string(),
+            vec!["Bangumi".to_string(), "Bilibili".to_string()],
+        ),
+        ("book".to_string(), vec!["Bangumi".to_string()]),
+    ])
+}
+
+impl Default for LibrarySourcePreferences {
+    fn default() -> Self {
+        Self {
+            categories: default_library_source_categories(),
+        }
+    }
+}
+
+impl LibrarySourcePreferences {
+    fn normalized(mut self) -> Self {
+        let defaults = default_library_source_categories();
+        let mut normalized = HashMap::new();
+
+        for item_type in LIBRARY_ITEM_TYPES {
+            let sources = self
+                .categories
+                .remove(item_type)
+                .unwrap_or_else(|| defaults.get(item_type).cloned().unwrap_or_default());
+            normalized.insert(item_type.to_string(), normalize_platform_list(sources));
+        }
+
+        self.categories = normalized;
+        self
+    }
+
+    fn enabled_sources_for(&self, item_type: &str) -> Vec<String> {
+        self.categories.get(item_type).cloned().unwrap_or_else(|| {
+            default_library_source_categories()
+                .get(item_type)
+                .cloned()
+                .unwrap_or_default()
+        })
+    }
+
+    fn source_enabled(&self, item_type: &str, platform: &str) -> bool {
+        let platform = canonical_library_platform(platform);
+        self.enabled_sources_for(item_type).contains(&platform)
+    }
+}
+
+fn canonical_library_platform(platform: &str) -> String {
+    let trimmed = platform.trim();
+    let key = platform
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-' && *c != '_')
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+
+    match key.as_str() {
+        "steam" => "Steam".to_string(),
+        "bilibili" | "bili" => "Bilibili".to_string(),
+        "bangumi" | "bgm" => "Bangumi".to_string(),
+        "netease" | "neteasemusic" | "neteasecloudmusic" => "Netease".to_string(),
+        _ => trimmed.to_string(),
+    }
+}
+
+fn normalize_platform_list(sources: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::new();
+
+    for source in sources {
+        let platform = canonical_library_platform(&source);
+        if !platform.is_empty() && seen.insert(platform.clone()) {
+            normalized.push(platform);
+        }
+    }
+
+    normalized
+}
+
+async fn load_library_source_preferences(db: &DatabaseConnection) -> LibrarySourcePreferences {
+    let sql = "SELECT value FROM configurations WHERE key = $1";
+    let result = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            vec![LIBRARY_SOURCE_PREFERENCES_KEY.into()],
+        ))
+        .await;
+
+    match result {
+        Ok(Some(row)) => match row.try_get::<Value>("", "value") {
+            Ok(value) => serde_json::from_value::<LibrarySourcePreferences>(value)
+                .map(LibrarySourcePreferences::normalized)
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Invalid library source preferences, using defaults: {}", e);
+                    LibrarySourcePreferences::default()
+                }),
+            Err(e) => {
+                tracing::warn!("Failed to read library source preferences: {}", e);
+                LibrarySourcePreferences::default()
+            }
+        },
+        Ok(None) => LibrarySourcePreferences::default(),
+        Err(e) => {
+            tracing::warn!("Failed to load library source preferences: {}", e);
+            LibrarySourcePreferences::default()
+        }
+    }
+}
+
+fn collect_library_source_options(
+    items: &[LibraryItem],
+) -> HashMap<String, Vec<LibrarySourceOption>> {
+    let mut counts: HashMap<String, HashMap<String, usize>> = HashMap::new();
+    for item in items {
+        let item_type = item.item_type.clone();
+        let platform = canonical_library_platform(&item.platform);
+        *counts
+            .entry(item_type)
+            .or_default()
+            .entry(platform)
+            .or_insert(0) += 1;
+    }
+
+    let platform_order = |source: &str| {
+        LIBRARY_PLATFORMS
+            .iter()
+            .position(|candidate| candidate == &source)
+            .unwrap_or(usize::MAX)
+    };
+
+    let mut options = HashMap::new();
+    for item_type in LIBRARY_ITEM_TYPES {
+        let mut source_options = counts
+            .remove(item_type)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(source, count)| LibrarySourceOption { source, count })
+            .collect::<Vec<_>>();
+        source_options.sort_by_key(|option| platform_order(&option.source));
+        options.insert(item_type.to_string(), source_options);
+    }
+
+    options
+}
+
+fn apply_library_source_preferences(
+    items: Vec<LibraryItem>,
+    preferences: &LibrarySourcePreferences,
+) -> Vec<LibraryItem> {
+    items
+        .into_iter()
+        .filter(|item| preferences.source_enabled(&item.item_type, &item.platform))
+        .collect()
+}
+
+pub async fn get_library_source_preferences(
+    State(db): State<DatabaseConnection>,
+) -> (StatusCode, Json<Value>) {
+    let preferences = load_library_source_preferences(&db).await;
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "preferences": preferences
+        })),
+    )
+}
+
+pub async fn update_library_source_preferences(
+    State(db): State<DatabaseConnection>,
+    Json(payload): Json<LibrarySourcePreferences>,
+) -> (StatusCode, Json<Value>) {
+    let preferences = payload.normalized();
+    let config_service = crate::services::config_service::ConfigService::new(db);
+
+    match config_service
+        .update_config(
+            LIBRARY_SOURCE_PREFERENCES_KEY,
+            serde_json::to_value(&preferences).unwrap_or_else(|_| json!({})),
+        )
+        .await
+    {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "preferences": preferences
+            })),
+        ),
+        Err(e) => {
+            tracing::error!("Failed to save library source preferences: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": "Failed to save library source preferences"
+                })),
+            )
+        }
+    }
+}
+
 fn bangumi_library_item_type(subject_type: i64, platform: Option<&str>) -> &'static str {
     match subject_type {
         1 => "book",
@@ -2919,14 +3208,26 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
         );
     }
 
-    tracing::info!("✅ Loaded {} library items in total", library_items.len());
+    let preferences = load_library_source_preferences(&db).await;
+    let raw_total = library_items.len();
+    let available_sources = collect_library_source_options(&library_items);
+    let library_items = apply_library_source_preferences(library_items, &preferences);
+
+    tracing::info!(
+        "✅ Loaded {} library items in total ({} raw before source filtering)",
+        library_items.len(),
+        raw_total
+    );
 
     (
         StatusCode::OK,
         Json(json!({
             "success": true,
             "items": library_items,
-            "total": library_items.len()
+            "total": library_items.len(),
+            "raw_total": raw_total,
+            "preferences": preferences,
+            "available_sources": available_sources
         })),
     )
 }

@@ -24,6 +24,15 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useLoopAnimation } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { getLatestReportDeduped } from '../../utils/requestDedup'
+import { RatingBadge } from '../RatingBadge'
+
+// 语言构成条分段类型
+type LangSegment = {
+  name: string
+  pct: number
+  delay: number
+  duration: number
+}
 
 // 🔧 性能优化：预生成热力图网格索引，避免在渲染时调用 Array.from
 const HEATMAP_WEEKS = Array.from({ length: 12 }, (_, i) => i)
@@ -58,6 +67,10 @@ export interface ReportCardWidgetProps {
   config: WidgetConfig
   isEditMode: boolean
   isPreview?: boolean
+  /** 外部直接提供 card_visuals，提供时不再自行请求（用于报告页复用） */
+  data?: any
+  /** 去掉自带 glass 外壳与背景光效，供已有外壳的容器内嵌 */
+  bare?: boolean
 }
 
 // ==================== 工具函数 ====================
@@ -387,6 +400,28 @@ const SteamWidget = memo(({ data, showOverview, onContentChange }: any) => {
 const GithubStatsWidget = memo(({ data }: any) => {
   const { t } = useI18n()
   const langs = useMemo(() => data?.languages || [], [data?.languages])
+  // 语言构成条：模仿 Bangumi 类型占比设计，各色段首尾相接连续填充
+  const langSegments = useMemo<LangSegment[]>(() => {
+    const items = langs
+      .filter((l: any) => l.percentage > 0)
+      .sort((a: any, b: any) => b.percentage - a.percentage)
+      .slice(0, 4)
+    const total = items.reduce((sum: number, l: any) => sum + l.percentage, 0)
+    if (total === 0) return []
+    const fillDuration = 0.9
+    const baseDelay = 0.55
+    let acc = 0
+    return items.map((lang: any) => {
+      const segment: LangSegment = {
+        name: lang.name as string,
+        pct: (lang.percentage / total) * 100,
+        delay: baseDelay + (acc / total) * fillDuration,
+        duration: (lang.percentage / total) * fillDuration,
+      }
+      acc += lang.percentage
+      return segment
+    })
+  }, [langs])
   const level = useMemo(
     () => data?.contribution_level || t.reportCard.beginnerDev,
     [data?.contribution_level, t.reportCard.beginnerDev],
@@ -396,6 +431,7 @@ const GithubStatsWidget = memo(({ data }: any) => {
     [data?.total_contributions],
   )
   const reposCount = useMemo(() => data?.repos_count || 0, [data?.repos_count])
+  const totalStars = useMemo(() => data?.total_stars || 0, [data?.total_stars])
   const contributionCalendar = useMemo(
     () => data?.contribution_calendar,
     [data?.contribution_calendar],
@@ -522,7 +558,8 @@ const GithubStatsWidget = memo(({ data }: any) => {
                 </motion.div>
               </div>
             </div>
-            <div className="flex gap-[2.5px]">
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="flex gap-[2.5px]">
               {HEATMAP_WEEKS.map((week) => (
                 <div key={week} className="flex flex-col gap-[2.5px]">
                   {HEATMAP_DAYS.map((day) => {
@@ -548,42 +585,69 @@ const GithubStatsWidget = memo(({ data }: any) => {
                   })}
                 </div>
               ))}
+              </div>
+              {totalStars > 0 && (
+                <motion.div
+                  className="px-1.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1"
+                  style={{
+                    backgroundColor: `${levelColor}1a`,
+                    color: levelColor,
+                  }}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.3, delay: 0.5 }}
+                >
+                  <LuStar size={9} />
+                  <span>
+                    {totalStars >= 1000
+                      ? `${(totalStars / 1000).toFixed(1)}k`
+                      : totalStars}
+                  </span>
+                </motion.div>
+              )}
             </div>
           </div>
         </div>
-        <div className="space-y-1 pb-1">
-          {langs.slice(0, 2).map((lang: any, i: number) => (
-            <motion.div
-              key={i}
-              className="relative pl-12"
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.5 + i * 0.1 }}
-            >
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[8px] font-bold text-gray-700 dark:text-gray-300">
-                  {lang.name}
-                </span>
-                <span className="text-[7px] font-mono text-gray-500 dark:text-gray-400">
-                  {lang.percentage}%
-                </span>
-              </div>
-              <div className="h-0.75 w-full bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
+        {langSegments.length > 0 && (
+          <div className="absolute bottom-3 right-3 w-[45%] flex flex-col items-end gap-1">
+            <div className="flex flex-wrap justify-end gap-x-2.5 gap-y-0.5">
+              {langSegments.map((segment) => (
+                <motion.span
+                  key={segment.name}
+                  className="flex items-center gap-1 text-[8px] font-bold text-gray-600 dark:text-gray-300"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3, delay: segment.delay }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ backgroundColor: getLanguageColor(segment.name) }}
+                  />
+                  {segment.name}
+                  <span className="font-mono text-gray-500 dark:text-gray-400">
+                    {Math.round(segment.pct)}%
+                  </span>
+                </motion.span>
+              ))}
+            </div>
+            <div className="flex h-1 w-full rounded-full overflow-hidden bg-gray-200/80 dark:bg-white/10 ring-1 ring-black/5 dark:ring-white/10">
+              {langSegments.map((segment) => (
                 <motion.div
-                  className="h-full rounded-full"
-                  style={{ backgroundColor: getLanguageColor(lang.name) }}
+                  key={segment.name}
+                  className="h-full"
+                  style={{ backgroundColor: getLanguageColor(segment.name) }}
                   initial={{ width: 0 }}
-                  animate={{ width: `${lang.percentage}%` }}
+                  animate={{ width: `${segment.pct}%` }}
                   transition={{
-                    duration: 0.8,
-                    delay: 0.6 + i * 0.1,
-                    ease: 'easeOut',
+                    duration: segment.duration,
+                    delay: segment.delay,
+                    ease: 'linear',
                   }}
                 />
-              </div>
-            </motion.div>
-          ))}
-        </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -638,7 +702,7 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
                 <div className="flex items-center gap-2.5 mb-2">
                   {currentItem.stars !== undefined && (
                     <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-700/50">
-                      <LuStar size={10} />
+                      <LuStar size={10} className="text-amber-400" />
                       <span className="text-[10px] font-bold text-gray-100">
                         {currentItem.stars >= 1000
                           ? `${(currentItem.stars / 1000).toFixed(1)}k`
@@ -648,7 +712,7 @@ const GithubWidget = memo(({ data, showOverview, onContentChange }: any) => {
                   )}
                   {currentItem.forks !== undefined && (
                     <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-700/50">
-                      <LuGitFork size={10} />
+                      <LuGitFork size={10} className="text-gray-100" />
                       <span className="text-[10px] font-bold text-gray-100">
                         {currentItem.forks >= 1000
                           ? `${(currentItem.forks / 1000).toFixed(1)}k`
@@ -1093,101 +1157,333 @@ const PLATFORM_CONFIG: Record<
   },
 }
 
+// Bangumi 类型构成条配色（动画/书/游戏/音乐/剧集）
+const BANGUMI_TYPE_COLORS: Record<string, string> = {
+  anime: '#fb7185',
+  book: '#a78bfa',
+  game: '#60a5fa',
+  music: '#34d399',
+  real: '#fbbf24',
+}
+
 const BangumiWidget = memo(({ data, showOverview, onContentChange }: any) => {
   const { t } = useI18n()
-  const libraryItems = data?.library_items || []
+  const libraryItems = useMemo(
+    () => data?.library_items || [],
+    [data?.library_items],
+  )
   const statusCounts =
     data?.status_counts || data?.collection_type_distribution || {}
+  const done = statusCounts.done || 0
+  const doing = statusCounts.doing || 0
+  const wish = statusCounts.wish || 0
+  const subjectTypeLabels: Record<string, string> = {
+    book: t.library.book,
+    anime: t.library.anime,
+    game: t.library.game,
+    music: t.library.music,
+    real: t.library.tvSeries,
+  }
+  const typeDist = useMemo(
+    () =>
+      Object.entries(data?.subject_type_distribution || {})
+        .filter(([, n]) => (n as number) > 0)
+        .sort((a, b) => (b[1] as number) - (a[1] as number)),
+    [data?.subject_type_distribution],
+  )
+  const totalSubjects = useMemo(
+    () => typeDist.reduce((sum, [, n]) => sum + (n as number), 0),
+    [typeDist],
+  )
+  // 构成条：按占比换算时长，各色段首尾相接连续填充
+  const barSegments = useMemo(() => {
+    if (totalSubjects === 0) return []
+    const fillDuration = 0.9
+    const baseDelay = 0.55
+    let acc = 0
+    return typeDist.map(([type, count]) => {
+      const n = count as number
+      const segment = {
+        type,
+        count: n,
+        pct: (n / totalSubjects) * 100,
+        delay: baseDelay + (acc / totalSubjects) * fillDuration,
+        duration: (n / totalSubjects) * fillDuration,
+      }
+      acc += n
+      return segment
+    })
+  }, [typeDist, totalSubjects])
+  // 概览态海报墙素材：有封面的收藏，最多 5 张
+  const wallCovers = useMemo(
+    () => libraryItems.filter((item: any) => item.cover).slice(0, 5),
+    [libraryItems],
+  )
   const [currentIndex, setCurrentIndex] = useState(0)
+  const prevShowOverviewRef = useRef(showOverview)
+
+  // 与网易云卡片一致：从概览切到详情时推进两位
+  useEffect(() => {
+    if (
+      prevShowOverviewRef.current &&
+      !showOverview &&
+      libraryItems.length > 0
+    ) {
+      setCurrentIndex((prev) => (prev + 2) % libraryItems.length)
+    }
+    prevShowOverviewRef.current = showOverview
+  }, [showOverview, libraryItems.length])
 
   useEffect(() => {
     if (showOverview || libraryItems.length === 0) return
     const timer = window.setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % libraryItems.length)
+      setCurrentIndex((prev) => (prev + 2) % libraryItems.length)
     }, 5000)
     return () => window.clearInterval(timer)
   }, [showOverview, libraryItems.length])
 
-  const currentItem = libraryItems[currentIndex]
+  // 一次展示两列封面（学网易云卡片）
+  const currentItems = useMemo(() => {
+    if (libraryItems.length === 0) return []
+    if (libraryItems.length === 1) return [libraryItems[0]]
+    return [
+      libraryItems[currentIndex],
+      libraryItems[(currentIndex + 1) % libraryItems.length],
+    ]
+  }, [libraryItems, currentIndex])
 
   useEffect(() => {
-    if (!showOverview && currentItem) {
+    if (!showOverview && currentItems.length > 0) {
       onContentChange?.({
-        title: currentItem.title,
-        type: currentItem.type || 'book',
+        titles: currentItems.map((item: any) => item.title),
       })
     } else {
       onContentChange?.(null)
     }
-  }, [showOverview, currentItem, onContentChange])
-
-  if (!showOverview && currentItem) {
-    return (
-      <div className="h-full w-full p-3 flex gap-3 items-center">
-        <div className="h-full aspect-[3/4] rounded-xl overflow-hidden bg-rose-100 dark:bg-rose-950/30 shrink-0">
-          {currentItem.cover ? (
-            <img
-              src={currentItem.cover}
-              alt={currentItem.title}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-3xl text-rose-500">
-              <SiBangumi />
-            </div>
-          )}
-        </div>
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-widest text-rose-500 font-bold mb-1">
-            Bangumi
-          </div>
-          <div className="text-base font-bold text-gray-900 dark:text-white line-clamp-3">
-            {currentItem.title}
-          </div>
-          {currentItem.rate ? (
-            <div className="mt-2 text-xs text-gray-500">
-              {currentItem.rate}
-              /10
-            </div>
-          ) : null}
-        </div>
-      </div>
-    )
-  }
+  }, [showOverview, currentItems, onContentChange])
 
   return (
-    <div className="h-full w-full p-4 flex flex-col justify-center">
-      <div className="text-[10px] uppercase tracking-widest text-rose-500 font-bold mb-2">
-        Bangumi
-      </div>
-      <div className="text-lg font-bold text-gray-900 dark:text-white line-clamp-2">
-        {data?.taste_profile || t.widgets.reportBangumi}
-      </div>
-      <div className="grid grid-cols-3 gap-2 mt-4">
-        {[
-          ['Done', statusCounts.done || 0],
-          ['Doing', statusCounts.doing || 0],
-          ['Wish', statusCounts.wish || 0],
-        ].map(([label, count]) => (
-          <div
-            key={label}
-            className="rounded-lg bg-white/70 dark:bg-white/5 p-2"
-          >
-            <div className="text-lg font-bold text-gray-900 dark:text-white">
-              {count}
+    <AnimatePresence mode="wait">
+      {showOverview || currentItems.length === 0 ? (
+        <motion.div
+          key="stats"
+          initial={CONTENT_FADE_INITIAL}
+          animate={CONTENT_FADE_ANIMATE}
+          exit={CONTENT_FADE_EXIT}
+          transition={CONTENT_FADE_TRANSITION}
+          className="h-full w-full"
+        >
+          <div className="relative h-full w-full overflow-hidden">
+            <div className="absolute inset-0 bg-linear-to-br from-rose-50/50 to-transparent dark:from-rose-900/20 dark:to-transparent" />
+            {/* 右侧背景：斜切海报墙，向左渐隐 */}
+            {wallCovers.length > 0 && (
+              <div
+                className="absolute inset-y-0 right-0 w-[58%] opacity-70 dark:opacity-50"
+                style={{
+                  maskImage:
+                    'linear-gradient(to left, rgba(0,0,0,1) 45%, transparent 100%)',
+                  WebkitMaskImage:
+                    'linear-gradient(to left, rgba(0,0,0,1) 45%, transparent 100%)',
+                }}
+              >
+                <div className="absolute -inset-y-4 left-0 right-0 flex items-center justify-end gap-2 pr-4 rotate-6">
+                  {wallCovers.map((item: any, i: number) => (
+                    <motion.div
+                      key={`${item.title}-${i}`}
+                      className="w-14 shrink-0 aspect-[3/4] rounded-md overflow-hidden shadow-md ring-1 ring-black/10 dark:ring-white/10"
+                      initial={{
+                        x: 60,
+                        opacity: 0,
+                        y: i % 2 === 0 ? -12 : 12,
+                      }}
+                      animate={{
+                        x: 0,
+                        opacity: 1,
+                        y: i % 2 === 0 ? -12 : 12,
+                      }}
+                      transition={{
+                        duration: 0.5,
+                        delay: 0.15 + i * 0.08,
+                        ease: 'easeOut',
+                      }}
+                    >
+                      <img
+                        src={item.cover}
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* 前景 */}
+            <div className="relative z-10 h-full flex flex-col p-2.5">
+              {/* 顶部：品味徽章 */}
+              <motion.div
+                className="w-fit max-w-[70%] px-2 py-0.5 rounded-md text-[9px] font-bold flex items-center gap-1 shadow-sm bg-rose-400/15 text-rose-500 border border-rose-400/25 backdrop-blur-sm"
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+              >
+                <span className="text-[7px] shrink-0">●</span>
+                <span className="truncate">
+                  {data?.taste_profile || t.widgets.reportBangumi}
+                </span>
+              </motion.div>
+              {/* 中部：数字区在徽章与左下角 Logo 安全区之间垂直居中（pb 略小于 Logo 区高度，整体略下沉） */}
+              <div className="flex-1 min-h-0 flex items-center pb-9.5">
+                <div className="flex items-end gap-3 pl-1">
+                <motion.div
+                  className="flex flex-col"
+                  initial={{ y: 10, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.4, delay: 0.2 }}
+                >
+                  <motion.span
+                    className="text-[40px] font-black text-gray-800 dark:text-gray-100 leading-none tabular-nums"
+                    initial={{ scale: 0.5 }}
+                    animate={{ scale: 1 }}
+                    transition={{
+                      duration: 0.5,
+                      delay: 0.3,
+                      type: 'spring',
+                      stiffness: 200,
+                    }}
+                  >
+                    {done}
+                  </motion.span>
+                  <span className="text-[8px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold mt-0.5">
+                    {t.reportsPage.bangumiDone}
+                  </span>
+                </motion.div>
+                <div className="flex gap-3">
+                  {[
+                    [doing, t.reportsPage.bangumiDoing] as const,
+                    [wish, t.reportsPage.bangumiWish] as const,
+                  ].map(([count, label], i) => (
+                    <motion.div
+                      key={label}
+                      className="flex flex-col"
+                      initial={{ y: 10, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ duration: 0.4, delay: 0.4 + i * 0.1 }}
+                    >
+                      <span className="text-[22px] font-black text-gray-800 dark:text-gray-200 leading-none tabular-nums">
+                        {count}
+                      </span>
+                      <span className="text-[8px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold mt-0.5">
+                        {label}
+                      </span>
+                    </motion.div>
+                  ))}
+                  </div>
+                </div>
+              </div>
+              {/* 底部右侧：类型构成堆叠条 + 图例，绝对定位钉在右下 */}
+              {barSegments.length > 0 && (
+                <div className="absolute bottom-3 right-3 w-[45%] flex flex-col items-end gap-1">
+                  <div className="flex flex-wrap justify-end gap-x-2.5 gap-y-0.5">
+                    {barSegments.map((segment) => (
+                      <motion.span
+                        key={segment.type}
+                        className="flex items-center gap-1 text-[8px] font-bold text-gray-600 dark:text-gray-300"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.3, delay: segment.delay }}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{
+                            backgroundColor:
+                              BANGUMI_TYPE_COLORS[segment.type] || '#f09199',
+                          }}
+                        />
+                        {subjectTypeLabels[segment.type] || segment.type}
+                        <span className="font-mono text-gray-500 dark:text-gray-400">
+                          {segment.count}
+                        </span>
+                      </motion.span>
+                    ))}
+                  </div>
+                  <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-gray-200/80 dark:bg-white/10 ring-1 ring-black/5 dark:ring-white/10">
+                    {barSegments.map((segment) => (
+                      <motion.div
+                        key={segment.type}
+                        className="h-full"
+                        style={{
+                          backgroundColor:
+                            BANGUMI_TYPE_COLORS[segment.type] || '#f09199',
+                        }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${segment.pct}%` }}
+                        transition={{
+                          duration: segment.duration,
+                          delay: segment.delay,
+                          ease: 'linear',
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="text-[10px] text-gray-500">{label}</div>
           </div>
-        ))}
-      </div>
-    </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          key={`lib-${currentIndex}`}
+          initial={CONTENT_SLIDE_INITIAL}
+          animate={CONTENT_SLIDE_ANIMATE}
+          exit={CONTENT_SLIDE_EXIT}
+          transition={CONTENT_SLIDE_TRANSITION}
+          className="h-full w-full p-1.5"
+        >
+          {/* 两列封面（学网易云卡片） */}
+          <div className="h-full w-full flex gap-1.5">
+            {currentItems.map((item: any, idx: number) => (
+              <div key={idx} className="flex-1 h-full">
+                <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
+                  <div className="absolute inset-0">
+                    {item.cover ? (
+                      <img
+                        src={item.cover}
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl text-rose-400 bg-rose-50 dark:bg-rose-950/30">
+                        <SiBangumi />
+                      </div>
+                    )}
+                  </div>
+                  {/* 资料库同款评分徽章（卡片内统一尺寸） */}
+                  <RatingBadge
+                    rate={item.rate}
+                    className="absolute top-1.5 left-1.5 z-20"
+                    sizeClass="w-7 h-7 text-sm"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 })
 
 // ==================== 主组件 ====================
 export const ReportCardWidget = memo(
-  ({ config, isEditMode: _isEditMode, isPreview }: ReportCardWidgetProps) => {
+  ({
+    config,
+    isEditMode: _isEditMode,
+    isPreview,
+    data: externalData,
+    bare = false,
+  }: ReportCardWidgetProps) => {
     const animLevel = useAnimationLevel()
     const { t } = useI18n()
     const platformId = (config.config?.platformId || 'bilibili') as string
@@ -1239,6 +1535,13 @@ export const ReportCardWidget = memo(
         return
       }
 
+      // 外部直接提供数据（报告页复用）：不再自行请求，跟随 prop 更新
+      if (externalData !== undefined) {
+        setReportData(externalData)
+        setLoading(false)
+        return
+      }
+
       const fetchReport = async () => {
         try {
           // 使用去重机制避免多个 ReportCardWidget 同时请求
@@ -1280,7 +1583,7 @@ export const ReportCardWidget = memo(
         if (timeoutId) clearTimeout(timeoutId)
         document.removeEventListener('visibilitychange', onVisibility)
       }
-    }, [platformId])
+    }, [platformId, isPreview, externalData])
 
     useEffect(() => {
       if (isPreview) return
@@ -1335,12 +1638,16 @@ export const ReportCardWidget = memo(
       PLATFORM_CONFIG[platformId] || PLATFORM_CONFIG.bilibili
 
     return (
-      <div className="relative h-full w-full rounded-xl overflow-hidden glass">
-        {/* 动态背景光效 */}
-        <div
-          className={`absolute -right-10 -top-10 w-40 h-40 rounded-full ${animLevel.level === 'standard' ? 'blur-3xl' : 'blur-xl'} opacity-10 group-hover:opacity-20 transition-opacity`}
-          style={{ background: platformConfig.color }}
-        />
+      <div
+        className={`relative h-full w-full rounded-xl overflow-hidden ${bare ? '' : 'glass'}`}
+      >
+        {/* 动态背景光效（bare 模式下由外层容器负责，避免重复叠加） */}
+        {!bare && (
+          <div
+            className={`absolute -right-10 -top-10 w-40 h-40 rounded-full ${animLevel.level === 'standard' ? 'blur-3xl' : 'blur-xl'} opacity-10 group-hover:opacity-20 transition-opacity`}
+            style={{ background: platformConfig.color }}
+          />
+        )}
 
         {/* 主内容区 */}
         <div className="absolute inset-0 flex flex-col z-10">
@@ -1397,16 +1704,8 @@ export const ReportCardWidget = memo(
             style={{
               background: cardContent ? undefined : platformConfig.bgColor,
               border: `1px solid ${platformConfig.borderColor}`,
-              padding: cardContent
-                ? platformId === 'netease' && cardContent.titles
-                  ? '4px 8px'
-                  : '0 8px'
-                : '0 8px',
-              height: cardContent
-                ? platformId === 'netease' && cardContent.titles
-                  ? 'auto'
-                  : '32px'
-                : '32px',
+              padding: cardContent?.titles ? '4px 8px' : '0 8px',
+              height: cardContent?.titles ? 'auto' : '32px',
             }}
           >
             <div className={`text-base shrink-0 ${platformConfig.textColor}`}>
@@ -1421,7 +1720,7 @@ export const ReportCardWidget = memo(
                   transition={{ duration: 0.3 }}
                   className="flex items-center gap-2 whitespace-nowrap overflow-hidden"
                 >
-                  {platformId === 'netease' && cardContent.titles ? (
+                  {cardContent.titles ? (
                     <div className="flex flex-col gap-0.5">
                       {cardContent.titles.map((title: string, idx: number) => (
                         <div

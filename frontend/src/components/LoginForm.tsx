@@ -5,8 +5,10 @@ import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 import { fetchJson } from '../utils/apiHelper'
 import { sanitizeUsername } from '../utils/inputSanitizer'
+import { normalizeOAuthIconUrl, preloadOAuthIcons } from '../utils/oauthIcons'
 import { RateLimitError } from '../utils/rateLimiter'
 import { setSessionHint } from '../utils/sessionDetection'
+import OAuthIconImage from './OAuthIconImage'
 import { Spinner } from './Spinner'
 import './LoginForm.css'
 
@@ -16,6 +18,15 @@ interface ProviderInfo {
   kind: 'github' | 'oidc'
   display_name: string
   icon?: string | null
+}
+
+function normalizeProviderInfo(provider: ProviderInfo): ProviderInfo {
+  if (provider.icon === 'github') return provider
+
+  return {
+    ...provider,
+    icon: normalizeOAuthIconUrl(provider.icon),
+  }
 }
 
 const LoginForm: FC = () => {
@@ -35,7 +46,11 @@ const LoginForm: FC = () => {
       try {
         const data = await fetchJson(`${API_URL}/api/auth/oauth/providers`)
         if (Array.isArray(data?.providers)) {
-          setProviders(data.providers as ProviderInfo[])
+          const normalizedProviders = (data.providers as ProviderInfo[]).map(
+            normalizeProviderInfo,
+          )
+          preloadOAuthIcons(normalizedProviders.map((provider) => provider.icon))
+          setProviders(normalizedProviders)
         }
       } catch (_err) {
         // 静默：provider 列表不可用时仅显示本地登录
@@ -257,10 +272,15 @@ const LoginForm: FC = () => {
                   }
                 >
                   <span className="oauth-provider-icon">
-                    {p.icon === 'github' ? (
+                    {p.kind === 'github' || p.slug === 'github' || p.icon === 'github' ? (
                       <FaGithub />
                     ) : p.icon ? (
-                      <img src={p.icon} alt="" />
+                      <OAuthIconImage
+                        src={p.icon}
+                        size={20}
+                        loading="eager"
+                        fetchPriority="high"
+                      />
                     ) : (
                       <span className="oauth-provider-icon-fallback">
                         {p.display_name?.[0]?.toUpperCase() || '?'}

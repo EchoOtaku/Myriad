@@ -55,7 +55,11 @@
     background 0.25s ease,
     border-color 0.25s ease,
     box-shadow 0.35s ease;
-  will-change: width, height, padding, border-radius;
+
+  /* 固定为独立合成层，缓解移动端 Chrome 上 backdrop-filter 元素
+   * 在尺寸动画期间因合成层重建导致的闪烁；
+   * 注意 width/height/padding 等布局属性不适用 will-change（非合成属性，纯开销） */
+  transform: translateZ(0);
 }
 
 html.dark .control-bar-trigger {
@@ -64,6 +68,16 @@ html.dark .control-bar-trigger {
   box-shadow:
     0 4px 16px rgb(0 0 0 / 60%),
     0 2px 6px rgb(0 0 0 / 40%);
+}
+
+/* 移动端 Chrome：backdrop-filter 元素在尺寸动画期间会因合成层重建闪烁。
+   展开/收起动画期间（JS 通过 gcp-animation-start/end 事件挂 gcp-animating 类）
+   临时冻结模糊；背景本身 90% 不透明，冻结期间观感差异可忽略。
+   仅触屏设备生效，桌面端模糊保持常开 */
+@media (hover: none) and (pointer: coarse) {
+  .control-bar-trigger.gcp-animating {
+    backdrop-filter: none;
+  }
 }
 
 /* 悬停 - 仅收缩状�? */
@@ -208,14 +222,10 @@ html.dark .control-bar-trigger.expanded {
     opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   opacity: 1;
 
-  /* 性能优化 - 隔离布局计算 */
+  /* 性能优化 - 隔离布局计算
+     注：will-change/translateZ 仅在 .scrolling 滚动期间挂载，
+     避免静止文本常驻合成层 */
   contain: layout style paint;
-
-  /* GPU加速 */
-  transform: translateZ(0);
-
-  /* 提升为合成层，减少重绘 */
-  will-change: transform;
 }
 
 /* 歌词切换时的淡出效果 - 通过 JS 添加此类 */
@@ -230,7 +240,8 @@ html.dark .control-bar-trigger.expanded {
   animation: text-scroll-vertical var(--scroll-duration, 12s) linear forwards;
   animation-delay: var(--scroll-delay, 1.5s); /* 默认延迟1.5秒 */
 
-  /* 强化GPU加速，确保滚动流畅 */
+  /* 强化GPU加速，确保滚动流畅（仅滚动期间提层） */
+  will-change: transform;
   backface-visibility: hidden;
   perspective: 1000px;
 }
@@ -328,12 +339,31 @@ html.dark .control-bar-trigger:not(.expanded):hover .dynamic-text-sub {
   display: flex;
   flex-direction: column;
   gap: 0.875rem;
-  width: 100%;
+
+  /* 宽度固定为展开终值（400px 容器 - 2×1.375rem 内边距），
+     而非跟随容器动画的 100%：morph 期间内容不再逐帧重排，
+     容器只是揭示（clip）已布局好的内容。
+     右缘锚定（align-self: flex-end）— 容器右缘在屏幕上是固定的，
+     内容因此在 morph 期间保持静止 */
+  width: 356px;
+  align-self: flex-end;
+
+  /* 禁止 flex 压缩：无论收缩态（row 主轴=宽）还是展开态（column 主轴=高），
+     容器尺寸动画都不得挤压内容触发重排，超出部分由 overflow: hidden 裁剪 */
+  flex-shrink: 0;
+
+  /* 内容布局与容器尺寸动画彻底隔离 */
+  contain: layout style;
   opacity: 0;
   transform: scale(0.96);
+
+  /* visibility 延迟到淡出结束后再翻转为 hidden：
+   * 收起时 .expanded 与 .visible 同帧移除，若 visibility 立即生效，
+   * opacity 淡出完全不可见（退出动画丢失的根因之一） */
   transition:
     opacity 0.25s ease-in,
-    transform 0.3s ease-in;
+    transform 0.3s ease-in,
+    visibility 0s linear 0.3s;
   pointer-events: none;
   visibility: hidden;
 }
@@ -342,13 +372,22 @@ html.dark .control-bar-trigger:not(.expanded):hover .dynamic-text-sub {
   visibility: visible;
 }
 
+/* 折叠闲置态跳过隐藏面板的样式/布局/绘制。
+   排除 .gcp-animating（收起动画进行中）：保证 0.25s 淡出仍可见，
+   动画结束（gcp-animation-end 摘类）后才整体跳过渲染 */
+.control-bar-trigger:not(.expanded, .gcp-animating) .expanded-panel-content {
+  content-visibility: hidden;
+}
+
 .expanded-panel-content.visible {
   opacity: 1;
   transform: scale(1);
   pointer-events: auto;
+  visibility: visible;
   transition:
     opacity 0.35s ease-out,
-    transform 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+    transform 0.4s cubic-bezier(0.25, 0.1, 0.25, 1),
+    visibility 0s;
 }
 
 /* ==========================================
@@ -1126,13 +1165,23 @@ html.dark .account-action-danger:hover {
   backdrop-filter: blur(8px);
   z-index: 998;
   opacity: 0;
-  transition: opacity 0.3s ease;
+
+  /* visibility 延迟到淡出结束再隐藏：既保住淡出动画，
+     又让收起后的遮罩层（含全屏 backdrop-filter）彻底退出渲染管线 */
+  transition:
+    opacity 0.3s ease,
+    visibility 0s linear 0.3s;
   pointer-events: none;
+  visibility: hidden;
 }
 
 .control-panel-overlay.visible {
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
+  transition:
+    opacity 0.3s ease,
+    visibility 0s;
 }
 
 html.dark .control-panel-overlay {
@@ -1155,6 +1204,13 @@ html.dark .control-panel-overlay {
 
   .control-bar-trigger.expanded {
     width: calc(100vw - 1.5rem);
+  }
+
+  /* 展开终值宽度 = (100vw - 1.5rem) 容器 - 2×1.375rem 内边距。
+     注意 .expanded 的 padding(1.375rem) 特异性高于本媒体块的
+     .control-bar-trigger(1rem)，实际生效的是 1.375rem */
+  .expanded-panel-content {
+    width: calc(100vw - 4.25rem);
   }
 
   .control-items-grid {

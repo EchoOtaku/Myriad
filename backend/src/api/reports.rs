@@ -114,18 +114,31 @@ pub async fn generate_platform_reports(
         StatusCode::UNAUTHORIZED
     })?;
 
-    let platform_reports =
+    let (platform_reports, skipped) =
         generate_platform_reports_internal(&db, user_id, req.platforms.clone()).await;
+
+    // 将跳过原因结构化，便于前端逐平台展示
+    let skipped_json: Vec<Value> = skipped
+        .iter()
+        .map(|(platform, reason)| json!({ "platform": platform, "reason": reason }))
+        .collect();
 
     if platform_reports.is_empty() {
         tracing::warn!(
-            "⚠️ No platform reports generated for platforms: {:?}",
-            req.platforms
+            "⚠️ No platform reports generated for platforms: {:?}, skipped: {:?}",
+            req.platforms,
+            skipped
         );
+        // 有具体原因时透出首个原因，否则回退到通用文案
+        let message = skipped
+            .first()
+            .map(|(platform, reason)| format!("{} 未能生成报告：{}", platform, reason))
+            .unwrap_or_else(|| "未能生成报告。请确保已获取平台数据。".to_string());
         return Ok(Json(json!({
             "success": false,
-            "message": "未能生成报告。请确保已获取平台数据。",
+            "message": message,
             "reports": [],
+            "skipped": skipped_json,
             "token_estimate": 0
         })));
     }
@@ -145,16 +158,20 @@ pub async fn generate_platform_reports(
     Ok(Json(json!({
         "success": true,
         "reports": platform_reports,
+        "skipped": skipped_json,
         "token_estimate": total_tokens,
     })))
 }
 
 /// 内部函数：生成平台报告逻辑（支持并行处理）
+///
+/// 返回 (成功生成的报告, 被跳过的平台及原因)。跳过原因用于回传给前端，
+/// 避免像以前那样只在日志里 warn、用户完全看不到失败在哪一步。
 async fn generate_platform_reports_internal(
     db: &DatabaseConnection,
     user_id: i32,
     platforms: Vec<String>,
-) -> Vec<PlatformReport> {
+) -> (Vec<PlatformReport>, Vec<(String, String)>) {
     use futures::future::join_all;
 
     // 并行处理所有平台
@@ -172,7 +189,10 @@ async fn generate_platform_reports_internal(
                 }
                 Err(e) => {
                     tracing::warn!("⚠️ Skipping {}: {}", platform, e);
-                    return None;
+                    return Err((
+                        platform.clone(),
+                        format!("平台数据未获取或处理失败（请先成功抓取该平台数据）：{}", e),
+                    ));
                 }
             };
 
@@ -249,12 +269,24 @@ async fn generate_platform_reports_internal(
 
                         let repos_count = analysis.recent_repos.len();
 
-                        // 根据真实数据计算贡献等级
-                        let contribution_level = if total_contributions > 1000 && repos_count > 20 {
+                        // ⭐ star 总数是衡量开发者影响力的重要因素
+                        let total_stars: i64 = analysis
+                            .recent_repos
+                            .iter()
+                            .filter_map(|repo| repo.stars)
+                            .sum();
+
+                        // 根据真实数据计算贡献等级（star 数作为独立的晋级通道）
+                        let contribution_level = if (total_contributions > 1000
+                            && repos_count > 20)
+                            || total_stars >= 1000
+                        {
                             "传奇开发者"
-                        } else if total_contributions > 500 && repos_count > 10 {
+                        } else if (total_contributions > 500 && repos_count > 10)
+                            || total_stars >= 200
+                        {
                             "资深工程师"
-                        } else if total_contributions > 200 || repos_count > 5 {
+                        } else if total_contributions > 200 || repos_count > 5 || total_stars >= 50 {
                             "活跃开发者"
                         } else {
                             "新兴贡献者"
@@ -266,6 +298,7 @@ async fn generate_platform_reports_internal(
                             json!(total_contributions),
                         );
                         obj.insert("repos_count".to_string(), json!(repos_count));
+                        obj.insert("total_stars".to_string(), json!(total_stars));
                         obj.insert("contribution_level".to_string(), json!(contribution_level));
                         obj.insert(
                             "contribution_calendar".to_string(),
@@ -273,9 +306,10 @@ async fn generate_platform_reports_internal(
                         );
 
                         tracing::info!(
-                            "✅ GitHub card_visuals: contributions={}, repos={}, level={}",
+                            "✅ GitHub card_visuals: contributions={}, repos={}, stars={}, level={}",
                             total_contributions,
                             repos_count,
+                            total_stars,
                             contribution_level
                         );
                     }
@@ -431,12 +465,19 @@ async fn generate_platform_reports_internal(
                 created_at: chrono::Utc::now().to_rfc3339(),
             };
 
-            Some(report)
+            Ok(report)
         }
     });
 
     let results = join_all(futures).await;
-    let platform_reports: Vec<PlatformReport> = results.into_iter().flatten().collect();
+    let mut platform_reports: Vec<PlatformReport> = Vec::new();
+    let mut skipped: Vec<(String, String)> = Vec::new();
+    for result in results {
+        match result {
+            Ok(report) => platform_reports.push(report),
+            Err(reason) => skipped.push(reason),
+        }
+    }
 
     tracing::info!(
         "🎯 Generated {} platform reports, starting database save...",
@@ -531,7 +572,7 @@ async fn generate_platform_reports_internal(
         "✅ Database save completed for {} reports",
         platform_reports.len()
     );
-    platform_reports
+    (platform_reports, skipped)
 }
 
 /// 生成全平台综合报告（第二层）
@@ -811,8 +852,11 @@ pub async fn generate_all_reports(
     drop(config);
 
     // 2. 生成平台报告 (使用内部函数，避免序列化开销)
-    let platform_reports =
+    let (platform_reports, skipped) =
         generate_platform_reports_internal(&db, user_id, enabled_platforms).await;
+    if !skipped.is_empty() {
+        tracing::warn!("⚠️ generate-all skipped platforms: {:?}", skipped);
+    }
 
     // 3. 生成综合报告
     let comprehensive_req = GenerateComprehensiveReportRequest {
@@ -1163,8 +1207,8 @@ async fn generate_ai_report(
         ),
         "github" => (
             "你是一个极客技术大佬，崇尚开源精神，说话严谨但带有技术幽默。",
-            "用技术大佬的口吻，评估用户的代码贡献、技术栈深度和开源影响力。",
-            "card_visuals必须包含 'contribution_level' (字符串，如'传奇开发者'、'资深工程师'、'活跃开发者'), 'languages' (对象数组 {name, percentage})。注意：不要生成 'total_contributions'、'repos_count' 和 'contribution_calendar' 字段，这些将由系统自动计算。"
+            "用技术大佬的口吻，综合评估用户的代码贡献、技术栈深度和开源影响力。特别强调：仓库获得的 star 数量是衡量开发者水平和开源影响力的重要因素，高 star 项目往往代表更强的技术实力和社区认可度，评价时务必重点参考。",
+            "card_visuals必须包含 'contribution_level' (字符串，如'传奇开发者'、'资深工程师'、'活跃开发者'), 'languages' (对象数组 {name, percentage})。在判定 contribution_level 时，除了贡献数和仓库数量，务必重点权衡仓库获得的 star 总数——star 越高代表开源影响力越强，应对应更高的等级。注意：不要生成 'total_contributions'、'repos_count' 和 'contribution_calendar' 字段，这些将由系统自动计算。"
         ),
         "netease" => (
             "你是一个文艺青年/乐评人，感性细腻，喜欢用歌词或诗意的语言表达。",
@@ -1336,17 +1380,31 @@ fn generate_mock_report(
                 })
                 .unwrap_or(0);
 
-            // 根据真实贡献数和仓库数量确定贡献等级
-            let contribution_level =
-                if total_contributions > 1000 && analysis.recent_repos.len() > 20 {
-                    "传奇开发者"
-                } else if total_contributions > 500 && analysis.recent_repos.len() > 10 {
-                    "资深工程师"
-                } else if total_contributions > 200 || analysis.recent_repos.len() > 5 {
-                    "活跃开发者"
-                } else {
-                    "新兴贡献者"
-                };
+            // ⭐ star 总数是衡量开发者影响力的重要因素
+            let total_stars: i64 = analysis
+                .recent_repos
+                .iter()
+                .filter_map(|repo| repo.stars)
+                .sum();
+
+            // 根据真实贡献数、仓库数量和 star 数确定贡献等级（star 作为独立晋级通道）
+            let contribution_level = if (total_contributions > 1000
+                && analysis.recent_repos.len() > 20)
+                || total_stars >= 1000
+            {
+                "传奇开发者"
+            } else if (total_contributions > 500 && analysis.recent_repos.len() > 10)
+                || total_stars >= 200
+            {
+                "资深工程师"
+            } else if total_contributions > 200
+                || analysis.recent_repos.len() > 5
+                || total_stars >= 50
+            {
+                "活跃开发者"
+            } else {
+                "新兴贡献者"
+            };
 
             // 计算语言百分比
             let total_lang_count: usize = analysis.language_distribution.values().sum();
@@ -1387,6 +1445,7 @@ fn generate_mock_report(
                     "contribution_level": contribution_level,
                     "total_contributions": total_contributions,
                     "repos_count": analysis.recent_repos.len(),
+                    "total_stars": total_stars,
                     "languages": languages,
                     "contribution_calendar": analysis.contribution_calendar
                 }),
