@@ -4294,6 +4294,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 get(api::bangumi::get_bangumi_collections),
             )
             // Steam API routes
+            .route("/api/steam/presence", get(api::steam::get_steam_presence))
             .route("/api/steam/user", get(api::steam::get_steam_user))
             .route("/api/steam/user/info", get(api::steam::get_steam_user_info))
             .route("/api/steam/games", get(api::steam::get_steam_games))

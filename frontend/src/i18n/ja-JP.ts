@@ -793,6 +793,24 @@ export const jaJP: TranslationKeys = {
     moduleVisibilityAdmin: '管理者ユーザー',
     moduleVisibilitySaved: 'ページ表示範囲設定を保存しました',
     moduleVisibilityLoadFailed: 'ページ表示範囲設定の読み込みに失敗しました',
+    // 一言（ひとこと）設定
+    hitokotoTitle: '一言',
+    hitokotoDesc: '一言のソースを選択、または API と他言語のソースをカスタマイズ',
+    hitokotoSourceLabel: '一言ソース',
+    hitokotoSourceHitokotoCn: '中国語 · 一言',
+    hitokotoSourceHitokotoAnime: '中国語 · アニメ台詞',
+    hitokotoSourceQuotableEn: 'English · Quotable',
+    hitokotoSourceMeigenJa: '日本語 · 名言',
+    hitokotoSourceCustom: 'カスタム',
+    hitokotoCustomUrl: 'カスタム API アドレス',
+    hitokotoCustomUrlHint:
+      'JSON を返す必要があります。クロスオリジンはサーバー経由で転送されます',
+    hitokotoCustomUrlPlaceholder: '例：https://v1.hitokoto.cn/?encode=json',
+    hitokotoTextField: '本文フィールド',
+    hitokotoTextFieldHint: 'JSON 内の本文に対応するフィールド名',
+    hitokotoAuthorField: '出典フィールド',
+    hitokotoAuthorFieldHint: 'JSON 内の出典/作者に対応するフィールド名（任意）',
+    hitokotoSaved: '一言設定を保存しました',
     // AI 使用制限設定
     aiQuotaTitle: 'AI 使用制限',
     aiQuotaDesc: '非管理者ユーザーのAI使用制限を設定（管理者は無制限）',
@@ -1116,6 +1134,8 @@ export const jaJP: TranslationKeys = {
     deleteWidget: 'ウィジェットを削除',
     positionConflict: '✖ 位置競合',
     canPlace: '配置可能',
+    prevPage: '前のページ',
+    nextPage: '次のページ',
   },
 
   // ソーシャルネットワークウィジェット
@@ -1458,6 +1478,16 @@ export const jaJP: TranslationKeys = {
     sampleAnime: 'サンプルアニメ',
     samplePlaylist: 'サンプルプレイリスト',
     fetchReportFailed: 'レポートの取得に失敗しました',
+    steamOnline: 'オンライン',
+    steamOffline: 'オフライン',
+    steamBusy: '取り込み中',
+    steamAway: '離席中',
+    steamSnooze: 'スヌーズ',
+    steamLookingToTrade: 'トレード希望',
+    steamLookingToPlay: '一緒にプレイ希望',
+    steamPlaying: 'プレイ中',
+    steamStatusUnknown: '状態不明',
+    steamRecent2w: '直近2週',
   },
 
   // ソーシャルネットワークウィジェット拡張

@@ -814,6 +814,26 @@ export const enUS: TranslationKeys = {
     moduleVisibilityAdmin: 'Admins',
     moduleVisibilitySaved: 'Page visibility settings saved',
     moduleVisibilityLoadFailed: 'Failed to load page visibility settings',
+    // Hitokoto (quote) settings
+    hitokotoTitle: 'Daily Quote',
+    hitokotoDesc:
+      'Choose a quote source, or set a custom API and sources in other languages',
+    hitokotoSourceLabel: 'Quote source',
+    hitokotoSourceHitokotoCn: 'Chinese · Hitokoto',
+    hitokotoSourceHitokotoAnime: 'Chinese · Anime lines',
+    hitokotoSourceQuotableEn: 'English · Quotable',
+    hitokotoSourceMeigenJa: 'Japanese · Meigen',
+    hitokotoSourceCustom: 'Custom',
+    hitokotoCustomUrl: 'Custom API URL',
+    hitokotoCustomUrlHint:
+      'Must return JSON; cross-origin requests are relayed by the server proxy',
+    hitokotoCustomUrlPlaceholder: 'e.g. https://v1.hitokoto.cn/?encode=json',
+    hitokotoTextField: 'Text field',
+    hitokotoTextFieldHint: 'JSON field name holding the quote text',
+    hitokotoAuthorField: 'Author field',
+    hitokotoAuthorFieldHint:
+      'JSON field name holding the source/author (optional)',
+    hitokotoSaved: 'Quote settings saved',
     // AI Quota Configuration
     aiQuotaTitle: 'AI Usage Limits',
     aiQuotaDesc:
@@ -1133,6 +1153,8 @@ export const enUS: TranslationKeys = {
     deleteWidget: 'Delete widget',
     positionConflict: '✖ Position conflict',
     canPlace: 'Can place',
+    prevPage: 'Previous page',
+    nextPage: 'Next page',
   },
 
   // Social Network Widget
@@ -1474,6 +1496,16 @@ export const enUS: TranslationKeys = {
     sampleAnime: 'Sample Anime',
     samplePlaylist: 'Sample Playlist',
     fetchReportFailed: 'Failed to fetch report',
+    steamOnline: 'Online',
+    steamOffline: 'Offline',
+    steamBusy: 'Busy',
+    steamAway: 'Away',
+    steamSnooze: 'Snooze',
+    steamLookingToTrade: 'Looking to trade',
+    steamLookingToPlay: 'Looking to play',
+    steamPlaying: 'Playing',
+    steamStatusUnknown: 'Status unknown',
+    steamRecent2w: 'Recent',
   },
 
   // Social Network Widget Extended

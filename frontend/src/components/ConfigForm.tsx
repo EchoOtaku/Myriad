@@ -729,6 +729,9 @@ const ModernConfigForm: React.FC = () => {
         'visibility',
         '登录用户',
         '管理员',
+        '一言',
+        'hitokoto',
+        'quote',
       ],
     })
 

@@ -1010,20 +1010,43 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
 
 // ===== 所有旧的网易云音乐函数已删除，使用统一服务层 =====
 
+#[derive(Debug, Deserialize)]
+pub struct HitokotoQuery {
+    /// 自定义一言 API 地址（可选），为空时使用默认的 hitokoto.cn
+    url: Option<String>,
+}
+
 /// 代理一言 (Hitokoto) API 请求
-/// GET /api/proxy/hitokoto
+/// GET /api/proxy/hitokoto?url=xxx
 ///
-/// 解决前端直接调用 hitokoto.cn 时的 CORS 问题
-pub async fn proxy_hitokoto() -> Response {
+/// 解决前端直接调用一言 API 时的 CORS 问题；
+/// 支持通过 `url` 参数使用自定义 / 其他语言的一言源。
+pub async fn proxy_hitokoto(Query(params): Query<HitokotoQuery>) -> Response {
+    const DEFAULT_URL: &str = "https://v1.hitokoto.cn/?c=d&c=i&c=k&encode=json";
+
+    // 解析目标地址：自定义地址需通过 SSRF 校验，防止代理请求内网资源
+    let url = match params.url.as_deref().map(str::trim) {
+        Some(custom) if !custom.is_empty() => {
+            if crate::federation::types::is_internal_url(custom) {
+                tracing::warn!("Rejected hitokoto proxy for unsafe url: {}", custom);
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "Invalid or disallowed hitokoto url"})),
+                )
+                    .into_response();
+            }
+            custom.to_string()
+        }
+        _ => DEFAULT_URL.to_string(),
+    };
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .build()
         .unwrap();
 
-    let url = "https://v1.hitokoto.cn/?c=d&c=i&c=k&encode=json";
-
-    match client.get(url).send().await {
+    match client.get(&url).send().await {
         Ok(resp) => {
             if !resp.status().is_success() {
                 tracing::error!("Hitokoto API returned status: {}", resp.status());

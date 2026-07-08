@@ -39,6 +39,18 @@ interface LangSegment {
 
 type ReportCardClickAction = 'report' | 'social'
 
+interface SteamPresence {
+  personastate?: number
+  personastate_label?: string
+  is_online?: boolean
+  is_in_game?: boolean
+  gameextrainfo?: string | null
+  gameid?: string | null
+  avatar?: string | null
+  personaname?: string | null
+  recent_2weeks_minutes?: number | null
+}
+
 // 🔧 性能优化：预生成热力图网格索引，避免在渲染时调用 Array.from
 const HEATMAP_WEEKS = Array.from({ length: 12 }, (_, i) => i)
 const HEATMAP_DAYS = Array.from({ length: 5 }, (_, i) => i)
@@ -147,6 +159,100 @@ async function fetchPlatformUserIds(): Promise<Record<string, string>> {
     return map
   })()
   return userIdsPromise
+}
+
+let cachedSteamPresence: SteamPresence | null = null
+let cachedSteamPresenceAt = 0
+let steamPresencePromise: Promise<SteamPresence | null> | null = null
+async function fetchSteamPresence(
+  maxAgeMs = 45 * 1000,
+): Promise<SteamPresence | null> {
+  if (
+    cachedSteamPresence &&
+    Date.now() - cachedSteamPresenceAt < maxAgeMs
+  ) {
+    return cachedSteamPresence
+  }
+  if (steamPresencePromise) return steamPresencePromise
+
+  steamPresencePromise = (async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/steam/presence`, {
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!res.ok) return null
+      const body = await res.json()
+      if (body?.success && body?.data) {
+        cachedSteamPresence = body.data as SteamPresence
+        cachedSteamPresenceAt = Date.now()
+        return cachedSteamPresence
+      }
+    } catch {
+      // Steam 状态属于增强信息，失败时保留报告卡片原内容。
+    } finally {
+      steamPresencePromise = null
+    }
+    return null
+  })()
+
+  return steamPresencePromise
+}
+
+function getSteamPresenceFromData(data: any): SteamPresence | null {
+  if (!data) return null
+  if (
+    data.personastate === undefined &&
+    data.persona_state === undefined &&
+    data.personastate_label === undefined &&
+    data.online_status === undefined &&
+    data.gameextrainfo === undefined &&
+    data.avatar === undefined
+  ) {
+    return null
+  }
+
+  const personastate = data.personastate ?? data.persona_state
+  const state =
+    typeof personastate === 'number'
+      ? personastate
+      : Number.isFinite(Number(personastate))
+        ? Number(personastate)
+        : undefined
+  const gameextrainfo =
+    typeof data.gameextrainfo === 'string' ? data.gameextrainfo : null
+  const gameid =
+    typeof data.gameid === 'string' || typeof data.gameid === 'number'
+      ? String(data.gameid)
+      : null
+
+  return {
+    personastate: state,
+    personastate_label:
+      typeof data.personastate_label === 'string'
+        ? data.personastate_label
+        : typeof data.online_status === 'string'
+          ? data.online_status
+          : undefined,
+    is_online:
+      typeof data.is_online === 'boolean'
+        ? data.is_online
+        : state !== undefined
+          ? state !== 0
+          : undefined,
+    is_in_game:
+      typeof data.is_in_game === 'boolean'
+        ? data.is_in_game
+        : Boolean(gameextrainfo || gameid),
+    gameextrainfo,
+    gameid,
+    avatar: typeof data.avatar === 'string' ? data.avatar : null,
+    personaname:
+      typeof data.personaname === 'string' ? data.personaname : null,
+    recent_2weeks_minutes:
+      typeof data.recent_2weeks_minutes === 'number'
+        ? data.recent_2weeks_minutes
+        : null,
+  }
 }
 
 interface ReportCardSettingsModalState {
@@ -527,8 +633,61 @@ const BilibiliWidget = memo(
 )
 
 // ==================== Steam组件（完整版）====================
+function getSteamPresenceText(
+  presence: SteamPresence | null,
+  t: ReturnType<typeof useI18n>['t'],
+): string | null {
+  if (!presence) return null
+  if (presence.is_in_game && presence.gameextrainfo) {
+    return `${t.reportCardWidget.steamPlaying}: ${presence.gameextrainfo}`
+  }
+
+  switch (presence.personastate_label) {
+    case 'online':
+      return t.reportCardWidget.steamOnline
+    case 'busy':
+      return t.reportCardWidget.steamBusy
+    case 'away':
+      return t.reportCardWidget.steamAway
+    case 'snooze':
+      return t.reportCardWidget.steamSnooze
+    case 'looking_to_trade':
+      return t.reportCardWidget.steamLookingToTrade
+    case 'looking_to_play':
+      return t.reportCardWidget.steamLookingToPlay
+    case 'offline':
+      return t.reportCardWidget.steamOffline
+    default:
+      if (presence.is_online === true) return t.reportCardWidget.steamOnline
+      if (presence.is_online === false) return t.reportCardWidget.steamOffline
+      return t.reportCardWidget.steamStatusUnknown
+  }
+}
+
+function getSteamPresenceColor(presence: SteamPresence | null): string {
+  if (!presence) return '#9ca3af'
+  if (presence.is_in_game) return '#3b82f6'
+
+  switch (presence.personastate_label) {
+    case 'online':
+      return '#22c55e'
+    case 'busy':
+      return '#ef4444'
+    case 'away':
+    case 'snooze':
+      return '#f59e0b'
+    case 'looking_to_trade':
+    case 'looking_to_play':
+      return '#8b5cf6'
+    default:
+      return presence.is_online ? '#22c55e' : '#9ca3af'
+  }
+}
+
 const SteamStatsWidget = memo(({ data }: any) => {
   const { t } = useI18n()
+  const fallbackPresence = useMemo(() => getSteamPresenceFromData(data), [data])
+  const [livePresence, setLivePresence] = useState<SteamPresence | null>(null)
   const score = useMemo(() => data?.hardcore_score || 0, [data])
   const type = useMemo(
     () => data?.player_type || t.reportCard.casualPlayer,
@@ -539,6 +698,53 @@ const SteamStatsWidget = memo(({ data }: any) => {
     const hours = data?.total_playtime || 0
     return hours >= 1000 ? `${(hours / 1000).toFixed(1)}k` : hours.toString()
   }, [data])
+  const presence = livePresence ?? fallbackPresence
+  const presenceText = useMemo(
+    () => getSteamPresenceText(presence, t),
+    [presence, t],
+  )
+  const presenceColor = useMemo(
+    () => getSteamPresenceColor(presence),
+    [presence],
+  )
+  const avatarUrl = useMemo(() => {
+    const raw = presence?.avatar?.trim()
+    if (!raw) return null
+    // Steam 同一 hash 有 无后缀(32) / _medium(64) / _full(184) 三种尺寸，
+    // 统一升到 _full，避免拿到小图放大发糊
+    return raw.replace(/(_full|_medium)?\.(jpg|png)(\?.*)?$/i, '_full.$2$3')
+  }, [presence])
+  const isLive = Boolean(presence?.is_online || presence?.is_in_game)
+  const nowPlaying =
+    presence?.is_in_game && presence?.gameextrainfo
+      ? presence.gameextrainfo
+      : null
+  // 近两周游玩时长（小时），无数据时不显示该项
+  const recent2wHours = useMemo(() => {
+    const minutes = presence?.recent_2weeks_minutes
+    if (typeof minutes !== 'number' || minutes <= 0) return null
+    const hours = minutes / 60
+    return hours >= 10 ? Math.round(hours).toString() : hours.toFixed(1)
+  }, [presence])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const refreshPresence = async () => {
+      const nextPresence = await fetchSteamPresence()
+      if (!cancelled && nextPresence) {
+        setLivePresence(nextPresence)
+      }
+    }
+
+    refreshPresence()
+    const intervalId = window.setInterval(refreshPresence, 60 * 1000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [])
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -546,44 +752,85 @@ const SteamStatsWidget = memo(({ data }: any) => {
         <div className="absolute inset-0 bg-linear-to-br from-gray-100/50 to-transparent dark:from-white/2 dark:to-transparent clip-diagonal" />
       </div>
       <motion.div
-        className="absolute top-2 left-4 z-10"
+        className="absolute top-3 left-4 right-[36%] z-10 flex items-center gap-2.5"
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.1 }}
       >
-        <div className="flex items-start gap-1">
-          <motion.span
-            className="text-5xl font-black text-gray-800 dark:text-gray-100 leading-none"
-            initial={{ scale: 0.5 }}
-            animate={{ scale: 1 }}
+        {/* 头像（左侧）+ 右下角状态点 */}
+        {avatarUrl && (
+          <motion.div
+            className="relative shrink-0"
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
             transition={{
               duration: 0.5,
-              delay: 0.3,
+              delay: 0.25,
               type: 'spring',
               stiffness: 200,
             }}
+            title={presenceText ?? undefined}
           >
-            {score}
-          </motion.span>
-          <span className="text-xs text-gray-500 dark:text-gray-400 font-bold mt-1">
-            /100
-          </span>
-        </div>
-        <motion.div
-          className="mt-2"
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.5 }}
-        >
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800/90 dark:bg-white/90 backdrop-blur-sm">
-            <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-black/60 animate-pulse" />
-            <span className="text-[10px] font-bold text-gray-100 dark:text-black uppercase tracking-wide">
-              {type}
+            <img
+              src={avatarUrl}
+              alt={presence?.personaname || 'Steam'}
+              className="h-12 w-12 rounded-xl object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
+              loading="lazy"
+              decoding="async"
+            />
+            {/* 状态点：头像右下角 */}
+            <span
+              className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-[#1b2838] ${
+                isLive ? 'animate-pulse' : ''
+              }`}
+              style={{ backgroundColor: presenceColor }}
+            />
+          </motion.div>
+        )}
+        {/* 分数 + 徽章（两行）*/}
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex items-start gap-1">
+            <motion.span
+              className="text-4xl font-black text-gray-800 dark:text-gray-100 leading-none"
+              initial={{ scale: 0.5 }}
+              animate={{ scale: 1 }}
+              transition={{
+                duration: 0.5,
+                delay: 0.3,
+                type: 'spring',
+                stiffness: 200,
+              }}
+            >
+              {score}
+            </motion.span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mt-0.5">
+              /100
             </span>
           </div>
-        </motion.div>
+          <motion.div
+            className="flex flex-col items-start gap-1"
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.5 }}
+          >
+            <div className="inline-flex max-w-full items-center gap-1 px-2 py-0.5 rounded-md bg-gray-800/90 dark:bg-white/90 backdrop-blur-sm">
+              <div className="w-1 h-1 shrink-0 rounded-full bg-gray-300 dark:bg-black/60 animate-pulse" />
+              <span className="truncate text-[9px] font-bold text-gray-100 dark:text-black uppercase tracking-wide">
+                {type}
+              </span>
+            </div>
+            {nowPlaying && (
+              <div className="inline-flex max-w-full items-center gap-1 rounded-md bg-blue-500/15 px-1.5 py-0.5 backdrop-blur-sm">
+                <FaSteam className="h-2 w-2 shrink-0 text-blue-500" />
+                <span className="truncate text-[8px] font-bold text-blue-600 dark:text-blue-300">
+                  {nowPlaying}
+                </span>
+              </div>
+            )}
+          </motion.div>
+        </div>
       </motion.div>
-      <div className="absolute right-0 top-0 bottom-0 w-1/3 flex flex-col justify-center items-end pr-5 gap-4">
+      <div className="absolute right-0 top-0 bottom-0 w-1/3 flex flex-col justify-center items-end pr-5 gap-3">
         <motion.div
           className="flex flex-col items-end"
           initial={{ x: 30, opacity: 0 }}
@@ -593,7 +840,7 @@ const SteamStatsWidget = memo(({ data }: any) => {
           <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">
             {t.reportsPage.library}
           </span>
-          <span className="text-3xl font-black text-gray-800 dark:text-gray-200 leading-none">
+          <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">
             {gamesCount}
           </span>
         </motion.div>
@@ -607,10 +854,28 @@ const SteamStatsWidget = memo(({ data }: any) => {
             {t.reportsPage.playtime}
           </span>
           <div className="flex items-baseline gap-0.5">
-            <span className="text-3xl font-black text-gray-800 dark:text-gray-200 leading-none">
+            <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">
               {totalPlaytime}
             </span>
-            <span className="text-[10px] text-gray-600 dark:text-gray-400 font-bold mb-1">
+            <span className="text-[10px] text-gray-600 dark:text-gray-400 font-bold mb-0.5">
+              H
+            </span>
+          </div>
+        </motion.div>
+        <motion.div
+          className="flex flex-col items-end"
+          initial={{ x: 30, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.8 }}
+        >
+          <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">
+            {t.reportCardWidget.steamRecent2w}
+          </span>
+          <div className="flex items-baseline gap-0.5">
+            <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">
+              {recent2wHours ?? '0'}
+            </span>
+            <span className="text-[10px] text-gray-600 dark:text-gray-400 font-bold mb-0.5">
               H
             </span>
           </div>

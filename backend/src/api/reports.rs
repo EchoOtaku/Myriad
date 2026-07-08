@@ -847,7 +847,8 @@ pub async fn generate_all_reports(
         ),
     ]
     .into_iter()
-    .filter_map(|(platform, enabled)| enabled.then(|| platform.to_string()))
+    .filter(|&(_, enabled)| enabled)
+    .map(|(platform, _)| platform.to_string())
     .collect::<Vec<_>>();
     drop(config);
 

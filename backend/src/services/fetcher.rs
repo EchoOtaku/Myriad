@@ -60,6 +60,12 @@ pub struct SteamUserInfo {
     pub avatar: String,
     pub avatarfull: String,
     pub timecreated: Option<i64>,
+    pub communityvisibilitystate: Option<i32>,
+    pub personastate: i32,
+    pub personastate_label: String,
+    pub lastlogoff: Option<i64>,
+    pub gameid: Option<String>,
+    pub gameextrainfo: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -84,6 +90,28 @@ pub struct SteamWishlistItem {
 
 const BANGUMI_API_BASE: &str = "https://api.bgm.tv";
 const DEFAULT_BANGUMI_USER_AGENT: &str = "haru/Myriad";
+
+fn steam_persona_state_label(state: i32) -> &'static str {
+    match state {
+        0 => "offline",
+        1 => "online",
+        2 => "busy",
+        3 => "away",
+        4 => "snooze",
+        5 => "looking_to_trade",
+        6 => "looking_to_play",
+        _ => "unknown",
+    }
+}
+
+fn optional_json_string(value: &serde_json::Value) -> Option<String> {
+    value
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| value.as_i64().map(|value| value.to_string()))
+}
 
 impl PlatformFetcher {
     pub async fn new() -> Self {
@@ -409,6 +437,17 @@ impl PlatformFetcher {
             avatar: player["avatar"].as_str().unwrap_or("").to_string(),
             avatarfull: player["avatarfull"].as_str().unwrap_or("").to_string(),
             timecreated: player["timecreated"].as_i64(),
+            communityvisibilitystate: player["communityvisibilitystate"]
+                .as_i64()
+                .map(|value| value as i32),
+            personastate: player["personastate"].as_i64().unwrap_or(0) as i32,
+            personastate_label: steam_persona_state_label(
+                player["personastate"].as_i64().unwrap_or(0) as i32,
+            )
+            .to_string(),
+            lastlogoff: player["lastlogoff"].as_i64(),
+            gameid: optional_json_string(&player["gameid"]),
+            gameextrainfo: optional_json_string(&player["gameextrainfo"]),
         })
     }
 
@@ -440,6 +479,33 @@ impl PlatformFetcher {
             .collect();
 
         Ok(game_list)
+    }
+
+    /// 获取近两周游玩总时长（分钟）
+    /// 使用 GetRecentlyPlayedGames，仅返回最近游玩的游戏，负载远小于整库
+    pub async fn fetch_steam_recent_playtime(
+        &self,
+        api_key: &str,
+        steam_id: &str,
+    ) -> Result<i32> {
+        let url = format!(
+            "https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/?key={}&steamid={}",
+            api_key, steam_id
+        );
+
+        let response: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+
+        let total_minutes = response["response"]["games"]
+            .as_array()
+            .map(|games| {
+                games
+                    .iter()
+                    .map(|game| game["playtime_2weeks"].as_i64().unwrap_or(0) as i32)
+                    .sum()
+            })
+            .unwrap_or(0);
+
+        Ok(total_minutes)
     }
 
     /// 获取 Steam 愿望单

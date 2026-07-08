@@ -1,12 +1,13 @@
 // Steam API routes
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 
-use crate::services::fetcher::PlatformFetcher;
+use crate::services::fetcher::{PlatformFetcher, SteamUserInfo};
 
 #[derive(Debug, Deserialize)]
 pub struct SteamQuery {
@@ -28,6 +29,168 @@ pub struct ApiResponse<T> {
     pub success: bool,
     pub data: Option<T>,
     pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SteamPresenceResponse {
+    pub steamid: String,
+    pub personaname: String,
+    pub avatar: String,
+    pub profileurl: String,
+    pub personastate: i32,
+    pub personastate_label: String,
+    pub is_online: bool,
+    pub is_in_game: bool,
+    pub gameid: Option<String>,
+    pub gameextrainfo: Option<String>,
+    pub lastlogoff: Option<i64>,
+    /// 近两周游玩总时长（分钟）；受频率限制，可能为 None
+    pub recent_2weeks_minutes: Option<i32>,
+    pub checked_at: String,
+}
+
+impl From<SteamUserInfo> for SteamPresenceResponse {
+    fn from(info: SteamUserInfo) -> Self {
+        let is_in_game = info.gameid.is_some() || info.gameextrainfo.is_some();
+        Self {
+            steamid: info.steamid,
+            personaname: info.personaname,
+            // 用高清头像（184px），前端头像框放大后不糊
+            avatar: if info.avatarfull.trim().is_empty() {
+                info.avatar
+            } else {
+                info.avatarfull
+            },
+            profileurl: info.profileurl,
+            personastate: info.personastate,
+            personastate_label: info.personastate_label,
+            is_online: info.personastate != 0 || is_in_game,
+            is_in_game,
+            gameid: info.gameid,
+            gameextrainfo: info.gameextrainfo,
+            lastlogoff: info.lastlogoff,
+            // 由 handler 按频率限制单独填充
+            recent_2weeks_minutes: None,
+            checked_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+/// 近两周时长的服务端缓存：GetRecentlyPlayedGames 是额外一次 Steam 调用，
+/// 用较长 TTL 限流，避免每次刷新在线状态都打一遍。
+static RECENT_PLAYTIME_CACHE: std::sync::Mutex<Option<RecentPlaytimeCache>> =
+    std::sync::Mutex::new(None);
+const RECENT_PLAYTIME_TTL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+struct RecentPlaytimeCache {
+    steam_id: String,
+    minutes: i32,
+    fetched_at: std::time::Instant,
+}
+
+/// 读缓存：命中且同一 steam_id 且未过期才返回
+fn cached_recent_playtime(steam_id: &str) -> Option<i32> {
+    let guard = RECENT_PLAYTIME_CACHE.lock().ok()?;
+    let entry = guard.as_ref()?;
+    if entry.steam_id == steam_id && entry.fetched_at.elapsed() < RECENT_PLAYTIME_TTL {
+        Some(entry.minutes)
+    } else {
+        None
+    }
+}
+
+fn store_recent_playtime(steam_id: &str, minutes: i32) {
+    if let Ok(mut guard) = RECENT_PLAYTIME_CACHE.lock() {
+        *guard = Some(RecentPlaytimeCache {
+            steam_id: steam_id.to_string(),
+            minutes,
+            fetched_at: std::time::Instant::now(),
+        });
+    }
+}
+
+fn non_empty(value: Option<String>, env_key: &str) -> String {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| std::env::var(env_key).unwrap_or_default())
+}
+
+/// 获取当前配置对应的 Steam 在线状态
+pub async fn get_steam_presence(
+    State(db): State<DatabaseConnection>,
+) -> Result<Json<ApiResponse<SteamPresenceResponse>>, StatusCode> {
+    let config_service = crate::services::config_service::ConfigService::new(db);
+    let config = config_service.load_config().await.ok();
+
+    if config
+        .as_ref()
+        .and_then(|config| config.steam_enabled)
+        .is_some_and(|enabled| !enabled)
+    {
+        return Ok(Json(ApiResponse {
+            success: false,
+            data: None,
+            message: "Steam 平台未启用".to_string(),
+        }));
+    }
+
+    let api_key = non_empty(
+        config
+            .as_ref()
+            .and_then(|config| config.steam_api_key.clone()),
+        "STEAM_API_KEY",
+    );
+    let steam_id = non_empty(
+        config.as_ref().and_then(|config| config.steam_id.clone()),
+        "STEAM_ID",
+    );
+
+    if api_key.is_empty() || steam_id.is_empty() {
+        return Ok(Json(ApiResponse {
+            success: false,
+            data: None,
+            message: "Steam API Key 或 Steam ID 未配置".to_string(),
+        }));
+    }
+
+    let fetcher = PlatformFetcher::new().await;
+    match fetcher.fetch_steam_user(&api_key, &steam_id).await {
+        Ok(info) => {
+            let mut presence: SteamPresenceResponse = info.into();
+
+            // 近两周时长：命中缓存直接用，否则受 TTL 限流后再打一次 Steam
+            presence.recent_2weeks_minutes = match cached_recent_playtime(&steam_id) {
+                Some(minutes) => Some(minutes),
+                None => match fetcher
+                    .fetch_steam_recent_playtime(&api_key, &steam_id)
+                    .await
+                {
+                    Ok(minutes) => {
+                        store_recent_playtime(&steam_id, minutes);
+                        Some(minutes)
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to fetch Steam recent playtime for {}: {}", steam_id, e);
+                        None
+                    }
+                },
+            };
+
+            Ok(Json(ApiResponse {
+                success: true,
+                data: Some(presence),
+                message: "获取成功".to_string(),
+            }))
+        }
+        Err(e) => {
+            tracing::warn!("Failed to fetch Steam presence for {}: {}", steam_id, e);
+            Ok(Json(ApiResponse {
+                success: false,
+                data: None,
+                message: format!("获取 Steam 在线状态失败: {}", e),
+            }))
+        }
+    }
 }
 
 /// 获取 Steam 用户完整信息

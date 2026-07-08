@@ -1,5 +1,6 @@
 import type { WidgetConfig, WidgetSize, WidgetType } from '../WidgetGrid'
 
+import { FaChevronLeft, FaChevronRight } from '@lib/icons'
 import React, {
   memo,
   useCallback,
@@ -566,10 +567,44 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
               </div>
             </div>
 
+            {/* 翻页指示器 - 多页或编辑模式下显示，可点击跳页 / 翻页 */}
+            {(maxPage > 0 || isEditMode) && (
+              <div
+                className="relative z-30 flex items-center justify-between px-1 pt-1.5 pb-0.5 select-none"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setCurrentPage((p) => Math.max(0, p - 1))
+                  }}
+                  disabled={currentPage <= 0}
+                  aria-label={t.widgetGrid.prevPage}
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-gray-500 dark:text-white/60 transition-all hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed"
+                >
+                  <FaChevronLeft size={9} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setCurrentPage((p) => Math.min(maxPage, p + 1))
+                  }}
+                  disabled={currentPage >= maxPage}
+                  aria-label={t.widgetGrid.nextPage}
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-gray-500 dark:text-white/60 transition-all hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed"
+                >
+                  <FaChevronRight size={9} />
+                </button>
+              </div>
+            )}
+
             {/* 底部拉伸条 - 仅在编辑模式下显示 */}
             {isEditMode && (
               <div
-                className="absolute bottom-0 left-0 right-0 h-4 cursor-ns-resize z-20 flex items-end justify-center opacity-0 group-hover/container:opacity-100 transition-opacity hover:opacity-100!"
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-4 cursor-ns-resize z-20 flex items-end justify-center opacity-0 group-hover/container:opacity-100 transition-opacity hover:opacity-100!"
                 onMouseDown={handleResizeStart}
                 onClick={(e) => {
                   e.stopPropagation()

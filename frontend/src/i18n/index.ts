@@ -665,6 +665,22 @@ export interface TranslationKeys {
     moduleVisibilityAdmin: string
     moduleVisibilitySaved: string
     moduleVisibilityLoadFailed: string
+    hitokotoTitle: string
+    hitokotoDesc: string
+    hitokotoSourceLabel: string
+    hitokotoSourceHitokotoCn: string
+    hitokotoSourceHitokotoAnime: string
+    hitokotoSourceQuotableEn: string
+    hitokotoSourceMeigenJa: string
+    hitokotoSourceCustom: string
+    hitokotoCustomUrl: string
+    hitokotoCustomUrlHint: string
+    hitokotoCustomUrlPlaceholder: string
+    hitokotoTextField: string
+    hitokotoTextFieldHint: string
+    hitokotoAuthorField: string
+    hitokotoAuthorFieldHint: string
+    hitokotoSaved: string
     permissionsTitle: string
     tappPermissionsInfoTitle: string
     tappPermissionsInfo: string
@@ -1018,6 +1034,8 @@ export interface TranslationKeys {
     deleteWidget: string
     positionConflict: string
     canPlace: string
+    prevPage: string
+    nextPage: string
   }
 
   // 社交网络小组件
@@ -1350,6 +1368,16 @@ export interface TranslationKeys {
     sampleAnime: string
     samplePlaylist: string
     fetchReportFailed: string
+    steamOnline: string
+    steamOffline: string
+    steamBusy: string
+    steamAway: string
+    steamSnooze: string
+    steamLookingToTrade: string
+    steamLookingToPlay: string
+    steamPlaying: string
+    steamStatusUnknown: string
+    steamRecent2w: string
   }
 
   // 社交网络小组件扩展

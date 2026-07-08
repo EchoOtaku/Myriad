@@ -1072,6 +1072,12 @@ fn clean_platform_data(data: &mut Value) {
         let avatarfull = user.get("avatarfull").cloned();
         let profileurl = user.get("profileurl").cloned();
         let timecreated = user.get("timecreated").cloned();
+        let communityvisibilitystate = user.get("communityvisibilitystate").cloned();
+        let personastate = user.get("personastate").cloned();
+        let personastate_label = user.get("personastate_label").cloned();
+        let lastlogoff = user.get("lastlogoff").cloned();
+        let gameid = user.get("gameid").cloned();
+        let gameextrainfo = user.get("gameextrainfo").cloned();
 
         user.clear();
 
@@ -1092,6 +1098,24 @@ fn clean_platform_data(data: &mut Value) {
         }
         if let Some(v) = timecreated {
             user.insert("timecreated".to_string(), v);
+        }
+        if let Some(v) = communityvisibilitystate {
+            user.insert("communityvisibilitystate".to_string(), v);
+        }
+        if let Some(v) = personastate {
+            user.insert("personastate".to_string(), v);
+        }
+        if let Some(v) = personastate_label {
+            user.insert("personastate_label".to_string(), v);
+        }
+        if let Some(v) = lastlogoff {
+            user.insert("lastlogoff".to_string(), v);
+        }
+        if let Some(v) = gameid {
+            user.insert("gameid".to_string(), v);
+        }
+        if let Some(v) = gameextrainfo {
+            user.insert("gameextrainfo".to_string(), v);
         }
     }
 
