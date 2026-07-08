@@ -1376,10 +1376,6 @@ export const zhCN: TranslationKeys = {
   },
 
   // 平台卡片小组件
-  platformCard: {
-    neteaseMusic: '网易云',
-  },
-
   // 报告卡片小组件扩展
   reportCardWidget: {
     bilibili: 'B站',
@@ -2122,15 +2118,6 @@ export const zhCN: TranslationKeys = {
     subscribeMoreSources: '订阅更多源来获取内容',
     loadedAllArticles: '— 已加载全部 {count} 篇文章 —',
 
-    // BrewSidebar - UI text
-    brewReader: 'Brew 阅读器',
-    sourcesCount: '共 {count} 个订阅源',
-    unreadCount: '{count} 未读',
-    allArticles: '全部文章',
-    noSources: '还没有订阅源',
-    addFirstSubscription: '添加第一个订阅',
-    keyboardShortcutsHint: '键盘快捷键',
-    refresh: '刷新',
     delete: '删除',
 
     // EditModal - UI text

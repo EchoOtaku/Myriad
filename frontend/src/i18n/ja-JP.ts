@@ -1432,10 +1432,6 @@ export const jaJP: TranslationKeys = {
   },
 
   // プラットフォームカードウィジェット
-  platformCard: {
-    neteaseMusic: 'NetEase Music',
-  },
-
   // レポートカードウィジェット拡張
   reportCardWidget: {
     bilibili: 'Bilibili',
@@ -2202,15 +2198,6 @@ export const jaJP: TranslationKeys = {
     subscribeMoreSources: 'コンテンツを取得するにはソースを追加してください',
     loadedAllArticles: '— 全 {count} 件の記事を読み込みました —',
 
-    // BrewSidebar - UI text
-    brewReader: 'Brew リーダー',
-    sourcesCount: '{count} 件のソース',
-    unreadCount: '{count} 件未読',
-    allArticles: 'すべての記事',
-    noSources: 'ソースがありません',
-    addFirstSubscription: '最初の購読を追加',
-    keyboardShortcutsHint: 'キーボードショートカット',
-    refresh: '更新',
     delete: '削除',
 
     // EditModal - UI text

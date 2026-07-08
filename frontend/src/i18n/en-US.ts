@@ -1448,10 +1448,6 @@ export const enUS: TranslationKeys = {
   },
 
   // Platform Card Widget
-  platformCard: {
-    neteaseMusic: 'NetEase',
-  },
-
   // Report Card Widget Extended
   reportCardWidget: {
     bilibili: 'Bilibili',
@@ -2205,15 +2201,6 @@ export const enUS: TranslationKeys = {
     subscribeMoreSources: 'Subscribe to more sources to get content',
     loadedAllArticles: '— All {count} articles loaded —',
 
-    // BrewSidebar - UI text
-    brewReader: 'Brew Reader',
-    sourcesCount: '{count} sources',
-    unreadCount: '{count} unread',
-    allArticles: 'All Articles',
-    noSources: 'No sources yet',
-    addFirstSubscription: 'Add first subscription',
-    keyboardShortcutsHint: 'Keyboard shortcuts',
-    refresh: 'Refresh',
     delete: 'Delete',
 
     // EditModal - UI text

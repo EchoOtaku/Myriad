@@ -1323,11 +1323,6 @@ export interface TranslationKeys {
     noLyrics: string
   }
 
-  // 平台卡片小组件
-  platformCard: {
-    neteaseMusic: string
-  }
-
   // 报告卡片小组件扩展
   reportCardWidget: {
     bilibili: string
@@ -2077,15 +2072,6 @@ export interface TranslationKeys {
     subscribeMoreSources: string
     loadedAllArticles: string
 
-    // BrewSidebar - UI text
-    brewReader: string
-    sourcesCount: string
-    unreadCount: string
-    allArticles: string
-    noSources: string
-    addFirstSubscription: string
-    keyboardShortcutsHint: string
-    refresh: string
     delete: string
 
     // EditModal - UI text

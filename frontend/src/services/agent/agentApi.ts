@@ -401,33 +401,6 @@ class AgentService {
     return apiService.get(`${this.baseUrl}/traces?limit=${limit}`)
   }
 
-  /**
-   * 获取任务详情（含执行追踪）
-   */
-  async getTaskWithTrace(
-    taskId: string,
-  ): Promise<TaskDetail & { executionTrace?: ExecutionTrace }> {
-    const response = await apiService.get<{
-      success: boolean
-      task: TaskInfo
-      results: Record<string, unknown>
-      startedAt: string
-      completedAt?: string
-      executionTrace?: ExecutionTrace
-    }>(`${this.baseUrl}/tasks/${taskId}`)
-
-    return {
-      taskId: response.task.taskId,
-      recipeId: '',
-      status: response.task.status,
-      progress: response.task.progress,
-      startedAt: response.startedAt,
-      completedAt: response.completedAt,
-      results: response.results,
-      executionTrace: response.executionTrace,
-    }
-  }
-
   // ============ 记忆 (Phase 3) ============
 
   /**
