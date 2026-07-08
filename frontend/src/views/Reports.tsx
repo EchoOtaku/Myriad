@@ -1419,6 +1419,18 @@ export default function Reports() {
                               />
                             )}
                           </div>
+
+                          {/* 左下角平台标识：未生成/加载态也保留，避免丢失平台信息
+                              （已生成态由 ReportCardWidget 自带的浮动 Logo 负责） */}
+                          {!platformReport && (
+                            <div className="absolute bottom-3 left-3 z-20">
+                              <div
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center text-base backdrop-blur-sm shadow-lg border ${platform.text} ${platform.bg} ${platform.border}`}
+                              >
+                                {platform.icon}
+                              </div>
+                            </div>
+                          )}
                           </motion.div>
                         )
                       })}
