@@ -1,6 +1,8 @@
 import type { ModuleVisibilityPreferences } from '../utils/moduleVisibility'
+import type { HitokotoConfig } from '../utils/quote'
 import type { LibrarySourcePreferences } from './config'
 import type { ToastType } from './Toast'
+
 import {
   FaExclamationTriangle,
   FaInfoCircle,
@@ -20,13 +22,12 @@ import {
   LuUsers,
   LuWrench,
 } from '@lib/icons'
-
 import { motionShim as motion } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API_URL } from '../config'
-import { useI18n } from '../contexts/I18nContext'
 
+import { useI18n } from '../contexts/I18nContext'
 import { useDebounce } from '../hooks/useDebounce'
 import {
   checkSpeechStatus,
@@ -46,6 +47,12 @@ import {
   normalizeModuleVisibilityPreferences,
   updateModuleVisibilityPreferences,
 } from '../utils/moduleVisibility'
+import {
+  areHitokotoConfigsEqual,
+  DEFAULT_HITOKOTO_CONFIG,
+  fetchHitokotoConfig,
+  updateHitokotoConfig,
+} from '../utils/quote'
 import { clearDedupCache } from '../utils/requestDedup'
 import {
   AboutConfigSection,
@@ -274,6 +281,10 @@ const ModernConfigForm: React.FC = () => {
     useState<ModuleVisibilityPreferences>(
       DEFAULT_MODULE_VISIBILITY_PREFERENCES,
     )
+  const [hitokotoDraft, setHitokotoDraft] =
+    useState<HitokotoConfig>(DEFAULT_HITOKOTO_CONFIG)
+  const [savedHitokotoConfig, setSavedHitokotoConfig] =
+    useState<HitokotoConfig>(DEFAULT_HITOKOTO_CONFIG)
 
   const showMessage = useCallback(
     (nextMessage: string, nextType: ToastType = 'info', duration = 3000) => {
@@ -839,6 +850,22 @@ const ModernConfigForm: React.FC = () => {
     [showMessage],
   )
 
+  const loadHitokotoSettings = React.useCallback(async () => {
+    try {
+      const config = await fetchHitokotoConfig()
+      setSavedHitokotoConfig(config)
+      setHitokotoDraft(config)
+    } catch {
+      showMessage(t.config.hitokotoLoadFailed, 'error')
+    }
+  }, [showMessage, t])
+
+  const saveHitokotoDraft = React.useCallback(async () => {
+    const saved = await updateHitokotoConfig(hitokotoDraft)
+    setHitokotoDraft(saved)
+    setSavedHitokotoConfig(saved)
+  }, [hitokotoDraft])
+
   const handleSave = React.useCallback(async () => {
     if (!config) {
       window.dispatchEvent(
@@ -860,11 +887,16 @@ const ModernConfigForm: React.FC = () => {
       moduleVisibilityDraft,
       savedModuleVisibilityPreferences,
     )
+    const hasHitokotoChanges = !areHitokotoConfigsEqual(
+      hitokotoDraft,
+      savedHitokotoConfig,
+    )
 
     if (
       !hasConfigChanges &&
       !hasLibrarySourceChanges &&
-      !hasModuleVisibilityChanges
+      !hasModuleVisibilityChanges &&
+      !hasHitokotoChanges
     ) {
       notifyDirtyState(false)
       window.dispatchEvent(
@@ -924,6 +956,11 @@ const ModernConfigForm: React.FC = () => {
           : t.config.moduleVisibilitySaved
       }
 
+      if (hasHitokotoChanges) {
+        await saveHitokotoDraft()
+        resultMessage = hasConfigChanges ? resultMessage : t.config.hitokotoSaved
+      }
+
       notifyDirtyState(false)
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
@@ -977,11 +1014,14 @@ const ModernConfigForm: React.FC = () => {
     initialConfig,
     librarySourceDraft,
     moduleVisibilityDraft,
+    hitokotoDraft,
     notifyDirtyState,
     saveLibrarySourcePreferences,
     saveModuleVisibilityPreferences,
+    saveHitokotoDraft,
     savedLibrarySourcePreferences,
     savedModuleVisibilityPreferences,
+    savedHitokotoConfig,
     showMessage,
     t,
   ])
@@ -1087,7 +1127,13 @@ const ModernConfigForm: React.FC = () => {
     loadConfig()
     loadPermissionConfig()
     loadModuleVisibilityPreferences()
-  }, [loadConfig, loadPermissionConfig, loadModuleVisibilityPreferences])
+    loadHitokotoSettings()
+  }, [
+    loadConfig,
+    loadPermissionConfig,
+    loadModuleVisibilityPreferences,
+    loadHitokotoSettings,
+  ])
 
   useEffect(() => {
     const handleSaveEvent = () => handleSave()
@@ -1277,8 +1323,16 @@ const ModernConfigForm: React.FC = () => {
     [moduleVisibilityDraft, savedModuleVisibilityPreferences],
   )
 
+  const isHitokotoDirty = useMemo(
+    () => !areHitokotoConfigsEqual(hitokotoDraft, savedHitokotoConfig),
+    [hitokotoDraft, savedHitokotoConfig],
+  )
+
   const isConfigDirty =
-    isBaseConfigDirty || isLibrarySourceDirty || isModuleVisibilityDirty
+    isBaseConfigDirty ||
+    isLibrarySourceDirty ||
+    isModuleVisibilityDirty ||
+    isHitokotoDirty
 
   useEffect(() => {
     notifyDirtyState(isConfigDirty)
@@ -1495,6 +1549,8 @@ const ModernConfigForm: React.FC = () => {
             isSourceDirty={isLibrarySourceDirty}
             saveRevision={librarySourceSaveRevision}
             onSourcePreferencesLoaded={handleLibrarySourcePreferencesLoaded}
+            hitokotoDraft={hitokotoDraft}
+            setHitokotoDraft={setHitokotoDraft}
             onMessage={handleModuleMessage}
             {...props}
           />

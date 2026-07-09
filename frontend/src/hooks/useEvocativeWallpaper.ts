@@ -633,6 +633,8 @@ export function useEvocativeWallpaper(
           if (s.rippleIsFadingOut) {
             s.activeRipples = []
             s.sourceImageData = null
+            // 释放输出暂存 buffer（~6MB）；下次涟漪 applyRippleDistortion 会按需 createImageData 重建
+            s.destImageData = null
             s.rippleIsFadingOut = false
             // 恢复快速淡入的 transition
             if (s.rippleCanvas) {

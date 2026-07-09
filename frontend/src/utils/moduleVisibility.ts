@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import apiService from '../services/api'
 
 export type ModuleVisibilityLevel = 'all' | 'authenticated' | 'admin'
-export type ModuleVisibilityKey = 'library' | 'brew' | 'reports' | 'tapp'
+export type ModuleVisibilityKey =
+  | 'library'
+  | 'brew'
+  | 'reports'
+  | 'tapp'
+  | 'agent'
 
 export interface ModuleVisibilityPreferences {
   modules: Record<ModuleVisibilityKey, ModuleVisibilityLevel>
@@ -19,6 +24,7 @@ export const MODULE_VISIBILITY_KEYS: ModuleVisibilityKey[] = [
   'brew',
   'reports',
   'tapp',
+  'agent',
 ]
 
 export const MODULE_VISIBILITY_LEVELS: ModuleVisibilityLevel[] = [
@@ -37,6 +43,7 @@ export const DEFAULT_MODULE_VISIBILITY_PREFERENCES: ModuleVisibilityPreferences 
       brew: 'all',
       reports: 'all',
       tapp: 'all',
+      agent: 'all',
     },
   }
 

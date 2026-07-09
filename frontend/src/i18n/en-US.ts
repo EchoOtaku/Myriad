@@ -808,7 +808,7 @@ export const enUS: TranslationKeys = {
     librarySourceLoadFailed: 'Failed to load library source settings',
     moduleVisibilityTitle: 'Page Visibility',
     moduleVisibilityDesc:
-      'Set who can see Library, Brew, Reports, and Tapp pages',
+      'Set who can see Library, Brew, Reports, Tapp, and the AI Assistant',
     moduleVisibilityAll: 'Everyone',
     moduleVisibilityAuthenticated: 'Signed In',
     moduleVisibilityAdmin: 'Admins',
@@ -834,6 +834,7 @@ export const enUS: TranslationKeys = {
     hitokotoAuthorFieldHint:
       'JSON field name holding the source/author (optional)',
     hitokotoSaved: 'Quote settings saved',
+    hitokotoLoadFailed: 'Failed to load quote settings',
     // AI Quota Configuration
     aiQuotaTitle: 'AI Usage Limits',
     aiQuotaDesc:

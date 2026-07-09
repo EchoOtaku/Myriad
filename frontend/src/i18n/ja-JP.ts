@@ -787,7 +787,7 @@ export const jaJP: TranslationKeys = {
     librarySourceLoadFailed: 'ライブラリソース設定の読み込みに失敗しました',
     moduleVisibilityTitle: 'ページ表示範囲',
     moduleVisibilityDesc:
-      'ライブラリ、Brew、レポート、Tappページを表示できるユーザーを設定',
+      'ライブラリ、Brew、レポート、Tapp、AIアシスタントを表示できるユーザーを設定',
     moduleVisibilityAll: '全員',
     moduleVisibilityAuthenticated: 'ログインユーザー',
     moduleVisibilityAdmin: '管理者ユーザー',
@@ -811,6 +811,7 @@ export const jaJP: TranslationKeys = {
     hitokotoAuthorField: '出典フィールド',
     hitokotoAuthorFieldHint: 'JSON 内の出典/作者に対応するフィールド名（任意）',
     hitokotoSaved: '一言設定を保存しました',
+    hitokotoLoadFailed: '一言設定の読み込みに失敗しました',
     // AI 使用制限設定
     aiQuotaTitle: 'AI 使用制限',
     aiQuotaDesc: '非管理者ユーザーのAI使用制限を設定（管理者は無制限）',

@@ -133,6 +133,30 @@ function ModuleVisibilityGuard({
 }
 
 /**
+ * Agent（Arael AI 助手）访问门禁 - 悬浮面板，不做路由跳转，
+ * 无权限时直接不渲染面板（与页面可见性共用同一套偏好）。
+ */
+function AgentAccessGate({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isAdmin, hasChecked } = useAuth()
+  const { preferences, isLoading } = useModuleVisibilityPreferences()
+
+  if (!hasChecked || isLoading) {
+    return null
+  }
+
+  if (
+    !canAccessModuleVisibility(preferences.modules.agent, {
+      isAuthenticated,
+      isAdmin,
+    })
+  ) {
+    return null
+  }
+
+  return children
+}
+
+/**
  * 加载指示器 - 纯光效
  * 无背景遮罩，只有优雅的光
  * 包装在 AnimatedView 中以参与页面切换动画
@@ -460,9 +484,11 @@ export function App() {
                     {/* Agent 全局动作处理器 - 处理路由导航和页面元素交互 */}
                     <AgentGlobalActions />
                     {/* Arael AI 助手浮动面板 - 长按触发 */}
-                    <Suspense fallback={null}>
-                      <AraelPanel />
-                    </Suspense>
+                    <AgentAccessGate>
+                      <Suspense fallback={null}>
+                        <AraelPanel />
+                      </Suspense>
+                    </AgentAccessGate>
                     <RouteLoader />
                     <CustomScrollbar />
                     <Suspense fallback={null}>

@@ -747,7 +747,7 @@ export const zhCN: TranslationKeys = {
     librarySourceSaveFailed: '保存资料库来源设置失败',
     librarySourceLoadFailed: '加载资料库来源设置失败',
     moduleVisibilityTitle: '页面可见性',
-    moduleVisibilityDesc: '设置资料库、Brew、数据报告和 Tapp 对哪些用户显示',
+    moduleVisibilityDesc: '设置资料库、Brew、数据报告、Tapp 和 AI 助手对哪些用户显示',
     moduleVisibilityAll: '全体',
     moduleVisibilityAuthenticated: '登录用户',
     moduleVisibilityAdmin: '管理员用户',
@@ -770,6 +770,7 @@ export const zhCN: TranslationKeys = {
     hitokotoAuthorField: '出处字段',
     hitokotoAuthorFieldHint: 'JSON 中出处/作者对应的字段名（可选）',
     hitokotoSaved: '一言设置已保存',
+    hitokotoLoadFailed: '加载一言设置失败',
     // AI 使用限额配置
     aiQuotaTitle: 'AI 使用限额',
     aiQuotaDesc: '配置非管理员用户使用 AI 功能的限制（管理员无限制）',

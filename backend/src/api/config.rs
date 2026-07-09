@@ -2323,7 +2323,7 @@ pub async fn update_tapp_window_schemes(
 }
 
 const MODULE_VISIBILITY_PREFERENCES_KEY: &str = "module_visibility_preferences";
-const MODULE_VISIBILITY_KEYS: [&str; 4] = ["library", "brew", "reports", "tapp"];
+const MODULE_VISIBILITY_KEYS: [&str; 5] = ["library", "brew", "reports", "tapp", "agent"];
 const MODULE_VISIBILITY_LEVELS: [&str; 3] = ["all", "authenticated", "admin"];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -2338,6 +2338,7 @@ fn default_module_visibility_modules() -> std::collections::HashMap<String, Stri
         ("brew".to_string(), "all".to_string()),
         ("reports".to_string(), "all".to_string()),
         ("tapp".to_string(), "all".to_string()),
+        ("agent".to_string(), "all".to_string()),
     ])
 }
 
@@ -2449,6 +2450,135 @@ pub async fn update_module_visibility_preferences(
                 Json(json!({
                     "success": false,
                     "message": "Failed to save module visibility preferences"
+                })),
+            )
+        }
+    }
+}
+
+// ========== 一言（Hitokoto）配置 API ==========
+
+const HITOKOTO_CONFIG_KEY: &str = "hitokoto_config";
+const HITOKOTO_SOURCE_IDS: [&str; 5] = [
+    "hitokoto-cn",
+    "hitokoto-anime",
+    "quotable-en",
+    "meigen-ja",
+    "custom",
+];
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HitokotoConfig {
+    #[serde(default = "default_hitokoto_source_id")]
+    pub source_id: String,
+    #[serde(default)]
+    pub custom_url: Option<String>,
+    #[serde(default)]
+    pub custom_text_field: Option<String>,
+    #[serde(default)]
+    pub custom_author_field: Option<String>,
+}
+
+fn default_hitokoto_source_id() -> String {
+    "hitokoto-cn".to_string()
+}
+
+impl Default for HitokotoConfig {
+    fn default() -> Self {
+        Self {
+            source_id: default_hitokoto_source_id(),
+            custom_url: None,
+            custom_text_field: None,
+            custom_author_field: None,
+        }
+    }
+}
+
+impl HitokotoConfig {
+    fn normalized(mut self) -> Self {
+        if !HITOKOTO_SOURCE_IDS.contains(&self.source_id.as_str()) {
+            self.source_id = default_hitokoto_source_id();
+        }
+        self.custom_url = self.custom_url.filter(|s| !s.trim().is_empty());
+        self.custom_text_field = self.custom_text_field.filter(|s| !s.trim().is_empty());
+        self.custom_author_field = self.custom_author_field.filter(|s| !s.trim().is_empty());
+        self
+    }
+}
+
+async fn load_hitokoto_config(db: &DatabaseConnection) -> HitokotoConfig {
+    let sql = "SELECT value FROM configurations WHERE key = $1";
+    let result = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            vec![HITOKOTO_CONFIG_KEY.into()],
+        ))
+        .await;
+
+    match result {
+        Ok(Some(row)) => match row.try_get::<Value>("", "value") {
+            Ok(value) => serde_json::from_value::<HitokotoConfig>(value)
+                .map(HitokotoConfig::normalized)
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Invalid hitokoto config, using defaults: {}", e);
+                    HitokotoConfig::default()
+                }),
+            Err(e) => {
+                tracing::warn!("Failed to read hitokoto config: {}", e);
+                HitokotoConfig::default()
+            }
+        },
+        Ok(None) => HitokotoConfig::default(),
+        Err(e) => {
+            tracing::warn!("Failed to load hitokoto config: {}", e);
+            HitokotoConfig::default()
+        }
+    }
+}
+
+pub async fn get_hitokoto_config(
+    State(db): State<DatabaseConnection>,
+) -> (StatusCode, Json<Value>) {
+    let config = load_hitokoto_config(&db).await;
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "config": config
+        })),
+    )
+}
+
+pub async fn update_hitokoto_config(
+    State(db): State<DatabaseConnection>,
+    Json(payload): Json<HitokotoConfig>,
+) -> (StatusCode, Json<Value>) {
+    let config = payload.normalized();
+    let config_service = crate::services::config_service::ConfigService::new(db);
+
+    match config_service
+        .update_config(
+            HITOKOTO_CONFIG_KEY,
+            serde_json::to_value(&config).unwrap_or_else(|_| json!({})),
+        )
+        .await
+    {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "config": config
+            })),
+        ),
+        Err(e) => {
+            tracing::error!("Failed to save hitokoto config: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": "Failed to save hitokoto config"
                 })),
             )
         }

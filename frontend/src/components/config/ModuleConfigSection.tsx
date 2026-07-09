@@ -3,7 +3,8 @@ import type {
   ModuleVisibilityLevel,
   ModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
-import { LuEye, MyriadStoreIcon } from '@lib/icons'
+import type { HitokotoConfig } from '../../utils/quote'
+import { LuEye, LuSparkles, MyriadStoreIcon } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import apiService from '../../services/api'
@@ -12,11 +13,6 @@ import {
   MODULE_VISIBILITY_LEVELS,
   normalizeModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
-import {
-  type HitokotoConfig,
-  loadHitokotoConfig,
-  saveHitokotoConfig,
-} from '../../utils/quote'
 import PlatformIcon from '../PlatformIcon'
 import { SettingGroup, SettingSection } from '../settings'
 
@@ -67,6 +63,8 @@ interface ModuleConfigSectionProps {
     preferences: LibrarySourcePreferences,
     options?: { resetDraft?: boolean },
   ) => void
+  hitokotoDraft: HitokotoConfig
+  setHitokotoDraft: React.Dispatch<React.SetStateAction<HitokotoConfig>>
   onMessage?: (message: string, type?: 'success' | 'error' | 'info') => void
 }
 
@@ -327,6 +325,8 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   isSourceDirty,
   saveRevision,
   onSourcePreferencesLoaded,
+  hitokotoDraft,
+  setHitokotoDraft,
   onMessage,
 }) => {
   const { t } = useI18n()
@@ -398,6 +398,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       brew: t.nav.brewReading,
       reports: t.nav.reports,
       tapp: t.nav.tappStore,
+      agent: t.nav.agent,
     }),
     [t],
   )
@@ -410,6 +411,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       brew: <BrewTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       reports: <ReportsTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       tapp: <MyriadStoreIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
+      agent: <LuSparkles className={MODULE_SETTING_TITLE_ICON_CLASS} />,
     }),
     [],
   )
@@ -423,11 +425,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
     [t],
   )
 
-  // ===== 一言设置（客户端本地，存于 localStorage）=====
-  const [hitokotoConfig, setHitokotoConfig] = useState<HitokotoConfig>(() =>
-    loadHitokotoConfig(),
-  )
-
+  // ===== 一言设置（存于后端数据库，随全局保存统一提交）=====
   const hitokotoSourceLabels = useMemo<Record<string, string>>(
     () => ({
       'hitokoto-cn': t.config.hitokotoSourceHitokotoCn,
@@ -441,14 +439,9 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
 
   const updateHitokotoConfig = useCallback(
     (patch: Partial<HitokotoConfig>) => {
-      setHitokotoConfig((prev) => {
-        const next = { ...prev, ...patch }
-        saveHitokotoConfig(next)
-        return next
-      })
-      onMessage?.(t.config.hitokotoSaved, 'success')
+      setHitokotoDraft((prev) => ({ ...prev, ...patch }))
     },
-    [onMessage, t],
+    [setHitokotoDraft],
   )
 
   useEffect(() => {
@@ -700,7 +693,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
           </div>
           <div className="flex flex-wrap gap-2">
             {HITOKOTO_SOURCE_IDS.map((sourceId) => {
-              const checked = hitokotoConfig.sourceId === sourceId
+              const checked = hitokotoDraft.sourceId === sourceId
               return (
                 <button
                   key={sourceId}
@@ -731,7 +724,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             })}
           </div>
 
-          {hitokotoConfig.sourceId === 'custom' && (
+          {hitokotoDraft.sourceId === 'custom' && (
             <div className={`${MODULE_SETTING_CARD_CLASS} space-y-3`}>
               <label className="block space-y-1">
                 <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
@@ -739,7 +732,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                 </span>
                 <input
                   type="url"
-                  value={hitokotoConfig.customUrl ?? ''}
+                  value={hitokotoDraft.customUrl ?? ''}
                   onChange={(e) =>
                     updateHitokotoConfig({ customUrl: e.target.value })
                   }
@@ -757,7 +750,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                   </span>
                   <input
                     type="text"
-                    value={hitokotoConfig.customTextField ?? ''}
+                    value={hitokotoDraft.customTextField ?? ''}
                     onChange={(e) =>
                       updateHitokotoConfig({ customTextField: e.target.value })
                     }
@@ -774,7 +767,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                   </span>
                   <input
                     type="text"
-                    value={hitokotoConfig.customAuthorField ?? ''}
+                    value={hitokotoDraft.customAuthorField ?? ''}
                     onChange={(e) =>
                       updateHitokotoConfig({ customAuthorField: e.target.value })
                     }

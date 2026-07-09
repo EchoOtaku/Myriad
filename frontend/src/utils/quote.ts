@@ -1,4 +1,5 @@
 import { API_URL } from '../config'
+import apiService from '../services/api'
 
 export interface QuoteData {
   text: string
@@ -52,7 +53,7 @@ export const BUILTIN_HITOKOTO_SOURCES: Record<string, HitokotoSource> = {
 /** 默认一言源 ID */
 export const DEFAULT_HITOKOTO_SOURCE_ID = 'hitokoto-cn'
 
-/** 一言配置（存储于 localStorage） */
+/** 一言配置（存储于后端数据库，随全局保存流程持久化） */
 export interface HitokotoConfig {
   /** 选中的源 ID，或 'custom' 表示自定义 */
   sourceId: string
@@ -64,34 +65,86 @@ export interface HitokotoConfig {
   customAuthorField?: string
 }
 
-export const HITOKOTO_CONFIG_KEY = 'hitokoto_config'
-
-/** 读取一言配置 */
-export function loadHitokotoConfig(): HitokotoConfig {
-  try {
-    const raw = localStorage.getItem(HITOKOTO_CONFIG_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as HitokotoConfig
-      if (parsed && typeof parsed.sourceId === 'string') return parsed
-    }
-  } catch {
-    // 忽略解析错误，回退到默认
-  }
-  return { sourceId: DEFAULT_HITOKOTO_SOURCE_ID }
+interface HitokotoConfigResponse {
+  success: boolean
+  config?: HitokotoConfig
+  message?: string
 }
 
-/** 保存一言配置并清除缓存，使新设置立即生效 */
-export function saveHitokotoConfig(config: HitokotoConfig): void {
-  localStorage.setItem(HITOKOTO_CONFIG_KEY, JSON.stringify(config))
+export const DEFAULT_HITOKOTO_CONFIG: HitokotoConfig = {
+  sourceId: DEFAULT_HITOKOTO_SOURCE_ID,
+}
+
+export const HITOKOTO_CONFIG_UPDATED_EVENT = 'hitokoto-config-updated'
+
+export function normalizeHitokotoConfig(
+  config?: Partial<HitokotoConfig>,
+): HitokotoConfig {
+  return {
+    sourceId:
+      typeof config?.sourceId === 'string'
+        ? config.sourceId
+        : DEFAULT_HITOKOTO_SOURCE_ID,
+    customUrl: config?.customUrl,
+    customTextField: config?.customTextField,
+    customAuthorField: config?.customAuthorField,
+  }
+}
+
+/** 从后端读取一言配置 */
+export async function fetchHitokotoConfig(): Promise<HitokotoConfig> {
+  const response = await apiService.get<HitokotoConfigResponse>(
+    '/config/hitokoto',
+  )
+  return normalizeHitokotoConfig(response.config)
+}
+
+/** 保存一言配置到后端，并清除本地一言缓存，使新设置立即生效 */
+export async function updateHitokotoConfig(
+  config: HitokotoConfig,
+): Promise<HitokotoConfig> {
+  const response = await apiService.put<HitokotoConfigResponse>(
+    '/config/hitokoto',
+    config,
+  )
+  if (!response.success) {
+    throw new Error(response.message || 'Failed to save hitokoto config')
+  }
+  const saved = normalizeHitokotoConfig(response.config)
   // 切换源后旧缓存失效
   localStorage.removeItem('quote_cache')
   localStorage.removeItem('quote_cache_time')
+  localStorage.removeItem('quote_cache_source')
   localStorage.removeItem('quote_data_cache')
+  window.dispatchEvent(
+    new CustomEvent(HITOKOTO_CONFIG_UPDATED_EVENT, { detail: saved }),
+  )
+  return saved
+}
+
+/** 比较两份一言配置是否等价（用于统一保存流程的脏检测） */
+export function areHitokotoConfigsEqual(
+  left: HitokotoConfig,
+  right: HitokotoConfig,
+): boolean {
+  return (
+    left.sourceId === right.sourceId &&
+    (left.customUrl ?? '') === (right.customUrl ?? '') &&
+    (left.customTextField ?? '') === (right.customTextField ?? '') &&
+    (left.customAuthorField ?? '') === (right.customAuthorField ?? '')
+  )
 }
 
 /** 根据配置解析出当前生效的一言源 */
-export function resolveHitokotoSource(
-  config: HitokotoConfig = loadHitokotoConfig(),
+export async function resolveHitokotoSource(
+  config?: HitokotoConfig,
+): Promise<HitokotoSource | null> {
+  const resolved = config ?? (await fetchHitokotoConfig())
+  return resolveHitokotoSourceFromConfig(resolved)
+}
+
+function resolveHitokotoSourceFromConfig(
+  config: HitokotoConfig,
 ): HitokotoSource | null {
   if (config.sourceId === 'custom') {
     const url = config.customUrl?.trim()
@@ -115,7 +168,13 @@ export function resolveHitokotoSource(
 export async function getRandomQuote(
   locale?: string,
 ): Promise<QuoteData | null> {
-  const source = resolveHitokotoSource()
+  let source: HitokotoSource | null
+  try {
+    source = await resolveHitokotoSource()
+  } catch (error) {
+    console.warn('Failed to load hitokoto config:', error)
+    return getLocalQuote(locale)
+  }
   // 自定义源未填写地址时，直接回退本地句库
   if (!source) return getLocalQuote(locale)
 

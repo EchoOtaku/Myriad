@@ -681,6 +681,7 @@ export interface TranslationKeys {
     hitokotoAuthorField: string
     hitokotoAuthorFieldHint: string
     hitokotoSaved: string
+    hitokotoLoadFailed: string
     permissionsTitle: string
     tappPermissionsInfoTitle: string
     tappPermissionsInfo: string

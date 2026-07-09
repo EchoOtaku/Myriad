@@ -120,6 +120,24 @@ export class TappRuntime {
     widgets: 60 * 1000, // Widget 列表 60 秒
   }
 
+  /** 代码缓存最大条数（超出后 LRU 淘汰最旧项；未命中会自动回源，淘汰是行为中性的） */
+  private static readonly MAX_CODE_CACHE = 30
+
+  /** 写入代码缓存并维持 LRU 上限 */
+  private setCodeCache(
+    key: string,
+    entry: CacheEntry<TappCodeStructure>,
+  ): void {
+    // 重新插入到末尾，使其成为「最近使用」
+    this.codeCache.delete(key)
+    this.codeCache.set(key, entry)
+    while (this.codeCache.size > TappRuntime.MAX_CODE_CACHE) {
+      const oldest = this.codeCache.keys().next().value
+      if (oldest === undefined) break
+      this.codeCache.delete(oldest)
+    }
+  }
+
   /** 上次同步时间 */
   private lastSyncTime: number = 0
 
@@ -380,7 +398,7 @@ export class TappRuntime {
 
     // 添加到内存缓存（保留完整的分离结构，带 TTL）
     this.installedTapps.set(manifest.id, instance)
-    this.codeCache.set(manifest.id, {
+    this.setCodeCache(manifest.id, {
       data: code,
       timestamp: Date.now(),
       ttl: TappRuntime.CACHE_TTL.code,
@@ -646,7 +664,7 @@ export class TappRuntime {
         }
 
         // 存入缓存（带 TTL）
-        this.codeCache.set(cacheKey, {
+        this.setCodeCache(cacheKey, {
           data: codeStructure,
           timestamp: Date.now(),
           ttl: TappRuntime.CACHE_TTL.code,
@@ -660,7 +678,7 @@ export class TappRuntime {
           core: codeString,
         }
 
-        this.codeCache.set(cacheKey, {
+        this.setCodeCache(cacheKey, {
           data: codeStructure,
           timestamp: Date.now(),
           ttl: TappRuntime.CACHE_TTL.code,
@@ -675,7 +693,7 @@ export class TappRuntime {
    * 设置 Tapp 代码（用于预装 Tapp）
    */
   setTappCode(tappId: string, code: TappCodeStructure): void {
-    this.codeCache.set(tappId, {
+    this.setCodeCache(tappId, {
       data: code,
       timestamp: Date.now(),
       ttl: TappRuntime.CACHE_TTL.code,

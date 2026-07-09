@@ -87,6 +87,24 @@ const DEFAULT_PALETTE: ColorPalette = Object.freeze({
 
 const memoryCache = new Map<string, ColorPalette>()
 
+/** 内存缓存最大条数（超出后 LRU 淘汰最旧项，防止无限增长） */
+const MAX_MEMORY_CACHE = 50
+
+/**
+ * 写入内存缓存并维持 LRU 上限。
+ * 命中失败时会回退 localStorage 或重算，因此淘汰是行为中性的。
+ */
+function setMemoryCache(url: string, palette: ColorPalette): void {
+  // 重新插入到末尾，使其成为「最近使用」
+  memoryCache.delete(url)
+  memoryCache.set(url, palette)
+  while (memoryCache.size > MAX_MEMORY_CACHE) {
+    const oldest = memoryCache.keys().next().value
+    if (oldest === undefined) break
+    memoryCache.delete(oldest)
+  }
+}
+
 /** 当前正在进行的提取任务 */
 let currentExtractionController: AbortController | null = null
 let currentExtractionUrl: string | null = null
@@ -460,7 +478,7 @@ export async function extractColorsFromImage(
       const cached = memoryCache.get(imageUrl) || getLocalStorageCache(imageUrl)
       if (cached) {
         console.debug('[ColorExtractor] Using cached palette')
-        memoryCache.set(imageUrl, cached)
+        setMemoryCache(imageUrl, cached)
         return cached
       }
     }
@@ -492,7 +510,7 @@ export async function extractColorsFromImage(
     }
 
     // 缓存结果
-    memoryCache.set(imageUrl, palette)
+    setMemoryCache(imageUrl, palette)
     saveToLocalStorage(imageUrl, palette)
 
     console.debug('[ColorExtractor] Extraction completed:', palette.primary)

@@ -893,6 +893,51 @@ async fn update_module_visibility_preferences_wrapper(
     }
 }
 
+/// Wrapper for get_hitokoto_config that gets DB from global state
+async fn get_hitokoto_config_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::config::get_hitokoto_config(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，一言配置功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for update_hitokoto_config that gets DB from global state
+async fn update_hitokoto_config_wrapper(
+    Json(payload): Json<api::config::HitokotoConfig>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) = api::config::update_hitokoto_config(
+                axum::extract::State(db.clone()),
+                Json(payload),
+            )
+            .await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，一言配置功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
 /// Wrapper for get_permissions that gets DB from global state
 async fn get_permissions_wrapper(headers: axum::http::HeaderMap) -> Response {
     let db_opt = DB_CONNECTION.read().await;
@@ -3511,6 +3556,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/config/module-visibility",
             put(update_module_visibility_preferences_wrapper)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
+        // 一言配置 API（公开访问 - 单用户系统）
+        .route(
+            "/api/config/hitokoto",
+            get(get_hitokoto_config_wrapper).put(update_hitokoto_config_wrapper),
         )
         // 权限配置 API
         .route("/api/config/permissions", get(get_permissions_wrapper)) // 🔓 公开端点：获取当前用户权限

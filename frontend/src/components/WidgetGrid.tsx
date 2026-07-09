@@ -265,6 +265,89 @@ const WidgetGridItem = React.memo(
   },
 )
 
+// 小组件库右侧滚动提示 - 独立组件，隔离滚动状态，
+// 避免每次滚动都重渲染整个小组件库（含所有预览小组件）导致卡顿
+const LibraryScrollHint = React.memo(
+  ({
+    scrollRef,
+    availableWidgets,
+  }: {
+    scrollRef: React.RefObject<HTMLDivElement | null>
+    availableWidgets: WidgetType[]
+  }) => {
+    const [canScrollRight, setCanScrollRight] = useState(false)
+    // 用户一旦手动滑动过，本次编辑期间就不再提示
+    const [hasScrolled, setHasScrolled] = useState(false)
+    const rafRef = useRef<number | null>(null)
+
+    const update = useCallback(() => {
+      rafRef.current = null
+      const el = scrollRef.current
+      if (!el) return
+      const hasOverflow = el.scrollWidth - el.clientWidth > 4
+      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4
+      setCanScrollRight(hasOverflow && !atEnd)
+      if (el.scrollLeft > 4) setHasScrolled(true)
+    }, [scrollRef])
+
+    useEffect(() => {
+      const el = scrollRef.current
+      if (!el) return
+
+      const onScroll = () => {
+        if (rafRef.current) return
+        rafRef.current = requestAnimationFrame(update)
+      }
+
+      el.addEventListener('scroll', onScroll, { passive: true })
+      window.addEventListener('resize', update)
+      return () => {
+        el.removeEventListener('scroll', onScroll)
+        window.removeEventListener('resize', update)
+        if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      }
+    }, [scrollRef, update])
+
+    // 小组件列表内容变化时（如切换 1 行/2 行模式）重新计算是否溢出
+    useEffect(() => {
+      update()
+    }, [availableWidgets, update])
+
+    const visible = canScrollRight && !hasScrolled
+
+    return (
+      <div
+        className={`pointer-events-none absolute inset-y-0 right-0 flex items-center justify-end pr-3 transition-opacity duration-300 ${
+          visible ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <motion.div
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/95 dark:bg-neutral-900/90 shadow-lg ring-1 ring-black/5 dark:ring-white/10"
+          animate={
+            // 不可见时停止循环动画，避免编辑期间一直空跑 rAF
+            visible ? { x: [0, 5, 0], scale: [1, 1.08, 1] } : { x: 0, scale: 1 }
+          }
+          transition={
+            visible
+              ? {
+                  duration: 1.3,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: 'easeInOut',
+                }
+              : { duration: 0.2 }
+          }
+        >
+          <FaChevronRight
+            className="text-gray-500 dark:text-white/70"
+            size={16}
+          />
+        </motion.div>
+      </div>
+    )
+  },
+)
+LibraryScrollHint.displayName = 'LibraryScrollHint'
+
 // 可用小组件类型定义
 export interface WidgetType {
   id: string
@@ -500,11 +583,9 @@ export default function WidgetGrid({
     y: number
   } | null>(null)
 
-  // 小组件库横向滚动 - 检测右侧是否还有更多内容
+  // 小组件库横向滚动 - ref 本身不触发重渲染，滚动状态由独立子组件管理，
+  // 避免每次滚动都重渲染整个小组件库（含所有预览小组件）导致卡顿
   const libraryScrollRef = useRef<HTMLDivElement>(null)
-  const [canScrollRight, setCanScrollRight] = useState(false)
-  // 用户一旦手动滑动过，本次编辑期间就不再提示
-  const [hasScrolledLibrary, setHasScrolledLibrary] = useState(false)
 
   // RAF ref for drag handling
   const rafRef = useRef<number | null>(null)
@@ -1159,34 +1240,6 @@ export default function WidgetGrid({
     )
   }, [currentGridWidth, currentGridHeight])
 
-  // 检测小组件库是否还可向右滚动
-  const updateLibraryScrollHint = useCallback(() => {
-    const el = libraryScrollRef.current
-    if (!el) return
-    const hasOverflow = el.scrollWidth - el.clientWidth > 4
-    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4
-    setCanScrollRight(hasOverflow && !atEnd)
-    if (el.scrollLeft > 4) setHasScrolledLibrary(true)
-  }, [])
-
-  useEffect(() => {
-    if (!isEditMode || isCompact) {
-      setCanScrollRight(false)
-      setHasScrolledLibrary(false)
-      return
-    }
-    const el = libraryScrollRef.current
-    if (!el) return
-
-    updateLibraryScrollHint()
-    el.addEventListener('scroll', updateLibraryScrollHint, { passive: true })
-    window.addEventListener('resize', updateLibraryScrollHint)
-    return () => {
-      el.removeEventListener('scroll', updateLibraryScrollHint)
-      window.removeEventListener('resize', updateLibraryScrollHint)
-    }
-  }, [isEditMode, isCompact, availableWidgets, updateLibraryScrollHint])
-
   // 小组件库内容
   const libraryContent = (
     <motion.div
@@ -1249,12 +1302,13 @@ export default function WidgetGrid({
             }
             onWheel={(e) => {
               if (libraryContentClassName) return
-              // 纯横向手势（触控板横滑）交给浏览器原生滚动处理
-              if (e.deltaY === 0) return
+              // 只接管纯垂直滚轮手势（deltaX 恒为 0，鼠标滚轮特征）；
+              // 只要带有 deltaX（触控板横滑及其惯性尾段都会带一点）就完全交给浏览器原生处理，
+              // 否则会在惯性阶段跟原生横向滚动打架，造成内容位置概率性闪现
+              if (e.deltaX !== 0 || e.deltaY === 0) return
               const el = e.currentTarget
               const maxScrollLeft = el.scrollWidth - el.clientWidth
               if (maxScrollLeft <= 0) return
-              // 接管时阻止默认滚动，避免同一手势里浏览器再用 deltaX 滚一次产生打架
               e.preventDefault()
               el.scrollLeft = Math.max(
                 0,
@@ -1344,28 +1398,10 @@ export default function WidgetGrid({
           </div>
 
           {/* 右侧提示：还有更多小组件可滚动查看，一旦手动滑动过就不再出现 */}
-          <div
-            className={`pointer-events-none absolute inset-y-0 right-0 flex items-center justify-end pr-3 transition-opacity duration-300 ${
-              canScrollRight && !hasScrolledLibrary
-                ? 'opacity-100'
-                : 'opacity-0'
-            }`}
-          >
-            <motion.div
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/95 dark:bg-neutral-900/90 shadow-lg ring-1 ring-black/5 dark:ring-white/10"
-              animate={{ x: [0, 5, 0], scale: [1, 1.08, 1] }}
-              transition={{
-                duration: 1.3,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: 'easeInOut',
-              }}
-            >
-              <FaChevronRight
-                className="text-gray-500 dark:text-white/70"
-                size={16}
-              />
-            </motion.div>
-          </div>
+          <LibraryScrollHint
+            scrollRef={libraryScrollRef}
+            availableWidgets={availableWidgets}
+          />
         </div>
       </div>
     </motion.div>
