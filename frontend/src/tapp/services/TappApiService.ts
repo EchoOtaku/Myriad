@@ -113,9 +113,9 @@ async function apiRequest<T>(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
-    throw new Error(
-      errorData.message || errorData.error || `API Error: ${response.status}`,
-    )
+    const detail =
+      errorData.message || errorData.error || response.statusText || 'unknown'
+    throw new Error(`API Error: ${response.status} ${detail}`)
   }
 
   const result = await response.json()
@@ -437,7 +437,9 @@ export interface InstallFromStoreRequest {
 /**
  * 从远程应用商店安装 Tapp
  *
- * 使用统一的 /install API，source 设为 "store"
+ * 优先走后端 `/api/tapps/install`（source=store，由服务端下载）。
+ * 生产环境常见问题：backend 容器无法访问 raw.githubusercontent.com 等外网，
+ * 会返回 502；此时回退为浏览器下载资源 + direct 安装（与商店列表同源）。
  *
  * @param request 安装请求
  * @returns 安装后的 Tapp 信息
@@ -445,14 +447,88 @@ export interface InstallFromStoreRequest {
 export async function installFromStore(
   request: InstallFromStoreRequest,
 ): Promise<TappListItem> {
+  try {
+    return await apiRequest('/api/tapps/install', {
+      method: 'POST',
+      body: JSON.stringify({
+        source: 'store',
+        storeSource: request.source,
+        tappId: request.tappId,
+        permissions: request.permissions,
+      }),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const shouldFallback =
+      /502|BAD_GATEWAY|Failed to fetch store|cannot reach store|Failed to fetch manifest|Failed to fetch code|Failed to fetch|NetworkError|ECONNREFUSED|timeout|Load failed/i.test(
+        message,
+      )
+
+    if (!shouldFallback) {
+      throw error
+    }
+
+    console.warn(
+      '[Tapp] Backend store install failed, falling back to client-side download:',
+      message,
+    )
+    return installFromStoreViaClient(request)
+  }
+}
+
+/**
+ * 浏览器侧下载远程商店资源后，以 direct 模式安装
+ */
+async function installFromStoreViaClient(
+  request: InstallFromStoreRequest,
+): Promise<TappListItem> {
+  const { default: RemoteStoreService } = await import('./RemoteStoreService')
+
+  const sources = await RemoteStoreService.getSources()
+  const source =
+    sources.find(
+      (s) =>
+        String(s.id) === request.source ||
+        s.url === request.source ||
+        s.url.replace(/\/index\.json$/, '') ===
+          request.source.replace(/\/index\.json$/, ''),
+    ) || sources.find((s) => s.enabled)
+
+  if (!source) {
+    throw new Error('无法找到商店源，请检查商店配置')
+  }
+
+  const index = await RemoteStoreService.fetchStoreIndex(source)
+  const baseUrl =
+    index.base_url ||
+    source.url.replace(/\/index\.json$/, '').replace(/\/$/, '')
+  const storeIndex = { ...index, base_url: baseUrl }
+
+  const app = storeIndex.apps.find((a) => a.id === request.tappId)
+  if (!app) {
+    throw new Error(`商店中未找到应用: ${request.tappId}`)
+  }
+
+  const pkg = await RemoteStoreService.downloadAppPackage(app, storeIndex)
+
+  const requestBody: InstallTappRequest = {
+    source: 'direct',
+    manifest: pkg.manifest,
+    code: pkg.code,
+    permissions: request.permissions ?? pkg.manifest.permissions,
+  }
+
+  if (pkg.styles) requestBody.styles = pkg.styles
+  if (pkg.pageTemplate) requestBody.pageTemplate = pkg.pageTemplate
+  if (pkg.widgetTemplates) requestBody.widgetTemplates = pkg.widgetTemplates
+  if (pkg.widgetCss) requestBody.widgetCss = pkg.widgetCss
+  if (pkg.pageCss) requestBody.pageCss = pkg.pageCss
+  if (pkg.i18n) requestBody.i18n = pkg.i18n
+  if (pkg.pageModules) requestBody.pageModules = pkg.pageModules
+
   return apiRequest('/api/tapps/install', {
     method: 'POST',
-    body: JSON.stringify({
-      source: 'store',
-      storeSource: request.source,
-      tappId: request.tappId,
-      permissions: request.permissions,
-    }),
+    body: JSON.stringify(requestBody),
   })
 }
 

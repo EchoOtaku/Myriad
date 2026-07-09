@@ -539,22 +539,34 @@ async fn fetch_from_store(
     }
 
     // 获取商店索引
+    // 注意：生产环境中 backend 容器若无法访问外网（尤其 raw.githubusercontent.com），
+    // 这里会返回 502。前端商店列表走浏览器直连，因此可能出现「能浏览、不能安装」。
     let index_url = format!("{}/index.json", base_url);
+    tracing::info!(url = %index_url, "fetching tapp store index");
     let index_resp = tapp_common::HTTP_CLIENT
         .get(&index_url)
         .send()
         .await
         .map_err(|e| {
+            tracing::error!(url = %index_url, error = %e, "failed to fetch store index");
             (
                 StatusCode::BAD_GATEWAY,
-                api_error(format!("Failed to fetch store index: {}", e)),
+                api_error(format!(
+                    "Failed to fetch store index (backend cannot reach store URL): {}",
+                    e
+                )),
             )
         })?;
 
     if !index_resp.status().is_success() {
+        let status = index_resp.status();
+        tracing::error!(url = %index_url, %status, "store index returned non-success");
         return Err((
             StatusCode::BAD_GATEWAY,
-            api_error("Failed to fetch store index"),
+            api_error(format!(
+                "Failed to fetch store index: remote returned {}",
+                status
+            )),
         ));
     }
 

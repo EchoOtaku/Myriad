@@ -3372,6 +3372,16 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .filter_map(|origin| origin.parse().ok())
         .collect();
 
+    // Custom request headers used by the SPA (CSRF) must be listed for cross-origin preflight.
+    // Without X-CSRF-Token here, browsers report a CORS failure even when the real issue is elsewhere.
+    let cors_allowed_headers = [
+        axum::http::header::CONTENT_TYPE,
+        axum::http::header::AUTHORIZATION,
+        axum::http::header::ACCEPT,
+        axum::http::header::HeaderName::from_static("x-csrf-token"),
+        axum::http::header::HeaderName::from_static("x-requested-with"),
+    ];
+
     let cors = if allowed_origins.is_empty() {
         // Check if in production mode
         let is_production = std::env::var("ENVIRONMENT")
@@ -3412,11 +3422,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 axum::http::Method::DELETE,
                 axum::http::Method::OPTIONS,
             ])
-            .allow_headers([
-                axum::http::header::CONTENT_TYPE,
-                axum::http::header::AUTHORIZATION,
-                axum::http::header::ACCEPT,
-            ])
+            .allow_headers(cors_allowed_headers)
             .allow_credentials(true)
     } else {
         tracing::info!("✅ CORS configured for origins: {:?}", config.cors_origins);
@@ -3429,11 +3435,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 axum::http::Method::DELETE,
                 axum::http::Method::OPTIONS,
             ])
-            .allow_headers([
-                axum::http::header::CONTENT_TYPE,
-                axum::http::header::AUTHORIZATION,
-                axum::http::header::ACCEPT,
-            ])
+            .allow_headers(cors_allowed_headers)
             .allow_credentials(true)
     };
 

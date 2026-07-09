@@ -44,6 +44,7 @@ import {
   registerMediaHandlers,
   registerPlatformHandlers,
   registerReportHandlers,
+  registerSchedulerHandlers,
   registerSpeechHandlers,
   registerStorageHandlers,
   registerTappListHandlers,
@@ -680,6 +681,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerMediaHandlers(bridge, currentTappInstance)
     registerSpeechHandlers(bridge, currentTappInstance)
     registerBackgroundHandlers(bridge, currentTappInstance)
+    registerSchedulerHandlers(bridge, currentTappInstance)
     registerAnimationHandlers(bridge, animationConfigRef)
     registerDynamicContentHandlers(bridge, currentTappInstance)
     registerAdvancedHandlers(bridge, currentTappInstance)

@@ -41,6 +41,7 @@ import {
   registerFileHandlers,
   registerLifecycleHandlers,
   registerMediaHandlers,
+  registerSchedulerHandlers,
   registerStorageHandlers,
   registerUIHandlers,
 } from './sandbox/handlers'
@@ -550,6 +551,8 @@ export const TappWidgetSandbox = memo(
       registerContextHandlers(bridge, currentTappInstance)
       // 🎵 注册 Media 处理器（供音乐播放器 Tapp 使用）
       registerMediaHandlers(bridge, currentTappInstance)
+      // ⏰ 注册 Scheduler 处理器（定时任务，与 SDK Tapp.scheduler 对应）
+      registerSchedulerHandlers(bridge, currentTappInstance)
 
       // 监听 tapp.ready 事件（Widget HTML 发送的早期 ready 事件）
       const unsubscribeReady = bridge.on('tapp.ready', () => {

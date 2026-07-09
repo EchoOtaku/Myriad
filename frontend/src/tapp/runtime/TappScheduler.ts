@@ -9,6 +9,7 @@
  */
 
 import type { TappAPIResponse } from '../types'
+import { getCSRFToken } from '../../utils/csrf'
 
 // ============ 类型定义 ============
 
@@ -234,9 +235,16 @@ export class TappScheduler {
     }
 
     // 构建 WebSocket URL
-    const wsProtocol = this.apiBaseUrl.startsWith('https') ? 'wss' : 'ws'
-    const wsUrl = this.apiBaseUrl
-      .replace(/^https?/, wsProtocol)
+    // apiBaseUrl 可能是绝对（https://host/api）或相对（/api，生产同源）。
+    // 相对时用 window.location 补全为绝对 ws(s):// 地址，否则 new WebSocket 会抛错。
+    let base = this.apiBaseUrl
+    if (!/^https?:/i.test(base)) {
+      const origin =
+        typeof window !== 'undefined' ? window.location.origin : ''
+      base = origin + (base.startsWith('/') ? base : `/${base}`)
+    }
+    const wsUrl = base
+      .replace(/^http/i, 'ws')
       .replace(/\/api$/, '/api/tapp/scheduler/ws')
 
     try {
@@ -603,13 +611,21 @@ export class TappScheduler {
       'Content-Type': 'application/json',
     }
 
+    // 认证：与全站一致使用 cookie 会话 + CSRF（非 GET）。
+    // authToken 保留为可选 Bearer（兼容 token 部署），但默认走 cookie。
     if (this.authToken) {
       headers.Authorization = `Bearer ${this.authToken}`
+    }
+    const upper = method.toUpperCase()
+    if (upper !== 'GET' && upper !== 'HEAD' && upper !== 'OPTIONS') {
+      const csrf = (await getCSRFToken()) || ''
+      if (csrf) headers['X-CSRF-Token'] = csrf
     }
 
     const response = await fetch(url, {
       method,
       headers,
+      credentials: 'include',
       body: body ? JSON.stringify(body) : undefined,
     })
 

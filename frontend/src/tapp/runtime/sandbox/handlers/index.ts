@@ -33,3 +33,5 @@ export {
   registerPlatformHandlers,
   registerWidgetHandlers,
 } from './platformHandlers'
+
+export { registerSchedulerHandlers } from './schedulerHandlers'

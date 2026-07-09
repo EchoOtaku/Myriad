@@ -548,6 +548,15 @@ export function generateFullSDK(
       has: (r) => sendRequest('background', 'has', [r]),
     },
 
+    scheduler: {
+      register: (options) => sendRequest('scheduler', 'register', [options]),
+      cancel: (taskId) => sendRequest('scheduler', 'cancel', [taskId]),
+      list: () => sendRequest('scheduler', 'list', []),
+      onTask: (taskId, cb) => addEventListener('schedulerTask', (d) => {
+        if (!taskId || (d && d.taskId === taskId)) cb(d && d.payload, d);
+      }),
+    },
+
     dynamicContent: {
       set: (c) => sendRequest('dynamicContent', 'set', [c]),
       update: (u) => sendRequest('dynamicContent', 'update', [u]),
@@ -665,6 +674,7 @@ export function generateFullSDK(
   Object.freeze(Tapp.file);
   Object.freeze(Tapp.user);
   Object.freeze(Tapp.background);
+  Object.freeze(Tapp.scheduler);
   Object.freeze(Tapp.dynamicContent);
   Object.freeze(Tapp.animation);
   Object.freeze(Tapp.speech);
@@ -971,6 +981,13 @@ export function generateWidgetSDK(
       has: function(r) { return sendRequest('background', 'has', [r]); }
     },
 
+    scheduler: {
+      register: function(options) { return sendRequest('scheduler', 'register', [options]); },
+      cancel: function(taskId) { return sendRequest('scheduler', 'cancel', [taskId]); },
+      list: function() { return sendRequest('scheduler', 'list', []); },
+      onTask: function(taskId, cb) { return addEventListener('schedulerTask', function(d) { if (!taskId || (d && d.taskId === taskId)) cb(d && d.payload, d); }); }
+    },
+
     animation: {
       getLevel: function() { return sendRequest('animation', 'getLevel', []); },
       shouldAnimate: function() { return sendRequest('animation', 'shouldAnimate', []); },
@@ -1039,6 +1056,7 @@ export function generateWidgetSDK(
   Object.freeze(Tapp.platform);
   Object.freeze(Tapp.report);
   Object.freeze(Tapp.background);
+  Object.freeze(Tapp.scheduler);
   Object.freeze(Tapp.animation);
   Object.freeze(Tapp.speech);
   Object.freeze(Tapp.ui);

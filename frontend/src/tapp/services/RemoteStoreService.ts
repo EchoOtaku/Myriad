@@ -88,6 +88,8 @@ export interface RemoteApp {
     code: string
     /** README URL（可选） */
     readme?: string
+    /** 统一样式 CSS（可选） */
+    styles?: string
     /** Widget 样式 CSS */
     widget_styles?: string
     /** Page 样式 CSS */
@@ -96,6 +98,10 @@ export interface RemoteApp {
     page_template?: string
     /** Widget 模板（按尺寸） */
     widget_templates?: Record<string, string>
+    /** i18n 翻译文件（lang → 相对路径） */
+    i18n?: Record<string, string>
+    /** Page 模块（filename → 相对路径） */
+    page_modules?: Record<string, string>
   }
   /** 许可证 */
   license?: string
@@ -476,6 +482,127 @@ class RemoteStoreServiceImpl {
 
     const code = await response.text()
     return code
+  }
+
+  /**
+   * 在浏览器侧完整下载远程应用包（供后端无法出站时的安装回退）
+   *
+   * 商店列表本就由浏览器直连远程 index；当 server 侧 /api/tapps/install(store)
+   * 因容器无外网/GitHub 不可达返回 502 时，可用此方法拉取后走 direct 安装。
+   */
+  async downloadAppPackage(
+    app: RemoteApp,
+    storeIndex: RemoteStoreIndex,
+  ): Promise<{
+    manifest: TappManifest
+    code: string
+    styles?: string
+    widgetCss?: string
+    pageCss?: string
+    pageTemplate?: string
+    widgetTemplates?: Record<string, string>
+    i18n?: Record<string, unknown>
+    pageModules?: Record<string, string>
+  }> {
+    const baseUrl = storeIndex.base_url || this.deriveBaseUrl(storeIndex)
+
+    const downloadText = async (
+      relativePath?: string,
+    ): Promise<string | undefined> => {
+      if (!relativePath) return undefined
+      try {
+        const url = this.resolveUrl(relativePath, baseUrl)
+        const response = await fetch(url)
+        if (!response.ok) return undefined
+        return await response.text()
+      } catch {
+        return undefined
+      }
+    }
+
+    const downloadJson = async (
+      relativePath?: string,
+    ): Promise<unknown | undefined> => {
+      if (!relativePath) return undefined
+      try {
+        const url = this.resolveUrl(relativePath, baseUrl)
+        const response = await fetch(url)
+        if (!response.ok) return undefined
+        return await response.json()
+      } catch {
+        return undefined
+      }
+    }
+
+    const indexWithBase = { ...storeIndex, base_url: baseUrl }
+    const [manifest, code, styles, widgetCss, pageCss, pageTemplate] =
+      await Promise.all([
+        this.downloadManifest(app, indexWithBase),
+        this.downloadCode(app, indexWithBase),
+        downloadText(app.download.styles),
+        downloadText(app.download.widget_styles),
+        downloadText(app.download.page_styles),
+        downloadText(app.download.page_template),
+      ])
+
+    let widgetTemplates: Record<string, string> | undefined
+    if (app.download.widget_templates) {
+      const templates: Record<string, string> = {}
+      await Promise.all(
+        Object.entries(app.download.widget_templates).map(
+          async ([size, path]) => {
+            const content = await downloadText(path)
+            if (content) templates[size] = content
+          },
+        ),
+      )
+      if (Object.keys(templates).length > 0) {
+        widgetTemplates = templates
+      }
+    }
+
+    let i18n: Record<string, unknown> | undefined
+    if (app.download.i18n) {
+      const i18nData: Record<string, unknown> = {}
+      await Promise.all(
+        Object.entries(app.download.i18n).map(async ([lang, path]) => {
+          const data = await downloadJson(path)
+          if (data !== undefined) i18nData[lang] = data
+        }),
+      )
+      if (Object.keys(i18nData).length > 0) i18n = i18nData
+    }
+
+    let pageModules: Record<string, string> | undefined
+    if (app.download.page_modules) {
+      const modules: Record<string, string> = {}
+      await Promise.all(
+        Object.entries(app.download.page_modules).map(
+          async ([filename, path]) => {
+            const content = await downloadText(path)
+            if (content) modules[filename] = content
+          },
+        ),
+      )
+      if (Object.keys(modules).length > 0) pageModules = modules
+    }
+
+    return {
+      manifest,
+      code,
+      styles,
+      widgetCss,
+      pageCss,
+      pageTemplate,
+      widgetTemplates,
+      i18n,
+      pageModules,
+    }
+  }
+
+  /** index 未提供 base_url 时返回空，由调用方用商店 URL 推导 */
+  private deriveBaseUrl(storeIndex: RemoteStoreIndex): string {
+    return storeIndex.base_url || ''
   }
 
   /** 下载应用的 README */
