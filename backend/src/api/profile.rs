@@ -898,8 +898,28 @@ async fn fetch_fresh_platform_data(
     // 数据清洗：移除无用信息，保留核心5W1H信息
     clean_platform_data(&mut all_data);
 
-    // 更新智能过滤缓存
-    if let Err(e) = crate::services::smart_filter::SmartFilter::process_and_save_all(&all_data) {
+    // 更新智能过滤缓存：单平台刷新只处理该平台，避免重写全部平台缓存
+    if let Some(platform) = target_platform {
+        if let Some(platform_data) = all_data.get(platform) {
+            if let Err(e) = crate::services::smart_filter::SmartFilter::process_and_save_single(
+                platform,
+                platform_data,
+            ) {
+                tracing::error!(
+                    "Failed to update smart filter cache for {}: {}",
+                    platform,
+                    e
+                );
+            }
+        } else {
+            tracing::warn!(
+                "No data for platform {} after fetch; skipping smart filter update",
+                platform
+            );
+        }
+    } else if let Err(e) =
+        crate::services::smart_filter::SmartFilter::process_and_save_all(&all_data)
+    {
         tracing::error!("Failed to update smart filter cache: {}", e);
     }
 

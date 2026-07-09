@@ -91,6 +91,11 @@ export interface ReportCardWidgetProps {
   data?: any
   /** 去掉自带 glass 外壳与背景光效，供已有外壳的容器内嵌 */
   bare?: boolean
+  /**
+   * 外部控制概览/详情切换（如舞台模式按篇章驱动）。
+   * 传入后禁用内部 10s 自动轮播，与外部状态完全同步。
+   */
+  showOverview?: boolean
   /** 小组件配置变更回调（用于持久化长按设置） */
   onConfigChange?: (newConfig: any) => void
 }
@@ -2230,6 +2235,7 @@ export const ReportCardWidget = memo(
     isPreview,
     data: externalData,
     bare = false,
+    showOverview: controlledShowOverview,
     onConfigChange,
   }: ReportCardWidgetProps) => {
     const animLevel = useAnimationLevel()
@@ -2239,7 +2245,11 @@ export const ReportCardWidget = memo(
     const platformId = (config.config?.platformId || 'bilibili') as string
     const [reportData, setReportData] = useState<any>(null)
     const [loading, setLoading] = useState(true)
-    const [showOverview, setShowOverview] = useState(true)
+    const isOverviewControlled = controlledShowOverview !== undefined
+    const [internalShowOverview, setInternalShowOverview] = useState(true)
+    const showOverview = isOverviewControlled
+      ? controlledShowOverview
+      : internalShowOverview
     const [cardContent, setCardContent] = useState<{
       title: string
       type?: string
@@ -2336,14 +2346,15 @@ export const ReportCardWidget = memo(
     }, [platformId, isPreview, externalData])
 
     useEffect(() => {
-      if (isPreview) return
+      // 预览态 / 外部控制概览态时不启用内部自动轮播
+      if (isPreview || isOverviewControlled) return
 
       // 10秒切换概览/详情 - timeout 链 + 可见性暂停
       let cancelled = false
       let timeoutId: number | null = null
       const tick = () => {
         if (cancelled || document.hidden) return
-        setShowOverview((prev) => !prev)
+        setInternalShowOverview((prev) => !prev)
         timeoutId = window.setTimeout(tick, 10000)
       }
       timeoutId = window.setTimeout(tick, 10000)
@@ -2363,7 +2374,7 @@ export const ReportCardWidget = memo(
         if (timeoutId) clearTimeout(timeoutId)
         document.removeEventListener('visibilitychange', onVisibility)
       }
-    }, [isPreview])
+    }, [isPreview, isOverviewControlled])
 
     const handleContentChange = useCallback((content: any) => {
       setCardContent(content)

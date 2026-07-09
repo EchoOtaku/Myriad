@@ -237,6 +237,9 @@ export class TappRuntime {
               this.installedTapps.set(result.tappId, result.instance)
               if (result.isRunning) {
                 this.runningTapps.add(result.tappId)
+                // 恢复运行态的 Tapp 也要补注册 manifest 后台需求，
+                // 否则重载后 headless core 不会被拉起。
+                this.registerManifestBackgroundRequirements(result.instance)
               }
             }
           }
@@ -545,8 +548,26 @@ export class TappRuntime {
     instance.lastRunAt = new Date().toISOString()
     this.runningTapps.add(tappId)
 
+    // 注册 manifest 声明的后台需求（引导 headless core 在后台持续运行）
+    this.registerManifestBackgroundRequirements(instance)
+
     // 触发事件
     this.emit('tapp:started', instance)
+  }
+
+  /**
+   * 注册 manifest 声明的后台需求。
+   * 声明真实需求（非仅 widget）的 Tapp 由此在运行期被 getBackgroundTapps 收入，
+   * 从而由 TappBackgroundRunner 拉起 headless core。
+   */
+  private registerManifestBackgroundRequirements(
+    instance: TappInstance,
+  ): void {
+    const reqs = instance.manifest.backgroundRequirements
+    if (!reqs || reqs.length === 0) return
+    for (const req of reqs) {
+      this.registerBackgroundRequirement(instance.id, req)
+    }
   }
 
   /**
@@ -989,6 +1010,23 @@ export class TappRuntime {
   }
 
   /**
+   * 检查 Tapp 是否有「真实」后台运行需求。
+   *
+   * 'widget' 需求是安装时对每个带主页 widget 的 Tapp 自动声明的（见 registerWidgets），
+   * 它只表示「有 widget 在主页」——widget 本身由 TappWidget 独立渲染，
+   * 不需要再额外拉起一个隐藏的后台实例。因此后台运行判定必须排除「仅 widget」的情况，
+   * 否则每个 widget Tapp 都会白白多跑一个隐藏沙箱。
+   */
+  hasRealBackgroundRequirement(tappId: string): boolean {
+    const requirements = this.backgroundRequirements.get(tappId)
+    if (!requirements) return false
+    for (const req of requirements) {
+      if (req !== 'widget') return true
+    }
+    return false
+  }
+
+  /**
    * 检查 Tapp 是否有特定的后台运行需求
    */
   hasBackgroundRequirement(
@@ -1023,7 +1061,7 @@ export class TappRuntime {
    * 条件：Tapp 正在运行 + 有后台需求
    */
   shouldRunInBackground(tappId: string): boolean {
-    return this.isRunning(tappId) && this.hasBackgroundRequirements(tappId)
+    return this.isRunning(tappId) && this.hasRealBackgroundRequirement(tappId)
   }
 
   /**
@@ -1032,7 +1070,9 @@ export class TappRuntime {
   getBackgroundTapps(): TappInstance[] {
     const result: TappInstance[] = []
     for (const tappId of this.runningTapps) {
-      if (this.hasBackgroundRequirements(tappId)) {
+      // 仅当存在「真实」后台需求（非仅 widget）时才后台运行，
+      // 避免每个 widget Tapp 白白多跑一个隐藏沙箱。
+      if (this.hasRealBackgroundRequirement(tappId)) {
         const instance = this.installedTapps.get(tappId)
         if (instance) {
           result.push(instance)

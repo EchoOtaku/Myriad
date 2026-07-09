@@ -88,6 +88,13 @@ export interface TappManifest {
   hasPage?: boolean
 
   /**
+   * 声明式后台运行需求（启动时自动注册，用于引导 headless core）。
+   * 声明了真实需求（非仅 'widget'）的 Tapp 会在运行期由 TappBackgroundRunner
+   * 拉起一个无头 core 沙箱，即使没有可见窗口/widget 也持续运行 core 逻辑。
+   */
+  backgroundRequirements?: BackgroundRequirement[]
+
+  /**
    * CSS 架构模式
    * - 'unified': 统一 CSS 文件（默认，使用 styles 字段）
    * - 'separated': 分离 CSS 文件（使用 widgetStyles + pageStyles）

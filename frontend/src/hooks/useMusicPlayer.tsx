@@ -553,6 +553,20 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   // 广播状态变化事件 - 使用 ref 避免重复广播
   const lastBroadcastRef = useRef<string>('')
   const broadcastStateChange = useCallback(() => {
+    // 进度必须读 audio 实时时钟，不能用 React 的 currentTime：
+    // 宿主进度条不可见时 timeupdate 会跳过 setCurrentTime（避免面板收起仍 5 次/秒重渲染），
+    // 但歌词换句仍会走这里广播关键状态。若写进过期 currentTime，Tapp 进度条会先回退、
+    // 再被下一次 music-player-progress 拉回（「换句时进度条闪退」）。
+    const audio = audioRef.current
+    const liveCurrentTime =
+      audio && Number.isFinite(audio.currentTime)
+        ? audio.currentTime
+        : currentTime
+    const liveDuration =
+      audio && Number.isFinite(audio.duration) && audio.duration > 0
+        ? audio.duration
+        : audioDuration
+
     // 创建状态快照用于比较（currentTime 按秒取整，避免过于频繁的更新）
     const stateSnapshot = JSON.stringify({
       songId: currentSong?.id,
@@ -562,7 +576,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       isTempPlay: tempPlayModeRef.current.enabled,
       index: currentSongIndex,
       length: playlist.length,
-      time: Math.floor(currentTime), // 按秒取整
+      time: Math.floor(liveCurrentTime), // 按秒取整
       volume: Math.round(volume * 100),
       mode: playMode,
       lyrics: lyrics.length,
@@ -589,8 +603,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       currentSongIndex,
       playlistLength: playlist.length,
       playlist,
-      currentTime,
-      audioDuration,
+      currentTime: liveCurrentTime,
+      audioDuration: liveDuration,
       volume,
       playMode,
       lyrics,
@@ -613,8 +627,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           playlistLength: playlist.length,
           playlist,
           // 🎯 添加实时播放信息（供 Tapp 使用）
-          currentTime,
-          audioDuration,
+          currentTime: liveCurrentTime,
+          audioDuration: liveDuration,
           volume,
           playMode,
           // 🎯 添加歌词信息

@@ -4689,6 +4689,94 @@ const PAGE_MOD_INDEX = `\
   });
 }
 
+// ==================== Background (headless core 大脑) ====================
+// 关窗后仍在 headless core 沙箱中运行：轮询会话未读数，检测到新增即通知。
+// core 模式无 UI，这里绝不触碰任何 DOM。
+var bgTimer = null;
+var bgUnreadSnapshot = null;   // { 'channel:id'|'room:id': unreadCount }
+var bgNotifyEnabled = true;
+var bgPollMs = 15000;
+
+async function bgLoadSettings() {
+  try {
+    var settings = await Tapp.settings.getAll();
+    if (settings) {
+      if (typeof settings.notifyOnMessage === 'boolean') bgNotifyEnabled = settings.notifyOnMessage;
+      if (settings.pollInterval) bgPollMs = Math.max(5, Math.min(120, settings.pollInterval)) * 1000;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function bgLoadSnapshot() {
+  try {
+    var snap = await Tapp.storage.get('bg_unread_snapshot');
+    bgUnreadSnapshot = (snap && typeof snap === 'object') ? snap : null;
+  } catch (e) { bgUnreadSnapshot = null; }
+}
+
+function bgConvLabel(kind, item) {
+  if (kind === 'channel') return item.remote_actor_name || (item.remote_actor_url || '').split('/').pop() || 'Channel';
+  return item.name || 'Room';
+}
+
+async function bgCheckMessages() {
+  try {
+    var results = await Promise.allSettled([
+      Tapp.federation.getChannels(),
+      Tapp.federation.getRooms()
+    ]);
+    var channels = (results[0].status === 'fulfilled' && results[0].value) ? (results[0].value.channels || []) : [];
+    var rooms = (results[1].status === 'fulfilled' && results[1].value) ? (results[1].value.rooms || []) : [];
+
+    var snapshot = {};
+    var newItems = [];
+    channels.forEach(function (ch) {
+      var key = 'channel:' + ch.channel_id;
+      var unread = ch.unread_count || 0;
+      snapshot[key] = unread;
+      var prev = bgUnreadSnapshot ? (bgUnreadSnapshot[key] || 0) : 0;
+      if (bgUnreadSnapshot && unread > prev) newItems.push({ label: bgConvLabel('channel', ch), delta: unread - prev });
+    });
+    rooms.forEach(function (rm) {
+      var key = 'room:' + rm.room_id;
+      var unread = rm.unread_count || 0;
+      snapshot[key] = unread;
+      var prev = bgUnreadSnapshot ? (bgUnreadSnapshot[key] || 0) : 0;
+      if (bgUnreadSnapshot && unread > prev) newItems.push({ label: bgConvLabel('room', rm), delta: unread - prev });
+    });
+
+    // 首次运行（无快照）只建立基线，避免启动即通知轰炸
+    if (bgUnreadSnapshot && bgNotifyEnabled && newItems.length > 0) {
+      var totalNew = newItems.reduce(function (s, it) { return s + it.delta; }, 0);
+      var message = newItems.length === 1
+        ? (newItems[0].label + (totalNew > 1 ? ' (' + totalNew + ')' : ''))
+        : (newItems.length + ' 个会话 · ' + totalNew + ' 条新消息');
+      try { Tapp.ui.showNotification({ title: 'Aro', message: message, type: 'info' }); } catch (e) { /* ignore */ }
+    }
+
+    bgUnreadSnapshot = snapshot;
+    try { await Tapp.storage.set('bg_unread_snapshot', snapshot); } catch (e) { /* ignore */ }
+  } catch (e) { /* ignore */ }
+}
+
+function bgStartPolling() {
+  bgStopPolling();
+  bgTimer = setInterval(bgCheckMessages, bgPollMs);
+}
+
+function bgStopPolling() {
+  if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
+}
+
+async function initBackground() {
+  await bgLoadSettings();
+  await bgLoadSnapshot();
+  // 动态维持后台需求（manifest 已引导首次拉起，这里再声明一次保证一致）
+  try { Tapp.background.require('notification', 'Aro 新消息后台通知'); } catch (e) { /* ignore */ }
+  await bgCheckMessages();   // 建立基线（无快照则只记录、不通知）
+  bgStartPolling();
+}
+
 // ==================== Entry ====================
 if (window._TAPP_MODE === 'page' || window._TAPP_HAS_HTML) {
   Tapp.lifecycle.onReady(function () {
@@ -4697,6 +4785,15 @@ if (window._TAPP_MODE === 'page' || window._TAPP_HAS_HTML) {
 
   Tapp.lifecycle.onDestroy(function () {
     stopPolling();
+  });
+} else if (window._TAPP_MODE === 'core') {
+  // headless 后台大脑：只跑通知轮询，不渲染 UI
+  Tapp.lifecycle.onReady(function () {
+    initBackground();
+  });
+
+  Tapp.lifecycle.onDestroy(function () {
+    bgStopPolling();
   });
 }
 `
@@ -4796,6 +4893,8 @@ const manifest: TappManifest = {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>',
   themeColor: '#6366f1',
   hasPage: true,
+  // 声明真实后台需求：关窗后仍由 headless core 轮询新消息并通知。
+  backgroundRequirements: ['notification'],
   settings: [
     { key: 'pollInterval', type: 'number', defaultValue: 15, label: '轮询间隔 (秒)', min: 5, max: 120, step: 5 },
     { key: 'notifyOnMessage', type: 'toggle', defaultValue: true, label: '新消息通知' },

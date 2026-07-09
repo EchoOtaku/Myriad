@@ -405,6 +405,34 @@ export const TappWidgetComponent = memo(
       })
     }, [])
 
+    // 🎯 视口门控：widget 的 iframe 沙箱仅在进入视口（附近 300px）时挂载，
+    // 远离视口则卸载以释放内存。需要后台常驻数据的 Tapp 由 TappBackgroundRunner
+    // 用 headless core 保活，数据不丢；纯展示 widget 重新进入视口时重新挂载即可。
+    // 默认 true 避免首屏闪烁；observer 首次回调会立即校正离屏项。
+    const [inViewport, setInViewport] = useState(true)
+    const viewportObserverRef = useRef<IntersectionObserver | null>(null)
+    const sandboxHostRef = useCallback((node: HTMLDivElement | null) => {
+      viewportObserverRef.current?.disconnect()
+      viewportObserverRef.current = null
+      if (!node || typeof IntersectionObserver === 'undefined') return
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0]
+          if (entry) setInViewport(entry.isIntersecting)
+        },
+        { rootMargin: '300px' },
+      )
+      observer.observe(node)
+      viewportObserverRef.current = observer
+    }, [])
+    useEffect(
+      () => () => {
+        viewportObserverRef.current?.disconnect()
+        viewportObserverRef.current = null
+      },
+      [],
+    )
+
     // ⚡ 监听尺寸变化，重新加载资源
     useEffect(() => {
       // 尺寸变化时重置初始化状态，清除缓存，触发重新加载
@@ -761,16 +789,21 @@ export const TappWidgetComponent = memo(
         style={pointerEventsStyle}
         data-no-ripple
       >
-        <TappWidgetSandbox
-          tappInstance={tappInstance}
-          code={code}
-          widgetId={widget.config.id || widget.id.split('.').pop() || ''}
-          widgetProps={widgetProps}
-          onError={(err: Error) => {
-            setError(err.message)
-          }}
-          className="w-full h-full"
-        />
+        {/* sandboxHostRef 常驻挂载作为视口观察目标；沙箱本身按 inViewport 挂/卸 */}
+        <div ref={sandboxHostRef} className="w-full h-full">
+          {inViewport && (
+            <TappWidgetSandbox
+              tappInstance={tappInstance}
+              code={code}
+              widgetId={widget.config.id || widget.id.split('.').pop() || ''}
+              widgetProps={widgetProps}
+              onError={(err: Error) => {
+                setError(err.message)
+              }}
+              className="w-full h-full"
+            />
+          )}
+        </div>
       </div>
     )
   },

@@ -96,6 +96,75 @@ export interface TappPageSandboxProps {
   style?: React.CSSProperties
   /** 安全区域内边距 */
   safeInsets?: SafeInsets
+  /**
+   * Headless "core" 模式：不渲染任何 UI，只运行 core（大脑）代码。
+   * 用于 background.require 声明的后台运行，取代过去在后台隐形挂一整页的做法。
+   */
+  headless?: boolean
+}
+
+/**
+ * 生成 headless "core" 沙箱 HTML
+ *
+ * 无 UI、无 pageHtml、无 page 模块，只运行 core（大脑）代码，
+ * body 为空。用于 background.require 声明的后台运行——取代过去在后台
+ * 隐形挂一整页（含完整 DOM）的做法，把后台实例从「整页」降到「无头 JS」。
+ *
+ * 契约：需要后台运行的逻辑（拉数据/轮询/调度）应写在 core 里，并在
+ * `window._TAPP_MODE === 'core'` 时执行；UI（page/widget）作为纯视图订阅。
+ *
+ * 复用与 page 相同的 CSP nonce / 安全包装器 / SDK，确保 core 能正常使用
+ * storage / federation / scheduler 等能力。
+ */
+function generateHeadlessCoreHTML(
+  tappInstance: TappInstance,
+  code: TappCodeStructure,
+  sessionToken: string,
+): string {
+  const { manifest } = tappInstance
+  const nonce = generateNonce()
+  const csp = generateCSP(nonce)
+  const securityWrapper = generateSecurityWrapper(sessionToken)
+  const sdkCode = generateFullSDK(tappInstance, sessionToken)
+  // 'background' 模式即返回纯 code.core（无 page/widget UI 代码）
+  const coreCode = getCodeForMode(code, 'background')
+
+  const i18nScript =
+    code.i18n && Object.keys(code.i18n).length > 0
+      ? `window._TAPP_I18N = ${JSON.stringify(code.i18n)};`
+      : ''
+
+  return `<!DOCTYPE html>
+<html class="tapp-mode-core">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <title>${manifest.name} (core)</title>
+</head>
+<body>
+  <script nonce="${nonce}">
+    window._TAPP_MODE = 'core';
+    window._TAPP_HAS_HTML = false;
+    window._TAPP_HEADLESS = true;
+    ${i18nScript}
+  </script>
+  <script nonce="${nonce}">${securityWrapper}</script>
+  <script nonce="${nonce}">${sdkCode}</script>
+  <script nonce="${nonce}">
+    (function() {
+      'use strict';
+      try {
+        ${coreCode}
+      } catch (error) {
+        console.error('[Core] Code error:', error);
+        if (window.Tapp && Tapp.lifecycle && Tapp.lifecycle._notifyError) {
+          Tapp.lifecycle._notifyError(error);
+        }
+      }
+    })();
+  </script>
+</body>
+</html>`
 }
 
 /**
@@ -329,6 +398,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   className,
   style,
   safeInsets,
+  headless = false,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const bridgeRef = useRef<TappBridge | null>(null)
@@ -631,13 +701,16 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     }
 
     // 生成 HTML（使用预生成的 session token）
-    const html = generatePageHTML(
-      currentTappInstance,
-      currentCode,
-      sessionToken,
-      safeInsetsRef.current,
-      launchParams,
-    )
+    // headless: 只跑 core 大脑代码、无 UI；否则渲染完整 page
+    const html = headless
+      ? generateHeadlessCoreHTML(currentTappInstance, currentCode, sessionToken)
+      : generatePageHTML(
+          currentTappInstance,
+          currentCode,
+          sessionToken,
+          safeInsetsRef.current,
+          launchParams,
+        )
 
     // 清理函数列表
     const cleanups: (() => void)[] = [closeFederationSockets]
@@ -713,7 +786,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     // - tappInstance.id: Tapp 实例 ID
     // - codeFingerprint: 代码指纹（内容变化才会变）
     // ⚠️ 注意：safeInsets 通过 ref 获取，不作为依赖（通过 postMessage 动态更新）
-  }, [tappInstance.id, codeFingerprint, handleReady])
+  }, [tappInstance.id, codeFingerprint, handleReady, headless])
 
   return (
     <div

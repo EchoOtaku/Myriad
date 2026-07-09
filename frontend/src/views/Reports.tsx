@@ -17,7 +17,15 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import AnimatedView from '../components/AnimatedView'
 import StageMode from '../components/StageMode'
 import Toast from '../components/Toast'
@@ -206,6 +214,51 @@ function PlatformReportGeneratingSpin({
 }) {
   return <FaSync size={18} className={`${className} animate-spin`} />
 }
+
+const STAGE_PLACEHOLDER_EASE = [0.4, 0, 0.2, 1] as const
+const STAGE_PLACEHOLDER_TRANSITION = {
+  duration: 0.28,
+  ease: STAGE_PLACEHOLDER_EASE,
+}
+
+/** 舞台模式播放中：入口卡片简洁占位 */
+const StagePlayingCardPlaceholder = memo(function StagePlayingCardPlaceholder({
+  icon,
+  name,
+  textClass,
+  borderClass,
+  label,
+}: {
+  icon: ReactNode
+  name: string
+  textClass: string
+  borderClass: string
+  label: string
+}) {
+  return (
+    <motion.div
+      className="absolute inset-0 flex items-center justify-center gap-3 px-6"
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      transition={STAGE_PLACEHOLDER_TRANSITION}
+    >
+      <div
+        className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-lg border bg-white/60 dark:bg-white/5 ${textClass} ${borderClass}`}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold tracking-tight text-gray-900 dark:text-gray-100 truncate">
+          {name}
+        </div>
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+          {label}
+        </div>
+      </div>
+    </motion.div>
+  )
+})
 
 // 🚀 性能优化：将综合报告卡片提取为独立的 memo 组件
 export default function Reports() {
@@ -596,6 +649,24 @@ export default function Reports() {
     }
   }, [playAllMode, isStageMode, playNextPlatform])
 
+  // 将单个平台报告合并进列表，避免整表替换导致其它卡片重渲染
+  const mergePlatformReport = useCallback((updated: PlatformReport) => {
+    setReport((prev) => {
+      const existing = prev?.platform_reports ?? []
+      const idx = existing.findIndex((r) => r.platform === updated.platform)
+      const platform_reports =
+        idx >= 0
+          ? existing.map((r, i) => (i === idx ? updated : r))
+          : [...existing, updated]
+
+      return {
+        platform_reports,
+        综合分析: prev?.综合分析 || null,
+        created_at: updated.created_at || prev?.created_at || new Date().toISOString(),
+      }
+    })
+  }, [])
+
   // 🎭 刷新当前舞台模式的平台报告
   const refreshStageReport = useCallback(async () => {
     if (!stageReportData?.platform || stageReportData.type !== 'platform') {
@@ -636,7 +707,7 @@ export default function Reports() {
         console.warn(`Refresh ${platformId} data request error:`, fetchErr)
       }
 
-      // 2. 生成新报告
+      // 2. 生成新报告（仅当前平台）
       const response = await fetch(`${API_URL}/api/reports/platform`, {
         method: 'POST',
         headers: {
@@ -663,48 +734,31 @@ export default function Reports() {
         return
       }
 
-      // 3. 获取最新的平台报告
-      const latestResponse = await fetch(`${API_URL}/api/reports/latest`, {
-        credentials: 'include',
-      })
+      // 3. 用生成接口返回的单份报告做局部 merge，不拉全量 latest
+      const updatedPlatformReport: PlatformReport | undefined = Array.isArray(
+        genBody?.reports,
+      )
+        ? genBody.reports.find((r: PlatformReport) => r.platform === platformId)
+        : undefined
 
-      if (latestResponse.ok) {
-        const latestData = await latestResponse.json()
-        if (latestData.platform_reports) {
-          // 更新报告数据
-          setReport((prev) => ({
-            platform_reports: latestData.platform_reports,
-            综合分析: prev?.综合分析 || null,
-            created_at: latestData.created_at || new Date().toISOString(),
-          }))
-
-          // 更新舞台模式显示的数据
-          const updatedPlatformReport = latestData.platform_reports.find(
-            (r: PlatformReport) => r.platform === platformId,
-          )
-          if (updatedPlatformReport) {
-            setStageReportData({
-              type: 'platform',
-              platform: platformId,
-              summary: updatedPlatformReport.summary,
-              insights: updatedPlatformReport.insights,
-              card_visuals: updatedPlatformReport.card_visuals,
-            })
-            showToastMessage(
-              t.reportsPage.reportRefreshSuccess.replace(
-                '{platform}',
-                platformName,
-              ),
-              'success',
-            )
-          } else {
-            showToastMessage(t.reportsPage.reportRefreshNoData, 'error')
-          }
-        } else {
-          showToastMessage(t.reportsPage.getLatestReportFailed, 'error')
-        }
+      if (updatedPlatformReport) {
+        mergePlatformReport(updatedPlatformReport)
+        setStageReportData({
+          type: 'platform',
+          platform: platformId,
+          summary: updatedPlatformReport.summary,
+          insights: updatedPlatformReport.insights,
+          card_visuals: updatedPlatformReport.card_visuals,
+        })
+        showToastMessage(
+          t.reportsPage.reportRefreshSuccess.replace(
+            '{platform}',
+            platformName,
+          ),
+          'success',
+        )
       } else {
-        showToastMessage(t.reportsPage.getLatestReportFailed, 'error')
+        showToastMessage(t.reportsPage.reportRefreshNoData, 'error')
       }
     } catch (err) {
       console.error('Refresh stage report failed:', err)
@@ -715,7 +769,7 @@ export default function Reports() {
     } finally {
       setRefreshingStage(false)
     }
-  }, [stageReportData])
+  }, [stageReportData, mergePlatformReport, t.reportsPage, translatedPlatforms, showToastMessage])
 
   // 使用 AuthContext 获取管理员状态
   const {
@@ -901,7 +955,7 @@ export default function Reports() {
           console.warn(`刷新 ${platformId} 数据请求出错:`, fetchErr)
         }
 
-        // 2. 生成报告
+        // 2. 生成报告（仅当前平台）
         const response = await fetch(`${API_URL}/api/reports/platform`, {
           method: 'POST',
           headers: {
@@ -931,20 +985,14 @@ export default function Reports() {
           return
         }
 
-        // 🚀 性能优化：只获取最新的平台报告列表，不重复获取综合报告
-        const latestResponse = await fetch(`${API_URL}/api/reports/latest`, {
-          credentials: 'include',
-        })
-
-        if (latestResponse.ok) {
-          const latestData = await latestResponse.json()
-          if (latestData.platform_reports) {
-            setReport((prev) => ({
-              platform_reports: latestData.platform_reports,
-              综合分析: prev?.综合分析 || null,
-              created_at: latestData.created_at || new Date().toISOString(),
-            }))
-          }
+        // 3. 局部 merge 生成结果，避免整表替换其它平台报告
+        const updated: PlatformReport | undefined = Array.isArray(
+          genBody?.reports,
+        )
+          ? genBody.reports.find((r: PlatformReport) => r.platform === platformId)
+          : undefined
+        if (updated) {
+          mergePlatformReport(updated)
         }
       } catch (err) {
         console.error('Generate platform report failed:', err)
@@ -952,7 +1000,7 @@ export default function Reports() {
         setLoadingPlatform(null)
       }
     },
-    [t.reportsPage.generateFailed],
+    [t.reportsPage.generateFailed, mergePlatformReport, showToastMessage],
   )
 
   // 生成综合分析 (基于已有平台报告) - 性能优化：使用 useCallback
@@ -1310,6 +1358,11 @@ export default function Reports() {
                         const isLoading = loadingPlatform === platform.id
                         // 🚀 性能优化：使用 Map 查找，O(1) 复杂度
                         const platformReport = platformReportsMap.get(platform.id)
+                        // 舞台模式正在播放该平台：入口卡片改为占位提示
+                        const isPlayingOnStage =
+                          isStageMode &&
+                          stageReportData?.type === 'platform' &&
+                          stageReportData.platform === platform.id
 
                         return (
                           <motion.div
@@ -1342,6 +1395,11 @@ export default function Reports() {
                               willChange: 'transform, opacity',
                             }} // 🚀 GPU加速
                             onClick={() => {
+                              if (isPlayingOnStage) {
+                                // 点击正在舞台播放的入口卡片：关闭舞台，恢复卡片内容
+                                closeStageMode()
+                                return
+                              }
                               if (platformReport) {
                                 openStageMode(platform.id)
                               } else if (isAdmin) {
@@ -1377,17 +1435,50 @@ export default function Reports() {
                                 </div>
                               </div>
                             ) : (
-                              <ReportCardWidget
-                                config={platformWidgetConfigs[platform.id]}
-                                isEditMode={false}
-                                data={platformReport.card_visuals}
-                                bare
-                              />
+                              <>
+                                {/* 保持挂载：舞台占位时仅淡出，避免轮播计时器重置导致与其它卡片脱节 */}
+                                <motion.div
+                                  className="absolute inset-0"
+                                  initial={false}
+                                  animate={
+                                    isPlayingOnStage
+                                      ? { opacity: 0, scale: 0.98 }
+                                      : { opacity: 1, scale: 1 }
+                                  }
+                                  transition={STAGE_PLACEHOLDER_TRANSITION}
+                                  style={{
+                                    pointerEvents: isPlayingOnStage
+                                      ? 'none'
+                                      : 'auto',
+                                  }}
+                                  aria-hidden={isPlayingOnStage}
+                                >
+                                  <ReportCardWidget
+                                    config={platformWidgetConfigs[platform.id]}
+                                    isEditMode={false}
+                                    data={platformReport.card_visuals}
+                                    bare
+                                  />
+                                </motion.div>
+                                <AnimatePresence>
+                                  {isPlayingOnStage && (
+                                    <StagePlayingCardPlaceholder
+                                      key="stage-playing"
+                                      icon={platform.icon}
+                                      name={platform.name}
+                                      textClass={platform.text}
+                                      borderClass={platform.border}
+                                      label={t.reportsPage.stagePlaying}
+                                    />
+                                  )}
+                                </AnimatePresence>
+                              </>
                             )}
                           </div>
 
                           {/* 左下角平台标识：未生成/加载态也保留，避免丢失平台信息
-                              （已生成态由 ReportCardWidget 自带的浮动 Logo 负责） */}
+                              （已生成态由 ReportCardWidget 自带的浮动 Logo 负责；
+                               舞台播放占位态已在中心展示图标，此处不再重复） */}
                           {!platformReport && (
                             <div className="absolute bottom-3 left-3 z-20">
                               <div

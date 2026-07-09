@@ -9,17 +9,12 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import type { WidgetConfig } from './WidgetGrid'
 import { useI18n } from '../contexts/I18nContext'
 
 import { useReportsVisibilityInterval } from '../hooks/animation'
 import PlatformIcon from './PlatformIcon'
-import {
-  BangumiWidget,
-  BilibiliWidget,
-  GithubWidget,
-  NeteaseWidget,
-  SteamWidget,
-} from './StageWidgets'
+import { ReportCardWidget } from './widgets/ReportCardWidget'
 
 const DARK_ORIGINAL_BG =
   'linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(10, 10, 10, 0.3) 45%, rgba(10, 10, 10, 0.5) 55%, rgba(10, 10, 10, 0.75) 70%, rgba(10, 10, 10, 0.9) 85%, rgba(10, 10, 10, 0.95) 100%)'
@@ -166,6 +161,69 @@ interface StageModeProps {
   playAllMode?: boolean // 是否在播放全部模式下
 }
 
+/**
+ * 报告页 4 列卡片基准宽度（max-w-7xl=80rem，3 个 1rem 间距）：
+ * (1280 - 48) / 4 = 308px，宽高比 2:1。
+ * 舞台模式卡片更大时，内部内容按此基准等比 scale，避免字号/间距相对偏小。
+ */
+const REPORT_CARD_BASE_WIDTH = 308
+const REPORT_CARD_BASE_HEIGHT = REPORT_CARD_BASE_WIDTH / 2
+
+/** 舞台模式专用：外层放大，内层按报告页卡片尺寸绘制后等比缩放 */
+const StageScaledReportCard = memo(function StageScaledReportCard({
+  config,
+  data,
+  showOverview,
+}: {
+  config: WidgetConfig
+  data: any
+  showOverview: boolean
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(1)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const updateScale = () => {
+      const width = el.clientWidth
+      if (width > 0) {
+        setScale(width / REPORT_CARD_BASE_WIDTH)
+      }
+    }
+
+    updateScale()
+    const ro = new ResizeObserver(updateScale)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full max-w-sm md:max-w-md aspect-2/1 rounded-2xl overflow-hidden glass shadow-xl"
+    >
+      <div
+        className="absolute left-0 top-0 origin-top-left will-change-transform"
+        style={{
+          width: REPORT_CARD_BASE_WIDTH,
+          height: REPORT_CARD_BASE_HEIGHT,
+          transform: `scale(${scale})`,
+        }}
+      >
+        <ReportCardWidget
+          config={config}
+          isEditMode={false}
+          data={data}
+          bare
+          showOverview={showOverview}
+        />
+      </div>
+    </div>
+  )
+})
+
 // 字幕显示组件
 function SubtitleDisplay({
   lines,
@@ -227,7 +285,7 @@ function SubtitleDisplay({
 
   return (
     <div className="w-full h-full flex flex-row pointer-events-none">
-      <div className="w-[90%] md:w-[60%] h-full flex flex-col justify-end items-start pl-2 md:pl-6 overflow-hidden pb-8">
+      <div className="w-[62%] md:w-[60%] h-full flex flex-col justify-end items-start pl-2 md:pl-6 overflow-hidden pb-8">
         <AnimatePresence mode="popLayout">
           {visibleLines.map((line) => (
             <motion.div
@@ -255,8 +313,8 @@ function SubtitleDisplay({
           ))}
         </AnimatePresence>
       </div>
-      {/* 右侧留白给卡片 - 移动端10%，桌面端40% */}
-      <div className="w-[10%] md:w-[40%] h-full flex items-center justify-center p-8 pointer-events-auto">
+      {/* 右侧卡片区：与报告页卡片同款比例，移动端留足宽度避免裁切 */}
+      <div className="w-[38%] md:w-[40%] h-full flex items-center justify-center p-2 md:p-6 pointer-events-auto">
         {rightContent}
       </div>
     </div>
@@ -562,6 +620,14 @@ export default function StageMode({
     return title !== t.reportsPage.deepInsight
   }, [currentChapter, chapters, t.reportsPage.deepInsight])
 
+  // 与报告页卡片共用同一 config 形状，避免 memo 无意义失效
+  const stageWidgetConfig = useMemo((): WidgetConfig | null => {
+    if (!reportData?.platform || reportData.type === 'comprehensive') return null
+    return {
+      config: { platformId: reportData.platform },
+    } as WidgetConfig
+  }, [reportData?.platform, reportData?.type])
+
   const renderWidget = () => {
     if (!reportData) return null
 
@@ -574,46 +640,15 @@ export default function StageMode({
       return null
     }
 
-    // 平台报告显示对应平台的卡片
-    switch (reportData.platform) {
-      case 'bilibili':
-        return (
-          <BilibiliWidget
-            data={reportData.card_visuals}
-            showOverview={showOverview}
-          />
-        )
-      case 'steam':
-        return (
-          <SteamWidget
-            data={reportData.card_visuals}
-            showOverview={showOverview}
-          />
-        )
-      case 'github':
-        return (
-          <GithubWidget
-            data={reportData.card_visuals}
-            showOverview={showOverview}
-          />
-        )
-      case 'netease':
-        return (
-          <NeteaseWidget
-            data={reportData.card_visuals}
-            showOverview={showOverview}
-          />
-        )
-      case 'bangumi':
-        return (
-          <BangumiWidget
-            data={reportData.card_visuals}
-            showOverview={showOverview}
-          />
-        )
-      default:
-        return null
-    }
+    // 平台报告：复用 ReportCardWidget，舞台放大时内部内容等比缩放
+    if (!stageWidgetConfig) return null
+    return (
+      <StageScaledReportCard
+        config={stageWidgetConfig}
+        data={reportData.card_visuals}
+        showOverview={showOverview}
+      />
+    )
   }
 
   // 监听外部播放/暂停事件

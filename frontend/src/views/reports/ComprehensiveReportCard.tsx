@@ -128,9 +128,15 @@ export const ComprehensiveReportCard = memo<ComprehensiveReportCardProps>(
       <motion.div
         layout
         onClick={handleClick}
-        whileHover={{ y: -4, scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
+        whileHover={{
+          y: -4,
+          scale: 1.02,
+          transition: { duration: 0.2, ease: 'easeOut' },
+        }}
+        whileTap={{
+          scale: 0.98,
+          transition: { duration: 0.2, ease: 'easeOut' },
+        }}
         className="relative aspect-2/1 rounded-2xl overflow-hidden cursor-pointer group glass hover:shadow-xl transition-shadow shrink-0 min-w-0 snap-start"
         style={{
           // 卡片宽度以 80rem 内容盒为上限，与首页 max-w-7xl 小组件网格的 4x2 卡片尺寸对齐
