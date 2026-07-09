@@ -19,11 +19,10 @@ import React, { useCallback, useMemo, useState } from 'react'
 import { useBrewCardStagger } from '../../../hooks/animation'
 
 import {
-  getFullPlainText,
   getIconUrl,
   getImageUrl,
   getPlainText,
-  SHORT_CONTENT_THRESHOLD,
+  getShortContentText,
 } from '../constants'
 
 // 格式化时间
@@ -89,24 +88,20 @@ export const ItemCard = React.memo<ItemCardProps>(
     const { animateStyle, animConfig } = useBrewCardStagger(index, 'item')
     const enableHover = animConfig.level !== 'none'
 
-    // 缓存摘要文本和完整文本
+    // 缓存摘要文本；短文正文仅在可能为短文时才 strip，避免长 HTML 全文占内存
     const summaryText = useMemo(
       () => getPlainText(item.summary),
       [item.summary],
     )
-    const fullText = useMemo(
-      () => getFullPlainText(item.content || item.summary),
-      [item.content, item.summary],
+    const shortContentText = useMemo(
+      () =>
+        item.image
+          ? null
+          : getShortContentText(item.content, item.summary),
+      [item.content, item.summary, item.image],
     )
-
-    // 判断是否为短文
-    const isShortContent = useMemo(() => {
-      return (
-        fullText.length > 0 &&
-        fullText.length < SHORT_CONTENT_THRESHOLD &&
-        !item.image
-      )
-    }, [fullText, item.image])
+    const isShortContent = shortContentText !== null
+    const fullText = shortContentText ?? ''
 
     // 点击处理
     const handleClick = useCallback(() => {

@@ -26,10 +26,16 @@ interface LoaderConfig {
   mediumPriorityDelay: number // 中优先级延迟（ms）
 }
 
+/** 已完成任务记录上限，防止 id 集合只增不减 */
+const MAX_COMPLETED_LOADS = 200
+/** 失败计数记录上限 */
+const MAX_FAILED_LOADS = 50
+
 class ResourceLoader {
   private queue: LoadTask[] = []
   private activeLoads: Set<string> = new Set()
-  private completedLoads: Set<string> = new Set()
+  /** 使用 Map 保持插入顺序，便于 LRU 淘汰最旧完成记录 */
+  private completedLoads: Map<string, number> = new Map()
   private failedLoads: Map<string, number> = new Map()
   private config: LoaderConfig
   private isPageLoaded = false
@@ -55,12 +61,27 @@ class ResourceLoader {
     }
   }
 
+  /** 标记任务完成并维持容量上限 */
+  private markCompleted(id: string): void {
+    this.completedLoads.delete(id)
+    this.completedLoads.set(id, Date.now())
+    while (this.completedLoads.size > MAX_COMPLETED_LOADS) {
+      const oldest = this.completedLoads.keys().next().value
+      if (oldest === undefined) break
+      this.completedLoads.delete(oldest)
+    }
+  }
+
+  private isCompleted(id: string): boolean {
+    return this.completedLoads.has(id)
+  }
+
   /**
    * 添加加载任务
    */
   addTask(task: LoadTask): void {
     // 避免重复添加
-    if (this.completedLoads.has(task.id) || this.activeLoads.has(task.id)) {
+    if (this.isCompleted(task.id) || this.activeLoads.has(task.id)) {
       return
     }
 
@@ -136,7 +157,7 @@ class ResourceLoader {
       await new Promise((resolve) => setTimeout(resolve, delay))
 
       // 延迟后检查任务是否已被取消
-      if (this.completedLoads.has(task.id) || this.activeLoads.has(task.id)) {
+      if (this.isCompleted(task.id) || this.activeLoads.has(task.id)) {
         this.processQueue()
         return
       }
@@ -202,14 +223,20 @@ class ResourceLoader {
       }
 
       // 标记完成
-      this.completedLoads.add(task.id)
+      this.markCompleted(task.id)
       this.failedLoads.delete(task.id)
     } catch (error) {
       console.warn(`Resource load failed for task ${task.id}:`, error)
 
-      // 记录失败次数
+      // 记录失败次数（有界）
       const failCount = (this.failedLoads.get(task.id) || 0) + 1
+      this.failedLoads.delete(task.id)
       this.failedLoads.set(task.id, failCount)
+      while (this.failedLoads.size > MAX_FAILED_LOADS) {
+        const oldest = this.failedLoads.keys().next().value
+        if (oldest === undefined) break
+        this.failedLoads.delete(oldest)
+      }
 
       // 如果允许重试且未超过重试次数，重新加入队列
       if (task.retryCount && failCount < task.retryCount) {
@@ -342,16 +369,9 @@ export const globalResourceLoader = new ResourceLoader({
   mediumPriorityDelay: 800,
 })
 
-// 开发环境下的调试工具
-if (import.meta.env.DEV) {
-  // 将资源加载器暴露到全局，方便调试
+// 开发环境下的调试工具（不挂空转定时器，避免多余 wake-up）
+if (import.meta.env.DEV && typeof window !== 'undefined') {
   ;(window as any).__resourceLoader = globalResourceLoader
-
-  // 调试统计 - 仅在有活动任务时处理
-  setInterval(() => {
-    // 保持间隔检查以便调试时可运行断点
-    globalResourceLoader.getStats()
-  }, 10000)
 }
 
 // 便捷方法

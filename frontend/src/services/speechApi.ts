@@ -487,13 +487,19 @@ export class CloudPodcastPlayer {
       })
 
       // 创建音频元素
+      // 仅预缓冲前两段（当前 + 下一段），其余段播放窗口滑到时再 load。
+      // Blob URL 已在本地，补载几乎瞬时，不改变接续播放体验，但避免 N 段同时 decode。
       if (response.audios) {
         for (const item of response.audios) {
           const url = base64ToAudioUrl(item.audio, 'audio/mp3')
           this.audioUrls.push(url)
 
-          const audio = new Audio(url)
-          audio.preload = 'auto'
+          const audio = new Audio()
+          audio.preload = item.index <= 1 ? 'auto' : 'none'
+          audio.src = url
+          if (item.index <= 1) {
+            audio.load()
+          }
           this.audioElements.set(item.index, audio)
 
           this.onLoadProgress?.(this.audioElements.size, dialogues.length)
@@ -626,6 +632,23 @@ export class CloudPodcastPlayer {
   }
 
   /**
+   * 滑动预缓冲窗口：保证 index 与 index+1 可播，降低同时解码占用
+   */
+  private warmPlaybackWindow(index: number) {
+    for (const offset of [0, 1]) {
+      const audio = this.audioElements.get(index + offset)
+      if (!audio) continue
+      if (audio.preload !== 'auto') {
+        audio.preload = 'auto'
+      }
+      // 本地 Blob，load 成本低；readyState 不足时补一次
+      if (audio.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        audio.load()
+      }
+    }
+  }
+
+  /**
    * 播放下一段
    */
   private async playNext() {
@@ -636,6 +659,8 @@ export class CloudPodcastPlayer {
       this.onEnd?.()
       return
     }
+
+    this.warmPlaybackWindow(this.currentIndex)
 
     const audio = this.audioElements.get(this.currentIndex)
     if (!audio) {

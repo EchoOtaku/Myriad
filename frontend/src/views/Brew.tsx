@@ -375,35 +375,48 @@ export default function Brew() {
           return
         }
 
-        // 如果没找到，尝试从 API 加载
+        // 如果没找到，尝试从 API 查找（只选中目标文，不把整页列表灌进 state）
         try {
           console.log('[Brew] Article not found locally, loading from API...')
-          const data = await brewApi.getItems({ per_page: 100, filter: 'all' })
-          console.log('[Brew] Loaded', data.items.length, 'items from API')
-
-          targetItem = data.items.find((item) => {
-            if (articleLink && item.link === articleLink) return true
-            if (articleId && String(item.id) === articleId) return true
-            if (articleId && item.guid === articleId) return true
-            return false
-          })
-
-          if (targetItem) {
-            console.log('[Brew] Found article from API:', targetItem.title)
-            setItems(data.items)
-            setTotal(data.total)
-            setSelectedItem(targetItem)
-            return
-          } else {
-            console.warn(
-              '[Brew] Article not found in API response. Looking for:',
-              { articleId, articleLink },
+          // 分页扫描，避免一次 per_page:100 的大包 + setItems 占内存
+          const maxPages = 5
+          const perPage = 20
+          for (let page = 1; page <= maxPages; page++) {
+            const data = await brewApi.getItems({
+              per_page: perPage,
+              page,
+              filter: 'all',
+            })
+            console.log(
+              '[Brew] Loaded page',
+              page,
+              'items:',
+              data.items.length,
             )
-            console.warn(
-              '[Brew] Available links:',
-              data.items.slice(0, 5).map((i) => i.link),
-            )
+
+            targetItem = data.items.find((item) => {
+              if (articleLink && item.link === articleLink) return true
+              if (articleId && String(item.id) === articleId) return true
+              if (articleId && item.guid === articleId) return true
+              return false
+            })
+
+            if (targetItem) {
+              console.log('[Brew] Found article from API:', targetItem.title)
+              // 仅打开阅读器，不替换当前列表 state（避免 100 条全文进堆）
+              setSelectedItem(targetItem)
+              return
+            }
+
+            // 已到末页
+            if (data.items.length < perPage) break
+            if (data.total > 0 && page * perPage >= data.total) break
           }
+
+          console.warn(
+            '[Brew] Article not found in API response. Looking for:',
+            { articleId, articleLink },
+          )
         } catch (err) {
           console.error('[Brew] Failed to load article for agent:', err)
         }

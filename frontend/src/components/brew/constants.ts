@@ -119,6 +119,39 @@ export function getFullPlainText(html: string | null): string {
 }
 
 /**
+ * 判断 HTML 是否可能是「短文」（纯文本 < SHORT_CONTENT_THRESHOLD）
+ * 不分配全文 strip 结果：HTML 足够长时纯文本不可能仍 < 阈值
+ *
+ * 启发式：标签占比再高，HTML 长度若 ≥ threshold * 8，剥标签后仍几乎必 ≥ threshold
+ * （保守系数，保证不把真正的短文误判为长文）
+ */
+export function isLikelyLongHtml(
+  html: string | null,
+  threshold: number = SHORT_CONTENT_THRESHOLD,
+): boolean {
+  if (!html) return false
+  return html.length >= threshold * 8
+}
+
+/**
+ * 为列表卡片计算短文展示文本。
+ * 长 HTML 直接返回 null（一定不是短文），避免无意义的全文 strip 占内存。
+ * 行为与「先 getFullPlainText 再比长度」一致。
+ */
+export function getShortContentText(
+  content: string | null,
+  summary: string | null,
+  threshold: number = SHORT_CONTENT_THRESHOLD,
+): string | null {
+  const html = content || summary
+  if (!html) return null
+  if (isLikelyLongHtml(html, threshold)) return null
+  const plain = getFullPlainText(html)
+  if (!plain || plain.length >= threshold) return null
+  return plain
+}
+
+/**
  * 判断是否为 base64 图片数据
  */
 export function isBase64Image(str: string | null): boolean {
