@@ -1506,6 +1506,7 @@ export const enUS: TranslationKeys = {
     steamPlaying: 'Playing',
     steamStatusUnknown: 'Status unknown',
     steamRecent2w: 'Recent',
+    steamGamingScore: 'Hardcore Index',
   },
 
   // Social Network Widget Extended

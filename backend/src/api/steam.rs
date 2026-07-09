@@ -6,6 +6,7 @@ use axum::{
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::services::fetcher::{PlatformFetcher, SteamUserInfo};
 
@@ -31,7 +32,7 @@ pub struct ApiResponse<T> {
     pub message: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SteamPresenceResponse {
     pub steamid: String,
     pub personaname: String,
@@ -77,10 +78,10 @@ impl From<SteamUserInfo> for SteamPresenceResponse {
 }
 
 /// 近两周时长的服务端缓存：GetRecentlyPlayedGames 是额外一次 Steam 调用，
-/// 用较长 TTL 限流，避免每次刷新在线状态都打一遍。
+/// 且是 2 周滚动总量、变化极慢，用 6h 长 TTL 限流，避免每次刷新在线状态都白打一遍。
 static RECENT_PLAYTIME_CACHE: std::sync::Mutex<Option<RecentPlaytimeCache>> =
     std::sync::Mutex::new(None);
-const RECENT_PLAYTIME_TTL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+const RECENT_PLAYTIME_TTL: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
 
 struct RecentPlaytimeCache {
     steam_id: String,
@@ -107,6 +108,99 @@ fn store_recent_playtime(steam_id: &str, minutes: i32) {
             fetched_at: std::time::Instant::now(),
         });
     }
+}
+
+/// 在线状态的服务端缓存：多访客共享同一份，避免每个访客每次轮询都打一遍
+/// GetPlayerSummaries。120s TTL 兼顾在线状态时效性与配额，头像/用户名随之一起缓存。
+/// 采用 stale-while-revalidate：命中即立刻返回，过期则返回旧值并后台刷新，
+/// 任何访客都不会阻塞在一次实时 Steam 调用上。
+static PRESENCE_CACHE: std::sync::Mutex<Option<PresenceCache>> = std::sync::Mutex::new(None);
+const PRESENCE_TTL: std::time::Duration = std::time::Duration::from_secs(120);
+/// 后台刷新的在飞标记：并发过期时只触发一次刷新
+static PRESENCE_REFRESHING: AtomicBool = AtomicBool::new(false);
+
+struct PresenceCache {
+    steam_id: String,
+    presence: SteamPresenceResponse,
+    fetched_at: std::time::Instant,
+}
+
+/// 缓存命中态：新鲜（TTL 内）/ 陈旧（已过期但可先用）
+enum PresenceHit {
+    Fresh(SteamPresenceResponse),
+    Stale(SteamPresenceResponse),
+}
+
+/// 读缓存：同一 steam_id 才命中，按 TTL 区分新鲜/陈旧
+fn read_presence(steam_id: &str) -> Option<PresenceHit> {
+    let guard = PRESENCE_CACHE.lock().ok()?;
+    let entry = guard.as_ref()?;
+    if entry.steam_id != steam_id {
+        return None;
+    }
+    let presence = entry.presence.clone();
+    if entry.fetched_at.elapsed() < PRESENCE_TTL {
+        Some(PresenceHit::Fresh(presence))
+    } else {
+        Some(PresenceHit::Stale(presence))
+    }
+}
+
+fn store_presence(steam_id: &str, presence: &SteamPresenceResponse) {
+    if let Ok(mut guard) = PRESENCE_CACHE.lock() {
+        *guard = Some(PresenceCache {
+            steam_id: steam_id.to_string(),
+            presence: presence.clone(),
+            fetched_at: std::time::Instant::now(),
+        });
+    }
+}
+
+/// 实时拉取一次 presence（含近两周时长的 6h 子缓存）并落缓存
+async fn fetch_and_store_presence(
+    api_key: &str,
+    steam_id: &str,
+) -> anyhow::Result<SteamPresenceResponse> {
+    let fetcher = PlatformFetcher::new().await;
+    let info = fetcher.fetch_steam_user(api_key, steam_id).await?;
+    let mut presence: SteamPresenceResponse = info.into();
+
+    // 近两周时长：命中缓存直接用，否则受 6h TTL 限流后再打一次 Steam
+    presence.recent_2weeks_minutes = match cached_recent_playtime(steam_id) {
+        Some(minutes) => Some(minutes),
+        None => match fetcher
+            .fetch_steam_recent_playtime(api_key, steam_id)
+            .await
+        {
+            Ok(minutes) => {
+                store_recent_playtime(steam_id, minutes);
+                Some(minutes)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to fetch Steam recent playtime for {}: {}", steam_id, e);
+                None
+            }
+        },
+    };
+
+    store_presence(steam_id, &presence);
+    Ok(presence)
+}
+
+/// 后台异步刷新缓存，不阻塞当前响应；并发时靠 in-flight 标记只刷一次
+fn trigger_presence_refresh(api_key: String, steam_id: String) {
+    if PRESENCE_REFRESHING
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+    tokio::spawn(async move {
+        if let Err(e) = fetch_and_store_presence(&api_key, &steam_id).await {
+            tracing::warn!("Background Steam presence refresh failed for {}: {}", steam_id, e);
+        }
+        PRESENCE_REFRESHING.store(false, Ordering::Release);
+    });
 }
 
 fn non_empty(value: Option<String>, env_key: &str) -> String {
@@ -153,35 +247,35 @@ pub async fn get_steam_presence(
         }));
     }
 
-    let fetcher = PlatformFetcher::new().await;
-    match fetcher.fetch_steam_user(&api_key, &steam_id).await {
-        Ok(info) => {
-            let mut presence: SteamPresenceResponse = info.into();
-
-            // 近两周时长：命中缓存直接用，否则受 TTL 限流后再打一次 Steam
-            presence.recent_2weeks_minutes = match cached_recent_playtime(&steam_id) {
-                Some(minutes) => Some(minutes),
-                None => match fetcher
-                    .fetch_steam_recent_playtime(&api_key, &steam_id)
-                    .await
-                {
-                    Ok(minutes) => {
-                        store_recent_playtime(&steam_id, minutes);
-                        Some(minutes)
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to fetch Steam recent playtime for {}: {}", steam_id, e);
-                        None
-                    }
-                },
-            };
-
-            Ok(Json(ApiResponse {
+    // stale-while-revalidate：任何访客都不阻塞在实时 Steam 调用上
+    match read_presence(&steam_id) {
+        // 新鲜：直接返回
+        Some(PresenceHit::Fresh(presence)) => {
+            return Ok(Json(ApiResponse {
                 success: true,
                 data: Some(presence),
                 message: "获取成功".to_string(),
-            }))
+            }));
         }
+        // 陈旧：先返回旧值，后台异步刷新
+        Some(PresenceHit::Stale(presence)) => {
+            trigger_presence_refresh(api_key, steam_id);
+            return Ok(Json(ApiResponse {
+                success: true,
+                data: Some(presence),
+                message: "获取成功".to_string(),
+            }));
+        }
+        // 冷缓存：只能同步拉一次
+        None => {}
+    }
+
+    match fetch_and_store_presence(&api_key, &steam_id).await {
+        Ok(presence) => Ok(Json(ApiResponse {
+            success: true,
+            data: Some(presence),
+            message: "获取成功".to_string(),
+        })),
         Err(e) => {
             tracing::warn!("Failed to fetch Steam presence for {}: {}", steam_id, e);
             Ok(Json(ApiResponse {

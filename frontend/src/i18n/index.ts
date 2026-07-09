@@ -1378,6 +1378,7 @@ export interface TranslationKeys {
     steamPlaying: string
     steamStatusUnknown: string
     steamRecent2w: string
+    steamGamingScore: string
   }
 
   // 社交网络小组件扩展

@@ -1488,6 +1488,7 @@ export const jaJP: TranslationKeys = {
     steamPlaying: 'プレイ中',
     steamStatusUnknown: '状態不明',
     steamRecent2w: '直近2週',
+    steamGamingScore: 'ハードコア指数',
   },
 
   // ソーシャルネットワークウィジェット拡張

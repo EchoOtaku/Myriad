@@ -1431,6 +1431,7 @@ export const zhCN: TranslationKeys = {
     steamPlaying: '正在玩',
     steamStatusUnknown: '状态未知',
     steamRecent2w: '近两周',
+    steamGamingScore: '硬核指数',
   },
 
   // 社交网络小组件扩展

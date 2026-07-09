@@ -3,9 +3,12 @@
  * 完全复用 Reports.tsx 中的所有子组件实现
  */
 
+import type { AnimationConfig } from '../../hooks/useAnimationLevel'
 import type { WidgetConfig } from '../WidgetGrid'
 import {
+  FaBolt,
   FaGithub,
+  FaPlay,
   FaSteam,
   FaTimes,
   LuGitFork,
@@ -14,11 +17,11 @@ import {
   SiBilibili,
   SiNeteasecloudmusic,
 } from '@lib/icons'
+
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -684,8 +687,136 @@ function getSteamPresenceColor(presence: SteamPresence | null): string {
   }
 }
 
+// 分数滚动计数：一次性 rAF 动画，duration<=0 时直接返回终值（降级/低端设备）
+// 同一个值驱动数字与进度条宽度，保证两者完全同步；
+// delay 让计数等卡片入场动画完成后再开跑，增长过程不会被淡入盖掉
+function useCountUp(value: number, duration = 800, delay = 0) {
+  const [display, setDisplay] = useState(() => (duration > 0 ? 0 : value))
+
+  useEffect(() => {
+    if (duration <= 0) {
+      setDisplay(value)
+      return
+    }
+    let raf = 0
+    const start = performance.now() + delay
+    const tick = (now: number) => {
+      // delay 期间 p 被夹在 0，setState(0) 与旧值相同时 React 会跳过重渲染
+      const p = Math.min(Math.max((now - start) / duration, 0), 1)
+      const eased = 1 - (1 - p) ** 3
+      setDisplay(Math.round(value * eased))
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value, duration, delay])
+
+  return display
+}
+
+// 评分能量条分段数
+const SCORE_BAR_SEGMENTS = 10
+
+// 评分卡内容：抽成组件，使计数/进度条在每次轮播入场时重新播放
+const ScoreCardBody = memo(
+  ({
+    score,
+    type,
+    anim,
+  }: {
+    score: number
+    type: string
+    anim: AnimationConfig
+  }) => {
+    const { t } = useI18n()
+    // 延迟 300ms 起跑：等卡片与分数行入场完成，增长过程完整可见
+    const displayScore = useCountUp(
+      score,
+      Math.round(900 * anim.durationScale),
+      300,
+    )
+    const pct = Math.min(Math.max(displayScore, 0), 100)
+
+    return (
+      <>
+        {/* 标题「游戏力评分」+ 分段能量条（缩短，与标题同排） */}
+        <motion.div
+          className="flex items-center justify-between gap-2"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.12 }}
+        >
+          <span className="flex shrink-0 items-center gap-1">
+            <FaBolt className="h-2.5 w-2.5 shrink-0 text-[#66c0f4]" />
+            <span className="bg-linear-to-r from-gray-700 to-[#417a9b] bg-clip-text text-[11px] font-black italic tracking-tight text-transparent dark:from-gray-100 dark:to-[#66c0f4]">
+              {t.reportCardWidget.steamGamingScore}
+            </span>
+          </span>
+          <div className="flex h-1.5 w-16 shrink-0 gap-[3px]">
+            {Array.from({ length: SCORE_BAR_SEGMENTS }).map((_, i) => {
+              const lit = i < Math.round((pct / 100) * SCORE_BAR_SEGMENTS)
+              return (
+                <div
+                  key={i}
+                  className={`h-full flex-1 rounded-[2px] transition-colors duration-150 ${
+                    lit
+                      ? 'bg-linear-to-b from-[#66c0f4] to-[#417a9b] shadow-[0_0_6px_rgba(102,192,244,0.5)]'
+                      : 'bg-black/8 dark:bg-white/10'
+                  }`}
+                />
+              )
+            })}
+          </div>
+        </motion.div>
+
+        {/* 分数 + 类型标签（放大，与分数同排） */}
+        <motion.div
+          className="flex items-center justify-between gap-2.5"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+        >
+          <span className="flex shrink-0 items-baseline gap-0.5">
+            {/* tabular-nums：计数过程数字等宽，右侧内容不抖动 */}
+            <span className="text-3xl font-black leading-none tracking-tight tabular-nums text-gray-800 dark:text-gray-100">
+              {displayScore}
+            </span>
+            <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400">
+              /100
+            </span>
+          </span>
+          {/* 类型标签：切角徽章，像游戏内稀有度/成就标签 */}
+          <motion.span
+            className="inline-flex min-w-0 items-center gap-1.5 bg-gray-800/90 py-1 pl-2.5 pr-3 dark:bg-white/90"
+            style={{
+              clipPath:
+                'polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%)',
+            }}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={
+              anim.spring
+                ? { type: 'spring', stiffness: 300, damping: 20, delay: 0.22 }
+                : { duration: 0.25, delay: 0.22 }
+            }
+          >
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full bg-[#66c0f4] ${anim.loop ? 'animate-pulse' : ''}`}
+            />
+            <span className="truncate text-[10px] font-bold uppercase tracking-wide text-gray-100 dark:text-black">
+              {type}
+            </span>
+          </motion.span>
+        </motion.div>
+      </>
+    )
+  },
+)
+ScoreCardBody.displayName = 'ScoreCardBody'
+
 const SteamStatsWidget = memo(({ data }: any) => {
   const { t } = useI18n()
+  const anim = useAnimationLevel()
   const fallbackPresence = useMemo(() => getSteamPresenceFromData(data), [data])
   const [livePresence, setLivePresence] = useState<SteamPresence | null>(null)
   const score = useMemo(() => data?.hardcore_score || 0, [data])
@@ -719,6 +850,11 @@ const SteamStatsWidget = memo(({ data }: any) => {
     presence?.is_in_game && presence?.gameextrainfo
       ? presence.gameextrainfo
       : null
+  // 正在玩的游戏图标：用 appid 取 Steam 商店头图（方形裁切），无 appid 时回退到 Steam 图标
+  const gameIconUrl =
+    nowPlaying && presence?.gameid
+      ? `https://cdn.cloudflare.steamstatic.com/steam/apps/${presence.gameid}/header.jpg`
+      : null
   // 近两周游玩时长（小时），无数据时不显示该项
   const recent2wHours = useMemo(() => {
     const minutes = presence?.recent_2weeks_minutes
@@ -726,11 +862,61 @@ const SteamStatsWidget = memo(({ data }: any) => {
     const hours = minutes / 60
     return hours >= 10 ? Math.round(hours).toString() : hours.toFixed(1)
   }, [presence])
+  // 右列三项统计（顶对齐分数、底对齐内边距，justify-between 均布）
+  const statItems = useMemo(
+    () => [
+      { label: t.reportsPage.library, value: String(gamesCount), unit: '' },
+      { label: t.reportsPage.playtime, value: totalPlaytime, unit: 'H' },
+      {
+        label: t.reportCardWidget.steamRecent2w,
+        value: recent2wHours ?? '0',
+        unit: 'H',
+      },
+    ],
+    [t, gamesCount, totalPlaytime, recent2wHours],
+  )
+  // 底部卡槽轮播：游戏中在「正在玩卡」与「评分卡」间循环，不玩时停在评分卡。
+  // 低端设备/减少动画时不轮播：游戏中固定正在玩卡（信息优先）。
+  const [slotIndex, setSlotIndex] = useState(0)
+  useEffect(() => {
+    if (!nowPlaying || !anim.loop) {
+      setSlotIndex(nowPlaying ? 1 : 0)
+      return
+    }
+    setSlotIndex(1)
+    let cancelled = false
+    let timeoutId: number | null = null
+    const tick = () => {
+      if (cancelled || document.hidden) return
+      setSlotIndex((prev) => (prev === 0 ? 1 : 0))
+      timeoutId = window.setTimeout(tick, 6000)
+    }
+    timeoutId = window.setTimeout(tick, 6000)
+
+    const onVisibility = () => {
+      if (document.hidden && timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      } else if (!document.hidden && !cancelled && !timeoutId) {
+        timeoutId = window.setTimeout(tick, 6000)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      cancelled = true
+      if (timeoutId) clearTimeout(timeoutId)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [nowPlaying, anim.loop])
+  const showNowPlaying = Boolean(nowPlaying) && slotIndex === 1
 
   useEffect(() => {
     let cancelled = false
 
     const refreshPresence = async () => {
+      // 后台标签页跳过请求，回到前台后由下一个 interval tick 恢复
+      if (document.hidden) return
       const nextPresence = await fetchSteamPresence()
       if (!cancelled && nextPresence) {
         setLivePresence(nextPresence)
@@ -738,7 +924,8 @@ const SteamStatsWidget = memo(({ data }: any) => {
     }
 
     refreshPresence()
-    const intervalId = window.setInterval(refreshPresence, 60 * 1000)
+    // 仅在线状态需要实时性，120s 一次足够；后端有 120s 共享缓存，多访客不会各自打 Steam
+    const intervalId = window.setInterval(refreshPresence, 120 * 1000)
 
     return () => {
       cancelled = true
@@ -748,138 +935,153 @@ const SteamStatsWidget = memo(({ data }: any) => {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-linear-to-br from-gray-100/50 to-transparent dark:from-white/2 dark:to-transparent clip-diagonal" />
-      </div>
-      <motion.div
-        className="absolute top-3 left-4 right-[36%] z-10 flex items-center gap-2.5"
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-      >
-        {/* 头像（左侧）+ 右下角状态点 */}
-        {avatarUrl && (
+      {/* 背景：Steam 亮蓝对角渐变 */}
+      <div className="absolute inset-0 bg-linear-to-br from-[#66c0f4]/25 via-[#66c0f4]/8 to-transparent dark:from-[#66c0f4]/15 dark:via-[#66c0f4]/5 clip-diagonal" />
+
+      {/* 主体：身份块在顶、轮播卡槽沉底，justify-between 撑出中部呼吸带 */}
+      <div className="relative z-10 flex h-full flex-col justify-between p-4">
+        {/* 身份块：头像 + （昵称/徽章同行 + 指标 tag 行） */}
+        <motion.div
+          className="flex min-w-0 items-center gap-3"
+          initial={{ x: -12, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.45 }}
+        >
           <motion.div
             className="relative shrink-0"
-            initial={{ scale: 0.6, opacity: 0 }}
+            initial={{ scale: 0.7, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{
-              duration: 0.5,
-              delay: 0.25,
-              type: 'spring',
-              stiffness: 200,
-            }}
+            whileHover={{ scale: 1.05 }}
+            transition={
+              anim.spring
+                ? { type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }
+                : { duration: 0.35, delay: 0.1 }
+            }
             title={presenceText ?? undefined}
           >
-            <img
-              src={avatarUrl}
-              alt={presence?.personaname || 'Steam'}
-              className="h-12 w-12 rounded-xl object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
-              loading="lazy"
-              decoding="async"
-            />
-            {/* 状态点：头像右下角 */}
-            <span
-              className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-[#1b2838] ${
-                isLive ? 'animate-pulse' : ''
-              }`}
-              style={{ backgroundColor: presenceColor }}
-            />
-          </motion.div>
-        )}
-        {/* 分数 + 徽章（两行）*/}
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex items-start gap-1">
-            <motion.span
-              className="text-4xl font-black text-gray-800 dark:text-gray-100 leading-none"
-              initial={{ scale: 0.5 }}
-              animate={{ scale: 1 }}
-              transition={{
-                duration: 0.5,
-                delay: 0.3,
-                type: 'spring',
-                stiffness: 200,
-              }}
-            >
-              {score}
-            </motion.span>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mt-0.5">
-              /100
-            </span>
-          </div>
-          <motion.div
-            className="flex flex-col items-start gap-1"
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.5 }}
-          >
-            <div className="inline-flex max-w-full items-center gap-1 px-2 py-0.5 rounded-md bg-gray-800/90 dark:bg-white/90 backdrop-blur-sm">
-              <div className="w-1 h-1 shrink-0 rounded-full bg-gray-300 dark:bg-black/60 animate-pulse" />
-              <span className="truncate text-[9px] font-bold text-gray-100 dark:text-black uppercase tracking-wide">
-                {type}
-              </span>
-            </div>
-            {nowPlaying && (
-              <div className="inline-flex max-w-full items-center gap-1 rounded-md bg-blue-500/15 px-1.5 py-0.5 backdrop-blur-sm">
-                <FaSteam className="h-2 w-2 shrink-0 text-blue-500" />
-                <span className="truncate text-[8px] font-bold text-blue-600 dark:text-blue-300">
-                  {nowPlaying}
-                </span>
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={presence?.personaname || 'Steam'}
+                className="h-11 w-11 rounded-xl object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-200/70 ring-1 ring-black/10 dark:bg-white/10 dark:ring-white/15">
+                <FaSteam className="h-5 w-5 text-gray-400 dark:text-gray-500" />
               </div>
             )}
+            {/* 状态点：头像右下角，在线时外圈呼吸扩散 */}
+            {presence && (
+              <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3">
+                {isLive && anim.loop && (
+                  <span
+                    className="absolute inset-0 rounded-full opacity-40 animate-ping"
+                    style={{ backgroundColor: presenceColor }}
+                  />
+                )}
+                <span
+                  className="absolute inset-0 rounded-full border-2 border-white dark:border-gray-900"
+                  style={{ backgroundColor: presenceColor }}
+                />
+              </span>
+            )}
           </motion.div>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            {/* 昵称；文字描边补足 CJK 字重 */}
+            {presence?.personaname && (
+              <span
+                className="truncate text-base font-black tracking-tight text-gray-800 dark:text-gray-100"
+                style={{ WebkitTextStroke: '0.4px currentcolor' }}
+              >
+                {presence.personaname}
+              </span>
+            )}
+            {/* 三项指标：退化为无背景 tag 行 */}
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              {statItems.map((item, i) => (
+                <motion.span
+                  key={item.label}
+                  className="flex items-baseline gap-1"
+                  initial={{ y: 6, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.35, delay: 0.3 + i * 0.08 }}
+                >
+                  <span className="flex items-baseline gap-0.5">
+                    <span className="text-[11px] font-black leading-none text-gray-800 dark:text-gray-100">
+                      {item.value}
+                    </span>
+                    {item.unit && (
+                      <span className="text-[8px] font-bold text-gray-500 dark:text-gray-400">
+                        {item.unit}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[8px] font-bold text-gray-400 dark:text-gray-500">
+                    {item.label}
+                  </span>
+                </motion.span>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* 底部卡槽：评分卡 ⇄ 正在玩卡 循环轮播。
+            pl 约等于 头像(44)+gap(12) 让左缘对齐昵称文本、越过浮动 Logo；
+            整体下移 3px 与上方指标行拉开距离 */}
+        <div className="translate-y-[3px] pl-13">
+          <div className="relative h-16">
+            <AnimatePresence mode="wait">
+              {showNowPlaying ? (
+                // 正在玩卡：满宽封面横幅 + 压暗渐变 + 播放角标/游戏名
+                <motion.div
+                  key="playing"
+                  className="absolute inset-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10 dark:ring-white/15"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.4 }}
+                  title={t.reportCardWidget.steamPlaying}
+                >
+                  {gameIconUrl ? (
+                    <img
+                      src={gameIconUrl}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#1b2838]">
+                      <FaSteam className="h-6 w-6 text-white/40" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-linear-to-t from-black/75 via-black/25 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 p-1.5">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white text-gray-900 shadow-md">
+                      <FaPlay className="h-2 w-2 translate-x-px" />
+                    </span>
+                    <span className="truncate text-[11px] font-bold text-white drop-shadow-sm">
+                      {nowPlaying}
+                    </span>
+                  </div>
+                </motion.div>
+              ) : (
+                // 评分卡：类型 + 分数进度条（横向卡片专属，取代圆环）
+                <motion.div
+                  key="score"
+                  className="absolute inset-0 flex flex-col justify-center gap-1 rounded-xl bg-white/45 px-3.5 ring-1 ring-black/5 backdrop-blur-md dark:bg-white/8 dark:ring-white/10"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.4 }}
+                >
+                  <ScoreCardBody score={score} type={type} anim={anim} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
-      </motion.div>
-      <div className="absolute right-0 top-0 bottom-0 w-1/3 flex flex-col justify-center items-end pr-5 gap-3">
-        <motion.div
-          className="flex flex-col items-end"
-          initial={{ x: 30, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.4 }}
-        >
-          <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">
-            {t.reportsPage.library}
-          </span>
-          <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">
-            {gamesCount}
-          </span>
-        </motion.div>
-        <motion.div
-          className="flex flex-col items-end"
-          initial={{ x: 30, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.6 }}
-        >
-          <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">
-            {t.reportsPage.playtime}
-          </span>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">
-              {totalPlaytime}
-            </span>
-            <span className="text-[10px] text-gray-600 dark:text-gray-400 font-bold mb-0.5">
-              H
-            </span>
-          </div>
-        </motion.div>
-        <motion.div
-          className="flex flex-col items-end"
-          initial={{ x: 30, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.8 }}
-        >
-          <span className="text-[7px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold">
-            {t.reportCardWidget.steamRecent2w}
-          </span>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">
-              {recent2wHours ?? '0'}
-            </span>
-            <span className="text-[10px] text-gray-600 dark:text-gray-400 font-bold mb-0.5">
-              H
-            </span>
-          </div>
-        </motion.div>
       </div>
     </div>
   )
@@ -1082,7 +1284,7 @@ const GithubStatsWidget = memo(({ data }: any) => {
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ duration: 0.4, delay: 0.3 }}
                 >
-                  <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">
+                  <span className="text-2xl font-black text-gray-800 dark:text-gray-100 leading-none">
                     {contributions}
                   </span>
                   <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">
@@ -1095,7 +1297,7 @@ const GithubStatsWidget = memo(({ data }: any) => {
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ duration: 0.4, delay: 0.4 }}
                 >
-                  <span className="text-2xl font-black text-gray-800 dark:text-gray-200 leading-none">
+                  <span className="text-2xl font-black text-gray-800 dark:text-gray-100 leading-none">
                     {reposCount}
                   </span>
                   <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">

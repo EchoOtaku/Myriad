@@ -3,7 +3,7 @@
  * 16x4 网格布局，支持拖拽编辑
  */
 
-import { FaTimes } from '@lib/icons'
+import { FaChevronRight, FaTimes } from '@lib/icons'
 
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -499,6 +499,12 @@ export default function WidgetGrid({
     x: number
     y: number
   } | null>(null)
+
+  // 小组件库横向滚动 - 检测右侧是否还有更多内容
+  const libraryScrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+  // 用户一旦手动滑动过，本次编辑期间就不再提示
+  const [hasScrolledLibrary, setHasScrolledLibrary] = useState(false)
 
   // RAF ref for drag handling
   const rafRef = useRef<number | null>(null)
@@ -1153,6 +1159,34 @@ export default function WidgetGrid({
     )
   }, [currentGridWidth, currentGridHeight])
 
+  // 检测小组件库是否还可向右滚动
+  const updateLibraryScrollHint = useCallback(() => {
+    const el = libraryScrollRef.current
+    if (!el) return
+    const hasOverflow = el.scrollWidth - el.clientWidth > 4
+    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4
+    setCanScrollRight(hasOverflow && !atEnd)
+    if (el.scrollLeft > 4) setHasScrolledLibrary(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isEditMode || isCompact) {
+      setCanScrollRight(false)
+      setHasScrolledLibrary(false)
+      return
+    }
+    const el = libraryScrollRef.current
+    if (!el) return
+
+    updateLibraryScrollHint()
+    el.addEventListener('scroll', updateLibraryScrollHint, { passive: true })
+    window.addEventListener('resize', updateLibraryScrollHint)
+    return () => {
+      el.removeEventListener('scroll', updateLibraryScrollHint)
+      window.removeEventListener('resize', updateLibraryScrollHint)
+    }
+  }, [isEditMode, isCompact, availableWidgets, updateLibraryScrollHint])
+
   // 小组件库内容
   const libraryContent = (
     <motion.div
@@ -1206,95 +1240,132 @@ export default function WidgetGrid({
         </div>
 
         {/* 组件列表 - 横向滚动 */}
-        <div
-          className={
-            libraryContentClassName ||
-            'flex items-center gap-6 p-6 overflow-x-auto scrollbar-hide min-h-40'
-          }
-          onWheel={(e) => {
-            if (!libraryContentClassName && e.deltaY !== 0) {
-              e.currentTarget.scrollLeft += e.deltaY
+        <div className="relative">
+          <div
+            ref={libraryScrollRef}
+            className={
+              libraryContentClassName ||
+              'flex items-center gap-6 p-6 overflow-x-auto scrollbar-hide min-h-40'
             }
-          }}
-        >
-          {availableWidgets.map((widgetType) => {
-            const WidgetComponent = widgetType.component
-            const dim = SIZE_TO_DIMENSIONS[widgetType.defaultSize]
+            onWheel={(e) => {
+              if (libraryContentClassName) return
+              // 纯横向手势（触控板横滑）交给浏览器原生滚动处理
+              if (e.deltaY === 0) return
+              const el = e.currentTarget
+              const maxScrollLeft = el.scrollWidth - el.clientWidth
+              if (maxScrollLeft <= 0) return
+              // 接管时阻止默认滚动，避免同一手势里浏览器再用 deltaX 滚一次产生打架
+              e.preventDefault()
+              el.scrollLeft = Math.max(
+                0,
+                Math.min(maxScrollLeft, el.scrollLeft + e.deltaY),
+              )
+            }}
+          >
+            {availableWidgets.map((widgetType) => {
+              const WidgetComponent = widgetType.component
+              const dim = SIZE_TO_DIMENSIONS[widgetType.defaultSize]
 
-            // 预览缩放比例
-            const scale = 0.65
-            // 模拟的标准单元格大小 (px)
-            const baseSize = 90
+              // 预览缩放比例
+              const scale = 0.65
+              // 模拟的标准单元格大小 (px)
+              const baseSize = 90
 
-            // 实际渲染尺寸
-            const renderWidth = dim.w * baseSize
-            const renderHeight = dim.h * baseSize
+              // 实际渲染尺寸
+              const renderWidth = dim.w * baseSize
+              const renderHeight = dim.h * baseSize
 
-            // 占位尺寸 (缩小后)
-            const wrapperWidth = renderWidth * scale
-            const wrapperHeight = renderHeight * scale
+              // 占位尺寸 (缩小后)
+              const wrapperWidth = renderWidth * scale
+              const wrapperHeight = renderHeight * scale
 
-            // 构造预览配置
-            const previewConfig: WidgetConfig = {
-              id: `preview-${widgetType.id}`,
-              type: widgetType.id,
-              size: widgetType.defaultSize,
-              position: { x: 0, y: 0 },
-              config: widgetType.id.startsWith('platform-')
-                ? { platformId: widgetType.id.replace('platform-', '') }
-                : widgetType.id.startsWith('report-')
-                  ? { platformId: widgetType.id.replace('report-', '') }
-                  : undefined,
-            }
+              // 构造预览配置
+              const previewConfig: WidgetConfig = {
+                id: `preview-${widgetType.id}`,
+                type: widgetType.id,
+                size: widgetType.defaultSize,
+                position: { x: 0, y: 0 },
+                config: widgetType.id.startsWith('platform-')
+                  ? { platformId: widgetType.id.replace('platform-', '') }
+                  : widgetType.id.startsWith('report-')
+                    ? { platformId: widgetType.id.replace('report-', '') }
+                    : undefined,
+              }
 
-            return (
-              <motion.div
-                key={widgetType.id}
-                className="relative group cursor-move shrink-0"
-                style={{
-                  width: wrapperWidth,
-                  height: wrapperHeight,
-                }}
-                draggable
-                onMouseDown={(e: React.MouseEvent) =>
-                  handleNewWidgetDragStart(e, widgetType.id)
-                }
-                onTouchStart={(e: React.TouchEvent) =>
-                  handleNewWidgetDragStart(e, widgetType.id)
-                }
-                whileHover={{ scale: 1.05, zIndex: 10 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {/* 缩放容器 */}
-                <div
-                  className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
+              return (
+                <motion.div
+                  key={widgetType.id}
+                  className="relative group cursor-move shrink-0"
                   style={{
-                    width: renderWidth,
-                    height: renderHeight,
-                    transform: `scale(${scale})`,
+                    width: wrapperWidth,
+                    height: wrapperHeight,
                   }}
+                  draggable
+                  onMouseDown={(e: React.MouseEvent) =>
+                    handleNewWidgetDragStart(e, widgetType.id)
+                  }
+                  onTouchStart={(e: React.TouchEvent) =>
+                    handleNewWidgetDragStart(e, widgetType.id)
+                  }
+                  whileHover={{ scale: 1.05, zIndex: 10 }}
+                  whileTap={{ scale: 0.95 }}
                 >
-                  <WidgetComponent
-                    config={previewConfig}
-                    isEditMode={true}
-                    isPreview={true}
-                  />
-                </div>
+                  {/* 缩放容器 */}
+                  <div
+                    className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
+                    style={{
+                      width: renderWidth,
+                      height: renderHeight,
+                      transform: `scale(${scale})`,
+                    }}
+                  >
+                    <WidgetComponent
+                      config={previewConfig}
+                      isEditMode={true}
+                      isPreview={true}
+                    />
+                  </div>
 
-                {/* 遮罩层 - 用于拖拽交互和高亮 */}
-                <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
+                  {/* 遮罩层 - 用于拖拽交互和高亮 */}
+                  <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
 
-                {/* 悬浮提示 */}
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-neutral-900/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-neutral-700/50">
-                  {(t.widgets as any)[getWidgetTranslationKey(widgetType.id)] ||
-                    widgetType.name}
-                </div>
-              </motion.div>
-            )
-          })}
+                  {/* 悬浮提示 */}
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-neutral-900/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-neutral-700/50">
+                    {(t.widgets as any)[
+                      getWidgetTranslationKey(widgetType.id)
+                    ] || widgetType.name}
+                  </div>
+                </motion.div>
+              )
+            })}
 
-          {/* 占位符，确保最后一个元素右侧有间距 */}
-          <div className="w-2 shrink-0" />
+            {/* 占位符，确保最后一个元素右侧有间距 */}
+            <div className="w-2 shrink-0" />
+          </div>
+
+          {/* 右侧提示：还有更多小组件可滚动查看，一旦手动滑动过就不再出现 */}
+          <div
+            className={`pointer-events-none absolute inset-y-0 right-0 flex items-center justify-end pr-3 transition-opacity duration-300 ${
+              canScrollRight && !hasScrolledLibrary
+                ? 'opacity-100'
+                : 'opacity-0'
+            }`}
+          >
+            <motion.div
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/95 dark:bg-neutral-900/90 shadow-lg ring-1 ring-black/5 dark:ring-white/10"
+              animate={{ x: [0, 5, 0], scale: [1, 1.08, 1] }}
+              transition={{
+                duration: 1.3,
+                repeat: Number.POSITIVE_INFINITY,
+                ease: 'easeInOut',
+              }}
+            >
+              <FaChevronRight
+                className="text-gray-500 dark:text-white/70"
+                size={16}
+              />
+            </motion.div>
+          </div>
         </div>
       </div>
     </motion.div>
