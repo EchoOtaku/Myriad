@@ -111,6 +111,7 @@ function getEstimatedTokenWeight(token: string): number {
 }
 
 // 漂浮歌词显示组件 - 逐字淡入，分批显示
+// 低性能模式：保留批次切换，关闭频谱节拍 + 漂浮位移
 const FloatingLyrics = memo(
   ({
     lyrics,
@@ -119,6 +120,7 @@ const FloatingLyrics = memo(
     isPlaying,
     themeColor,
     fontScale,
+    animLevel = 'standard',
   }: {
     lyrics: LyricLine[]
     verbatimLyrics: WordLyricLine[]
@@ -126,6 +128,7 @@ const FloatingLyrics = memo(
     isPlaying: boolean
     themeColor: string
     fontScale: number
+    animLevel?: AnimationConfig['level']
   }) => {
     const charsRef = useRef<(HTMLSpanElement | null)[]>([])
     const animationRef = useRef<number | null>(null)
@@ -142,6 +145,7 @@ const FloatingLyrics = memo(
     const rhythmProgressRef = useRef(0)
     const lastBeatTimeRef = useRef(0)
     const energyHistoryRef = useRef<number[]>([])
+    const useFullFx = animLevel === 'standard'
 
     // 唯一触发 React 重渲染的 state — 只在批次真正切换时递增
     const [, setBatchVersion] = useState(0)
@@ -359,6 +363,9 @@ const FloatingLyrics = memo(
       const ENERGY_HISTORY_SIZE = 8
       const BEAT_THRESHOLD = 1.3
       const BEAT_COOLDOWN = 150
+      // 低性能：批次检查放宽，跳过频谱与漂浮
+      const batchInterval = useFullFx ? BATCH_CHECK_MS : 320
+      const animInterval = useFullFx ? ANIM_UPDATE_MS : 100
 
       const loop = (timestamp: number) => {
         if (!pageVisibleRef.current) {
@@ -368,8 +375,8 @@ const FloatingLyrics = memo(
 
         currentTimeRef.current = audio.currentTime
 
-        // --- 批次检查 (200ms) --- 只在批次真正变化时触发 React 重渲染
-        if (timestamp - lastBatchCheck >= BATCH_CHECK_MS) {
+        // --- 批次检查 --- 只在批次真正变化时触发 React 重渲染
+        if (timestamp - lastBatchCheck >= batchInterval) {
           const { chars, positions, batchIndex } = computeCurrentBatch(
             audio.currentTime,
           )
@@ -387,8 +394,48 @@ const FloatingLyrics = memo(
           lastBatchCheck = timestamp
         }
 
-        // --- 动画更新 (50ms) --- 直接操作 DOM，不触发 React 渲染
-        if (timestamp - lastAnimUpdate >= ANIM_UPDATE_MS) {
+        // --- 动画更新 --- 直接操作 DOM，不触发 React 渲染
+        if (timestamp - lastAnimUpdate >= animInterval) {
+          const visibleChars = visibleCharsRef.current
+
+          if (!useFullFx) {
+            // 低性能：仅时间驱动透明度/高亮，无频谱、无漂浮
+            charsRef.current.forEach((el, idx) => {
+              if (!el || idx >= visibleChars.length) return
+              const charData = visibleChars[idx]
+              if (charData.char === ' ') {
+                el.style.opacity = '0'
+                return
+              }
+              const wordStart = charData.absoluteTime
+              const wordEnd = charData.absoluteTime + charData.duration
+              const isFuture = currentTimeRef.current < wordStart - 0.06
+              const isActive =
+                currentTimeRef.current >= wordStart - 0.06 &&
+                currentTimeRef.current <= wordEnd + 0.08
+              const isPast = currentTimeRef.current > wordEnd + 0.08
+              if (isFuture) {
+                el.style.opacity = '0'
+                el.style.color = ''
+                el.style.textShadow = 'none'
+                el.style.transform = 'none'
+              } else if (isActive) {
+                el.style.opacity = '1'
+                el.style.color = themeColor
+                el.style.textShadow = 'none'
+                el.style.transform = 'none'
+              } else if (isPast) {
+                el.style.opacity = '0.7'
+                el.style.color = ''
+                el.style.textShadow = 'none'
+                el.style.transform = 'none'
+              }
+            })
+            lastAnimUpdate = timestamp
+            animationRef.current = requestAnimationFrame(loop)
+            return
+          }
+
           phaseRef.current += 0.015
           const phase = phaseRef.current
 
@@ -415,7 +462,6 @@ const FloatingLyrics = memo(
           }
 
           const rhythmModulation = Math.min(0.3, rhythmProgressRef.current)
-          const visibleChars = visibleCharsRef.current
 
           charsRef.current.forEach((el, idx) => {
             if (!el || idx >= visibleChars.length) return
@@ -492,7 +538,7 @@ const FloatingLyrics = memo(
           animationRef.current = null
         }
       }
-    }, [isPlaying, computeCurrentBatch, themeColor])
+    }, [isPlaying, computeCurrentBatch, themeColor, useFullFx])
 
     const visibleChars = visibleCharsRef.current
     const charPositions = charPositionsRef.current
@@ -661,11 +707,12 @@ const AlbumCover = memo(
 
 AlbumCover.displayName = 'AlbumCover'
 
-// 播放状态指示器 - 高性能实时频谱版本
+// 播放状态指示器 - 高性能实时频谱版本；低性能模式退化为静态柱
 const PlayingIndicator = memo(
   ({
     themeColor,
     scale = 1,
+    anim,
     isPlaying = false,
   }: {
     themeColor: string
@@ -680,6 +727,8 @@ const PlayingIndicator = memo(
     const animationRef = useRef<number | null>(null)
     const connectedRef = useRef(false)
     const pageVisibleRef = useRef(isPageVisible())
+    // 仅中高性能启用实时频谱 RAF + Analyser
+    const useSpectrum = (anim?.level ?? 'standard') === 'standard'
 
     // 频谱动画循环 - 统一处理
     useEffect(() => {
@@ -688,7 +737,7 @@ const PlayingIndicator = memo(
         pageVisibleRef.current = visible
       })
 
-      if (!isPlaying) {
+      if (!isPlaying || !useSpectrum) {
         if (animationRef.current) {
           cancelAnimationFrame(animationRef.current)
           animationRef.current = null
@@ -744,7 +793,7 @@ const PlayingIndicator = memo(
           animationRef.current = null
         }
       }
-    }, [isPlaying])
+    }, [isPlaying, useSpectrum])
 
     // 缓存样式对象
     const containerStyle = useMemo(
@@ -759,10 +808,15 @@ const PlayingIndicator = memo(
       () => ({
         background: themeColor,
         width: `${2 * scale}px`,
-        transition: 'height 0.06s linear',
+        transition: useSpectrum ? 'height 0.06s linear' : undefined,
       }),
-      [themeColor, scale],
+      [themeColor, scale, useSpectrum],
     )
+
+    // 低性能：播放时用极轻量 CSS 高度脉冲，无 Analyser / RAF
+    const liteHeights = isPlaying
+      ? (['35%', '70%', '55%', '40%'] as const)
+      : (['30%', '50%', '40%', '35%'] as const)
 
     return (
       <motion.div
@@ -775,22 +829,22 @@ const PlayingIndicator = memo(
         <div
           ref={bar1Ref}
           className="rounded-full"
-          style={{ ...barStyle, height: '30%' }}
+          style={{ ...barStyle, height: useSpectrum ? '30%' : liteHeights[0] }}
         />
         <div
           ref={bar2Ref}
           className="rounded-full"
-          style={{ ...barStyle, height: '50%' }}
+          style={{ ...barStyle, height: useSpectrum ? '50%' : liteHeights[1] }}
         />
         <div
           ref={bar3Ref}
           className="rounded-full"
-          style={{ ...barStyle, height: '40%' }}
+          style={{ ...barStyle, height: useSpectrum ? '40%' : liteHeights[2] }}
         />
         <div
           ref={bar4Ref}
           className="rounded-full"
-          style={{ ...barStyle, height: '35%' }}
+          style={{ ...barStyle, height: useSpectrum ? '35%' : liteHeights[3] }}
         />
       </motion.div>
     )
@@ -1055,6 +1109,7 @@ export const MusicPlayerWidget = memo(
                 isPlaying={isPlaying}
                 themeColor={themeColor}
                 fontScale={fontScale}
+                animLevel={anim.level}
               />
             </div>
           </div>

@@ -661,7 +661,7 @@ export const WeatherWidget = memo(
               initial={{ y: 10, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={
-                perf.lowEndDevice
+                perf.lowEndDevice || anim.level !== 'standard'
                   ? { duration: 0.2 }
                   : { duration: 0.4, delay: 0.3 }
               }

@@ -24,6 +24,7 @@ import {
   throttle,
 } from '../utils/musicPlayer'
 import { loadResource } from '../utils/resourceLoader'
+import { getCurrentAnimationConfig } from './useAnimationLevel'
 import { getPerformanceProfileSync } from './usePerformanceProfile'
 
 // 播放模式类型
@@ -332,11 +333,17 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   const startProgressBreathAnimation = useCallback(() => {
     if (!progressBarRef.current) return
 
-    // ⚠️ 使用统一的性能检测
+    // ⚠️ 使用统一的性能检测（含用户手动性能模式）
     const perf = getPerformanceProfileSync()
+    const anim = getCurrentAnimationConfig()
 
-    // 移动端或低端设备直接返回,不启动动画
-    if (perf.isMobile || perf.lowEndDevice) {
+    // 移动端、低端设备或低性能模式直接返回,不启动动画
+    if (
+      perf.isMobile ||
+      perf.lowEndDevice ||
+      anim.level === 'light' ||
+      anim.level === 'none'
+    ) {
       return
     }
 

@@ -169,7 +169,10 @@ export function useFitText(options: FitTextOptions): FitTextResult {
 
   const perf = usePerformanceProfile()
   const anim = useAnimationLevel()
-  const active = enabled ?? !perf.lowEndDevice
+  // 低性能模式 / 低端设备：仅挂载后补测一次，不持续挂 ResizeObserver
+  const reducedPerf =
+    perf.lowEndDevice || anim.level === 'light' || anim.level === 'none'
+  const active = enabled ?? !reducedPerf
   const marqueeAllowed = marquee !== false && active && !!anim.loop
 
   const [node, setNode] = useState<HTMLElement | null>(null)

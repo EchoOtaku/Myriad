@@ -27,6 +27,7 @@ import type { WidgetSize } from '../components/WidgetGrid'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCachedSize } from './animation'
 import { useHomeResizeObserver } from './animation/pages/home'
+import { useAnimationLevel } from './useAnimationLevel'
 import { usePerformanceProfile } from './usePerformanceProfile'
 
 // 标准尺寸映射 (像素值基于假设的标准单元格大小)
@@ -71,8 +72,12 @@ export function useWidgetSize(
   const [size, setSize] = useState({ width: 0, height: 0 })
   const elementRef = useRef<HTMLDivElement | null>(null)
   const perf = usePerformanceProfile()
-  const lowEndDeviceRef = useRef(perf.lowEndDevice)
-  lowEndDeviceRef.current = perf.lowEndDevice
+  const anim = useAnimationLevel()
+  // 低性能模式与硬件低端：仅首次测量，不持续监听
+  const reduceResizeWork =
+    perf.lowEndDevice || anim.level === 'light' || anim.level === 'none'
+  const reduceResizeWorkRef = useRef(reduceResizeWork)
+  reduceResizeWorkRef.current = reduceResizeWork
 
   // 🆕 使用首页原子化 ResizeObserver
   const { observeHomeResize, unobserveHomeResize } = useHomeResizeObserver()
@@ -108,8 +113,8 @@ export function useWidgetSize(
       elementRef.current = node
 
       if (node) {
-        // 低端设备：仅首次测量，不持续监听
-        if (lowEndDeviceRef.current) {
+        // 低性能 / 低端：仅首次测量，不持续监听
+        if (reduceResizeWorkRef.current) {
           // 尝试获取缓存尺寸
           const cached = getCachedSize(node)
           if (cached && cached.width > 0) {
@@ -143,10 +148,10 @@ export function useWidgetSize(
     }
   }, [unobserveHomeResize])
 
-  // widgetSize 变化时重新测量（针对低端设备）
+  // widgetSize 变化时重新测量（针对低性能 / 低端设备）
   useEffect(() => {
     if (
-      lowEndDeviceRef.current &&
+      reduceResizeWorkRef.current &&
       elementRef.current &&
       elementRef.current.isConnected
     ) {

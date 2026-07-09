@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom'
 import { useI18n } from '../contexts/I18nContext'
 
 import { useHomeResizeObserver, useStaggerAnimation } from '../hooks/animation'
+import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import {
   getPerformanceProfileSync,
   usePerformanceProfile,
@@ -117,6 +118,7 @@ const WidgetGridItem = React.memo(
     index?: number
   }) => {
     const perf = usePerformanceProfile()
+    const anim = useAnimationLevel()
     const { t } = useI18n()
 
     // 使用统一动画协调系统
@@ -167,6 +169,10 @@ const WidgetGridItem = React.memo(
     const canResize =
       !widgetType.supportedSizes || widgetType.supportedSizes.length > 1
 
+    // 低性能模式 / 低端设备：禁用 spring，改用轻量 tween
+    const useLiteTransition =
+      !anim.spring || perf.lowEndDevice || anim.level !== 'standard'
+
     return (
       <motion.div
         className="absolute transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
@@ -180,7 +186,7 @@ const WidgetGridItem = React.memo(
         exit={{ opacity: 0, scale: 0.9 }}
         onAnimationComplete={handleAnimationComplete}
         transition={
-          perf.lowEndDevice
+          useLiteTransition
             ? { type: 'tween', duration: 0.35, delay: staggerDelay }
             : {
                 type: 'spring',

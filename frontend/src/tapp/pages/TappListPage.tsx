@@ -255,7 +255,9 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
         exit={{ opacity: 0, scale: 0.95 }}
         onAnimationComplete={handleAnimationComplete}
         transition={
-          perf.lowEndDevice
+          !animConfig.spring ||
+          perf.lowEndDevice ||
+          animConfig.level !== 'standard'
             ? { type: 'tween', duration: 0.25, delay: staggerDelay }
             : {
                 type: 'spring',
@@ -264,7 +266,11 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
                 delay: staggerDelay,
               }
         }
-        whileHover={!perf.lowEndDevice ? { y: -4 } : {}}
+        whileHover={
+          animConfig.level === 'standard' && !perf.lowEndDevice
+            ? { y: -4 }
+            : {}
+        }
         whileTap={{ scale: 0.98 }}
         onClick={handleCardClick}
         onMouseEnter={() => setIsHovered(true)}

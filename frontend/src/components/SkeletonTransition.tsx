@@ -180,7 +180,8 @@ export function LiquidGlassSkeleton({
     // standard: 完整粒子效果
     const config = {
       none: { count: 0, baseDistance: 0 },
-      light: { count: 30, baseDistance: 250 },
+      // 低性能：去掉粒子循环，只保留静态骨架
+      light: { count: 0, baseDistance: 0 },
       standard: { count: 80, baseDistance: 400 },
     }[level]
 
