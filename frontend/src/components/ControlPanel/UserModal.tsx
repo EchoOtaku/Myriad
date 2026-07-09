@@ -1,14 +1,18 @@
 import type { FC, SubmitEvent } from 'react'
 
 import type { User } from '../../contexts/AuthContext'
-import type { RecentTappItem, TappListItem } from '../../tapp'
+import type {
+  RecentTappItem,
+  TappListItem,
+} from '../../tapp/services/TappApiService'
 import { LuCrown, LuUser, MyriadStoreIcon } from '@lib/icons'
 import { useEffect, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
-import { getRecentTapps, listTapps, TappIcon } from '../../tapp'
+import { TappIcon } from '../../tapp/components/TappIcon'
+import { getRecentTapps, listTapps } from '../../tapp/services/TappApiService'
 import { getCSRFToken } from '../../utils/csrf'
 import '../UserModal.css'
 

@@ -39,7 +39,7 @@ interface PooledObject<T> {
 export class ObjectPool<T> {
   private pool: PooledObject<T>[] = []
   private config: Required<ObjectPoolConfig<T>>
-  private cleanupTimer: ReturnType<typeof setInterval> | null = null
+  private cleanupTimer: ReturnType<typeof setTimeout> | null = null
   private activeCount = 0
 
   constructor(config: ObjectPoolConfig<T>) {
@@ -54,9 +54,6 @@ export class ObjectPool<T> {
 
     // 预分配对象
     this.preallocate(this.config.initialSize)
-
-    // 启动清理定时器
-    this.startCleanupTimer()
   }
 
   /** 预分配对象 */
@@ -74,9 +71,13 @@ export class ObjectPool<T> {
   private startCleanupTimer() {
     if (this.cleanupTimer) return
     if (this.config.idleTimeout <= 0) return
+    // initialSize 是永久保底容量；只有额外对象才需要定时回收。
+    if (this.pool.length <= this.config.initialSize) return
 
-    this.cleanupTimer = setInterval(() => {
+    this.cleanupTimer = setTimeout(() => {
+      this.cleanupTimer = null
       this.cleanupIdle()
+      this.startCleanupTimer()
     }, this.config.idleTimeout / 2)
   }
 
@@ -126,6 +127,7 @@ export class ObjectPool<T> {
         obj,
         lastUsed: Date.now(),
       })
+      this.startCleanupTimer()
     } else {
       this.config.destroy(obj)
     }
@@ -143,6 +145,10 @@ export class ObjectPool<T> {
 
   /** 清空池 */
   clear(): void {
+    if (this.cleanupTimer) {
+      clearTimeout(this.cleanupTimer)
+      this.cleanupTimer = null
+    }
     for (const item of this.pool) {
       this.config.destroy(item.obj)
     }
@@ -153,7 +159,7 @@ export class ObjectPool<T> {
   /** 销毁池 */
   destroy(): void {
     if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer)
+      clearTimeout(this.cleanupTimer)
       this.cleanupTimer = null
     }
     this.clear()

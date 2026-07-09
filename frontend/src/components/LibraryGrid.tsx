@@ -337,6 +337,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
   >('all')
   const [isTransitioning, setIsTransitioning] = useState(false)
+  const transitionTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   // 布局状态
   const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map())
@@ -901,18 +902,31 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
   useEffect(() => {
     if (filter === prevFilter) return
+
+    transitionTimersRef.current.forEach(clearTimeout)
+    transitionTimersRef.current = []
+
     if (needsTransition(prevFilter, filter)) {
       setIsTransitioning(true)
-      setTimeout(() => {
+      const swapTimer = setTimeout(() => {
         setPrevFilter(filter)
-        setTimeout(setIsTransitioning, 150, false)
       }, 200)
+      const finishTimer = setTimeout(setIsTransitioning, 350, false)
+      transitionTimersRef.current = [swapTimer, finishTimer]
     } else {
       setPrevFilter(filter)
+      setIsTransitioning(false)
     }
     // 切换分类时重置显示数量
     setVisibleCount(20)
   }, [filter, prevFilter])
+
+  useEffect(() => {
+    return () => {
+      transitionTimersRef.current.forEach(clearTimeout)
+      transitionTimersRef.current = []
+    }
+  }, [])
 
   if (loading && allItems.length === 0) {
     return null

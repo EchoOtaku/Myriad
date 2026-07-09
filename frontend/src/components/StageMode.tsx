@@ -1,3 +1,4 @@
+import type { WidgetConfig } from './WidgetGrid'
 import {
   FaBook,
   FaGamepad,
@@ -9,7 +10,6 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import type { WidgetConfig } from './WidgetGrid'
 import { useI18n } from '../contexts/I18nContext'
 
 import { useReportsVisibilityInterval } from '../hooks/animation'
@@ -170,7 +170,7 @@ const REPORT_CARD_BASE_WIDTH = 308
 const REPORT_CARD_BASE_HEIGHT = REPORT_CARD_BASE_WIDTH / 2
 
 /** 舞台模式专用：外层放大，内层按报告页卡片尺寸绘制后等比缩放 */
-const StageScaledReportCard = memo(function StageScaledReportCard({
+const StageScaledReportCard = memo(({
   config,
   data,
   showOverview,
@@ -178,7 +178,7 @@ const StageScaledReportCard = memo(function StageScaledReportCard({
   config: WidgetConfig
   data: any
   showOverview: boolean
-}) {
+}) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1)
 

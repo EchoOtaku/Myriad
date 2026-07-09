@@ -189,6 +189,8 @@ function CustomScrollbarInner() {
   // ⚠️ 移除了 MutationObserver - 这是造成移动端崩溃的主要原因
   useEffect(() => {
     let throttleTimer: number | null = null
+    let initialRaf: number | null = null
+    let initialFollowUpTimer: number | null = null
 
     const handleUpdateThrottled = () => {
       if (throttleTimer !== null) return
@@ -199,10 +201,10 @@ function CustomScrollbarInner() {
     }
 
     // 立即执行初始更新，确保 thumb 可见
-    requestAnimationFrame(() => {
+    initialRaf = requestAnimationFrame(() => {
       updateThumb()
       // 再次更新以确保准确（处理初次渲染后的 DOM 变化）
-      setTimeout(updateThumb, 100)
+      initialFollowUpTimer = window.setTimeout(updateThumb, 100)
     })
 
     // 使用共享 ResizeObserver 监听文档高度变化
@@ -214,12 +216,17 @@ function CustomScrollbarInner() {
     return () => {
       unobserve()
       if (throttleTimer !== null) clearTimeout(throttleTimer)
+      if (initialRaf !== null) cancelAnimationFrame(initialRaf)
+      if (initialFollowUpTimer !== null) clearTimeout(initialFollowUpTimer)
     }
   }, [updateThumb, handleUpdate])
 
   // 监听路由变化，触发平滑过渡
   useEffect(() => {
     if (!thumbRef.current) return
+
+    let updateDelay: ReturnType<typeof setTimeout> | null = null
+    let transitionTimer: ReturnType<typeof setTimeout> | null = null
 
     // 记录路由切换时间
     routeTransitionTimeRef.current = Date.now()
@@ -236,7 +243,7 @@ function CustomScrollbarInner() {
         'top 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
 
       // 再等待一段时间后触发更新到新页面的尺寸
-      const updateDelay = setTimeout(() => {
+      updateDelay = setTimeout(() => {
         // 解除更新禁止，并触发一次更新
         isRouteTransitioningRef.current = false
         // 🔧 路由变化时重置高度缓存
@@ -247,20 +254,17 @@ function CustomScrollbarInner() {
       }, 150) // 再延迟 150ms 确保过渡已经设置好
 
       // 700ms 后移除过渡，恢复正常
-      const transitionTimer = setTimeout(() => {
+      transitionTimer = setTimeout(() => {
         if (thumbRef.current) {
           thumbRef.current.style.transition = 'none'
         }
       }, 700)
-
-      return () => {
-        clearTimeout(updateDelay)
-        clearTimeout(transitionTimer)
-      }
     }, 1000) // 等待 1000ms 让 DOM 完全重排和页面动画完成
 
     return () => {
       clearTimeout(initialDelay)
+      if (updateDelay !== null) clearTimeout(updateDelay)
+      if (transitionTimer !== null) clearTimeout(transitionTimer)
       // 清理时也要恢复标志
       isRouteTransitioningRef.current = false
     }

@@ -19,31 +19,42 @@ class RequestCache {
   private cache: Map<string, CacheEntry<any>>
   private pendingRequests: Map<string, Promise<any>>
   private maxEntries: number
-  private sweepTimer: ReturnType<typeof setInterval> | null = null
+  private sweepTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(maxEntries: number = DEFAULT_MAX_ENTRIES) {
     this.cache = new Map()
     this.pendingRequests = new Map()
     this.maxEntries = maxEntries
-    this.startSweep()
   }
 
   /**
-   * 启动过期条目定期清理（仅浏览器环境）
-   * 避免「只写不读」的 key 在 TTL 后仍占内存
+   * 缓存非空时才安排下一次过期扫描。
+   * 空缓存不保留常驻 interval，避免应用空闲时每分钟无意义唤醒。
    */
-  private startSweep(): void {
+  private scheduleSweep(): void {
     if (typeof window === 'undefined') return
-    if (this.sweepTimer) return
+    if (this.sweepTimer || this.cache.size === 0) return
 
-    this.sweepTimer = setInterval(() => {
+    this.sweepTimer = setTimeout(() => {
+      this.sweepTimer = null
       this.sweepExpired()
+      this.scheduleSweep()
     }, SWEEP_INTERVAL_MS)
 
     // Node / 测试环境可能无 unref；浏览器忽略
-    if (typeof this.sweepTimer === 'object' && this.sweepTimer !== null && 'unref' in this.sweepTimer) {
+    if (
+      typeof this.sweepTimer === 'object' &&
+      this.sweepTimer !== null &&
+      'unref' in this.sweepTimer
+    ) {
       ;(this.sweepTimer as NodeJS.Timeout).unref?.()
     }
+  }
+
+  private stopSweepIfIdle(): void {
+    if (this.cache.size !== 0 || this.sweepTimer === null) return
+    clearTimeout(this.sweepTimer)
+    this.sweepTimer = null
   }
 
   /**
@@ -58,6 +69,7 @@ class RequestCache {
         removed++
       }
     }
+    this.stopSweepIfIdle()
     return removed
   }
 
@@ -108,6 +120,7 @@ class RequestCache {
       ttl,
     })
     this.enforceLimit()
+    this.scheduleSweep()
   }
 
   /**
@@ -116,6 +129,7 @@ class RequestCache {
   delete(key: string): void {
     this.cache.delete(key)
     this.pendingRequests.delete(key)
+    this.stopSweepIfIdle()
   }
 
   /**
@@ -134,6 +148,7 @@ class RequestCache {
         this.pendingRequests.delete(key)
       }
     }
+    this.stopSweepIfIdle()
     return removed
   }
 
@@ -143,6 +158,7 @@ class RequestCache {
   clear(): void {
     this.cache.clear()
     this.pendingRequests.clear()
+    this.stopSweepIfIdle()
   }
 
   /**

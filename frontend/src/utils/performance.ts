@@ -327,7 +327,10 @@ export function createWorker(fn: (...args: unknown[]) => unknown): Worker {
     type: 'application/javascript',
   })
   const url = URL.createObjectURL(blob)
-  return new Worker(url)
+  const worker = new Worker(url)
+  // Worker 构造完成后脚本已被接管，立即释放临时 Blob URL。
+  URL.revokeObjectURL(url)
+  return worker
 }
 
 /**

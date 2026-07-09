@@ -39,7 +39,10 @@ class ResourceLoader {
   private failedLoads: Map<string, number> = new Map()
   private config: LoaderConfig
   private isPageLoaded = false
-  private idleCallbackId: number | null = null
+  private scheduledIdleTasks = new Map<
+    string,
+    { kind: 'idle' | 'timeout'; id: number }
+  >()
 
   constructor(config?: Partial<LoaderConfig>) {
     this.config = {
@@ -54,10 +57,14 @@ class ResourceLoader {
     if (document.readyState === 'complete') {
       this.isPageLoaded = true
     } else {
-      window.addEventListener('load', () => {
-        this.isPageLoaded = true
-        this.processQueue()
-      })
+      window.addEventListener(
+        'load',
+        () => {
+          this.isPageLoaded = true
+          this.processQueue()
+        },
+        { once: true },
+      )
     }
   }
 
@@ -116,6 +123,7 @@ class ResourceLoader {
     if (index !== -1) {
       this.queue.splice(index, 1)
     }
+    this.cancelScheduledIdleTask(id)
   }
 
   /**
@@ -206,13 +214,17 @@ class ResourceLoader {
    */
   private async executeTask(task: LoadTask): Promise<void> {
     this.activeLoads.add(task.id)
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
 
     try {
       // 设置超时
       const timeoutPromise = task.timeout
-        ? new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error('Task timeout')), task.timeout),
-          )
+        ? new Promise<void>((_, reject) => {
+            timeoutId = setTimeout(
+              () => reject(new Error('Task timeout')),
+              task.timeout,
+            )
+          })
         : null
 
       // 执行加载
@@ -251,6 +263,9 @@ class ResourceLoader {
         this.sortQueue()
       }
     } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId)
+      }
       this.activeLoads.delete(task.id)
       // 继续处理下一个任务
       this.processQueue()
@@ -261,24 +276,49 @@ class ResourceLoader {
    * 使用 requestIdleCallback 执行空闲任务
    */
   scheduleIdleTask(id: string, loader: () => Promise<void>): void {
+    if (
+      this.scheduledIdleTasks.has(id) ||
+      this.isCompleted(id) ||
+      this.activeLoads.has(id) ||
+      this.queue.some((task) => task.id === id)
+    ) {
+      return
+    }
+
     if (typeof window.requestIdleCallback !== 'undefined') {
-      this.idleCallbackId = window.requestIdleCallback(() => {
+      const callbackId = window.requestIdleCallback(() => {
+        this.scheduledIdleTasks.delete(id)
         this.addTask({
           id,
           priority: LoadPriority.IDLE,
           loader,
         })
       })
+      this.scheduledIdleTasks.set(id, { kind: 'idle', id: callbackId })
     } else {
       // 降级方案：使用 setTimeout
-      setTimeout(() => {
+      const timeoutId = window.setTimeout(() => {
+        this.scheduledIdleTasks.delete(id)
         this.addTask({
           id,
           priority: LoadPriority.IDLE,
           loader,
         })
       }, this.config.idleDelay)
+      this.scheduledIdleTasks.set(id, { kind: 'timeout', id: timeoutId })
     }
+  }
+
+  private cancelScheduledIdleTask(id: string): void {
+    const scheduled = this.scheduledIdleTasks.get(id)
+    if (!scheduled) return
+
+    if (scheduled.kind === 'idle') {
+      window.cancelIdleCallback(scheduled.id)
+    } else {
+      window.clearTimeout(scheduled.id)
+    }
+    this.scheduledIdleTasks.delete(id)
   }
 
   /**
@@ -345,9 +385,8 @@ class ResourceLoader {
   clear(): void {
     this.queue = []
     this.activeLoads.clear()
-    if (this.idleCallbackId !== null) {
-      window.cancelIdleCallback(this.idleCallbackId)
-      this.idleCallbackId = null
+    for (const id of [...this.scheduledIdleTasks.keys()]) {
+      this.cancelScheduledIdleTask(id)
     }
   }
 

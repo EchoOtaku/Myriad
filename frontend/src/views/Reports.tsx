@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { ToastType } from '../components/Toast'
 import type { WidgetConfig } from '../components/WidgetGrid'
 import type { SecondaryNavItem } from '../contexts/NavigationContext'
@@ -12,19 +13,19 @@ import {
   SiBilibili,
   SiNeteasecloudmusic,
 } from '@lib/icons'
+
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-
 import {
   memo,
+
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import StageMode from '../components/StageMode'
@@ -222,7 +223,7 @@ const STAGE_PLACEHOLDER_TRANSITION = {
 }
 
 /** 舞台模式播放中：入口卡片简洁占位 */
-const StagePlayingCardPlaceholder = memo(function StagePlayingCardPlaceholder({
+const StagePlayingCardPlaceholder = memo(({
   icon,
   name,
   textClass,
@@ -234,7 +235,7 @@ const StagePlayingCardPlaceholder = memo(function StagePlayingCardPlaceholder({
   textClass: string
   borderClass: string
   label: string
-}) {
+}) => {
   return (
     <motion.div
       className="absolute inset-0 flex items-center justify-center gap-3 px-6"

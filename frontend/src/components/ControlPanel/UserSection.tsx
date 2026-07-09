@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { API_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import { cleanupTemporaryTapps } from '../../tapp'
+import { cleanupTemporaryTapps } from '../../tapp/services/TappApiService'
 import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
 import {

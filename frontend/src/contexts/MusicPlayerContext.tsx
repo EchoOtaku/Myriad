@@ -141,10 +141,19 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new CustomEvent('stop-temp-play'))
   }, [])
 
+  const value = useMemo(
+    () => ({
+      ...state,
+      playSong,
+      togglePlayPause,
+      stopTempPlay,
+      updateState,
+    }),
+    [state, playSong, togglePlayPause, stopTempPlay, updateState],
+  )
+
   return (
-    <MusicPlayerContext.Provider
-      value={{ ...state, playSong, togglePlayPause, stopTempPlay, updateState }}
-    >
+    <MusicPlayerContext.Provider value={value}>
       {children}
     </MusicPlayerContext.Provider>
   )
@@ -189,6 +198,7 @@ let globalMusicState: MusicPlayerState = {
 
 /** 状态变化监听器集合 */
 const musicStateListeners = new Set<() => void>()
+let isMusicEventListenerAttached = false
 
 /** 通知所有监听器状态已变化 */
 function emitMusicStateChange() {
@@ -198,7 +208,19 @@ function emitMusicStateChange() {
 /** 订阅状态变化 */
 function subscribeMusicState(listener: () => void) {
   musicStateListeners.add(listener)
-  return () => musicStateListeners.delete(listener)
+  if (typeof window !== 'undefined') {
+    const currentState = (window as any).__musicPlayerState
+    if (currentState) {
+      globalMusicState = { ...globalMusicState, ...currentState }
+    }
+  }
+  attachMusicEventListener()
+  return () => {
+    musicStateListeners.delete(listener)
+    if (musicStateListeners.size === 0) {
+      detachMusicEventListener()
+    }
+  }
 }
 
 /** 获取当前状态快照 */
@@ -221,6 +243,29 @@ function updateGlobalMusicState(newState: Partial<MusicPlayerState>) {
   }
 }
 
+function handleGlobalMusicStateChange(event: Event) {
+  const detail = (event as CustomEvent).detail
+  if (detail) updateGlobalMusicState(detail)
+}
+
+function attachMusicEventListener() {
+  if (isMusicEventListenerAttached || typeof window === 'undefined') return
+  window.addEventListener(
+    'music-player-state-change',
+    handleGlobalMusicStateChange,
+  )
+  isMusicEventListenerAttached = true
+}
+
+function detachMusicEventListener() {
+  if (!isMusicEventListenerAttached || typeof window === 'undefined') return
+  window.removeEventListener(
+    'music-player-state-change',
+    handleGlobalMusicStateChange,
+  )
+  isMusicEventListenerAttached = false
+}
+
 // 初始化：监听事件并更新全局状态
 if (typeof window !== 'undefined') {
   // 暴露 audioManager 到 window（供 Tapp SDK 获取频谱数据）
@@ -233,14 +278,6 @@ if (typeof window !== 'undefined') {
   if (initialState) {
     globalMusicState = { ...globalMusicState, ...initialState }
   }
-
-  // 监听状态变化事件
-  window.addEventListener('music-player-state-change', (e: Event) => {
-    const detail = (e as CustomEvent).detail
-    if (detail) {
-      updateGlobalMusicState(detail)
-    }
-  })
 }
 
 // 降级方案：基于 useSyncExternalStore 的实现（高性能版本）

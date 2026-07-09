@@ -348,6 +348,7 @@ export class CloudPodcastPlayer {
   private isPlaying = false
   private isPaused = false
   private isLoading = false
+  private dialogueGapTimer: ReturnType<typeof setTimeout> | null = null
   private config = {
     dialogueGap: 300, // 对话间隔 ms
   }
@@ -516,6 +517,8 @@ export class CloudPodcastPlayer {
     } catch (error) {
       console.error('[CloudPodcastPlayer] Load failed:', error)
       this.isLoading = false
+      // base64 转换或 Audio 初始化中途失败时，释放已创建的 Blob/元素。
+      this.cleanup()
       throw error
     }
   }
@@ -574,6 +577,10 @@ export class CloudPodcastPlayer {
   stop() {
     this.isPlaying = false
     this.isPaused = false
+    if (this.dialogueGapTimer !== null) {
+      clearTimeout(this.dialogueGapTimer)
+      this.dialogueGapTimer = null
+    }
 
     // 停止所有音频
     for (const audio of this.audioElements.values()) {
@@ -684,7 +691,11 @@ export class CloudPodcastPlayer {
       this.currentIndex++
 
       // 对话间隔后继续
-      setTimeout(() => {
+      if (this.dialogueGapTimer !== null) {
+        clearTimeout(this.dialogueGapTimer)
+      }
+      this.dialogueGapTimer = setTimeout(() => {
+        this.dialogueGapTimer = null
         if (!this.isPlaying || this.isPaused) return
         this.onProgress?.(this.currentIndex, this.dialogues.length)
         this.playNext()
@@ -721,6 +732,8 @@ export class CloudPodcastPlayer {
     // 清理音频元素
     for (const audio of this.audioElements.values()) {
       audio.pause()
+      audio.onended = null
+      audio.onerror = null
       audio.src = ''
     }
     this.audioElements.clear()

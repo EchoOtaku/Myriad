@@ -98,6 +98,44 @@ const CACHE_TTL = {
   separatedCss: 60 * 60 * 1000, // 分离 CSS 1 小时
 }
 
+const CACHE_LIMIT = {
+  widget: 60,
+  page: 30,
+  raw: 30,
+  widgetCss: 60,
+  pageCss: 30,
+} as const
+
+function getCachedEntry<T>(
+  cache: Map<string, ResourceCacheEntry<T>>,
+  key: string,
+): ResourceCacheEntry<T> | undefined {
+  const entry = cache.get(key)
+  if (!entry) return undefined
+  if (Date.now() - entry.timestamp >= entry.ttl) {
+    cache.delete(key)
+    return undefined
+  }
+  cache.delete(key)
+  cache.set(key, entry)
+  return entry
+}
+
+function setCachedEntry<T>(
+  cache: Map<string, ResourceCacheEntry<T>>,
+  key: string,
+  entry: ResourceCacheEntry<T>,
+  maxEntries: number,
+): void {
+  cache.delete(key)
+  cache.set(key, entry)
+  while (cache.size > maxEntries) {
+    const oldestKey = cache.keys().next().value
+    if (oldestKey === undefined) break
+    cache.delete(oldestKey)
+  }
+}
+
 // ============ 请求去重器 ============
 
 class RequestDeduplicator {
@@ -230,10 +268,8 @@ export class TappResourceLoader {
     const cacheKey = `${tappInstance.id}:${size}`
 
     // 检查缓存
-    const cached = this.widgetCache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data
-    }
+    const cached = getCachedEntry(this.widgetCache, cacheKey)
+    if (cached) return cached.data
 
     // 使用请求去重
     return this.deduplicator.dedupe(`widget:${cacheKey}`, async () => {
@@ -303,11 +339,16 @@ export class TappResourceLoader {
       }
 
       // 存入缓存
-      this.widgetCache.set(cacheKey, {
-        data: resources,
-        timestamp: Date.now(),
-        ttl: CACHE_TTL.widget,
-      })
+      setCachedEntry(
+        this.widgetCache,
+        cacheKey,
+        {
+          data: resources,
+          timestamp: Date.now(),
+          ttl: CACHE_TTL.widget,
+        },
+        CACHE_LIMIT.widget,
+      )
 
       return resources
     })
@@ -330,10 +371,8 @@ export class TappResourceLoader {
     const cacheKey = tappInstance.id
 
     // 检查缓存
-    const cached = this.pageCache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data
-    }
+    const cached = getCachedEntry(this.pageCache, cacheKey)
+    if (cached) return cached.data
 
     // 使用请求去重
     return this.deduplicator.dedupe(`page:${cacheKey}`, async () => {
@@ -390,11 +429,16 @@ export class TappResourceLoader {
       }
 
       // 存入缓存
-      this.pageCache.set(cacheKey, {
-        data: resources,
-        timestamp: Date.now(),
-        ttl: CACHE_TTL.page,
-      })
+      setCachedEntry(
+        this.pageCache,
+        cacheKey,
+        {
+          data: resources,
+          timestamp: Date.now(),
+          ttl: CACHE_TTL.page,
+        },
+        CACHE_LIMIT.page,
+      )
 
       return resources
     })
@@ -421,10 +465,8 @@ export class TappResourceLoader {
     const cacheKey = `${tappId}:${size}`
 
     // 检查缓存
-    const cached = this.widgetCssCache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data
-    }
+    const cached = getCachedEntry(this.widgetCssCache, cacheKey)
+    if (cached) return cached.data
 
     let css: string
 
@@ -442,11 +484,16 @@ export class TappResourceLoader {
     }
 
     // 缓存
-    this.widgetCssCache.set(cacheKey, {
-      data: css,
-      timestamp: Date.now(),
-      ttl: CACHE_TTL.separatedCss,
-    })
+    setCachedEntry(
+      this.widgetCssCache,
+      cacheKey,
+      {
+        data: css,
+        timestamp: Date.now(),
+        ttl: CACHE_TTL.separatedCss,
+      },
+      CACHE_LIMIT.widgetCss,
+    )
 
     return css
   }
@@ -470,10 +517,8 @@ export class TappResourceLoader {
     const cacheKey = tappId
 
     // 检查缓存
-    const cached = this.pageCssCache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data
-    }
+    const cached = getCachedEntry(this.pageCssCache, cacheKey)
+    if (cached) return cached.data
 
     let css: string
 
@@ -492,11 +537,16 @@ export class TappResourceLoader {
     }
 
     // 缓存
-    this.pageCssCache.set(cacheKey, {
-      data: css,
-      timestamp: Date.now(),
-      ttl: CACHE_TTL.separatedCss,
-    })
+    setCachedEntry(
+      this.pageCssCache,
+      cacheKey,
+      {
+        data: css,
+        timestamp: Date.now(),
+        ttl: CACHE_TTL.separatedCss,
+      },
+      CACHE_LIMIT.pageCss,
+    )
 
     return css
   }
@@ -509,20 +559,23 @@ export class TappResourceLoader {
   private async fetchRawResources(
     tappId: string,
   ): Promise<TappApiService.TappResources> {
-    const cached = this.rawResourceCache.get(tappId)
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data
-    }
+    const cached = getCachedEntry(this.rawResourceCache, tappId)
+    if (cached) return cached.data
 
     return this.deduplicator.dedupe(`raw:${tappId}`, async () => {
       try {
         const resources = await TappApiService.getTappResources(tappId)
 
-        this.rawResourceCache.set(tappId, {
-          data: resources,
-          timestamp: Date.now(),
-          ttl: CACHE_TTL.widget, // 使用较短的 TTL
-        })
+        setCachedEntry(
+          this.rawResourceCache,
+          tappId,
+          {
+            data: resources,
+            timestamp: Date.now(),
+            ttl: CACHE_TTL.widget, // 使用较短的 TTL
+          },
+          CACHE_LIMIT.raw,
+        )
 
         return resources
       } catch {
@@ -671,10 +724,8 @@ export class TappResourceLoader {
    */
   async getWidgetCSSOnly(tappId: string, size: string): Promise<string | null> {
     const cacheKey = `${tappId}:${size}`
-    const cached = this.widgetCssCache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data
-    }
+    const cached = getCachedEntry(this.widgetCssCache, cacheKey)
+    if (cached) return cached.data
     return null
   }
 
@@ -682,10 +733,8 @@ export class TappResourceLoader {
    * 获取 Page CSS（仅 CSS）
    */
   async getPageCSSOnly(tappId: string): Promise<string | null> {
-    const cached = this.pageCssCache.get(tappId)
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data
-    }
+    const cached = getCachedEntry(this.pageCssCache, tappId)
+    if (cached) return cached.data
     return null
   }
 }

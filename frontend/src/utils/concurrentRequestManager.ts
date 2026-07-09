@@ -14,6 +14,9 @@ interface QueuedRequest {
   priority: number
   resolve: (value: any) => void
   reject: (reason: any) => void
+  timeout?: number
+  timeoutId: ReturnType<typeof setTimeout> | null
+  timedOut: boolean
 }
 
 class ConcurrentRequestManager {
@@ -40,21 +43,14 @@ class ConcurrentRequestManager {
     timeout?: number,
   ): Promise<T> {
     // 如果已有相同请求正在进行，取消旧请求
-    if (this.activeRequests.has(key)) {
+    if (
+      this.activeRequests.has(key) ||
+      this.requestQueue.some((request) => request.key === key)
+    ) {
       this.cancelRequest(key)
     }
 
     const controller = new AbortController()
-
-    // 设置超时
-    if (timeout) {
-      setTimeout(() => {
-        if (this.activeRequests.has(key)) {
-          controller.abort()
-          this.activeRequests.delete(key)
-        }
-      }, timeout)
-    }
 
     return new Promise<T>((resolve, reject) => {
       const request: QueuedRequest = {
@@ -64,6 +60,9 @@ class ConcurrentRequestManager {
         priority,
         resolve,
         reject,
+        timeout,
+        timeoutId: null,
+        timedOut: false,
       }
 
       // 如果达到并发限制，加入队列
@@ -84,17 +83,35 @@ class ConcurrentRequestManager {
     this.currentCount++
     this.activeRequests.set(request.key, request.controller)
 
+    // 排队时间不计入网络超时；任务真正开始后才启动计时。
+    if (request.timeout) {
+      request.timeoutId = setTimeout(() => {
+        request.timedOut = true
+        request.controller.abort()
+      }, request.timeout)
+    }
+
     try {
       const result = await request.fetcher()
       request.resolve(result)
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        request.reject(new Error('Request was cancelled'))
+        request.reject(
+          new Error(
+            request.timedOut ? 'Request timed out' : 'Request was cancelled',
+          ),
+        )
       } else {
         request.reject(error)
       }
     } finally {
-      this.activeRequests.delete(request.key)
+      if (request.timeoutId !== null) {
+        clearTimeout(request.timeoutId)
+        request.timeoutId = null
+      }
+      if (this.activeRequests.get(request.key) === request.controller) {
+        this.activeRequests.delete(request.key)
+      }
       this.currentCount--
       this.processQueue()
     }
@@ -122,11 +139,17 @@ class ConcurrentRequestManager {
     const controller = this.activeRequests.get(key)
     if (controller) {
       controller.abort()
-      this.activeRequests.delete(key)
     }
 
-    // 同时从队列中移除
-    this.requestQueue = this.requestQueue.filter((req) => req.key !== key)
+    // 同时从队列中移除并结束其 Promise，避免调用方永久等待。
+    const queued = this.requestQueue.filter((request) => request.key === key)
+    this.requestQueue = this.requestQueue.filter(
+      (request) => request.key !== key,
+    )
+    for (const request of queued) {
+      request.controller.abort()
+      request.reject(new Error('Request was cancelled'))
+    }
   }
 
   /**
@@ -139,9 +162,12 @@ class ConcurrentRequestManager {
     }
     this.activeRequests.clear()
 
-    // 清空队列
+    // 清空队列并结束所有尚未执行的 Promise
+    for (const request of this.requestQueue) {
+      request.controller.abort()
+      request.reject(new Error('Request was cancelled'))
+    }
     this.requestQueue = []
-    this.currentCount = 0
   }
 
   /**

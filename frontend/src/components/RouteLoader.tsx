@@ -16,13 +16,17 @@ export default function RouteLoader() {
     setLoading(true)
     setVisible(true)
 
+    let hideTimer: ReturnType<typeof setTimeout> | null = null
     const timer = setTimeout(() => {
       setLoading(false)
       // 等待退出动画完成后再隐藏
-      setTimeout(setVisible, 400, false)
+      hideTimer = setTimeout(setVisible, 400, false)
     }, 600)
 
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      if (hideTimer !== null) clearTimeout(hideTimer)
+    }
   }, [location.pathname])
 
   if (!visible) return null

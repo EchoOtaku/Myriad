@@ -24,13 +24,13 @@ import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../contexts/I18nContext'
 import { isPageVisible, onVisibility } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { TappIcon } from '../../tapp/components/TappIcon'
 import {
   getResourceLoader,
-  getTappRuntime,
   loadWidgetResources,
-  TappIcon,
-  TappWidgetSandbox,
-} from '../../tapp'
+} from '../../tapp/runtime/sandbox/resourceLoader'
+import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
+import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
 import { GlowBackground } from './shared/GlowBackground'
 
 export interface TappWidgetProps extends WidgetComponentProps {

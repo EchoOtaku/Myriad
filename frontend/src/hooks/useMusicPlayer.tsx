@@ -1226,6 +1226,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     }
 
     const audio = audioRef.current
+    let errorAdvanceTimer: ReturnType<typeof setTimeout> | null = null
 
     const handleTimeUpdate = throttle(() => {
       const currentTime = audio.currentTime
@@ -1322,7 +1323,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       setIsAudioLoading(false)
 
       if (playlist.length > 1 && playMode !== 'single') {
-        setTimeout(() => {
+        if (errorAdvanceTimer !== null) clearTimeout(errorAdvanceTimer)
+        errorAdvanceTimer = setTimeout(() => {
           const nextIndex = (currentSongIndex + 1) % playlist.length
           if (playlist[nextIndex]) {
             selectSong(playlist[nextIndex], nextIndex, true)
@@ -1510,6 +1512,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     audio.addEventListener('play', handlePlay)
 
     return () => {
+      handleTimeUpdate.cancel()
+      if (errorAdvanceTimer !== null) clearTimeout(errorAdvanceTimer)
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('ended', handleEnded)
       audio.removeEventListener('error', handleError)

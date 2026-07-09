@@ -448,8 +448,9 @@ export function App() {
   useEffect(() => {
     console.debug('[App] App useEffect running...')
     // 使用双帧延迟确保基础布局已渲染
+    let innerRafId: number | null = null
     const rafId = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+      innerRafId = requestAnimationFrame(() => {
         setIsLayoutReady(true)
 
         // 通知 PageLoader 应用已就绪
@@ -459,7 +460,10 @@ export function App() {
       })
     })
 
-    return () => cancelAnimationFrame(rafId)
+    return () => {
+      cancelAnimationFrame(rafId)
+      if (innerRafId !== null) cancelAnimationFrame(innerRafId)
+    }
   }, [])
 
   // 预加载关键路由 - 在空闲时加载Library和Config

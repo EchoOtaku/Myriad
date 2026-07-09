@@ -47,11 +47,11 @@ export async function getNeteaseAudioUrl(
 export function throttle<T extends (...args: any[]) => any>(
   func: T,
   wait: number,
-): (...args: Parameters<T>) => void {
+): ((...args: Parameters<T>) => void) & { cancel: () => void } {
   let timeout: NodeJS.Timeout | null = null
   let previous = 0
 
-  return function (this: any, ...args: Parameters<T>) {
+  const throttled = function (this: any, ...args: Parameters<T>) {
     const now = Date.now()
     const remaining = wait - (now - previous)
 
@@ -69,7 +69,17 @@ export function throttle<T extends (...args: any[]) => any>(
         func.apply(this, args)
       }, remaining)
     }
+  } as ((...args: Parameters<T>) => void) & { cancel: () => void }
+
+  throttled.cancel = () => {
+    if (timeout) {
+      clearTimeout(timeout)
+      timeout = null
+    }
+    previous = 0
   }
+
+  return throttled
 }
 
 /**
@@ -184,6 +194,20 @@ interface PlaylistCacheEntry {
 const playlistMemoryCache = new Map<string, PlaylistCacheEntry>()
 const PLAYLIST_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000 // 7天
 const PLAYLIST_STORAGE_KEY = 'myriad_playlist_cache'
+const MAX_PLAYLIST_CACHE_SIZE = 5
+
+function setPlaylistMemoryCache(
+  cacheKey: string,
+  entry: PlaylistCacheEntry,
+): void {
+  playlistMemoryCache.delete(cacheKey)
+  playlistMemoryCache.set(cacheKey, entry)
+  while (playlistMemoryCache.size > MAX_PLAYLIST_CACHE_SIZE) {
+    const oldestKey = playlistMemoryCache.keys().next().value
+    if (oldestKey === undefined) break
+    playlistMemoryCache.delete(oldestKey)
+  }
+}
 
 // 头部制作信息行（制作人/作词/作曲/编曲…）：网易云 lrc 常把 credit 挤在 0~10s，
 // 它们不是歌词——最后一行 credit 会作为「歌词」高亮挂到真人声进来为止（乱轴观感）
@@ -336,8 +360,11 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
     memoryCache &&
     Date.now() - memoryCache.timestamp < PLAYLIST_CACHE_DURATION
   ) {
+    // 刷新 LRU 顺序，避免常用歌单被优先淘汰。
+    setPlaylistMemoryCache(cacheKey, memoryCache)
     return memoryCache.data
   }
+  if (memoryCache) playlistMemoryCache.delete(cacheKey)
 
   // 2. 检查 SessionStorage
   try {
@@ -351,7 +378,7 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
 
       if (cached && Date.now() - cached.timestamp < PLAYLIST_CACHE_DURATION) {
         // 恢复到内存缓存
-        playlistMemoryCache.set(cacheKey, cached)
+        setPlaylistMemoryCache(cacheKey, cached)
         return cached.data
       }
     }
@@ -372,7 +399,7 @@ function savePlaylistToCache(cacheKey: string, songs: Song[]): void {
   }
 
   // 1. 存入内存缓存
-  playlistMemoryCache.set(cacheKey, entry)
+  setPlaylistMemoryCache(cacheKey, entry)
 
   // 2. 存入 SessionStorage（限制总大小）
   try {
@@ -391,9 +418,9 @@ function savePlaylistToCache(cacheKey: string, songs: Song[]): void {
     // 添加新缓存
     allCache[cacheKey] = entry
 
-    // 限制缓存数量（最多5个歌单）
+    // 限制缓存数量（与内存缓存一致，最多5个歌单）
     const keys = Object.keys(allCache)
-    if (keys.length > 5) {
+    if (keys.length > MAX_PLAYLIST_CACHE_SIZE) {
       // 删除最旧的
       const oldestKey = keys.reduce((oldest, key) => {
         return allCache[key].timestamp < allCache[oldest].timestamp

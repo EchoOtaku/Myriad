@@ -8,7 +8,8 @@ import React from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useBreakpoints } from '../hooks/useSharedEventListener'
-import { TappRunPage, TappWindowManager } from '../tapp'
+import { TappWindowManager } from '../tapp/components/TappWindowManager'
+import { TappRunPage } from '../tapp/pages/TappRunPage'
 
 const TappRunView: React.FC = () => {
   // 从路由参数中获取 tappId
