@@ -5,13 +5,13 @@ use tracing::info;
 
 use crate::error::Result;
 use crate::state::{Job, JobStatus, JobStep, MaintenanceFile, Phase, StateDir};
-use crate::version::MyriadVersion;
+use crate::version::DeployTag;
 
 pub struct PhaseRecorder<'a> {
     pub state: &'a StateDir,
     pub job_id: String,
-    pub from_version: Option<MyriadVersion>,
-    pub to_version: Option<MyriadVersion>,
+    pub from_version: Option<DeployTag>,
+    pub to_version: Option<DeployTag>,
 }
 
 impl<'a> PhaseRecorder<'a> {

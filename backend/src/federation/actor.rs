@@ -354,18 +354,20 @@ pub async fn fetch_remote_actor(
         return Err(format!("Refused to fetch internal URL: {}", actor_url_str));
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent(format!(
-            "Myriad/{} (+{})",
-            env!("CARGO_PKG_VERSION"),
-            get_base_url().await
-        ))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    let user_agent = format!(
+        "Myriad/{} (+{})",
+        env!("CARGO_PKG_VERSION"),
+        get_base_url().await
+    );
+    let (actor_url, client) = crate::services::outbound_security::build_public_http_client(
+        actor_url_str,
+        std::time::Duration::from_secs(10),
+        Some(&user_agent),
+    )
+    .await?;
 
     let resp = client
-        .get(actor_url_str)
+        .get(actor_url)
         .header("Accept", AP_CONTENT_TYPE)
         .send()
         .await

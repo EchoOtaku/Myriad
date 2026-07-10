@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
@@ -108,7 +108,12 @@ pub fn parse_signature_header(header: &str) -> Result<ParsedSignature> {
                 "keyId" => key_id = Some(value.to_string()),
                 "algorithm" => algorithm = Some(value.to_string()),
                 "headers" => {
-                    headers = Some(value.split_whitespace().map(|s| s.to_string()).collect())
+                    headers = Some(
+                        value
+                            .split_whitespace()
+                            .map(|s| s.to_ascii_lowercase())
+                            .collect(),
+                    )
                 }
                 "signature" => {
                     signature = Some(
@@ -145,6 +150,11 @@ pub fn verify_signature(
     path: &str,
     headers: &std::collections::HashMap<String, String>,
 ) -> Result<bool> {
+    if !parsed.algorithm.eq_ignore_ascii_case(SIGNATURE_ALGORITHM) {
+        anyhow::bail!("Unsupported signature algorithm: {}", parsed.algorithm);
+    }
+    require_covered_headers(parsed, false)?;
+
     // 重建签名字符串
     let mut signing_parts: Vec<String> = Vec::new();
 
@@ -164,6 +174,35 @@ pub fn verify_signature(
 
     // 验证签名
     KeyPair::verify(public_key_pem, signing_string.as_bytes(), &parsed.signature)
+}
+
+/// Require the security-critical headers to be covered by the signature.
+pub fn require_covered_headers(parsed: &ParsedSignature, body_present: bool) -> Result<()> {
+    for required in ["(request-target)", "host", "date"] {
+        if !parsed.headers.iter().any(|header| header == required) {
+            anyhow::bail!("Signature does not cover required header: {required}");
+        }
+    }
+    if body_present && !parsed.headers.iter().any(|header| header == "digest") {
+        anyhow::bail!("Signature does not cover required header: digest");
+    }
+    Ok(())
+}
+
+/// Reject stale or far-future HTTP Date values to bound replay attacks.
+pub fn verify_date_freshness(
+    date_header: &str,
+    now: DateTime<Utc>,
+    max_skew: Duration,
+) -> Result<()> {
+    let date = DateTime::parse_from_rfc2822(date_header)
+        .context("Invalid HTTP Date header")?
+        .with_timezone(&Utc);
+    let skew_seconds = now.signed_duration_since(date).num_seconds().abs();
+    if skew_seconds > max_skew.num_seconds() {
+        anyhow::bail!("HTTP Date is outside the allowed clock-skew window");
+    }
+    Ok(())
 }
 
 /// 验证请求体 Digest 头（常量时间比较，防止时序攻击）
@@ -286,5 +325,27 @@ mod tests {
         assert_eq!(parsed.key_id, "https://a.com/users/alice#main-key");
         assert_eq!(parsed.algorithm, "rsa-sha256");
         assert_eq!(parsed.headers, vec!["(request-target)", "host", "date"]);
+    }
+
+    #[test]
+    fn requires_digest_to_be_covered_for_bodied_requests() {
+        let parsed = parse_signature_header(
+            r##"keyId="https://a.example/key",algorithm="rsa-sha256",headers="(request-target) host date",signature="dGVzdA==""##,
+        )
+        .unwrap();
+        assert!(require_covered_headers(&parsed, false).is_ok());
+        assert!(require_covered_headers(&parsed, true).is_err());
+    }
+
+    #[test]
+    fn enforces_http_date_replay_window() {
+        let now = Utc::now();
+        let fresh = now.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+        let stale = (now - Duration::minutes(6))
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+
+        assert!(verify_date_freshness(&fresh, now, Duration::minutes(5)).is_ok());
+        assert!(verify_date_freshness(&stale, now, Duration::minutes(5)).is_err());
     }
 }

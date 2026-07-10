@@ -275,6 +275,25 @@ export interface TranslationKeys {
     updaterTransportDirect: string
     updaterRefresh: string
     updaterForceExit: string
+    updaterRescueContinue: string
+    updaterRescueContinueDesc: string
+    updaterConfirmRescueContinue: string
+    updaterRescueContinueDispatched: string
+    updaterUpdateMode: string
+    updaterModeRelease: string
+    updaterModeCommit: string
+    updaterChannel: string
+    updaterCommitTarget: string
+    updaterCommitPlaceholder: string
+    updaterCommitHistory: string
+    updaterReleaseHistory: string
+    updaterApplyPrefs: string
+    updaterPrefsSaved: string
+    updaterFreshnessAhead: string
+    updaterFreshnessBehind: string
+    updaterFreshnessIdentical: string
+    updaterFreshnessDiverged: string
+    updaterFreshnessUnknown: string
     updaterProcessing: string
     updaterCheckAvailable: string
     updaterChecking: string
@@ -293,6 +312,10 @@ export interface TranslationKeys {
     updaterTokenRequired: string
     updaterTokenRequiredDirect: string
     updaterConfirmUpgrade: string
+    updaterConfirmDowngrade: string
+    updaterConfirmRisk: string
+    updaterDowngradeTo: string
+    updaterStatusDowngrade: string
     updaterConfirmRollback: string
     updaterConfirmExitMaintenance: string
     updaterTaskProgress: string

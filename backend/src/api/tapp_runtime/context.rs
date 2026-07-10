@@ -199,18 +199,13 @@ pub async fn get_context_geo(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     use crate::api::tapp_store::{TappApiAccess, TappApiDef};
 
-    let client_ip = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').next())
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            headers
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string())
-        })
-        .unwrap_or_else(|| addr.ip().to_string());
+    let client_ip = crate::middleware::client_ip::client_ip_from_parts(
+        &headers,
+        Some(addr.ip()),
+        crate::middleware::client_ip::trusted_proxy_headers_enabled(),
+    )
+    .map(|ip| ip.to_string())
+    .unwrap_or_else(|| addr.ip().to_string());
 
     tracing::debug!("[TAPP] get_context_geo for IP: {}", client_ip);
 

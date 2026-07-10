@@ -63,12 +63,26 @@ fn generate_csrf_token() -> String {
 
 /// 从请求中提取会话标识符（用于关联 CSRF Token）
 fn extract_session_id(headers: &HeaderMap) -> Option<String> {
+    fn jwt_signature(token: &str) -> Option<String> {
+        let mut segments = token.split('.');
+        let header = segments.next()?;
+        let payload = segments.next()?;
+        let signature = segments.next()?;
+        if header.is_empty()
+            || payload.is_empty()
+            || signature.is_empty()
+            || segments.next().is_some()
+        {
+            return None;
+        }
+        Some(signature.to_string())
+    }
+
     // 优先从 Authorization header 提取 JWT
     if let Some(auth_header) = headers.get("Authorization") {
         if let Ok(auth_str) = auth_header.to_str() {
             if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                // 使用 JWT 的前 32 个字符作为会话 ID
-                return Some(token.chars().take(32).collect());
+                return jwt_signature(token);
             }
         }
     }
@@ -79,8 +93,7 @@ fn extract_session_id(headers: &HeaderMap) -> Option<String> {
             for cookie in cookies.split(';') {
                 if let Some((name, value)) = cookie.trim().split_once('=') {
                     if name == "auth_token" {
-                        // 使用 Cookie Token 的前 32 个字符作为会话 ID
-                        return Some(value.chars().take(32).collect());
+                        return jwt_signature(value);
                     }
                 }
             }
@@ -295,6 +308,27 @@ mod tests {
         assert_eq!(token1.len(), 32);
         assert_eq!(token2.len(), 32);
         assert_ne!(token1, token2);
+    }
+
+    #[test]
+    fn session_id_is_bound_to_the_jwt_signature() {
+        let mut first = HeaderMap::new();
+        first.insert(
+            "Authorization",
+            "Bearer same.header.signature-one".parse().unwrap(),
+        );
+        let mut second = HeaderMap::new();
+        second.insert(
+            "Authorization",
+            "Bearer same.header.signature-two".parse().unwrap(),
+        );
+
+        assert_eq!(extract_session_id(&first).as_deref(), Some("signature-one"));
+        assert_eq!(
+            extract_session_id(&second).as_deref(),
+            Some("signature-two")
+        );
+        assert_ne!(extract_session_id(&first), extract_session_id(&second));
     }
 
     #[test]

@@ -160,34 +160,6 @@ fn admin_forbidden() -> (StatusCode, Json<serde_json::Value>) {
     )
 }
 
-/// 从请求中提取客户端 IP 地址
-///
-/// 优先级：
-/// 1. X-Forwarded-For（反向代理）
-/// 2. X-Real-IP（Nginx）
-/// 3. 直连 IP（暂不支持，需要 ConnectInfo）
-fn extract_client_ip(headers: &HeaderMap) -> String {
-    // X-Forwarded-For: client, proxy1, proxy2
-    if let Some(forwarded) = headers.get("x-forwarded-for") {
-        if let Ok(value) = forwarded.to_str() {
-            // 取第一个 IP（真实客户端 IP）
-            if let Some(ip) = value.split(',').next() {
-                return ip.trim().to_string();
-            }
-        }
-    }
-
-    // X-Real-IP
-    if let Some(real_ip) = headers.get("x-real-ip") {
-        if let Ok(value) = real_ip.to_str() {
-            return value.trim().to_string();
-        }
-    }
-
-    // 默认未知 IP
-    "unknown".to_string()
-}
-
 /// 根据 IP 生成稳定的游客 ID
 ///
 /// 使用 IP 的哈希值生成负数 ID（与正数用户 ID 区分）
@@ -224,7 +196,9 @@ pub async fn optional_auth_middleware(req: Request, next: Next) -> Response {
         Ok(claims) => claims,
         Err(_) => {
             // 无 token 或 token 无效，创建游客 Claims
-            let client_ip = extract_client_ip(headers);
+            let client_ip = crate::middleware::client_ip::extract_client_ip(&req)
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
             let guest_id = generate_guest_id(&client_ip);
 
             tracing::debug!(

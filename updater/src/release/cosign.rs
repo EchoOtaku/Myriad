@@ -26,11 +26,12 @@ pub enum CosignPolicy {
 
 impl CosignPolicy {
     pub fn from_env(raw: Option<&str>) -> Self {
-        match raw.unwrap_or("").trim().to_ascii_lowercase().as_str() {
-            "" | "off" | "false" | "0" => Self::Off,
+        match raw.unwrap_or("strict").trim().to_ascii_lowercase().as_str() {
+            "off" | "false" | "0" => Self::Off,
             "soft" | "warn" => Self::Soft,
-            "strict" | "true" | "1" | "require" => Self::Strict,
-            _ => Self::Off,
+            "" | "strict" | "true" | "1" | "require" => Self::Strict,
+            // Unknown values fail closed instead of silently disabling verification.
+            _ => Self::Strict,
         }
     }
 }
@@ -128,12 +129,15 @@ mod tests {
 
     #[test]
     fn policy_from_env_normalises() {
-        assert_eq!(CosignPolicy::from_env(None), CosignPolicy::Off);
-        assert_eq!(CosignPolicy::from_env(Some("")), CosignPolicy::Off);
+        assert_eq!(CosignPolicy::from_env(None), CosignPolicy::Strict);
+        assert_eq!(CosignPolicy::from_env(Some("")), CosignPolicy::Strict);
         assert_eq!(CosignPolicy::from_env(Some("off")), CosignPolicy::Off);
         assert_eq!(CosignPolicy::from_env(Some("Soft")), CosignPolicy::Soft);
         assert_eq!(CosignPolicy::from_env(Some("STRICT")), CosignPolicy::Strict);
-        assert_eq!(CosignPolicy::from_env(Some("garbage")), CosignPolicy::Off);
+        assert_eq!(
+            CosignPolicy::from_env(Some("garbage")),
+            CosignPolicy::Strict
+        );
     }
 
     #[test]

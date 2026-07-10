@@ -4,7 +4,6 @@
 //! 图标存储在 data/brew/icons/ 目录下（可通过 DATA_DIR 环境变量配置）。
 
 use super::data_paths::paths;
-use reqwest::Client;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
@@ -13,7 +12,6 @@ use tracing::{debug, error, info, warn};
 
 /// 图标服务
 pub struct IconService {
-    client: Client,
     icons_dir: PathBuf,
 }
 
@@ -27,16 +25,10 @@ pub struct IconInfo {
 impl IconService {
     /// 创建新的图标服务实例
     pub fn new() -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            .build()
-            .expect("Failed to create HTTP client");
-
         // 使用统一的数据路径配置
         let icons_dir = paths().brew_icons.clone();
 
-        Self { client, icons_dir }
+        Self { icons_dir }
     }
 
     /// 确保图标目录存在
@@ -109,8 +101,26 @@ impl IconService {
             return Ok(None);
         }
 
+        let (target_url, client) =
+            match crate::services::outbound_security::build_public_http_client(
+                icon_url,
+                Duration::from_secs(10),
+                Some("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"),
+            )
+            .await
+            {
+                Ok(target) => target,
+                Err(error) => {
+                    warn!(
+                        "Blocked unsafe icon URL for source {}: {}",
+                        source_id, error
+                    );
+                    return Ok(None);
+                }
+            };
+
         // 下载图标
-        let response = match self.client.get(icon_url).send().await {
+        let response = match client.get(target_url).send().await {
             Ok(resp) => resp,
             Err(e) => {
                 warn!("Failed to download icon for source {}: {}", source_id, e);

@@ -4,6 +4,7 @@
 //!  - Reads /state/maintenance.json (best-effort; missing/corrupt = inactive).
 //!  - When `active=true`, all non-allowlisted requests are served the embedded maintenance page.
 //!  - Otherwise, forwards to backend/frontend over plain HTTP via internal docker network DNS.
+//!  - Response bodies are **streamed** (no full-buffer collect) to keep memory/TTFB low.
 //!  - `/healthz` (proxy itself) always returns 200.
 //!  - `/_updater/*` can forward to the updater service when explicitly enabled for rescue.
 //!
@@ -14,21 +15,26 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Request, State};
-use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::any;
 use axum::Router;
 use chrono::{DateTime, Utc};
-use http_body_util::BodyExt;
 use hyper_util::client::legacy::{connect::HttpConnector, Client};
 use hyper_util::rt::TokioExecutor;
 use serde::Deserialize;
 use serde_json::json;
+use tokio::sync::RwLock;
 use tracing::{info, warn};
+
+/// How long a successful maintenance.json read stays cached. Short enough that
+/// updater phase transitions appear promptly; long enough to avoid a disk read
+/// on every static-asset request.
+const MAINT_CACHE_TTL: Duration = Duration::from_millis(250);
 
 #[derive(Clone)]
 struct AppState {
@@ -41,11 +47,18 @@ struct AppState {
     /// Set `PROXY_ALLOW_DIRECT_UPDATER=true` to open the direct channel for rescue scenarios.
     allow_direct_updater: bool,
     client: Client<HttpConnector, Body>,
+    maint_cache: Arc<RwLock<MaintCache>>,
+}
+
+#[derive(Default)]
+struct MaintCache {
+    loaded_at: Option<Instant>,
+    value: MaintenanceFile,
 }
 
 const MAINTENANCE_HTML: &str = include_str!("maintenance.html");
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 struct MaintenanceFile {
     #[serde(default)]
     active: bool,
@@ -97,8 +110,12 @@ async fn main() -> anyhow::Result<()> {
 
     info!(
         allow_direct_updater,
-        "proxy startup: direct /_updater/* {} (backend /api/admin/updater/* is the recommended path)",
-        if allow_direct_updater { "ENABLED" } else { "disabled" }
+        "proxy startup: streaming forward; direct /_updater/* {}",
+        if allow_direct_updater {
+            "ENABLED"
+        } else {
+            "disabled"
+        }
     );
 
     let state = AppState {
@@ -108,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
         updater_upstream,
         allow_direct_updater,
         client,
+        maint_cache: Arc::new(RwLock::new(MaintCache::default())),
     };
 
     let app = Router::new()
@@ -136,8 +154,6 @@ async fn handle(
 ) -> Result<Response, Infallible> {
     let path = req.uri().path().to_string();
 
-    // Health / proxy-status routes handled by axum directly above; this path is the fallback.
-
     // Updater API direct channel: off by default. The backend at /api/admin/updater/*
     // is the recommended path (admin session + server-held UPDATE_TOKEN). The direct path
     // is kept for rescue scenarios (backend itself down) — operators enable it via
@@ -162,7 +178,7 @@ async fn handle(
         .unwrap_or_else(bad_gateway));
     }
 
-    let maint = read_maintenance(&state.state_path).await;
+    let maint = read_maintenance_cached(&state).await;
     if maint.active {
         return Ok(maintenance_response(&maint));
     }
@@ -235,7 +251,7 @@ async fn forward(
     let upstream_req = builder.body(body)?;
     let resp = state.client.request(upstream_req).await?;
     let (parts, body) = resp.into_parts();
-    let body_bytes = body.collect().await?.to_bytes();
+    // Stream the upstream body through — do not buffer into memory.
     let mut out = Response::builder().status(parts.status);
     for (k, v) in parts.headers.iter() {
         if is_hop_by_hop(k.as_str()) {
@@ -243,7 +259,7 @@ async fn forward(
         }
         out = out.header(k, v);
     }
-    Ok(out.body(Body::from(body_bytes))?)
+    Ok(out.body(Body::new(body))?)
 }
 
 fn is_hop_by_hop(name: &str) -> bool {
@@ -268,15 +284,10 @@ fn is_proxy_managed_forwarded_header(name: &str) -> bool {
 }
 
 fn forwarded_for(headers: &HeaderMap, client_ip: &str) -> String {
-    match headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-    {
-        Some(existing) => format!("{existing}, {client_ip}"),
-        None => client_ip.to_string(),
-    }
+    let _ = headers;
+    // This proxy is the trust boundary. Never preserve a client-supplied XFF
+    // chain; the backend should receive only the peer address we observed.
+    client_ip.to_string()
 }
 
 fn forwarded_proto(headers: &HeaderMap) -> Option<HeaderValue> {
@@ -290,7 +301,25 @@ fn forwarded_host(headers: &HeaderMap) -> Option<HeaderValue> {
         .cloned()
 }
 
-async fn read_maintenance(path: &PathBuf) -> MaintenanceFile {
+async fn read_maintenance_cached(state: &AppState) -> MaintenanceFile {
+    {
+        let cache = state.maint_cache.read().await;
+        if let Some(loaded_at) = cache.loaded_at {
+            if loaded_at.elapsed() < MAINT_CACHE_TTL {
+                return cache.value.clone();
+            }
+        }
+    }
+
+    let value = read_maintenance_from_disk(&state.state_path).await;
+    let mut cache = state.maint_cache.write().await;
+    // Another task may have refreshed while we waited for the write lock; still fine to overwrite.
+    cache.loaded_at = Some(Instant::now());
+    cache.value = value.clone();
+    value
+}
+
+async fn read_maintenance_from_disk(path: &PathBuf) -> MaintenanceFile {
     match tokio::fs::read(path).await {
         Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
         Err(_) => MaintenanceFile::default(),
@@ -340,7 +369,7 @@ fn maintenance_response(m: &MaintenanceFile) -> Response {
 }
 
 async fn proxy_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let m = read_maintenance(&state.state_path).await;
+    let m = read_maintenance_cached(&state).await;
     Json(json!({
         "schema_version": 1,
         "maintenance": {
@@ -352,11 +381,6 @@ async fn proxy_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             "message_key": m.message_key,
         }
     }))
-}
-
-#[allow(dead_code)]
-fn _silence_unused() {
-    let _ = Method::GET;
 }
 
 #[cfg(test)]
@@ -397,14 +421,11 @@ mod tests {
     }
 
     #[test]
-    fn forwarded_for_appends_client_ip_when_present() {
+    fn forwarded_for_replaces_client_supplied_chain() {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.9"));
 
-        assert_eq!(
-            forwarded_for(&headers, "192.0.2.10"),
-            "203.0.113.9, 192.0.2.10"
-        );
+        assert_eq!(forwarded_for(&headers, "192.0.2.10"), "192.0.2.10");
     }
 
     #[test]

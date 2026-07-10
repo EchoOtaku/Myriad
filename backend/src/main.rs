@@ -753,7 +753,15 @@ async fn get_config_wrapper() -> Response {
 }
 
 /// Wrapper for update_config that gets DB from global state
-async fn update_config_wrapper(Json(payload): Json<api::config::ConfigResponse>) -> Response {
+async fn update_config_wrapper(
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<api::config::ConfigResponse>,
+) -> Response {
+    if let Err((status, json)) = middleware::auth::verify_current_admin_from_headers(&headers).await
+    {
+        return (status, json).into_response();
+    }
+
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -1198,11 +1206,15 @@ async fn get_batch_user_info_wrapper() -> Response {
 }
 
 /// Wrapper for get_report that gets DB from global state
-async fn get_report_wrapper() -> Response {
+async fn get_report_wrapper(
+    axum::Extension(claims): axum::Extension<middleware::auth::Claims>,
+) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
-            let (status, json) = api::profile::get_report(axum::extract::State(db.clone())).await;
+            let (status, json) =
+                api::profile::get_report(axum::extract::State(db.clone()), axum::Extension(claims))
+                    .await;
             (status, json).into_response()
         }
         None => (
@@ -1217,11 +1229,17 @@ async fn get_report_wrapper() -> Response {
 }
 
 /// Wrapper for list_reports that gets DB from global state
-async fn list_reports_wrapper() -> Response {
+async fn list_reports_wrapper(
+    axum::Extension(claims): axum::Extension<middleware::auth::Claims>,
+) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
-            let (status, json) = api::profile::list_reports(axum::extract::State(db.clone())).await;
+            let (status, json) = api::profile::list_reports(
+                axum::extract::State(db.clone()),
+                axum::Extension(claims),
+            )
+            .await;
             (status, json).into_response()
         }
         None => (
@@ -3451,8 +3469,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/setup/config", get(api::setup::get_setup_config))
         .route("/api/setup/status", get(check_setup_status_wrapper))
         .route("/api/setup/init-env", post(api::setup::initialize_env_file))
-        // 添加安全头中间件到所有路由
-        .layer(from_fn(middleware::security::security_headers_middleware))
         .route("/api/setup/update-env", post(api::setup::update_env_file))
         .route(
             "/api/setup/database-config",
@@ -3528,12 +3544,14 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             axum::routing::patch(toggle_local_login_wrapper)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
-        // Configuration routes (use wrapper for dynamic DB access) - 🔒 REQUIRE AUTHENTICATION
+        // Configuration routes (use wrapper for dynamic DB access)
         .route(
             "/api/config",
-            get(get_config_wrapper)
-                .post(update_config_wrapper)
-                .route_layer(from_fn(middleware::auth::auth_middleware)),
+            get(get_config_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/config",
+            post(update_config_wrapper).route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/config/dashboard",
@@ -3559,10 +3577,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             put(update_module_visibility_preferences_wrapper)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
-        // 一言配置 API（公开访问 - 单用户系统）
+        // 一言配置读取公开；全局写入仅管理员
+        .route("/api/config/hitokoto", get(get_hitokoto_config_wrapper))
         .route(
             "/api/config/hitokoto",
-            get(get_hitokoto_config_wrapper).put(update_hitokoto_config_wrapper),
+            axum::routing::put(update_hitokoto_config_wrapper)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // 权限配置 API
         .route("/api/config/permissions", get(get_permissions_wrapper)) // 🔓 公开端点：获取当前用户权限
@@ -3607,8 +3627,14 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     let api_router = api_router;
 
     let mut api_router = api_router
-        .route("/api/profile/report", get(get_report_wrapper))
-        .route("/api/profile/reports", get(list_reports_wrapper))
+        .route(
+            "/api/profile/report",
+            get(get_report_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/profile/reports",
+            get(list_reports_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
         .route("/api/profile/metadata", get(get_raw_metadata_wrapper))
         // ==================== Federation (MFP) 公开端点 ====================
         // Layer 1: 发现（无需认证）
@@ -3992,14 +4018,18 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/profile/cache",
                 delete(api::profile::delete_platform_cache)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
             // Library data route (公开访问 - 单用户系统)
             .route("/api/library", get(api::profile::get_library_data))
             .route(
                 "/api/library/preferences",
-                get(api::profile::get_library_source_preferences)
-                    .put(api::profile::update_library_source_preferences),
+                get(api::profile::get_library_source_preferences),
+            )
+            .route(
+                "/api/library/preferences",
+                axum::routing::put(api::profile::update_library_source_preferences)
+                    .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
             // Recent activities route (公开访问 - 单用户系统)
             .route("/api/activities", get(api::profile::get_recent_activities))
@@ -4392,8 +4422,24 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 get(api::updater_admin::snapshots).route_layer(from_fn(admin_middleware)),
             )
             .route(
+                "/api/admin/updater/commits",
+                get(api::updater_admin::commits).route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/releases",
+                get(api::updater_admin::releases).route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/compare",
+                get(api::updater_admin::compare).route_layer(from_fn(admin_middleware)),
+            )
+            .route(
                 "/api/admin/updater/update",
                 post(api::updater_admin::trigger_update).route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/prefs",
+                post(api::updater_admin::set_prefs).route_layer(from_fn(admin_middleware)),
             )
             .route(
                 "/api/admin/updater/rollback",
@@ -4412,6 +4458,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::updater_admin::forget_current).route_layer(from_fn(admin_middleware)),
             )
             .route(
+                "/api/admin/updater/rescue/continue",
+                post(api::updater_admin::rescue_continue).route_layer(from_fn(admin_middleware)),
+            )
+            .route(
                 "/api/admin/updater/self-update",
                 post(api::updater_admin::self_update).route_layer(from_fn(admin_middleware)),
             );
@@ -4422,6 +4472,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .layer(from_fn(config_mode_middleware))
         .layer(from_fn(middleware::csrf::csrf_middleware)) // ✅ 安全修复 P0: CSRF 防护
         .layer(from_fn(middleware::rate_limit::rate_limit_middleware)) // Rate limiting
+        // Apply security headers after the complete route graph is assembled.
+        .layer(from_fn(middleware::security::security_headers_middleware))
         .layer(axum::extract::DefaultBodyLimit::max(50 * 1024 * 1024)) // 🛡️ 防止OOM: 限制请求体最大50MB
         .layer(cors)
         .layer(TraceLayer::new_for_http());
@@ -4429,12 +4481,38 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // Now the type is unified, convert to Router<()> by applying route matching
     let app: Router = if std::path::Path::new(&config.frontend_dist_path).exists() {
         tracing::info!("Serving frontend from: {}", config.frontend_dist_path);
-        // SPA fallback: 任何 ServeDir 未匹配到的路径都返回 index.html，让 React Router 接管
-        // 否则像 /register、/tapp/run/xxx 这类客户端路由会被静态文件服务直接 404。
+        // SPA fallback: 未匹配的浏览器路由 → index.html（React Router）。
+        // 重要：ServeDir 对任何非 GET/HEAD 请求直接返回 405，所以 /api/* 绝不能落到
+        // 静态文件服务——否则未注册的 POST（例如旧 backend 进程缺 /prefs）会误报 405
+        // 而不是可读的 JSON 404。
         let index_html = std::path::Path::new(&config.frontend_dist_path).join("index.html");
         let serve_dir =
             ServeDir::new(&config.frontend_dist_path).not_found_service(ServeFile::new(index_html));
-        api_router.fallback_service(serve_dir)
+        api_router.fallback(move |req: Request| {
+            let serve_dir = serve_dir.clone();
+            async move {
+                let path = req.uri().path();
+                if path.starts_with("/api/") || path == "/health" {
+                    return (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({
+                            "error": "Not Found",
+                            "message": format!(
+                                "No API route for {} {}",
+                                req.method(),
+                                path
+                            ),
+                        })),
+                    )
+                        .into_response();
+                }
+                use tower::ServiceExt;
+                match serve_dir.oneshot(req).await {
+                    Ok(res) => res.into_response(),
+                    Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+                }
+            }
+        })
     } else {
         tracing::warn!("Frontend dist path not found, serving API only");
         api_router

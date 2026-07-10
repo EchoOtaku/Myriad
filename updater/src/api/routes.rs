@@ -13,23 +13,30 @@ use serde_json::{json, Value};
 
 use crate::api::{auth, ApiState};
 use crate::error::UpdaterError;
-use crate::release::Manifest;
 use crate::state::Phase;
-use crate::version::MyriadVersion;
-use crate::worker::Command as WorkerCmd;
+use crate::version::{DeployTag, UpdateMode};
+use crate::worker::{AvailableInfo, Command as WorkerCmd};
 
 pub fn build(state: ApiState) -> Router {
     let public = Router::new()
         .route("/healthz", get(healthz))
         .route("/status", get(status))
         .route("/available", get(available))
+        .route("/commits", get(list_commits))
+        .route("/releases", get(list_releases))
+        .route("/compare", get(compare_refs))
         .route("/jobs", get(list_jobs))
         .route("/jobs/{id}", get(get_job))
         .route("/snapshots", get(list_snapshots));
 
     let token_only = Router::new()
         .route("/update", post(update))
+        .route("/prefs", post(set_prefs))
         .route("/rollback", post(rollback))
+        // One-click recovery for needs_manual / stuck post-swap jobs: same privilege as
+        // `/rollback` (admin + token via backend). Does not require host manual-override
+        // because it only rolls back to the snapshot already associated with the stuck job.
+        .route("/rescue/continue", post(rescue_continue))
         .route("/admin/self-update", post(self_update))
         .route("/diagnostics", get(diagnostics))
         .layer(middleware::from_fn_with_state(
@@ -39,7 +46,6 @@ pub fn build(state: ApiState) -> Router {
 
     let manual = Router::new()
         .route("/rescue/exit-maintenance", post(rescue_exit))
-        .route("/rescue/continue", post(rescue_continue))
         .route("/rescue/forget-current", post(rescue_forget))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -57,20 +63,27 @@ pub fn build(state: ApiState) -> Router {
 struct StatusResp {
     schema_version: u32,
     updater_version: String,
-    current_version: Option<MyriadVersion>,
+    current_version: Option<DeployTag>,
     channel: String,
+    /// release | commit
+    update_mode: UpdateMode,
     maintenance_active: bool,
     maintenance_phase: Phase,
     job_in_flight: Option<String>,
-    /// Cached result of the last periodic `/available` check. UI uses this for a "new
-    /// version" indicator without re-fetching from GitHub on every page render.
     latest_available: Option<crate::state::LatestAvailable>,
-    /// True iff `latest_available.version > current_version` and not equal.
     update_available: bool,
-    /// True iff the running updater is older than `latest_available.min_updater_version`.
+    /// Target is older than current; UI should confirm before calling update with allow_downgrade.
+    downgrade_available: bool,
     requires_self_update: bool,
-    /// Last time the periodic check completed (success or failure).
     last_checked_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rescue_snapshot_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rescue_source_version: Option<DeployTag>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_good_version: Option<DeployTag>,
+    /// Channels valid for the current mode (for UI selectors).
+    available_channels: Vec<&'static str>,
 }
 
 async fn healthz() -> Json<Value> {
@@ -81,54 +94,189 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
     let u = st.state.read_updater()?;
     let m = st.state.read_maintenance()?;
     let job = st.state.read_current_job()?;
+    let channel = st.worker.effective_channel();
+    let update_mode = st.worker.effective_mode();
 
-    let update_available = match (&u.current_version, &u.latest_available) {
-        (Some(curr), Some(latest)) => curr.older_than(&latest.version),
-        // No current version recorded (fresh install) — anything available counts as new.
-        (None, Some(_)) => true,
-        _ => false,
-    };
+    // Trust explicit tri-state only — no fuzzy tag-string fallbacks.
+    let update_available = u
+        .latest_available
+        .as_ref()
+        .is_some_and(|la| la.is_upgrade == Some(true));
+    let downgrade_available = u
+        .latest_available
+        .as_ref()
+        .is_some_and(|la| la.is_downgrade == Some(true));
     let requires_self_update = u
         .latest_available
         .as_ref()
         .is_some_and(|la| la.requires_self_update);
 
+    let (rescue_snapshot_id, rescue_source_version) = resolve_rescue_hint(&st, &m, job.as_deref())?;
+
+    // Include both logical release names and git branch tips so UI selects stay valid
+    // when channel is stored as stable/nightly under commit mode (mapped to main/preview).
+    let available_channels = match update_mode {
+        UpdateMode::Release => vec!["stable", "beta", "nightly"],
+        UpdateMode::Commit => {
+            vec!["main", "preview", "beta", "stable", "nightly"]
+        }
+    };
+
     Ok(Json(StatusResp {
         schema_version: 1,
         updater_version: crate::self_version().to_string(),
         current_version: u.current_version,
-        channel: st.config.channel.to_string(),
+        channel,
+        update_mode,
         maintenance_active: m.active,
         maintenance_phase: m.phase,
         job_in_flight: job,
         latest_available: u.latest_available,
         update_available,
+        downgrade_available,
         requires_self_update,
         last_checked_at: u.last_checked_at,
+        rescue_snapshot_id,
+        rescue_source_version,
+        last_good_version: u.last_good_version,
+        available_channels,
     }))
+}
+
+/// Find the snapshot (and source version) to offer for one-click continue when stuck.
+fn resolve_rescue_hint(
+    st: &ApiState,
+    maint: &crate::state::MaintenanceFile,
+    current_job: Option<&str>,
+) -> Result<(Option<String>, Option<DeployTag>), ApiError> {
+    let stuck = matches!(maint.phase, Phase::NeedsManual)
+        || (maint.active && (maint.phase.is_post_swap() || maint.phase.is_rollback()));
+    if !stuck {
+        return Ok((None, None));
+    }
+
+    let job_id = maint
+        .job_id
+        .clone()
+        .or_else(|| current_job.map(|s| s.to_string()));
+    let Some(job_id) = job_id else {
+        return Ok((None, None));
+    };
+    let job = match st.state.read_job(&job_id) {
+        Ok(j) => j,
+        Err(_) => return Ok((None, None)),
+    };
+    let Some(snapshot_id) = job.snapshot_id else {
+        return Ok((None, None));
+    };
+
+    let source = st
+        .state
+        .read_snapshots()
+        .ok()
+        .and_then(|sf| {
+            sf.items
+                .into_iter()
+                .find(|m| m.id == snapshot_id)
+                .and_then(|m| m.source_version)
+        })
+        .or(job.from_version);
+
+    Ok((Some(snapshot_id), source))
 }
 
 #[derive(Deserialize)]
 struct AvailableQuery {
-    #[allow(dead_code)] // reserved for per-request channel override (M2)
+    #[serde(default)]
     channel: Option<String>,
+    #[serde(default)]
+    mode: Option<String>,
 }
 
 async fn available(
     State(st): State<ApiState>,
     Query(q): Query<AvailableQuery>,
-) -> Result<Json<Option<Manifest>>, ApiError> {
-    let _ = q; // future: per-request channel override
+) -> Result<Json<Value>, ApiError> {
+    // Query params are ephemeral overrides for this check only — they do NOT persist.
+    // Use POST /prefs to change saved channel/mode.
+    let mode = q
+        .mode
+        .as_deref()
+        .map(|s| s.parse::<UpdateMode>())
+        .transpose()
+        .map_err(ApiError::from)?;
+
     let (tx, rx) = tokio::sync::oneshot::channel();
     st.worker
         .sender()
-        .send(WorkerCmd::CheckUpdates { reply: tx })
+        .send(WorkerCmd::CheckUpdates {
+            channel: q.channel.clone(),
+            mode,
+            reply: tx,
+        })
         .await
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
-    let manifest = rx
+    let info = rx
         .await
         .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
-    Ok(Json(manifest))
+    Ok(Json(available_to_json(info)))
+}
+
+fn available_to_json(info: Option<AvailableInfo>) -> Value {
+    match info {
+        None => Value::Null,
+        Some(AvailableInfo::Release(m)) => serde_json::to_value(m).unwrap_or(Value::Null),
+        Some(AvailableInfo::Commit {
+            tag,
+            full_sha,
+            message,
+            branch,
+            notes_url,
+            freshness,
+        }) => {
+            let (relation, ahead_by, behind_by, current_sha, is_upgrade, is_downgrade) =
+                match freshness.as_ref() {
+                    Some(f) => (
+                        Some(f.relation.as_str()),
+                        Some(f.ahead_by),
+                        Some(f.behind_by),
+                        f.current_sha.clone(),
+                        Some(f.is_upgrade()),
+                        Some(f.is_downgrade()),
+                    ),
+                    None => (None, None, None, None, None, None),
+                };
+            json!({
+                "schema_version": 1,
+                "mode": "commit",
+                "version": tag.as_str(),
+                "channel": branch,
+                "commit_sha": full_sha,
+                "current_commit_sha": current_sha,
+                "relation": relation,
+                "ahead_by": ahead_by,
+                "behind_by": behind_by,
+                "is_upgrade": is_upgrade,
+                "is_downgrade": is_downgrade,
+                "message": message,
+                "notes_url": notes_url,
+                "released_at": chrono::Utc::now().to_rfc3339(),
+                "images": {},
+                "env": { "required": [], "new": [], "removed": [] },
+                "migrations": {
+                    "irreversible": false,
+                    "estimated_seconds": 60,
+                    "requires_full_backup": true
+                },
+                "updater": {
+                    "min_updater_version": crate::self_version(),
+                    "self_update_required": false
+                },
+                "postgres": { "min_pg_version": "15", "max_pg_version": "16" },
+                "signature": null
+            })
+        }
+    }
 }
 
 async fn list_jobs(State(st): State<ApiState>) -> Result<Json<Vec<String>>, ApiError> {
@@ -152,7 +300,28 @@ async fn list_snapshots(State(st): State<ApiState>) -> Result<Json<Value>, ApiEr
 
 #[derive(Deserialize)]
 struct UpdateBody {
-    target_version: String,
+    /// Release tag (`v1.2.3`) or commit/branch tag (`dev-abc1234`, bare sha, `main`).
+    /// Alias: `target` also accepted via flatten-like dual field below.
+    #[serde(default)]
+    target_version: Option<String>,
+    /// Explicit commit/sha/branch for commit mode (preferred over target_version when set).
+    #[serde(default)]
+    target_commit: Option<String>,
+    /// release | commit — defaults to current prefs.
+    #[serde(default)]
+    mode: Option<String>,
+    /// Must be true when the target is older than the currently running deploy.
+    #[serde(default)]
+    allow_downgrade: bool,
+    /// Umbrella: enables diverged + unknown + irreversible (and downgrade).
+    #[serde(default)]
+    allow_risk: bool,
+    #[serde(default)]
+    allow_diverged: Option<bool>,
+    #[serde(default)]
+    allow_unknown: Option<bool>,
+    #[serde(default)]
+    allow_irreversible: Option<bool>,
     #[serde(default)]
     allow_skip_versions: bool,
 }
@@ -162,8 +331,41 @@ async fn update(
     headers: axum::http::HeaderMap,
     Json(body): Json<UpdateBody>,
 ) -> Result<Json<Value>, ApiError> {
-    let _ = body.allow_skip_versions; // reserved
-    let target = MyriadVersion::parse(&body.target_version).map_err(ApiError::from)?;
+    let _ = body.allow_skip_versions;
+    let mode = match body.mode.as_deref() {
+        Some(s) => s.parse::<UpdateMode>().map_err(ApiError::from)?,
+        None => st.worker.effective_mode(),
+    };
+    let raw = body
+        .target_commit
+        .or(body.target_version)
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::BAD_REQUEST,
+                "target_version or target_commit is required".into(),
+            )
+        })?;
+    let target = DeployTag::parse(&raw).map_err(ApiError::from)?;
+    // Soft consistency: release mode needs release tags.
+    if mode == UpdateMode::Release && !target.is_release() {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "release mode requires a vX.Y.Z target, got {} (use mode=commit for CI tags)",
+                target.as_str()
+            ),
+        ));
+    }
+    if mode == UpdateMode::Commit && target.is_release() {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "commit mode expects dev-<sha> or branch tip, got {}",
+                target.as_str()
+            ),
+        ));
+    }
+
     let idem = headers
         .get("Idempotency-Key")
         .and_then(|v| v.to_str().ok())
@@ -174,6 +376,12 @@ async fn update(
         .sender()
         .send(WorkerCmd::Update {
             target,
+            mode,
+            allow_downgrade: body.allow_downgrade,
+            allow_risk: body.allow_risk,
+            allow_diverged: body.allow_diverged,
+            allow_unknown: body.allow_unknown,
+            allow_irreversible: body.allow_irreversible,
             idempotency_key: idem,
             reply: tx,
         })
@@ -182,7 +390,187 @@ async fn update(
     let job_id = rx
         .await
         .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
-    Ok(Json(json!({"job_id": job_id})))
+    Ok(Json(json!({
+        "job_id": job_id,
+        "mode": mode.as_str(),
+        "allow_downgrade": body.allow_downgrade,
+        "allow_risk": body.allow_risk,
+        "allow_diverged": body.allow_diverged,
+        "allow_unknown": body.allow_unknown,
+        "allow_irreversible": body.allow_irreversible,
+    })))
+}
+
+#[derive(Deserialize)]
+struct CommitsQuery {
+    #[serde(default)]
+    branch: Option<String>,
+    #[serde(default = "default_commit_limit")]
+    limit: u32,
+}
+
+fn default_commit_limit() -> u32 {
+    20
+}
+
+async fn list_commits(
+    State(st): State<ApiState>,
+    Query(q): Query<CommitsQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let branch = q.branch.unwrap_or_else(|| st.worker.effective_channel());
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    st.worker
+        .sender()
+        .send(WorkerCmd::ListCommits {
+            branch: branch.clone(),
+            limit: q.limit,
+            reply: tx,
+        })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
+    let items = rx
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
+    Ok(Json(json!({
+        "schema_version": 1,
+        "branch": crate::version::commit_branch_for_channel(&branch),
+        "items": items.iter().map(|c| json!({
+            "sha": c.sha,
+            "short_sha": c.short_sha,
+            "message": c.message,
+            "html_url": c.html_url,
+            "committed_at": c.committed_at,
+            "tag": format!("dev-{}", c.short_sha),
+        })).collect::<Vec<_>>(),
+    })))
+}
+
+#[derive(Deserialize)]
+struct ReleasesQuery {
+    #[serde(default)]
+    channel: Option<String>,
+    #[serde(default = "default_commit_limit")]
+    limit: u32,
+}
+
+async fn list_releases(
+    State(st): State<ApiState>,
+    Query(q): Query<ReleasesQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    st.worker
+        .sender()
+        .send(WorkerCmd::ListReleases {
+            channel: q.channel.clone(),
+            limit: q.limit,
+            reply: tx,
+        })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
+    let items = rx
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
+    Ok(Json(json!({
+        "schema_version": 1,
+        "channel": q.channel.unwrap_or_else(|| st.worker.effective_channel()),
+        "items": items.iter().map(|r| json!({
+            "tag_name": r.tag_name,
+            "name": r.name,
+            "prerelease": r.prerelease,
+            "version": r.tag_name,
+        })).collect::<Vec<_>>(),
+    })))
+}
+
+#[derive(Deserialize)]
+struct CompareQuery {
+    /// Optional base; defaults to currently recorded deploy tag.
+    #[serde(default)]
+    from: Option<String>,
+    /// Required target (vX.Y.Z, dev-sha, branch, bare sha).
+    to: String,
+}
+
+async fn compare_refs(
+    State(st): State<ApiState>,
+    Query(q): Query<CompareQuery>,
+) -> Result<Json<Value>, ApiError> {
+    if q.to.trim().is_empty() {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "query param `to` is required".into(),
+        ));
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    st.worker
+        .sender()
+        .send(WorkerCmd::Compare {
+            from: q.from.clone(),
+            to: q.to.clone(),
+            reply: tx,
+        })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
+    let f = rx
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
+    Ok(Json(json!({
+        "schema_version": 1,
+        "relation": f.relation.as_str(),
+        "ahead_by": f.ahead_by,
+        "behind_by": f.behind_by,
+        "current_sha": f.current_sha,
+        "target_sha": f.target_sha,
+        "current_ref": f.current_ref,
+        "target_ref": f.target_ref,
+        "is_upgrade": f.is_upgrade(),
+        "is_downgrade": f.is_downgrade(),
+    })))
+}
+
+#[derive(Deserialize)]
+struct PrefsBody {
+    #[serde(default)]
+    channel: Option<String>,
+    /// release | commit
+    #[serde(default)]
+    mode: Option<String>,
+}
+
+async fn set_prefs(
+    State(st): State<ApiState>,
+    Json(body): Json<PrefsBody>,
+) -> Result<Json<Value>, ApiError> {
+    if body.channel.is_none() && body.mode.is_none() {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "provide channel and/or mode".into(),
+        ));
+    }
+    let mode = body
+        .mode
+        .as_deref()
+        .map(|s| s.parse::<UpdateMode>())
+        .transpose()
+        .map_err(ApiError::from)?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    st.worker
+        .sender()
+        .send(WorkerCmd::SetPrefs {
+            channel: body.channel,
+            mode,
+            reply: tx,
+        })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
+    let prefs = rx
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
+    Ok(Json(json!({
+        "ok": true,
+        "channel": prefs.channel,
+        "mode": prefs.mode.as_str(),
+    })))
 }
 
 #[derive(Deserialize)]
@@ -261,12 +649,62 @@ async fn rescue_exit(State(st): State<ApiState>) -> Result<Json<Value>, ApiError
     Ok(Json(json!({"ok": true})))
 }
 
-async fn rescue_continue(State(_st): State<ApiState>) -> Result<Json<Value>, ApiError> {
-    // M1: no automatic continuation; require explicit rollback or exit.
-    Err(ApiError(
-        StatusCode::NOT_IMPLEMENTED,
-        "rescue/continue is reserved for M2; use /rescue/forget-current + /rollback".into(),
-    ))
+/// One-click recovery: roll back to the snapshot recorded on the stuck job.
+///
+/// Clears a stuck `job.current` / needs_manual marker enough for a new rollback job
+/// to start, then enqueues the same path as `POST /rollback`.
+async fn rescue_continue(State(st): State<ApiState>) -> Result<Json<Value>, ApiError> {
+    let m = st.state.read_maintenance()?;
+    let current = st.state.read_current_job()?;
+    let (snapshot_id, source_version) = resolve_rescue_hint(&st, &m, current.as_deref())?;
+    let Some(snapshot_id) = snapshot_id else {
+        return Err(ApiError(
+            StatusCode::PRECONDITION_FAILED,
+            "no stuck job with a snapshot to continue from; pick a snapshot and POST /rollback"
+                .into(),
+        ));
+    };
+
+    // Verify snapshot still exists on disk metadata.
+    let snaps = st.state.read_snapshots()?;
+    if !snaps.items.iter().any(|s| s.id == snapshot_id) {
+        return Err(ApiError(
+            StatusCode::NOT_FOUND,
+            format!("rescue snapshot {snapshot_id} is missing from snapshots.json"),
+        ));
+    }
+
+    // Free the single-slot worker if the failed job is still marked current.
+    if current.is_some() {
+        st.state.set_current_job(None)?;
+    }
+    st.state.append_history(&format!(
+        "rescue/continue: rolling back to {snapshot_id} (source={})",
+        source_version
+            .as_ref()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "?".into())
+    ))?;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    st.worker
+        .sender()
+        .send(WorkerCmd::Rollback {
+            snapshot_id: snapshot_id.clone(),
+            reply: tx,
+        })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
+    let job_id = rx
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
+
+    Ok(Json(json!({
+        "ok": true,
+        "job_id": job_id,
+        "snapshot_id": snapshot_id,
+        "source_version": source_version,
+    })))
 }
 
 async fn rescue_forget(State(st): State<ApiState>) -> Result<Json<Value>, ApiError> {

@@ -283,18 +283,21 @@ async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<ser
         ));
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "HTTP client error"})),
-            )
-        })?;
+    let (target_url, client) = crate::services::outbound_security::build_public_http_client(
+        &webfinger_url,
+        std::time::Duration::from_secs(10),
+        None,
+    )
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Cannot resolve unsafe domains"})),
+        )
+    })?;
 
     let resp = client
-        .get(&webfinger_url)
+        .get(target_url)
         .header("Accept", "application/jrd+json")
         .send()
         .await

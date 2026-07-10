@@ -292,6 +292,28 @@ export const enUS: TranslationKeys = {
     updaterTransportDirect: 'direct (X-Update-Token)',
     updaterRefresh: 'Refresh',
     updaterForceExit: 'Force exit maintenance',
+    updaterRescueContinue: 'One-click rollback to pre-upgrade',
+    updaterRescueContinueDesc:
+      'Restore the failed job’s snapshot (pgdata + MYRIAD_TAG to the last good version) and restart services',
+    updaterConfirmRescueContinue:
+      'Roll back to snapshot {snapshotId} (version {version}). Continue?',
+    updaterRescueContinueDispatched: 'One-click rollback started',
+    updaterUpdateMode: 'Update mode',
+    updaterModeRelease: 'Release (semver)',
+    updaterModeCommit: 'Commit / branch',
+    updaterChannel: 'Channel / branch',
+    updaterCommitTarget: 'Commit target',
+    updaterCommitPlaceholder: 'Empty = channel tip; or sha / dev-xxx',
+    updaterCommitHistory: 'Recent commits (click to select)',
+    updaterReleaseHistory: 'Channel releases (click to select)',
+    updaterApplyPrefs: 'Apply channel settings',
+    updaterPrefsSaved: 'Channel and mode saved',
+    updaterFreshnessAhead: 'Target is newer (ahead by {n} commits)',
+    updaterFreshnessBehind: 'Target is older (behind by {n} commits)',
+    updaterFreshnessIdentical: 'Same commit as currently running',
+    updaterFreshnessDiverged:
+      'Histories diverged (target +{ahead}, current +{behind})',
+    updaterFreshnessUnknown: 'Could not map current deploy to a git commit',
     updaterProcessing: 'Working…',
     updaterCheckAvailable: 'Check for updates',
     updaterChecking: 'Checking…',
@@ -312,6 +334,12 @@ export const enUS: TranslationKeys = {
     updaterTokenRequiredDirect: 'Direct mode requires UPDATE_TOKEN',
     updaterConfirmUpgrade:
       'Upgrade to {version}? Maintenance mode will engage.',
+    updaterConfirmDowngrade:
+      '⚠ Downgrade confirmation: target {version} is older than current {current}.\n\nDatabase migrations may not reverse; data/feature risk.\n\nProceed with downgrade?',
+    updaterConfirmRisk:
+      '⚠ Risk confirmation: target history diverged, direction unknown, or irreversible migrations apply.\n\nContinuing may damage data. Proceed?',
+    updaterDowngradeTo: 'Downgrade to {version}',
+    updaterStatusDowngrade: 'Older version available (downgrade)',
     updaterConfirmRollback: 'Roll back to snapshot {snapshotId}?',
     updaterConfirmExitMaintenance:
       'Force-exit maintenance mode? Only do this once service is confirmed healthy.',
@@ -387,7 +415,7 @@ export const enUS: TranslationKeys = {
     updaterActionExitDesc:
       'Force-clear maintenance after confirming the service is healthy',
     updaterActionRollbackDesc:
-      'Restore pgdata from this snapshot and start the previous image',
+      'Restore pgdata from this snapshot and set MYRIAD_TAG back to its source version',
     updaterActionSelfUpdateDesc:
       'Replace the updater itself via a helper container (business unaffected)',
     updaterGroupHistory: 'Snapshots & history',

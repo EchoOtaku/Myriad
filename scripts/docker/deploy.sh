@@ -137,8 +137,11 @@ ensure_current_layout() {
     ensure_key MYRIAD_TAG v0.1.0
     ensure_key PROXY_TAG v0.1.0
     ensure_key UPDATER_TAG v0.1.0
+    ensure_key BACKEND_IMAGE docker.io/somekawahitomi/myriad-backend
+    ensure_key FRONTEND_IMAGE docker.io/somekawahitomi/myriad-frontend
     ensure_key COMPOSE_PROJECT_NAME myriad
     ensure_key CHANNEL stable
+    ensure_key UPDATE_MODE release
     ensure_key MYRIAD_GITHUB_REPO Myriad-You/Myriad
     ensure_key CHECK_INTERVAL_SECS 3600
     ensure_key PROXY_ALLOW_DIRECT_UPDATER false

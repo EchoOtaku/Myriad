@@ -104,23 +104,256 @@ impl GithubClient {
             .map_err(|e| UpdaterError::Github(format!("decode releases: {e}")))
     }
 
+    /// True when a release tag belongs to the given channel filter.
+    pub fn release_matches_channel(tag: &str, prerelease: bool, channel: Channel) -> bool {
+        match channel {
+            Channel::Stable => {
+                !prerelease && !is_marked(tag, "nightly") && !is_marked(tag, "beta")
+            }
+            Channel::Beta => {
+                is_marked(tag, "beta") || (!prerelease && !is_marked(tag, "nightly"))
+            }
+            Channel::Nightly => is_marked(tag, "nightly"),
+        }
+    }
+
     /// Pick the newest release matching the requested channel (and ignoring drafts).
     pub async fn latest_for_channel(&self, channel: Channel) -> Result<Option<Release>> {
+        let releases = self.list_releases_for_channel(channel, 1).await?;
+        Ok(releases.into_iter().next())
+    }
+
+    /// Releases for a channel, newest first (drafts excluded).
+    pub async fn list_releases_for_channel(
+        &self,
+        channel: Channel,
+        limit: u32,
+    ) -> Result<Vec<Release>> {
+        let limit = limit.clamp(1, 50) as usize;
         let releases = self.list_releases().await?;
-        Ok(releases.into_iter().find(|r| {
-            !r.draft
-                && match channel {
-                    Channel::Stable => {
-                        !r.prerelease
-                            && !is_marked(&r.tag_name, "nightly")
-                            && !is_marked(&r.tag_name, "beta")
-                    }
-                    Channel::Beta => {
-                        is_marked(&r.tag_name, "beta")
-                            || (!r.prerelease && !is_marked(&r.tag_name, "nightly"))
-                    }
-                    Channel::Nightly => is_marked(&r.tag_name, "nightly"),
+        Ok(releases
+            .into_iter()
+            .filter(|r| {
+                !r.draft && Self::release_matches_channel(&r.tag_name, r.prerelease, channel)
+            })
+            .take(limit)
+            .collect())
+    }
+
+    /// Resolve any git ref (branch, tag, full/short sha) to a commit.
+    pub async fn resolve_commit(&self, rev: &str) -> Result<CommitInfo> {
+        let rev = rev.trim();
+        if rev.is_empty() {
+            return Err(UpdaterError::InvalidInput("empty git ref".into()));
+        }
+        // Percent-encode so tags like `v0.1.0` and shas are safe in the path.
+        let enc = urlencoding_minimal(rev);
+        let url = format!(
+            "https://api.github.com/repos/{}/commits/{}",
+            self.repo, enc
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.auth_headers())
+            .send()
+            .await
+            .map_err(|e| UpdaterError::Github(format!("GET commits/{rev}: {e}")))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(UpdaterError::Github(format!(
+                "GET commits/{rev} failed: {status} {body}"
+            )));
+        }
+        let raw: GhCommit = resp
+            .json()
+            .await
+            .map_err(|e| UpdaterError::Github(format!("decode commit: {e}")))?;
+        let sha = raw.sha;
+        if sha.len() < 7 {
+            return Err(UpdaterError::Github(format!(
+                "unexpected short sha from GitHub: {sha}"
+            )));
+        }
+        let committed_at = raw
+            .commit
+            .committer
+            .as_ref()
+            .and_then(|c| c.date.clone())
+            .or_else(|| {
+                raw.commit
+                    .author
+                    .as_ref()
+                    .and_then(|a| a.date.clone())
+            });
+        Ok(CommitInfo {
+            sha: sha.clone(),
+            short_sha: sha[..7].to_string(),
+            message: raw
+                .commit
+                .message
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_string(),
+            html_url: raw.html_url,
+            committed_at,
+        })
+    }
+
+    /// Latest commit on a branch (alias of [`resolve_commit`] for readability).
+    pub async fn latest_commit_on_branch(&self, branch: &str) -> Result<CommitInfo> {
+        self.resolve_commit(branch).await
+    }
+
+    /// List recent commits on a branch (newest first). Used by the UI commit picker.
+    pub async fn list_commits(&self, branch: &str, limit: u32) -> Result<Vec<CommitInfo>> {
+        let limit = limit.clamp(1, 50);
+        let url = format!(
+            "https://api.github.com/repos/{}/commits?sha={}&per_page={}",
+            self.repo,
+            urlencoding_minimal(branch),
+            limit
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.auth_headers())
+            .send()
+            .await
+            .map_err(|e| UpdaterError::Github(format!("GET commits?sha={branch}: {e}")))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(UpdaterError::Github(format!(
+                "GET commits?sha={branch} failed: {status} {body}"
+            )));
+        }
+        let raw: Vec<GhCommit> = resp
+            .json()
+            .await
+            .map_err(|e| UpdaterError::Github(format!("decode commit list: {e}")))?;
+        Ok(raw
+            .into_iter()
+            .filter_map(|c| {
+                if c.sha.len() < 7 {
+                    return None;
                 }
+                let committed_at = c
+                    .commit
+                    .committer
+                    .as_ref()
+                    .and_then(|p| p.date.clone())
+                    .or_else(|| c.commit.author.as_ref().and_then(|p| p.date.clone()));
+                Some(CommitInfo {
+                    sha: c.sha.clone(),
+                    short_sha: c.sha[..7].to_string(),
+                    message: c
+                        .commit
+                        .message
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .to_string(),
+                    html_url: c.html_url,
+                    committed_at,
+                })
+            })
+            .collect())
+    }
+
+    /// Compare two refs via GitHub: is `head` ahead/behind/identical/diverged relative to `base`?
+    ///
+    /// This is ancestry-based (merge-base), **not** wall-clock time.  
+    /// `status == "ahead"` means `head` has commits that `base` does not → `head` is "newer"
+    /// along that line of history.
+    pub async fn compare(&self, base: &str, head: &str) -> Result<CompareResult> {
+        let url = format!(
+            "https://api.github.com/repos/{}/compare/{}...{}",
+            self.repo,
+            urlencoding_minimal(base),
+            urlencoding_minimal(head)
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.auth_headers())
+            .send()
+            .await
+            .map_err(|e| UpdaterError::Github(format!("GET compare {base}...{head}: {e}")))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(UpdaterError::Github(format!(
+                "GET compare {base}...{head} failed: {status} {body}"
+            )));
+        }
+        let raw: GhCompare = resp
+            .json()
+            .await
+            .map_err(|e| UpdaterError::Github(format!("decode compare: {e}")))?;
+        Ok(CompareResult {
+            status: CommitRelation::parse(&raw.status),
+            ahead_by: raw.ahead_by,
+            behind_by: raw.behind_by,
+            base_sha: raw.base_commit.map(|c| c.sha).unwrap_or_default(),
+            merge_base_sha: raw.merge_base_commit.map(|c| c.sha).unwrap_or_default(),
+        })
+    }
+
+    /// Compare current deploy tag vs a target git ref; returns None if current cannot be resolved.
+    pub async fn compare_deploy_to_ref(
+        &self,
+        current: Option<&crate::version::DeployTag>,
+        target_ref: &str,
+    ) -> Result<Option<Freshness>> {
+        let Some(curr) = current else {
+            // No recorded version → anything is "newer".
+            let tip = self.resolve_commit(target_ref).await?;
+            return Ok(Some(Freshness {
+                relation: CommitRelation::Ahead,
+                ahead_by: 1,
+                behind_by: 0,
+                current_sha: None,
+                target_sha: Some(tip.sha),
+                current_ref: None,
+                target_ref: target_ref.to_string(),
+            }));
+        };
+        let current_ref = deploy_tag_to_git_ref(curr);
+        let curr_info = match self.resolve_commit(&current_ref).await {
+            Ok(i) => i,
+            Err(e) => {
+                tracing::warn!(
+                    err = %e,
+                    tag = %curr,
+                    "could not resolve current deploy tag to a git commit"
+                );
+                return Ok(None);
+            }
+        };
+        let tip = self.resolve_commit(target_ref).await?;
+        if curr_info.sha == tip.sha {
+            return Ok(Some(Freshness {
+                relation: CommitRelation::Identical,
+                ahead_by: 0,
+                behind_by: 0,
+                current_sha: Some(curr_info.sha),
+                target_sha: Some(tip.sha),
+                current_ref: Some(current_ref),
+                target_ref: target_ref.to_string(),
+            }));
+        }
+        let cmp = self.compare(&curr_info.sha, &tip.sha).await?;
+        Ok(Some(Freshness {
+            relation: cmp.status,
+            ahead_by: cmp.ahead_by,
+            behind_by: cmp.behind_by,
+            current_sha: Some(curr_info.sha),
+            target_sha: Some(tip.sha),
+            current_ref: Some(current_ref),
+            target_ref: target_ref.to_string(),
         }))
     }
 
@@ -294,4 +527,224 @@ impl GithubClient {
 
 fn is_marked(tag: &str, marker: &str) -> bool {
     tag.contains(&format!("-{marker}."))
+}
+
+#[cfg(test)]
+mod channel_filter_tests {
+    use super::*;
+    use crate::config::Channel;
+
+    #[test]
+    fn stable_excludes_beta_and_nightly() {
+        assert!(GithubClient::release_matches_channel("v1.0.0", false, Channel::Stable));
+        assert!(!GithubClient::release_matches_channel(
+            "v1.0.0-beta.1",
+            true,
+            Channel::Stable
+        ));
+        assert!(!GithubClient::release_matches_channel(
+            "v1.0.0-nightly.1",
+            true,
+            Channel::Stable
+        ));
+    }
+
+    #[test]
+    fn nightly_only_nightly_tags() {
+        assert!(GithubClient::release_matches_channel(
+            "v1.0.0-nightly.20260101",
+            true,
+            Channel::Nightly
+        ));
+        assert!(!GithubClient::release_matches_channel(
+            "v1.0.0",
+            false,
+            Channel::Nightly
+        ));
+    }
+}
+
+/// Map a running deploy tag to a GitHub ref we can resolve.
+/// - `v1.2.3` → tag `v1.2.3`
+/// - `dev-abc1234` → sha `abc1234`
+/// - `main`/`preview`/`beta` → branch name
+pub fn deploy_tag_to_git_ref(tag: &crate::version::DeployTag) -> String {
+    use crate::version::DeployTagKind;
+    match tag.kind() {
+        DeployTagKind::Release => tag.as_str().to_string(),
+        DeployTagKind::Commit => tag
+            .commit_sha()
+            .unwrap_or(tag.as_str())
+            .to_string(),
+        DeployTagKind::Branch => tag.as_str().to_string(),
+    }
+}
+
+/// Minimal path-segment encoding for refs (keep `/` out; encode `#?%` etc.).
+fn urlencoding_minimal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{b:02X}"));
+            }
+        }
+    }
+    out
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CommitInfo {
+    pub sha: String,
+    pub short_sha: String,
+    pub message: String,
+    pub html_url: String,
+    pub committed_at: Option<String>,
+}
+
+/// Result of GitHub compare base...head (ancestry).
+#[derive(Debug, Clone)]
+pub struct CompareResult {
+    pub status: CommitRelation,
+    pub ahead_by: u32,
+    pub behind_by: u32,
+    pub base_sha: String,
+    pub merge_base_sha: String,
+}
+
+/// How `head` (target) sits relative to `base` (current).
+#[derive(Debug, Clone, Copy, Eq, PartialEq, serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CommitRelation {
+    /// head has commits base does not → target is newer along history.
+    Ahead,
+    /// head is missing commits that base has → target is older.
+    Behind,
+    /// same commit.
+    Identical,
+    /// both sides have unique commits.
+    Diverged,
+    #[default]
+    Unknown,
+}
+
+impl CommitRelation {
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "ahead" => Self::Ahead,
+            "behind" => Self::Behind,
+            "identical" => Self::Identical,
+            "diverged" => Self::Diverged,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// True when moving from base → head is an upgrade (target has new work).
+    pub fn is_upgrade(self) -> bool {
+        matches!(self, Self::Ahead | Self::Diverged)
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ahead => "ahead",
+            Self::Behind => "behind",
+            Self::Identical => "identical",
+            Self::Diverged => "diverged",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Human/UI-facing freshness of target vs currently running deploy.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Freshness {
+    pub relation: CommitRelation,
+    pub ahead_by: u32,
+    pub behind_by: u32,
+    pub current_sha: Option<String>,
+    pub target_sha: Option<String>,
+    pub current_ref: Option<String>,
+    pub target_ref: String,
+}
+
+impl Freshness {
+    /// Whether applying the target is considered an upgrade (target has new commits).
+    pub fn is_upgrade(&self) -> bool {
+        match self.relation {
+            CommitRelation::Ahead => true,
+            // Diverged with new commits on target still counts as "can move forward"
+            // (UI will require allow_risk for non-linear history).
+            CommitRelation::Diverged => self.ahead_by > 0,
+            CommitRelation::Identical | CommitRelation::Behind => false,
+            CommitRelation::Unknown => false,
+        }
+    }
+
+    /// Target is strictly older along history (safe to label as downgrade).
+    pub fn is_downgrade(&self) -> bool {
+        match self.relation {
+            CommitRelation::Behind => true,
+            // Pure rewind on a diverged graph (no unique commits on target).
+            CommitRelation::Diverged => self.behind_by > 0 && self.ahead_by == 0,
+            _ => false,
+        }
+    }
+
+    /// Different from current and not identical (upgrade, downgrade, or diverged).
+    pub fn is_actionable(&self) -> bool {
+        !matches!(self.relation, CommitRelation::Identical)
+            && (self.is_upgrade()
+                || self.is_downgrade()
+                || matches!(self.relation, CommitRelation::Diverged | CommitRelation::Unknown)
+                    && self.current_sha != self.target_sha)
+    }
+
+    /// Back-compat alias used by older call sites.
+    pub fn update_available(&self) -> bool {
+        self.is_upgrade()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GhCommit {
+    sha: String,
+    html_url: String,
+    commit: GhCommitInner,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhCommitInner {
+    message: String,
+    #[serde(default)]
+    author: Option<GhCommitPerson>,
+    #[serde(default)]
+    committer: Option<GhCommitPerson>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhCommitPerson {
+    #[serde(default)]
+    date: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhCompare {
+    status: String,
+    #[serde(default)]
+    ahead_by: u32,
+    #[serde(default)]
+    behind_by: u32,
+    #[serde(default)]
+    base_commit: Option<GhCommitSha>,
+    #[serde(default)]
+    merge_base_commit: Option<GhCommitSha>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhCommitSha {
+    sha: String,
 }

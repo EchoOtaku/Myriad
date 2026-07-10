@@ -22,7 +22,7 @@ use walkdir::WalkDir;
 
 use crate::error::{Result, UpdaterError};
 use crate::state::{SnapshotMeta, StateDir};
-use crate::version::MyriadVersion;
+use crate::version::DeployTag;
 
 pub struct SnapshotManager<'a> {
     pub state: &'a StateDir,
@@ -35,7 +35,7 @@ impl<'a> SnapshotManager<'a> {
     pub async fn create(
         &self,
         snapshot_id: &str,
-        source_version: Option<MyriadVersion>,
+        source_version: Option<DeployTag>,
     ) -> Result<SnapshotMeta> {
         let snapshots_dir = self.state.snapshots_dir();
         std::fs::create_dir_all(&snapshots_dir)?;

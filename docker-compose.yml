@@ -92,6 +92,8 @@ services:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 1103
       JWT_SECRET: ${JWT_SECRET}
+      # The bundled proxy replaces client-supplied forwarding headers.
+      TRUST_PROXY_HEADERS: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-'self' https:}
       ENVIRONMENT: ${ENVIRONMENT:-production}
@@ -192,10 +194,10 @@ services:
       MYRIAD_GITHUB_REPO: ${MYRIAD_GITHUB_REPO:-Myriad-You/Myriad}
       CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-3600}
       UPDATER_ENV_FILE: /host/compose/.env
-      # cosign signature policy: off (default) | soft | strict
+      # cosign signature policy: strict (default) | soft | off
       # Strict requires release.json.sig + release.json.pem assets to be present and
       # the OIDC subject to match the configured repo's workflows.
-      COSIGN_VERIFY: ${COSIGN_VERIFY:-off}
+      COSIGN_VERIFY: ${COSIGN_VERIFY:-strict}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
       MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
       MYRIAD_VERSION: ${UPDATER_TAG}

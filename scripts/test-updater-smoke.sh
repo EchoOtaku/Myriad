@@ -81,7 +81,51 @@ jq -e '
 pass "example release.json passes schema spot-check"
 
 echo
-echo "== Case 5: live updater HTTP smoke (optional)"
+echo "== Case 5: deploy-tag patterns (commit / branch)"
+ok_tags=( v0.1.0 v1.2.3-beta.1 dev-abc1234 dev-deadbeef main preview beta )
+bad_tags=( latest v1.2 abc "DEV-abc" foo )
+for v in "${ok_tags[@]}"; do
+  case "$v" in
+    v[0-9]*.[0-9]*.[0-9]*) ;;
+    dev-[0-9a-f]*) ;;
+    main|preview|beta) ;;
+    *) fail "should accept deploy tag: $v" ;;
+  esac
+done
+pass "accepts deploy tags (release/commit/branch)"
+for v in "${bad_tags[@]}"; do
+  ok=0
+  case "$v" in
+    v[0-9]*.[0-9]*.[0-9]*) ok=1 ;;
+    dev-[0-9a-f]*) ok=1 ;;
+    main|preview|beta) ok=1 ;;
+  esac
+  [ "$ok" = "0" ] || fail "should reject deploy tag: $v"
+done
+pass "rejects invalid deploy tags"
+
+echo
+echo "== Case 6: risk-flag matrix (documentation contract)"
+# allow_risk umbrella must imply the three granular gates when unset.
+# Mirrors RiskFlags::from_api in updater/src/worker/preflight.rs
+python3 - <<'PY' || fail "risk flag matrix"
+def from_api(downgrade, risk, diverged=None, unknown=None, irreversible=None):
+    return {
+        "allow_downgrade": downgrade or risk,
+        "allow_diverged": risk if diverged is None else diverged,
+        "allow_unknown": risk if unknown is None else unknown,
+        "allow_irreversible": risk if irreversible is None else irreversible,
+    }
+r = from_api(False, True)
+assert r["allow_downgrade"] and r["allow_diverged"] and r["allow_unknown"] and r["allow_irreversible"]
+r = from_api(True, False, diverged=True, unknown=False)
+assert r["allow_downgrade"] and r["allow_diverged"] and not r["allow_unknown"] and not r["allow_irreversible"]
+print("ok")
+PY
+pass "risk flag umbrella matrix"
+
+echo
+echo "== Case 7: live updater HTTP smoke (optional)"
 if [ -n "${UPDATER_BASE:-}" ]; then
   base="$UPDATER_BASE"
   code=$(curl -s -o /dev/null -w '%{http_code}' "$base/healthz")
@@ -99,6 +143,13 @@ if [ -n "${UPDATER_BASE:-}" ]; then
     -d '{"target_version":"not-a-version"}')
   [ "$code" = "400" ] || fail "/update with bad version expected 400, got $code"
   pass "/update with bad version returns 400"
+
+  # Public list endpoints should not require token (may 502 if GitHub unreachable — accept 200/5xx)
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$base/releases?limit=5")
+  case "$code" in 200|502|503|500) pass "/releases reachable ($code)" ;; *) fail "/releases unexpected $code" ;; esac
+
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$base/commits?branch=main&limit=5")
+  case "$code" in 200|502|503|500) pass "/commits reachable ($code)" ;; *) fail "/commits unexpected $code" ;; esac
 else
   echo "  (set UPDATER_BASE=http://host:1101 to run live smoke; skipping)"
 fi

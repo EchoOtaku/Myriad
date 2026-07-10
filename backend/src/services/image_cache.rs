@@ -4,7 +4,6 @@
 //! Notion 托管的文件 URL 是带签名的临时链接，通常 1 小时后失效
 //! 此服务会下载并本地缓存这些图片
 
-use reqwest::Client;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -16,7 +15,6 @@ const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 
 /// 图片缓存服务
 pub struct ImageCacheService {
-    client: Client,
     cache_dir: PathBuf,
 }
 
@@ -28,15 +26,9 @@ impl Default for ImageCacheService {
 
 impl ImageCacheService {
     pub fn new() -> Self {
-        let client = Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_else(|_| Client::new());
-
         let cache_dir = crate::services::data_paths::paths().cache_images.clone();
 
-        Self { client, cache_dir }
+        Self { cache_dir }
     }
 
     /// 检查 URL 是否是 Notion 托管的临时文件
@@ -158,11 +150,17 @@ impl ImageCacheService {
             return Err(format!("Blocked SSRF attempt: {}", url));
         }
 
+        let (target_url, client) = crate::services::outbound_security::build_public_http_client(
+            url,
+            Duration::from_secs(30),
+            Some("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"),
+        )
+        .await?;
+
         // 下载图片
         tracing::info!("Caching image from: {}", url);
-        let response = self
-            .client
-            .get(url)
+        let response = client
+            .get(target_url)
             .send()
             .await
             .map_err(|e| format!("Failed to download image: {}", e))?;

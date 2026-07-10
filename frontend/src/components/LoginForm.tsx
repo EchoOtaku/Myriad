@@ -107,28 +107,11 @@ const LoginForm: FC = () => {
         t.auth.loginFailed,
       )
 
-      // Validate response data
-      if (
-        !data.token ||
-        typeof data.token !== 'string' ||
-        data.token.length < 10
-      ) {
-        throw new Error(t.auth.loginResponseIncomplete)
-      }
-
       if (!data.user || typeof data.user !== 'object') {
         throw new Error(t.auth.userInfoIncomplete)
       }
 
-      // Validate token format (should be JWT)
-      const tokenParts = data.token.split('.')
-      if (tokenParts.length !== 3) {
-        throw new Error(t.auth.invalidTokenFormat)
-      }
-
-      // ✅ 安全修复 P0: 不再将 token 存入 localStorage（防止 XSS 窃取）
-      // Token 已由后端通过 Set-Cookie 头设置为 HttpOnly Cookie
-      // localStorage.setItem('auth_token', data.token);
+      // The JWT is intentionally available only through the HttpOnly cookie.
 
       // 🔒 安全修复 P1: 只存储会话提示标志，不存储用户信息
       // 用户信息（包括 is_admin）将通过后端 API 实时验证

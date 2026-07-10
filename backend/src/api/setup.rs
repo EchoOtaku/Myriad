@@ -131,13 +131,12 @@ async fn check_database_tables(db: &DatabaseConnection) -> bool {
     }
 }
 
-/// Check if an admin user exists (local admin with auth_provider='local')
+/// Check if any current administrator exists, regardless of login provider.
 async fn check_admin_user_exists(db: &DatabaseConnection) -> bool {
-    // Query to check if local admin exists
     let result = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT EXISTS (SELECT 1 FROM users WHERE auth_provider = 'local' AND is_admin = true LIMIT 1) as admin_exists",
+            "SELECT EXISTS (SELECT 1 FROM users WHERE is_admin = true LIMIT 1) as admin_exists",
             vec![],
         ))
         .await;
@@ -145,7 +144,7 @@ async fn check_admin_user_exists(db: &DatabaseConnection) -> bool {
     match result {
         Ok(Some(row)) => {
             let exists: bool = row.try_get("", "admin_exists").unwrap_or(false);
-            tracing::info!("Local admin user exists: {}", exists);
+            tracing::info!("Admin user exists: {}", exists);
             exists
         }
         Ok(None) => {
@@ -160,13 +159,22 @@ async fn check_admin_user_exists(db: &DatabaseConnection) -> bool {
 }
 
 /// POST /api/setup/init-database
-/// Run database migrations (will drop and recreate if tables exist)
-///
-/// ⚠️ SECURITY WARNING: This endpoint can DROP all database tables!
-/// ✅ PROTECTION: Only accessible during CONFIG_MODE OR if setup is not completed
+/// Run non-destructive database migrations during initial configuration.
 pub async fn init_database(
     State(db): State<DatabaseConnection>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
+    if !config_mode {
+        tracing::warn!("Database initialization rejected outside configuration mode");
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Setup endpoint disabled",
+                "message": "Database initialization is available only during initial configuration."
+            })),
+        ));
+    }
+
     // ✅ SECURITY CHECK: Prevent re-initialization if setup is already completed
     // Check if admin user exists (indicates setup is complete)
     let admin_exists = check_admin_user_exists(&db).await;
@@ -179,134 +187,18 @@ pub async fn init_database(
             StatusCode::FORBIDDEN,
             Json(json!({
                 "error": "Setup already completed",
-                "message": "Database has been initialized and admin user exists. This endpoint is disabled for security. If you need to reinitialize, please delete the admin user from the database first."
+                "message": "Database has been initialized and an admin user exists. Use the authenticated administration workflow for maintenance."
             })),
         ));
     }
 
-    // 安全检查：如果不在配置模式，记录警告
-    let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
-
-    if !config_mode {
-        tracing::warn!(
-            "⚠️ Database initialization requested in FULL MODE - proceeding as no admin exists yet"
-        );
-    }
-
     tracing::info!("Running database migrations");
+    let tables_existed = check_database_tables(&db).await;
 
-    // Check if tables already exist
-    let result = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = 'platforms'
-            ) as platforms_exists,
-            EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = 'users'
-            ) as users_exists",
-            vec![],
-        ))
-        .await;
-
-    let mut tables_existed = false;
-
-    if let Ok(Some(row)) = result {
-        let platforms_exists: bool = row.try_get("", "platforms_exists").unwrap_or(false);
-        let users_exists: bool = row.try_get("", "users_exists").unwrap_or(false);
-
-        if platforms_exists || users_exists {
-            tables_existed = true;
-            tracing::warn!(
-                "⚠️ Existing tables detected - platforms: {}, users: {}. Will drop and recreate.",
-                platforms_exists,
-                users_exists
-            );
-
-            // Drop all tables in reverse order to handle foreign key constraints
-            let tables_to_drop = vec![
-                "reports",
-                "fetch_jobs",
-                "api_keys",
-                "configurations",
-                "analysis_results",
-                "user_activities",
-                "user_profiles",
-                "users",
-                "platforms",
-            ];
-
-            for table in tables_to_drop {
-                let drop_result = db
-                    .execute(Statement::from_string(
-                        DatabaseBackend::Postgres,
-                        format!("DROP TABLE IF EXISTS {} CASCADE", table),
-                    ))
-                    .await;
-
-                match drop_result {
-                    Ok(_) => tracing::info!("✅ Dropped table: {}", table),
-                    Err(e) => tracing::warn!("⚠️ Failed to drop table {}: {:?}", table, e),
-                }
-            }
-
-            // CRITICAL: Clear migration history so migrations can run again
-            let clear_migrations = db
-                .execute(Statement::from_string(
-                    DatabaseBackend::Postgres,
-                    "DELETE FROM seaql_migrations".to_string(),
-                ))
-                .await;
-
-            match clear_migrations {
-                Ok(_) => tracing::info!("🗑️ Cleared migration history from seaql_migrations"),
-                Err(e) => tracing::warn!("⚠️ Failed to clear migration history: {:?}", e),
-            }
-
-            tracing::info!("🗑️ All existing tables dropped and migration history cleared");
-        }
-    }
-
-    // Check if seaql_migrations has entries but business tables don't exist
-    // This indicates a corrupted state that needs to be fixed
-    let migrations_check = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT 
-                (SELECT COUNT(*) FROM seaql_migrations) as migration_count,
-                EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'platforms') as platforms_exists,
-                EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'users') as users_exists",
-            vec![],
-        ))
-        .await;
-
-    if let Ok(Some(row)) = migrations_check {
-        let migration_count: i64 = row.try_get("", "migration_count").unwrap_or(0);
-        let platforms_exists: bool = row.try_get("", "platforms_exists").unwrap_or(false);
-        let users_exists: bool = row.try_get("", "users_exists").unwrap_or(false);
-
-        if migration_count > 0 && (!platforms_exists || !users_exists) {
-            tracing::warn!(
-                "⚠️ Detected corrupted state: {} migrations recorded but tables missing (platforms: {}, users: {})",
-                migration_count, platforms_exists, users_exists
-            );
-            tracing::warn!("🔧 Clearing migration history to allow re-execution");
-
-            let clear_result = db
-                .execute(Statement::from_string(
-                    DatabaseBackend::Postgres,
-                    "DELETE FROM seaql_migrations".to_string(),
-                ))
-                .await;
-
-            match clear_result {
-                Ok(_) => tracing::info!("✅ Migration history cleared successfully"),
-                Err(e) => tracing::error!("❌ Failed to clear migration history: {:?}", e),
-            }
-        }
-    } // Import the migrator from migrations module
+    // Never drop tables or rewrite migration history from an unauthenticated
+    // setup endpoint. Migrator::up is idempotent and applies only pending work;
+    // damaged migration state requires explicit operator intervention.
+    // Import the migrator from migrations module
     use crate::db::Migrator;
 
     let migrations = <Migrator as MigratorTrait>::migrations();
@@ -394,7 +286,7 @@ pub async fn init_database(
             );
 
             let message = if tables_existed {
-                "数据库表已重新初始化"
+                "数据库迁移已检查并更新"
             } else {
                 "数据库初始化完成"
             };
@@ -402,7 +294,7 @@ pub async fn init_database(
             Ok(Json(json!({
                 "success": true,
                 "message": message,
-                "recreated": tables_existed,
+                "recreated": false,
                 "verification": {
                     "total_tables": total_tables,
                     "users_table": users_exists,

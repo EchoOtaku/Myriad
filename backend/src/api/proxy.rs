@@ -171,18 +171,31 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
             .into_response();
     }
 
-    // 创建HTTP客户端
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .timeout(std::time::Duration::from_secs(10)) // ✅ 添加超时保护
-        .build()
-        .unwrap();
+    // Resolve and pin the public target, and never follow an unvalidated redirect.
+    let (target_url, client) = match crate::services::outbound_security::build_public_http_client(
+        &url,
+        std::time::Duration::from_secs(10),
+        Some("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+    )
+    .await
+    {
+        Ok(target) => target,
+        Err(error) => {
+            tracing::warn!(%url, %error, "Rejected unsafe image proxy target");
+            return (StatusCode::FORBIDDEN, "Cannot proxy unsafe URLs").into_response();
+        }
+    };
 
     // 根据域名设置适当的Referer
     let referer = get_referer_for_url(&url);
 
     // 发起请求
-    let response = match client.get(&url).header("Referer", referer).send().await {
+    let response = match client
+        .get(target_url)
+        .header("Referer", referer)
+        .send()
+        .await
+    {
         Ok(resp) => resp,
         Err(e) => {
             tracing::error!("🚨 Image proxy failed - URL: {}, Error: {:?}", url, e);
@@ -199,6 +212,11 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
             }
         }
     };
+
+    if !response.status().is_success() {
+        tracing::warn!(%url, status = %response.status(), "Image proxy target returned non-success");
+        return (StatusCode::BAD_GATEWAY, "Image source returned an error").into_response();
+    }
 
     // 获取内容类型
     let content_type = response
@@ -696,19 +714,13 @@ pub async fn get_client_geo(
     headers: axum::http::HeaderMap,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
 ) -> Response {
-    // 优先从请求头获取真实IP（处理反向代理的情况）
-    let client_ip = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').next())
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            headers
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string())
-        })
-        .unwrap_or_else(|| addr.ip().to_string());
+    let client_ip = crate::middleware::client_ip::client_ip_from_parts(
+        &headers,
+        Some(addr.ip()),
+        crate::middleware::client_ip::trusted_proxy_headers_enabled(),
+    )
+    .map(|ip| ip.to_string())
+    .unwrap_or_else(|| addr.ip().to_string());
 
     tracing::info!(
         "Client IP detection: original={}, socket={}",
@@ -1137,14 +1149,25 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
 
     tracing::info!(url = %url, "[FetchWebContent] Fetching external content");
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()
-        .unwrap();
+    let (target_url, client) = match crate::services::outbound_security::build_public_http_client(
+        url,
+        std::time::Duration::from_secs(15),
+        Some("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+    )
+    .await
+    {
+        Ok(target) => target,
+        Err(error) => {
+            tracing::warn!(url = %url, %error, "[FetchWebContent] Rejected unsafe target");
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Cannot fetch unsafe URLs"})),
+            )
+                .into_response();
+        }
+    };
 
-    match client.get(url).send().await {
+    match client.get(target_url).send().await {
         Ok(resp) => {
             if !resp.status().is_success() {
                 tracing::warn!(url = %url, status = %resp.status(), "[FetchWebContent] HTTP error");

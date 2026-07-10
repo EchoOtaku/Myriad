@@ -70,6 +70,10 @@ pub async fn status() -> Response {
 pub struct AvailableQuery {
     #[serde(default)]
     pub channel: Option<String>,
+    /// Ephemeral override: `release` | `commit`. Must be forwarded to updater —
+    /// UI channel checks rely on this when draft mode differs from saved prefs.
+    #[serde(default)]
+    pub mode: Option<String>,
 }
 
 pub async fn available(Query(q): Query<AvailableQuery>) -> Response {
@@ -77,9 +81,17 @@ pub async fn available(Query(q): Query<AvailableQuery>) -> Response {
         Ok(c) => c,
         Err(r) => return *r,
     };
-    let path = match q.channel.as_deref() {
-        Some(ch) if !ch.is_empty() => format!("/available?channel={ch}"),
-        _ => "/available".to_string(),
+    let mut parts = Vec::new();
+    if let Some(ch) = q.channel.as_deref().filter(|s| !s.is_empty()) {
+        parts.push(format!("channel={}", urlencoding_simple(ch)));
+    }
+    if let Some(m) = q.mode.as_deref().filter(|s| !s.is_empty()) {
+        parts.push(format!("mode={}", urlencoding_simple(m)));
+    }
+    let path = if parts.is_empty() {
+        "/available".to_string()
+    } else {
+        format!("/available?{}", parts.join("&"))
     };
     match c.get_json(&path).await {
         Ok(v) => Json(v).into_response(),
@@ -131,8 +143,118 @@ pub async fn snapshots() -> Response {
 }
 
 #[derive(Deserialize)]
+pub struct CommitsQuery {
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+pub async fn commits(Query(q): Query<CommitsQuery>) -> Response {
+    let c = match require() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    let mut path = "/commits?".to_string();
+    let mut parts = Vec::new();
+    if let Some(b) = q.branch.as_deref().filter(|s| !s.is_empty()) {
+        parts.push(format!("branch={b}"));
+    }
+    if let Some(n) = q.limit {
+        parts.push(format!("limit={n}"));
+    }
+    path.push_str(&parts.join("&"));
+    match c.get_json(&path).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ReleasesQuery {
+    #[serde(default)]
+    pub channel: Option<String>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+pub async fn releases(Query(q): Query<ReleasesQuery>) -> Response {
+    let c = match require() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    let mut parts = Vec::new();
+    if let Some(ch) = q.channel.as_deref().filter(|s| !s.is_empty()) {
+        parts.push(format!("channel={ch}"));
+    }
+    if let Some(n) = q.limit {
+        parts.push(format!("limit={n}"));
+    }
+    let path = if parts.is_empty() {
+        "/releases".to_string()
+    } else {
+        format!("/releases?{}", parts.join("&"))
+    };
+    match c.get_json(&path).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct CompareQuery {
+    #[serde(default)]
+    pub from: Option<String>,
+    pub to: String,
+}
+
+pub async fn compare(Query(q): Query<CompareQuery>) -> Response {
+    let c = match require() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    let mut parts = vec![format!("to={}", urlencoding_simple(&q.to))];
+    if let Some(f) = q.from.as_deref().filter(|s| !s.is_empty()) {
+        parts.push(format!("from={}", urlencoding_simple(f)));
+    }
+    let path = format!("/compare?{}", parts.join("&"));
+    match c.get_json(&path).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+fn urlencoding_simple(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+#[derive(Deserialize)]
 pub struct UpdateBody {
-    pub target_version: String,
+    #[serde(default)]
+    pub target_version: Option<String>,
+    #[serde(default)]
+    pub target_commit: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub allow_downgrade: bool,
+    #[serde(default)]
+    pub allow_risk: bool,
+    #[serde(default)]
+    pub allow_diverged: Option<bool>,
+    #[serde(default)]
+    pub allow_unknown: Option<bool>,
+    #[serde(default)]
+    pub allow_irreversible: Option<bool>,
     #[serde(default)]
     pub allow_skip_versions: bool,
 }
@@ -149,14 +271,59 @@ pub async fn trigger_update(headers: HeaderMap, Json(body): Json<UpdateBody>) ->
         .get("Idempotency-Key")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let payload = json!({
-        "target_version": body.target_version,
+    let mut payload = json!({
         "allow_skip_versions": body.allow_skip_versions,
+        "allow_downgrade": body.allow_downgrade,
+        "allow_risk": body.allow_risk,
     });
+    if let Some(v) = body.target_version {
+        payload["target_version"] = json!(v);
+    }
+    if let Some(v) = body.target_commit {
+        payload["target_commit"] = json!(v);
+    }
+    if let Some(v) = body.mode {
+        payload["mode"] = json!(v);
+    }
+    if let Some(v) = body.allow_diverged {
+        payload["allow_diverged"] = json!(v);
+    }
+    if let Some(v) = body.allow_unknown {
+        payload["allow_unknown"] = json!(v);
+    }
+    if let Some(v) = body.allow_irreversible {
+        payload["allow_irreversible"] = json!(v);
+    }
     match c
         .post_json("/update", Some(&payload), idem.as_deref())
         .await
     {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct PrefsBody {
+    #[serde(default)]
+    pub channel: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
+pub async fn set_prefs(Json(body): Json<PrefsBody>) -> Response {
+    let c = match require() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    if !c.has_token() {
+        return token_missing();
+    }
+    let payload = json!({
+        "channel": body.channel,
+        "mode": body.mode,
+    });
+    match c.post_json("/prefs", Some(&payload), None).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => err_to_response(e),
     }
@@ -225,6 +392,21 @@ pub async fn forget_current() -> Response {
         .post_json::<Value>("/rescue/forget-current", None, None)
         .await
     {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+/// One-click recovery: roll back to the snapshot on the stuck needs_manual job.
+pub async fn rescue_continue() -> Response {
+    let c = match require() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    if !c.has_token() {
+        return token_missing();
+    }
+    match c.post_json::<Value>("/rescue/continue", None, None).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => err_to_response(e),
     }

@@ -63,7 +63,7 @@ const RegisterForm: FC = () => {
         t.auth.registerFailed,
       )
 
-      if (!data?.token || !data?.user) {
+      if (!data?.user) {
         throw new Error(t.auth.registerResponseIncomplete)
       }
 

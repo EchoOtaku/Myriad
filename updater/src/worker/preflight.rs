@@ -1,30 +1,95 @@
 //! Preflight checks (spec §6 pre-check). Run BEFORE entering maintenance mode so failures
 //! never cause downtime.
+//!
+//! Two modes:
+//! - **Release**: fetch release.json, pull images, verify digests, enforce min_from_version.
+//! - **Commit**: resolve image tags to `dev-<sha>` (never persist branch tips), pull images.
+//!
+//! Direction gates (fail-closed):
+//! - pure upgrade → ok
+//! - pure downgrade → requires `allow_downgrade`
+//! - diverged / unknown direction → requires `allow_risk`
+//! - irreversible migration + downgrade → requires both flags
 
 use std::sync::Arc;
 
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
-use crate::release::Manifest;
-use crate::version::MyriadVersion;
+use crate::release::{CommitRelation, Manifest};
+use crate::version::{DeployTag, MyriadVersion, UpdateMode};
 use crate::worker::Worker;
 use crate::SUPPORTED_RELEASE_SCHEMA;
 
 pub struct PreflightReport {
-    pub manifest: Manifest,
-    pub from_version: Option<MyriadVersion>,
+    /// Present only for release-mode updates.
+    pub manifest: Option<Manifest>,
+    pub from_version: Option<DeployTag>,
+    /// Tag actually written to MYRIAD_TAG (commit mode: always `dev-<sha>`).
+    pub target: DeployTag,
     pub backend_digest: String,
     pub frontend_digest: String,
+    pub estimated_seconds: u32,
+    pub is_downgrade: bool,
+    pub is_diverged: bool,
 }
 
-pub async fn run(worker: Arc<Worker>, target: &MyriadVersion) -> Result<PreflightReport> {
-    info!(target = %target, "preflight: fetching manifest");
-    let gh = worker.github_client()?;
-    let manifest = gh.fetch_manifest(target.as_str()).await?;
+/// Operator confirmation flags. `allow_risk` is a backward-compatible umbrella that
+/// enables all non-downgrade risk gates when true.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RiskFlags {
+    pub allow_downgrade: bool,
+    pub allow_diverged: bool,
+    pub allow_unknown: bool,
+    pub allow_irreversible: bool,
+}
 
-    // 1. schema_version
+impl RiskFlags {
+    /// Build from granular flags + optional umbrella `allow_risk`.
+    pub fn from_api(
+        allow_downgrade: bool,
+        allow_risk: bool,
+        allow_diverged: Option<bool>,
+        allow_unknown: Option<bool>,
+        allow_irreversible: Option<bool>,
+    ) -> Self {
+        Self {
+            allow_downgrade: allow_downgrade || allow_risk,
+            allow_diverged: allow_diverged.unwrap_or(allow_risk),
+            allow_unknown: allow_unknown.unwrap_or(allow_risk),
+            allow_irreversible: allow_irreversible.unwrap_or(allow_risk),
+        }
+    }
+}
+
+pub async fn run(
+    worker: Arc<Worker>,
+    target: &DeployTag,
+    mode: UpdateMode,
+    risk: RiskFlags,
+) -> Result<PreflightReport> {
+    match mode {
+        UpdateMode::Release => run_release(worker, target, risk).await,
+        UpdateMode::Commit => run_commit(worker, target, risk).await,
+    }
+}
+
+async fn run_release(
+    worker: Arc<Worker>,
+    target: &DeployTag,
+    risk: RiskFlags,
+) -> Result<PreflightReport> {
+    let release = target.as_release().ok_or_else(|| {
+        UpdaterError::InvalidInput(format!(
+            "release mode requires a vX.Y.Z target, got {}",
+            target.as_str()
+        ))
+    })?;
+    info!(target = %release, "preflight(release): fetching manifest");
+    let gh = worker.github_client()?;
+    let manifest = gh.fetch_manifest(release.as_str()).await?;
+
     if manifest.schema_version > SUPPORTED_RELEASE_SCHEMA {
         return Err(UpdaterError::Precondition(format!(
             "release schema_version {} exceeds updater support {}; upgrade updater first",
@@ -32,7 +97,6 @@ pub async fn run(worker: Arc<Worker>, target: &MyriadVersion) -> Result<Prefligh
         )));
     }
 
-    // 2. min_updater_version
     let self_v = MyriadVersion::parse(crate::self_version()).map_err(|e| {
         UpdaterError::Precondition(format!(
             "could not parse own updater version {:?}: {e}",
@@ -46,53 +110,127 @@ pub async fn run(worker: Arc<Worker>, target: &MyriadVersion) -> Result<Prefligh
         )));
     }
 
-    // 3. min_from_version
     let st = worker.state().read_updater()?;
     let from_version = st.current_version.clone();
+
+    let mut is_downgrade = false;
+    let mut is_diverged = false;
+
+    // Semver direction when both sides are releases.
+    if let (Some(curr), Some(tgt)) = (&from_version, target.as_release()) {
+        if let Some(curr_rel) = curr.as_release() {
+            if curr_rel.as_str() == tgt.as_str() {
+                return Err(UpdaterError::Precondition(format!(
+                    "target {tgt} is already the running release version"
+                )));
+            } else if tgt.older_than(&curr_rel) {
+                is_downgrade = true;
+            } else if !curr_rel.older_than(&tgt) {
+                // Non-orderable prerelease edge cases → require unknown confirmation.
+                require_flag(
+                    risk.allow_unknown,
+                    &format!(
+                        "cannot order {curr_rel} vs {tgt} by semver; re-submit with \
+                         allow_unknown=true (or allow_risk=true)"
+                    ),
+                )?;
+            }
+        } else {
+            // Current is commit/branch while target is release — use git compare when possible.
+            match gh
+                .compare_deploy_to_ref(Some(curr), target.as_str())
+                .await
+            {
+                Ok(Some(f)) => {
+                    is_downgrade = f.is_downgrade();
+                    is_diverged = matches!(f.relation, CommitRelation::Diverged);
+                    if matches!(f.relation, CommitRelation::Identical) {
+                        return Err(UpdaterError::Precondition(format!(
+                            "target {} points at the same git commit as current {}",
+                            target.as_str(),
+                            curr
+                        )));
+                    }
+                    if matches!(f.relation, CommitRelation::Unknown) {
+                        require_flag(
+                            risk.allow_unknown,
+                            &format!(
+                                "cannot determine whether {} is newer than current {}; \
+                                 re-submit with allow_unknown=true (or allow_risk=true)",
+                                target.as_str(),
+                                curr
+                            ),
+                        )?;
+                    }
+                }
+                Ok(None) => {
+                    require_flag(
+                        risk.allow_unknown,
+                        &format!(
+                            "cannot resolve current deploy {curr} to a git commit for comparison \
+                             with release {}; re-submit with allow_unknown=true (or allow_risk=true)",
+                            target.as_str()
+                        ),
+                    )?;
+                }
+                Err(e) => {
+                    require_flag(
+                        risk.allow_unknown,
+                        &format!(
+                            "git compare failed ({e}); refusing update without known direction. \
+                             Fix GitHub access or re-submit with allow_unknown=true (or allow_risk=true)"
+                        ),
+                    )?;
+                }
+            }
+        }
+    }
+
+    if is_downgrade {
+        require_downgrade(risk.allow_downgrade, target.as_str())?;
+        if manifest.migrations.irreversible {
+            require_flag(
+                risk.allow_irreversible,
+                &format!(
+                    "target release {} declares irreversible migrations; downgrade refused \
+                     unless allow_irreversible=true (or allow_risk=true)",
+                    target.as_str()
+                ),
+            )?;
+            warn!(
+                to = %target,
+                "preflight: irreversible migration + downgrade allowed"
+            );
+        }
+        warn!(to = %target, "preflight: explicit release DOWNgrade allowed");
+    }
+    if is_diverged {
+        require_flag(
+            risk.allow_diverged,
+            &format!(
+                "target {} diverged from current history; re-submit with allow_diverged=true \
+                 (or allow_risk=true)",
+                target.as_str()
+            ),
+        )?;
+    }
+
+    // min_from only when upgrading between releases.
     if let (Some(curr), Some(min_from)) = (&from_version, &manifest.min_from_version) {
-        if curr.older_than(min_from) {
-            return Err(UpdaterError::Precondition(format!(
-                "current version {curr} is older than min_from_version {min_from}; \
-                 upgrade to an intermediate release first"
-            )));
+        if let (Some(curr_rel), Some(tgt_rel)) = (curr.as_release(), target.as_release()) {
+            let is_upgrade = curr_rel.older_than(&tgt_rel);
+            if is_upgrade && curr_rel.older_than(min_from) {
+                return Err(UpdaterError::Precondition(format!(
+                    "current version {curr} is older than min_from_version {min_from}; \
+                     upgrade to an intermediate release first"
+                )));
+            }
         }
     }
 
-    // 4. env file: required keys present
-    let env = EnvFile::load(&worker.cli().env_file)?;
-    let mut missing = Vec::new();
-    for k in &manifest.env.required {
-        if env.get(k).is_none() {
-            missing.push(k.clone());
-        }
-    }
-    for ne in &manifest.env.new {
-        if ne.required && env.get(&ne.name).is_none() && ne.default.is_none() {
-            missing.push(ne.name.clone());
-        }
-    }
-    if !missing.is_empty() {
-        return Err(UpdaterError::Precondition(format!(
-            "missing required env keys: {}",
-            missing.join(", ")
-        )));
-    }
+    check_env_keys(worker.as_ref(), Some(&manifest))?;
+    check_disk(worker.as_ref())?;
 
-    // 5. disk: free space ≥ pgdata_size × 1.5 + 1GiB headroom
-    if let Ok(stat) = nix::sys::statvfs::statvfs(&worker.cli().pgdata) {
-        let block = stat.fragment_size();
-        let avail = block * (stat.blocks_available() as u64);
-        let pgdata_size = fs_size(&worker.cli().pgdata).unwrap_or(0);
-        let need = pgdata_size + (pgdata_size / 2) + (1024 * 1024 * 1024);
-        if avail < need {
-            return Err(UpdaterError::Precondition(format!(
-                "insufficient disk for snapshot: have {} bytes, need ~{}",
-                avail, need
-            )));
-        }
-    }
-
-    // 6. pull images & verify digests
     let backend = manifest
         .image("backend")
         .ok_or_else(|| UpdaterError::Precondition("manifest lacks backend image".into()))?;
@@ -100,7 +238,6 @@ pub async fn run(worker: Arc<Worker>, target: &MyriadVersion) -> Result<Prefligh
         .image("frontend")
         .ok_or_else(|| UpdaterError::Precondition("manifest lacks frontend image".into()))?;
 
-    // ":latest" never permitted; double-check.
     for img in [&backend.r#ref, &frontend.r#ref] {
         if img.ends_with(":latest") {
             return Err(UpdaterError::Precondition(format!(
@@ -131,16 +268,296 @@ pub async fn run(worker: Arc<Worker>, target: &MyriadVersion) -> Result<Prefligh
         )));
     }
 
+    let estimated = manifest.migrations.estimated_seconds;
     Ok(PreflightReport {
-        manifest,
+        manifest: Some(manifest),
         from_version,
+        target: target.clone(),
         backend_digest: backend_pulled,
         frontend_digest: frontend_pulled,
+        estimated_seconds: estimated,
+        is_downgrade,
+        is_diverged,
     })
 }
 
+async fn run_commit(
+    worker: Arc<Worker>,
+    target: &DeployTag,
+    risk: RiskFlags,
+) -> Result<PreflightReport> {
+    if target.is_release() {
+        return Err(UpdaterError::InvalidInput(format!(
+            "commit mode expects dev-<sha> or branch tip, got release tag {}",
+            target.as_str()
+        )));
+    }
+    info!(target = %target, kind = ?target.kind(), "preflight(commit): resolving + pulling");
+
+    let gh = worker.github_client()?;
+    let from_version = worker.state().read_updater()?.current_version.clone();
+
+    // Always resolve to a concrete commit; persist as dev-<shortsha> never branch tip.
+    let git_ref = crate::release::deploy_tag_to_git_ref(target);
+    let tip = gh.resolve_commit(&git_ref).await.map_err(|e| {
+        UpdaterError::Precondition(format!(
+            "cannot resolve git ref {git_ref} for target {}: {e}",
+            target.as_str()
+        ))
+    })?;
+    let effective = DeployTag::parse(&format!("dev-{}", tip.short_sha))?;
+    info!(
+        requested = %target,
+        effective = %effective,
+        full_sha = %tip.sha,
+        "preflight(commit): normalized target to immutable dev-sha tag"
+    );
+
+    let mut is_downgrade = false;
+    let mut is_diverged = false;
+
+    match gh
+        .compare_deploy_to_ref(from_version.as_ref(), &tip.sha)
+        .await
+    {
+        Ok(Some(f)) => {
+            is_downgrade = f.is_downgrade();
+            is_diverged = matches!(f.relation, CommitRelation::Diverged);
+            info!(
+                relation = f.relation.as_str(),
+                ahead = f.ahead_by,
+                behind = f.behind_by,
+                "preflight(commit): freshness"
+            );
+            match f.relation {
+                CommitRelation::Identical => {
+                    return Err(UpdaterError::Precondition(format!(
+                        "target {} is already the running commit",
+                        effective.as_str()
+                    )));
+                }
+                CommitRelation::Behind => {
+                    require_downgrade(risk.allow_downgrade, effective.as_str())?;
+                }
+                CommitRelation::Diverged => {
+                    require_flag(
+                        risk.allow_diverged,
+                        &format!(
+                            "target {} diverged from current (ahead {}, behind {}). \
+                             Re-submit with allow_diverged=true (or allow_risk=true)",
+                            effective.as_str(),
+                            f.ahead_by,
+                            f.behind_by
+                        ),
+                    )?;
+                }
+                CommitRelation::Unknown => {
+                    require_flag(
+                        risk.allow_unknown,
+                        &format!(
+                            "unknown git relation for {}; re-submit with allow_unknown=true \
+                             (or allow_risk=true)",
+                            effective.as_str()
+                        ),
+                    )?;
+                }
+                CommitRelation::Ahead => {}
+            }
+        }
+        Ok(None) => {
+            require_flag(
+                risk.allow_unknown,
+                &format!(
+                    "cannot resolve current deploy to a git commit; refusing to move to {} \
+                     without allow_unknown=true (or allow_risk=true)",
+                    effective.as_str()
+                ),
+            )?;
+        }
+        Err(e) => {
+            require_flag(
+                risk.allow_unknown,
+                &format!(
+                    "git compare failed ({e}); refusing update. Fix GitHub access or pass \
+                     allow_unknown=true (or allow_risk=true)"
+                ),
+            )?;
+        }
+    }
+
+    if is_downgrade {
+        warn!(to = %effective, "preflight: explicit commit DOWNgrade allowed");
+    }
+
+    check_env_keys(worker.as_ref(), None)?;
+    check_disk(worker.as_ref())?;
+
+    let (backend_repo, frontend_repo) = image_repos_required(worker.as_ref())?;
+    let tag = effective.as_str();
+    let backend_ref = format!("{backend_repo}:{tag}");
+    let frontend_ref = format!("{frontend_repo}:{tag}");
+
+    for img in [&backend_ref, &frontend_ref] {
+        if img.ends_with(":latest") {
+            return Err(UpdaterError::Precondition(format!(
+                "image ref must use immutable tag, got: {img}"
+            )));
+        }
+    }
+
+    let backend_pulled = worker
+        .docker_pull_with_mirror(&backend_ref)
+        .await
+        .map_err(|e| {
+            UpdaterError::Precondition(format!(
+                "pull backend {backend_ref}: {e} (is the commit built by CI?)"
+            ))
+        })?;
+    let frontend_pulled = worker
+        .docker_pull_with_mirror(&frontend_ref)
+        .await
+        .map_err(|e| {
+            UpdaterError::Precondition(format!(
+                "pull frontend {frontend_ref}: {e} (is the commit built by CI?)"
+            ))
+        })?;
+
+    Ok(PreflightReport {
+        manifest: None,
+        from_version,
+        target: effective,
+        backend_digest: backend_pulled,
+        frontend_digest: frontend_pulled,
+        estimated_seconds: 60,
+        is_downgrade,
+        is_diverged,
+    })
+}
+
+fn require_downgrade(allowed: bool, target: &str) -> Result<()> {
+    if allowed {
+        return Ok(());
+    }
+    Err(UpdaterError::Precondition(format!(
+        "target {target} is older than current (downgrade). \
+         Re-submit with allow_downgrade=true after operator confirmation. \
+         Warning: schema/data may not fully reverse."
+    )))
+}
+
+fn require_flag(allowed: bool, msg: &str) -> Result<()> {
+    if allowed {
+        return Ok(());
+    }
+    Err(UpdaterError::Precondition(msg.into()))
+}
+
+#[cfg(test)]
+mod risk_flag_tests {
+    use super::*;
+
+    #[test]
+    fn allow_risk_umbrellas_granular_flags() {
+        let r = RiskFlags::from_api(false, true, None, None, None);
+        assert!(r.allow_downgrade);
+        assert!(r.allow_diverged);
+        assert!(r.allow_unknown);
+        assert!(r.allow_irreversible);
+    }
+
+    #[test]
+    fn granular_flags_override_umbrella_defaults() {
+        let r = RiskFlags::from_api(true, false, Some(true), Some(false), None);
+        assert!(r.allow_downgrade);
+        assert!(r.allow_diverged);
+        assert!(!r.allow_unknown);
+        assert!(!r.allow_irreversible);
+    }
+}
+
+/// Image repos must be explicit in .env — never silently use a wrong default registry.
+fn image_repos_required(worker: &Worker) -> Result<(String, String)> {
+    let env = EnvFile::load(&worker.cli().env_file)?;
+    let backend = env.get("BACKEND_IMAGE").map(|s| s.to_string()).ok_or_else(|| {
+        UpdaterError::Precondition(
+            "BACKEND_IMAGE missing in .env; required for commit-mode image pulls. \
+             Add e.g. BACKEND_IMAGE=docker.io/<org>/myriad-backend (no tag) or re-run \
+             scripts/docker/deploy.sh to bootstrap defaults."
+                .into(),
+        )
+    })?;
+    let frontend = env
+        .get("FRONTEND_IMAGE")
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            UpdaterError::Precondition(
+                "FRONTEND_IMAGE missing in .env; required for commit-mode image pulls. \
+                 Add e.g. FRONTEND_IMAGE=docker.io/<org>/myriad-frontend (no tag) or re-run \
+                 scripts/docker/deploy.sh to bootstrap defaults."
+                    .into(),
+            )
+        })?;
+    if backend.trim().is_empty() || frontend.trim().is_empty() {
+        return Err(UpdaterError::Precondition(
+            "BACKEND_IMAGE / FRONTEND_IMAGE must be non-empty (image repo without tag)".into(),
+        ));
+    }
+    Ok((backend, frontend))
+}
+
+fn check_env_keys(worker: &Worker, manifest: Option<&Manifest>) -> Result<()> {
+    let env = EnvFile::load(&worker.cli().env_file)?;
+    let mut missing = Vec::new();
+    if let Some(manifest) = manifest {
+        for k in &manifest.env.required {
+            if env.get(k).is_none() {
+                missing.push(k.clone());
+            }
+        }
+        for ne in &manifest.env.new {
+            if ne.required && env.get(&ne.name).is_none() && ne.default.is_none() {
+                missing.push(ne.name.clone());
+            }
+        }
+    } else {
+        for k in [
+            "MYRIAD_TAG",
+            "POSTGRES_PASSWORD",
+            "JWT_SECRET",
+            "BACKEND_IMAGE",
+            "FRONTEND_IMAGE",
+        ] {
+            if env.get(k).is_none() {
+                missing.push(k.to_string());
+            }
+        }
+    }
+    if !missing.is_empty() {
+        return Err(UpdaterError::Precondition(format!(
+            "missing required env keys: {}",
+            missing.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+fn check_disk(worker: &Worker) -> Result<()> {
+    if let Ok(stat) = nix::sys::statvfs::statvfs(&worker.cli().pgdata) {
+        let block = stat.fragment_size();
+        let avail = block * (stat.blocks_available() as u64);
+        let pgdata_size = fs_size(&worker.cli().pgdata).unwrap_or(0);
+        let need = pgdata_size + (pgdata_size / 2) + (1024 * 1024 * 1024);
+        if avail < need {
+            return Err(UpdaterError::Precondition(format!(
+                "insufficient disk for snapshot: have {} bytes, need ~{}",
+                avail, need
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn digest_matches(pulled: &str, expected: &str) -> bool {
-    // pulled may be either bare digest (sha256:...) or include image@digest
     pulled == expected || pulled.ends_with(expected)
 }
 

@@ -74,7 +74,7 @@ Open `http://localhost` or the port configured by `HTTP_PORT`.
 | `MYRIAD_GITHUB_REPO` | no | Release source repo, default `Myriad-You/Myriad` |
 | `MYRIAD_DOCKER_NETWORK` | no | Docker network override, default `myriad-net` |
 | `PROXY_ALLOW_DIRECT_UPDATER` | no | Enables `/_updater/*` rescue path, default `false` |
-| `COSIGN_VERIFY` | no | Release signature policy: `off`, `soft`, or `strict` |
+| `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or explicit-risk `off` |
 
 Do not set `BACKEND_PORT` or `FRONTEND_PORT` for production. Those are internal
 container ports.

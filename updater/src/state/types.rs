@@ -3,25 +3,36 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::version::MyriadVersion;
+use crate::version::{DeployTag, MyriadVersion, UpdateMode};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdaterStateFile {
     #[serde(default = "default_schema")]
     pub schema_version: u32,
 
-    pub current_version: Option<MyriadVersion>,
+    /// Currently running business deploy tag (release or commit/branch).
+    pub current_version: Option<DeployTag>,
+    /// Updater binary's own release version (always v-semver when known).
     pub updater_version: Option<MyriadVersion>,
     pub last_checked_at: Option<DateTime<Utc>>,
+    /// Preferred release channel (`stable`/`beta`/`nightly`) or commit branch
+    /// (`main`/`preview`/`beta`) depending on [`Self::update_mode`].
     pub channel: String,
+
+    /// Release vs commit consumption mode. Default: release.
+    #[serde(default)]
+    pub update_mode: UpdateMode,
 
     #[serde(default)]
     pub last_failed_update: Option<FailedUpdate>,
 
-    /// Cached result of the most recent successful release lookup. UI shows a "new version
-    /// available" hint without having to hit GitHub on every page render.
+    /// Cached result of the most recent successful release/commit lookup.
     #[serde(default)]
     pub latest_available: Option<LatestAvailable>,
+
+    /// Version whose images were last pinned as `*:myriad-last-good` after a healthy upgrade.
+    #[serde(default)]
+    pub last_good_version: Option<DeployTag>,
 }
 
 impl Default for UpdaterStateFile {
@@ -32,33 +43,53 @@ impl Default for UpdaterStateFile {
             updater_version: None,
             last_checked_at: None,
             channel: "stable".into(),
+            update_mode: UpdateMode::Release,
             last_failed_update: None,
             latest_available: None,
+            last_good_version: None,
         }
     }
 }
 
-/// Cached snapshot of "what would `/available` return right now". Refreshed by the worker's
-/// periodic check or any manual `/available` call.
+/// Cached snapshot of "what would `/available` return right now".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LatestAvailable {
-    pub version: MyriadVersion,
+    pub version: DeployTag,
     pub channel: String,
+    #[serde(default)]
+    pub mode: UpdateMode,
     pub seen_at: DateTime<Utc>,
-    /// Whether the manifest mandates a self-update first (release.updater.self_update_required
-    /// or this updater is older than min_updater_version).
+    /// Full git sha when mode=commit (optional; short tag is in `version`).
+    #[serde(default)]
+    pub commit_sha: Option<String>,
+    /// Running deploy resolved to a git sha (for commit freshness).
+    #[serde(default)]
+    pub current_commit_sha: Option<String>,
+    /// Ancestry of target vs current: ahead | behind | identical | diverged | unknown.
+    #[serde(default)]
+    pub relation: Option<String>,
+    #[serde(default)]
+    pub ahead_by: Option<u32>,
+    #[serde(default)]
+    pub behind_by: Option<u32>,
+    /// True when target is an upgrade relative to current (ancestry/semver).
+    #[serde(default)]
+    pub is_upgrade: Option<bool>,
+    /// True when target is older than current (explicit downgrade path).
+    #[serde(default)]
+    pub is_downgrade: Option<bool>,
     #[serde(default)]
     pub requires_self_update: bool,
-    /// Required min_updater_version copied out for the UI's convenience.
     #[serde(default)]
     pub min_updater_version: Option<MyriadVersion>,
+    #[serde(default)]
     pub notes_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FailedUpdate {
-    pub from_version: Option<MyriadVersion>,
-    pub to_version: Option<MyriadVersion>,
+    pub from_version: Option<DeployTag>,
+    pub to_version: Option<DeployTag>,
     pub at: DateTime<Utc>,
     pub reason: String,
     pub job_id: String,
@@ -70,8 +101,8 @@ pub struct MaintenanceFile {
     pub schema_version: u32,
     pub active: bool,
     pub phase: Phase,
-    pub from_version: Option<MyriadVersion>,
-    pub to_version: Option<MyriadVersion>,
+    pub from_version: Option<DeployTag>,
+    pub to_version: Option<DeployTag>,
     pub started_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
     pub job_id: Option<String>,
@@ -123,8 +154,6 @@ pub enum Phase {
 }
 
 impl Phase {
-    /// True once the phase has performed an irreversible action (changed .env, started new
-    /// containers, etc.). After this point, automatic recovery on restart is disabled.
     pub fn is_post_swap(self) -> bool {
         use Phase::*;
         matches!(
@@ -133,7 +162,6 @@ impl Phase {
         )
     }
 
-    /// True when we're inside the rollback flow (so recovery should continue/finish it).
     pub fn is_rollback(self) -> bool {
         use Phase::*;
         matches!(
@@ -143,20 +171,17 @@ impl Phase {
     }
 }
 
-/// A single update or rollback task. Append-only step log.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub id: String,
     pub kind: JobKind,
     pub created_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
-    pub from_version: Option<MyriadVersion>,
-    pub to_version: Option<MyriadVersion>,
+    pub from_version: Option<DeployTag>,
+    pub to_version: Option<DeployTag>,
     pub snapshot_id: Option<String>,
     pub status: JobStatus,
     pub steps: Vec<JobStep>,
-
-    /// Original Idempotency-Key client supplied (if any).
     pub idempotency_key: Option<String>,
 }
 
@@ -184,7 +209,6 @@ pub struct JobStep {
     pub started_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
     pub ok: Option<bool>,
-    /// Last 64KB of stdout/stderr collected for this step.
     pub log_tail: String,
     pub error: Option<String>,
 }
@@ -225,12 +249,10 @@ pub struct SnapshotsFile {
 pub struct SnapshotMeta {
     pub id: String,
     pub created_at: DateTime<Utc>,
-    pub source_version: Option<MyriadVersion>,
+    pub source_version: Option<DeployTag>,
     pub size_bytes: u64,
     pub file_count: u64,
-    /// `true` when this is a pre-major-upgrade snapshot we keep forever.
     pub keep: bool,
-    /// Optional cheap integrity hint: sha256 of a deterministic sample of paths.
     pub sample_sha256: Option<String>,
 }
 

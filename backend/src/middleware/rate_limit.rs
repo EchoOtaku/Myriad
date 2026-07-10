@@ -121,24 +121,10 @@ static RATE_LIMITER: once_cell::sync::Lazy<RateLimiter> = once_cell::sync::Lazy:
 
 /// Rate limiting middleware
 pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
-    // Extract client IP: 优先使用 X-Forwarded-For / X-Real-IP（反向代理场景）
-    let ip = req
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .and_then(|s| s.trim().parse::<IpAddr>().ok())
-        .or_else(|| {
-            req.headers()
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.trim().parse::<IpAddr>().ok())
-        })
-        .or_else(|| {
-            req.extensions()
-                .get::<std::net::SocketAddr>()
-                .map(|addr| addr.ip())
-        })
+    // Forwarded headers are honored only when explicitly enabled for a trusted
+    // edge proxy. Direct deployments key on the socket peer and ignore spoofed
+    // client headers.
+    let ip = crate::middleware::client_ip::extract_client_ip(&req)
         .unwrap_or_else(|| IpAddr::from([127, 0, 0, 1]));
 
     // Get endpoint path

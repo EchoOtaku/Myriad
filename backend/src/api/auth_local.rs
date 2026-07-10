@@ -41,10 +41,9 @@ pub struct ChangePasswordRequest {
     pub new_password: String,
 }
 
-/// Response with JWT token
+/// Browser session response. The JWT is delivered only in the HttpOnly cookie.
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
-    pub token: String,
     pub user: UserInfo,
 }
 
@@ -315,7 +314,6 @@ pub async fn local_login(
     );
 
     let response = Json(AuthResponse {
-        token: token.clone(),
         user: UserInfo {
             id: user_id,
             username,
@@ -920,7 +918,6 @@ async fn issue_session_cookie(
     );
 
     let body = Json(AuthResponse {
-        token: token.clone(),
         user: UserInfo {
             id: user_id,
             username: username.to_string(),
@@ -1107,4 +1104,25 @@ pub async fn admin_list_users(
         .collect();
 
     Ok(Json(json!({ "users": users })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AuthResponse, UserInfo};
+
+    #[test]
+    fn auth_response_never_serializes_the_jwt() {
+        let response = AuthResponse {
+            user: UserInfo {
+                id: 7,
+                username: "alice".to_string(),
+                is_admin: false,
+                auth_provider: "local".to_string(),
+            },
+        };
+        let serialized = serde_json::to_value(response).unwrap();
+
+        assert!(serialized.get("token").is_none());
+        assert_eq!(serialized["user"]["id"], 7);
+    }
 }

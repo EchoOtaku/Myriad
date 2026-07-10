@@ -79,6 +79,144 @@ html.dark .updater-row-label {
   font-variant-numeric: tabular-nums;
 }
 
+.updater-row-select .updater-row-value {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.updater-select,
+.updater-input {
+  max-width: 14rem;
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgb(209 213 219 / 80%);
+  background: rgb(255 255 255 / 90%);
+  color: inherit;
+  font-size: 0.8125rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+html.dark .updater-select,
+html.dark .updater-input {
+  background: rgb(31 41 55 / 90%);
+  border-color: rgb(107 114 128 / 50%);
+}
+
+.updater-input::placeholder {
+  color: #9ca3af;
+  font-family: inherit;
+}
+
+.updater-commit-list {
+  border: 1px solid rgb(209 213 219 / 45%);
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 45%);
+  overflow: hidden;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+html.dark .updater-commit-list {
+  background: rgb(55 65 81 / 28%);
+  border-color: rgb(107 114 128 / 40%);
+}
+
+.updater-commit-list-head {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 1px solid rgb(209 213 219 / 40%);
+}
+
+html.dark .updater-commit-list-head {
+  color: #9ca3af;
+  border-bottom-color: rgb(107 114 128 / 32%);
+}
+
+.updater-commit-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.updater-commit-item {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr auto;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.85rem;
+  border: 0;
+  border-bottom: 1px solid rgb(209 213 219 / 30%);
+  background: transparent;
+  color: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.updater-commit-item:hover {
+  background: rgb(99 102 241 / 8%);
+}
+
+.updater-commit-item.selected {
+  background: rgb(99 102 241 / 14%);
+}
+
+.updater-commit-msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #374151;
+}
+
+html.dark .updater-commit-msg {
+  color: #e5e7eb;
+}
+
+.updater-commit-date {
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.updater-compare-preview {
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.6rem;
+  font-size: 0.8125rem;
+  border: 1px solid rgb(209 213 219 / 50%);
+}
+
+.updater-compare-preview.upgrade {
+  background: rgb(16 185 129 / 10%);
+  border-color: rgb(16 185 129 / 35%);
+  color: #065f46;
+}
+
+.updater-compare-preview.downgrade {
+  background: rgb(245 158 11 / 12%);
+  border-color: rgb(245 158 11 / 40%);
+  color: #92400e;
+}
+
+.updater-compare-preview.neutral {
+  background: rgb(107 114 128 / 8%);
+  color: #4b5563;
+}
+
+html.dark .updater-compare-preview.upgrade {
+  color: #6ee7b7;
+}
+
+html.dark .updater-compare-preview.downgrade {
+  color: #fcd34d;
+}
+
+html.dark .updater-compare-preview.neutral {
+  color: #d1d5db;
+}
+
 html.dark .updater-row-value {
   color: #f3f4f6;
 }

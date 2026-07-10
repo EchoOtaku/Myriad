@@ -276,6 +276,27 @@ export const zhCN: TranslationKeys = {
     updaterTransportDirect: 'direct（X-Update-Token）',
     updaterRefresh: '刷新',
     updaterForceExit: '强制退出维护',
+    updaterRescueContinue: '一键回退到升级前版本',
+    updaterRescueContinueDesc:
+      '使用失败任务关联的快照恢复数据库与 MYRIAD_TAG（上一正常版本），并重新拉起服务',
+    updaterConfirmRescueContinue:
+      '将回滚到快照 {snapshotId}（版本 {version}）。确认继续？',
+    updaterRescueContinueDispatched: '已开始一键回退',
+    updaterUpdateMode: '更新模式',
+    updaterModeRelease: '发行版本 (Release)',
+    updaterModeCommit: '按 Commit / 分支',
+    updaterChannel: '频道 / 分支',
+    updaterCommitTarget: '指定 commit',
+    updaterCommitPlaceholder: '留空=频道最新；或填 sha / dev-xxx',
+    updaterCommitHistory: '最近 commits（点击选择）',
+    updaterReleaseHistory: '频道内发行版本（点击选择）',
+    updaterApplyPrefs: '应用频道设置',
+    updaterPrefsSaved: '频道与模式已保存',
+    updaterFreshnessAhead: '目标比当前新（领先 {n} 个 commit）',
+    updaterFreshnessBehind: '目标比当前旧（落后 {n} 个 commit）',
+    updaterFreshnessIdentical: '与当前是同一 commit',
+    updaterFreshnessDiverged: '历史已分叉（目标多 {ahead}、当前多 {behind}）',
+    updaterFreshnessUnknown: '无法解析当前版本对应的 git commit',
     updaterProcessing: '处理中…',
     updaterCheckAvailable: '检查可用更新',
     updaterChecking: '检查中…',
@@ -294,6 +315,12 @@ export const zhCN: TranslationKeys = {
     updaterTokenRequired: '请先填入 UPDATE_TOKEN',
     updaterTokenRequiredDirect: '直连模式需要填入 UPDATE_TOKEN',
     updaterConfirmUpgrade: '确认升级到 {version}？升级期间会进入维护模式。',
+    updaterConfirmDowngrade:
+      '⚠ 降级确认：目标 {version} 比当前 {current} 更旧。\n\n可能无法自动回退数据库迁移，存在数据/功能风险。\n\n仍要继续降级吗？',
+    updaterConfirmRisk:
+      '⚠ 风险确认：目标与当前历史分叉、方向未知，或涉及不可逆迁移。\n\n继续可能损坏数据/无法回退。确定继续？',
+    updaterDowngradeTo: '降级到 {version}',
+    updaterStatusDowngrade: '可降级到较旧版本',
     updaterConfirmRollback: '确认回滚到快照 {snapshotId}？',
     updaterConfirmExitMaintenance:
       '强制退出维护模式？仅在确认服务已恢复时使用。',
@@ -362,7 +389,8 @@ export const zhCN: TranslationKeys = {
     updaterActionUpgradeDesc:
       '执行完整升级流程：维护 → 快照 → 替换镜像 → 健康检查',
     updaterActionExitDesc: '在确认服务恢复后强制清除维护模式',
-    updaterActionRollbackDesc: '使用此快照恢复 pgdata 并启动旧版本镜像',
+    updaterActionRollbackDesc:
+      '使用此快照恢复 pgdata，并将 MYRIAD_TAG 写回快照记录的上一正常版本后启动',
     updaterActionSelfUpdateDesc:
       '在 helper 容器中替换 updater 自身，业务不受影响',
     updaterGroupHistory: '快照与历史',

@@ -286,6 +286,28 @@ export const jaJP: TranslationKeys = {
     updaterTransportDirect: 'direct（X-Update-Token）',
     updaterRefresh: '更新',
     updaterForceExit: 'メンテナンス強制解除',
+    updaterRescueContinue: 'アップグレード前へワンクリック復旧',
+    updaterRescueContinueDesc:
+      '失敗ジョブのスナップショットで pgdata と MYRIAD_TAG（直前の正常版）を復元し、サービスを再起動します',
+    updaterConfirmRescueContinue:
+      'スナップショット {snapshotId}（バージョン {version}）へロールバックします。続行しますか？',
+    updaterRescueContinueDispatched: 'ワンクリック復旧を開始しました',
+    updaterUpdateMode: '更新モード',
+    updaterModeRelease: 'リリース版 (semver)',
+    updaterModeCommit: 'Commit / ブランチ',
+    updaterChannel: 'チャンネル / ブランチ',
+    updaterCommitTarget: 'Commit 指定',
+    updaterCommitPlaceholder: '空=チャンネル最新、または sha / dev-xxx',
+    updaterCommitHistory: '最近の commits（クリックで選択）',
+    updaterReleaseHistory: 'チャンネルのリリース（クリックで選択）',
+    updaterApplyPrefs: 'チャンネル設定を適用',
+    updaterPrefsSaved: 'チャンネルとモードを保存しました',
+    updaterFreshnessAhead: '対象の方が新しい（{n} commit 先行）',
+    updaterFreshnessBehind: '対象の方が古い（{n} commit 遅れ）',
+    updaterFreshnessIdentical: '現在と同じ commit',
+    updaterFreshnessDiverged:
+      '履歴が分岐（対象 +{ahead}、現在 +{behind}）',
+    updaterFreshnessUnknown: '現在のデプロイを git commit に解決できません',
     updaterProcessing: '処理中…',
     updaterCheckAvailable: '更新を確認',
     updaterChecking: '確認中…',
@@ -306,6 +328,12 @@ export const jaJP: TranslationKeys = {
     updaterTokenRequiredDirect: 'direct モードは UPDATE_TOKEN が必要です',
     updaterConfirmUpgrade:
       '{version} にアップグレードしますか？メンテナンスモードに入ります。',
+    updaterConfirmDowngrade:
+      '⚠ ダウングレード確認：対象 {version} は現在 {current} より古いです。\n\nマイグレーションは巻き戻せない可能性があり、データ/機能リスクがあります。\n\nダウングレードを続行しますか？',
+    updaterConfirmRisk:
+      '⚠ リスク確認：履歴分岐・方向不明、または不可逆マイグレーションがあります。\n\nデータ破損の恐れがあります。続行しますか？',
+    updaterDowngradeTo: '{version} へダウングレード',
+    updaterStatusDowngrade: '古いバージョンへダウングレード可能',
     updaterConfirmRollback:
       'スナップショット {snapshotId} にロールバックしますか？',
     updaterConfirmExitMaintenance:
@@ -379,7 +407,7 @@ export const jaJP: TranslationKeys = {
       '完全フロー：メンテナンス → スナップショット → イメージ置換 → ヘルスチェック',
     updaterActionExitDesc: 'サービス復旧を確認後、メンテナンスモードを強制解除',
     updaterActionRollbackDesc:
-      'このスナップショットから pgdata を復元し旧イメージを起動',
+      'このスナップショットから pgdata を復元し、MYRIAD_TAG を記録された直前正常版へ戻して起動',
     updaterActionSelfUpdateDesc:
       'helper コンテナで updater 自身を置換（業務に影響なし）',
     updaterGroupHistory: 'スナップショットと履歴',

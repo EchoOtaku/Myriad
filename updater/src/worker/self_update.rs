@@ -35,8 +35,13 @@ pub async fn run(worker: Arc<Worker>) -> Result<SelfUpdateReport> {
     let gh = worker.github_client()?;
 
     info!("self-update: fetching latest release manifest");
+    // Map commit-mode branch names (main/preview) onto release channels.
+    let ch_name =
+        crate::version::release_channel_name_for_self_update(&worker.effective_channel());
+    let ch: crate::config::Channel = ch_name.parse().unwrap_or(cfg.channel);
+    info!(channel = %ch, "self-update: using release channel");
     let rel = gh
-        .latest_for_channel(cfg.channel)
+        .latest_for_channel(ch)
         .await?
         .ok_or_else(|| UpdaterError::Precondition("channel has no releases".into()))?;
     let manifest = gh.fetch_manifest(&rel.tag_name).await?;

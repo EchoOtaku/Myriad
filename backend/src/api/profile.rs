@@ -2,7 +2,7 @@ use crate::services::fetcher::PlatformFetcher;
 use axum::{
     extract::{Query, State},
     http::StatusCode,
-    Json,
+    Extension, Json,
 };
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
+
+use crate::middleware::auth::Claims;
 
 #[derive(Deserialize)]
 pub struct FetchPlatformRequest {
@@ -64,6 +66,44 @@ const MAX_CACHE_ENTRIES: usize = 20;
 
 type ReportCacheEntry = (PersonalReport, DateTime<Utc>);
 type ReportCache = Arc<Mutex<HashMap<String, ReportCacheEntry>>>;
+
+fn user_id_from_claims(claims: &Claims) -> Result<i32, (StatusCode, Json<Value>)> {
+    claims.sub.parse::<i32>().map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid authenticated user"})),
+        )
+    })
+}
+
+async fn site_owner_user_id(db: &DatabaseConnection) -> Result<i32, String> {
+    let row = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT id FROM users WHERE is_admin = true ORDER BY id ASC LIMIT 1".to_string(),
+        ))
+        .await
+        .map_err(|error| format!("Failed to resolve site owner: {error}"))?;
+    row.and_then(|row| row.try_get::<i32>("", "id").ok())
+        .ok_or_else(|| "No administrator is configured as the site owner".to_string())
+}
+
+fn site_owner_error(error: String) -> (StatusCode, Json<Value>) {
+    tracing::warn!(%error, "Site owner lookup failed");
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({
+            "success": false,
+            "message": "Site owner is not configured"
+        })),
+    )
+}
+
+fn report_belongs_to_user(report_id: &str, user_id: i32) -> bool {
+    report_id
+        .split_once('_')
+        .is_some_and(|(owner, _)| owner == user_id.to_string())
+}
 
 lazy_static::lazy_static! {
     static ref REPORT_CACHE: ReportCache = {
@@ -123,13 +163,11 @@ fn get_cached_report(user_id: i32, force_refresh: bool) -> Option<PersonalReport
 
     let cache = REPORT_CACHE.lock().unwrap();
     let now = Utc::now();
-    let user_id_str = user_id.to_string();
-
     // 查找该用户的所有有效缓存
     let mut valid_reports: Vec<(String, PersonalReport, DateTime<Utc>)> = cache
         .iter()
         .filter(|(key, (_, created_at))| {
-            key.starts_with(&user_id_str) && now - *created_at < Duration::days(7)
+            report_belongs_to_user(key, user_id) && now - *created_at < Duration::days(7)
         })
         .map(|(key, (report, created_at))| (key.clone(), report.clone(), *created_at))
         .collect();
@@ -214,7 +252,11 @@ fn cache_report(user_id: &str, report: PersonalReport) {
 
     cache.insert(cache_key.clone(), (report, Utc::now()));
     let total_cache = cache.len();
-    let user_cache_count = cache.iter().filter(|(k, _)| k.starts_with(user_id)).count();
+    let parsed_user_id = user_id.parse::<i32>().ok();
+    let user_cache_count = cache
+        .iter()
+        .filter(|(key, _)| parsed_user_id.is_some_and(|owner| report_belongs_to_user(key, owner)))
+        .count();
 
     tracing::info!("💾 Cached report with key: {}", cache_key);
     tracing::info!(
@@ -610,7 +652,9 @@ async fn fetch_fresh_platform_data(
     );
 
     let fetcher = PlatformFetcher::new().await;
-    let user_id = 1; // TODO: 从认证中获取真实用户ID
+    let user_id = site_owner_user_id(db)
+        .await
+        .map_err(std::io::Error::other)?;
 
     // 获取动态配置
     let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
@@ -1608,12 +1652,16 @@ pub struct GenerateReportQuery {
 
 pub async fn generate_report(
     State(_db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
     Query(query): Query<GenerateReportQuery>,
     Json(profile_data): Json<Value>,
 ) -> (StatusCode, Json<Value>) {
     tracing::info!("Generating personal report (force={})...", query.force);
 
-    let user_id = 1; // TODO: 从认证中获取真实用户ID
+    let user_id = match user_id_from_claims(&claims) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
 
     // 检查缓存
     if let Some(cached_report) = get_cached_report(user_id, query.force) {
@@ -1977,8 +2025,14 @@ fn get_style_instruction(style: &str) -> String {
 }
 
 /// 获取已保存的报告
-pub async fn get_report(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    let user_id = 1; // TODO: 从认证中获取真实用户ID
+pub async fn get_report(
+    State(_db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> (StatusCode, Json<Value>) {
+    let user_id = match user_id_from_claims(&claims) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
 
     // 检查缓存（不强制刷新）
     if let Some(cached_report) = get_cached_report(user_id, false) {
@@ -2005,8 +2059,14 @@ pub async fn get_report(State(_db): State<DatabaseConnection>) -> (StatusCode, J
 }
 
 /// 获取所有缓存的报告列表
-pub async fn list_reports(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    let user_id = 1; // TODO: 从认证中获取真实用户ID
+pub async fn list_reports(
+    State(_db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> (StatusCode, Json<Value>) {
+    let user_id = match user_id_from_claims(&claims) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
 
     let cache = REPORT_CACHE.lock().unwrap();
     let now = Utc::now();
@@ -2015,7 +2075,7 @@ pub async fn list_reports(State(_db): State<DatabaseConnection>) -> (StatusCode,
     let mut reports: Vec<Value> = cache
         .iter()
         .filter(|(key, (_, created_at))| {
-            key.starts_with(&user_id.to_string()) && now - *created_at < Duration::days(7)
+            report_belongs_to_user(key, user_id) && now - *created_at < Duration::days(7)
         })
         .map(|(key, (report, created_at))| {
             json!({
@@ -2049,8 +2109,21 @@ pub async fn list_reports(State(_db): State<DatabaseConnection>) -> (StatusCode,
 /// 根据ID获取特定报告
 pub async fn get_report_by_id(
     State(_db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
     axum::extract::Path(report_id): axum::extract::Path<String>,
 ) -> (StatusCode, Json<Value>) {
+    let user_id = match user_id_from_claims(&claims) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
+
+    if !report_belongs_to_user(&report_id, user_id) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"success": false, "message": "Report not found or expired"})),
+        );
+    }
+
     let cache = REPORT_CACHE.lock().unwrap();
 
     if let Some((report, created_at)) = cache.get(&report_id) {
@@ -2162,7 +2235,10 @@ pub async fn get_cache_debug_info(
 /// 从数据库或缓存中获取用户信息（支持多平台）
 /// 优先从数据库获取，若数据库无数据则从缓存获取
 pub async fn get_user_info(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    let user_id = 1; // TODO: 从认证中获取真实用户ID
+    let user_id = match site_owner_user_id(&db).await {
+        Ok(user_id) => user_id,
+        Err(error) => return site_owner_error(error),
+    };
 
     // 创建元数据服务
     let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
@@ -2354,8 +2430,21 @@ pub async fn delete_platform_cache(
 /// 删除指定的报告
 pub async fn delete_report_by_id(
     State(_db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
     axum::extract::Path(report_id): axum::extract::Path<String>,
 ) -> (StatusCode, Json<Value>) {
+    let user_id = match user_id_from_claims(&claims) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
+
+    if !report_belongs_to_user(&report_id, user_id) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"success": false, "message": "Report not found"})),
+        );
+    }
+
     tracing::info!("🗑️ Deleting report: {}", report_id);
 
     let mut cache = REPORT_CACHE.lock().unwrap();
@@ -2437,9 +2526,22 @@ pub struct DeleteCardRequest {
 
 pub async fn delete_card_from_report(
     State(_db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
     axum::extract::Path(report_id): axum::extract::Path<String>,
     Json(payload): Json<DeleteCardRequest>,
 ) -> (StatusCode, Json<Value>) {
+    let user_id = match user_id_from_claims(&claims) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
+
+    if !report_belongs_to_user(&report_id, user_id) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"success": false, "message": "Report not found"})),
+        );
+    }
+
     tracing::info!(
         "🗑️ Deleting card {} from report: {}",
         payload.card_index,
@@ -2860,7 +2962,10 @@ fn append_bangumi_library_items(library_items: &mut Vec<LibraryItem>, bangumi_da
 
 /// 获取资料库数据（游戏、视频、音乐）
 pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    let user_id = 1; // TODO: 从认证中获取真实用户ID
+    let user_id = match site_owner_user_id(&db).await {
+        Ok(user_id) => user_id,
+        Err(error) => return site_owner_error(error),
+    };
 
     tracing::info!("📚 Fetching library data for user: {}", user_id);
 
@@ -3295,6 +3400,18 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
     )
 }
 
+#[cfg(test)]
+mod security_tests {
+    use super::report_belongs_to_user;
+
+    #[test]
+    fn report_owner_matching_uses_a_delimited_id_not_a_string_prefix() {
+        assert!(report_belongs_to_user("1_1720000000", 1));
+        assert!(!report_belongs_to_user("10_1720000000", 1));
+        assert!(!report_belongs_to_user("1", 1));
+    }
+}
+
 /// 批量获取用户信息 - 优化性能，减少前端API调用次数
 ///
 /// 这个端点将多个独立的API调用合并为一个请求，显著提升前端加载速度
@@ -3308,9 +3425,7 @@ pub struct BatchUserInfoResponse {
 pub async fn get_batch_user_info(
     State(db): State<DatabaseConnection>,
 ) -> (StatusCode, Json<Value>) {
-    let user_id = 1; // TODO: 从认证中获取真实用户ID
-
-    tracing::info!("📦 Fetching batch user info for: {}", user_id);
+    tracing::info!("📦 Fetching batch site-owner information");
 
     let mut response = BatchUserInfoResponse {
         user_info: None,

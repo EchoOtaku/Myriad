@@ -24,7 +24,7 @@ use sea_orm::{
     QueryFilter, Set,
 };
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Component, Path as FsPath, PathBuf};
 use tokio::fs;
 
 use crate::api::tapp_runtime::common as tapp_common;
@@ -113,6 +113,127 @@ fn api_error(message: impl Into<String>) -> Json<ApiResponse<()>> {
         data: None,
         error: Some(message.into()),
     })
+}
+
+const MAX_TAPP_ID_LEN: usize = 128;
+const MAX_RESOURCE_PATH_LEN: usize = 256;
+
+fn is_safe_path_component(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_TAPP_ID_LEN
+        && value != "."
+        && value != ".."
+        && !value.starts_with('.')
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+}
+
+fn validate_tapp_id(tapp_id: &str) -> Result<(), String> {
+    if tapp_id.len() > MAX_TAPP_ID_LEN
+        || !tapp_id
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_alphanumeric())
+        || !is_safe_path_component(tapp_id)
+    {
+        return Err(
+            "Invalid Tapp id: use 1-128 ASCII letters, numbers, dots, underscores, or hyphens"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_resource_path(path: &str) -> Result<(), String> {
+    if path.is_empty()
+        || path.len() > MAX_RESOURCE_PATH_LEN
+        || path.contains('\\')
+        || FsPath::new(path).is_absolute()
+    {
+        return Err(format!("Invalid Tapp resource path: {path}"));
+    }
+
+    let mut saw_component = false;
+    for component in FsPath::new(path).components() {
+        match component {
+            Component::Normal(value) => {
+                let value = value
+                    .to_str()
+                    .ok_or_else(|| format!("Invalid Tapp resource path: {path}"))?;
+                if !is_safe_path_component(value) {
+                    return Err(format!("Invalid Tapp resource path: {path}"));
+                }
+                saw_component = true;
+            }
+            _ => return Err(format!("Invalid Tapp resource path: {path}")),
+        }
+    }
+
+    if !saw_component {
+        return Err(format!("Invalid Tapp resource path: {path}"));
+    }
+    Ok(())
+}
+
+fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
+    validate_tapp_id(&manifest.id)?;
+    validate_resource_path(&manifest.main)?;
+
+    for path in [
+        manifest.styles.as_deref(),
+        manifest.widget_styles.as_deref(),
+        manifest.page_styles.as_deref(),
+        manifest.page_template.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        validate_resource_path(path)?;
+    }
+
+    if let Some(modules) = &manifest.page_modules {
+        for module in modules {
+            validate_resource_path(module)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_named_resource_keys<'a>(
+    keys: impl IntoIterator<Item = &'a String>,
+    kind: &str,
+) -> Result<(), String> {
+    for key in keys {
+        if !is_safe_path_component(key) {
+            return Err(format!("Invalid {kind}: {key}"));
+        }
+    }
+    Ok(())
+}
+
+fn tapp_dir_for(user_id: i32, tapp_id: &str) -> Result<PathBuf, String> {
+    validate_tapp_id(tapp_id)?;
+    Ok(paths().tapp_user_dir(user_id).join(tapp_id))
+}
+
+fn installed_tapp_dir(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
+    tapp_dir_for(tapp.user_id, &tapp.tapp_id).map_err(|_| StatusCode::BAD_REQUEST)
+}
+
+fn installed_code_path(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
+    let stored_code_path = PathBuf::from(&tapp.code_path);
+    let filename = stored_code_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| matches!(*value, "main.js" | "index.js"))
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(installed_tapp_dir(tapp)?.join(filename))
+}
+
+fn resource_path(tapp_dir: &FsPath, relative: &str) -> Option<PathBuf> {
+    validate_resource_path(relative).ok()?;
+    Some(tapp_dir.join(relative))
 }
 
 /// Tapp 清单
@@ -474,6 +595,20 @@ async fn list_tapps(
 /// 从远程商店下载 Tapp 文件
 ///
 /// 返回 (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates)
+async fn fetch_public_store_url(url: &str) -> Result<reqwest::Response, String> {
+    let (target_url, client) = crate::services::outbound_security::build_public_http_client(
+        url,
+        std::time::Duration::from_secs(20),
+        Some("Myriad-Tapp-Store/1.0"),
+    )
+    .await?;
+    client
+        .get(target_url)
+        .send()
+        .await
+        .map_err(|error| error.to_string())
+}
+
 async fn fetch_from_store(
     db: &DatabaseConnection,
     store_source: &str,
@@ -547,20 +682,16 @@ async fn fetch_from_store(
     // 这里会返回 502。前端商店列表走浏览器直连，因此可能出现「能浏览、不能安装」。
     let index_url = format!("{}/index.json", base_url);
     tracing::info!(url = %index_url, "fetching tapp store index");
-    let index_resp = tapp_common::HTTP_CLIENT
-        .get(&index_url)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!(url = %index_url, error = %e, "failed to fetch store index");
-            (
-                StatusCode::BAD_GATEWAY,
-                api_error(format!(
-                    "Failed to fetch store index (backend cannot reach store URL): {}",
-                    e
-                )),
-            )
-        })?;
+    let index_resp = fetch_public_store_url(&index_url).await.map_err(|e| {
+        tracing::error!(url = %index_url, error = %e, "failed to fetch store index");
+        (
+            StatusCode::BAD_GATEWAY,
+            api_error(format!(
+                "Failed to fetch store index (backend cannot reach store URL): {}",
+                e
+            )),
+        )
+    })?;
 
     if !index_resp.status().is_success() {
         let status = index_resp.status();
@@ -616,16 +747,12 @@ async fn fetch_from_store(
         .ok_or_else(|| (StatusCode::BAD_GATEWAY, api_error("No manifest path")))?;
     let manifest_url = format!("{}/{}", base_url, manifest_path);
 
-    let manifest_resp = tapp_common::HTTP_CLIENT
-        .get(&manifest_url)
-        .send()
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::BAD_GATEWAY,
-                api_error(format!("Failed to fetch manifest: {}", e)),
-            )
-        })?;
+    let manifest_resp = fetch_public_store_url(&manifest_url).await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            api_error(format!("Failed to fetch manifest: {}", e)),
+        )
+    })?;
 
     let manifest: TappManifest = manifest_resp.json().await.map_err(|e| {
         (
@@ -641,9 +768,7 @@ async fn fetch_from_store(
         .ok_or_else(|| (StatusCode::BAD_GATEWAY, api_error("No code path")))?;
     let code_url = format!("{}/{}", base_url, code_path);
 
-    let code = tapp_common::HTTP_CLIENT
-        .get(&code_url)
-        .send()
+    let code = fetch_public_store_url(&code_url)
         .await
         .map_err(|e| {
             (
@@ -671,7 +796,7 @@ async fn fetch_from_store(
     // 下载 CSS 样式（统一模式）
     if let Some(styles_path) = download.get("styles").and_then(|v| v.as_str()) {
         let styles_url = format!("{}/{}", base_url, styles_path);
-        if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&styles_url).send().await {
+        if let Ok(resp) = fetch_public_store_url(&styles_url).await {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     styles_content = Some(content);
@@ -683,11 +808,7 @@ async fn fetch_from_store(
     // 下载 Widget 专用 CSS（分离模式）
     if let Some(widget_styles_path) = download.get("widget_styles").and_then(|v| v.as_str()) {
         let widget_styles_url = format!("{}/{}", base_url, widget_styles_path);
-        if let Ok(resp) = tapp_common::HTTP_CLIENT
-            .get(&widget_styles_url)
-            .send()
-            .await
-        {
+        if let Ok(resp) = fetch_public_store_url(&widget_styles_url).await {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     widget_styles_content = Some(content);
@@ -699,7 +820,7 @@ async fn fetch_from_store(
     // 下载 Page 专用 CSS（分离模式）
     if let Some(page_styles_path) = download.get("page_styles").and_then(|v| v.as_str()) {
         let page_styles_url = format!("{}/{}", base_url, page_styles_path);
-        if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&page_styles_url).send().await {
+        if let Ok(resp) = fetch_public_store_url(&page_styles_url).await {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     page_styles_content = Some(content);
@@ -711,7 +832,7 @@ async fn fetch_from_store(
     // 下载 Page 模板
     if let Some(page_path) = download.get("page_template").and_then(|v| v.as_str()) {
         let page_url = format!("{}/{}", base_url, page_path);
-        if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&page_url).send().await {
+        if let Ok(resp) = fetch_public_store_url(&page_url).await {
             if resp.status().is_success() {
                 if let Ok(content) = resp.text().await {
                     page_template_content = Some(content);
@@ -725,7 +846,7 @@ async fn fetch_from_store(
         for (size, path) in templates {
             if let Some(template_path) = path.as_str() {
                 let template_url = format!("{}/{}", base_url, template_path);
-                if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&template_url).send().await {
+                if let Ok(resp) = fetch_public_store_url(&template_url).await {
                     if resp.status().is_success() {
                         if let Ok(content) = resp.text().await {
                             widget_templates.insert(size.clone(), content);
@@ -749,7 +870,7 @@ async fn fetch_from_store(
         for (lang_code, path) in i18n_files {
             if let Some(i18n_path) = path.as_str() {
                 let i18n_url = format!("{}/{}", base_url, i18n_path);
-                if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&i18n_url).send().await {
+                if let Ok(resp) = fetch_public_store_url(&i18n_url).await {
                     if resp.status().is_success() {
                         if let Ok(json) = resp.json::<serde_json::Value>().await {
                             i18n_data.insert(lang_code.clone(), json);
@@ -772,7 +893,7 @@ async fn fetch_from_store(
         for (filename, path) in pm_files {
             if let Some(pm_path) = path.as_str() {
                 let pm_url = format!("{}/{}", base_url, pm_path);
-                if let Ok(resp) = tapp_common::HTTP_CLIENT.get(&pm_url).send().await {
+                if let Ok(resp) = fetch_public_store_url(&pm_url).await {
                     if resp.status().is_success() {
                         if let Ok(content) = resp.text().await {
                             page_modules_data.insert(filename.clone(), content);
@@ -912,6 +1033,8 @@ async fn install_tapp(
                     api_error("tappId is required for store install"),
                 )
             })?;
+            validate_tapp_id(&tapp_id)
+                .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
             let (
                 manifest,
@@ -944,6 +1067,35 @@ async fn install_tapp(
         }
     };
 
+    validate_tapp_manifest(&manifest)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+    validate_named_resource_keys(
+        widget_templates
+            .as_ref()
+            .into_iter()
+            .flat_map(|templates| templates.keys()),
+        "widget template size",
+    )
+    .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+    validate_named_resource_keys(
+        req.i18n
+            .as_ref()
+            .or(store_i18n.as_ref())
+            .into_iter()
+            .flat_map(|translations| translations.keys()),
+        "i18n language code",
+    )
+    .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+    validate_named_resource_keys(
+        req.page_modules
+            .as_ref()
+            .or(store_page_modules.as_ref())
+            .into_iter()
+            .flat_map(|modules| modules.keys()),
+        "page module filename",
+    )
+    .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+
     // 检查是否已安装
     let existing = tapps::Entity::find()
         .filter(tapps::Column::UserId.eq(user_id))
@@ -962,8 +1114,8 @@ async fn install_tapp(
     }
 
     // 创建存储目录
-    let user_dir = paths().tapp_user_dir(user_id);
-    let tapp_dir = user_dir.join(&manifest.id);
+    let tapp_dir = tapp_dir_for(user_id, &manifest.id)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
     fs::create_dir_all(&tapp_dir).await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1210,6 +1362,8 @@ async fn install_tapp_file(
             api_error(format!("Invalid manifest.json: {}", e)),
         )
     })?;
+    validate_tapp_manifest(&manifest)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
     // 检查是否已安装
     let existing = tapps::Entity::find()
@@ -1229,8 +1383,8 @@ async fn install_tapp_file(
     }
 
     // 创建存储目录
-    let user_dir = paths().tapp_user_dir(user_id);
-    let tapp_dir = user_dir.join(&manifest.id);
+    let tapp_dir = tapp_dir_for(user_id, &manifest.id)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
     fs::create_dir_all(&tapp_dir).await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1534,7 +1688,7 @@ async fn get_tapp_code(
 
     let tapp = tapp.ok_or(StatusCode::NOT_FOUND)?;
 
-    let code = fs::read_to_string(&tapp.code_path)
+    let code = fs::read_to_string(installed_code_path(&tapp)?)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -1619,16 +1773,12 @@ async fn get_tapp_resources(
 
     let tapp = tapp.ok_or(StatusCode::NOT_FOUND)?;
 
-    // 读取主代码
-    let code = fs::read_to_string(&tapp.code_path)
+    // Recompute trusted paths from owner + validated id. Persisted paths are
+    // compatibility metadata only and never define the sandbox boundary.
+    let tapp_dir = installed_tapp_dir(&tapp)?;
+    let code = fs::read_to_string(installed_code_path(&tapp)?)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // 获取 Tapp 目录（code_path 的父目录）
-    let code_path = PathBuf::from(&tapp.code_path);
-    let tapp_dir = code_path
-        .parent()
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // 解析 manifest 获取资源文件路径
     let manifest: serde_json::Value = tapp.manifest.clone();
@@ -1642,8 +1792,10 @@ async fn get_tapp_resources(
 
     // 读取自定义 CSS（统一模式或共享样式）
     let styles = if let Some(styles_file) = manifest.get("styles").and_then(|v| v.as_str()) {
-        let styles_path = tapp_dir.join(styles_file);
-        fs::read_to_string(&styles_path).await.ok()
+        match resource_path(&tapp_dir, styles_file) {
+            Some(styles_path) => fs::read_to_string(styles_path).await.ok(),
+            None => None,
+        }
     } else if !is_separated {
         // 尝试默认位置（仅在非分离模式下）
         let default_path = tapp_dir.join("styles.css");
@@ -1655,8 +1807,10 @@ async fn get_tapp_resources(
     // 读取 Widget 专用 CSS（分离模式）
     let widget_styles = if is_separated {
         if let Some(widget_styles_file) = manifest.get("widgetStyles").and_then(|v| v.as_str()) {
-            let widget_styles_path = tapp_dir.join(widget_styles_file);
-            fs::read_to_string(&widget_styles_path).await.ok()
+            match resource_path(&tapp_dir, widget_styles_file) {
+                Some(widget_styles_path) => fs::read_to_string(widget_styles_path).await.ok(),
+                None => None,
+            }
         } else {
             // 尝试默认位置
             let default_path = tapp_dir.join("widget.css");
@@ -1669,8 +1823,10 @@ async fn get_tapp_resources(
     // 读取 Page 专用 CSS（分离模式）
     let page_styles = if is_separated {
         if let Some(page_styles_file) = manifest.get("pageStyles").and_then(|v| v.as_str()) {
-            let page_styles_path = tapp_dir.join(page_styles_file);
-            fs::read_to_string(&page_styles_path).await.ok()
+            match resource_path(&tapp_dir, page_styles_file) {
+                Some(page_styles_path) => fs::read_to_string(page_styles_path).await.ok(),
+                None => None,
+            }
         } else {
             // 尝试默认位置
             let default_path = tapp_dir.join("page.css");
@@ -1683,8 +1839,10 @@ async fn get_tapp_resources(
     // 读取 Page HTML 模板
     let page_template =
         if let Some(page_file) = manifest.get("pageTemplate").and_then(|v| v.as_str()) {
-            let page_path = tapp_dir.join(page_file);
-            fs::read_to_string(&page_path).await.ok()
+            match resource_path(&tapp_dir, page_file) {
+                Some(page_path) => fs::read_to_string(page_path).await.ok(),
+                None => None,
+            }
         } else {
             // 尝试默认位置
             let default_path = tapp_dir.join("page.html");
@@ -1700,9 +1858,10 @@ async fn get_tapp_resources(
             if let Some(templates) = widget.get("templates").and_then(|v| v.as_object()) {
                 for (size, template_file) in templates {
                     if let Some(file_path) = template_file.as_str() {
-                        let full_path = tapp_dir.join(file_path);
-                        if let Ok(content) = fs::read_to_string(&full_path).await {
-                            widget_templates.insert(size.clone(), content);
+                        if let Some(full_path) = resource_path(&tapp_dir, file_path) {
+                            if let Ok(content) = fs::read_to_string(full_path).await {
+                                widget_templates.insert(size.clone(), content);
+                            }
                         }
                     }
                 }
@@ -1885,14 +2044,11 @@ async fn export_tapp(
 
     let tapp = tapp.ok_or(StatusCode::NOT_FOUND)?;
 
-    // 获取 Tapp 目录
-    let code_path = PathBuf::from(&tapp.code_path);
-    let tapp_dir = code_path
-        .parent()
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Recompute the sandbox path rather than trusting persisted code_path.
+    let tapp_dir = installed_tapp_dir(&tapp)?;
 
     // 收集需要打包的文件
-    let tapp_dir_owned = tapp_dir.to_path_buf();
+    let tapp_dir_owned = tapp_dir;
     let tapp_id_clone = tapp_id.clone();
 
     let zip_data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, std::io::Error> {
@@ -1958,6 +2114,7 @@ async fn start_tapp(
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
+    validate_tapp_id(&tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let admin_id = get_admin_user_id(&db).await?;
     let now = Utc::now().fixed_offset();
     let is_current_admin = current_is_admin(&claims).await;
@@ -2071,6 +2228,7 @@ async fn stop_tapp(
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
+    validate_tapp_id(&tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let admin_id = get_admin_user_id(&db).await?;
     let is_current_admin = current_is_admin(&claims).await;
 
@@ -2254,6 +2412,7 @@ async fn uninstall_tapp(
     Query(query): Query<UninstallTappQuery>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
+    validate_tapp_id(&tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let admin_id = get_admin_user_id(&db).await?;
     let keep_data = query.keep_data;
 
@@ -2295,12 +2454,21 @@ async fn do_uninstall_tapp(
     let user_id = tapp.user_id;
     let tapp_id = &tapp.tapp_id;
 
-    // 删除文件
-    let tapp_dir = PathBuf::from(&tapp.file_path)
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    let _ = fs::remove_dir_all(&tapp_dir).await;
+    // Never trust the persisted file_path for deletion. Recompute the path from
+    // the validated owner and Tapp id so legacy/corrupt rows cannot escape the
+    // user's Tapp directory.
+    let tapp_dir = tapp_dir_for(user_id, tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    if let Err(error) = fs::remove_dir_all(&tapp_dir).await {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            tracing::error!(
+                tapp_id,
+                path = %tapp_dir.display(),
+                %error,
+                "Failed to remove Tapp directory"
+            );
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    }
 
     // 删除相关小组件（无论是否保留数据，小组件注册都需要删除）
     tapp_widgets::Entity::delete_many()
@@ -2386,6 +2554,7 @@ async fn update_tapp(
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
     let role = current_user_role(&claims).await;
     let is_current_admin = role == UserRole::Admin;
+    validate_tapp_id(&tapp_id).map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
     let UpdateTappRequest {
         source,
@@ -2475,12 +2644,36 @@ async fn update_tapp(
             api_error("manifest id does not match target tapp id"),
         ));
     }
+    validate_tapp_manifest(&manifest)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+    validate_named_resource_keys(
+        widget_templates
+            .as_ref()
+            .into_iter()
+            .flat_map(|templates| templates.keys()),
+        "widget template size",
+    )
+    .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+    validate_named_resource_keys(
+        i18n_data
+            .as_ref()
+            .into_iter()
+            .flat_map(|translations| translations.keys()),
+        "i18n language code",
+    )
+    .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+    validate_named_resource_keys(
+        page_modules_data
+            .as_ref()
+            .into_iter()
+            .flat_map(|modules| modules.keys()),
+        "page module filename",
+    )
+    .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
     // 获取 Tapp 目录
-    let tapp_dir = PathBuf::from(&existing_tapp.file_path)
-        .parent()
-        .unwrap()
-        .to_path_buf();
+    let tapp_dir = tapp_dir_for(user_id, &tapp_id)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
     // 确保目录存在
     fs::create_dir_all(&tapp_dir).await.map_err(|_| {
@@ -3349,11 +3542,8 @@ async fn update_separated_css(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // 获取 Tapp 目录
-    let code_path = PathBuf::from(&tapp.code_path);
-    let tapp_dir = code_path
-        .parent()
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Recompute the sandbox path rather than trusting persisted code_path.
+    let tapp_dir = installed_tapp_dir(&tapp)?;
 
     let manifest: serde_json::Value = tapp.manifest.clone();
     let is_separated = manifest.get("cssMode").and_then(|v| v.as_str()) == Some("separated");
@@ -3385,7 +3575,10 @@ async fn update_separated_css(
 
 #[cfg(test)]
 mod manifest_tests {
-    use super::TappManifest;
+    use super::{
+        tapp_dir_for, validate_resource_path, validate_tapp_id, validate_tapp_manifest,
+        TappManifest,
+    };
     use serde_json::json;
 
     #[test]
@@ -3405,5 +3598,39 @@ mod manifest_tests {
             value["backgroundRequirements"],
             json!(["scheduler", "sync"])
         );
+    }
+
+    #[test]
+    fn rejects_tapp_ids_and_resource_paths_that_escape_the_sandbox() {
+        for invalid in ["", ".", "..", "../escape", "/tmp/escape", ".hidden"] {
+            assert!(validate_tapp_id(invalid).is_err(), "accepted {invalid}");
+        }
+        assert!(validate_tapp_id("com.myriad.safe-app_2").is_ok());
+        assert!(tapp_dir_for(7, "../../tmp/escape").is_err());
+
+        for invalid in ["../secret", "/etc/passwd", "page/../../secret", ".env"] {
+            assert!(
+                validate_resource_path(invalid).is_err(),
+                "accepted {invalid}"
+            );
+        }
+        assert!(validate_resource_path("page/state.js").is_ok());
+    }
+
+    #[test]
+    fn validates_manifest_paths_before_install_or_update() {
+        let mut manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.safe",
+            "name": "Safe app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": [],
+            "pageModules": ["state.js"]
+        }))
+        .unwrap();
+        assert!(validate_tapp_manifest(&manifest).is_ok());
+
+        manifest.page_template = Some("../../outside.html".to_string());
+        assert!(validate_tapp_manifest(&manifest).is_err());
     }
 }

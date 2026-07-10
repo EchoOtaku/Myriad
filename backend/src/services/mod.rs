@@ -17,6 +17,7 @@ pub mod metadata_service;
 pub mod netease_service; // ✅ 网易云音乐统一服务层
 pub mod netease_utils; // ✅ 网易云音乐工具函数
 pub mod oauth; // 🔐 OAuth Provider 抽象（GitHub / OIDC / ...）
+pub mod outbound_security; // 🔒 Outbound URL validation, DNS pinning, and redirect policy
 pub mod permission_service; // ✅ 权限服务（细粒度权限配置）
 pub mod smart_filter; // ✅ 智能内容过滤器（新版，使用数据库）
 pub mod spoof_utils; // ✅ 请求伪装工具（区域IP/UA伪装，绕过地区限制）

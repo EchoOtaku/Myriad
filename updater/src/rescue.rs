@@ -51,20 +51,61 @@ pub async fn rollback(ctx: &Context, snapshot_id: &str) -> Result<()> {
         pgdata: ctx.pgdata.clone(),
     };
     let snapshots = ctx.state.read_snapshots()?;
-    if !snapshots.items.iter().any(|s| s.id == snapshot_id) {
-        anyhow::bail!("snapshot {snapshot_id} not present in snapshots.json");
-    }
+    let meta = snapshots
+        .items
+        .iter()
+        .find(|s| s.id == snapshot_id)
+        .with_context(|| format!("snapshot {snapshot_id} not present in snapshots.json"))?;
+
+    // Same last-known-good resolution as the worker path: snapshot source_version,
+    // then updater.json.current_version. Never invent a hardcoded tag.
+    let prev_tag = meta
+        .source_version
+        .as_ref()
+        .map(|v| v.to_string())
+        .or_else(|| {
+            ctx.state
+                .read_updater()
+                .ok()
+                .and_then(|u| u.current_version.map(|v| v.to_string()))
+        });
 
     info!(snapshot = snapshot_id, "rescue rollback: stopping services");
     compose_v2_or_v1(ctx, &["stop", "-t", "30", "frontend", "backend"]).await?;
     compose_v2_or_v1(ctx, &["stop", "-t", "60", "postgres"]).await?;
     snap.restore(snapshot_id).await?;
+
+    if let Some(ref tag) = prev_tag {
+        let mut env = crate::env_file::EnvFile::load(&ctx.env_file)
+            .context("load .env for MYRIAD_TAG restore")?;
+        let before = env.get("MYRIAD_TAG").unwrap_or("").to_string();
+        env.set("MYRIAD_TAG", tag)?;
+        env.save()?;
+        info!(from = %before, to = %tag, "rescue rollback: restored MYRIAD_TAG");
+    } else {
+        tracing::warn!(
+            "rescue rollback: no source_version / current_version; leaving MYRIAD_TAG unchanged"
+        );
+    }
+
     compose_v2_or_v1(ctx, &["start", "postgres"]).await?;
     compose_v2_or_v1(ctx, &["up", "-d", "--no-deps", "backend", "frontend"]).await?;
+
+    if let Some(ref tag) = prev_tag {
+        if let Ok(v) = crate::version::DeployTag::parse(tag) {
+            let mut st = ctx.state.read_updater()?;
+            st.current_version = Some(v);
+            ctx.state.write_updater(&st)?;
+        }
+    }
+
     ctx.state.clear_maintenance()?;
     ctx.state.set_current_job(None)?;
     ctx.state
-        .append_history(&format!("rescue rollback to snapshot {snapshot_id}"))?;
+        .append_history(&format!(
+            "rescue rollback to snapshot {snapshot_id} (tag={})",
+            prev_tag.as_deref().unwrap_or("unchanged")
+        ))?;
     info!("rescue rollback complete");
     Ok(())
 }

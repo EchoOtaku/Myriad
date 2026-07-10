@@ -21,13 +21,61 @@ const DIRECT_BASE = '/_updater'
 
 export type TransportMode = 'backend' | 'direct'
 
+export type CommitRelation =
+  | 'ahead'
+  | 'behind'
+  | 'identical'
+  | 'diverged'
+  | 'unknown'
+
 export interface LatestAvailable {
   version: string
   channel: string
   seen_at: string
+  mode?: UpdateMode
+  commit_sha?: string | null
+  /** Running deploy resolved to git sha (commit mode). */
+  current_commit_sha?: string | null
+  /** Ancestry of tip vs current: ahead = tip is newer. */
+  relation?: CommitRelation | string | null
+  ahead_by?: number | null
+  behind_by?: number | null
+  is_upgrade?: boolean | null
+  is_downgrade?: boolean | null
   requires_self_update: boolean
   min_updater_version: string | null
   notes_url: string
+}
+
+export type UpdateMode = 'release' | 'commit'
+
+export interface CommitListItem {
+  sha: string
+  short_sha: string
+  message: string
+  html_url: string
+  committed_at: string | null
+  tag: string
+}
+
+export interface ReleaseListItem {
+  tag_name: string
+  name: string | null
+  prerelease: boolean
+  version: string
+}
+
+export interface CompareResult {
+  schema_version: number
+  relation: string
+  ahead_by: number
+  behind_by: number
+  current_sha: string | null
+  target_sha: string | null
+  current_ref: string | null
+  target_ref: string
+  is_upgrade: boolean
+  is_downgrade: boolean
 }
 
 export interface UpdaterStatus {
@@ -35,14 +83,24 @@ export interface UpdaterStatus {
   updater_version: string
   current_version: string | null
   channel: string
+  /** release | commit — present on updater ≥ channel/mode support */
+  update_mode?: UpdateMode
   maintenance_active: boolean
   maintenance_phase: string
   job_in_flight: string | null
   // 字段从 updater 0.2 起出现，旧 updater 不返回；UI 必须按可选处理。
   latest_available?: LatestAvailable | null
   update_available?: boolean
+  /** Target is older than current; confirm then send allow_downgrade. */
+  downgrade_available?: boolean
   requires_self_update?: boolean
   last_checked_at?: string | null
+  /** Snapshot for one-click continue when stuck in needs_manual. */
+  rescue_snapshot_id?: string | null
+  rescue_source_version?: string | null
+  /** Version pinned as local `*:myriad-last-good` images. */
+  last_good_version?: string | null
+  available_channels?: string[]
 }
 
 export interface ImageRef {
@@ -56,6 +114,16 @@ export interface ReleaseManifest {
   channel: string
   released_at: string
   min_from_version?: string
+  /** Present when mode=commit (synthetic available payload). */
+  mode?: UpdateMode
+  commit_sha?: string
+  current_commit_sha?: string | null
+  relation?: CommitRelation | string | null
+  ahead_by?: number | null
+  behind_by?: number | null
+  is_upgrade?: boolean | null
+  is_downgrade?: boolean | null
+  message?: string
   images: Record<string, ImageRef>
   env: {
     required: string[]
@@ -203,20 +271,82 @@ export function makeUpdaterApi(
   return {
     mode,
     status: () => wrap<UpdaterStatus>('GET', '/status'),
-    available: (channel?: string) =>
-      wrap<ReleaseManifest | null>(
+    available: (opts?: { channel?: string; mode?: UpdateMode }) => {
+      const q = new URLSearchParams()
+      if (opts?.channel) q.set('channel', opts.channel)
+      if (opts?.mode) q.set('mode', opts.mode)
+      const qs = q.toString()
+      return wrap<ReleaseManifest | null>(
         'GET',
-        `/available${channel ? `?channel=${channel}` : ''}`,
-      ),
+        `/available${qs ? `?${qs}` : ''}`,
+      )
+    },
     jobs: () => wrap<string[]>('GET', '/jobs'),
     job: (id: string) => wrap<Job>('GET', `/jobs/${id}`),
     snapshots: () => wrap<SnapshotsResponse>('GET', '/snapshots'),
-    triggerUpdate: (target: string, idemKey?: string) =>
-      wrap<{ job_id: string }>(
+    setPrefs: (prefs: { channel?: string; mode?: UpdateMode }) =>
+      wrap<{ ok: boolean; channel: string; mode: UpdateMode }>(
+        'POST',
+        '/prefs',
+        prefs,
+      ),
+    commits: (opts?: { branch?: string; limit?: number }) => {
+      const q = new URLSearchParams()
+      if (opts?.branch) q.set('branch', opts.branch)
+      if (opts?.limit) q.set('limit', String(opts.limit))
+      const qs = q.toString()
+      return wrap<{
+        schema_version: number
+        branch: string
+        items: CommitListItem[]
+      }>('GET', `/commits${qs ? `?${qs}` : ''}`)
+    },
+    releases: (opts?: { channel?: string; limit?: number }) => {
+      const q = new URLSearchParams()
+      if (opts?.channel) q.set('channel', opts.channel)
+      if (opts?.limit) q.set('limit', String(opts.limit))
+      const qs = q.toString()
+      return wrap<{
+        schema_version: number
+        channel: string
+        items: ReleaseListItem[]
+      }>('GET', `/releases${qs ? `?${qs}` : ''}`)
+    },
+    compare: (to: string, from?: string) => {
+      const q = new URLSearchParams({ to })
+      if (from) q.set('from', from)
+      return wrap<CompareResult>('GET', `/compare?${q.toString()}`)
+    },
+    triggerUpdate: (
+      target: string,
+      opts?: {
+        mode?: UpdateMode
+        idemKey?: string
+        commit?: boolean
+        allowDowngrade?: boolean
+        allowRisk?: boolean
+        allowDiverged?: boolean
+        allowUnknown?: boolean
+        allowIrreversible?: boolean
+      },
+    ) =>
+      wrap<{ job_id: string; mode?: string }>(
         'POST',
         '/update',
-        { target_version: target },
-        idemKey,
+        {
+          ...(opts?.commit || opts?.mode === 'commit'
+            ? { target_commit: target, mode: 'commit' as const }
+            : {
+                target_version: target,
+                mode: (opts?.mode ?? 'release') as UpdateMode,
+              }),
+          allow_downgrade: !!opts?.allowDowngrade,
+          allow_risk: !!opts?.allowRisk,
+          allow_diverged: opts?.allowDiverged,
+          allow_unknown: opts?.allowUnknown,
+          allow_irreversible: opts?.allowIrreversible,
+        },
+        opts?.idemKey,
       ),
     rollback: (snapshotId: string) =>
       wrap<{ job_id: string }>('POST', '/rollback', {
@@ -227,6 +357,14 @@ export function makeUpdaterApi(
       wrap<{ ok: boolean }>('POST', '/rescue/exit-maintenance'),
     forgetCurrent: () =>
       wrap<{ ok: boolean }>('POST', '/rescue/forget-current'),
+    /** One-click rollback to the snapshot on the stuck needs_manual job. */
+    rescueContinue: () =>
+      wrap<{
+        ok: boolean
+        job_id: string
+        snapshot_id: string
+        source_version: string | null
+      }>('POST', '/rescue/continue'),
     /** 触发 updater 自更新；旧 updater 几秒后会被 helper container 替换。 */
     triggerSelfUpdate: () =>
       wrap<{

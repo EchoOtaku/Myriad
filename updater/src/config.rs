@@ -25,7 +25,7 @@ pub struct Config {
     pub check_interval_secs: u64,
 
     /// Cosign signature verification policy. See release::cosign::CosignPolicy.
-    /// COSIGN_VERIFY env: off | soft | strict (default: off for backwards compat).
+    /// COSIGN_VERIFY env: off | soft | strict (default: strict).
     pub cosign_verify: String,
 }
 
@@ -111,7 +111,7 @@ impl Config {
             .and_then(|s| s.parse().ok())
             .unwrap_or(3600);
 
-        let cosign_verify = std::env::var("COSIGN_VERIFY").unwrap_or_else(|_| "off".into());
+        let cosign_verify = std::env::var("COSIGN_VERIFY").unwrap_or_else(|_| "strict".into());
 
         Ok(Self {
             update_token: SecretString::new(token),

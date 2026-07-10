@@ -134,6 +134,7 @@ pub async fn execute_tapp_api(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     headers: axum::http::HeaderMap,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
     Path((tapp_id, api_name)): Path<(String, String)>,
     Json(body): Json<TappApiCallRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
@@ -177,17 +178,12 @@ pub async fn execute_tapp_api(
         .unwrap_or_default();
 
     // 4. 获取客户端 IP
-    let client_ip = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').next())
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            headers
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string())
-        });
+    let client_ip = crate::middleware::client_ip::client_ip_from_parts(
+        &headers,
+        Some(addr.ip()),
+        crate::middleware::client_ip::trusted_proxy_headers_enabled(),
+    )
+    .map(|ip| ip.to_string());
 
     // 5. 确定用户角色
     let is_current_admin = claims.is_admin && ensure_current_admin(&claims).await.is_ok();

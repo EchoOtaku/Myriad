@@ -13,7 +13,10 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
 
 use crate::federation::actor::fetch_remote_actor;
-use crate::federation::signature::{parse_signature_header, verify_digest, verify_signature};
+use crate::federation::signature::{
+    parse_signature_header, require_covered_headers, verify_date_freshness, verify_digest,
+    verify_signature,
+};
 use crate::federation::types::*;
 
 /// POST /users/{username}/inbox
@@ -208,7 +211,7 @@ async fn handle_follow(
     let activity_id = activity["id"].as_str().unwrap_or("").to_string();
 
     // 记录 incoming follow
-    db.execute(Statement::from_sql_and_values(
+    let inserted = db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_follows (user_id, remote_actor_id, direction, status, activity_id, created_at)
            VALUES ($1, $2, 'incoming', 'accepted', $3, NOW())
@@ -222,6 +225,11 @@ async fn handle_follow(
     ))
     .await
     .map_err(db_err)?;
+
+    if inserted.rows_affected() == 0 {
+        tracing::debug!(activity_id, "Ignoring replayed federation activity");
+        return Ok(StatusCode::ACCEPTED);
+    }
 
     // 自动发送 Accept（Myriad 个人实例默认自动接受）
     let base_url = get_base_url();
@@ -389,7 +397,11 @@ async fn handle_content_activity(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_timeline
                (user_id, activity_id, remote_actor_id, activity_type, object_type, content_preview, content_json, received_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"#,
+           SELECT $1, $2, $3, $4, $5, $6, $7, NOW()
+           WHERE NOT EXISTS (
+               SELECT 1 FROM federation_timeline
+               WHERE user_id = $1 AND activity_id = $2
+           )"#,
         [
             local_user_id.into(),
             activity["id"].as_str().unwrap_or("").into(),
@@ -429,7 +441,10 @@ async fn distribute_to_followers(
                SELECT f.user_id, $1, $2, $3, $4, $5, $6, NOW()
                FROM federation_follows f
                WHERE f.remote_actor_id = $2 AND f.direction = 'outgoing' AND f.status = 'accepted'
-               ON CONFLICT DO NOTHING"#,
+                 AND NOT EXISTS (
+                     SELECT 1 FROM federation_timeline t
+                     WHERE t.user_id = f.user_id AND t.activity_id = $1
+                 )"#,
             [
                 activity_id_str.into(),
                 remote_actor_id.into(),
@@ -472,6 +487,31 @@ async fn verify_request_signature(
             Json(json!({"error": format!("Invalid Signature header: {}", e)})),
         )
     })?;
+    require_covered_headers(&parsed, !body.is_empty()).map_err(|e| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": format!("Invalid signed-header set: {}", e)})),
+        )
+    })?;
+
+    let date = headers
+        .get("Date")
+        .or_else(|| headers.get("date"))
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Missing Date header"})),
+            )
+        })?;
+    verify_date_freshness(date, chrono::Utc::now(), chrono::Duration::minutes(5)).map_err(
+        |error| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": format!("Invalid request date: {}", error)})),
+            )
+        },
+    )?;
 
     // Digest 验证（非空 body 必须携带 Digest header）
     if !body.is_empty() {

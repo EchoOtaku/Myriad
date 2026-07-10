@@ -235,18 +235,16 @@ async fn deliver_activity(
 
     let signed = sign_request(keypair, &params).map_err(|e| format!("Signing failed: {}", e))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .user_agent(format!(
-            "Myriad/{} (+{})",
-            env!("CARGO_PKG_VERSION"),
-            base_url
-        ))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    let user_agent = format!("Myriad/{} (+{})", env!("CARGO_PKG_VERSION"), base_url);
+    let (target_url, client) = crate::services::outbound_security::build_public_http_client(
+        target_inbox,
+        Duration::from_secs(30),
+        Some(&user_agent),
+    )
+    .await?;
 
     let resp = client
-        .post(target_inbox)
+        .post(target_url)
         .header("Host", target_domain)
         .header("Date", &signed.date)
         .header("Digest", &signed.digest.unwrap_or_default())

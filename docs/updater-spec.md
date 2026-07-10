@@ -257,6 +257,14 @@ idle
        └─► stop_new → restore_snapshot → swap_tag_back → start_old → health_probing
             └─► (成功) idle
             └─► (失败) needs_manual
+
+`swap_tag_back` 的目标 tag（上一正常业务版本）按以下优先级解析，**从不写死版本号**：
+
+1. 更新流程在 `swap_tag` 前从 `.env` 读到的 `MYRIAD_TAG`（同 job 自动回滚）
+2. 快照元数据 `source_version`（创建快照时记录；若 state 无版本则回填 `.env` 的 `MYRIAD_TAG`）
+3. `updater.json.current_version`（仅在健康检查通过的成功升级后推进）
+
+手动 `POST /rollback` / rescue 与自动回滚共用同一解析逻辑；回滚健康通过后会把 `current_version` 写回恢复到的版本。
 ```
 
 ### 7.1 崩溃恢复表
@@ -455,7 +463,7 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 | POST | `/admin/self-update` | token | updater 自更新 |
 | GET | `/snapshots` | 公开 | 可恢复快照 |
 | POST | `/rescue/exit-maintenance` | token + manual | 强制清维护 |
-| POST | `/rescue/continue` | token + manual | 预留；当前返回 501 |
+| POST | `/rescue/continue` | token | 一键回退：对 stuck job 的 snapshot 执行与 `/rollback` 相同的恢复（pgdata + MYRIAD_TAG） |
 | POST | `/rescue/forget-current` | token + manual | 放弃当前 job |
 | GET | `/diagnostics` | token | 环境探测报告 |
 | GET | `/healthz` | 公开 | updater 自己活着 |
@@ -537,8 +545,8 @@ M2：cosign 签名（已实现）
    CLI 校验：
    - `--certificate-identity-regexp ^https://github\.com/<repo>/\.github/workflows/.+@refs/tags/v[0-9].+$`
    - `--certificate-oidc-issuer https://token.actions.githubusercontent.com`
-3. 用户通过 `COSIGN_VERIFY` 环境变量切换策略：`off`（默认，兼容老 release）/ `soft`
-   （失败仅 warning）/ `strict`（失败拒绝升级）。
+3. 用户通过 `COSIGN_VERIFY` 环境变量切换策略：`strict`（默认，验签失败即拒绝）/ `soft`
+   （失败仅 warning）/ `off`（明确关闭验证，仅用于兼容旧 release）。
 4. updater 镜像里预装 cosign CLI（`sigstore/cosign` v2.4.1 单文件二进制）。
 
 ## 16. 观测与诊断

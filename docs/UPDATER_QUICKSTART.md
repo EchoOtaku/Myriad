@@ -66,10 +66,80 @@ bash scripts/docker/deploy.sh restart
 UI 提供：
 
 - 当前 updater/business 版本、channel、维护状态
-- 检查 GitHub Release（按 channel 过滤）
+- **更新模式**：`release`（GitHub Release / semver）或 `commit`（CI 的 `dev-<sha>` / 分支 tip）
+- **频道**：release 模式为 `stable` / `beta` / `nightly`；commit 模式为 `main` / `preview` / `beta`
+- 检查可用更新；commit 模式可填具体 sha
 - 触发升级（带确认 + 进度轮询）
 - 列出快照、一键回滚
 - 强制退出维护模式
+
+```bash
+# 切换到 commit 模式并跟踪 preview 分支 tip
+curl -s -b "$COOKIE_JAR" -X POST http://localhost/api/admin/updater/prefs \
+  -H "Content-Type: application/json" \
+  -d '{"channel":"preview","mode":"commit"}'
+
+# 升级到指定 commit（镜像 tag = dev-<shortsha>）
+curl -s -b "$COOKIE_JAR" -X POST http://localhost/api/admin/updater/update \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: commit-$(date +%s)" \
+  -d '{"target_commit":"abc1234","mode":"commit"}'
+```
+
+### Commit 新旧如何判断（不是比时间）
+
+检查更新时会：
+
+1. 把**当前** `MYRIAD_TAG` 解析成 git ref  
+   - `v0.1.0` → tag `v0.1.0`  
+   - `dev-abc1234` → sha `abc1234`
+2. 把**目标频道**解析成分支 tip（如 `preview` 的 HEAD）
+3. 调 GitHub `compare(当前...目标)`，用 **祖先关系**：
+   - `ahead`：目标比当前新（可升级）
+   - `behind`：目标比当前旧
+   - `identical`：同一 commit
+   - `diverged`：分叉（目标有你没有的 commit，也可能反之）
+
+因此从 `v0.1.0` 切到 `preview` tip 时，只要 tag 在仓库里能解析到 commit，就能正确判断 tip 是否更新。
+
+### 降级与风险确认
+
+| 情况 | 需要的 API 字段 |
+|------|-----------------|
+| 目标比当前**旧** | `allow_downgrade: true` |
+| 历史**分叉** | `allow_diverged: true` 或伞形 `allow_risk: true` |
+| 方向**未知** / compare 失败强行 | `allow_unknown: true` 或 `allow_risk` |
+| **不可逆迁移** + 降级 | `allow_downgrade` + (`allow_irreversible` 或 `allow_risk`) |
+| 伞形 | `allow_risk: true` 启用上述全部（含降级） |
+
+同版本 release / 同一 git commit 会 **直接拒绝**（无需「重装同 tag」）。
+
+```bash
+# 最近 commits / 发行版列表（供选择）
+curl -s -b "$COOKIE_JAR" \
+  'http://localhost/api/admin/updater/commits?branch=preview&limit=20' | jq
+curl -s -b "$COOKIE_JAR" \
+  'http://localhost/api/admin/updater/releases?channel=stable&limit=20' | jq
+
+# 即时 compare（相对当前部署）
+curl -s -b "$COOKIE_JAR" \
+  'http://localhost/api/admin/updater/compare?to=dev-abc1234' | jq
+
+curl -s -b "$COOKIE_JAR" -X POST http://localhost/api/admin/updater/update \
+  -H "Content-Type: application/json" \
+  -d '{"target_version":"v0.1.0","mode":"release","allow_downgrade":true,"allow_irreversible":true}'
+```
+
+触发更新时 `history.log` 会写结构化审计行：
+
+```text
+audit: update_request job=… target=… mode=… allow_downgrade=… allow_diverged=… …
+```
+
+Commit 模式成功后 **只写入 `dev-<shortsha>`** 到 `MYRIAD_TAG`。  
+业务更新只换 **backend/frontend**；proxy / updater 本体仍按独立节奏（updater 自更新走 release channel：main→stable，preview→nightly，beta→beta）。
+
+`.env` 必须包含 `BACKEND_IMAGE` / `FRONTEND_IMAGE`。
 
 ## 4. 触发一次升级（命令行）
 
@@ -121,7 +191,12 @@ preflight → maintenance_on → stopping → snapshotting → swap_tag
   → starting_new → health_probing → swapping_proxy → finalize
 ```
 
-任何步骤失败都会自动回滚到 snapshot；回滚再失败进入 `needs_manual`，proxy 维护页会展示恢复命令。
+任何步骤失败都会自动回滚到 snapshot，并恢复 **上一正常业务版本** 的 `MYRIAD_TAG`
+（优先用 swap 前捕获的 tag，其次快照 `source_version`，再次 `updater.json.current_version`，
+不是写死某个固定版本）。回滚再失败进入 `needs_manual`，proxy 维护页会展示恢复命令。
+
+UI / API 手动回滚到某个快照时，同样会按快照的 `source_version` 写回 `MYRIAD_TAG`，
+而不是只恢复数据库。
 
 ## 5. 出问题怎么办
 
@@ -138,15 +213,23 @@ docker exec myriad-updater myriad-rescue exit-maintenance --force
 
 `manual-override` 是宿主文件级 flag，proxy 一旦读到不存在的话所有 rescue 端点都返回 403。这阻止远端通过 API 单独触发 rescue。
 
-### 5.2 升级后服务起不来
+### 5.2 升级后服务起不来 / needs_manual
+
+**优先（管理 UI）**：配置 → 关于 → 更新管理 → 维护操作 →「一键回退到升级前版本」。
+这会调用 `POST /rescue/continue`，对失败任务关联的快照恢复 **pgdata + MYRIAD_TAG**。
+
+**命令行**：
 
 ```bash
 # 看可用快照
 docker exec myriad-updater myriad-rescue status | jq '.snapshots.items'
 
-# 选一个回滚
+# 选一个回滚（同样会写回 MYRIAD_TAG）
 docker exec myriad-updater myriad-rescue rollback --snapshot snap-<job-id>
 ```
+
+成功升级后，updater 会把当前业务镜像额外钉上本地 tag `*:myriad-last-good`，
+降低「只 prune 掉旧 tag、回退时本地没镜像」的风险。
 
 ### 5.3 把诊断包给开发者
 

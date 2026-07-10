@@ -171,6 +171,36 @@ impl DockerClient {
             .map_err(|e| UpdaterError::Docker(format!("ping: {e}")))?;
         Ok(())
     }
+
+    /// Create an additional tag for an already-local image (does not pull).
+    /// Used to pin last-known-good backend/frontend images so casual
+    /// `docker image prune` does not remove the only rollback target.
+    pub async fn tag_image(
+        &self,
+        source_ref: &str,
+        target_repo: &str,
+        target_tag: &str,
+    ) -> Result<()> {
+        use bollard::query_parameters::TagImageOptionsBuilder;
+        let opts = TagImageOptionsBuilder::default()
+            .repo(target_repo)
+            .tag(target_tag)
+            .build();
+        self.inner
+            .tag_image(source_ref, Some(opts))
+            .await
+            .map_err(|e| {
+                UpdaterError::Docker(format!(
+                    "tag {source_ref} → {target_repo}:{target_tag}: {e}"
+                ))
+            })?;
+        Ok(())
+    }
+
+    /// True if the named image ref exists locally (inspect succeeds).
+    pub async fn image_exists_local(&self, image_ref: &str) -> bool {
+        self.inner.inspect_image(image_ref).await.is_ok()
+    }
 }
 
 /// Split "registry/image:tag" into (image_without_tag, tag).
