@@ -1956,7 +1956,7 @@ fn extract_route_context(path: &str, params: &HashMap<String, Value>) -> Value {
     if page_type == "platform" {
         if let Some(platform) = segments.get(1).or(segments.first()) {
             let platform_lower = platform.to_lowercase();
-            if ["bilibili", "bangumi", "steam", "github", "netease"]
+            if ["bilibili", "bangumi", "steam", "github", "netease", "mal", "x", "discord"]
                 .contains(&platform_lower.as_str())
             {
                 context["platform"] = json!(platform_lower);

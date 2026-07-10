@@ -15,6 +15,7 @@ fn get_platform_description(name: &str) -> &'static str {
         "bangumi" => "Sync your Bangumi collection, ratings, and watching status",
         "x" => "Sync your X profile and posts; share via Web Intent",
         "discord" => "Sync your Discord profile, server footprint, and linked accounts",
+        "mal" => "Sync your MyAnimeList anime/manga lists, scores, and watching status",
         _ => "Connect and sync your data",
     }
 }

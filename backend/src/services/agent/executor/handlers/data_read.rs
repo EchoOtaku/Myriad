@@ -6,7 +6,7 @@ use super::HandlerContext;
 use crate::models::entities::{
     brew_items, brew_sources, brew_user_states, tapp_scheduled_tasks, tapps,
 };
-use crate::services::agent::executor::utils::validate_platform_name;
+use crate::services::agent::executor::utils::{validate_platform_name, VALID_PLATFORMS};
 use crate::services::netease_utils::{get_random_china_ip, get_random_user_agent};
 use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
@@ -1293,7 +1293,7 @@ async fn execute_auth_status(_params: &HashMap<String, Value>) -> Result<Value, 
     Ok(json!({
         "isAuthenticated": true,
         "message": "Auth status check - requires session context",
-        "linkedPlatforms": ["steam", "bilibili", "github", "netease", "bangumi"]
+        "linkedPlatforms": VALID_PLATFORMS
     }))
 }
 
@@ -1370,7 +1370,8 @@ fn extract_platform_items(platform: &str, data: &Value) -> Vec<Value> {
             }
             items
         }
-        "bangumi" => {
+        // Bangumi / MAL 过滤结果同构：top_rated / watching / recent
+        "bangumi" | "mal" => {
             let mut items = Vec::new();
             let content = data.get("content_analysis");
             for key in ["top_rated_subjects", "watching_subjects", "recent_updates"] {
@@ -1382,13 +1383,26 @@ fn extract_platform_items(platform: &str, data: &Value) -> Vec<Value> {
                             "title": subject.get("title"),
                             "rate": subject.get("rate"),
                             "collection_type": subject.get("collection_type"),
-                            "subject_id": subject.get("subject_id")
+                            "subject_id": subject.get("subject_id"),
+                            "platform": platform
                         }));
                     }
                 }
             }
             items
         }
+        "x" => data
+            .get("content_analysis")
+            .and_then(|v| v.get("top_posts").or_else(|| v.get("recent_posts")))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default(),
+        "discord" => data
+            .get("content_analysis")
+            .and_then(|v| v.get("guilds_preview"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default(),
         _ => data
             .get("items")
             .or_else(|| data.get("data"))
@@ -3192,8 +3206,8 @@ async fn execute_platform_connection(params: &HashMap<String, Value>) -> Result<
         .and_then(|v| v.as_str())
         .unwrap_or("all");
 
-    let platforms = if platform == "all" {
-        vec!["steam", "bilibili", "bangumi", "github", "netease"]
+    let platforms: Vec<&str> = if platform == "all" {
+        VALID_PLATFORMS.to_vec()
     } else {
         vec![platform]
     };
@@ -3310,7 +3324,7 @@ async fn execute_profile_summary(params: &HashMap<String, Value>) -> Result<Valu
         .get("platforms")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec!["steam", "bilibili", "bangumi", "github", "netease"]);
+        .unwrap_or_else(|| VALID_PLATFORMS.to_vec());
 
     let interests: Vec<String> = Vec::new();
     let mut activities = Vec::new();
@@ -3340,8 +3354,11 @@ async fn execute_profile_summary(params: &HashMap<String, Value>) -> Result<Valu
                     "steam" => activities.push("游戏".to_string()),
                     "bilibili" => activities.push("追番".to_string()),
                     "bangumi" => activities.push("收藏番剧/书籍/游戏".to_string()),
+                    "mal" => activities.push("动画/漫画列表".to_string()),
                     "github" => activities.push("编程".to_string()),
                     "netease" => activities.push("听歌".to_string()),
+                    "x" => activities.push("发帖与互动".to_string()),
+                    "discord" => activities.push("社区交流".to_string()),
                     _ => {}
                 }
             }
@@ -3363,7 +3380,7 @@ async fn execute_search_global(params: &HashMap<String, Value>) -> Result<Value,
         .get("platforms")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec!["steam", "bilibili", "bangumi", "github", "netease"]);
+        .unwrap_or_else(|| VALID_PLATFORMS.to_vec());
     let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
 
     // 检查是否有有效的搜索关键词
@@ -3373,7 +3390,7 @@ async fn execute_search_global(params: &HashMap<String, Value>) -> Result<Value,
             "results": [],
             "total": 0,
             "message": crate::services::agent::response_agent::search_empty_hint(),
-            "supportedPlatforms": ["steam", "bilibili", "github", "netease", "bangumi"],
+            "supportedPlatforms": VALID_PLATFORMS,
             "hint": "试试搜索你已有数据中的内容，例如：'搜索我的 Steam 游戏'、'查看 GitHub 仓库'"
         }));
     }
@@ -3761,6 +3778,31 @@ fn extract_platform_items_for_random(platform: &str, data: &Value) -> Vec<Value>
             .unwrap_or_default(),
         "bangumi" => data
             .get("collections")
+            .or(data.get("items"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default(),
+        "mal" => {
+            let mut items = Vec::new();
+            for key in ["anime_list", "manga_list", "items"] {
+                if let Some(arr) = data.get(key).and_then(|v| v.as_array()) {
+                    items.extend(arr.clone());
+                }
+            }
+            if items.is_empty() {
+                // filtered cache 走 content_analysis
+                return extract_platform_items("mal", data);
+            }
+            items
+        }
+        "x" => data
+            .get("tweets")
+            .or(data.get("items"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default(),
+        "discord" => data
+            .get("guilds")
             .or(data.get("items"))
             .and_then(|v| v.as_array())
             .cloned()

@@ -31,7 +31,7 @@ pub struct ClearCacheRequest {
 /// GET /api/cache/status
 pub async fn get_cache_status(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     let platforms = vec![
-        "netease", "bilibili", "github", "steam", "bangumi", "x", "discord",
+        "netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal",
     ];
     let mut cache_info = Vec::new();
 
@@ -133,6 +133,7 @@ pub async fn clear_caches(
             "bangumi".to_string(),
             "x".to_string(),
             "discord".to_string(),
+            "mal".to_string(),
         ],
     };
 

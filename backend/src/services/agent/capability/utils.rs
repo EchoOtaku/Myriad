@@ -14,6 +14,7 @@ pub fn get_capability_friendly_name(capability_id: &str) -> String {
         "platform.steam" => "获取 Steam 数据".to_string(),
         "platform.github" => "获取 GitHub 数据".to_string(),
         "platform.netease" => "获取网易云数据".to_string(),
+        "platform.mal" => "获取 MyAnimeList 数据".to_string(),
         "ai.summarize" => "AI 总结".to_string(),
         "ai.analyze" => "AI 分析".to_string(),
         "ai.chat" => "AI 对话".to_string(),
@@ -224,10 +225,11 @@ pub fn get_step_description(step: &RecipeStep) -> String {
 
         // 平台相关
         "platform.read" | "platform.bilibili" | "platform.bangumi" | "platform.steam"
-        | "platform.github" | "platform.netease" => {
+        | "platform.github" | "platform.netease" | "platform.mal" => {
             let platform_name = match step.capability_id.as_str() {
                 "platform.bilibili" => "B站",
                 "platform.bangumi" => "Bangumi",
+                "platform.mal" => "MyAnimeList",
                 "platform.steam" => "Steam",
                 "platform.github" => "GitHub",
                 "platform.netease" => "网易云",

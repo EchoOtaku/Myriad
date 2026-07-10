@@ -387,6 +387,7 @@ const ModernConfigForm: React.FC = () => {
         'netease music': t.config.platformDescNetease,
         x: t.config.platformDescX,
         discord: t.config.platformDescDiscord,
+        myanimelist: t.config.platformDescMal,
       }
       return descMap[platform.name.toLowerCase()] || platform.description
     },
@@ -585,6 +586,8 @@ const ModernConfigForm: React.FC = () => {
         'bangumi',
         'steam',
         'netease',
+        'myanimelist',
+        'mal',
       ],
     })
 

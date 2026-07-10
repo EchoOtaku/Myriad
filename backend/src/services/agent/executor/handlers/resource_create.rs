@@ -4,7 +4,9 @@
 
 use super::HandlerContext;
 use crate::models::entities::{tapp_storage, tapps};
-use crate::services::agent::executor::utils::is_valid_platform as validate_platform_name;
+use crate::services::agent::executor::utils::{
+    is_valid_platform as validate_platform_name, VALID_PLATFORMS,
+};
 use crate::services::data_paths::paths;
 use crate::services::permission_service::{TappPermissionService, UserRole};
 use crate::GLOBAL_DYNAMIC_CONFIG;
@@ -432,7 +434,7 @@ async fn execute_report_comprehensive(
         .get("platforms")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec!["steam", "bilibili", "bangumi", "github", "netease"]);
+        .unwrap_or_else(|| VALID_PLATFORMS.to_vec());
 
     let style = params
         .get("style")

@@ -222,6 +222,12 @@ pub struct DynamicConfig {
     pub discord_token_expires_at: Option<String>,
     /// Discord 用户 snowflake id（test/同步成功后回写）
     pub discord_user_id: Option<String>,
+    /// MyAnimeList 数据平台
+    pub mal_enabled: Option<bool>,
+    /// MAL 用户名
+    pub mal_username: Option<String>,
+    /// MAL API Client ID（myanimelist.net/apiconfig 申请，公开列表用 X-MAL-CLIENT-ID）
+    pub mal_client_id: Option<String>,
 
     // Tapp 外部 API 密钥（用于 Tapp API 声明系统）
     pub openweather_api_key: Option<String>,
@@ -440,6 +446,9 @@ impl Default for DynamicConfig {
             discord_refresh_token: None,
             discord_token_expires_at: None,
             discord_user_id: None,
+            mal_enabled: None,
+            mal_username: None,
+            mal_client_id: None,
 
             // Tapp 外部 API 密钥
             openweather_api_key: None,

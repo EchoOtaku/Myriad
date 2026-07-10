@@ -235,6 +235,24 @@ impl MetadataService {
                     obj.insert("_truncated".to_string(), json!(true));
                 }
             }
+            "mal" => {
+                for key in ["anime_list", "manga_list"] {
+                    if let Some(list) = data.get_mut(key).and_then(|t| t.as_array_mut()) {
+                        let original_count = list.len();
+                        if original_count > 500 {
+                            list.truncate(500);
+                            tracing::warn!(
+                                "📺 MAL {} truncated: {} -> 500",
+                                key,
+                                original_count
+                            );
+                        }
+                    }
+                }
+                if let Some(obj) = data.as_object_mut() {
+                    obj.insert("_truncated".to_string(), json!(true));
+                }
+            }
             _ => {}
         }
 
@@ -664,6 +682,22 @@ impl MetadataService {
                     "_note": "Lightweight summary - full data in platform_metadata table",
                     "changed_fields_count": changed_fields.len(),
                     "tweets_count": data.get("tweets")
+                        .and_then(|t| t.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0),
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+            "mal" => {
+                json!({
+                    "_type": "change_summary",
+                    "_note": "Lightweight summary - full data in platform_metadata table",
+                    "changed_fields_count": changed_fields.len(),
+                    "anime_count": data.get("anime_list")
+                        .and_then(|t| t.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0),
+                    "manga_count": data.get("manga_list")
                         .and_then(|t| t.as_array())
                         .map(|arr| arr.len())
                         .unwrap_or(0),

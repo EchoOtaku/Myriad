@@ -550,6 +550,13 @@ fn platform_data_warning(platform: &str, data: Option<&Value>) -> Option<String>
         "bangumi" => is_empty_array("collections").then(|| {
             "Bangumi 收藏为空。可能是收藏设为私密、用户名/访问令牌不正确，或该账号确实没有收藏。".to_string()
         }),
+        "mal" => {
+            let anime_empty = is_empty_array("anime_list");
+            let manga_empty = is_empty_array("manga_list");
+            (anime_empty && manga_empty).then(|| {
+                "MyAnimeList 列表为空。请确认用户名、Client ID 正确且列表设为公开。".to_string()
+            })
+        }
         "steam" => is_empty_array("games")
             .then(|| "Steam 未返回游戏数据。请确认 API Key、SteamID 正确且个人资料设为公开。".to_string()),
         "github" => data
@@ -707,6 +714,9 @@ async fn fetch_fresh_platform_data(
         "discord" => config
             .discord_enabled
             .unwrap_or(config.discord_access_token.as_ref().is_some()),
+        "mal" => config.mal_enabled.unwrap_or(
+            config.mal_username.as_ref().is_some() && config.mal_client_id.as_ref().is_some(),
+        ),
         _ => false,
     };
 
@@ -1139,6 +1149,42 @@ async fn fetch_fresh_platform_data(
             }
         } else {
             tracing::warn!("Discord enabled but access_token missing");
+        }
+    }
+
+    // 获取 MyAnimeList 数据
+    if should_fetch("mal") && is_platform_enabled("mal") {
+        if let (Some(username), Some(client_id)) = (&config.mal_username, &config.mal_client_id) {
+            match fetcher.fetch_mal_profile_bundle(username, client_id).await {
+                Ok(bundle) => {
+                    all_data["mal"] = bundle;
+                    let anime_count = all_data["mal"]["anime_list"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    let manga_count = all_data["mal"]["manga_list"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    tracing::info!(
+                        "✓ MyAnimeList data fetched: {} anime, {} manga",
+                        anime_count,
+                        manga_count
+                    );
+                }
+                Err(e) => tracing::warn!("MyAnimeList fetch failed: {}", e),
+            }
+
+            if !all_data["mal"].is_null() {
+                if let Err(e) = metadata_service
+                    .save_platform_metadata(user_id, "mal", all_data["mal"].clone())
+                    .await
+                {
+                    tracing::error!("Failed to save MyAnimeList metadata to database: {}", e);
+                }
+            }
+        } else {
+            tracing::warn!("MyAnimeList enabled but username or client_id missing");
         }
     }
 
@@ -3022,6 +3068,7 @@ fn canonical_library_platform(platform: &str) -> String {
         "bangumi" | "bgm" => "Bangumi".to_string(),
         "x" | "twitter" | "xtwitter" => "X".to_string(),
         "netease" | "neteasemusic" | "neteasecloudmusic" => "Netease".to_string(),
+        "mal" | "myanimelist" => "MyAnimeList".to_string(),
         _ => trimmed.to_string(),
     }
 }
@@ -3253,6 +3300,59 @@ fn append_bangumi_library_items(library_items: &mut Vec<LibraryItem>, bangumi_da
     tracing::info!("✓ Loaded {} Bangumi collection items", added);
 }
 
+fn append_mal_library_items(library_items: &mut Vec<LibraryItem>, mal_data: &Value) {
+    let mut added = 0usize;
+
+    let mut append_list = |list_key: &str, path_kind: &str, item_type: &str| {
+        let Some(list) = mal_data.get(list_key).and_then(|v| v.as_array()) else {
+            return;
+        };
+        for entry in list {
+            let node = entry.get("node").unwrap_or(entry);
+            let subject_id = node.get("id").and_then(|v| v.as_i64());
+            let Some(subject_id) = subject_id else {
+                continue;
+            };
+            let title = node
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown");
+            let cover = node
+                .pointer("/main_picture/large")
+                .or_else(|| node.pointer("/main_picture/medium"))
+                .and_then(|v| v.as_str())
+                .map(proxy_image_url);
+
+            let mut metadata = entry.clone();
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.insert(
+                    "url".to_string(),
+                    json!(format!(
+                        "https://myanimelist.net/{}/{}",
+                        path_kind, subject_id
+                    )),
+                );
+                obj.insert("platform".to_string(), json!("MyAnimeList"));
+            }
+
+            library_items.push(LibraryItem {
+                id: format!("mal_{}_{}", path_kind, subject_id),
+                item_type: item_type.to_string(),
+                title: title.to_string(),
+                cover,
+                platform: "MyAnimeList".to_string(),
+                metadata,
+            });
+            added += 1;
+        }
+    };
+
+    append_list("anime_list", "anime", "anime");
+    append_list("manga_list", "manga", "book");
+
+    tracing::info!("✓ Loaded {} MyAnimeList list items", added);
+}
+
 /// 获取资料库数据（游戏、视频、音乐）
 pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     let user_id = match site_owner_user_id(&db).await {
@@ -3464,6 +3564,10 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
             if let Some(bangumi_data) = db_data.get("bangumi") {
                 append_bangumi_library_items(&mut library_items, bangumi_data);
             }
+
+            if let Some(mal_data) = db_data.get("mal") {
+                append_mal_library_items(&mut library_items, mal_data);
+            }
         }
         Ok(_) => {
             tracing::info!("📊 Database is empty, falling back to cache");
@@ -3655,6 +3759,10 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
 
             if let Some(bangumi_data) = data.get("bangumi") {
                 append_bangumi_library_items(&mut library_items, bangumi_data);
+            }
+
+            if let Some(mal_data) = data.get("mal") {
+                append_mal_library_items(&mut library_items, mal_data);
             }
         }
     }

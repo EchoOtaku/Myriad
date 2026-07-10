@@ -189,6 +189,13 @@ export default function Home() {
         supportedSizes: ['4x2'],
       },
       {
+        id: 'report-mal',
+        name: t.widgets.reportMal,
+        defaultSize: '4x2',
+        component: ReportCardWidget,
+        supportedSizes: ['4x2'],
+      },
+      {
         id: 'social-network',
         name: t.widgets.socialNetwork,
         defaultSize: '1x1',

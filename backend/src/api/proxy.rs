@@ -76,6 +76,8 @@ fn get_domain_key(url: &str) -> String {
         return "netease".to_string();
     } else if url.contains("discordapp.com") || url.contains("discordapp.net") {
         return "discord".to_string();
+    } else if url.contains("myanimelist.net") {
+        return "mal".to_string();
     }
     "other".to_string()
 }
@@ -290,6 +292,7 @@ fn is_allowed_domain(url: &str) -> bool {
         "music.126.net",              // 网易云音乐 CDN
         "cdn.discordapp.com",         // Discord CDN (avatars/icons)
         "media.discordapp.net",       // Discord media proxy
+        "myanimelist.net",            // MyAnimeList CDN / images
     ];
 
     // 如果是核心平台，直接允许
@@ -337,6 +340,8 @@ fn get_referer_for_url(url: &str) -> &'static str {
         "https://bgm.tv/"
     } else if url.contains("music.126.net") {
         "https://music.163.com/"
+    } else if url.contains("myanimelist.net") {
+        "https://myanimelist.net/"
     } else {
         "https://www.google.com/"
     }

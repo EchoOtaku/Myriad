@@ -4,6 +4,7 @@
 
 use super::HandlerContext;
 use crate::models::entities::{brew_items, brew_sources, brew_user_states, tapp_storage};
+use crate::services::agent::executor::utils::VALID_PLATFORMS;
 use crate::services::brew_parser::FeedParser;
 use chrono::Utc;
 use sea_orm::{
@@ -167,8 +168,8 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
         .and_then(|v| v.as_str())
         .ok_or("Missing platform parameter")?;
 
-    let platforms_to_refresh = if platform == "all" {
-        vec!["steam", "bilibili", "bangumi", "github", "netease"]
+    let platforms_to_refresh: Vec<&str> = if platform == "all" {
+        VALID_PLATFORMS.to_vec()
     } else {
         vec![platform]
     };

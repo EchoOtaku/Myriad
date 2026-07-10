@@ -1359,6 +1359,180 @@ impl PlatformFetcher {
             "connections": connections,
         }))
     }
+
+    // ==================== MyAnimeList API v2 ====================
+
+    const MAL_API_BASE: &'static str = "https://api.myanimelist.net/v2";
+
+    fn mal_request(&self, url: &str, client_id: &str) -> reqwest::RequestBuilder {
+        self.client
+            .get(url)
+            .header("X-MAL-CLIENT-ID", client_id.trim())
+            .header("User-Agent", "Myriad")
+            .header("Accept", "application/json")
+    }
+
+    /// 获取 MAL 用户资料（公开字段 + 动画/漫画统计）
+    pub async fn fetch_mal_user(
+        &self,
+        username: &str,
+        client_id: &str,
+    ) -> Result<serde_json::Value> {
+        let username = username.trim();
+        let client_id = client_id.trim();
+        if username.is_empty() {
+            return Err(anyhow!("MyAnimeList username is required"));
+        }
+        if client_id.is_empty() {
+            return Err(anyhow!("MyAnimeList client_id is required"));
+        }
+
+        let encoded = urlencoding::encode(username);
+        let url = format!(
+            "{}/users/{}?fields=id,name,picture,gender,birthday,location,joined_at,anime_statistics,manga_statistics",
+            Self::MAL_API_BASE,
+            encoded
+        );
+
+        let response = self.mal_request(&url, client_id).send().await?;
+        let status = response.status();
+        let body: serde_json::Value = response.json().await?;
+
+        if !status.is_success() {
+            let detail = body
+                .get("message")
+                .or_else(|| body.get("error"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown error");
+            return Err(anyhow!("MAL API error ({}): {}", status, detail));
+        }
+
+        Ok(body)
+    }
+
+    async fn fetch_mal_list_paginated(
+        &self,
+        list_url: &str,
+        client_id: &str,
+        max_items: usize,
+    ) -> Result<Vec<serde_json::Value>> {
+        const PAGE_LIMIT: usize = 100;
+        let mut items = Vec::new();
+        let mut next_url = Some(list_url.to_string());
+
+        while let Some(url) = next_url {
+            let response = self.mal_request(&url, client_id).send().await?;
+            let status = response.status();
+            let body: serde_json::Value = response.json().await?;
+
+            if !status.is_success() {
+                if items.is_empty() {
+                    let detail = body
+                        .get("message")
+                        .or_else(|| body.get("error"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown error");
+                    return Err(anyhow!("MAL list API error ({}): {}", status, detail));
+                }
+                tracing::warn!("MAL list pagination stopped at {}: {}", status, url);
+                break;
+            }
+
+            let mut page_data = body
+                .get("data")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            if page_data.is_empty() {
+                break;
+            }
+
+            items.append(&mut page_data);
+
+            next_url = body
+                .pointer("/paging/next")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+
+            if items.len() >= max_items || next_url.is_none() {
+                break;
+            }
+
+            // 首次请求若未带 limit，后续走 paging.next；首请求自行拼 limit
+            let _ = PAGE_LIMIT;
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+        }
+
+        items.truncate(max_items);
+        Ok(items)
+    }
+
+    /// 获取用户动画列表
+    pub async fn fetch_mal_anime_list(
+        &self,
+        username: &str,
+        client_id: &str,
+    ) -> Result<Vec<serde_json::Value>> {
+        const MAX_ITEMS: usize = 1000;
+        let encoded = urlencoding::encode(username.trim());
+        let url = format!(
+            "{}/users/{}/animelist?fields=list_status{{status,score,num_episodes_watched,is_rewatching,updated_at,start_date,finish_date}},node{{id,title,main_picture,alternative_titles,media_type,num_episodes,status,start_season,mean,genres,nsfw}}&limit=100&nsfw=true&sort=list_updated_at",
+            Self::MAL_API_BASE,
+            encoded
+        );
+        self.fetch_mal_list_paginated(&url, client_id, MAX_ITEMS)
+            .await
+    }
+
+    /// 获取用户漫画列表
+    pub async fn fetch_mal_manga_list(
+        &self,
+        username: &str,
+        client_id: &str,
+    ) -> Result<Vec<serde_json::Value>> {
+        const MAX_ITEMS: usize = 1000;
+        let encoded = urlencoding::encode(username.trim());
+        let url = format!(
+            "{}/users/{}/mangalist?fields=list_status{{status,score,num_volumes_read,num_chapters_read,is_rereading,updated_at,start_date,finish_date}},node{{id,title,main_picture,alternative_titles,media_type,num_volumes,num_chapters,status,mean,genres,nsfw}}&limit=100&nsfw=true&sort=list_updated_at",
+            Self::MAL_API_BASE,
+            encoded
+        );
+        self.fetch_mal_list_paginated(&url, client_id, MAX_ITEMS)
+            .await
+    }
+
+    /// 聚合抓取：用户资料 + 动画/漫画列表
+    pub async fn fetch_mal_profile_bundle(
+        &self,
+        username: &str,
+        client_id: &str,
+    ) -> Result<serde_json::Value> {
+        let user = self.fetch_mal_user(username, client_id).await?;
+
+        let anime_list = match self.fetch_mal_anime_list(username, client_id).await {
+            Ok(list) => list,
+            Err(e) => {
+                tracing::warn!("MAL anime list fetch failed for {}: {}", username, e);
+                Vec::new()
+            }
+        };
+
+        let manga_list = match self.fetch_mal_manga_list(username, client_id).await {
+            Ok(list) => list,
+            Err(e) => {
+                tracing::warn!("MAL manga list fetch failed for {}: {}", username, e);
+                Vec::new()
+            }
+        };
+
+        Ok(serde_json::json!({
+            "user": user,
+            "anime_list": anime_list,
+            "manga_list": manga_list,
+        }))
+    }
 }
 
 // ==================== X 分享文案工具（无网络） ====================

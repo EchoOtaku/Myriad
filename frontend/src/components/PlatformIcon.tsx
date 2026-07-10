@@ -5,6 +5,7 @@ import {
   FaXTwitter,
   SiBilibili,
   SiDiscord,
+  SiMyanimelist,
   SiNeteasecloudmusic,
 } from '@lib/icons'
 
@@ -35,6 +36,9 @@ const PlatformIcon: React.FC<PlatformIconProps> = React.memo(
         return <SiNeteasecloudmusic className={className} style={style} />
       case 'bangumi':
         return <BangumiIcon className={className} style={style} />
+      case 'mal':
+      case 'myanimelist':
+        return <SiMyanimelist className={className} style={style} />
       case 'x':
       case 'twitter':
       case 'x (twitter)':

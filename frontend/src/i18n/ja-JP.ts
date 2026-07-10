@@ -633,6 +633,8 @@ export const jaJP: TranslationKeys = {
     platformDescX: 'X のプロフィールと投稿を同期。共有は Web Intent',
     platformDescDiscord:
       'Discord のプロフィール、サーバー参加状況、連携アカウントを同期',
+    platformDescMal:
+      'MyAnimeList のアニメ/マンガリスト、評価、視聴状態を同期',
     discordConnect: 'Discord で認可',
     discordReconnect: 'Discord を再認可',
     discordConnectHint:
@@ -893,6 +895,7 @@ export const jaJP: TranslationKeys = {
     reportGithub: 'GitHubレポート',
     reportNetease: 'NetEase Musicレポート',
     reportBangumi: 'Bangumiレポート',
+    reportMal: 'MyAnimeListレポート',
     socialNetwork: 'ソーシャルネットワーク',
     gamePresence: 'ゲームステータス',
     library: 'ライブラリ',
@@ -1322,6 +1325,9 @@ export const jaJP: TranslationKeys = {
     bangumiDone: '視聴済',
     bangumiDoing: '視聴中',
     bangumiWish: '視聴予定',
+    malDone: '完了',
+    malDoing: '視聴中',
+    malWish: '予定',
   },
 
   // アカウントページ

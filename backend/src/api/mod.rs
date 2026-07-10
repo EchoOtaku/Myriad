@@ -25,6 +25,7 @@ pub mod steam;
 pub mod system;
 pub mod x; // ✅ X (Twitter) 平台 API
 pub mod discord; // ✅ Discord 数据平台 API
+pub mod mal; // ✅ MyAnimeList 数据平台 API
 pub mod game_presence; // ✅ 游戏平台公开状态（Enka / Xbox / PSN，无用户 Cookie）
 pub mod tapp_runtime; // ✅ Tapp 运行时 API（平台数据、AI、上下文、事件…）
 pub mod tapp_scheduler; // ✅ Tapp 定时任务调度 API

@@ -590,6 +590,7 @@ export const zhCN: TranslationKeys = {
     platformDescNetease: '同步你的喜欢歌曲和网易云音乐品味',
     platformDescX: '同步你的 X 资料与帖子；分享走 Web Intent',
     platformDescDiscord: '同步 Discord 画像、服务器足迹与绑定账号（Steam / GitHub 等）',
+    platformDescMal: '同步你的 MyAnimeList 动画/漫画列表、评分和追看状态',
     discordConnect: '使用 Discord 授权',
     discordReconnect: '重新授权 Discord',
     discordConnectHint:
@@ -844,6 +845,7 @@ export const zhCN: TranslationKeys = {
     reportGithub: 'GitHub报告',
     reportNetease: '网易云报告',
     reportBangumi: 'Bangumi报告',
+    reportMal: 'MyAnimeList报告',
     socialNetwork: '社交网络',
     gamePresence: '游戏状态',
     library: '资料库',
@@ -1262,6 +1264,9 @@ export const zhCN: TranslationKeys = {
     bangumiDone: '看过',
     bangumiDoing: '在看',
     bangumiWish: '想看',
+    malDone: '完成',
+    malDoing: '在看',
+    malWish: '计划',
   },
 
   // 账户页面

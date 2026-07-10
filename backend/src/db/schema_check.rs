@@ -98,6 +98,14 @@ pub fn default_platform_seeds() -> &'static [DefaultPlatformSeed] {
             auth_type: "oauth",
             enabled: false,
         },
+        DefaultPlatformSeed {
+            name: "mal",
+            display_name: "MyAnimeList",
+            icon: "mal",
+            api_endpoint: "https://api.myanimelist.net/v2",
+            auth_type: "client_id",
+            enabled: false,
+        },
     ]
 }
 
@@ -4822,6 +4830,7 @@ mod tests {
             "bangumi",
             "x",
             "discord",
+            "mal",
         ] {
             assert!(
                 names.contains(&required),

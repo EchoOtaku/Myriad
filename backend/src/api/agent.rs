@@ -629,6 +629,9 @@ fn extract_capability_name(step_id: &str) -> String {
             "bangumi" | "platform.bangumi" => "获取 Bangumi 数据".to_string(),
             "x" | "platform.x" => "获取 X 数据".to_string(),
             "discord" | "platform.discord" => "获取 Discord 数据".to_string(),
+            "mal" | "platform.mal" | "myanimelist" | "platform.myanimelist" => {
+                "获取 MyAnimeList 数据".to_string()
+            }
             "summarize" | "ai.summarize" => "AI 总结".to_string(),
             "analyze" | "ai.analyze" => "AI 分析".to_string(),
             "webSearch" | "ai.webSearch" => "网络搜索".to_string(),

@@ -13,6 +13,7 @@ import {
   SiBangumi,
   SiBilibili,
   SiDiscord,
+  SiMyanimelist,
   SiNeteasecloudmusic,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
@@ -45,6 +46,7 @@ const PLATFORMS = [
   },
   { id: 'steam', name: 'Steam', icon: FaSteam, color: '#00ADEE' },
   { id: 'bangumi', name: 'Bangumi', icon: SiBangumi, color: '#F09199' },
+  { id: 'mal', name: 'MyAnimeList', icon: SiMyanimelist, color: '#2E51A2' },
   { id: 'x', name: 'X', icon: FaXTwitter, color: '#000000' },
   { id: 'discord', name: 'Discord', icon: SiDiscord, color: '#5865F2' },
 ]

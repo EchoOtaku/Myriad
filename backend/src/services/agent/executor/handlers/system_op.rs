@@ -7,7 +7,9 @@ use crate::api::tapp_runtime::common::verify_tapp_ownership;
 use crate::models::entities::tapp_scheduled_tasks::{
     ExecutionTarget, MissedPolicy, ScheduleType, TaskScope,
 };
-use crate::services::agent::executor::utils::is_valid_platform as validate_platform_name;
+use crate::services::agent::executor::utils::{
+    is_valid_platform as validate_platform_name, VALID_PLATFORMS,
+};
 use crate::services::background_processor::BACKGROUND_PROCESSOR;
 use crate::services::brew_scheduler::get_brew_scheduler;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
@@ -426,9 +428,9 @@ async fn execute_cache_status(params: &HashMap<String, Value>) -> Result<Value, 
         }
         vec![p.to_string()]
     } else {
-        vec!["netease", "bilibili", "bangumi", "github", "steam"]
-            .into_iter()
-            .map(|s| s.to_string())
+        VALID_PLATFORMS
+            .iter()
+            .map(|s| (*s).to_string())
             .collect()
     };
 
@@ -616,7 +618,7 @@ async fn execute_export_data(params: &HashMap<String, Value>) -> Result<Value, S
     let mut export_data = json!({});
 
     if data_type == "all" || data_type == "platforms" {
-        let platforms = ["bilibili", "bangumi", "steam", "github", "netease"];
+        let platforms = VALID_PLATFORMS;
         let mut platform_data = json!({});
 
         for platform in platforms {

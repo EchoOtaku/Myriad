@@ -247,6 +247,22 @@ impl ConfigService {
             });
         }
 
+        if let Some(v) = map.get("mal_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.mal_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.mal_enabled = Some(s == "true");
+            }
+        }
+
+        if let Some(v) = map.get("mal_username") {
+            config.mal_username = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("mal_client_id") {
+            config.mal_client_id = v.as_str().map(|s| s.to_string());
+        }
+
         if let Some(v) = map.get("discord_user_id") {
             config.discord_user_id = v.as_str().map(|s| s.to_string()).or_else(|| {
                 v.as_i64()

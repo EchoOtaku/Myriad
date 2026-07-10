@@ -570,6 +570,7 @@ export interface TranslationKeys {
     platformDescNetease: string
     platformDescX: string
     platformDescDiscord: string
+    platformDescMal: string
     discordConnect: string
     discordReconnect: string
     discordConnectHint: string
@@ -793,6 +794,7 @@ export interface TranslationKeys {
     reportGithub: string
     reportNetease: string
     reportBangumi: string
+    reportMal: string
     socialNetwork: string
     gamePresence: string
     library: string
@@ -1210,6 +1212,9 @@ export interface TranslationKeys {
     bangumiDone: string
     bangumiDoing: string
     bangumiWish: string
+    malDone: string
+    malDoing: string
+    malWish: string
   }
 
   // 账户页面

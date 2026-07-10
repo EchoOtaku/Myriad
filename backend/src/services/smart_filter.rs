@@ -48,6 +48,7 @@ pub enum ContentAnalysis {
     Bangumi(BangumiAnalysis),
     X(XAnalysis),
     Discord(DiscordAnalysis),
+    Mal(MalAnalysis),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,6 +207,31 @@ pub struct BangumiAnalysis {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BangumiSubjectItem {
+    pub subject_id: i64,
+    pub title: String,
+    pub subject_type: String,
+    pub collection_type: String,
+    pub rate: i64,
+    pub cover: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+/// MyAnimeList 收藏分析（结构对齐 Bangumi，便于报告卡复用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MalAnalysis {
+    pub collection_summary: String,
+    pub subject_type_distribution: std::collections::HashMap<String, usize>,
+    pub collection_type_distribution: std::collections::HashMap<String, usize>,
+    pub tag_distribution: std::collections::HashMap<String, usize>,
+    pub top_rated_subjects: Vec<MalSubjectItem>,
+    pub watching_subjects: Vec<MalSubjectItem>,
+    pub recent_updates: Vec<MalSubjectItem>,
+    pub mean_score: Option<f64>,
+    pub days_watched: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MalSubjectItem {
     pub subject_id: i64,
     pub title: String,
     pub subject_type: String,
@@ -406,6 +432,16 @@ impl SmartFilter {
             }
         }
 
+        if let Some(mal_data) = all_data.get("mal") {
+            match SmartFilter::filter("mal", mal_data) {
+                Ok(result) => {
+                    Self::save_platform_cache_atomic("mal", &result)?;
+                    processed_count += 1;
+                }
+                Err(e) => tracing::warn!("MyAnimeList filter failed: {}", e),
+            }
+        }
+
         // Flush unknown content stats to disk
         super::content_databases::learning::flush_unknown_stats();
 
@@ -454,6 +490,7 @@ impl SmartFilter {
             "bangumi" => Self::filter_bangumi(raw_data),
             "x" => Self::filter_x(raw_data),
             "discord" => Self::filter_discord(raw_data),
+            "mal" => Self::filter_mal(raw_data),
             _ => Err(format!("Unsupported platform: {}", platform)),
         }
     }
@@ -1055,6 +1092,203 @@ impl SmartFilter {
         })
     }
 
+    fn filter_mal(data: &Value) -> Result<SmartFilteredData, String> {
+        let user = data.get("user");
+        let anime_list = data
+            .get("anime_list")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let manga_list = data
+            .get("manga_list")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let user_summary = UserSummary {
+            username: user
+                .and_then(|u| u.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("MyAnimeList 用户")
+                .to_string(),
+            user_id: user
+                .and_then(|u| u.get("id"))
+                .and_then(|v| v.as_i64())
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
+            level: None,
+            stats: UserStats {
+                follower_count: None,
+                following_count: None,
+                total_content: anime_list.len() + manga_list.len(),
+            },
+        };
+
+        let mut subject_type_distribution = std::collections::HashMap::new();
+        let mut collection_type_distribution = std::collections::HashMap::new();
+        let mut tag_distribution = std::collections::HashMap::new();
+        let mut subjects = Vec::new();
+
+        let parse_entry = |entry: &Value, media_kind: &str| -> Option<MalSubjectItem> {
+            let node = entry.get("node")?;
+            let list_status = entry.get("list_status");
+            let subject_id = node.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+            let title = node
+                .get("title")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    node.pointer("/alternative_titles/en")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                })
+                .unwrap_or("Unknown")
+                .to_string();
+            let cover = node
+                .pointer("/main_picture/medium")
+                .or_else(|| node.pointer("/main_picture/large"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let raw_status = list_status
+                .and_then(|s| s.get("status"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let collection_type = Self::mal_status_label(raw_status).to_string();
+            let rate = list_status
+                .and_then(|s| s.get("score"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let updated_at = list_status
+                .and_then(|s| s.get("updated_at"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+
+            Some(MalSubjectItem {
+                subject_id,
+                title,
+                subject_type: media_kind.to_string(),
+                collection_type,
+                rate,
+                cover,
+                updated_at,
+            })
+        };
+
+        for entry in &anime_list {
+            if let Some(item) = parse_entry(entry, "anime") {
+                *subject_type_distribution
+                    .entry("anime".to_string())
+                    .or_insert(0) += 1;
+                *collection_type_distribution
+                    .entry(item.collection_type.clone())
+                    .or_insert(0) += 1;
+                if let Some(genres) = entry
+                    .get("node")
+                    .and_then(|n| n.get("genres"))
+                    .and_then(|v| v.as_array())
+                {
+                    for genre in genres {
+                        if let Some(name) = genre
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                        {
+                            *tag_distribution.entry(name.to_string()).or_insert(0) += 1;
+                        }
+                    }
+                }
+                subjects.push(item);
+            }
+        }
+
+        for entry in &manga_list {
+            if let Some(item) = parse_entry(entry, "manga") {
+                *subject_type_distribution
+                    .entry("manga".to_string())
+                    .or_insert(0) += 1;
+                *collection_type_distribution
+                    .entry(item.collection_type.clone())
+                    .or_insert(0) += 1;
+                if let Some(genres) = entry
+                    .get("node")
+                    .and_then(|n| n.get("genres"))
+                    .and_then(|v| v.as_array())
+                {
+                    for genre in genres {
+                        if let Some(name) = genre
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                        {
+                            *tag_distribution.entry(name.to_string()).or_insert(0) += 1;
+                        }
+                    }
+                }
+                subjects.push(item);
+            }
+        }
+
+        let mut top_rated_subjects = subjects.clone();
+        top_rated_subjects.sort_by(|a, b| b.rate.cmp(&a.rate));
+        top_rated_subjects.truncate(20);
+
+        let watching_subjects = subjects
+            .iter()
+            .filter(|item| item.collection_type == "doing")
+            .take(20)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut recent_updates = subjects.clone();
+        recent_updates.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        recent_updates.truncate(20);
+
+        let mean_score = user
+            .and_then(|u| u.pointer("/anime_statistics/mean_score"))
+            .and_then(|v| v.as_f64());
+        let days_watched = user
+            .and_then(|u| u.pointer("/anime_statistics/num_days"))
+            .and_then(|v| v.as_f64());
+
+        let collection_summary = format!(
+            "MyAnimeList 收藏 {} 部（动画 {} / 漫画 {}），完成 {} 部，正在进行 {} 部",
+            subjects.len(),
+            subject_type_distribution
+                .get("anime")
+                .copied()
+                .unwrap_or_default(),
+            subject_type_distribution
+                .get("manga")
+                .copied()
+                .unwrap_or_default(),
+            collection_type_distribution
+                .get("done")
+                .copied()
+                .unwrap_or_default(),
+            collection_type_distribution
+                .get("doing")
+                .copied()
+                .unwrap_or_default()
+        );
+
+        Ok(SmartFilteredData {
+            platform: "mal".to_string(),
+            user_summary,
+            content_analysis: ContentAnalysis::Mal(MalAnalysis {
+                collection_summary,
+                subject_type_distribution,
+                collection_type_distribution,
+                tag_distribution,
+                top_rated_subjects,
+                watching_subjects,
+                recent_updates,
+                mean_score,
+                days_watched,
+            }),
+            raw_unknown_content: vec![],
+        })
+    }
+
     fn filter_x(data: &Value) -> Result<SmartFilteredData, String> {
         let user = data.get("user").unwrap_or(&Value::Null);
         let username = user
@@ -1517,6 +1751,18 @@ impl SmartFilter {
         }
     }
 
+    /// 将 MAL list_status 映射为与 Bangumi 一致的 done/doing/wish 标签
+    fn mal_status_label(status: &str) -> &'static str {
+        match status {
+            "completed" => "done",
+            "watching" | "reading" => "doing",
+            "plan_to_watch" | "plan_to_read" => "wish",
+            "on_hold" => "on_hold",
+            "dropped" => "dropped",
+            _ => "unknown",
+        }
+    }
+
     /// 估算过滤后数据的 Token 大小
     pub fn estimate_token_size(filtered_data: &SmartFilteredData) -> usize {
         let json_str = serde_json::to_string(filtered_data).unwrap_or_default();
@@ -1622,6 +1868,9 @@ impl SmartFilter {
             }
             "discord" => {
                 // Discord 数据已按 { user, guilds, connections, myriad_cross_refs? } 保存
+            }
+            "mal" => {
+                // MAL 数据已按 { user, anime_list, manga_list } 保存
             }
             _ => {}
         }

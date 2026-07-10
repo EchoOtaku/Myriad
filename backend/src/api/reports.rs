@@ -400,6 +400,52 @@ async fn generate_platform_reports_internal(
                 }
             }
 
+            // 9b. MyAnimeList — 与 Bangumi 同构的卡片字段
+            if platform == "mal" {
+                if !card_visuals.is_object() {
+                    card_visuals = json!({});
+                }
+
+                if let Ok(library_items) = extract_mal_library_items(&metadata).await {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("library_items".to_string(), json!(library_items));
+                    }
+                }
+
+                if let crate::services::smart_filter::ContentAnalysis::Mal(analysis) =
+                    &metadata.content_analysis
+                {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert(
+                            "subject_type_distribution".to_string(),
+                            json!(analysis.subject_type_distribution),
+                        );
+                        obj.insert(
+                            "collection_type_distribution".to_string(),
+                            json!(analysis.collection_type_distribution),
+                        );
+                        obj.insert(
+                            "status_counts".to_string(),
+                            json!(analysis.collection_type_distribution),
+                        );
+                        obj.insert(
+                            "favorite_tags".to_string(),
+                            json!(analysis.tag_distribution),
+                        );
+                        obj.insert(
+                            "top_subjects".to_string(),
+                            json!(analysis.top_rated_subjects),
+                        );
+                        if let Some(mean) = analysis.mean_score {
+                            obj.insert("mean_score".to_string(), json!(mean));
+                        }
+                        if let Some(days) = analysis.days_watched {
+                            obj.insert("days_watched".to_string(), json!(days));
+                        }
+                    }
+                }
+            }
+
             // 10. 对于 X 平台，用真实统计覆盖不稳定的 AI 字段
             if platform == "x" {
                 if !card_visuals.is_object() {
@@ -577,6 +623,16 @@ async fn generate_platform_reports_internal(
                             .max_by_key(|(_, count)| *count)
                         {
                             insights.push(format!("常见标签：{}", tag));
+                        }
+                    }
+                    crate::services::smart_filter::ContentAnalysis::Mal(analysis) => {
+                        insights.push(analysis.collection_summary.clone());
+                        if let Some((tag, _)) = analysis
+                            .tag_distribution
+                            .iter()
+                            .max_by_key(|(_, count)| *count)
+                        {
+                            insights.push(format!("常见题材：{}", tag));
                         }
                     }
                     crate::services::smart_filter::ContentAnalysis::X(analysis) => {
@@ -837,6 +893,12 @@ pub async fn generate_comprehensive_report(
                     all_interests.push(tag.clone());
                 }
             }
+            crate::services::smart_filter::ContentAnalysis::Mal(analysis) => {
+                all_activities.push("追番与漫画".to_string());
+                for tag in analysis.tag_distribution.keys() {
+                    all_interests.push(tag.clone());
+                }
+            }
             crate::services::smart_filter::ContentAnalysis::X(analysis) => {
                 all_activities.push("发帖与互动".to_string());
                 for lang in analysis.language_distribution.keys() {
@@ -1034,6 +1096,12 @@ pub async fn generate_all_reports(
             config
                 .discord_enabled
                 .unwrap_or(config.discord_access_token.as_ref().is_some()),
+        ),
+        (
+            "mal",
+            config.mal_enabled.unwrap_or(
+                config.mal_username.as_ref().is_some() && config.mal_client_id.as_ref().is_some(),
+            ),
         ),
     ]
     .into_iter()
@@ -1411,6 +1479,11 @@ async fn generate_ai_report(
             "用温和但有洞察力的口吻，分析用户在 Bangumi 上的收藏结构、评分偏好、正在追的作品和长期兴趣。",
             "card_visuals必须包含 'taste_profile' (字符串), 'status_counts' (对象), 'score_distribution' (对象), 'favorite_tags' (字符串数组), 'top_subjects' (对象数组，字段至少包含 title 和 rate)。"
         ),
+        "mal" => (
+            "你是一个熟悉国际动画/漫画社区的 MyAnimeList 评论者，能从列表状态、分数和题材标签里读出口味。",
+            "用轻松但有洞察力的口吻，分析用户在 MyAnimeList 上的动画/漫画收藏结构、评分偏好、正在追的作品和长期兴趣。",
+            "card_visuals必须包含 'taste_profile' (字符串), 'status_counts' (对象，done/doing/wish 等), 'score_distribution' (对象), 'favorite_tags' (字符串数组), 'top_subjects' (对象数组，字段至少包含 title 和 rate)。"
+        ),
         "x" => (
             "你是一个熟悉社交媒体生态的 X (Twitter) 观察者，擅长从发帖节奏、互动数据和话题偏好读出账号人设。",
             "用简洁有锋芒的互联网口吻，分析用户的发帖风格、互动热度、话题关注点和账号影响力。",
@@ -1727,6 +1800,51 @@ fn generate_mock_report(
                     "subject_type_distribution": analysis.subject_type_distribution,
                     "favorite_tags": favorite_tags,
                     "top_subjects": analysis.top_rated_subjects.iter().take(5).collect::<Vec<_>>()
+                }),
+            )
+        }
+        crate::services::smart_filter::ContentAnalysis::Mal(analysis) => {
+            let done = analysis
+                .collection_type_distribution
+                .get("done")
+                .copied()
+                .unwrap_or_default();
+            let doing = analysis
+                .collection_type_distribution
+                .get("doing")
+                .copied()
+                .unwrap_or_default();
+            let top_title = analysis
+                .top_rated_subjects
+                .first()
+                .map(|item| item.title.as_str())
+                .unwrap_or("listed title");
+            let favorite_tags = analysis
+                .tag_distribution
+                .iter()
+                .take(6)
+                .map(|(tag, _)| tag.clone())
+                .collect::<Vec<_>>();
+
+            (
+                format!(
+                    "{} 的 MyAnimeList 列表勾勒出清晰的二次元轨迹。",
+                    metadata.user_summary.username
+                ),
+                vec![
+                    format!("收藏概况：{}", analysis.collection_summary),
+                    format!("完成 {} 部，正在进行 {} 部", done, doing),
+                    format!("高分代表作：{}", top_title),
+                ],
+                json!({
+                    "taste_profile": "MAL 列表收藏家",
+                    "status_counts": analysis.collection_type_distribution,
+                    "collection_type_distribution": analysis.collection_type_distribution,
+                    "subject_type_distribution": analysis.subject_type_distribution,
+                    "favorite_tags": favorite_tags,
+                    "top_subjects": analysis.top_rated_subjects.iter().take(5).collect::<Vec<_>>(),
+                    "mean_score": analysis.mean_score,
+                    "days_watched": analysis.days_watched
                 }),
             )
         }
@@ -2695,6 +2813,71 @@ async fn extract_bangumi_library_items(metadata: &SmartFilteredData) -> Result<V
                 "platform": "bangumi",
                 "rate": item.rate,
                 "url": format!("https://bgm.tv/subject/{}", item.subject_id)
+            }));
+        }
+    }
+
+    Ok(library_items)
+}
+
+async fn extract_mal_library_items(metadata: &SmartFilteredData) -> Result<Vec<Value>, String> {
+    let mut library_items = Vec::new();
+
+    if let crate::services::smart_filter::ContentAnalysis::Mal(analysis) =
+        &metadata.content_analysis
+    {
+        let mut candidates = analysis
+            .top_rated_subjects
+            .iter()
+            .filter(|item| item.rate >= 8)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        if candidates.len() < 10 {
+            for item in &analysis.watching_subjects {
+                if !candidates
+                    .iter()
+                    .any(|candidate| candidate.subject_id == item.subject_id)
+                {
+                    candidates.push(item.clone());
+                }
+                if candidates.len() >= 10 {
+                    break;
+                }
+            }
+        }
+
+        if candidates.len() < 10 {
+            for item in &analysis.recent_updates {
+                if !candidates
+                    .iter()
+                    .any(|candidate| candidate.subject_id == item.subject_id)
+                {
+                    candidates.push(item.clone());
+                }
+                if candidates.len() >= 10 {
+                    break;
+                }
+            }
+        }
+
+        for item in candidates.into_iter().take(10) {
+            let path_kind = if item.subject_type == "manga" {
+                "manga"
+            } else {
+                "anime"
+            };
+            library_items.push(json!({
+                "title": item.title,
+                "cover": item.cover.map(|cover| crate::api::profile::proxy_image_url(&cover)).unwrap_or_default(),
+                "type": match item.subject_type.as_str() {
+                    "manga" => "book",
+                    "anime" => "anime",
+                    _ => "video",
+                },
+                "platform": "mal",
+                "rate": item.rate,
+                "url": format!("https://myanimelist.net/{}/{}", path_kind, item.subject_id)
             }));
         }
     }

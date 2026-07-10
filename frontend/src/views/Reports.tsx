@@ -13,6 +13,7 @@ import {
   SiBangumi,
   SiBilibili,
   SiDiscord,
+  SiMyanimelist,
   SiNeteasecloudmusic,
 } from '@lib/icons'
 
@@ -192,6 +193,16 @@ const PLATFORMS = [
     widgetType: 'book',
   },
   {
+    id: 'mal',
+    name: 'MyAnimeList',
+    icon: <SiMyanimelist />,
+    color: 'from-blue-600 to-indigo-700',
+    bg: 'bg-blue-50/10 dark:bg-blue-900/10',
+    text: 'text-blue-600 dark:text-blue-400',
+    border: 'border-blue-200/20 dark:border-blue-800/20',
+    widgetType: 'book',
+  },
+  {
     id: 'x',
     name: 'X',
     icon: <FaXTwitter />,
@@ -218,6 +229,9 @@ const PLATFORM_NAME_TO_ID: Record<string, string> = {
   steam: 'steam',
   github: 'github',
   bangumi: 'bangumi',
+  mal: 'mal',
+  myanimelist: 'mal',
+  'my anime list': 'mal',
   x: 'x',
   twitter: 'x',
   'x (twitter)': 'x',

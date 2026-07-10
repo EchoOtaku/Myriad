@@ -184,6 +184,20 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
         db_config.as_ref().and_then(|c| c.discord_enabled),
         has_discord_token,
     );
+    let has_mal_username = db_config
+        .as_ref()
+        .and_then(|c| c.mal_username.as_ref())
+        .is_some()
+        || std::env::var("MAL_USERNAME").is_ok();
+    let has_mal_client_id = db_config
+        .as_ref()
+        .and_then(|c| c.mal_client_id.as_ref())
+        .is_some()
+        || std::env::var("MAL_CLIENT_ID").is_ok();
+    let mal_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.mal_enabled),
+        has_mal_username && has_mal_client_id,
+    );
 
     let config = ConfigResponse {
         platforms: vec![
@@ -429,6 +443,39 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         ),
                         placeholder: "Discord snowflake id".to_string(),
                         required: false,
+                    },
+                ],
+            },
+            PlatformConfig {
+                name: "MyAnimeList".to_string(),
+                enabled: mal_enabled,
+                has_token: has_mal_client_id,
+                icon: "".to_string(),
+                description:
+                    "Sync your MyAnimeList anime/manga lists, scores, and watching status"
+                        .to_string(),
+                config_fields: vec![
+                    ConfigField {
+                        key: "username".to_string(),
+                        label: "MyAnimeList Username".to_string(),
+                        field_type: "text".to_string(),
+                        value: get_value(
+                            db_config.as_ref().and_then(|c| c.mal_username.clone()),
+                            "MAL_USERNAME",
+                        ),
+                        placeholder: "your MAL username".to_string(),
+                        required: true,
+                    },
+                    ConfigField {
+                        key: "client_id".to_string(),
+                        label: "Client ID".to_string(),
+                        field_type: "password".to_string(),
+                        value: mask_sensitive(get_value(
+                            db_config.as_ref().and_then(|c| c.mal_client_id.clone()),
+                            "MAL_CLIENT_ID",
+                        )),
+                        placeholder: "From myanimelist.net/apiconfig".to_string(),
+                        required: true,
                     },
                 ],
             },
@@ -1428,6 +1475,19 @@ async fn save_to_database(
                     }
                 }
             }
+            "MyAnimeList" => {
+                updates.insert("mal_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "username" => "mal_username",
+                        "client_id" => "mal_client_id",
+                        _ => continue,
+                    };
+                    if !field.value.is_empty() && !is_masked(&field.value) {
+                        updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -1670,6 +1730,22 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
                         _ => continue,
                     };
                     // 跳过掩码值，避免把 •••• 写进 .env
+                    if field.value.is_empty()
+                        || field.value.starts_with('•')
+                        || field.value.starts_with('*')
+                    {
+                        continue;
+                    }
+                    env_content = update_env_var(&env_content, key, &field.value);
+                }
+            }
+            "MyAnimeList" => {
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "username" => "MAL_USERNAME",
+                        "client_id" => "MAL_CLIENT_ID",
+                        _ => continue,
+                    };
                     if field.value.is_empty()
                         || field.value.starts_with('•')
                         || field.value.starts_with('*')
@@ -2154,6 +2230,62 @@ pub async fn test_platform(
                 ),
             }
         }
+        "MyAnimeList" => {
+            let username = config["username"].as_str().unwrap_or("").trim();
+            let client_id = config["client_id"]
+                .as_str()
+                .filter(|s| !s.is_empty() && !s.contains('•') && !s.contains('*'))
+                .unwrap_or("");
+            if username.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"success": false, "message": "Username is required"})),
+                );
+            }
+            if client_id.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": "Client ID is required (or re-enter it if the form shows a masked value)"
+                    })),
+                );
+            }
+
+            let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
+            match fetcher.fetch_mal_user(username, client_id).await {
+                Ok(user_info) => {
+                    let display = user_info["name"]
+                        .as_str()
+                        .unwrap_or(username);
+                    let anime_completed = user_info
+                        .pointer("/anime_statistics/num_items_completed")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
+                    let anime_watching = user_info
+                        .pointer("/anime_statistics/num_items_watching")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!(
+                                "✓ MAL user '{}' verified ({}). {} completed, {} watching",
+                                username, display, anime_completed, anime_watching
+                            )
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": format!("✗ Failed to verify MyAnimeList user: {}", e)
+                    })),
+                ),
+            }
+        }
         _ => (
             StatusCode::OK,
             Json(json!({"success": false, "message": "Platform test not implemented yet"})),
@@ -2288,6 +2420,19 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
             .is_some()
             || std::env::var("DISCORD_ACCESS_TOKEN").is_ok(),
     );
+    let mal_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.mal_enabled),
+        (db_config
+            .as_ref()
+            .and_then(|c| c.mal_username.as_ref())
+            .is_some()
+            || std::env::var("MAL_USERNAME").is_ok())
+            && (db_config
+                .as_ref()
+                .and_then(|c| c.mal_client_id.as_ref())
+                .is_some()
+                || std::env::var("MAL_CLIENT_ID").is_ok()),
+    );
 
     // 只返回公开可见的平台配置字段（不包含 API 密钥等敏感信息）
     let public_platforms = vec![
@@ -2413,6 +2558,24 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
                 value: get_value(
                     db_config.as_ref().and_then(|c| c.discord_user_id.clone()),
                     "DISCORD_USER_ID",
+                ),
+                placeholder: "".to_string(),
+                required: false,
+            }],
+        },
+        PlatformConfig {
+            name: "MyAnimeList".to_string(),
+            enabled: mal_enabled,
+            has_token: false,
+            icon: "".to_string(),
+            description: "".to_string(),
+            config_fields: vec![ConfigField {
+                key: "username".to_string(),
+                label: "".to_string(),
+                field_type: "text".to_string(),
+                value: get_value(
+                    db_config.as_ref().and_then(|c| c.mal_username.clone()),
+                    "MAL_USERNAME",
                 ),
                 placeholder: "".to_string(),
                 required: false,

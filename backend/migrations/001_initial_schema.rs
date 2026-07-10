@@ -119,6 +119,14 @@ impl MigrationTrait for Migration {
                         "oauth".into(),
                         false.into(),
                     ])
+                    .values_panic([
+                        "mal".into(),
+                        "MyAnimeList".into(),
+                        "mal".into(),
+                        "https://api.myanimelist.net/v2".into(),
+                        "client_id".into(),
+                        false.into(),
+                    ])
                     .on_conflict(OnConflict::column(Platforms::Name).do_nothing().to_owned())
                     .to_owned(),
             )

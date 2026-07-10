@@ -20,6 +20,7 @@ import {
   getIconByName,
   SiBangumi,
   SiBilibili,
+  SiMyanimelist,
   SiNeteasecloudmusic,
 } from '@lib/icons'
 import {
@@ -206,6 +207,16 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
     configKey: 'bangumi_username',
   },
   {
+    id: 'mal',
+    name: 'MyAnimeList',
+    icon: <SiMyanimelist />,
+    color: '#2E51A2',
+    darkColor: '#2E51A2',
+    getUserUrl: (username: string) =>
+      `https://myanimelist.net/profile/${username}`,
+    configKey: 'mal_username',
+  },
+  {
     id: 'x',
     name: 'X',
     icon: <FaXTwitter />,
@@ -224,7 +235,8 @@ const PLATFORM_INDEX_MAP: Record<string, number> = {
   github: 2,
   netease: 3,
   bangumi: 4,
-  x: 5,
+  mal: 5,
+  x: 6,
 }
 
 // 静态动画配置常量 - 避免每次渲染创建新对象
@@ -492,6 +504,7 @@ interface PlatformUserIds {
   github_username?: string
   netease_user_id?: string
   bangumi_username?: string
+  mal_username?: string
   x_username?: string
 }
 
@@ -557,6 +570,12 @@ async function fetchPlatformUserIds(): Promise<PlatformUserIds> {
               field.value
             ) {
               result.bangumi_username = field.value
+            } else if (
+              platform.name === 'MyAnimeList' &&
+              field.key === 'username' &&
+              field.value
+            ) {
+              result.mal_username = field.value
             } else if (
               platform.name === 'X' &&
               field.key === 'username' &&
@@ -1475,6 +1494,8 @@ export const SocialNetworkWidget = memo(
           return platformUserIds.netease_user_id
         case 'bangumi':
           return platformUserIds.bangumi_username
+        case 'mal':
+          return platformUserIds.mal_username
         case 'x':
           return platformUserIds.x_username
         default: {

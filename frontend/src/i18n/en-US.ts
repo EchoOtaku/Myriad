@@ -646,6 +646,8 @@ export const enUS: TranslationKeys = {
     platformDescX: 'Sync your X profile and posts; share via Web Intent',
     platformDescDiscord:
       'Sync your Discord profile, server footprint, and linked accounts (Steam / GitHub…)',
+    platformDescMal:
+      'Sync your MyAnimeList anime/manga lists, scores, and watching status',
     discordConnect: 'Connect with Discord',
     discordReconnect: 'Reconnect Discord',
     discordConnectHint:
@@ -915,6 +917,7 @@ export const enUS: TranslationKeys = {
     reportGithub: 'GitHub Report',
     reportNetease: 'NetEase Report',
     reportBangumi: 'Bangumi Report',
+    reportMal: 'MyAnimeList Report',
     socialNetwork: 'Social Network',
     gamePresence: 'Game Presence',
     library: 'Library',
@@ -1338,6 +1341,9 @@ export const enUS: TranslationKeys = {
     bangumiDone: 'Done',
     bangumiDoing: 'Doing',
     bangumiWish: 'Wish',
+    malDone: 'Completed',
+    malDoing: 'Watching',
+    malWish: 'Plan to',
   },
 
   // Account page

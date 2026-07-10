@@ -67,6 +67,8 @@ pub struct HeartbeatManager {
     config_path: PathBuf,
     /// frontmatter 之后的 Markdown 正文（写回文件时原样保留）
     body: RwLock<String>,
+    /// 上次加载/写入时文件的 mtime，用于检测外部修改并自动热加载
+    loaded_mtime: RwLock<Option<std::time::SystemTime>>,
 }
 
 impl HeartbeatManager {
@@ -74,15 +76,38 @@ impl HeartbeatManager {
     pub async fn new(config_path: PathBuf) -> Self {
         let (tasks, body) = Self::load_file(&config_path).await.unwrap_or_default();
         let count = tasks.len();
+        let mtime = Self::file_mtime(&config_path).await;
 
         let manager = Self {
             tasks: RwLock::new(tasks),
             config_path,
             body: RwLock::new(body),
+            loaded_mtime: RwLock::new(mtime),
         };
 
         tracing::info!("[Heartbeat] Loaded {} tasks", count);
         manager
+    }
+
+    /// 读取文件 mtime
+    async fn file_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
+        tokio::fs::metadata(path).await.ok()?.modified().ok()
+    }
+
+    /// 检测 HEARTBEAT.md 是否被外部修改，若是则自动重新加载（真·热加载）
+    ///
+    /// 在每次调度检查和读写任务前调用，保证手动编辑文件后无需重启/调 API 即可生效，
+    /// 也避免 toggle 持久化用内存中的过期配置覆盖用户的手动修改。
+    async fn maybe_reload_if_changed(&self) {
+        let current = Self::file_mtime(&self.config_path).await;
+        let stale = {
+            let loaded = self.loaded_mtime.read().await;
+            current != *loaded
+        };
+        if stale {
+            tracing::info!("[Heartbeat] HEARTBEAT.md changed on disk, hot-reloading");
+            self.reload().await;
+        }
     }
 
     /// 从 YAML frontmatter 加载任务，返回 (tasks, markdown 正文)
@@ -149,16 +174,22 @@ impl HeartbeatManager {
         if let Err(e) = tokio::fs::rename(&tmp_path, &self.config_path).await {
             let _ = tokio::fs::remove_file(&tmp_path).await;
             tracing::warn!("[Heartbeat] Failed to persist config: {}", e);
+            return;
         }
+        // 记录自己写入后的 mtime，避免下次误判为外部修改
+        *self.loaded_mtime.write().await = Self::file_mtime(&self.config_path).await;
     }
 
     /// 获取所有任务状态
     pub async fn get_tasks(&self) -> Vec<HeartbeatTask> {
+        self.maybe_reload_if_changed().await;
         self.tasks.read().await.clone()
     }
 
     /// 切换任务启用状态（持久化到 HEARTBEAT.md，重启后保留）
     pub async fn toggle_task(&self, task_id: &str) -> Option<bool> {
+        // 先同步磁盘上的最新配置，再在其上应用 toggle，防止覆盖外部修改
+        self.maybe_reload_if_changed().await;
         let new_state = {
             let mut tasks = self.tasks.write().await;
             let task = tasks.iter_mut().find(|t| t.id == task_id)?;
@@ -188,6 +219,8 @@ impl HeartbeatManager {
     /// 返回到期任务的同时立即记录 last_run（调度即去重），
     /// 避免长任务执行期间同一分钟被重复触发。
     pub async fn check_due_tasks(&self) -> Vec<HeartbeatTask> {
+        // 每分钟一次的 stat 调用，代价可忽略；让手动编辑的配置在下个调度周期生效
+        self.maybe_reload_if_changed().await;
         let now_local = Local::now();
         let now_utc = Utc::now();
         let mut tasks = self.tasks.write().await;
@@ -225,6 +258,7 @@ impl HeartbeatManager {
             *current = new_tasks;
             drop(current);
             *self.body.write().await = new_body;
+            *self.loaded_mtime.write().await = Self::file_mtime(&self.config_path).await;
             tracing::info!("[Heartbeat] Reloaded configuration");
         }
     }
@@ -442,6 +476,50 @@ mod tests {
         assert!(tasks[0].enabled, "reload 后 toggle 状态应保留");
         assert_eq!(tasks[0].last_result.as_deref(), Some("ok"));
         assert!(tasks[0].last_run.is_some());
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[test]
+    fn test_task_serializes_runtime_fields_camelcase() {
+        // 前端 HeartbeatTask 类型期望 lastRun/lastResult（camelCase）
+        let mut t: HeartbeatTask =
+            serde_yaml::from_str("id: x\nname: n\nschedule: \"* * * * *\"\naction: a").unwrap();
+        assert!(t.enabled, "enabled 缺省应为 true");
+        assert!(t.last_run.is_none());
+        t.last_run = Some(Utc::now());
+        t.last_result = Some("ok".to_string());
+        let v = serde_json::to_value(&t).unwrap();
+        assert!(v.get("lastRun").is_some(), "应序列化 lastRun: {v}");
+        assert_eq!(v["lastResult"], "ok");
+    }
+
+    #[tokio::test]
+    async fn test_hot_reload_on_external_edit() {
+        let dir = std::env::temp_dir().join(format!("hb_test_hot_{}", std::process::id()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let path = dir.join("HEARTBEAT.md");
+        tokio::fs::write(
+            &path,
+            "---\ntasks:\n  - id: t1\n    name: \"One\"\n    schedule: \"0 9 * * *\"\n    action: \"a\"\n---\n",
+        )
+        .await
+        .unwrap();
+
+        let mgr = HeartbeatManager::new(path.clone()).await;
+        assert_eq!(mgr.get_tasks().await.len(), 1);
+
+        // 模拟用户手动编辑文件（确保 mtime 变化）
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        tokio::fs::write(
+            &path,
+            "---\ntasks:\n  - id: t1\n    name: \"One\"\n    schedule: \"0 9 * * *\"\n    action: \"a\"\n  - id: t2\n    name: \"Two\"\n    schedule: \"30 8 * * *\"\n    action: \"b\"\n---\n",
+        )
+        .await
+        .unwrap();
+
+        let tasks = mgr.get_tasks().await;
+        assert_eq!(tasks.len(), 2, "外部编辑应被自动热加载");
 
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
