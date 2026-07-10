@@ -9,6 +9,7 @@ import {
   FaGithub,
   FaSteam,
   FaSyncAlt,
+  FaXTwitter,
   SiBangumi,
   SiBilibili,
   SiNeteasecloudmusic,
@@ -43,6 +44,7 @@ const PLATFORMS = [
   },
   { id: 'steam', name: 'Steam', icon: FaSteam, color: '#00ADEE' },
   { id: 'bangumi', name: 'Bangumi', icon: SiBangumi, color: '#F09199' },
+  { id: 'x', name: 'X', icon: FaXTwitter, color: '#000000' },
 ]
 
 interface CacheInfo {

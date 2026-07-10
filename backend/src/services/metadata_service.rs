@@ -221,6 +221,20 @@ impl MetadataService {
                     obj.insert("_truncated".to_string(), json!(true));
                 }
             }
+            "x" => {
+                if let Some(tweets) = data.get_mut("tweets").and_then(|t| t.as_array_mut()) {
+                    let original_count = tweets.len();
+                    if original_count > 100 {
+                        tweets.truncate(100);
+                        tracing::warn!("𝕏 X tweets truncated: {} -> 100", original_count);
+                    }
+                }
+                // 丢弃历史 likes 字段（已不再同步）
+                if let Some(obj) = data.as_object_mut() {
+                    obj.remove("liked_tweets");
+                    obj.insert("_truncated".to_string(), json!(true));
+                }
+            }
             _ => {}
         }
 
@@ -639,6 +653,18 @@ impl MetadataService {
                     "changed_fields_count": changed_fields.len(),
                     "repos_count": data.get("repos")
                         .and_then(|r| r.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0),
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
+            "x" => {
+                json!({
+                    "_type": "change_summary",
+                    "_note": "Lightweight summary - full data in platform_metadata table",
+                    "changed_fields_count": changed_fields.len(),
+                    "tweets_count": data.get("tweets")
+                        .and_then(|t| t.as_array())
                         .map(|arr| arr.len())
                         .unwrap_or(0),
                     "timestamp": chrono::Utc::now().to_rfc3339(),

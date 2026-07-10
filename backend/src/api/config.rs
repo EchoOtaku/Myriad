@@ -161,6 +161,20 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
         db_config.as_ref().and_then(|c| c.bangumi_enabled),
         has_bangumi_identity,
     );
+    let has_x_username = db_config
+        .as_ref()
+        .and_then(|c| c.x_username.as_ref())
+        .is_some()
+        || std::env::var("X_USERNAME").is_ok();
+    let has_x_bearer = db_config
+        .as_ref()
+        .and_then(|c| c.x_bearer_token.as_ref())
+        .is_some()
+        || std::env::var("X_BEARER_TOKEN").is_ok();
+    let x_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.x_enabled),
+        has_x_username && has_x_bearer,
+    );
 
     let config = ConfigResponse {
         platforms: vec![
@@ -324,6 +338,38 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         ),
                         placeholder: "haru/Myriad".to_string(),
                         required: false,
+                    },
+                ],
+            },
+            PlatformConfig {
+                name: "X".to_string(),
+                enabled: x_enabled,
+                has_token: has_x_bearer,
+                icon: "".to_string(),
+                description: "Sync your X profile and posts (read-only); share via Web Intent"
+                    .to_string(),
+                config_fields: vec![
+                    ConfigField {
+                        key: "username".to_string(),
+                        label: "X Username".to_string(),
+                        field_type: "text".to_string(),
+                        value: get_value(
+                            db_config.as_ref().and_then(|c| c.x_username.clone()),
+                            "X_USERNAME",
+                        ),
+                        placeholder: "elonmusk (without @)".to_string(),
+                        required: true,
+                    },
+                    ConfigField {
+                        key: "bearer_token".to_string(),
+                        label: "Bearer Token".to_string(),
+                        field_type: "password".to_string(),
+                        value: mask_sensitive(get_value(
+                            db_config.as_ref().and_then(|c| c.x_bearer_token.clone()),
+                            "X_BEARER_TOKEN",
+                        )),
+                        placeholder: "From developer.x.com App keys (read-only sync)".to_string(),
+                        required: true,
                     },
                 ],
             },
@@ -1293,6 +1339,19 @@ async fn save_to_database(
                     }
                 }
             }
+            "X" => {
+                updates.insert("x_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "username" => "x_username",
+                        "bearer_token" => "x_bearer_token",
+                        _ => continue,
+                    };
+                    if !field.value.is_empty() && !is_masked(&field.value) {
+                        updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -1524,6 +1583,23 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
                         "user_agent" => "BANGUMI_USER_AGENT",
                         _ => continue,
                     };
+                    env_content = update_env_var(&env_content, key, &field.value);
+                }
+            }
+            "X" => {
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "username" => "X_USERNAME",
+                        "bearer_token" => "X_BEARER_TOKEN",
+                        _ => continue,
+                    };
+                    // 跳过掩码值，避免把 •••• 写进 .env
+                    if field.value.is_empty()
+                        || field.value.starts_with('•')
+                        || field.value.starts_with('*')
+                    {
+                        continue;
+                    }
                     env_content = update_env_var(&env_content, key, &field.value);
                 }
             }
@@ -1886,6 +1962,70 @@ pub async fn test_platform(
                 ),
             }
         }
+        "X" => {
+            let username = config["username"]
+                .as_str()
+                .unwrap_or("")
+                .trim()
+                .trim_start_matches('@');
+            let bearer_token = config["bearer_token"]
+                .as_str()
+                .filter(|s| !s.is_empty() && !s.contains('•') && !s.contains('*'))
+                .unwrap_or("");
+            if username.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"success": false, "message": "Username is required"})),
+                );
+            }
+            if bearer_token.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": "Bearer Token is required (or re-enter it if the form shows a masked value)"
+                    })),
+                );
+            }
+
+            let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
+            match fetcher
+                .fetch_x_user_by_username(username, bearer_token)
+                .await
+            {
+                Ok(user_info) => {
+                    let display = user_info["name"]
+                        .as_str()
+                        .or_else(|| user_info["username"].as_str())
+                        .unwrap_or(username);
+                    let followers = user_info
+                        .pointer("/public_metrics/followers_count")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
+                    let tweets = user_info
+                        .pointer("/public_metrics/tweet_count")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!(
+                                "✓ X user '@{}' verified ({}). {} followers, {} posts",
+                                username, display, followers, tweets
+                            )
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": format!("✗ Failed to verify X user: {}", e)
+                    })),
+                ),
+            }
+        }
         _ => (
             StatusCode::OK,
             Json(json!({"success": false, "message": "Platform test not implemented yet"})),
@@ -1999,6 +2139,19 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
             || std::env::var("BANGUMI_USERNAME").is_ok()
             || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok(),
     );
+    let x_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.x_enabled),
+        (db_config
+            .as_ref()
+            .and_then(|c| c.x_username.as_ref())
+            .is_some()
+            || std::env::var("X_USERNAME").is_ok())
+            && (db_config
+                .as_ref()
+                .and_then(|c| c.x_bearer_token.as_ref())
+                .is_some()
+                || std::env::var("X_BEARER_TOKEN").is_ok()),
+    );
 
     // 只返回公开可见的平台配置字段（不包含 API 密钥等敏感信息）
     let public_platforms = vec![
@@ -2087,6 +2240,24 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
                 value: get_value(
                     db_config.as_ref().and_then(|c| c.bangumi_username.clone()),
                     "BANGUMI_USERNAME",
+                ),
+                placeholder: "".to_string(),
+                required: false,
+            }],
+        },
+        PlatformConfig {
+            name: "X".to_string(),
+            enabled: x_enabled,
+            has_token: false,
+            icon: "".to_string(),
+            description: "".to_string(),
+            config_fields: vec![ConfigField {
+                key: "username".to_string(),
+                label: "".to_string(),
+                field_type: "text".to_string(),
+                value: get_value(
+                    db_config.as_ref().and_then(|c| c.x_username.clone()),
+                    "X_USERNAME",
                 ),
                 placeholder: "".to_string(),
                 required: false,

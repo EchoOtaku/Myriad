@@ -11,6 +11,7 @@ import {
   FaPlay,
   FaSteam,
   FaTimes,
+  FaXTwitter,
   LuGitFork,
   LuStar,
   SiBangumi,
@@ -129,6 +130,11 @@ const PLATFORM_SOCIAL: Record<
     publicName: 'Bangumi',
     fieldKey: 'username',
     getUserUrl: (u) => `https://bgm.tv/user/${u}`,
+  },
+  x: {
+    publicName: 'X',
+    fieldKey: 'username',
+    getUserUrl: (u) => `https://x.com/${String(u).replace(/^@/, '')}`,
   },
 }
 
@@ -1907,6 +1913,137 @@ const PLATFORM_CONFIG: Record<
     label: 'Bangumi',
     textColor: 'text-rose-500',
   },
+  x: {
+    icon: <FaXTwitter />,
+    color: '#000000',
+    bgColor: 'rgba(0, 0, 0, 0.12)',
+    borderColor: 'rgba(0, 0, 0, 0.25)',
+    label: 'X',
+    textColor: 'text-gray-900 dark:text-gray-100',
+  },
+}
+
+const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
+  const stats = data?.stats || {}
+  const topPosts = useMemo(
+    () => data?.top_posts || data?.library_items || [],
+    [data?.top_posts, data?.library_items],
+  )
+  const [postIndex, setPostIndex] = useState(0)
+
+  useEffect(() => {
+    if (!showOverview && topPosts.length > 1) {
+      const timer = setInterval(() => {
+        setPostIndex((i) => (i + 1) % topPosts.length)
+      }, 4000)
+      return () => clearInterval(timer)
+    }
+  }, [showOverview, topPosts.length])
+
+  useEffect(() => {
+    if (showOverview) {
+      onContentChange?.({
+        titles: [
+          data?.vibe || data?.engagement_level || 'X',
+          stats.followers != null
+            ? `${formatCompactNumber(stats.followers)} followers`
+            : 'Posts',
+        ],
+      })
+    } else if (topPosts[postIndex]) {
+      const post = topPosts[postIndex]
+      const text = post.text || post.title || ''
+      onContentChange?.({
+        titles: [text.slice(0, 32) + (text.length > 32 ? '…' : '')],
+      })
+    }
+  }, [
+    showOverview,
+    postIndex,
+    topPosts,
+    data?.vibe,
+    data?.engagement_level,
+    stats.followers,
+    onContentChange,
+  ])
+
+  if (showOverview) {
+    return (
+      <div className="h-full w-full p-3 flex flex-col justify-between">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-1">
+            {data?.engagement_level || data?.vibe || 'X'}
+          </div>
+          <div className="text-sm font-bold text-gray-900 dark:text-gray-100 line-clamp-2">
+            {data?.vibe || analysisFallback(data)}
+          </div>
+          {Array.isArray(data?.signature_topics) &&
+            data.signature_topics.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {data.signature_topics.slice(0, 4).map((topic: string) => (
+                  <span
+                    key={topic}
+                    className="text-[9px] px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-gray-700 dark:text-gray-300"
+                  >
+                    {topic}
+                  </span>
+                ))}
+              </div>
+            )}
+        </div>
+        <div className="flex gap-3">
+          {[
+            [stats.followers, 'Followers'],
+            [stats.posts, 'Posts'],
+            [stats.likes_received, 'Likes'],
+          ].map(([value, label]) => (
+            <div key={label as string} className="flex flex-col">
+              <span className="text-lg font-black tabular-nums text-gray-900 dark:text-gray-100 leading-none">
+                {formatCompactNumber(value as number)}
+              </span>
+              <span className="text-[8px] uppercase tracking-widest font-bold text-gray-500 mt-0.5">
+                {label as string}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const post = topPosts[postIndex]
+  if (!post) {
+    return (
+      <div className="h-full w-full flex items-center justify-center text-gray-400 text-xs">
+        No posts
+      </div>
+    )
+  }
+
+  const text = post.text || post.title || ''
+  return (
+    <div className="h-full w-full p-3 flex flex-col justify-between">
+      <p className="text-xs leading-relaxed text-gray-800 dark:text-gray-200 line-clamp-5">
+        {text}
+      </p>
+      <div className="flex items-center gap-3 text-[10px] text-gray-500 font-mono">
+        <span>♥ {formatCompactNumber(post.like_count || 0)}</span>
+        <span>↻ {formatCompactNumber(post.retweet_count || 0)}</span>
+      </div>
+    </div>
+  )
+})
+
+function analysisFallback(data: any): string {
+  if (data?.summary) return data.summary
+  return 'Your voice on X'
+}
+
+function formatCompactNumber(n: number | undefined | null): string {
+  const num = Number(n) || 0
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`
+  return String(num)
 }
 
 // Bangumi 类型构成条配色（动画/书/游戏/音乐/剧集）
@@ -2566,6 +2703,13 @@ export const ReportCardWidget = memo(
           )}
           {platformId === 'bangumi' && (
             <BangumiWidget
+              data={reportData}
+              showOverview={showOverview}
+              onContentChange={handleContentChange}
+            />
+          )}
+          {platformId === 'x' && (
+            <XWidget
               data={reportData}
               showOverview={showOverview}
               onContentChange={handleContentChange}

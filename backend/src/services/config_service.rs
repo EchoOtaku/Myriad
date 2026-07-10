@@ -207,6 +207,22 @@ impl ConfigService {
             config.bangumi_user_agent = v.as_str().map(|s| s.to_string());
         }
 
+        if let Some(v) = map.get("x_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.x_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.x_enabled = Some(s == "true");
+            }
+        }
+
+        if let Some(v) = map.get("x_username") {
+            config.x_username = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("x_bearer_token") {
+            config.x_bearer_token = v.as_str().map(|s| s.to_string());
+        }
+
         // 平台展示顺序（JSON 数组，或历史上误存为 JSON 字符串）
         if let Some(v) = map.get("platform_order") {
             let order = if let Some(arr) = v.as_array() {

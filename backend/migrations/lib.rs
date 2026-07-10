@@ -31,6 +31,8 @@ impl MigratorTrait for Migrator {
             Box::new(agent_system::Migration),
             Box::new(federation::Migration),
             Box::new(oauth_identities::Migration),
+            // 默认平台种子行（含 X）统一由 001 + runtime schema_check::ensure_default_platforms 维护，
+            // 不再为单个平台开独立 migration。
         ]
     }
 }

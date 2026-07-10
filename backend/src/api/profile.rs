@@ -557,6 +557,13 @@ fn platform_data_warning(platform: &str, data: Option<&Value>) -> Option<String>
             .filter(|v| !v.is_null())
             .is_none()
             .then(|| "GitHub 未返回用户数据。请检查用户名与令牌。".to_string()),
+        "x" => data
+            .get("user")
+            .filter(|v| !v.is_null())
+            .is_none()
+            .then(|| {
+                "X 未返回用户数据。请检查用户名、Bearer Token 以及 API 套餐权限。".to_string()
+            }),
         _ => None,
     }
 }
@@ -686,6 +693,9 @@ async fn fetch_fresh_platform_data(
         "bangumi" => config.bangumi_enabled.unwrap_or(
             config.bangumi_username.as_ref().is_some()
                 || config.bangumi_access_token.as_ref().is_some(),
+        ),
+        "x" => config.x_enabled.unwrap_or(
+            config.x_username.as_ref().is_some() && config.x_bearer_token.as_ref().is_some(),
         ),
         _ => false,
     };
@@ -958,6 +968,36 @@ async fn fetch_fresh_platform_data(
         }
     }
 
+    // 获取 X (Twitter) 数据
+    if should_fetch("x") && is_platform_enabled("x") {
+        if let (Some(username), Some(bearer_token)) =
+            (&config.x_username, &config.x_bearer_token)
+        {
+            match fetcher.fetch_x_profile_bundle(username, bearer_token).await {
+                Ok(bundle) => {
+                    all_data["x"] = bundle;
+                    let tweet_count = all_data["x"]["tweets"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    tracing::info!("✓ X data fetched: {} tweets", tweet_count);
+                }
+                Err(e) => tracing::warn!("X fetch failed: {}", e),
+            }
+
+            if !all_data["x"].is_null() {
+                if let Err(e) = metadata_service
+                    .save_platform_metadata(user_id, "x", all_data["x"].clone())
+                    .await
+                {
+                    tracing::error!("Failed to save X metadata to database: {}", e);
+                }
+            }
+        } else {
+            tracing::warn!("X enabled but username or bearer_token missing");
+        }
+    }
+
     // 数据清洗：移除无用信息，保留核心5W1H信息
     clean_platform_data(&mut all_data);
 
@@ -999,6 +1039,7 @@ fn clean_platform_data(data: &mut Value) {
     const MAX_BILIBILI_BANGUMI: usize = 100;
     const MAX_SONGS_TO_CLEAN: usize = 5000;
     const MAX_BANGUMI_COLLECTIONS: usize = 1000;
+    const MAX_X_TWEETS: usize = 100;
 
     // 清洗 GitHub 仓库数据 - 原地修改
     if let Some(repos) = data["github"]["repos"].as_array_mut() {
@@ -1454,6 +1495,113 @@ fn clean_platform_data(data: &mut Value) {
                     }
                 }
             }
+        }
+    }
+
+    // 清洗 X (Twitter) 数据
+    if let Some(x_data) = data.get_mut("x") {
+        // 用户字段精简
+        if let Some(user) = x_data.get_mut("user").and_then(|v| v.as_object_mut()) {
+            let id = user.get("id").cloned();
+            let username = user.get("username").cloned();
+            let name = user.get("name").cloned();
+            let description = user.get("description").cloned();
+            let profile_image_url = user.get("profile_image_url").cloned();
+            let public_metrics = user.get("public_metrics").cloned();
+            let verified = user.get("verified").cloned();
+            let verified_type = user.get("verified_type").cloned();
+            let created_at = user.get("created_at").cloned();
+            let location = user.get("location").cloned();
+            let url = user.get("url").cloned();
+            let protected = user.get("protected").cloned();
+
+            user.clear();
+            if let Some(v) = id {
+                user.insert("id".to_string(), v);
+            }
+            if let Some(v) = username {
+                user.insert("username".to_string(), v);
+            }
+            if let Some(v) = name {
+                user.insert("name".to_string(), v);
+            }
+            if let Some(v) = description {
+                user.insert("description".to_string(), v);
+            }
+            if let Some(v) = profile_image_url {
+                user.insert("profile_image_url".to_string(), v);
+            }
+            if let Some(v) = public_metrics {
+                user.insert("public_metrics".to_string(), v);
+            }
+            if let Some(v) = verified {
+                user.insert("verified".to_string(), v);
+            }
+            if let Some(v) = verified_type {
+                user.insert("verified_type".to_string(), v);
+            }
+            if let Some(v) = created_at {
+                user.insert("created_at".to_string(), v);
+            }
+            if let Some(v) = location {
+                user.insert("location".to_string(), v);
+            }
+            if let Some(v) = url {
+                user.insert("url".to_string(), v);
+            }
+            if let Some(v) = protected {
+                user.insert("protected".to_string(), v);
+            }
+        }
+
+        // 推文字段精简
+        let clean_tweet = |tweet: &mut Value| {
+            if let Some(obj) = tweet.as_object_mut() {
+                let id = obj.get("id").cloned();
+                let text = obj.get("text").cloned();
+                let created_at = obj.get("created_at").cloned();
+                let public_metrics = obj.get("public_metrics").cloned();
+                let lang = obj.get("lang").cloned();
+                let author = obj.get("author").cloned();
+                let author_id = obj.get("author_id").cloned();
+
+                obj.clear();
+                if let Some(v) = id {
+                    obj.insert("id".to_string(), v);
+                }
+                if let Some(v) = text {
+                    obj.insert("text".to_string(), v);
+                }
+                if let Some(v) = created_at {
+                    obj.insert("created_at".to_string(), v);
+                }
+                if let Some(v) = public_metrics {
+                    obj.insert("public_metrics".to_string(), v);
+                }
+                if let Some(v) = lang {
+                    obj.insert("lang".to_string(), v);
+                }
+                if let Some(v) = author {
+                    obj.insert("author".to_string(), v);
+                }
+                if let Some(v) = author_id {
+                    obj.insert("author_id".to_string(), v);
+                }
+            }
+        };
+
+        if let Some(tweets) = x_data.get_mut("tweets").and_then(|v| v.as_array_mut()) {
+            if tweets.len() > MAX_X_TWEETS {
+                tweets.truncate(MAX_X_TWEETS);
+            }
+            for tweet in tweets.iter_mut() {
+                clean_tweet(tweet);
+            }
+        }
+
+        // 不再同步 likes；清理历史字段
+        if let Some(obj) = x_data.as_object_mut() {
+            obj.remove("liked_tweets");
         }
     }
 
@@ -2728,6 +2876,7 @@ fn canonical_library_platform(platform: &str) -> String {
         "steam" => "Steam".to_string(),
         "bilibili" | "bili" => "Bilibili".to_string(),
         "bangumi" | "bgm" => "Bangumi".to_string(),
+        "x" | "twitter" | "xtwitter" => "X".to_string(),
         "netease" | "neteasemusic" | "neteasecloudmusic" => "Netease".to_string(),
         _ => trimmed.to_string(),
     }

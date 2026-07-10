@@ -1,5 +1,12 @@
 import React from 'react'
 import { useI18n } from '../../contexts/I18nContext'
+import {
+  LuExternalLink,
+  LuGitFork,
+  LuScale,
+  LuTag,
+  LuUsers,
+} from '../../lib/icons'
 import { SettingGroup, SettingSection } from '../settings'
 import { UpdaterInlinePanel } from './UpdaterConfigSection'
 
@@ -11,9 +18,10 @@ interface AboutConfigSectionProps {
 }
 
 const MYRIAD_VERSION = __APP_VERSION__ || '0.1.0'
-const ORG_NAME = 'myriad-you'
-const REPO_URL = 'https://github.com/myriad-you/Myriad'
-const ORG_URL = 'https://github.com/myriad-you'
+const ORG_NAME = 'Myriad-You'
+const REPO_NAME = 'Myriad-You/Myriad'
+const ORG_URL = 'https://github.com/Myriad-You'
+const REPO_URL = 'https://github.com/Myriad-You/Myriad'
 
 export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
   title,
@@ -23,34 +31,29 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
 }) => {
   const { t } = useI18n()
 
-  const devInfo: Array<{ label: string; value: React.ReactNode }> = [
-    { label: t.config.aboutVersion, value: `v${MYRIAD_VERSION}` },
-    { label: t.config.aboutLicense, value: 'GPL-3.0' },
+  const devInfo: Array<{
+    label: string
+    value: string
+    icon: React.ReactNode
+    href?: string
+  }> = [
+    {
+      label: t.config.aboutVersion,
+      value: `v${MYRIAD_VERSION}`,
+      icon: <LuTag />,
+    },
+    { label: t.config.aboutLicense, value: 'GPL-3.0', icon: <LuScale /> },
     {
       label: t.config.aboutOrganization,
-      value: (
-        <a
-          className="about-row-link"
-          href={ORG_URL}
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          {ORG_NAME}
-        </a>
-      ),
+      value: ORG_NAME,
+      icon: <LuUsers />,
+      href: ORG_URL,
     },
     {
       label: t.config.aboutRepository,
-      value: (
-        <a
-          className="about-row-link"
-          href={REPO_URL}
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          github.com/myriad-you/Myriad
-        </a>
-      ),
+      value: REPO_NAME,
+      icon: <LuGitFork />,
+      href: REPO_URL,
     },
   ]
 
@@ -73,17 +76,39 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
             <p className="about-tagline">{t.config.aboutTagline}</p>
           </div>
 
-          <ul className="about-list" role="list">
-            {devInfo.map((row, idx) => (
-              <li
-                key={row.label}
-                className={`about-row${idx === devInfo.length - 1 ? ' is-last' : ''}`}
-              >
-                <span className="about-row-label">{row.label}</span>
-                <span className="about-row-value">{row.value}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="about-bento">
+            {devInfo.map((card) => {
+              const inner = (
+                <>
+                  <span className="about-card-label">
+                    <span className="about-card-icon" aria-hidden="true">
+                      {card.icon}
+                    </span>
+                    {card.label}
+                  </span>
+                  <span className="about-card-value">{card.value}</span>
+                </>
+              )
+              return card.href ? (
+                <a
+                  key={card.label}
+                  className="about-card is-link"
+                  href={card.href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {inner}
+                  <span className="about-card-arrow" aria-hidden="true">
+                    <LuExternalLink />
+                  </span>
+                </a>
+              ) : (
+                <div key={card.label} className="about-card">
+                  {inner}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </SettingGroup>
 

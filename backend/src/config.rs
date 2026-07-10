@@ -206,6 +206,12 @@ pub struct DynamicConfig {
     /// 决定报告页平台卡片的出现顺序，未列出的平台按默认顺序排在最后
     pub platform_order: Option<Vec<String>>,
     pub bangumi_user_agent: Option<String>,
+    /// X (Twitter) 平台
+    pub x_enabled: Option<bool>,
+    /// X 用户名（不含 @）
+    pub x_username: Option<String>,
+    /// App Bearer Token（developer.x.com 生成，只读同步用；分享走 Intent 不需要用户 OAuth）
+    pub x_bearer_token: Option<String>,
 
     // Tapp 外部 API 密钥（用于 Tapp API 声明系统）
     pub openweather_api_key: Option<String>,
@@ -416,6 +422,9 @@ impl Default for DynamicConfig {
             bangumi_access_token: None,
             platform_order: None,
             bangumi_user_agent: Some("haru/Myriad".to_string()),
+            x_enabled: None,
+            x_username: None,
+            x_bearer_token: None,
 
             // Tapp 外部 API 密钥
             openweather_api_key: None,

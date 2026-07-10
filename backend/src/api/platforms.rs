@@ -2,6 +2,7 @@ use axum::{extract::State, http::StatusCode, Json};
 use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
 use serde_json::{json, Value};
 
+use crate::db::schema_check::{default_platform_seeds, DefaultPlatformSeed};
 use crate::models::entities::platforms;
 
 /// 平台描述映射（数据库不存储描述，这里提供默认描述）
@@ -12,8 +13,49 @@ fn get_platform_description(name: &str) -> &'static str {
         "steam" => "Sync your game library and wishlist",
         "netease_music" => "Analyze your music taste and playlists",
         "bangumi" => "Sync your Bangumi collection, ratings, and watching status",
+        "x" => "Sync your X profile and posts; share via Web Intent",
         _ => "Connect and sync your data",
     }
+}
+
+fn platform_json_from_seed(seed: &DefaultPlatformSeed, id: i32) -> Value {
+    json!({
+        "id": id,
+        "name": seed.display_name,
+        "enabled": seed.enabled,
+        "icon": seed.icon,
+        "description": get_platform_description(seed.name),
+    })
+}
+
+fn platform_json_from_row(p: &platforms::Model) -> Value {
+    json!({
+        "id": p.id,
+        "name": p.display_name,
+        "enabled": p.enabled.unwrap_or(false),
+        "icon": p.icon.as_ref().unwrap_or(&p.name),
+        "description": get_platform_description(&p.name),
+    })
+}
+
+/// 用种子目录补齐 DB 中缺失的平台（仅内存响应，不写库；写库由 schema_check 负责）
+fn merge_missing_seed_platforms(mut platforms: Vec<Value>, present_names: &[String]) -> Vec<Value> {
+    let mut next_id = platforms
+        .iter()
+        .filter_map(|p| p.get("id").and_then(|v| v.as_i64()))
+        .max()
+        .unwrap_or(0) as i32
+        + 1;
+
+    for seed in default_platform_seeds() {
+        if present_names.iter().any(|n| n == seed.name) {
+            continue;
+        }
+        platforms.push(platform_json_from_seed(seed, next_id));
+        next_id += 1;
+    }
+
+    platforms
 }
 
 pub async fn list_platforms(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
@@ -24,75 +66,26 @@ pub async fn list_platforms(State(db): State<DatabaseConnection>) -> (StatusCode
         .await
     {
         Ok(platform_list) => {
-            let has_bangumi = platform_list.iter().any(|p| p.name == "bangumi");
-            let fallback_bangumi_id =
-                platform_list.iter().map(|p| p.id).max().unwrap_or_default() + 1;
+            let present_names: Vec<String> = platform_list.iter().map(|p| p.name.clone()).collect();
 
             let mut platforms: Vec<Value> = platform_list
                 .iter()
-                .map(|p| {
-                    json!({
-                        "id": p.id,
-                        "name": p.display_name,
-                        "enabled": p.enabled.unwrap_or(false),
-                        "icon": p.icon.as_ref().unwrap_or(&p.name),
-                        "description": get_platform_description(&p.name),
-                    })
-                })
+                .map(platform_json_from_row)
                 .collect();
 
-            if !has_bangumi {
-                platforms.push(json!({
-                    "id": fallback_bangumi_id,
-                    "name": "Bangumi",
-                    "enabled": false,
-                    "icon": "bangumi",
-                    "description": get_platform_description("bangumi"),
-                }));
-            }
+            // 兼容旧库尚未跑 seed 同步的情况：响应里补齐缺失平台
+            platforms = merge_missing_seed_platforms(platforms, &present_names);
 
             (StatusCode::OK, Json(json!({ "platforms": platforms })))
         }
         Err(e) => {
             tracing::error!("Failed to fetch platforms: {}", e);
-            // 降级到硬编码数据
-            let platforms = vec![
-                json!({
-                    "id": 1,
-                    "name": "GitHub",
-                    "enabled": true,
-                    "icon": "github",
-                    "description": "Aggregate your repositories, stars, and contributions",
-                }),
-                json!({
-                    "id": 2,
-                    "name": "Bilibili",
-                    "enabled": false,
-                    "icon": "bilibili",
-                    "description": "Track your favorites, bangumi, and viewing history",
-                }),
-                json!({
-                    "id": 3,
-                    "name": "Steam",
-                    "enabled": false,
-                    "icon": "steam",
-                    "description": "Sync your game library and wishlist",
-                }),
-                json!({
-                    "id": 4,
-                    "name": "Netease Music",
-                    "enabled": false,
-                    "icon": "netease",
-                    "description": "Analyze your music taste and playlists",
-                }),
-                json!({
-                    "id": 5,
-                    "name": "Bangumi",
-                    "enabled": false,
-                    "icon": "bangumi",
-                    "description": "Sync your Bangumi collection, ratings, and watching status",
-                }),
-            ];
+            // 降级到种子目录硬编码数据
+            let platforms: Vec<Value> = default_platform_seeds()
+                .iter()
+                .enumerate()
+                .map(|(i, seed)| platform_json_from_seed(seed, (i + 1) as i32))
+                .collect();
             (StatusCode::OK, Json(json!({ "platforms": platforms })))
         }
     }

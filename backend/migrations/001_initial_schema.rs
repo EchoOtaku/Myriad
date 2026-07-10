@@ -49,7 +49,8 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 插入默认平台
+        // 插入默认平台（与 backend/src/db/schema_check.rs::default_platform_seeds 保持同步）
+        // 旧库补种走 ensure_default_platforms，勿为单平台再开 migration。
         manager
             .exec_stmt(
                 Query::insert()
@@ -100,6 +101,14 @@ impl MigrationTrait for Migration {
                         "bangumi".into(),
                         "https://api.bgm.tv".into(),
                         "access_token".into(),
+                        false.into(),
+                    ])
+                    .values_panic([
+                        "x".into(),
+                        "X".into(),
+                        "x".into(),
+                        "https://api.x.com".into(),
+                        "bearer_token".into(),
                         false.into(),
                     ])
                     .on_conflict(OnConflict::column(Platforms::Name).do_nothing().to_owned())

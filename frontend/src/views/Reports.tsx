@@ -8,6 +8,7 @@ import {
   FaSteam,
   FaSync,
   FaTimes,
+  FaXTwitter,
   LuGlobe,
   SiBangumi,
   SiBilibili,
@@ -189,6 +190,16 @@ const PLATFORMS = [
     border: 'border-rose-200/20 dark:border-rose-800/20',
     widgetType: 'book',
   },
+  {
+    id: 'x',
+    name: 'X',
+    icon: <FaXTwitter />,
+    color: 'from-gray-800 to-black',
+    bg: 'bg-gray-50/10 dark:bg-neutral-900/10',
+    text: 'text-gray-900 dark:text-gray-100',
+    border: 'border-gray-200/20 dark:border-neutral-700/20',
+    widgetType: 'feed',
+  },
 ]
 
 const PLATFORM_NAME_TO_ID: Record<string, string> = {
@@ -196,6 +207,9 @@ const PLATFORM_NAME_TO_ID: Record<string, string> = {
   steam: 'steam',
   github: 'github',
   bangumi: 'bangumi',
+  x: 'x',
+  twitter: 'x',
+  'x (twitter)': 'x',
   'netease music': 'netease',
   'netease cloud music': 'netease',
   'netease cloudmusic': 'netease',

@@ -400,6 +400,62 @@ async fn generate_platform_reports_internal(
                 }
             }
 
+            // 10. 对于 X 平台，用真实统计覆盖不稳定的 AI 字段
+            if platform == "x" {
+                if !card_visuals.is_object() {
+                    card_visuals = json!({});
+                }
+
+                if let crate::services::smart_filter::ContentAnalysis::X(analysis) =
+                    &metadata.content_analysis
+                {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert(
+                            "stats".to_string(),
+                            json!({
+                                "followers": metadata.user_summary.stats.follower_count.unwrap_or(0),
+                                "following": metadata.user_summary.stats.following_count.unwrap_or(0),
+                                "posts": analysis.engagement_stats.total_posts,
+                                "likes_received": analysis.engagement_stats.total_likes_received,
+                                "retweets_received": analysis.engagement_stats.total_retweets_received,
+                                "replies_received": analysis.engagement_stats.total_replies_received,
+                                "impressions": analysis.engagement_stats.total_impressions,
+                                "liked_posts": analysis.engagement_stats.liked_posts_count,
+                            }),
+                        );
+                        obj.insert(
+                            "top_posts".to_string(),
+                            json!(analysis.top_posts),
+                        );
+                        obj.insert(
+                            "recent_posts".to_string(),
+                            json!(analysis.recent_posts),
+                        );
+                        obj.insert(
+                            "language_distribution".to_string(),
+                            json!(analysis.language_distribution),
+                        );
+                        // library_items：用热门帖子文本做卡片展示
+                        let library_items: Vec<Value> = analysis
+                            .top_posts
+                            .iter()
+                            .take(12)
+                            .map(|p| {
+                                json!({
+                                    "id": p.id,
+                                    "title": p.text.chars().take(80).collect::<String>(),
+                                    "text": p.text,
+                                    "like_count": p.like_count,
+                                    "retweet_count": p.retweet_count,
+                                    "created_at": p.created_at,
+                                })
+                            })
+                            .collect();
+                        obj.insert("library_items".to_string(), json!(library_items));
+                    }
+                }
+            }
+
             let mut insights = ai_insights;
 
             // 如果AI没有生成洞察，使用备用逻辑
@@ -451,6 +507,22 @@ async fn generate_platform_reports_internal(
                             .max_by_key(|(_, count)| *count)
                         {
                             insights.push(format!("常见标签：{}", tag));
+                        }
+                    }
+                    crate::services::smart_filter::ContentAnalysis::X(analysis) => {
+                        insights.push(analysis.post_summary.clone());
+                        insights.push(format!(
+                            "互动：获赞 {} · 转推 {} · 评论 {}",
+                            analysis.engagement_stats.total_likes_received,
+                            analysis.engagement_stats.total_retweets_received,
+                            analysis.engagement_stats.total_replies_received
+                        ));
+                        if let Some((lang, _)) = analysis
+                            .language_distribution
+                            .iter()
+                            .max_by_key(|(_, count)| *count)
+                        {
+                            insights.push(format!("主要语言：{}", lang));
                         }
                     }
                 }
@@ -680,6 +752,18 @@ pub async fn generate_comprehensive_report(
                     all_interests.push(tag.clone());
                 }
             }
+            crate::services::smart_filter::ContentAnalysis::X(analysis) => {
+                all_activities.push("发帖与互动".to_string());
+                for lang in analysis.language_distribution.keys() {
+                    all_interests.push(format!("lang:{}", lang));
+                }
+                for post in analysis.top_posts.iter().take(3) {
+                    let snippet: String = post.text.chars().take(24).collect();
+                    if !snippet.is_empty() {
+                        all_interests.push(snippet);
+                    }
+                }
+            }
         }
     }
 
@@ -843,6 +927,12 @@ pub async fn generate_all_reports(
             config.bangumi_enabled.unwrap_or(
                 config.bangumi_username.as_ref().is_some()
                     || config.bangumi_access_token.as_ref().is_some(),
+            ),
+        ),
+        (
+            "x",
+            config.x_enabled.unwrap_or(
+                config.x_username.as_ref().is_some() && config.x_bearer_token.as_ref().is_some(),
             ),
         ),
     ]
@@ -1221,6 +1311,11 @@ async fn generate_ai_report(
             "用温和但有洞察力的口吻，分析用户在 Bangumi 上的收藏结构、评分偏好、正在追的作品和长期兴趣。",
             "card_visuals必须包含 'taste_profile' (字符串), 'status_counts' (对象), 'score_distribution' (对象), 'favorite_tags' (字符串数组), 'top_subjects' (对象数组，字段至少包含 title 和 rate)。"
         ),
+        "x" => (
+            "你是一个熟悉社交媒体生态的 X (Twitter) 观察者，擅长从发帖节奏、互动数据和话题偏好读出账号人设。",
+            "用简洁有锋芒的互联网口吻，分析用户的发帖风格、互动热度、话题关注点和账号影响力。",
+            "card_visuals必须包含 'vibe' (字符串，账号气质标签), 'engagement_level' (字符串，如'高互动'/'沉浸观察者'/'脉冲发帖'), 'signature_topics' (字符串数组，3-6个话题), 'top_posts' (对象数组，字段至少 text 和 like_count), 'stats' (对象，含 followers/following/posts/likes_received)。"
+        ),
         _ => (
             "你是一个专业的数据分析师，客观理性。",
             "用专业客观的口吻分析用户数据。",
@@ -1532,6 +1627,46 @@ fn generate_mock_report(
                     "subject_type_distribution": analysis.subject_type_distribution,
                     "favorite_tags": favorite_tags,
                     "top_subjects": analysis.top_rated_subjects.iter().take(5).collect::<Vec<_>>()
+                }),
+            )
+        }
+        crate::services::smart_filter::ContentAnalysis::X(analysis) => {
+            let top_text = analysis
+                .top_posts
+                .first()
+                .map(|p| p.text.chars().take(40).collect::<String>())
+                .unwrap_or_else(|| "暂无热帖".to_string());
+            (
+                format!(
+                    "@{} 的时间线像一场持续在线的数字独白。",
+                    metadata.user_summary.username
+                ),
+                vec![
+                    analysis.post_summary.clone(),
+                    format!(
+                        "互动火力：获赞 {} · 转推 {}",
+                        analysis.engagement_stats.total_likes_received,
+                        analysis.engagement_stats.total_retweets_received
+                    ),
+                    format!("代表帖：{}", top_text),
+                ],
+                json!({
+                    "vibe": "在线观察者",
+                    "engagement_level": if analysis.engagement_stats.total_likes_received > 1000 {
+                        "高互动"
+                    } else if analysis.engagement_stats.total_posts > 20 {
+                        "活跃发帖"
+                    } else {
+                        "低调输出"
+                    },
+                    "signature_topics": ["互联网", "日常", "观点"],
+                    "stats": {
+                        "followers": metadata.user_summary.stats.follower_count.unwrap_or(0),
+                        "following": metadata.user_summary.stats.following_count.unwrap_or(0),
+                        "posts": analysis.engagement_stats.total_posts,
+                        "likes_received": analysis.engagement_stats.total_likes_received,
+                    },
+                    "top_posts": analysis.top_posts.iter().take(5).collect::<Vec<_>>(),
                 }),
             )
         }

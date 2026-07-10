@@ -2,6 +2,7 @@ import {
   BangumiIcon,
   FaGithub,
   FaSteam,
+  FaXTwitter,
   SiBilibili,
   SiNeteasecloudmusic,
 } from '@lib/icons'
@@ -33,6 +34,10 @@ const PlatformIcon: React.FC<PlatformIconProps> = React.memo(
         return <SiNeteasecloudmusic className={className} style={style} />
       case 'bangumi':
         return <BangumiIcon className={className} style={style} />
+      case 'x':
+      case 'twitter':
+      case 'x (twitter)':
+        return <FaXTwitter className={className} style={style} />
       default:
         return (
           <span className={className} style={style}>

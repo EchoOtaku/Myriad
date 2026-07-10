@@ -46,6 +46,37 @@ pub enum ContentAnalysis {
     GitHub(GitHubAnalysis),
     Netease(NeteaseAnalysis),
     Bangumi(BangumiAnalysis),
+    X(XAnalysis),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XAnalysis {
+    pub post_summary: String,
+    pub engagement_stats: XEngagementStats,
+    pub recent_posts: Vec<XPostItem>,
+    pub top_posts: Vec<XPostItem>,
+    pub language_distribution: std::collections::HashMap<String, usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XEngagementStats {
+    pub total_posts: usize,
+    pub total_likes_received: i64,
+    pub total_retweets_received: i64,
+    pub total_replies_received: i64,
+    pub total_impressions: i64,
+    pub liked_posts_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XPostItem {
+    pub id: String,
+    pub text: String,
+    pub created_at: Option<String>,
+    pub like_count: i64,
+    pub retweet_count: i64,
+    pub reply_count: i64,
+    pub impression_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -302,6 +333,16 @@ impl SmartFilter {
             }
         }
 
+        if let Some(x_data) = all_data.get("x") {
+            match SmartFilter::filter("x", x_data) {
+                Ok(result) => {
+                    Self::save_platform_cache_atomic("x", &result)?;
+                    processed_count += 1;
+                }
+                Err(e) => tracing::warn!("X filter failed: {}", e),
+            }
+        }
+
         // Flush unknown content stats to disk
         super::content_databases::learning::flush_unknown_stats();
 
@@ -348,6 +389,7 @@ impl SmartFilter {
             "github" => Self::filter_github(raw_data),
             "netease" => Self::filter_netease(raw_data),
             "bangumi" => Self::filter_bangumi(raw_data),
+            "x" => Self::filter_x(raw_data),
             _ => Err(format!("Unsupported platform: {}", platform)),
         }
     }
@@ -949,6 +991,145 @@ impl SmartFilter {
         })
     }
 
+    fn filter_x(data: &Value) -> Result<SmartFilteredData, String> {
+        let user = data.get("user").unwrap_or(&Value::Null);
+        let username = user
+            .get("username")
+            .or_else(|| user.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let user_id = user
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let metrics = user.get("public_metrics").cloned().unwrap_or(Value::Null);
+        let follower_count = metrics
+            .get("followers_count")
+            .and_then(|v| v.as_i64());
+        let following_count = metrics
+            .get("following_count")
+            .and_then(|v| v.as_i64());
+        let tweet_count_metric = metrics
+            .get("tweet_count")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+
+        let tweets = data
+            .get("tweets")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut language_distribution = std::collections::HashMap::new();
+        let mut total_likes = 0i64;
+        let mut total_retweets = 0i64;
+        let mut total_replies = 0i64;
+        let mut total_impressions = 0i64;
+
+        let mut post_items: Vec<XPostItem> = Vec::new();
+        for tweet in &tweets {
+            let id = tweet
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let text = tweet
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let created_at = tweet
+                .get("created_at")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let pm = tweet.get("public_metrics").cloned().unwrap_or(Value::Null);
+            let like_count = pm.get("like_count").and_then(|v| v.as_i64()).unwrap_or(0);
+            let retweet_count = pm
+                .get("retweet_count")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let reply_count = pm.get("reply_count").and_then(|v| v.as_i64()).unwrap_or(0);
+            let impression_count = pm
+                .get("impression_count")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            total_likes += like_count;
+            total_retweets += retweet_count;
+            total_replies += reply_count;
+            total_impressions += impression_count;
+
+            if let Some(lang) = tweet.get("lang").and_then(|v| v.as_str()) {
+                *language_distribution
+                    .entry(lang.to_string())
+                    .or_insert(0) += 1;
+            }
+
+            post_items.push(XPostItem {
+                id,
+                text,
+                created_at,
+                like_count,
+                retweet_count,
+                reply_count,
+                impression_count,
+            });
+        }
+
+        let mut top_posts = post_items.clone();
+        top_posts.sort_by(|a, b| {
+            (b.like_count + b.retweet_count * 2)
+                .cmp(&(a.like_count + a.retweet_count * 2))
+        });
+        top_posts.truncate(10);
+
+        let recent_posts: Vec<XPostItem> = post_items.into_iter().take(20).collect();
+        let fetched_count = tweets.len();
+
+        let post_summary = format!(
+            "X 账号 @{} 共有约 {} 条帖子，抓取 {} 条时间线，累计获赞 {}，转推 {}，评论 {}",
+            username,
+            tweet_count_metric,
+            fetched_count,
+            total_likes,
+            total_retweets,
+            total_replies
+        );
+
+        Ok(SmartFilteredData {
+            platform: "x".to_string(),
+            user_summary: UserSummary {
+                username,
+                user_id,
+                level: None,
+                stats: UserStats {
+                    follower_count,
+                    following_count,
+                    total_content: fetched_count,
+                },
+            },
+            content_analysis: ContentAnalysis::X(XAnalysis {
+                post_summary,
+                engagement_stats: XEngagementStats {
+                    total_posts: fetched_count,
+                    total_likes_received: total_likes,
+                    total_retweets_received: total_retweets,
+                    total_replies_received: total_replies,
+                    total_impressions,
+                    // 已放弃用户 OAuth，不再抓 likes；字段保留兼容旧报告结构
+                    liked_posts_count: 0,
+                },
+                recent_posts,
+                top_posts,
+                language_distribution,
+            }),
+            raw_unknown_content: vec![],
+        })
+    }
+
     fn bangumi_subject_type_label(subject_type: i64) -> &'static str {
         match subject_type {
             1 => "book",
@@ -1071,6 +1252,9 @@ impl SmartFilter {
             "bangumi" => {
                 // Bangumi 数据已按 { user, collections } 保存，不需要特殊预处理
             }
+            "x" => {
+                // X 数据已按 { user, tweets } 保存（Intent 分享，不拉 likes）
+            }
             _ => {}
         }
 
@@ -1185,6 +1369,63 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn filter_x_builds_engagement_summary() {
+        let raw = serde_json::json!({
+            "user": {
+                "id": "42",
+                "username": "demo",
+                "name": "Demo User",
+                "public_metrics": {
+                    "followers_count": 100,
+                    "following_count": 10,
+                    "tweet_count": 50
+                }
+            },
+            "tweets": [
+                {
+                    "id": "1",
+                    "text": "hello",
+                    "lang": "en",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "public_metrics": {
+                        "like_count": 5,
+                        "retweet_count": 1,
+                        "reply_count": 0,
+                        "impression_count": 20
+                    }
+                },
+                {
+                    "id": "2",
+                    "text": "world",
+                    "lang": "en",
+                    "created_at": "2026-01-02T00:00:00Z",
+                    "public_metrics": {
+                        "like_count": 50,
+                        "retweet_count": 10,
+                        "reply_count": 2,
+                        "impression_count": 200
+                    }
+                }
+            ]
+        });
+
+        let filtered = SmartFilter::filter("x", &raw).expect("filter x");
+        assert_eq!(filtered.platform, "x");
+        assert_eq!(filtered.user_summary.username, "demo");
+        assert_eq!(filtered.user_summary.stats.follower_count, Some(100));
+
+        match filtered.content_analysis {
+            ContentAnalysis::X(analysis) => {
+                assert_eq!(analysis.engagement_stats.total_posts, 2);
+                assert_eq!(analysis.engagement_stats.total_likes_received, 55);
+                assert_eq!(analysis.top_posts[0].id, "2");
+                assert!(analysis.post_summary.contains("@demo"));
+            }
+            other => panic!("expected X analysis, got {:?}", other),
         }
     }
 }

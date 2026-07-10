@@ -2,7 +2,7 @@
  * Updater 内联面板 — 重设计版。
  *
  * 层次：状态卡（hero）→ 新版本说明卡 → 通道单选卡片 → 折叠的高级区。
- * 视觉延续 about-list 的玻璃卡片风格。
+ * 视觉延续 about-card 的玻璃卡片风格。
  */
 
 .updater-panel {

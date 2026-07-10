@@ -4389,6 +4389,28 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/steam/game/{app_id}",
                 get(api::steam::get_steam_game_details),
             )
+            // X (Twitter) — 直连调试接口会带 bearer query，必须登录；正式同步走配置 + profile fetch
+            .route(
+                "/api/x/user",
+                get(api::x::get_x_user)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/x/user/info",
+                get(api::x::get_x_user_info)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // 分享到 X：仅生成 Intent 链接（不代发帖、不 OAuth）
+            .route(
+                "/api/x/share/status",
+                get(api::x::share_status)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/x/share",
+                post(api::x::share_to_x)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
             .with_state(db);
 
         // Merge with base router

@@ -13,7 +13,141 @@ use std::collections::HashSet;
 ///
 /// 修改此版本号将触发下次启动时的 schema 比对和补全。
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
-const SCHEMA_VERSION: &str = "2026.03.13.1";
+///
+/// 变更日志：
+/// - 2026.07.10.1: 默认平台种子同步（含 X），与 001 插入列表对齐
+const SCHEMA_VERSION: &str = "2026.07.10.1";
+
+/// 内置平台种子定义（与 migrations/001_initial_schema.rs 中 INSERT 保持同步）
+///
+/// - **新库**：001 migration 写入这些行
+/// - **旧库 / 新增平台**：`ensure_default_platforms` 在启动 schema 检查时补齐缺失行
+///
+/// 新增平台时请同时改：
+/// 1. 本数组
+/// 2. `001_initial_schema.rs` 的 INSERT
+/// 3. 业务配置层（DynamicConfig / config API / fetcher 等）
+#[derive(Debug, Clone, Copy)]
+pub struct DefaultPlatformSeed {
+    pub name: &'static str,
+    pub display_name: &'static str,
+    pub icon: &'static str,
+    pub api_endpoint: &'static str,
+    pub auth_type: &'static str,
+    /// 仅种子默认值；用户启用状态由 DynamicConfig / 配置页控制
+    pub enabled: bool,
+}
+
+/// 返回当前代码期望的默认平台目录（唯一权威列表，供 schema 同步与 API 降级使用）
+pub fn default_platform_seeds() -> &'static [DefaultPlatformSeed] {
+    &[
+        DefaultPlatformSeed {
+            name: "github",
+            display_name: "GitHub",
+            icon: "github",
+            api_endpoint: "https://api.github.com",
+            auth_type: "token",
+            enabled: true,
+        },
+        DefaultPlatformSeed {
+            name: "bilibili",
+            display_name: "Bilibili",
+            icon: "bilibili",
+            api_endpoint: "https://api.bilibili.com",
+            auth_type: "uid",
+            enabled: false,
+        },
+        DefaultPlatformSeed {
+            name: "steam",
+            display_name: "Steam",
+            icon: "steam",
+            api_endpoint: "https://api.steampowered.com",
+            auth_type: "api_key",
+            enabled: false,
+        },
+        DefaultPlatformSeed {
+            name: "netease_music",
+            display_name: "Netease Music",
+            icon: "netease",
+            api_endpoint: "https://music.163.com",
+            auth_type: "user_id",
+            enabled: false,
+        },
+        DefaultPlatformSeed {
+            name: "bangumi",
+            display_name: "Bangumi",
+            icon: "bangumi",
+            api_endpoint: "https://api.bgm.tv",
+            auth_type: "access_token",
+            enabled: false,
+        },
+        DefaultPlatformSeed {
+            name: "x",
+            display_name: "X",
+            icon: "x",
+            api_endpoint: "https://api.x.com",
+            auth_type: "bearer_token",
+            enabled: false,
+        },
+    ]
+}
+
+/// 将缺失的默认平台行补入 `platforms` 表（ON CONFLICT DO NOTHING，不覆盖用户已有配置）
+///
+/// 这是「数据表种子同步」入口：结构由列/索引检查负责，默认业务行由本函数负责。
+pub async fn ensure_default_platforms(db: &DatabaseConnection) -> Result<usize, DbErr> {
+    // 表不存在则跳过（ensure_tables_exist 会在此之前处理）
+    let existing_tables = get_existing_tables(db).await?;
+    if !existing_tables.contains("platforms") {
+        tracing::debug!("platforms table missing, skip default platform seed");
+        return Ok(0);
+    }
+
+    let seeds = default_platform_seeds();
+    let mut inserted = 0usize;
+
+    for seed in seeds {
+        // 使用参数化 Statement，避免字符串拼接注入；ON CONFLICT (name) DO NOTHING
+        let sql = r#"
+            INSERT INTO platforms (name, display_name, icon, api_endpoint, auth_type, enabled)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (name) DO NOTHING
+        "#;
+
+        let result = db
+            .execute(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                sql,
+                [
+                    seed.name.into(),
+                    seed.display_name.into(),
+                    seed.icon.into(),
+                    seed.api_endpoint.into(),
+                    seed.auth_type.into(),
+                    seed.enabled.into(),
+                ],
+            ))
+            .await?;
+
+        let rows = result.rows_affected();
+        if rows > 0 {
+            tracing::info!(
+                "📦 Seeded default platform row: {} ({})",
+                seed.name,
+                seed.display_name
+            );
+            inserted += rows as usize;
+        }
+    }
+
+    if inserted > 0 {
+        tracing::info!("✅ Default platforms seed: inserted {} missing row(s)", inserted);
+    } else {
+        tracing::debug!("Default platforms seed: all rows already present");
+    }
+
+    Ok(inserted)
+}
 
 /// 列定义
 #[derive(Debug, Clone)]
@@ -4500,6 +4634,13 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
         changes_made += tables_created as usize;
     }
 
+    // 1.6 同步默认平台种子行（结构齐全后再补业务目录数据）
+    match ensure_default_platforms(db).await {
+        Ok(n) if n > 0 => changes_made += n,
+        Ok(_) => {}
+        Err(e) => tracing::warn!("Default platforms seed warning: {}", e),
+    }
+
     // 2. 获取现有表（更新后重新获取）
     let existing_tables = get_existing_tables(db).await?;
     let expected_tables = get_expected_schema();
@@ -4617,6 +4758,12 @@ pub async fn force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
 
 /// 强制 schema 检查的内部实现
 async fn do_force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // 先确保表存在，再同步种子行
+    let _ = ensure_tables_exist(db).await?;
+    if let Err(e) = ensure_default_platforms(db).await {
+        tracing::warn!("Force check: default platforms seed warning: {}", e);
+    }
+
     let existing_tables = get_existing_tables(db).await?;
     let expected_tables = get_expected_schema();
 
@@ -4652,6 +4799,31 @@ mod tests {
         assert!(table_names.contains(&"users"));
         assert!(table_names.contains(&"configurations"));
         assert!(table_names.contains(&"platforms"));
+    }
+
+    #[test]
+    fn test_default_platform_seeds_include_x_and_core() {
+        let seeds = default_platform_seeds();
+        let names: Vec<&str> = seeds.iter().map(|s| s.name).collect();
+        for required in [
+            "github",
+            "bilibili",
+            "steam",
+            "netease_music",
+            "bangumi",
+            "x",
+        ] {
+            assert!(
+                names.contains(&required),
+                "missing default platform seed: {}",
+                required
+            );
+        }
+        // name 唯一
+        let mut sorted = names.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), names.len());
     }
 
     #[test]
