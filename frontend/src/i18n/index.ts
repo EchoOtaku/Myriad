@@ -794,6 +794,7 @@ export interface TranslationKeys {
     reportNetease: string
     reportBangumi: string
     socialNetwork: string
+    gamePresence: string
     library: string
     dataReport: string
     multiPlatformAggregation: string
@@ -1421,6 +1422,39 @@ export interface TranslationKeys {
     close: string
     delete: string
     longPressToEdit: string
+  }
+
+  // 游戏公开状态小组件
+  gamePresenceWidget: {
+    settingsTitle: string
+    selectPlatform: string
+    selectGame: string
+    hoyolab: string
+    xbox: string
+    psn: string
+    genshin: string
+    hsr: string
+    zzz: string
+    uidLabel: string
+    gamertagLabel: string
+    onlineIdLabel: string
+    publicOnlyHint: string
+    save: string
+    close: string
+    longPressHint: string
+    longPressToSetup: string
+    notConfigured: string
+    fetchFailed: string
+    playing: string
+    online: string
+    offline: string
+    nowPlaying: string
+    statusUnknown: string
+    noGameActivity: string
+    showcase: string
+    showcaseEmpty: string
+    accountId: string
+    degraded: string
   }
 
   // Tapp 相关

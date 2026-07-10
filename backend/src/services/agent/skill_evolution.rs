@@ -111,6 +111,14 @@ pub struct SkillEvolution {
 impl SkillEvolution {
     /// 创建新的进化引擎（从文件恢复统计）
     pub async fn new(skills_dir: PathBuf) -> Self {
+        // 确保目录存在：auto-create 写技能文件、flush 写 _stats.json 都依赖它
+        if let Err(e) = tokio::fs::create_dir_all(&skills_dir).await {
+            tracing::warn!(
+                "[SkillEvolution] Failed to create skills dir {}: {}",
+                skills_dir.display(),
+                e
+            );
+        }
         let stats = Self::load_stats_from_file(&skills_dir).await;
         let gaps = Self::load_gaps_from_file(&skills_dir).await;
 
@@ -545,7 +553,11 @@ impl SkillEvolution {
             return Err("AI generated instructions too short".to_string());
         }
 
-        evolution.improve_skill(skill_id, &new_instructions).await?;
+        // 绕过冷却检查：调用方 on_execution_complete 已做过冷却判定，
+        // 并且刚写入了"改进中"时间戳标记——不绕过的话这里会永远撞上自己的标记
+        evolution
+            .improve_skill_inner(skill_id, &new_instructions, true)
+            .await?;
 
         tracing::info!(
             skill_id = skill_id,
@@ -767,11 +779,25 @@ origin: agent_generated
 
     // ==================== 改进 ====================
 
-    /// 改进 Skill：更新指令内容（仅限 Agent 生成的 Skill）
+    /// 改进 Skill：更新指令内容（仅限 Agent 生成的 Skill），带冷却检查
     pub async fn improve_skill(
         &self,
         skill_id: &str,
         new_instructions: &str,
+    ) -> Result<(), String> {
+        self.improve_skill_inner(skill_id, new_instructions, false)
+            .await
+    }
+
+    /// 改进 Skill 内部实现
+    ///
+    /// `bypass_cooldown`: AI 自动改进路径由 on_execution_complete 统一做冷却判定，
+    /// 且已写入"改进中"时间戳防并发，此处必须跳过冷却检查。
+    async fn improve_skill_inner(
+        &self,
+        skill_id: &str,
+        new_instructions: &str,
+        bypass_cooldown: bool,
     ) -> Result<(), String> {
         let registry = get_skill_registry().ok_or("Skill registry not initialized")?;
         let skill = registry
@@ -784,7 +810,7 @@ origin: agent_generated
         }
 
         // 检查冷却时间
-        {
+        if !bypass_cooldown {
             let stats = self.stats.lock().await;
             if let Some(stat) = stats.get(skill_id) {
                 if let Some(last) = stat.last_improved_at {
@@ -814,7 +840,20 @@ origin: agent_generated
 
         let new_content = if let Some(idx) = original.find("\n---\n") {
             let frontmatter = &original[..idx];
-            let updated_fm = frontmatter.replace("agent_generated", "agent_improved");
+            // 逐行处理：只改 origin 行（避免误伤 name/description 中的同名文本）；
+            // 丢弃过期的 parameters 行，重载时会从新指令的 ${} 槽位重新提取
+            let updated_fm = frontmatter
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("parameters:"))
+                .map(|l| {
+                    if l.trim_start().starts_with("origin:") {
+                        "origin: agent_improved"
+                    } else {
+                        l
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
             format!("{}\n---\n\n{}\n", updated_fm, new_instructions)
         } else {
             return Err("Invalid skill file format".to_string());

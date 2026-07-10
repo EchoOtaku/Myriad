@@ -17,6 +17,7 @@ import { QuickStatsWidget } from '../components/widgets/QuickStatsWidget'
 import { QuoteWidget } from '../components/widgets/QuoteWidget'
 import { RecentActivityWidget } from '../components/widgets/RecentActivityWidget'
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
+import { GamePresenceWidget } from '../components/widgets/GamePresenceWidget'
 import { SocialNetworkWidget } from '../components/widgets/SocialNetworkWidget'
 import { WeatherWidget } from '../components/widgets/WeatherWidget'
 import { WelcomeWidget } from '../components/widgets/WelcomeWidget'
@@ -193,6 +194,13 @@ export default function Home() {
         defaultSize: '1x1',
         component: SocialNetworkWidget,
         supportedSizes: ['1x1', '2x1', '2x2'],
+      },
+      {
+        id: 'game-presence',
+        name: t.widgets.gamePresence,
+        defaultSize: '4x2',
+        component: GamePresenceWidget,
+        supportedSizes: ['4x2'],
       },
     ],
     [t],

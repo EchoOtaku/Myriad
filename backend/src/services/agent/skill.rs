@@ -120,6 +120,14 @@ pub struct SkillRegistry {
 impl SkillRegistry {
     /// 创建并从目录加载所有 Skills
     pub async fn new(skills_dir: PathBuf) -> Self {
+        // 确保目录存在，否则技能自动创建 / 统计持久化会全部写盘失败
+        if let Err(e) = tokio::fs::create_dir_all(&skills_dir).await {
+            tracing::warn!(
+                "[SkillRegistry] Failed to create skills dir {}: {}",
+                skills_dir.display(),
+                e
+            );
+        }
         let registry = Self {
             skills: RwLock::new(HashMap::new()),
             skills_dir,
@@ -130,33 +138,24 @@ impl SkillRegistry {
 
     /// 从目录加载所有 .md 文件
     async fn load_all(&self) {
-        let new_skills = self.load_all_into_map().await;
-        if !new_skills.is_empty() {
+        if let Some(new_skills) = self.load_all_into_map().await {
             let mut skills = self.skills.write().await;
-            for (id, skill) in new_skills {
-                skills.insert(id, skill);
-            }
+            *skills = new_skills;
         }
     }
 
     /// 加载所有 Skill 文件到独立 HashMap（不写入 self.skills）
-    async fn load_all_into_map(&self) -> HashMap<String, Skill> {
+    ///
+    /// 返回 `None` 表示目录不可读（IO 错误）；`Some(空 map)` 表示目录合法但没有技能。
+    async fn load_all_into_map(&self) -> Option<HashMap<String, Skill>> {
         let dir = &self.skills_dir;
         let mut result = HashMap::new();
-
-        if !dir.exists() {
-            tracing::debug!(
-                "[SkillRegistry] Skills directory not found: {}",
-                dir.display()
-            );
-            return result;
-        }
 
         let mut entries = match tokio::fs::read_dir(dir).await {
             Ok(entries) => entries,
             Err(e) => {
                 tracing::warn!("[SkillRegistry] Failed to read skills dir: {}", e);
-                return result;
+                return None;
             }
         };
 
@@ -181,7 +180,7 @@ impl SkillRegistry {
             count,
             dir.display()
         );
-        result
+        Some(result)
     }
 
     /// 解析单个 Skill 文件（YAML frontmatter + Markdown body）
@@ -425,16 +424,18 @@ impl SkillRegistry {
 
     /// 重新加载所有 Skills
     ///
-    /// 先加载到临时容器，成功后再替换，避免加载失败导致注册表清空
+    /// 先加载到临时容器，成功后再替换。仅当目录不可读（IO 错误）时保留旧注册表；
+    /// 目录合法为空时正常清空，否则被删除/淘汰的技能会以"僵尸"形式残留在内存中。
     pub async fn reload(&self) {
-        // 加载到新的临时 HashMap
-        let new_skills = self.load_all_into_map().await;
-        if new_skills.is_empty() {
-            tracing::warn!("[SkillRegistry] reload produced empty result, keeping existing skills");
-            return;
+        match self.load_all_into_map().await {
+            Some(new_skills) => {
+                let mut skills = self.skills.write().await;
+                *skills = new_skills;
+            }
+            None => {
+                tracing::warn!("[SkillRegistry] reload failed to read dir, keeping existing skills");
+            }
         }
-        let mut skills = self.skills.write().await;
-        *skills = new_skills;
     }
 }
 

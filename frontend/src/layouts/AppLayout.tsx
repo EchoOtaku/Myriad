@@ -47,6 +47,11 @@ const ReportCardSettingsModal = lazy(() =>
     default: m.ReportCardSettingsModal,
   })),
 )
+const GamePresenceSettingsModal = lazy(() =>
+  import('../components/widgets/GamePresenceWidget').then((m) => ({
+    default: m.GamePresenceSettingsModal,
+  })),
+)
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -302,6 +307,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <Suspense fallback={null}>
         <SocialNetworkSettingsModal />
         <ReportCardSettingsModal />
+        <GamePresenceSettingsModal />
       </Suspense>
 
       {/* 站点底部信息 */}

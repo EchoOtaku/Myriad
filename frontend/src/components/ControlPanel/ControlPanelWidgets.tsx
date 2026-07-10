@@ -25,6 +25,7 @@ import { QuickStatsWidget } from '../widgets/QuickStatsWidget'
 import { QuoteWidget } from '../widgets/QuoteWidget'
 import { RecentActivityWidget } from '../widgets/RecentActivityWidget'
 import { ReportCardWidget } from '../widgets/ReportCardWidget'
+import { GamePresenceWidget } from '../widgets/GamePresenceWidget'
 import { SocialNetworkWidget } from '../widgets/SocialNetworkWidget'
 import { WeatherWidget } from '../widgets/WeatherWidget'
 import { WelcomeWidget } from '../widgets/WelcomeWidget'
@@ -43,6 +44,11 @@ const WIDGET_BASE_CONFIG = {
     defaultSize: '1x1' as const,
     component: SocialNetworkWidget,
     supportedSizes: ['1x1', '2x1', '2x2'] as WidgetSize[],
+  },
+  'game-presence': {
+    defaultSize: '4x2' as const,
+    component: GamePresenceWidget,
+    supportedSizes: ['4x2'] as WidgetSize[],
   },
   'quick-stats': {
     defaultSize: '4x2' as const,
@@ -133,6 +139,11 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
           id: 'social-network',
           name: t.widgets.socialNetwork,
           ...WIDGET_BASE_CONFIG['social-network'],
+        },
+        {
+          id: 'game-presence',
+          name: t.widgets.gamePresence,
+          ...WIDGET_BASE_CONFIG['game-presence'],
         },
         {
           id: 'quick-stats',

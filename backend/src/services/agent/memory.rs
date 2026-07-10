@@ -249,8 +249,10 @@ impl TfIdfIndex {
             *v /= total;
         }
 
-        self.tf.insert(doc_id.to_string(), term_freq);
-        self.doc_count += 1;
+        // 覆盖已有文档时不增加计数，防止 doc_count 膨胀导致 IDF 失真
+        if self.tf.insert(doc_id.to_string(), term_freq).is_none() {
+            self.doc_count += 1;
+        }
         self.idf_dirty = true;
     }
 
@@ -420,6 +422,8 @@ pub struct AgentMemory {
     entries: RwLock<HashMap<String, MemoryEntry>>,
     /// TF-IDF 搜索索引
     index: RwLock<TfIdfIndex>,
+    /// 有低优先级变更（访问计数等）尚未落盘，由后台维护任务批量 flush
+    dirty: std::sync::atomic::AtomicBool,
 }
 
 /// 索引文件名
@@ -481,6 +485,7 @@ impl AgentMemory {
             memory_dir,
             entries: RwLock::new(entries),
             index: RwLock::new(idx),
+            dirty: std::sync::atomic::AtomicBool::new(false),
         };
 
         if count > 0 {
@@ -528,7 +533,16 @@ impl AgentMemory {
         related_capabilities: Vec<String>,
     ) {
         // 去重检查：如果已有高度相似的记忆，跳过或合并
-        if self.should_dedup_or_merge(content, &memory_type).await {
+        if self
+            .should_dedup_or_merge(
+                content,
+                &memory_type,
+                &entities,
+                &related_capabilities,
+                importance,
+            )
+            .await
+        {
             return;
         }
 
@@ -881,8 +895,15 @@ impl AgentMemory {
     /// 检查是否应该去重或合并（返回 true 表示跳过写入）
     ///
     /// 合并策略：同类型且相似度 > 0.70 时，**用新内容覆盖旧内容**并提升重要性，
-    /// 保证纠错/更新信息能正确替换过时记忆。
-    async fn should_dedup_or_merge(&self, new_content: &str, new_type: &MemoryType) -> bool {
+    /// 同时并入新记忆的实体/能力关联，保证纠错/更新信息能正确替换过时记忆。
+    async fn should_dedup_or_merge(
+        &self,
+        new_content: &str,
+        new_type: &MemoryType,
+        new_entities: &[String],
+        new_capabilities: &[String],
+        new_importance: f32,
+    ) -> bool {
         let mut idx = self.index.write().await;
         let similar = idx.search(new_content, 3);
         drop(idx);
@@ -922,9 +943,23 @@ impl AgentMemory {
                                 "[Memory] Merge: replacing old content with updated version"
                             );
                             entry.content = new_content.to_string();
-                            entry.importance = (entry.importance + 0.1).min(1.0);
+                            // 重要性取「旧值+0.1」与新记忆重要性的较大者，
+                            // 避免高重要性纠错（0.9）合并进旧记忆后被压低
+                            entry.importance =
+                                (entry.importance + 0.1).max(new_importance).min(1.0);
                             entry.access_count += 1;
                             entry.last_accessed_at = Some(Utc::now().to_rfc3339());
+                            // 并入新记忆的实体/能力关联（旧逻辑直接丢弃新关联）
+                            for ent in new_entities {
+                                if !entry.entities.contains(ent) {
+                                    entry.entities.push(ent.clone());
+                                }
+                            }
+                            for cap in new_capabilities {
+                                if !entry.related_capabilities.contains(cap) {
+                                    entry.related_capabilities.push(cap.clone());
+                                }
+                            }
 
                             // 在锁内提取索引所需数据
                             let entities = entry.entities.clone();
@@ -1389,11 +1424,21 @@ impl AgentMemory {
             let mut idx = self.index.write().await;
             let mut entries = self.entries.write().await;
             idx.remove_document(memory_id);
-            idx.add_document(&new_id, new_content);
             if let Some(mut entry) = entries.remove(memory_id) {
                 entry.content = new_content.to_string();
                 entry.id = new_id.clone();
                 entry.last_accessed_at = Some(Utc::now().to_rfc3339());
+                // 索引文本包含实体和能力关键词，与其他写入路径保持一致
+                let mut index_text = new_content.to_string();
+                if !entry.entities.is_empty() {
+                    index_text.push(' ');
+                    index_text.push_str(&entry.entities.join(" "));
+                }
+                if !entry.related_capabilities.is_empty() {
+                    index_text.push(' ');
+                    index_text.push_str(&entry.related_capabilities.join(" "));
+                }
+                idx.add_document(&new_id, &index_text);
                 entries.insert(new_id.clone(), entry);
             }
         }
@@ -1506,7 +1551,7 @@ impl AgentMemory {
             .collect();
         drop(entries);
 
-        // 更新 access_count 并持久化（promote_memories 的晋升阈值依赖此计数）
+        // 更新 access_count（promote_memories 的晋升阈值依赖此计数）
         if !hit_ids.is_empty() {
             {
                 let mut entries = self.entries.write().await;
@@ -1518,11 +1563,20 @@ impl AgentMemory {
                     }
                 }
             }
-            // 写锁释放后再持久化
-            self.save_all().await;
+            // 只是访问计数变更，不在召回热路径上全量重写两份持久化文件
+            // （每次规划会触发 2 次召回）；标记脏位，由后台维护任务批量落盘
+            self.dirty
+                .store(true, std::sync::atomic::Ordering::Relaxed);
         }
 
         results
+    }
+
+    /// 若有未落盘的低优先级变更（访问计数、短期记忆清理）则写盘
+    pub async fn flush_if_dirty(&self) {
+        if self.dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            self.save_all().await;
+        }
     }
 
     // ==================== 清理 ====================
@@ -1568,13 +1622,18 @@ impl AgentMemory {
 
         let count = removed.len();
         if !removed.is_empty() {
-            // 锁顺序：index 先，entries 后（与其他所有路径一致，避免死锁）
-            let mut idx = self.index.write().await;
-            let mut entries = self.entries.write().await;
-            for id in &removed {
-                entries.remove(id);
-                idx.remove_document(id);
+            {
+                // 锁顺序：index 先，entries 后（与其他所有路径一致，避免死锁）
+                let mut idx = self.index.write().await;
+                let mut entries = self.entries.write().await;
+                for id in &removed {
+                    entries.remove(id);
+                    idx.remove_document(id);
+                }
             }
+            // 标记脏位，让后台维护任务把删除结果落盘（否则重启后过期条目复活）
+            self.dirty
+                .store(true, std::sync::atomic::Ordering::Relaxed);
         }
         count
     }
@@ -1617,6 +1676,9 @@ impl AgentMemory {
 
     /// 保存全部状态（memory_index.json + memory.md）
     async fn save_all(&self) {
+        // 全量写盘会带上所有未落盘变更，脏位可以一并清除
+        self.dirty
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         // 快照数据后立即释放读锁，避免持锁做 I/O
         let (json_opt, md) = {
             let entries = self.entries.read().await;
@@ -1773,13 +1835,14 @@ pub async fn init_memory(memory_dir: PathBuf) {
     let memory = Arc::new(AgentMemory::new(memory_dir).await);
     let _ = AGENT_MEMORY.set(memory.clone());
 
-    // 后台维护：每 10 分钟清理过期短期记忆 + 提升高频记忆
+    // 后台维护：每 10 分钟清理过期短期记忆 + 提升高频记忆 + 批量落盘访问计数
     tokio::spawn(async move {
         let interval = tokio::time::Duration::from_secs(10 * 60);
         loop {
             tokio::time::sleep(interval).await;
             let cleaned = memory.cleanup_short_term().await;
             let promoted = memory.promote_memories().await;
+            memory.flush_if_dirty().await;
             if cleaned > 0 || promoted > 0 {
                 tracing::info!(
                     cleaned = cleaned,

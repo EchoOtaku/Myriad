@@ -248,6 +248,8 @@ async fn run_server() -> anyhow::Result<()> {
                         let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
                         let mut interval =
                             tokio::time::interval(std::time::Duration::from_secs(60));
+                        // 系统休眠恢复后跳过积压的 tick，避免同一分钟内连续触发
+                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
                         loop {
                             interval.tick().await;
@@ -4410,6 +4412,15 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route("/api/steam/user", get(api::steam::get_steam_user))
             .route("/api/steam/user/info", get(api::steam::get_steam_user_info))
             .route("/api/steam/games", get(api::steam::get_steam_games))
+            // 游戏公开状态小组件（UID / Gamertag / Online ID，无用户 Cookie）
+            .route(
+                "/api/game/presence",
+                get(api::game_presence::get_game_presence),
+            )
+            .route(
+                "/api/game/presence/capabilities",
+                get(api::game_presence::get_game_presence_capabilities),
+            )
             .route(
                 "/api/steam/wishlist/{steam_id}",
                 get(api::steam::get_steam_wishlist),
