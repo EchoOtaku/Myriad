@@ -14,7 +14,7 @@
  * See docs/updater-spec.md §13.
  */
 
-import { getCSRFToken } from '../utils/csrf'
+import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
 
 const BACKEND_BASE = '/api/admin/updater'
 const DIRECT_BASE = '/_updater'
@@ -188,12 +188,17 @@ interface CallOptions {
   idempotencyKey?: string
 }
 
-async function call<T>(
+function isCsrfFailureMessage(detail: string): boolean {
+  return /csrf/i.test(detail)
+}
+
+async function callOnce<T>(
   method: string,
   path: string,
-  body?: unknown,
-  opts: CallOptions = {},
-): Promise<T> {
+  body: unknown | undefined,
+  opts: CallOptions,
+  forceCsrfRefresh: boolean,
+): Promise<{ ok: true; data: T } | { ok: false; status: number; detail: string }> {
   const mode: TransportMode = opts.mode ?? 'backend'
   const base = mode === 'backend' ? BACKEND_BASE : DIRECT_BASE
 
@@ -212,8 +217,16 @@ async function call<T>(
     method === 'PATCH' ||
     method === 'DELETE'
   if (mode === 'backend' && stateChanging) {
-    const csrf = await getCSRFToken().catch(() => null)
-    if (csrf) headers['X-CSRF-Token'] = csrf
+    if (forceCsrfRefresh) clearCSRFToken()
+    const csrf = await getCSRFToken(forceCsrfRefresh).catch(() => null)
+    if (!csrf) {
+      return {
+        ok: false,
+        status: 403,
+        detail: 'CSRF token missing; refresh the page and try again',
+      }
+    }
+    headers['X-CSRF-Token'] = csrf
   }
 
   const resp = await fetch(`${base}${path}`, {
@@ -228,14 +241,52 @@ async function call<T>(
     const text = await resp.text().catch(() => '')
     let detail = text
     try {
-      detail = JSON.parse(text).error ?? text
+      const parsed = JSON.parse(text) as { error?: string; message?: string }
+      detail = parsed.error ?? parsed.message ?? text
     } catch {
       /* keep raw */
     }
-    throw new UpdaterError(resp.status, detail || resp.statusText)
+    return {
+      ok: false,
+      status: resp.status,
+      detail: detail || resp.statusText,
+    }
   }
-  if (resp.status === 204) return undefined as T
-  return (await resp.json()) as T
+  if (resp.status === 204) return { ok: true, data: undefined as T }
+  return { ok: true, data: (await resp.json()) as T }
+}
+
+async function call<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts: CallOptions = {},
+): Promise<T> {
+  const mode: TransportMode = opts.mode ?? 'backend'
+  const stateChanging =
+    method === 'POST' ||
+    method === 'PUT' ||
+    method === 'PATCH' ||
+    method === 'DELETE'
+
+  let result = await callOnce<T>(method, path, body, opts, false)
+
+  // Backend restart wipes in-memory CSRF store while the browser keeps a stale
+  // token in sessionStorage. One forced refresh + retry recovers automatically.
+  if (
+    !result.ok &&
+    mode === 'backend' &&
+    stateChanging &&
+    result.status === 403 &&
+    isCsrfFailureMessage(result.detail)
+  ) {
+    result = await callOnce<T>(method, path, body, opts, true)
+  }
+
+  if (!result.ok) {
+    throw new UpdaterError(result.status, result.detail)
+  }
+  return result.data
 }
 
 export class UpdaterError extends Error {

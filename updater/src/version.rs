@@ -281,28 +281,26 @@ impl From<MyriadVersion> for DeployTag {
     }
 }
 
-/// Map a release channel name to the git branch used for commit-mode tips.
+/// Map a channel/branch name to the git branch used for commit-mode tips.
 pub fn commit_branch_for_channel(channel: &str) -> &'static str {
     match channel {
-        "stable" | "main" => "main",
-        "nightly" | "preview" => "preview",
-        "beta" => "beta",
+        "preview" => "preview",
+        // stable / main / anything else → main
         _ => "main",
     }
 }
 
-/// Map UI/effective channel to a **release** channel for self-update / release lookups.
+/// Map UI/effective channel to a **release** channel for self-update lookups.
 pub fn release_channel_name_for_self_update(channel: &str) -> &'static str {
     match channel {
-        "beta" => "beta",
-        "nightly" | "preview" => "nightly",
-        "main" | "stable" | _ => "stable",
+        "preview" => "preview",
+        _ => "stable",
     }
 }
 
-/// Release-channel names accepted by the UI / API.
+/// Release-channel names accepted by the UI / API: `stable` | `preview`.
 pub fn is_release_channel(s: &str) -> bool {
-    matches!(s, "stable" | "beta" | "nightly")
+    matches!(s, "stable" | "preview")
 }
 
 /// Commit-mode branch names (also valid DeployTag branch tips).
@@ -374,9 +372,10 @@ mod tests {
     #[test]
     fn channel_mapping() {
         assert_eq!(commit_branch_for_channel("stable"), "main");
+        assert_eq!(commit_branch_for_channel("main"), "main");
         assert_eq!(commit_branch_for_channel("preview"), "preview");
         assert_eq!(release_channel_name_for_self_update("main"), "stable");
-        assert_eq!(release_channel_name_for_self_update("preview"), "nightly");
-        assert_eq!(release_channel_name_for_self_update("beta"), "beta");
+        assert_eq!(release_channel_name_for_self_update("stable"), "stable");
+        assert_eq!(release_channel_name_for_self_update("preview"), "preview");
     }
 }

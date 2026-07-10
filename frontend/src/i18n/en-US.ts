@@ -272,159 +272,153 @@ export const enUS: TranslationKeys = {
     aboutLogoAlt: 'Myriad Logo',
     // Updater
     updaterTitle: 'Update Management',
-    updaterDesc:
-      'Manage version upgrades and rollbacks of this self-hosted Myriad instance',
-    updaterCurrentVersion: 'Running version',
-    updaterUpdaterVersion: 'Updater version',
     updaterChannel: 'Channel',
-    updaterMaintenance: 'Maintenance mode',
-    updaterMaintenanceOn: 'Yes',
-    updaterMaintenanceOff: 'No',
-    updaterJobInFlight: 'In-flight job',
-    updaterLatestAvailable: 'Latest available',
+    updaterStatusHealthy: 'Up to date',
+    updaterStatusAvailable: 'A new version is available',
+    updaterStatusDowngrade: 'Only older versions exist on this channel',
+    updaterStatusUpdating: 'Updating',
+    updaterStatusMaintenance: 'Maintenance mode',
+    updaterStatusNeedsManual: 'Last update failed — action needed',
+    updaterStatusOffline: 'Cannot reach the update service',
+    updaterStatusFirstRun: 'No version recorded yet',
+    updaterHintHealthy:
+      'Everything looks good. You can check for new versions at any time.',
+    updaterHintUpdating:
+      'The update runs automatically. The site will be briefly unavailable and comes back on its own.',
+    updaterHintMaintenance:
+      'The system is in maintenance. If the service is confirmed healthy, you can exit maintenance under “Maintenance & recovery” below.',
+    updaterHintNeedsManual:
+      'Automatic rollback did not finish. Use “Maintenance & recovery” below to return to the pre-update version in one click.',
+    updaterHintOffline:
+      'Check that MYRIAD_UPDATER_URL and UPDATE_TOKEN are configured on the backend.',
+    updaterHintFirstRun:
+      'Click “Check for updates” to fetch the latest version on your channel.',
+    updaterCurrentVersion: 'Current version',
+    updaterChannelLabel: 'Update channel',
     updaterLastChecked: 'Last checked',
     updaterUnknown: 'unknown',
-    updaterNeverChecked: 'never',
-    updaterNotRecorded: '(not recorded)',
-    updaterNone: 'none',
-    updaterTransport: 'Transport',
-    updaterTransportBackend: 'backend (admin session)',
-    updaterTransportDirect: 'direct (X-Update-Token)',
-    updaterRefresh: 'Refresh',
-    updaterForceExit: 'Force exit maintenance',
-    updaterRescueContinue: 'One-click rollback to pre-upgrade',
-    updaterRescueContinueDesc:
-      'Restore the failed job’s snapshot (pgdata + MYRIAD_TAG to the last good version) and restart services',
-    updaterConfirmRescueContinue:
-      'Roll back to snapshot {snapshotId} (version {version}). Continue?',
-    updaterRescueContinueDispatched: 'One-click rollback started',
-    updaterUpdateMode: 'Update mode',
-    updaterModeRelease: 'Release (semver)',
-    updaterModeCommit: 'Commit / branch',
-    updaterChannel: 'Channel / branch',
-    updaterCommitTarget: 'Commit target',
-    updaterCommitPlaceholder: 'Empty = channel tip; or sha / dev-xxx',
-    updaterCommitHistory: 'Recent commits (click to select)',
-    updaterReleaseHistory: 'Channel releases (click to select)',
-    updaterApplyPrefs: 'Apply channel settings',
-    updaterPrefsSaved: 'Channel and mode saved',
-    updaterFreshnessAhead: 'Target is newer (ahead by {n} commits)',
-    updaterFreshnessBehind: 'Target is older (behind by {n} commits)',
-    updaterFreshnessIdentical: 'Same commit as currently running',
-    updaterFreshnessDiverged:
-      'Histories diverged (target +{ahead}, current +{behind})',
-    updaterFreshnessUnknown: 'Could not map current deploy to a git commit',
-    updaterProcessing: 'Working…',
-    updaterCheckAvailable: 'Check for updates',
+    updaterCheckNow: 'Check for updates',
     updaterChecking: 'Checking…',
-    updaterNoAvailable: 'No updates available',
-    updaterReleaseVersion: 'Version',
-    updaterReleasedAt: 'Released at',
-    updaterMinFromVersion: 'Min from version',
-    updaterMinFromUnlimited: '(unlimited)',
-    updaterMigrationEstimate: 'Estimated migration',
-    updaterRequiresUpdater: 'Requires updater ≥',
-    updaterImageDigests: 'Image digests',
-    updaterUpgradeTo: 'Upgrade to {version}',
-    updaterDispatching: 'Dispatching…',
-    updaterDispatched: 'Update dispatched: {jobId}',
-    updaterJobInFlightWarn:
-      'A job is already in flight; please wait for it to finish.',
-    updaterTokenRequired: 'Please enter UPDATE_TOKEN first',
-    updaterTokenRequiredDirect: 'Direct mode requires UPDATE_TOKEN',
-    updaterConfirmUpgrade:
-      'Upgrade to {version}? Maintenance mode will engage.',
-    updaterConfirmDowngrade:
-      '⚠ Downgrade confirmation: target {version} is older than current {current}.\n\nDatabase migrations may not reverse; data/feature risk.\n\nProceed with downgrade?',
-    updaterConfirmRisk:
-      '⚠ Risk confirmation: target history diverged, direction unknown, or irreversible migrations apply.\n\nContinuing may damage data. Proceed?',
-    updaterDowngradeTo: 'Downgrade to {version}',
-    updaterStatusDowngrade: 'Older version available (downgrade)',
-    updaterConfirmRollback: 'Roll back to snapshot {snapshotId}?',
-    updaterConfirmExitMaintenance:
-      'Force-exit maintenance mode? Only do this once service is confirmed healthy.',
-    updaterTaskProgress: 'Task progress ({jobId})',
-    updaterTaskKind: 'kind',
-    updaterTaskStatus: 'status',
-    updaterTaskFrom: 'from',
-    updaterTaskTo: 'to',
-    updaterTaskStarted: 'started',
-    updaterSnapshotsTitle: 'Restorable snapshots',
-    updaterNoSnapshots: 'No snapshots',
-    updaterSnapshotCreatedAt: 'Created',
-    updaterSnapshotSourceVersion: 'Source version',
-    updaterSnapshotSize: 'Size',
-    updaterRollback: 'Roll back',
-    updaterRollbackDispatched: 'Rollback dispatched',
-    updaterMaintenanceExited: 'Maintenance cleared',
-    updaterAdvancedTitle: 'Advanced: direct mode (operator fallback)',
-    updaterAdvancedDesc:
-      'Use only when backend is down. Direct mode bypasses backend and talks to the updater via proxy, requiring you to supply UPDATE_TOKEN manually. The token is held only in memory.',
-    updaterModeBackend: 'backend (default, admin session)',
-    updaterModeDirect: 'direct (bypass backend)',
-    updaterDriftWarn:
-      'Browser cache version ({build}) differs from server ({current}).',
-    updaterDriftAction: 'Reload page',
-    updaterSelfUpdateRequired:
-      'New release {version} requires updater ≥ {minUpdaterVersion}.',
-    updaterSelfUpdateButton: 'Self-update updater',
-    updaterSelfUpdateConfirm:
-      'Upgrade updater to {version}? The updater will be briefly unavailable; business services are unaffected.',
-    updaterSelfUpdateDispatching: 'Dispatching…',
-    updaterSelfUpdateDispatched:
-      'Updater upgrade dispatched: helper={helper}; the running updater will be replaced shortly',
-    updaterUpdateAvailable: 'New release available: {version}',
-    updaterUpdateAvailableCurrent: '(current {current})',
-    updaterReleaseNotes: 'Release notes',
-    updaterBackendError:
-      'Cannot reach updater via /api/admin/updater/status. Check MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend.',
-    updaterDirectError: 'Cannot reach updater via /_updater/status',
+    updaterRetry: 'Retry connection',
+    updaterNoAvailable: 'You are up to date — no updates available.',
     updaterLoading: 'Loading…',
-    updaterErr401: 'Auth failed: invalid UPDATE_TOKEN',
-    updaterErr403: 'You must `touch state/manual-override` on the host first',
-    updaterErr409: 'A job is already in flight',
-    updaterErr412: 'Precondition failed',
-    updaterErrNotConfigured:
-      'The development stack does not start the updater by default. To test the full update flow, run the production compose stack or set MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend.',
-    updaterStatusHealthy: 'Healthy',
-    updaterStatusHealthyDesc:
-      'Running the latest release; no updates available',
-    updaterStatusAvailable: 'Update available',
-    updaterStatusAvailableDesc:
-      'Click upgrade to enter maintenance mode and swap images',
-    updaterStatusUpdating: 'Upgrading',
-    updaterStatusUpdatingDesc:
-      'Maintenance mode is active; business traffic is paused',
-    updaterStatusMaintenance: 'Maintenance mode',
-    updaterStatusMaintenanceDesc:
-      'System is in maintenance; can be force-exited',
-    updaterStatusNeedsManual: 'Manual recovery required',
-    updaterStatusNeedsManualDesc:
-      'Last upgrade failed and auto-rollback did not complete; check snapshots or diagnostics',
-    updaterStatusOffline: 'Updater unreachable',
-    updaterStatusOfflineDesc:
-      'Check MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend',
-    updaterStatusFirstRun: 'Version not recorded',
-    updaterStatusFirstRunDesc:
-      'Click "Check for updates" to discover the latest release',
-    updaterRowStatus: 'Status',
-    updaterMaintenanceActions: 'Maintenance actions',
-    updaterActionCheckDesc: 'Look up the latest release from GitHub',
-    updaterActionUpgradeDesc:
-      'Run the full flow: maintenance → snapshot → swap → health check',
-    updaterActionExitDesc:
-      'Force-clear maintenance after confirming the service is healthy',
-    updaterActionRollbackDesc:
-      'Restore pgdata from this snapshot and set MYRIAD_TAG back to its source version',
-    updaterActionSelfUpdateDesc:
-      'Replace the updater itself via a helper container (business unaffected)',
-    updaterGroupHistory: 'Snapshots & history',
-    updaterGroupHistoryDesc: 'View restorable pgdata snapshots',
+    updaterAvailableTitle: 'New version found',
+    updaterAvailableDowngradeTitle: 'Target is older than current (downgrade)',
+    updaterReleaseNotes: 'View release notes',
+    updaterUpdateNow: 'Update now',
+    updaterDowngradeNow: 'Downgrade to {version}',
+    updaterDispatching: 'Starting update…',
+    updaterDispatched:
+      'Update started (job {jobId}). Progress will appear below.',
+    updaterWhatHappensTitle: 'What happens during an update?',
+    updaterWhatHappens1: 'Your data is backed up automatically (snapshot)',
+    updaterWhatHappens2:
+      'The site enters maintenance mode and is briefly unavailable (usually a few minutes)',
+    updaterWhatHappens3:
+      'The new version is health-checked; on failure it rolls back automatically',
+    updaterIrreversibleWarn:
+      'This update contains irreversible data changes. After updating, you cannot simply roll back to the old version.',
+    updaterFreshnessAhead: '{n} commits newer than current',
+    updaterFreshnessBehind: '{n} commits older than current',
+    updaterFreshnessIdentical: 'Same version as currently running',
+    updaterFreshnessDiverged:
+      'History diverged from current (target +{ahead}, current +{behind} commits)',
+    updaterFreshnessUnknown:
+      'Cannot determine whether the target is newer or older than current',
+    updaterChannelGroupTitle: 'Update channel',
+    updaterChannelGroupDesc:
+      'Decides which line of updates this server follows. Selecting saves immediately.',
+    updaterChannelStable: 'Stable',
+    updaterChannelStableDesc: 'Fully tested official releases. Right for everyone.',
+    updaterChannelPreview: 'Preview',
+    updaterChannelPreviewDesc:
+      'Try upcoming features early; minor issues possible.',
+    updaterChannelDev: 'Development (per commit)',
+    updaterChannelDevDesc:
+      'Follows every commit on the preview branch; newest and least stable. For developers.',
+    updaterChannelBadgeRecommended: 'Recommended',
+    updaterChannelBadgeDev: 'Developers',
+    updaterChannelSaved: 'Switched to “{label}” — re-checking for updates…',
+    updaterStepLog: 'Show detailed steps',
+    updaterProcessing: 'Working…',
+    updaterConfirmUpgrade:
+      'Update to {version}?\n\nWhat happens:\n1. Your data is backed up automatically (snapshot)\n2. Maintenance mode: the site is briefly unavailable\n3. The result is health-checked; on failure it rolls back automatically',
+    updaterConfirmDowngrade:
+      '⚠ Really downgrade?\n\nTarget {version} is older than current {current}. Database changes may not reverse — risk of data loss or broken features.',
+    updaterConfirmRisk:
+      '⚠ Cannot confirm this change is safe: the target history diverged, its relation to current is unknown, or it contains irreversible data changes.\n\nContinuing may damage data with no way back. Proceed?',
+    updaterConfirmRollback:
+      'Return to the state before {version}?\n\nData will be restored from that snapshot; anything created after it will be lost.',
+    updaterConfirmExitMaintenance:
+      'Force-exit maintenance mode?\n\nOnly do this once the service is confirmed healthy — otherwise users will hit a broken site.',
+    updaterConfirmRescueContinue:
+      'Return to the pre-update version?\n\nData will be restored from snapshot {snapshotId}, going back to version {version}.',
+    updaterMaintenanceGroup: 'Maintenance & recovery',
+    updaterMaintenanceGroupDesc:
+      'Recovery tools for when an update goes wrong. Not needed day to day.',
+    updaterRescueContinue: 'Return to the pre-update version',
+    updaterRescueContinueDesc:
+      'Restores data from the snapshot taken before the update and restarts services. The safest way to recover.',
+    updaterRescueContinueDispatched: 'Recovery started',
+    updaterForceExit: 'Force-exit maintenance mode',
+    updaterForceExitDesc:
+      'Only clears the maintenance flag; does not restore data. Use only when the service is confirmed healthy.',
+    updaterMaintenanceExited: 'Maintenance mode cleared',
+    updaterSelfUpdateNeeded:
+      'Version {version} requires the updater itself to be upgraded to {minVersion} or later first.',
+    updaterSelfUpdateButton: 'Upgrade the updater',
+    updaterSelfUpdateConfirm:
+      'Upgrade the updater to {version}?\n\nTakes a few seconds; the site itself is unaffected. Afterwards, click “Update now” again to continue.',
+    updaterSelfUpdateDispatched:
+      'Updater upgrade started. It finishes in a few seconds; then you can continue updating.',
+    updaterTargetGroupTitle: 'Install a specific version (advanced)',
+    updaterTargetGroupDesc:
+      'Install a past release or a specific commit. Not needed for normal updates.',
+    updaterTargetReleaseHead: 'Available versions (click to select)',
+    updaterTargetCommitHead: 'Recent commits (click to select)',
+    updaterCommitTarget: 'Enter manually',
+    updaterCommitPlaceholder: 'commit sha or dev-xxx tag',
+    updaterInstallTarget: 'Install {version}',
+    updaterTargetEmpty: 'Nothing to select',
+    updaterSnapshotGroupTitle: 'Backups & rollback',
+    updaterSnapshotGroupDesc:
+      'A data backup is created automatically before every update. If something breaks, return to a pre-update state here.',
+    updaterNoSnapshots:
+      'No backups yet. One will appear after your first update.',
+    updaterRollback: 'Roll back to this version',
+    updaterRollbackDispatched: 'Rollback started',
     updaterGroupAdvanced: 'Advanced & diagnostics',
     updaterGroupAdvancedDesc:
-      'Image digests, transport mode, operator fallback',
-    updaterDetailsTitle: 'Details',
-    updaterStepLog: 'Steps',
+      'Technical details and operator tools. Not needed day to day.',
+    updaterUpdaterVersion: 'Updater version',
+    updaterJobInFlight: 'Job in flight',
+    updaterNone: 'none',
+    updaterImageDigests: 'Image digests',
+    updaterTransport: 'Connection',
+    updaterTransportBackend: 'Via backend (default, uses your admin login)',
+    updaterTransportDirect: 'Direct to updater (requires UPDATE_TOKEN)',
+    updaterTransportDirectHint:
+      'Emergency fallback for when the backend is down. The token stays in this page only and must be re-entered after a refresh.',
+    updaterTokenRequiredDirect: 'Direct mode requires an UPDATE_TOKEN first',
+    updaterRefresh: 'Refresh status',
+    updaterErr401: 'Authentication failed: invalid UPDATE_TOKEN',
+    updaterErr401Admin: 'Admin login is required to manage updates',
+    updaterErr403:
+      'This rescue action first requires `touch state/manual-override` on the host',
+    updaterErr403Csrf:
+      'Security check expired (common after a backend restart). Refresh the page and try again',
+    updaterErr403Admin: 'Forbidden: admin account required',
+    updaterErr403Generic: 'Forbidden',
+    updaterErr409: 'An update job is already running; wait for it to finish',
+    updaterErr412: 'Precondition failed',
+    updaterErrServer: 'The update service reported an error: {msg}',
+    updaterErrNotConfigured:
+      'The development stack does not start the updater by default. To test the full update flow, run the production compose stack or set MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend.',
+    updaterErrUpstream:
+      'Cannot reach the updater (502/503). In dev, start it first: ./scripts/dev/dev.sh start updater',
+    updaterDriftWarn:
+      'This page is cached at version {build}, but the server runs {current}.',
+    updaterDriftAction: 'Reload page',
     updaterAgoJustNow: 'just now',
     updaterAgoMin: '{n} min ago',
     updaterAgoHour: '{n} h ago',

@@ -267,156 +267,153 @@ export const jaJP: TranslationKeys = {
     aboutLogoAlt: 'Myriad Logo',
     // Updater
     updaterTitle: 'アップデート管理',
-    updaterDesc: 'セルフホスト Myriad のバージョンアップとロールバックを管理',
-    updaterCurrentVersion: '実行中バージョン',
-    updaterUpdaterVersion: 'Updater バージョン',
-    updaterChannel: 'チャネル',
-    updaterMaintenance: 'メンテナンスモード',
-    updaterMaintenanceOn: 'オン',
-    updaterMaintenanceOff: 'オフ',
-    updaterJobInFlight: '実行中タスク',
-    updaterLatestAvailable: '最新利用可能',
+    updaterChannel: 'チャンネル',
+    updaterStatusHealthy: '最新の状態です',
+    updaterStatusAvailable: '新しいバージョンがあります',
+    updaterStatusDowngrade: 'このチャネルには古いバージョンしかありません',
+    updaterStatusUpdating: '更新中',
+    updaterStatusMaintenance: 'メンテナンスモード',
+    updaterStatusNeedsManual: '前回の更新が失敗 — 対応が必要です',
+    updaterStatusOffline: '更新サービスに接続できません',
+    updaterStatusFirstRun: 'バージョンはまだ記録されていません',
+    updaterHintHealthy:
+      '問題ありません。いつでも「更新を確認」で新しいバージョンを確認できます。',
+    updaterHintUpdating:
+      '更新は自動で進みます。サイトは一時的にアクセスできなくなり、完了後に自動で復帰します。',
+    updaterHintMaintenance:
+      'メンテナンス中です。サービスの正常動作を確認できたら、下の「メンテナンスと復旧」から解除できます。',
+    updaterHintNeedsManual:
+      '自動ロールバックが完了しませんでした。下の「メンテナンスと復旧」からワンクリックで更新前の状態に戻せます。',
+    updaterHintOffline:
+      'backend に MYRIAD_UPDATER_URL と UPDATE_TOKEN が設定されているか確認してください。',
+    updaterHintFirstRun:
+      '「更新を確認」を押すと、現在のチャネルの最新バージョンを取得します。',
+    updaterCurrentVersion: '現在のバージョン',
+    updaterChannelLabel: '更新チャネル',
     updaterLastChecked: '最終確認',
     updaterUnknown: '不明',
-    updaterNeverChecked: '未確認',
-    updaterNotRecorded: '(未記録)',
-    updaterNone: 'なし',
-    updaterTransport: '通信経路',
-    updaterTransportBackend: 'backend（admin セッション）',
-    updaterTransportDirect: 'direct（X-Update-Token）',
-    updaterRefresh: '更新',
-    updaterForceExit: 'メンテナンス強制解除',
-    updaterRescueContinue: 'アップグレード前へワンクリック復旧',
-    updaterRescueContinueDesc:
-      '失敗ジョブのスナップショットで pgdata と MYRIAD_TAG（直前の正常版）を復元し、サービスを再起動します',
-    updaterConfirmRescueContinue:
-      'スナップショット {snapshotId}（バージョン {version}）へロールバックします。続行しますか？',
-    updaterRescueContinueDispatched: 'ワンクリック復旧を開始しました',
-    updaterUpdateMode: '更新モード',
-    updaterModeRelease: 'リリース版 (semver)',
-    updaterModeCommit: 'Commit / ブランチ',
-    updaterChannel: 'チャンネル / ブランチ',
-    updaterCommitTarget: 'Commit 指定',
-    updaterCommitPlaceholder: '空=チャンネル最新、または sha / dev-xxx',
-    updaterCommitHistory: '最近の commits（クリックで選択）',
-    updaterReleaseHistory: 'チャンネルのリリース（クリックで選択）',
-    updaterApplyPrefs: 'チャンネル設定を適用',
-    updaterPrefsSaved: 'チャンネルとモードを保存しました',
-    updaterFreshnessAhead: '対象の方が新しい（{n} commit 先行）',
-    updaterFreshnessBehind: '対象の方が古い（{n} commit 遅れ）',
-    updaterFreshnessIdentical: '現在と同じ commit',
-    updaterFreshnessDiverged:
-      '履歴が分岐（対象 +{ahead}、現在 +{behind}）',
-    updaterFreshnessUnknown: '現在のデプロイを git commit に解決できません',
-    updaterProcessing: '処理中…',
-    updaterCheckAvailable: '更新を確認',
+    updaterCheckNow: '更新を確認',
     updaterChecking: '確認中…',
-    updaterNoAvailable: '利用可能な更新はありません',
-    updaterReleaseVersion: 'バージョン',
-    updaterReleasedAt: '公開日',
-    updaterMinFromVersion: '最小元バージョン',
-    updaterMinFromUnlimited: '(制限なし)',
-    updaterMigrationEstimate: 'マイグレーション目安',
-    updaterRequiresUpdater: '必要な updater ≥',
-    updaterImageDigests: 'イメージ digest',
-    updaterUpgradeTo: '{version} へアップグレード',
-    updaterDispatching: '送信中…',
-    updaterDispatched: '更新タスクを送信しました: {jobId}',
-    updaterJobInFlightWarn:
-      '既に実行中のタスクがあります。完了をお待ちください。',
-    updaterTokenRequired: 'UPDATE_TOKEN を入力してください',
-    updaterTokenRequiredDirect: 'direct モードは UPDATE_TOKEN が必要です',
-    updaterConfirmUpgrade:
-      '{version} にアップグレードしますか？メンテナンスモードに入ります。',
-    updaterConfirmDowngrade:
-      '⚠ ダウングレード確認：対象 {version} は現在 {current} より古いです。\n\nマイグレーションは巻き戻せない可能性があり、データ/機能リスクがあります。\n\nダウングレードを続行しますか？',
-    updaterConfirmRisk:
-      '⚠ リスク確認：履歴分岐・方向不明、または不可逆マイグレーションがあります。\n\nデータ破損の恐れがあります。続行しますか？',
-    updaterDowngradeTo: '{version} へダウングレード',
-    updaterStatusDowngrade: '古いバージョンへダウングレード可能',
-    updaterConfirmRollback:
-      'スナップショット {snapshotId} にロールバックしますか？',
-    updaterConfirmExitMaintenance:
-      'メンテナンスを強制解除しますか？サービス復旧確認後にのみ実行してください。',
-    updaterTaskProgress: 'タスク進捗 ({jobId})',
-    updaterTaskKind: 'kind',
-    updaterTaskStatus: 'status',
-    updaterTaskFrom: 'from',
-    updaterTaskTo: 'to',
-    updaterTaskStarted: 'started',
-    updaterSnapshotsTitle: '復元可能なスナップショット',
-    updaterNoSnapshots: 'スナップショットなし',
-    updaterSnapshotCreatedAt: '作成日時',
-    updaterSnapshotSourceVersion: '元バージョン',
-    updaterSnapshotSize: 'サイズ',
-    updaterRollback: 'ロールバック',
-    updaterRollbackDispatched: 'ロールバックを送信しました',
-    updaterMaintenanceExited: 'メンテナンスを解除しました',
-    updaterAdvancedTitle: '高度な設定：direct モード（運用フォールバック）',
-    updaterAdvancedDesc:
-      'backend が動作しない場合のみ使用してください。direct モードは backend を経由せず proxy 経由で updater に直接接続し、UPDATE_TOKEN の手入力が必要です。トークンはメモリにのみ保持されます。',
-    updaterModeBackend: 'backend（既定、admin セッション）',
-    updaterModeDirect: 'direct（backend をバイパス）',
-    updaterDriftWarn:
-      'ブラウザキャッシュのバージョン ({build}) がサーバー ({current}) と一致しません。',
-    updaterDriftAction: 'ページを再読み込み',
-    updaterSelfUpdateRequired:
-      '新リリース {version} は updater ≥ {minUpdaterVersion} を必要とします。',
-    updaterSelfUpdateButton: 'updater をワンクリックで更新',
-    updaterSelfUpdateConfirm:
-      'updater を {version} へ更新しますか？updater が短時間停止しますが、業務サービスは影響を受けません。',
-    updaterSelfUpdateDispatching: '送信中…',
-    updaterSelfUpdateDispatched:
-      'updater 更新を送信しました：helper={helper}、数秒後に現在の updater が置き換えられます',
-    updaterUpdateAvailable: '新リリースあり: {version}',
-    updaterUpdateAvailableCurrent: '(現在 {current})',
-    updaterReleaseNotes: 'リリースノートを見る',
-    updaterBackendError:
-      '/api/admin/updater/status に接続できません。backend の MYRIAD_UPDATER_URL / UPDATE_TOKEN を確認してください。',
-    updaterDirectError: '/_updater/status に接続できません',
+    updaterRetry: '再接続',
+    updaterNoAvailable: '最新の状態です。利用可能な更新はありません。',
     updaterLoading: '読み込み中…',
-    updaterErr401: '認証失敗：UPDATE_TOKEN が不正です',
-    updaterErr403: 'ホストで state/manual-override を touch してください',
-    updaterErr409: '既に実行中のタスクがあります',
-    updaterErr412: '前提条件を満たしていません',
-    updaterErrNotConfigured:
-      '開発環境では既定で updater は起動しません。完全な更新フローを確認する場合は production compose スタックを使うか、backend に MYRIAD_UPDATER_URL / UPDATE_TOKEN を設定してください。',
-    updaterStatusHealthy: '正常稼働',
-    updaterStatusHealthyDesc:
-      '最新リリースで稼働中、利用可能な更新はありません',
-    updaterStatusAvailable: '更新あり',
-    updaterStatusAvailableDesc:
-      'アップグレードでメンテナンスモード→イメージ置換を実行',
-    updaterStatusUpdating: '更新中',
-    updaterStatusUpdatingDesc:
-      'メンテナンスモードが有効、業務トラフィックは一時停止中',
-    updaterStatusMaintenance: 'メンテナンスモード',
-    updaterStatusMaintenanceDesc: 'システムがメンテナンス中、強制解除可能',
-    updaterStatusNeedsManual: '手動復旧が必要',
-    updaterStatusNeedsManualDesc:
-      '前回の更新が失敗し自動ロールバックも未完了。スナップショットか診断を確認',
-    updaterStatusOffline: 'updater に接続できません',
-    updaterStatusOfflineDesc:
-      'backend の MYRIAD_UPDATER_URL / UPDATE_TOKEN を確認',
-    updaterStatusFirstRun: 'バージョン未記録',
-    updaterStatusFirstRunDesc: '「更新を確認」をクリックして最新リリースを取得',
-    updaterRowStatus: '状態',
-    updaterMaintenanceActions: 'メンテナンス操作',
-    updaterActionCheckDesc: 'GitHub Release から最新版を取得',
-    updaterActionUpgradeDesc:
-      '完全フロー：メンテナンス → スナップショット → イメージ置換 → ヘルスチェック',
-    updaterActionExitDesc: 'サービス復旧を確認後、メンテナンスモードを強制解除',
-    updaterActionRollbackDesc:
-      'このスナップショットから pgdata を復元し、MYRIAD_TAG を記録された直前正常版へ戻して起動',
-    updaterActionSelfUpdateDesc:
-      'helper コンテナで updater 自身を置換（業務に影響なし）',
-    updaterGroupHistory: 'スナップショットと履歴',
-    updaterGroupHistoryDesc: '復元可能な pgdata スナップショットを表示',
-    updaterGroupAdvanced: '詳細設定と診断',
+    updaterAvailableTitle: '新しいバージョンが見つかりました',
+    updaterAvailableDowngradeTitle:
+      '対象は現在より古いバージョンです（ダウングレード）',
+    updaterReleaseNotes: 'リリースノートを見る',
+    updaterUpdateNow: '今すぐ更新',
+    updaterDowngradeNow: '{version} へダウングレード',
+    updaterDispatching: '更新を開始しています…',
+    updaterDispatched:
+      '更新を開始しました（ジョブ {jobId}）。進捗は下に表示されます。',
+    updaterWhatHappensTitle: '更新では何が起きますか？',
+    updaterWhatHappens1: 'まずデータを自動バックアップ（スナップショット作成）',
+    updaterWhatHappens2:
+      'メンテナンスモードに入り、サイトは一時的にアクセス不可（通常は数分）',
+    updaterWhatHappens3:
+      '新バージョンを自動チェック。失敗した場合は自動で元のバージョンに戻ります',
+    updaterIrreversibleWarn:
+      'この更新には元に戻せないデータ変更が含まれます。更新後は旧バージョンへ単純に戻すことはできません。',
+    updaterFreshnessAhead: '現在より {n} コミット新しい',
+    updaterFreshnessBehind: '現在より {n} コミット古い',
+    updaterFreshnessIdentical: '現在稼働中と同じバージョンです',
+    updaterFreshnessDiverged:
+      '現在と履歴が分岐しています（対象 +{ahead}、現在 +{behind} コミット）',
+    updaterFreshnessUnknown: '対象と現在の新旧関係を判定できません',
+    updaterChannelGroupTitle: '更新チャネル',
+    updaterChannelGroupDesc:
+      'このサーバーがどの系統の更新を受け取るかを決めます。選択すると即座に保存されます。',
+    updaterChannelStable: '安定版',
+    updaterChannelStableDesc: '十分にテストされた正式リリース。全員におすすめ。',
+    updaterChannelPreview: 'プレビュー版',
+    updaterChannelPreviewDesc:
+      '次のリリースをいち早く試せます。小さな不具合の可能性あり。',
+    updaterChannelDev: '開発版（コミット追従）',
+    updaterChannelDevDesc:
+      'preview ブランチの各コミットに追従します。最も新しく不安定なため、開発者向けです。',
+    updaterChannelBadgeRecommended: 'おすすめ',
+    updaterChannelBadgeDev: '開発者向け',
+    updaterChannelSaved: '「{label}」に切り替えました。更新を再確認しています…',
+    updaterStepLog: '詳細ステップを表示',
+    updaterProcessing: '処理中…',
+    updaterConfirmUpgrade:
+      '{version} に更新しますか？\n\n更新の流れ：\n1. データを自動バックアップ（スナップショット作成）\n2. メンテナンスモードに入り、サイトは一時的にアクセス不可\n3. 完了後に自動チェック。失敗時は自動で元に戻ります',
+    updaterConfirmDowngrade:
+      '⚠ 本当にダウングレードしますか？\n\n対象 {version} は現在の {current} より古いバージョンです。データベースの変更は巻き戻せない場合があり、データ損失や機能不全のリスクがあります。',
+    updaterConfirmRisk:
+      '⚠ この変更が安全か確認できません：履歴の分岐、新旧関係が不明、または元に戻せないデータ変更を含みます。\n\n続行するとデータが破損し、戻せなくなる恐れがあります。続行しますか？',
+    updaterConfirmRollback:
+      '{version} の更新前の状態に戻しますか？\n\n当時のスナップショットからデータを復元します。それ以降に作成されたデータは失われます。',
+    updaterConfirmExitMaintenance:
+      'メンテナンスモードを強制解除しますか？\n\nサービスの正常動作を確認できた場合のみ実行してください。そうでないと利用者に異常なサイトが表示されます。',
+    updaterConfirmRescueContinue:
+      '更新前のバージョンに戻しますか？\n\nスナップショット {snapshotId} からデータを復元し、バージョン {version} に戻ります。',
+    updaterMaintenanceGroup: 'メンテナンスと復旧',
+    updaterMaintenanceGroupDesc:
+      '更新に問題が起きたときの復旧ツールです。普段は使いません。',
+    updaterRescueContinue: '更新前のバージョンに戻す',
+    updaterRescueContinueDesc:
+      '更新前に自動作成されたスナップショットからデータを復元してサービスを再起動します。最も安全な復旧方法です。',
+    updaterRescueContinueDispatched: '復旧を開始しました',
+    updaterForceExit: 'メンテナンスモードを強制解除',
+    updaterForceExitDesc:
+      'メンテナンス状態の解除のみ行い、データは復元しません。サービスの正常動作を確認できた場合のみ使用してください。',
+    updaterMaintenanceExited: 'メンテナンスモードを解除しました',
+    updaterSelfUpdateNeeded:
+      '新バージョン {version} を適用するには、先にアップデーター自体を {minVersion} 以上へ更新する必要があります。',
+    updaterSelfUpdateButton: 'アップデーターを更新',
+    updaterSelfUpdateConfirm:
+      'アップデーターを {version} へ更新しますか？\n\n数秒で完了し、サイト自体には影響しません。完了後に再度「今すぐ更新」を押してください。',
+    updaterSelfUpdateDispatched:
+      'アップデーターの更新を開始しました。数秒で完了し、その後更新を続行できます。',
+    updaterTargetGroupTitle: '特定バージョンのインストール（上級者向け）',
+    updaterTargetGroupDesc:
+      '過去のリリースや特定のコミットをインストールします。通常の更新では不要です。',
+    updaterTargetReleaseHead: '選択可能なバージョン（クリックで選択）',
+    updaterTargetCommitHead: '最近のコミット（クリックで選択）',
+    updaterCommitTarget: '手動入力',
+    updaterCommitPlaceholder: 'コミット sha または dev-xxx タグ',
+    updaterInstallTarget: '{version} をインストール',
+    updaterTargetEmpty: '選択できる項目がありません',
+    updaterSnapshotGroupTitle: 'バックアップと巻き戻し',
+    updaterSnapshotGroupDesc:
+      '毎回の更新前にデータを自動バックアップします。問題が起きたら、ここから更新前の状態に戻せます。',
+    updaterNoSnapshots:
+      'バックアップはまだありません。最初の更新後に自動で作成されます。',
+    updaterRollback: 'このバージョンに戻す',
+    updaterRollbackDispatched: '巻き戻しを開始しました',
+    updaterGroupAdvanced: '詳細と診断',
     updaterGroupAdvancedDesc:
-      'イメージ digest、通信経路の切替、運用フォールバック',
-    updaterDetailsTitle: '詳細情報',
-    updaterStepLog: '実行ステップ',
+      '技術的な詳細と運用ツールです。普段は開く必要はありません。',
+    updaterUpdaterVersion: 'アップデーターのバージョン',
+    updaterJobInFlight: '実行中ジョブ',
+    updaterNone: 'なし',
+    updaterImageDigests: 'イメージ digest',
+    updaterTransport: '接続方法',
+    updaterTransportBackend: 'backend 経由（既定、管理者ログインを使用）',
+    updaterTransportDirect: 'アップデーターへ直接接続（UPDATE_TOKEN が必要）',
+    updaterTransportDirectHint:
+      'backend が使えないときの非常用です。トークンはこのページ内にのみ保持され、再読み込み後は再入力が必要です。',
+    updaterTokenRequiredDirect: '直接接続には UPDATE_TOKEN の入力が必要です',
+    updaterRefresh: '状態を更新',
+    updaterErr401: '認証失敗：UPDATE_TOKEN が正しくありません',
+    updaterErr401Admin: '更新の管理には管理者ログインが必要です',
+    updaterErr403:
+      'この救援操作は先にホストで touch state/manual-override が必要です',
+    updaterErr403Csrf:
+      'セキュリティ検証の期限切れです（backend 再起動後によくあります）。ページを再読み込みして再試行してください',
+    updaterErr403Admin: '権限がありません：管理者アカウントが必要です',
+    updaterErr403Generic: 'アクセス拒否',
+    updaterErr409: '実行中の更新ジョブがあります。完了をお待ちください',
+    updaterErr412: '前提条件を満たしていません',
+    updaterErrServer: '更新サービスがエラーを返しました：{msg}',
+    updaterErrNotConfigured:
+      '開発環境では既定でアップデーターは起動しません。完全な更新フローを試すには production compose スタックを使うか、backend に MYRIAD_UPDATER_URL / UPDATE_TOKEN を設定してください。',
+    updaterErrUpstream:
+      'アップデーターに接続できません（502/503）。開発環境では先に起動してください：./scripts/dev/dev.sh start updater',
+    updaterDriftWarn:
+      'このページはバージョン {build} のキャッシュですが、サーバーは {current} で稼働中です。',
+    updaterDriftAction: 'ページを再読み込み',
     updaterAgoJustNow: 'たった今',
     updaterAgoMin: '{n} 分前',
     updaterAgoHour: '{n} 時間前',

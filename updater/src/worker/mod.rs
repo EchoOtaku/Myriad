@@ -835,28 +835,18 @@ impl Worker {
 }
 
 fn validate_channel_for_mode(channel: &str, mode: UpdateMode) -> Result<()> {
+    if !matches!(channel, "stable" | "preview") {
+        return Err(UpdaterError::InvalidInput(format!(
+            "channel must be stable|preview, got {channel}"
+        )));
+    }
     match mode {
-        UpdateMode::Release => {
-            if crate::version::is_release_channel(channel) {
-                Ok(())
-            } else {
-                Err(UpdaterError::InvalidInput(format!(
-                    "release mode channel must be stable|beta|nightly, got {channel}"
-                )))
-            }
-        }
-        UpdateMode::Commit => {
-            // Accept either release channel names (mapped to branches) or explicit branch tips.
-            if crate::version::is_release_channel(channel)
-                || crate::version::is_commit_branch(channel)
-            {
-                Ok(())
-            } else {
-                Err(UpdaterError::InvalidInput(format!(
-                    "commit mode channel/branch must be stable|beta|nightly|main|preview|beta, got {channel}"
-                )))
-            }
-        }
+        UpdateMode::Release => Ok(()),
+        // Commit tracking is only offered on the preview track.
+        UpdateMode::Commit if channel == "preview" => Ok(()),
+        UpdateMode::Commit => Err(UpdaterError::InvalidInput(format!(
+            "commit mode is only allowed when channel=preview, got channel={channel}"
+        ))),
     }
 }
 

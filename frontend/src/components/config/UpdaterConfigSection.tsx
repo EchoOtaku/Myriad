@@ -1,16 +1,18 @@
 /**
- * Updater 内联面板 — 极简设计。
+ * Updater 内联面板 — 以「用户一眼能看懂」为核心的重设计。
  *
- * 日常使用只显示：
- *   - 当前版本
- *   - 状态（一句话：已是最新 / 有新版本 / 升级中 / 维护中 / 异常）
- *   - 上次检查时间
- *   - 一个主按钮（"检查更新" 或 "升级到 vX"）
+ * 结构（自上而下）：
+ *   1. 状态卡（hero）：一句话状态 + 一行解释 + 当前版本/通道/上次检查 + 唯一主按钮
+ *   2. 新版本卡：解释这次更新是什么、更新时会发生什么（纯说明，不放按钮）
+ *   3. 更新通道：三张单选卡片（稳定版 / 预览版 / 开发版·跟随提交），点选即保存
+ *   4. 维护与恢复：仅在更新出问题时出现
+ *   5. 安装指定版本（高级，折叠）
+ *   6. 备份与回退（折叠）
+ *   7. 高级与诊断（折叠）
  *
- * 任务进行中：进度卡接替主信息卡。
- * 异常/危险操作：默认折叠在「维护操作」「快照」「高级」三组里。
- *
- * 风格沿用 about-row（与上方的版本/协议/组织/仓库一致）。
+ * 原「更新模式 × 频道」两个下拉合并成单一通道选择（stable / preview /
+ * preview+commit），「应用频道设置」按钮被移除——点选即保存，
+ * 避免草稿态与服务器态不一致。
  */
 
 import type {
@@ -38,17 +40,82 @@ import './UpdaterConfigSection.css'
 const POLL_INTERVAL = 4_000
 const TEMPLATE_RE = /\{(\w+)\}/g
 
+type U = ReturnType<typeof useI18n>['t']['config']
+
 function format(template: string, params: Record<string, string>): string {
   return template.replace(TEMPLATE_RE, (_, k) => params[k] ?? `{${k}}`)
 }
 
-export interface UpdaterInlinePanelProps {
-  heading?: string
+/** 从 upstream 转发的错误体里提取一句人能读的话（剥掉嵌套 JSON）。 */
+function upstreamDetail(message: string): string {
+  const brace = message.indexOf('{')
+  if (brace >= 0) {
+    try {
+      const parsed = JSON.parse(message.slice(brace)) as {
+        error?: string
+        message?: string
+      }
+      const inner = parsed.error ?? parsed.message
+      if (inner) {
+        const cut = inner.indexOf(' {')
+        return (cut > 0 ? inner.slice(0, cut) : inner).trim()
+      }
+    } catch {
+      /* fall through to raw message */
+    }
+  }
+  return message.length > 160 ? `${message.slice(0, 160)}…` : message
 }
 
-type Toast = { kind: 'ok' | 'error'; text: string } | null
+// ===== 通道模型：三个扁平选项，取代「模式 × 频道」矩阵 =====
+// 产品轨道只有 stable / preview；commit 模式仅在 preview 下有效。
 
-/** 派生状态：决定状态行文案和主按钮行为。 */
+type ChannelKey = 'stable' | 'preview' | 'dev'
+
+interface ChannelOption {
+  key: ChannelKey
+  mode: UpdateMode
+  channel: string
+  badge: 'recommended' | 'dev' | null
+}
+
+const CHANNEL_OPTIONS: ChannelOption[] = [
+  { key: 'stable', mode: 'release', channel: 'stable', badge: 'recommended' },
+  { key: 'preview', mode: 'release', channel: 'preview', badge: null },
+  { key: 'dev', mode: 'commit', channel: 'preview', badge: 'dev' },
+]
+
+function channelLabel(key: ChannelKey, u: U): string {
+  switch (key) {
+    case 'stable':
+      return u.updaterChannelStable
+    case 'preview':
+      return u.updaterChannelPreview
+    case 'dev':
+      return u.updaterChannelDev
+  }
+}
+
+function channelDesc(key: ChannelKey, u: U): string {
+  switch (key) {
+    case 'stable':
+      return u.updaterChannelStableDesc
+    case 'preview':
+      return u.updaterChannelPreviewDesc
+    case 'dev':
+      return u.updaterChannelDevDesc
+  }
+}
+
+/** 服务器保存的 (mode, channel) → 三选项之一。兼容旧命名。 */
+function deriveSelection(status: UpdaterStatus | null): ChannelKey {
+  if (!status) return 'stable'
+  if (status.update_mode === 'commit') return 'dev'
+  return status.channel === 'preview' ? 'preview' : 'stable'
+}
+
+// ===== 状态推导 =====
+
 type Mood =
   | 'healthy'
   | 'available'
@@ -59,19 +126,90 @@ type Mood =
   | 'offline'
   | 'firstRun'
 
+function deriveMood(status: UpdaterStatus | null): Mood {
+  if (!status) return 'offline'
+  if (status.job_in_flight) return 'updating'
+  if (status.maintenance_phase === 'needs_manual') return 'needsManual'
+  if (status.maintenance_active) return 'maintenance'
+  if (!status.current_version) return 'firstRun'
+  if (status.update_available) return 'available'
+  if (status.downgrade_available) return 'downgrade'
+  return 'healthy'
+}
+
+type Tone = 'ok' | 'info' | 'warn' | 'danger' | 'muted'
+
+function moodText(
+  mood: Mood,
+  u: U,
+): { title: string; hint: string | null; tone: Tone } {
+  switch (mood) {
+    case 'healthy':
+      return {
+        title: u.updaterStatusHealthy,
+        hint: u.updaterHintHealthy,
+        tone: 'ok',
+      }
+    case 'available':
+      return { title: u.updaterStatusAvailable, hint: null, tone: 'info' }
+    case 'downgrade':
+      return { title: u.updaterStatusDowngrade, hint: null, tone: 'muted' }
+    case 'updating':
+      return {
+        title: u.updaterStatusUpdating,
+        hint: u.updaterHintUpdating,
+        tone: 'warn',
+      }
+    case 'maintenance':
+      return {
+        title: u.updaterStatusMaintenance,
+        hint: u.updaterHintMaintenance,
+        tone: 'warn',
+      }
+    case 'needsManual':
+      return {
+        title: u.updaterStatusNeedsManual,
+        hint: u.updaterHintNeedsManual,
+        tone: 'danger',
+      }
+    case 'offline':
+      return {
+        title: u.updaterStatusOffline,
+        hint: u.updaterHintOffline,
+        tone: 'danger',
+      }
+    case 'firstRun':
+      return {
+        title: u.updaterStatusFirstRun,
+        hint: u.updaterHintFirstRun,
+        tone: 'muted',
+      }
+  }
+}
+
+export interface UpdaterInlinePanelProps {
+  heading?: string
+}
+
+type Toast = { kind: 'ok' | 'error'; text: string } | null
+
 export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   heading,
 }) => {
   const { t } = useI18n()
   const u = t.config
 
-  const [mode, setMode] = useState<TransportMode>('backend')
+  const [transport, setTransport] = useState<TransportMode>('backend')
   const [token, setToken] = useState('')
   const api = useMemo(
     () =>
-      makeUpdaterApi({ mode, token: mode === 'direct' ? token : undefined }),
-    [mode, token],
+      makeUpdaterApi({
+        mode: transport,
+        token: transport === 'direct' ? token : undefined,
+      }),
+    [transport, token],
   )
+  const tokenRequired = transport === 'direct' && !token
 
   const [status, setStatus] = useState<UpdaterStatus | null>(null)
   const [available, setAvailable] = useState<ReleaseManifest | null>(null)
@@ -84,33 +222,43 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     null,
   )
   const [accessDenied, setAccessDenied] = useState(false)
-  /** Local drafts for channel / update-mode before apply. */
-  const [draftChannel, setDraftChannel] = useState<string>('stable')
-  const [draftUpdateMode, setDraftUpdateMode] = useState<UpdateMode>('release')
-  const [commitInput, setCommitInput] = useState('')
-  const [commitList, setCommitList] = useState<CommitListItem[]>([])
-  const [commitListBranch, setCommitListBranch] = useState<string>('')
-  const [releaseList, setReleaseList] = useState<ReleaseListItem[]>([])
-  const [comparePreview, setComparePreview] = useState<CompareResult | null>(
-    null,
-  )
-  const [selectedRelease, setSelectedRelease] = useState<string>('')
-  /** Only hydrate draft selectors from server once (or after explicit prefs save). */
-  const draftsHydratedRef = useRef(false)
-  const compareTimerRef = useRef<number | null>(null)
-
+  const [sel, setSel] = useState<ChannelKey>('stable')
+  /** 只在首次加载（或保存偏好后）用服务器值覆盖本地选择。 */
+  const selHydratedRef = useRef(false)
   const pollRef = useRef<number | null>(null)
-  const tokenRequired = mode === 'direct' && !token
 
   const explain = useCallback(
     (e: unknown): string => {
       if (e instanceof UpdaterError) {
-        if (e.status === 401) return u.updaterErr401
-        if (e.status === 403) return u.updaterErr403
+        if (e.status === 401) {
+          // Backend admin session vs updater token are different failures.
+          if (/admin|login|authorization|session/i.test(e.message)) {
+            return u.updaterErr401Admin
+          }
+          return u.updaterErr401
+        }
+        if (e.status === 403) {
+          // Do NOT map every 403 to manual-override — CSRF / admin denials also 403.
+          if (/csrf/i.test(e.message)) return u.updaterErr403Csrf
+          if (/admin|forbidden|permission/i.test(e.message)) {
+            return u.updaterErr403Admin
+          }
+          if (
+            /manual|override|exit-maintenance|forget-current|rescue/i.test(
+              e.message,
+            )
+          ) {
+            return u.updaterErr403
+          }
+          return `${u.updaterErr403Generic}: ${e.message}`
+        }
         if (e.status === 409) return u.updaterErr409
         if (e.status === 412) return `${u.updaterErr412}: ${e.message}`
-        if (e.status === 503 && /not configured/i.test(e.message))
-          return u.updaterErrNotConfigured
+        if (e.status >= 500) {
+          if (/not configured/i.test(e.message)) return u.updaterErrNotConfigured
+          if (e.status === 502 || e.status === 503) return u.updaterErrUpstream
+          return format(u.updaterErrServer, { msg: upstreamDetail(e.message) })
+        }
         return `${e.status}: ${e.message}`
       }
       return String(e)
@@ -124,10 +272,10 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       let s: UpdaterStatus | null = null
       try {
         s = await api.status()
-        if (mode === 'backend' && accessDenied) setAccessDenied(false)
+        if (transport === 'backend' && accessDenied) setAccessDenied(false)
       } catch (e) {
         if (
-          mode === 'backend' &&
+          transport === 'backend' &&
           e instanceof UpdaterError &&
           (e.status === 401 || e.status === 403)
         ) {
@@ -143,10 +291,9 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         .catch(() => ({ schema_version: 1, items: [] as SnapshotMeta[] }))
       setStatus(s)
       setSnapshots(snaps.items ?? [])
-      if (s && !draftsHydratedRef.current) {
-        setDraftChannel(s.channel || 'stable')
-        setDraftUpdateMode(s.update_mode === 'commit' ? 'commit' : 'release')
-        draftsHydratedRef.current = true
+      if (s && !selHydratedRef.current) {
+        setSel(deriveSelection(s))
+        selHydratedRef.current = true
       }
       if (s?.job_in_flight) {
         const j = await api.job(s.job_in_flight).catch(() => null)
@@ -157,7 +304,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     } finally {
       setLoading(false)
     }
-  }, [api, mode, accessDenied])
+  }, [api, transport, accessDenied])
 
   useEffect(() => {
     refresh()
@@ -178,205 +325,113 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     }
   }, [status?.job_in_flight, refresh])
 
-  const channelOptions = useMemo(() => {
-    if (draftUpdateMode === 'commit') {
-      return status?.available_channels?.length
-        ? status.available_channels
-        : ['main', 'preview', 'beta']
-    }
-    return status?.available_channels?.length
-      ? status.available_channels
-      : ['stable', 'beta', 'nightly']
-  }, [draftUpdateMode, status?.available_channels])
+  const selOption = useMemo(
+    () => CHANNEL_OPTIONS.find((o) => o.key === sel) ?? CHANNEL_OPTIONS[0],
+    [sel],
+  )
 
-  // ===== Actions =====
+  /** 服务器未公布 preview 轨道时，只展示稳定版。 */
+  const visibleOptions = useMemo(() => {
+    const fromServer = status?.available_channels
+    if (!fromServer?.length) return CHANNEL_OPTIONS
+    return CHANNEL_OPTIONS.filter((o) => fromServer.includes(o.channel))
+  }, [status?.available_channels])
 
-  const applyPrefs = useCallback(async () => {
-    if (tokenRequired) {
-      setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
-      return
-    }
-    setBusy('prefs')
-    setToast(null)
-    try {
-      const prefs = await api.setPrefs({
-        channel: draftChannel,
-        mode: draftUpdateMode,
-      })
-      setDraftChannel(prefs.channel)
-      setDraftUpdateMode(prefs.mode === 'commit' ? 'commit' : 'release')
-      draftsHydratedRef.current = true
+  // ===== 操作 =====
+
+  const checkAvailable = useCallback(
+    async (opt: ChannelOption = selOption) => {
+      if (tokenRequired) {
+        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        return
+      }
+      setBusy('check')
+      try {
+        const manifest = await api.available({
+          channel: opt.channel,
+          mode: opt.mode,
+        })
+        setAvailable(manifest)
+        setToast(manifest ? null : { kind: 'ok', text: u.updaterNoAvailable })
+        await refresh()
+      } catch (e) {
+        setToast({ kind: 'error', text: explain(e) })
+      } finally {
+        setBusy(null)
+      }
+    },
+    [api, selOption, refresh, tokenRequired, explain, u],
+  )
+
+  const selectChannel = useCallback(
+    async (key: ChannelKey) => {
+      if (key === sel || busy) return
+      if (tokenRequired) {
+        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        return
+      }
+      const opt = CHANNEL_OPTIONS.find((o) => o.key === key)!
+      const prev = sel
+      setSel(key)
+      setBusy('channel')
       setAvailable(null)
-      setToast({ kind: 'ok', text: u.updaterPrefsSaved })
-      await refresh()
-    } catch (e) {
-      setToast({ kind: 'error', text: explain(e) })
-    } finally {
-      setBusy(null)
-    }
-  }, [
-    api,
-    draftChannel,
-    draftUpdateMode,
-    refresh,
-    tokenRequired,
-    explain,
-    u,
-  ])
+      try {
+        await api.setPrefs({ channel: opt.channel, mode: opt.mode })
+        selHydratedRef.current = true
+        setToast({
+          kind: 'ok',
+          text: format(u.updaterChannelSaved, { label: channelLabel(key, u) }),
+        })
+        setBusy(null)
+        // 切换后立刻按新通道重查，让状态卡马上反映结果。
+        await checkAvailable(opt)
+      } catch (e) {
+        setSel(prev)
+        setToast({ kind: 'error', text: explain(e) })
+        setBusy(null)
+      }
+    },
+    [api, sel, busy, tokenRequired, explain, u, checkAvailable],
+  )
 
-  const loadCommits = useCallback(async () => {
-    if (draftUpdateMode !== 'commit') {
-      setCommitList([])
-      return
-    }
-    try {
-      const res = await api.commits({ branch: draftChannel, limit: 25 })
-      setCommitList(res.items ?? [])
-      setCommitListBranch(res.branch ?? draftChannel)
-    } catch {
-      setCommitList([])
-    }
-  }, [api, draftChannel, draftUpdateMode])
-
-  const loadReleases = useCallback(async () => {
-    if (draftUpdateMode !== 'release') {
-      setReleaseList([])
-      return
-    }
-    try {
-      const res = await api.releases({ channel: draftChannel, limit: 25 })
-      setReleaseList(res.items ?? [])
-    } catch {
-      setReleaseList([])
-    }
-  }, [api, draftChannel, draftUpdateMode])
-
-  // Debounced compare preview when typing a commit/tag target.
-  useEffect(() => {
-    if (compareTimerRef.current) {
-      window.clearTimeout(compareTimerRef.current)
-      compareTimerRef.current = null
-    }
-    const target =
-      draftUpdateMode === 'commit'
-        ? commitInput.trim()
-        : selectedRelease.trim()
-    if (!target || target.length < 3) {
-      setComparePreview(null)
-      return
-    }
-    compareTimerRef.current = window.setTimeout(() => {
-      api
-        .compare(target)
-        .then(setComparePreview)
-        .catch(() => setComparePreview(null))
-    }, 450)
-    return () => {
-      if (compareTimerRef.current) window.clearTimeout(compareTimerRef.current)
-    }
-  }, [api, commitInput, selectedRelease, draftUpdateMode])
-
-  const checkAvailable = useCallback(async () => {
-    setBusy('check')
-    setToast(null)
-    try {
-      // Ephemeral check only — does not write prefs. Use「应用频道设置」to persist.
-      const manifest = await api.available({
-        channel: draftChannel,
-        mode: draftUpdateMode,
-      })
-      setAvailable(manifest)
-      if (!manifest) setToast({ kind: 'ok', text: u.updaterNoAvailable })
-      if (draftUpdateMode === 'commit') await loadCommits()
-      else await loadReleases()
-      // Refresh status for job/maintenance only; do not re-hydrate drafts.
-      await refresh()
-    } catch (e) {
-      setToast({ kind: 'error', text: explain(e) })
-    } finally {
-      setBusy(null)
-    }
-  }, [
-    api,
-    draftChannel,
-    draftUpdateMode,
-    refresh,
-    explain,
-    u.updaterNoAvailable,
-    loadCommits,
-    loadReleases,
-  ])
-
-  const triggerUpgrade = useCallback(
-    async (opts?: { forceDowngrade?: boolean }) => {
-      const updateMode: UpdateMode =
-        draftUpdateMode === 'commit' ? 'commit' : 'release'
-      const target =
-        updateMode === 'commit' && commitInput.trim()
-          ? commitInput.trim()
-          : selectedRelease.trim() ||
-            available?.version ||
-            status?.latest_available?.version
+  /** 统一的更新派发：确认 → 触发 → 412 二次确认重试。 */
+  const dispatchUpdate = useCallback(
+    async (
+      target: string,
+      mode: UpdateMode,
+      opts: { isDowngrade: boolean; needsRisk: boolean },
+    ) => {
       if (!target) return
       if (tokenRequired) {
         setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
         return
       }
-
-      const isDowngrade =
-        !!opts?.forceDowngrade ||
-        comparePreview?.is_downgrade === true ||
-        status?.downgrade_available === true ||
-        available?.is_downgrade === true ||
-        status?.latest_available?.is_downgrade === true
-      const relation =
-        comparePreview?.relation ??
-        available?.relation ??
-        status?.latest_available?.relation
-      const needsRisk =
-        relation === 'diverged' ||
-        relation === 'unknown' ||
-        (!isDowngrade &&
-          !comparePreview?.is_upgrade &&
-          !status?.update_available &&
-          available?.is_upgrade !== true)
-
-      if (isDowngrade) {
+      const current = status?.current_version ?? '—'
+      if (opts.isDowngrade) {
         if (
           !confirm(
-            format(u.updaterConfirmDowngrade, {
-              version: target,
-              current: status?.current_version ?? '—',
-            }),
+            format(u.updaterConfirmDowngrade, { version: target, current }),
           )
         ) {
           return
         }
-      } else if (needsRisk) {
+      } else if (opts.needsRisk) {
         if (!confirm(u.updaterConfirmRisk)) return
-      } else if (!confirm(format(u.updaterConfirmUpgrade, { version: target }))) {
+      } else if (
+        !confirm(format(u.updaterConfirmUpgrade, { version: target }))
+      ) {
         return
       }
 
-      setBusy('upgrade')
+      setBusy('update')
       setToast(null)
       try {
-        let resolvedTarget = target
-        if (!available && !(updateMode === 'commit' && commitInput.trim())) {
-          const m = await api
-            .available({ channel: draftChannel, mode: updateMode })
-            .catch(() => null)
-          if (m) {
-            setAvailable(m)
-            resolvedTarget = m.version
-          }
-        }
-        const r = await api.triggerUpdate(resolvedTarget, {
-          mode: updateMode,
-          commit: updateMode === 'commit',
-          allowDowngrade: isDowngrade,
-          allowRisk: needsRisk || isDowngrade,
-          idemKey: `update-${resolvedTarget}-${Date.now()}`,
+        const r = await api.triggerUpdate(target, {
+          mode,
+          commit: mode === 'commit',
+          allowDowngrade: opts.isDowngrade,
+          allowRisk: opts.needsRisk || opts.isDowngrade,
+          idemKey: `update-${target}-${Date.now()}`,
         })
         setToast({
           kind: 'ok',
@@ -384,7 +439,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         })
         await refresh()
       } catch (e) {
-        // Server rejected missing allow_downgrade / allow_risk — re-prompt.
+        // 服务端要求 allow_downgrade / allow_risk —— 再确认一次后重试。
         if (
           e instanceof UpdaterError &&
           e.status === 412 &&
@@ -394,15 +449,12 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         ) {
           const msg = /irreversible|diverged|unknown|allow_risk/i.test(e.message)
             ? u.updaterConfirmRisk
-            : format(u.updaterConfirmDowngrade, {
-                version: target,
-                current: status?.current_version ?? '—',
-              })
+            : format(u.updaterConfirmDowngrade, { version: target, current })
           if (confirm(msg)) {
             try {
               const r = await api.triggerUpdate(target, {
-                mode: updateMode,
-                commit: updateMode === 'commit',
+                mode,
+                commit: mode === 'commit',
                 allowDowngrade: true,
                 allowRisk: true,
                 idemKey: `update-dl-${target}-${Date.now()}`,
@@ -424,21 +476,28 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         setBusy(null)
       }
     },
-    [
-      api,
-      available,
-      status,
-      refresh,
-      tokenRequired,
-      explain,
-      u,
-      draftUpdateMode,
-      draftChannel,
-      commitInput,
-      selectedRelease,
-      comparePreview,
-    ],
+    [api, status, refresh, tokenRequired, explain, u],
   )
+
+  const updateToLatest = useCallback(() => {
+    const la = status?.latest_available
+    const target = available?.version ?? la?.version
+    if (!target) {
+      checkAvailable()
+      return
+    }
+    const mode: UpdateMode =
+      (available?.mode ?? la?.mode ?? selOption.mode) === 'commit'
+        ? 'commit'
+        : 'release'
+    const relation = available?.relation ?? la?.relation
+    const isDowngrade =
+      available?.is_downgrade === true ||
+      la?.is_downgrade === true ||
+      status?.downgrade_available === true
+    const needsRisk = relation === 'diverged' || relation === 'unknown'
+    dispatchUpdate(target, mode, { isDowngrade, needsRisk })
+  }, [available, status, selOption, dispatchUpdate, checkAvailable])
 
   const triggerSelfUpdate = useCallback(async () => {
     if (tokenRequired) {
@@ -447,18 +506,14 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     }
     const target = status?.latest_available?.version ?? ''
     if (!target) return
-    if (!confirm(format(u.updaterSelfUpdateConfirm, { version: target })))
+    if (!confirm(format(u.updaterSelfUpdateConfirm, { version: target }))) {
       return
+    }
     setBusy('self-update')
     setToast(null)
     try {
-      const r = await api.triggerSelfUpdate()
-      setToast({
-        kind: 'ok',
-        text: format(u.updaterSelfUpdateDispatched, {
-          helper: r.helper_container_id.slice(0, 12),
-        }),
-      })
+      await api.triggerSelfUpdate()
+      setToast({ kind: 'ok', text: u.updaterSelfUpdateDispatched })
     } catch (e) {
       setToast({ kind: 'error', text: explain(e) })
     } finally {
@@ -467,15 +522,23 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   }, [api, status, tokenRequired, explain, u])
 
   const rollbackTo = useCallback(
-    async (snapshotId: string) => {
+    async (snap: SnapshotMeta) => {
       if (tokenRequired) {
         setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
         return
       }
-      if (!confirm(format(u.updaterConfirmRollback, { snapshotId }))) return
-      setBusy(`rollback-${snapshotId}`)
+      if (
+        !confirm(
+          format(u.updaterConfirmRollback, {
+            version: snap.source_version ?? snap.id,
+          }),
+        )
+      ) {
+        return
+      }
+      setBusy(`rollback-${snap.id}`)
       try {
-        await api.rollback(snapshotId)
+        await api.rollback(snap.id)
         setToast({ kind: 'ok', text: u.updaterRollbackDispatched })
         await refresh()
       } catch (e) {
@@ -511,10 +574,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       return
     }
     const snap = status?.rescue_snapshot_id
-    if (!snap) {
-      setToast({ kind: 'error', text: u.updaterStatusNeedsManualDesc })
-      return
-    }
+    if (!snap) return
     if (
       !confirm(
         format(u.updaterConfirmRescueContinue, {
@@ -540,20 +600,23 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     }
   }, [api, refresh, tokenRequired, explain, u, status])
 
+  // ===== 渲染 =====
+
   const mood = useMemo<Mood>(() => deriveMood(status), [status])
 
-  // 非 admin：整段折叠
-  if (accessDenied && mode === 'backend') return null
-
-  // ===== Render =====
+  // 非 admin：整段隐藏
+  if (accessDenied && transport === 'backend') return null
 
   const showProgress =
     !!activeJob && !['succeeded', 'failed'].includes(activeJob.status)
-  const showMaintenanceActions = !!status?.maintenance_active && !showProgress
-  const showSelfUpdate =
+  const showMaintenance =
+    (mood === 'maintenance' || mood === 'needsManual') && !showProgress
+  const requiresSelfUpdate =
     !!status?.requires_self_update && !!status.latest_available
-
-  const statusValue = renderStatusValue(mood, status, u)
+  const showAvailableCard =
+    !showProgress &&
+    (mood === 'available' || mood === 'downgrade') &&
+    !!(available || status?.latest_available)
 
   return (
     <div className="updater-panel">
@@ -574,303 +637,88 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         </div>
       )}
 
-      {/* 进行中 → 进度卡占据主区；否则展示信息列表 */}
       {showProgress ? (
         <ProgressCard job={activeJob!} u={u} />
       ) : (
-        <ul className="updater-list">
-          <li className="updater-row">
-            <span className="updater-row-label">{u.updaterCurrentVersion}</span>
-            <span className="updater-row-value">
-              {status?.current_version ? (
-                <code>{status.current_version}</code>
-              ) : (
-                <span className="updater-row-value muted">
-                  {status ? u.updaterStatusFirstRun : u.updaterUnknown}
-                </span>
-              )}
-            </span>
-          </li>
-          <li className="updater-row">
-            <span className="updater-row-label">{u.updaterRowStatus}</span>
-            <span className={`updater-row-value ${statusValue.tone}`}>
-              {statusValue.text}
-            </span>
-          </li>
-          {status?.last_checked_at && (
-            <li className="updater-row">
-              <span className="updater-row-label">{u.updaterLastChecked}</span>
-              <span className="updater-row-value muted">
-                {formatAgo(status.last_checked_at, u)}
-              </span>
-            </li>
-          )}
-          <li className="updater-row updater-row-select">
-            <span className="updater-row-label">{u.updaterUpdateMode}</span>
-            <span className="updater-row-value">
-              <select
-                className="updater-select"
-                value={draftUpdateMode}
-                disabled={!!busy || tokenRequired}
-                onChange={(e) => {
-                  const m = e.target.value as UpdateMode
-                  setDraftUpdateMode(m)
-                  setDraftChannel(m === 'commit' ? 'main' : 'stable')
-                  setAvailable(null)
-                }}
-              >
-                <option value="release">{u.updaterModeRelease}</option>
-                <option value="commit">{u.updaterModeCommit}</option>
-              </select>
-            </span>
-          </li>
-          <li className="updater-row updater-row-select">
-            <span className="updater-row-label">{u.updaterChannel}</span>
-            <span className="updater-row-value">
-              <select
-                className="updater-select"
-                value={draftChannel}
-                disabled={!!busy || tokenRequired}
-                onChange={(e) => {
-                  setDraftChannel(e.target.value)
-                  setAvailable(null)
-                }}
-              >
-                {channelOptions.map((ch) => (
-                  <option key={ch} value={ch}>
-                    {ch}
-                  </option>
-                ))}
-              </select>
-            </span>
-          </li>
-          {draftUpdateMode === 'commit' && (
-            <li className="updater-row">
-              <span className="updater-row-label">{u.updaterCommitTarget}</span>
-              <span className="updater-row-value">
-                <input
-                  className="updater-input"
-                  type="text"
-                  placeholder={u.updaterCommitPlaceholder}
-                  value={commitInput}
-                  disabled={!!busy || tokenRequired}
-                  onChange={(e) => setCommitInput(e.target.value)}
-                />
-              </span>
-            </li>
-          )}
-        </ul>
+        <StatusHero
+          mood={mood}
+          status={status}
+          sel={sel}
+          busy={busy}
+          loading={loading}
+          tokenRequired={tokenRequired}
+          requiresSelfUpdate={requiresSelfUpdate}
+          u={u}
+          onCheck={() => checkAvailable()}
+          onUpdate={updateToLatest}
+          onSelfUpdate={triggerSelfUpdate}
+          onRetry={refresh}
+        />
       )}
 
-      {comparePreview && !showProgress && (
-        <div
-          className={`updater-compare-preview ${
-            comparePreview.is_downgrade
-              ? 'downgrade'
-              : comparePreview.is_upgrade
-                ? 'upgrade'
-                : 'neutral'
-          }`}
-        >
-          {comparePreview.is_upgrade &&
-            format(u.updaterFreshnessAhead, {
-              n: String(comparePreview.ahead_by),
-            })}
-          {comparePreview.is_downgrade &&
-            format(u.updaterFreshnessBehind, {
-              n: String(comparePreview.behind_by),
-            })}
-          {!comparePreview.is_upgrade &&
-            !comparePreview.is_downgrade &&
-            comparePreview.relation === 'identical' &&
-            u.updaterFreshnessIdentical}
-          {!comparePreview.is_upgrade &&
-            !comparePreview.is_downgrade &&
-            comparePreview.relation === 'diverged' &&
-            format(u.updaterFreshnessDiverged, {
-              ahead: String(comparePreview.ahead_by),
-              behind: String(comparePreview.behind_by),
-            })}
-          {!comparePreview.is_upgrade &&
-            !comparePreview.is_downgrade &&
-            comparePreview.relation === 'unknown' &&
-            u.updaterFreshnessUnknown}
-        </div>
-      )}
-
-      {draftUpdateMode === 'release' &&
-        releaseList.length > 0 &&
-        !showProgress && (
-          <div className="updater-commit-list">
-            <div className="updater-commit-list-head">
-              {u.updaterReleaseHistory}
-              {' · '}
-              <code>{draftChannel}</code>
-            </div>
-            <ul>
-              {releaseList.map((r) => (
-                <li key={r.tag_name}>
-                  <button
-                    type="button"
-                    className={
-                      selectedRelease === r.tag_name ||
-                      available?.version === r.tag_name
-                        ? 'updater-commit-item selected'
-                        : 'updater-commit-item'
-                    }
-                    disabled={!!busy || tokenRequired}
-                    onClick={() => setSelectedRelease(r.tag_name)}
-                  >
-                    <code>{r.tag_name}</code>
-                    <span className="updater-commit-msg">
-                      {r.name || r.tag_name}
-                      {r.prerelease ? ' (pre)' : ''}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-      {draftUpdateMode === 'commit' && commitList.length > 0 && !showProgress && (
-        <div className="updater-commit-list">
-          <div className="updater-commit-list-head">
-            {u.updaterCommitHistory}
-            {commitListBranch ? (
-              <>
-                {' '}
-                · <code>{commitListBranch}</code>
-              </>
-            ) : null}
-          </div>
-          <ul>
-            {commitList.map((c) => (
-              <li key={c.sha}>
-                <button
-                  type="button"
-                  className={
-                    commitInput === c.tag || commitInput === c.short_sha
-                      ? 'updater-commit-item selected'
-                      : 'updater-commit-item'
-                  }
-                  disabled={!!busy || tokenRequired}
-                  onClick={() => setCommitInput(c.tag)}
-                  title={c.sha}
-                >
-                  <code>{c.short_sha}</code>
-                  <span className="updater-commit-msg">{c.message}</span>
-                  {c.committed_at && (
-                    <span className="updater-commit-date">
-                      {new Date(c.committed_at).toLocaleString()}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {showAvailableCard && (
+        <AvailableCard
+          status={status!}
+          available={available}
+          downgrade={mood === 'downgrade'}
+          requiresSelfUpdate={requiresSelfUpdate}
+          u={u}
+        />
       )}
 
       {toast && (
         <div className={`updater-toast ${toast.kind}`}>{toast.text}</div>
       )}
 
-      {/* 主操作行：根据 mood 选择文案 */}
+      {/* ===== 更新通道：点选即保存 ===== */}
       {!showProgress && (
-        <div className="updater-actions">
-          {(mood === 'available' ||
-            mood === 'downgrade' ||
-            (draftUpdateMode === 'commit' && commitInput.trim())) && (
-            <button
-              type="button"
-              className={
-                mood === 'downgrade'
-                  ? 'btn-base btn-secondary'
-                  : 'btn-base btn-primary'
-              }
-              onClick={() =>
-                triggerUpgrade({ forceDowngrade: mood === 'downgrade' })
-              }
-              disabled={busy === 'upgrade' || tokenRequired}
-            >
-              <span>
-                {busy === 'upgrade'
-                  ? u.updaterDispatching
-                  : mood === 'downgrade'
-                    ? format(u.updaterDowngradeTo, {
-                        version:
-                          commitInput.trim() ||
-                          available?.version ||
-                          status?.latest_available?.version ||
-                          '…',
-                      })
-                    : format(u.updaterUpgradeTo, {
-                        version:
-                          commitInput.trim() ||
-                          available?.version ||
-                          status?.latest_available?.version ||
-                          '…',
-                      })}
-              </span>
-            </button>
-          )}
-          <button
-            type="button"
-            className={
-              mood === 'available'
-                ? 'btn-base btn-secondary'
-                : 'btn-base btn-primary'
-            }
-            onClick={checkAvailable}
-            disabled={busy === 'check' || loading || tokenRequired}
-          >
-            <LuRefreshCw size={13} />
-            <span>
-              {busy === 'check' ? u.updaterChecking : u.updaterCheckAvailable}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="btn-base btn-secondary"
-            onClick={applyPrefs}
-            disabled={busy === 'prefs' || tokenRequired}
-            title={u.updaterApplyPrefs}
-          >
-            <span>
-              {busy === 'prefs' ? u.updaterProcessing : u.updaterApplyPrefs}
-            </span>
-          </button>
-          {loading && !status && (
-            <span className="updater-actions-hint">{u.updaterLoading}</span>
-          )}
-        </div>
+        <SettingGroup
+          title={u.updaterChannelGroupTitle}
+          description={u.updaterChannelGroupDesc}
+        >
+          <div className="updater-channels" role="radiogroup">
+            {visibleOptions.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                role="radio"
+                aria-checked={sel === opt.key}
+                className={`updater-channel-card${sel === opt.key ? ' selected' : ''}`}
+                disabled={!!busy || tokenRequired}
+                onClick={() => selectChannel(opt.key)}
+              >
+                <span className="updater-channel-radio" aria-hidden="true" />
+                <span className="updater-channel-body">
+                  <span className="updater-channel-name">
+                    {channelLabel(opt.key, u)}
+                    {opt.badge === 'recommended' && (
+                      <span className="updater-channel-badge recommended">
+                        {u.updaterChannelBadgeRecommended}
+                      </span>
+                    )}
+                    {opt.badge === 'dev' && (
+                      <span className="updater-channel-badge dev">
+                        {u.updaterChannelBadgeDev}
+                      </span>
+                    )}
+                  </span>
+                  <span className="updater-channel-desc">
+                    {channelDesc(opt.key, u)}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </SettingGroup>
       )}
 
-      {/* ===== 维护操作（条件渲染，默认隐藏）===== */}
-      {(showMaintenanceActions || showSelfUpdate) && (
+      {/* ===== 维护与恢复（仅出问题时出现）===== */}
+      {showMaintenance && (
         <SettingGroup
-          title={u.updaterMaintenanceActions}
-          collapsible
-          defaultExpanded={mood === 'needsManual' || mood === 'maintenance'}
+          title={u.updaterMaintenanceGroup}
+          description={u.updaterMaintenanceGroupDesc}
         >
-          {showSelfUpdate && (
-            <ButtonItem
-              itemKey="self_update"
-              label={u.updaterSelfUpdateButton}
-              description={u.updaterActionSelfUpdateDesc}
-              buttonText={
-                busy === 'self-update'
-                  ? u.updaterSelfUpdateDispatching
-                  : u.updaterSelfUpdateButton
-              }
-              onClick={triggerSelfUpdate}
-              variant="secondary"
-              layout="horizontal"
-              disabled={busy === 'self-update' || tokenRequired}
-            />
-          )}
-          {showMaintenanceActions && mood === 'needsManual' && status?.rescue_snapshot_id && (
+          {mood === 'needsManual' && status?.rescue_snapshot_id && (
             <ButtonItem
               itemKey="rescue_continue"
               label={u.updaterRescueContinue}
@@ -890,29 +738,48 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
               disabled={busy === 'rescue-continue' || tokenRequired}
             />
           )}
-          {showMaintenanceActions && (
-            <ButtonItem
-              itemKey="exit_maintenance"
-              label={u.updaterForceExit}
-              description={u.updaterActionExitDesc}
-              buttonText={
-                busy === 'exit-maintenance'
-                  ? u.updaterProcessing
-                  : u.updaterForceExit
-              }
-              onClick={exitMaintenance}
-              variant="danger"
-              layout="horizontal"
-              disabled={busy === 'exit-maintenance' || tokenRequired}
-            />
-          )}
+          <ButtonItem
+            itemKey="exit_maintenance"
+            label={u.updaterForceExit}
+            description={u.updaterForceExitDesc}
+            buttonText={
+              busy === 'exit-maintenance'
+                ? u.updaterProcessing
+                : u.updaterForceExit
+            }
+            onClick={exitMaintenance}
+            variant="danger"
+            layout="horizontal"
+            disabled={busy === 'exit-maintenance' || tokenRequired}
+          />
         </SettingGroup>
       )}
 
-      {/* ===== 快照与历史（折叠）===== */}
+      {/* ===== 安装指定版本（高级，折叠）===== */}
+      {!showProgress && (
+        <SettingGroup
+          title={u.updaterTargetGroupTitle}
+          description={u.updaterTargetGroupDesc}
+          collapsible
+          defaultExpanded={false}
+        >
+          <TargetPicker
+            api={api}
+            option={selOption}
+            disabled={!!busy || tokenRequired}
+            installing={busy === 'update'}
+            u={u}
+            onInstall={(target, opts) =>
+              dispatchUpdate(target, selOption.mode, opts)
+            }
+          />
+        </SettingGroup>
+      )}
+
+      {/* ===== 备份与回退（折叠）===== */}
       <SettingGroup
-        title={u.updaterGroupHistory}
-        description={u.updaterGroupHistoryDesc}
+        title={u.updaterSnapshotGroupTitle}
+        description={u.updaterSnapshotGroupDesc}
         collapsible
         defaultExpanded={false}
       >
@@ -927,14 +794,14 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                 u={u}
                 busy={busy === `rollback-${s.id}`}
                 disabled={tokenRequired}
-                onRollback={() => rollbackTo(s.id)}
+                onRollback={() => rollbackTo(s)}
               />
             ))}
           </div>
         )}
       </SettingGroup>
 
-      {/* ===== 高级（折叠）===== */}
+      {/* ===== 高级与诊断（折叠）===== */}
       <SettingGroup
         title={u.updaterGroupAdvanced}
         description={u.updaterGroupAdvancedDesc}
@@ -944,12 +811,12 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         <AdvancedPanel
           status={status}
           available={available}
-          mode={mode}
+          transport={transport}
           token={token}
           loading={loading}
           u={u}
-          onModeChange={(m) => {
-            setMode(m)
+          onTransportChange={(m) => {
+            setTransport(m)
             if (m === 'backend') setToken('')
           }}
           onTokenChange={setToken}
@@ -960,140 +827,254 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   )
 }
 
-// ===== 状态推导 =====
+// ===== 状态卡（hero）=====
 
-function deriveMood(status: UpdaterStatus | null): Mood {
-  if (!status) return 'offline'
-  if (status.job_in_flight) return 'updating'
-  if (status.maintenance_phase === 'needs_manual') return 'needsManual'
-  if (status.maintenance_active) return 'maintenance'
-  if (!status.current_version) return 'firstRun'
-  if (status.update_available) return 'available'
-  if (status.downgrade_available) return 'downgrade'
-  return 'healthy'
+function StatusHero({
+  mood,
+  status,
+  sel,
+  busy,
+  loading,
+  tokenRequired,
+  requiresSelfUpdate,
+  u,
+  onCheck,
+  onUpdate,
+  onSelfUpdate,
+  onRetry,
+}: {
+  mood: Mood
+  status: UpdaterStatus | null
+  sel: ChannelKey
+  busy: string | null
+  loading: boolean
+  tokenRequired: boolean
+  requiresSelfUpdate: boolean
+  u: U
+  onCheck: () => void
+  onUpdate: () => void
+  onSelfUpdate: () => void
+  onRetry: () => void
+}) {
+  const { title, hint, tone } = moodText(mood, u)
+  const targetVersion = status?.latest_available?.version
+  // direct 模式没填 token 时连不上是意料之中——提示填 token，而不是让用户去查 backend 配置。
+  const effectiveHint =
+    mood === 'offline' && tokenRequired ? u.updaterTokenRequiredDirect : hint
+
+  let action: React.ReactNode = null
+  if (mood === 'healthy' || mood === 'firstRun') {
+    action = (
+      <button
+        type="button"
+        className="btn-base btn-primary"
+        onClick={onCheck}
+        disabled={busy === 'check' || loading || tokenRequired}
+      >
+        <LuRefreshCw size={13} />
+        <span>{busy === 'check' ? u.updaterChecking : u.updaterCheckNow}</span>
+      </button>
+    )
+  } else if (mood === 'available' || mood === 'downgrade') {
+    action = requiresSelfUpdate ? (
+      <button
+        type="button"
+        className="btn-base btn-primary"
+        onClick={onSelfUpdate}
+        disabled={busy === 'self-update' || tokenRequired}
+      >
+        <span>
+          {busy === 'self-update'
+            ? u.updaterProcessing
+            : u.updaterSelfUpdateButton}
+        </span>
+      </button>
+    ) : (
+      <button
+        type="button"
+        className={
+          mood === 'downgrade'
+            ? 'btn-base btn-secondary'
+            : 'btn-base btn-primary'
+        }
+        onClick={onUpdate}
+        disabled={busy === 'update' || tokenRequired}
+      >
+        <span>
+          {busy === 'update'
+            ? u.updaterDispatching
+            : mood === 'downgrade'
+              ? format(u.updaterDowngradeNow, {
+                  version: targetVersion ?? '…',
+                })
+              : u.updaterUpdateNow}
+        </span>
+      </button>
+    )
+  } else if (mood === 'offline') {
+    action = (
+      <button
+        type="button"
+        className="btn-base btn-secondary"
+        onClick={onRetry}
+        disabled={loading || tokenRequired}
+      >
+        <LuRefreshCw size={13} />
+        <span>{loading ? u.updaterLoading : u.updaterRetry}</span>
+      </button>
+    )
+  }
+
+  return (
+    <div className="updater-hero">
+      <div className="updater-hero-main">
+        <span className={`updater-hero-dot ${tone}`} aria-hidden="true" />
+        <div className="updater-hero-text">
+          <div className="updater-hero-status">
+            {title}
+            {(mood === 'available' || mood === 'downgrade') &&
+              targetVersion && (
+                <>
+                  {' '}
+                  <code>{targetVersion}</code>
+                </>
+              )}
+          </div>
+          {effectiveHint && (
+            <div className="updater-hero-hint">{effectiveHint}</div>
+          )}
+        </div>
+        {action && <div className="updater-hero-action">{action}</div>}
+      </div>
+      <div className="updater-hero-meta">
+        <span>
+          {u.updaterCurrentVersion}{' '}
+          {status?.current_version ? (
+            <code>{status.current_version}</code>
+          ) : (
+            <em>{u.updaterUnknown}</em>
+          )}
+        </span>
+        <span>
+          {u.updaterChannelLabel} {channelLabel(sel, u)}
+        </span>
+        {status?.last_checked_at && (
+          <span>
+            {u.updaterLastChecked} {formatAgo(status.last_checked_at, u)}
+          </span>
+        )}
+        {mood !== 'healthy' && mood !== 'firstRun' && mood !== 'offline' && (
+          <button
+            type="button"
+            className="updater-hero-recheck"
+            onClick={onCheck}
+            disabled={busy === 'check' || loading || tokenRequired}
+          >
+            <LuRefreshCw size={12} />
+            <span>
+              {busy === 'check' ? u.updaterChecking : u.updaterCheckNow}
+            </span>
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
-function formatFreshness(
-  la: NonNullable<UpdaterStatus['latest_available']>,
-  u: ReturnType<typeof useI18n>['t']['config'],
-): string | null {
-  if (la.mode !== 'commit' && !la.relation) return null
-  const rel = la.relation
-  if (!rel) return null
-  switch (rel) {
-    case 'ahead':
-      return format(u.updaterFreshnessAhead, {
-        n: String(la.ahead_by ?? 0),
-      })
-    case 'behind':
-      return format(u.updaterFreshnessBehind, {
-        n: String(la.behind_by ?? 0),
-      })
-    case 'identical':
-      return u.updaterFreshnessIdentical
-    case 'diverged':
-      return format(u.updaterFreshnessDiverged, {
-        ahead: String(la.ahead_by ?? 0),
-        behind: String(la.behind_by ?? 0),
-      })
-    case 'unknown':
-      return u.updaterFreshnessUnknown
-    default:
-      return null
-  }
-}
+// ===== 新版本卡（纯说明，无按钮）=====
 
-function renderStatusValue(
-  mood: Mood,
-  status: UpdaterStatus | null,
-  u: ReturnType<typeof useI18n>['t']['config'],
-): {
-  text: React.ReactNode
-  tone: '' | 'muted' | 'attention' | 'warning' | 'danger'
-} {
-  const freshness = status?.latest_available
-    ? formatFreshness(status.latest_available, u)
-    : null
-  switch (mood) {
-    case 'healthy':
-      return {
-        text: (
-          <>
-            {u.updaterStatusHealthy}
-            {freshness && (
-              <>
-                {' '}
-                · <span className="muted">{freshness}</span>
-              </>
-            )}
-          </>
-        ),
-        tone: 'muted',
-      }
-    case 'available':
-      return {
-        text: (
-          <>
-            {u.updaterStatusAvailable}
-            {status?.latest_available && (
-              <>
-                {' '}
-                · <code>{status.latest_available.version}</code>
-              </>
-            )}
-            {freshness && (
-              <>
-                {' '}
-                · <span className="muted">{freshness}</span>
-              </>
-            )}
-          </>
-        ),
-        tone: 'attention',
-      }
-    case 'downgrade':
-      return {
-        text: (
-          <>
-            {u.updaterStatusDowngrade}
-            {status?.latest_available && (
-              <>
-                {' '}
-                · <code>{status.latest_available.version}</code>
-              </>
-            )}
-            {freshness && (
-              <>
-                {' '}
-                · <span className="muted">{freshness}</span>
-              </>
-            )}
-          </>
-        ),
-        tone: 'warning',
-      }
-    case 'updating':
-      return { text: u.updaterStatusUpdating, tone: 'warning' }
-    case 'maintenance':
-      return { text: u.updaterStatusMaintenance, tone: 'warning' }
-    case 'needsManual':
-      return { text: u.updaterStatusNeedsManual, tone: 'danger' }
-    case 'offline':
-      return { text: u.updaterStatusOffline, tone: 'danger' }
-    case 'firstRun':
-      return { text: u.updaterStatusFirstRunDesc, tone: 'muted' }
+function AvailableCard({
+  status,
+  available,
+  downgrade,
+  requiresSelfUpdate,
+  u,
+}: {
+  status: UpdaterStatus
+  available: ReleaseManifest | null
+  downgrade: boolean
+  requiresSelfUpdate: boolean
+  u: U
+}) {
+  const la = status.latest_available
+  const version = available?.version ?? la?.version ?? '—'
+  const notesUrl = available?.notes_url || la?.notes_url || null
+  const relation = available?.relation ?? la?.relation
+  const aheadBy = available?.ahead_by ?? la?.ahead_by
+  const behindBy = available?.behind_by ?? la?.behind_by
+  const irreversible = available?.migrations?.irreversible === true
+
+  let freshness: string | null = null
+  if (relation === 'ahead' && aheadBy != null) {
+    freshness = format(u.updaterFreshnessAhead, { n: String(aheadBy) })
+  } else if (relation === 'behind' && behindBy != null) {
+    freshness = format(u.updaterFreshnessBehind, { n: String(behindBy) })
+  } else if (relation === 'identical') {
+    freshness = u.updaterFreshnessIdentical
+  } else if (relation === 'diverged') {
+    freshness = format(u.updaterFreshnessDiverged, {
+      ahead: String(aheadBy ?? 0),
+      behind: String(behindBy ?? 0),
+    })
+  } else if (relation === 'unknown') {
+    freshness = u.updaterFreshnessUnknown
   }
+
+  return (
+    <div className={`updater-available${downgrade ? ' downgrade' : ''}`}>
+      <div className="updater-available-head">
+        <span className="updater-available-title">
+          {downgrade
+            ? u.updaterAvailableDowngradeTitle
+            : u.updaterAvailableTitle}
+        </span>
+        <span className="updater-available-versions">
+          <code>{status.current_version ?? '—'}</code>
+          <span className="updater-available-arrow" aria-hidden="true">
+            →
+          </span>
+          <code>{version}</code>
+        </span>
+      </div>
+      {freshness && <p className="updater-available-freshness">{freshness}</p>}
+      {requiresSelfUpdate && (
+        <p className="updater-available-warn">
+          {format(u.updaterSelfUpdateNeeded, {
+            version,
+            minVersion: la?.min_updater_version ?? '—',
+          })}
+        </p>
+      )}
+      {irreversible && (
+        <p className="updater-available-warn">{u.updaterIrreversibleWarn}</p>
+      )}
+      <div className="updater-available-steps">
+        <div className="updater-available-steps-title">
+          {u.updaterWhatHappensTitle}
+        </div>
+        <ol>
+          <li>{u.updaterWhatHappens1}</li>
+          <li>{u.updaterWhatHappens2}</li>
+          <li>{u.updaterWhatHappens3}</li>
+        </ol>
+      </div>
+      {notesUrl && (
+        <a
+          className="updater-available-notes"
+          href={notesUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          {u.updaterReleaseNotes} ↗
+        </a>
+      )}
+    </div>
+  )
 }
 
 // ===== 进度卡 =====
 
-function ProgressCard({
-  job,
-  u,
-}: {
-  job: Job
-  u: ReturnType<typeof useI18n>['t']['config']
-}) {
+function ProgressCard({ job, u }: { job: Job; u: U }) {
   const done = job.steps.filter((s) => s.ok === true).length
   const total = Math.max(job.steps.length, done + 1)
   const pct = Math.min(99, Math.round((done / total) * 100))
@@ -1106,14 +1087,15 @@ function ProgressCard({
           {job.to_version && (
             <>
               {' '}
-              ·<code>{job.to_version}</code>
+              · <code>{job.to_version}</code>
             </>
           )}
         </h4>
         <span className="updater-progress-counts">
-          {done} /{total}
+          {done} / {total}
         </span>
       </div>
+      <p className="updater-progress-hint">{u.updaterHintUpdating}</p>
       <p className="updater-progress-phase">
         {currentStep?.phase ?? job.status}
       </p>
@@ -1150,6 +1132,227 @@ function ProgressCard({
   )
 }
 
+// ===== 安装指定版本（高级）=====
+
+function TargetPicker({
+  api,
+  option,
+  disabled,
+  installing,
+  u,
+  onInstall,
+}: {
+  api: ReturnType<typeof makeUpdaterApi>
+  option: ChannelOption
+  disabled: boolean
+  installing: boolean
+  u: U
+  onInstall: (
+    target: string,
+    opts: { isDowngrade: boolean; needsRisk: boolean },
+  ) => void
+}) {
+  const [releases, setReleases] = useState<ReleaseListItem[]>([])
+  const [commits, setCommits] = useState<CommitListItem[]>([])
+  const [selected, setSelected] = useState('')
+  const [input, setInput] = useState('')
+  const [compare, setCompare] = useState<CompareResult | null>(null)
+  const [listLoading, setListLoading] = useState(true)
+  const compareTimerRef = useRef<number | null>(null)
+
+  const isCommit = option.mode === 'commit'
+  const target = (isCommit && input.trim()) || selected
+
+  useEffect(() => {
+    let cancelled = false
+    setListLoading(true)
+    setSelected('')
+    setInput('')
+    const load = isCommit
+      ? api.commits({ branch: option.channel, limit: 25 }).then((r) => {
+          if (!cancelled) setCommits(r.items ?? [])
+        })
+      : api.releases({ channel: option.channel, limit: 25 }).then((r) => {
+          if (!cancelled) setReleases(r.items ?? [])
+        })
+    load
+      .catch(() => {
+        if (!cancelled) {
+          setCommits([])
+          setReleases([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setListLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [api, option, isCommit])
+
+  // 输入/选中目标后，防抖对比新旧关系。
+  useEffect(() => {
+    if (compareTimerRef.current) {
+      window.clearTimeout(compareTimerRef.current)
+      compareTimerRef.current = null
+    }
+    if (!target || target.length < 3) {
+      setCompare(null)
+      return
+    }
+    compareTimerRef.current = window.setTimeout(() => {
+      api
+        .compare(target)
+        .then(setCompare)
+        .catch(() => setCompare(null))
+    }, 450)
+    return () => {
+      if (compareTimerRef.current) window.clearTimeout(compareTimerRef.current)
+    }
+  }, [api, target])
+
+  const items = isCommit ? commits : releases
+  const compareTone = compare?.is_downgrade
+    ? 'downgrade'
+    : compare?.is_upgrade
+      ? 'upgrade'
+      : 'neutral'
+  let compareText: string | null = null
+  if (compare) {
+    if (compare.is_upgrade) {
+      compareText = format(u.updaterFreshnessAhead, {
+        n: String(compare.ahead_by),
+      })
+    } else if (compare.is_downgrade) {
+      compareText = format(u.updaterFreshnessBehind, {
+        n: String(compare.behind_by),
+      })
+    } else if (compare.relation === 'identical') {
+      compareText = u.updaterFreshnessIdentical
+    } else if (compare.relation === 'diverged') {
+      compareText = format(u.updaterFreshnessDiverged, {
+        ahead: String(compare.ahead_by),
+        behind: String(compare.behind_by),
+      })
+    } else {
+      compareText = u.updaterFreshnessUnknown
+    }
+  }
+
+  return (
+    <div className="updater-target">
+      <div className="updater-commit-list">
+        <div className="updater-commit-list-head">
+          {isCommit ? u.updaterTargetCommitHead : u.updaterTargetReleaseHead}
+          {' · '}
+          <code>{option.channel}</code>
+        </div>
+        {listLoading ? (
+          <p className="updater-empty">{u.updaterLoading}</p>
+        ) : items.length === 0 ? (
+          <p className="updater-empty">{u.updaterTargetEmpty}</p>
+        ) : (
+          <ul>
+            {isCommit
+              ? commits.map((c) => (
+                  <li key={c.sha}>
+                    <button
+                      type="button"
+                      className={
+                        selected === c.tag
+                          ? 'updater-commit-item selected'
+                          : 'updater-commit-item'
+                      }
+                      disabled={disabled}
+                      title={c.sha}
+                      onClick={() => {
+                        setSelected(c.tag)
+                        setInput('')
+                      }}
+                    >
+                      <code>{c.short_sha}</code>
+                      <span className="updater-commit-msg">{c.message}</span>
+                      {c.committed_at && (
+                        <span className="updater-commit-date">
+                          {new Date(c.committed_at).toLocaleString()}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))
+              : releases.map((r) => (
+                  <li key={r.tag_name}>
+                    <button
+                      type="button"
+                      className={
+                        selected === r.tag_name
+                          ? 'updater-commit-item selected'
+                          : 'updater-commit-item'
+                      }
+                      disabled={disabled}
+                      onClick={() => setSelected(r.tag_name)}
+                    >
+                      <code>{r.tag_name}</code>
+                      <span className="updater-commit-msg">
+                        {r.name || r.tag_name}
+                        {r.prerelease ? ' (pre)' : ''}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+          </ul>
+        )}
+      </div>
+
+      {isCommit && (
+        <label className="updater-target-input-row">
+          <span>{u.updaterCommitTarget}</span>
+          <input
+            className="updater-input"
+            type="text"
+            placeholder={u.updaterCommitPlaceholder}
+            value={input}
+            disabled={disabled}
+            onChange={(e) => {
+              setInput(e.target.value)
+              if (e.target.value.trim()) setSelected('')
+            }}
+          />
+        </label>
+      )}
+
+      {compareText && target && (
+        <div className={`updater-compare-preview ${compareTone}`}>
+          {compareText}
+        </div>
+      )}
+
+      <div className="updater-target-actions">
+        <button
+          type="button"
+          className="btn-base btn-secondary"
+          disabled={disabled || installing || !target}
+          onClick={() => {
+            if (!target) return
+            const isDowngrade = compare?.is_downgrade === true
+            const needsRisk =
+              !compare ||
+              compare.relation === 'diverged' ||
+              compare.relation === 'unknown'
+            onInstall(target, { isDowngrade, needsRisk })
+          }}
+        >
+          <span>
+            {installing
+              ? u.updaterDispatching
+              : format(u.updaterInstallTarget, { version: target || '…' })}
+          </span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ===== 快照行 =====
 
 function SnapshotRow({
@@ -1160,7 +1363,7 @@ function SnapshotRow({
   onRollback,
 }: {
   snapshot: SnapshotMeta
-  u: ReturnType<typeof useI18n>['t']['config']
+  u: U
   busy: boolean
   disabled: boolean
   onRollback: () => void
@@ -1172,11 +1375,11 @@ function SnapshotRow({
           {snapshot.source_version ? (
             <code>{snapshot.source_version}</code>
           ) : (
-            <span className="updater-row-value muted">—</span>
+            <span className="muted">—</span>
           )}
         </div>
         <div className="updater-snapshot-info">
-          {new Date(snapshot.created_at).toLocaleString()} ·
+          {new Date(snapshot.created_at).toLocaleString()} ·{' '}
           {formatBytes(snapshot.size_bytes)}
         </div>
       </div>
@@ -1186,32 +1389,32 @@ function SnapshotRow({
         onClick={onRollback}
         disabled={busy || disabled}
       >
-        {u.updaterRollback}
+        {busy ? u.updaterProcessing : u.updaterRollback}
       </button>
     </div>
   )
 }
 
-// ===== 高级面板 =====
+// ===== 高级与诊断 =====
 
 function AdvancedPanel({
   status,
   available,
-  mode,
+  transport,
   token,
   loading,
   u,
-  onModeChange,
+  onTransportChange,
   onTokenChange,
   onRefresh,
 }: {
   status: UpdaterStatus | null
   available: ReleaseManifest | null
-  mode: TransportMode
+  transport: TransportMode
   token: string
   loading: boolean
-  u: ReturnType<typeof useI18n>['t']['config']
-  onModeChange: (m: TransportMode) => void
+  u: U
+  onTransportChange: (m: TransportMode) => void
   onTokenChange: (s: string) => void
   onRefresh: () => void
 }) {
@@ -1220,26 +1423,20 @@ function AdvancedPanel({
       <dl className="updater-detail-grid">
         <dt>{u.updaterUpdaterVersion}</dt>
         <dd>{status?.updater_version ?? '—'}</dd>
-        <dt>{u.updaterChannel}</dt>
-        <dd>{status?.channel ?? '—'}</dd>
-        <dt>{u.updaterTransport}</dt>
+        <dt>{u.updaterChannelLabel}</dt>
         <dd>
-          {mode === 'backend'
-            ? u.updaterTransportBackend
-            : u.updaterTransportDirect}
+          {status
+            ? `${status.channel} (${status.update_mode ?? 'release'})`
+            : '—'}
         </dd>
         <dt>{u.updaterJobInFlight}</dt>
         <dd>{status?.job_in_flight ?? u.updaterNone}</dd>
       </dl>
 
       {available && (
-        <details style={{ marginTop: '0.6rem' }}>
-          <summary
-            style={{ cursor: 'pointer', fontSize: '0.82rem', color: '#6b7280' }}
-          >
-            {u.updaterImageDigests}
-          </summary>
-          <dl className="updater-detail-grid" style={{ marginTop: '0.4rem' }}>
+        <details className="updater-digests">
+          <summary>{u.updaterImageDigests}</summary>
+          <dl className="updater-detail-grid">
             {Object.entries(available.images).map(([k, v]) => (
               <React.Fragment key={k}>
                 <dt>{k}</dt>
@@ -1250,38 +1447,44 @@ function AdvancedPanel({
         </details>
       )}
 
-      <div className="updater-mode-row">
+      <div className="updater-transport">
+        <div className="updater-transport-label">{u.updaterTransport}</div>
         <label>
           <input
             type="radio"
-            name="updater-mode"
-            checked={mode === 'backend'}
-            onChange={() => onModeChange('backend')}
+            name="updater-transport"
+            checked={transport === 'backend'}
+            onChange={() => onTransportChange('backend')}
           />
-          {u.updaterModeBackend}
+          {u.updaterTransportBackend}
         </label>
         <label>
           <input
             type="radio"
-            name="updater-mode"
-            checked={mode === 'direct'}
-            onChange={() => onModeChange('direct')}
+            name="updater-transport"
+            checked={transport === 'direct'}
+            onChange={() => onTransportChange('direct')}
           />
-          {u.updaterModeDirect}
+          {u.updaterTransportDirect}
         </label>
+        {transport === 'direct' && (
+          <>
+            <p className="updater-transport-hint">
+              {u.updaterTransportDirectHint}
+            </p>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => onTokenChange(e.target.value)}
+              placeholder="UPDATE_TOKEN"
+              className="updater-token-input"
+              autoComplete="off"
+            />
+          </>
+        )}
       </div>
-      {mode === 'direct' && (
-        <input
-          type="password"
-          value={token}
-          onChange={(e) => onTokenChange(e.target.value)}
-          placeholder="UPDATE_TOKEN"
-          className="updater-token-input"
-          autoComplete="off"
-        />
-      )}
 
-      <div style={{ marginTop: '0.85rem' }}>
+      <div className="updater-advanced-actions">
         <button
           type="button"
           className="btn-base btn-secondary"
@@ -1305,10 +1508,7 @@ function formatBytes(n: number): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`
 }
 
-function formatAgo(
-  iso: string,
-  u: ReturnType<typeof useI18n>['t']['config'],
-): string {
+function formatAgo(iso: string, u: U): string {
   const then = new Date(iso).getTime()
   const diffSec = Math.max(0, Math.round((Date.now() - then) / 1000))
   if (diffSec < 45) return u.updaterAgoJustNow

@@ -33,16 +33,14 @@ pub struct Config {
 #[serde(rename_all = "lowercase")]
 pub enum Channel {
     Stable,
-    Beta,
-    Nightly,
+    Preview,
 }
 
 impl std::fmt::Display for Channel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Channel::Stable => f.write_str("stable"),
-            Channel::Beta => f.write_str("beta"),
-            Channel::Nightly => f.write_str("nightly"),
+            Channel::Preview => f.write_str("preview"),
         }
     }
 }
@@ -52,9 +50,10 @@ impl std::str::FromStr for Channel {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "stable" => Ok(Channel::Stable),
-            "beta" => Ok(Channel::Beta),
-            "nightly" => Ok(Channel::Nightly),
-            other => Err(UpdaterError::Config(format!("unknown channel: {other}"))),
+            "preview" => Ok(Channel::Preview),
+            other => Err(UpdaterError::Config(format!(
+                "unknown channel: {other} (expected stable|preview)"
+            ))),
         }
     }
 }

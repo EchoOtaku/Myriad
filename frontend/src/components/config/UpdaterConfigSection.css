@@ -1,7 +1,8 @@
 /**
- * Updater 内联面板 — 极简版本，复用 about-row 风格保持视觉一致。
+ * Updater 内联面板 — 重设计版。
  *
- * 设计原则：用户进来要能瞬间理解。日常状态下只有 3 行信息 + 1 个按钮。
+ * 层次：状态卡（hero）→ 新版本说明卡 → 通道单选卡片 → 折叠的高级区。
+ * 视觉延续 about-list 的玻璃卡片风格。
  */
 
 .updater-panel {
@@ -23,71 +24,475 @@ html.dark .updater-panel-heading {
   color: #f3f4f6;
 }
 
-/* ===== 主信息列表（复用 about-list 视觉）===== */
-.updater-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+/* ===== 状态卡（hero）===== */
+.updater-hero {
   border: 1px solid rgb(209 213 219 / 45%);
   border-radius: 0.75rem;
   background: rgb(255 255 255 / 55%);
-  overflow: hidden;
   backdrop-filter: blur(8px);
+  padding: 1rem 1.1rem;
 }
 
-html.dark .updater-list {
+html.dark .updater-hero {
   background: rgb(55 65 81 / 32%);
   border-color: rgb(107 114 128 / 40%);
 }
 
-.updater-row {
+.updater-hero-main {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgb(209 213 219 / 40%);
-  min-height: 2.5rem;
+  align-items: flex-start;
+  gap: 0.7rem;
 }
 
-html.dark .updater-row {
-  border-bottom-color: rgb(107 114 128 / 32%);
-}
-
-.updater-row:last-child {
-  border-bottom: none;
-}
-
-.updater-row-label {
+.updater-hero-dot {
   flex-shrink: 0;
-  color: #4b5563;
-  font-size: 0.875rem;
-  font-weight: 400;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  margin-top: 0.35rem;
 }
 
-html.dark .updater-row-label {
+.updater-hero-dot.ok {
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgb(16 185 129 / 15%);
+}
+
+.updater-hero-dot.info {
+  background: #3b82f6;
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 15%);
+}
+
+.updater-hero-dot.warn {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgb(245 158 11 / 15%);
+}
+
+.updater-hero-dot.danger {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgb(239 68 68 / 15%);
+}
+
+.updater-hero-dot.muted {
+  background: #9ca3af;
+  box-shadow: 0 0 0 3px rgb(156 163 175 / 15%);
+}
+
+.updater-hero-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.updater-hero-status {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.4;
+}
+
+html.dark .updater-hero-status {
+  color: #f3f4f6;
+}
+
+.updater-hero-status code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 5%);
+}
+
+html.dark .updater-hero-status code {
+  background: rgb(255 255 255 / 8%);
+}
+
+.updater-hero-hint {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: #6b7280;
+}
+
+html.dark .updater-hero-hint {
+  color: #9ca3af;
+}
+
+.updater-hero-action {
+  flex-shrink: 0;
+}
+
+.updater-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1.1rem;
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgb(209 213 219 / 40%);
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+html.dark .updater-hero-meta {
+  border-top-color: rgb(107 114 128 / 32%);
+  color: #9ca3af;
+}
+
+.updater-hero-meta code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 5%);
+  color: #374151;
+}
+
+html.dark .updater-hero-meta code {
+  background: rgb(255 255 255 / 8%);
+  color: #e5e7eb;
+}
+
+.updater-hero-meta em {
+  font-style: normal;
+  color: #9ca3af;
+}
+
+.updater-hero-recheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgb(209 213 219 / 60%);
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #6b7280;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.updater-hero-recheck:hover:not(:disabled) {
+  color: #374151;
+  border-color: rgb(156 163 175 / 80%);
+}
+
+.updater-hero-recheck:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+html.dark .updater-hero-recheck {
+  border-color: rgb(107 114 128 / 50%);
+  color: #9ca3af;
+}
+
+html.dark .updater-hero-recheck:hover:not(:disabled) {
+  color: #e5e7eb;
+}
+
+/* ===== 新版本说明卡 ===== */
+.updater-available {
+  border: 1px solid rgb(59 130 246 / 35%);
+  border-radius: 0.75rem;
+  background: rgb(59 130 246 / 6%);
+  padding: 0.9rem 1.1rem;
+}
+
+html.dark .updater-available {
+  background: rgb(59 130 246 / 10%);
+  border-color: rgb(59 130 246 / 40%);
+}
+
+.updater-available.downgrade {
+  border-color: rgb(245 158 11 / 40%);
+  background: rgb(245 158 11 / 7%);
+}
+
+html.dark .updater-available.downgrade {
+  background: rgb(245 158 11 / 12%);
+}
+
+.updater-available-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+}
+
+.updater-available-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+html.dark .updater-available-title {
+  color: #93c5fd;
+}
+
+.updater-available.downgrade .updater-available-title {
+  color: #b45309;
+}
+
+html.dark .updater-available.downgrade .updater-available-title {
+  color: #fcd34d;
+}
+
+.updater-available-versions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.updater-available-versions code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 5%);
+  color: #111827;
+}
+
+html.dark .updater-available-versions code {
+  background: rgb(255 255 255 / 10%);
+  color: #f3f4f6;
+}
+
+.updater-available-arrow {
+  color: #6b7280;
+}
+
+.updater-available-freshness {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: #4b5563;
+}
+
+html.dark .updater-available-freshness {
   color: #d1d5db;
 }
 
-.updater-row-value {
-  flex: 1;
-  min-width: 0;
-  text-align: right;
-  color: #111827;
-  font-size: 0.875rem;
+.updater-available-warn {
+  margin: 0.55rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  background: rgb(245 158 11 / 12%);
+  border: 1px solid rgb(245 158 11 / 35%);
+  color: #92400e;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+html.dark .updater-available-warn {
+  color: #fde68a;
+  background: rgb(120 53 15 / 35%);
+}
+
+.updater-available-steps {
+  margin-top: 0.65rem;
+  font-size: 0.78rem;
+  color: #4b5563;
+}
+
+html.dark .updater-available-steps {
+  color: #d1d5db;
+}
+
+.updater-available-steps-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: #374151;
+}
+
+html.dark .updater-available-steps-title {
+  color: #e5e7eb;
+}
+
+.updater-available-steps ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.7;
+}
+
+.updater-available-notes {
+  display: inline-block;
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
   font-weight: 500;
-  font-variant-numeric: tabular-nums;
+  color: #2563eb;
+  text-decoration: none;
 }
 
-.updater-row-select .updater-row-value {
+.updater-available-notes:hover {
+  text-decoration: underline;
+}
+
+html.dark .updater-available-notes {
+  color: #93c5fd;
+}
+
+/* ===== 通道单选卡片 ===== */
+.updater-channels {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.updater-select,
-.updater-input {
-  max-width: 14rem;
+.updater-channel-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
   width: 100%;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgb(209 213 219 / 55%);
+  border-radius: 0.6rem;
+  background: rgb(255 255 255 / 45%);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.updater-channel-card:hover:not(:disabled) {
+  border-color: rgb(99 102 241 / 50%);
+  background: rgb(99 102 241 / 5%);
+}
+
+.updater-channel-card.selected {
+  border-color: rgb(99 102 241 / 70%);
+  background: rgb(99 102 241 / 9%);
+}
+
+.updater-channel-card:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+html.dark .updater-channel-card {
+  background: rgb(55 65 81 / 28%);
+  border-color: rgb(107 114 128 / 40%);
+}
+
+html.dark .updater-channel-card:hover:not(:disabled) {
+  background: rgb(99 102 241 / 12%);
+}
+
+html.dark .updater-channel-card.selected {
+  border-color: rgb(129 140 248 / 70%);
+  background: rgb(99 102 241 / 16%);
+}
+
+.updater-channel-radio {
+  flex-shrink: 0;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-top: 0.15rem;
+  border-radius: 50%;
+  border: 2px solid rgb(156 163 175 / 80%);
+  background: transparent;
+  transition: border-color 0.15s ease;
+}
+
+.updater-channel-card.selected .updater-channel-radio {
+  border-color: #6366f1;
+  background: radial-gradient(#6366f1 0 42%, transparent 46%);
+}
+
+html.dark .updater-channel-card.selected .updater-channel-radio {
+  border-color: #818cf8;
+  background: radial-gradient(#818cf8 0 42%, transparent 46%);
+}
+
+.updater-channel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.updater-channel-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+html.dark .updater-channel-name {
+  color: #f3f4f6;
+}
+
+.updater-channel-badge {
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  line-height: 1.3;
+}
+
+.updater-channel-badge.recommended {
+  background: rgb(16 185 129 / 14%);
+  color: #047857;
+}
+
+html.dark .updater-channel-badge.recommended {
+  background: rgb(16 185 129 / 22%);
+  color: #6ee7b7;
+}
+
+.updater-channel-badge.dev {
+  background: rgb(107 114 128 / 14%);
+  color: #4b5563;
+}
+
+html.dark .updater-channel-badge.dev {
+  background: rgb(156 163 175 / 20%);
+  color: #d1d5db;
+}
+
+.updater-channel-desc {
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: #6b7280;
+}
+
+html.dark .updater-channel-desc {
+  color: #9ca3af;
+}
+
+/* ===== 安装指定版本 ===== */
+.updater-target {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.updater-target-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+html.dark .updater-target-input-row {
+  color: #d1d5db;
+}
+
+.updater-target-input-row span {
+  flex-shrink: 0;
+}
+
+.updater-target-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.updater-input {
+  flex: 1;
+  max-width: 18rem;
   padding: 0.3rem 0.5rem;
   border-radius: 0.4rem;
   border: 1px solid rgb(209 213 219 / 80%);
@@ -97,7 +502,6 @@ html.dark .updater-row-label {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-html.dark .updater-select,
 html.dark .updater-input {
   background: rgb(31 41 55 / 90%);
   border-color: rgb(107 114 128 / 50%);
@@ -108,13 +512,13 @@ html.dark .updater-input {
   font-family: inherit;
 }
 
+/* ===== 版本 / commit 列表 ===== */
 .updater-commit-list {
   border: 1px solid rgb(209 213 219 / 45%);
-  border-radius: 0.75rem;
+  border-radius: 0.6rem;
   background: rgb(255 255 255 / 45%);
-  overflow: hidden;
+  overflow: hidden auto;
   max-height: 16rem;
-  overflow-y: auto;
 }
 
 html.dark .updater-commit-list {
@@ -181,6 +585,7 @@ html.dark .updater-commit-msg {
   white-space: nowrap;
 }
 
+/* ===== 新旧关系提示 ===== */
 .updater-compare-preview {
   padding: 0.55rem 0.85rem;
   border-radius: 0.6rem;
@@ -217,76 +622,7 @@ html.dark .updater-compare-preview.neutral {
   color: #d1d5db;
 }
 
-html.dark .updater-row-value {
-  color: #f3f4f6;
-}
-
-.updater-row-value.muted {
-  color: #6b7280;
-  font-weight: 400;
-}
-
-html.dark .updater-row-value.muted {
-  color: #9ca3af;
-}
-
-.updater-row-value.attention {
-  color: #2563eb;
-  font-weight: 500;
-}
-
-html.dark .updater-row-value.attention {
-  color: #93c5fd;
-}
-
-.updater-row-value.warning {
-  color: #b45309;
-}
-
-html.dark .updater-row-value.warning {
-  color: #fcd34d;
-}
-
-.updater-row-value.danger {
-  color: #b91c1c;
-}
-
-html.dark .updater-row-value.danger {
-  color: #fca5a5;
-}
-
-.updater-row-value code,
-.updater-version {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.82rem;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgb(0 0 0 / 5%);
-}
-
-html.dark .updater-row-value code,
-html.dark .updater-version {
-  background: rgb(255 255 255 / 8%);
-}
-
-/* ===== 主操作按钮行 ===== */
-.updater-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.updater-actions-hint {
-  font-size: 0.78rem;
-  color: #6b7280;
-}
-
-html.dark .updater-actions-hint {
-  color: #9ca3af;
-}
-
-/* ===== 进度卡（升级中独占视觉）===== */
+/* ===== 进度卡 ===== */
 .updater-progress {
   padding: 1rem 1.1rem;
   border-radius: 0.75rem;
@@ -304,7 +640,7 @@ html.dark .updater-progress {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.35rem;
 }
 
 .updater-progress-title {
@@ -325,6 +661,17 @@ html.dark .updater-progress-title {
 }
 
 html.dark .updater-progress-counts {
+  color: #9ca3af;
+}
+
+.updater-progress-hint {
+  margin: 0 0 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #6b7280;
+}
+
+html.dark .updater-progress-hint {
   color: #9ca3af;
 }
 
@@ -493,7 +840,7 @@ html.dark .updater-drift {
   font-weight: 500;
 }
 
-/* ===== 快照折叠区内部 ===== */
+/* ===== 快照区 ===== */
 .updater-snapshot-list {
   display: flex;
   flex-direction: column;
@@ -529,6 +876,18 @@ html.dark .updater-snapshot-version {
   color: #f3f4f6;
 }
 
+.updater-snapshot-version code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 5%);
+}
+
+html.dark .updater-snapshot-version code {
+  background: rgb(255 255 255 / 8%);
+}
+
 .updater-snapshot-info {
   font-size: 0.74rem;
   color: #6b7280;
@@ -552,7 +911,7 @@ html.dark .updater-empty {
   color: #6b7280;
 }
 
-/* ===== 高级折叠区内部 ===== */
+/* ===== 高级与诊断 ===== */
 .updater-detail-grid {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -581,14 +940,39 @@ html.dark .updater-detail-grid dd {
   color: #f3f4f6;
 }
 
-.updater-mode-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 0.85rem;
+.updater-digests {
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
 }
 
-.updater-mode-row label {
+.updater-digests summary {
+  cursor: pointer;
+  color: #6b7280;
+  user-select: none;
+}
+
+html.dark .updater-digests summary {
+  color: #9ca3af;
+}
+
+.updater-transport {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
+}
+
+.updater-transport-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+html.dark .updater-transport-label {
+  color: #9ca3af;
+}
+
+.updater-transport label {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -597,13 +981,23 @@ html.dark .updater-detail-grid dd {
   color: #374151;
 }
 
-html.dark .updater-mode-row label {
+html.dark .updater-transport label {
   color: #e5e7eb;
+}
+
+.updater-transport-hint {
+  margin: 0.1rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: #92400e;
+}
+
+html.dark .updater-transport-hint {
+  color: #fde68a;
 }
 
 .updater-token-input {
   width: 100%;
-  margin-top: 0.5rem;
   padding: 0.45rem 0.7rem;
   border-radius: 0.5rem;
   border: 1px solid rgb(209 213 219 / 60%);
@@ -623,4 +1017,8 @@ html.dark .updater-token-input {
   background: rgb(31 41 55 / 55%);
   border-color: rgb(107 114 128 / 45%);
   color: #f3f4f6;
+}
+
+.updater-advanced-actions {
+  margin-top: 0.85rem;
 }

@@ -113,14 +113,9 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
 
     let (rescue_snapshot_id, rescue_source_version) = resolve_rescue_hint(&st, &m, job.as_deref())?;
 
-    // Include both logical release names and git branch tips so UI selects stay valid
-    // when channel is stored as stable/nightly under commit mode (mapped to main/preview).
-    let available_channels = match update_mode {
-        UpdateMode::Release => vec!["stable", "beta", "nightly"],
-        UpdateMode::Commit => {
-            vec!["main", "preview", "beta", "stable", "nightly"]
-        }
-    };
+    // Product tracks. Commit mode is only valid when channel == preview (enforced
+    // in validate_channel_for_mode); the channel list itself does not change.
+    let available_channels = vec!["stable", "preview"];
 
     Ok(Json(StatusResp {
         schema_version: 1,

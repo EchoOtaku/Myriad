@@ -107,13 +107,8 @@ impl GithubClient {
     /// True when a release tag belongs to the given channel filter.
     pub fn release_matches_channel(tag: &str, prerelease: bool, channel: Channel) -> bool {
         match channel {
-            Channel::Stable => {
-                !prerelease && !is_marked(tag, "nightly") && !is_marked(tag, "beta")
-            }
-            Channel::Beta => {
-                is_marked(tag, "beta") || (!prerelease && !is_marked(tag, "nightly"))
-            }
-            Channel::Nightly => is_marked(tag, "nightly"),
+            Channel::Stable => !prerelease && !is_marked(tag, "preview"),
+            Channel::Preview => is_marked(tag, "preview") || prerelease,
         }
     }
 
@@ -535,31 +530,40 @@ mod channel_filter_tests {
     use crate::config::Channel;
 
     #[test]
-    fn stable_excludes_beta_and_nightly() {
-        assert!(GithubClient::release_matches_channel("v1.0.0", false, Channel::Stable));
+    fn stable_excludes_prerelease_and_preview_tags() {
+        assert!(GithubClient::release_matches_channel(
+            "v1.0.0",
+            false,
+            Channel::Stable
+        ));
         assert!(!GithubClient::release_matches_channel(
-            "v1.0.0-beta.1",
+            "v1.0.0-preview.1",
             true,
             Channel::Stable
         ));
         assert!(!GithubClient::release_matches_channel(
-            "v1.0.0-nightly.1",
+            "v1.0.0",
             true,
             Channel::Stable
         ));
     }
 
     #[test]
-    fn nightly_only_nightly_tags() {
+    fn preview_matches_preview_or_prerelease() {
         assert!(GithubClient::release_matches_channel(
-            "v1.0.0-nightly.20260101",
+            "v1.0.0-preview.20260101",
             true,
-            Channel::Nightly
+            Channel::Preview
+        ));
+        assert!(GithubClient::release_matches_channel(
+            "v1.0.0-rc.1",
+            true,
+            Channel::Preview
         ));
         assert!(!GithubClient::release_matches_channel(
             "v1.0.0",
             false,
-            Channel::Nightly
+            Channel::Preview
         ));
     }
 }

@@ -254,137 +254,134 @@ export interface TranslationKeys {
     aboutRepository: string
     aboutDevInfo: string
     aboutLogoAlt: string
-    // Updater (admin)
+    // Updater (admin) — 更新管理
     updaterTitle: string
-    updaterDesc: string
+    // 状态一句话（hero 主标题）
+    updaterStatusHealthy: string
+    updaterStatusAvailable: string
+    updaterStatusDowngrade: string
+    updaterStatusUpdating: string
+    updaterStatusMaintenance: string
+    updaterStatusNeedsManual: string
+    updaterStatusOffline: string
+    updaterStatusFirstRun: string
+    // 状态下方的一行人话解释
+    updaterHintHealthy: string
+    updaterHintUpdating: string
+    updaterHintMaintenance: string
+    updaterHintNeedsManual: string
+    updaterHintOffline: string
+    updaterHintFirstRun: string
+    // hero 信息行
     updaterCurrentVersion: string
-    updaterUpdaterVersion: string
-    updaterChannel: string
-    updaterMaintenance: string
-    updaterMaintenanceOn: string
-    updaterMaintenanceOff: string
-    updaterJobInFlight: string
-    updaterLatestAvailable: string
+    updaterChannelLabel: string
     updaterLastChecked: string
     updaterUnknown: string
-    updaterNeverChecked: string
-    updaterNotRecorded: string
-    updaterNone: string
-    updaterTransport: string
-    updaterTransportBackend: string
-    updaterTransportDirect: string
-    updaterRefresh: string
-    updaterForceExit: string
-    updaterRescueContinue: string
-    updaterRescueContinueDesc: string
-    updaterConfirmRescueContinue: string
-    updaterRescueContinueDispatched: string
-    updaterUpdateMode: string
-    updaterModeRelease: string
-    updaterModeCommit: string
-    updaterChannel: string
-    updaterCommitTarget: string
-    updaterCommitPlaceholder: string
-    updaterCommitHistory: string
-    updaterReleaseHistory: string
-    updaterApplyPrefs: string
-    updaterPrefsSaved: string
+    // 主操作
+    updaterCheckNow: string
+    updaterChecking: string
+    updaterRetry: string
+    updaterNoAvailable: string
+    updaterLoading: string
+    // 新版本卡片
+    updaterAvailableTitle: string
+    updaterAvailableDowngradeTitle: string
+    updaterReleaseNotes: string
+    updaterUpdateNow: string
+    updaterDowngradeNow: string
+    updaterDispatching: string
+    updaterDispatched: string
+    updaterWhatHappensTitle: string
+    updaterWhatHappens1: string
+    updaterWhatHappens2: string
+    updaterWhatHappens3: string
+    updaterIrreversibleWarn: string
     updaterFreshnessAhead: string
     updaterFreshnessBehind: string
     updaterFreshnessIdentical: string
     updaterFreshnessDiverged: string
     updaterFreshnessUnknown: string
+    // 更新通道（单选卡片，选择即保存）
+    updaterChannelGroupTitle: string
+    updaterChannelGroupDesc: string
+    updaterChannelStable: string
+    updaterChannelStableDesc: string
+    updaterChannelPreview: string
+    updaterChannelPreviewDesc: string
+    updaterChannelDev: string
+    updaterChannelDevDesc: string
+    updaterChannelBadgeRecommended: string
+    updaterChannelBadgeDev: string
+    updaterChannelSaved: string
+    // 频道 / 模式选择（当前内联面板仍在用；commit 仅 preview）
+    updaterChannel: string
+    // 进度卡
+    updaterStepLog: string
     updaterProcessing: string
-    updaterCheckAvailable: string
-    updaterChecking: string
-    updaterNoAvailable: string
-    updaterReleaseVersion: string
-    updaterReleasedAt: string
-    updaterMinFromVersion: string
-    updaterMinFromUnlimited: string
-    updaterMigrationEstimate: string
-    updaterRequiresUpdater: string
-    updaterImageDigests: string
-    updaterUpgradeTo: string
-    updaterDispatching: string
-    updaterDispatched: string
-    updaterJobInFlightWarn: string
-    updaterTokenRequired: string
-    updaterTokenRequiredDirect: string
+    // 确认弹窗
     updaterConfirmUpgrade: string
     updaterConfirmDowngrade: string
     updaterConfirmRisk: string
-    updaterDowngradeTo: string
-    updaterStatusDowngrade: string
     updaterConfirmRollback: string
     updaterConfirmExitMaintenance: string
-    updaterTaskProgress: string
-    updaterTaskKind: string
-    updaterTaskStatus: string
-    updaterTaskFrom: string
-    updaterTaskTo: string
-    updaterTaskStarted: string
-    updaterSnapshotsTitle: string
-    updaterNoSnapshots: string
-    updaterSnapshotCreatedAt: string
-    updaterSnapshotSourceVersion: string
-    updaterSnapshotSize: string
-    updaterRollback: string
-    updaterRollbackDispatched: string
+    updaterConfirmRescueContinue: string
+    // 维护与恢复（仅出问题时出现）
+    updaterMaintenanceGroup: string
+    updaterMaintenanceGroupDesc: string
+    updaterRescueContinue: string
+    updaterRescueContinueDesc: string
+    updaterRescueContinueDispatched: string
+    updaterForceExit: string
+    updaterForceExitDesc: string
     updaterMaintenanceExited: string
-    updaterAdvancedTitle: string
-    updaterAdvancedDesc: string
-    updaterModeBackend: string
-    updaterModeDirect: string
-    updaterDriftWarn: string
-    updaterDriftAction: string
-    updaterSelfUpdateRequired: string
+    updaterSelfUpdateNeeded: string
     updaterSelfUpdateButton: string
     updaterSelfUpdateConfirm: string
-    updaterSelfUpdateDispatching: string
     updaterSelfUpdateDispatched: string
-    updaterUpdateAvailable: string
-    updaterUpdateAvailableCurrent: string
-    updaterReleaseNotes: string
-    updaterBackendError: string
-    updaterDirectError: string
-    updaterLoading: string
-    updaterErr401: string
-    updaterErr403: string
-    updaterErr409: string
-    updaterErr412: string
-    updaterErrNotConfigured: string
-    // 状态徽章
-    updaterStatusHealthy: string
-    updaterStatusHealthyDesc: string
-    updaterStatusAvailable: string
-    updaterStatusAvailableDesc: string
-    updaterStatusUpdating: string
-    updaterStatusUpdatingDesc: string
-    updaterStatusMaintenance: string
-    updaterStatusMaintenanceDesc: string
-    updaterStatusNeedsManual: string
-    updaterStatusNeedsManualDesc: string
-    updaterStatusOffline: string
-    updaterStatusOfflineDesc: string
-    updaterStatusFirstRun: string
-    updaterStatusFirstRunDesc: string
-    updaterRowStatus: string
-    updaterMaintenanceActions: string
-    // 操作描述
-    updaterActionCheckDesc: string
-    updaterActionUpgradeDesc: string
-    updaterActionExitDesc: string
-    updaterActionRollbackDesc: string
-    updaterActionSelfUpdateDesc: string
-    // 折叠区块
-    updaterGroupHistory: string
-    updaterGroupHistoryDesc: string
+    // 安装指定版本（高级，折叠）
+    updaterTargetGroupTitle: string
+    updaterTargetGroupDesc: string
+    updaterTargetReleaseHead: string
+    updaterTargetCommitHead: string
+    updaterCommitTarget: string
+    updaterCommitPlaceholder: string
+    updaterInstallTarget: string
+    updaterTargetEmpty: string
+    // 备份与回退（折叠）
+    updaterSnapshotGroupTitle: string
+    updaterSnapshotGroupDesc: string
+    updaterNoSnapshots: string
+    updaterRollback: string
+    updaterRollbackDispatched: string
+    // 高级与诊断（折叠）
     updaterGroupAdvanced: string
     updaterGroupAdvancedDesc: string
-    updaterDetailsTitle: string
-    updaterStepLog: string
-    // 时间相对
+    updaterUpdaterVersion: string
+    updaterJobInFlight: string
+    updaterNone: string
+    updaterImageDigests: string
+    updaterTransport: string
+    updaterTransportBackend: string
+    updaterTransportDirect: string
+    updaterTransportDirectHint: string
+    updaterTokenRequiredDirect: string
+    updaterRefresh: string
+    // 错误
+    updaterErr401: string
+    updaterErr401Admin: string
+    updaterErr403: string
+    updaterErr403Csrf: string
+    updaterErr403Admin: string
+    updaterErr403Generic: string
+    updaterErr409: string
+    updaterErr412: string
+    updaterErrServer: string
+    updaterErrNotConfigured: string
+    updaterErrUpstream: string
+    // 前端版本漂移提示
+    updaterDriftWarn: string
+    updaterDriftAction: string
+    // 相对时间
     updaterAgoJustNow: string
     updaterAgoMin: string
     updaterAgoHour: string

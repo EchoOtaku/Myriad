@@ -67,7 +67,7 @@ UI 提供：
 
 - 当前 updater/business 版本、channel、维护状态
 - **更新模式**：`release`（GitHub Release / semver）或 `commit`（CI 的 `dev-<sha>` / 分支 tip）
-- **频道**：release 模式为 `stable` / `beta` / `nightly`；commit 模式为 `main` / `preview` / `beta`
+- **频道**：`stable` / `preview`；**commit 模式仅在 `preview` 频道下可选**
 - 检查可用更新；commit 模式可填具体 sha
 - 触发升级（带确认 + 进度轮询）
 - 列出快照、一键回滚

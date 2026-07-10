@@ -15,8 +15,8 @@ pub struct UpdaterStateFile {
     /// Updater binary's own release version (always v-semver when known).
     pub updater_version: Option<MyriadVersion>,
     pub last_checked_at: Option<DateTime<Utc>>,
-    /// Preferred release channel (`stable`/`beta`/`nightly`) or commit branch
-    /// (`main`/`preview`/`beta`) depending on [`Self::update_mode`].
+    /// Preferred release channel (`stable`/`preview`) or commit branch
+    /// (`main`/`preview`) depending on [`Self::update_mode`].
     pub channel: String,
 
     /// Release vs commit consumption mode. Default: release.

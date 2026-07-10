@@ -8,7 +8,7 @@ use axum::{
     extract::{Request, State},
     http::{HeaderMap, StatusCode},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use once_cell::sync::Lazy;
 
@@ -91,11 +91,21 @@ pub async fn token_and_manual_required(
     State(state): State<ApiState>,
     req: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, Response> {
     if !state.state.manual_override_enabled() {
-        return Err(StatusCode::FORBIDDEN);
+        // Explicit body so UIs don't confuse this with CSRF / admin 403.
+        return Err((
+            StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({
+                "error": "manual override required",
+                "message": "touch state/manual-override on the host (dev: .dev-updater/state/manual-override) before calling rescue endpoints"
+            })),
+        )
+            .into_response());
     }
-    token_required(State(state), req, next).await
+    token_required(State(state), req, next)
+        .await
+        .map_err(|status| status.into_response())
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
