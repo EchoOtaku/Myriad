@@ -121,19 +121,14 @@ const WidgetGridItem = React.memo(
     const anim = useAnimationLevel()
     const { t } = useI18n()
 
-    // 使用统一动画协调系统
-    const { canAnimate, delay, onComplete } = useStaggerAnimation({
+    // 使用统一动画协调系统；none 模式直接显示且不进入调度队列。
+    const animationsEnabled = anim.level !== 'none'
+    const { canAnimate, onComplete } = useStaggerAnimation({
       groupId: 'widget-grid',
       index: index || 0,
       baseDelay: 80,
+      enabled: animationsEnabled,
     })
-    const hasCompletedRef = useRef(false)
-
-    const handleAnimationComplete = () => {
-      if (hasCompletedRef.current) return
-      hasCompletedRef.current = true
-      onComplete()
-    }
 
     const dim = SIZE_TO_DIMENSIONS[widget.size]
     const WidgetComponent = widgetType.component
@@ -141,9 +136,6 @@ const WidgetGridItem = React.memo(
     // 使用传入的网格尺寸或默认值
     const gw = gridWidth || GRID_WIDTH
     const gh = gridHeight || GRID_HEIGHT
-
-    // 交错延迟由协调器计算（转换为秒）
-    const staggerDelay = delay / 1000
 
     // 如果有像素级尺寸，优先使用
     const style: React.CSSProperties =
@@ -175,25 +167,28 @@ const WidgetGridItem = React.memo(
 
     return (
       <motion.div
-        className="absolute transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
+        className={`absolute ease-[cubic-bezier(0.25,1,0.5,1)] ${
+          animationsEnabled ? 'transition-all duration-500' : 'transition-none'
+        }`}
         style={style}
-        initial={{ opacity: 0, scale: 0.9, y: 12 }}
+        initial={animationsEnabled ? { opacity: 0, scale: 0.9, y: 12 } : false}
         animate={
-          canAnimate
+          !animationsEnabled || canAnimate
             ? { opacity: 1, scale: 1, y: 0 }
             : { opacity: 0, scale: 0.9, y: 12 }
         }
-        exit={{ opacity: 0, scale: 0.9 }}
-        onAnimationComplete={handleAnimationComplete}
+        exit={animationsEnabled ? { opacity: 0, scale: 0.9 } : undefined}
+        onAnimationComplete={onComplete}
         transition={
-          useLiteTransition
-            ? { type: 'tween', duration: 0.35, delay: staggerDelay }
-            : {
-                type: 'spring',
-                stiffness: 300,
-                damping: 25,
-                delay: staggerDelay,
-              }
+          !animationsEnabled
+            ? { duration: 0 }
+            : useLiteTransition
+              ? { type: 'tween', duration: 0.35 }
+              : {
+                  type: 'spring',
+                  stiffness: 300,
+                  damping: 25,
+                }
         }
       >
         <div className="relative h-full w-full p-1 group">

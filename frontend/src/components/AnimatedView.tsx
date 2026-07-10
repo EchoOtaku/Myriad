@@ -13,7 +13,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { usePageTransition } from '../hooks/animation'
+import { usePageTransition } from '../hooks/animation/usePageTransition'
 
 interface AnimatedViewProps {
   children: React.ReactNode
@@ -34,15 +34,19 @@ export default function AnimatedView({
 
   // 组件挂载后通知协调器页面已就绪
   useEffect(() => {
+    let rafId: number | null = null
+
     if (!hasNotified.current) {
       hasNotified.current = true
       // 延迟一帧通知完成，确保内容已渲染
-      requestAnimationFrame(() => {
+      rafId = requestAnimationFrame(() => {
+        rafId = null
         onEnterComplete()
       })
     }
 
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
       hasNotified.current = false
     }
   }, [location.pathname, onEnterComplete])

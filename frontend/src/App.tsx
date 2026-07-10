@@ -28,7 +28,8 @@ import { MusicPlayerProvider } from './contexts/MusicPlayerContext'
 import { NavigationProvider } from './contexts/NavigationContext'
 import { PageContentProvider } from './contexts/PageContentContext'
 import { ReadingListProvider } from './contexts/ReadingListContext'
-import { useRouteScheduler } from './hooks/animation'
+import { useRouteScheduler } from './hooks/animation/useRouteScheduler'
+import { useAnimationLevel } from './hooks/useAnimationLevel'
 import { AppLayout } from './layouts/AppLayout'
 import { recordNavigation } from './router/navigationHistory'
 import { preloadCriticalRoutes } from './utils/codeSplitting'
@@ -193,6 +194,8 @@ function AnimatedPage({
 }) {
   const location = useLocation()
   const style = animationStyle ?? 'normal'
+  const animationConfig = useAnimationLevel()
+  const animationsEnabled = animationConfig.level !== 'none'
 
   // 选择动画变体和包装样式
   const variants = style === 'normal' ? pageVariants : fixedPageVariants
@@ -205,10 +208,10 @@ function AnimatedPage({
     <AnimatePresence mode="wait">
       <motion.div
         key={animationKey ?? location.pathname}
-        variants={variants}
-        initial="initial"
-        animate="enter"
-        exit="exit"
+        variants={animationsEnabled ? variants : undefined}
+        initial={animationsEnabled ? 'initial' : false}
+        animate={animationsEnabled ? 'enter' : undefined}
+        exit={animationsEnabled ? 'exit' : undefined}
         style={wrapperStyle}
       >
         {children}

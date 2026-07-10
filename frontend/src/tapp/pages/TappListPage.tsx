@@ -167,18 +167,11 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     const animConfig = useAnimationLevel()
     const [isHovered, setIsHovered] = useState(false)
 
-    // 浣跨敤缁熶竴鍔ㄧ敾鍗忚皟绯荤粺
-    const { canAnimate, delay, onComplete } = useTappStagger(index)
-    const hasCompletedRef = useRef(false)
-
-    const handleAnimationComplete = () => {
-      if (hasCompletedRef.current) return
-      hasCompletedRef.current = true
-      onComplete()
-    }
-
-    // 浜ら敊寤惰繜鐢卞崗璋冨櫒璁＄畻锛堣浆鎹负绉掞級
-    const staggerDelay = delay / 1000
+    // 交错延迟完全由协调器管理；none 模式直接显示。
+    const animationsEnabled = animConfig.level !== 'none'
+    const { canAnimate, onComplete } = useTappStagger(index, {
+      enabled: animationsEnabled,
+    })
 
     // 鑾峰彇鏉冮檺缁熻鍜屽簲鐢ㄧ被鍒?
     const permissionCounts = getPermissionCounts(tapp.grantedPermissions)
@@ -250,28 +243,31 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
       <motion.div
         ref={ref}
         layout={animConfig.level !== 'none'}
-        initial={{ opacity: 0, y: 20 }}
-        animate={canAnimate ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        onAnimationComplete={handleAnimationComplete}
+        initial={animationsEnabled ? { opacity: 0, y: 20 } : false}
+        animate={
+          !animationsEnabled || canAnimate
+            ? { opacity: 1, y: 0 }
+            : { opacity: 0, y: 20 }
+        }
+        exit={animationsEnabled ? { opacity: 0, scale: 0.95 } : undefined}
+        onAnimationComplete={onComplete}
         transition={
-          !animConfig.spring ||
-          perf.lowEndDevice ||
-          animConfig.level !== 'standard'
-            ? { type: 'tween', duration: 0.25, delay: staggerDelay }
-            : {
-                type: 'spring',
-                stiffness: 400,
-                damping: 28,
-                delay: staggerDelay,
-              }
+          !animationsEnabled
+            ? { duration: 0 }
+            : !animConfig.spring ||
+                perf.lowEndDevice ||
+                animConfig.level !== 'standard'
+              ? { type: 'tween', duration: 0.25 }
+              : {
+                  type: 'spring',
+                  stiffness: 400,
+                  damping: 28,
+                }
         }
         whileHover={
-          animConfig.level === 'standard' && !perf.lowEndDevice
-            ? { y: -4 }
-            : {}
+          animConfig.level === 'standard' && !perf.lowEndDevice ? { y: -4 } : {}
         }
-        whileTap={{ scale: 0.98 }}
+        whileTap={animationsEnabled ? { scale: 0.98 } : {}}
         onClick={handleCardClick}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}

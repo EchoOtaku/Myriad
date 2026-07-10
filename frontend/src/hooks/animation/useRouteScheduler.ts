@@ -20,10 +20,12 @@ import { useLocation } from 'react-router-dom'
 
 import {
   isPageVisible,
-  pauseScheduler,
+  onVisibility,
+  pause,
+  resume,
   runPageCleanup,
   startPage,
-} from './index'
+} from './core'
 
 // 路径到页面 ID 的映射
 const pathToPageId: Record<string, string> = {
@@ -99,12 +101,17 @@ export function useRouteScheduler(): void {
   // 首次挂载时确保调度器状态正确
   useEffect(() => {
     // 如果页面不可见，暂停调度器
-    if (!isPageVisible()) {
-      pauseScheduler()
-    }
+    if (isPageVisible()) resume()
+    else pause()
+
+    const unsubscribeVisibility = onVisibility((visible) => {
+      if (visible) resume()
+      else pause()
+    })
 
     // 组件卸载时清理最后一个页面
     return () => {
+      unsubscribeVisibility()
       if (lastPageIdRef.current) {
         runPageCleanup(lastPageIdRef.current)
       }

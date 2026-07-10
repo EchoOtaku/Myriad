@@ -94,6 +94,12 @@ class AnimationCoordinator {
   private activeSlots = new Map<string, AnimationSlot>()
   // 等待队列（按优先级排序）
   private waitingQueue: WaitingItem[] = []
+  /** 会话内 activeSlots 峰值（瞬时读经常为 0，峰值才能反映是否真的跑过） */
+  private peakActiveSlots = 0
+  /** 累计 schedule() 调用次数 */
+  private totalScheduled = 0
+  /** 累计成功占槽次数 */
+  private totalAcquired = 0
   // ==================== 爆发模式 ====================
   // 爆发模式开始时间
   private burstStartTime: number = 0
@@ -162,8 +168,6 @@ class AnimationCoordinator {
   private lastFpsUpdateTime: number = 0
   /** FPS 监控是否运行中 */
   private fpsMonitorRunning: boolean = false
-  /** 卡顿计数 */
-  private jankCount: number = 0
   /** 总帧数 */
   private totalFrames: number = 0
   /**
@@ -263,6 +267,8 @@ class AnimationCoordinator {
   // ==================== 对象池（减少 GC 压力）====================
   // 🔧 等待队列 ID 索引，用于 O(1) 查找
   private waitingQueueIndex = new Map<string, number>()
+  // 调度版本用于废弃页面就绪前已取消/重排的旧回调
+  private scheduleVersions = new Map<string, number>()
 
   // ==================== WeakRef 元素追踪（内存优化）====================
   // 🔧 新增：使用 WeakRef 追踪元素，元素被 GC 时自动清理状态
@@ -277,7 +283,12 @@ class AnimationCoordinator {
     // 🔧 订阅 core.ts 的页面可见性变化（用于 processWaitQueue 触发和通知订阅者）
     this.visibilityUnsubscribe = onVisibility((visible) => {
       if (visible) {
+        if (this.fpsMonitorRunning) {
+          this.lastFrameTimestamp = performance.now()
+          this.lastFpsUpdateTime = this.lastFrameTimestamp
+        }
         this.processWaitQueue()
+        this.scheduleIdleCallback()
       }
       for (const subscriber of this.visibilitySubscribers) {
         try {
@@ -287,10 +298,6 @@ class AnimationCoordinator {
         }
       }
     })
-    // 🔧 初始化共享 ResizeObserver
-    this.initSharedResizeObserver()
-    // 启动超时检查器
-    this.startTimeoutChecker()
     // 📌 初始化时立即进入超频模式，确保首屏动画流畅
     this.activateBurstMode(10000)
     // 🔧 初始化 FinalizationRegistry（如果浏览器支持）
@@ -332,9 +339,6 @@ class AnimationCoordinator {
         },
       )
     }
-
-    // 备用方案：定期检查 WeakRef（用于不支持 FinalizationRegistry 的环境）
-    this.startWeakRefChecker()
   }
 
   /**
@@ -393,6 +397,8 @@ class AnimationCoordinator {
     // 注册到 FinalizationRegistry
     if (this.finalizationRegistry) {
       this.finalizationRegistry.register(element, animationId)
+    } else {
+      this.startWeakRefChecker()
     }
   }
 
@@ -435,27 +441,16 @@ class AnimationCoordinator {
     this.listeners.delete(animationId)
     this.pendingUpdates.delete(animationId)
 
+    this.removeQueuedAnimation(animationId)
+
     // 释放槽位
     if (this.activeSlots.has(animationId)) {
       this.activeSlots.delete(animationId)
       this.processWaitQueue()
     }
 
-    // 🔧 使用索引 Map O(1) 查找并移除
-    const waitIdx = this.waitingQueueIndex.get(animationId)
-    if (waitIdx !== undefined) {
-      this.waitingQueue.splice(waitIdx, 1)
-      this.waitingQueueIndex.delete(animationId)
-      this.rebuildWaitingQueueIndex(waitIdx)
-    }
-
-    // 从延迟队列移除（仍用 findIndex，因为延迟队列通常较小）
-    const delayIdx = this.delayedQueue.findIndex(
-      (item) => item.id === animationId,
-    )
-    if (delayIdx !== -1) {
-      this.delayedQueue.splice(delayIdx, 1)
-    }
+    this.scheduleVersions.delete(animationId)
+    this.stopTimeoutCheckerIfIdle()
   }
 
   // ==================== 超时清理 ====================
@@ -463,41 +458,26 @@ class AnimationCoordinator {
   /**
    * 启动超时检查器
    * 定期检查并清理超时的动画槽位
-   * 🔧 优化：使用 requestIdleCallback 在浏览器空闲时执行，减少主线程开销
+   * 仅在存在活动槽位时运行，空闲后立即停止
    */
   private startTimeoutChecker() {
-    if (this.timeoutCheckerId) return
+    if (this.timeoutCheckerId !== null || this.activeSlots.size === 0) return
 
-    // 🔧 优先使用 requestIdleCallback，降低调度开销
-    if (typeof requestIdleCallback !== 'undefined') {
-      const scheduleIdleCheck = () => {
-        this.timeoutCheckerId = requestIdleCallback(
-          (deadline) => {
-            // 只在有空闲时间且页面可见时执行
-            if (
-              deadline.timeRemaining() > 0 &&
-              (typeof document === 'undefined' || !document.hidden)
-            ) {
-              this.cleanupTimedOutSlots()
-            }
-            // 继续调度下一次检查
-            if (this.timeoutCheckerId) {
-              scheduleIdleCheck()
-            }
-          },
-          { timeout: 2000 }, // 最多延迟 2 秒
-        ) as unknown as ReturnType<typeof setInterval>
-      }
-      scheduleIdleCheck()
-    } else {
-      // 降级方案：使用 setInterval
-      this.timeoutCheckerId = setInterval(() => {
-        if (typeof document !== 'undefined' && document.hidden) {
-          return
-        }
-        this.cleanupTimedOutSlots()
-      }, 1000)
-    }
+    this.timeoutCheckerId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      this.cleanupTimedOutSlots()
+    }, 1000)
+  }
+
+  private stopTimeoutChecker() {
+    if (this.timeoutCheckerId === null) return
+
+    clearInterval(this.timeoutCheckerId)
+    this.timeoutCheckerId = null
+  }
+
+  private stopTimeoutCheckerIfIdle() {
+    if (this.activeSlots.size === 0) this.stopTimeoutChecker()
   }
 
   /**
@@ -508,7 +488,10 @@ class AnimationCoordinator {
     if (!coreIsPageVisible()) return
 
     // 快速返回：无活动槽位
-    if (this.activeSlots.size === 0) return
+    if (this.activeSlots.size === 0) {
+      this.stopTimeoutChecker()
+      return
+    }
 
     const now = coreRefreshNow() // 使用刷新的时间戳确保准确
     let hasTimedOut = false
@@ -518,13 +501,16 @@ class AnimationCoordinator {
       if (now - slot.startTime > this.ANIMATION_TIMEOUT) {
         this.activeSlots.delete(id)
         this.states.set(id, AnimationState.COMPLETED)
+        this.pendingUpdates.add(id)
         hasTimedOut = true
       }
     }
 
     // 如果有释放，处理等待队列
     if (hasTimedOut) {
+      this.scheduleMicrotaskFlush()
       this.processWaitQueue()
+      this.stopTimeoutCheckerIfIdle()
     }
   }
 
@@ -534,20 +520,21 @@ class AnimationCoordinator {
    * 获取当前最大并发数 - 优化版：使用缓存时间戳减少计算开销
    */
   private getMaxConcurrent(): number {
-    // 快速路径：非爆发模式
-    if (!this.inBurstMode) {
-      return this.config.baseConcurrent
+    let maxConcurrent = this.config.baseConcurrent
+
+    if (this.inBurstMode) {
+      const elapsed = coreNow() - this.burstStartTime
+      if (elapsed < this.currentBurstDuration) {
+        maxConcurrent = this.config.burstConcurrent
+      } else {
+        this.inBurstMode = false
+      }
     }
 
-    // 爆发模式：检查是否到期
-    const elapsed = coreNow() - this.burstStartTime
-    if (elapsed < this.currentBurstDuration) {
-      return this.config.burstConcurrent
-    }
-
-    // 爆发模式到期
-    this.inBurstMode = false
-    return this.config.baseConcurrent
+    // 监测到持续低帧率时，只降低后续动画的并发，不中断已开始的动画。
+    return this.isLowFpsMode
+      ? Math.max(2, Math.ceil(maxConcurrent / 2))
+      : maxConcurrent
   }
 
   /**
@@ -605,7 +592,10 @@ class AnimationCoordinator {
    * 完成页面过渡 - 分片版：避免 Long Task
    * 🔧 优化：避免创建临时数组，直接迭代 Set
    */
-  completePageTransition() {
+  completePageTransition(pageId?: string): boolean {
+    // 旧页面延迟到达的 RAF 不得提前放行当前页面。
+    if (pageId && this.currentPageId !== pageId) return false
+
     this.isPageReady = true
 
     // 解析 Promise
@@ -647,6 +637,7 @@ class AnimationCoordinator {
 
     // 处理延迟队列
     this.processDelayedQueue()
+    return true
   }
 
   /**
@@ -664,8 +655,13 @@ class AnimationCoordinator {
    */
   onPageReady(callback: () => void): Unsubscribe {
     if (this.isPageReady) {
-      queueMicrotask(callback)
-      return () => {}
+      let active = true
+      queueMicrotask(() => {
+        if (active) callback()
+      })
+      return () => {
+        active = false
+      }
     }
 
     this.pageReadyCallbacks.add(callback)
@@ -683,6 +679,11 @@ class AnimationCoordinator {
    * 清理页面状态 - 优化版：直接清空而非迭代
    */
   private cleanupPage(_pageId: string) {
+    this.pageReadyResolve?.()
+    this.pageReadyResolve = null
+    this.pageReadyPromise = null
+    this.pageReadyCallbacks.clear()
+
     // 直接清空所有状态，避免迭代开销
     this.states.clear()
     this.listeners.clear()
@@ -700,6 +701,8 @@ class AnimationCoordinator {
     this.activeSlots.clear()
     this.waitingQueue.length = 0
     this.waitingQueueIndex.clear()
+    this.scheduleVersions.clear()
+    this.stopTimeoutChecker()
   }
 
   // ==================== 元素级（批量调度）====================
@@ -709,6 +712,15 @@ class AnimationCoordinator {
    */
   schedule(config: AnimationConfig): AnimationState {
     const { id, priority, delay = 0, index = 0, groupId } = config
+    this.totalScheduled++
+    const scheduleVersion = (this.scheduleVersions.get(id) ?? 0) + 1
+    this.scheduleVersions.set(id, scheduleVersion)
+
+    this.removeQueuedAnimation(id)
+    if (this.activeSlots.has(id)) {
+      this.releaseSlot(id)
+      this.processWaitQueue()
+    }
 
     // 页面级：立即就绪（不受并发限制）
     if (priority === AnimationPriority.PAGE) {
@@ -722,6 +734,12 @@ class AnimationCoordinator {
 
       // 注册页面就绪回调
       this.onPageReady(() => {
+        if (
+          this.scheduleVersions.get(id) !== scheduleVersion ||
+          this.states.get(id) !== AnimationState.WAITING
+        ) {
+          return
+        }
         this.scheduleAfterPageReady(id, delay, index, groupId, priority)
       })
 
@@ -797,6 +815,11 @@ class AnimationCoordinator {
       startTime: now,
       duration: 0,
     })
+    this.totalAcquired++
+    if (this.activeSlots.size > this.peakActiveSlots) {
+      this.peakActiveSlots = this.activeSlots.size
+    }
+    this.startTimeoutChecker()
   }
 
   /**
@@ -898,6 +921,24 @@ class AnimationCoordinator {
   private rebuildWaitingQueueIndex(fromIndex: number = 0) {
     for (let i = fromIndex; i < this.waitingQueue.length; i++) {
       this.waitingQueueIndex.set(this.waitingQueue[i].id, i)
+    }
+  }
+
+  private removeQueuedAnimation(id: string) {
+    const waitIndex = this.waitingQueueIndex.get(id)
+    if (waitIndex !== undefined) {
+      this.waitingQueue.splice(waitIndex, 1)
+      this.waitingQueueIndex.delete(id)
+      this.rebuildWaitingQueueIndex(waitIndex)
+    }
+
+    const previousFirstId = this.delayedQueue[0]?.id
+    this.delayedQueue = this.delayedQueue.filter((item) => item.id !== id)
+
+    if (previousFirstId === id && this.delayTimerId) {
+      clearTimeout(this.delayTimerId)
+      this.delayTimerId = null
+      this.scheduleNextDelay()
     }
   }
 
@@ -1037,6 +1078,8 @@ class AnimationCoordinator {
    */
   markRunning(id: string) {
     this.states.set(id, AnimationState.RUNNING)
+    this.pendingUpdates.add(id)
+    this.scheduleMicrotaskFlush()
   }
 
   /**
@@ -1044,6 +1087,7 @@ class AnimationCoordinator {
    */
   markCompleted(id: string) {
     this.states.set(id, AnimationState.COMPLETED)
+    this.removeQueuedAnimation(id)
 
     // 释放槽位
     if (this.activeSlots.has(id)) {
@@ -1052,13 +1096,19 @@ class AnimationCoordinator {
       // 处理等待队列中的下一个
       this.processWaitQueue()
     }
+
+    this.pendingUpdates.add(id)
+    this.scheduleMicrotaskFlush()
+    this.stopTimeoutCheckerIfIdle()
   }
 
   /**
    * 跳过动画
    */
   skip(id: string) {
+    this.scheduleVersions.set(id, (this.scheduleVersions.get(id) ?? 0) + 1)
     this.states.set(id, AnimationState.SKIPPED)
+    this.removeQueuedAnimation(id)
 
     // 释放槽位（如果有）
     if (this.activeSlots.has(id)) {
@@ -1068,6 +1118,7 @@ class AnimationCoordinator {
 
     this.pendingUpdates.add(id)
     this.scheduleMicrotaskFlush()
+    this.stopTimeoutCheckerIfIdle()
   }
 
   // ==================== 帧率监控 ====================
@@ -1146,7 +1197,9 @@ class AnimationCoordinator {
     // 如果已有状态，立即通知（microtask）
     const state = this.states.get(id)
     if (state) {
-      queueMicrotask(() => callback(state))
+      queueMicrotask(() => {
+        if (this.listeners.get(id)?.has(callback)) callback(state)
+      })
     }
 
     return () => {
@@ -1202,9 +1255,7 @@ class AnimationCoordinator {
    * 获取负载（0-1）- 优化版：避免除零
    */
   getLoad(): number {
-    const max = this.inBurstMode
-      ? this.config.burstConcurrent
-      : this.config.baseConcurrent
+    const max = this.getMaxConcurrent()
     return this.activeSlots.size / max
   }
 
@@ -1244,7 +1295,11 @@ class AnimationCoordinator {
   }
 
   /**
-   * 获取并发状态（用于调试）
+   * 获取并发状态（用于调试 / 性能面板）
+   *
+   * 注意：activeSlots / waitingQueue 是瞬时占用。
+   * 入场动画通常几十~几百 ms 就 markCompleted 释放，1s 采样几乎总是看到 0。
+   * 请同时看 peakActiveSlots / totalScheduled / totalAcquired / pageReady。
    */
   getConcurrencyStatus() {
     const maxConcurrent = this.getMaxConcurrent()
@@ -1254,6 +1309,8 @@ class AnimationCoordinator {
     return {
       activeSlots: this.activeSlots.size,
       maxConcurrent,
+      baseConcurrent: this.config.baseConcurrent,
+      burstConcurrent: this.config.burstConcurrent,
       inBurstMode: this.inBurstMode,
       burstTimeRemaining: this.inBurstMode
         ? Math.max(
@@ -1266,13 +1323,34 @@ class AnimationCoordinator {
       totalQueued,
       queuePressure: totalQueued > pressureThreshold,
       load: this.activeSlots.size / maxConcurrent,
+      /** 会话峰值并发（证明槽位系统是否真正工作过） */
+      peakActiveSlots: this.peakActiveSlots,
+      /** 累计 schedule 次数 */
+      totalScheduled: this.totalScheduled,
+      /** 累计占槽次数（PAGE 级不占槽） */
+      totalAcquired: this.totalAcquired,
+      /** 页面就绪门闩 */
+      pageReady: this.isPageReady,
+      currentPageId: this.currentPageId,
+      /** 仍登记的状态条目数 */
+      statesSize: this.states.size,
     }
+  }
+
+  /** 重置会话统计峰值（不影响运行中的调度） */
+  resetConcurrencyStats() {
+    this.peakActiveSlots = this.activeSlots.size
+    this.totalScheduled = 0
+    this.totalAcquired = 0
   }
 
   /**
    * 重置协调器
    */
   reset() {
+    this.pageReadyResolve?.()
+    this.pageReadyResolve = null
+    this.pageReadyPromise = null
     this.states.clear()
     this.listeners.clear()
     this.pendingUpdates.clear()
@@ -1284,6 +1362,8 @@ class AnimationCoordinator {
     this.activeSlots.clear()
     this.waitingQueue.length = 0
     this.waitingQueueIndex.clear()
+    this.scheduleVersions.clear()
+    this.stopTimeoutChecker()
 
     // 重置爆发模式
     this.inBurstMode = false
@@ -1331,6 +1411,7 @@ class AnimationCoordinator {
     this.frameTimeCount = 0
     this.frameTimeSum = 0
     this.frameTimes.fill(0)
+    this.totalFrames = 0
 
     // 重置刷新率检测状态
     this.minFrameTime = Infinity
@@ -1338,6 +1419,13 @@ class AnimationCoordinator {
 
     const measureFps = (timestamp: number) => {
       if (!this.fpsMonitorRunning) return
+
+      // 后台标签页的 RAF 会被浏览器大幅节流；恢复时丢弃这段时间差。
+      if (!coreIsPageVisible()) {
+        this.lastFrameTimestamp = timestamp
+        this.fpsMonitorRafId = requestAnimationFrame(measureFps)
+        return
+      }
 
       const frameTime = timestamp - this.lastFrameTimestamp
       this.lastFrameTimestamp = timestamp
@@ -1383,11 +1471,6 @@ class AnimationCoordinator {
       } else {
         // 缓冲区已满，减去被覆盖的旧值，加上新值
         this.frameTimeSum = this.frameTimeSum - oldValue + frameTime
-      }
-
-      // 检测卡顿（帧时间 > 2倍帧预算算卡顿）
-      if (frameTime > this.frameBudget * 2) {
-        this.jankCount++
       }
 
       // 每 1000ms 更新一次 FPS 显示值
@@ -1472,31 +1555,76 @@ class AnimationCoordinator {
   /**
    * 获取帧率统计信息
    * 用于性能监控面板，统一从调度器获取数据
+   *
+   * 卡顿不再用会话累计次数（会无限涨、难解读），
+   * 改为在最近采样窗（最多 64 帧，约 0.5–1s）上计算：
+   * - maxFrameMs：最差一帧耗时
+   * - p95FrameMs：近窗 P95 帧时（稳态体感）
+   * - jankRatio：超过 2× 帧预算的帧占比
    */
   getFrameStats(): {
     fps: number
     avgFrameTime: number
     isLowFps: boolean
-    jankCount: number
+    /** 近窗最差帧耗时 (ms) */
+    maxFrameMs: number
+    /** 近窗 P95 帧时 (ms) */
+    p95FrameMs: number
+    /** 近窗卡顿占比 0–1（帧时 > 2× 帧预算） */
+    jankRatio: number
+    /** 卡顿判定阈值 (ms)，即 2× frameBudget */
+    jankThresholdMs: number
     totalFrames: number
     isMonitoring: boolean
     sampleCount: number
-    /** 🔧 检测到的显示器刷新率 */
+    /** 检测到的显示器刷新率 */
     detectedRefreshRate: number
-    /** 🔧 动态计算的低帧率阈值 */
+    /** 动态计算的低帧率阈值 */
     lowFpsThreshold: number
-    /** 🔧 刷新率检测是否完成 */
+    /** 刷新率检测是否完成 */
     refreshRateDetected: boolean
   } {
-    // 🔧 使用累加器直接计算，O(1) 复杂度
+    // 累加器：O(1) 平均帧时
     const avgFrameTime =
       this.frameTimeCount > 0 ? this.frameTimeSum / this.frameTimeCount : 16
+
+    // 近窗扫描：最多 64 次，仅在 getFrameStats 时执行（面板 1–2s 一次）
+    let maxFrameMs = 0
+    let jankFrames = 0
+    const jankThresholdMs = this.frameBudget * 2
+    const n = this.frameTimeCount
+    // 复用小数组做 P95（n≤64，排序成本可忽略）
+    const samples: number[] = []
+    for (let i = 0; i < n; i++) {
+      const t = this.frameTimes[i]
+      // 首帧写入前可能是 0，跳过
+      if (t <= 0) continue
+      samples.push(t)
+      if (t > maxFrameMs) maxFrameMs = t
+      if (t > jankThresholdMs) jankFrames++
+    }
+
+    const sampleN = samples.length
+    const jankRatio = sampleN > 0 ? jankFrames / sampleN : 0
+    let p95FrameMs = 0
+    if (sampleN > 0) {
+      samples.sort((a, b) => a - b)
+      // nearest-rank：ceil(0.95 * n) - 1，至少取第 0 个
+      const idx = Math.min(
+        sampleN - 1,
+        Math.max(0, Math.ceil(sampleN * 0.95) - 1),
+      )
+      p95FrameMs = samples[idx]
+    }
 
     return {
       fps: this.currentFps,
       avgFrameTime,
       isLowFps: this.isLowFpsMode,
-      jankCount: this.jankCount,
+      maxFrameMs: Math.round(maxFrameMs * 10) / 10,
+      p95FrameMs: Math.round(p95FrameMs * 10) / 10,
+      jankRatio,
+      jankThresholdMs: Math.round(jankThresholdMs * 10) / 10,
       totalFrames: this.totalFrames,
       isMonitoring: this.fpsMonitorRunning,
       sampleCount: this.frameTimeCount,
@@ -1521,7 +1649,6 @@ class AnimationCoordinator {
     this.frameTimeIndex = 0
     this.frameTimeCount = 0
     this.frameTimeSum = 0
-    this.jankCount = 0
     this.totalFrames = 0
     this.currentFps = this.detectedRefreshRate // 重置为检测到的刷新率
     this.isLowFpsMode = false
@@ -1670,9 +1797,11 @@ class AnimationCoordinator {
     callback: (entry: ResizeObserverEntry) => void,
     options?: { immediate?: boolean },
   ): () => void {
-    if (!this.sharedResizeObserver || !element) {
+    if (!element) {
       return () => {}
     }
+    if (!this.sharedResizeObserver) this.initSharedResizeObserver()
+    if (!this.sharedResizeObserver) return () => {}
 
     // 注册回调
     this.resizeCallbacks.set(element, callback)
@@ -2027,10 +2156,7 @@ class AnimationCoordinator {
     this.reset()
     // 停止 FPS 监控
     this.stopFpsMonitor()
-    if (this.timeoutCheckerId) {
-      clearInterval(this.timeoutCheckerId)
-      this.timeoutCheckerId = null
-    }
+    this.stopTimeoutChecker()
     // 🔧 清理 WeakRef 检查器
     if (this.weakRefCheckerId) {
       clearInterval(this.weakRefCheckerId)

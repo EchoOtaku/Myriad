@@ -61,9 +61,9 @@ export function usePageTransition({
   }, [pageId, animationId])
 
   const onEnterComplete = useCallback(() => {
+    if (!coordinator.completePageTransition(pageId)) return
     coordinator.markCompleted(animationId)
-    coordinator.completePageTransition()
-  }, [animationId])
+  }, [animationId, pageId])
 
   return {
     onEnterComplete,

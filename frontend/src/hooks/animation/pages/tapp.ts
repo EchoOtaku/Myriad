@@ -16,12 +16,11 @@
  * }
  *
  * function TappCard({ index }) {
- *   const { canAnimate, delay, onComplete } = useTappStagger(index);
+ *   const { canAnimate, onComplete } = useTappStagger(index);
  *   return (
  *     <motion.div
  *       initial={{ opacity: 0, y: 10 }}
  *       animate={canAnimate ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
- *       transition={{ delay: delay / 1000 }}
  *       onAnimationComplete={onComplete}
  *     />
  *   );
@@ -36,7 +35,6 @@ import { isPageVisible, onVisibility, registerPageCleanup } from '../core'
 import { AnimationPriority, AnimationState } from '../types'
 
 const _PAGE_ID = 'tapp'
-const STAGGER_GROUP_ID = 'tapp-cards'
 const BASE_STAGGER_DELAY = 60 // ms
 
 let staggerIdCounter = 0
@@ -62,22 +60,29 @@ export function useTappScheduler(): void {
 interface TappStaggerResult {
   /** 是否可以开始动画 */
   canAnimate: boolean
-  /** 延迟时间（毫秒） */
-  delay: number
   /** 动画完成回调 */
   onComplete: () => void
+}
+
+interface TappStaggerOptions {
+  /** 卡片之间的交错延迟 */
+  baseDelay?: number
+  /** 是否启用入场动画 */
+  enabled?: boolean
 }
 
 /**
  * Tapp 卡片交错动画 Hook
  *
  * @param index - 卡片在列表中的索引
- * @param baseDelay - 基础延迟（可选，默认 60ms）
+ * @param options - 交错延迟和启用状态
  */
 export function useTappStagger(
   index: number,
-  baseDelay: number = BASE_STAGGER_DELAY,
+  options: TappStaggerOptions = {},
 ): TappStaggerResult {
+  const { baseDelay = BASE_STAGGER_DELAY, enabled = true } = options
+
   // 生成稳定的动画 ID
   const idRef = useRef<string>('')
   if (!idRef.current) {
@@ -85,11 +90,13 @@ export function useTappStagger(
   }
   const id = idRef.current
 
-  // 计算延迟
-  const delay = coordinator.getStaggerDelay(index, baseDelay)
+  // 延迟只由协调器执行；Motion 收到 READY 后立即播放。
+  const coordinatedDelay = coordinator.getStaggerDelay(index, baseDelay)
 
   // 状态管理（使用 ref 避免不必要的渲染）
-  const stateRef = useRef<AnimationState>(AnimationState.WAITING)
+  const stateRef = useRef<AnimationState>(
+    enabled ? AnimationState.WAITING : AnimationState.COMPLETED,
+  )
   const scheduledRef = useRef(false)
   const [, forceUpdate] = useReducer((x) => x + 1, 0)
 
@@ -100,13 +107,25 @@ export function useTappStagger(
 
   // 动画完成回调
   const onComplete = useCallback(() => {
-    if (stateRef.current === AnimationState.RUNNING) {
+    if (
+      stateRef.current === AnimationState.READY ||
+      stateRef.current === AnimationState.RUNNING
+    ) {
       stateRef.current = AnimationState.COMPLETED
       coordinator.markCompleted(id)
     }
   }, [id])
 
   useEffect(() => {
+    if (!enabled) {
+      stateRef.current = AnimationState.COMPLETED
+      forceUpdate()
+      return
+    }
+
+    // 已经以无动画模式显示过的卡片不在偏好切换后重新播放入场。
+    if (stateRef.current === AnimationState.COMPLETED) return
+
     // 避免重复调度
     if (scheduledRef.current) return
     scheduledRef.current = true
@@ -115,33 +134,37 @@ export function useTappStagger(
     coordinator.schedule({
       id,
       priority: AnimationPriority.COMPONENT,
-      groupId: STAGGER_GROUP_ID,
-      index,
-      delay,
+      delay: coordinatedDelay,
     })
 
     // 订阅状态变化
     const unsubscribe = coordinator.subscribe(id, (state) => {
-      const prev = stateRef.current
       stateRef.current = state
 
+      if (state === AnimationState.READY) {
+        stateRef.current = AnimationState.RUNNING
+        coordinator.markRunning(id)
+      }
+
       // 只在关键状态变化时触发渲染
-      if (
-        (prev === AnimationState.WAITING && state === AnimationState.READY) ||
-        (prev === AnimationState.SCHEDULED && state === AnimationState.READY) ||
-        state === AnimationState.SKIPPED
-      ) {
+      if (state === AnimationState.READY || state === AnimationState.SKIPPED) {
         forceUpdate()
       }
     })
 
     return () => {
+      if (
+        stateRef.current !== AnimationState.COMPLETED &&
+        stateRef.current !== AnimationState.SKIPPED
+      ) {
+        coordinator.skip(id)
+      }
       unsubscribe()
       scheduledRef.current = false
     }
-  }, [id, index, delay])
+  }, [coordinatedDelay, enabled, id])
 
-  return { canAnimate, delay, onComplete }
+  return { canAnimate, onComplete }
 }
 
 // ==================== Visibility Hook ====================
