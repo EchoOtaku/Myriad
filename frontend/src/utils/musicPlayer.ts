@@ -40,6 +40,16 @@ export async function getNeteaseAudioUrl(
 }
 
 /**
+ * 获取 QQ 音乐音频 URL（经后端解析 vkey 并代理）
+ *
+ * 旧直连 `ws.stream.qqmusic.qq.com/{songmid}.m4a?fromtag=46` 已失效（403）。
+ * 统一走后端 `/api/proxy/music/qq/audio/{songmid}`，按需取临时播放链。
+ */
+export function getQQAudioUrl(songMid: string): string {
+  return `${API_URL}/api/proxy/music/qq/audio/${songMid}`
+}
+
+/**
  * 节流函数 - 限制函数执行频率
  * @param func 要节流的函数
  * @param wait 等待时间（毫秒）
@@ -193,7 +203,8 @@ interface PlaylistCacheEntry {
 
 const playlistMemoryCache = new Map<string, PlaylistCacheEntry>()
 const PLAYLIST_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000 // 7天
-const PLAYLIST_STORAGE_KEY = 'myriad_playlist_cache'
+// v2：QQ 音频改为后端代理，旧缓存里的 fromtag=46 直连 URL 已失效
+const PLAYLIST_STORAGE_KEY = 'myriad_playlist_cache_v2'
 const MAX_PLAYLIST_CACHE_SIZE = 5
 
 function setPlaylistMemoryCache(
@@ -587,26 +598,35 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
     const playlist = data.cdlist[0]
     const songlist = playlist.songlist || []
 
-    const songs = songlist.map((song: any) => {
-      // QQ音乐返回格式：singer(歌手数组), albumname(专辑名), interval(时长秒)
-      const singers = Array.isArray(song.singer) ? song.singer : []
+    const songs = songlist
+      .map((song: any) => {
+        // QQ音乐返回格式：singer(歌手数组), albumname(专辑名), interval(时长秒)
+        const singers = Array.isArray(song.singer) ? song.singer : []
+        const songMid = String(song.songmid || song.id || '').trim()
+        if (!songMid) {
+          return null
+        }
 
-      return {
-        id: song.songmid || song.id?.toString() || '',
-        name: song.songname || song.name,
-        artist:
-          singers.length > 0
-            ? singers.map((s: any) => s.name).join(', ')
-            : 'Unknown',
-        album: song.albumname || song.album?.name || '',
-        cover: song.albummid
-          ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg`
-          : '',
-        url: `https://ws.stream.qqmusic.qq.com/${song.songmid}.m4a?fromtag=46`,
-        duration: song.interval || 0,
-        source: 'qq' as MusicSource,
-      }
-    })
+        return {
+          id: songMid,
+          name: song.songname || song.name,
+          artist:
+            singers.length > 0
+              ? singers.map((s: any) => s.name).join(', ')
+              : 'Unknown',
+          album: song.albumname || song.album?.name || '',
+          cover: song.albummid
+            ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg`
+            : '',
+          // 经后端 GetEVkey 解析临时播放链；旧 fromtag=46 直连已 403
+          url: getQQAudioUrl(songMid),
+          duration: song.interval || 0,
+          source: 'qq' as MusicSource,
+          // 后端会补 isVip；无字段时默认 false
+          isVip: Boolean(song.isVip),
+        } satisfies Song
+      })
+      .filter((song: Song | null): song is Song => song !== null)
 
     // 存入缓存
     savePlaylistToCache(cacheKey, songs)

@@ -4339,6 +4339,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 get(api::proxy::proxy_qq_playlist),
             )
             .route(
+                "/api/proxy/music/qq/audio/{id}",
+                get(api::proxy::proxy_qq_audio),
+            )
+            .route(
                 "/api/proxy/music/qq/lyrics/{id}",
                 get(api::proxy::proxy_qq_lyrics),
             )

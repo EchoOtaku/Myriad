@@ -596,7 +596,253 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
     }
 }
 
-// ===== QQ音乐相关函数（保持不变）=====
+// ===== QQ音乐相关函数 =====
+
+/// 校验 QQ 音乐 songmid（字母数字，长度通常 14）
+fn is_valid_qq_songmid(song_mid: &str) -> bool {
+    let len = song_mid.len();
+    (8..=32).contains(&len) && song_mid.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// 通过 QQ 音乐 GetEVkey 接口解析可播放音频 URL
+///
+/// 旧前端硬编码的 `ws.stream.qqmusic.qq.com/{songmid}.m4a?fromtag=46` 已全面 403。
+/// 当前可用路径：`music.vkey.GetEVkey` + `RS02{songmid}.mp3`（部分曲目需回退其它封装）。
+async fn resolve_qq_audio_url(song_mid: &str) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // 优先 RS02（海外匿名可拿到 purl），再回退常见清晰度封装
+    let filenames = [
+        format!("RS02{}.mp3", song_mid),
+        format!("M500{}.mp3", song_mid),
+        format!("C400{}.m4a", song_mid),
+        format!("M800{}.mp3", song_mid),
+    ];
+
+    let guid = format!("{:010}", rand::random::<u32>() % 1_000_000_000);
+
+    for filename in &filenames {
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0, "uin": "0", "format": "json" },
+            "req_0": {
+                "module": "music.vkey.GetEVkey",
+                "method": "CgiGetEVkey",
+                "param": {
+                    "guid": guid,
+                    "songmid": [song_mid],
+                    "filename": [filename],
+                    "songtype": [0],
+                    "uin": "0",
+                    "loginflag": 1,
+                    "platform": "20"
+                }
+            }
+        });
+
+        let resp = match client
+            .post("https://u.y.qq.com/cgi-bin/musicu.fcg")
+            .header("Referer", "https://y.qq.com/")
+            .header("Origin", "https://y.qq.com")
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::debug!("QQ GetEVkey request failed for {}: {}", filename, e);
+                continue;
+            }
+        };
+
+        let data: Value = match resp.json().await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::debug!("QQ GetEVkey parse failed for {}: {}", filename, e);
+                continue;
+            }
+        };
+
+        let req_code = data.pointer("/req_0/code").and_then(|v| v.as_i64());
+        if req_code != Some(0) {
+            tracing::debug!(
+                "QQ GetEVkey req_0.code={:?} for {} / {}",
+                req_code,
+                song_mid,
+                filename
+            );
+            continue;
+        }
+
+        let midinfo = match data.pointer("/req_0/data/midurlinfo/0") {
+            Some(v) => v,
+            None => {
+                tracing::debug!("QQ GetEVkey empty midurlinfo for {}", filename);
+                continue;
+            }
+        };
+        let purl = midinfo
+            .get("purl")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if purl.is_empty() {
+            let result = midinfo.get("result").and_then(|v| v.as_i64());
+            tracing::debug!(
+                "QQ GetEVkey empty purl result={:?} for {} / {}",
+                result,
+                song_mid,
+                filename
+            );
+            continue;
+        }
+
+        let sip = data
+            .pointer("/req_0/data/sip/0")
+            .and_then(|v| v.as_str())
+            .unwrap_or("https://dl.stream.qqmusic.qq.com/");
+
+        // 浏览器页面若为 HTTPS，需避免 http:// CDN 混合内容拦截
+        let sip = if sip.starts_with("http://") {
+            sip.replacen("http://", "https://", 1)
+        } else if sip.starts_with("https://") {
+            sip.to_string()
+        } else {
+            format!("https://{}", sip.trim_start_matches("//"))
+        };
+
+        let audio_url = format!("{}{}", sip, purl);
+
+        // 轻量探测：purl 有时 result=0 但 CDN 404
+        match client
+            .get(&audio_url)
+            .header("Referer", "https://y.qq.com/")
+            .header("Range", "bytes=0-1023")
+            .send()
+            .await
+        {
+            Ok(probe) if probe.status().is_success() => {
+                return Ok(audio_url);
+            }
+            Ok(probe) => {
+                tracing::debug!(
+                    "QQ audio probe {} for {} -> {}",
+                    probe.status(),
+                    filename,
+                    song_mid
+                );
+            }
+            Err(e) => {
+                tracing::debug!("QQ audio probe error for {}: {}", filename, e);
+            }
+        }
+    }
+
+    Err(format!(
+        "No playable QQ audio URL for songmid {}",
+        song_mid
+    ))
+}
+
+/// 代理 QQ 音乐音频流
+/// GET /api/proxy/music/qq/audio/{songmid}
+///
+/// 解析临时 vkey 后拉取音频并回传（与网易云海外代理一致，便于 CORS / 频谱分析）。
+pub async fn proxy_qq_audio(Path(song_mid): Path<String>) -> Response {
+    if !is_valid_qq_songmid(&song_mid) {
+        return (StatusCode::BAD_REQUEST, "Invalid QQ songmid").into_response();
+    }
+
+    let cache_key = format!("qq_audio:{}", song_mid);
+    {
+        let mut limiter = RATE_LIMITER.write().await;
+        if !limiter.check_rate_limit(&cache_key) {
+            tracing::warn!("Rate limit exceeded for QQ audio: {}", song_mid);
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error": "Too many requests"})),
+            )
+                .into_response();
+        }
+    }
+
+    let audio_url = match resolve_qq_audio_url(&song_mid).await {
+        Ok(url) => url,
+        Err(e) => {
+            tracing::error!("Failed to resolve QQ audio for {}: {}", song_mid, e);
+            return (
+                StatusCode::NOT_FOUND,
+                "Audio not available (copyright, VIP, or geo-restriction)",
+            )
+                .into_response();
+        }
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .user_agent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        .build()
+        .unwrap();
+
+    match client
+        .get(&audio_url)
+        .header("Referer", "https://y.qq.com/")
+        .header("Range", "bytes=0-")
+        .send()
+        .await
+    {
+        Ok(audio_resp) => {
+            if !audio_resp.status().is_success() {
+                tracing::error!(
+                    "QQ CDN returned {} for songmid {}",
+                    audio_resp.status(),
+                    song_mid
+                );
+                return (StatusCode::BAD_GATEWAY, "Failed to fetch audio stream").into_response();
+            }
+
+            let content_type = audio_resp
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("audio/mpeg")
+                .to_string();
+
+            match audio_resp.bytes().await {
+                Ok(audio_data) => (
+                    StatusCode::OK,
+                    [
+                        (header::CONTENT_TYPE, content_type),
+                        (header::CACHE_CONTROL, "public, max-age=3600".to_string()),
+                        (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".to_string()),
+                        (header::ACCEPT_RANGES, "bytes".to_string()),
+                    ],
+                    audio_data,
+                )
+                    .into_response(),
+                Err(e) => {
+                    tracing::error!("Failed to read QQ audio data for {}: {}", song_mid, e);
+                    (StatusCode::BAD_GATEWAY, "Failed to read audio data").into_response()
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch QQ audio stream for {}: {}", song_mid, e);
+            (StatusCode::BAD_GATEWAY, "Failed to fetch audio stream").into_response()
+        }
+    }
+}
 
 /// 代理QQ音乐歌单请求（带缓存）
 pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
@@ -637,7 +883,11 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .user_agent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        .timeout(Duration::from_secs(20))
         .build()
         .unwrap();
 
@@ -649,22 +899,26 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
     match client
         .get(&url)
         .header("Referer", "https://y.qq.com/")
+        .header("Origin", "https://y.qq.com")
         .send()
         .await
     {
         Ok(resp) => match resp.json::<Value>().await {
             Ok(mut data) => {
-                // 为QQ音乐歌曲添加VIP标记（QQ音乐通常不区分VIP，都可播放）
+                // QQ 匿名接口不返回可靠 VIP 字段；按 payplay 粗略标注（播放链仍以 audio 代理实测为准）
                 if let Some(cdlist) = data.get_mut("cdlist") {
                     if let Some(cdlist_array) = cdlist.as_array_mut() {
                         for cd in cdlist_array.iter_mut() {
                             if let Some(songlist) = cd.get_mut("songlist") {
                                 if let Some(songlist_array) = songlist.as_array_mut() {
                                     for song in songlist_array.iter_mut() {
-                                        // QQ音乐大部分歌曲免费，标记为非VIP
-                                        song.as_object_mut()
-                                            .unwrap()
-                                            .insert("isVip".to_string(), json!(false));
+                                        let payplay = song
+                                            .pointer("/pay/payplay")
+                                            .and_then(|v| v.as_i64())
+                                            .unwrap_or(0);
+                                        if let Some(obj) = song.as_object_mut() {
+                                            obj.insert("isVip".to_string(), json!(payplay > 0));
+                                        }
                                     }
                                 }
                             }
@@ -972,7 +1226,11 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .user_agent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        .timeout(Duration::from_secs(15))
         .build()
         .unwrap();
 
@@ -984,6 +1242,7 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
     match client
         .get(&url)
         .header("Referer", "https://y.qq.com/")
+        .header("Origin", "https://y.qq.com")
         .send()
         .await
     {
