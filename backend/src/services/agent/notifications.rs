@@ -156,13 +156,6 @@ impl NotificationManager {
             .collect()
     }
 
-    /// 获取未读通知数
-    #[allow(dead_code)]
-    pub async fn unread_count(&self) -> usize {
-        let history = self.history.read().await;
-        history.iter().filter(|n| !n.read).count()
-    }
-
     /// 获取指定用户的未读通知数
     pub async fn unread_count_for_user(&self, user_id: i32) -> usize {
         let history = self.history.read().await;

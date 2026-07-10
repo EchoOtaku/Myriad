@@ -268,12 +268,26 @@ pub async fn provider_callback(
         profile.username
     );
 
-    // 4. 分流：LinkAccount vs Login（复用前面的 frontend_base，省一次 await）
+    // 4. 分流：LinkAccount vs Login vs 数据平台授权
+    // 数据平台授权走独立 callback（如 /api/platforms/discord/oauth/callback），
+    // 若误入登录 callback 则友好重定向提示。
     match stored.purpose {
         OAuthPurpose::LinkAccount(admin_id) => {
             handle_link(&db, &slug, admin_id, &profile, &frontend_base).await
         }
         OAuthPurpose::Login => handle_login(&db, &slug, &profile).await,
+        OAuthPurpose::PlatformData { platform, .. } => {
+            tracing::warn!(
+                "PlatformData OAuth state for '{}' hit login callback; redirecting",
+                platform
+            );
+            let url = format!(
+                "{}/config?discord_oauth=error&reason={}",
+                frontend_base,
+                urlencoding::encode("wrong_callback")
+            );
+            Ok(Redirect::to(&url).into_response())
+        }
     }
 }
 

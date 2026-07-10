@@ -386,9 +386,18 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   t,
 }) => {
   const [copied, setCopied] = useState(false)
+  const [copiedData, setCopiedData] = useState(false)
   const callbackUrl =
     baseUrl && entry.slug
       ? `${baseUrl}/api/auth/oauth/${entry.slug}/callback`
+      : null
+  const isDiscordProvider =
+    entry.slug?.toLowerCase().includes('discord') ||
+    entry.display_name?.toLowerCase().includes('discord') ||
+    entry.discovery_url?.includes('discord.com')
+  const discordDataCallbackUrl =
+    baseUrl && isDiscordProvider
+      ? `${baseUrl}/api/platforms/discord/oauth/callback`
       : null
 
   const copy = async () => {
@@ -396,6 +405,13 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     await navigator.clipboard.writeText(callbackUrl)
     setCopied(true)
     setTimeout(setCopied, 2000, false)
+  }
+
+  const copyDataCallback = async () => {
+    if (!discordDataCallbackUrl) return
+    await navigator.clipboard.writeText(discordDataCallbackUrl)
+    setCopiedData(true)
+    setTimeout(setCopiedData, 2000, false)
   }
 
   // preset 提示（按 slug 匹配 — 比如 slug='github-2' 也算 github 类型）
@@ -452,6 +468,25 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             title={copied ? 'Copied!' : 'Copy'}
           >
             {copied ? <FaCheck /> : <FaClipboard />}
+          </button>
+        </div>
+      )}
+      {/* Discord 数据平台一键授权 callback（与登录 callback 分开登记） */}
+      {discordDataCallbackUrl && (
+        <div className="oidc-callback-row">
+          <span className="oidc-callback-label">
+            {t.config.discordDataCallbackUrl}
+          </span>
+          <code className="inline-code callback-url-code">
+            {discordDataCallbackUrl}
+          </code>
+          <button
+            type="button"
+            className="copy-btn"
+            onClick={copyDataCallback}
+            title={copiedData ? 'Copied!' : 'Copy'}
+          >
+            {copiedData ? <FaCheck /> : <FaClipboard />}
           </button>
         </div>
       )}

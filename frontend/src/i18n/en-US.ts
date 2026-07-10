@@ -643,6 +643,17 @@ export const enUS: TranslationKeys = {
     platformDescSteam: 'Sync your Steam library, wishlist, and gaming stats',
     platformDescNetease:
       'Sync your liked songs and music taste from Netease Cloud Music',
+    platformDescX: 'Sync your X profile and posts; share via Web Intent',
+    platformDescDiscord:
+      'Sync your Discord profile, server footprint, and linked accounts (Steam / GitHub…)',
+    discordConnect: 'Connect with Discord',
+    discordReconnect: 'Reconnect Discord',
+    discordConnectHint:
+      'Recommended: authorize via Discord (configure a Discord app under OAuth Login first, and add the data redirect URI in the Developer Portal). You can also paste an Access Token manually.',
+    discordOAuthSuccess:
+      'Discord data authorization succeeded. Tokens saved and platform enabled.',
+    discordOAuthFailed: 'Discord data authorization failed',
+    discordDataCallbackUrl: 'Data platform callback URL (Connect Discord)',
     bangumiCredentialRequirement:
       'Enter either Bangumi Username or Access Token. Public profiles can use only Username; private collections should use Access Token.',
     bangumiCredentialMissing:
@@ -729,7 +740,7 @@ export const enUS: TranslationKeys = {
     oauthPresetHintGitlab:
       'Navigate: GitLab → `User Settings` → `Applications`. For self-hosted, replace `gitlab.com` with your own domain',
     oauthPresetHintDiscord:
-      'Navigate: Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`',
+      'Navigate: Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`. For data-platform Connect, also add Redirect: `/api/platforms/discord/oauth/callback`',
     oauthPresetHintAuthentik:
       'Discovery URL looks like `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration`, where `<slug>` is your Application slug',
     oauthPresetHintKeycloak:

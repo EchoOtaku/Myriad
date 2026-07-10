@@ -15,6 +15,7 @@ import {
   registerActionHandler,
   unregisterActionHandler,
 } from '../services/agent'
+import { useMusicPlayerControl } from './MusicPlayerContext'
 
 /**
  * 查找页面元素
@@ -23,25 +24,35 @@ import {
 function findElement(target: PageElementTarget): HTMLElement | null {
   // 1. 使用 data-testid
   if (target.testId) {
-    const el = document.querySelector(`[data-testid="${target.testId}"]`)
+    const el = document.querySelector(
+      `[data-testid="${CSS.escape(target.testId)}"]`,
+    )
     if (el) return el as HTMLElement
   }
 
   // 2. 使用 CSS 选择器
   if (target.selector) {
-    const el = document.querySelector(target.selector)
-    if (el) return el as HTMLElement
+    try {
+      const el = document.querySelector(target.selector)
+      if (el) return el as HTMLElement
+    } catch {
+      return null
+    }
   }
 
   // 3. 使用 aria-label
   if (target.ariaLabel) {
-    const el = document.querySelector(`[aria-label="${target.ariaLabel}"]`)
+    const el = document.querySelector(
+      `[aria-label="${CSS.escape(target.ariaLabel)}"]`,
+    )
     if (el) return el as HTMLElement
   }
 
   // 4. 使用 role + 可选的 text
   if (target.role) {
-    const elements = document.querySelectorAll(`[role="${target.role}"]`)
+    const elements = document.querySelectorAll(
+      `[role="${CSS.escape(target.role)}"]`,
+    )
     if (target.text) {
       // 按文本内容过滤
       for (const el of elements) {
@@ -99,6 +110,7 @@ async function waitForElement(
 async function executeInteraction(
   element: HTMLElement,
   action: string,
+  value?: FrontendAction['value'],
   options?: FrontendAction['scrollOptions'],
 ): Promise<boolean> {
   try {
@@ -147,11 +159,13 @@ async function executeInteraction(
         // 适用于 checkbox、radio、select 等
         if (element instanceof HTMLInputElement) {
           if (element.type === 'checkbox' || element.type === 'radio') {
-            element.checked = true
+            element.checked =
+              typeof value === 'boolean' ? value : value !== 'false'
             element.dispatchEvent(new Event('change', { bubbles: true }))
           }
         } else if (element instanceof HTMLSelectElement) {
-          element.focus()
+          if (value !== undefined) element.value = String(value)
+          element.dispatchEvent(new Event('change', { bubbles: true }))
         }
         break
 
@@ -203,6 +217,7 @@ async function executeInteraction(
 export function AgentGlobalActions() {
   const navigate = useNavigate()
   const location = useLocation()
+  const musicPlayer = useMusicPlayerControl()
   const isNavigatingRef = useRef(false)
 
   // 路由导航处理器
@@ -292,20 +307,6 @@ export function AgentGlobalActions() {
         return false
       }
 
-      // 如果有 script，直接执行
-      if (action.script) {
-        try {
-          // 创建一个沙箱环境执行脚本
-          // eslint-disable-next-line no-new-func
-          const scriptFn = new Function('document', 'window', action.script)
-          scriptFn(document, window)
-          return true
-        } catch (error) {
-          console.error('[AgentGlobalActions] Script execution failed:', error)
-          return false
-        }
-      }
-
       // 等待元素出现
       const waitTimeout = action.waitFor?.timeout || 5000
       const element = await waitForElement(target, waitTimeout)
@@ -329,6 +330,7 @@ export function AgentGlobalActions() {
       return executeInteraction(
         element,
         interactionAction,
+        action.value,
         action.scrollOptions,
       )
     },
@@ -512,6 +514,24 @@ export function AgentGlobalActions() {
     [],
   )
 
+  const handleMusicGetStatus = useCallback(async (): Promise<unknown> => {
+    return {
+      isEnabled: musicPlayer.isEnabled,
+      isPlaying: musicPlayer.isPlaying,
+      currentSong: musicPlayer.currentSong,
+      currentSongIndex: musicPlayer.currentSongIndex,
+      playlistLength: musicPlayer.playlistLength,
+      currentLyricIndex: musicPlayer.currentLyricIndex,
+    }
+  }, [
+    musicPlayer.isEnabled,
+    musicPlayer.isPlaying,
+    musicPlayer.currentSong,
+    musicPlayer.currentSongIndex,
+    musicPlayer.playlistLength,
+    musicPlayer.currentLyricIndex,
+  ])
+
   // ============ 阅读列表处理 ============
   const handleReadingList = useCallback(
     async (frontendAction: FrontendAction): Promise<boolean> => {
@@ -632,6 +652,7 @@ export function AgentGlobalActions() {
     registerActionHandler('page_interact', handlePageInteract)
     registerActionHandler('brew_open_article', handleBrewOpenArticle)
     registerActionHandler('music_control', handleMusicControl)
+    registerActionHandler('music_get_status', handleMusicGetStatus)
     registerActionHandler('music_load_playlist', handleMusicLoadPlaylist)
     registerActionHandler('reading_list', handleReadingList)
 
@@ -641,6 +662,7 @@ export function AgentGlobalActions() {
       unregisterActionHandler('page_interact')
       unregisterActionHandler('brew_open_article')
       unregisterActionHandler('music_control')
+      unregisterActionHandler('music_get_status')
       unregisterActionHandler('music_load_playlist')
       unregisterActionHandler('reading_list')
     }
@@ -649,6 +671,7 @@ export function AgentGlobalActions() {
     handlePageInteract,
     handleBrewOpenArticle,
     handleMusicControl,
+    handleMusicGetStatus,
     handleMusicLoadPlaylist,
     handleReadingList,
   ])

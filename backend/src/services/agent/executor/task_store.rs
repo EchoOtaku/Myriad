@@ -100,7 +100,6 @@ impl TaskStore {
     ///
     /// - 已完成/失败超过24小时的任务
     /// - WaitingForInput 超过2小时未响应的任务（标记为超时失败）
-    #[allow(dead_code)]
     pub async fn cleanup_expired(&mut self) {
         let now = Utc::now();
         let mut expired_ids: Vec<String> = Vec::new();

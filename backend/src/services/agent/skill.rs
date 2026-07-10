@@ -94,7 +94,6 @@ pub enum ModelTierHint {
 }
 
 impl ModelTierHint {
-    #[allow(dead_code)]
     pub fn to_model_tier(&self) -> ModelTier {
         match self {
             ModelTierHint::Pro => ModelTier::Pro,
@@ -413,7 +412,6 @@ impl SkillRegistry {
     }
 
     /// 根据 ID 获取完整 Skill
-    #[allow(dead_code)]
     pub async fn get(&self, id: &str) -> Option<Skill> {
         let skills = self.skills.read().await;
         skills.get(id).cloned()

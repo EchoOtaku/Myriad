@@ -107,6 +107,7 @@ export interface AgentResponse {
   task?: TaskInfo
   /** 前端操作指令 */
   frontendAction?: FrontendAction
+  sessionId?: string
 }
 
 // ============ SSE 进度事件 ============
@@ -412,6 +413,7 @@ export interface FrontendAction {
   tappId?: string
   windowId?: string
   commands?: InteractionCommand[]
+  autoSubmit?: boolean
   script?: string
   timestamp: number
   /** 操作数据 */
@@ -427,7 +429,7 @@ export interface FrontendAction {
   /** 控制动作 */
   action?: string
   /** 控制值 */
-  value?: number | boolean
+  value?: string | number | boolean
   /** 是否替换历史记录 */
   replace?: boolean
   /** 歌单ID */
@@ -436,6 +438,8 @@ export interface FrontendAction {
   source?: string
   /** 是否自动播放 */
   autoPlay?: boolean
+  readType?: 'all' | 'inputs' | 'content' | 'storage'
+  selector?: string
   /** 滚动选项 */
   scrollOptions?: ScrollOptions
   /** 等待条件 */

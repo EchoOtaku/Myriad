@@ -14,6 +14,7 @@ fn get_platform_description(name: &str) -> &'static str {
         "netease_music" => "Analyze your music taste and playlists",
         "bangumi" => "Sync your Bangumi collection, ratings, and watching status",
         "x" => "Sync your X profile and posts; share via Web Intent",
+        "discord" => "Sync your Discord profile, server footprint, and linked accounts",
         _ => "Connect and sync your data",
     }
 }

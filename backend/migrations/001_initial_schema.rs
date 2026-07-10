@@ -111,6 +111,14 @@ impl MigrationTrait for Migration {
                         "bearer_token".into(),
                         false.into(),
                     ])
+                    .values_panic([
+                        "discord".into(),
+                        "Discord".into(),
+                        "discord".into(),
+                        "https://discord.com/api/v10".into(),
+                        "oauth".into(),
+                        false.into(),
+                    ])
                     .on_conflict(OnConflict::column(Platforms::Name).do_nothing().to_owned())
                     .to_owned(),
             )

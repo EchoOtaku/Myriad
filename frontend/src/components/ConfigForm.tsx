@@ -385,6 +385,8 @@ const ModernConfigForm: React.FC = () => {
         bangumi: t.config.platformDescBangumi,
         steam: t.config.platformDescSteam,
         'netease music': t.config.platformDescNetease,
+        x: t.config.platformDescX,
+        discord: t.config.platformDescDiscord,
       }
       return descMap[platform.name.toLowerCase()] || platform.description
     },
@@ -399,10 +401,20 @@ const ModernConfigForm: React.FC = () => {
       return hasBangumiCredential(platform)
     }
 
+    // Discord 一键授权后 has_token=true；掩码字段也算已配置
+    if (platform.name.toLowerCase() === 'discord') {
+      if (platform.has_token) return true
+    }
+
     return platform.config_fields.every((field) => {
       if (!field.required) return true
       return field.value && String(field.value).trim().length > 0
     })
+  }, [])
+
+  const connectDiscordOAuth = useCallback(() => {
+    // 与登录/绑定一致：浏览器导航，携带 auth_token cookie
+    window.location.href = `${API_URL}/api/platforms/discord/oauth/start`
   }, [])
 
   // 获取翻译后的字段标签（覆盖后端返回的标签）
@@ -1135,6 +1147,36 @@ const ModernConfigForm: React.FC = () => {
     loadHitokotoSettings,
   ])
 
+  // Discord 一键授权回调：/config?section=platforms&discord_oauth=ok|error
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const oauth = params.get('discord_oauth')
+    if (!oauth) return
+
+    if (params.get('section') === 'platforms') {
+      setActiveSection('platforms')
+    }
+
+    if (oauth === 'ok') {
+      showMessage(t.config.discordOAuthSuccess, 'success')
+      setPlatformModalOpen('Discord')
+      void loadConfig()
+    } else {
+      const reason = params.get('reason') || 'unknown'
+      showMessage(
+        `${t.config.discordOAuthFailed}${reason !== 'unknown' ? ` (${reason})` : ''}`,
+        'error',
+      )
+    }
+
+    params.delete('discord_oauth')
+    params.delete('reason')
+    const qs = params.toString()
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`
+    window.history.replaceState({}, '', next)
+  }, [loadConfig, t.config.discordOAuthFailed, t.config.discordOAuthSuccess])
+
   useEffect(() => {
     const handleSaveEvent = () => handleSave()
     const handleResetEvent = () => handleReset()
@@ -1771,6 +1813,27 @@ const ModernConfigForm: React.FC = () => {
                       }`}
                     >
                       {t.config.bangumiCredentialRequirement}
+                    </div>
+                  )}
+
+                  {platform.name.toLowerCase() === 'discord' && (
+                    <div
+                      className="platform-requirement-hint is-ok"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <p style={{ margin: '0 0 10px' }}>
+                        {t.config.discordConnectHint}
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-base btn-primary"
+                        onClick={connectDiscordOAuth}
+                        style={{ width: '100%' }}
+                      >
+                        {platform.has_token
+                          ? t.config.discordReconnect
+                          : t.config.discordConnect}
+                      </button>
                     </div>
                   )}
 

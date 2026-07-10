@@ -127,7 +127,7 @@ export function generateFullSDK(
     });
   };
 
-  window.addEventListener('message', (event) => {
+  window.addEventListener('message', async (event) => {
     const { data: message } = event;
     if (!message?.type) return;
 
@@ -147,13 +147,28 @@ export function generateFullSDK(
       const data = message.data;
       if (data && typeof data === 'object') {
         eventListeners.get('agentFill')?.forEach((cb) => { try { cb(data); } catch (e) {} });
+        const fields = Array.isArray(data.fields)
+          ? data.fields
+          : Object.entries(data)
+              .filter(([key]) => !['content', 'fromStep', 'fromWindow'].includes(key))
+              .map(([target, value]) => ({ target, value, type: 'input' }));
+        if (data.content != null) fields.push({ target: 'main-input', value: data.content, type: 'input' });
+
         // 自动填充表单字段
-        Object.entries(data).forEach(([key, value]) => {
-          const el = document.querySelector(\`[name="\${key}"]\`) ||
-                     document.querySelector(\`#\${key}\`) ||
-                     document.querySelector(\`[data-field="\${key}"]\`);
+        fields.forEach((field) => {
+          const key = String(field.target || '');
+          const value = field.value;
+          let el = null;
+          try {
+            el = key.startsWith('#') || key.startsWith('.') || key.startsWith('[')
+              ? document.querySelector(key)
+              : document.getElementById(key) || document.querySelector(\`[name="\${key}"]\`) || document.querySelector(\`[data-field="\${key}"]\`);
+          } catch (e) {}
           if (el) {
-            if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+            if (el instanceof HTMLInputElement && (field.type === 'checkbox' || field.type === 'radio')) {
+              el.checked = Boolean(value);
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
               el.value = String(value);
               el.dispatchEvent(new Event('input', { bubbles: true }));
               el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -165,48 +180,96 @@ export function generateFullSDK(
             }
           }
         });
+        if (message.autoSubmit) {
+          const form = document.querySelector('form');
+          if (form?.requestSubmit) form.requestSubmit();
+          else document.querySelector('button[type="submit"], input[type="submit"]')?.click();
+        }
       }
     } else if (message.type === 'AGENT_READ_DATA') {
       // 🤖 Agent 数据读取请求
       const fields = message.fields;
+      const readType = message.readType || 'all';
       const result = {};
 
-      // 收集表单数据
-      const forms = document.querySelectorAll('form');
-      forms.forEach(form => {
-        const formData = new FormData(form);
-        formData.forEach((value, key) => {
-          if (!fields || fields.includes(key)) {
-            result[key] = value;
-          }
+      if (readType === 'inputs' || readType === 'all') {
+        // 收集表单数据
+        const forms = document.querySelectorAll('form');
+        forms.forEach(form => {
+          const formData = new FormData(form);
+          formData.forEach((value, key) => {
+            if (!fields || fields.includes(key)) {
+              result[key] = value;
+            }
+          });
         });
-      });
 
-      // 收集指定字段
-      if (fields && Array.isArray(fields)) {
-        fields.forEach(field => {
-          if (result[field] === undefined) {
-            const el = document.querySelector(\`[name="\${field}"]\`) ||
-                       document.querySelector(\`#\${field}\`) ||
-                       document.querySelector(\`[data-field="\${field}"]\`);
-            if (el) {
-              if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
-                result[field] = el.value;
-              } else {
-                result[field] = el.textContent;
+        // 收集指定字段
+        if (fields && Array.isArray(fields)) {
+          fields.forEach(field => {
+            if (result[field] === undefined) {
+              const el = document.querySelector(\`[name="\${field}"]\`) ||
+                         document.getElementById(field) ||
+                         document.querySelector(\`[data-field="\${field}"]\`);
+              if (el) {
+                if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+                  result[field] = el.value;
+                } else {
+                  result[field] = el.textContent;
+                }
               }
             }
-          }
-        });
+          });
+        }
+      } else if (readType === 'content') {
+        let contentElement = document.body;
+        if (message.selector) {
+          try { contentElement = document.querySelector(message.selector); } catch (e) { contentElement = null; }
+        }
+        result.content = contentElement?.textContent || '';
+      } else if (readType === 'storage') {
+        try {
+          const keys = await Tapp.storage.keys();
+          for (const key of keys || []) result[key] = await Tapp.storage.get(key);
+        } catch (e) {
+          result.error = e?.message || String(e);
+        }
       }
 
       // 回复数据给父窗口
       window.parent.postMessage({
         type: 'AGENT_READ_DATA_RESPONSE',
+        requestId: message.requestId,
         data: result,
         source: '${id}',
         _sessionToken: _SESSION_TOKEN,
       }, '*');
+    } else if (message.type === 'AGENT_INTERACT') {
+      // 🤖 Agent 安全交互请求（仅执行结构化 DOM 操作，不执行任意脚本）
+      const commands = Array.isArray(message.commands) ? message.commands : [];
+      for (const command of commands) {
+        const target = String(command.target || '');
+        let el = null;
+        try {
+          el = target.startsWith('#') || target.startsWith('.') || target.startsWith('[')
+            ? document.querySelector(target)
+            : document.getElementById(target) || document.querySelector(\`[name="\${target}"]\`) || document.querySelector(\`[data-field="\${target}"]\`);
+        } catch (e) {}
+        if (!el) continue;
+
+        const action = command.action || 'click';
+        if (action === 'click' || action === 'submit') el.click();
+        else if (action === 'focus') el.focus();
+        else if (action === 'input' || action === 'fill' || action === 'select') {
+          if ('value' in el) {
+            el.value = command.value == null ? '' : String(command.value);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+        const delay = Number(command.delay || 0);
+        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(delay, 2000)));
+      }
     } else if (message.type === 'event') {
       // 缓存有状态事件的最新值（统一映射为 camelCase key，与 addEventListener 回放一致）
       const _bufKey = _ACTION_TO_EVENT[message.action] || message.action;

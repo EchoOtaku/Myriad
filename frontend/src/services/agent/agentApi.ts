@@ -28,7 +28,7 @@ import type {
   TaskPresetListResponse,
 } from './types'
 
-import { TokenManager } from '../../utils/tokenManager'
+import { getCSRFToken } from '../../utils/csrf'
 import { apiService } from '../api'
 
 /**
@@ -39,8 +39,8 @@ import { apiService } from '../api'
 class AgentService {
   private baseUrl = '/agent'
 
-  /** 当前 SSE 请求的 AbortController，用于客户端侧中断 */
-  private currentAbortController: AbortController | null = null
+  /** 当前 SSE 请求；回答问题时主流与回答流会同时存在。 */
+  private activeAbortControllers = new Set<AbortController>()
 
   /**
    * 中断当前正在进行的 SSE 请求（客户端侧）
@@ -48,10 +48,8 @@ class AgentService {
    * 调用后 executeSSERequest 的 Promise 将 reject 并释放连接。
    */
   abortCurrentRequest(): void {
-    if (this.currentAbortController) {
-      this.currentAbortController.abort()
-      this.currentAbortController = null
-    }
+    for (const controller of this.activeAbortControllers) controller.abort()
+    this.activeAbortControllers.clear()
   }
 
   /**
@@ -550,27 +548,24 @@ class AgentService {
       this.abortCurrentRequest()
     }
 
+    const csrfToken = method === 'POST' ? await getCSRFToken() : null
+
     return new Promise((resolve, reject) => {
-      const token = TokenManager.getToken()
       const controller = new AbortController()
-      this.currentAbortController = controller
+      this.activeAbortControllers.add(controller)
       const timeoutId = setTimeout(() => controller.abort(), 600000)
 
       // 请求结束后清理引用
       const cleanup = () => {
         clearTimeout(timeoutId)
-        if (this.currentAbortController === controller) {
-          this.currentAbortController = null
-        }
+        this.activeAbortControllers.delete(controller)
       }
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       }
 
-      if (token) {
-        headers.Authorization = `Bearer ${token}`
-      }
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken
 
       fetch(url, {
         method,
@@ -678,7 +673,7 @@ class AgentService {
                   : undefined,
               })
               if (task.status === 'completed' && task.results) {
-                resolve(task.results as unknown as AgentResponse)
+                resolve(this.buildPolledResponse(task))
               } else {
                 reject(
                   new Error(
@@ -702,6 +697,42 @@ class AgentService {
           }
         })
     })
+  }
+
+  private buildPolledResponse(task: TaskDetail): AgentResponse {
+    const stepResults = Object.values(task.results ?? {}) as Array<{
+      success?: boolean
+      output?: unknown
+      error?: string
+    }>
+    const data =
+      stepResults.filter((result) => result.success).at(-1)?.output ??
+      task.results
+    const dataObject =
+      data && typeof data === 'object'
+        ? (data as Record<string, unknown>)
+        : undefined
+    const message =
+      ['message', 'reply', 'summary', 'analysis']
+        .map((key) => dataObject?.[key])
+        .find((value): value is string => typeof value === 'string') ??
+      (task.status === 'completed'
+        ? 'Task completed'
+        : stepResults.find((result) => result.error)?.error ||
+          `Task ${task.status}`)
+
+    return {
+      success: task.status === 'completed',
+      responseType: task.status === 'completed' ? 'task_completed' : 'error',
+      message,
+      data,
+      suggestions: [],
+      task: {
+        taskId: task.taskId,
+        status: task.status as TaskInfo['status'],
+        progress: task.progress,
+      },
+    }
   }
 }
 

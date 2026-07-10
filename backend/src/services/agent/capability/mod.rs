@@ -74,12 +74,6 @@ pub async fn get_registry() -> tokio::sync::RwLockReadGuard<'static, CapabilityR
     CAPABILITY_REGISTRY.read().await
 }
 
-/// 获取全局能力注册表（可写）
-#[allow(dead_code)]
-pub async fn get_registry_mut() -> tokio::sync::RwLockWriteGuard<'static, CapabilityRegistry> {
-    CAPABILITY_REGISTRY.write().await
-}
-
 /// 异步版本：检查能力是否需要确认（从注册表读取）
 pub async fn capability_requires_confirmation_async(
     capability_id: &str,

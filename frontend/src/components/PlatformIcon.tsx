@@ -4,6 +4,7 @@ import {
   FaSteam,
   FaXTwitter,
   SiBilibili,
+  SiDiscord,
   SiNeteasecloudmusic,
 } from '@lib/icons'
 
@@ -38,6 +39,8 @@ const PlatformIcon: React.FC<PlatformIconProps> = React.memo(
       case 'twitter':
       case 'x (twitter)':
         return <FaXTwitter className={className} style={style} />
+      case 'discord':
+        return <SiDiscord className={className} style={style} />
       default:
         return (
           <span className={className} style={style}>

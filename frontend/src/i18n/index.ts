@@ -568,6 +568,14 @@ export interface TranslationKeys {
     platformDescBangumi: string
     platformDescSteam: string
     platformDescNetease: string
+    platformDescX: string
+    platformDescDiscord: string
+    discordConnect: string
+    discordReconnect: string
+    discordConnectHint: string
+    discordOAuthSuccess: string
+    discordOAuthFailed: string
+    discordDataCallbackUrl: string
     bangumiCredentialRequirement: string
     bangumiCredentialMissing: string
     bangumiUsernameLabel: string

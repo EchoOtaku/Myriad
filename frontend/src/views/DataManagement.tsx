@@ -12,6 +12,7 @@ import {
   FaXTwitter,
   SiBangumi,
   SiBilibili,
+  SiDiscord,
   SiNeteasecloudmusic,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
@@ -45,6 +46,7 @@ const PLATFORMS = [
   { id: 'steam', name: 'Steam', icon: FaSteam, color: '#00ADEE' },
   { id: 'bangumi', name: 'Bangumi', icon: SiBangumi, color: '#F09199' },
   { id: 'x', name: 'X', icon: FaXTwitter, color: '#000000' },
+  { id: 'discord', name: 'Discord', icon: SiDiscord, color: '#5865F2' },
 ]
 
 interface CacheInfo {

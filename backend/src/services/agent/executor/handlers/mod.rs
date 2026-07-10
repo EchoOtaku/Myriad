@@ -17,7 +17,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// Handler 执行上下文
-#[allow(dead_code)]
 pub struct HandlerContext<'a> {
     pub db: &'a DatabaseConnection,
     pub ai_analyzer: Option<&'a AiAnalyzer>,
@@ -25,8 +24,6 @@ pub struct HandlerContext<'a> {
     /// 执行上下文快照（包含对话历史、角色身份等）
     pub execution_context: Option<ExecutionContext>,
 }
-
-impl<'a> HandlerContext<'a> {}
 
 /// 根据能力类别分发执行
 pub async fn execute_capability(

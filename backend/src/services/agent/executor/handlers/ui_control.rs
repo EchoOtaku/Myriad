@@ -397,6 +397,12 @@ async fn execute_tapp_interact(
         "tappName": tapp.name,
         "commands": commands,
         "script": full_script,
+        "frontendAction": {
+            "type": "tapp_interact",
+            "tappId": tapp_id,
+            "commands": commands,
+            "timestamp": chrono::Utc::now().timestamp_millis()
+        },
         "websocketMessage": ws_message,
         "instructions": {
             "frontend": "前端可通过以下方式执行操作",
@@ -1183,6 +1189,7 @@ async fn execute_tapp_fill(
         "frontendAction": {
             "type": "fill_data",
             "target": target_window,
+            "data": data,
             "commands": commands,
             "autoSubmit": auto_submit,
             "timestamp": chrono::Utc::now().timestamp_millis()

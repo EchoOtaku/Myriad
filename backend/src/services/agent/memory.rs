@@ -1037,35 +1037,6 @@ impl AgentMemory {
         );
     }
 
-    // ==================== 按能力召回 ====================
-
-    /// 按能力 ID 召回相关记忆（执行教训 + 有效模式）
-    #[allow(dead_code)]
-    pub async fn recall_by_capability(
-        &self,
-        capability_ids: &[String],
-        limit: usize,
-    ) -> Vec<MemoryEntry> {
-        let entries = self.entries.read().await;
-        let mut results: Vec<&MemoryEntry> = entries
-            .values()
-            .filter(|e| {
-                (e.memory_type == MemoryType::ExecutionLesson
-                    || e.memory_type == MemoryType::EffectivePattern)
-                    && e.related_capabilities
-                        .iter()
-                        .any(|c| capability_ids.contains(c))
-            })
-            .collect();
-        results.sort_by(|a, b| {
-            b.importance
-                .partial_cmp(&a.importance)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        results.truncate(limit);
-        results.into_iter().cloned().collect()
-    }
-
     /// 按实体召回相关记忆
     pub async fn recall_by_entity(&self, entity: &str, limit: usize) -> Vec<MemoryEntry> {
         if entity.trim().is_empty() {

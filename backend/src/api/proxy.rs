@@ -74,6 +74,8 @@ fn get_domain_key(url: &str) -> String {
         return "bangumi".to_string();
     } else if url.contains("126.net") || url.contains("163.com") {
         return "netease".to_string();
+    } else if url.contains("discordapp.com") || url.contains("discordapp.net") {
+        return "discord".to_string();
     }
     "other".to_string()
 }
@@ -100,6 +102,8 @@ async fn wait_for_proxy_permit(url: &str) -> Result<(), ()> {
                     "bangumi" => TokenBucket::new(10.0, 50.0),
                     // 网易云
                     "netease" => TokenBucket::new(10.0, 50.0),
+                    // Discord CDN
+                    "discord" => TokenBucket::new(15.0, 60.0),
                     // 其他
                     _ => TokenBucket::new(5.0, 20.0),
                 }
@@ -284,6 +288,8 @@ fn is_allowed_domain(url: &str) -> bool {
         "bangumi.tv",                 // Bangumi legacy domain
         "chii.in",                    // Bangumi legacy CDN/domain
         "music.126.net",              // 网易云音乐 CDN
+        "cdn.discordapp.com",         // Discord CDN (avatars/icons)
+        "media.discordapp.net",       // Discord media proxy
     ];
 
     // 如果是核心平台，直接允许

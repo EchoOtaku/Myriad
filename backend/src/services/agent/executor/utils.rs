@@ -17,7 +17,9 @@ pub fn truncate_str(s: &str, max_bytes: usize) -> &str {
 }
 
 /// 支持的平台名称列表
-pub const VALID_PLATFORMS: &[&str] = &["steam", "bilibili", "github", "netease", "bangumi"];
+pub const VALID_PLATFORMS: &[&str] = &[
+    "steam", "bilibili", "github", "netease", "bangumi", "x", "discord",
+];
 
 /// 验证平台名称是否在白名单中（含 "all"），返回 Result
 pub fn validate_platform_name(platform: &str) -> Result<&str, String> {

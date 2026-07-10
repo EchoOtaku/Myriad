@@ -32,6 +32,12 @@ interface PlatformConfigSectionProps {
   ) => void
   onTest: (platformName: string) => void
   onOpenModal: (platformName: string) => void
+  /** Discord 一键授权：跳转 OAuth start */
+  onConnectDiscord?: () => void
+}
+
+function isDiscordPlatform(platform: PlatformConfig): boolean {
+  return platform.name.toLowerCase() === 'discord'
 }
 
 const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(
@@ -42,6 +48,7 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(
     onUpdateField,
     onTest,
     onOpenModal,
+    onConnectDiscord,
   }) => {
     const { t } = useI18n()
 
@@ -102,6 +109,26 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(
 
               {platform.enabled && (
                 <div className="platform-config">
+                  {isDiscordPlatform(platform) && onConnectDiscord && (
+                    <div className="form-group-inline" style={{ marginBottom: 8 }}>
+                      <button
+                        type="button"
+                        className="test-button-inline"
+                        onClick={onConnectDiscord}
+                        style={{ width: '100%' }}
+                      >
+                        {platform.has_token
+                          ? t.config.discordReconnect
+                          : t.config.discordConnect}
+                      </button>
+                      <p
+                        className="platform-desc"
+                        style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}
+                      >
+                        {t.config.discordConnectHint}
+                      </p>
+                    </div>
+                  )}
                   {platform.config_fields.map((field) => (
                     <div key={field.key} className="form-group-inline">
                       <label className="form-label-inline">
@@ -125,10 +152,14 @@ const PlatformConfigSection = React.memo<PlatformConfigSectionProps>(
                           className="form-input-inline"
                           autoComplete="off"
                         />
-                        {field.key === 'token' && (
+                        {(field.key === 'token' ||
+                          field.key === 'access_token') && (
                           <button
                             onClick={() => onTest(platform.name)}
-                            disabled={!field.value || testing === platform.name}
+                            disabled={
+                              (!field.value && !platform.has_token) ||
+                              testing === platform.name
+                            }
                             className="test-button-inline"
                             type="button"
                           >

@@ -1094,6 +1094,32 @@ async fn oauth_provider_callback_wrapper(
     }
 }
 
+/// Discord 数据平台一键授权 callback（需要 DB 写配置）
+async fn discord_platform_oauth_callback_wrapper(
+    axum::extract::Query(params): axum::extract::Query<api::discord::OAuthCallbackQuery>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match api::discord::oauth_callback(
+            axum::extract::State(db.clone()),
+            axum::extract::Query(params),
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err((status, json)) => (status, json).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，Discord 数据授权回调暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
 /// Wrapper for OAuth identity unlink that gets DB from global state.
 async fn oauth_provider_unlink_wrapper(
     axum::extract::Path((slug, identity_id)): axum::extract::Path<(String, i32)>,
@@ -4414,6 +4440,32 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/x/share",
                 post(api::x::share_to_x)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // Discord — 调试接口带 access_token query，必须登录；正式同步走配置 + profile fetch
+            .route(
+                "/api/discord/status",
+                get(api::discord::discord_status)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/discord/me",
+                get(api::discord::get_discord_me)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/discord/profile",
+                get(api::discord::get_discord_profile)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // Discord 数据平台一键授权（start 需 admin cookie；callback 公开 + state CSRF）
+            .route(
+                "/api/platforms/discord/oauth/start",
+                get(api::discord::oauth_start)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/platforms/discord/oauth/callback",
+                get(discord_platform_oauth_callback_wrapper),
             )
             .with_state(db);
 

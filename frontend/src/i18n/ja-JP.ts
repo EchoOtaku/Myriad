@@ -630,6 +630,17 @@ export const jaJP: TranslationKeys = {
     platformDescBangumi: 'Bangumiのコレクション、評価、視聴状態を同期',
     platformDescSteam: 'ゲームライブラリ、ウィッシュリスト、ゲーム統計を同期',
     platformDescNetease: 'お気に入りの曲と音楽の好みを同期',
+    platformDescX: 'X のプロフィールと投稿を同期。共有は Web Intent',
+    platformDescDiscord:
+      'Discord のプロフィール、サーバー参加状況、連携アカウントを同期',
+    discordConnect: 'Discord で認可',
+    discordReconnect: 'Discord を再認可',
+    discordConnectHint:
+      '推奨：Discord 認可（先に OAuth ログインで Discord アプリを設定し、Developer Portal にデータ用コールバックを追加）。Access Token の手動入力も可。',
+    discordOAuthSuccess:
+      'Discord データ認可に成功しました。トークンを保存しプラットフォームを有効化しました。',
+    discordOAuthFailed: 'Discord データ認可に失敗しました',
+    discordDataCallbackUrl: 'データ連携コールバック URL（一括認可）',
     bangumiCredentialRequirement:
       'Bangumi ユーザー名またはアクセストークンのどちらか一方を入力してください。公開プロフィールはユーザー名のみ、非公開コレクションはアクセストークンを推奨します。',
     bangumiCredentialMissing:
@@ -715,7 +726,7 @@ export const jaJP: TranslationKeys = {
     oauthPresetHintGitlab:
       '手順：GitLab → `User Settings` → `Applications`。セルフホスト時は `gitlab.com` を自分のドメインに置換',
     oauthPresetHintDiscord:
-      '手順：Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`',
+      '手順：Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`。データ連携の一括認可では Redirect に `/api/platforms/discord/oauth/callback` も追加',
     oauthPresetHintAuthentik:
       'Discovery URL は `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration` 形式。`<slug>` は Application のスラッグ',
     oauthPresetHintKeycloak:

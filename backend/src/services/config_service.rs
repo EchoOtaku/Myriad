@@ -223,6 +223,38 @@ impl ConfigService {
             config.x_bearer_token = v.as_str().map(|s| s.to_string());
         }
 
+        if let Some(v) = map.get("discord_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.discord_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.discord_enabled = Some(s == "true");
+            }
+        }
+
+        if let Some(v) = map.get("discord_access_token") {
+            config.discord_access_token = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("discord_refresh_token") {
+            config.discord_refresh_token = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("discord_token_expires_at") {
+            config.discord_token_expires_at = v.as_str().map(|s| s.to_string()).or_else(|| {
+                v.as_i64()
+                    .map(|n| n.to_string())
+                    .or_else(|| v.as_u64().map(|n| n.to_string()))
+            });
+        }
+
+        if let Some(v) = map.get("discord_user_id") {
+            config.discord_user_id = v.as_str().map(|s| s.to_string()).or_else(|| {
+                v.as_i64()
+                    .map(|n| n.to_string())
+                    .or_else(|| v.as_u64().map(|n| n.to_string()))
+            });
+        }
+
         // 平台展示顺序（JSON 数组，或历史上误存为 JSON 字符串）
         if let Some(v) = map.get("platform_order") {
             let order = if let Some(arr) = v.as_array() {

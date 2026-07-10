@@ -1001,7 +1001,7 @@ impl PlatformFetcher {
         let target = max_results.clamp(5, 200);
 
         loop {
-            let page = (target - tweets.len()).min(PAGE_SIZE).max(5);
+            let page = (target - tweets.len()).clamp(5, PAGE_SIZE);
             let mut url = format!(
                 "{}/users/{}/tweets?max_results={}&tweet.fields=created_at,public_metrics,entities,lang,possibly_sensitive,source,conversation_id,in_reply_to_user_id,referenced_tweets&exclude=retweets,replies",
                 Self::X_API_BASE,
@@ -1096,6 +1096,267 @@ impl PlatformFetcher {
         Ok(serde_json::json!({
             "user": user,
             "tweets": tweets,
+        }))
+    }
+
+    // ==================== Discord API v10 (user OAuth) ====================
+
+    const DISCORD_API_BASE: &'static str = "https://discord.com/api/v10";
+    const DISCORD_TOKEN_URL: &'static str = "https://discord.com/api/oauth2/token";
+
+    fn discord_auth_header(access_token: &str) -> String {
+        let token = access_token.trim();
+        if token.to_ascii_lowercase().starts_with("bearer ") {
+            token.to_string()
+        } else {
+            format!("Bearer {}", token)
+        }
+    }
+
+    /// 刷新 Discord access token（需要 App client_id / client_secret + refresh_token）
+    ///
+    /// 返回 (access_token, refresh_token_opt, expires_at_unix_opt)
+    pub async fn refresh_discord_token(
+        &self,
+        refresh_token: &str,
+        client_id: &str,
+        client_secret: &str,
+    ) -> Result<(String, Option<String>, Option<i64>)> {
+        let refresh_token = refresh_token.trim();
+        let client_id = client_id.trim();
+        let client_secret = client_secret.trim();
+        if refresh_token.is_empty() || client_id.is_empty() || client_secret.is_empty() {
+            return Err(anyhow!(
+                "Discord refresh requires refresh_token, client_id, and client_secret"
+            ));
+        }
+
+        let resp = self
+            .client
+            .post(Self::DISCORD_TOKEN_URL)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .form(&[
+                ("grant_type", "refresh_token"),
+                ("refresh_token", refresh_token),
+                ("client_id", client_id),
+                ("client_secret", client_secret),
+            ])
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "Discord token refresh failed ({}): {}",
+                status,
+                body.chars().take(300).collect::<String>()
+            ));
+        }
+
+        let json: serde_json::Value = serde_json::from_str(&body)
+            .map_err(|e| anyhow!("Discord token refresh JSON parse error: {}", e))?;
+
+        let access = json
+            .get("access_token")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow!("Discord refresh response missing access_token"))?
+            .to_string();
+
+        let new_refresh = json
+            .get("refresh_token")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+
+        let expires_in = json.get("expires_in").and_then(|v| v.as_i64()).unwrap_or(0);
+        let expires_at = if expires_in > 0 {
+            Some(chrono::Utc::now().timestamp() + expires_in)
+        } else {
+            None
+        };
+
+        Ok((access, new_refresh, expires_at))
+    }
+
+    /// 若 token 将过期且具备 refresh 条件则刷新；否则原样返回 access_token。
+    ///
+    /// 返回 (access_token, refresh_token_opt, expires_at_unix_opt, did_refresh)
+    pub async fn ensure_discord_access_token(
+        &self,
+        access_token: &str,
+        refresh_token: Option<&str>,
+        expires_at: Option<i64>,
+        client_id: Option<&str>,
+        client_secret: Option<&str>,
+    ) -> Result<(String, Option<String>, Option<i64>, bool)> {
+        let access_token = access_token.trim();
+        if access_token.is_empty() {
+            return Err(anyhow!("Discord access token is required"));
+        }
+
+        let now = chrono::Utc::now().timestamp();
+        let needs_refresh = match expires_at {
+            Some(exp) => exp <= now + 60,
+            // 无过期信息时不主动刷新，交给 API 401 后由上层处理
+            None => false,
+        };
+
+        if !needs_refresh {
+            return Ok((
+                access_token.to_string(),
+                refresh_token.map(|s| s.to_string()),
+                expires_at,
+                false,
+            ));
+        }
+
+        let refresh = refresh_token.map(str::trim).filter(|s| !s.is_empty());
+        let cid = client_id.map(str::trim).filter(|s| !s.is_empty());
+        let secret = client_secret.map(str::trim).filter(|s| !s.is_empty());
+
+        match (refresh, cid, secret) {
+            (Some(rt), Some(cid), Some(secret)) => {
+                let (access, new_refresh, new_exp) =
+                    self.refresh_discord_token(rt, cid, secret).await?;
+                Ok((
+                    access,
+                    new_refresh.or_else(|| Some(rt.to_string())),
+                    new_exp,
+                    true,
+                ))
+            }
+            _ => {
+                tracing::warn!(
+                    "Discord access token expired/expiring but refresh credentials incomplete"
+                );
+                Ok((
+                    access_token.to_string(),
+                    refresh_token.map(|s| s.to_string()),
+                    expires_at,
+                    false,
+                ))
+            }
+        }
+    }
+
+    async fn discord_get_json(
+        &self,
+        path: &str,
+        access_token: &str,
+    ) -> Result<serde_json::Value> {
+        let url = format!("{}{}", Self::DISCORD_API_BASE, path);
+        let mut last_err = None;
+
+        for attempt in 0..3 {
+            let resp = self
+                .client
+                .get(&url)
+                .header("Authorization", Self::discord_auth_header(access_token))
+                .header(
+                    "User-Agent",
+                    "Myriad (compatible; +https://github.com/myriad-you/Myriad)",
+                )
+                .send()
+                .await;
+
+            let resp = match resp {
+                Ok(r) => r,
+                Err(e) => {
+                    last_err = Some(anyhow!("Discord request failed: {}", e));
+                    break;
+                }
+            };
+
+            let status = resp.status();
+            if status.as_u16() == 429 {
+                let retry_after = resp
+                    .headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(1.0)
+                    .clamp(0.5, 10.0);
+                tracing::warn!(
+                    "Discord rate limited on {}, retry after {:.1}s (attempt {})",
+                    path,
+                    retry_after,
+                    attempt + 1
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs_f64(retry_after)).await;
+                continue;
+            }
+
+            let body = resp.text().await.unwrap_or_default();
+            if status.as_u16() == 401 {
+                return Err(anyhow!(
+                    "Discord unauthorized (token expired or missing scopes identify/guilds/connections): {}",
+                    body.chars().take(200).collect::<String>()
+                ));
+            }
+            if !status.is_success() {
+                return Err(anyhow!(
+                    "Discord API {} failed ({}): {}",
+                    path,
+                    status,
+                    body.chars().take(300).collect::<String>()
+                ));
+            }
+
+            return serde_json::from_str(&body)
+                .map_err(|e| anyhow!("Discord JSON parse error on {}: {}", path, e));
+        }
+
+        Err(last_err.unwrap_or_else(|| anyhow!("Discord request failed after retries")))
+    }
+
+    pub async fn fetch_discord_me(&self, access_token: &str) -> Result<serde_json::Value> {
+        self.discord_get_json("/users/@me", access_token).await
+    }
+
+    pub async fn fetch_discord_guilds(&self, access_token: &str) -> Result<Vec<serde_json::Value>> {
+        let value = self.discord_get_json("/users/@me/guilds", access_token).await?;
+        Ok(value.as_array().cloned().unwrap_or_default())
+    }
+
+    pub async fn fetch_discord_connections(
+        &self,
+        access_token: &str,
+    ) -> Result<Vec<serde_json::Value>> {
+        let value = self
+            .discord_get_json("/users/@me/connections", access_token)
+            .await?;
+        Ok(value.as_array().cloned().unwrap_or_default())
+    }
+
+    /// 聚合：画像 + 服务器 + 第三方连接
+    pub async fn fetch_discord_profile_bundle(
+        &self,
+        access_token: &str,
+    ) -> Result<serde_json::Value> {
+        let user = self.fetch_discord_me(access_token).await?;
+
+        let guilds = match self.fetch_discord_guilds(access_token).await {
+            Ok(g) => g,
+            Err(e) => {
+                tracing::warn!("Discord guilds fetch failed: {}", e);
+                Vec::new()
+            }
+        };
+
+        let connections = match self.fetch_discord_connections(access_token).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("Discord connections fetch failed: {}", e);
+                Vec::new()
+            }
+        };
+
+        Ok(serde_json::json!({
+            "user": user,
+            "guilds": guilds,
+            "connections": connections,
         }))
     }
 }

@@ -564,6 +564,13 @@ fn platform_data_warning(platform: &str, data: Option<&Value>) -> Option<String>
             .then(|| {
                 "X 未返回用户数据。请检查用户名、Bearer Token 以及 API 套餐权限。".to_string()
             }),
+        "discord" => data
+            .get("user")
+            .filter(|v| !v.is_null())
+            .is_none()
+            .then(|| {
+                "Discord 未返回用户数据。请检查 Access Token 是否有效，且 scope 含 identify / guilds / connections。".to_string()
+            }),
         _ => None,
     }
 }
@@ -697,6 +704,9 @@ async fn fetch_fresh_platform_data(
         "x" => config.x_enabled.unwrap_or(
             config.x_username.as_ref().is_some() && config.x_bearer_token.as_ref().is_some(),
         ),
+        "discord" => config
+            .discord_enabled
+            .unwrap_or(config.discord_access_token.as_ref().is_some()),
         _ => false,
     };
 
@@ -995,6 +1005,140 @@ async fn fetch_fresh_platform_data(
             }
         } else {
             tracing::warn!("X enabled but username or bearer_token missing");
+        }
+    }
+
+    // 获取 Discord 数据（用户 OAuth：画像 + 服务器 + 连接）
+    if should_fetch("discord") && is_platform_enabled("discord") {
+        if let Some(access_token_cfg) = config.discord_access_token.as_deref() {
+            let expires_at = config
+                .discord_token_expires_at
+                .as_deref()
+                .and_then(|s| s.parse::<i64>().ok());
+
+            // 若配置了 Discord OAuth App（登录用 provider），可用于 refresh
+            let (oauth_client_id, oauth_client_secret) = config
+                .oauth_providers
+                .iter()
+                .find(|p| {
+                    p.enabled
+                        && (p.slug.eq_ignore_ascii_case("discord")
+                            || p.display_name.eq_ignore_ascii_case("discord")
+                            || p
+                                .discovery_url
+                                .as_deref()
+                                .map(|u| u.contains("discord.com"))
+                                .unwrap_or(false))
+                })
+                .map(|p| (p.client_id.as_str(), p.client_secret.as_str()))
+                .unwrap_or(("", ""));
+
+            let (access_token, new_refresh, new_expires, did_refresh) = match fetcher
+                .ensure_discord_access_token(
+                    access_token_cfg,
+                    config.discord_refresh_token.as_deref(),
+                    expires_at,
+                    if oauth_client_id.is_empty() {
+                        None
+                    } else {
+                        Some(oauth_client_id)
+                    },
+                    if oauth_client_secret.is_empty() {
+                        None
+                    } else {
+                        Some(oauth_client_secret)
+                    },
+                )
+                .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("Discord token ensure failed: {}", e);
+                    (
+                        access_token_cfg.to_string(),
+                        config.discord_refresh_token.clone(),
+                        expires_at,
+                        false,
+                    )
+                }
+            };
+
+            if did_refresh {
+                let mut token_updates = std::collections::HashMap::new();
+                token_updates.insert(
+                    "discord_access_token".to_string(),
+                    json!(access_token.clone()),
+                );
+                if let Some(ref rt) = new_refresh {
+                    token_updates.insert("discord_refresh_token".to_string(), json!(rt));
+                }
+                if let Some(exp) = new_expires {
+                    token_updates
+                        .insert("discord_token_expires_at".to_string(), json!(exp.to_string()));
+                }
+                if let Err(e) = crate::services::config_service::ConfigService::new(db.clone())
+                    .update_configs(token_updates)
+                    .await
+                {
+                    tracing::warn!("Failed to persist refreshed Discord tokens: {}", e);
+                } else {
+                    tracing::info!("✓ Discord access token refreshed and saved");
+                }
+            }
+
+            match fetcher.fetch_discord_profile_bundle(&access_token).await {
+                Ok(mut bundle) => {
+                    // 注入 Myriad 侧配置，供 smart_filter 交叉校验
+                    if let Some(obj) = bundle.as_object_mut() {
+                        obj.insert(
+                            "myriad_cross_refs".to_string(),
+                            json!({
+                                "steam_id": config.steam_id,
+                                "github_username": config.github_username,
+                            }),
+                        );
+                    }
+
+                    if let Some(uid) = bundle
+                        .pointer("/user/id")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    {
+                        let mut id_update = std::collections::HashMap::new();
+                        id_update.insert("discord_user_id".to_string(), json!(uid));
+                        let _ = crate::services::config_service::ConfigService::new(db.clone())
+                            .update_configs(id_update)
+                            .await;
+                    }
+
+                    all_data["discord"] = bundle;
+                    let guild_count = all_data["discord"]["guilds"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    let conn_count = all_data["discord"]["connections"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    tracing::info!(
+                        "✓ Discord data fetched: {} guilds, {} connections",
+                        guild_count,
+                        conn_count
+                    );
+                }
+                Err(e) => tracing::warn!("Discord fetch failed: {}", e),
+            }
+
+            if !all_data["discord"].is_null() {
+                if let Err(e) = metadata_service
+                    .save_platform_metadata(user_id, "discord", all_data["discord"].clone())
+                    .await
+                {
+                    tracing::error!("Failed to save Discord metadata to database: {}", e);
+                }
+            }
+        } else {
+            tracing::warn!("Discord enabled but access_token missing");
         }
     }
 

@@ -47,6 +47,7 @@ pub enum ContentAnalysis {
     Netease(NeteaseAnalysis),
     Bangumi(BangumiAnalysis),
     X(XAnalysis),
+    Discord(DiscordAnalysis),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +57,58 @@ pub struct XAnalysis {
     pub recent_posts: Vec<XPostItem>,
     pub top_posts: Vec<XPostItem>,
     pub language_distribution: std::collections::HashMap<String, usize>,
+}
+
+/// Discord 社交身份分析（社区足迹 + 跨平台连接）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordAnalysis {
+    pub community_summary: String,
+    pub guild_stats: DiscordGuildStats,
+    pub guilds_preview: Vec<DiscordGuildItem>,
+    pub connections: Vec<DiscordConnectionItem>,
+    pub identity_graph: DiscordIdentityGraph,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordGuildStats {
+    pub guild_count: usize,
+    pub owned_guild_count: usize,
+    pub admin_guild_count: usize,
+    pub manage_guild_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordGuildItem {
+    pub id: String,
+    pub name: String,
+    pub icon_url: Option<String>,
+    pub owner: bool,
+    pub permissions_highlight: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordConnectionItem {
+    pub r#type: String,
+    pub name: String,
+    pub id: String,
+    pub verified: bool,
+    pub visibility: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordIdentityGraph {
+    pub linked_platforms: Vec<String>,
+    pub cross_check: std::collections::HashMap<String, DiscordCrossCheck>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordCrossCheck {
+    pub discord_linked: bool,
+    pub myriad_configured: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id_match: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name_match: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -343,6 +396,16 @@ impl SmartFilter {
             }
         }
 
+        if let Some(discord_data) = all_data.get("discord") {
+            match SmartFilter::filter("discord", discord_data) {
+                Ok(result) => {
+                    Self::save_platform_cache_atomic("discord", &result)?;
+                    processed_count += 1;
+                }
+                Err(e) => tracing::warn!("Discord filter failed: {}", e),
+            }
+        }
+
         // Flush unknown content stats to disk
         super::content_databases::learning::flush_unknown_stats();
 
@@ -390,6 +453,7 @@ impl SmartFilter {
             "netease" => Self::filter_netease(raw_data),
             "bangumi" => Self::filter_bangumi(raw_data),
             "x" => Self::filter_x(raw_data),
+            "discord" => Self::filter_discord(raw_data),
             _ => Err(format!("Unsupported platform: {}", platform)),
         }
     }
@@ -1130,6 +1194,307 @@ impl SmartFilter {
         })
     }
 
+    fn filter_discord(data: &Value) -> Result<SmartFilteredData, String> {
+        let user = data.get("user").unwrap_or(&Value::Null);
+
+        let user_id = user
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let username = user
+            .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let global_name = user
+            .get("global_name")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let display_name = global_name.clone().unwrap_or_else(|| username.clone());
+
+        let premium_type = user
+            .get("premium_type")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let level = match premium_type {
+            1 => Some("Nitro Classic".to_string()),
+            2 => Some("Nitro".to_string()),
+            3 => Some("Nitro Basic".to_string()),
+            _ => None,
+        };
+
+        let guilds = data
+            .get("guilds")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let connections_raw = data
+            .get("connections")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut owned_guild_count = 0usize;
+        let mut admin_guild_count = 0usize;
+        let mut manage_guild_count = 0usize;
+        let mut guilds_preview = Vec::new();
+
+        for guild in &guilds {
+            let id = guild
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let name = guild
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let owner = guild
+                .get("owner")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if owner {
+                owned_guild_count += 1;
+            }
+
+            let perms = Self::discord_permissions_highlight(
+                guild.get("permissions").and_then(|v| {
+                    v.as_str()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .or_else(|| v.as_u64())
+                }),
+            );
+            if perms.iter().any(|p| p == "ADMINISTRATOR") {
+                admin_guild_count += 1;
+            }
+            if perms
+                .iter()
+                .any(|p| p == "MANAGE_GUILD" || p == "ADMINISTRATOR")
+            {
+                manage_guild_count += 1;
+            }
+
+            let icon_url = match (
+                guild.get("icon").and_then(|v| v.as_str()).filter(|s| !s.is_empty()),
+                id.is_empty(),
+            ) {
+                (Some(icon), false) => {
+                    let ext = if icon.starts_with("a_") { "gif" } else { "png" };
+                    Some(format!(
+                        "https://cdn.discordapp.com/icons/{}/{}.{}",
+                        id, icon, ext
+                    ))
+                }
+                _ => None,
+            };
+
+            guilds_preview.push(DiscordGuildItem {
+                id,
+                name,
+                icon_url,
+                owner,
+                permissions_highlight: perms,
+            });
+        }
+
+        // 所有者 / 管理员优先展示
+        guilds_preview.sort_by(|a, b| {
+            b.owner
+                .cmp(&a.owner)
+                .then_with(|| {
+                    let a_admin = a.permissions_highlight.iter().any(|p| p == "ADMINISTRATOR");
+                    let b_admin = b.permissions_highlight.iter().any(|p| p == "ADMINISTRATOR");
+                    b_admin.cmp(&a_admin)
+                })
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
+        guilds_preview.truncate(30);
+
+        let mut connections = Vec::new();
+        let mut linked_platforms = Vec::new();
+        for conn in &connections_raw {
+            let conn_type = conn
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let name = conn
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let id = conn
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let verified = conn
+                .get("verified")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let visibility = conn
+                .get("visibility")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            if !conn_type.is_empty()
+                && conn_type != "unknown"
+                && !linked_platforms.iter().any(|p| p == &conn_type)
+            {
+                linked_platforms.push(conn_type.clone());
+            }
+
+            connections.push(DiscordConnectionItem {
+                r#type: conn_type,
+                name,
+                id,
+                verified,
+                visibility,
+            });
+        }
+        linked_platforms.sort();
+
+        let verified_connection_count = connections.iter().filter(|c| c.verified).count();
+
+        // 交叉校验：raw 中可注入 myriad_cross_refs（由 profile 拉取时写入）
+        let cross_refs = data.get("myriad_cross_refs").cloned().unwrap_or(Value::Null);
+        let steam_id_cfg = cross_refs
+            .get("steam_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let github_username_cfg = cross_refs
+            .get("github_username")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+
+        let mut cross_check = std::collections::HashMap::new();
+
+        let steam_conn = connections.iter().find(|c| c.r#type == "steam");
+        cross_check.insert(
+            "steam".to_string(),
+            DiscordCrossCheck {
+                discord_linked: steam_conn.is_some(),
+                myriad_configured: steam_id_cfg.is_some(),
+                id_match: match (steam_conn, steam_id_cfg) {
+                    (Some(c), Some(sid)) => {
+                        let sid_l = sid.to_lowercase();
+                        Some(
+                            (!c.id.is_empty() && c.id.eq_ignore_ascii_case(sid))
+                                || (!c.name.is_empty() && c.name.eq_ignore_ascii_case(sid))
+                                || c.id.to_lowercase().contains(&sid_l)
+                                || sid_l.contains(&c.id.to_lowercase()),
+                        )
+                    }
+                    _ => None,
+                },
+                name_match: None,
+            },
+        );
+
+        let github_conn = connections.iter().find(|c| c.r#type == "github");
+        cross_check.insert(
+            "github".to_string(),
+            DiscordCrossCheck {
+                discord_linked: github_conn.is_some(),
+                myriad_configured: github_username_cfg.is_some(),
+                id_match: None,
+                name_match: match (github_conn, github_username_cfg) {
+                    (Some(c), Some(gh)) => {
+                        let gh_l = gh.trim_start_matches('@').to_lowercase();
+                        Some(
+                            (!c.name.is_empty() && c.name.eq_ignore_ascii_case(&gh_l))
+                                || (!c.id.is_empty() && c.id.eq_ignore_ascii_case(&gh_l)),
+                        )
+                    }
+                    _ => None,
+                },
+            },
+        );
+
+        let community_summary = format!(
+            "Discord 用户 {} 加入 {} 个服务器（自建 {}，管理权限 {}），绑定 {} 个第三方账号（已验证 {}）",
+            display_name,
+            guilds.len(),
+            owned_guild_count,
+            manage_guild_count,
+            connections.len(),
+            verified_connection_count
+        );
+
+        Ok(SmartFilteredData {
+            platform: "discord".to_string(),
+            user_summary: UserSummary {
+                username: display_name,
+                user_id,
+                level,
+                stats: UserStats {
+                    follower_count: None,
+                    following_count: None,
+                    total_content: guilds.len(),
+                },
+            },
+            content_analysis: ContentAnalysis::Discord(DiscordAnalysis {
+                community_summary,
+                guild_stats: DiscordGuildStats {
+                    guild_count: guilds.len(),
+                    owned_guild_count,
+                    admin_guild_count,
+                    manage_guild_count,
+                },
+                guilds_preview,
+                connections,
+                identity_graph: DiscordIdentityGraph {
+                    linked_platforms,
+                    cross_check,
+                },
+            }),
+            raw_unknown_content: vec![],
+        })
+    }
+
+    /// 从 Discord permissions 位掩码提取关注权限标签
+    fn discord_permissions_highlight(permissions: Option<u64>) -> Vec<String> {
+        let Some(bits) = permissions else {
+            return Vec::new();
+        };
+        // https://discord.com/developers/docs/topics/permissions
+        const ADMINISTRATOR: u64 = 1 << 3;
+        const MANAGE_CHANNELS: u64 = 1 << 4;
+        const MANAGE_GUILD: u64 = 1 << 5;
+        const MANAGE_ROLES: u64 = 1 << 28;
+        const MANAGE_MESSAGES: u64 = 1 << 13;
+        const KICK_MEMBERS: u64 = 1 << 1;
+        const BAN_MEMBERS: u64 = 1 << 2;
+
+        let mut out = Vec::new();
+        if bits & ADMINISTRATOR != 0 {
+            out.push("ADMINISTRATOR".to_string());
+            return out;
+        }
+        if bits & MANAGE_GUILD != 0 {
+            out.push("MANAGE_GUILD".to_string());
+        }
+        if bits & MANAGE_CHANNELS != 0 {
+            out.push("MANAGE_CHANNELS".to_string());
+        }
+        if bits & MANAGE_ROLES != 0 {
+            out.push("MANAGE_ROLES".to_string());
+        }
+        if bits & MANAGE_MESSAGES != 0 {
+            out.push("MANAGE_MESSAGES".to_string());
+        }
+        if bits & KICK_MEMBERS != 0 {
+            out.push("KICK_MEMBERS".to_string());
+        }
+        if bits & BAN_MEMBERS != 0 {
+            out.push("BAN_MEMBERS".to_string());
+        }
+        out
+    }
+
     fn bangumi_subject_type_label(subject_type: i64) -> &'static str {
         match subject_type {
             1 => "book",
@@ -1254,6 +1619,9 @@ impl SmartFilter {
             }
             "x" => {
                 // X 数据已按 { user, tweets } 保存（Intent 分享，不拉 likes）
+            }
+            "discord" => {
+                // Discord 数据已按 { user, guilds, connections, myriad_cross_refs? } 保存
             }
             _ => {}
         }
@@ -1427,5 +1795,97 @@ mod tests {
             }
             other => panic!("expected X analysis, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_filter_discord() {
+        // ADMINISTRATOR = 1<<3 = 8
+        let raw = serde_json::json!({
+            "user": {
+                "id": "123456789",
+                "username": "haru",
+                "global_name": "Haru",
+                "premium_type": 2
+            },
+            "guilds": [
+                {
+                    "id": "g1",
+                    "name": "Owned Server",
+                    "owner": true,
+                    "permissions": "8",
+                    "icon": "abc"
+                },
+                {
+                    "id": "g2",
+                    "name": "Member Server",
+                    "owner": false,
+                    "permissions": "0"
+                }
+            ],
+            "connections": [
+                {
+                    "type": "steam",
+                    "name": "haru_steam",
+                    "id": "76561198000000000",
+                    "verified": true,
+                    "visibility": 1
+                },
+                {
+                    "type": "github",
+                    "name": "octocat",
+                    "id": "1",
+                    "verified": true,
+                    "visibility": 0
+                }
+            ],
+            "myriad_cross_refs": {
+                "steam_id": "76561198000000000",
+                "github_username": "octocat"
+            }
+        });
+
+        let filtered = SmartFilter::filter("discord", &raw).expect("filter discord");
+        assert_eq!(filtered.platform, "discord");
+        assert_eq!(filtered.user_summary.username, "Haru");
+        assert_eq!(filtered.user_summary.user_id, "123456789");
+        assert_eq!(filtered.user_summary.level.as_deref(), Some("Nitro"));
+        assert_eq!(filtered.user_summary.stats.total_content, 2);
+
+        match filtered.content_analysis {
+            ContentAnalysis::Discord(analysis) => {
+                assert_eq!(analysis.guild_stats.guild_count, 2);
+                assert_eq!(analysis.guild_stats.owned_guild_count, 1);
+                assert_eq!(analysis.guild_stats.admin_guild_count, 1);
+                assert_eq!(analysis.guilds_preview[0].name, "Owned Server");
+                assert!(analysis.guilds_preview[0]
+                    .permissions_highlight
+                    .contains(&"ADMINISTRATOR".to_string()));
+                assert_eq!(analysis.connections.len(), 2);
+                assert!(analysis
+                    .identity_graph
+                    .linked_platforms
+                    .contains(&"steam".to_string()));
+                let steam = analysis.identity_graph.cross_check.get("steam").unwrap();
+                assert!(steam.discord_linked);
+                assert!(steam.myriad_configured);
+                assert_eq!(steam.id_match, Some(true));
+                let github = analysis.identity_graph.cross_check.get("github").unwrap();
+                assert_eq!(github.name_match, Some(true));
+                assert!(analysis.community_summary.contains("Haru"));
+            }
+            other => panic!("expected Discord analysis, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_discord_permissions_highlight() {
+        let admin = SmartFilter::discord_permissions_highlight(Some(8));
+        assert_eq!(admin, vec!["ADMINISTRATOR".to_string()]);
+
+        // MANAGE_GUILD | MANAGE_CHANNELS = 32 | 16 = 48
+        let manage = SmartFilter::discord_permissions_highlight(Some(48));
+        assert!(manage.contains(&"MANAGE_GUILD".to_string()));
+        assert!(manage.contains(&"MANAGE_CHANNELS".to_string()));
+        assert!(!manage.contains(&"ADMINISTRATOR".to_string()));
     }
 }

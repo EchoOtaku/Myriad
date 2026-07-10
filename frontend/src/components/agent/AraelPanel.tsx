@@ -160,6 +160,7 @@ export const AraelPanel: React.FC = () => {
   const answerQuestionRef =
     useRef<(messageId: string, answer: string) => void>(null)
   const sessionTitleSetRef = useRef(false)
+  const handledResponseKeysRef = useRef(new Set<string>())
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
   const [sessionTitle, setSessionTitle] = useState<string | null>(null)
@@ -653,7 +654,7 @@ export const AraelPanel: React.FC = () => {
               event as import('../../services/agent/types').TaskCompletedEvent
             const taskInfo = completedEvent.response?.task as
               Record<string, unknown> | undefined
-            const isStillWaiting = taskInfo?.status === 'waitingforinput'
+            const isStillWaiting = taskInfo?.status === 'waiting_for_input'
 
             if (!isStillWaiting) {
               // 任务真正完成：清除 pendingQuestion、更新状态、确保 isLoading 归位
@@ -908,6 +909,15 @@ export const AraelPanel: React.FC = () => {
       const taskData = response.task as Record<string, unknown> | undefined
       const pendingQuestion = taskData?.pendingQuestion as
         PendingQuestion | undefined
+      const taskId = taskData?.taskId as string | undefined
+      const taskStatus = taskData?.status as string | undefined
+      const responseKey = taskId
+        ? `${taskId}:${taskStatus ?? response.responseType}:${pendingQuestion?.questionId ?? ''}`
+        : null
+      if (responseKey) {
+        if (handledResponseKeysRef.current.has(responseKey)) return
+        handledResponseKeysRef.current.add(responseKey)
+      }
 
       if (pendingQuestion && pendingQuestion.question) {
         updateMessage(messageId, {
@@ -1126,17 +1136,56 @@ export const AraelPanel: React.FC = () => {
         Array.isArray(frontendActions) &&
         frontendActions.length > 0
       ) {
+        const visibleResults: unknown[] = []
         for (const action of frontendActions) {
           if (!action) continue
           try {
-            await executeFrontendAction(action)
+            const result = await executeFrontendAction(action)
+            if (
+              result &&
+              typeof result === 'object' &&
+              ['query_windows', 'read_data', 'music_get_status'].includes(
+                action.type,
+              )
+            ) {
+              visibleResults.push(result)
+            }
           } catch (error) {
             console.error('[Arael] Frontend action failed:', error)
           }
         }
+        if (visibleResults.length > 0) {
+          const serialized = JSON.stringify(visibleResults, null, 2).slice(
+            0,
+            4000,
+          )
+          updateMessage(messageId, {
+            content: `${displayMessage || response.message}\n\n\`\`\`json\n${serialized}\n\`\`\``,
+            data: {
+              ...(responseData ?? {}),
+              frontendActionResults: visibleResults,
+            },
+          })
+        }
       } else if (frontendAction) {
         try {
-          await executeFrontendAction(frontendAction)
+          const result = await executeFrontendAction(frontendAction)
+          if (
+            result &&
+            typeof result === 'object' &&
+            ['query_windows', 'read_data', 'music_get_status'].includes(
+              frontendAction.type,
+            )
+          ) {
+            const serialized = JSON.stringify(result, null, 2).slice(0, 4000)
+            updateMessage(messageId, {
+              content: `${displayMessage || response.message}\n\n\`\`\`json\n${serialized}\n\`\`\``,
+              data: {
+                ...(responseData ?? {}),
+                frontendActionResult: result,
+              },
+            })
+          }
         } catch (error) {
           console.error('[Arael] Frontend action failed:', error)
         }

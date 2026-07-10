@@ -21,6 +21,11 @@ pub enum OAuthPurpose {
     Login,
     /// LinkAccount 时携带"当前已登录用户 id"
     LinkAccount(i32),
+    /// 数据平台授权（如 Discord 同步）：写入平台 token，不登录/不绑 identity
+    PlatformData {
+        user_id: i32,
+        platform: String,
+    },
 }
 
 #[derive(Debug, Clone)]

@@ -12,6 +12,7 @@ import {
   LuGlobe,
   SiBangumi,
   SiBilibili,
+  SiDiscord,
   SiNeteasecloudmusic,
 } from '@lib/icons'
 
@@ -200,6 +201,16 @@ const PLATFORMS = [
     border: 'border-gray-200/20 dark:border-neutral-700/20',
     widgetType: 'feed',
   },
+  {
+    id: 'discord',
+    name: 'Discord',
+    icon: <SiDiscord />,
+    color: 'from-indigo-500 to-indigo-700',
+    bg: 'bg-indigo-50/10 dark:bg-indigo-900/10',
+    text: 'text-indigo-500',
+    border: 'border-indigo-200/20 dark:border-indigo-800/20',
+    widgetType: 'social',
+  },
 ]
 
 const PLATFORM_NAME_TO_ID: Record<string, string> = {
@@ -210,6 +221,7 @@ const PLATFORM_NAME_TO_ID: Record<string, string> = {
   x: 'x',
   twitter: 'x',
   'x (twitter)': 'x',
+  discord: 'discord',
   'netease music': 'netease',
   'netease cloud music': 'netease',
   'netease cloudmusic': 'netease',

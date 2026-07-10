@@ -142,14 +142,4 @@ impl McpManager {
         }
         all_tools
     }
-
-    /// 优雅关闭所有服务器
-    #[allow(dead_code)]
-    pub async fn shutdown_all(&self) {
-        for server in &self.servers {
-            let mut srv = server.lock().await;
-            srv.shutdown().await;
-        }
-        tracing::info!("[MCP] All servers shut down");
-    }
 }

@@ -62,14 +62,12 @@ impl AgentIdentity {
     }
 }
 
-/// 全局身份管理器（支持热加载 + 角色身份）
+/// 全局身份管理器（支持全局身份 + 角色身份）
 pub struct IdentityManager {
     /// 全局身份 (SOUL.md + USER.md)
     identity: Arc<RwLock<AgentIdentity>>,
     /// 角色专属身份 (agents/*.md)
     role_identities: Arc<RwLock<HashMap<AgentRole, String>>>,
-    /// 数据目录
-    data_dir: PathBuf,
 }
 
 /// AgentRole.id → 文件名映射
@@ -100,7 +98,6 @@ impl IdentityManager {
         Self {
             identity: Arc::new(RwLock::new(identity)),
             role_identities: Arc::new(RwLock::new(role_identities)),
-            data_dir,
         }
     }
 
@@ -135,18 +132,6 @@ impl IdentityManager {
     pub async fn get_role_soul(&self, role: AgentRole) -> Option<String> {
         let roles = self.role_identities.read().await;
         roles.get(&role).cloned()
-    }
-
-    /// 重新加载身份文件
-    #[allow(dead_code)]
-    pub async fn reload(&self) {
-        let new_identity = AgentIdentity::load_from_dir(&self.data_dir).await;
-        *self.identity.write().await = new_identity;
-
-        let new_roles = Self::load_role_identities(&self.data_dir).await;
-        *self.role_identities.write().await = new_roles;
-
-        tracing::info!("[Identity] Reloaded all identity files");
     }
 
     /// 加载 agents/ 目录下的角色身份文件

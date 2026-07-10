@@ -588,6 +588,15 @@ export const zhCN: TranslationKeys = {
     platformDescBangumi: '同步你的 Bangumi 收藏、评分和追看状态',
     platformDescSteam: '同步你的游戏库、愿望单和游戏统计',
     platformDescNetease: '同步你的喜欢歌曲和网易云音乐品味',
+    platformDescX: '同步你的 X 资料与帖子；分享走 Web Intent',
+    platformDescDiscord: '同步 Discord 画像、服务器足迹与绑定账号（Steam / GitHub 等）',
+    discordConnect: '使用 Discord 授权',
+    discordReconnect: '重新授权 Discord',
+    discordConnectHint:
+      '推荐：一键跳转 Discord 授权（需先在 OAuth 登录里配置 Discord 应用，并在 Developer Portal 添加数据回调地址）。也可手动粘贴 Access Token。',
+    discordOAuthSuccess: 'Discord 数据授权成功，已保存令牌并启用平台',
+    discordOAuthFailed: 'Discord 数据授权失败',
+    discordDataCallbackUrl: '数据平台回调 URL（一键授权）',
     bangumiCredentialRequirement:
       'Bangumi 用户名或访问令牌至少填写一项。公开用户可只填用户名；私有收藏建议使用访问令牌。',
     bangumiCredentialMissing: '请为 Bangumi 填写用户名或访问令牌后再启用保存。',
@@ -673,7 +682,7 @@ export const zhCN: TranslationKeys = {
     oauthPresetHintGitlab:
       '路径：GitLab → `User Settings` → `Applications`。自建实例需把 `gitlab.com` 替换成你自己的域名',
     oauthPresetHintDiscord:
-      '路径：Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`',
+      '路径：Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`。数据平台一键授权还需额外登记 Redirect：`/api/platforms/discord/oauth/callback`',
     oauthPresetHintAuthentik:
       'Discovery URL 形如 `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration`，其中 `<slug>` 是 Application 的 slug',
     oauthPresetHintKeycloak:

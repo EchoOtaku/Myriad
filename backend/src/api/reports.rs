@@ -456,6 +456,76 @@ async fn generate_platform_reports_internal(
                 }
             }
 
+            // 11. Discord：社区足迹与连接图谱
+            if platform == "discord" {
+                if !card_visuals.is_object() {
+                    card_visuals = json!({});
+                }
+
+                if let crate::services::smart_filter::ContentAnalysis::Discord(analysis) =
+                    &metadata.content_analysis
+                {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert(
+                            "stats".to_string(),
+                            json!({
+                                "guilds": analysis.guild_stats.guild_count,
+                                "owned_guilds": analysis.guild_stats.owned_guild_count,
+                                "admin_guilds": analysis.guild_stats.admin_guild_count,
+                                "manage_guilds": analysis.guild_stats.manage_guild_count,
+                                "connections": analysis.connections.len(),
+                            }),
+                        );
+                        obj.insert(
+                            "guild_stats".to_string(),
+                            json!(analysis.guild_stats),
+                        );
+                        obj.insert(
+                            "identity_graph".to_string(),
+                            json!(analysis.identity_graph),
+                        );
+                        // 仅展示 visibility!=0 的连接名称；仍保留 type 列表
+                        let public_connections: Vec<Value> = analysis
+                            .connections
+                            .iter()
+                            .filter(|c| c.visibility != 0)
+                            .map(|c| {
+                                json!({
+                                    "type": c.r#type,
+                                    "name": c.name,
+                                    "verified": c.verified,
+                                })
+                            })
+                            .collect();
+                        obj.insert("connections".to_string(), json!(public_connections));
+                        obj.insert(
+                            "linked_platforms".to_string(),
+                            json!(analysis.identity_graph.linked_platforms),
+                        );
+                        let library_items: Vec<Value> = analysis
+                            .guilds_preview
+                            .iter()
+                            .take(12)
+                            .map(|g| {
+                                json!({
+                                    "id": g.id,
+                                    "title": g.name,
+                                    "name": g.name,
+                                    "icon": g.icon_url,
+                                    "owner": g.owner,
+                                    "permissions": g.permissions_highlight,
+                                })
+                            })
+                            .collect();
+                        obj.insert("library_items".to_string(), json!(library_items));
+                        obj.insert(
+                            "guilds_preview".to_string(),
+                            json!(analysis.guilds_preview),
+                        );
+                    }
+                }
+            }
+
             let mut insights = ai_insights;
 
             // 如果AI没有生成洞察，使用备用逻辑
@@ -523,6 +593,21 @@ async fn generate_platform_reports_internal(
                             .max_by_key(|(_, count)| *count)
                         {
                             insights.push(format!("主要语言：{}", lang));
+                        }
+                    }
+                    crate::services::smart_filter::ContentAnalysis::Discord(analysis) => {
+                        insights.push(analysis.community_summary.clone());
+                        insights.push(format!(
+                            "社区：{} 服 · 自建 {} · 管理 {}",
+                            analysis.guild_stats.guild_count,
+                            analysis.guild_stats.owned_guild_count,
+                            analysis.guild_stats.manage_guild_count
+                        ));
+                        if !analysis.identity_graph.linked_platforms.is_empty() {
+                            insights.push(format!(
+                                "已绑定：{}",
+                                analysis.identity_graph.linked_platforms.join("、")
+                            ));
                         }
                     }
                 }
@@ -764,6 +849,15 @@ pub async fn generate_comprehensive_report(
                     }
                 }
             }
+            crate::services::smart_filter::ContentAnalysis::Discord(analysis) => {
+                all_activities.push("社区交流".to_string());
+                if analysis.guild_stats.manage_guild_count > 0 {
+                    all_activities.push("服务器管理".to_string());
+                }
+                for platform in &analysis.identity_graph.linked_platforms {
+                    all_interests.push(format!("linked:{}", platform));
+                }
+            }
         }
     }
 
@@ -934,6 +1028,12 @@ pub async fn generate_all_reports(
             config.x_enabled.unwrap_or(
                 config.x_username.as_ref().is_some() && config.x_bearer_token.as_ref().is_some(),
             ),
+        ),
+        (
+            "discord",
+            config
+                .discord_enabled
+                .unwrap_or(config.discord_access_token.as_ref().is_some()),
         ),
     ]
     .into_iter()
@@ -1667,6 +1767,56 @@ fn generate_mock_report(
                         "likes_received": analysis.engagement_stats.total_likes_received,
                     },
                     "top_posts": analysis.top_posts.iter().take(5).collect::<Vec<_>>(),
+                }),
+            )
+        }
+        crate::services::smart_filter::ContentAnalysis::Discord(analysis) => {
+            let top_guild = analysis
+                .guilds_preview
+                .first()
+                .map(|g| g.name.as_str())
+                .unwrap_or("社区");
+            let linked = if analysis.identity_graph.linked_platforms.is_empty() {
+                "暂无公开绑定".to_string()
+            } else {
+                analysis.identity_graph.linked_platforms.join("、")
+            };
+            (
+                format!(
+                    "{} 在 Discord 上留下清晰的社区足迹与跨平台身份线。",
+                    metadata.user_summary.username
+                ),
+                vec![
+                    analysis.community_summary.clone(),
+                    format!(
+                        "服务器：{} 个（自建 {} · 管理 {}）",
+                        analysis.guild_stats.guild_count,
+                        analysis.guild_stats.owned_guild_count,
+                        analysis.guild_stats.manage_guild_count
+                    ),
+                    format!("代表服务器：{}", top_guild),
+                    format!("绑定平台：{}", linked),
+                ],
+                json!({
+                    "vibe": "社区节点",
+                    "role_profile": if analysis.guild_stats.owned_guild_count > 0 {
+                        "服务器主理人"
+                    } else if analysis.guild_stats.admin_guild_count > 0 {
+                        "社区管理员"
+                    } else if analysis.guild_stats.manage_guild_count > 0 {
+                        "社区协作者"
+                    } else {
+                        "社区旅人"
+                    },
+                    "stats": {
+                        "guilds": analysis.guild_stats.guild_count,
+                        "owned_guilds": analysis.guild_stats.owned_guild_count,
+                        "admin_guilds": analysis.guild_stats.admin_guild_count,
+                        "connections": analysis.connections.len(),
+                    },
+                    "linked_platforms": analysis.identity_graph.linked_platforms,
+                    "identity_graph": analysis.identity_graph,
+                    "guilds_preview": analysis.guilds_preview.iter().take(8).collect::<Vec<_>>(),
                 }),
             )
         }

@@ -16,7 +16,8 @@ use std::collections::HashSet;
 ///
 /// 变更日志：
 /// - 2026.07.10.1: 默认平台种子同步（含 X），与 001 插入列表对齐
-const SCHEMA_VERSION: &str = "2026.07.10.1";
+/// - 2026.07.11.1: 新增 Discord 数据平台种子
+const SCHEMA_VERSION: &str = "2026.07.11.1";
 
 /// 内置平台种子定义（与 migrations/001_initial_schema.rs 中 INSERT 保持同步）
 ///
@@ -87,6 +88,14 @@ pub fn default_platform_seeds() -> &'static [DefaultPlatformSeed] {
             icon: "x",
             api_endpoint: "https://api.x.com",
             auth_type: "bearer_token",
+            enabled: false,
+        },
+        DefaultPlatformSeed {
+            name: "discord",
+            display_name: "Discord",
+            icon: "discord",
+            api_endpoint: "https://discord.com/api/v10",
+            auth_type: "oauth",
             enabled: false,
         },
     ]
@@ -4812,6 +4821,7 @@ mod tests {
             "netease_music",
             "bangumi",
             "x",
+            "discord",
         ] {
             assert!(
                 names.contains(&required),

@@ -91,7 +91,6 @@ static PENDING_CONFIRMATIONS: Lazy<Arc<RwLock<HashMap<String, PendingRecipeConfi
 
 /// 待确认的配方信息
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct PendingRecipeConfirmation {
     /// 确认请求
     pub request: ConfirmationRequest,
@@ -2397,29 +2396,13 @@ impl Agent {
     }
 
     /// 从执行结果中提取前端动作
-    fn extract_frontend_action(&self, result: &Value) -> Option<FrontendAction> {
+    fn extract_frontend_action(&self, result: &Value) -> Option<Value> {
         // 检查 frontendAction（单个）
         if let Some(action) = result.get("frontendAction") {
-            tracing::debug!(
-                action = %action,
-                "[Agent] Found frontendAction in result, attempting to deserialize"
-            );
-            match serde_json::from_value::<FrontendAction>(action.clone()) {
-                Ok(frontend_action) => {
-                    tracing::info!(
-                        action_type = %frontend_action.action_type,
-                        "[Agent] Successfully deserialized frontendAction"
-                    );
-                    return Some(frontend_action);
-                }
-                Err(e) => {
-                    tracing::error!(
-                        error = %e,
-                        action = %action,
-                        "[Agent] Failed to deserialize frontendAction"
-                    );
-                }
+            if action.get("type").and_then(Value::as_str).is_some() {
+                return Some(action.clone());
             }
+            tracing::warn!(action = %action, "[Agent] frontendAction is missing type");
         }
 
         // 🔴 也检查 "action" 字段（兼容 brew.generateReadingList 等返回格式）
@@ -2428,39 +2411,22 @@ impl Agent {
                 action = %action,
                 "[Agent] Found action in result, attempting to deserialize"
             );
-            match serde_json::from_value::<FrontendAction>(action.clone()) {
-                Ok(frontend_action) => {
-                    tracing::info!(
-                        action_type = %frontend_action.action_type,
-                        has_payload = frontend_action.payload.is_some(),
-                        has_criteria = frontend_action.criteria.is_some(),
-                        "[Agent] Successfully deserialized action as frontendAction"
-                    );
-                    // 如果有 criteria 在顶层，也尝试提取
-                    let mut final_action = frontend_action;
-                    if final_action.criteria.is_none() {
-                        if let Some(criteria) = result.get("criteria").and_then(|v| v.as_str()) {
-                            final_action.criteria = Some(criteria.to_string());
-                        }
+            if action.get("type").and_then(Value::as_str).is_some() {
+                let mut final_action = action.clone();
+                if final_action.get("criteria").is_none() {
+                    if let Some(criteria) = result.get("criteria") {
+                        final_action["criteria"] = criteria.clone();
                     }
-                    return Some(final_action);
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        "[Agent] Failed to deserialize action field"
-                    );
-                }
+                return Some(final_action);
             }
         }
 
         // 检查 frontendActions（数组）- 返回第一个
         if let Some(actions) = result.get("frontendActions").and_then(|v| v.as_array()) {
             if let Some(first_action) = actions.first() {
-                if let Ok(frontend_action) =
-                    serde_json::from_value::<FrontendAction>(first_action.clone())
-                {
-                    return Some(frontend_action);
+                if first_action.get("type").and_then(Value::as_str).is_some() {
+                    return Some(first_action.clone());
                 }
             }
         }
@@ -2486,51 +2452,18 @@ impl Agent {
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
 
-                            Some(FrontendAction {
-                                action_type: "navigate".to_string(),
-                                target: None,
-                                tapp_id: None,
-                                window_id: None,
-                                script: None,
-                                timestamp,
-                                data: None,
-                                path,
-                                params: None,
-                                query: None,
-                                full_path: None,
-                                replace: None,
-                                action: None,
-                                scroll_options: None,
-                                wait_for: None,
-                                payload: None,
-                                criteria: None,
-                            })
+                            Some(json!({
+                                "type": "navigate",
+                                "path": path,
+                                "timestamp": timestamp,
+                            }))
                         }
-                        _ => {
-                            let target = first_step.get("target").and_then(|t| {
-                                serde_json::from_value::<PageElementTarget>(t.clone()).ok()
-                            });
-
-                            Some(FrontendAction {
-                                action_type: "page_interact".to_string(),
-                                target,
-                                tapp_id: None,
-                                window_id: None,
-                                script: None,
-                                timestamp,
-                                data: None,
-                                path: None,
-                                params: None,
-                                query: None,
-                                full_path: None,
-                                replace: None,
-                                action: Some(action_type.to_string()),
-                                scroll_options: None,
-                                wait_for: None,
-                                payload: None,
-                                criteria: None,
-                            })
-                        }
+                        _ => Some(json!({
+                            "type": "page_interact",
+                            "target": first_step.get("target").cloned(),
+                            "action": action_type,
+                            "timestamp": timestamp,
+                        })),
                     };
                 }
             }
@@ -2786,7 +2719,6 @@ pub async fn get_user_permissions(
 /// 初始化任务存储的数据库连接
 ///
 /// 应在应用启动时调用，以支持任务持久化和恢复
-#[allow(dead_code)]
 pub async fn init_task_store(db: DatabaseConnection) {
     executor::init_task_store_db(db).await;
 }
@@ -2806,12 +2738,6 @@ pub async fn cleanup_expired_confirmations() {
         tracing::debug!(confirmation_id = %id, "[Agent] Cleaning up expired confirmation");
         store.remove(&id);
     }
-}
-
-/// 获取待确认操作的数量（可用于 health check / 监控）
-#[allow(dead_code)]
-pub async fn get_pending_confirmation_count() -> usize {
-    PENDING_CONFIRMATIONS.read().await.len()
 }
 
 /// 将字段名转换为用户友好的标题

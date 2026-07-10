@@ -108,6 +108,8 @@ pub struct ApiResponse {
     /// 前端操作指令（路由导航、音乐控制等）
     #[serde(rename = "frontendAction", skip_serializing_if = "Option::is_none")]
     pub frontend_action: Option<Value>,
+    #[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 /// 数据展示类型提示（API 版本）
@@ -387,15 +389,6 @@ pub struct CreatePresetRequest {
     pub conversation_data: Option<Vec<ConversationMessage>>,
 }
 
-/// 更新任务预设请求（预留）
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-pub struct UpdatePresetRequest {
-    /// 意图摘要
-    #[serde(rename = "intentSummary")]
-    pub intent_summary: Option<String>,
-}
-
 /// 任务预设列表响应
 #[derive(Debug, Serialize)]
 pub struct TaskPresetListResponse {
@@ -521,7 +514,7 @@ impl From<&TaskState> for TaskInfo {
 
         Self {
             task_id: state.task_id.clone(),
-            status: format!("{:?}", state.status).to_lowercase(),
+            status: task_status_name(&state.status).to_string(),
             progress: state.progress,
             error: state.error.clone(),
             current_step: None, // 由执行器在运行时设置
@@ -532,6 +525,57 @@ impl From<&TaskState> for TaskInfo {
             step_history,
             execution_trace,
         }
+    }
+}
+
+fn task_status_name(status: &crate::services::agent::TaskStatus) -> &'static str {
+    use crate::services::agent::TaskStatus;
+    match status {
+        TaskStatus::Pending => "pending",
+        TaskStatus::Running => "running",
+        TaskStatus::WaitingForInput => "waiting_for_input",
+        TaskStatus::Paused => "paused",
+        TaskStatus::Completed => "completed",
+        TaskStatus::Failed => "failed",
+        TaskStatus::Cancelled => "cancelled",
+    }
+}
+
+#[cfg(test)]
+mod api_contract_tests {
+    use super::*;
+
+    #[test]
+    fn task_status_uses_public_snake_case_contract() {
+        assert_eq!(
+            task_status_name(&crate::services::agent::TaskStatus::WaitingForInput),
+            "waiting_for_input"
+        );
+    }
+
+    #[test]
+    fn frontend_action_payload_is_preserved_without_field_loss() {
+        let action = json!({
+            "type": "music_load_playlist",
+            "playlistId": "12345",
+            "source": "netease",
+            "autoPlay": true,
+            "commands": [{ "action": "click", "target": "play" }],
+            "value": 0.75,
+        });
+        let response = AgentResponse {
+            response_type: AgentResponseType::Answer,
+            message: "ok".to_string(),
+            data: None,
+            data_display: None,
+            suggestions: vec![],
+            task: None,
+            confirmation: None,
+            frontend_action: Some(action.clone()),
+        };
+
+        let api_response = ApiResponse::from(response);
+        assert_eq!(api_response.frontend_action, Some(action));
     }
 }
 
@@ -582,6 +626,9 @@ fn extract_capability_name(step_id: &str) -> String {
             "steam" | "platform.steam" => "获取 Steam 数据".to_string(),
             "github" | "platform.github" => "获取 GitHub 数据".to_string(),
             "netease" | "platform.netease" => "获取网易云数据".to_string(),
+            "bangumi" | "platform.bangumi" => "获取 Bangumi 数据".to_string(),
+            "x" | "platform.x" => "获取 X 数据".to_string(),
+            "discord" | "platform.discord" => "获取 Discord 数据".to_string(),
             "summarize" | "ai.summarize" => "AI 总结".to_string(),
             "analyze" | "ai.analyze" => "AI 分析".to_string(),
             "webSearch" | "ai.webSearch" => "网络搜索".to_string(),
@@ -631,9 +678,7 @@ impl From<AgentResponse> for ApiResponse {
         });
 
         // 转换前端操作指令
-        let frontend_action = response
-            .frontend_action
-            .map(|fa| serde_json::to_value(&fa).unwrap_or(Value::Null));
+        let frontend_action = response.frontend_action;
 
         Self {
             success: !matches!(response.response_type, AgentResponseType::Error),
@@ -645,6 +690,7 @@ impl From<AgentResponse> for ApiResponse {
             task: response.task.as_ref().map(TaskInfo::from),
             confirmation,
             frontend_action,
+            session_id: None,
         }
     }
 }
@@ -774,8 +820,25 @@ pub async fn process(
         "[Agent API] Processing request"
     );
 
-    let session_id = req.context.as_ref().and_then(|c| c.session_id.as_deref());
-    let lane_key = LaneQueue::make_lane_key(user_id, session_id);
+    let client_session_id = req
+        .context
+        .as_ref()
+        .and_then(|c| c.session_id.as_deref())
+        .map(str::to_string);
+    let session_id = ensure_session(&db, client_session_id.as_deref(), user_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "[Agent API] Failed to ensure session");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error })),
+            )
+        })?;
+    let lane_key = LaneQueue::make_lane_key(user_id, Some(&session_id));
+    let conversation_history = load_session_history(&db, &session_id, 20).await;
+    if let Err(error) = persist_user_message(&db, &session_id, &req.input).await {
+        tracing::warn!(%error, "[Agent API] Failed to persist user message");
+    }
 
     let mut user_request = UserRequest {
         raw_input: req.input,
@@ -784,26 +847,23 @@ pub async fn process(
         context: req.context.map(build_request_context),
     };
 
-    // 不信任客户端提供的 conversation_history，仅从 DB 加载
-    if let Some(ref mut ctx) = user_request.context {
-        if let Some(ref sid) = ctx.session_id {
-            let history = load_session_history(&db, sid, 20).await;
-            ctx.conversation_history = if history.is_empty() {
-                None
-            } else {
-                Some(history)
-            };
-        } else {
-            ctx.conversation_history = None;
-        }
-    }
-
-    // 将 lane_key 注入到请求上下文
     if let Some(ref mut ctx) = user_request.context {
         ctx.lane_key = Some(lane_key.clone());
+        ctx.session_id = Some(session_id.clone());
+        ctx.conversation_history = if conversation_history.is_empty() {
+            None
+        } else {
+            Some(conversation_history)
+        };
     } else {
         user_request.context = Some(RequestContext {
             lane_key: Some(lane_key.clone()),
+            session_id: Some(session_id.clone()),
+            conversation_history: if conversation_history.is_empty() {
+                None
+            } else {
+                Some(conversation_history)
+            },
             ..Default::default()
         });
     }
@@ -815,7 +875,7 @@ pub async fn process(
     })?;
 
     // 创建 Agent 并处理请求
-    let agent = Agent::new(db).await;
+    let agent = Agent::new(db.clone()).await;
     let response = agent.process(user_request).await.map_err(|e| {
         tracing::error!(error = %e, "[Agent API] Processing failed");
         (
@@ -824,7 +884,27 @@ pub async fn process(
         )
     })?;
 
-    Ok(Json(response.into()))
+    let mut api_response: ApiResponse = response.into();
+    let metadata = json!({
+        "suggestions": &api_response.suggestions,
+        "dataDisplay": &api_response.data_display,
+        "frontendAction": &api_response.frontend_action,
+        "data": &api_response.data,
+    });
+    if let Err(error) = persist_assistant_message(
+        &db,
+        &session_id,
+        api_response.task.as_ref().map(|task| task.task_id.as_str()),
+        &api_response.message,
+        Some(metadata),
+    )
+    .await
+    {
+        tracing::warn!(%error, "[Agent API] Failed to persist assistant message");
+    }
+    api_response.session_id = Some(session_id);
+
+    Ok(Json(api_response))
 }
 
 /// 流式处理自然语言请求（带实时进度更新）
@@ -861,13 +941,6 @@ pub async fn process_stream(
 
     let has_session = !session_id.is_empty();
 
-    // 持久化用户消息
-    if has_session {
-        if let Err(e) = persist_user_message(&db, &session_id, &req.input).await {
-            tracing::warn!("[Agent API] Failed to persist user message: {}", e);
-        }
-    }
-
     // 从数据库加载会话历史（替代前端传入的 conversation_history）
     let conversation_history = if has_session {
         let history = load_session_history(&db, &session_id, 20).await;
@@ -882,6 +955,12 @@ pub async fn process_stream(
     } else {
         None
     };
+
+    if has_session {
+        if let Err(e) = persist_user_message(&db, &session_id, &req.input).await {
+            tracing::warn!("[Agent API] Failed to persist user message: {}", e);
+        }
+    }
 
     let lane_key = LaneQueue::make_lane_key(user_id, Some(&session_id));
 
@@ -966,7 +1045,7 @@ pub async fn process_stream(
                 let is_waiting = api_response
                     .task
                     .as_ref()
-                    .map(|t| t.status == "waitingforinput")
+                    .map(|t| t.status == "waiting_for_input")
                     .unwrap_or(false);
 
                 if is_waiting && !task_id.is_empty() {
@@ -1015,7 +1094,7 @@ pub async fn process_stream(
                                 let still_waiting = response_value
                                     .pointer("/task/status")
                                     .and_then(|s| s.as_str())
-                                    == Some("waitingforinput");
+                                    == Some("waiting_for_input");
 
                                 if still_waiting {
                                     // 仍有新问题需要用户回答，持久化中间状态后继续等待
@@ -1136,7 +1215,7 @@ pub async fn process_stream(
                                         // 前端可以通过重新连接 SSE 继续等待
                                         json!({
                                             "message": "等待用户回答超时（10分钟），请重新提交回答",
-                                            "task": { "status": "waitingforinput", "task_id": task_id },
+                                            "task": { "status": "waiting_for_input", "taskId": task_id },
                                             "timeout": true
                                         })
                                     } else {
@@ -1367,7 +1446,7 @@ pub async fn list_tasks(
             json!({
                 "taskId": t.task_id,
                 "recipeId": t.recipe_id,
-                "status": format!("{:?}", t.status).to_lowercase(),
+                "status": task_status_name(&t.status),
                 "progress": t.progress,
                 "startedAt": t.started_at.to_rfc3339(),
                 "completedAt": t.completed_at.map(|time| time.to_rfc3339())
@@ -1599,7 +1678,7 @@ pub async fn answer_task_question_stream(
                 let still_waiting = api_response
                     .task
                     .as_ref()
-                    .map(|t| t.status == "waitingforinput")
+                    .map(|t| t.status == "waiting_for_input")
                     .unwrap_or(false);
 
                 let response_value = serde_json::to_value(&api_response)

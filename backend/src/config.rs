@@ -212,6 +212,16 @@ pub struct DynamicConfig {
     pub x_username: Option<String>,
     /// App Bearer Token（developer.x.com 生成，只读同步用；分享走 Intent 不需要用户 OAuth）
     pub x_bearer_token: Option<String>,
+    /// Discord 数据平台
+    pub discord_enabled: Option<bool>,
+    /// Discord OAuth user access token（scope: identify guilds connections）
+    pub discord_access_token: Option<String>,
+    /// Discord OAuth refresh token（建议填写，access token 会过期）
+    pub discord_refresh_token: Option<String>,
+    /// access token 过期时间（Unix 秒，字符串存储）
+    pub discord_token_expires_at: Option<String>,
+    /// Discord 用户 snowflake id（test/同步成功后回写）
+    pub discord_user_id: Option<String>,
 
     // Tapp 外部 API 密钥（用于 Tapp API 声明系统）
     pub openweather_api_key: Option<String>,
@@ -425,6 +435,11 @@ impl Default for DynamicConfig {
             x_enabled: None,
             x_username: None,
             x_bearer_token: None,
+            discord_enabled: None,
+            discord_access_token: None,
+            discord_refresh_token: None,
+            discord_token_expires_at: None,
+            discord_user_id: None,
 
             // Tapp 外部 API 密钥
             openweather_api_key: None,

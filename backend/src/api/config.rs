@@ -175,6 +175,15 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
         db_config.as_ref().and_then(|c| c.x_enabled),
         has_x_username && has_x_bearer,
     );
+    let has_discord_token = db_config
+        .as_ref()
+        .and_then(|c| c.discord_access_token.as_ref())
+        .is_some()
+        || std::env::var("DISCORD_ACCESS_TOKEN").is_ok();
+    let discord_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.discord_enabled),
+        has_discord_token,
+    );
 
     let config = ConfigResponse {
         platforms: vec![
@@ -370,6 +379,56 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                         )),
                         placeholder: "From developer.x.com App keys (read-only sync)".to_string(),
                         required: true,
+                    },
+                ],
+            },
+            PlatformConfig {
+                name: "Discord".to_string(),
+                enabled: discord_enabled,
+                has_token: has_discord_token,
+                icon: "".to_string(),
+                description:
+                    "Sync your Discord profile, server footprint, and linked accounts (Steam/GitHub/…)"
+                        .to_string(),
+                config_fields: vec![
+                    ConfigField {
+                        key: "access_token".to_string(),
+                        label: "Access Token".to_string(),
+                        field_type: "password".to_string(),
+                        value: mask_sensitive(get_value(
+                            db_config
+                                .as_ref()
+                                .and_then(|c| c.discord_access_token.clone()),
+                            "DISCORD_ACCESS_TOKEN",
+                        )),
+                        placeholder:
+                            "OAuth user token (scopes: identify guilds connections)".to_string(),
+                        required: true,
+                    },
+                    ConfigField {
+                        key: "refresh_token".to_string(),
+                        label: "Refresh Token (Recommended)".to_string(),
+                        field_type: "password".to_string(),
+                        value: mask_sensitive(get_value(
+                            db_config
+                                .as_ref()
+                                .and_then(|c| c.discord_refresh_token.clone()),
+                            "DISCORD_REFRESH_TOKEN",
+                        )),
+                        placeholder:
+                            "Optional; enables auto-refresh when access token expires".to_string(),
+                        required: false,
+                    },
+                    ConfigField {
+                        key: "user_id".to_string(),
+                        label: "User ID (auto-filled after test)".to_string(),
+                        field_type: "text".to_string(),
+                        value: get_value(
+                            db_config.as_ref().and_then(|c| c.discord_user_id.clone()),
+                            "DISCORD_USER_ID",
+                        ),
+                        placeholder: "Discord snowflake id".to_string(),
+                        required: false,
                     },
                 ],
             },
@@ -1352,6 +1411,23 @@ async fn save_to_database(
                     }
                 }
             }
+            "Discord" => {
+                updates.insert(
+                    "discord_enabled".to_string(),
+                    JsonValue::Bool(platform.enabled),
+                );
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "access_token" => "discord_access_token",
+                        "refresh_token" => "discord_refresh_token",
+                        "user_id" => "discord_user_id",
+                        _ => continue,
+                    };
+                    if !field.value.is_empty() && !is_masked(&field.value) {
+                        updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -1962,6 +2038,58 @@ pub async fn test_platform(
                 ),
             }
         }
+        "Discord" => {
+            let form_token = config["access_token"]
+                .as_str()
+                .filter(|s| !s.is_empty() && !s.contains('•') && !s.contains('*'))
+                .map(|s| s.to_string());
+            // 一键授权后表单多为掩码：回退到已保存的 token
+            let access_token = if let Some(t) = form_token {
+                t
+            } else {
+                let cfg = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+                cfg.discord_access_token
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_default()
+            };
+            if access_token.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": "Access Token is required. Use Connect Discord or paste a token."
+                    })),
+                );
+            }
+
+            let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
+            match fetcher.fetch_discord_me(&access_token).await {
+                Ok(user_info) => {
+                    let username = user_info["username"].as_str().unwrap_or("unknown");
+                    let global_name = user_info["global_name"].as_str().unwrap_or(username);
+                    let user_id = user_info["id"].as_str().unwrap_or("");
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!(
+                                "✓ Discord user '{}' verified ({}). id={}",
+                                global_name, username, user_id
+                            ),
+                            "user_id": user_id,
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": format!("✗ Failed to verify Discord token: {}", e)
+                    })),
+                ),
+            }
+        }
         "X" => {
             let username = config["username"]
                 .as_str()
@@ -2152,6 +2280,14 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
                 .is_some()
                 || std::env::var("X_BEARER_TOKEN").is_ok()),
     );
+    let discord_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.discord_enabled),
+        db_config
+            .as_ref()
+            .and_then(|c| c.discord_access_token.as_ref())
+            .is_some()
+            || std::env::var("DISCORD_ACCESS_TOKEN").is_ok(),
+    );
 
     // 只返回公开可见的平台配置字段（不包含 API 密钥等敏感信息）
     let public_platforms = vec![
@@ -2258,6 +2394,25 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
                 value: get_value(
                     db_config.as_ref().and_then(|c| c.x_username.clone()),
                     "X_USERNAME",
+                ),
+                placeholder: "".to_string(),
+                required: false,
+            }],
+        },
+        PlatformConfig {
+            name: "Discord".to_string(),
+            enabled: discord_enabled,
+            has_token: false,
+            icon: "".to_string(),
+            description: "".to_string(),
+            // 不暴露 token；仅返回 user_id 便于公开名片展示
+            config_fields: vec![ConfigField {
+                key: "user_id".to_string(),
+                label: "".to_string(),
+                field_type: "text".to_string(),
+                value: get_value(
+                    db_config.as_ref().and_then(|c| c.discord_user_id.clone()),
+                    "DISCORD_USER_ID",
                 ),
                 placeholder: "".to_string(),
                 required: false,

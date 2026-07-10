@@ -160,10 +160,18 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
       {/* List */}
       <div className="arael-sessions-items">
         {filteredSessions.map((session) => (
-          <button
+          <div
             key={session.id}
             className={`arael-sessions-item${session.id === activeSessionId ? ' active' : ''}`}
+            role="button"
+            tabIndex={0}
             onClick={() => onSelectSession(session)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onSelectSession(session)
+              }
+            }}
           >
             <div className="arael-sessions-item-row">
               <svg
@@ -215,7 +223,7 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
                 )}
               </button>
             </div>
-          </button>
+          </div>
         ))}
 
         {!loading && filteredSessions.length === 0 && (

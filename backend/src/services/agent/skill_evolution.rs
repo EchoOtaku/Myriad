@@ -990,31 +990,12 @@ origin: agent_generated
 
     // ==================== 查询 ====================
 
-    /// 获取高置信度的能力缺口（置信度 >= 0.7，即至少被报告 2+ 次）
-    #[allow(dead_code)]
-    pub async fn get_significant_gaps(&self) -> Vec<CapabilityGap> {
-        let gaps = self.capability_gaps.lock().await;
-        gaps.iter()
-            .filter(|g| g.confidence >= 0.7)
-            .cloned()
-            .collect()
-    }
-
-    /// 获取 Skill 执行统计
-    #[allow(dead_code)]
-    pub async fn get_stats(&self, skill_id: &str) -> Option<SkillStats> {
-        let stats = self.stats.lock().await;
-        stats.get(skill_id).cloned()
-    }
-
     /// 获取所有统计（用于调试/API）
-    #[allow(dead_code)]
     pub async fn get_all_stats(&self) -> HashMap<String, SkillStats> {
         self.stats.lock().await.clone()
     }
 
     /// 获取所有能力缺口（用于调试/API）
-    #[allow(dead_code)]
     pub async fn get_all_gaps(&self) -> Vec<CapabilityGap> {
         self.capability_gaps.lock().await.clone()
     }
