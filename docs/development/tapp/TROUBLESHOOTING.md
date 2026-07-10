@@ -350,11 +350,11 @@ Tapp.http.request({
 
 ### ❌ API 请求返回 403
 
-**症状**：通过 `Tapp.http.request` 请求 API 返回 403 或 CORS 错误。
+**症状**：通过 `Tapp.api(name, params)` 请求 API 返回 403 或定义不存在。
 
 **原因**：
 
-1. 未在 manifest 中声明 `api_declarations`
+1. 未在 manifest 的 `apis` 中声明对应名称
 2. API 端点不允许跨域请求
 
 **解决方案**：
@@ -363,13 +363,14 @@ Tapp.http.request({
 
 ```json
 {
-  "api_declarations": [
-    {
+  "apis": {
+    "data": {
+      "type": "http",
       "endpoint": "https://api.example.com",
-      "methods": ["GET", "POST"],
+      "method": "GET",
       "description": "数据 API"
     }
-  ]
+  }
 }
 ```
 
@@ -424,5 +425,5 @@ Tapp.lifecycle.onReady(async function () {
 - [ ] Widget 模板文件格式正确
 - [ ] 在多个 Widget 尺寸下测试显示效果
 - [ ] 在亮色和暗色模式下测试样式
-- [ ] API 请求已在 `api_declarations` 中声明
+- [ ] `Tapp.api` 使用的名称已在 manifest 的 `apis` 中声明
 - [ ] 无控制台错误（忽略已知的安全警告）

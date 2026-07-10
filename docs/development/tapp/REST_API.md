@@ -353,22 +353,28 @@ Content-Type: application/json
 ### 注册定时任务
 
 ```http
-POST /api/tapp/{tappId}/scheduler/tasks
+POST /api/tapp/scheduler/tasks
 Content-Type: application/json
 
 {
-  "id": "daily-sync",
-  "type": "interval",
-  "interval_seconds": 3600,
-  "handler": "handleSync",
-  "enabled": true
+  "tapp_id": "com.example.my-tapp",
+  "task_id": "daily-sync",
+  "name": "每日同步",
+  "schedule_type": "daily",
+  "schedule": { "time": "09:00" },
+  "execution_target": "frontend",
+  "missed_policy": "run-once",
+  "scope": "user",
+  "retry": { "maxRetries": 2, "retryDelay": 5000 }
 }
 ```
+
+`execution_target` 为 `backend` 或 `both` 时必须提供 `backend_actions`。SDK 使用 `{ "type": "storage.set", ... }` 形式，后端会在注册时校验动作和当前权限。
 
 ### 获取任务列表
 
 ```http
-GET /api/tapp/{tappId}/scheduler/tasks
+GET /api/tapp/scheduler/tasks?tapp_id=com.example.my-tapp
 ```
 
 **响应**：
@@ -376,13 +382,15 @@ GET /api/tapp/{tappId}/scheduler/tasks
 ```json
 {
   "success": true,
-  "data": [
+  "tasks": [
     {
-      "id": "daily-sync",
-      "type": "interval",
-      "interval_seconds": 3600,
-      "next_run": "2024-01-15T11:00:00Z",
-      "last_run": "2024-01-15T10:00:00Z",
+      "taskId": "daily-sync",
+      "tappId": "com.example.my-tapp",
+      "scheduleType": "daily",
+      "schedule": { "time": "09:00" },
+      "executionTarget": "frontend",
+      "scope": "user",
+      "nextRunAt": "2026-07-11T09:00:00+09:00",
       "enabled": true
     }
   ]
@@ -392,31 +400,29 @@ GET /api/tapp/{tappId}/scheduler/tasks
 ### 触发任务执行
 
 ```http
-POST /api/tapp/{tappId}/scheduler/tasks/{taskId}/trigger
+POST /api/tapp/scheduler/{tappId}/tasks/{taskId}/trigger
 ```
 
-### 更新任务
+### 启用/禁用任务
 
 ```http
-PUT /api/tapp/{tappId}/scheduler/tasks/{taskId}
-Content-Type: application/json
-
-{
-  "enabled": false
-}
+POST /api/tapp/scheduler/{tappId}/tasks/{taskId}/enable
+POST /api/tapp/scheduler/{tappId}/tasks/{taskId}/disable
 ```
 
 ### 删除任务
 
 ```http
-DELETE /api/tapp/{tappId}/scheduler/tasks/{taskId}
+DELETE /api/tapp/scheduler/{tappId}/tasks/{taskId}
 ```
 
-### 获取执行历史
+### 前端任务 WebSocket
 
 ```http
-GET /api/tapp/{tappId}/scheduler/tasks/{taskId}/history
+GET /api/tapp/scheduler/ws
 ```
+
+前端收到 `task:execute` 后执行已注册的 `onTask` 回调，并以 `task:complete` 上报结果；在回执前执行记录保持 `running`，超时会被收敛为 `timeout`。
 
 ---
 
@@ -547,7 +553,7 @@ Content-Type: application/json
 
 **限制**：
 
-- URL 必须在 `api_declarations` 中声明
+- API 名称必须在 manifest 的 `apis` 中声明
 - 请求频率限制：100 次/分钟
 
 ---

@@ -226,6 +226,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
 
     // 定时任务权限
     ['scheduler.register', 'scheduler:register'],
+    ['scheduler.cancel', 'scheduler:register'],
     ['scheduler.unregister', 'scheduler:register'],
     ['scheduler.list', 'scheduler:register'],
     ['scheduler.get', 'scheduler:register'],
@@ -233,6 +234,9 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['scheduler.disable', 'scheduler:register'],
     ['scheduler.trigger', 'scheduler:register'],
     ['scheduler.onTask', 'scheduler:register'],
+    ['scheduler.subscribe', 'scheduler:register'],
+    ['scheduler.unsubscribe', 'scheduler:register'],
+    ['scheduler.complete', 'scheduler:register'],
 
     // 语音服务权限
     ['speech.tts', 'speech:tts'],

@@ -18,11 +18,15 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::middleware::auth::Claims;
+use crate::api::tapp_runtime::common::{check_tapp_permission, verify_tapp_ownership};
+use crate::middleware::auth::{ensure_current_admin, Claims};
 use crate::models::entities::tapp_scheduled_tasks::{
     ExecutionTarget, MissedPolicy, ScheduleType, TaskScope,
 };
-use crate::services::tapp_scheduler::TappSchedulerEngine;
+use crate::services::permission_service::TappPermission;
+use crate::services::tapp_scheduler::{
+    backend_action_permissions, normalize_backend_actions, TappSchedulerEngine,
+};
 
 /// 全局调度器引擎
 static SCHEDULER_ENGINE: once_cell::sync::OnceCell<Arc<RwLock<TappSchedulerEngine>>> =
@@ -53,6 +57,15 @@ fn get_scheduler() -> Result<Arc<RwLock<TappSchedulerEngine>>, (StatusCode, Json
             Json(json!({ "error": "Scheduler not initialized" })),
         )
     })
+}
+
+/// Internal entry point used by the Agent planner so it creates real Tapp
+/// scheduler rows instead of maintaining a second, inert schedule store.
+pub(crate) fn scheduler_engine() -> Result<Arc<RwLock<TappSchedulerEngine>>, String> {
+    SCHEDULER_ENGINE
+        .get()
+        .cloned()
+        .ok_or_else(|| "Scheduler not initialized".to_string())
 }
 
 // ============ 请求/响应类型 ============
@@ -103,6 +116,7 @@ pub struct ScheduleConfigRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RetryConfigRequest {
     #[serde(default)]
     pub max_retries: i32,
@@ -116,6 +130,7 @@ pub struct ListTasksQuery {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskResponse {
     pub id: i32,
     pub task_id: String,
@@ -178,11 +193,63 @@ fn parse_scope(s: &str) -> Result<TaskScope, (StatusCode, Json<Value>)> {
     match s.to_lowercase().as_str() {
         "user" => Ok(TaskScope::User),
         "tapp" => Ok(TaskScope::Tapp),
+        "tapp-per-user" | "tapp_per_user" => Ok(TaskScope::TappPerUser),
         "global" => Ok(TaskScope::Global),
         _ => Err((
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": format!("Invalid scope: {}", s) })),
         )),
+    }
+}
+
+fn bad_request(message: impl Into<String>) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({ "error": message.into() })),
+    )
+}
+
+async fn check_backend_action_permissions(
+    claims: &Claims,
+    actions: &Option<Value>,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    for permission in backend_action_permissions(actions).map_err(bad_request)? {
+        check_tapp_permission(claims, permission).await?;
+    }
+    Ok(())
+}
+
+fn schedule_type_name(value: &ScheduleType) -> &'static str {
+    match value {
+        ScheduleType::Cron => "cron",
+        ScheduleType::Interval => "interval",
+        ScheduleType::Once => "once",
+        ScheduleType::Daily => "daily",
+    }
+}
+
+fn missed_policy_name(value: &MissedPolicy) -> &'static str {
+    match value {
+        MissedPolicy::Skip => "skip",
+        MissedPolicy::RunOnce => "run-once",
+        MissedPolicy::RunAll => "run-all",
+    }
+}
+
+fn execution_target_name(value: &ExecutionTarget) -> &'static str {
+    match value {
+        ExecutionTarget::Backend => "backend",
+        ExecutionTarget::Frontend => "frontend",
+        ExecutionTarget::Both => "both",
+    }
+}
+
+fn task_scope_name(value: &TaskScope) -> &'static str {
+    match value {
+        TaskScope::User => "user",
+        TaskScope::Tapp => "tapp",
+        TaskScope::TappPerUser => "tapp-per-user",
+        TaskScope::Global => "global",
     }
 }
 
@@ -201,13 +268,13 @@ fn task_to_response(task: &crate::models::entities::tapp_scheduled_tasks::Model)
         task_id: task.task_id.clone(),
         tapp_id: task.tapp_id.clone(),
         name: task.name.clone(),
-        schedule_type: format!("{:?}", task.schedule_type).to_lowercase(),
+        schedule_type: schedule_type_name(&task.schedule_type).to_string(),
         schedule: task.schedule_config.clone(),
         payload: task.payload.clone(),
-        execution_target: task.execution_target.to_string(),
+        execution_target: execution_target_name(&task.execution_target).to_string(),
         enabled: task.enabled,
-        missed_policy: format!("{:?}", task.missed_policy).to_lowercase(),
-        scope: format!("{:?}", task.scope).to_lowercase(),
+        missed_policy: missed_policy_name(&task.missed_policy).to_string(),
+        scope: task_scope_name(&task.scope).to_string(),
         next_run_at: task.next_run_at.map(|t| t.to_string()),
         last_run_at: task.last_run_at.map(|t| t.to_string()),
         last_run_result: task.last_run_result.clone(),
@@ -221,22 +288,38 @@ fn task_to_response(task: &crate::models::entities::tapp_scheduled_tasks::Model)
 /// 注册定时任务
 /// POST /api/tapp/scheduler/tasks
 pub async fn register_task(
-    State(_db): State<DatabaseConnection>,
+    State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Json(req): Json<RegisterTaskRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let user_id = parse_user_id(&claims)?;
-    let scheduler = get_scheduler()?;
-    let scheduler = scheduler.read().await;
-
-    // 权限检查：需要 scheduler:register 权限
-    // TODO: 实现权限检查
-    // 注意：global scope 需要管理员权限
+    check_tapp_permission(&claims, TappPermission::SchedulerRegister).await?;
+    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
 
     let schedule_type = parse_schedule_type(&req.schedule_type)?;
     let execution_target = parse_execution_target(&req.execution_target)?;
     let missed_policy = parse_missed_policy(&req.missed_policy)?;
     let scope = parse_scope(&req.scope)?;
+
+    // 跨全局用户执行只允许当前仍为管理员的账号创建，不能信任旧 JWT 中的角色。
+    if matches!(scope, TaskScope::Global) {
+        ensure_current_admin(&claims).await?;
+    }
+
+    let backend_actions = normalize_backend_actions(req.backend_actions).map_err(bad_request)?;
+    if matches!(
+        execution_target,
+        ExecutionTarget::Backend | ExecutionTarget::Both
+    ) && backend_actions
+        .as_ref()
+        .and_then(Value::as_array)
+        .is_none_or(Vec::is_empty)
+    {
+        return Err(bad_request(
+            "backendActions are required when executionTarget is backend or both",
+        ));
+    }
+    check_backend_action_permissions(&claims, &backend_actions).await?;
 
     let schedule_config = serde_json::to_value(&req.schedule).map_err(|e| {
         (
@@ -252,6 +335,9 @@ pub async fn register_task(
         })
     });
 
+    let scheduler = get_scheduler()?;
+    let scheduler = scheduler.read().await;
+
     let task = scheduler
         .register_task(
             user_id,
@@ -262,7 +348,7 @@ pub async fn register_task(
             schedule_config,
             req.payload,
             execution_target,
-            req.backend_actions,
+            backend_actions,
             missed_policy,
             scope,
             retry_config,
@@ -486,14 +572,15 @@ pub async fn trigger_task(
 /// WebSocket 连接处理（接收任务推送）
 /// GET /api/tapp/scheduler/ws
 pub async fn scheduler_websocket(
+    State(db): State<DatabaseConnection>,
     ws: WebSocketUpgrade,
     Extension(claims): Extension<Claims>,
 ) -> impl IntoResponse {
     let user_id: i32 = claims.sub.parse().unwrap_or(-1);
-    ws.on_upgrade(move |socket| handle_scheduler_socket(socket, user_id))
+    ws.on_upgrade(move |socket| handle_scheduler_socket(socket, user_id, db))
 }
 
-async fn handle_scheduler_socket(socket: WebSocket, user_id: i32) {
+async fn handle_scheduler_socket(socket: WebSocket, user_id: i32, db: DatabaseConnection) {
     tracing::info!("[TappScheduler] WebSocket connected for user {}", user_id);
 
     let scheduler = match SCHEDULER_ENGINE.get() {
@@ -543,8 +630,18 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32) {
                             None => {
                                 match task_msg.task.scope.as_str() {
                                     "user" => task_msg.task.user_id == user_id,
-                                    "tapp" => true,  // TODO: 检查用户是否安装了该 Tapp
-                                    "global" => true, // 广播给所有在线用户
+                                    "tapp" => verify_tapp_ownership(
+                                        &db,
+                                        user_id,
+                                        &task_msg.task.tapp_id,
+                                    )
+                                    .await
+                                    .is_ok(),
+                                    "global" => crate::services::agent::user_is_current_admin(
+                                        &db,
+                                        user_id,
+                                    )
+                                    .await,
                                     _ => task_msg.task.user_id == user_id,
                                 }
                             }
@@ -577,9 +674,41 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32) {
                                     serde_json::to_string(&pong).unwrap().into()
                                 )).await;
                             } else if msg.get("type").and_then(|t| t.as_str()) == Some("task:complete") {
-                                // 任务完成报告
-                                tracing::debug!("[TappScheduler] Task complete report: {:?}", msg);
-                                // TODO: 更新任务执行状态
+                                let execution_id = msg
+                                    .get("executionId")
+                                    .and_then(Value::as_i64)
+                                    .and_then(|id| i32::try_from(id).ok());
+                                let success = msg
+                                    .get("success")
+                                    .and_then(Value::as_bool);
+                                let error = msg
+                                    .get("error")
+                                    .and_then(Value::as_str)
+                                    .map(str::to_string);
+
+                                if let (Some(execution_id), Some(success)) = (execution_id, success) {
+                                    let engine = scheduler.read().await;
+                                    if let Err(error) = engine
+                                        .complete_frontend_execution(
+                                            user_id,
+                                            execution_id,
+                                            success,
+                                            error,
+                                        )
+                                        .await
+                                    {
+                                        tracing::warn!(
+                                            "[TappScheduler] Failed to complete execution {}: {}",
+                                            execution_id,
+                                            error
+                                        );
+                                    }
+                                } else {
+                                    tracing::warn!(
+                                        "[TappScheduler] Invalid task:complete payload: {:?}",
+                                        msg
+                                    );
+                                }
                             }
                         }
                     }
@@ -596,4 +725,46 @@ async fn handle_scheduler_socket(socket: WebSocket, user_id: i32) {
         "[TappScheduler] WebSocket disconnected for user {}",
         user_id
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_sdk_backend_action_tag() {
+        let normalized = normalize_backend_actions(Some(json!([
+            { "type": "storage.set", "key": "lastSync", "value": 1 },
+            { "action": "transform", "input": "lastSync" }
+        ])))
+        .expect("actions should normalize")
+        .expect("actions should remain present");
+
+        let actions = normalized.as_array().expect("actions array");
+        assert_eq!(actions[0]["action"], "storage.set");
+        assert!(actions[0].get("type").is_none());
+        assert_eq!(actions[1]["action"], "transform");
+    }
+
+    #[test]
+    fn retry_request_uses_sdk_camel_case() {
+        let retry: RetryConfigRequest = serde_json::from_value(json!({
+            "maxRetries": 3,
+            "retryDelay": 2500
+        }))
+        .expect("retry config should deserialize");
+
+        assert_eq!(retry.max_retries, 3);
+        assert_eq!(retry.retry_delay, 2500);
+    }
+
+    #[test]
+    fn scope_wire_names_are_stable() {
+        assert_eq!(
+            parse_scope("tapp-per-user").unwrap(),
+            TaskScope::TappPerUser
+        );
+        assert_eq!(task_scope_name(&TaskScope::TappPerUser), "tapp-per-user");
+        assert_eq!(missed_policy_name(&MissedPolicy::RunOnce), "run-once");
+    }
 }

@@ -5,6 +5,9 @@
 use super::HandlerContext;
 use crate::models::entities::{tapp_storage, tapps};
 use crate::services::agent::executor::utils::is_valid_platform as validate_platform_name;
+use crate::services::data_paths::paths;
+use crate::services::permission_service::{TappPermissionService, UserRole};
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use serde_json::{json, Value};
@@ -43,6 +46,124 @@ pub async fn execute(
 // Tapp 生成
 // ============================================================================
 
+fn parse_generated_tapp_json(raw: &str) -> Option<Value> {
+    serde_json::from_str(raw).ok().or_else(|| {
+        let start = raw.find('{')?;
+        let end = raw.rfind('}')?;
+        serde_json::from_str(&raw[start..=end]).ok()
+    })
+}
+
+async fn persist_agent_tapp(
+    ctx: &HandlerContext<'_>,
+    tapp_id: &str,
+    name: &str,
+    description: Option<String>,
+    code: &str,
+    mut manifest: Value,
+    author: Value,
+) -> Result<chrono::DateTime<Utc>, String> {
+    if code.trim().is_empty() {
+        return Err("Generated Tapp code is empty".to_string());
+    }
+
+    let manifest_object = manifest
+        .as_object_mut()
+        .ok_or("Tapp manifest must be an object")?;
+    manifest_object.insert("id".to_string(), json!(tapp_id));
+    manifest_object.insert("name".to_string(), json!(name));
+    manifest_object
+        .entry("version".to_string())
+        .or_insert_with(|| json!("1.0.0"));
+    manifest_object.insert("main".to_string(), json!("main.js"));
+    manifest_object
+        .entry("permissions".to_string())
+        .or_insert_with(|| json!([]));
+    if let Some(description) = &description {
+        manifest_object.insert("description".to_string(), json!(description));
+    }
+    manifest_object
+        .entry("author".to_string())
+        .or_insert_with(|| author.clone());
+
+    let requested_permissions: Vec<String> = manifest_object
+        .get("permissions")
+        .and_then(Value::as_array)
+        .map(|permissions| {
+            permissions
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let role = if crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await {
+        UserRole::Admin
+    } else {
+        UserRole::User
+    };
+    let granted_permissions = {
+        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+        TappPermissionService::filter_permissions_for_role(&config, role, &requested_permissions)
+    };
+
+    let tapp_dir = paths().tapp_user_dir(ctx.user_id).join(tapp_id);
+    let code_path = tapp_dir.join("main.js");
+    let manifest_path = tapp_dir.join("manifest.json");
+    tokio::fs::create_dir_all(&tapp_dir)
+        .await
+        .map_err(|e| format!("Failed to create Tapp directory: {e}"))?;
+    tokio::fs::write(&code_path, code)
+        .await
+        .map_err(|e| format!("Failed to write Tapp code: {e}"))?;
+    let manifest_json = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| format!("Failed to serialize Tapp manifest: {e}"))?;
+    tokio::fs::write(&manifest_path, manifest_json)
+        .await
+        .map_err(|e| format!("Failed to write Tapp manifest: {e}"))?;
+
+    let version = manifest
+        .get("version")
+        .and_then(Value::as_str)
+        .unwrap_or("1.0.0")
+        .to_string();
+    let icon = manifest
+        .get("icon")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let theme_color = manifest
+        .get("themeColor")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let now = Utc::now();
+    let new_tapp = tapps::ActiveModel {
+        tapp_id: Set(tapp_id.to_string()),
+        user_id: Set(ctx.user_id),
+        name: Set(name.to_string()),
+        version: Set(version),
+        description: Set(description),
+        author: Set(Some(author)),
+        icon: Set(icon),
+        theme_color: Set(theme_color),
+        manifest: Set(manifest),
+        status: Set(tapps::TappStatus::Installed),
+        granted_permissions: Set(json!(granted_permissions)),
+        file_path: Set(manifest_path.to_string_lossy().to_string()),
+        code_path: Set(code_path.to_string_lossy().to_string()),
+        installed_at: Set(now.into()),
+        last_run_at: Set(None),
+        updated_at: Set(now.into()),
+        error_message: Set(None),
+        ..Default::default()
+    };
+    if let Err(error) = new_tapp.insert(ctx.db).await {
+        let _ = tokio::fs::remove_dir_all(&tapp_dir).await;
+        return Err(format!("Failed to persist Tapp: {error}"));
+    }
+
+    Ok(now)
+}
+
 async fn execute_tapp_generate(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
@@ -53,11 +174,9 @@ async fn execute_tapp_generate(
 
     let description = params
         .get("description")
-        .and_then(|v| v.as_str())
-        .or_else(|| params.get("requirements").and_then(|v| v.as_str()))
+        .and_then(Value::as_str)
+        .or_else(|| params.get("requirements").and_then(Value::as_str))
         .unwrap_or("一个简单的 Tapp 应用");
-
-    // 读取上游步骤通过 inputFrom 解析后注入的数据
     let input_data = params.get("input").or_else(|| params.get("data"));
     let input_context = if let Some(data) = input_data {
         let truncated = serde_json::to_string(data)
@@ -74,108 +193,76 @@ async fn execute_tapp_generate(
     };
 
     let prompt = format!(
-        r#"请根据以下描述生成一个 Myriad Tapp 应用的代码。
+        r#"请根据以下描述生成一个 Myriad Tapp 应用。
 
 描述：{description}{input_context}
 
 要求：
-1. 使用 TypeScript 编写
-2. 遵循 Tapp API 规范（通过 window.TappSDK 访问 API）
-3. 包含必要的 manifest 信息
-4. 代码简洁、可运行
+1. 输出浏览器可直接运行的 JavaScript，不要输出需要构建的 TypeScript
+2. 使用全局 Tapp SDK（例如 Tapp.storage、Tapp.pages、Tapp.widgets）
+3. core 只放共享状态和后台逻辑，Page/Widget 只负责视图；需要刷新后自动常驻时在 manifest.backgroundRequirements 声明
+4. manifest 必须包含 permissions，并按需包含 hasPage、widgets、backgroundRequirements
 5. 如果有数据输入，将数据内嵌到代码中直接展示
 
-请返回 JSON 格式：
+只返回合法 JSON：
 {{
-  "manifest": {{ "name": "...", "version": "1.0.0", "description": "..." }},
-  "code": "完整的 TypeScript 代码"
+  "manifest": {{
+    "name": "...",
+    "version": "1.0.0",
+    "description": "...",
+    "permissions": [],
+    "hasPage": true
+  }},
+  "code": "完整 JavaScript 代码"
 }}"#
     );
 
     let result = analyzer
         .analyze(&prompt)
         .await
-        .map_err(|e| format!("Tapp generation failed: {}", e))?;
+        .map_err(|e| format!("Tapp generation failed: {e}"))?;
+    let parsed = parse_generated_tapp_json(&result).unwrap_or_else(|| {
+        json!({
+            "code": result,
+            "manifest": {
+                "name": "Generated Tapp",
+                "version": "1.0.0",
+                "permissions": []
+            }
+        })
+    });
 
-    let parsed: Value = serde_json::from_str(&result).unwrap_or(json!({
-        "code": result,
-        "manifest": {
-            "name": "Generated Tapp",
-            "version": "1.0.0"
-        }
-    }));
-
-    let tapp_id = format!("agent.generated.{}", Utc::now().timestamp_millis());
-    let tapp_name = parsed
-        .get("manifest")
-        .and_then(|m| m.get("name"))
-        .and_then(|v| v.as_str())
+    let tapp_id = format!("agent.generated.{}", uuid::Uuid::new_v4().simple());
+    let manifest = parsed.get("manifest").cloned().unwrap_or_else(|| json!({}));
+    let tapp_name = manifest
+        .get("name")
+        .and_then(Value::as_str)
         .unwrap_or("Agent Generated Tapp")
         .to_string();
-    let tapp_description = parsed
-        .get("manifest")
-        .and_then(|m| m.get("description"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let code_content = parsed
+    let tapp_description = manifest
+        .get("description")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let code = parsed
         .get("code")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let manifest = parsed.get("manifest").cloned().unwrap_or(json!({
-        "name": tapp_name,
-        "version": "1.0.0"
-    }));
-
-    // 写入代码文件
-    let code_dir = format!("data/tapps/{}", tapp_id);
-    let code_path = format!("{}/index.ts", code_dir);
-    let file_path = format!("{}/manifest.json", code_dir);
-    tokio::fs::create_dir_all(&code_dir)
-        .await
-        .map_err(|e| format!("Failed to create tapp directory: {}", e))?;
-    tokio::fs::write(&code_path, &code_content)
-        .await
-        .map_err(|e| format!("Failed to write tapp code: {}", e))?;
-    tokio::fs::write(
-        &file_path,
-        serde_json::to_string_pretty(&manifest).unwrap_or_default(),
+        .and_then(Value::as_str)
+        .ok_or("Generated response is missing code")?;
+    let author = json!({"name": "Arael Agent", "type": "ai_generated"});
+    let now = persist_agent_tapp(
+        ctx,
+        &tapp_id,
+        &tapp_name,
+        tapp_description,
+        code,
+        manifest,
+        author,
     )
-    .await
-    .map_err(|e| format!("Failed to write manifest: {}", e))?;
-
-    // 持久化到 tapps 表
-    let now = Utc::now();
-    let new_tapp = tapps::ActiveModel {
-        tapp_id: Set(tapp_id.clone()),
-        user_id: Set(ctx.user_id),
-        name: Set(tapp_name.clone()),
-        version: Set("1.0.0".to_string()),
-        description: Set(tapp_description),
-        author: Set(Some(json!({"name": "Arael Agent", "type": "ai_generated"}))),
-        icon: Set(None),
-        theme_color: Set(None),
-        manifest: Set(manifest.clone()),
-        status: Set(tapps::TappStatus::Installed),
-        granted_permissions: Set(json!([])),
-        file_path: Set(file_path),
-        code_path: Set(code_path),
-        installed_at: Set(now.into()),
-        last_run_at: Set(None),
-        updated_at: Set(now.into()),
-        error_message: Set(None),
-        ..Default::default()
-    };
-    let saved = new_tapp
-        .insert(ctx.db)
-        .await
-        .map_err(|e| format!("Failed to persist tapp: {}", e))?;
+    .await?;
 
     tracing::info!(
         tapp_id = %tapp_id,
         name = %tapp_name,
-        "[TappGenerate] Tapp created and persisted (db id={})",
-        saved.id
+        "[TappGenerate] Tapp created through the current runtime layout"
     );
 
     Ok(json!({
@@ -201,64 +288,31 @@ async fn execute_tapp_install(
 ) -> Result<Value, String> {
     let code = params
         .get("code")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing code parameter. Provide Tapp code to install.")?;
+        .and_then(Value::as_str)
+        .ok_or("Missing code parameter. Provide browser-ready Tapp JavaScript.")?;
+    let mut manifest = params.get("manifest").cloned().unwrap_or_else(|| json!({}));
+    if !manifest.is_object() {
+        return Err("manifest must be an object".to_string());
+    }
 
-    let tapp_id = format!("agent.installed.{}", Utc::now().timestamp_millis());
     let name = params
         .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Installed Tapp");
-
-    let manifest = json!({
-        "name": name,
-        "version": "1.0.0"
-    });
-
-    // Write code to file
-    let code_dir = format!("data/tapps/{}", tapp_id);
-    let code_path = format!("{}/index.ts", code_dir);
-    let file_path = format!("{}/manifest.json", code_dir);
-    tokio::fs::create_dir_all(&code_dir)
-        .await
-        .map_err(|e| format!("Failed to create tapp directory: {}", e))?;
-    tokio::fs::write(&code_path, code)
-        .await
-        .map_err(|e| format!("Failed to write tapp code: {}", e))?;
-    tokio::fs::write(
-        &file_path,
-        serde_json::to_string_pretty(&manifest).unwrap_or_default(),
-    )
-    .await
-    .map_err(|e| format!("Failed to write manifest: {}", e))?;
-
-    let now = Utc::now();
-    let new_tapp = tapps::ActiveModel {
-        tapp_id: Set(tapp_id.clone()),
-        user_id: Set(ctx.user_id),
-        name: Set(name.to_string()),
-        version: Set("1.0.0".to_string()),
-        description: Set(None),
-        author: Set(Some(
-            json!({"name": "Agent Install", "type": "user_install"}),
-        )),
-        icon: Set(None),
-        theme_color: Set(None),
-        manifest: Set(manifest),
-        status: Set(tapps::TappStatus::Installed),
-        granted_permissions: Set(json!([])),
-        file_path: Set(file_path),
-        code_path: Set(code_path),
-        installed_at: Set(now.into()),
-        last_run_at: Set(None),
-        updated_at: Set(now.into()),
-        error_message: Set(None),
-        ..Default::default()
-    };
-    new_tapp
-        .insert(ctx.db)
-        .await
-        .map_err(|e| format!("Failed to persist tapp: {}", e))?;
+        .and_then(Value::as_str)
+        .or_else(|| manifest.get("name").and_then(Value::as_str))
+        .unwrap_or("Installed Tapp")
+        .to_string();
+    let description = manifest
+        .get("description")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let tapp_id = format!("agent.installed.{}", uuid::Uuid::new_v4().simple());
+    let author = json!({"name": "Agent Install", "type": "user_install"});
+    if let Some(object) = manifest.as_object_mut() {
+        object
+            .entry("permissions".to_string())
+            .or_insert_with(|| json!([]));
+    }
+    let now = persist_agent_tapp(ctx, &tapp_id, &name, description, code, manifest, author).await?;
 
     Ok(json!({
         "success": true,
@@ -754,4 +808,20 @@ async fn execute_bookmark_save(
             "timestamp": now.timestamp_millis()
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_generated_tapp_json;
+
+    #[test]
+    fn parses_json_from_a_markdown_fence() {
+        let parsed = parse_generated_tapp_json(
+            "```json\n{\"manifest\":{\"name\":\"Demo\"},\"code\":\"console.log(1)\"}\n```",
+        )
+        .expect("fenced JSON should parse");
+
+        assert_eq!(parsed["manifest"]["name"], "Demo");
+        assert_eq!(parsed["code"], "console.log(1)");
+    }
 }

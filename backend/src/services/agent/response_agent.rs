@@ -881,11 +881,6 @@ pub fn refresh_submitted_summary(submitted: usize, total: usize) -> String {
     format!("已提交 {}/{} 个平台的刷新任务", submitted, total)
 }
 
-/// 刷新触发结果
-pub fn refresh_triggered(count: usize) -> String {
-    format!("已触发刷新，获取 {} 条新内容", count)
-}
-
 /// 提醒已创建
 pub fn reminder_created(title: &str) -> String {
     format!("提醒已创建: {}", title)
@@ -909,11 +904,6 @@ pub fn bookmark_saved(title: &str) -> String {
 /// 定时任务已创建
 pub fn scheduled_task_created(name: &str) -> String {
     format!("定时任务已创建: {}", name)
-}
-
-/// 定时任务调度描述
-pub fn scheduled_task_schedule(schedule: &str) -> String {
-    format!("调度: {}", schedule)
 }
 
 /// 网络搜索回退结果

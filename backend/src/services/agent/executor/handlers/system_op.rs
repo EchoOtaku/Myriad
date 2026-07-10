@@ -3,9 +3,16 @@
 //! 处理 data.transform, scheduler.create, cache.status 等系统操作类能力
 
 use super::HandlerContext;
+use crate::api::tapp_runtime::common::verify_tapp_ownership;
+use crate::models::entities::tapp_scheduled_tasks::{
+    ExecutionTarget, MissedPolicy, ScheduleType, TaskScope,
+};
 use crate::services::agent::executor::utils::is_valid_platform as validate_platform_name;
 use crate::services::background_processor::BACKGROUND_PROCESSOR;
 use crate::services::brew_scheduler::get_brew_scheduler;
+use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
+use crate::services::tapp_scheduler::{backend_action_permissions, normalize_backend_actions};
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -18,7 +25,7 @@ pub async fn execute(
     match capability_id {
         "data.transform" => execute_data_transform(params).await,
         "scheduler.create" => execute_scheduler_create(params, ctx).await,
-        "scheduler.trigger" => execute_scheduler_trigger(params).await,
+        "scheduler.trigger" => execute_scheduler_trigger(params, ctx).await,
         "system.metrics" => execute_system_metrics().await,
         "cache.status" => execute_cache_status(params).await,
         "cache.clear" => execute_cache_clear(params).await,
@@ -137,66 +144,209 @@ async fn execute_scheduler_create(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let config = params.get("config").cloned().unwrap_or(json!({}));
+    let tapp_id = params
+        .get("tappId")
+        .or_else(|| params.get("tapp_id"))
+        .and_then(Value::as_str)
+        .ok_or("Missing tappId parameter")?;
     let name = params
         .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("未命名任务");
-    let schedule = params
-        .get("schedule")
-        .and_then(|v| v.as_str())
-        .or_else(|| params.get("cron").and_then(|v| v.as_str()));
-    let action = params
-        .get("action")
-        .and_then(|v| v.as_str())
-        .or_else(|| params.get("prompt").and_then(|v| v.as_str()));
+        .and_then(Value::as_str)
+        .ok_or("Missing name parameter")?;
 
-    let task_id = format!("schedule_{}", chrono::Utc::now().timestamp_millis());
-    let now = chrono::Utc::now();
-
-    let schedule_data = json!({
-        "id": task_id,
-        "name": name,
-        "schedule": schedule,
-        "action": action,
-        "config": config,
-        "enabled": true,
-        "createdAt": now.to_rfc3339(),
-        "nextRun": (now + chrono::Duration::hours(1)).to_rfc3339()
-    });
-
-    // Persist to tapp_storage
-    use crate::models::entities::tapp_storage;
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
-
-    let new_record = tapp_storage::ActiveModel {
-        tapp_id: Set("agent_schedules".to_string()),
-        user_id: Set(ctx.user_id),
-        key: Set(task_id.clone()),
-        value: Set(schedule_data),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-        ..Default::default()
-    };
-    new_record
-        .insert(ctx.db)
+    verify_tapp_ownership(ctx.db, ctx.user_id, tapp_id)
         .await
-        .map_err(|e| format!("Failed to save schedule: {}", e))?;
+        .map_err(|(_, body)| {
+            body.0
+                .get("message")
+                .or_else(|| body.0.get("error"))
+                .and_then(Value::as_str)
+                .unwrap_or("Tapp access denied")
+                .to_string()
+        })?;
 
-    tracing::info!(task_id = %task_id, name = %name, "[SchedulerCreate] Schedule persisted");
+    // Accept the old cronExpression form while steering new plans to the same
+    // schedule object used by the Tapp SDK.
+    let legacy_cron = params
+        .get("cronExpression")
+        .or_else(|| params.get("cron"))
+        .or_else(|| params.get("schedule").filter(|value| value.is_string()))
+        .and_then(Value::as_str);
+    let schedule_type_name = params
+        .get("scheduleType")
+        .or_else(|| params.get("schedule_type"))
+        .and_then(Value::as_str)
+        .or_else(|| legacy_cron.map(|_| "cron"))
+        .ok_or("Missing scheduleType parameter")?;
+    let schedule_type = match schedule_type_name.to_ascii_lowercase().as_str() {
+        "cron" => ScheduleType::Cron,
+        "interval" => ScheduleType::Interval,
+        "once" => ScheduleType::Once,
+        "daily" => ScheduleType::Daily,
+        _ => return Err(format!("Invalid scheduleType: {schedule_type_name}")),
+    };
+
+    let schedule_config = match params.get("schedule") {
+        Some(value) if value.is_object() => value.clone(),
+        _ => match schedule_type {
+            ScheduleType::Cron => json!({
+                "cron": legacy_cron.ok_or("Missing cron schedule")?
+            }),
+            ScheduleType::Interval => json!({
+                "interval": params
+                    .get("interval")
+                    .and_then(Value::as_i64)
+                    .ok_or("Missing interval schedule")?
+            }),
+            ScheduleType::Once => json!({
+                "at": params
+                    .get("at")
+                    .and_then(Value::as_i64)
+                    .ok_or("Missing at schedule")?
+            }),
+            ScheduleType::Daily => json!({
+                "time": params
+                    .get("time")
+                    .and_then(Value::as_str)
+                    .ok_or("Missing daily time schedule")?
+            }),
+        },
+    };
+
+    let raw_backend_actions = params
+        .get("backendActions")
+        .or_else(|| params.get("backend_actions"))
+        .cloned()
+        .or_else(|| {
+            params.get("action").cloned().map(|action| match action {
+                Value::Array(_) => action,
+                _ => Value::Array(vec![action]),
+            })
+        });
+    let backend_actions = normalize_backend_actions(raw_backend_actions)?;
+    let execution_target_name = params
+        .get("executionTarget")
+        .or_else(|| params.get("execution_target"))
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| {
+            if backend_actions.is_some() {
+                "backend"
+            } else {
+                "frontend"
+            }
+        });
+    let execution_target = match execution_target_name.to_ascii_lowercase().as_str() {
+        "backend" => ExecutionTarget::Backend,
+        "frontend" => ExecutionTarget::Frontend,
+        "both" => ExecutionTarget::Both,
+        _ => return Err(format!("Invalid executionTarget: {execution_target_name}")),
+    };
+    if matches!(
+        execution_target,
+        ExecutionTarget::Backend | ExecutionTarget::Both
+    ) && backend_actions
+        .as_ref()
+        .and_then(Value::as_array)
+        .is_none_or(Vec::is_empty)
+    {
+        return Err(
+            "backendActions are required when executionTarget is backend or both".to_string(),
+        );
+    }
+
+    let role = if crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await {
+        UserRole::Admin
+    } else {
+        UserRole::User
+    };
+    let mut required_permissions = vec![TappPermission::SchedulerRegister];
+    required_permissions.extend(backend_action_permissions(&backend_actions)?);
+    {
+        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+        for permission in required_permissions {
+            if !TappPermissionService::check(&config, role, permission) {
+                return Err(format!(
+                    "Permission denied for scheduled action: {}",
+                    permission.as_str()
+                ));
+            }
+        }
+    }
+
+    let missed_policy_name = params
+        .get("missedPolicy")
+        .or_else(|| params.get("missed_policy"))
+        .and_then(Value::as_str)
+        .unwrap_or("skip");
+    let missed_policy = match missed_policy_name.to_ascii_lowercase().as_str() {
+        "skip" => MissedPolicy::Skip,
+        "run-once" | "runonce" => MissedPolicy::RunOnce,
+        "run-all" | "runall" => MissedPolicy::RunAll,
+        _ => return Err(format!("Invalid missedPolicy: {missed_policy_name}")),
+    };
+
+    let retry_config = params.get("retry").map(|retry| {
+        json!({
+            "max_retries": retry
+                .get("maxRetries")
+                .or_else(|| retry.get("max_retries"))
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
+            "retry_delay": retry
+                .get("retryDelay")
+                .or_else(|| retry.get("retry_delay"))
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
+        })
+    });
+    let task_id = params
+        .get("taskId")
+        .or_else(|| params.get("task_id"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("agent_{}", uuid::Uuid::new_v4().simple()));
+    let payload = params.get("payload").cloned();
+
+    let scheduler = crate::api::tapp_scheduler::scheduler_engine()?;
+    let scheduler = scheduler.read().await;
+    let task = scheduler
+        .register_task(
+            ctx.user_id,
+            tapp_id,
+            &task_id,
+            name,
+            schedule_type,
+            schedule_config.clone(),
+            payload,
+            execution_target,
+            backend_actions,
+            missed_policy,
+            TaskScope::User,
+            retry_config,
+        )
+        .await?;
+
+    let now = chrono::Utc::now();
+    tracing::info!(
+        task_id = %task.task_id,
+        tapp_id = %task.tapp_id,
+        user_id = ctx.user_id,
+        "[SchedulerCreate] Registered real Tapp scheduler task"
+    );
 
     Ok(json!({
         "success": true,
-        "taskId": task_id,
-        "name": name,
-        "config": config,
-        "schedule": schedule,
-        "nextRun": (now + chrono::Duration::hours(1)).to_rfc3339(),
+        "taskId": task.task_id,
+        "tappId": task.tapp_id,
+        "name": task.name,
+        "scheduleType": schedule_type_name,
+        "schedule": schedule_config,
+        "nextRun": task.next_run_at.map(|value| value.to_rfc3339()),
         "frontendAction": {
             "type": "show_notification",
             "params": {
                 "title": crate::services::agent::response_agent::scheduled_task_created(name),
-                "message": schedule.map(crate::services::agent::response_agent::scheduled_task_schedule).unwrap_or_default(),
+                "message": format!("{} / {}", tapp_id, schedule_type_name),
                 "taskId": task_id
             },
             "timestamp": now.timestamp_millis()
@@ -204,35 +354,53 @@ async fn execute_scheduler_create(
     }))
 }
 
-async fn execute_scheduler_trigger(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let tapp_id = params.get("tapp_id").and_then(|v| v.as_str());
+async fn execute_scheduler_trigger(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
+    let task_id = params
+        .get("taskId")
+        .or_else(|| params.get("task_id"))
+        .and_then(Value::as_str)
+        .ok_or("Missing taskId parameter")?;
+    let requested_tapp_id = params
+        .get("tappId")
+        .or_else(|| params.get("tapp_id"))
+        .and_then(Value::as_str);
 
-    // 尝试通过 brew scheduler 触发
-    if let Some(scheduler) = get_brew_scheduler() {
-        if let Some(tid) = tapp_id {
-            if let Ok(source_id) = tid.parse::<i32>() {
-                match scheduler.refresh_source(source_id).await {
-                    Ok(new_count) => {
-                        return Ok(json!({
-                            "triggered": true,
-                            "tapp_id": tapp_id,
-                            "newItems": new_count,
-                            "message": crate::services::agent::response_agent::refresh_triggered(new_count as usize),
-                            "timestamp": chrono::Utc::now().to_rfc3339()
-                        }));
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "[scheduler.trigger] 刷新失败");
-                    }
-                }
+    let scheduler = crate::api::tapp_scheduler::scheduler_engine()?;
+    let scheduler = scheduler.read().await;
+    let tapp_id = if let Some(tapp_id) = requested_tapp_id {
+        tapp_id.to_string()
+    } else {
+        let matches: Vec<_> = scheduler
+            .list_tasks(ctx.user_id, None)
+            .await?
+            .into_iter()
+            .filter(|task| task.task_id == task_id)
+            .collect();
+        match matches.as_slice() {
+            [task] => task.tapp_id.clone(),
+            [] => return Err(format!("Task {task_id} not found")),
+            _ => {
+                return Err(format!(
+                    "Task ID {task_id} exists in multiple Tapps; provide tappId"
+                ))
             }
         }
-    }
+    };
 
-    Err(format!(
-        "无法触发调度任务{}。调度器未运行或任务 ID 无效。请使用 brew.schedule 的 refresh 操作代替。",
-        tapp_id.map(|t| format!(" ({})", t)).unwrap_or_default()
-    ))
+    scheduler
+        .trigger_task(ctx.user_id, &tapp_id, task_id)
+        .await?;
+
+    Ok(json!({
+        "success": true,
+        "triggered": true,
+        "taskId": task_id,
+        "tappId": tapp_id,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
 }
 
 // ============================================================================

@@ -2687,19 +2687,49 @@ pub async fn get_capabilities_summary() -> serde_json::Value {
     capability::get_capability_summary().await
 }
 
+/// Query the current database role. Agent recipes can execute long after a
+/// token was issued, so a hard-coded "first user is admin" rule is unsafe.
+pub(crate) async fn user_is_current_admin(db: &sea_orm::DatabaseConnection, user_id: i32) -> bool {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+    if user_id == 0 {
+        return true;
+    }
+
+    match db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT is_admin FROM users WHERE id = $1 LIMIT 1",
+            [user_id.into()],
+        ))
+        .await
+    {
+        Ok(Some(row)) => row.try_get::<bool>("", "is_admin").unwrap_or(false),
+        Ok(None) => false,
+        Err(error) => {
+            tracing::warn!(
+                user_id,
+                %error,
+                "[Agent] Failed to refresh current user role; using least privilege"
+            );
+            false
+        }
+    }
+}
+
 /// 获取用户在 Agent 系统中的权限集
 ///
 /// 权限检查逻辑：
-/// - user_id == 0（系统用户/heartbeat）或 user_id == 1（首个注册用户/管理员）：全部权限
+/// - 系统用户/当前数据库管理员：全部权限
 /// - 其他已认证用户：基础读取 + 有限写入权限
 pub async fn get_user_permissions(
-    _db: &sea_orm::DatabaseConnection,
+    db: &sea_orm::DatabaseConnection,
     user_id: i32,
 ) -> std::collections::HashSet<String> {
     use std::collections::HashSet;
 
     // 系统用户或管理员：全部权限
-    if user_id == 0 || user_id == 1 {
+    if user_is_current_admin(db, user_id).await {
         let registry = capability::get_registry().await;
         return registry
             .get_all()
@@ -2733,6 +2763,20 @@ pub async fn get_user_permissions(
         "system:read",
     ] {
         perms.insert(p.to_string());
+    }
+
+    // Keep Agent scheduler capabilities aligned with the live Tapp permission
+    // switch instead of making them permanently administrator-only.
+    {
+        use crate::services::permission_service::{
+            TappPermission, TappPermissionService, UserRole,
+        };
+        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        if TappPermissionService::check(&config, UserRole::User, TappPermission::SchedulerRegister)
+        {
+            perms.insert("scheduler:read".to_string());
+            perms.insert("scheduler:write".to_string());
+        }
     }
 
     // 非管理员不授予 platform:write（修改外部平台绑定）等高危权限

@@ -37,6 +37,7 @@ import {
 } from './sandbox'
 // 处理器
 import {
+  registerBackgroundHandlers,
   registerContextHandlers,
   registerFileHandlers,
   registerLifecycleHandlers,
@@ -551,8 +552,13 @@ export const TappWidgetSandbox = memo(
       registerContextHandlers(bridge, currentTappInstance)
       // 🎵 注册 Media 处理器（供音乐播放器 Tapp 使用）
       registerMediaHandlers(bridge, currentTappInstance)
+      // 共享 core 在 Widget 模式同样会执行，必须能声明后台保活需求。
+      registerBackgroundHandlers(bridge, currentTappInstance)
       // ⏰ 注册 Scheduler 处理器（定时任务，与 SDK Tapp.scheduler 对应）
-      registerSchedulerHandlers(bridge, currentTappInstance)
+      const closeScheduler = registerSchedulerHandlers(
+        bridge,
+        currentTappInstance,
+      )
 
       // 监听 tapp.ready 事件（Widget HTML 发送的早期 ready 事件）
       const unsubscribeReady = bridge.on('tapp.ready', () => {
@@ -575,6 +581,7 @@ export const TappWidgetSandbox = memo(
 
       return () => {
         unsubscribeReady()
+        closeScheduler()
         iframeRef.current = null
         if (container.contains(iframe)) {
           container.removeChild(iframe)

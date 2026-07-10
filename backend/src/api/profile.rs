@@ -580,6 +580,25 @@ pub async fn fetch_single_platform_data(
     }
 }
 
+/// 计划器使用的单平台刷新入口。
+/// 复用与手动刷新相同的抓取、缓存合并和空数据校验，避免 scheduler 维护一套假实现。
+pub(crate) async fn refresh_platform_for_scheduler(
+    db: &DatabaseConnection,
+    platform: &str,
+) -> Result<Value, String> {
+    let data = fetch_fresh_platform_data(db, Some(platform))
+        .await
+        .map_err(|error| error.to_string())?;
+    if let Some(platform_data) = data.get(platform) {
+        save_platform_data_cache(&json!({ (platform): platform_data }))
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(warning) = platform_data_warning(platform, data.get(platform)) {
+        return Err(warning);
+    }
+    Ok(data.get(platform).cloned().unwrap_or(Value::Null))
+}
+
 /// 获取新鲜的平台数据（实际执行API调用）
 async fn fetch_fresh_platform_data(
     db: &DatabaseConnection,

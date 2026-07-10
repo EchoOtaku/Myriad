@@ -681,7 +681,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerMediaHandlers(bridge, currentTappInstance)
     registerSpeechHandlers(bridge, currentTappInstance)
     registerBackgroundHandlers(bridge, currentTappInstance)
-    registerSchedulerHandlers(bridge, currentTappInstance)
+    const closeScheduler = registerSchedulerHandlers(
+      bridge,
+      currentTappInstance,
+    )
     registerAnimationHandlers(bridge, animationConfigRef)
     registerDynamicContentHandlers(bridge, currentTappInstance)
     registerAdvancedHandlers(bridge, currentTappInstance)
@@ -715,7 +718,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         )
 
     // 清理函数列表
-    const cleanups: (() => void)[] = [closeFederationSockets]
+    const cleanups: (() => void)[] = [closeFederationSockets, closeScheduler]
 
     if (isWebKit) {
       // 🎯 Safari/WebKit Portal 模式

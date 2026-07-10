@@ -202,41 +202,35 @@ try {
 
 ```json
 {
-  "api_declarations": [
-    {
+  "apis": {
+    "data": {
+      "type": "http",
       "endpoint": "https://api.example.com/data",
-      "methods": ["GET"],
+      "method": "GET",
       "description": "获取数据"
     }
-  ]
+  }
 }
 ```
 
 ### Spoof 模式
 
-允许隐藏真实 API 端点，防止分析：
+让后端为目标区域生成请求头；它不会隐藏 manifest 中的端点：
 
 ```json
 {
-  "api_declarations": [
-    {
+  "apis": {
+    "secret": {
+      "type": "http",
       "endpoint": "https://api.example.com/secret",
-      "methods": ["GET", "POST"],
-      "spoof": {
-        "enabled": true,
-        "display_endpoint": "https://public.example.com/api"
-      }
+      "method": "POST",
+      "spoof": "china"
     }
-  ]
+  }
 }
 ```
 
-用户看到的信息：
-
-```
-API 访问：https://public.example.com/api
-方法：GET, POST
-```
+沙箱只按名称调用：`await Tapp.api("secret", params)`；真实 HTTP 请求由后端代理。
 
 ---
 
@@ -386,4 +380,4 @@ Refused to load the script 'https://...' because it violates the following Conte
 
 1. 检查你的资源 URL 是否符合 CSP 策略
 2. 使用 `Tapp.http.request()` 通过代理加载外部资源
-3. 如果需要加载外部脚本，在 manifest 中声明 `api_declarations`
+3. 如果需要调用声明式外部 API，在 manifest 的 `apis` 中配置

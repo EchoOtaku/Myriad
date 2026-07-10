@@ -38,23 +38,58 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "scheduler.create".to_string(),
         name: "创建定时任务".to_string(),
-        description: "创建定时执行的监控任务".to_string(),
+        description: "为已安装的 Tapp 创建真实可执行的定时任务".to_string(),
         category: CapabilityCategory::SystemOp,
         supported_actions: vec![IntentAction::Monitor, IntentAction::Create],
         input_schema: json!({
             "type": "object",
             "properties": {
+                "tappId": { "type": "string", "description": "任务所属的已安装 Tapp ID" },
+                "taskId": { "type": "string", "description": "Tapp 内唯一任务 ID；省略时自动生成" },
                 "name": { "type": "string" },
-                "cronExpression": { "type": "string" },
-                "action": { "type": "object" },
-                "conditions": { "type": "array" }
+                "scheduleType": {
+                    "type": "string",
+                    "enum": ["cron", "interval", "once", "daily"]
+                },
+                "schedule": {
+                    "type": "object",
+                    "properties": {
+                        "cron": { "type": "string" },
+                        "interval": { "type": "integer", "description": "间隔毫秒" },
+                        "at": { "type": "integer", "description": "Unix 毫秒时间戳" },
+                        "time": { "type": "string", "description": "每日 HH:mm" }
+                    }
+                },
+                "payload": {},
+                "executionTarget": {
+                    "type": "string",
+                    "enum": ["frontend", "backend", "both"],
+                    "default": "frontend"
+                },
+                "backendActions": {
+                    "type": "array",
+                    "items": { "type": "object" }
+                },
+                "missedPolicy": {
+                    "type": "string",
+                    "enum": ["skip", "run-once", "run-all"],
+                    "default": "skip"
+                },
+                "retry": {
+                    "type": "object",
+                    "properties": {
+                        "maxRetries": { "type": "integer", "minimum": 0 },
+                        "retryDelay": { "type": "integer", "minimum": 0 }
+                    }
+                }
             },
-            "required": ["name", "cronExpression", "action"]
+            "required": ["tappId", "name", "scheduleType", "schedule"]
         }),
         output_schema: json!({
             "type": "object",
             "properties": {
                 "taskId": { "type": "string" },
+                "tappId": { "type": "string" },
                 "nextRun": { "type": "string" }
             }
         }),
@@ -68,7 +103,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "scheduler.list".to_string(),
         name: "定时任务列表".to_string(),
-        description: "获取所有定时任务列表".to_string(),
+        description: "获取当前用户的 Tapp 定时任务列表".to_string(),
         category: CapabilityCategory::DataRead,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({
@@ -95,12 +130,13 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "scheduler.trigger".to_string(),
         name: "立即执行任务".to_string(),
-        description: "立即触发执行指定的定时任务".to_string(),
+        description: "立即触发当前用户的指定 Tapp 定时任务".to_string(),
         category: CapabilityCategory::SystemOp,
         supported_actions: vec![IntentAction::Update],
         input_schema: json!({
             "type": "object",
             "properties": {
+                "tappId": { "type": "string", "description": "任务 ID 不唯一时必须提供" },
                 "taskId": { "type": "string" }
             },
             "required": ["taskId"]
@@ -109,7 +145,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "type": "object",
             "properties": {
                 "success": { "type": "boolean" },
-                "executionId": { "type": "string" }
+                "triggered": { "type": "boolean" },
+                "taskId": { "type": "string" },
+                "tappId": { "type": "string" }
             }
         }),
         required_permissions: vec!["scheduler:write".to_string()],

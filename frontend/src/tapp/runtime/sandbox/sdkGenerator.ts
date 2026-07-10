@@ -551,10 +551,35 @@ export function generateFullSDK(
     scheduler: {
       register: (options) => sendRequest('scheduler', 'register', [options]),
       cancel: (taskId) => sendRequest('scheduler', 'cancel', [taskId]),
+      unregister: (taskId) => sendRequest('scheduler', 'cancel', [taskId]),
       list: () => sendRequest('scheduler', 'list', []),
-      onTask: (taskId, cb) => addEventListener('schedulerTask', (d) => {
-        if (!taskId || (d && d.taskId === taskId)) cb(d && d.payload, d);
-      }),
+      get: (taskId) => sendRequest('scheduler', 'get', [taskId]),
+      enable: (taskId) => sendRequest('scheduler', 'enable', [taskId]),
+      disable: (taskId) => sendRequest('scheduler', 'disable', [taskId]),
+      trigger: (taskId) => sendRequest('scheduler', 'trigger', [taskId]),
+      onTask: (taskId, cb) => {
+        if (!taskId || typeof cb !== 'function') throw new Error('taskId and callback required');
+        sendRequest('scheduler', 'subscribe', [taskId]).catch(() => {});
+        const removeListener = addEventListener('schedulerTask', (d) => {
+          if (!d || d.taskId !== taskId) return;
+          const event = d.event || d;
+          Promise.resolve()
+            .then(() => cb(d.payload, event))
+            .then(
+              () => sendRequest('scheduler', 'complete', [event.executionId, true]),
+              (error) => sendRequest('scheduler', 'complete', [
+                event.executionId,
+                false,
+                error && error.message ? error.message : String(error),
+              ]),
+            )
+            .catch(() => {});
+        });
+        return () => {
+          removeListener();
+          sendRequest('scheduler', 'unsubscribe', [taskId]).catch(() => {});
+        };
+      },
     },
 
     dynamicContent: {
@@ -984,8 +1009,37 @@ export function generateWidgetSDK(
     scheduler: {
       register: function(options) { return sendRequest('scheduler', 'register', [options]); },
       cancel: function(taskId) { return sendRequest('scheduler', 'cancel', [taskId]); },
+      unregister: function(taskId) { return sendRequest('scheduler', 'cancel', [taskId]); },
       list: function() { return sendRequest('scheduler', 'list', []); },
-      onTask: function(taskId, cb) { return addEventListener('schedulerTask', function(d) { if (!taskId || (d && d.taskId === taskId)) cb(d && d.payload, d); }); }
+      get: function(taskId) { return sendRequest('scheduler', 'get', [taskId]); },
+      enable: function(taskId) { return sendRequest('scheduler', 'enable', [taskId]); },
+      disable: function(taskId) { return sendRequest('scheduler', 'disable', [taskId]); },
+      trigger: function(taskId) { return sendRequest('scheduler', 'trigger', [taskId]); },
+      onTask: function(taskId, cb) {
+        if (!taskId || typeof cb !== 'function') throw new Error('taskId and callback required');
+        var subscribeRequest = sendRequest('scheduler', 'subscribe', [taskId]);
+        if (subscribeRequest && subscribeRequest.catch) subscribeRequest.catch(function() {});
+        var removeListener = addEventListener('schedulerTask', function(d) {
+          if (!d || d.taskId !== taskId) return;
+          var event = d.event || d;
+          Promise.resolve().then(function() {
+            return cb(d.payload, event);
+          }).then(function() {
+            return sendRequest('scheduler', 'complete', [event.executionId, true]);
+          }, function(error) {
+            return sendRequest('scheduler', 'complete', [
+              event.executionId,
+              false,
+              error && error.message ? error.message : String(error)
+            ]);
+          }).catch(function() {});
+        });
+        return function() {
+          removeListener();
+          var unsubscribeRequest = sendRequest('scheduler', 'unsubscribe', [taskId]);
+          if (unsubscribeRequest && unsubscribeRequest.catch) unsubscribeRequest.catch(function() {});
+        };
+      }
     },
 
     animation: {

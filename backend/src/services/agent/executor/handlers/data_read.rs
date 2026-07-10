@@ -4,13 +4,12 @@
 
 use super::HandlerContext;
 use crate::models::entities::{
-    brew_items, brew_sources, brew_user_states, tapp_scheduled_tasks, tapp_storage, tapp_widgets,
-    tapps,
+    brew_items, brew_sources, brew_user_states, tapp_scheduled_tasks, tapps,
 };
 use crate::services::agent::executor::utils::validate_platform_name;
 use crate::services::netease_utils::{get_random_china_ip, get_random_user_agent};
 use once_cell::sync::Lazy;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -55,8 +54,8 @@ pub async fn execute(
         "search.global" => execute_search_global(params).await,
         "task.status" => execute_task_status(params).await,
         "metadata.history" => execute_metadata_history(params).await,
-        "tapp.list" => execute_tapp_list(params).await,
-        "scheduler.list" => execute_scheduler_list(params).await,
+        "tapp.list" => execute_tapp_list(params, ctx).await,
+        "scheduler.list" => execute_scheduler_list(params, ctx).await,
         "rsshub.instances" => execute_rsshub_instances(params).await,
         "context.reference" => execute_context_reference(params).await,
         // 补充的能力
@@ -2603,180 +2602,7 @@ async fn execute_tapp_page_content(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let level = params
-        .get("level")
-        .and_then(|v| v.as_str())
-        .unwrap_or("apps");
-    let tapp_id = params.get("tappId").and_then(|v| v.as_str());
-    let user_id = params
-        .get("userId")
-        .and_then(|v| v.as_i64())
-        .map(|v| v as i32);
-    let filter = params
-        .get("filter")
-        .and_then(|v| v.as_str())
-        .unwrap_or("all");
-    let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
-
-    match level {
-        "apps" => {
-            let mut query = tapps::Entity::find();
-
-            if let Some(uid) = user_id {
-                query = query.filter(tapps::Column::UserId.eq(uid));
-            }
-
-            match filter {
-                "running" => {
-                    query = query.filter(tapps::Column::Status.eq(tapps::TappStatus::Running));
-                }
-                "installed" => {
-                    query = query.filter(tapps::Column::Status.eq(tapps::TappStatus::Installed));
-                }
-                "error" => {
-                    query = query.filter(tapps::Column::Status.eq(tapps::TappStatus::Error));
-                }
-                _ => {}
-            }
-
-            let apps = query
-                .order_by_desc(tapps::Column::UpdatedAt)
-                .all(ctx.db)
-                .await
-                .map_err(|e| format!("Failed to fetch tapps: {}", e))?;
-
-            let running_count = apps
-                .iter()
-                .filter(|a| a.status == tapps::TappStatus::Running)
-                .count();
-
-            let app_list: Vec<Value> = apps
-                .iter()
-                .take(limit)
-                .map(|app| {
-                    json!({
-                        "id": app.id,
-                        "tappId": app.tapp_id.clone(),
-                        "name": app.name.clone(),
-                        "version": app.version.clone(),
-                        "description": app.description.clone(),
-                        "icon": app.icon.clone(),
-                        "themeColor": app.theme_color.clone(),
-                        "status": format!("{:?}", app.status),
-                        "lastRunAt": app.last_run_at.map(|t| t.to_string()),
-                        "errorMessage": app.error_message.clone()
-                    })
-                })
-                .collect();
-
-            Ok(json!({
-                "level": "apps",
-                "hierarchy": {
-                    "level": "list",
-                    "current": { "view": "all_apps" }
-                },
-                "content": {
-                    "title": "Tapp 应用",
-                    "apps": app_list,
-                    "metadata": { "totalApps": apps.len() }
-                },
-                "stats": {
-                    "totalApps": apps.len(),
-                    "runningApps": running_count,
-                    "currentFilter": filter
-                },
-                "navigation": {
-                    "currentFilter": filter,
-                    "availableFilters": ["all", "running", "installed", "error"],
-                    "canGoBack": false,
-                    "parentPath": "/"
-                },
-                "actions": {
-                    "available": ["installTapp", "uninstallTapp", "runTapp", "stopTapp"]
-                }
-            }))
-        }
-        "detail" => {
-            let tapp_id_str = tapp_id.ok_or("Missing tappId for detail level")?;
-
-            let app = tapps::Entity::find()
-                .filter(tapps::Column::TappId.eq(tapp_id_str))
-                .one(ctx.db)
-                .await
-                .map_err(|e| format!("Failed to fetch tapp: {}", e))?
-                .ok_or("Tapp not found")?;
-
-            let widget_count = tapp_widgets::Entity::find()
-                .filter(tapp_widgets::Column::TappId.eq(tapp_id_str))
-                .count(ctx.db)
-                .await
-                .unwrap_or(0);
-
-            let storage_count = tapp_storage::Entity::find()
-                .filter(tapp_storage::Column::TappId.eq(tapp_id_str))
-                .count(ctx.db)
-                .await
-                .unwrap_or(0);
-
-            let task_count = tapp_scheduled_tasks::Entity::find()
-                .filter(tapp_scheduled_tasks::Column::TappId.eq(tapp_id_str))
-                .count(ctx.db)
-                .await
-                .unwrap_or(0);
-
-            Ok(json!({
-                "level": "detail",
-                "hierarchy": {
-                    "level": "detail",
-                    "current": {
-                        "type": "tapp",
-                        "id": app.id,
-                        "tappId": app.tapp_id.clone()
-                    }
-                },
-                "content": {
-                    "title": app.name.clone(),
-                    "detail": {
-                        "id": app.id,
-                        "tappId": app.tapp_id.clone(),
-                        "name": app.name.clone(),
-                        "version": app.version.clone(),
-                        "description": app.description.clone(),
-                        "author": app.author.clone(),
-                        "icon": app.icon.clone(),
-                        "themeColor": app.theme_color.clone(),
-                        "status": format!("{:?}", app.status),
-                        "grantedPermissions": app.granted_permissions.clone(),
-                        "manifest": app.manifest.clone(),
-                        "installedAt": app.installed_at.to_string(),
-                        "lastRunAt": app.last_run_at.map(|t| t.to_string()),
-                        "errorMessage": app.error_message.clone()
-                    }
-                },
-                "stats": {
-                    "widgetCount": widget_count,
-                    "storageCount": storage_count,
-                    "taskCount": task_count
-                },
-                "navigation": {
-                    "canGoBack": true,
-                    "parentPath": "/tapps",
-                    "childPaths": {
-                        "widgets": format!("/tapps/{}/widgets", tapp_id_str),
-                        "storage": format!("/tapps/{}/storage", tapp_id_str),
-                        "tasks": format!("/tapps/{}/tasks", tapp_id_str)
-                    }
-                },
-                "actions": {
-                    "available": [
-                        "runTapp", "stopTapp", "restartTapp",
-                        "updatePermissions", "viewLogs", "uninstallTapp"
-                    ]
-                }
-            }))
-        }
-        _ => Err(format!("Unknown tapp page level: {}", level)),
-    }
+    super::ui_control::execute_tapp_page_content(params, ctx).await
 }
 
 // ============================================================================
@@ -3272,33 +3098,23 @@ async fn execute_tapp_widget(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let tapp_id = params.get("tappId").and_then(|v| v.as_str());
+    let tapp_id = params
+        .get("tappId")
+        .and_then(Value::as_str)
+        .ok_or("Missing tappId parameter")?;
+    let mut page_params = params.clone();
+    page_params.insert("level".to_string(), json!("widgets"));
+    let page = super::ui_control::execute_tapp_page_content(&page_params, ctx).await?;
+    let widgets = page
+        .get("content")
+        .and_then(|content| content.get("widgets"))
+        .cloned()
+        .unwrap_or_else(|| json!([]));
 
-    if let Some(tid) = tapp_id {
-        // 查询数据库获取 widget 数据
-        let widgets = tapp_widgets::Entity::find()
-            .filter(tapp_widgets::Column::TappId.eq(tid))
-            .all(ctx.db)
-            .await
-            .map_err(|e| format!("Database error: {}", e))?;
-
-        return Ok(json!({
-            "tappId": tid,
-            "widgets": widgets.iter().map(|w| json!({
-                "id": w.id,
-                "tappId": w.tapp_id,
-                "widgetId": w.widget_id,
-                "config": w.config
-            })).collect::<Vec<_>>(),
-            "total": widgets.len()
-        }));
-    }
-
-    // 模拟返回 widget 数据
     Ok(json!({
         "tappId": tapp_id,
-        "widgets": [],
-        "message": "Widget query requires database integration"
+        "total": widgets.as_array().map(Vec::len).unwrap_or(0),
+        "widgets": widgets
     }))
 }
 
@@ -3662,51 +3478,134 @@ async fn execute_metadata_history(params: &HashMap<String, Value>) -> Result<Val
 }
 
 /// Tapp 列表
-async fn execute_tapp_list(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let _ = params; // 未使用参数
-    let tapp_dir = std::path::Path::new("data/tapps");
-
-    let mut tapps = Vec::new();
-
-    if tapp_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(tapp_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    // 读取 manifest.json
-                    let manifest_path = path.join("manifest.json");
-                    if manifest_path.exists() {
-                        if let Ok(content) = std::fs::read_to_string(&manifest_path) {
-                            if let Ok(manifest) = serde_json::from_str::<Value>(&content) {
-                                tapps.push(json!({
-                                    "id": path.file_name().and_then(|n| n.to_str()).unwrap_or(""),
-                                    "name": manifest.get("name"),
-                                    "version": manifest.get("version"),
-                                    "description": manifest.get("description")
-                                }));
-                            }
-                        }
-                    }
-                }
-            }
-        }
+async fn execute_tapp_list(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
+    let admin_id = crate::api::tapp_runtime::common::get_admin_user_id(ctx.db)
+        .await
+        .map_err(|(_, body)| {
+            body.0
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("Failed to resolve administrator")
+                .to_string()
+        })?;
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
+    let mut query = tapps::Entity::find();
+    if !is_admin {
+        query = query.filter(
+            tapps::Column::UserId
+                .eq(ctx.user_id)
+                .or(tapps::Column::UserId.eq(admin_id)),
+        );
     }
 
+    let enabled_filter = params.get("enabled").and_then(Value::as_bool);
+    let category_filter = params.get("category").and_then(Value::as_str);
+    let records = query
+        .order_by_desc(tapps::Column::UpdatedAt)
+        .all(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to fetch Tapps: {e}"))?;
+    let items: Vec<Value> = records
+        .into_iter()
+        .filter(|tapp| {
+            enabled_filter.is_none_or(|enabled| {
+                let active = matches!(
+                    tapp.status,
+                    tapps::TappStatus::Installed | tapps::TappStatus::Running
+                );
+                active == enabled
+            })
+        })
+        .filter(|tapp| {
+            category_filter.is_none_or(|category| {
+                tapp.manifest
+                    .get("category")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| value == category)
+            })
+        })
+        .map(|tapp| {
+            json!({
+                "id": tapp.tapp_id,
+                "name": tapp.name,
+                "version": tapp.version,
+                "description": tapp.description,
+                "icon": tapp.icon,
+                "status": format!("{:?}", tapp.status).to_lowercase(),
+                "hasCore": tapp.manifest.get("hasCore").and_then(Value::as_bool).unwrap_or(false),
+                "hasPage": tapp.manifest.get("hasPage").and_then(Value::as_bool).unwrap_or(false),
+                "hasWidget": tapp.manifest.get("hasWidget").and_then(Value::as_bool).unwrap_or(false),
+                "backgroundRequirements": tapp.manifest
+                    .get("backgroundRequirements")
+                    .cloned()
+                    .unwrap_or_else(|| json!([])),
+            })
+        })
+        .collect();
+
     Ok(json!({
-        "tapps": tapps,
-        "total": tapps.len()
+        "tapps": items,
+        "total": items.len()
     }))
 }
 
 /// 定时任务列表
-async fn execute_scheduler_list(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let _ = params; // 未使用参数
-                    // 定时任务列表 - 简化实现
-                    // 实际应该从数据库读取 tapp_scheduled_tasks 表
+async fn execute_scheduler_list(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
+    let tapp_id = params.get("tappId").and_then(Value::as_str);
+    let enabled_filter = params.get("enabled").and_then(Value::as_bool);
+    let scheduler = crate::api::tapp_scheduler::scheduler_engine()?;
+    let scheduler = scheduler.read().await;
+    let tasks = scheduler.list_tasks(ctx.user_id, tapp_id).await?;
+    let tasks: Vec<Value> = tasks
+        .into_iter()
+        .filter(|task| enabled_filter.is_none_or(|enabled| task.enabled == enabled))
+        .map(|task| {
+            let schedule_type = match task.schedule_type {
+                tapp_scheduled_tasks::ScheduleType::Cron => "cron",
+                tapp_scheduled_tasks::ScheduleType::Interval => "interval",
+                tapp_scheduled_tasks::ScheduleType::Once => "once",
+                tapp_scheduled_tasks::ScheduleType::Daily => "daily",
+            };
+            let execution_target = match task.execution_target {
+                tapp_scheduled_tasks::ExecutionTarget::Backend => "backend",
+                tapp_scheduled_tasks::ExecutionTarget::Frontend => "frontend",
+                tapp_scheduled_tasks::ExecutionTarget::Both => "both",
+            };
+            let scope = match task.scope {
+                tapp_scheduled_tasks::TaskScope::User => "user",
+                tapp_scheduled_tasks::TaskScope::Tapp => "tapp",
+                tapp_scheduled_tasks::TaskScope::TappPerUser => "tapp-per-user",
+                tapp_scheduled_tasks::TaskScope::Global => "global",
+            };
+            json!({
+                "id": task.id,
+                "taskId": task.task_id,
+                "tappId": task.tapp_id,
+                "name": task.name,
+                "scheduleType": schedule_type,
+                "schedule": task.schedule_config,
+                "payload": task.payload,
+                "executionTarget": execution_target,
+                "backendActions": task.backend_actions,
+                "enabled": task.enabled,
+                "scope": scope,
+                "nextRunAt": task.next_run_at.map(|value| value.to_rfc3339()),
+                "lastRunAt": task.last_run_at.map(|value| value.to_rfc3339()),
+                "lastRunResult": task.last_run_result,
+                "stats": task.stats,
+            })
+        })
+        .collect();
+
     Ok(json!({
-        "tasks": [],
-        "total": 0,
-        "message": "Scheduler tasks require database integration"
+        "tasks": tasks,
+        "total": tasks.len()
     }))
 }
 

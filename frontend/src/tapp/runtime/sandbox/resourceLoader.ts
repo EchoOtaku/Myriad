@@ -30,7 +30,15 @@ import { generateOnDemandTailwindCSS } from './styles'
 // ============ 类型定义 ============
 
 /** 渲染模式 */
-export type RenderMode = 'widget' | 'page'
+export type RenderMode = 'core' | 'widget' | 'page'
+
+/** Headless core 资源（后台任务专用） */
+export interface CoreResources {
+  /** 仅包含共享核心逻辑，不包含 Page / Widget 代码 */
+  core: string
+  /** core 可能使用的翻译数据 */
+  i18n?: Record<string, unknown>
+}
 
 /** Widget 资源（特化类型） */
 export interface WidgetResources {
@@ -223,6 +231,9 @@ export class TappResourceLoader {
   /** Page 资源缓存 (key: tappId) */
   private pageCache = new Map<string, ResourceCacheEntry<PageResources>>()
 
+  /** Headless core 资源缓存 (key: tappId) */
+  private coreCache = new Map<string, ResourceCacheEntry<CoreResources>>()
+
   /** 原始资源缓存（从 API 获取，多个尺寸共享） */
   private rawResourceCache = new Map<
     string,
@@ -245,6 +256,41 @@ export class TappResourceLoader {
       TappResourceLoader.instance = new TappResourceLoader()
     }
     return TappResourceLoader.instance
+  }
+
+  // ============ Headless core 资源加载 ============
+
+  /**
+   * 加载后台 core 运行所需的最小资源。
+   *
+   * 不生成 Page CSS、不保留 Page HTML / 模块，避免后台 runner 因复用
+   * loadPageResources 而做无用的样式分析和页面缓存。
+   */
+  async loadCoreResources(tappInstance: TappInstance): Promise<CoreResources> {
+    const cacheKey = tappInstance.id
+    const cached = getCachedEntry(this.coreCache, cacheKey)
+    if (cached) return cached.data
+
+    return this.deduplicator.dedupe(`core:${cacheKey}`, async () => {
+      const raw = await this.fetchRawResources(tappInstance.id)
+      const resources: CoreResources = {
+        core: this.extractCoreCode(raw.code),
+        i18n: raw.i18n,
+      }
+
+      setCachedEntry(
+        this.coreCache,
+        cacheKey,
+        {
+          data: resources,
+          timestamp: Date.now(),
+          ttl: CACHE_TTL.page,
+        },
+        CACHE_LIMIT.page,
+      )
+
+      return resources
+    })
   }
 
   // ============ Widget 资源加载 ============
@@ -668,11 +714,13 @@ export class TappResourceLoader {
           this.widgetCssCache.delete(key)
         }
       }
+      this.coreCache.delete(tappId)
       this.pageCache.delete(tappId)
       this.pageCssCache.delete(tappId)
       this.rawResourceCache.delete(tappId)
     } else {
       // 清除所有缓存
+      this.coreCache.clear()
       this.widgetCache.clear()
       this.pageCache.clear()
       this.rawResourceCache.clear()
@@ -685,6 +733,7 @@ export class TappResourceLoader {
    * 获取缓存统计
    */
   getCacheStats(): {
+    core: number
     widget: number
     page: number
     raw: number
@@ -692,6 +741,7 @@ export class TappResourceLoader {
     pageCss: number
   } {
     return {
+      core: this.coreCache.size,
       widget: this.widgetCache.size,
       page: this.pageCache.size,
       raw: this.rawResourceCache.size,
@@ -756,6 +806,13 @@ export async function loadWidgetResources(
   size: string,
 ): Promise<WidgetResources> {
   return getResourceLoader().loadWidgetResources(tappInstance, size)
+}
+
+/** 加载 Headless core 资源（便捷函数） */
+export async function loadCoreResources(
+  tappInstance: TappInstance,
+): Promise<CoreResources> {
+  return getResourceLoader().loadCoreResources(tappInstance)
 }
 
 /**

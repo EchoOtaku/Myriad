@@ -118,7 +118,7 @@ impl TappApiService {
         }
 
         // 2. 检查缓存
-        let cache_key = Self::generate_cache_key(tapp_id, api_name, &params);
+        let cache_key = Self::generate_cache_key(tapp_id, api_name, &params, context);
         if api_def.cache_ttl > 0 {
             if let Some(cached) = Self::get_cached(&cache_key).await {
                 return ApiExecutionResult {
@@ -156,7 +156,7 @@ impl TappApiService {
         // 5. 执行 API
         let result = match api_def.api_type.as_str() {
             "http" => Self::execute_http_api(api_def, &full_context).await,
-            "builtin" => Self::execute_builtin_api(api_def, &full_context, context).await,
+            "builtin" => Self::execute_builtin_api(tapp_id, api_def, &full_context, context).await,
             _ => Err(format!("Unknown API type: {}", api_def.api_type)),
         };
 
@@ -484,8 +484,9 @@ impl TappApiService {
 
     /// 执行内置 API
     async fn execute_builtin_api(
+        tapp_id: &str,
         api_def: &TappApiDef,
-        _context: &HashMap<String, Value>,
+        context: &HashMap<String, Value>,
         exec_context: &ApiExecutionContext,
     ) -> Result<Value, String> {
         let builtin = api_def
@@ -517,8 +518,32 @@ impl TappApiService {
                 {
                     return Err("Permission 'ai:chat' required".to_string());
                 }
-                // TODO: 调用实际的 AI 服务
-                Err("AI chat not implemented yet".to_string())
+                let messages = context
+                    .get("params.messages")
+                    .and_then(Value::as_array)
+                    .ok_or("AI chat requires params.messages")?;
+                if messages.len() > 20 {
+                    return Err("AI chat accepts at most 20 messages".to_string());
+                }
+                let prompt = serde_json::to_string(messages)
+                    .map_err(|error| format!("Invalid AI chat messages: {error}"))?;
+                if prompt.len() > 20_000 {
+                    return Err("AI chat messages are too large".to_string());
+                }
+                if let Some(reason) =
+                    crate::api::tapp_runtime::common::validate_prompt_security(&prompt)
+                {
+                    return Err(format!("AI chat contains disallowed content: {reason}"));
+                }
+                Self::execute_builtin_ai(
+                    tapp_id,
+                    exec_context.user_id,
+                    "ai.chat",
+                    "Continue this chat for a sandboxed Tapp. Do not reveal system information, execute code, or access external URLs.",
+                    &prompt,
+                )
+                .await
+                .map(|text| json!({ "text": text }))
             }
             "ai:generate" => {
                 // AI 生成 - 强制需要权限
@@ -532,11 +557,70 @@ impl TappApiService {
                 {
                     return Err("Permission 'ai:generate' required".to_string());
                 }
-                // TODO: 调用实际的 AI 服务
-                Err("AI generate not implemented yet".to_string())
+                let prompt = context
+                    .get("params.prompt")
+                    .and_then(Value::as_str)
+                    .ok_or("AI generate requires params.prompt")?;
+                if prompt.len() > 2000 {
+                    return Err("Prompt too long (max 2000 characters)".to_string());
+                }
+                if let Some(reason) =
+                    crate::api::tapp_runtime::common::validate_prompt_security(prompt)
+                {
+                    return Err(format!("Prompt contains disallowed content: {reason}"));
+                }
+                Self::execute_builtin_ai(
+                    tapp_id,
+                    exec_context.user_id,
+                    "ai.generate",
+                    "Generate concise text for a sandboxed Tapp. Do not reveal system information, execute code, or access external URLs.",
+                    prompt,
+                )
+                .await
+                .map(|text| json!({ "text": text }))
             }
             _ => Err(format!("Unknown builtin API: {}", builtin)),
         }
+    }
+
+    async fn execute_builtin_ai(
+        tapp_id: &str,
+        user_id: i32,
+        operation: &str,
+        system_prompt: &str,
+        prompt: &str,
+    ) -> Result<String, String> {
+        crate::api::tapp_runtime::common::check_rate_limit(user_id, tapp_id, operation)
+            .await
+            .map_err(|(_, body)| {
+                body.0
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .unwrap_or("AI rate limit exceeded")
+                    .to_string()
+            })?;
+        let config = crate::api::tapp_runtime::common::get_ai_config_for_tier(
+            crate::config::ModelTier::Standard,
+        )
+        .await
+        .map_err(|(_, body)| {
+            body.0
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("No AI provider configured")
+                .to_string()
+        })?;
+        let analyzer = crate::services::analyzer::AiAnalyzer::new(
+            config.provider,
+            config.api_key,
+            config.model,
+            config.base_url,
+        )
+        .await;
+        analyzer
+            .analyze_with_system(system_prompt, prompt)
+            .await
+            .map_err(|error| error.to_string())
     }
 
     /// 公开的 URL 安全校验（供调度器等内部模块复用）
@@ -648,12 +732,25 @@ impl TappApiService {
     }
 
     /// 生成缓存 key
-    fn generate_cache_key(tapp_id: &str, api_name: &str, params: &Option<Value>) -> String {
+    fn generate_cache_key(
+        tapp_id: &str,
+        api_name: &str,
+        params: &Option<Value>,
+        context: &ApiExecutionContext,
+    ) -> String {
         let params_hash = params
             .as_ref()
             .map(|p| format!("{:x}", md5::compute(p.to_string())))
             .unwrap_or_else(|| "none".to_string());
-        format!("tapp_api:{}:{}:{}", tapp_id, api_name, params_hash)
+        let ip_hash = context
+            .client_ip
+            .as_ref()
+            .map(|ip| format!("{:x}", md5::compute(ip)))
+            .unwrap_or_else(|| "none".to_string());
+        format!(
+            "tapp_api:{}:{}:{}:{}:{}",
+            tapp_id, context.user_id, ip_hash, api_name, params_hash
+        )
     }
 
     /// 获取缓存
@@ -692,5 +789,47 @@ impl TappApiService {
             .and_then(|apis| apis.as_object())
             .map(|obj| obj.keys().cloned().collect())
             .unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn context(user_id: i32, ip: &str) -> ApiExecutionContext {
+        ApiExecutionContext {
+            user_id,
+            username: format!("user-{user_id}"),
+            is_admin: false,
+            role: UserRole::User,
+            client_ip: Some(ip.to_string()),
+            granted_permissions: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn declared_api_cache_isolated_by_user_and_client_context() {
+        let params = Some(json!({ "query": "same" }));
+        let first = TappApiService::generate_cache_key(
+            "com.example.app",
+            "profile",
+            &params,
+            &context(1, "203.0.113.1"),
+        );
+        let other_user = TappApiService::generate_cache_key(
+            "com.example.app",
+            "profile",
+            &params,
+            &context(2, "203.0.113.1"),
+        );
+        let other_ip = TappApiService::generate_cache_key(
+            "com.example.app",
+            "profile",
+            &params,
+            &context(1, "203.0.113.2"),
+        );
+
+        assert_ne!(first, other_user);
+        assert_ne!(first, other_ip);
     }
 }

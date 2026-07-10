@@ -26,6 +26,7 @@ import type {
 } from '../types'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
 import * as TappApiService from '../services/TappApiService'
+import { getResourceLoader } from './sandbox/resourceLoader'
 import { TappPermissionController } from './TappPermission'
 
 /** 运行时事件类型 */
@@ -42,13 +43,6 @@ type RuntimeEvent =
   | 'background:changed' // 后台需求变化
 
 type RuntimeEventCallback = (data: unknown) => void
-
-/** 缓存项接口 */
-interface CacheEntry<T> {
-  data: T
-  timestamp: number
-  ttl: number
-}
 
 /** 请求去重管理器 */
 class RequestDeduplicator {
@@ -90,12 +84,15 @@ export class TappRuntime {
     CustomPlatformConfig & { tappId: string }
   > = new Map()
 
-  /** 代码缓存（分离结构） */
-  private codeCache: Map<string, CacheEntry<TappCodeStructure>> = new Map()
-
   /** 后台运行需求（tappId -> 需求集合） */
   private backgroundRequirements: Map<string, Set<BackgroundRequirement>> =
     new Map()
+
+  /** Manifest 声明的后台需求；与运行时 require/release 分开计源。 */
+  private manifestBackgroundRequirements: Map<
+    string,
+    Set<BackgroundRequirement>
+  > = new Map()
 
   /** 事件监听器 */
   private eventListeners: Map<RuntimeEvent, Set<RuntimeEventCallback>> =
@@ -115,27 +112,7 @@ export class TappRuntime {
 
   /** 缓存 TTL（毫秒） */
   private static readonly CACHE_TTL = {
-    code: 5 * 60 * 1000, // 代码缓存 5 分钟
     tappList: 30 * 1000, // Tapp 列表 30 秒
-    widgets: 60 * 1000, // Widget 列表 60 秒
-  }
-
-  /** 代码缓存最大条数（超出后 LRU 淘汰最旧项；未命中会自动回源，淘汰是行为中性的） */
-  private static readonly MAX_CODE_CACHE = 30
-
-  /** 写入代码缓存并维持 LRU 上限 */
-  private setCodeCache(
-    key: string,
-    entry: CacheEntry<TappCodeStructure>,
-  ): void {
-    // 重新插入到末尾，使其成为「最近使用」
-    this.codeCache.delete(key)
-    this.codeCache.set(key, entry)
-    while (this.codeCache.size > TappRuntime.MAX_CODE_CACHE) {
-      const oldest = this.codeCache.keys().next().value
-      if (oldest === undefined) break
-      this.codeCache.delete(oldest)
-    }
   }
 
   /** 上次同步时间 */
@@ -309,6 +286,15 @@ export class TappRuntime {
           )
         }
 
+        // 停止、卸载或新 manifest 已移除声明的 Tapp 不应残留后台来源。
+        for (const tappId of Array.from(
+          this.manifestBackgroundRequirements.keys(),
+        )) {
+          if (!this.runningTapps.has(tappId)) {
+            this.setManifestBackgroundRequirements(tappId, [])
+          }
+        }
+
         this.synced = true
         this.lastSyncTime = Date.now()
         this.emit('sync:complete', {
@@ -399,13 +385,11 @@ export class TappRuntime {
       isAdminTapp: detail.is_admin_tapp ?? result.is_admin_tapp ?? false,
     }
 
-    // 添加到内存缓存（保留完整的分离结构，带 TTL）
+    // 添加到内存缓存
     this.installedTapps.set(manifest.id, instance)
-    this.setCodeCache(manifest.id, {
-      data: code,
-      timestamp: Date.now(),
-      ttl: TappRuntime.CACHE_TTL.code,
-    })
+
+    // 安装内容可能覆盖同 ID 的资源，确保真实资源加载器不会返回旧页面/widget/core。
+    getResourceLoader().clearCache(manifest.id)
 
     // 从 manifest 预注册 widgets（无需运行 Tapp 代码）
     await this.registerWidgetsFromManifest(instance)
@@ -517,8 +501,8 @@ export class TappRuntime {
       }
     }
 
-    // 清除代码缓存
-    this.codeCache.delete(tappId)
+    // 清除该 Tapp 的全部模式资源缓存
+    getResourceLoader().clearCache(tappId)
 
     // 从列表中移除
     this.installedTapps.delete(tappId)
@@ -560,14 +544,41 @@ export class TappRuntime {
    * 声明真实需求（非仅 widget）的 Tapp 由此在运行期被 getBackgroundTapps 收入，
    * 从而由 TappBackgroundRunner 拉起 headless core。
    */
-  private registerManifestBackgroundRequirements(
-    instance: TappInstance,
+  private registerManifestBackgroundRequirements(instance: TappInstance): void {
+    this.setManifestBackgroundRequirements(
+      instance.id,
+      instance.manifest.backgroundRequirements || [],
+    )
+  }
+
+  private setManifestBackgroundRequirements(
+    tappId: string,
+    requirements: BackgroundRequirement[],
   ): void {
-    const reqs = instance.manifest.backgroundRequirements
-    if (!reqs || reqs.length === 0) return
-    for (const req of reqs) {
-      this.registerBackgroundRequirement(instance.id, req)
+    const hadRealRequirement = this.hasRealBackgroundRequirement(tappId)
+    if (requirements.length > 0) {
+      this.manifestBackgroundRequirements.set(tappId, new Set(requirements))
+    } else {
+      this.manifestBackgroundRequirements.delete(tappId)
     }
+    const hasRealRequirement = this.hasRealBackgroundRequirement(tappId)
+
+    if (hadRealRequirement !== hasRealRequirement) {
+      this.emit('background:changed', {
+        tappId,
+        requirements: this.getBackgroundRequirements(tappId),
+        hasRequirements: hasRealRequirement,
+      })
+    }
+  }
+
+  private getEffectiveBackgroundRequirements(
+    tappId: string,
+  ): Set<BackgroundRequirement> {
+    return new Set([
+      ...(this.manifestBackgroundRequirements.get(tappId) || []),
+      ...(this.backgroundRequirements.get(tappId) || []),
+    ])
   }
 
   /**
@@ -612,139 +623,10 @@ export class TappRuntime {
   }
 
   /**
-   * 获取 Tapp 代码（从内存缓存，带 TTL 验证）
-   */
-  getTappCode(tappId: string): TappCodeStructure | null {
-    const cached = this.codeCache.get(tappId)
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data
-    }
-    // 缓存过期，删除
-    if (cached) {
-      this.codeCache.delete(tappId)
-    }
-    return null
-  }
-
-  /**
-   * 获取 Tapp 代码（从 API，带请求去重）
-   * 支持混合渲染模式：自动获取 HTML 模板和 CSS
-   */
-  async fetchTappCode(
-    tappId: string,
-    widgetSize?: string,
-  ): Promise<TappCodeStructure> {
-    // 缓存 key 包含 widgetSize，因为不同尺寸可能有不同的 HTML 模板
-    const cacheKey = widgetSize ? `${tappId}:${widgetSize}` : tappId
-
-    // 优先从缓存获取（带 TTL 验证）
-    const cached = this.codeCache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data
-    }
-
-    // 使用请求去重
-    return this.deduplicator.dedupe(`code:${cacheKey}`, async () => {
-      try {
-        // 尝试使用新的资源 API（获取完整结构）
-        const resources = await TappApiService.getTappResources(tappId)
-
-        const codeStructure: TappCodeStructure = {
-          core: resources.code,
-          styles: resources.styles,
-          pageHtml: resources.pageTemplate,
-          widgetCSS: resources.widgetCSS,
-          pageCSS: resources.pageCSS,
-          i18n: resources.i18n,
-          pageModules: resources.pageModules,
-          pageModuleOrder: resources.pageModuleOrder,
-        }
-
-        // 🔍 调试：构建的代码结构
-        console.log('[TappRuntime.fetchTappCode] 构建代码结构:', {
-          tappId,
-          widgetSize,
-          hasCore: !!codeStructure.core,
-          hasStyles: !!codeStructure.styles,
-          stylesLength: codeStructure.styles?.length || 0,
-          hasWidgetCSS: !!codeStructure.widgetCSS,
-          widgetCSSLength: codeStructure.widgetCSS?.length || 0,
-          hasPageCSS: !!codeStructure.pageCSS,
-          pageCSSLength: codeStructure.pageCSS?.length || 0,
-        })
-
-        // 根据 widgetSize 选择对应的 HTML 模板
-        if (resources.widgetTemplates && widgetSize) {
-          codeStructure.widgetHtml = resources.widgetTemplates[widgetSize]
-        } else if (resources.widgetTemplates) {
-          // 如果没有指定尺寸，取第一个模板
-          const firstKey = Object.keys(resources.widgetTemplates)[0]
-          if (firstKey) {
-            codeStructure.widgetHtml = resources.widgetTemplates[firstKey]
-          }
-        }
-
-        // 存入缓存（带 TTL）
-        this.setCodeCache(cacheKey, {
-          data: codeStructure,
-          timestamp: Date.now(),
-          ttl: TappRuntime.CACHE_TTL.code,
-        })
-
-        return codeStructure
-      } catch {
-        // 回退到旧 API（只获取代码）
-        const codeString = await TappApiService.getTappCode(tappId)
-        const codeStructure: TappCodeStructure = {
-          core: codeString,
-        }
-
-        this.setCodeCache(cacheKey, {
-          data: codeStructure,
-          timestamp: Date.now(),
-          ttl: TappRuntime.CACHE_TTL.code,
-        })
-
-        return codeStructure
-      }
-    })
-  }
-
-  /**
-   * 设置 Tapp 代码（用于预装 Tapp）
-   */
-  setTappCode(tappId: string, code: TappCodeStructure): void {
-    this.setCodeCache(tappId, {
-      data: code,
-      timestamp: Date.now(),
-      ttl: TappRuntime.CACHE_TTL.code,
-    })
-  }
-
-  /**
-   * 清除代码缓存
-   * 如果提供 tappId，会删除该 Tapp 所有尺寸的缓存
+   * 清除真实资源加载器中的 core/page/widget 缓存。
    */
   clearCodeCache(tappId?: string): void {
-    if (tappId) {
-      // 删除所有以该 tappId 开头的缓存（包括带尺寸后缀的）
-      for (const key of this.codeCache.keys()) {
-        if (key === tappId || key.startsWith(`${tappId}:`)) {
-          this.codeCache.delete(key)
-        }
-      }
-    } else {
-      this.codeCache.clear()
-    }
-  }
-
-  /**
-   * 预加载指定 Tapp 的代码（后台加载，不阻塞）
-   */
-  prefetchTappCode(tappId: string): void {
-    this.fetchTappCode(tappId).catch(() => {
-      // 静默失败，预加载不影响主流程
-    })
+    getResourceLoader().clearCache(tappId)
   }
 
   /**
@@ -941,14 +823,17 @@ export class TappRuntime {
       this.backgroundRequirements.set(tappId, requirements)
     }
 
-    const hadRequirements = requirements.size > 0
+    const hadRealRequirement = this.hasRealBackgroundRequirement(tappId)
     requirements.add(requirement)
+    const hasRealRequirement = this.hasRealBackgroundRequirement(tappId)
 
-    // 如果从无需求变为有需求，触发事件
-    if (!hadRequirements && requirements.size > 0) {
+    // Runner 关心的是「真实后台需求」边界，而不是 Set 是否为空。
+    // 常见场景是已有 widget，再动态 require('sync')；旧逻辑不会发事件，
+    // 导致 headless core 永远不启动。
+    if (!hadRealRequirement && hasRealRequirement) {
       this.emit('background:changed', {
         tappId,
-        requirements: Array.from(requirements),
+        requirements: this.getBackgroundRequirements(tappId),
         hasRequirements: true,
       })
     }
@@ -964,14 +849,19 @@ export class TappRuntime {
     const requirements = this.backgroundRequirements.get(tappId)
     if (!requirements) return
 
+    const hadRealRequirement = this.hasRealBackgroundRequirement(tappId)
     requirements.delete(requirement)
+    const hasRealRequirement = this.hasRealBackgroundRequirement(tappId)
 
-    // 如果没有需求了，触发事件
     if (requirements.size === 0) {
       this.backgroundRequirements.delete(tappId)
+    }
+
+    // 即使仍保留 widget，只要最后一个真实需求被释放，也必须卸载 headless core。
+    if (hadRealRequirement && !hasRealRequirement) {
       this.emit('background:changed', {
         tappId,
-        requirements: [],
+        requirements: this.getBackgroundRequirements(tappId),
         hasRequirements: false,
       })
     }
@@ -981,8 +871,9 @@ export class TappRuntime {
    * 清除 Tapp 的所有后台需求
    */
   clearBackgroundRequirements(tappId: string): void {
-    const had = this.backgroundRequirements.has(tappId)
+    const had = this.hasBackgroundRequirements(tappId)
     this.backgroundRequirements.delete(tappId)
+    this.manifestBackgroundRequirements.delete(tappId)
 
     if (had) {
       this.emit('background:changed', {
@@ -997,16 +888,14 @@ export class TappRuntime {
    * 获取 Tapp 的后台运行需求
    */
   getBackgroundRequirements(tappId: string): BackgroundRequirement[] {
-    const requirements = this.backgroundRequirements.get(tappId)
-    return requirements ? Array.from(requirements) : []
+    return Array.from(this.getEffectiveBackgroundRequirements(tappId))
   }
 
   /**
    * 检查 Tapp 是否有后台运行需求
    */
   hasBackgroundRequirements(tappId: string): boolean {
-    const requirements = this.backgroundRequirements.get(tappId)
-    return requirements ? requirements.size > 0 : false
+    return this.getEffectiveBackgroundRequirements(tappId).size > 0
   }
 
   /**
@@ -1018,8 +907,7 @@ export class TappRuntime {
    * 否则每个 widget Tapp 都会白白多跑一个隐藏沙箱。
    */
   hasRealBackgroundRequirement(tappId: string): boolean {
-    const requirements = this.backgroundRequirements.get(tappId)
-    if (!requirements) return false
+    const requirements = this.getEffectiveBackgroundRequirements(tappId)
     for (const req of requirements) {
       if (req !== 'widget') return true
     }
@@ -1033,8 +921,7 @@ export class TappRuntime {
     tappId: string,
     requirement: BackgroundRequirement,
   ): boolean {
-    const requirements = this.backgroundRequirements.get(tappId)
-    return requirements ? requirements.has(requirement) : false
+    return this.getEffectiveBackgroundRequirements(tappId).has(requirement)
   }
 
   /**
@@ -1048,7 +935,12 @@ export class TappRuntime {
       tappId: string
       requirements: BackgroundRequirement[]
     }> = []
-    for (const [tappId, requirements] of this.backgroundRequirements) {
+    const tappIds = new Set([
+      ...this.backgroundRequirements.keys(),
+      ...this.manifestBackgroundRequirements.keys(),
+    ])
+    for (const tappId of tappIds) {
+      const requirements = this.getEffectiveBackgroundRequirements(tappId)
       if (requirements.size > 0) {
         result.push({ tappId, requirements: Array.from(requirements) })
       }

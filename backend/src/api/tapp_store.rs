@@ -143,6 +143,10 @@ pub struct TappManifest {
     pub widgets: Option<Vec<TappWidgetDef>>,
     #[serde(default)]
     pub has_page: bool,
+    /// 声明式后台需求，用于在没有可见 Page / Widget 时拉起 headless core。
+    /// 必须显式保留，否则 manifest 经后端反序列化再写盘时会静默丢字段。
+    #[serde(default)]
+    pub background_requirements: Option<Vec<String>>,
     pub settings: Option<Vec<TappSettingDef>>,
     /// 应用分类（如 social, tool, game 等）
     pub category: Option<String>,
@@ -3377,4 +3381,29 @@ async fn update_separated_css(
     }
 
     Ok(Json(ApiResponse::success(())))
+}
+
+#[cfg(test)]
+mod manifest_tests {
+    use super::TappManifest;
+    use serde_json::json;
+
+    #[test]
+    fn preserves_background_requirements_during_manifest_round_trip() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.background",
+            "name": "Background app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["scheduler:register"],
+            "backgroundRequirements": ["scheduler", "sync"]
+        }))
+        .expect("manifest should deserialize");
+
+        let value = serde_json::to_value(manifest).expect("manifest should serialize");
+        assert_eq!(
+            value["backgroundRequirements"],
+            json!(["scheduler", "sync"])
+        );
+    }
 }

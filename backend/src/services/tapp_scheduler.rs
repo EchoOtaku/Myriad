@@ -9,8 +9,8 @@
 use chrono::{DateTime, Duration, NaiveTime, TimeZone, Utc};
 use cron::Schedule;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Statement,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -26,11 +26,79 @@ use crate::models::entities::tapp_scheduled_tasks::{
     ScheduleConfig, ScheduleType, TaskScope, TaskStats,
 };
 use crate::models::entities::tapp_task_executions::{self, ExecutionStatus};
+use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::services::tapp_api_service::TappApiService;
+use crate::GLOBAL_DYNAMIC_CONFIG;
+
+/// Normalize the public SDK action shape (`type`) to the persisted Rust enum
+/// tag (`action`) and validate every action before a task is stored.
+pub fn normalize_backend_actions(
+    actions: Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>, String> {
+    let Some(serde_json::Value::Array(actions)) = actions else {
+        return match actions {
+            None => Ok(None),
+            Some(_) => Err("backendActions must be an array".to_string()),
+        };
+    };
+
+    let mut normalized = Vec::with_capacity(actions.len());
+    for mut value in actions {
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| "Each backend action must be an object".to_string())?;
+        if !object.contains_key("action") {
+            let action_type = object
+                .remove("type")
+                .ok_or_else(|| "Backend action requires type".to_string())?;
+            object.insert("action".to_string(), action_type);
+        }
+
+        serde_json::from_value::<BackendActionWrapper>(value.clone())
+            .map_err(|e| format!("Invalid backend action: {e}"))?;
+        normalized.push(value);
+    }
+
+    Ok(Some(serde_json::Value::Array(normalized)))
+}
+
+/// Resolve the dynamic Tapp permissions needed by a validated backend action
+/// pipeline. Registration and delayed execution both use this list.
+pub fn backend_action_permissions(
+    actions: &Option<serde_json::Value>,
+) -> Result<Vec<TappPermission>, String> {
+    let Some(serde_json::Value::Array(actions)) = actions else {
+        return Ok(Vec::new());
+    };
+
+    let mut permissions = Vec::new();
+    for value in actions {
+        let wrapper: BackendActionWrapper = serde_json::from_value(value.clone())
+            .map_err(|e| format!("Invalid backend action: {e}"))?;
+        let permission = match wrapper.action {
+            BackendAction::PlatformSync { .. } => Some(TappPermission::PlatformWrite),
+            BackendAction::StorageSet { .. }
+            | BackendAction::StorageDelete { .. }
+            | BackendAction::StorageGet { .. } => Some(TappPermission::Storage),
+            BackendAction::AiGenerate { .. } => Some(TappPermission::AiGenerate),
+            BackendAction::Fetch { .. } => Some(TappPermission::NetworkFetch),
+            BackendAction::NotificationQueue { .. } => Some(TappPermission::UiNotification),
+            BackendAction::Transform { .. } => None,
+        };
+        if let Some(permission) = permission {
+            permissions.push(permission);
+        }
+    }
+    permissions.sort_by_key(|permission| permission.as_str());
+    permissions.dedup();
+    Ok(permissions)
+}
 
 /// 任务执行上下文（发送给前端）
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskExecutionContext {
+    pub id: i32,
     pub task_id: String,
     pub tapp_id: String,
     /// 注册任务的用户 ID
@@ -45,10 +113,14 @@ pub struct TaskExecutionContext {
 
 /// 前端任务推送消息
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FrontendTaskMessage {
     #[serde(rename = "type")]
     pub msg_type: String,
     pub task: TaskExecutionContext,
+    pub payload: Option<serde_json::Value>,
+    pub scheduled_at: String,
+    pub execution_id: i32,
     /// 目标用户列表（空表示广播给所有该 Tapp 的用户）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_users: Option<Vec<i32>>,
@@ -130,6 +202,10 @@ impl TappSchedulerEngine {
     ) -> Result<(), String> {
         let now = Utc::now();
         tracing::debug!("[TappScheduler] Tick at {}", now);
+
+        // 浏览器离线或 core 被销毁时可能收不到 task:complete；定期收敛悬挂执行，
+        // 避免历史记录永久停在 running。
+        Self::expire_stale_frontend_executions(db, now).await?;
 
         // 查找所有到期的启用任务
         let due_tasks = tapp_scheduled_tasks::Entity::find()
@@ -318,7 +394,7 @@ impl TappSchedulerEngine {
         let mut last_error = String::new();
 
         for attempt in 0..=max_retries {
-            match Self::execute_task(db, frontend_tx, task, is_compensation).await {
+            match Self::execute_task(db, frontend_tx, task, is_compensation, attempt).await {
                 Ok(()) => return Ok(()),
                 Err(e) => {
                     last_error = e.clone();
@@ -352,6 +428,7 @@ impl TappSchedulerEngine {
         frontend_tx: &broadcast::Sender<FrontendTaskMessage>,
         task: &tapp_scheduled_tasks::Model,
         is_compensation: bool,
+        retry_count: i32,
     ) -> Result<(), String> {
         let now = Utc::now();
         let scheduled_at = task.next_run_at.unwrap_or(now.into());
@@ -374,6 +451,7 @@ impl TappSchedulerEngine {
             execution_target: Set(task.execution_target.to_string()),
             status: Set(ExecutionStatus::Running),
             is_compensation: Set(is_compensation),
+            retry_count: Set(retry_count),
             ..Default::default()
         };
 
@@ -383,20 +461,29 @@ impl TappSchedulerEngine {
             .map_err(|e| format!("Failed to create execution record: {}", e))?;
 
         let mut result: Option<serde_json::Value> = None;
-        let mut error: Option<String> = None;
-        let mut status = ExecutionStatus::Success;
+        let mut error = Self::validate_task_execution_permissions(db, task)
+            .await
+            .err();
+        let mut status = if error.is_some() {
+            ExecutionStatus::Failed
+        } else {
+            ExecutionStatus::Success
+        };
+        let mut awaiting_frontend = false;
         let start_time = std::time::Instant::now();
 
         // 根据执行目标处理
         match task.execution_target {
             ExecutionTarget::Backend | ExecutionTarget::Both => {
                 // 执行后端操作
-                if let Some(actions) = &task.backend_actions {
-                    match Self::execute_backend_actions(db, task, actions).await {
-                        Ok(r) => result = Some(r),
-                        Err(e) => {
-                            error = Some(e);
-                            status = ExecutionStatus::Failed;
+                if status == ExecutionStatus::Success {
+                    if let Some(actions) = &task.backend_actions {
+                        match Self::execute_backend_actions(db, task, actions).await {
+                            Ok(r) => result = Some(r),
+                            Err(e) => {
+                                error = Some(e);
+                                status = ExecutionStatus::Failed;
+                            }
                         }
                     }
                 }
@@ -406,11 +493,13 @@ impl TappSchedulerEngine {
             }
         }
 
-        // 推送前端任务（根据作用域决定推送目标）
-        if matches!(
-            task.execution_target,
-            ExecutionTarget::Frontend | ExecutionTarget::Both
-        ) {
+        // 后端阶段成功后再推送前端任务；前端回调的最终状态由 task:complete 上报。
+        if status == ExecutionStatus::Success
+            && matches!(
+                task.execution_target,
+                ExecutionTarget::Frontend | ExecutionTarget::Both
+            )
+        {
             // 根据 scope 决定推送目标
             let (scope_str, target_users) = match task.scope {
                 TaskScope::User => {
@@ -425,7 +514,7 @@ impl TappSchedulerEngine {
                 TaskScope::TappPerUser => {
                     // Tapp 用户级别：类似 Tapp 级别，但每个用户独立数据
                     // 只推送给注册任务的用户
-                    ("tapp_per_user".to_string(), Some(vec![task.user_id]))
+                    ("tapp-per-user".to_string(), Some(vec![task.user_id]))
                 }
                 TaskScope::Global => {
                     // 全局级别：通常不需要前端推送，或只推送给管理员
@@ -435,6 +524,7 @@ impl TappSchedulerEngine {
             };
 
             let context = TaskExecutionContext {
+                id: task.id,
                 task_id: task.task_id.clone(),
                 tapp_id: task.tapp_id.clone(),
                 user_id: task.user_id,
@@ -448,16 +538,36 @@ impl TappSchedulerEngine {
             let message = FrontendTaskMessage {
                 msg_type: "task:execute".to_string(),
                 task: context,
+                payload: task.payload.clone(),
+                scheduled_at: scheduled_at.to_rfc3339(),
+                execution_id: execution.id,
                 target_users,
             };
 
-            if let Err(e) = frontend_tx.send(message) {
-                tracing::warn!("[TappScheduler] No frontend subscribers: {}", e);
-                // 不算失败，前端可能暂时没连接
+            match frontend_tx.send(message) {
+                Ok(_) => awaiting_frontend = true,
+                Err(e) => {
+                    tracing::warn!("[TappScheduler] No frontend subscribers: {}", e);
+                    error = Some("No frontend scheduler subscribers".to_string());
+                    status = ExecutionStatus::Failed;
+                }
             }
         }
 
         let duration_ms = start_time.elapsed().as_millis() as i32;
+
+        if awaiting_frontend {
+            // 保持 execution=running；只推进调度时间，最终成功/失败由 WS 完成消息落库。
+            let mut execution_update: tapp_task_executions::ActiveModel = execution.into();
+            execution_update.result = Set(result.clone());
+            execution_update
+                .update(db)
+                .await
+                .map_err(|e| format!("Failed to keep frontend execution pending: {}", e))?;
+
+            Self::update_task_after_dispatch(db, task, result).await?;
+            return Ok(());
+        }
 
         // 更新执行记录
         let mut execution_update: tapp_task_executions::ActiveModel = execution.into();
@@ -472,8 +582,228 @@ impl TappSchedulerEngine {
             .map_err(|e| format!("Failed to update execution record: {}", e))?;
 
         // 更新任务状态和统计
-        Self::update_task_after_execution(db, task, &status, result, error).await?;
+        Self::update_task_after_execution(db, task, &status, result, error.clone()).await?;
 
+        if status == ExecutionStatus::Failed {
+            return Err(error.unwrap_or_else(|| "Scheduled task failed".to_string()));
+        }
+
+        Ok(())
+    }
+
+    /// 接收已认证前端对 task:execute 的完成回执。
+    pub async fn complete_frontend_execution(
+        &self,
+        user_id: i32,
+        execution_id: i32,
+        success: bool,
+        error: Option<String>,
+    ) -> Result<(), String> {
+        let execution = tapp_task_executions::Entity::find_by_id(execution_id)
+            .one(&self.db)
+            .await
+            .map_err(|e| format!("Failed to query frontend execution: {}", e))?
+            .ok_or_else(|| format!("Execution {} not found", execution_id))?;
+
+        if execution.status != ExecutionStatus::Running {
+            return Ok(());
+        }
+
+        let task = tapp_scheduled_tasks::Entity::find_by_id(execution.scheduled_task_id)
+            .one(&self.db)
+            .await
+            .map_err(|e| format!("Failed to query scheduled task: {}", e))?
+            .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
+        if !Self::can_complete_frontend_execution(&self.db, user_id, &execution, &task).await? {
+            return Err("Execution does not belong to the current scheduler audience".to_string());
+        }
+
+        let status = if success {
+            ExecutionStatus::Success
+        } else {
+            ExecutionStatus::Failed
+        };
+        Self::finalize_frontend_execution(&self.db, execution, status, error).await
+    }
+
+    async fn can_complete_frontend_execution(
+        db: &DatabaseConnection,
+        user_id: i32,
+        execution: &tapp_task_executions::Model,
+        task: &tapp_scheduled_tasks::Model,
+    ) -> Result<bool, String> {
+        match task.scope {
+            TaskScope::User | TaskScope::TappPerUser => Ok(execution.user_id == user_id),
+            TaskScope::Global => {
+                let row = db
+                    .query_one(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        "SELECT is_admin FROM users WHERE id = $1 LIMIT 1",
+                        [user_id.into()],
+                    ))
+                    .await
+                    .map_err(|e| format!("Failed to verify global scheduler audience: {e}"))?;
+                Ok(row
+                    .and_then(|row| row.try_get::<bool>("", "is_admin").ok())
+                    .unwrap_or(false))
+            }
+            TaskScope::Tapp => {
+                let row = db
+                    .query_one(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM tapps
+                            WHERE tapp_id = $1
+                              AND (
+                                  user_id = $2
+                                  OR user_id = (
+                                      SELECT id FROM users
+                                      WHERE is_admin = true
+                                      ORDER BY id
+                                      LIMIT 1
+                                  )
+                                  OR EXISTS (
+                                      SELECT 1 FROM users
+                                      WHERE id = $2 AND is_admin = true
+                                  )
+                              )
+                        ) AS allowed
+                        "#,
+                        [task.tapp_id.clone().into(), user_id.into()],
+                    ))
+                    .await
+                    .map_err(|e| format!("Failed to verify Tapp scheduler audience: {e}"))?;
+                Ok(row
+                    .and_then(|row| row.try_get::<bool>("", "allowed").ok())
+                    .unwrap_or(false))
+            }
+        }
+    }
+
+    async fn expire_stale_frontend_executions(
+        db: &DatabaseConnection,
+        now: DateTime<Utc>,
+    ) -> Result<(), String> {
+        let cutoff = (now - Duration::minutes(5)).fixed_offset();
+        let stale = tapp_task_executions::Entity::find()
+            .filter(tapp_task_executions::Column::Status.eq(ExecutionStatus::Running))
+            .filter(tapp_task_executions::Column::CompletedAt.is_null())
+            .filter(tapp_task_executions::Column::ExecutedAt.lte(cutoff))
+            .all(db)
+            .await
+            .map_err(|e| format!("Failed to query stale frontend executions: {}", e))?;
+
+        for execution in stale {
+            if let Err(error) = Self::finalize_frontend_execution(
+                db,
+                execution,
+                ExecutionStatus::Timeout,
+                Some("Frontend task completion timed out".to_string()),
+            )
+            .await
+            {
+                tracing::error!("[TappScheduler] Failed to expire execution: {}", error);
+            }
+        }
+        Ok(())
+    }
+
+    async fn finalize_frontend_execution(
+        db: &DatabaseConnection,
+        execution: tapp_task_executions::Model,
+        status: ExecutionStatus,
+        error: Option<String>,
+    ) -> Result<(), String> {
+        if execution.status != ExecutionStatus::Running {
+            return Ok(());
+        }
+
+        let task = tapp_scheduled_tasks::Entity::find_by_id(execution.scheduled_task_id)
+            .one(db)
+            .await
+            .map_err(|e| format!("Failed to query scheduled task: {}", e))?
+            .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
+
+        let now = Utc::now();
+        let executed_at = execution.executed_at.with_timezone(&Utc);
+        let duration_ms = (now - executed_at)
+            .num_milliseconds()
+            .clamp(0, i32::MAX as i64) as i32;
+        let result = execution.result.clone();
+
+        // Multiple Tapp-scope clients may acknowledge the same broadcast. Claim
+        // the running row atomically so task stats are finalized exactly once.
+        let update = tapp_task_executions::Entity::update_many()
+            .col_expr(
+                tapp_task_executions::Column::CompletedAt,
+                Expr::value(Some(now.fixed_offset())),
+            )
+            .col_expr(
+                tapp_task_executions::Column::Status,
+                Expr::value(status.clone()),
+            )
+            .col_expr(
+                tapp_task_executions::Column::Error,
+                Expr::value(error.clone()),
+            )
+            .col_expr(
+                tapp_task_executions::Column::DurationMs,
+                Expr::value(Some(duration_ms)),
+            )
+            .filter(tapp_task_executions::Column::Id.eq(execution.id))
+            .filter(tapp_task_executions::Column::Status.eq(ExecutionStatus::Running))
+            .exec(db)
+            .await
+            .map_err(|e| format!("Failed to finalize frontend execution: {}", e))?;
+        if update.rows_affected == 0 {
+            return Ok(());
+        }
+
+        Self::update_task_after_frontend_completion(db, &task, &status, result, error).await
+    }
+
+    /// 每次真正执行前重新读取当前角色和动态权限。
+    /// 定时任务可能在注册数小时后才触发，不能永久沿用注册时的管理员/下放状态。
+    async fn validate_task_execution_permissions(
+        db: &DatabaseConnection,
+        task: &tapp_scheduled_tasks::Model,
+    ) -> Result<(), String> {
+        let row = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT is_admin FROM users WHERE id = $1 LIMIT 1",
+                [task.user_id.into()],
+            ))
+            .await
+            .map_err(|e| format!("Failed to verify scheduler user role: {}", e))?
+            .ok_or_else(|| "Scheduler user no longer exists".to_string())?;
+        let is_admin = row
+            .try_get::<bool>("", "is_admin")
+            .map_err(|e| format!("Failed to read scheduler user role: {}", e))?;
+        let role = if is_admin {
+            UserRole::Admin
+        } else {
+            UserRole::User
+        };
+
+        if matches!(task.scope, TaskScope::Global) && !is_admin {
+            return Err("Global scheduler task requires current administrator access".to_string());
+        }
+
+        let mut required = vec![TappPermission::SchedulerRegister];
+        required.extend(backend_action_permissions(&task.backend_actions)?);
+
+        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+        for permission in required {
+            if !TappPermissionService::check(&config, role, permission) {
+                return Err(format!(
+                    "Permission revoked before scheduled execution: {}",
+                    permission.as_str()
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -535,8 +865,9 @@ impl TappSchedulerEngine {
                     results.push(json!({ "success": true, "result": r }));
                 }
                 Err(e) => {
-                    results.push(json!({ "success": false, "error": e }));
-                    // 失败时不继续执行后续操作（可配置）
+                    // 后端动作是串行流水线；失败后继续会让后续模板读取到错误上下文，
+                    // 且旧逻辑最终仍返回 Ok，导致任务被错误记为成功。
+                    return Err(format!("Backend action failed: {}", e));
                 }
             }
         }
@@ -554,7 +885,7 @@ impl TappSchedulerEngine {
         match action {
             BackendAction::PlatformSync { platform } => {
                 let platform = Self::resolve_template(platform, context);
-                Self::action_platform_sync(&platform).await
+                Self::action_platform_sync(db, &platform).await
             }
             BackendAction::StorageSet { key, value } => {
                 let key = Self::resolve_template(key, context);
@@ -571,7 +902,7 @@ impl TappSchedulerEngine {
             }
             BackendAction::AiGenerate { prompt } => {
                 let prompt = Self::resolve_template(prompt, context);
-                Self::action_ai_generate(&prompt).await
+                Self::action_ai_generate(task.user_id, &task.tapp_id, &prompt).await
             }
             BackendAction::Fetch {
                 url,
@@ -766,10 +1097,13 @@ impl TappSchedulerEngine {
     }
 
     /// 执行平台同步
-    async fn action_platform_sync(platform: &str) -> Result<serde_json::Value, String> {
+    async fn action_platform_sync(
+        db: &DatabaseConnection,
+        platform: &str,
+    ) -> Result<serde_json::Value, String> {
         tracing::info!("[TappScheduler] Platform sync: {}", platform);
-        // TODO: 调用实际的平台同步服务
-        Ok(json!({ "platform": platform, "synced": true }))
+        let data = crate::api::profile::refresh_platform_for_scheduler(db, platform).await?;
+        Ok(json!({ "platform": platform, "synced": true, "data": data }))
     }
 
     /// 执行存储设置
@@ -862,15 +1196,56 @@ impl TappSchedulerEngine {
     }
 
     /// 执行 AI 生成
-    async fn action_ai_generate(prompt: &str) -> Result<serde_json::Value, String> {
+    async fn action_ai_generate(
+        user_id: i32,
+        tapp_id: &str,
+        prompt: &str,
+    ) -> Result<serde_json::Value, String> {
+        if prompt.len() > 2000 {
+            return Err("Prompt too long (max 2000 characters)".to_string());
+        }
+        if let Some(reason) = crate::api::tapp_runtime::common::validate_prompt_security(prompt) {
+            return Err(format!("Prompt contains disallowed content: {reason}"));
+        }
+        crate::api::tapp_runtime::common::check_rate_limit(user_id, tapp_id, "ai.generate")
+            .await
+            .map_err(|(_, body)| {
+                body.0
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("AI rate limit exceeded")
+                    .to_string()
+            })?;
         tracing::info!(
             "[TappScheduler] AI generate: {}...",
             &prompt[..prompt.len().min(50)]
         );
-        // TODO: 调用实际的 AI 服务
-        Ok(
-            json!({ "prompt_length": prompt.len(), "generated": false, "reason": "not_implemented" }),
+        let config = crate::api::tapp_runtime::common::get_ai_config_for_tier(
+            crate::config::ModelTier::Standard,
         )
+        .await
+        .map_err(|(_, body)| {
+            body.0
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("No AI provider configured")
+                .to_string()
+        })?;
+        let analyzer = crate::services::analyzer::AiAnalyzer::new(
+            config.provider,
+            config.api_key,
+            config.model,
+            config.base_url,
+        )
+        .await;
+        let text = analyzer
+            .analyze_with_system(
+                "You are executing a background task for a sandboxed Tapp. Do not reveal system information, execute code, or access external URLs. Return concise text only.",
+                prompt,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(json!({ "text": text, "generated": true }))
     }
 
     /// 执行 HTTP 请求
@@ -988,6 +1363,69 @@ impl TappSchedulerEngine {
         }
 
         Ok(json!({ "queued": true, "total": notifications.len() }))
+    }
+
+    /// 前端任务已发出：推进 next_run，但在回执前不计入成功/失败。
+    async fn update_task_after_dispatch(
+        db: &DatabaseConnection,
+        task: &tapp_scheduled_tasks::Model,
+        backend_result: Option<serde_json::Value>,
+    ) -> Result<(), String> {
+        let now = Utc::now();
+        let mut stats: TaskStats = serde_json::from_value(task.stats.clone()).unwrap_or_default();
+        stats.total_runs += 1;
+        let next_run_at =
+            Self::calculate_next_run(&task.schedule_type, &task.schedule_config, now)?;
+
+        let mut active: tapp_scheduled_tasks::ActiveModel = task.clone().into();
+        active.last_run_at = Set(Some(now.into()));
+        active.last_run_result = Set(Some(json!({
+            "status": "running",
+            "result": backend_result,
+            "error": null,
+        })));
+        active.stats = Set(serde_json::to_value(&stats).unwrap_or(json!({})));
+        active.next_run_at = Set(next_run_at.map(|time| time.into()));
+        active.updated_at = Set(now.into());
+        if matches!(task.schedule_type, ScheduleType::Once) {
+            active.enabled = Set(false);
+        }
+
+        active
+            .update(db)
+            .await
+            .map_err(|e| format!("Failed to advance frontend task: {}", e))?;
+        Ok(())
+    }
+
+    /// 前端回执只补齐最终状态；total_runs 已在 dispatch 时增加。
+    async fn update_task_after_frontend_completion(
+        db: &DatabaseConnection,
+        task: &tapp_scheduled_tasks::Model,
+        status: &ExecutionStatus,
+        result: Option<serde_json::Value>,
+        error: Option<String>,
+    ) -> Result<(), String> {
+        let mut stats: TaskStats = serde_json::from_value(task.stats.clone()).unwrap_or_default();
+        match status {
+            ExecutionStatus::Success => stats.success_runs += 1,
+            ExecutionStatus::Failed | ExecutionStatus::Timeout => stats.failed_runs += 1,
+            _ => {}
+        }
+
+        let mut active: tapp_scheduled_tasks::ActiveModel = task.clone().into();
+        active.last_run_result = Set(Some(json!({
+            "status": format!("{:?}", status).to_lowercase(),
+            "result": result,
+            "error": error,
+        })));
+        active.stats = Set(serde_json::to_value(&stats).unwrap_or(json!({})));
+        active.updated_at = Set(Utc::now().into());
+        active
+            .update(db)
+            .await
+            .map_err(|e| format!("Failed to finalize frontend task stats: {}", e))?;
+        Ok(())
     }
 
     /// 更新任务执行后的状态
@@ -1274,7 +1712,7 @@ impl TappSchedulerEngine {
             .await?
             .ok_or_else(|| format!("Task {} not found", task_id))?;
 
-        Self::execute_task(&self.db, &self.frontend_tx, &task, false).await
+        Self::execute_task(&self.db, &self.frontend_tx, &task, false, 0).await
     }
 }
 
@@ -1286,5 +1724,54 @@ impl std::fmt::Display for ExecutionTarget {
             ExecutionTarget::Frontend => write!(f, "frontend"),
             ExecutionTarget::Both => write!(f, "both"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frontend_message_matches_scheduler_client_contract() {
+        let message = FrontendTaskMessage {
+            msg_type: "task:execute".to_string(),
+            task: TaskExecutionContext {
+                id: 7,
+                task_id: "refresh".to_string(),
+                tapp_id: "com.example.app".to_string(),
+                user_id: 42,
+                scope: "user".to_string(),
+                scheduled_at: 1000,
+                executed_at: 1100,
+                is_compensation: false,
+                payload: Some(json!({ "source": "timer" })),
+            },
+            payload: Some(json!({ "source": "timer" })),
+            scheduled_at: "2026-07-10T00:00:00Z".to_string(),
+            execution_id: 99,
+            target_users: Some(vec![42]),
+        };
+
+        let value = serde_json::to_value(message).expect("message should serialize");
+        assert_eq!(value["type"], "task:execute");
+        assert_eq!(value["task"]["taskId"], "refresh");
+        assert_eq!(value["task"]["tappId"], "com.example.app");
+        assert_eq!(value["executionId"], 99);
+        assert_eq!(value["payload"]["source"], "timer");
+        assert!(value.get("execution_id").is_none());
+    }
+
+    #[test]
+    fn interval_next_run_uses_milliseconds() {
+        let from = DateTime::from_timestamp_millis(1_000_000).unwrap();
+        let next = TappSchedulerEngine::calculate_next_run(
+            &ScheduleType::Interval,
+            &json!({ "interval": 30_000 }),
+            from,
+        )
+        .expect("valid interval")
+        .expect("next run");
+
+        assert_eq!(next.timestamp_millis(), 1_030_000);
     }
 }

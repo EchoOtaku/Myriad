@@ -22,7 +22,7 @@ import type { TappCodeStructure } from '../examples/tapps/types'
 import type { TappInstance } from '../types'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { getTappRuntime } from '../runtime'
-import { loadPageResources } from '../runtime/sandbox/resourceLoader'
+import { loadCoreResources } from '../runtime/sandbox/resourceLoader'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
 
 /**
@@ -34,16 +34,18 @@ export const TappBackgroundRunner: React.FC = () => {
   const [tappCodes, setTappCodes] = useState<Map<string, TappCodeStructure>>(
     new Map(),
   )
-  const [_isLoading, setIsLoading] = useState(false)
   const loadingRef = useRef(false)
+  const reloadPendingRef = useRef(false)
   const runtime = getTappRuntime()
 
   // 加载需要后台运行的 Tapp（有后台需求声明的）
-  const loadBackgroundTapps = useCallback(async () => {
-    // 防止并发加载
-    if (loadingRef.current) return
+  const loadBackgroundTapps = useCallback(async (): Promise<void> => {
+    // 合并并发加载，但不能丢掉加载期间发生的 start/stop/background 变化。
+    if (loadingRef.current) {
+      reloadPendingRef.current = true
+      return
+    }
     loadingRef.current = true
-    setIsLoading(true)
 
     try {
       // 等待 runtime 同步完成
@@ -57,19 +59,13 @@ export const TappBackgroundRunner: React.FC = () => {
       await Promise.all(
         tappsToRun.map(async (tapp) => {
           try {
-            // 🎯 使用新的资源加载器获取 Page 专用资源
-            const resources = await loadPageResources(tapp)
+            // 后台实例只需要 core，不生成或缓存 Page HTML/CSS。
+            const resources = await loadCoreResources(tapp)
 
             // 转换为 TappCodeStructure 格式
             const code: TappCodeStructure = {
               core: resources.core,
-              page: resources.page,
-              pageHtml: resources.html,
-              styles: resources.styles,
-              pageCSS: resources.css,
               i18n: resources.i18n,
-              pageModules: resources.pageModules,
-              pageModuleOrder: resources.pageModuleOrder,
             }
 
             codes.set(tapp.id, code)
@@ -91,7 +87,10 @@ export const TappBackgroundRunner: React.FC = () => {
       )
     } finally {
       loadingRef.current = false
-      setIsLoading(false)
+      if (reloadPendingRef.current) {
+        reloadPendingRef.current = false
+        void loadBackgroundTapps()
+      }
     }
   }, [runtime])
 

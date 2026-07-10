@@ -22,6 +22,9 @@ export type ExecutionTarget = 'backend' | 'frontend' | 'both'
 /** 错过执行策略 */
 export type MissedPolicy = 'skip' | 'run-once' | 'run-all'
 
+/** 任务作用域 */
+export type TaskScope = 'user' | 'tapp' | 'tapp-per-user' | 'global'
+
 /** 任务执行状态 */
 export type TaskExecutionStatus =
   'pending' | 'running' | 'success' | 'failed' | 'cancelled'
@@ -84,6 +87,8 @@ export interface TaskRegistrationOptions {
   backendActions?: BackendAction[]
   /** 错过执行策略（默认：skip） */
   missedPolicy?: MissedPolicy
+  /** 任务作用域（默认：user；跨用户作用域受后端权限约束） */
+  scope?: TaskScope
   /** 重试配置 */
   retry?: RetryConfig
 }
@@ -100,6 +105,7 @@ export interface RegisteredTask {
   executionTarget: ExecutionTarget
   enabled: boolean
   missedPolicy: MissedPolicy
+  scope: TaskScope
   nextRunAt?: string
   lastRunAt?: string
   lastRunResult?: unknown
@@ -239,8 +245,7 @@ export class TappScheduler {
     // 相对时用 window.location 补全为绝对 ws(s):// 地址，否则 new WebSocket 会抛错。
     let base = this.apiBaseUrl
     if (!/^https?:/i.test(base)) {
-      const origin =
-        typeof window !== 'undefined' ? window.location.origin : ''
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
       base = origin + (base.startsWith('/') ? base : `/${base}`)
     }
     const wsUrl = base
@@ -508,6 +513,7 @@ export class TappScheduler {
       execution_target: options.executionTarget || 'frontend',
       backend_actions: options.backendActions,
       missed_policy: options.missedPolicy || 'skip',
+      scope: options.scope || 'user',
       retry: options.retry,
     })
 
@@ -583,7 +589,11 @@ export class TappScheduler {
     const key = `${tappId}:${taskId}`
     this.taskCallbacks.set(key, callback)
     return () => {
-      this.taskCallbacks.delete(key)
+      // 后挂载的 headless core 可能已接管同一个任务；旧 Page/Widget 卸载时
+      // 不能把新回调一起删掉。
+      if (this.taskCallbacks.get(key) === callback) {
+        this.taskCallbacks.delete(key)
+      }
     }
   }
 

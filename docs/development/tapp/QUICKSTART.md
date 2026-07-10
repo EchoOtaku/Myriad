@@ -378,6 +378,16 @@ Tapp.widgets['my-widget'] = {
 
 Tapp 默认在用户离开运行页面后会被**冻结**（暂停执行）。如果 Tapp 需要在后台持续运行，必须**声明后台运行需求**。
 
+需要在应用重载后、尚未打开 Page/Widget 时就启动 core 的任务，应在 manifest 中声明需求：
+
+```json
+{
+  "backgroundRequirements": ["scheduler", "sync"]
+}
+```
+
+运行时的 `Tapp.background.require/release` 适合动态增减需求；manifest 声明则负责首次启动和刷新后的恢复。两类来源独立计数，`release` 不会取消 manifest 的常驻声明。后台实例只加载共享 core，不加载 Page HTML/CSS 或 Widget 视图代码。
+
 ### 后台需求类型
 
 | 类型             | 说明                     | 典型场景                 |

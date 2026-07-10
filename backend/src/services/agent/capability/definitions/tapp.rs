@@ -73,9 +73,11 @@ pub fn register(registry: &mut CapabilityRegistry) {
         input_schema: json!({
             "type": "object",
             "properties": {
-                "url": { "type": "string", "description": "Tapp 安装包 URL" },
-                "code": { "type": "string", "description": "Tapp 代码（直接安装）" }
-            }
+                "name": { "type": "string", "description": "应用名称" },
+                "code": { "type": "string", "description": "浏览器可直接运行的 JavaScript" },
+                "manifest": { "type": "object", "description": "可选 manifest；id 和 main 由系统规范化" }
+            },
+            "required": ["code"]
         }),
         output_schema: json!({
             "type": "object",
@@ -107,7 +109,6 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 },
                 "tappId": { "type": "string", "description": "Tapp ID（detail/widgets/storage/tasks 层级需要）" },
                 "taskId": { "type": "string", "description": "任务 ID（executions 层级需要）" },
-                "userId": { "type": "integer", "description": "用户 ID" },
                 "filter": { 
                     "type": "string", 
                     "enum": ["all", "running", "installed", "error"],
@@ -206,9 +207,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
         input_schema: json!({
             "type": "object",
             "properties": {
-                "tappId": { "type": "string" },
-                "userId": { "type": "integer" }
-            }
+                "tappId": { "type": "string" }
+            },
+            "required": ["tappId"]
         }),
         output_schema: json!({
             "type": "object",

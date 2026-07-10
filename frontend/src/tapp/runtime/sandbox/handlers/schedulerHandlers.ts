@@ -38,7 +38,49 @@ function errResult(error: unknown) {
 export function registerSchedulerHandlers(
   bridge: TappBridge,
   tappInstance: TappInstance,
-): void {
+): () => void {
+  const taskSubscriptions = new Map<string, () => void>()
+  const pendingExecutions = new Map<
+    number,
+    {
+      resolve: () => void
+      reject: (error: Error) => void
+      timeout: ReturnType<typeof setTimeout>
+    }
+  >()
+
+  const bindTask = (taskId: string) => {
+    if (taskSubscriptions.has(taskId)) return
+    const scheduler = ensureScheduler()
+    const unsubscribe = scheduler.onTask(
+      tappInstance.id,
+      taskId,
+      (payload, event) => {
+        return new Promise<void>((resolve, reject) => {
+          if (!event.executionId) {
+            reject(new Error('Scheduler execution ID missing'))
+            return
+          }
+          const timeout = setTimeout(
+            () => {
+              pendingExecutions.delete(event.executionId)
+              reject(new Error('Sandbox scheduler callback timed out'))
+            },
+            4 * 60 * 1000,
+          )
+          pendingExecutions.set(event.executionId, { resolve, reject, timeout })
+          bridge.emit('schedulerTask', { taskId, payload, event })
+        })
+      },
+    )
+    taskSubscriptions.set(taskId, unsubscribe)
+  }
+
+  const unbindTask = (taskId: string) => {
+    taskSubscriptions.get(taskId)?.()
+    taskSubscriptions.delete(taskId)
+  }
+
   bridge.registerHandler('scheduler.register', async (message) => {
     const [options] = (message.payload as { args: unknown[] }).args || []
     const opts = options as TaskRegistrationOptions | undefined
@@ -47,11 +89,16 @@ export function registerSchedulerHandlers(
     }
     try {
       const scheduler = ensureScheduler()
-      const task = await scheduler.registerTask(tappInstance.id, opts)
-      // 将后端推送的任务执行转发进沙箱（onTask 按 tappId:taskId 唯一，重复注册会覆盖）
-      scheduler.onTask(tappInstance.id, opts.taskId, (payload) => {
-        bridge.emit('schedulerTask', { taskId: opts.taskId, payload })
-      })
+      let task
+      try {
+        task = await scheduler.registerTask(tappInstance.id, opts)
+      } catch (error) {
+        // core 会在 Page/Widget/headless 生命周期中重复启动。注册操作保持幂等：
+        // 若后端已有同 ID 任务，复用现有定义并重新绑定本次沙箱回调。
+        task = await scheduler.getTask(tappInstance.id, opts.taskId)
+        if (!task) throw error
+      }
+      bindTask(opts.taskId)
       return { success: true, data: task }
     } catch (error) {
       return errResult(error)
@@ -64,6 +111,7 @@ export function registerSchedulerHandlers(
     try {
       const scheduler = ensureScheduler()
       await scheduler.unregisterTask(tappInstance.id, taskId as string)
+      unbindTask(taskId as string)
       return { success: true, data: { taskId, cancelled: true } }
     } catch (error) {
       return errResult(error)
@@ -79,4 +127,94 @@ export function registerSchedulerHandlers(
       return errResult(error)
     }
   })
+
+  bridge.registerHandler('scheduler.get', async (message) => {
+    const [taskId] = (message.payload as { args: unknown[] }).args || []
+    if (!taskId) return { success: false, error: 'taskId required' }
+    try {
+      const task = await ensureScheduler().getTask(
+        tappInstance.id,
+        taskId as string,
+      )
+      return { success: true, data: task }
+    } catch (error) {
+      return errResult(error)
+    }
+  })
+
+  for (const [action, operation] of [
+    [
+      'enable',
+      (taskId: string) => ensureScheduler().enableTask(tappInstance.id, taskId),
+    ],
+    [
+      'disable',
+      (taskId: string) =>
+        ensureScheduler().disableTask(tappInstance.id, taskId),
+    ],
+    [
+      'trigger',
+      (taskId: string) =>
+        ensureScheduler().triggerTask(tappInstance.id, taskId),
+    ],
+  ] as const) {
+    bridge.registerHandler(`scheduler.${action}`, async (message) => {
+      const [taskId] = (message.payload as { args: unknown[] }).args || []
+      if (!taskId) return { success: false, error: 'taskId required' }
+      try {
+        await operation(taskId as string)
+        return { success: true, data: { taskId, [action]: true } }
+      } catch (error) {
+        return errResult(error)
+      }
+    })
+  }
+
+  // onTask 是沙箱内的同步事件 API；subscribe/unsubscribe 只负责把宿主 WS
+  // 回调绑定到当前 bridge，任务本身无需重新注册。
+  bridge.registerHandler('scheduler.subscribe', async (message) => {
+    const [taskId] = (message.payload as { args: unknown[] }).args || []
+    if (!taskId) return { success: false, error: 'taskId required' }
+    bindTask(taskId as string)
+    return { success: true, data: { taskId, subscribed: true } }
+  })
+
+  bridge.registerHandler('scheduler.unsubscribe', async (message) => {
+    const [taskId] = (message.payload as { args: unknown[] }).args || []
+    if (!taskId) return { success: false, error: 'taskId required' }
+    unbindTask(taskId as string)
+    return { success: true, data: { taskId, subscribed: false } }
+  })
+
+  bridge.registerHandler('scheduler.complete', async (message) => {
+    const [executionId, success, error] =
+      (message.payload as { args: unknown[] }).args || []
+    if (typeof executionId !== 'number' || typeof success !== 'boolean') {
+      return { success: false, error: 'executionId and success required' }
+    }
+    const pending = pendingExecutions.get(executionId)
+    if (!pending) {
+      return { success: false, error: 'Execution is no longer pending' }
+    }
+    clearTimeout(pending.timeout)
+    pendingExecutions.delete(executionId)
+    if (success) {
+      pending.resolve()
+    } else {
+      pending.reject(
+        new Error(typeof error === 'string' ? error : 'Task failed'),
+      )
+    }
+    return { success: true, data: { executionId, completed: true } }
+  })
+
+  return () => {
+    for (const unsubscribe of taskSubscriptions.values()) unsubscribe()
+    taskSubscriptions.clear()
+    for (const pending of pendingExecutions.values()) {
+      clearTimeout(pending.timeout)
+      pending.reject(new Error('Scheduler sandbox destroyed'))
+    }
+    pendingExecutions.clear()
+  }
 }

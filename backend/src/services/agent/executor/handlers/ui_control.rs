@@ -413,8 +413,54 @@ async fn execute_tapp_interact(
 // Tapp 页面内容层级展示
 // ============================================================================
 
+async fn find_accessible_tapp(
+    ctx: &HandlerContext<'_>,
+    tapp_id: &str,
+) -> Result<tapps::Model, String> {
+    crate::api::tapp_runtime::common::verify_tapp_ownership(ctx.db, ctx.user_id, tapp_id)
+        .await
+        .map_err(|(_, body)| {
+            body.0
+                .get("message")
+                .or_else(|| body.0.get("error"))
+                .and_then(Value::as_str)
+                .unwrap_or("Tapp access denied")
+                .to_string()
+        })?;
+
+    if let Some(tapp) = tapps::Entity::find()
+        .filter(tapps::Column::TappId.eq(tapp_id))
+        .filter(tapps::Column::UserId.eq(ctx.user_id))
+        .one(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to fetch Tapp: {e}"))?
+    {
+        return Ok(tapp);
+    }
+
+    let mut query = tapps::Entity::find().filter(tapps::Column::TappId.eq(tapp_id));
+    if !crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await {
+        let admin_id = crate::api::tapp_runtime::common::get_admin_user_id(ctx.db)
+            .await
+            .map_err(|(_, body)| {
+                body.0
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Failed to resolve administrator")
+                    .to_string()
+            })?;
+        query = query.filter(tapps::Column::UserId.eq(admin_id));
+    }
+
+    query
+        .one(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to fetch Tapp: {e}"))?
+        .ok_or_else(|| "Tapp not found".to_string())
+}
+
 /// 执行 Tapp 页面内容 - 按层级展示 Tapp 数据
-async fn execute_tapp_page_content(
+pub(super) async fn execute_tapp_page_content(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
@@ -436,7 +482,22 @@ async fn execute_tapp_page_content(
         "apps" => {
             // 应用列表层级
             let mut query = tapps::Entity::find();
-            query = query.filter(tapps::Column::UserId.eq(user_id));
+            let admin_id = crate::api::tapp_runtime::common::get_admin_user_id(ctx.db)
+                .await
+                .map_err(|(_, body)| {
+                    body.0
+                        .get("error")
+                        .and_then(Value::as_str)
+                        .unwrap_or("Failed to resolve administrator")
+                        .to_string()
+                })?;
+            if !crate::services::agent::user_is_current_admin(ctx.db, user_id).await {
+                query = query.filter(
+                    tapps::Column::UserId
+                        .eq(user_id)
+                        .or(tapps::Column::UserId.eq(admin_id)),
+                );
+            }
 
             // 状态筛选
             match filter {
@@ -512,17 +573,12 @@ async fn execute_tapp_page_content(
         "detail" => {
             // 应用详情层级
             let tapp_id_str = tapp_id.ok_or("Missing tappId for detail level")?;
-
-            let app = tapps::Entity::find()
-                .filter(tapps::Column::TappId.eq(tapp_id_str))
-                .one(ctx.db)
-                .await
-                .map_err(|e| format!("Failed to fetch tapp: {}", e))?
-                .ok_or("Tapp not found")?;
+            let app = find_accessible_tapp(ctx, tapp_id_str).await?;
 
             // 获取组件数量
             let widget_count = tapp_widgets::Entity::find()
                 .filter(tapp_widgets::Column::TappId.eq(tapp_id_str))
+                .filter(tapp_widgets::Column::UserId.eq(app.user_id))
                 .count(ctx.db)
                 .await
                 .unwrap_or(0);
@@ -530,6 +586,7 @@ async fn execute_tapp_page_content(
             // 获取存储数量
             let storage_count = tapp_storage::Entity::find()
                 .filter(tapp_storage::Column::TappId.eq(tapp_id_str))
+                .filter(tapp_storage::Column::UserId.eq(user_id))
                 .count(ctx.db)
                 .await
                 .unwrap_or(0);
@@ -537,6 +594,7 @@ async fn execute_tapp_page_content(
             // 获取任务数量
             let task_count = tapp_scheduled_tasks::Entity::find()
                 .filter(tapp_scheduled_tasks::Column::TappId.eq(tapp_id_str))
+                .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id))
                 .count(ctx.db)
                 .await
                 .unwrap_or(0);
@@ -595,9 +653,11 @@ async fn execute_tapp_page_content(
         "widgets" => {
             // 组件列表层级
             let tapp_id_str = tapp_id.ok_or("Missing tappId for widgets level")?;
+            let app = find_accessible_tapp(ctx, tapp_id_str).await?;
 
             let widgets = tapp_widgets::Entity::find()
                 .filter(tapp_widgets::Column::TappId.eq(tapp_id_str))
+                .filter(tapp_widgets::Column::UserId.eq(app.user_id))
                 .all(ctx.db)
                 .await
                 .map_err(|e| format!("Failed to fetch widgets: {}", e))?;
@@ -644,6 +704,7 @@ async fn execute_tapp_page_content(
         "storage" => {
             // 存储数据层级
             let tapp_id_str = tapp_id.ok_or("Missing tappId for storage level")?;
+            find_accessible_tapp(ctx, tapp_id_str).await?;
 
             let mut query =
                 tapp_storage::Entity::find().filter(tapp_storage::Column::TappId.eq(tapp_id_str));
@@ -697,9 +758,11 @@ async fn execute_tapp_page_content(
         "tasks" => {
             // 定时任务列表层级
             let tapp_id_str = tapp_id.ok_or("Missing tappId for tasks level")?;
+            find_accessible_tapp(ctx, tapp_id_str).await?;
 
             let tasks = tapp_scheduled_tasks::Entity::find()
                 .filter(tapp_scheduled_tasks::Column::TappId.eq(tapp_id_str))
+                .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id))
                 .order_by_desc(tapp_scheduled_tasks::Column::UpdatedAt)
                 .all(ctx.db)
                 .await
@@ -711,14 +774,31 @@ async fn execute_tapp_page_content(
                 .iter()
                 .take(limit)
                 .map(|t| {
+                    let schedule_type = match t.schedule_type {
+                        tapp_scheduled_tasks::ScheduleType::Cron => "cron",
+                        tapp_scheduled_tasks::ScheduleType::Interval => "interval",
+                        tapp_scheduled_tasks::ScheduleType::Once => "once",
+                        tapp_scheduled_tasks::ScheduleType::Daily => "daily",
+                    };
+                    let execution_target = match t.execution_target {
+                        tapp_scheduled_tasks::ExecutionTarget::Backend => "backend",
+                        tapp_scheduled_tasks::ExecutionTarget::Frontend => "frontend",
+                        tapp_scheduled_tasks::ExecutionTarget::Both => "both",
+                    };
+                    let scope = match t.scope {
+                        tapp_scheduled_tasks::TaskScope::User => "user",
+                        tapp_scheduled_tasks::TaskScope::Tapp => "tapp",
+                        tapp_scheduled_tasks::TaskScope::TappPerUser => "tapp-per-user",
+                        tapp_scheduled_tasks::TaskScope::Global => "global",
+                    };
                     json!({
                         "id": t.id,
                         "taskId": t.task_id.clone(),
                         "name": t.name.clone(),
-                        "scheduleType": format!("{:?}", t.schedule_type),
+                        "scheduleType": schedule_type,
                         "scheduleConfig": t.schedule_config.clone(),
-                        "executionTarget": format!("{:?}", t.execution_target),
-                        "scope": format!("{:?}", t.scope),
+                        "executionTarget": execution_target,
+                        "scope": scope,
                         "enabled": t.enabled,
                         "nextRunAt": t.next_run_at.map(|t| t.to_string()),
                         "lastRunAt": t.last_run_at.map(|t| t.to_string()),
@@ -760,15 +840,31 @@ async fn execute_tapp_page_content(
             // 任务执行记录层级
             let task_id_str = task_id.ok_or("Missing taskId for executions level")?;
 
-            // 先获取任务信息
-            let task = tapp_scheduled_tasks::Entity::find()
+            // 任务 ID 只在 Tapp 内唯一；按当前用户收窄，并在有歧义时要求 tappId。
+            let mut task_query = tapp_scheduled_tasks::Entity::find()
                 .filter(tapp_scheduled_tasks::Column::TaskId.eq(task_id_str))
-                .one(ctx.db)
+                .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id));
+            if let Some(tapp_id) = tapp_id {
+                task_query = task_query.filter(tapp_scheduled_tasks::Column::TappId.eq(tapp_id));
+            }
+            let matching_tasks = task_query
+                .all(ctx.db)
                 .await
                 .map_err(|e| format!("Failed to fetch task: {}", e))?;
+            let task = match matching_tasks.as_slice() {
+                [task] => Some(task.clone()),
+                [] => None,
+                _ => return Err("Task ID is ambiguous; provide tappId".to_string()),
+            };
 
-            let executions = tapp_task_executions::Entity::find()
+            let mut execution_query = tapp_task_executions::Entity::find()
                 .filter(tapp_task_executions::Column::TaskId.eq(task_id_str))
+                .filter(tapp_task_executions::Column::UserId.eq(user_id));
+            if let Some(tapp_id) = tapp_id {
+                execution_query =
+                    execution_query.filter(tapp_task_executions::Column::TappId.eq(tapp_id));
+            }
+            let executions = execution_query
                 .order_by_desc(tapp_task_executions::Column::ExecutedAt)
                 .all(ctx.db)
                 .await
@@ -785,7 +881,7 @@ async fn execute_tapp_page_content(
                 .map(|e| {
                     json!({
                         "id": e.id,
-                        "status": format!("{:?}", e.status),
+                        "status": format!("{:?}", e.status).to_lowercase(),
                         "scheduledAt": e.scheduled_at.to_string(),
                         "executedAt": e.executed_at.to_string(),
                         "completedAt": e.completed_at.map(|t| t.to_string()),

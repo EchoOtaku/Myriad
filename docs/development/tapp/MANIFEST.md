@@ -4,29 +4,30 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 
 ## 基础字段
 
-| 字段                    | 类型     | 必填 | 说明                               |
-| ----------------------- | -------- | ---- | ---------------------------------- |
-| `id`                    | string   | ✅   | 唯一标识符，推荐使用反向域名格式   |
-| `name`                  | string   | ✅   | 应用名称                           |
-| `version`               | string   | ✅   | 版本号（语义化版本）               |
-| `description`           | string   | ❌   | 应用描述                           |
-| `main`                  | string   | ✅   | 入口文件名                         |
-| `author`                | object   | ❌   | 作者信息 `{name, email?, url?}`    |
-| `permissions`           | string[] | ❌   | 所需权限列表                       |
-| `optionalPermissions`   | string[] | ❌   | 可选权限（运行时请求）             |
-| `icon`                  | string   | ❌   | 图标（emoji 或 URL）               |
-| `iconSvg`               | string   | ❌   | 内联 SVG 图标代码（优先于 icon）   |
-| `themeColor`            | string   | ❌   | 主题色（十六进制，如 #6366f1）     |
-| `widgets`               | object[] | ❌   | 小组件定义                         |
-| `hasPage`               | boolean  | ❌   | 是否有页面模块（可在页面模式运行） |
-| `settings`              | object[] | ❌   | 用户可配置的设置项                 |
-| `api_declarations`      | object[] | ❌   | 外部 API 声明（代理+权限校验）     |
-| `contentSecurityPolicy` | object   | ❌   | 覆盖默认 CSP 指令                  |
-| `minSystemVersion`      | string   | ❌   | 最低系统版本要求                   |
-| `homepage`              | string   | ❌   | 应用主页 URL                       |
-| `repository`            | string   | ❌   | 代码仓库 URL                       |
-| `styles`                | string   | ❌   | 自定义样式文件路径                 |
-| `pageTemplate`          | string   | ❌   | 页面 HTML 模板路径                 |
+| 字段                     | 类型     | 必填 | 说明                               |
+| ------------------------ | -------- | ---- | ---------------------------------- |
+| `id`                     | string   | ✅   | 唯一标识符，推荐使用反向域名格式   |
+| `name`                   | string   | ✅   | 应用名称                           |
+| `version`                | string   | ✅   | 版本号（语义化版本）               |
+| `description`            | string   | ❌   | 应用描述                           |
+| `main`                   | string   | ✅   | 入口文件名                         |
+| `author`                 | object   | ❌   | 作者信息 `{name, email?, url?}`    |
+| `permissions`            | string[] | ❌   | 所需权限列表                       |
+| `optionalPermissions`    | string[] | ❌   | 可选权限（运行时请求）             |
+| `icon`                   | string   | ❌   | 图标（emoji 或 URL）               |
+| `iconSvg`                | string   | ❌   | 内联 SVG 图标代码（优先于 icon）   |
+| `themeColor`             | string   | ❌   | 主题色（十六进制，如 #6366f1）     |
+| `widgets`                | object[] | ❌   | 小组件定义                         |
+| `hasPage`                | boolean  | ❌   | 是否有页面模块（可在页面模式运行） |
+| `backgroundRequirements` | string[] | ❌   | 启动后需常驻的 headless core 能力  |
+| `settings`               | object[] | ❌   | 用户可配置的设置项                 |
+| `apis`                   | object   | ❌   | 命名 API 声明（代理+权限校验）     |
+| `contentSecurityPolicy`  | object   | ❌   | 覆盖默认 CSP 指令                  |
+| `minSystemVersion`       | string   | ❌   | 最低系统版本要求                   |
+| `homepage`               | string   | ❌   | 应用主页 URL                       |
+| `repository`             | string   | ❌   | 代码仓库 URL                       |
+| `styles`                 | string   | ❌   | 自定义样式文件路径                 |
+| `pageTemplate`           | string   | ❌   | 页面 HTML 模板路径                 |
 
 ## 完整示例
 
@@ -47,20 +48,20 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
   "permissions": ["storage", "ui:notification", "platform:read"],
   "optionalPermissions": ["network:fetch"],
   "hasPage": true,
+  "backgroundRequirements": ["scheduler", "sync"],
   "homepage": "https://example.com",
   "repository": "https://github.com/example/my-tapp",
   "minSystemVersion": "1.0.0",
-  "api_declarations": [
-    {
+  "apis": {
+    "weather": {
+      "type": "http",
+      "access": "protected",
       "endpoint": "https://api.weather.com/v1/current",
-      "methods": ["GET"],
+      "method": "GET",
       "description": "获取天气信息",
-      "spoof": {
-        "enabled": true,
-        "region": "china"
-      }
+      "spoof": "china"
     }
-  ],
+  },
   "widgets": [
     {
       "id": "stats-widget",
@@ -302,40 +303,51 @@ const value = await Tapp.storage.get("_settings.refreshInterval");
 
 ---
 
-## API 声明 (api_declarations)
+## API 声明 (`apis`)
 
-声明 Tapp 需要调用的外部 API。所有网络请求必须通过声明式 API 进行，系统会校验并代理请求。
+声明 Tapp 需要调用的外部或内置 API。每个键是沙箱调用时使用的 API 名称，后端统一执行权限校验、模板注入、SSRF 防护和可选缓存。
 
 ```json
 {
-  "api_declarations": [
-    {
+  "apis": {
+    "data": {
+      "type": "http",
+      "access": "protected",
       "endpoint": "https://api.example.com/data",
-      "methods": ["GET", "POST"],
+      "method": "GET",
+      "headers": { "X-Region": "{{params.region}}" },
+      "cacheTtl": 60,
+      "spoof": "china",
       "description": "获取数据",
-      "spoof": {
-        "enabled": true,
-        "region": "china",
-        "display_endpoint": "https://public.example.com/api"
-      }
+      "inject": { "city": "{{geo.city}}" }
+    },
+    "summarize": {
+      "type": "builtin",
+      "access": "protected",
+      "builtin": "ai:generate",
+      "description": "生成摘要"
     }
-  ]
+  }
 }
 ```
 
 ### API 声明字段
 
-| 字段                     | 类型     | 必填 | 说明                                     |
-| ------------------------ | -------- | ---- | ---------------------------------------- |
-| `endpoint`               | string   | ✅   | 真实请求 URL                             |
-| `methods`                | string[] | ❌   | 允许的 HTTP 方法，默认 ["GET"]           |
-| `description`            | string   | ❌   | API 描述（用户可见）                     |
-| `spoof`                  | object   | ❌   | 伪装配置                                 |
-| `spoof.enabled`          | boolean  | ❌   | 是否启用伪装                             |
-| `spoof.region`           | string   | ❌   | 区域伪装：china/japan/us/korea/taiwan/hk |
-| `spoof.display_endpoint` | string   | ❌   | 用户可见的伪装端点                       |
+| 字段          | 类型   | 必填 | 说明                                              |
+| ------------- | ------ | ---- | ------------------------------------------------- |
+| `type`        | string | ❌   | `http`（默认）或 `builtin`                        |
+| `access`      | string | ❌   | `protected`（默认）或 `public`                    |
+| `endpoint`    | string | HTTP | HTTP URL，可使用 `{{params.*}}` 等模板            |
+| `method`      | string | ❌   | HTTP 方法，默认 `GET`                             |
+| `headers`     | object | ❌   | 请求头模板                                        |
+| `body`        | object | ❌   | JSON 请求体模板                                   |
+| `builtin`     | string | 内置 | `geo`、`ai:chat` 或 `ai:generate`                 |
+| `inject`      | object | ❌   | 用户、地理位置或后端 secrets 的模板注入声明       |
+| `cacheTtl`    | number | ❌   | 响应缓存秒数；缓存按 Tapp、用户、客户端上下文隔离 |
+| `spoof`       | string | ❌   | 区域伪装：`china`、`japan` 或 `us`                |
+| `description` | string | ❌   | API 描述                                          |
 
-### 区域伪装 (spoof.region)
+### 区域伪装 (`spoof`)
 
 用于绕过地区限制，自动添加对应地区的请求头：
 
@@ -352,13 +364,11 @@ const value = await Tapp.storage.get("_settings.refreshInterval");
 
 ```javascript
 // 调用已声明的 API
-const response = await Tapp.http.request({
-  url: "https://api.example.com/data",
-  method: "GET",
-});
+const response = await Tapp.api("data", { region: "jp" });
+const summary = await Tapp.api("summarize", { prompt: "总结这些数据" });
 ```
 
-> 未在 `api_declarations` 中声明的端点将被拒绝访问。
+> `Tapp.api(name, params)` 只能调用当前 manifest 的 `apis[name]`；同 ID 的用户临时 Tapp 与管理员公开 Tapp 分别缓存定义。
 
 ---
 

@@ -17,7 +17,11 @@ use tokio::sync::RwLock;
 use crate::api::tapp_store::{TappApiAccess, TappApiDef};
 use crate::middleware::auth::{ensure_current_admin, Claims};
 use crate::models::entities::tapps;
+use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
+use crate::GLOBAL_DYNAMIC_CONFIG;
+
+use super::common::{get_admin_user_id, verify_tapp_ownership};
 
 // ============ Manifest API 解析缓存 ============
 
@@ -34,11 +38,11 @@ static TAPP_APIS_CACHE: Lazy<Arc<RwLock<HashMap<String, ApisCacheEntry>>>> =
 const APIS_CACHE_TTL: Duration = Duration::from_secs(300);
 
 /// 从 manifest JSON 解析 API 定义，优先命中内存缓存
-async fn get_tapp_apis(tapp_id: &str, manifest: &Value) -> HashMap<String, TappApiDef> {
+async fn get_tapp_apis(cache_key: &str, manifest: &Value) -> HashMap<String, TappApiDef> {
     // 读缓存
     {
         let cache = TAPP_APIS_CACHE.read().await;
-        if let Some(entry) = cache.get(tapp_id) {
+        if let Some(entry) = cache.get(cache_key) {
             if entry.cached_at.elapsed() < APIS_CACHE_TTL {
                 return entry.apis.clone();
             }
@@ -55,7 +59,7 @@ async fn get_tapp_apis(tapp_id: &str, manifest: &Value) -> HashMap<String, TappA
     {
         let mut cache = TAPP_APIS_CACHE.write().await;
         cache.insert(
-            tapp_id.to_string(),
+            cache_key.to_string(),
             ApisCacheEntry {
                 apis: apis.clone(),
                 cached_at: Instant::now(),
@@ -69,7 +73,54 @@ async fn get_tapp_apis(tapp_id: &str, manifest: &Value) -> HashMap<String, TappA
 /// Tapp 更新/卸载时使缓存失效
 pub async fn invalidate_tapp_apis_cache(tapp_id: &str) {
     let mut cache = TAPP_APIS_CACHE.write().await;
-    cache.remove(tapp_id);
+    let suffix = format!(":{tapp_id}");
+    cache.retain(|key, _| key != tapp_id && !key.ends_with(&suffix));
+}
+
+async fn find_accessible_tapp(
+    db: &DatabaseConnection,
+    user_id: i32,
+    tapp_id: &str,
+) -> Result<tapps::Model, (StatusCode, Json<Value>)> {
+    verify_tapp_ownership(db, user_id, tapp_id).await?;
+
+    if let Some(tapp) = tapps::Entity::find()
+        .filter(tapps::Column::UserId.eq(user_id))
+        .filter(tapps::Column::TappId.eq(tapp_id))
+        .one(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "[TAPP API] Failed to resolve user Tapp");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
+        })?
+    {
+        return Ok(tapp);
+    }
+
+    let admin_id = get_admin_user_id(db).await?;
+    let mut query = tapps::Entity::find().filter(tapps::Column::TappId.eq(tapp_id));
+    if !crate::services::agent::user_is_current_admin(db, user_id).await {
+        query = query.filter(tapps::Column::UserId.eq(admin_id));
+    }
+    query
+        .one(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "[TAPP API] Failed to resolve shared Tapp");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Tapp not found" })),
+            )
+        })
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,27 +151,12 @@ pub async fn execute_tapp_api(
         )
     })?;
 
-    // 1. 查找 Tapp
-    let tapp = tapps::Entity::find()
-        .filter(tapps::Column::TappId.eq(&tapp_id))
-        .one(&db)
-        .await
-        .map_err(|e| {
-            tracing::error!("[TAPP API] Database error: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(json!({ "error": "Tapp not found" })),
-            )
-        })?;
+    // 1. 当前用户自己的临时 Tapp 优先，管理员公开 Tapp 作为回退。
+    let tapp = find_accessible_tapp(&db, user_id, &tapp_id).await?;
 
     // 2. 解析 manifest 中的 APIs（带缓存）
-    let apis = get_tapp_apis(&tapp_id, &tapp.manifest).await;
+    let manifest_cache_key = format!("{}:{}", tapp.user_id, tapp_id);
+    let apis = get_tapp_apis(&manifest_cache_key, &tapp.manifest).await;
 
     let api_def = apis.get(&api_name).ok_or_else(|| {
         (
@@ -129,8 +165,8 @@ pub async fn execute_tapp_api(
         )
     })?;
 
-    // 3. 获取用户已授权的权限
-    let granted_permissions: Vec<String> = tapp
+    // 3. 读取安装时授权；下面还会按调用者当前角色动态过滤。
+    let installed_permissions: Vec<String> = tapp
         .granted_permissions
         .as_array()
         .map(|arr| {
@@ -156,11 +192,22 @@ pub async fn execute_tapp_api(
     // 5. 确定用户角色
     let is_current_admin = claims.is_admin && ensure_current_admin(&claims).await.is_ok();
     let role = if is_current_admin {
-        crate::services::permission_service::UserRole::Admin
+        UserRole::Admin
     } else if user_id < 0 {
-        crate::services::permission_service::UserRole::Guest
+        UserRole::Guest
     } else {
-        crate::services::permission_service::UserRole::User
+        UserRole::User
+    };
+    let granted_permissions = {
+        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+        installed_permissions
+            .into_iter()
+            .filter(|permission| {
+                TappPermission::from_str(permission).is_some_and(|permission| {
+                    TappPermissionService::check(&config, role, permission)
+                })
+            })
+            .collect()
     };
 
     // 6. 构建执行上下文
@@ -200,24 +247,16 @@ pub async fn list_tapp_apis(
         claims.username
     );
 
-    let tapp = tapps::Entity::find()
-        .filter(tapps::Column::TappId.eq(&tapp_id))
-        .one(&db)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("Database error: {}", e) })),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(json!({ "error": "Tapp not found" })),
-            )
-        })?;
+    let user_id = claims.sub.parse::<i32>().map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Invalid user" })),
+        )
+    })?;
+    let tapp = find_accessible_tapp(&db, user_id, &tapp_id).await?;
 
-    let apis = get_tapp_apis(&tapp_id, &tapp.manifest).await;
+    let manifest_cache_key = format!("{}:{}", tapp.user_id, tapp_id);
+    let apis = get_tapp_apis(&manifest_cache_key, &tapp.manifest).await;
 
     let api_list: Vec<Value> = apis
         .iter()
