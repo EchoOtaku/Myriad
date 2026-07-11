@@ -17,6 +17,7 @@ import { API_URL } from '../config'
 import { clearSessionHint } from '../utils/sessionDetection'
 
 export interface User {
+  id: number
   username: string
   display_name?: string
   is_admin: boolean

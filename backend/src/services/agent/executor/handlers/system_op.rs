@@ -428,10 +428,7 @@ async fn execute_cache_status(params: &HashMap<String, Value>) -> Result<Value, 
         }
         vec![p.to_string()]
     } else {
-        VALID_PLATFORMS
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect()
+        VALID_PLATFORMS.iter().map(|s| (*s).to_string()).collect()
     };
 
     let mut cache_info = Vec::new();

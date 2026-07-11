@@ -45,6 +45,8 @@ const NOTIFICATION_CHANNEL_SIZE: usize = 100;
 pub struct NewItemsNotification {
     #[serde(rename = "type")]
     pub msg_type: String,
+    /// 所属用户；WebSocket 和持久通知必须据此隔离。
+    pub user_id: i32,
     /// 订阅源 ID
     pub source_id: i32,
     /// 订阅源名称
@@ -286,6 +288,20 @@ impl BrewSchedulerEngine {
                         source.name,
                         source.error_count + 1
                     );
+                    if source.error_count + 1 == MAX_ERROR_COUNT {
+                        if let Some(manager) =
+                            crate::services::agent::notifications::get_notification_manager()
+                        {
+                            manager
+                                .notify_brew_source_error(
+                                    source.user_id,
+                                    source.id,
+                                    &source.name,
+                                    &e,
+                                )
+                                .await;
+                        }
+                    }
                 }
 
                 active
@@ -436,12 +452,26 @@ impl BrewSchedulerEngine {
 
             let notification = NewItemsNotification {
                 msg_type: "brew:new_items".to_string(),
+                user_id: source.user_id,
                 source_id: source.id,
                 source_name: source.name.clone(),
                 new_count,
                 titles: new_titles,
                 timestamp: now.timestamp_millis(),
             };
+
+            if let Some(manager) = crate::services::agent::notifications::get_notification_manager()
+            {
+                manager
+                    .notify_brew_new_items(
+                        source.user_id,
+                        source.id,
+                        &source.name,
+                        new_count,
+                        &notification.titles,
+                    )
+                    .await;
+            }
 
             if let Err(e) = notification_tx.send(notification) {
                 tracing::debug!("[BrewScheduler] No notification subscribers: {}", e);

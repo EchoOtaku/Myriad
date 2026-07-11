@@ -23,7 +23,7 @@ use crate::middleware::auth::verify_current_admin_from_headers;
 use crate::oauth_url_builder::SiteConfig;
 use crate::services::config_service::ConfigService;
 use crate::services::fetcher::PlatformFetcher;
-use crate::services::oauth::state::{insert_state, consume_state, OAuthPurpose, StoredState};
+use crate::services::oauth::state::{consume_state, insert_state, OAuthPurpose, StoredState};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
 const DISCORD_AUTHORIZE_URL: &str = "https://discord.com/api/oauth2/authorize";
@@ -70,7 +70,10 @@ fn random_state() -> String {
 
 async fn platform_redirect_uri() -> String {
     let base = SiteConfig::get_base_url().await;
-    format!("{}/api/platforms/discord/oauth/callback", base.trim_end_matches('/'))
+    format!(
+        "{}/api/platforms/discord/oauth/callback",
+        base.trim_end_matches('/')
+    )
 }
 
 /// 从已配置的 OAuth providers 中解析 Discord Application 凭证
@@ -86,7 +89,10 @@ fn resolve_discord_oauth_app(config: &DynamicConfig) -> Result<(String, String),
                 .map(|u| u.contains("discord.com"))
                 .unwrap_or(false);
         if is_discord && !p.client_id.trim().is_empty() && !p.client_secret.trim().is_empty() {
-            return Ok((p.client_id.trim().to_string(), p.client_secret.trim().to_string()));
+            return Ok((
+                p.client_id.trim().to_string(),
+                p.client_secret.trim().to_string(),
+            ));
         }
     }
     Err(
@@ -102,7 +108,10 @@ async fn reload_global_config(db: &DatabaseConnection) {
             *GLOBAL_DYNAMIC_CONFIG.write().await = cfg;
         }
         Err(e) => {
-            tracing::warn!("Failed to reload GLOBAL_DYNAMIC_CONFIG after Discord OAuth: {}", e);
+            tracing::warn!(
+                "Failed to reload GLOBAL_DYNAMIC_CONFIG after Discord OAuth: {}",
+                e
+            );
         }
     }
 }
@@ -223,7 +232,10 @@ pub async fn discord_status() -> Json<Value> {
     let redirect_uri = platform_redirect_uri().await;
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
     let app_configured = resolve_discord_oauth_app(&config).is_ok();
-    let has_token = config.discord_access_token.as_ref().is_some_and(|s| !s.is_empty());
+    let has_token = config
+        .discord_access_token
+        .as_ref()
+        .is_some_and(|s| !s.is_empty());
 
     Json(json!({
         "platform": "discord",
@@ -249,15 +261,12 @@ pub async fn discord_status() -> Json<Value> {
 /// 管理员发起 Discord 数据平台授权
 pub async fn oauth_start(headers: HeaderMap) -> Result<Response, (StatusCode, Json<Value>)> {
     let claims = verify_current_admin_from_headers(&headers).await?;
-    let user_id: i32 = claims
-        .sub
-        .parse()
-        .map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid user id"})),
-            )
-        })?;
+    let user_id: i32 = claims.sub.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid user id"})),
+        )
+    })?;
 
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
     let (client_id, _client_secret) = resolve_discord_oauth_app(&config).map_err(|msg| {
@@ -324,13 +333,23 @@ pub async fn oauth_callback(
         return Ok(config_redirect(&frontend_base, false, err).into_response());
     }
 
-    let code = match params.code.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let code = match params
+        .code
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         Some(c) => c.to_string(),
         None => {
             return Ok(config_redirect(&frontend_base, false, "missing_code").into_response());
         }
     };
-    let state_param = match params.state.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let state_param = match params
+        .state
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         Some(s) => s.to_string(),
         None => {
             return Ok(config_redirect(&frontend_base, false, "missing_state").into_response());
@@ -340,9 +359,7 @@ pub async fn oauth_callback(
     let stored = match consume_state(&state_param).await {
         Some(s) => s,
         None => {
-            return Ok(
-                config_redirect(&frontend_base, false, "state_expired").into_response(),
-            );
+            return Ok(config_redirect(&frontend_base, false, "state_expired").into_response());
         }
     };
 
@@ -365,23 +382,20 @@ pub async fn oauth_callback(
         Ok(v) => v,
         Err(msg) => {
             tracing::error!("Discord app missing on callback: {}", msg);
-            return Ok(
-                config_redirect(&frontend_base, false, "app_not_configured").into_response(),
-            );
+            return Ok(config_redirect(&frontend_base, false, "app_not_configured").into_response());
         }
     };
     drop(config);
 
     let redirect_uri = platform_redirect_uri().await;
-    let token_json = match exchange_discord_code(&code, &redirect_uri, &client_id, &client_secret)
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!("Discord token exchange failed: {}", e);
-            return Ok(config_redirect(&frontend_base, false, "token_exchange").into_response());
-        }
-    };
+    let token_json =
+        match exchange_discord_code(&code, &redirect_uri, &client_id, &client_secret).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!("Discord token exchange failed: {}", e);
+                return Ok(config_redirect(&frontend_base, false, "token_exchange").into_response());
+            }
+        };
 
     let access_token = token_json
         .get("access_token")
@@ -426,7 +440,10 @@ pub async fn oauth_callback(
         updates.insert("discord_refresh_token".to_string(), json!(rt));
     }
     if let Some(exp) = expires_at {
-        updates.insert("discord_token_expires_at".to_string(), json!(exp.to_string()));
+        updates.insert(
+            "discord_token_expires_at".to_string(),
+            json!(exp.to_string()),
+        );
     }
     if let Some(uid) = user_id_discord {
         updates.insert("discord_user_id".to_string(), json!(uid));

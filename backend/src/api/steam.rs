@@ -168,16 +168,17 @@ async fn fetch_and_store_presence(
     // 近两周时长：命中缓存直接用，否则受 6h TTL 限流后再打一次 Steam
     presence.recent_2weeks_minutes = match cached_recent_playtime(steam_id) {
         Some(minutes) => Some(minutes),
-        None => match fetcher
-            .fetch_steam_recent_playtime(api_key, steam_id)
-            .await
-        {
+        None => match fetcher.fetch_steam_recent_playtime(api_key, steam_id).await {
             Ok(minutes) => {
                 store_recent_playtime(steam_id, minutes);
                 Some(minutes)
             }
             Err(e) => {
-                tracing::warn!("Failed to fetch Steam recent playtime for {}: {}", steam_id, e);
+                tracing::warn!(
+                    "Failed to fetch Steam recent playtime for {}: {}",
+                    steam_id,
+                    e
+                );
                 None
             }
         },
@@ -197,7 +198,11 @@ fn trigger_presence_refresh(api_key: String, steam_id: String) {
     }
     tokio::spawn(async move {
         if let Err(e) = fetch_and_store_presence(&api_key, &steam_id).await {
-            tracing::warn!("Background Steam presence refresh failed for {}: {}", steam_id, e);
+            tracing::warn!(
+                "Background Steam presence refresh failed for {}: {}",
+                steam_id,
+                e
+            );
         }
         PRESENCE_REFRESHING.store(false, Ordering::Release);
     });

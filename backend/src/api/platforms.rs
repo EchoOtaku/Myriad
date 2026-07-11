@@ -70,10 +70,8 @@ pub async fn list_platforms(State(db): State<DatabaseConnection>) -> (StatusCode
         Ok(platform_list) => {
             let present_names: Vec<String> = platform_list.iter().map(|p| p.name.clone()).collect();
 
-            let mut platforms: Vec<Value> = platform_list
-                .iter()
-                .map(platform_json_from_row)
-                .collect();
+            let mut platforms: Vec<Value> =
+                platform_list.iter().map(platform_json_from_row).collect();
 
             // 兼容旧库尚未跑 seed 同步的情况：响应里补齐缺失平台
             platforms = merge_missing_seed_platforms(platforms, &present_names);

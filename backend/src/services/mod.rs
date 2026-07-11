@@ -1,7 +1,6 @@
 // Service layer modules
 pub mod agent; // 🤖 AI Agent 自然语言任务编排系统
 pub mod ai; // 🤖 AI 服务工厂（统一创建 AI 分析器）
-pub mod ai_service; // 🤖 AI 服务（Gemini API 集成）
 pub mod analyzer;
 pub mod background_processor; // ✅ 后台任务处理系统（异步处理、任务队列）
 pub mod batch_saver; // ✅ 批量数据保存服务（分批异步写入）

@@ -43,10 +43,7 @@ pub async fn get_x_user(
     }
 
     let fetcher = PlatformFetcher::new().await;
-    match fetcher
-        .fetch_x_profile_bundle(username, bearer_token)
-        .await
-    {
+    match fetcher.fetch_x_profile_bundle(username, bearer_token).await {
         Ok(bundle) => {
             let tweets = bundle
                 .get("tweets")

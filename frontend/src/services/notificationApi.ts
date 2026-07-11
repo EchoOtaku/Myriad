@@ -10,10 +10,16 @@ import { API_URL } from '../config'
 import apiService from './api'
 
 export type NotificationType =
+  | 'task_progress'
   | 'task_completed'
   | 'task_failed'
+  | 'task_cancelled'
   | 'heartbeat_result'
   | 'mcp_server_status'
+  | 'brew_new_items'
+  | 'brew_source_error'
+  | 'tapp_notification'
+  | 'updater_status'
   | 'system_info'
   | 'agent_clarification'
 
@@ -25,7 +31,7 @@ export interface AppNotification {
   priority: NotificationPriority
   title: string
   body: string
-  user_id?: number | null
+  user_id: number
   metadata?: Record<string, unknown> | null
   created_at: string
   read: boolean
@@ -38,23 +44,29 @@ export interface NotificationListResponse {
 }
 
 /** 通知类型 → 展示图标（智能岛轮播 / 通知列表共用；后端新增类型时走兜底图标） */
-export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
+export const NOTIFICATION_TYPE_ICONS: Record<NotificationType, string> = {
+  task_progress: '⏳',
   task_completed: '✅',
   task_failed: '❌',
+  task_cancelled: '🛑',
   heartbeat_result: '💓',
   mcp_server_status: '🔌',
+  brew_new_items: '☕',
+  brew_source_error: '⚠️',
+  tapp_notification: '🧩',
+  updater_status: '🔄',
   system_info: 'ℹ️',
   agent_clarification: '❓',
 }
 
-/** SSE 流事件（read_all / cleared 由后端按 user_id 过滤，只发给操作者本人） */
+/** SSE 流事件均由后端按 user_id 过滤，只发给通知 owner。 */
 export type NotificationStreamEvent =
   | { event: 'init'; unread_count: number }
   | { event: 'new_notification'; notification: AppNotification }
-  | { event: 'notification_read'; id: string }
-  | { event: 'notifications_read_all' }
-  | { event: 'notification_deleted'; id: string }
-  | { event: 'notifications_cleared' }
+  | { event: 'notification_read'; id: string; user_id: number }
+  | { event: 'notifications_read_all'; user_id: number }
+  | { event: 'notification_deleted'; id: string; user_id: number }
+  | { event: 'notifications_cleared'; user_id: number }
 
 const BASE = '/agent/notifications'
 

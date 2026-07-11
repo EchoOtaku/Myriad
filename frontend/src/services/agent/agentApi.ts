@@ -9,27 +9,24 @@ import type {
   Capability,
   ClarifyRequest,
   CreatePresetRequest,
-  ErrorEvent,
   ExecutionTrace,
   HeartbeatTask,
   MemoryEntry,
   ProcessContext,
   ProcessRequest,
   ProgressCallback,
-  ProgressEvent,
   QueueStatus,
   SessionInfo,
   SessionMessage,
   SkillInfo,
-  TaskCompletedEvent,
   TaskDetail,
   TaskInfo,
   TaskPreset,
   TaskPresetListResponse,
 } from './types'
 
-import { getCSRFToken } from '../../utils/csrf'
 import { apiService } from '../api'
+import { abortSseSubscriptions, executeSSERequest } from './sseTransport'
 
 /**
  * Agent 服务类
@@ -48,8 +45,7 @@ class AgentService {
    * 调用后 executeSSERequest 的 Promise 将 reject 并释放连接。
    */
   abortCurrentRequest(): void {
-    for (const controller of this.activeAbortControllers) controller.abort()
-    this.activeAbortControllers.clear()
+    abortSseSubscriptions(this.activeAbortControllers)
   }
 
   /**
@@ -100,6 +96,7 @@ class AgentService {
       'POST',
       request,
       onProgress,
+      false,
     )
   }
 
@@ -193,8 +190,7 @@ class AgentService {
     answer: string,
     onProgress: ProgressCallback,
   ): Promise<AgentResponse> {
-    // abortPrevious=false: process_stream 的 SSE 连接仍在后端 hold 住等待回答结果，
-    // 不能中断它，否则 processWithProgress 会收到 AbortError
+    // abortPrevious=false：回答订阅与任务 run 订阅可以并存；显式中断由 UI 单独触发。
     return this.executeSSERequest(
       `/api${this.baseUrl}/tasks/${taskId}/answer/stream`,
       'POST',
@@ -533,8 +529,7 @@ class AgentService {
    * 执行 SSE 请求的通用方法
    *
    * @param abortPrevious - 是否中断前一个活跃请求（默认 true）。
-   *   answerQuestion 场景下应传 false，因为 process_stream 的 SSE 连接
-   *   仍在等待后端 done_rx 信号，中断它会导致 AbortError。
+   *   answerQuestion 与后台 run 的订阅需要并存，因此该场景传 false。
    */
   private async executeSSERequest(
     url: string,
@@ -543,196 +538,16 @@ class AgentService {
     onProgress?: ProgressCallback,
     abortPrevious = true,
   ): Promise<AgentResponse> {
-    // 中断前一个活跃请求（如果有）
-    if (abortPrevious) {
-      this.abortCurrentRequest()
-    }
-
-    const csrfToken = method === 'POST' ? await getCSRFToken() : null
-
-    return new Promise((resolve, reject) => {
-      const controller = new AbortController()
-      this.activeAbortControllers.add(controller)
-      const timeoutId = setTimeout(() => controller.abort(), 600000)
-
-      // 请求结束后清理引用
-      const cleanup = () => {
-        clearTimeout(timeoutId)
-        this.activeAbortControllers.delete(controller)
-      }
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-
-      if (csrfToken) headers['X-CSRF-Token'] = csrfToken
-
-      fetch(url, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-        credentials: 'include',
-      })
-        .then(async (response) => {
-          console.log('[AgentService] Response status:', response.status)
-
-          if (!response.ok) {
-            const text = await response.text()
-            throw new Error(
-              `HTTP error! status: ${response.status}, body: ${text}`,
-            )
-          }
-
-          const reader = response.body?.getReader()
-          if (!reader) {
-            throw new Error('Unable to read response stream')
-          }
-
-          const decoder = new TextDecoder()
-          let buffer = ''
-          let finalResponse: AgentResponse | null = null
-
-          // 记录从 task_created 事件中获取的 task_id，用于流中断后 fallback 轮询
-          let capturedTaskId: string | null = null
-
-          try {
-            while (true) {
-              const { done, value } = await reader.read()
-
-              if (value) {
-                buffer += decoder.decode(value, { stream: !done })
-              }
-
-              const lines = buffer.split('\n')
-              buffer = done ? '' : lines.pop() || ''
-
-              for (const line of lines) {
-                if (line.startsWith('data: ') || line.startsWith('data:')) {
-                  const data = line
-                    .slice(line.startsWith('data: ') ? 6 : 5)
-                    .trim()
-                  if (data) {
-                    try {
-                      const event: ProgressEvent = JSON.parse(data)
-
-                      // 捕获 task_id，供流中断时 fallback 使用
-                      if (event.type === 'task_created' && event.taskId) {
-                        capturedTaskId = event.taskId
-                      }
-
-                      if (onProgress) {
-                        onProgress(event)
-                      }
-
-                      if (event.type === 'task_completed') {
-                        finalResponse = (event as TaskCompletedEvent).response
-                      } else if (event.type === 'error') {
-                        reject(new Error((event as ErrorEvent).message))
-                        return
-                      }
-                    } catch (parseError) {
-                      console.warn(
-                        '[AgentService] Failed to parse SSE event:',
-                        parseError,
-                      )
-                    }
-                  }
-                }
-              }
-
-              if (done) break
-            }
-          } finally {
-            reader.releaseLock()
-            cleanup()
-          }
-
-          if (finalResponse) {
-            resolve(finalResponse)
-          } else if (capturedTaskId) {
-            // SSE 流意外结束但任务已创建，fallback 到轮询等待结果
-            console.warn(
-              '[AgentService] SSE stream ended without completion, falling back to polling for task:',
-              capturedTaskId,
-            )
-            try {
-              const task = await this.pollTaskUntilComplete(capturedTaskId, {
-                intervalMs: 2000,
-                timeoutMs: 300000,
-                onProgress: onProgress
-                  ? (t) => {
-                      onProgress({
-                        type: 'progress',
-                        progress: t.progress,
-                        completedSteps: 0,
-                        totalSteps: 0,
-                        message: '',
-                      })
-                    }
-                  : undefined,
-              })
-              if (task.status === 'completed' && task.results) {
-                resolve(this.buildPolledResponse(task))
-              } else {
-                reject(
-                  new Error(
-                    `Task ${capturedTaskId} ended with status ${task.status}`,
-                  ),
-                )
-              }
-            } catch (pollError) {
-              reject(pollError)
-            }
-          } else {
-            reject(new Error('No completion response received'))
-          }
-        })
-        .catch((error) => {
-          cleanup()
-          if (error.name === 'AbortError') {
-            reject(new Error('Request timed out or interrupted'))
-          } else {
-            reject(error)
-          }
-        })
+    return executeSSERequest({
+      url,
+      method,
+      body,
+      onProgress,
+      abortPrevious,
+      activeControllers: this.activeAbortControllers,
+      pollTaskUntilComplete: (taskId, options) =>
+        this.pollTaskUntilComplete(taskId, options),
     })
-  }
-
-  private buildPolledResponse(task: TaskDetail): AgentResponse {
-    const stepResults = Object.values(task.results ?? {}) as Array<{
-      success?: boolean
-      output?: unknown
-      error?: string
-    }>
-    const data =
-      stepResults.filter((result) => result.success).at(-1)?.output ??
-      task.results
-    const dataObject =
-      data && typeof data === 'object'
-        ? (data as Record<string, unknown>)
-        : undefined
-    const message =
-      ['message', 'reply', 'summary', 'analysis']
-        .map((key) => dataObject?.[key])
-        .find((value): value is string => typeof value === 'string') ??
-      (task.status === 'completed'
-        ? 'Task completed'
-        : stepResults.find((result) => result.error)?.error ||
-          `Task ${task.status}`)
-
-    return {
-      success: task.status === 'completed',
-      responseType: task.status === 'completed' ? 'task_completed' : 'error',
-      message,
-      data,
-      suggestions: [],
-      task: {
-        taskId: task.taskId,
-        status: task.status as TaskInfo['status'],
-        progress: task.progress,
-      },
-    }
   }
 }
 

@@ -585,7 +585,20 @@ impl TappSchedulerEngine {
         Self::update_task_after_execution(db, task, &status, result, error.clone()).await?;
 
         if status == ExecutionStatus::Failed {
-            return Err(error.unwrap_or_else(|| "Scheduled task failed".to_string()));
+            let failure = error.unwrap_or_else(|| "Scheduled task failed".to_string());
+            if let Some(manager) = crate::services::agent::notifications::get_notification_manager()
+            {
+                manager
+                    .notify_tapp(
+                        task.user_id,
+                        &task.tapp_id,
+                        Some(&format!("定时任务失败: {}", task.name)),
+                        &failure,
+                        "error",
+                    )
+                    .await;
+            }
+            return Err(failure);
         }
 
         Ok(())
@@ -761,7 +774,23 @@ impl TappSchedulerEngine {
             return Ok(());
         }
 
-        Self::update_task_after_frontend_completion(db, &task, &status, result, error).await
+        Self::update_task_after_frontend_completion(db, &task, &status, result, error.clone())
+            .await?;
+        if matches!(status, ExecutionStatus::Failed | ExecutionStatus::Timeout) {
+            if let Some(manager) = crate::services::agent::notifications::get_notification_manager()
+            {
+                manager
+                    .notify_tapp(
+                        task.user_id,
+                        &task.tapp_id,
+                        Some(&format!("定时任务失败: {}", task.name)),
+                        error.as_deref().unwrap_or("前端任务执行失败"),
+                        "error",
+                    )
+                    .await;
+            }
+        }
+        Ok(())
     }
 
     /// 每次真正执行前重新读取当前角色和动态权限。
@@ -928,7 +957,6 @@ impl TappSchedulerEngine {
                 let title = title.as_ref().map(|t| Self::resolve_template(t, context));
                 let message = Self::resolve_template(message, context);
                 Self::action_notification_queue(
-                    db,
                     task.user_id,
                     &task.tapp_id,
                     title,
@@ -1294,75 +1322,26 @@ impl TappSchedulerEngine {
 
     /// 排队通知
     async fn action_notification_queue(
-        db: &DatabaseConnection,
         user_id: i32,
         tapp_id: &str,
         title: Option<String>,
         message: String,
         notification_type: Option<String>,
     ) -> Result<serde_json::Value, String> {
-        // 将通知存储到 tapp_storage，前端上线时可以读取
-        use crate::models::entities::tapp_storage;
+        let notification_kind = notification_type.unwrap_or_else(|| "info".to_string());
+        let manager = crate::services::agent::notifications::get_notification_manager()
+            .ok_or_else(|| "Notification system is not initialized".to_string())?;
+        let notification_id = manager
+            .notify_tapp(
+                user_id,
+                tapp_id,
+                title.as_deref(),
+                &message,
+                &notification_kind,
+            )
+            .await;
 
-        let now = Utc::now();
-        let notification = json!({
-            "title": title,
-            "message": message,
-            "type": notification_type.unwrap_or_else(|| "info".to_string()),
-            "createdAt": now.to_rfc3339(),
-            "read": false,
-        });
-
-        let key = "_pending_notifications".to_string();
-
-        // 读取现有通知
-        let existing = tapp_storage::Entity::find()
-            .filter(tapp_storage::Column::UserId.eq(user_id))
-            .filter(tapp_storage::Column::TappId.eq(tapp_id))
-            .filter(tapp_storage::Column::Key.eq(&key))
-            .one(db)
-            .await
-            .map_err(|e| format!("Storage query failed: {}", e))?;
-
-        let mut notifications: Vec<serde_json::Value> = if let Some(item) = &existing {
-            item.value.as_array().cloned().unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        // 添加新通知（最多保留 50 条）
-        notifications.push(notification);
-        if notifications.len() > 50 {
-            let skip_count = notifications.len() - 50;
-            notifications = notifications.into_iter().skip(skip_count).collect();
-        }
-
-        let now_tz = now.fixed_offset();
-        if let Some(item) = existing {
-            let mut active: tapp_storage::ActiveModel = item.into();
-            active.value = Set(json!(notifications));
-            active.updated_at = Set(now_tz);
-            active
-                .update(db)
-                .await
-                .map_err(|e| format!("Storage update failed: {}", e))?;
-        } else {
-            let new_item = tapp_storage::ActiveModel {
-                tapp_id: Set(tapp_id.to_string()),
-                user_id: Set(user_id),
-                key: Set(key),
-                value: Set(json!(notifications)),
-                created_at: Set(now_tz),
-                updated_at: Set(now_tz),
-                ..Default::default()
-            };
-            new_item
-                .insert(db)
-                .await
-                .map_err(|e| format!("Storage insert failed: {}", e))?;
-        }
-
-        Ok(json!({ "queued": true, "total": notifications.len() }))
+        Ok(json!({ "queued": true, "notificationId": notification_id }))
     }
 
     /// 前端任务已发出：推进 next_run，但在回执前不计入成功/失败。

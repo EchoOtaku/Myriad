@@ -2255,9 +2255,7 @@ pub async fn test_platform(
             let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
             match fetcher.fetch_mal_user(username, client_id).await {
                 Ok(user_info) => {
-                    let display = user_info["name"]
-                        .as_str()
-                        .unwrap_or(username);
+                    let display = user_info["name"].as_str().unwrap_or(username);
                     let anime_completed = user_info
                         .pointer("/anime_statistics/num_items_completed")
                         .and_then(|v| v.as_i64())

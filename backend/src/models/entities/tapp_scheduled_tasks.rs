@@ -250,7 +250,7 @@ pub enum BackendAction {
         #[serde(skip_serializing_if = "Option::is_none")]
         body: Option<serde_json::Value>,
     },
-    /// 发送通知（存储到待发送队列）
+    /// 发送通知（进入用户的持久通知中心）
     #[serde(rename = "notification.queue")]
     NotificationQueue {
         #[serde(skip_serializing_if = "Option::is_none")]

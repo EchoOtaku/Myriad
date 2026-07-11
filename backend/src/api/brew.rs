@@ -5,9 +5,10 @@
 use axum::{
     extract::{Path, Query, State},
     http::{header, StatusCode},
+    middleware::from_fn,
     response::IntoResponse,
     routing::{get, post, put},
-    Json, Router,
+    Extension, Json, Router,
 };
 use chrono::Utc;
 use reqwest::Url;
@@ -22,6 +23,7 @@ use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
+use crate::middleware::auth::Claims;
 use crate::middleware::auth::{
     ensure_current_admin, verify_current_admin_from_headers, verify_jwt_token,
 };
@@ -77,7 +79,10 @@ pub fn create_brew_routes() -> Router<DatabaseConnection> {
         // 统计信息
         .route("/stats", get(get_stats))
         // WebSocket（通知）
-        .route("/ws", get(brew_websocket))
+        .route(
+            "/ws",
+            get(brew_websocket).route_layer(from_fn(crate::middleware::auth::auth_middleware)),
+        )
         // RSSHub 实例管理
         .route(
             "/rsshub/instances",
@@ -2049,11 +2054,20 @@ async fn get_stats(
 async fn brew_websocket(
     ws: axum::extract::ws::WebSocketUpgrade,
     State(db): State<DatabaseConnection>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_brew_websocket(socket, db))
+    Extension(claims): Extension<Claims>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let user_id = claims
+        .sub
+        .parse::<i32>()
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    Ok(ws.on_upgrade(move |socket| handle_brew_websocket(socket, db, user_id)))
 }
 
-async fn handle_brew_websocket(mut socket: axum::extract::ws::WebSocket, _db: DatabaseConnection) {
+async fn handle_brew_websocket(
+    mut socket: axum::extract::ws::WebSocket,
+    _db: DatabaseConnection,
+    user_id: i32,
+) {
     use axum::extract::ws::Message;
 
     // 订阅通知
@@ -2064,6 +2078,9 @@ async fn handle_brew_websocket(mut socket: axum::extract::ws::WebSocket, _db: Da
             tokio::select! {
                 // 接收来自调度器的通知
                 Ok(notification) = rx.recv() => {
+                    if notification.user_id != user_id {
+                        continue;
+                    }
                     let msg = serde_json::to_string(&notification).unwrap_or_default();
                     if socket.send(Message::Text(msg.into())).await.is_err() {
                         break;

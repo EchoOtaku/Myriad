@@ -1565,8 +1565,7 @@ impl AgentMemory {
             }
             // 只是访问计数变更，不在召回热路径上全量重写两份持久化文件
             // （每次规划会触发 2 次召回）；标记脏位，由后台维护任务批量落盘
-            self.dirty
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         }
 
         results
@@ -1632,8 +1631,7 @@ impl AgentMemory {
                 }
             }
             // 标记脏位，让后台维护任务把删除结果落盘（否则重启后过期条目复活）
-            self.dirty
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         }
         count
     }

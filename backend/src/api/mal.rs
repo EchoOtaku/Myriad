@@ -83,10 +83,7 @@ pub async fn get_mal_user(
                     manga_list,
                     user,
                 }),
-                message: format!(
-                    "✓ MAL user '{}' verified ({})",
-                    username, display
-                ),
+                message: format!("✓ MAL user '{}' verified ({})", username, display),
             }))
         }
         Err(e) => {

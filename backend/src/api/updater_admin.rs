@@ -8,6 +8,7 @@
 //! which constructs the `Router` without a generic state parameter.
 
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use axum::{
     extract::{Path, Query},
@@ -18,6 +19,109 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::services::updater_client::{UpdaterClient, UpdaterClientError};
+
+fn authenticated_user_id(headers: &HeaderMap) -> Option<i32> {
+    crate::middleware::auth::verify_jwt_token(headers)
+        .ok()
+        .and_then(|claims| claims.sub.parse::<i32>().ok())
+}
+
+async fn track_updater_job(
+    updater: UpdaterClient,
+    response: &Value,
+    headers: &HeaderMap,
+    kind: &'static str,
+) {
+    let Some(job_id) = response.get("job_id").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(user_id) = authenticated_user_id(headers) else {
+        return;
+    };
+    if let Some(manager) = crate::services::agent::notifications::get_notification_manager() {
+        manager
+            .notify_updater_job(user_id, job_id, kind, "pending", "任务已进入更新队列")
+            .await;
+    }
+
+    spawn_updater_job_tracker(updater, user_id, job_id.to_string(), kind.to_string());
+}
+
+fn spawn_updater_job_tracker(updater: UpdaterClient, user_id: i32, job_id: String, kind: String) {
+    tokio::spawn(async move {
+        let mut last_status = "pending".to_string();
+        for attempt in 0..450 {
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+            let Ok(job) = updater.get_json(&format!("/jobs/{}", job_id)).await else {
+                continue;
+            };
+            let status = job
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            if status != last_status {
+                let detail = job
+                    .get("steps")
+                    .and_then(Value::as_array)
+                    .and_then(|steps| steps.last())
+                    .and_then(|step| step.get("error").and_then(Value::as_str))
+                    .map(str::to_string)
+                    .or_else(|| {
+                        job.get("to_version")
+                            .and_then(Value::as_str)
+                            .map(|version| format!("目标版本: {}", version))
+                    })
+                    .unwrap_or_else(|| format!("任务状态: {}", status));
+                if let Some(manager) =
+                    crate::services::agent::notifications::get_notification_manager()
+                {
+                    manager
+                        .notify_updater_job(user_id, &job_id, &kind, status, &detail)
+                        .await;
+                }
+                last_status = status.to_string();
+            }
+            if matches!(status, "succeeded" | "failed" | "needs_manual") {
+                return;
+            }
+        }
+
+        if let Some(manager) = crate::services::agent::notifications::get_notification_manager() {
+            manager
+                .notify_updater_job(
+                    user_id,
+                    &job_id,
+                    &kind,
+                    "unknown",
+                    "状态监控超时，请在系统更新面板确认任务结果",
+                )
+                .await;
+        }
+    });
+}
+
+/// backend 本身可能在更新中被替换。启动后从持久化通知恢复未完成 job 的轮询，
+/// 避免通知永久停留在“已提交”。
+pub async fn resume_pending_job_notifications() {
+    let Some(updater) = client().cloned() else {
+        return;
+    };
+    let Some(manager) = crate::services::agent::notifications::get_notification_manager() else {
+        return;
+    };
+    let pending = manager.pending_updater_jobs().await;
+    if !pending.is_empty() {
+        tracing::info!(
+            count = pending.len(),
+            "restoring updater notification trackers"
+        );
+    }
+    for (user_id, job_id, kind) in pending {
+        spawn_updater_job_tracker(updater.clone(), user_id, job_id, kind);
+    }
+}
 
 /// Holds the optional client. `None` means "no updater configured" — we still want the routes
 /// to exist (so admins get a predictable 503 instead of a 404) but mutating calls will refuse.
@@ -298,7 +402,10 @@ pub async fn trigger_update(headers: HeaderMap, Json(body): Json<UpdateBody>) ->
         .post_json("/update", Some(&payload), idem.as_deref())
         .await
     {
-        Ok(v) => Json(v).into_response(),
+        Ok(v) => {
+            track_updater_job(c.clone(), &v, &headers, "update").await;
+            Json(v).into_response()
+        }
         Err(e) => err_to_response(e),
     }
 }
@@ -334,7 +441,7 @@ pub struct RollbackBody {
     pub snapshot_id: String,
 }
 
-pub async fn rollback(Json(body): Json<RollbackBody>) -> Response {
+pub async fn rollback(headers: HeaderMap, Json(body): Json<RollbackBody>) -> Response {
     let c = match require() {
         Ok(c) => c,
         Err(r) => return *r,
@@ -344,7 +451,10 @@ pub async fn rollback(Json(body): Json<RollbackBody>) -> Response {
     }
     let payload = json!({ "snapshot_id": body.snapshot_id });
     match c.post_json("/rollback", Some(&payload), None).await {
-        Ok(v) => Json(v).into_response(),
+        Ok(v) => {
+            track_updater_job(c.clone(), &v, &headers, "rollback").await;
+            Json(v).into_response()
+        }
         Err(e) => err_to_response(e),
     }
 }
@@ -398,7 +508,7 @@ pub async fn forget_current() -> Response {
 }
 
 /// One-click recovery: roll back to the snapshot on the stuck needs_manual job.
-pub async fn rescue_continue() -> Response {
+pub async fn rescue_continue(headers: HeaderMap) -> Response {
     let c = match require() {
         Ok(c) => c,
         Err(r) => return *r,
@@ -407,7 +517,10 @@ pub async fn rescue_continue() -> Response {
         return token_missing();
     }
     match c.post_json::<Value>("/rescue/continue", None, None).await {
-        Ok(v) => Json(v).into_response(),
+        Ok(v) => {
+            track_updater_job(c.clone(), &v, &headers, "rollback").await;
+            Json(v).into_response()
+        }
         Err(e) => err_to_response(e),
     }
 }

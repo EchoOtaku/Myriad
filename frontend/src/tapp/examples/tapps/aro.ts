@@ -1137,6 +1137,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectTapp": "Select Tapp",
     "send": "Send",
     "sendFail": "Send failed",
+    "loadFail": "Load failed",
     "syncBtn": "Sync",
     "syncFail": "Sync failed",
     "syncSuccess": "Sync complete",
@@ -1293,6 +1294,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectTapp": "Tappを選択",
     "send": "送信",
     "sendFail": "送信失敗",
+    "loadFail": "読み込み失敗",
     "syncBtn": "同期",
     "syncFail": "同期失敗",
     "syncSuccess": "同期完了",
@@ -1449,6 +1451,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectTapp": "选择 Tapp",
     "send": "发送",
     "sendFail": "发送失败",
+    "loadFail": "加载失败",
     "syncBtn": "同步",
     "syncFail": "同步失败",
     "syncSuccess": "同步完成",
@@ -1491,12 +1494,17 @@ var state = {
   activeKind: null,
   activeId: null,
   messages: [],
+  messagesFp: '',
   members: [],
   channelDetail: null,
   roomDetail: null,
   sending: false,
   pollTimer: null,
   pollInterval: 15000,
+  /** Active realtime WS subscription (channel|room) */
+  subscribedKind: null,
+  subscribedId: null,
+  realtimeBound: false,
   localActorUrl: null,
   identity: null,
   isAdmin: false,
@@ -2601,6 +2609,7 @@ async function doTogglePin(msg) {
       await Tapp.federation.pinRoomMessage(state.activeId, msg.message_id, newPinned);
     }
     msg.is_pinned = newPinned;
+    state.messagesFp = messagesFingerprint(state.messages);
     state.pinnedBarDismissed = false;
     renderMessages();
   } catch (e) {
@@ -3276,9 +3285,13 @@ const PAGE_MOD_API = `\
 }
 
 async function openConversation(kind, id) {
+  // Drop previous realtime subscription before switching
+  await unsubscribeRealtime();
+
   state.activeKind = kind;
   state.activeId = id;
   state.messages = [];
+  state.messagesFp = '';
   state.members = [];
   state.channelDetail = null;
   state.roomDetail = null;
@@ -3310,7 +3323,10 @@ async function openConversation(kind, id) {
           }
         }
       }
-      if (results[1]) state.messages = results[1].messages || [];
+      if (results[1]) {
+        state.messages = results[1].messages || [];
+        state.messagesFp = messagesFingerprint(state.messages);
+      }
     } else {
       var results = await Promise.all([
         Tapp.federation.getRoom(id),
@@ -3328,15 +3344,22 @@ async function openConversation(kind, id) {
           }
         }
       }
-      if (results[2]) state.messages = results[2].messages || [];
+      if (results[2]) {
+        state.messages = results[2].messages || [];
+        state.messagesFp = messagesFingerprint(state.messages);
+      }
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    console.error('[Aro] openConversation failed:', e);
+    notifyError(lang.loadFail || lang.sendFail || 'Load failed', e);
+  }
 
   renderChatHeader();
   renderMessages();
   renderMembers();
   renderConvList();
   startPolling();
+  subscribeRealtime();
 }
 
 async function doSend() {
@@ -3395,14 +3418,14 @@ async function doSend() {
       clearQuote();
     }
 
+    var sendReq = { payload: msgPayload, message_type: msgType };
+    if (replyTo) sendReq.reply_to = replyTo;
     if (state.activeKind === 'channel') {
-      await Tapp.federation.sendMessage(state.activeId, { payload: msgPayload, message_type: msgType });
+      await Tapp.federation.sendMessage(state.activeId, sendReq);
     } else {
-      var req = { payload: msgPayload, message_type: msgType };
-      if (replyTo) req.reply_to = replyTo;
-      await Tapp.federation.sendRoomMessage(state.activeId, req);
+      await Tapp.federation.sendRoomMessage(state.activeId, sendReq);
     }
-    await pollMessages();
+    await pollMessages(true);
   } catch (e) {
     if (text) input.value = text;
     notifyError(lang.sendFail, e);
@@ -3412,7 +3435,38 @@ async function doSend() {
   }
 }
 
-async function pollMessages() {
+/** Fingerprint message list so pin/content changes refresh even when count stays the same. */
+function messagesFingerprint(msgs) {
+  if (!msgs || !msgs.length) return '0';
+  var last = msgs[msgs.length - 1] || {};
+  var pins = 0;
+  var ids = [];
+  for (var i = 0; i < msgs.length; i++) {
+    if (msgs[i].is_pinned) pins++;
+    if (i === 0 || i === msgs.length - 1 || msgs[i].is_pinned) {
+      ids.push((msgs[i].message_id || '') + (msgs[i].is_pinned ? '*' : ''));
+    }
+  }
+  return msgs.length + '|' + (last.message_id || '') + '|' + (last.created_at || '') + '|' + pins + '|' + ids.join(',');
+}
+
+function mergeIncomingMessage(msg) {
+  if (!msg || !msg.message_id) return false;
+  for (var i = 0; i < state.messages.length; i++) {
+    if (state.messages[i].message_id === msg.message_id) {
+      state.messages[i] = Object.assign({}, state.messages[i], msg);
+      state.messagesFp = messagesFingerprint(state.messages);
+      renderMessages();
+      return true;
+    }
+  }
+  state.messages.push(msg);
+  state.messagesFp = messagesFingerprint(state.messages);
+  renderMessages();
+  return true;
+}
+
+async function pollMessages(force) {
   if (!state.activeId || !state.activeKind) return;
   try {
     var res;
@@ -3423,8 +3477,10 @@ async function pollMessages() {
     }
     if (res) {
       var msgs = res.messages || [];
-      if (msgs.length !== state.messages.length) {
+      var fp = messagesFingerprint(msgs);
+      if (force || fp !== state.messagesFp) {
         state.messages = msgs;
+        state.messagesFp = fp;
         renderMessages();
       }
     }
@@ -3433,16 +3489,136 @@ async function pollMessages() {
 
 function startPolling() {
   stopPolling();
-  state.pollTimer = setInterval(pollMessages, state.pollInterval);
+  state.pollTimer = setInterval(function () { pollMessages(false); }, state.pollInterval);
 }
 
 function stopPolling() {
   if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
 }
 
+async function subscribeRealtime() {
+  if (!state.activeId || !state.activeKind || !Tapp.federation) return;
+  // Already subscribed to this conversation
+  if (state.subscribedKind === state.activeKind && state.subscribedId === state.activeId) return;
+  await unsubscribeRealtime();
+  try {
+    if (state.activeKind === 'channel' && typeof Tapp.federation.subscribeChannel === 'function') {
+      await Tapp.federation.subscribeChannel(state.activeId);
+      state.subscribedKind = 'channel';
+      state.subscribedId = state.activeId;
+    } else if (state.activeKind === 'room' && typeof Tapp.federation.subscribeRoom === 'function') {
+      await Tapp.federation.subscribeRoom(state.activeId);
+      state.subscribedKind = 'room';
+      state.subscribedId = state.activeId;
+    }
+  } catch (e) {
+    console.warn('[Aro] realtime subscribe failed, falling back to poll:', e);
+  }
+}
+
+async function unsubscribeRealtime() {
+  if (!state.subscribedKind || !state.subscribedId || !Tapp.federation) {
+    state.subscribedKind = null;
+    state.subscribedId = null;
+    return;
+  }
+  try {
+    if (state.subscribedKind === 'channel' && typeof Tapp.federation.unsubscribeChannel === 'function') {
+      await Tapp.federation.unsubscribeChannel(state.subscribedId);
+    } else if (state.subscribedKind === 'room' && typeof Tapp.federation.unsubscribeRoom === 'function') {
+      await Tapp.federation.unsubscribeRoom(state.subscribedId);
+    }
+  } catch (e) { /* ignore */ }
+  state.subscribedKind = null;
+  state.subscribedId = null;
+}
+
+function handleRealtimeMessage(ev) {
+  if (!ev || !state.activeId) return;
+  var data = ev.data || {};
+  var inScope = false;
+  if (ev.scope === 'channel' && state.activeKind === 'channel' && ev.channelId === state.activeId) {
+    inScope = true;
+  } else if (ev.scope === 'room' && state.activeKind === 'room' && ev.roomId === state.activeId) {
+    inScope = true;
+  }
+  if (!inScope) return;
+
+  if (data.type === 'message' && data.message) {
+    mergeIncomingMessage(data.message);
+    return;
+  }
+  if (data.type === 'room_message_pinned' && data.message_id) {
+    for (var i = 0; i < state.messages.length; i++) {
+      if (state.messages[i].message_id === data.message_id) {
+        state.messages[i].is_pinned = !!data.is_pinned;
+        state.messagesFp = messagesFingerprint(state.messages);
+        renderMessages();
+        return;
+      }
+    }
+    pollMessages(true);
+    return;
+  }
+  if (data.event === 'member_invited' || data.event === 'member_left' || data.event === 'member_kicked' || data.type === 'room_deleted') {
+    if (state.activeKind === 'room') {
+      Tapp.federation.getRoomMembers(state.activeId).then(function (res) {
+        state.members = unwrapRoomMembers(res);
+        renderMembers();
+        renderChatHeader();
+      }).catch(function () {});
+      if (data.type === 'room_deleted') {
+        notifyError(lang.dissolve || 'Room deleted');
+      }
+    }
+    return;
+  }
+  // Unknown event — force a full refresh
+  pollMessages(true);
+}
+
+function bindRealtimeListeners() {
+  if (state.realtimeBound || !Tapp.federation) return;
+  state.realtimeBound = true;
+  if (typeof Tapp.federation.onMessage === 'function') {
+    Tapp.federation.onMessage(function (ev) { handleRealtimeMessage(ev); });
+  }
+  if (typeof Tapp.federation.onChannelUpdate === 'function') {
+    Tapp.federation.onChannelUpdate(function (ev) {
+      if (!ev || ev.channelId !== state.activeId || state.activeKind !== 'channel') return;
+      if (ev.event === 'closed') {
+        if (state.channelDetail) state.channelDetail.status = 'closed';
+        for (var i = 0; i < state.channels.length; i++) {
+          if (state.channels[i].channel_id === state.activeId) {
+            state.channels[i].status = 'closed';
+            break;
+          }
+        }
+        renderChatHeader();
+        renderConvList();
+      } else if (ev.event === 'disconnected') {
+        // WS dropped — poll will keep things eventually consistent
+        pollMessages(true);
+      }
+    });
+  }
+  if (typeof Tapp.federation.onRoomUpdate === 'function') {
+    Tapp.federation.onRoomUpdate(function (ev) {
+      if (!ev || ev.roomId !== state.activeId || state.activeKind !== 'room') return;
+      if (ev.event === 'disconnected') pollMessages(true);
+      else if (ev.event === 'governance_changed') {
+        Tapp.federation.getRoom(state.activeId).then(function (detail) {
+          if (detail) { state.roomDetail = detail; renderChatHeader(); }
+        }).catch(function () {});
+      }
+    });
+  }
+}
+
 async function doCloseChannel() {
   if (!state.activeId || state.activeKind !== 'channel') return;
   try {
+    await unsubscribeRealtime();
     await Tapp.federation.closeChannel(state.activeId);
     state.channelDetail.status = 'closed';
     renderChatHeader();
@@ -3666,6 +3842,7 @@ async function doDissolveRoom() {
   if (!state.activeId || state.activeKind !== 'room') return;
   if (!confirm(lang.dissolveConfirm)) return;
   try {
+    await unsubscribeRealtime();
     await Tapp.federation.deleteRoom(state.activeId);
     state.activeKind = null;
     state.activeId = null;
@@ -3702,6 +3879,7 @@ async function doAcceptChannel() {
 async function doLeaveRoom() {
   if (!state.activeId || state.activeKind !== 'room') return;
   try {
+    await unsubscribeRealtime();
     await Tapp.federation.leaveRoom(state.activeId);
     state.activeKind = null;
     state.activeId = null;
@@ -3813,6 +3991,12 @@ const PAGE_MOD_VIEWS = `\
   document.querySelectorAll('.aro-nav-item').forEach(function (btn) {
     btn.classList.toggle('aro-nav-active', btn.dataset.view === view);
   });
+  // Pause chat poll when not on messages; keep WS for quick resume
+  if (view === 'messages') {
+    if (state.activeId) startPolling();
+  } else {
+    stopPolling();
+  }
   // Load data for the view
   if (view === 'feed') loadFeed();
   else if (view === 'rings') loadRings();
@@ -4558,6 +4742,11 @@ const PAGE_MOD_EVENTS = `\
       clearPendingAttach();
       closeAttachMenu();
       stopPolling();
+      unsubscribeRealtime();
+      state.activeKind = null;
+      state.activeId = null;
+      state.messages = [];
+      state.messagesFp = '';
     });
   }
 
@@ -4716,6 +4905,7 @@ const PAGE_MOD_INDEX = `\
   renderFederationIdentity();
   applyAdminControls();
 
+  bindRealtimeListeners();
   bindEvents();
   await loadConversations();
   await loadFeed();
@@ -4758,6 +4948,7 @@ if (window._TAPP_MODE === 'page' || window._TAPP_HAS_HTML) {
 
   Tapp.lifecycle.onDestroy(function () {
     stopPolling();
+    unsubscribeRealtime();
   });
 }
 `
@@ -4832,7 +5023,7 @@ const CORE_CODE = buildCoreCode()
 const manifest: TappManifest = {
   id: 'com.myriad.aro',
   name: 'Aro',
-  version: '1.0.3',
+  version: '1.0.4',
   description: 'Aro — 社交中心，统一管理消息、时间线、环网和个人资料。',
   category: 'social',
   main: 'index.js',

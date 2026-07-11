@@ -1488,6 +1488,14 @@ impl QuestionOption {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentProgressEvent {
+    /// 后端已接管本次运行。run_id 在执行任务 ID 产生前就可用，
+    /// 前端断线后可用它重新订阅，而不会重新发起任务。
+    RunStarted {
+        #[serde(rename = "runId")]
+        run_id: String,
+        #[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+    },
     /// 任务已创建
     TaskCreated {
         #[serde(rename = "taskId")]

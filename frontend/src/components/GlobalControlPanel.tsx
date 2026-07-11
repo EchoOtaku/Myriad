@@ -237,13 +237,16 @@ const GlobalControlPanel: React.FC = () => {
 
       // 2. 高优先级走全局 toast（复用 ToastContainer，点击跳转通知 tab）
       if (n.priority === 'high' || n.priority === 'urgent') {
+        const isFailure =
+          n.notification_type === 'task_failed' ||
+          n.notification_type === 'brew_source_error' ||
+          n.metadata?.status === 'failed' ||
+          n.metadata?.tapp_notification_type === 'error' ||
+          n.metadata?.tapp_notification_type === 'danger'
         showToast({
           title: n.title,
           message: snippet,
-          type:
-            n.notification_type === 'task_failed' || n.priority === 'urgent'
-              ? 'error'
-              : 'warning',
+          type: isFailure || n.priority === 'urgent' ? 'error' : 'warning',
           duration: 6000,
           showCloseButton: true,
           onClick: () => {
@@ -276,6 +279,7 @@ const GlobalControlPanel: React.FC = () => {
 
   const notifCenter = useNotificationCenter({
     enabled: !!user,
+    userId: user?.id,
     onNew: handleNewNotification,
   })
   const { loaded: notifLoaded, loadHistory: loadNotifHistory } = notifCenter
@@ -1106,6 +1110,11 @@ const GlobalControlPanel: React.FC = () => {
     [handleClosePanel],
   )
 
+  const handleOpenAraelManage = useCallback(() => {
+    handleClosePanel()
+    window.dispatchEvent(new CustomEvent('arael-open-manage'))
+  }, [handleClosePanel])
+
   // 监听打开控制面板事件（来自音乐小组件等点击）
   useEffect(() => {
     const handleOpenPanel = () => {
@@ -1789,6 +1798,8 @@ const GlobalControlPanel: React.FC = () => {
                       center={notifCenter}
                       fill
                       onOpenSession={handleOpenNotifSession}
+                      onNavigate={handleNavigateFromPanel}
+                      onOpenAraelManage={handleOpenAraelManage}
                     />
                   </div>
                 )}

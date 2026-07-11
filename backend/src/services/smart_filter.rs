@@ -1304,12 +1304,8 @@ impl SmartFilter {
             .to_string();
 
         let metrics = user.get("public_metrics").cloned().unwrap_or(Value::Null);
-        let follower_count = metrics
-            .get("followers_count")
-            .and_then(|v| v.as_i64());
-        let following_count = metrics
-            .get("following_count")
-            .and_then(|v| v.as_i64());
+        let follower_count = metrics.get("followers_count").and_then(|v| v.as_i64());
+        let following_count = metrics.get("following_count").and_then(|v| v.as_i64());
         let tweet_count_metric = metrics
             .get("tweet_count")
             .and_then(|v| v.as_i64())
@@ -1361,9 +1357,7 @@ impl SmartFilter {
             total_impressions += impression_count;
 
             if let Some(lang) = tweet.get("lang").and_then(|v| v.as_str()) {
-                *language_distribution
-                    .entry(lang.to_string())
-                    .or_insert(0) += 1;
+                *language_distribution.entry(lang.to_string()).or_insert(0) += 1;
             }
 
             post_items.push(XPostItem {
@@ -1379,8 +1373,7 @@ impl SmartFilter {
 
         let mut top_posts = post_items.clone();
         top_posts.sort_by(|a, b| {
-            (b.like_count + b.retweet_count * 2)
-                .cmp(&(a.like_count + a.retweet_count * 2))
+            (b.like_count + b.retweet_count * 2).cmp(&(a.like_count + a.retweet_count * 2))
         });
         top_posts.truncate(10);
 
@@ -1389,12 +1382,7 @@ impl SmartFilter {
 
         let post_summary = format!(
             "X 账号 @{} 共有约 {} 条帖子，抓取 {} 条时间线，累计获赞 {}，转推 {}，评论 {}",
-            username,
-            tweet_count_metric,
-            fetched_count,
-            total_likes,
-            total_retweets,
-            total_replies
+            username, tweet_count_metric, fetched_count, total_likes, total_retweets, total_replies
         );
 
         Ok(SmartFilteredData {
@@ -1494,13 +1482,12 @@ impl SmartFilter {
                 owned_guild_count += 1;
             }
 
-            let perms = Self::discord_permissions_highlight(
-                guild.get("permissions").and_then(|v| {
+            let perms =
+                Self::discord_permissions_highlight(guild.get("permissions").and_then(|v| {
                     v.as_str()
                         .and_then(|s| s.parse::<u64>().ok())
                         .or_else(|| v.as_u64())
-                }),
-            );
+                }));
             if perms.iter().any(|p| p == "ADMINISTRATOR") {
                 admin_guild_count += 1;
             }
@@ -1512,7 +1499,10 @@ impl SmartFilter {
             }
 
             let icon_url = match (
-                guild.get("icon").and_then(|v| v.as_str()).filter(|s| !s.is_empty()),
+                guild
+                    .get("icon")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty()),
                 id.is_empty(),
             ) {
                 (Some(icon), false) => {
@@ -1569,10 +1559,7 @@ impl SmartFilter {
                 .get("verified")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let visibility = conn
-                .get("visibility")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            let visibility = conn.get("visibility").and_then(|v| v.as_i64()).unwrap_or(0);
 
             if !conn_type.is_empty()
                 && conn_type != "unknown"
@@ -1594,7 +1581,10 @@ impl SmartFilter {
         let verified_connection_count = connections.iter().filter(|c| c.verified).count();
 
         // 交叉校验：raw 中可注入 myriad_cross_refs（由 profile 拉取时写入）
-        let cross_refs = data.get("myriad_cross_refs").cloned().unwrap_or(Value::Null);
+        let cross_refs = data
+            .get("myriad_cross_refs")
+            .cloned()
+            .unwrap_or(Value::Null);
         let steam_id_cfg = cross_refs
             .get("steam_id")
             .and_then(|v| v.as_str())

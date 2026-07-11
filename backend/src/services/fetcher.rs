@@ -483,11 +483,7 @@ impl PlatformFetcher {
 
     /// 获取近两周游玩总时长（分钟）
     /// 使用 GetRecentlyPlayedGames，仅返回最近游玩的游戏，负载远小于整库
-    pub async fn fetch_steam_recent_playtime(
-        &self,
-        api_key: &str,
-        steam_id: &str,
-    ) -> Result<i32> {
+    pub async fn fetch_steam_recent_playtime(&self, api_key: &str, steam_id: &str) -> Result<i32> {
         let url = format!(
             "https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/?key={}&steamid={}",
             api_key, steam_id
@@ -1082,10 +1078,7 @@ impl PlatformFetcher {
             .ok_or_else(|| anyhow!("X user response missing id"))?
             .to_string();
 
-        let tweets = match self
-            .fetch_x_user_tweets(&user_id, bearer_token, 100)
-            .await
-        {
+        let tweets = match self.fetch_x_user_tweets(&user_id, bearer_token, 100).await {
             Ok(t) => t,
             Err(e) => {
                 tracing::warn!("X tweets fetch failed for {}: {}", username, e);
@@ -1241,11 +1234,7 @@ impl PlatformFetcher {
         }
     }
 
-    async fn discord_get_json(
-        &self,
-        path: &str,
-        access_token: &str,
-    ) -> Result<serde_json::Value> {
+    async fn discord_get_json(&self, path: &str, access_token: &str) -> Result<serde_json::Value> {
         let url = format!("{}{}", Self::DISCORD_API_BASE, path);
         let mut last_err = None;
 
@@ -1316,7 +1305,9 @@ impl PlatformFetcher {
     }
 
     pub async fn fetch_discord_guilds(&self, access_token: &str) -> Result<Vec<serde_json::Value>> {
-        let value = self.discord_get_json("/users/@me/guilds", access_token).await?;
+        let value = self
+            .discord_get_json("/users/@me/guilds", access_token)
+            .await?;
         Ok(value.as_array().cloned().unwrap_or_default())
     }
 
@@ -1648,14 +1639,7 @@ mod x_share_tests {
 
     #[test]
     fn compose_from_title_summary() {
-        let s = compose_x_share_text(
-            None,
-            Some("周报"),
-            Some("本周写了 X 接入"),
-            None,
-            &[],
-            280,
-        );
+        let s = compose_x_share_text(None, Some("周报"), Some("本周写了 X 接入"), None, &[], 280);
         assert_eq!(s, "周报\n\n本周写了 X 接入");
     }
 

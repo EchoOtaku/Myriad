@@ -73,6 +73,18 @@ impl McpManager {
                         }
                         index.insert(qualified_name, idx);
                     }
+                    drop(index);
+                    if let Some(manager) =
+                        crate::services::agent::notifications::get_notification_manager()
+                    {
+                        manager
+                            .notify_mcp_server_status(
+                                &server_id,
+                                true,
+                                &format!("已加载 {} 个工具", srv.tools().len()),
+                            )
+                            .await;
+                    }
                 }
                 Err(e) => {
                     tracing::error!(
@@ -80,6 +92,13 @@ impl McpManager {
                         error = %e,
                         "Failed to start MCP server"
                     );
+                    if let Some(manager) =
+                        crate::services::agent::notifications::get_notification_manager()
+                    {
+                        manager
+                            .notify_mcp_server_status(&server_id, false, &e)
+                            .await;
+                    }
                 }
             }
         }
@@ -113,7 +132,23 @@ impl McpManager {
         // 健康检查 + 自动重启
         if !srv.is_healthy() && srv.config.auto_restart {
             tracing::warn!(tool = %tool_name, "MCP server unhealthy, attempting restart");
-            srv.try_restart().await?;
+            let server_id = srv.config.id.clone();
+            if let Err(error) = srv.try_restart().await {
+                if let Some(manager) =
+                    crate::services::agent::notifications::get_notification_manager()
+                {
+                    manager
+                        .notify_mcp_server_status(&server_id, false, &error)
+                        .await;
+                }
+                return Err(error);
+            }
+            if let Some(manager) = crate::services::agent::notifications::get_notification_manager()
+            {
+                manager
+                    .notify_mcp_server_status(&server_id, true, "自动重启成功")
+                    .await;
+            }
 
             // 重建该服务器的工具索引
             let mut index = self.tool_index.lock().await;

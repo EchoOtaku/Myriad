@@ -18,7 +18,7 @@ pub struct Model {
     pub title: String,
     #[sea_orm(column_type = "Text")]
     pub body: String,
-    /// 目标用户 ID（NULL = 广播给所有用户）
+    /// 目标用户 ID（旧数据可能为 NULL；新通知必须有明确 owner）
     #[sea_orm(nullable)]
     pub user_id: Option<i32>,
     #[sea_orm(column_type = "Json", nullable)]

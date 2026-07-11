@@ -17,12 +17,14 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio_stream::StreamExt;
 
 use crate::middleware::auth::Claims;
 use crate::models::entities::{agent_messages, agent_sessions, agent_task_presets};
 use crate::services::agent::queue::LaneQueue;
+use crate::services::agent::run_hub::{create_run, get_run_for_user, AgentRun};
 use crate::services::agent::{
     Agent, AgentProgressEvent, AgentResponse, AgentResponseType, RequestContext, TaskState,
     UserAnswer, UserRequest, LANE_QUEUE,
@@ -31,7 +33,7 @@ use crate::services::agent::{
 /// 等待用户回答的任务上下文
 /// process_stream 注册后等待 oneshot 信号；answer_task_question_stream 完成后通过此信号回传结果
 struct WaitingTaskCtx {
-    /// 来自 process_stream 的 SSE sender，answer 阶段的进度事件可通过此通道推送
+    /// 后端 run 的进度 sender；answer 阶段继续写入同一个 run hub
     progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
     /// 单次信号：answer 处理完成后将最终 response Value 发送至此
     done_tx: tokio::sync::oneshot::Sender<serde_json::Value>,
@@ -42,6 +44,62 @@ struct WaitingTaskCtx {
 static WAITING_TASKS: once_cell::sync::Lazy<
     tokio::sync::RwLock<std::collections::HashMap<String, WaitingTaskCtx>>,
 > = once_cell::sync::Lazy::new(|| tokio::sync::RwLock::new(std::collections::HashMap::new()));
+
+fn agent_run_event_stream(run: Arc<AgentRun>) -> impl Stream<Item = Result<Event, Infallible>> {
+    async_stream::stream! {
+        // 先订阅再读取快照；sequence 去重消除两者之间的竞态。
+        let mut receiver = run.subscribe();
+        let (history, mut last_sequence, already_completed) = run.snapshot().await;
+
+        if !history.iter().any(|envelope| matches!(
+            &envelope.event,
+            AgentProgressEvent::RunStarted { .. }
+        )) {
+            let event = AgentProgressEvent::RunStarted {
+                run_id: run.run_id().to_string(),
+                session_id: run.session_id().map(str::to_string),
+            };
+            let data = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
+            yield Ok(Event::default().id("0").data(data));
+        }
+
+        for envelope in history {
+            let data = serde_json::to_string(&envelope.event).unwrap_or_else(|_| "{}".to_string());
+            yield Ok(Event::default().id(envelope.sequence.to_string()).data(data));
+        }
+        if already_completed {
+            return;
+        }
+
+        loop {
+            match receiver.recv().await {
+                Ok(envelope) if envelope.sequence > last_sequence => {
+                    last_sequence = envelope.sequence;
+                    let terminal = match &envelope.event {
+                        AgentProgressEvent::TaskCompleted { response, .. } => {
+                            response.pointer("/task/status").and_then(Value::as_str)
+                                != Some("waiting_for_input")
+                        }
+                        AgentProgressEvent::Error { .. } => true,
+                        _ => false,
+                    };
+                    let data = serde_json::to_string(&envelope.event)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    yield Ok(Event::default().id(envelope.sequence.to_string()).data(data));
+                    if terminal {
+                        return;
+                    }
+                }
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    // 客户端随后可重新 GET，同一 run 的历史会补齐最近事件。
+                    return;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+            }
+        }
+    }
+}
 
 // ============ 请求/响应类型 ============
 
@@ -998,8 +1056,18 @@ pub async fn process_stream(
         user_request.context = Some(new_ctx);
     }
 
-    // 创建进度通道
+    // 后端 run 独立于本次 HTTP 连接；前端只订阅事件。
+    let run = create_run(user_id, has_session.then_some(session_id.clone())).await;
+
+    // Agent/executor 继续使用有背压的 mpsc；独立转发器负责写入 run hub。
     let (tx, rx) = tokio::sync::mpsc::channel::<ProgressEvent>(32);
+    let run_for_forwarder = run.clone();
+    tokio::spawn(async move {
+        let mut rx = rx;
+        while let Some(event) = rx.recv().await {
+            run_for_forwarder.publish(event).await;
+        }
+    });
 
     // 在后台执行任务
     let db_clone = db.clone();
@@ -1053,7 +1121,7 @@ pub async fn process_stream(
 
                 if is_waiting && !task_id.is_empty() {
                     // 任务需要用户回答。前端已通过 waiting_for_input SSE 事件收到问题。
-                    // 保持 SSE 连接存活，循环等待直到任务真正完成（支持多轮提问）。
+                    // 保持后端 run 存活，循环等待直到任务真正完成（支持多轮提问）。
                     // 每轮回答后检查任务是否仍在等待输入，如果是则重新注册等待。
 
                     // 持久化首次问题消息
@@ -1086,7 +1154,7 @@ pub async fn process_stream(
                                 },
                             );
                         }
-                        tracing::info!(task_id = %task_id, "[Agent API] Task waiting for user input, holding SSE stream");
+                        tracing::info!(task_id = %task_id, "[Agent API] Task waiting for user input, keeping run alive");
 
                         // 等待 answer_task_question_stream 回传结果（最长 10 分钟/轮）
                         match tokio::time::timeout(tokio::time::Duration::from_secs(600), done_rx)
@@ -1147,34 +1215,6 @@ pub async fn process_stream(
                                     .await;
                                 }
 
-                                if let Some(nm) =
-                                    crate::services::agent::notifications::get_notification_manager(
-                                    )
-                                {
-                                    let title = if task_success {
-                                        "任务完成"
-                                    } else {
-                                        "任务失败"
-                                    };
-                                    let summary = response_value
-                                        .get("message")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("")
-                                        .chars()
-                                        .take(120)
-                                        .collect::<String>();
-                                    nm.notify_task_completed(
-                                        &task_id,
-                                        Some(user_id),
-                                        (!session_id_clone.is_empty())
-                                            .then_some(session_id_clone.as_str()),
-                                        title,
-                                        &summary,
-                                        task_success,
-                                    )
-                                    .await;
-                                }
-
                                 if let Err(e) = tx
                                     .send(AgentProgressEvent::TaskCompleted {
                                         task_id: task_id.clone(),
@@ -1186,7 +1226,7 @@ pub async fn process_stream(
                                     tracing::error!(
                                         task_id = %task_id,
                                         error = %e,
-                                        "[Agent API] Failed to send TaskCompleted via SSE (client may have disconnected)"
+                                        "[Agent API] Failed to publish TaskCompleted to run hub"
                                     );
                                 }
                                 break;
@@ -1215,27 +1255,31 @@ pub async fn process_stream(
                                     store.get(&task_id).cloned()
                                 };
 
+                                if current_task.as_ref().is_some_and(|task| {
+                                    task.status
+                                        == crate::services::agent::types::TaskStatus::WaitingForInput
+                                }) {
+                                    // 等待输入不是失败或完成。继续保持后端 run 与回答入口，
+                                    // 下一轮重新注册 oneshot；前端是否在线不影响任务状态。
+                                    tracing::info!(
+                                        task_id = %task_id,
+                                        "[Agent API] Task still waiting for input; keeping run alive"
+                                    );
+                                    continue;
+                                }
+
                                 let response_value = if let Some(task) = current_task {
-                                    if task.status == crate::services::agent::types::TaskStatus::WaitingForInput {
-                                        // 任务确实还在等待 → 发送超时通知，保持 WaitingForInput 状态
-                                        // 前端可以通过重新连接 SSE 继续等待
-                                        json!({
-                                            "message": "等待用户回答超时（10分钟），请重新提交回答",
-                                            "task": { "status": "waiting_for_input", "taskId": task_id },
-                                            "timeout": true
-                                        })
-                                    } else {
-                                        // 任务已在其他路径完成，发送实际结果
-                                        serde_json::to_value(&task).unwrap_or_else(|_| json!({"error": "serialization failed"}))
-                                    }
+                                    // 任务已在其他路径完成，发送实际结果
+                                    serde_json::to_value(&task).unwrap_or_else(
+                                        |_| json!({"error": "serialization failed"}),
+                                    )
                                 } else {
                                     serde_json::to_value(&api_response).unwrap_or_else(
                                         |_| json!({"error": "serialization failed"}),
                                     )
                                 };
 
-                                let task_success =
-                                    response_value.get("timeout").is_none() && success;
+                                let task_success = success;
                                 if let Err(e) = tx
                                     .send(AgentProgressEvent::TaskCompleted {
                                         task_id: task_id.clone(),
@@ -1285,26 +1329,6 @@ pub async fn process_stream(
                         }
                     }
 
-                    if let Some(nm) =
-                        crate::services::agent::notifications::get_notification_manager()
-                    {
-                        let title = if success {
-                            "任务完成"
-                        } else {
-                            "任务失败"
-                        };
-                        let summary = api_response.message.chars().take(120).collect::<String>();
-                        nm.notify_task_completed(
-                            &task_id,
-                            Some(user_id),
-                            (!session_id_clone.is_empty()).then_some(session_id_clone.as_str()),
-                            title,
-                            &summary,
-                            success,
-                        )
-                        .await;
-                    }
-
                     let response_value = serde_json::to_value(&api_response)
                         .unwrap_or_else(|_| json!({"error": "serialization failed"}));
 
@@ -1350,13 +1374,28 @@ pub async fn process_stream(
         // tx 在这里被 drop，channel 关闭，SSE 流结束
     });
 
-    // 将通道转换为 SSE 流
-    let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|event| {
-        let data = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
-        Ok(Event::default().data(data))
-    });
+    // SSE 只是 run hub 的一个订阅者；连接被关闭不会触碰后台 sender 或执行任务。
+    let stream = agent_run_event_stream(run);
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+/// 重新订阅一个已存在的 Agent run。
+/// GET /api/agent/runs/{run_id}/stream
+pub async fn subscribe_run_stream(
+    Extension(claims): Extension<Claims>,
+    Path(run_id): Path<String>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+    let run = get_run_for_user(&run_id, user_id).await.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Run not found, expired, or access denied" })),
+        )
+    })?;
+
+    Ok(Sse::new(agent_run_event_stream(run))
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
 }
 
 /// 获取任务状态
@@ -1559,6 +1598,20 @@ pub async fn cancel_task(
     let cancelled = agent.cancel_task_for_user(&task_id, user_id).await;
 
     if cancelled {
+        // 等待输入中的 run 正阻塞在 done_rx；显式取消必须立即唤醒它，
+        // 否则通知会在最多十分钟内仍错误显示为“等待回答”。
+        if let Some(waiting) = WAITING_TASKS.write().await.remove(&task_id) {
+            let _ = waiting.done_tx.send(json!({
+                "success": false,
+                "responseType": "error",
+                "message": "任务已取消",
+                "task": {
+                    "taskId": task_id,
+                    "status": "cancelled",
+                    "progress": 0
+                }
+            }));
+        }
         Ok(Json(json!({
             "success": true,
             "message": "Task cancellation requested",
@@ -1646,8 +1699,8 @@ pub async fn answer_task_question_stream(
     tokio::spawn(async move {
         let agent = Agent::new(db_clone.clone()).await;
 
-        // 从 WAITING_TASKS 获取 process_stream 的上下文（如果存在）
-        // 这样 resume 的进度事件会通过原始 SSE 推送给前端
+        // 从 WAITING_TASKS 获取后端 run 上下文（如果存在），
+        // 这样 resume 的进度事件会继续写入同一个可重连 run。
         let waiting_ctx = {
             let mut map = WAITING_TASKS.write().await;
             map.remove(&task_id)
@@ -3287,18 +3340,8 @@ async fn notification_stream(
         loop {
             match rx.recv().await {
                 Ok(event) => {
-                    // 过滤：只推送广播通知或属于当前用户的通知/事件
-                    use crate::services::agent::notifications::NotificationEvent as NE;
-                    let should_send = match &event {
-                        NE::NewNotification { notification } => {
-                            notification.user_id.is_none() || notification.user_id == Some(user_id)
-                        }
-                        // 全量已读/清空是用户级操作，只回发给操作者本人，
-                        // 否则会误清其他用户的未读数与列表
-                        NE::NotificationsReadAll { user_id: uid }
-                        | NE::NotificationsCleared { user_id: uid } => *uid == user_id,
-                        _ => true,
-                    };
+                    let should_send =
+                        crate::services::agent::notifications::event_is_for_user(&event, user_id);
                     if should_send {
                         let data = serde_json::to_string(&event).unwrap_or_default();
                         if tx.send(Ok(Event::default().data(data))).await.is_err() {
@@ -3333,11 +3376,12 @@ async fn list_notifications(
     let limit = params.limit.unwrap_or(50).min(200);
     let notifications = manager.get_history_for_user(user_id, limit).await;
     let unread = manager.unread_count_for_user(user_id).await;
+    let total = manager.total_count_for_user(user_id).await;
 
     Ok(Json(json!({
         "notifications": notifications,
         "unread_count": unread,
-        "total": notifications.len(),
+        "total": total,
     })))
 }
 
@@ -3352,7 +3396,15 @@ async fn mark_notification_read(
         Json(json!({"error": "Notification system not initialized"})),
     ))?;
 
-    let found = manager.mark_read(&notification_id, user_id).await;
+    let found = manager
+        .mark_read(&notification_id, user_id)
+        .await
+        .map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": error})),
+            )
+        })?;
     Ok(Json(json!({"success": found})))
 }
 
@@ -3366,7 +3418,12 @@ async fn mark_all_notifications_read(
         Json(json!({"error": "Notification system not initialized"})),
     ))?;
 
-    manager.mark_all_read(user_id).await;
+    manager.mark_all_read(user_id).await.map_err(|error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": error})),
+        )
+    })?;
     Ok(Json(json!({"success": true})))
 }
 
@@ -3381,8 +3438,22 @@ async fn delete_notification(
         Json(json!({"error": "Notification system not initialized"})),
     ))?;
 
-    let removed = manager.delete_notification(&notification_id, user_id).await;
-    Ok(Json(json!({"success": removed})))
+    let removed = manager
+        .delete_notification(&notification_id, user_id)
+        .await
+        .map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": error})),
+            )
+        })?;
+    if !removed {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Notification not found"})),
+        ));
+    }
+    Ok(Json(json!({"success": true})))
 }
 
 /// 清空全部通知
@@ -3395,7 +3466,12 @@ async fn clear_notifications(
         Json(json!({"error": "Notification system not initialized"})),
     ))?;
 
-    let deleted = manager.clear_all(user_id).await;
+    let deleted = manager.clear_all(user_id).await.map_err(|error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": error})),
+        )
+    })?;
     Ok(Json(json!({"success": true, "deleted": deleted})))
 }
 
@@ -3456,6 +3532,11 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         .route(
             "/process/stream",
             post(process_stream).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // Agent run 状态订阅：GET 可由前端在刷新/断线后安全重连
+        .route(
+            "/runs/{run_id}/stream",
+            get(subscribe_run_stream).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 提供澄清（需要认证）
         .route(

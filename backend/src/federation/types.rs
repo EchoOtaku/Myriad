@@ -516,10 +516,7 @@ pub fn same_actor_url(left: &str, right: &str) -> bool {
         if let Ok(url) = url::Url::parse(trimmed) {
             let host = url.host_str().unwrap_or("").to_ascii_lowercase();
             let path = url.path().trim_end_matches('/');
-            let port = url
-                .port()
-                .map(|p| format!(":{}", p))
-                .unwrap_or_default();
+            let port = url.port().map(|p| format!(":{}", p)).unwrap_or_default();
             return format!("{}://{}{}{}", url.scheme(), host, port, path);
         }
         trimmed.to_string()

@@ -759,10 +759,7 @@ async fn resolve_qq_audio_url(song_mid: &str) -> Result<String, String> {
         }
     }
 
-    Err(format!(
-        "No playable QQ audio URL for songmid {}",
-        song_mid
-    ))
+    Err(format!("No playable QQ audio URL for songmid {}", song_mid))
 }
 
 /// 代理 QQ 音乐音频流

@@ -161,6 +161,7 @@ export const AraelPanel: React.FC = () => {
     useRef<(messageId: string, answer: string) => void>(null)
   const sessionTitleSetRef = useRef(false)
   const handledResponseKeysRef = useRef(new Set<string>())
+  const loadingMessageIdRef = useRef<string | null>(null)
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
   const [sessionTitle, setSessionTitle] = useState<string | null>(null)
@@ -320,28 +321,15 @@ export const AraelPanel: React.FC = () => {
   // ============ 会话管理 ============
 
   const startNewSession = useCallback(async () => {
-    // Cancel any running tasks first
-    const processingMsgs = messages.filter(
-      (m) => m.taskExecution?.status === 'processing',
-    )
-    for (const msg of processingMsgs) {
-      const taskId = msg.taskExecution?.taskId
-      if (taskId) {
-        try {
-          await agentService.cancelTask(taskId)
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-
+    // 新建会话只切换前端视图。旧任务由后端 run 持续执行，并通过通知中心报告状态。
+    loadingMessageIdRef.current = null
     setIsLoading(false)
     setSessionId(null)
     setMessages([])
     setPanelView('chat')
     sessionTitleSetRef.current = false
     setSessionTitle(null)
-  }, [messages])
+  }, [])
 
   const loadSession = useCallback(async (session: ChatSession) => {
     setPanelView('chat')
@@ -411,6 +399,16 @@ export const AraelPanel: React.FC = () => {
       window.removeEventListener('arael-open-session', handleOpenSession)
   }, [loadSession])
 
+  useEffect(() => {
+    const handleOpenManage = () => {
+      setVisibility('visible')
+      setPanelView('manage')
+    }
+    window.addEventListener('arael-open-manage', handleOpenManage)
+    return () =>
+      window.removeEventListener('arael-open-manage', handleOpenManage)
+  }, [])
+
   // ============ 中断 ============
 
   const interruptCurrentTask = useCallback(async () => {
@@ -418,7 +416,9 @@ export const AraelPanel: React.FC = () => {
     agentService.abortCurrentRequest()
 
     const processingMsgs = messages.filter(
-      (m) => m.taskExecution?.status === 'processing',
+      (m) =>
+        m.taskExecution?.status === 'processing' ||
+        m.taskExecution?.status === 'waiting',
     )
     for (const msg of processingMsgs) {
       const taskId = msg.taskExecution?.taskId
@@ -436,6 +436,7 @@ export const AraelPanel: React.FC = () => {
         content: msg.content || t.arael.interrupted,
       })
     }
+    loadingMessageIdRef.current = null
     setIsLoading(false)
   }, [messages, updateMessage])
 
@@ -497,6 +498,14 @@ export const AraelPanel: React.FC = () => {
           pushDebugLog('sse', event)
         }
         switch (event.type) {
+          case 'run_started': {
+            if (event.sessionId) {
+              setSessionId(event.sessionId)
+              sessionIdRef.current = event.sessionId
+            }
+            break
+          }
+
           case 'session_created': {
             setSessionId(event.sessionId)
             // 同步更新 ref，确保后续同帧事件能立即读到
@@ -684,7 +693,10 @@ export const AraelPanel: React.FC = () => {
                 status: completedEvent.success ? 'completed' : 'error',
                 progress: 100,
               })
-              setIsLoading(false)
+              if (loadingMessageIdRef.current === assistantMessageId) {
+                loadingMessageIdRef.current = null
+                setIsLoading(false)
+              }
             }
             break
           }
@@ -833,6 +845,7 @@ export const AraelPanel: React.FC = () => {
 
       setMessages((prev) => [...prev, userMessage, assistantMessage])
       setInput('')
+      loadingMessageIdRef.current = assistantMsgId
       setIsLoading(true)
 
       try {
@@ -900,7 +913,10 @@ export const AraelPanel: React.FC = () => {
           }),
         )
       } finally {
-        setIsLoading(false)
+        if (loadingMessageIdRef.current === assistantMsgId) {
+          loadingMessageIdRef.current = null
+          setIsLoading(false)
+        }
       }
     },
     [
@@ -1231,6 +1247,8 @@ export const AraelPanel: React.FC = () => {
         status: 'processing',
         progress: 50,
       })
+      loadingMessageIdRef.current = messageId
+      setIsLoading(true)
 
       try {
         const progressHandler = createProgressHandler(messageId)
@@ -1250,7 +1268,10 @@ export const AraelPanel: React.FC = () => {
         updateMessageExecution(messageId, { status: 'error' })
       } finally {
         // 安全保障：回答流完成后确保 isLoading 归位
-        setIsLoading(false)
+        if (loadingMessageIdRef.current === messageId) {
+          loadingMessageIdRef.current = null
+          setIsLoading(false)
+        }
       }
     },
     [messages, updateMessage, updateMessageExecution, createProgressHandler],

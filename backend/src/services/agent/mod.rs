@@ -58,6 +58,7 @@ pub mod identity;
 pub mod intent;
 pub mod mcp;
 pub mod memory;
+pub mod notification_producers;
 pub mod notifications;
 pub mod orchestrator;
 pub mod planner;
@@ -65,6 +66,7 @@ pub mod queue;
 pub mod recipe;
 pub mod response_agent;
 pub mod routing;
+pub mod run_hub;
 pub mod skill;
 pub mod skill_evolution;
 pub mod tier_router;
@@ -595,7 +597,8 @@ impl Agent {
         );
 
         // 3.5 多 Agent 协作分析（Orchestrator）
-        let (assignment, role_groups) = orchestrator::Orchestrator::analyze_recipe(&recipe);
+        let (assignment, role_group_count, can_parallelize) =
+            orchestrator::Orchestrator::analyze_recipe(&recipe);
 
         // 获取角色身份上下文并注入 Recipe metadata
         let role_contexts = orchestrator::Orchestrator::get_role_contexts(&recipe).await;
@@ -613,10 +616,10 @@ impl Agent {
             tracing::info!(
                 agents = assignment.total_agents,
                 tier_mix = %assignment.tier_mix,
-                parallel = orchestrator::Orchestrator::can_parallelize(&role_groups),
+                parallel = can_parallelize,
                 "[Agent] Multi-agent collaboration: {} agents, {} role groups",
                 assignment.total_agents,
-                role_groups.len()
+                role_group_count
             );
             let _ = progress_tx
                 .send(AgentProgressEvent::TaskAssigned {
@@ -624,8 +627,6 @@ impl Agent {
                     assignment: Box::new(assignment.clone()),
                 })
                 .await;
-            // 发送多 Agent 协作通知
-            orchestrator::Orchestrator::notify_multi_agent_start(&assignment, &recipe.id).await;
         }
 
         // ========== 快速路径优化 ==========
@@ -709,38 +710,6 @@ impl Agent {
                 progress_tx.clone(),
             )
             .await;
-
-        // 5.5 Orchestrator 结果摘要（多 Agent 时）
-        if assignment.is_multi_agent {
-            let orch_result = orchestrator::OrchestratorResult {
-                total_steps: recipe.steps.len(),
-                successful_steps: if result.is_ok() {
-                    recipe.steps.len()
-                } else {
-                    0
-                },
-                participating_roles: role_groups
-                    .iter()
-                    .map(|g| g.role.display_name().to_string())
-                    .collect(),
-                used_parallel: orchestrator::Orchestrator::can_parallelize(&role_groups),
-                role_summaries: role_groups
-                    .iter()
-                    .map(|g| orchestrator::RoleSummary {
-                        role: g.role.display_name().to_string(),
-                        icon: g.role.icon().to_string(),
-                        steps_count: g.step_indices.len(),
-                        success_count: if result.is_ok() {
-                            g.step_indices.len()
-                        } else {
-                            0
-                        },
-                        identity_used: true,
-                    })
-                    .collect(),
-            };
-            orchestrator::Orchestrator::notify_multi_agent_complete(&orch_result, &recipe.id).await;
-        }
 
         // 5.7 Skill 自动创建（AI 抽象化版：成功的多步骤 Recipe → 泛化 Skill）
         if result.is_ok() && recipe.steps.len() >= 2 {
@@ -2951,7 +2920,10 @@ mod tests {
             let steps = vec![pending("storage.set", risk)];
             match Agent::system_sensitive_gate(SYSTEM_USER_ID, &steps) {
                 Some(Ok(())) => {}
-                other => panic!("系统任务应自动确认 {risk:?}，got {:?}", other.map(|r| r.is_ok())),
+                other => panic!(
+                    "系统任务应自动确认 {risk:?}，got {:?}",
+                    other.map(|r| r.is_ok())
+                ),
             }
         }
     }

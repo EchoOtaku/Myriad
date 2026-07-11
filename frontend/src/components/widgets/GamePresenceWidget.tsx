@@ -649,7 +649,7 @@ const GamePresenceWidget = memo(
       setGame(next.game)
     }, [config.config?.platformId, config.config?.accountId, config.config?.game])
 
-    // Fetch
+    // Fetch (initial load + 120s 静默轮询 —— 在线状态/正在玩会变化，不能只拉一次)
     useEffect(() => {
       if (isPreview) return
       if (!accountId) {
@@ -658,20 +658,35 @@ const GamePresenceWidget = memo(
         return
       }
       let cancelled = false
-      setLoading(true)
-      setError(null)
-      fetchGamePresence(platformId, accountId, game).then((d) => {
+
+      const load = async (isInitial: boolean) => {
+        if (isInitial) {
+          setLoading(true)
+          setError(null)
+        }
+        const d = await fetchGamePresence(platformId, accountId, game)
         if (cancelled) return
-        setLoading(false)
+        if (isInitial) setLoading(false)
         if (d) {
           setData(d)
-        } else {
+          setError(null)
+        } else if (isInitial) {
+          // 后台轮询失败时保留上一次的数据，避免闪成错误态
           setData(null)
           setError(tw.fetchFailed)
         }
-      })
+      }
+
+      load(true)
+      // 后台标签页跳过请求，回到前台后由下一次 tick 自然恢复
+      const intervalId = window.setInterval(() => {
+        if (document.hidden) return
+        load(false)
+      }, 120_000)
+
       return () => {
         cancelled = true
+        window.clearInterval(intervalId)
       }
     }, [platformId, accountId, game, isPreview, tw.fetchFailed])
 

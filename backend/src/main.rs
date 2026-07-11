@@ -185,6 +185,12 @@ async fn run_server() -> anyhow::Result<()> {
                     services::oauth::registry::REGISTRY.list().await.len()
                 );
 
+                // 通知中心必须先于任何后台调度器启动；interval 首次 tick 会立即执行，
+                // 否则启动阶段的 Tapp/Brew/MCP 事件会静默丢失。
+                services::agent::notifications::init_notifications(db.clone()).await;
+                api::updater_admin::resume_pending_job_notifications().await;
+                tracing::info!("✅ Agent notification system initialized");
+
                 // Initialize Tapp scheduler engine
                 api::tapp_scheduler::init_scheduler(db.clone()).await;
                 tracing::info!("✅ Tapp scheduler engine initialized");
@@ -212,10 +218,6 @@ async fn run_server() -> anyhow::Result<()> {
                 // Initialize Agent memory system
                 services::agent::memory::init_memory(agent_data_dir.join("memory")).await;
                 tracing::info!("✅ Agent memory system initialized");
-
-                // Initialize Agent notification system (persistent history)
-                services::agent::notifications::init_notifications(db.clone()).await;
-                tracing::info!("✅ Agent notification system initialized");
 
                 // Initialize MCP (Model Context Protocol) client
                 services::agent::mcp::init_mcp(&agent_data_dir.join("mcp_servers.json")).await;
@@ -4448,8 +4450,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // X (Twitter) — 直连调试接口会带 bearer query，必须登录；正式同步走配置 + profile fetch
             .route(
                 "/api/x/user",
-                get(api::x::get_x_user)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+                get(api::x::get_x_user).route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/x/user/info",
@@ -4459,13 +4460,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // 分享到 X：仅生成 Intent 链接（不代发帖、不 OAuth）
             .route(
                 "/api/x/share/status",
-                get(api::x::share_status)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+                get(api::x::share_status).route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/x/share",
-                post(api::x::share_to_x)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+                post(api::x::share_to_x).route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // Discord — 调试接口带 access_token query，必须登录；正式同步走配置 + profile fetch
             .route(
@@ -4496,8 +4495,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // MyAnimeList — 调试接口带 client_id query，必须登录；正式同步走配置 + profile fetch
             .route(
                 "/api/mal/user",
-                get(api::mal::get_mal_user)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+                get(api::mal::get_mal_user).route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
                 "/api/mal/user/{username}",

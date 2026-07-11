@@ -241,11 +241,7 @@ impl MetadataService {
                         let original_count = list.len();
                         if original_count > 500 {
                             list.truncate(500);
-                            tracing::warn!(
-                                "📺 MAL {} truncated: {} -> 500",
-                                key,
-                                original_count
-                            );
+                            tracing::warn!("📺 MAL {} truncated: {} -> 500", key, original_count);
                         }
                     }
                 }

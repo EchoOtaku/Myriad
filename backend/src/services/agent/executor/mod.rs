@@ -3825,6 +3825,9 @@ mod resolve_id_tests {
     #[test]
     fn id_param_without_id_yields_none() {
         let output = json!({ "message": "找到 10 个歌单", "success": true });
-        assert_eq!(Executor::extract_id_from_output(&output, "playlistId"), None);
+        assert_eq!(
+            Executor::extract_id_from_output(&output, "playlistId"),
+            None
+        );
     }
 }

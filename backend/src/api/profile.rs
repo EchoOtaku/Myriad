@@ -990,9 +990,7 @@ async fn fetch_fresh_platform_data(
 
     // 获取 X (Twitter) 数据
     if should_fetch("x") && is_platform_enabled("x") {
-        if let (Some(username), Some(bearer_token)) =
-            (&config.x_username, &config.x_bearer_token)
-        {
+        if let (Some(username), Some(bearer_token)) = (&config.x_username, &config.x_bearer_token) {
             match fetcher.fetch_x_profile_bundle(username, bearer_token).await {
                 Ok(bundle) => {
                     all_data["x"] = bundle;
@@ -1034,8 +1032,7 @@ async fn fetch_fresh_platform_data(
                     p.enabled
                         && (p.slug.eq_ignore_ascii_case("discord")
                             || p.display_name.eq_ignore_ascii_case("discord")
-                            || p
-                                .discovery_url
+                            || p.discovery_url
                                 .as_deref()
                                 .map(|u| u.contains("discord.com"))
                                 .unwrap_or(false))
@@ -1083,8 +1080,10 @@ async fn fetch_fresh_platform_data(
                     token_updates.insert("discord_refresh_token".to_string(), json!(rt));
                 }
                 if let Some(exp) = new_expires {
-                    token_updates
-                        .insert("discord_token_expires_at".to_string(), json!(exp.to_string()));
+                    token_updates.insert(
+                        "discord_token_expires_at".to_string(),
+                        json!(exp.to_string()),
+                    );
                 }
                 if let Err(e) = crate::services::config_service::ConfigService::new(db.clone())
                     .update_configs(token_updates)

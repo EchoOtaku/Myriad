@@ -132,7 +132,10 @@ impl HeartbeatManager {
         let config: HeartbeatConfig = match serde_yaml::from_str(frontmatter) {
             Ok(c) => c,
             Err(e) => {
-                tracing::warn!("[Heartbeat] Failed to parse HEARTBEAT.md frontmatter: {}", e);
+                tracing::warn!(
+                    "[Heartbeat] Failed to parse HEARTBEAT.md frontmatter: {}",
+                    e
+                );
                 return None;
             }
         };
@@ -282,8 +285,7 @@ fn cron_matches(expr: &str, now: &DateTime<Local>) -> bool {
     let dom_restricted = parts[2] != "*";
     let dow_restricted = parts[4] != "*";
     let dom_ok = cron_field_matches(parts[2], now.day());
-    let dow_ok =
-        cron_field_matches(parts[4], dow) || (dow == 0 && cron_field_matches(parts[4], 7));
+    let dow_ok = cron_field_matches(parts[4], dow) || (dow == 0 && cron_field_matches(parts[4], 7));
 
     // 标准 cron 语义：日和星期同时受限时，任一命中即可
     let day_ok = if dom_restricted && dow_restricted {
@@ -297,7 +299,9 @@ fn cron_matches(expr: &str, now: &DateTime<Local>) -> bool {
 
 /// 单字段匹配：支持逗号分隔的多个 item
 fn cron_field_matches(field: &str, value: u32) -> bool {
-    field.split(',').any(|item| cron_item_matches(item.trim(), value))
+    field
+        .split(',')
+        .any(|item| cron_item_matches(item.trim(), value))
 }
 
 /// 单 item 匹配：`*`、`N`、`A-B`、`*/N`、`A-B/N`、`A/N`
@@ -464,10 +468,16 @@ mod tests {
         // toggle 写回文件
         assert_eq!(mgr.toggle_task("t1").await, Some(true));
         let content = tokio::fs::read_to_string(&path).await.unwrap();
-        assert!(content.contains("enabled: true"), "toggle 应持久化: {content}");
+        assert!(
+            content.contains("enabled: true"),
+            "toggle 应持久化: {content}"
+        );
         assert!(content.contains("# Body text"), "正文应保留: {content}");
         // 运行时状态不应写入文件
-        assert!(!content.contains("lastRun"), "运行时状态不应落盘: {content}");
+        assert!(
+            !content.contains("lastRun"),
+            "运行时状态不应落盘: {content}"
+        );
 
         // reload 保留运行时状态
         mgr.record_result("t1", "ok").await;

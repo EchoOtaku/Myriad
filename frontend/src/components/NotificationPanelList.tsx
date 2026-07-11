@@ -1,5 +1,8 @@
 import type { NotificationCenterState } from '../hooks/useNotificationCenter'
-import type { AppNotification } from '../services/notificationApi'
+import type {
+  AppNotification,
+  NotificationType,
+} from '../services/notificationApi'
 /**
  * 通知列表面板（智能岛「通知」tab 的内容区）
  *
@@ -14,11 +17,17 @@ import { NOTIFICATION_TYPE_ICONS } from '../services/notificationApi'
 import { getGreeting } from '../utils/dynamicContent'
 
 /** 发信源图标底色（iOS App 图标风格的着色圆角方块） */
-const SOURCE_ICON_BG: Record<string, string> = {
+const SOURCE_ICON_BG: Record<NotificationType, string> = {
+  task_progress: 'bg-blue-500/15',
   task_completed: 'bg-green-500/15',
   task_failed: 'bg-red-500/15',
+  task_cancelled: 'bg-gray-500/15',
   heartbeat_result: 'bg-pink-500/15',
   mcp_server_status: 'bg-indigo-500/15',
+  brew_new_items: 'bg-amber-500/15',
+  brew_source_error: 'bg-red-500/15',
+  tapp_notification: 'bg-violet-500/15',
+  updater_status: 'bg-cyan-500/15',
   system_info: 'bg-gray-500/15',
   agent_clarification: 'bg-orange-500/15',
 }
@@ -30,19 +39,32 @@ const PILL_BTN =
   'dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15'
 
 /** 通知的跳转目标 */
-type NotifTarget = { kind: 'session'; sessionId: string } | null
+type NotifTarget =
+  | { kind: 'session'; sessionId: string }
+  | { kind: 'route'; path: string }
+  | { kind: 'arael_manage' }
+  | null
 
 /** 解析点击落点：任务类通知带 session_id 时跳回对应 Arael 会话 */
 function resolveTarget(n: AppNotification): NotifTarget {
   if (
+    n.notification_type === 'task_progress' ||
     n.notification_type === 'task_completed' ||
     n.notification_type === 'task_failed' ||
+    n.notification_type === 'task_cancelled' ||
     n.notification_type === 'agent_clarification'
   ) {
     const sid = n.metadata?.session_id
     if (typeof sid === 'string' && sid) {
       return { kind: 'session', sessionId: sid }
     }
+  }
+  const route = n.metadata?.route
+  if (typeof route === 'string' && route.startsWith('/')) {
+    return { kind: 'route', path: route }
+  }
+  if (n.metadata?.action === 'open_arael_manage') {
+    return { kind: 'arael_manage' }
   }
   return null
 }
@@ -53,9 +75,19 @@ interface Props {
   fill?: boolean
   /** 打开 Arael 会话（由 GlobalControlPanel 注入：收起面板 + 派发打开事件） */
   onOpenSession?: (sessionId: string) => void
+  /** 打开普通应用路由（如 Brew 新内容） */
+  onNavigate?: (path: string) => void
+  /** 打开 Arael 管理面板（Heartbeat 通知） */
+  onOpenAraelManage?: () => void
 }
 
-function NotificationPanelList({ center, fill, onOpenSession }: Props) {
+function NotificationPanelList({
+  center,
+  fill,
+  onOpenSession,
+  onNavigate,
+  onOpenAraelManage,
+}: Props) {
   const { t, format, locale } = useI18n()
   const { items, removeItem, clearAll } = center
 
@@ -118,14 +150,22 @@ function NotificationPanelList({ center, fill, onOpenSession }: Props) {
   const handleItemClick = useCallback(
     (n: AppNotification) => {
       const target = resolveTarget(n)
-      if (target && onOpenSession) {
+      if (target?.kind === 'session' && onOpenSession) {
         onOpenSession(target.sessionId)
+        return
+      }
+      if (target?.kind === 'route' && onNavigate) {
+        onNavigate(target.path)
+        return
+      }
+      if (target?.kind === 'arael_manage' && onOpenAraelManage) {
+        onOpenAraelManage()
         return
       }
       // 无落点：展开/收起详情
       setExpandedId((prev) => (prev === n.id ? null : n.id))
     },
-    [onOpenSession],
+    [onOpenSession, onNavigate, onOpenAraelManage],
   )
 
   const relativeTime = useCallback(
@@ -145,13 +185,19 @@ function NotificationPanelList({ center, fill, onOpenSession }: Props) {
   )
 
   /** 发信源名称（iOS 通知头行的 App 名位置） */
-  const sourceLabels = useMemo<Record<string, string>>(
+  const sourceLabels = useMemo<Record<NotificationType, string>>(
     () => ({
       task_completed: t.notificationCenter.sourceAgent,
+      task_progress: t.notificationCenter.sourceAgent,
       task_failed: t.notificationCenter.sourceAgent,
+      task_cancelled: t.notificationCenter.sourceAgent,
       agent_clarification: t.notificationCenter.sourceAgent,
       heartbeat_result: t.notificationCenter.sourceHeartbeat,
       mcp_server_status: t.notificationCenter.sourceMcp,
+      brew_new_items: 'Brew',
+      brew_source_error: 'Brew',
+      tapp_notification: 'Tapp',
+      updater_status: t.notificationCenter.sourceSystem,
       system_info: t.notificationCenter.sourceSystem,
     }),
     [t],
@@ -279,6 +325,18 @@ function NotificationPanelList({ center, fill, onOpenSession }: Props) {
                 >
                   {n.body}
                 </p>
+                {typeof n.metadata?.progress === 'number' &&
+                  (n.notification_type === 'task_progress' ||
+                    n.notification_type === 'agent_clarification') && (
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/8 dark:bg-white/10">
+                      <div
+                        className="h-full rounded-full bg-blue-500 transition-[width] duration-300 dark:bg-blue-400"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, n.metadata.progress))}%`,
+                        }}
+                      />
+                    </div>
+                  )}
               </div>
 
               <button

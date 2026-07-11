@@ -9,59 +9,21 @@
 //! RoleGroup { DataWorker: [s1,s3], ContentWorker: [s2], CreativeWorker: [s4] }
 //!     ↓ execute_groups()
 //! 独立组并行 → 有依赖组串行
-//!     ↓ merge_results()
-//! OrchestratorResult
+//!     ↓ 统一执行进度与结果
 //! ```
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
-
 use super::identity::get_role_identity;
-use super::notifications::get_notification_manager;
 use super::routing::{get_router, AgentRole, TaskAssignment};
 use super::types::Recipe;
-
-/// 角色分组
-#[derive(Debug, Clone)]
-pub struct RoleGroup {
-    pub role: AgentRole,
-    /// 该角色负责的步骤索引
-    pub step_indices: Vec<usize>,
-    /// 是否依赖其他角色组的输出
-    pub depends_on_roles: Vec<AgentRole>,
-}
-
-/// Orchestrator 执行结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrchestratorResult {
-    /// 总步骤数
-    pub total_steps: usize,
-    /// 成功步骤数
-    pub successful_steps: usize,
-    /// 参与的角色
-    pub participating_roles: Vec<String>,
-    /// 是否使用了并行调度
-    pub used_parallel: bool,
-    /// 各角色的执行摘要
-    pub role_summaries: Vec<RoleSummary>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RoleSummary {
-    pub role: String,
-    pub icon: String,
-    pub steps_count: usize,
-    pub success_count: usize,
-    pub identity_used: bool,
-}
 
 /// Multi-Agent Orchestrator
 pub struct Orchestrator;
 
 impl Orchestrator {
     /// 分析 Recipe 的角色分布
-    pub fn analyze_recipe(recipe: &Recipe) -> (TaskAssignment, Vec<RoleGroup>) {
+    pub fn analyze_recipe(recipe: &Recipe) -> (TaskAssignment, usize, bool) {
         let router = get_router();
 
         // 收集能力 ID 和角色映射
@@ -80,19 +42,17 @@ impl Orchestrator {
         }
 
         // 分析跨角色依赖
-        let groups: Vec<RoleGroup> = role_groups
-            .into_iter()
-            .map(|(role, step_indices)| {
-                let depends_on_roles = Self::find_cross_role_deps(recipe, &step_indices);
-                RoleGroup {
-                    role,
-                    step_indices,
-                    depends_on_roles,
-                }
-            })
+        let group_dependencies: Vec<Vec<AgentRole>> = role_groups
+            .into_values()
+            .map(|step_indices| Self::find_cross_role_deps(recipe, &step_indices))
             .collect();
+        let role_group_count = group_dependencies.len();
+        let can_parallelize = role_group_count >= 2
+            && group_dependencies
+                .iter()
+                .any(|dependencies| dependencies.is_empty());
 
-        (assignment, groups)
+        (assignment, role_group_count, can_parallelize)
     }
 
     /// 检查步骤的跨角色依赖
@@ -138,58 +98,5 @@ impl Orchestrator {
         }
 
         contexts
-    }
-
-    /// 判断是否可以并行执行（无跨角色依赖的独立组）
-    pub fn can_parallelize(groups: &[RoleGroup]) -> bool {
-        // 至少有 2 个角色组且至少一个无跨角色依赖
-        groups.len() >= 2 && groups.iter().any(|g| g.depends_on_roles.is_empty())
-    }
-
-    /// 发送多 Agent 协作开始通知
-    pub async fn notify_multi_agent_start(assignment: &TaskAssignment, task_id: &str) {
-        if !assignment.is_multi_agent {
-            return;
-        }
-
-        if let Some(nm) = get_notification_manager() {
-            let agent_names: Vec<&str> = assignment
-                .agents
-                .iter()
-                .map(|a| a.display_name.as_str())
-                .collect();
-            nm.notify_system_info(
-                "多 Agent 协作启动",
-                &format!(
-                    "任务 {} 分配给 {} 个 Agent: {}",
-                    task_id,
-                    assignment.total_agents,
-                    agent_names.join(", ")
-                ),
-            )
-            .await;
-        }
-    }
-
-    /// 发送多 Agent 协作完成通知
-    pub async fn notify_multi_agent_complete(result: &OrchestratorResult, task_id: &str) {
-        if let Some(nm) = get_notification_manager() {
-            let summary = format!(
-                "任务 {} 完成: {}/{} 步骤成功, {} 个角色参与{}",
-                task_id,
-                result.successful_steps,
-                result.total_steps,
-                result.participating_roles.len(),
-                if result.used_parallel {
-                    " (并行执行)"
-                } else {
-                    ""
-                },
-            );
-            let success = result.successful_steps == result.total_steps;
-            // 编排层无用户/会话上下文，广播
-            nm.notify_task_completed(task_id, None, None, "多 Agent 任务完成", &summary, success)
-                .await;
-        }
     }
 }

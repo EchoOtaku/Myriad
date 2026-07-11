@@ -112,6 +112,13 @@ export interface AgentResponse {
 
 // ============ SSE 进度事件 ============
 
+/** 后端已接管运行；断线后使用 runId 重新订阅，不重复创建任务。 */
+export interface RunStartedEvent {
+  type: 'run_started'
+  runId: string
+  sessionId?: string
+}
+
 /** 任务创建事件 */
 export interface TaskCreatedEvent {
   type: 'task_created'
@@ -292,6 +299,7 @@ export interface SessionTitleUpdatedEvent {
 
 /** 所有进度事件类型 */
 export type ProgressEvent =
+  | RunStartedEvent
   | TaskCreatedEvent
   | TaskAssignedEvent
   | StepStartedEvent

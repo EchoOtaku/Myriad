@@ -433,7 +433,9 @@ impl SkillRegistry {
                 *skills = new_skills;
             }
             None => {
-                tracing::warn!("[SkillRegistry] reload failed to read dir, keeping existing skills");
+                tracing::warn!(
+                    "[SkillRegistry] reload failed to read dir, keeping existing skills"
+                );
             }
         }
     }

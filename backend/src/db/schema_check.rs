@@ -158,7 +158,10 @@ pub async fn ensure_default_platforms(db: &DatabaseConnection) -> Result<usize, 
     }
 
     if inserted > 0 {
-        tracing::info!("✅ Default platforms seed: inserted {} missing row(s)", inserted);
+        tracing::info!(
+            "✅ Default platforms seed: inserted {} missing row(s)",
+            inserted
+        );
     } else {
         tracing::debug!("Default platforms seed: all rows already present");
     }
@@ -4848,8 +4851,6 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     Ok(())
 }
-
-
 
 /// 强制重新执行 schema 检查
 #[allow(dead_code)]
