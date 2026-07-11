@@ -499,6 +499,7 @@ pub fn get_quick_reference() -> Value {
             "订阅/添加RSS": ["brew.discover", "brew.subscribe"],
             "B站/bilibili": ["platform.read", "bilibili.user"],
             "Bangumi/番组计划/动画收藏": ["platform.read", "bangumi.user", "bangumi.collections"],
+            "MyAnimeList/MAL/动画列表/漫画列表": ["platform.read"],
             "Steam/游戏": ["platform.read", "steam.user"],
             "GitHub/代码/仓库": ["platform.read", "github.repos"],
             "网易云/音乐数据": ["platform.read", "netease.playlist"],
@@ -567,7 +568,7 @@ pub fn get_quick_reference() -> Value {
             "brew.article 是内部能力，不要主动使用，由 brew.items 链式调用"
         ],
         "常见参数示例": {
-            "platform.read": {"platform": "bilibili|bangumi|steam|github|netease", "type": "overview|favorites|recent"},
+            "platform.read": {"platform": "bilibili|bangumi|mal|steam|github|netease|x|discord", "type": "overview|favorites|recent"},
             "ai.summarize": {"content": "文章内容或 contentFrom 引用", "maxLength": 300},
             "ai.analyze": {"content": "待分析文本", "analysisType": "sentiment|trends|custom", "customPrompt": "自定义分析角度"},
             "brew.items": {"limit": 10, "source_id": "可选源ID", "unread_only": true},

@@ -252,6 +252,17 @@ function isBangumiPlatform(platform: string) {
   return platform.toLowerCase() === 'bangumi'
 }
 
+// 判断是否为 MyAnimeList 平台
+function isMalPlatform(platform: string) {
+  const key = platform.toLowerCase().replace(/[\s_-]/g, '')
+  return key === 'myanimelist' || key === 'mal'
+}
+
+// 是否展示用户评分徽章（Bangumi / MyAnimeList 等 1–10 分制）
+function hasUserRatingBadge(platform: string) {
+  return isBangumiPlatform(platform) || isMalPlatform(platform)
+}
+
 // Bangumi 用户评分徽章样式（仿 Metacritic 分色标记）
 // 分数越高越推荐 —— 色彩越暖、尺寸越大、越醒目
 function getRatingBadgeStyle(rate: number) {
@@ -775,6 +786,14 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         return '#24292e'
       case 'bangumi':
         return '#f09199'
+      case 'mal':
+      case 'myanimelist':
+        return '#2E51A2'
+      case 'x':
+      case 'twitter':
+        return '#000000'
+      case 'discord':
+        return '#5865F2'
       default:
         return '#6b7280'
     }
@@ -980,9 +999,14 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 const rowIndex = Math.floor(layout.top / 300)
                 const animationDelay = rowIndex * 0.05
 
-                // Bangumi 用户评分（0 表示未评分），显示在卡片左上角
+                // Bangumi / MAL 用户评分（0 表示未评分），显示在卡片左上角
                 const isBangumi = isBangumiPlatform(item.platform)
-                const userRate = isBangumi ? Number(item.metadata.rate) || 0 : 0
+                const userRate = hasUserRatingBadge(item.platform)
+                  ? Number(
+                      item.metadata.rate ??
+                        item.metadata?.list_status?.score,
+                    ) || 0
+                  : 0
                 // Bangumi 游戏使用竖版，渲染为封面卡片
                 const isBangumiGame =
                   isBangumi && item.item_type === 'game'
@@ -1306,7 +1330,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                       </div>
                     )}
 
-                    {/* Bangumi 用户评分徽章 - 左上角，分色分级（分数越高越醒目） */}
+                    {/* Bangumi / MAL 用户评分徽章 - 左上角，分色分级（分数越高越醒目） */}
                     {userRate > 0 &&
                       (() => {
                         const rs = getRatingBadgeStyle(userRate)

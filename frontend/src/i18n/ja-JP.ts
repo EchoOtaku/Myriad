@@ -2615,4 +2615,21 @@ export const jaJP: TranslationKeys = {
     deleteSession: '削除',
     deleteSessionConfirm: 'この会話を削除しますか？',
   },
+
+  notificationCenter: {
+    title: '通知',
+    empty: '通知はありません',
+    markAllRead: 'すべて既読',
+    unreadOnly: '未読のみ',
+    justNow: 'たった今',
+    minutesAgo: '{n}分前',
+    hoursAgo: '{n}時間前',
+    daysAgo: '{n}日前',
+    typeTaskCompleted: 'タスク完了',
+    typeTaskFailed: 'タスク失敗',
+    typeHeartbeat: '定期タスク',
+    typeMcp: 'MCP 状態',
+    typeSystem: 'システム',
+    typeClarification: '確認が必要',
+  },
 }

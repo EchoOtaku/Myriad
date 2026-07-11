@@ -276,9 +276,9 @@ export const DEFAULT_LIBRARY_SOURCE_PREFERENCES: LibrarySourcePreferences = {
     game: ['Steam', 'Bangumi'],
     video: ['Bilibili', 'Bangumi'],
     music: ['Netease', 'Bangumi'],
-    anime: ['Bangumi', 'Bilibili'],
+    anime: ['Bangumi', 'Bilibili', 'MyAnimeList'],
     tv_series: ['Bangumi', 'Bilibili'],
-    book: ['Bangumi'],
+    book: ['Bangumi', 'MyAnimeList'],
   },
 }
 
@@ -485,6 +485,13 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   const getSourceOptionsForType = useCallback(
     (type: LibraryItemType) => {
       const bySource = new Map<string, LibrarySourceOption>()
+      // Always surface known default platforms (e.g. newly added MyAnimeList)
+      // even when the user already has saved preferences without them.
+      ;(DEFAULT_LIBRARY_SOURCE_PREFERENCES.categories[type] ?? []).forEach(
+        (source) => {
+          bySource.set(source, { source, count: 0 })
+        },
+      )
       ;(sourceOptions[type] ?? []).forEach((option) => {
         bySource.set(option.source, option)
       })

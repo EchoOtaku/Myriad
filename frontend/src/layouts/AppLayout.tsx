@@ -8,6 +8,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import GlobalControlPanel from '../components/GlobalControlPanel'
 import NavigationIsland from '../components/NavigationIsland'
+import NotificationCenter from '../components/NotificationCenter'
 import { SiteFooter } from '../components/SiteFooter'
 import { ToastContainer } from '../components/ToastContainer'
 
@@ -259,6 +260,9 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* 导航栏 - 使用新的 NavigationIsland 组件 */}
       <NavigationIsland />
+
+      {/* 通知中心 - 铃铛 + 面板 + 高优先级 toast */}
+      <NotificationCenter />
 
       {/*
         屏幕角落提示容器 - 统一管理所有固定提示，确保不重叠

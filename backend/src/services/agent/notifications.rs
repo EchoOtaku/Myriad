@@ -2,13 +2,22 @@
 //!
 //! 提供实时通知推送（broadcast channel + SSE）和历史通知缓存。
 //! 集成 heartbeat 任务结果、agent 执行结果等多种通知来源。
+//!
+//! 持久化：通知写入 `agent_notifications` 表，启动时恢复最近历史，
+//! 已读状态落库，保留 30 天自动清理。内存中的环形缓冲作为热缓存。
 
 use std::collections::VecDeque;
 use std::sync::{Arc, OnceLock};
 
 use chrono::{DateTime, Utc};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, RwLock};
+
+use crate::models::entities::agent_notifications as notif_entity;
 
 /// 全局通知管理器单例
 static NOTIFICATION_MANAGER: OnceLock<Arc<NotificationManager>> = OnceLock::new();
@@ -39,6 +48,50 @@ pub enum NotificationPriority {
     Normal = 1,
     High = 2,
     Urgent = 3,
+}
+
+impl NotificationType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            NotificationType::TaskCompleted => "task_completed",
+            NotificationType::TaskFailed => "task_failed",
+            NotificationType::HeartbeatResult => "heartbeat_result",
+            NotificationType::McpServerStatus => "mcp_server_status",
+            NotificationType::SystemInfo => "system_info",
+            NotificationType::AgentClarification => "agent_clarification",
+        }
+    }
+
+    fn from_str(s: &str) -> Self {
+        match s {
+            "task_completed" => NotificationType::TaskCompleted,
+            "task_failed" => NotificationType::TaskFailed,
+            "heartbeat_result" => NotificationType::HeartbeatResult,
+            "mcp_server_status" => NotificationType::McpServerStatus,
+            "agent_clarification" => NotificationType::AgentClarification,
+            _ => NotificationType::SystemInfo,
+        }
+    }
+}
+
+impl NotificationPriority {
+    fn as_str(&self) -> &'static str {
+        match self {
+            NotificationPriority::Low => "low",
+            NotificationPriority::Normal => "normal",
+            NotificationPriority::High => "high",
+            NotificationPriority::Urgent => "urgent",
+        }
+    }
+
+    fn from_str(s: &str) -> Self {
+        match s {
+            "low" => NotificationPriority::Low,
+            "high" => NotificationPriority::High,
+            "urgent" => NotificationPriority::Urgent,
+            _ => NotificationPriority::Normal,
+        }
+    }
 }
 
 /// 单条通知
@@ -99,10 +152,12 @@ pub enum NotificationEvent {
 pub struct NotificationManager {
     /// 广播通道（multi-subscriber SSE）
     tx: broadcast::Sender<NotificationEvent>,
-    /// 历史通知环形缓冲区
+    /// 历史通知环形缓冲区（热缓存，启动时从 DB 恢复）
     history: RwLock<VecDeque<Notification>>,
     /// 最大历史记录数
     max_history: usize,
+    /// 数据库连接（持久化通知历史与已读状态）
+    db: Option<DatabaseConnection>,
 }
 
 impl NotificationManager {
@@ -112,10 +167,61 @@ impl NotificationManager {
             tx,
             history: RwLock::new(VecDeque::with_capacity(max_history)),
             max_history,
+            db: None,
         }
     }
 
-    /// 发送通知（广播 + 存入历史）
+    /// 创建带持久化的管理器，并从 DB 恢复最近历史
+    pub async fn new_with_db(max_history: usize, db: DatabaseConnection) -> Self {
+        let (tx, _) = broadcast::channel(128);
+        let mut history = VecDeque::with_capacity(max_history);
+
+        match notif_entity::Entity::find()
+            .order_by_desc(notif_entity::Column::CreatedAt)
+            .limit(max_history as u64)
+            .all(&db)
+            .await
+        {
+            Ok(models) => {
+                // DB 按时间倒序取出，环形缓冲需要正序（旧→新）
+                for model in models.into_iter().rev() {
+                    history.push_back(Self::model_to_notification(model));
+                }
+                if !history.is_empty() {
+                    tracing::info!(
+                        "[Notifications] Restored {} notifications from DB",
+                        history.len()
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("[Notifications] Failed to restore history: {}", e);
+            }
+        }
+
+        Self {
+            tx,
+            history: RwLock::new(history),
+            max_history,
+            db: Some(db),
+        }
+    }
+
+    fn model_to_notification(model: notif_entity::Model) -> Notification {
+        Notification {
+            id: model.id,
+            notification_type: NotificationType::from_str(&model.notification_type),
+            priority: NotificationPriority::from_str(&model.priority),
+            title: model.title,
+            body: model.body,
+            user_id: model.user_id,
+            metadata: model.metadata,
+            created_at: model.created_at.with_timezone(&Utc),
+            read: model.read,
+        }
+    }
+
+    /// 发送通知（广播 + 存入历史 + 落库）
     pub async fn notify(&self, notification: Notification) {
         tracing::debug!(
             id = %notification.id,
@@ -133,10 +239,49 @@ impl NotificationManager {
             history.push_back(notification.clone());
         }
 
+        // 落库（best-effort，失败不影响实时推送）
+        if let Some(db) = &self.db {
+            let record = notif_entity::ActiveModel {
+                id: Set(notification.id.clone()),
+                notification_type: Set(notification.notification_type.as_str().to_string()),
+                priority: Set(notification.priority.as_str().to_string()),
+                title: Set(notification.title.clone()),
+                body: Set(notification.body.clone()),
+                user_id: Set(notification.user_id),
+                metadata: Set(notification.metadata.clone()),
+                read: Set(notification.read),
+                created_at: Set(notification.created_at.into()),
+            };
+            if let Err(e) = record.insert(db).await {
+                tracing::warn!(id = %notification.id, "[Notifications] Persist failed: {}", e);
+            }
+        }
+
         // 广播到所有 SSE 订阅者
         let _ = self
             .tx
             .send(NotificationEvent::NewNotification { notification });
+    }
+
+    /// 清理过期通知（保留最近 keep_days 天）
+    pub async fn cleanup_old(&self, keep_days: i64) {
+        let Some(db) = &self.db else { return };
+        let cutoff = Utc::now() - chrono::Duration::days(keep_days);
+        match notif_entity::Entity::delete_many()
+            .filter(notif_entity::Column::CreatedAt.lt(cutoff))
+            .exec(db)
+            .await
+        {
+            Ok(res) if res.rows_affected > 0 => {
+                tracing::info!(
+                    "[Notifications] Cleaned {} notifications older than {} days",
+                    res.rows_affected,
+                    keep_days
+                );
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("[Notifications] Cleanup failed: {}", e),
+        }
     }
 
     /// 订阅通知流（用于 SSE endpoint）
@@ -167,18 +312,25 @@ impl NotificationManager {
 
     /// 标记通知已读（带用户归属校验）
     pub async fn mark_read(&self, notification_id: &str, user_id: i32) -> bool {
-        let mut history = self.history.write().await;
-        if let Some(n) = history.iter_mut().find(|n| {
-            n.id == notification_id && (n.user_id.is_none() || n.user_id == Some(user_id))
-        }) {
-            n.read = true;
-            let _ = self.tx.send(NotificationEvent::NotificationRead {
-                id: notification_id.to_string(),
-            });
-            true
-        } else {
-            false
+        let found = {
+            let mut history = self.history.write().await;
+            if let Some(n) = history.iter_mut().find(|n| {
+                n.id == notification_id && (n.user_id.is_none() || n.user_id == Some(user_id))
+            }) {
+                n.read = true;
+                true
+            } else {
+                false
+            }
+        };
+        if !found {
+            return false;
         }
+        self.persist_read_state(&[notification_id.to_string()]).await;
+        let _ = self.tx.send(NotificationEvent::NotificationRead {
+            id: notification_id.to_string(),
+        });
+        true
     }
 
     /// 标记全部已读（仅影响该用户的通知）
@@ -195,9 +347,26 @@ impl NotificationManager {
             }
             ids
         };
+        self.persist_read_state(&marked_ids).await;
         // 广播已读事件，让 SSE 客户端同步状态
         for id in marked_ids {
             let _ = self.tx.send(NotificationEvent::NotificationRead { id });
+        }
+    }
+
+    /// 已读状态落库
+    async fn persist_read_state(&self, ids: &[String]) {
+        let Some(db) = &self.db else { return };
+        if ids.is_empty() {
+            return;
+        }
+        if let Err(e) = notif_entity::Entity::update_many()
+            .col_expr(notif_entity::Column::Read, sea_orm::sea_query::Expr::value(true))
+            .filter(notif_entity::Column::Id.is_in(ids.to_vec()))
+            .exec(db)
+            .await
+        {
+            tracing::warn!("[Notifications] Failed to persist read state: {}", e);
         }
     }
 
@@ -255,11 +424,22 @@ impl NotificationManager {
     }
 }
 
-/// 初始化全局通知管理器
-pub fn init_notifications() {
-    let manager = Arc::new(NotificationManager::new(200));
-    let _ = NOTIFICATION_MANAGER.set(manager);
-    tracing::info!("[Notifications] Manager initialized");
+/// 初始化全局通知管理器（带持久化 + 每日过期清理）
+pub async fn init_notifications(db: DatabaseConnection) {
+    let manager = Arc::new(NotificationManager::new_with_db(200, db).await);
+    let _ = NOTIFICATION_MANAGER.set(manager.clone());
+
+    // 每日清理 30 天前的通知
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(86400));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            manager.cleanup_old(30).await;
+        }
+    });
+
+    tracing::info!("[Notifications] Manager initialized (persistent)");
 }
 
 /// 获取全局通知管理器

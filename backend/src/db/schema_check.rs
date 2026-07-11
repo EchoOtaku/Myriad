@@ -2111,6 +2111,66 @@ fn get_expected_schema() -> Vec<TableDef> {
                 },
             ],
         },
+        // ==================== agent_notifications 表 ====================
+        TableDef {
+            name: "agent_notifications".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "notification_type".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "priority".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'normal'".into()),
+                },
+                ColumnDef {
+                    name: "title".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "body".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "metadata".into(),
+                    data_type: "json".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "read".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("false".into()),
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+            ],
+        },
         // ==================== agent_task_presets 表 ====================
         TableDef {
             name: "agent_task_presets".to_string(),
@@ -3681,6 +3741,19 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["session_id".into()],
             is_unique: false,
         },
+        // agent_notifications 索引
+        IndexDef {
+            name: "idx_agent_notifications_created_at".into(),
+            table: "agent_notifications".into(),
+            columns: vec!["created_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_agent_notifications_user_id".into(),
+            table: "agent_notifications".into(),
+            columns: vec!["user_id".into()],
+            is_unique: false,
+        },
         // agent_task_presets 索引
         IndexDef {
             name: "idx_agent_task_presets_user_type".into(),
@@ -4069,6 +4142,22 @@ fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
             )
             "#,
         ),
+        (
+            "agent_notifications",
+            r#"
+            CREATE TABLE IF NOT EXISTS agent_notifications (
+                id VARCHAR(64) PRIMARY KEY,
+                notification_type VARCHAR(32) NOT NULL,
+                priority VARCHAR(16) NOT NULL DEFAULT 'normal',
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                user_id INTEGER,
+                metadata JSON,
+                read BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        ),
         // agent_task_presets 表（合并了 Session 系统）
         (
             "agent_task_presets",
@@ -4393,6 +4482,7 @@ async fn ensure_tables_exist(db: &DatabaseConnection) -> Result<u32, DbErr> {
         "agent_sessions",
         "agent_messages",
         "agent_task_presets",
+        "agent_notifications",
         // 联邦表（按依赖顺序）
         "federation_keys",
         "federation_remote_actors",
@@ -4606,21 +4696,57 @@ async fn mark_schema_version_applied(db: &DatabaseConnection, version: &str) -> 
 /// 4. 记录版本标记
 pub async fn ensure_schema(db: &DatabaseConnection) -> Result<(), DbErr> {
     // 1. 尝试获取 Advisory Lock（非阻塞）
-    let lock_acquired = try_acquire_advisory_lock(db).await?;
-    if !lock_acquired {
+    // Advisory lock 是会话级的，必须在同一条连接上加锁和解锁。
+    // 之前直接在连接池上执行，加锁和解锁常常落在不同连接：解锁永远失败，
+    // 锁被池中连接持有直到进程退出——其他实例从此永久跳过 schema 自愈。
+    let Some(guard) = AdvisoryLockGuard::acquire(db).await? else {
         tracing::info!("🔒 Another instance is running schema check, skipping...");
         return Ok(());
-    }
+    };
 
-    // 使用 scopeguard 确保锁一定被释放（即使发生 panic 或提前返回）
     let result = do_schema_check(db).await;
 
-    // 无论成功失败都释放锁
-    if let Err(e) = release_advisory_lock(db).await {
-        tracing::error!("Failed to release advisory lock: {}", e);
-    }
+    // 在同一连接上释放；即使失败，连接归还/关闭时会话级锁也会随之释放
+    guard.release().await;
 
     result
+}
+
+/// 持有专用连接的 Advisory Lock 守卫
+struct AdvisoryLockGuard {
+    conn: sea_orm::sqlx::pool::PoolConnection<sea_orm::sqlx::Postgres>,
+}
+
+impl AdvisoryLockGuard {
+    const LOCK_ID: i64 = 0x4D59524941445343;
+
+    /// 在专用连接上尝试加锁。返回 Ok(Some(guard)) = 已持锁；Ok(None) = 被他人持有
+    async fn acquire(db: &DatabaseConnection) -> Result<Option<Self>, DbErr> {
+        let pool = db.get_postgres_connection_pool();
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DbErr::Custom(format!("acquire lock connection: {}", e)))?;
+
+        let acquired: bool = sea_orm::sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
+            .bind(Self::LOCK_ID)
+            .fetch_one(&mut *conn)
+            .await
+            .map_err(|e| DbErr::Custom(format!("advisory lock query: {}", e)))?;
+
+        Ok(if acquired { Some(Self { conn }) } else { None })
+    }
+
+    /// 在加锁的同一连接上释放
+    async fn release(mut self) {
+        if let Err(e) = sea_orm::sqlx::query("SELECT pg_advisory_unlock($1)")
+            .bind(Self::LOCK_ID)
+            .execute(&mut *self.conn)
+            .await
+        {
+            tracing::warn!("Failed to release advisory lock: {}", e);
+        }
+    }
 }
 
 /// 实际执行 schema 检查的内部函数
@@ -4723,51 +4849,26 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     Ok(())
 }
 
-/// 尝试获取 PostgreSQL Advisory Lock（非阻塞）
-async fn try_acquire_advisory_lock(db: &DatabaseConnection) -> Result<bool, DbErr> {
-    const LOCK_ID: i64 = 0x4D59524941445343; // "MYRIADS" in hex
 
-    let result = db
-        .query_one(sea_orm::Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            format!("SELECT pg_try_advisory_lock({})", LOCK_ID),
-        ))
-        .await?;
-
-    if let Some(row) = result {
-        let acquired: bool = row.try_get("", "pg_try_advisory_lock")?;
-        return Ok(acquired);
-    }
-
-    Ok(false)
-}
-
-/// 释放 PostgreSQL Advisory Lock
-async fn release_advisory_lock(db: &DatabaseConnection) -> Result<(), DbErr> {
-    const LOCK_ID: i64 = 0x4D59524941445343;
-
-    db.execute_unprepared(&format!("SELECT pg_advisory_unlock({})", LOCK_ID))
-        .await?;
-
-    Ok(())
-}
 
 /// 强制重新执行 schema 检查
 #[allow(dead_code)]
 pub async fn force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     tracing::warn!("⚠️ Force schema check");
 
-    let lock_acquired = try_acquire_advisory_lock(db).await?;
-    if !lock_acquired {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        let _ = try_acquire_advisory_lock(db).await;
-    }
+    // 尝试拿锁（重试一次）；强制模式下即使拿不到也继续执行
+    let guard = match AdvisoryLockGuard::acquire(db).await? {
+        Some(g) => Some(g),
+        None => {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            AdvisoryLockGuard::acquire(db).await?
+        }
+    };
 
-    // 执行强制检查并确保释放锁
     let result = do_force_schema_check(db).await;
 
-    if let Err(e) = release_advisory_lock(db).await {
-        tracing::error!("Failed to release advisory lock: {}", e);
+    if let Some(g) = guard {
+        g.release().await;
     }
 
     result

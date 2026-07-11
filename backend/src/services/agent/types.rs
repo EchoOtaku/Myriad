@@ -1048,6 +1048,9 @@ pub struct ExecutionContext {
     /// 记忆上下文摘要（Executor 初始化时召回，供 AI 步骤参考）
     #[serde(default)]
     pub memory_context: Option<String>,
+    /// 动态生成的步骤 ID（技能展开/动态分析产生，未经 Planner 层敏感操作确认）
+    #[serde(default)]
+    pub dynamic_step_ids: std::collections::HashSet<String>,
 }
 
 fn default_retry_budget() -> u32 {
@@ -1074,6 +1077,7 @@ impl Default for ExecutionContext {
             retry_budget_remaining: 5,
             pending_questions: Vec::new(),
             memory_context: None,
+            dynamic_step_ids: std::collections::HashSet::new(),
         }
     }
 }
@@ -1293,6 +1297,9 @@ impl ExecutionContext {
 
         let accepted_count = accepted.len();
         self.dynamic_steps_generated += accepted_count;
+        for step in &accepted {
+            self.dynamic_step_ids.insert(step.id.clone());
+        }
         self.pending_dynamic_steps.extend(accepted);
     }
 
@@ -1305,9 +1312,17 @@ impl ExecutionContext {
         }
         let accepted: Vec<RecipeStep> = steps.into_iter().take(remaining).collect();
         self.dynamic_steps_generated += accepted.len();
+        for step in &accepted {
+            self.dynamic_step_ids.insert(step.id.clone());
+        }
         let mut new_steps = accepted;
         new_steps.append(&mut self.pending_dynamic_steps);
         self.pending_dynamic_steps = new_steps;
+    }
+
+    /// 判断某步骤是否为动态生成（未经 Planner 层敏感操作确认）
+    pub fn is_dynamic_step(&self, step_id: &str) -> bool {
+        self.dynamic_step_ids.contains(step_id)
     }
 
     /// 取出下一个待执行的动态步骤

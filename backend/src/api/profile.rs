@@ -2974,7 +2974,7 @@ pub struct LibraryItem {
 
 const LIBRARY_SOURCE_PREFERENCES_KEY: &str = "library_source_preferences";
 const LIBRARY_ITEM_TYPES: [&str; 6] = ["game", "video", "music", "anime", "tv_series", "book"];
-const LIBRARY_PLATFORMS: [&str; 4] = ["Steam", "Bilibili", "Bangumi", "Netease"];
+const LIBRARY_PLATFORMS: [&str; 5] = ["Steam", "Bilibili", "Bangumi", "Netease", "MyAnimeList"];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LibrarySourcePreferences {
@@ -3004,13 +3004,20 @@ fn default_library_source_categories() -> HashMap<String, Vec<String>> {
         ),
         (
             "anime".to_string(),
-            vec!["Bangumi".to_string(), "Bilibili".to_string()],
+            vec![
+                "Bangumi".to_string(),
+                "Bilibili".to_string(),
+                "MyAnimeList".to_string(),
+            ],
         ),
         (
             "tv_series".to_string(),
             vec!["Bangumi".to_string(), "Bilibili".to_string()],
         ),
-        ("book".to_string(), vec!["Bangumi".to_string()]),
+        (
+            "book".to_string(),
+            vec!["Bangumi".to_string(), "MyAnimeList".to_string()],
+        ),
     ])
 }
 
@@ -3323,6 +3330,54 @@ fn append_mal_library_items(library_items: &mut Vec<LibraryItem>, mal_data: &Val
                 .and_then(|v| v.as_str())
                 .map(proxy_image_url);
 
+            let list_status = entry.get("list_status");
+            // Flatten fields used by LibraryGrid (parity with Bangumi `rate` / `progress`)
+            let rate = list_status
+                .and_then(|s| s.get("score"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let status = list_status
+                .and_then(|s| s.get("status"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let progress = if path_kind == "anime" {
+                list_status
+                    .and_then(|s| s.get("num_episodes_watched"))
+                    .and_then(|v| v.as_i64())
+                    .map(|n| {
+                        let total = node
+                            .get("num_episodes")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0);
+                        if total > 0 {
+                            format!("{}/{}", n, total)
+                        } else if n > 0 {
+                            format!("{}", n)
+                        } else {
+                            String::new()
+                        }
+                    })
+                    .unwrap_or_default()
+            } else {
+                list_status
+                    .and_then(|s| s.get("num_chapters_read"))
+                    .and_then(|v| v.as_i64())
+                    .map(|chapters| {
+                        let volumes = list_status
+                            .and_then(|s| s.get("num_volumes_read"))
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0);
+                        if volumes > 0 {
+                            format!("{}/{}", chapters, volumes)
+                        } else if chapters > 0 {
+                            format!("{}", chapters)
+                        } else {
+                            String::new()
+                        }
+                    })
+                    .unwrap_or_default()
+            };
+
             let mut metadata = entry.clone();
             if let Some(obj) = metadata.as_object_mut() {
                 obj.insert(
@@ -3333,6 +3388,28 @@ fn append_mal_library_items(library_items: &mut Vec<LibraryItem>, mal_data: &Val
                     )),
                 );
                 obj.insert("platform".to_string(), json!("MyAnimeList"));
+                obj.insert("rate".to_string(), json!(rate));
+                if !status.is_empty() {
+                    obj.insert("status".to_string(), json!(status));
+                }
+                if !progress.is_empty() {
+                    obj.insert("progress".to_string(), json!(progress));
+                    // Book cards also read ep_status/vol_status (Bangumi shape)
+                    if path_kind == "manga" {
+                        if let Some(chapters) = list_status
+                            .and_then(|s| s.get("num_chapters_read"))
+                            .and_then(|v| v.as_i64())
+                        {
+                            obj.insert("ep_status".to_string(), json!(chapters));
+                        }
+                        if let Some(volumes) = list_status
+                            .and_then(|s| s.get("num_volumes_read"))
+                            .and_then(|v| v.as_i64())
+                        {
+                            obj.insert("vol_status".to_string(), json!(volumes));
+                        }
+                    }
+                }
             }
 
             library_items.push(LibraryItem {

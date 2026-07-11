@@ -106,6 +106,8 @@ async fn wait_for_proxy_permit(url: &str) -> Result<(), ()> {
                     "netease" => TokenBucket::new(10.0, 50.0),
                     // Discord CDN
                     "discord" => TokenBucket::new(15.0, 60.0),
+                    // MyAnimeList CDN
+                    "mal" => TokenBucket::new(10.0, 50.0),
                     // 其他
                     _ => TokenBucket::new(5.0, 20.0),
                 }

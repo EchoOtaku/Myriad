@@ -1010,13 +1010,13 @@ pub fn article_summary_placeholder(source: &str, title: &str) -> String {
 
 /// 搜索空提示
 pub fn search_empty_hint() -> String {
-    "请提供搜索关键词。系统支持搜索的内容包括：Steam 游戏、Bilibili 追番、GitHub 仓库、网易云音乐播放记录。".to_string()
+    "请提供搜索关键词。系统支持搜索的内容包括：Steam 游戏、Bilibili 追番、Bangumi 收藏、MyAnimeList 列表、GitHub 仓库、网易云音乐播放记录。".to_string()
 }
 
 /// 搜索无结果
 pub fn search_no_results(query: &str) -> String {
     format!(
-        "在你的数据中没有找到与 '{}' 相关的内容。\n\n系统目前只能搜索你已同步的平台数据：\n- Steam 游戏库\n- Bilibili 追番\n- GitHub 仓库\n- 网易云音乐\n\n如果你想搜索网络新闻或其他外部内容，这个功能暂不支持。",
+        "在你的数据中没有找到与 '{}' 相关的内容。\n\n系统目前只能搜索你已同步的平台数据：\n- Steam 游戏库\n- Bilibili 追番\n- Bangumi 收藏\n- MyAnimeList 动画/漫画列表\n- GitHub 仓库\n- 网易云音乐\n\n如果你想搜索网络新闻或其他外部内容，这个功能暂不支持。",
         query
     )
 }

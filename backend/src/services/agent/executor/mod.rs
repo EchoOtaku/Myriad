@@ -1388,6 +1388,33 @@ impl Executor {
             }
         }
 
+        // 敏感操作补检：动态子步骤（技能展开/动态分析生成）绕过了 Planner 层的
+        // check_sensitive_steps 确认流程。高风险/不可逆操作不允许在无确认的情况下
+        // 由动态步骤自动执行（系统任务除外，其确认策略在 Agent::process 统一处理）
+        if handler_ctx.user_id != crate::services::agent::SYSTEM_USER_ID
+            && context.is_dynamic_step(&step.id)
+        {
+            if let Some((_, risk)) =
+                crate::services::agent::capability::capability_requires_confirmation_async(
+                    &step.capability_id,
+                )
+                .await
+            {
+                if matches!(risk, RiskLevel::High | RiskLevel::Critical) {
+                    tracing::warn!(
+                        step_id = %step.id,
+                        capability = %step.capability_id,
+                        risk = ?risk,
+                        "[Executor] Blocked unconfirmed high-risk dynamic step"
+                    );
+                    return Err(format!(
+                        "步骤 '{}' 涉及需要确认的高风险操作（{}），动态生成的子步骤不允许自动执行",
+                        step.id, step.capability_id
+                    ));
+                }
+            }
+        }
+
         // 解析参数
         let (mut resolved_params, unresolved) =
             self.resolve_params(&step.params, &context.step_outputs);

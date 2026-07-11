@@ -352,10 +352,83 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // ==================== agent_notifications 表 ====================
+        manager
+            .create_table(
+                Table::create()
+                    .table(AgentNotifications::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(AgentNotifications::Id)
+                            .string_len(64)
+                            .not_null()
+                            .primary_key(),
+                    )
+                    // 通知类型: task_completed, task_failed, heartbeat_result, ...
+                    .col(
+                        ColumnDef::new(AgentNotifications::NotificationType)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    // 优先级: low, normal, high, urgent
+                    .col(
+                        ColumnDef::new(AgentNotifications::Priority)
+                            .string_len(16)
+                            .not_null()
+                            .default("normal"),
+                    )
+                    .col(ColumnDef::new(AgentNotifications::Title).text().not_null())
+                    .col(ColumnDef::new(AgentNotifications::Body).text().not_null())
+                    // 目标用户 ID（NULL = 广播）
+                    .col(ColumnDef::new(AgentNotifications::UserId).integer())
+                    .col(ColumnDef::new(AgentNotifications::Metadata).json())
+                    .col(
+                        ColumnDef::new(AgentNotifications::Read)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(AgentNotifications::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        // 创建时间索引（历史列表按时间倒序 + 过期清理）
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_notifications_created_at")
+                    .table(AgentNotifications::Table)
+                    .col(AgentNotifications::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        // 用户索引（按用户过滤历史/未读数）
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_agent_notifications_user_id")
+                    .table(AgentNotifications::Table)
+                    .col(AgentNotifications::UserId)
+                    .to_owned(),
+            )
+            .await?;
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(AgentNotifications::Table).to_owned())
+            .await?;
+
         manager
             .drop_table(Table::drop().table(AgentTaskPresets::Table).to_owned())
             .await?;
@@ -423,6 +496,20 @@ pub enum AgentMessages {
     Role,
     Content,
     Metadata,
+    CreatedAt,
+}
+
+#[derive(Iden)]
+pub enum AgentNotifications {
+    Table,
+    Id,
+    NotificationType,
+    Priority,
+    Title,
+    Body,
+    UserId,
+    Metadata,
+    Read,
     CreatedAt,
 }
 

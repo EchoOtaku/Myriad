@@ -213,8 +213,8 @@ async fn run_server() -> anyhow::Result<()> {
                 services::agent::memory::init_memory(agent_data_dir.join("memory")).await;
                 tracing::info!("✅ Agent memory system initialized");
 
-                // Initialize Agent notification system
-                services::agent::notifications::init_notifications();
+                // Initialize Agent notification system (persistent history)
+                services::agent::notifications::init_notifications(db.clone()).await;
                 tracing::info!("✅ Agent notification system initialized");
 
                 // Initialize MCP (Model Context Protocol) client
@@ -285,7 +285,7 @@ async fn run_server() -> anyhow::Result<()> {
                                     let request = services::agent::UserRequest {
                                         raw_input: task.action.clone(),
                                         timestamp: chrono::Utc::now(),
-                                        user_id: 0, // 系统用户
+                                        user_id: services::agent::SYSTEM_USER_ID,
                                         context: None,
                                     };
 
@@ -293,15 +293,22 @@ async fn run_server() -> anyhow::Result<()> {
                                     let task_name = task.name.clone();
                                     match agent.process(request).await {
                                         Ok(response) => {
+                                            // 任务卡片显示用的短摘要
                                             let result_summary = response
                                                 .message
                                                 .chars()
-                                                .take(100)
+                                                .take(200)
                                                 .collect::<String>();
                                             hb_ref.record_result(&task.id, &result_summary).await;
-                                            // 推送通知
+                                            // 通知携带完整内容（上限 4000 字符），
+                                            // 简报类任务的产出通过通知中心完整送达
+                                            let full_body = response
+                                                .message
+                                                .chars()
+                                                .take(4000)
+                                                .collect::<String>();
                                             if let Some(nm) = services::agent::notifications::get_notification_manager() {
-                                                nm.notify_heartbeat_result(&task_name, &result_summary, true).await;
+                                                nm.notify_heartbeat_result(&task_name, &full_body, true).await;
                                             }
                                             tracing::info!(
                                                 task_id = %task.id,

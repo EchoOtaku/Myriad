@@ -13,7 +13,7 @@
 import type { TranslationKeys } from '../../i18n'
 
 import type { WidgetComponentProps } from '../WidgetGrid'
-import { SiBangumi } from '@lib/icons'
+import { SiBangumi, SiMyanimelist } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { API_URL } from '../../config'
@@ -42,7 +42,9 @@ interface Activity {
 // 平台图标组件 - 优化为独立组件避免重复渲染
 const PlatformIcon = memo(({ platformName }: { platformName: string }) => {
   const iconClass = 'w-4 h-4'
-  const isBangumi = platformName.toLowerCase() === 'bangumi'
+  const key = platformName.toLowerCase().replace(/[\s_-]/g, '')
+  const isBangumi = key === 'bangumi'
+  const isMal = key === 'mal' || key === 'myanimelist'
 
   const icon = useMemo(() => {
     switch (platformName.toLowerCase()) {
@@ -72,6 +74,9 @@ const PlatformIcon = memo(({ platformName }: { platformName: string }) => {
 
   if (isBangumi) {
     return <SiBangumi className={iconClass} />
+  }
+  if (isMal) {
+    return <SiMyanimelist className={iconClass} />
   }
 
   return (

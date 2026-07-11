@@ -85,6 +85,9 @@ use tokio::sync::RwLock;
 pub static LANE_QUEUE: Lazy<Arc<queue::LaneQueue>> =
     Lazy::new(|| Arc::new(queue::LaneQueue::new(4)));
 
+/// 系统用户 ID（Heartbeat 定时任务等无人值守场景）
+pub const SYSTEM_USER_ID: i32 = 0;
+
 /// 待确认配方存储
 static PENDING_CONFIRMATIONS: Lazy<Arc<RwLock<HashMap<String, PendingRecipeConfirmation>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
@@ -247,12 +250,18 @@ impl Agent {
             &request,
         );
 
-        // 4. 检查敏感操作
+        // 4. 检查敏感操作（系统任务自动确认，Critical 除外）
         let sensitive_steps = self.check_sensitive_steps(&recipe).await;
         if !sensitive_steps.is_empty() {
-            return self
-                .request_confirmation_v2(&recipe, &planner_output, user_id, sensitive_steps)
-                .await;
+            match Self::system_sensitive_gate(user_id, &sensitive_steps) {
+                Some(Ok(())) => {} // 系统任务已自动确认，继续执行
+                Some(Err(blocked)) => return Ok(blocked),
+                None => {
+                    return self
+                        .request_confirmation_v2(&recipe, &planner_output, user_id, sensitive_steps)
+                        .await;
+                }
+            }
         }
 
         // 4.5 检查必需参数缺失
@@ -663,12 +672,18 @@ impl Agent {
         let _plan_msg =
             response_agent::announce_plan(&request.raw_input, &step_descs, &progress_tx).await;
 
-        // 4. 检查敏感操作
+        // 4. 检查敏感操作（系统任务自动确认，Critical 除外）
         let sensitive_steps = self.check_sensitive_steps(&recipe).await;
         if !sensitive_steps.is_empty() {
-            return self
-                .request_confirmation_v2(&recipe, &planner_output, user_id, sensitive_steps)
-                .await;
+            match Self::system_sensitive_gate(user_id, &sensitive_steps) {
+                Some(Ok(())) => {} // 系统任务已自动确认，继续执行
+                Some(Err(blocked)) => return Ok(blocked),
+                None => {
+                    return self
+                        .request_confirmation_v2(&recipe, &planner_output, user_id, sensitive_steps)
+                        .await;
+                }
+            }
         }
 
         // 4.5 检查必需参数缺失 — 执行前收集用户信息
@@ -1501,6 +1516,56 @@ impl Agent {
     }
 
     /// 检查配方中的敏感步骤
+    /// 系统任务对敏感步骤的自动确认门控
+    ///
+    /// 无人值守场景（Heartbeat 定时任务）等待人工确认只会让任务静默空跑，因此：
+    /// - Critical（系统级敏感操作）：拒绝执行，返回说明性响应
+    /// - 其余等级：自动确认放行并留痕
+    ///
+    /// 返回 `None` = 非系统用户，走正常确认流程；
+    /// `Some(Ok(()))` = 已自动确认，继续执行；
+    /// `Some(Err(response))` = 被拒绝，直接返回该响应。
+    fn system_sensitive_gate(
+        user_id: i32,
+        sensitive_steps: &[PendingConfirmation],
+    ) -> Option<Result<(), AgentResponse>> {
+        if user_id != SYSTEM_USER_ID {
+            return None;
+        }
+        if let Some(critical) = sensitive_steps
+            .iter()
+            .find(|s| s.risk_level == RiskLevel::Critical)
+        {
+            let msg = format!(
+                "定时任务包含系统级敏感操作 '{}'（{}），已拒绝自动执行。请手动操作或调整任务指令。",
+                critical.capability_name, critical.capability_id
+            );
+            tracing::warn!(
+                capability = %critical.capability_id,
+                "[Agent] System task blocked: critical operation requires human confirmation"
+            );
+            return Some(Err(AgentResponse {
+                response_type: AgentResponseType::Answer,
+                message: msg.clone(),
+                data: Some(json!({ "blocked": true, "reason": msg })),
+                data_display: None,
+                suggestions: vec![],
+                task: None,
+                confirmation: None,
+                frontend_action: None,
+            }));
+        }
+        tracing::info!(
+            steps = %sensitive_steps
+                .iter()
+                .map(|s| s.capability_id.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+            "[Agent] System task auto-confirmed sensitive steps"
+        );
+        Some(Ok(()))
+    }
+
     async fn check_sensitive_steps(&self, recipe: &Recipe) -> Vec<PendingConfirmation> {
         let mut sensitive = Vec::new();
         let registry = capability::get_registry().await;
@@ -2853,4 +2918,55 @@ fn humanize_field_name(field: &str) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pending(cap: &str, risk: RiskLevel) -> PendingConfirmation {
+        PendingConfirmation {
+            step_id: "s1".to_string(),
+            capability_id: cap.to_string(),
+            capability_name: cap.to_string(),
+            description: String::new(),
+            risk_level: risk,
+            confirmation_message: String::new(),
+            impact: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_system_gate_normal_user_needs_confirmation() {
+        let steps = vec![pending("cache.clear", RiskLevel::High)];
+        assert!(
+            Agent::system_sensitive_gate(1, &steps).is_none(),
+            "普通用户应走正常确认流程"
+        );
+    }
+
+    #[test]
+    fn test_system_gate_auto_confirms_up_to_high() {
+        for risk in [RiskLevel::Low, RiskLevel::Medium, RiskLevel::High] {
+            let steps = vec![pending("storage.set", risk)];
+            match Agent::system_sensitive_gate(SYSTEM_USER_ID, &steps) {
+                Some(Ok(())) => {}
+                other => panic!("系统任务应自动确认 {risk:?}，got {:?}", other.map(|r| r.is_ok())),
+            }
+        }
+    }
+
+    #[test]
+    fn test_system_gate_blocks_critical() {
+        let steps = vec![
+            pending("storage.set", RiskLevel::Low),
+            pending("system.shutdown", RiskLevel::Critical),
+        ];
+        match Agent::system_sensitive_gate(SYSTEM_USER_ID, &steps) {
+            Some(Err(resp)) => {
+                assert!(resp.message.contains("system.shutdown"), "{}", resp.message);
+            }
+            other => panic!("Critical 应被拒绝，got {:?}", other.map(|r| r.is_ok())),
+        }
+    }
 }

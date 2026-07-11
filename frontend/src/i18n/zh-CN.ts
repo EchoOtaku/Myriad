@@ -2515,4 +2515,21 @@ export const zhCN: TranslationKeys = {
     deleteSession: '删除',
     deleteSessionConfirm: '确定删除此对话？',
   },
+
+  notificationCenter: {
+    title: '通知',
+    empty: '暂无通知',
+    markAllRead: '全部已读',
+    unreadOnly: '仅未读',
+    justNow: '刚刚',
+    minutesAgo: '{n} 分钟前',
+    hoursAgo: '{n} 小时前',
+    daysAgo: '{n} 天前',
+    typeTaskCompleted: '任务完成',
+    typeTaskFailed: '任务失败',
+    typeHeartbeat: '定时任务',
+    typeMcp: 'MCP 状态',
+    typeSystem: '系统',
+    typeClarification: '需要确认',
+  },
 }

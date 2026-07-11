@@ -2479,6 +2479,24 @@ export interface TranslationKeys {
     deleteSession: string
     deleteSessionConfirm: string
   }
+
+  // 通知中心
+  notificationCenter: {
+    title: string
+    empty: string
+    markAllRead: string
+    unreadOnly: string
+    justNow: string
+    minutesAgo: string
+    hoursAgo: string
+    daysAgo: string
+    typeTaskCompleted: string
+    typeTaskFailed: string
+    typeHeartbeat: string
+    typeMcp: string
+    typeSystem: string
+    typeClarification: string
+  }
 }
 
 // 获取默认语言

@@ -2622,4 +2622,21 @@ export const enUS: TranslationKeys = {
     deleteSession: 'Delete',
     deleteSessionConfirm: 'Delete this conversation?',
   },
+
+  notificationCenter: {
+    title: 'Notifications',
+    empty: 'No notifications',
+    markAllRead: 'Mark all read',
+    unreadOnly: 'Unread only',
+    justNow: 'just now',
+    minutesAgo: '{n}m ago',
+    hoursAgo: '{n}h ago',
+    daysAgo: '{n}d ago',
+    typeTaskCompleted: 'Task completed',
+    typeTaskFailed: 'Task failed',
+    typeHeartbeat: 'Scheduled task',
+    typeMcp: 'MCP status',
+    typeSystem: 'System',
+    typeClarification: 'Needs input',
+  },
 }
