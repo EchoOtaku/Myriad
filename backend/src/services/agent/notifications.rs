@@ -146,6 +146,12 @@ pub enum NotificationEvent {
     NewNotification { notification: Notification },
     /// 通知已读
     NotificationRead { id: String },
+    /// 该用户全部已读（SSE 端按 user_id 过滤转发）
+    NotificationsReadAll { user_id: i32 },
+    /// 通知被删除
+    NotificationDeleted { id: String },
+    /// 通知被批量清空（SSE 端按 user_id 过滤转发）
+    NotificationsCleared { user_id: i32 },
 }
 
 /// 通知管理器
@@ -161,16 +167,6 @@ pub struct NotificationManager {
 }
 
 impl NotificationManager {
-    pub fn new(max_history: usize) -> Self {
-        let (tx, _) = broadcast::channel(128);
-        Self {
-            tx,
-            history: RwLock::new(VecDeque::with_capacity(max_history)),
-            max_history,
-            db: None,
-        }
-    }
-
     /// 创建带持久化的管理器，并从 DB 恢复最近历史
     pub async fn new_with_db(max_history: usize, db: DatabaseConnection) -> Self {
         let (tx, _) = broadcast::channel(128);
@@ -348,10 +344,83 @@ impl NotificationManager {
             ids
         };
         self.persist_read_state(&marked_ids).await;
-        // 广播已读事件，让 SSE 客户端同步状态
-        for id in marked_ids {
-            let _ = self.tx.send(NotificationEvent::NotificationRead { id });
+        // 单事件广播全量已读（此前逐条发 NotificationRead，N 条通知发 N 个事件）
+        if !marked_ids.is_empty() {
+            let _ = self
+                .tx
+                .send(NotificationEvent::NotificationsReadAll { user_id });
         }
+    }
+
+    /// 删除单条通知（带用户归属校验）
+    pub async fn delete_notification(&self, notification_id: &str, user_id: i32) -> bool {
+        // 从内存热缓存移除
+        let removed_from_memory = {
+            let mut history = self.history.write().await;
+            let before = history.len();
+            history.retain(|n| {
+                !(n.id == notification_id
+                    && (n.user_id.is_none() || n.user_id == Some(user_id)))
+            });
+            history.len() < before
+        };
+
+        // 从 DB 删除（热缓存之外的旧通知也能删）
+        let removed_from_db = if let Some(db) = &self.db {
+            match notif_entity::Entity::delete_many()
+                .filter(notif_entity::Column::Id.eq(notification_id))
+                .filter(
+                    notif_entity::Column::UserId
+                        .is_null()
+                        .or(notif_entity::Column::UserId.eq(user_id)),
+                )
+                .exec(db)
+                .await
+            {
+                Ok(res) => res.rows_affected > 0,
+                Err(e) => {
+                    tracing::warn!("[Notifications] Delete failed: {}", e);
+                    false
+                }
+            }
+        } else {
+            false
+        };
+
+        let removed = removed_from_memory || removed_from_db;
+        if removed {
+            let _ = self.tx.send(NotificationEvent::NotificationDeleted {
+                id: notification_id.to_string(),
+            });
+        }
+        removed
+    }
+
+    /// 清空该用户可见的全部通知（广播 + 本人），返回删除条数
+    pub async fn clear_all(&self, user_id: i32) -> u64 {
+        {
+            let mut history = self.history.write().await;
+            history.retain(|n| !(n.user_id.is_none() || n.user_id == Some(user_id)));
+        }
+
+        let mut deleted = 0u64;
+        if let Some(db) = &self.db {
+            match notif_entity::Entity::delete_many()
+                .filter(
+                    notif_entity::Column::UserId
+                        .is_null()
+                        .or(notif_entity::Column::UserId.eq(user_id)),
+                )
+                .exec(db)
+                .await
+            {
+                Ok(res) => deleted = res.rows_affected,
+                Err(e) => tracing::warn!("[Notifications] Clear failed: {}", e),
+            }
+        }
+
+        let _ = self.tx.send(NotificationEvent::NotificationsCleared { user_id });
+        deleted
     }
 
     /// 已读状态落库
@@ -371,9 +440,13 @@ impl NotificationManager {
     }
 
     /// 便捷方法：发送任务完成通知
+    /// user_id 指定归属用户（None 广播），避免任务结果泄露给其他用户；
+    /// session_id 写入 metadata，前端点击通知可跳回对应会话
     pub async fn notify_task_completed(
         &self,
         task_id: &str,
+        user_id: Option<i32>,
+        session_id: Option<&str>,
         title: &str,
         summary: &str,
         success: bool,
@@ -388,11 +461,13 @@ impl NotificationManager {
         } else {
             NotificationPriority::High
         };
-        let notification =
+        let mut notification =
             Notification::new(ntype, priority, title, summary).with_metadata(serde_json::json!({
                 "task_id": task_id,
                 "success": success,
+                "session_id": session_id,
             }));
+        notification.user_id = user_id;
         self.notify(notification).await;
     }
 

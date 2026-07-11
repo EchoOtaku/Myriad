@@ -101,6 +101,8 @@ pub struct RoomMember {
     pub actor_url: String,
     pub is_local: bool,
     pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
     pub role: String,
     pub joined_at: String,
     pub invited_by: Option<String>,
@@ -505,7 +507,7 @@ pub async fn delete_room(
         .map_err(db_err)?
         .unwrap_or_default();
 
-    if owner_actor != local_actor || my_role != "owner" {
+    if !same_actor_url(&owner_actor, &local_actor) || my_role != "owner" {
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({"error": "Only the room owner can delete room"})),
@@ -720,9 +722,37 @@ pub async fn get_members(
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT rm.actor_url, rm.is_local, rm.role, rm.joined_at, rm.invited_by,
-                      COALESCE(ra.display_name, ra.username) AS display_name
+                      COALESCE(
+                          NULLIF(ra.display_name, ''),
+                          ra.username,
+                          u.display_name,
+                          u.username
+                      ) AS display_name,
+                      COALESCE(
+                          NULLIF(ra.avatar_url, ''),
+                          NULLIF(
+                              CASE
+                                  WHEN u.avatar_url LIKE 'https://ui-avatars.com/%'
+                                       OR u.avatar_url LIKE 'http://ui-avatars.com/%'
+                                  THEN NULL
+                                  ELSE u.avatar_url
+                              END,
+                              ''
+                          ),
+                          (
+                              SELECT NULLIF(ui.avatar_url, '')
+                              FROM user_identities ui
+                              WHERE ui.user_id = u.id
+                                AND ui.avatar_url IS NOT NULL
+                                AND ui.avatar_url <> ''
+                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
+                              LIMIT 1
+                          ),
+                          NULLIF(u.avatar_url, '')
+                      ) AS avatar_url
                FROM federation_room_members rm
                LEFT JOIN federation_remote_actors ra ON rm.actor_url = ra.actor_url
+               LEFT JOIN users u ON rm.local_user_id = u.id
                WHERE rm.room_id = $1
                ORDER BY
                  CASE rm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'member' THEN 2 ELSE 3 END,
@@ -740,6 +770,9 @@ pub async fn get_members(
             is_local: r.try_get::<bool>("", "is_local").unwrap_or(false),
             display_name: r
                 .try_get::<Option<String>>("", "display_name")
+                .unwrap_or(None),
+            avatar_url: r
+                .try_get::<Option<String>>("", "avatar_url")
                 .unwrap_or(None),
             role: r.try_get("", "role").unwrap_or_default(),
             joined_at: r

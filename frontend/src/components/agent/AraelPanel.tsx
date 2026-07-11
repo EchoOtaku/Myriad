@@ -393,6 +393,24 @@ export const AraelPanel: React.FC = () => {
     }
   }, [])
 
+  // 外部打开指定会话（通知中心点击任务通知跳转）
+  useEffect(() => {
+    const handleOpenSession = (e: Event) => {
+      const sid = (e as CustomEvent).detail?.sessionId
+      if (typeof sid !== 'string' || !sid) return
+      setVisibility('visible')
+      void loadSession({
+        id: sid,
+        title: null,
+        messageCount: 0,
+        lastActiveAt: '',
+      })
+    }
+    window.addEventListener('arael-open-session', handleOpenSession)
+    return () =>
+      window.removeEventListener('arael-open-session', handleOpenSession)
+  }, [loadSession])
+
   // ============ 中断 ============
 
   const interruptCurrentTask = useCallback(async () => {

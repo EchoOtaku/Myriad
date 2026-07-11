@@ -970,6 +970,13 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
               }
             }
             selectSong(songs[firstSongIndex], firstSongIndex, autoPlay)
+          } else {
+            // 空结果与异常同样视为加载失败：无效歌单 ID（如 Agent 传参错误）
+            // 通常返回空列表而非抛错，静默会让"叫了没反应"无从排查
+            setMusicErrorKey('loadPlaylistFailed')
+            setTimeout(() => {
+              setMusicErrorKey('')
+            }, 3000)
           }
         } catch (error) {
           console.error('Failed to load music playlist:', error)

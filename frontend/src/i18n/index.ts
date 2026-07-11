@@ -1770,7 +1770,6 @@ export interface TranslationKeys {
     deleteSubscription: string
     refreshSubscription: string
     visitWebsite: string
-    markAllRead: string
     expandSidebar: string
     collapseSidebar: string
     exitEdit: string
@@ -2483,19 +2482,19 @@ export interface TranslationKeys {
   // 通知中心
   notificationCenter: {
     title: string
+    tabControl: string
     empty: string
-    markAllRead: string
-    unreadOnly: string
+    clearAll: string
+    clearConfirm: string
+    enableSystemNotif: string
     justNow: string
     minutesAgo: string
     hoursAgo: string
     daysAgo: string
-    typeTaskCompleted: string
-    typeTaskFailed: string
-    typeHeartbeat: string
-    typeMcp: string
-    typeSystem: string
-    typeClarification: string
+    sourceAgent: string
+    sourceHeartbeat: string
+    sourceMcp: string
+    sourceSystem: string
   }
 }
 

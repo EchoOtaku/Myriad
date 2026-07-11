@@ -32,6 +32,8 @@ export interface ToastEvent {
   showCloseButton?: boolean
   /** 自定义图标 */
   icon?: string
+  /** 点击整条 toast 的动作（点击后自动关闭） */
+  onClick?: () => void
   /** 时间戳（用于去重） */
   timestamp?: number
 }

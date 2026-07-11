@@ -1,5 +1,6 @@
 import type { DynamicContentType } from '../services/DynamicContentProvider'
 
+import type { AppNotification } from '../services/notificationApi'
 import type { QuoteData, WeatherData } from '../utils/dynamicContent'
 import React, {
   lazy,
@@ -12,16 +13,18 @@ import React, {
   useState,
 } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 
+import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useMusicPlayer } from '../hooks/useMusicPlayer'
+import { useNotificationCenter } from '../hooks/useNotificationCenter'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
+import { NOTIFICATION_TYPE_ICONS } from '../services/notificationApi'
 import {
   getGreeting,
   getRandomQuote,
@@ -30,7 +33,9 @@ import {
 } from '../utils/dynamicContent'
 import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
+import { showToast } from '../utils/toastManager'
 import { UserSection } from './ControlPanel/UserSection'
+import NotificationPanelList from './NotificationPanelList'
 import { WeatherAssetIcon } from './weather/WeatherAssetIcon'
 import './GlobalControlPanel.css'
 
@@ -182,6 +187,110 @@ const GlobalControlPanel: React.FC = () => {
       pendingUpdatesRef.current = []
     }
   }, [isPageVisible])
+
+  // ============ 通知中心 ============
+
+  /** 面板 tab：控制面板 / 通知 */
+  const [panelTab, setPanelTab] = useState<'control' | 'notifications'>(
+    'control',
+  )
+  const notifCarouselTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+
+  // 卸载时清理轮播撤下定时器
+  useEffect(
+    () => () => {
+      if (notifCarouselTimerRef.current) {
+        clearTimeout(notifCarouselTimerRef.current)
+      }
+    },
+    [],
+  )
+
+  /** 新通知到达：轮播展示 + 高优先级 toast + 后台系统通知 */
+  const handleNewNotification = useCallback(
+    (n: AppNotification) => {
+      const icon = NOTIFICATION_TYPE_ICONS[n.notification_type] ?? '🔔'
+      const snippet = n.body.length > 60 ? `${n.body.slice(0, 60)}…` : n.body
+
+      // 1. 接入智能岛轮播（置顶展示，20 秒后自动撤下）
+      safeSetDynamicContents((prev) => [
+        {
+          type: 'notification',
+          icon,
+          text: n.title,
+          subtext: snippet,
+          showSubtext: true,
+        },
+        ...prev.filter((c) => c.type !== 'notification'),
+      ])
+      setCurrentContentIndex(0)
+      if (notifCarouselTimerRef.current) {
+        clearTimeout(notifCarouselTimerRef.current)
+      }
+      notifCarouselTimerRef.current = setTimeout(() => {
+        safeSetDynamicContents((prev) =>
+          prev.filter((c) => c.type !== 'notification'),
+        )
+      }, 20000)
+
+      // 2. 高优先级走全局 toast（复用 ToastContainer，点击跳转通知 tab）
+      if (n.priority === 'high' || n.priority === 'urgent') {
+        showToast({
+          title: n.title,
+          message: snippet,
+          type:
+            n.notification_type === 'task_failed' || n.priority === 'urgent'
+              ? 'error'
+              : 'warning',
+          duration: 6000,
+          showCloseButton: true,
+          onClick: () => {
+            setPanelTab('notifications')
+            // 复用既有的打开面板事件（已展开时该监听为 no-op，只切 tab）
+            window.dispatchEvent(new CustomEvent('open-control-panel'))
+          },
+        })
+      }
+
+      // 3. 页面在后台时推浏览器系统通知
+      if (
+        document.hidden &&
+        typeof Notification !== 'undefined' &&
+        Notification.permission === 'granted'
+      ) {
+        try {
+          // 构造即展示（无需持有实例），tag 去重同 id 通知
+          void new Notification(n.title, {
+            body: n.body.slice(0, 200),
+            tag: n.id,
+          })
+        } catch {
+          /* 某些环境不支持构造 Notification，忽略 */
+        }
+      }
+    },
+    [safeSetDynamicContents],
+  )
+
+  const notifCenter = useNotificationCenter({
+    enabled: !!user,
+    onNew: handleNewNotification,
+  })
+  const { loaded: notifLoaded, loadHistory: loadNotifHistory } = notifCenter
+
+  // 历史已在 hook 启用时预载；此处仅在预载失败（loaded 仍为 false）时
+  // 于打开通知页时重试
+  useEffect(() => {
+    if (panelTab === 'notifications' && !notifLoaded) {
+      void loadNotifHistory()
+    }
+  }, [panelTab, notifLoaded, loadNotifHistory])
+
+  // 高度策略：控制面板内容始终挂载并定义面板高度（切走时仅 visibility:hidden，
+  // 布局保留、懒加载的配置项出现时照常触发重测）；通知作为绝对定位覆盖层
+  // 盖在其上（inset:0 自动跟随面板高度）。tab 切换本身不触发任何重算。
 
   // 过滤掉空白内容，获取有效的动态内容列表（提前定义，供轮播逻辑使用）
   const validContents = useMemo(() => {
@@ -845,7 +954,9 @@ const GlobalControlPanel: React.FC = () => {
 
   const cycleTheme = useCallback(() => {
     const next =
-      THEME_CYCLE[(THEME_CYCLE.indexOf(themePreference) + 1) % THEME_CYCLE.length]
+      THEME_CYCLE[
+        (THEME_CYCLE.indexOf(themePreference) + 1) % THEME_CYCLE.length
+      ]
     setThemePreference(next)
     localStorage.setItem('theme', next)
 
@@ -896,6 +1007,8 @@ const GlobalControlPanel: React.FC = () => {
     setShowPanelContent(false)
     setShowOverlay(false) // 遮罩层开始淡出
     setIsExpanded(false)
+    // 重置到控制面板 tab：重新展开时默认展示控制面板
+    setPanelTab('control')
     setProgressUiVisible(false) // 进度条不可见，停止 currentTime 状态更新
     setTimeout(() => {
       setShowDynamicContent(true)
@@ -982,6 +1095,17 @@ const GlobalControlPanel: React.FC = () => {
     [collapsePanel, navigate],
   )
 
+  // 点击任务类通知：收起面板并打开对应 Arael 会话（AraelPanel 监听该事件）
+  const handleOpenNotifSession = useCallback(
+    (sessionId: string) => {
+      handleClosePanel()
+      window.dispatchEvent(
+        new CustomEvent('arael-open-session', { detail: { sessionId } }),
+      )
+    },
+    [handleClosePanel],
+  )
+
   // 监听打开控制面板事件（来自音乐小组件等点击）
   useEffect(() => {
     const handleOpenPanel = () => {
@@ -995,6 +1119,21 @@ const GlobalControlPanel: React.FC = () => {
       window.removeEventListener('open-control-panel', handleOpenPanel)
     }
   }, [isExpanded, handleTogglePanel])
+
+  // 音乐错误兜底提示：面板收起时 MusicPlayer 的内联错误不可见
+  // （典型场景：Agent 触发歌单加载失败），用全局 toast 兜底；
+  // 面板展开时已有内联提示，不重复弹
+  const musicErrorKey = musicPlayer.musicErrorKey
+  useEffect(() => {
+    if (!musicErrorKey || isExpandedRef.current) return
+    const musicT = t.music as Record<string, string> | undefined
+    showToast({
+      message: musicT?.[musicErrorKey] ?? musicErrorKey,
+      type: 'error',
+      duration: 5000,
+    })
+    // t 不入依赖：只在错误出现时弹一次，语言切换不重弹
+  }, [musicErrorKey])
 
   // 当有歌词时，更新动态内容以显示歌词（仅播放时）
   // 使用 useRef 来减少状态更新频率
@@ -1261,6 +1400,30 @@ const GlobalControlPanel: React.FC = () => {
   // 是否有有效内容可显示
   const hasValidContent = validContents.length > 0
 
+  // 收缩态右侧指示器：有通知时下箭头替换为计数徽标
+  // （无已读概念：计数 = 未清除的通知数，iOS 通知中心模型）
+  const notifCount = notifCenter.items.length
+  const collapsedIndicator =
+    notifCount > 0 ? (
+      <span className="dynamic-arrow-badge">
+        {notifCount > 99 ? '99+' : notifCount}
+      </span>
+    ) : (
+      <svg
+        className="dynamic-arrow"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 9l-7 7-7-7"
+        />
+      </svg>
+    )
+
   return (
     <React.Fragment>
       {/* 顶部控制栏 - 智能岛 */}
@@ -1276,7 +1439,13 @@ const GlobalControlPanel: React.FC = () => {
             {hasValidContent && currentContent && (
               <div
                 className={`dynamic-content-wrapper ${!showDynamicContent || isTransitioning ? 'hidden' : ''}`}
-                onClick={handleTogglePanel}
+                onClick={() => {
+                  // 点击轮播中的通知内容 → 直接进入通知 tab
+                  if (currentContent.type === 'notification') {
+                    setPanelTab('notifications')
+                  }
+                  handleTogglePanel()
+                }}
               >
                 <span className="dynamic-icon">{currentContent.icon}</span>
                 <div className="dynamic-text">
@@ -1294,19 +1463,7 @@ const GlobalControlPanel: React.FC = () => {
                       </span>
                     )}
                 </div>
-                <svg
-                  className="dynamic-arrow"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
+                {collapsedIndicator}
               </div>
             )}
 
@@ -1316,19 +1473,7 @@ const GlobalControlPanel: React.FC = () => {
                 className={`dynamic-content-wrapper empty-state ${!showDynamicContent ? 'hidden' : ''}`}
                 onClick={handleTogglePanel}
               >
-                <svg
-                  className="dynamic-arrow"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
+                {collapsedIndicator}
               </div>
             )}
 
@@ -1361,236 +1506,290 @@ const GlobalControlPanel: React.FC = () => {
                 </button>
               </div>
 
-              {/* 动态信息卡片 - 切换显示 */}
-              <Suspense fallback={null}>
-                <ControlPanelWidgets isAdmin={user?.is_admin} />
-
-                {/* 音乐播放器 */}
-                <MusicPlayer player={musicPlayer} />
-              </Suspense>
-
-              {/* 控制项网格 - 一行两个 */}
-              <div className="control-items-grid">
-                {/* 主题切换 - 循环：浅色 → 深色 → 自动；图标始终反映当前实际外观 */}
-                <div className="control-item control-item-compact">
-                  <div className="control-item-info">
-                    <div className="control-item-icon icon-theme">
-                      <WeatherAssetIcon
-                        icon={
-                          isDark
-                            ? CONTROL_PANEL_ICON_ASSETS.appearanceDark
-                            : CONTROL_PANEL_ICON_ASSETS.appearanceLight
-                        }
-                        className="h-full w-full object-contain"
-                      />
-                    </div>
-                    <div>
-                      <h4 className="control-item-title">
-                        {t.controlPanel.appearance}
-                      </h4>
-                      <p className="control-item-desc">
-                        {themePreference === 'auto'
-                          ? t.controlPanel.auto
-                          : themePreference === 'dark'
-                            ? t.controlPanel.dark
-                            : t.controlPanel.light}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={cycleTheme}
-                    className="control-action-btn"
-                    aria-label={t.controlPanel.themeSwitch}
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                      />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* 动效等级切换 */}
-                <div className="control-item control-item-compact">
-                  <div className="control-item-info">
-                    <div
-                      className={`control-item-icon icon-performance ${animationModeClass}`}
-                    >
-                      <WeatherAssetIcon
-                        icon={
-                          isStandardAnimation
-                            ? CONTROL_PANEL_ICON_ASSETS.animationStandard
-                            : CONTROL_PANEL_ICON_ASSETS.animationLight
-                        }
-                        className="h-full w-full object-contain"
-                      />
-                    </div>
-                    <div>
-                      <h4 className="control-item-title">
-                        {t.controlPanel.animation}
-                      </h4>
-                      <p className="control-item-desc">
-                        {animPreference === 'auto'
-                          ? anim.level === 'standard'
-                            ? t.controlPanel.highPerformance
-                            : t.controlPanel.lowPerformance
-                          : animPreference === 'light'
-                            ? t.controlPanel.lowPerformance
-                            : t.controlPanel.highPerformance}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={togglePerformanceMode}
-                    className={`control-toggle animation-toggle ${animationModeClass} ${isStandardAnimation ? 'active' : ''}`}
-                    aria-label={t.controlPanel.animation}
-                  >
-                    <span className="control-toggle-slider"></span>
-                  </button>
-                </div>
-
-                {/* 语言切换 */}
-                <div className="control-item control-item-compact">
-                  <div className="control-item-info">
-                    <div className="control-item-icon icon-language">
-                      <WeatherAssetIcon
-                        icon={CONTROL_PANEL_ICON_ASSETS.language}
-                        className="h-full w-full object-contain"
-                      />
-                    </div>
-                    <div>
-                      <h4 className="control-item-title">
-                        {t.controlPanel.language}
-                      </h4>
-                      <p className="control-item-desc">
-                        {locale === 'zh-CN'
-                          ? '简体中文'
-                          : locale === 'ja-JP'
-                            ? '日本語'
-                            : 'English'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      // 循环切换语言列表
-                      const locales = ['zh-CN', 'en-US', 'ja-JP'] as const
-                      const currentIndex = locales.indexOf(locale)
-                      const nextIndex = (currentIndex + 1) % locales.length
-                      setLocale(locales[nextIndex])
-                    }}
-                    onWheel={(e) => {
-                      e.preventDefault()
-                      const locales = ['zh-CN', 'en-US', 'ja-JP'] as const
-                      const currentIndex = locales.indexOf(locale)
-                      // 向下滚动 = 下一个，向上滚动 = 上一个
-                      const nextIndex =
-                        e.deltaY > 0
-                          ? (currentIndex + 1) % locales.length
-                          : (currentIndex - 1 + locales.length) % locales.length
-                      setLocale(locales[nextIndex])
-                    }}
-                    className="language-switch-btn"
-                    aria-label={t.controlPanel.languageSwitch}
-                  >
-                    <span className="language-code">
-                      {locale === 'zh-CN'
-                        ? '中'
-                        : locale === 'ja-JP'
-                          ? '日'
-                          : 'En'}
+              {/* Tab 切换：控制面板 / 通知 */}
+              <div className="notif-tab-bar" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={panelTab === 'control'}
+                  className={`notif-tab ${panelTab === 'control' ? 'active' : ''}`}
+                  onClick={() => setPanelTab('control')}
+                >
+                  {t.notificationCenter.tabControl}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={panelTab === 'notifications'}
+                  className={`notif-tab ${panelTab === 'notifications' ? 'active' : ''}`}
+                  onClick={() => setPanelTab('notifications')}
+                >
+                  {t.notificationCenter.title}
+                  {notifCount > 0 && (
+                    <span className="notif-tab-badge">
+                      {notifCount > 99 ? '99+' : notifCount}
                     </span>
-                  </button>
+                  )}
+                </button>
+              </div>
+
+              {/* 内容区：控制面板内容始终挂载并定义高度；
+                  通知作为绝对定位覆盖层盖在其上，高度自动跟随。
+                  控制内容切走时用容器级 opacity:0（保留布局，懒加载的
+                  配置项出现时仍会触发重测），而非 display:none（会把
+                  小组件测成 0 尺寸）或卸载（切回时引发连环重算）。
+                  inert 负责把隐藏内容移出焦点链与无障碍树 */}
+              <div className="notif-panel-body">
+                <div
+                  className={`notif-control-content ${
+                    panelTab === 'notifications' ? 'inactive' : ''
+                  }`}
+                  inert={panelTab === 'notifications'}
+                >
+                  {/* 动态信息卡片 - 切换显示 */}
+                  <Suspense fallback={null}>
+                    <ControlPanelWidgets isAdmin={user?.is_admin} />
+
+                    {/* 音乐播放器 */}
+                    <MusicPlayer player={musicPlayer} />
+                  </Suspense>
+
+                  {/* 控制项网格 - 一行两个 */}
+                  <div className="control-items-grid">
+                    {/* 主题切换 - 循环：浅色 → 深色 → 自动；图标始终反映当前实际外观 */}
+                    <div className="control-item control-item-compact">
+                      <div className="control-item-info">
+                        <div className="control-item-icon icon-theme">
+                          <WeatherAssetIcon
+                            icon={
+                              isDark
+                                ? CONTROL_PANEL_ICON_ASSETS.appearanceDark
+                                : CONTROL_PANEL_ICON_ASSETS.appearanceLight
+                            }
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
+                        <div>
+                          <h4 className="control-item-title">
+                            {t.controlPanel.appearance}
+                          </h4>
+                          <p className="control-item-desc">
+                            {themePreference === 'auto'
+                              ? t.controlPanel.auto
+                              : themePreference === 'dark'
+                                ? t.controlPanel.dark
+                                : t.controlPanel.light}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={cycleTheme}
+                        className="control-action-btn"
+                        aria-label={t.controlPanel.themeSwitch}
+                      >
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* 动效等级切换 */}
+                    <div className="control-item control-item-compact">
+                      <div className="control-item-info">
+                        <div
+                          className={`control-item-icon icon-performance ${animationModeClass}`}
+                        >
+                          <WeatherAssetIcon
+                            icon={
+                              isStandardAnimation
+                                ? CONTROL_PANEL_ICON_ASSETS.animationStandard
+                                : CONTROL_PANEL_ICON_ASSETS.animationLight
+                            }
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
+                        <div>
+                          <h4 className="control-item-title">
+                            {t.controlPanel.animation}
+                          </h4>
+                          <p className="control-item-desc">
+                            {animPreference === 'auto'
+                              ? anim.level === 'standard'
+                                ? t.controlPanel.highPerformance
+                                : t.controlPanel.lowPerformance
+                              : animPreference === 'light'
+                                ? t.controlPanel.lowPerformance
+                                : t.controlPanel.highPerformance}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={togglePerformanceMode}
+                        className={`control-toggle animation-toggle ${animationModeClass} ${isStandardAnimation ? 'active' : ''}`}
+                        aria-label={t.controlPanel.animation}
+                      >
+                        <span className="control-toggle-slider"></span>
+                      </button>
+                    </div>
+
+                    {/* 语言切换 */}
+                    <div className="control-item control-item-compact">
+                      <div className="control-item-info">
+                        <div className="control-item-icon icon-language">
+                          <WeatherAssetIcon
+                            icon={CONTROL_PANEL_ICON_ASSETS.language}
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
+                        <div>
+                          <h4 className="control-item-title">
+                            {t.controlPanel.language}
+                          </h4>
+                          <p className="control-item-desc">
+                            {locale === 'zh-CN'
+                              ? '简体中文'
+                              : locale === 'ja-JP'
+                                ? '日本語'
+                                : 'English'}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          // 循环切换语言列表
+                          const locales = ['zh-CN', 'en-US', 'ja-JP'] as const
+                          const currentIndex = locales.indexOf(locale)
+                          const nextIndex = (currentIndex + 1) % locales.length
+                          setLocale(locales[nextIndex])
+                        }}
+                        onWheel={(e) => {
+                          e.preventDefault()
+                          const locales = ['zh-CN', 'en-US', 'ja-JP'] as const
+                          const currentIndex = locales.indexOf(locale)
+                          // 向下滚动 = 下一个，向上滚动 = 上一个
+                          const nextIndex =
+                            e.deltaY > 0
+                              ? (currentIndex + 1) % locales.length
+                              : (currentIndex - 1 + locales.length) %
+                                locales.length
+                          setLocale(locales[nextIndex])
+                        }}
+                        className="language-switch-btn"
+                        aria-label={t.controlPanel.languageSwitch}
+                      >
+                        <span className="language-code">
+                          {locale === 'zh-CN'
+                            ? '中'
+                            : locale === 'ja-JP'
+                              ? '日'
+                              : 'En'}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* 壁纸切换 - 仅在非单一图片链接时显示 */}
+                    {/* Debug: canRefreshWallpaper = {String(canRefreshWallpaper)} */}
+                    {canRefreshWallpaper && (
+                      <div className="control-item control-item-compact">
+                        <div className="control-item-info">
+                          <div className="control-item-icon icon-wallpaper">
+                            <WeatherAssetIcon
+                              icon={CONTROL_PANEL_ICON_ASSETS.wallpaper}
+                              className="h-full w-full object-contain"
+                            />
+                          </div>
+                          <div>
+                            <h4 className="control-item-title">
+                              {t.controlPanel.wallpaper}
+                            </h4>
+                            <p className="control-item-desc">
+                              {t.controlPanel.random}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={refreshWallpaper}
+                          className="control-action-btn"
+                          aria-label={t.controlPanel.wallpaperSwitch}
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 系统配置 - 仅管理员可见 */}
+                    {user?.is_admin && (
+                      <div className="control-item control-item-compact">
+                        <div className="control-item-info">
+                          <div className="control-item-icon icon-config">
+                            <WeatherAssetIcon
+                              icon={CONTROL_PANEL_ICON_ASSETS.config}
+                              className="h-full w-full object-contain"
+                            />
+                          </div>
+                          <div>
+                            <h4 className="control-item-title">
+                              {t.controlPanel.configuration}
+                            </h4>
+                            <p className="control-item-desc">
+                              {t.controlPanel.system}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleNavigateFromPanel('/config')}
+                          className="control-action-btn"
+                          aria-label={t.controlPanel.configuration}
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13 7l5 5m0 0l-5 5m5-5H6"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* 壁纸切换 - 仅在非单一图片链接时显示 */}
-                {/* Debug: canRefreshWallpaper = {String(canRefreshWallpaper)} */}
-                {canRefreshWallpaper && (
-                  <div className="control-item control-item-compact">
-                    <div className="control-item-info">
-                      <div className="control-item-icon icon-wallpaper">
-                        <WeatherAssetIcon
-                          icon={CONTROL_PANEL_ICON_ASSETS.wallpaper}
-                          className="h-full w-full object-contain"
-                        />
-                      </div>
-                      <div>
-                        <h4 className="control-item-title">
-                          {t.controlPanel.wallpaper}
-                        </h4>
-                        <p className="control-item-desc">
-                          {t.controlPanel.random}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={refreshWallpaper}
-                      className="control-action-btn"
-                      aria-label={t.controlPanel.wallpaperSwitch}
-                    >
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                )}
-
-                {/* 系统配置 - 仅管理员可见 */}
-                {user?.is_admin && (
-                  <div className="control-item control-item-compact">
-                    <div className="control-item-info">
-                      <div className="control-item-icon icon-config">
-                        <WeatherAssetIcon
-                          icon={CONTROL_PANEL_ICON_ASSETS.config}
-                          className="h-full w-full object-contain"
-                        />
-                      </div>
-                      <div>
-                        <h4 className="control-item-title">
-                          {t.controlPanel.configuration}
-                        </h4>
-                        <p className="control-item-desc">
-                          {t.controlPanel.system}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleNavigateFromPanel('/config')}
-                      className="control-action-btn"
-                      aria-label={t.controlPanel.configuration}
-                    >
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 7l5 5m0 0l-5 5m5-5H6"
-                        />
-                      </svg>
-                    </button>
+                {/* 通知覆盖层：inset:0 跟随控制面板高度，列表内部滚动 */}
+                {panelTab === 'notifications' && (
+                  <div className="notif-overlay">
+                    <NotificationPanelList
+                      center={notifCenter}
+                      fill
+                      onOpenSession={handleOpenNotifSession}
+                    />
                   </div>
                 )}
               </div>

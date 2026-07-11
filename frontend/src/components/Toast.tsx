@@ -43,6 +43,8 @@ export interface ToastProps {
   showCloseButton?: boolean
   /** 自定义图标（emoji 或 React 节点） */
   icon?: React.ReactNode
+  /** 点击整条 toast 的动作（点击后自动关闭） */
+  onClick?: () => void
 }
 
 /** 类型配置映射（导出供同族的 tapp/TappToast 复用） */
@@ -89,6 +91,7 @@ export default function Toast({
   duration = 3000,
   showCloseButton = false,
   icon,
+  onClick,
 }: ToastProps) {
   const [isHiding, setIsHiding] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
@@ -136,13 +139,35 @@ export default function Toast({
     return renderToastAssetIcon(type)
   }
 
+  // 点击整条 toast：执行动作并关闭
+  const handleBodyClick = useCallback(() => {
+    if (!onClick) return
+    onClick()
+    handleClose()
+  }, [onClick, handleClose])
+
   return (
     <div
       className={`toast-container ${isHiding ? 'toast-hiding' : ''}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <div className={`toast-message ${config.colorClass}`}>
+      <div
+        className={`toast-message ${config.colorClass}${onClick ? ' toast-clickable' : ''}`}
+        role={onClick ? 'button' : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        onClick={onClick ? handleBodyClick : undefined}
+        onKeyDown={
+          onClick
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  handleBodyClick()
+                }
+              }
+            : undefined
+        }
+      >
         {/* 图标区域 */}
         <div className="toast-icon-wrapper">{renderIcon()}</div>
 
@@ -156,7 +181,11 @@ export default function Toast({
         {showCloseButton && (
           <button
             className="toast-close-btn"
-            onClick={handleClose}
+            onClick={(e) => {
+              // 阻止冒泡到可点击 toast 本体，关闭不应触发跳转动作
+              e.stopPropagation()
+              handleClose()
+            }}
             aria-label="关闭通知"
           >
             <svg

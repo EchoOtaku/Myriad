@@ -824,7 +824,8 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .forward-item{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;background:none;border-radius:10px;font-size:13px;font-weight:500;color:var(--text-primary,#1a1a1a);cursor:pointer;transition:background .12s;font-family:inherit}
 .forward-item:hover{background:rgba(128,128,128,.06)}
 .forward-item:active{background:rgba(128,128,128,.12)}
-.forward-item-avatar{width:32px;height:32px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}
+.forward-item-avatar{width:32px;height:32px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;overflow:hidden}
+.forward-item-avatar img{width:100%;height:100%;object-fit:cover}
 .dark .forward-sheet{background:var(--bg-primary,#1a1a1a)}
 .dark .forward-header{border-color:rgba(255,255,255,.06)}
 .dark .forward-title{color:rgba(255,255,255,.9)}
@@ -863,7 +864,8 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 /* ===== Members ===== */
 .member-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;transition:background .15s}
 .member-item:hover{background:rgba(128,128,128,.05)}
-.member-avatar{width:24px;height:24px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.member-avatar{width:24px;height:24px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;overflow:hidden}
+.member-avatar img{width:100%;height:100%;object-fit:cover}
 .member-info{min-width:0;flex:1}
 .member-name{font-size:12px;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .member-role{font-size:10px;color:var(--text-secondary,#999)}
@@ -1151,7 +1153,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "unfollowBtn": "Unfollow",
     "unfollowFail": "Unfollow failed",
     "unpublishFail": "Unpublish failed",
-    "updatingBtn": "Update",
+    "updatingBtn": "Update"
   },
   "ja": {
     "accept": "承認",
@@ -1307,7 +1309,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "unfollowBtn": "フォロー解除",
     "unfollowFail": "フォロー解除失敗",
     "unpublishFail": "公開取消失敗",
-    "updatingBtn": "更新",
+    "updatingBtn": "更新"
   },
   "zh": {
     "accept": "接受",
@@ -1463,8 +1465,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "unfollowBtn": "取消关注",
     "unfollowFail": "取消关注失败",
     "unpublishFail": "取消发布失败",
-    "updatingBtn": "更新",
-  },
+    "updatingBtn": "更新"
+  }
 }
 
 // ==================== Page Modules ====================
@@ -1688,7 +1690,6 @@ function sanitizeFederationIdentity(identity) {
   if (!clean.handle && clean.acct) clean.handle = '@' + String(clean.acct).replace(/^@/, '');
   if (!clean.handle && clean.username && clean.domain) clean.handle = '@' + clean.username + '@' + clean.domain;
   if (!clean.acct && clean.handle) clean.acct = String(clean.handle).replace(/^@/, '');
-  if (!clean.avatar_url && clean.avatar) clean.avatar_url = clean.avatar;
   if (!clean.actor_url) {
     clean.inbox_url = '';
     clean.outbox_url = '';
@@ -1732,9 +1733,7 @@ function synthesizeFederationIdentityFromUser(user) {
     outbox_url: actorUrl ? actorUrl + '/outbox' : '',
     followers_url: actorUrl ? actorUrl + '/followers' : '',
     following_url: actorUrl ? actorUrl + '/following' : '',
-    profile_url: '',
-    display_name: user.display_name || user.name || rawUsername,
-    avatar_url: user.avatar_url || user.avatar || ''
+    profile_url: ''
   };
   if (actorUrl) state.localActorUrl = actorUrl;
 }
@@ -1768,19 +1767,49 @@ function renderFederationIdentity() {
 
   var profileHandle = $('feed-handle');
   if (profileHandle && handle) profileHandle.textContent = handle;
-  if (identity.display_name || identity.username || identity.avatar_url) {
-    renderFeedProfileUser({
-      display_name: identity.display_name || identity.name || identity.username,
-      username: identity.username,
-      avatar_url: identity.avatar_url
-    });
+}
+
+function avatarContentHtml(url, name) {
+  var initial = ((name || '?')[0] || '?').toUpperCase();
+  if (url) return '<img src="' + esc(url) + '" alt="" />';
+  return esc(initial);
+}
+
+/** Unwrap getRoomMembers response: { members, total } or legacy bare array. */
+function unwrapRoomMembers(res) {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.members)) return res.members;
+  return [];
+}
+
+function sameActorUrl(a, b) {
+  var left = normalizeFederationUrl(a) || String(a || '').trim().replace(/\\/+$/, '');
+  var right = normalizeFederationUrl(b) || String(b || '').trim().replace(/\\/+$/, '');
+  if (!left || !right) return false;
+  return left === right || left.replace(/\\/+$/, '') === right.replace(/\\/+$/, '');
+}
+
+function findMemberByActor(actorUrl) {
+  if (!actorUrl) return null;
+  for (var i = 0; i < state.members.length; i++) {
+    var m = state.members[i];
+    if (sameActorUrl(m.actor_url, actorUrl)) return m;
   }
+  return null;
 }
 
 function renderFeedProfileUser(user) {
   if (!user) return;
   var name = user.display_name || user.username || '';
   var avatar = user.avatar_url || user.avatar || '';
+  // Prefer federation identity avatar when context only has placeholder/empty
+  if (!avatar && state.identity && state.identity.avatar_url) {
+    avatar = state.identity.avatar_url;
+  }
+  if (!name && state.identity) {
+    name = state.identity.display_name || state.identity.username || name;
+  }
   var initial = ((name || user.username || '?')[0] || '?').toUpperCase();
   document.querySelectorAll('[data-feed-avatar]').forEach(function (avatarEl) {
     if (avatar) avatarEl.innerHTML = '<img src="' + esc(avatar) + '" alt="" />';
@@ -1919,18 +1948,18 @@ async function copyFederationIdentity(kind) {
 
 function isLocalActor(actor) {
   if (!actor) return false;
-  var normalizedActor = normalizeFederationUrl(actor);
   var localActor = getIdentityActorUrl();
-  if (localActor && normalizedActor) return normalizedActor === localActor;
+  if (localActor && sameActorUrl(actor, localActor)) return true;
+  if (state.localActorUrl && sameActorUrl(actor, state.localActorUrl)) return true;
   if (state.activeKind === 'channel' && state.channelDetail && state.channelDetail.remote_actor_url) {
-    return actor !== state.channelDetail.remote_actor_url;
+    // In a 1:1 channel, anything that is not the remote peer is local
+    return !sameActorUrl(actor, state.channelDetail.remote_actor_url);
   }
   if (state.activeKind === 'room' && state.members.length > 0) {
-    for (var i = 0; i < state.members.length; i++) {
-      if (state.members[i].actor_url === actor) return !!state.members[i].is_local;
-    }
+    var member = findMemberByActor(actor);
+    if (member) return !!member.is_local;
   }
-  return actor.indexOf('myriad.local') !== -1;
+  return String(actor).indexOf('myriad.local') !== -1;
 }
 
 function applyLabels() {
@@ -2424,12 +2453,8 @@ function renderConvList() {
   items.forEach(function (item) {
     var isActive = item.id === state.activeId;
     var avatarClass = item.kind === 'channel' ? 'avatar-channel' : 'avatar-room';
-    var initial = (item.name[0] || '?').toUpperCase();
-    var avatarContent = item.avatar
-      ? '<img src="' + esc(item.avatar) + '" alt="" />'
-      : esc(initial);
     html += '<button class="conv-item' + (isActive ? ' conv-active' : '') + '" data-kind="' + item.kind + '" data-id="' + esc(item.id) + '">'
-      + '<div class="conv-avatar ' + avatarClass + '">' + avatarContent + '</div>'
+      + '<div class="conv-avatar ' + avatarClass + '">' + avatarContentHtml(item.avatar || '', item.name) + '</div>'
       + '<div class="conv-info">'
       + '<div class="conv-name">' + esc(item.name) + '</div>'
       + '<div class="conv-subtitle">' + esc(item.subtitle) + '</div>'
@@ -2617,10 +2642,20 @@ function renderQuotePreview() {
 function doForward(msg) {
   var items = [];
   state.channels.forEach(function (ch) {
-    items.push({ kind: 'channel', id: ch.channel_id, name: ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || '?' });
+    items.push({
+      kind: 'channel',
+      id: ch.channel_id,
+      name: ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || '?',
+      avatar: ch.remote_actor_avatar || '',
+    });
   });
   state.rooms.forEach(function (rm) {
-    items.push({ kind: 'room', id: rm.room_id, name: rm.name || '?' });
+    items.push({
+      kind: 'room',
+      id: rm.room_id,
+      name: rm.name || '?',
+      avatar: rm.avatar_url || '',
+    });
   });
   items = items.filter(function (it) { return it.id !== state.activeId; });
   if (items.length === 0) return;
@@ -2637,10 +2672,9 @@ function doForward(msg) {
     + '</div>';
   var listEl = overlay.querySelector('.forward-list');
   items.forEach(function (it) {
-    var initial = (it.name[0] || '?').toUpperCase();
     var btn = document.createElement('button');
     btn.className = 'forward-item';
-    btn.innerHTML = '<div class="forward-item-avatar">' + esc(initial) + '</div><span>' + esc(it.name) + '</span>';
+    btn.innerHTML = '<div class="forward-item-avatar">' + avatarContentHtml(it.avatar || '', it.name) + '</div><span>' + esc(it.name) + '</span>';
     btn.addEventListener('click', async function () {
       overlay.remove();
       var payload = msg.payload;
@@ -2713,30 +2747,24 @@ function renderMessages() {
         avatarUrl = state.channelDetail.remote_actor_avatar || '';
         displayName = state.channelDetail.remote_actor_name || sender;
       } else if (state.activeKind === 'room') {
-        var member = null;
-        for (var mi = 0; mi < state.members.length; mi++) {
-          if (state.members[mi].actor_url === msg.sender_actor) { member = state.members[mi]; break; }
+        var member = findMemberByActor(msg.sender_actor);
+        if (member) {
+          displayName = member.display_name || sender;
+          avatarUrl = member.avatar_url || '';
         }
-        if (member) displayName = member.display_name || sender;
       }
     }
 
     // Check if previous message is from same sender (skip avatar to reduce clutter)
     var prevMsg = idx > 0 ? state.messages[idx - 1] : null;
-    var sameSender = prevMsg && prevMsg.sender_actor === msg.sender_actor;
+    var sameSender = prevMsg && sameActorUrl(prevMsg.sender_actor, msg.sender_actor);
 
     html += '<div class="msg-row ' + (local ? 'msg-local' : 'msg-remote') + '" data-msg-id="' + esc(msg.message_id || '') + '">';
     if (!local) {
       if (sameSender) {
         html += '<div class="msg-avatar-spacer"></div>';
       } else {
-        html += '<div class="msg-avatar">';
-        if (avatarUrl) {
-          html += '<img src="' + esc(avatarUrl) + '" alt="" style="width:100%;height:100%;object-fit:cover" />';
-        } else {
-          html += esc((displayName[0] || '?').toUpperCase());
-        }
-        html += '</div>';
+        html += '<div class="msg-avatar">' + avatarContentHtml(avatarUrl, displayName) + '</div>';
       }
     }
     html += '<div class="msg-bubble ' + (local ? 'bubble-local' : 'bubble-remote') + '">';
@@ -3047,9 +3075,8 @@ const PAGE_MOD_MEMBERS = `\
   var html = '';
   state.members.forEach(function (m) {
     var name = m.display_name || (m.actor_url || '').split('/').pop() || '?';
-    var initial = name[0].toUpperCase();
     html += '<div class="member-item">'
-      + '<div class="member-avatar">' + esc(initial) + '</div>'
+      + '<div class="member-avatar">' + avatarContentHtml(m.avatar_url || '', name) + '</div>'
       + '<div class="member-info">'
       + '<div class="member-name">' + esc(name) + '</div>'
       + '<div class="member-role">' + esc(m.role || '') + '</div>'
@@ -3114,9 +3141,7 @@ function renderChatHeader() {
     var chName = ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || '?';
     nameEl.textContent = chName;
     if (avatarEl) {
-      avatarEl.innerHTML = ch.remote_actor_avatar
-        ? '<img src="' + esc(ch.remote_actor_avatar) + '" alt="" />'
-        : esc((chName[0] || '?').toUpperCase());
+      avatarEl.innerHTML = avatarContentHtml(ch.remote_actor_avatar || '', chName);
     }
     metaEl.innerHTML = '<span class="meta-badge badge-channel">' + esc(ch.channel_type || lang.dm) + '</span>'
       + (ch.status === 'pending' ? '<span class="meta-badge badge-pending">' + esc(lang.pending) + '</span>' : '');
@@ -3138,9 +3163,7 @@ function renderChatHeader() {
     var rm = state.roomDetail;
     nameEl.textContent = rm.name || '?';
     if (avatarEl) {
-      avatarEl.innerHTML = rm.avatar_url
-        ? '<img src="' + esc(rm.avatar_url) + '" alt="" />'
-        : esc(((rm.name || '?')[0] || '?').toUpperCase());
+      avatarEl.innerHTML = avatarContentHtml(rm.avatar_url || '', rm.name || '?');
     }
     metaEl.innerHTML = '<span class="meta-badge badge-room">' + (rm.member_count || 0) + ' ' + esc(lang.members) + '</span>'
       + (rm.my_role ? '<span class="meta-badge badge-role">' + esc(rm.my_role) + '</span>' : '');
@@ -3279,9 +3302,10 @@ async function openConversation(kind, id) {
         if (!state.localActorUrl && results[0].remote_actor_url) {
           var msgs = (results[1] && results[1].messages) || [];
           for (var mi = 0; mi < msgs.length; mi++) {
-            var senderActor = normalizeFederationUrl(msgs[mi].sender_actor);
-            if (senderActor && senderActor !== results[0].remote_actor_url) {
-              state.localActorUrl = senderActor; break;
+            var senderActor = msgs[mi].sender_actor;
+            if (senderActor && !sameActorUrl(senderActor, results[0].remote_actor_url)) {
+              state.localActorUrl = normalizeFederationUrl(senderActor) || senderActor;
+              break;
             }
           }
         }
@@ -3295,7 +3319,7 @@ async function openConversation(kind, id) {
       ]);
       if (results[0]) state.roomDetail = results[0];
       if (results[1]) {
-        state.members = results[1].members || [];
+        state.members = unwrapRoomMembers(results[1]);
         // Extract local actor URL from members list
         if (!state.localActorUrl) {
           for (var i = 0; i < state.members.length; i++) {
@@ -3443,7 +3467,7 @@ async function doInviteMember(actorUrl) {
       var detail = await Tapp.federation.getRoom(state.activeId);
       if (detail) state.roomDetail = detail;
       var membersRes = await Tapp.federation.getRoomMembers(state.activeId);
-      state.members = membersRes || [];
+      state.members = unwrapRoomMembers(membersRes);
       renderMembers();
       renderInvitePopoverContacts();
     } catch (e2) {}
@@ -3519,15 +3543,21 @@ function renderInvitePopoverContacts() {
   var emptyEl = $('invite-pop-empty');
   if (!listEl || !emptyEl) return;
 
-  // Get actor URLs of current room members for filtering
+  // Get actor URLs of current room members for filtering (normalized)
   var memberActors = {};
-  state.members.forEach(function (m) { if (m.actor_url) memberActors[m.actor_url] = true; });
+  state.members.forEach(function (m) {
+    if (!m.actor_url) return;
+    memberActors[m.actor_url] = true;
+    var normalized = normalizeFederationUrl(m.actor_url);
+    if (normalized) memberActors[normalized] = true;
+  });
 
   // Build contacts from existing channels (chat partners)
   var contacts = [];
   state.channels.forEach(function (ch) {
     if (!ch.remote_actor_url || ch.status === 'closed') return;
-    var alreadyMember = !!memberActors[ch.remote_actor_url];
+    var remoteNorm = normalizeFederationUrl(ch.remote_actor_url) || ch.remote_actor_url;
+    var alreadyMember = !!(memberActors[ch.remote_actor_url] || memberActors[remoteNorm]);
     contacts.push({
       name: ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || '?',
       avatar: ch.remote_actor_avatar || '',
@@ -3551,7 +3581,7 @@ function renderInvitePopoverContacts() {
     html += '<button class="invite-pop-contact' + (c.alreadyMember ? ' invite-pop-contact-disabled' : '') + '"'
       + ' data-actor="' + esc(c.actorUrl) + '"' + (c.alreadyMember ? ' disabled' : '') + '>'
       + '<div class="invite-pop-contact-avatar">'
-      + (c.avatar ? '<img src="' + esc(c.avatar) + '" alt="" />' : esc(initial))
+      + avatarContentHtml(c.avatar || '', c.name || initial)
       + '</div>'
       + '<div class="invite-pop-contact-info">'
       + '<div class="invite-pop-contact-name">' + esc(c.name) + '</div>'
@@ -3623,7 +3653,7 @@ async function doKickMember(actorUrl) {
     var detail = await Tapp.federation.getRoom(state.activeId);
     if (detail) state.roomDetail = detail;
     var membersRes = await Tapp.federation.getRoomMembers(state.activeId);
-    state.members = membersRes || [];
+    state.members = unwrapRoomMembers(membersRes);
     renderMembers();
     renderChatHeader();
   } catch (e) {
@@ -4008,14 +4038,10 @@ function renderTimelineItem(item) {
   var actor = item.actor || {};
   var name = actor.display_name || actor.username || '?';
   var handle = actor.username ? '@' + actor.username + (actor.domain ? '@' + actor.domain : '') : '';
-  var initial = (name[0] || '?').toUpperCase();
-  var avatarHtml = actor.avatar_url
-    ? '<img src="' + esc(actor.avatar_url) + '" alt="" />'
-    : esc(initial);
   var ts = '';
-  try { ts = timeAgo(item.created_at || item.timestamp); } catch (e) {}
+  try { ts = timeAgo(item.created_at || item.received_at || item.timestamp); } catch (e) {}
   var h = '<div class="feed-item">';
-  h += '<div class="feed-item-avatar">' + avatarHtml + '</div>';
+  h += '<div class="feed-item-avatar">' + avatarContentHtml(actor.avatar_url || '', name) + '</div>';
   h += '<div class="feed-item-body">';
   h += '<div class="feed-item-header">';
   h += '<span class="feed-item-name">' + esc(name) + '</span>';
@@ -4036,12 +4062,8 @@ function renderTimelineItem(item) {
 function renderActorItem(actor, context) {
   var name = actor.display_name || actor.username || '?';
   var handle = actor.username ? '@' + actor.username + (actor.domain ? '@' + actor.domain : '') : actor.domain || '';
-  var initial = (name[0] || '?').toUpperCase();
-  var avatarHtml = actor.avatar_url
-    ? '<img src="' + esc(actor.avatar_url) + '" alt="" />'
-    : esc(initial);
   var h = '<div class="feed-item">';
-  h += '<div class="feed-item-avatar">' + avatarHtml + '</div>';
+  h += '<div class="feed-item-avatar">' + avatarContentHtml(actor.avatar_url || '', name) + '</div>';
   h += '<div class="feed-item-body">';
   h += '<div class="feed-item-header">';
   h += '<span class="feed-item-name">' + esc(name) + '</span>';
@@ -4636,22 +4658,61 @@ const PAGE_MOD_INDEX = `\
   await loadFederationIdentity();
   applyLabels();
 
-  // -- Populate feed profile header from user context --
+  // -- Populate feed profile header from user context + federation identity --
   try {
     var user = await Tapp.context.getUser();
     if (user) {
       synthesizeFederationIdentityFromUser(user);
+      // Merge federation identity avatar/name when context is empty
+      if (state.identity) {
+        if (!user.avatar_url && !user.avatar && state.identity.avatar_url) {
+          user.avatar_url = state.identity.avatar_url;
+          user.avatar = state.identity.avatar_url;
+        }
+        if (!user.display_name && state.identity.display_name) {
+          user.display_name = state.identity.display_name;
+        }
+      }
       renderFeedProfileUser(user);
       // Update nav feed tab avatar + username
       var navAvatar = $('nav-feed-avatar');
       if (navAvatar) {
-        if (user.avatar_url || user.avatar) navAvatar.innerHTML = '<img src="' + esc(user.avatar_url || user.avatar) + '" alt="" />';
-        else navAvatar.textContent = ((user.display_name || user.username || '?')[0] || '?').toUpperCase();
+        var navAvatarUrl = user.avatar_url || user.avatar || '';
+        navAvatar.innerHTML = avatarContentHtml(navAvatarUrl, user.display_name || user.username || '?');
       }
       var navName = $('nav-feed-label');
       if (navName) navName.textContent = user.display_name || user.username || '';
+    } else if (state.identity) {
+      renderFeedProfileUser({
+        username: state.identity.username,
+        display_name: state.identity.display_name || state.identity.username,
+        avatar_url: state.identity.avatar_url || '',
+        avatar: state.identity.avatar_url || '',
+      });
+      var navAvatarFallback = $('nav-feed-avatar');
+      if (navAvatarFallback) {
+        navAvatarFallback.innerHTML = avatarContentHtml(
+          state.identity.avatar_url || '',
+          state.identity.display_name || state.identity.username || '?'
+        );
+      }
+      var navNameFallback = $('nav-feed-label');
+      if (navNameFallback) {
+        navNameFallback.textContent = state.identity.display_name || state.identity.username || '';
+      }
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    if (state.identity) {
+      try {
+        renderFeedProfileUser({
+          username: state.identity.username,
+          display_name: state.identity.display_name || state.identity.username,
+          avatar_url: state.identity.avatar_url || '',
+          avatar: state.identity.avatar_url || '',
+        });
+      } catch (e2) { /* ignore */ }
+    }
+  }
   renderFederationIdentity();
   applyAdminControls();
 
@@ -4689,94 +4750,6 @@ const PAGE_MOD_INDEX = `\
   });
 }
 
-// ==================== Background (headless core 大脑) ====================
-// 关窗后仍在 headless core 沙箱中运行：轮询会话未读数，检测到新增即通知。
-// core 模式无 UI，这里绝不触碰任何 DOM。
-var bgTimer = null;
-var bgUnreadSnapshot = null;   // { 'channel:id'|'room:id': unreadCount }
-var bgNotifyEnabled = true;
-var bgPollMs = 15000;
-
-async function bgLoadSettings() {
-  try {
-    var settings = await Tapp.settings.getAll();
-    if (settings) {
-      if (typeof settings.notifyOnMessage === 'boolean') bgNotifyEnabled = settings.notifyOnMessage;
-      if (settings.pollInterval) bgPollMs = Math.max(5, Math.min(120, settings.pollInterval)) * 1000;
-    }
-  } catch (e) { /* ignore */ }
-}
-
-async function bgLoadSnapshot() {
-  try {
-    var snap = await Tapp.storage.get('bg_unread_snapshot');
-    bgUnreadSnapshot = (snap && typeof snap === 'object') ? snap : null;
-  } catch (e) { bgUnreadSnapshot = null; }
-}
-
-function bgConvLabel(kind, item) {
-  if (kind === 'channel') return item.remote_actor_name || (item.remote_actor_url || '').split('/').pop() || 'Channel';
-  return item.name || 'Room';
-}
-
-async function bgCheckMessages() {
-  try {
-    var results = await Promise.allSettled([
-      Tapp.federation.getChannels(),
-      Tapp.federation.getRooms()
-    ]);
-    var channels = (results[0].status === 'fulfilled' && results[0].value) ? (results[0].value.channels || []) : [];
-    var rooms = (results[1].status === 'fulfilled' && results[1].value) ? (results[1].value.rooms || []) : [];
-
-    var snapshot = {};
-    var newItems = [];
-    channels.forEach(function (ch) {
-      var key = 'channel:' + ch.channel_id;
-      var unread = ch.unread_count || 0;
-      snapshot[key] = unread;
-      var prev = bgUnreadSnapshot ? (bgUnreadSnapshot[key] || 0) : 0;
-      if (bgUnreadSnapshot && unread > prev) newItems.push({ label: bgConvLabel('channel', ch), delta: unread - prev });
-    });
-    rooms.forEach(function (rm) {
-      var key = 'room:' + rm.room_id;
-      var unread = rm.unread_count || 0;
-      snapshot[key] = unread;
-      var prev = bgUnreadSnapshot ? (bgUnreadSnapshot[key] || 0) : 0;
-      if (bgUnreadSnapshot && unread > prev) newItems.push({ label: bgConvLabel('room', rm), delta: unread - prev });
-    });
-
-    // 首次运行（无快照）只建立基线，避免启动即通知轰炸
-    if (bgUnreadSnapshot && bgNotifyEnabled && newItems.length > 0) {
-      var totalNew = newItems.reduce(function (s, it) { return s + it.delta; }, 0);
-      var message = newItems.length === 1
-        ? (newItems[0].label + (totalNew > 1 ? ' (' + totalNew + ')' : ''))
-        : (newItems.length + ' 个会话 · ' + totalNew + ' 条新消息');
-      try { Tapp.ui.showNotification({ title: 'Aro', message: message, type: 'info' }); } catch (e) { /* ignore */ }
-    }
-
-    bgUnreadSnapshot = snapshot;
-    try { await Tapp.storage.set('bg_unread_snapshot', snapshot); } catch (e) { /* ignore */ }
-  } catch (e) { /* ignore */ }
-}
-
-function bgStartPolling() {
-  bgStopPolling();
-  bgTimer = setInterval(bgCheckMessages, bgPollMs);
-}
-
-function bgStopPolling() {
-  if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
-}
-
-async function initBackground() {
-  await bgLoadSettings();
-  await bgLoadSnapshot();
-  // 动态维持后台需求（manifest 已引导首次拉起，这里再声明一次保证一致）
-  try { Tapp.background.require('notification', 'Aro 新消息后台通知'); } catch (e) { /* ignore */ }
-  await bgCheckMessages();   // 建立基线（无快照则只记录、不通知）
-  bgStartPolling();
-}
-
 // ==================== Entry ====================
 if (window._TAPP_MODE === 'page' || window._TAPP_HAS_HTML) {
   Tapp.lifecycle.onReady(function () {
@@ -4785,15 +4758,6 @@ if (window._TAPP_MODE === 'page' || window._TAPP_HAS_HTML) {
 
   Tapp.lifecycle.onDestroy(function () {
     stopPolling();
-  });
-} else if (window._TAPP_MODE === 'core') {
-  // headless 后台大脑：只跑通知轮询，不渲染 UI
-  Tapp.lifecycle.onReady(function () {
-    initBackground();
-  });
-
-  Tapp.lifecycle.onDestroy(function () {
-    bgStopPolling();
   });
 }
 `
@@ -4815,12 +4779,12 @@ const PAGE_MODULES: Record<string, string> = {
 function buildCoreCode(): string {
   const inlineLang = [
     '  // ==================== i18n ====================',
-    `  var LANG = ${
+    '  var LANG = ' +
       JSON.stringify(ARO_I18N, null, 2)
         .split('\n')
-        .map((l, i) => (i === 0 ? l : `  ${l}`))
-        .join('\n')
-      };`,
+        .map((l, i) => (i === 0 ? l : '  ' + l))
+        .join('\n') +
+      ';',
     '',
     '  var lang = LANG.zh;',
     "  var currentLocale = 'zh';",
@@ -4846,7 +4810,7 @@ function buildCoreCode(): string {
     .map((m) =>
       m
         .split('\n')
-        .map((l) => (l ? `  ${l}` : l))
+        .map((l) => (l ? '  ' + l : l))
         .join('\n'),
     )
     .join('\n\n')
@@ -4868,7 +4832,7 @@ const CORE_CODE = buildCoreCode()
 const manifest: TappManifest = {
   id: 'com.myriad.aro',
   name: 'Aro',
-  version: '1.0.2',
+  version: '1.0.3',
   description: 'Aro — 社交中心，统一管理消息、时间线、环网和个人资料。',
   category: 'social',
   main: 'index.js',

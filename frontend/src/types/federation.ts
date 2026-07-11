@@ -52,6 +52,10 @@ export interface TimelineItem {
   object_type?: string
   content_preview?: string
   is_read: boolean
+  /** ISO timestamp when the activity was received (preferred by Aro timeAgo) */
+  created_at?: string
+  received_at?: string
+  timestamp?: string
   actor: {
     actor_url?: string
     username?: string
@@ -262,6 +266,7 @@ export interface RoomMember {
   actor_url: string
   is_local: boolean
   display_name?: string
+  avatar_url?: string
   role: string
   joined_at: string
   invited_by?: string

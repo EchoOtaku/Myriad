@@ -187,7 +187,8 @@ impl Orchestrator {
                 },
             );
             let success = result.successful_steps == result.total_steps;
-            nm.notify_task_completed(task_id, "多 Agent 任务完成", &summary, success)
+            // 编排层无用户/会话上下文，广播
+            nm.notify_task_completed(task_id, None, None, "多 Agent 任务完成", &summary, success)
                 .await;
         }
     }

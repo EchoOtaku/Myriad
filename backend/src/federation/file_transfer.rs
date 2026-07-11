@@ -907,7 +907,7 @@ pub async fn handle_file_transfer(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Channel {} not found", channel_id))?;
     let expected_actor: String = channel_actor.try_get("", "actor_url").unwrap_or_default();
-    if expected_actor != actor_url_str {
+    if !crate::federation::types::same_actor_url(&expected_actor, actor_url_str) {
         return Err(format!(
             "File transfer sender mismatch: expected {}, got {}",
             expected_actor, actor_url_str
@@ -989,7 +989,7 @@ async fn handle_file_chunk(
         .ok_or_else(|| format!("Transfer {} not found", transfer_id))?;
 
     let expected_actor: String = row.try_get("", "actor_url").unwrap_or_default();
-    if expected_actor != actor_url_str {
+    if !crate::federation::types::same_actor_url(&expected_actor, actor_url_str) {
         return Err(format!(
             "File chunk sender mismatch: expected {}, got {}",
             expected_actor, actor_url_str

@@ -52,9 +52,10 @@ const CSP_BASE_DIRECTIVES = [
   "default-src 'none'",
   // style-src 允许 unsafe-inline 和 Google Fonts CSS
   "style-src 'unsafe-inline' https://fonts.googleapis.com",
-  // 🔒 安全加强：允许 data:、blob:、https: 图片加载
-  // https: 需要用于联邦头像等跨域图片。iframe sandbox 隔离确保无 cookie 泄露
-  'img-src data: blob: https:',
+  // 🔒 安全加强：允许 data:、blob:、https:、http: 图片加载
+  // https/http 用于联邦头像与本地开发实例（BASE_URL 常为 http://localhost）
+  // iframe sandbox + credentialless 降低跨站 cookie 泄露风险
+  'img-src data: blob: https: http:',
   // font-src 允许 data: URI 和 Google Fonts 字体文件
   'font-src data: https://fonts.gstatic.com',
   "connect-src 'none'",

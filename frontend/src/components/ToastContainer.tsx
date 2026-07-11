@@ -101,6 +101,7 @@ export function ToastContainer() {
             duration={toast.duration}
             showCloseButton={toast.showCloseButton}
             icon={toast.icon}
+            onClick={toast.onClick}
             onClose={() => removeToast(toast.id)}
           />
         </div>

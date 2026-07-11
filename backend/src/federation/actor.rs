@@ -340,6 +340,10 @@ pub async fn fetch_remote_actor(
                 username: row.try_get("", "username").ok(),
                 domain: row.try_get("", "domain").unwrap_or_default(),
                 display_name: row.try_get("", "display_name").ok(),
+                avatar_url: row
+                    .try_get::<Option<String>>("", "avatar_url")
+                    .ok()
+                    .flatten(),
                 inbox_url: row.try_get("", "inbox_url").unwrap_or_default(),
                 public_key_pem: row.try_get("", "public_key_pem").ok(),
                 public_key_id: row.try_get("", "public_key_id").ok(),
@@ -388,7 +392,8 @@ pub async fn fetch_remote_actor(
         .as_str()
         .map(|s| s.to_string());
     let display_name = actor_json["name"].as_str().map(|s| s.to_string());
-    let avatar_url = actor_json["icon"]["url"].as_str().map(|s| s.to_string());
+    // ActivityPub icon may be an object, an array of objects, or a bare URL string
+    let avatar_url = extract_actor_icon_url(&actor_json, actor_url_str);
     let summary = actor_json["summary"].as_str().map(|s| s.to_string());
     let remote_inbox = actor_json["inbox"].as_str().unwrap_or("").to_string();
     let outbox = actor_json["outbox"].as_str().map(|s| s.to_string());
@@ -442,7 +447,7 @@ pub async fn fetch_remote_actor(
                 username_val.clone().into(),
                 domain.clone().into(),
                 display_name.clone().into(),
-                avatar_url.into(),
+                avatar_url.clone().into(),
                 summary.into(),
                 remote_inbox.clone().into(),
                 outbox.into(),
@@ -466,6 +471,7 @@ pub async fn fetch_remote_actor(
         username: username_val,
         domain,
         display_name,
+        avatar_url,
         inbox_url: remote_inbox,
         public_key_pem: pk_pem,
         public_key_id: pk_id,
@@ -482,10 +488,69 @@ pub struct RemoteActorInfo {
     pub username: Option<String>,
     pub domain: String,
     pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
     pub inbox_url: String,
     pub public_key_pem: Option<String>,
     pub public_key_id: Option<String>,
     pub mfp_version: Option<String>,
+}
+
+/// Extract avatar URL from ActivityPub Actor `icon` field.
+/// Supports object, array of objects, and bare string forms.
+/// Relative paths are resolved against the actor URL origin.
+fn extract_actor_icon_url(actor_json: &serde_json::Value, actor_url_str: &str) -> Option<String> {
+    let icon = &actor_json["icon"];
+    if icon.is_null() {
+        return None;
+    }
+
+    let raw = icon
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            icon["url"]
+                .as_str()
+                .or_else(|| icon["href"].as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        })
+        .or_else(|| {
+            icon.as_array().and_then(|arr| {
+                arr.iter().find_map(|item| {
+                    item.as_str()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .or_else(|| {
+                            item["url"]
+                                .as_str()
+                                .or_else(|| item["href"].as_str())
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .map(|s| s.to_string())
+                        })
+                })
+            })
+        })?;
+
+    Some(resolve_media_url(actor_url_str, &raw))
+}
+
+/// Resolve a media URL that may be absolute or relative to the actor document.
+fn resolve_media_url(actor_url_str: &str, media_url: &str) -> String {
+    let media_url = media_url.trim();
+    if media_url.starts_with("https://") || media_url.starts_with("http://") {
+        return media_url.to_string();
+    }
+    if let Ok(base) = url::Url::parse(actor_url_str) {
+        if let Ok(joined) = base.join(media_url) {
+            return joined.to_string();
+        }
+    }
+    media_url.to_string()
 }
 
 /// 本地登录用户的联邦身份摘要。

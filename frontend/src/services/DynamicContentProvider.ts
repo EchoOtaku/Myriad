@@ -14,7 +14,7 @@ import type { TappInstance } from '../tapp/types'
 
 /** 内置动态内容类型 */
 export type BuiltinContentType =
-  'greeting' | 'weather' | 'quote' | 'theme' | 'music'
+  'greeting' | 'weather' | 'quote' | 'theme' | 'music' | 'notification'
 
 /** 动态内容类型（包含 Tapp 自定义类型） */
 export type DynamicContentType = BuiltinContentType | `tapp-${string}`

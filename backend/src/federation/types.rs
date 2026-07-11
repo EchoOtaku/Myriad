@@ -509,9 +509,22 @@ pub fn actor_url(base_url: &str, username: &str) -> String {
     format!("{}/users/{}", base_url, username)
 }
 
-/// 比较 Actor URL 时忽略末尾斜杠，避免把自己的地址当作远程对象。
+/// 比较 Actor URL 时忽略末尾斜杠与 host 大小写差异，避免把自己的地址当作远程对象。
 pub fn same_actor_url(left: &str, right: &str) -> bool {
-    left.trim_end_matches('/') == right.trim_end_matches('/')
+    fn normalize(raw: &str) -> String {
+        let trimmed = raw.trim().trim_end_matches('/');
+        if let Ok(url) = url::Url::parse(trimmed) {
+            let host = url.host_str().unwrap_or("").to_ascii_lowercase();
+            let path = url.path().trim_end_matches('/');
+            let port = url
+                .port()
+                .map(|p| format!(":{}", p))
+                .unwrap_or_default();
+            return format!("{}://{}{}{}", url.scheme(), host, port, path);
+        }
+        trimmed.to_string()
+    }
+    normalize(left) == normalize(right)
 }
 
 /// 构造 Key ID

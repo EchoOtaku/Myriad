@@ -3356,10 +3356,11 @@ async fn get_follow_list(
         .map(|r| {
             json!({
                 "actor_url": r.try_get::<String>("", "actor_url").unwrap_or_default(),
-                "username": r.try_get::<String>("", "username").ok(),
+                // Nullable columns must use Option — try_get::<String> fails on NULL
+                "username": r.try_get::<Option<String>>("", "username").ok().flatten(),
                 "domain": r.try_get::<String>("", "domain").unwrap_or_default(),
-                "display_name": r.try_get::<String>("", "display_name").ok(),
-                "avatar_url": r.try_get::<String>("", "avatar_url").ok(),
+                "display_name": r.try_get::<Option<String>>("", "display_name").ok().flatten(),
+                "avatar_url": r.try_get::<Option<String>>("", "avatar_url").ok().flatten(),
                 "status": r.try_get::<String>("", "status").unwrap_or_default(),
             })
         })
@@ -3393,18 +3394,25 @@ async fn get_federation_timeline(
     let items: Vec<serde_json::Value> = rows
         .iter()
         .map(|r| {
+            let received_at = r
+                .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "received_at")
+                .ok()
+                .map(|t| t.to_rfc3339());
             json!({
                 "activity_id": r.try_get::<String>("", "activity_id").unwrap_or_default(),
-                "activity_type": r.try_get::<String>("", "activity_type").ok(),
-                "object_type": r.try_get::<String>("", "object_type").ok(),
-                "content_preview": r.try_get::<String>("", "content_preview").ok(),
+                "activity_type": r.try_get::<Option<String>>("", "activity_type").ok().flatten(),
+                "object_type": r.try_get::<Option<String>>("", "object_type").ok().flatten(),
+                "content_preview": r.try_get::<Option<String>>("", "content_preview").ok().flatten(),
                 "is_read": r.try_get::<bool>("", "is_read").unwrap_or(false),
+                // Frontend (Aro) expects created_at / timestamp for timeAgo()
+                "created_at": received_at.clone(),
+                "received_at": received_at,
                 "actor": {
-                    "actor_url": r.try_get::<String>("", "actor_url").ok(),
-                    "username": r.try_get::<String>("", "username").ok(),
-                    "domain": r.try_get::<String>("", "domain").ok(),
-                    "display_name": r.try_get::<String>("", "display_name").ok(),
-                    "avatar_url": r.try_get::<String>("", "avatar_url").ok(),
+                    "actor_url": r.try_get::<Option<String>>("", "actor_url").ok().flatten(),
+                    "username": r.try_get::<Option<String>>("", "username").ok().flatten(),
+                    "domain": r.try_get::<Option<String>>("", "domain").ok().flatten(),
+                    "display_name": r.try_get::<Option<String>>("", "display_name").ok().flatten(),
+                    "avatar_url": r.try_get::<Option<String>>("", "avatar_url").ok().flatten(),
                 },
             })
         })

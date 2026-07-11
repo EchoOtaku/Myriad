@@ -160,8 +160,11 @@ pub async fn create_channel(
         return Ok(ChannelDetail {
             channel_id: row.try_get("", "channel_id").unwrap_or_default(),
             remote_actor_url: remote_actor_url.clone(),
-            remote_actor_name: remote.username.clone(),
-            remote_actor_avatar: None,
+            remote_actor_name: remote
+                .display_name
+                .clone()
+                .or_else(|| remote.username.clone()),
+            remote_actor_avatar: remote.avatar_url.clone(),
             channel_type: channel_type.to_string(),
             status: row.try_get::<String>("", "status").unwrap_or_default(),
             transport: row.try_get::<String>("", "transport").unwrap_or_default(),
@@ -270,8 +273,11 @@ pub async fn create_channel(
     Ok(ChannelDetail {
         channel_id,
         remote_actor_url,
-        remote_actor_name: remote.username.clone(),
-        remote_actor_avatar: None,
+        remote_actor_name: remote
+            .display_name
+            .clone()
+            .or_else(|| remote.username.clone()),
+        remote_actor_avatar: remote.avatar_url.clone(),
         channel_type: channel_type.to_string(),
         status: "pending".to_string(),
         transport: transport.to_string(),
@@ -297,7 +303,9 @@ pub async fn list_channels(
             DatabaseBackend::Postgres,
             r#"SELECT c.channel_id, c.channel_type, c.status, c.transport, c.initiated_by,
                       c.last_activity_at, c.created_at,
-                      ra.actor_url, ra.preferred_username, ra.avatar_url,
+                      ra.actor_url,
+                      COALESCE(NULLIF(ra.display_name, ''), ra.username) AS remote_actor_name,
+                      ra.avatar_url,
                       COALESCE((SELECT COUNT(*) FROM federation_channel_messages m
                                 WHERE m.channel_id = c.channel_id
                                   AND m.sender_actor != $2
@@ -317,7 +325,7 @@ pub async fn list_channels(
             channel_id: row.try_get("", "channel_id").unwrap_or_default(),
             remote_actor_url: row.try_get("", "actor_url").unwrap_or_default(),
             remote_actor_name: row
-                .try_get::<Option<String>>("", "preferred_username")
+                .try_get::<Option<String>>("", "remote_actor_name")
                 .unwrap_or(None),
             remote_actor_avatar: row
                 .try_get::<Option<String>>("", "avatar_url")
@@ -353,7 +361,9 @@ pub async fn get_channel(
             DatabaseBackend::Postgres,
             r#"SELECT c.channel_id, c.channel_type, c.status, c.transport, c.tapp_id,
                       c.properties, c.initiated_by, c.last_activity_at, c.created_at,
-                      ra.actor_url, ra.preferred_username, ra.avatar_url
+                      ra.actor_url,
+                      COALESCE(NULLIF(ra.display_name, ''), ra.username) AS remote_actor_name,
+                      ra.avatar_url
                FROM federation_channels c
                JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE c.user_id = $1 AND c.channel_id = $2"#,
@@ -372,7 +382,7 @@ pub async fn get_channel(
         channel_id: row.try_get("", "channel_id").unwrap_or_default(),
         remote_actor_url: row.try_get("", "actor_url").unwrap_or_default(),
         remote_actor_name: row
-            .try_get::<Option<String>>("", "preferred_username")
+            .try_get::<Option<String>>("", "remote_actor_name")
             .unwrap_or(None),
         remote_actor_avatar: row
             .try_get::<Option<String>>("", "avatar_url")

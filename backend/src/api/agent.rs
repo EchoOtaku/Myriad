@@ -1165,6 +1165,9 @@ pub async fn process_stream(
                                         .collect::<String>();
                                     nm.notify_task_completed(
                                         &task_id,
+                                        Some(user_id),
+                                        (!session_id_clone.is_empty())
+                                            .then_some(session_id_clone.as_str()),
                                         title,
                                         &summary,
                                         task_success,
@@ -1291,8 +1294,15 @@ pub async fn process_stream(
                             "任务失败"
                         };
                         let summary = api_response.message.chars().take(120).collect::<String>();
-                        nm.notify_task_completed(&task_id, title, &summary, success)
-                            .await;
+                        nm.notify_task_completed(
+                            &task_id,
+                            Some(user_id),
+                            (!session_id_clone.is_empty()).then_some(session_id_clone.as_str()),
+                            title,
+                            &summary,
+                            success,
+                        )
+                        .await;
                     }
 
                     let response_value = serde_json::to_value(&api_response)
@@ -3277,11 +3287,16 @@ async fn notification_stream(
         loop {
             match rx.recv().await {
                 Ok(event) => {
-                    // 过滤：只推送广播通知或属于当前用户的通知
+                    // 过滤：只推送广播通知或属于当前用户的通知/事件
+                    use crate::services::agent::notifications::NotificationEvent as NE;
                     let should_send = match &event {
-                        crate::services::agent::notifications::NotificationEvent::NewNotification { notification } => {
+                        NE::NewNotification { notification } => {
                             notification.user_id.is_none() || notification.user_id == Some(user_id)
                         }
+                        // 全量已读/清空是用户级操作，只回发给操作者本人，
+                        // 否则会误清其他用户的未读数与列表
+                        NE::NotificationsReadAll { user_id: uid }
+                        | NE::NotificationsCleared { user_id: uid } => *uid == user_id,
                         _ => true,
                     };
                     if should_send {
@@ -3353,6 +3368,35 @@ async fn mark_all_notifications_read(
 
     manager.mark_all_read(user_id).await;
     Ok(Json(json!({"success": true})))
+}
+
+/// 删除单条通知
+async fn delete_notification(
+    Extension(claims): Extension<Claims>,
+    Path(notification_id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+    let manager = crate::services::agent::notifications::get_notification_manager().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "Notification system not initialized"})),
+    ))?;
+
+    let removed = manager.delete_notification(&notification_id, user_id).await;
+    Ok(Json(json!({"success": removed})))
+}
+
+/// 清空全部通知
+async fn clear_notifications(
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
+    let manager = crate::services::agent::notifications::get_notification_manager().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "Notification system not initialized"})),
+    ))?;
+
+    let deleted = manager.clear_all(user_id).await;
+    Ok(Json(json!({"success": true, "deleted": deleted})))
 }
 
 #[derive(Deserialize)]
@@ -3578,5 +3622,15 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
             "/notifications/read-all",
             post(mark_all_notifications_read)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 删除单条通知
+        .route(
+            "/notifications/{notification_id}",
+            delete(delete_notification).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 清空全部通知
+        .route(
+            "/notifications/clear",
+            post(clear_notifications).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
 }

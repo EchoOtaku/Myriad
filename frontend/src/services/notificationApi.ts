@@ -37,11 +37,24 @@ export interface NotificationListResponse {
   total: number
 }
 
-/** SSE 流事件 */
+/** 通知类型 → 展示图标（智能岛轮播 / 通知列表共用；后端新增类型时走兜底图标） */
+export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
+  task_completed: '✅',
+  task_failed: '❌',
+  heartbeat_result: '💓',
+  mcp_server_status: '🔌',
+  system_info: 'ℹ️',
+  agent_clarification: '❓',
+}
+
+/** SSE 流事件（read_all / cleared 由后端按 user_id 过滤，只发给操作者本人） */
 export type NotificationStreamEvent =
   | { event: 'init'; unread_count: number }
   | { event: 'new_notification'; notification: AppNotification }
   | { event: 'notification_read'; id: string }
+  | { event: 'notifications_read_all' }
+  | { event: 'notification_deleted'; id: string }
+  | { event: 'notifications_cleared' }
 
 const BASE = '/agent/notifications'
 
@@ -50,12 +63,12 @@ export const notificationApi = {
     return apiService.get<NotificationListResponse>(`${BASE}?limit=${limit}`)
   },
 
-  async markRead(id: string): Promise<{ success: boolean }> {
-    return apiService.post(`${BASE}/${encodeURIComponent(id)}/read`)
+  async remove(id: string): Promise<{ success: boolean }> {
+    return apiService.delete(`${BASE}/${encodeURIComponent(id)}`)
   },
 
-  async markAllRead(): Promise<{ success: boolean }> {
-    return apiService.post(`${BASE}/read-all`)
+  async clearAll(): Promise<{ success: boolean; deleted: number }> {
+    return apiService.post(`${BASE}/clear`)
   },
 
   /**

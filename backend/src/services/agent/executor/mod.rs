@@ -2135,20 +2135,39 @@ impl Executor {
                             "data" | "content" | "input" | "context" | "items"
                         );
 
+                        // ID 型参数（playlistId、songId、id 等）：引用结构化输出时
+                        // 必须提取真实 ID，绝不能走语义文本提取——后者会把
+                        // message 提示文案当 ID 用（歌单播放曾因此拿到
+                        // "找到 10 个…" 字符串，任务"成功"但前端加载必败）
+                        let is_id_param = new_key == "id"
+                            || new_key.ends_with("Id")
+                            || new_key.ends_with("ID")
+                            || new_key.ends_with("_id");
+
                         let final_value = if output.is_string() || is_data_param {
-                            output
+                            Some(output)
+                        } else if is_id_param && (output.is_object() || output.is_array()) {
+                            // 提取失败按未解析处理：让步骤显式报错，
+                            // 而不是塞进错误的值静默错下去
+                            Self::extract_id_from_output(&output, &new_key)
                         } else if output.is_object() {
                             let text = Self::extract_text_from_output(&output);
                             if text.is_empty() {
-                                output
+                                Some(output)
                             } else {
-                                Value::String(text)
+                                Some(Value::String(text))
                             }
                         } else {
-                            output
+                            Some(output)
                         };
-                        resolved.insert(new_key, final_value);
-                        continue;
+
+                        match final_value {
+                            Some(v) => {
+                                resolved.insert(new_key, v);
+                                continue;
+                            }
+                            None => unresolved.push(format!("{}: {}", key, ref_str)),
+                        }
                     } else {
                         unresolved.push(format!("{}: {}", key, ref_str));
                     }
@@ -2159,6 +2178,48 @@ impl Executor {
         }
 
         (resolved, unresolved)
+    }
+
+    /// 从结构化步骤输出中提取 ID 型参数值。
+    /// 优先级：同名字段 → 顶层 id → 常见列表字段第一项的 id / 同名字段。
+    /// 数组输入取第一个元素递归提取
+    fn extract_id_from_output(output: &Value, param_key: &str) -> Option<Value> {
+        fn id_like(v: &Value) -> bool {
+            v.is_string() || v.is_number()
+        }
+
+        match output {
+            Value::Array(arr) => arr
+                .first()
+                .and_then(|first| Self::extract_id_from_output(first, param_key)),
+            Value::Object(obj) => {
+                // 1. 同名字段（如 playlistId）
+                if let Some(v) = obj.get(param_key).filter(|v| id_like(v)) {
+                    return Some(v.clone());
+                }
+                // 2. 顶层 id
+                if let Some(v) = obj.get("id").filter(|v| id_like(v)) {
+                    return Some(v.clone());
+                }
+                // 3. 常见列表字段的第一项（搜索类输出：playlists/results/…）
+                for list_key in ["playlists", "results", "items", "list", "songs", "data"] {
+                    if let Some(first) = obj
+                        .get(list_key)
+                        .and_then(|v| v.as_array())
+                        .and_then(|a| a.first())
+                    {
+                        if let Some(v) = first.get(param_key).filter(|v| id_like(v)) {
+                            return Some(v.clone());
+                        }
+                        if let Some(v) = first.get("id").filter(|v| id_like(v)) {
+                            return Some(v.clone());
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
     }
 
     /// 从步骤输出的 JSON 对象中提取主要文本内容
@@ -3709,5 +3770,61 @@ impl Executor {
                 vec![]
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod resolve_id_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 复现歌单播放链路：搜索步骤输出被整对象引用为 playlistIdFrom 时，
+    /// 必须取到 playlists[0].id，而不是 message 文案
+    #[test]
+    fn id_param_extracts_from_search_output() {
+        let output = json!({
+            "success": true,
+            "message": "找到 10 个「凉宫春日」相关歌单",
+            "keyword": "凉宫春日",
+            "playlists": [
+                { "id": 12597740641u64, "name": "悲情篇章" },
+                { "id": 12764048642u64, "name": "アニサマ" }
+            ]
+        });
+        let got = Executor::extract_id_from_output(&output, "playlistId");
+        assert_eq!(got, Some(json!(12597740641u64)));
+    }
+
+    #[test]
+    fn id_param_prefers_same_name_field() {
+        let output = json!({ "playlistId": "abc123", "id": "other", "message": "文案" });
+        let got = Executor::extract_id_from_output(&output, "playlistId");
+        assert_eq!(got, Some(json!("abc123")));
+    }
+
+    #[test]
+    fn id_param_falls_back_to_top_level_id() {
+        let output = json!({ "id": 42, "message": "文案" });
+        assert_eq!(
+            Executor::extract_id_from_output(&output, "songId"),
+            Some(json!(42))
+        );
+    }
+
+    #[test]
+    fn id_param_array_input_takes_first_element() {
+        let output = json!([{ "id": "first" }, { "id": "second" }]);
+        assert_eq!(
+            Executor::extract_id_from_output(&output, "itemId"),
+            Some(json!("first"))
+        );
+    }
+
+    /// 提取不到 ID 必须返回 None（上层按未解析处理并让步骤报错），
+    /// 绝不能兜底成 message 文案
+    #[test]
+    fn id_param_without_id_yields_none() {
+        let output = json!({ "message": "找到 10 个歌单", "success": true });
+        assert_eq!(Executor::extract_id_from_output(&output, "playlistId"), None);
     }
 }
