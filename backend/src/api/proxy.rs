@@ -295,6 +295,7 @@ fn is_allowed_domain(url: &str) -> bool {
         "cdn.discordapp.com",         // Discord CDN (avatars/icons)
         "media.discordapp.net",       // Discord media proxy
         "myanimelist.net",            // MyAnimeList CDN / images
+        "pbs.twimg.com",              // X (Twitter) 头像/媒体 CDN
     ];
 
     // 如果是核心平台，直接允许

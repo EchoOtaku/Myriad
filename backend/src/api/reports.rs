@@ -452,10 +452,48 @@ async fn generate_platform_reports_internal(
                     card_visuals = json!({});
                 }
 
+                // pbs.twimg.com 头像统一处理：升到 _400x400（头像墙/详情面共用），走站内代理
+                fn proxied_x_avatar(url: &str) -> String {
+                    let upscaled = url.replace("_normal.", "_400x400.");
+                    format!("/api/proxy/image?url={}", urlencoding::encode(&upscaled))
+                }
+
                 if let crate::services::smart_filter::ContentAnalysis::X(analysis) =
                     &metadata.content_analysis
                 {
                     if let Some(obj) = card_visuals.as_object_mut() {
+                        // 归一化 AI 产出：钳制数组上限（AI 偶尔无视 prompt 约束）
+                        if let Some(circles) = obj
+                            .get_mut("interest_circles")
+                            .and_then(|v| v.as_array_mut())
+                        {
+                            circles.truncate(4);
+                            for circle in circles.iter_mut() {
+                                if let Some(accounts) = circle
+                                    .get_mut("accounts")
+                                    .and_then(|v| v.as_array_mut())
+                                {
+                                    accounts.truncate(3);
+                                }
+                            }
+                        }
+                        if let Some(highlights) = obj
+                            .get_mut("following_highlights")
+                            .and_then(|v| v.as_array_mut())
+                        {
+                            highlights.truncate(5);
+                        }
+                        // 账号本人资料（概览卡 header）
+                        let own_avatar =
+                            analysis.user_avatar.as_deref().map(proxied_x_avatar);
+                        obj.insert(
+                            "profile".to_string(),
+                            json!({
+                                "username": metadata.user_summary.username,
+                                "name": analysis.user_name,
+                                "avatar": own_avatar,
+                            }),
+                        );
                         obj.insert(
                             "stats".to_string(),
                             json!({
@@ -469,18 +507,29 @@ async fn generate_platform_reports_internal(
                                 "liked_posts": analysis.engagement_stats.liked_posts_count,
                             }),
                         );
-                        obj.insert(
-                            "top_posts".to_string(),
-                            json!(analysis.top_posts),
-                        );
-                        obj.insert(
-                            "recent_posts".to_string(),
-                            json!(analysis.recent_posts),
-                        );
-                        obj.insert(
-                            "language_distribution".to_string(),
-                            json!(analysis.language_distribution),
-                        );
+                        // top_posts/recent_posts/language_distribution 不再进 card_visuals：
+                        // X 卡已聚焦关注图谱，前端零消费；AI 分析用的推文数据走 metadata
+                        if !analysis.following_sample.is_empty() {
+                            let sample: Vec<Value> = analysis
+                                .following_sample
+                                .iter()
+                                .map(|item| {
+                                    let avatar = item
+                                        .profile_image_url
+                                        .as_deref()
+                                        .map(proxied_x_avatar);
+                                    json!({
+                                        "username": item.username,
+                                        "name": item.name,
+                                        "description": item.description,
+                                        "follower_count": item.follower_count,
+                                        "verified": item.verified,
+                                        "avatar": avatar,
+                                    })
+                                })
+                                .collect();
+                            obj.insert("following_sample".to_string(), json!(sample));
+                        }
                         // library_items：用热门帖子文本做卡片展示
                         let library_items: Vec<Value> = analysis
                             .top_posts
@@ -813,6 +862,8 @@ async fn generate_platform_reports_internal(
     });
 
     let results = join_all(futures).await;
+    // 过期天数可配置（设置页 → 模块设置 → 报告页设置）
+    let report_settings = crate::api::config::load_report_settings(db).await;
     let mut platform_reports: Vec<PlatformReport> = Vec::new();
     let mut skipped: Vec<(String, String)> = Vec::new();
     for result in results {
@@ -893,7 +944,9 @@ async fn generate_platform_reports_internal(
             report: Set(report_json),
             report_title: Set(None), // 平台报告不需要标题
             created_at: Set(chrono::Utc::now().naive_utc()),
-            expires_at: Set((chrono::Utc::now() + chrono::Duration::days(7)).naive_utc()),
+            expires_at: Set((chrono::Utc::now()
+                + chrono::Duration::days(report_settings.expiry_days))
+            .naive_utc()),
             ..Default::default()
         };
 
@@ -1148,6 +1201,7 @@ pub async fn generate_comprehensive_report(
         .map(|analysis| analysis.visual_style.clone());
 
     // 综合报告不覆盖，直接插入新的一份
+    let report_settings = crate::api::config::load_report_settings(&db).await;
     let active_model = platform_reports::ActiveModel {
         user_id: Set(user_id),
         platform: Set("all".to_string()),
@@ -1155,7 +1209,9 @@ pub async fn generate_comprehensive_report(
         report: Set(report_json),
         report_title: Set(report_title), // 使用 visual_style 作为报告标题
         created_at: Set(chrono::Utc::now().naive_utc()),
-        expires_at: Set((chrono::Utc::now() + chrono::Duration::days(30)).naive_utc()), // 综合报告保留30天
+        expires_at: Set(
+            (chrono::Utc::now() + chrono::Duration::days(report_settings.expiry_days)).naive_utc(),
+        ),
         ..Default::default()
     };
 
@@ -1314,6 +1370,38 @@ pub async fn generate_all_reports(
 /// 获取最新的平台报告（只包含单平台报告，不包含综合报告）
 /// GET /api/reports/latest
 /// 支持未认证访问，默认返回管理员（user_id=1）的报告
+/// 过期报告自动重生成的在途去重表（key: "user_id:platform"）
+static REPORT_REGEN_IN_FLIGHT: once_cell::sync::Lazy<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = once_cell::sync::Lazy::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+/// 后台重新生成过期的平台报告（只用已有缓存数据调 AI，不重新抓平台）
+fn spawn_report_auto_regen(db: DatabaseConnection, user_id: i32, platforms: Vec<String>) {
+    let to_run: Vec<String> = {
+        let mut in_flight = REPORT_REGEN_IN_FLIGHT.lock().unwrap();
+        platforms
+            .into_iter()
+            .filter(|p| in_flight.insert(format!("{user_id}:{p}")))
+            .collect()
+    };
+    if to_run.is_empty() {
+        return;
+    }
+
+    tokio::spawn(async move {
+        tracing::info!("♻️ Auto-regenerating expired reports: {:?}", to_run);
+        let (_reports, skipped) =
+            generate_platform_reports_internal(&db, user_id, to_run.clone()).await;
+        if !skipped.is_empty() {
+            tracing::warn!("♻️ Auto-regen skipped some platforms: {:?}", skipped);
+        }
+        let mut in_flight = REPORT_REGEN_IN_FLIGHT.lock().unwrap();
+        for platform in to_run {
+            in_flight.remove(&format!("{user_id}:{platform}"));
+        }
+    });
+}
+
 pub async fn get_latest_report(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
@@ -1335,18 +1423,33 @@ pub async fn get_latest_report(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    use std::collections::hash_map::Entry;
-    use std::collections::HashMap;
-    let mut latest_map = HashMap::new();
+    let settings = crate::api::config::load_report_settings(&db).await;
+    let now = chrono::Utc::now().naive_utc();
 
-    // 保留每个平台最新的一份报告
+    // 保留每个平台最新的一份报告；按过期设置过滤
+    let mut seen = std::collections::HashSet::new();
+    let mut platform_reports_list: Vec<Value> = Vec::new();
+    let mut expired_platforms: Vec<String> = Vec::new();
+
     for r in user_reports {
-        if let Entry::Vacant(e) = latest_map.entry(r.platform) {
-            e.insert(r.report);
+        if !seen.insert(r.platform.clone()) {
+            continue;
         }
+        let expired_at = r.created_at + chrono::Duration::days(settings.expiry_days);
+        let expired = settings.expiry_enabled && expired_at <= now;
+        if !expired {
+            platform_reports_list.push(r.report);
+        } else if settings.auto_regenerate {
+            // stale-while-revalidate：先返回旧报告，后台异步重新生成
+            expired_platforms.push(r.platform.clone());
+            platform_reports_list.push(r.report);
+        }
+        // 过期且未开自动重生成：直接隐藏
     }
 
-    let platform_reports_list: Vec<Value> = latest_map.into_values().collect();
+    if !expired_platforms.is_empty() {
+        spawn_report_auto_regen(db.clone(), user_id, expired_platforms);
+    }
 
     // 如果没有任何平台报告
     if platform_reports_list.is_empty() {
@@ -1388,11 +1491,15 @@ pub async fn get_comprehensive_reports_list(
         })?;
 
     let now = chrono::Utc::now().naive_utc();
+    let settings = crate::api::config::load_report_settings(&db).await;
 
-    // 只返回未过期的报告的摘要信息
+    // 只返回未过期的报告的摘要信息（过期机制关闭时全部返回）
     let report_list: Vec<Value> = reports
         .into_iter()
-        .filter(|r| r.expires_at > now)
+        .filter(|r| {
+            !settings.expiry_enabled
+                || r.created_at + chrono::Duration::days(settings.expiry_days) > now
+        })
         .map(|r| {
             json!({
                 "id": r.id,
@@ -1492,9 +1599,11 @@ pub async fn get_comprehensive_report_by_id(
             return Err(StatusCode::FORBIDDEN);
         }
 
-        // 检查是否过期
+        // 检查是否过期（过期机制关闭时跳过）
         let now = chrono::Utc::now().naive_utc();
-        if model.expires_at <= now {
+        let settings = crate::api::config::load_report_settings(&db).await;
+        let expired_at = model.created_at + chrono::Duration::days(settings.expiry_days);
+        if settings.expiry_enabled && expired_at <= now {
             return Ok(Json(json!({
                 "success": false,
                 "message": "Report has expired",
@@ -1666,9 +1775,9 @@ async fn generate_ai_report(
             "card_visuals必须包含 'taste_profile' (字符串), 'status_counts' (对象，done/doing/wish 等), 'score_distribution' (对象), 'favorite_tags' (字符串数组), 'top_subjects' (对象数组，字段至少包含 title 和 rate)。"
         ),
         "x" => (
-            "你是一个熟悉社交媒体生态的 X (Twitter) 观察者，擅长从发帖节奏、互动数据和话题偏好读出账号人设。",
-            "用简洁有锋芒的互联网口吻，分析用户的发帖风格、互动热度、话题关注点和账号影响力。",
-            "card_visuals必须包含 'vibe' (字符串，账号气质标签), 'engagement_level' (字符串，如'高互动'/'沉浸观察者'/'脉冲发帖'), 'signature_topics' (字符串数组，3-6个话题), 'top_posts' (对象数组，字段至少 text 和 like_count), 'stats' (对象，含 followers/following/posts/likes_received)。"
+            "你是一个熟悉社交媒体生态的 X (Twitter) 观察者，擅长从发帖节奏、互动数据、关注对象和话题偏好读出账号人设。关注了谁往往比发了什么更诚实——账号简介和粉丝量级能还原一个人真实的兴趣光谱。你只基于给定数据下结论，从不编造事实。",
+            "用简洁有锋芒的互联网口吻分析这个账号。发帖多时以发帖风格和互动热度为主线；发帖少或为零时把账号当'沉浸观察者'解剖，以关注列表样本（following_sample，含账号简介和粉丝量）为主要证据聚类兴趣圈层。注意区分信号强弱：新闻媒体、连锁品牌/便利店、官方客服、抽奖羊毛号这类人人都会关注的大众功能性账号不体现个人品味，分析人设时应忽略它们，聚焦真正暴露兴趣的账号（创作者、小众领域、垂直社区等）。硬性要求：所有结论必须能在数据里找到出处，引用数字一律用原值不得虚构；summary 和 insights 的正文里禁止出现 following_sample、card_visuals 等字段名或任何技术术语；禁止'很有个性''内容丰富'这类放在谁身上都成立的空话；若关注样本为空，只分析发帖与资料，不得虚构关注对象。",
+            "card_visuals必须包含以下全部字段，无数据时用空数组/空字符串占位，禁止缺字段：'vibe' (字符串，一句话账号人设，≤20字，有锋芒不客套，不要带引号)；'engagement_level' (字符串，如'高互动'/'沉浸观察者'/'脉冲发帖')；'signature_topics' (字符串数组，3-6个话题词，每个≤6字)；'interest_circles' (对象数组，2-4个兴趣圈层，先剔除新闻媒体/连锁品牌/官方客服等无品味信号的大众账号，再对剩余账号聚类：{\"name\": \"圈层名，严格≤6个字（如'国产手游''独立游戏'），具体可感，禁用'其他'\", \"count\": 圈层账号数, \"accounts\": [严格最多3个代表账号的username]}；每个入选账号只归入一个圈层，count 之和不超过样本总数，按 count 降序；样本为空时给 [])；'following_highlights' (对象数组，3-5个最能暴露个人品味的关注对象：{\"username\": \"...\", \"name\": \"显示名\", \"tag\": \"一词标签≤6字\"}；只选创作者/小众领域/垂直社区类账号，禁止选择新闻媒体、连锁品牌、便利店、官方客服等大众账号；username 和 name 必须逐字取自 following_sample 中的真实账号，禁止编造；样本为空时给 [])；'stats' (对象，原样引用数据中的 followers/following/posts/likes_received 数字)。"
         ),
         "xbox" => (
             "你是一个资深 Xbox 成就猎人，看重 Gamerscore、全成就（绿光成就宴）和稀有成就，说话带主机玩家的梗。",

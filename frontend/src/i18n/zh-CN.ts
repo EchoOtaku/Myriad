@@ -802,6 +802,19 @@ export const zhCN: TranslationKeys = {
     hitokotoAuthorFieldHint: 'JSON 中出处/作者对应的字段名（可选）',
     hitokotoSaved: '一言设置已保存',
     hitokotoLoadFailed: '加载一言设置失败',
+    // 报告页设置
+    reportSettingsTitle: '报告页设置',
+    reportSettingsDesc: '管理报告的有效期和过期后的处理方式',
+    reportExpiryEnabled: '启用报告过期',
+    reportExpiryEnabledDesc: '关闭后已有和新生成的报告均不会因过期而隐藏',
+    reportAutoRegenerate: '过期后自动重新生成',
+    reportAutoRegenerateDesc:
+      '访问过期的平台报告时先显示旧内容，并在后台重新生成',
+    reportExpiryDays: '过期时间',
+    reportExpiryDaysUnit: '天',
+    reportExpiryDaysHint: '可设置 1–365 天，新生成的报告将使用此有效期',
+    reportSettingsSaved: '报告页设置已保存',
+    reportSettingsLoadFailed: '加载报告页设置失败',
     // AI 使用限额配置
     aiQuotaTitle: 'AI 使用限额',
     aiQuotaDesc: '配置非管理员用户使用 AI 功能的限制（管理员无限制）',
@@ -1477,6 +1490,9 @@ export const zhCN: TranslationKeys = {
     completedGames: '全成就',
     trophyLevel: '奖杯等级',
     platinumCount: '白金',
+    xFollowers: '关注者',
+    xFollowing: '关注',
+    xPosts: '帖子',
   },
 
   // 社交网络小组件扩展

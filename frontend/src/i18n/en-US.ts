@@ -871,6 +871,21 @@ export const enUS: TranslationKeys = {
       'JSON field name holding the source/author (optional)',
     hitokotoSaved: 'Quote settings saved',
     hitokotoLoadFailed: 'Failed to load quote settings',
+    // Report page settings
+    reportSettingsTitle: 'Report Page',
+    reportSettingsDesc: 'Manage report lifetime and expiry behavior',
+    reportExpiryEnabled: 'Enable report expiry',
+    reportExpiryEnabledDesc:
+      'When disabled, existing and newly generated reports remain available',
+    reportAutoRegenerate: 'Regenerate after expiry',
+    reportAutoRegenerateDesc:
+      'Show stale platform reports while regenerating them in the background',
+    reportExpiryDays: 'Expiry period',
+    reportExpiryDaysUnit: 'days',
+    reportExpiryDaysHint:
+      'Choose 1–365 days. Newly generated reports use this lifetime.',
+    reportSettingsSaved: 'Report page settings saved',
+    reportSettingsLoadFailed: 'Failed to load report page settings',
     // AI Quota Configuration
     aiQuotaTitle: 'AI Usage Limits',
     aiQuotaDesc:
@@ -1556,6 +1571,9 @@ export const enUS: TranslationKeys = {
     completedGames: 'Completed',
     trophyLevel: 'Trophy Level',
     platinumCount: 'Platinum',
+    xFollowers: 'followers',
+    xFollowing: 'following',
+    xPosts: 'posts',
   },
 
   // Social Network Widget Extended

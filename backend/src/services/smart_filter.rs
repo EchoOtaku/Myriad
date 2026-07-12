@@ -121,7 +121,18 @@ pub struct PsnTitleItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XAnalysis {
     pub post_summary: String,
+    // 账号本人的展示名/头像（概览卡 header 用）
+    #[serde(default)]
+    pub user_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_avatar: Option<String>,
     pub engagement_stats: XEngagementStats,
+    // following 字段放在 posts 前面：prompt 会按 12000 字符截断，
+    // 关注列表对兴趣分析的信号比推文正文更强，优先保留
+    #[serde(default)]
+    pub following_summary: String,
+    #[serde(default)]
+    pub following_sample: Vec<XFollowingItem>,
     pub recent_posts: Vec<XPostItem>,
     pub top_posts: Vec<XPostItem>,
     pub language_distribution: std::collections::HashMap<String, usize>,
@@ -187,6 +198,17 @@ pub struct XEngagementStats {
     pub total_replies_received: i64,
     pub total_impressions: i64,
     pub liked_posts_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XFollowingItem {
+    pub username: String,
+    pub name: String,
+    pub description: String,
+    pub follower_count: i64,
+    pub verified: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_image_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1757,6 +1779,77 @@ impl SmartFilter {
             username, tweet_count_metric, fetched_count, total_likes, total_retweets, total_replies
         );
 
+        // 关注列表：按粉丝数排序取样本，简介截断以控制 token
+        const MAX_FOLLOWING_SAMPLE: usize = 50;
+        const MAX_FOLLOWING_DESC_CHARS: usize = 80;
+
+        let following = data
+            .get("following")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let following_fetched = following.len();
+
+        let mut following_sample: Vec<XFollowingItem> = following
+            .iter()
+            .map(|account| XFollowingItem {
+                username: account
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                name: account
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                description: account
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .chars()
+                    .take(MAX_FOLLOWING_DESC_CHARS)
+                    .collect(),
+                follower_count: account
+                    .pointer("/public_metrics/followers_count")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+                verified: account
+                    .get("verified")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                profile_image_url: account
+                    .get("profile_image_url")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
+            })
+            .collect();
+        following_sample.sort_by(|a, b| b.follower_count.cmp(&a.follower_count));
+        following_sample.truncate(MAX_FOLLOWING_SAMPLE);
+
+        let following_summary = if following_fetched > 0 {
+            format!(
+                "共关注 {} 个账号（已抓取 {} 个），样本按粉丝数取前 {} 个；关注对象反映用户的兴趣圈层",
+                following_count.unwrap_or(following_fetched as i64),
+                following_fetched,
+                following_sample.len()
+            )
+        } else {
+            String::new()
+        };
+
+        let user_name = user
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&username)
+            .to_string();
+        let user_avatar = user
+            .get("profile_image_url")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+
         Ok(SmartFilteredData {
             platform: "x".to_string(),
             user_summary: UserSummary {
@@ -1771,6 +1864,10 @@ impl SmartFilter {
             },
             content_analysis: ContentAnalysis::X(XAnalysis {
                 post_summary,
+                user_name,
+                user_avatar,
+                following_summary,
+                following_sample,
                 engagement_stats: XEngagementStats {
                     total_posts: fetched_count,
                     total_likes_received: total_likes,

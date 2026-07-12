@@ -64,6 +64,7 @@ Myriad 自有图标采用接近 emoji 的大图标表达，但不直接复刻系
 | 首页小组件 | `widget.welcome`, `widget.library`                                                                                                                  | `frontend/public/icons/widgets/*.png`                                                                             |
 | Tapp       | `tapp.store`, `tapp.package`                                                                                                                        | `frontend/public/icons/tapp/store.png`、`package.png`；运行时 token 为 `myriad:tapp.store`、`myriad:tapp.package` |
 | 状态反馈   | `status.success`, `status.error`, `status.warning`, `status.info`                                                                                   | `frontend/public/icons/status/*.png`；Toast 使用显式 `type` 渲染，文案不再输出 `✓` / `✗` / `⚠` / `ℹ` 这类前缀符号 |
+| 通知来源   | `agent`, `heartbeat`, `mcp`, `brew`, `tapp`, `updater`, `federation`, `system`                                                                      | `frontend/public/icons/notifications/*.png`；仅通知中心、通知设置和通知轮播共用，不替换产品导航图标               |
 
 ## 接入规范
 

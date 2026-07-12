@@ -1,5 +1,6 @@
 import type { ModuleVisibilityPreferences } from '../utils/moduleVisibility'
 import type { HitokotoConfig } from '../utils/quote'
+import type { ReportSettings } from '../utils/reportSettings'
 import type { LibrarySourcePreferences } from './config'
 import type { ToastType } from './Toast'
 
@@ -54,6 +55,12 @@ import {
   fetchHitokotoConfig,
   updateHitokotoConfig,
 } from '../utils/quote'
+import {
+  areReportSettingsEqual,
+  DEFAULT_REPORT_SETTINGS,
+  fetchReportSettings,
+  updateReportSettings,
+} from '../utils/reportSettings'
 import { clearDedupCache } from '../utils/requestDedup'
 import {
   AboutConfigSection,
@@ -286,6 +293,10 @@ const ModernConfigForm: React.FC = () => {
   )
   const [savedHitokotoConfig, setSavedHitokotoConfig] =
     useState<HitokotoConfig>(DEFAULT_HITOKOTO_CONFIG)
+  const [reportSettingsDraft, setReportSettingsDraft] =
+    useState<ReportSettings>(DEFAULT_REPORT_SETTINGS)
+  const [savedReportSettings, setSavedReportSettings] =
+    useState<ReportSettings>(DEFAULT_REPORT_SETTINGS)
 
   const showMessage = useCallback(
     (nextMessage: string, nextType: ToastType = 'info', duration = 3000) => {
@@ -908,6 +919,22 @@ const ModernConfigForm: React.FC = () => {
     setSavedHitokotoConfig(saved)
   }, [hitokotoDraft])
 
+  const loadReportSettings = React.useCallback(async () => {
+    try {
+      const settings = await fetchReportSettings()
+      setSavedReportSettings(settings)
+      setReportSettingsDraft(settings)
+    } catch {
+      showMessage(t.config.reportSettingsLoadFailed, 'error')
+    }
+  }, [showMessage, t])
+
+  const saveReportSettingsDraft = React.useCallback(async () => {
+    const saved = await updateReportSettings(reportSettingsDraft)
+    setReportSettingsDraft(saved)
+    setSavedReportSettings(saved)
+  }, [reportSettingsDraft])
+
   const handleSave = React.useCallback(async () => {
     if (!config) {
       window.dispatchEvent(
@@ -933,12 +960,17 @@ const ModernConfigForm: React.FC = () => {
       hitokotoDraft,
       savedHitokotoConfig,
     )
+    const hasReportSettingsChanges = !areReportSettingsEqual(
+      reportSettingsDraft,
+      savedReportSettings,
+    )
 
     if (
       !hasConfigChanges &&
       !hasLibrarySourceChanges &&
       !hasModuleVisibilityChanges &&
-      !hasHitokotoChanges
+      !hasHitokotoChanges &&
+      !hasReportSettingsChanges
     ) {
       notifyDirtyState(false)
       window.dispatchEvent(
@@ -1005,6 +1037,13 @@ const ModernConfigForm: React.FC = () => {
           : t.config.hitokotoSaved
       }
 
+      if (hasReportSettingsChanges) {
+        await saveReportSettingsDraft()
+        resultMessage = hasConfigChanges
+          ? resultMessage
+          : t.config.reportSettingsSaved
+      }
+
       notifyDirtyState(false)
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
@@ -1063,6 +1102,9 @@ const ModernConfigForm: React.FC = () => {
     saveLibrarySourcePreferences,
     saveModuleVisibilityPreferences,
     saveHitokotoDraft,
+    reportSettingsDraft,
+    savedReportSettings,
+    saveReportSettingsDraft,
     savedLibrarySourcePreferences,
     savedModuleVisibilityPreferences,
     savedHitokotoConfig,
@@ -1172,11 +1214,13 @@ const ModernConfigForm: React.FC = () => {
     loadPermissionConfig()
     loadModuleVisibilityPreferences()
     loadHitokotoSettings()
+    loadReportSettings()
   }, [
     loadConfig,
     loadPermissionConfig,
     loadModuleVisibilityPreferences,
     loadHitokotoSettings,
+    loadReportSettings,
   ])
 
   // Discord 一键授权回调：/config?section=platforms&discord_oauth=ok|error
@@ -1402,11 +1446,17 @@ const ModernConfigForm: React.FC = () => {
     [hitokotoDraft, savedHitokotoConfig],
   )
 
+  const isReportSettingsDirty = useMemo(
+    () => !areReportSettingsEqual(reportSettingsDraft, savedReportSettings),
+    [reportSettingsDraft, savedReportSettings],
+  )
+
   const isConfigDirty =
     isBaseConfigDirty ||
     isLibrarySourceDirty ||
     isModuleVisibilityDirty ||
-    isHitokotoDirty
+    isHitokotoDirty ||
+    isReportSettingsDirty
 
   useEffect(() => {
     notifyDirtyState(isConfigDirty)
@@ -1626,6 +1676,8 @@ const ModernConfigForm: React.FC = () => {
             onSourcePreferencesLoaded={handleLibrarySourcePreferencesLoaded}
             hitokotoDraft={hitokotoDraft}
             setHitokotoDraft={setHitokotoDraft}
+            reportSettingsDraft={reportSettingsDraft}
+            setReportSettingsDraft={setReportSettingsDraft}
             onMessage={handleModuleMessage}
             {...props}
           />

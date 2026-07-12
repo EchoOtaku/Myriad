@@ -711,6 +711,17 @@ export interface TranslationKeys {
     hitokotoAuthorFieldHint: string
     hitokotoSaved: string
     hitokotoLoadFailed: string
+    reportSettingsTitle: string
+    reportSettingsDesc: string
+    reportExpiryEnabled: string
+    reportExpiryEnabledDesc: string
+    reportAutoRegenerate: string
+    reportAutoRegenerateDesc: string
+    reportExpiryDays: string
+    reportExpiryDaysUnit: string
+    reportExpiryDaysHint: string
+    reportSettingsSaved: string
+    reportSettingsLoadFailed: string
     permissionsTitle: string
     tappPermissionsInfoTitle: string
     tappPermissionsInfo: string
@@ -1421,6 +1432,9 @@ export interface TranslationKeys {
     completedGames: string
     trophyLevel: string
     platinumCount: string
+    xFollowers: string
+    xFollowing: string
+    xPosts: string
   }
 
   // 社交网络小组件扩展

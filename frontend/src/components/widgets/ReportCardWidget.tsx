@@ -33,6 +33,7 @@ import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { useLoopAnimation } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { extractColorsFromLoadedImage } from '../../utils/colorExtractor'
 import { getLatestReportDeduped } from '../../utils/requestDedup'
 import { RatingBadge } from '../RatingBadge'
 
@@ -2197,63 +2198,302 @@ const PLATFORM_CONFIG: Record<
   },
 }
 
+// X 兴趣圈层构成条配色 — 固定顺序分配（圈层1→蓝 … 圈层4→粉），
+// 亮/暗两套均通过 CVD 相邻区分与 3:1 对比度验证，勿随意增删或换序
+const X_CIRCLE_COLOR_CLASSES = [
+  'bg-[#2563eb] dark:bg-[#3b82f6]',
+  'bg-[#d97706]',
+  'bg-[#7c3aed] dark:bg-[#8b5cf6]',
+  'bg-[#db2777] dark:bg-[#ec4899]',
+]
+
 const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
+  const { t } = useI18n()
   const stats = data?.stats || {}
-  const topPosts = useMemo(
-    () => data?.top_posts || data?.library_items || [],
-    [data?.top_posts, data?.library_items],
+  // 说明：推文轮播已移除——X 卡聚焦关注图谱，top_posts 仅保留在数据层
+  const followingSample = useMemo(
+    () => (Array.isArray(data?.following_sample) ? data.following_sample : []),
+    [data?.following_sample],
   )
-  const [postIndex, setPostIndex] = useState(0)
+  // 关注亮点：AI 点名的账号，从 following_sample 补齐头像/简介/粉丝数；
+  // AI 未产出亮点时（旧报告），直接用关注样本前几位兜底
+  const highlights = useMemo(() => {
+    const list = Array.isArray(data?.following_highlights)
+      ? data.following_highlights
+      : []
+    const sampleMap = new Map(
+      followingSample.map((f: any) => [
+        String(f.username || '').toLowerCase(),
+        f,
+      ]),
+    )
+    const enriched = list
+      .filter((h: any) => h?.username || h?.name)
+      .slice(0, 5)
+      .map((h: any) => {
+        const sample: any =
+          sampleMap.get(String(h.username || '').toLowerCase()) || {}
+        return {
+          ...h,
+          avatar: sample.avatar,
+          description: sample.description,
+          follower_count: sample.follower_count,
+        }
+      })
+    if (enriched.length > 0) return enriched
+    // 兜底（旧报告无 AI 亮点时）：样本按粉丝数降序，直接取头部会全是
+    // NHK/连锁品牌这类无个性信号的大众官号——反向取有简介的小众账号
+    return followingSample
+      .filter((f: any) => String(f.description || '').trim())
+      .sort(
+        (a: any, b: any) =>
+          (Number(a.follower_count) || 0) - (Number(b.follower_count) || 0),
+      )
+      .slice(0, 5)
+      .map((f: any) => ({
+        username: f.username,
+        name: f.name,
+        avatar: f.avatar,
+        description: f.description,
+        follower_count: f.follower_count,
+      }))
+  }, [data?.following_highlights, followingSample])
+
+  // 兴趣圈层构成条：AI 从关注列表聚类，最多 4 段
+  const circles = useMemo(() => {
+    const list = Array.isArray(data?.interest_circles)
+      ? data.interest_circles
+      : []
+    const cleaned = list
+      .filter((c: any) => c?.name && Number(c?.count) > 0)
+      .slice(0, X_CIRCLE_COLOR_CLASSES.length)
+    const total = cleaned.reduce(
+      (sum: number, c: any) => sum + Number(c.count),
+      0,
+    )
+    if (total === 0) return []
+    return cleaned.map((c: any, i: number) => {
+      // AI 偶尔无视 ≤6 字约束，超长圈层名截断，保证图例不超两行
+      const rawName = String(c.name)
+      return {
+        name: rawName.length > 7 ? `${rawName.slice(0, 6)}…` : rawName,
+        count: Number(c.count),
+        pct: (Number(c.count) / total) * 100,
+        colorClass: X_CIRCLE_COLOR_CLASSES[i],
+      }
+    })
+  }, [data?.interest_circles])
+
+  // 概览态右侧头像墙素材（最多 7 个）：
+  // 优先 AI 点名的品味账号（亮点 + 圈层代表），大众官号（粉丝数最大）不再天然霸榜
+  const wallAvatars = useMemo(() => {
+    const withAvatar = followingSample.filter((f: any) => f.avatar)
+    const rank = new Map<string, number>()
+    const addPreferred = (username: unknown) => {
+      const key = String(username || '').toLowerCase()
+      if (key && !rank.has(key)) rank.set(key, rank.size)
+    }
+    if (Array.isArray(data?.following_highlights)) {
+      for (const h of data.following_highlights) addPreferred(h?.username)
+    }
+    if (Array.isArray(data?.interest_circles)) {
+      for (const c of data.interest_circles) {
+        if (Array.isArray(c?.accounts)) c.accounts.forEach(addPreferred)
+      }
+    }
+    const keyOf = (f: any) => String(f.username || '').toLowerCase()
+    const curated = withAvatar
+      .filter((f: any) => rank.has(keyOf(f)))
+      .sort((a: any, b: any) => rank.get(keyOf(a))! - rank.get(keyOf(b))!)
+    const rest = withAvatar.filter((f: any) => !rank.has(keyOf(f)))
+    return [...curated, ...rest].slice(0, 7)
+  }, [followingSample, data?.following_highlights, data?.interest_circles])
+
+  const [slideIndex, setSlideIndex] = useState(0)
+  // 头像主色缓存（username → hex），用于详情面的氛围光
+  const [tints, setTints] = useState<Record<string, string>>({})
+  // 翻面只轮播关注亮点（标题由左下角 logo 药丸承载，卡片内不再放标题）
+  const flipItems = highlights
 
   useEffect(() => {
-    if (!showOverview && topPosts.length > 1) {
+    if (!showOverview && flipItems.length > 1) {
       const timer = setInterval(() => {
-        setPostIndex((i) => (i + 1) % topPosts.length)
+        setSlideIndex((i) => (i + 1) % flipItems.length)
       }, 4000)
       return () => clearInterval(timer)
     }
-  }, [showOverview, topPosts.length])
+  }, [showOverview, flipItems.length])
 
+  // 概览态药丸保持纯图标（与其他卡片一致）；详情态由药丸承载账号名/@username
   useEffect(() => {
-    if (showOverview) {
-      onContentChange?.({
-        titles: [
-          data?.vibe || data?.engagement_level || 'X',
-          stats.followers != null
-            ? `${formatCompactNumber(stats.followers)} followers`
-            : 'Posts',
-        ],
-      })
-    } else if (topPosts[postIndex]) {
-      const post = topPosts[postIndex]
-      const text = post.text || post.title || ''
-      onContentChange?.({
-        titles: [text.slice(0, 32) + (text.length > 32 ? '…' : '')],
-      })
+    if (!showOverview && flipItems[slideIndex % flipItems.length]) {
+      const item = flipItems[slideIndex % flipItems.length]
+      const titles = [String(item.name || item.username || '')]
+      if (item.username) titles.push(`@${item.username}`)
+      onContentChange?.({ titles })
+    } else {
+      onContentChange?.(null)
     }
-  }, [
-    showOverview,
-    postIndex,
-    topPosts,
-    data?.vibe,
-    data?.engagement_level,
-    stats.followers,
-    onContentChange,
-  ])
+  }, [showOverview, slideIndex, flipItems, onContentChange])
 
   if (showOverview) {
+    const profile = data?.profile || {}
+    // 数字降级为一行小统计（重点是评价与画像）；数值与标签分层渲染
+    const statsParts = (
+      [
+        [stats.following, t.reportCardWidget.xFollowing],
+        [stats.followers, t.reportCardWidget.xFollowers],
+        [stats.posts, t.reportCardWidget.xPosts],
+      ] as [number | null, string][]
+    ).filter(([value]) => value != null)
     return (
-      <div className="h-full w-full p-3 flex flex-col justify-between">
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-1">
-            {data?.engagement_level || data?.vibe || 'X'}
+      <div className="relative h-full w-full overflow-hidden">
+        <div className="absolute inset-0 bg-linear-to-br from-gray-200/50 to-transparent dark:from-white/[0.06] dark:to-transparent" />
+        {/* 右侧背景：关注头像墙，向左渐隐 */}
+        {wallAvatars.length > 0 && (
+          <div
+            className="absolute inset-y-0 right-0 w-[55%] opacity-80 dark:opacity-60"
+            style={{
+              maskImage:
+                'linear-gradient(to left, rgba(0,0,0,1) 35%, transparent 88%)',
+              WebkitMaskImage:
+                'linear-gradient(to left, rgba(0,0,0,1) 35%, transparent 88%)',
+            }}
+          >
+            <div className="absolute inset-y-0 left-0 right-0 flex items-start pt-[44px] justify-end pr-3 rotate-6">
+              {wallAvatars.map((f: any, i: number) => (
+                <motion.div
+                  key={f.username || i}
+                  className="w-9 h-9 shrink-0 -ml-2 rounded-full overflow-hidden shadow-md ring-2 ring-white/80 dark:ring-black/60"
+                  style={{ y: i % 2 === 0 ? -8 : 10 }}
+                  initial={{ x: 40, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{
+                    duration: 0.45,
+                    delay: 0.15 + i * 0.06,
+                    ease: 'easeOut',
+                  }}
+                >
+                  <img
+                    src={f.avatar}
+                    alt={f.name || f.username}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                </motion.div>
+              ))}
+            </div>
           </div>
-          <div className="text-sm font-bold text-gray-900 dark:text-gray-100 line-clamp-2">
-            {data?.vibe || analysisFallback(data)}
-          </div>
-          {Array.isArray(data?.signature_topics) &&
+        )}
+        {/* 前景 */}
+        <div className="relative z-10 h-full flex flex-col p-3 pb-9">
+          {/* header：账号本人头像 + 用户名 */}
+          {(profile.avatar || profile.name || profile.username) && (
+            <motion.div
+              className="flex items-center gap-2 min-w-0 max-w-[70%]"
+              initial={{ y: 8, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              {profile.avatar && (
+                <img
+                  src={profile.avatar}
+                  alt={profile.name || profile.username}
+                  className="w-8 h-8 rounded-full object-cover ring-2 ring-white/80 dark:ring-black/50 shadow-sm shrink-0"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+              )}
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold text-gray-900 dark:text-gray-100 leading-tight truncate">
+                  {profile.name || profile.username}
+                </div>
+                {profile.username && (
+                  <div className="text-[9px] font-mono text-gray-500 dark:text-gray-400 truncate">
+                    @{profile.username}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+          {/* 主角：AI 评价，左侧垂直居中 */}
+          {(data?.vibe || data?.engagement_level) && (
+            <div className="flex-1 min-h-0 flex items-center pt-2 pb-4">
+              <motion.div
+                className="max-w-[68%]"
+                initial={{ y: 8, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.4, delay: 0.2 }}
+              >
+                <span className="block text-[17px] font-black text-gray-900 dark:text-gray-100 leading-snug line-clamp-2 text-balance">
+                  {data?.vibe || data?.engagement_level}
+                </span>
+              </motion.div>
+            </div>
+          )}
+          {/* 右上角：一行小统计（数值黑体大字，标签小字灰阶） */}
+          {statsParts.length > 0 && (
+            <motion.div
+              className="absolute top-3 right-3 flex items-baseline gap-2"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+            >
+              {statsParts.map(([value, label]) => (
+                <span key={label} className="flex items-baseline gap-0.5">
+                  <span className="text-[10px] font-black tabular-nums text-gray-900 dark:text-gray-100">
+                    {formatCompactNumber(value)}
+                  </span>
+                  <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400">
+                    {label}
+                  </span>
+                </span>
+              ))}
+            </motion.div>
+          )}
+          {/* 右下角：用户画像（圈层图例 + 构成条）；无圈层数据时退回话题词 */}
+          {circles.length > 0 ? (
+            <div className="absolute bottom-3 right-3 w-[48%] flex flex-col items-end gap-1">
+              <div className="flex flex-wrap justify-end gap-x-2.5 gap-y-0.5 max-h-[26px] overflow-hidden">
+                {circles.map((circle: any, i: number) => (
+                  <motion.span
+                    key={circle.name}
+                    className="flex items-center gap-1 text-[8px] font-bold text-gray-600 dark:text-gray-300"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.3, delay: 0.35 + i * 0.12 }}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${circle.colorClass}`}
+                    />
+                    {circle.name}
+                    <span className="font-mono text-gray-500 dark:text-gray-400">
+                      {circle.count}
+                    </span>
+                  </motion.span>
+                ))}
+              </div>
+              <div className="flex gap-[2px] h-1.5 w-full rounded-full overflow-hidden bg-gray-200/80 dark:bg-white/10 ring-1 ring-black/5 dark:ring-white/10">
+                {circles.map((circle: any, i: number) => (
+                  <motion.div
+                    key={circle.name}
+                    className={`h-full rounded-[2px] ${circle.colorClass}`}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${circle.pct}%` }}
+                    transition={{
+                      duration: 0.35,
+                      delay: 0.35 + i * 0.12,
+                      ease: 'easeOut',
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            Array.isArray(data?.signature_topics) &&
             data.signature_topics.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
+              <div className="absolute bottom-3 right-3 max-w-[55%] flex flex-wrap justify-end gap-1">
                 {data.signature_topics.slice(0, 4).map((topic: string) => (
                   <span
                     key={topic}
@@ -2263,55 +2503,136 @@ const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
                   </span>
                 ))}
               </div>
-            )}
-        </div>
-        <div className="flex gap-3">
-          {[
-            [stats.followers, 'Followers'],
-            [stats.posts, 'Posts'],
-            [stats.likes_received, 'Likes'],
-          ].map(([value, label]) => (
-            <div key={label as string} className="flex flex-col">
-              <span className="text-lg font-black tabular-nums text-gray-900 dark:text-gray-100 leading-none">
-                {formatCompactNumber(value as number)}
-              </span>
-              <span className="text-[8px] uppercase tracking-widest font-bold text-gray-500 mt-0.5">
-                {label as string}
-              </span>
-            </div>
-          ))}
+            )
+          )}
         </div>
       </div>
     )
   }
 
-  const post = topPosts[postIndex]
-  if (!post) {
+  const item =
+    flipItems.length > 0 ? flipItems[slideIndex % flipItems.length] : null
+  if (!item) {
     return (
       <div className="h-full w-full flex items-center justify-center text-gray-400 text-xs">
-        No posts
+        <FaXTwitter />
       </div>
     )
   }
 
-  const text = post.text || post.title || ''
+  // 关注亮点轮播：账号名/@username 由左下角 logo 药丸展示；
+  // 标签（AI 评语）是主角，头像缩小为径向渐隐的背景图，主色氛围光衔接卡片背景
+  const tint = tints[String(item.username || '')]
   return (
-    <div className="h-full w-full p-3 flex flex-col justify-between">
-      <p className="text-xs leading-relaxed text-gray-800 dark:text-gray-200 line-clamp-5">
-        {text}
-      </p>
-      <div className="flex items-center gap-3 text-[10px] text-gray-500 font-mono">
-        <span>♥ {formatCompactNumber(post.like_count || 0)}</span>
-        <span>↻ {formatCompactNumber(post.retweet_count || 0)}</span>
-      </div>
-    </div>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={`hl-${slideIndex % flipItems.length}`}
+        initial={CONTENT_FADE_INITIAL}
+        animate={CONTENT_FADE_ANIMATE}
+        exit={CONTENT_FADE_EXIT}
+        transition={CONTENT_FADE_TRANSITION}
+        className="relative h-full w-full overflow-hidden"
+      >
+        {/* 主色氛围层：取色算法从头像提主色，向卡片背景弥散 */}
+        {tint && (
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `radial-gradient(circle at 74% 50%, ${tint}30, transparent 75%)`,
+            }}
+          />
+        )}
+        {/* 头像：贴住右缘完整显示，向卡片内部径向渐隐（模糊半圆） */}
+        {item.avatar && (
+          <motion.div
+            className="absolute inset-y-0 right-0 w-[58%]"
+            style={{
+              maskImage:
+                'radial-gradient(circle at 100% 50%, rgba(0,0,0,1) 42%, transparent 74%)',
+              WebkitMaskImage:
+                'radial-gradient(circle at 100% 50%, rgba(0,0,0,1) 42%, transparent 74%)',
+            }}
+            initial={{ opacity: 0, x: 14 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+          >
+            <img
+              src={item.avatar.replace(/_(normal|bigger)\./, '_400x400.')}
+              alt={item.name || item.username}
+              className="w-full h-full object-cover translate-x-[6%] scale-110"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onLoad={(e) => {
+                const username = String(item.username || '')
+                if (!username || tints[username]) return
+                try {
+                  const palette = extractColorsFromLoadedImage(e.currentTarget)
+                  if (palette?.primary) {
+                    setTints((prev) => ({
+                      ...prev,
+                      [username]: palette.primary,
+                    }))
+                  }
+                } catch {
+                  // 取色失败忽略，氛围层缺省即可
+                }
+              }}
+            />
+          </motion.div>
+        )}
+        {/* 前景：标签是主角，粉丝量降为统计行 */}
+        <div className="relative z-10 h-full p-3 pb-12 flex flex-col">
+          {item.tag && (
+            <motion.div
+              className="min-w-0 max-w-[70%]"
+              initial={{ y: 8, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              <span className="block text-base font-black text-gray-900 dark:text-gray-100 leading-tight truncate">
+                {item.tag}
+              </span>
+            </motion.div>
+          )}
+          {item.follower_count != null && (
+            <motion.div
+              className="mt-0.5 text-[10px] font-medium text-gray-500 dark:text-gray-400"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+            >
+              {formatCompactNumber(item.follower_count)}{' '}
+              {t.reportCardWidget.xFollowers}
+            </motion.div>
+          )}
+          {/* 简介最多两行，收在 overflow-hidden 容器里，不侵入底部药丸区 */}
+          {item.description && (
+            <div className="mt-1.5 flex-1 min-h-0 overflow-hidden max-w-[58%]">
+              <p className="text-[9px] leading-relaxed text-gray-600 dark:text-gray-400 line-clamp-2">
+                {item.description}
+              </p>
+            </div>
+          )}
+        </div>
+        {/* 轮播指示点 */}
+        {flipItems.length > 1 && (
+          <div className="absolute bottom-3 right-3 z-10 flex gap-1">
+            {flipItems.map((_: any, i: number) => (
+              <span
+                key={i}
+                className={`w-1 h-1 rounded-full transition-colors ${
+                  i === slideIndex % flipItems.length
+                    ? 'bg-gray-800 dark:bg-white/90'
+                    : 'bg-gray-400/60 dark:bg-white/30'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </motion.div>
+    </AnimatePresence>
   )
 })
-
-function analysisFallback(data: any): string {
-  if (data?.summary) return data.summary
-  return 'Your voice on X'
-}
 
 function formatCompactNumber(n: number | undefined | null): string {
   const num = Number(n) || 0

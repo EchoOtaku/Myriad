@@ -1062,7 +1062,93 @@ impl PlatformFetcher {
         Ok(tweets)
     }
 
-    /// 聚合抓取：用户资料 + 时间线（仅 App Bearer，不走用户 OAuth）
+    /// 获取用户关注列表（最多 max_results，分页拉取；免费档不可用，需要付费额度）
+    pub async fn fetch_x_user_following(
+        &self,
+        user_id: &str,
+        bearer_token: &str,
+        max_results: usize,
+    ) -> Result<Vec<serde_json::Value>> {
+        if user_id.trim().is_empty() {
+            return Err(anyhow!("X user id is required"));
+        }
+        if bearer_token.trim().is_empty() {
+            return Err(anyhow!("X bearer token is required"));
+        }
+
+        const PAGE_SIZE: usize = 1000;
+        let mut following = Vec::new();
+        let mut pagination_token: Option<String> = None;
+        let target = max_results.clamp(1, 5000);
+
+        loop {
+            let page = (target - following.len()).clamp(1, PAGE_SIZE);
+            // 只取下游（SmartFilter/报告卡）实际消费的字段，控制响应体积
+            let mut url = format!(
+                "{}/users/{}/following?max_results={}&user.fields=description,id,name,profile_image_url,public_metrics,username,verified",
+                Self::X_API_BASE,
+                urlencoding::encode(user_id),
+                page
+            );
+            if let Some(token) = &pagination_token {
+                url.push_str(&format!("&pagination_token={}", urlencoding::encode(token)));
+            }
+
+            let response = self
+                .client
+                .get(&url)
+                .header("Authorization", Self::x_auth_header(bearer_token))
+                .header("User-Agent", "Myriad")
+                .header("Accept", "application/json")
+                .send()
+                .await?;
+
+            let status = response.status();
+            let body: serde_json::Value = response.json().await?;
+
+            if !status.is_success() {
+                // 后续分页失败时保留已拉到的部分，由上层决定是否告警
+                if following.is_empty() {
+                    let detail = body
+                        .get("detail")
+                        .or_else(|| body.get("title"))
+                        .or_else(|| body.pointer("/errors/0/message"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown error");
+                    return Err(anyhow!("X following API error ({}): {}", status, detail));
+                }
+                break;
+            }
+
+            let mut page_data = body
+                .get("data")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            if page_data.is_empty() {
+                break;
+            }
+
+            following.append(&mut page_data);
+
+            pagination_token = body
+                .pointer("/meta/next_token")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+
+            if following.len() >= target || pagination_token.is_none() {
+                break;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(350)).await;
+        }
+
+        following.truncate(target);
+        Ok(following)
+    }
+
+    /// 聚合抓取：用户资料 + 时间线 + 关注列表（仅 App Bearer，不走用户 OAuth）
     pub async fn fetch_x_profile_bundle(
         &self,
         username: &str,
@@ -1078,7 +1164,13 @@ impl PlatformFetcher {
             .ok_or_else(|| anyhow!("X user response missing id"))?
             .to_string();
 
-        let tweets = match self.fetch_x_user_tweets(&user_id, bearer_token, 100).await {
+        // 时间线与关注列表相互独立（不同端点、各自限额），并发拉取
+        let (tweets_result, following_result) = tokio::join!(
+            self.fetch_x_user_tweets(&user_id, bearer_token, 100),
+            self.fetch_x_user_following(&user_id, bearer_token, 1000),
+        );
+
+        let tweets = match tweets_result {
             Ok(t) => t,
             Err(e) => {
                 tracing::warn!("X tweets fetch failed for {}: {}", username, e);
@@ -1086,9 +1178,18 @@ impl PlatformFetcher {
             }
         };
 
+        let following = match following_result {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::warn!("X following fetch failed for {}: {}", username, e);
+                Vec::new()
+            }
+        };
+
         Ok(serde_json::json!({
             "user": user,
             "tweets": tweets,
+            "following": following,
         }))
     }
 

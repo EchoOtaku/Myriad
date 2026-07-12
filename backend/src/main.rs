@@ -957,6 +957,51 @@ async fn update_hitokoto_config_wrapper(
     }
 }
 
+/// Wrapper for get_report_settings that gets DB from global state
+async fn get_report_settings_wrapper() -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::config::get_report_settings(axum::extract::State(db.clone())).await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，报告设置功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Wrapper for update_report_settings that gets DB from global state
+async fn update_report_settings_wrapper(
+    Json(payload): Json<api::config::ReportSettings>,
+) -> Response {
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) = api::config::update_report_settings(
+                axum::extract::State(db.clone()),
+                Json(payload),
+            )
+            .await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "数据库未连接，报告设置功能暂不可用"
+            })),
+        )
+            .into_response(),
+    }
+}
+
 /// Wrapper for get_permissions that gets DB from global state
 async fn get_permissions_wrapper(headers: axum::http::HeaderMap) -> Response {
     let db_opt = DB_CONNECTION.read().await;
@@ -1200,27 +1245,6 @@ async fn get_user_info_wrapper() -> Response {
     }
 }
 
-/// Wrapper for get_cache_debug_info that gets DB from global state
-#[cfg(debug_assertions)]
-async fn get_cache_debug_info_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::profile::get_cache_debug_info(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接"
-            })),
-        )
-            .into_response(),
-    }
-}
-
 /// Wrapper for get_batch_user_info that gets DB from global state
 /// 批量获取用户信息 - 性能优化版本，减少多次API调用
 async fn get_batch_user_info_wrapper() -> Response {
@@ -1229,54 +1253,6 @@ async fn get_batch_user_info_wrapper() -> Response {
         Some(db) => {
             let (status, json) =
                 api::profile::get_batch_user_info(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_report that gets DB from global state
-async fn get_report_wrapper(
-    axum::Extension(claims): axum::Extension<middleware::auth::Claims>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::profile::get_report(axum::extract::State(db.clone()), axum::Extension(claims))
-                    .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for list_reports that gets DB from global state
-async fn list_reports_wrapper(
-    axum::Extension(claims): axum::Extension<middleware::auth::Claims>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::profile::list_reports(
-                axum::extract::State(db.clone()),
-                axum::Extension(claims),
-            )
-            .await;
             (status, json).into_response()
         }
         None => (
@@ -3629,6 +3605,16 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             axum::routing::put(update_hitokoto_config_wrapper)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
+        // 报告过期设置：读取公开（读取路径需要）；写入仅管理员
+        .route(
+            "/api/config/report-settings",
+            get(get_report_settings_wrapper),
+        )
+        .route(
+            "/api/config/report-settings",
+            axum::routing::put(update_report_settings_wrapper)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
         // 权限配置 API
         .route("/api/config/permissions", get(get_permissions_wrapper)) // 🔓 公开端点：获取当前用户权限
         .route(
@@ -3661,25 +3647,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/profile/user-info", get(get_user_info_wrapper))
         .route("/api/profile/batch", get(get_batch_user_info_wrapper)); // 🚀 性能优化：批量API
 
-    // 🔧 DEBUG: Cache debug endpoint (only in debug mode)
-    #[cfg(debug_assertions)]
-    let api_router = api_router.route(
-        "/api/profile/cache-debug",
-        get(get_cache_debug_info_wrapper),
-    );
-
-    #[cfg(not(debug_assertions))]
-    let api_router = api_router;
-
     let mut api_router = api_router
-        .route(
-            "/api/profile/report",
-            get(get_report_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
-        )
-        .route(
-            "/api/profile/reports",
-            get(list_reports_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
-        )
         .route("/api/profile/metadata", get(get_raw_metadata_wrapper))
         // ==================== Federation (MFP) 公开端点 ====================
         // Layer 1: 发现（无需认证）
@@ -3960,7 +3928,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             )
             // Note: /api/auth/me and /api/auth/logout are now registered above with wrappers
             // Note: /api/config routes are now registered above with wrappers, not here
-            // Note: /api/profile/user-info, cache-debug, report, reports, metadata now registered above with wrappers
+            // Note: /api/profile/user-info, metadata now registered above with wrappers
             .route("/api/platforms", get(api::platforms::list_platforms))
             .route("/api/profiles", get(api::platforms::get_profiles))
             .route(
@@ -4038,27 +4006,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/profile/refresh",
                 post(api::profile::refresh_platform_data)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route(
-                "/api/profile/report",
-                post(api::profile::generate_report)
-                    .route_layer(from_fn(middleware::auth::admin_middleware)),
-            )
-            .route(
-                "/api/profile/reports/{id}",
-                get(api::profile::get_report_by_id)
-                    .delete(api::profile::delete_report_by_id)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route(
-                "/api/profile/reports/{id}/cards",
-                delete(api::profile::delete_card_from_report)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route(
-                "/api/profile/reports/all",
-                delete(api::profile::delete_all_reports)
-                    .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
             .route(
                 "/api/profile/cache",

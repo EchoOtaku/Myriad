@@ -14,19 +14,21 @@ before persistence and SSE delivery. Existing history is not retroactively delet
 Only eight source icons are required. Individual events reuse their source icon; priority, title,
 and color communicate status, so the UI does not need 28 unrelated pictograms.
 
-| Source key | Product | Icon source |
-| --- | --- | --- |
-| `agent` | Arael tasks | Project Arael/module sparkle icon (`LuSparkles`) |
-| `heartbeat` | Arael Heartbeat | Activity pulse (`LuActivity`) |
-| `mcp` | MCP tool servers | Server (`LuServer`) |
-| `brew` | Brew | The exact cup SVG used by `NavigationIsland` |
-| `tapp` | Tapp runtime | Project `MyriadStoreIcon` |
-| `updater` | System updater | Refresh cycle (`LuRefreshCw`) |
-| `federation` | Aro | The exact paper-plane path used by Aro messenger navigation |
-| `system` | Myriad system | Information (`LuInfo`) |
+| Source key   | Product          | Icon source                          |
+| ------------ | ---------------- | ------------------------------------ |
+| `agent`      | Arael tasks      | `/icons/notifications/arael.png`     |
+| `heartbeat`  | Arael Heartbeat  | `/icons/notifications/heartbeat.png` |
+| `mcp`        | MCP tool servers | `/icons/notifications/mcp.png`       |
+| `brew`       | Brew             | `/icons/notifications/brew.png`      |
+| `tapp`       | Tapp runtime     | `/icons/notifications/tapp.png`      |
+| `updater`    | System updater   | `/icons/notifications/updater.png`   |
+| `federation` | Aro              | `/icons/notifications/aro.png`       |
+| `system`     | Myriad system    | `/icons/notifications/system.png`    |
 
 The reusable implementation lives in
 `frontend/src/components/notifications/NotificationIcons.tsx`.
+All eight assets are notification-scoped 512×512 transparent PNGs; other
+product surfaces keep their existing navigation and module icon implementations.
 
 ## Persisted presentation types
 

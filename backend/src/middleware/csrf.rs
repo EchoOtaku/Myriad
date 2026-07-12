@@ -345,7 +345,6 @@ mod tests {
         assert!(!is_csrf_exempt("/api/tapps/my-app/start"));
 
         assert!(!is_csrf_exempt("/api/config"));
-        assert!(!is_csrf_exempt("/api/profile/report"));
         assert!(!is_csrf_exempt("/api/auth/change-password"));
     }
 }

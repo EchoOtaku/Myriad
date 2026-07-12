@@ -132,7 +132,7 @@ const GAME_META: Record<
     appIcon: '/game-logos/genshin-icon.png',
     logoClass: 'gp-logo-genshin',
     fontClass: 'gp-font-genshin',
-    artPos: 'center 30%',
+    artPos: 'center top',
   },
   hsr: {
     appIcon: '/game-logos/starrail-icon.png',
@@ -144,7 +144,7 @@ const GAME_META: Record<
     appIcon: '/game-logos/zzz-icon.png',
     logoClass: 'gp-logo-zzz',
     fontClass: 'gp-font-zzz',
-    artPos: 'center 20%',
+    artPos: 'center top',
   },
 }
 
@@ -800,7 +800,9 @@ const GamePresenceWidget = memo(
                     <img
                       src={focused.art || focused.icon || undefined}
                       alt={focused.name}
-                      className="w-full h-full object-cover"
+                      className={`w-full h-full object-cover ${focused.art
+                        ? `gp-art gp-art-zoom ${game === 'genshin' || game === 'zzz' ? 'gp-art-upper' : ''}`
+                        : ''}`}
                       style={{ objectPosition: meta.artPos }}
                       loading="lazy"
                     />

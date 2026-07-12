@@ -210,7 +210,6 @@ fn is_compute_intensive(path: &str) -> bool {
     path.contains("/fetch")
         || path.contains("/analysis")
         || path.contains("/prompt/generate")
-        || path.contains("/profile/report")
         || path.contains("/profile/refresh")
         // Tapp 存储 API - 防止滥用
         || path.contains("/tapp/storage")

@@ -4,6 +4,7 @@ import type {
   ModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
 import type { HitokotoConfig } from '../../utils/quote'
+import type { ReportSettings } from '../../utils/reportSettings'
 import { LuEye, LuSparkles, MyriadStoreIcon } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
@@ -14,15 +15,10 @@ import {
   normalizeModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
 import PlatformIcon from '../PlatformIcon'
-import { SettingGroup, SettingSection } from '../settings'
+import { SettingGroup, SettingSection, SwitchItem } from '../settings'
 
 export type LibraryItemType =
-  | 'game'
-  | 'video'
-  | 'music'
-  | 'anime'
-  | 'tv_series'
-  | 'book'
+  'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
 
 export interface LibrarySourceOption {
   source: string
@@ -65,6 +61,8 @@ interface ModuleConfigSectionProps {
   ) => void
   hitokotoDraft: HitokotoConfig
   setHitokotoDraft: React.Dispatch<React.SetStateAction<HitokotoConfig>>
+  reportSettingsDraft: ReportSettings
+  setReportSettingsDraft: React.Dispatch<React.SetStateAction<ReportSettings>>
   onMessage?: (message: string, type?: 'success' | 'error' | 'info') => void
 }
 
@@ -327,6 +325,8 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   onSourcePreferencesLoaded,
   hitokotoDraft,
   setHitokotoDraft,
+  reportSettingsDraft,
+  setReportSettingsDraft,
   onMessage,
 }) => {
   const { t } = useI18n()
@@ -444,6 +444,13 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
     [setHitokotoDraft],
   )
 
+  const updateReportSettings = useCallback(
+    (patch: Partial<ReportSettings>) => {
+      setReportSettingsDraft((prev) => ({ ...prev, ...patch }))
+    },
+    [setReportSettingsDraft],
+  )
+
   useEffect(() => {
     isSourceDirtyRef.current = isSourceDirty
   }, [isSourceDirty])
@@ -451,9 +458,12 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   const loadLibrarySourceSettings = useCallback(async () => {
     try {
       setLoading(true)
-      const preferenceData =
-        await apiService.get<PreferencesResponse>('/library/preferences')
-      const preferences = normalizeLibraryPreferences(preferenceData.preferences)
+      const preferenceData = await apiService.get<PreferencesResponse>(
+        '/library/preferences',
+      )
+      const preferences = normalizeLibraryPreferences(
+        preferenceData.preferences,
+      )
       onSourcePreferencesLoaded(preferences, {
         resetDraft: !isSourceDirtyRef.current,
       })
@@ -463,9 +473,12 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
         setRawTotal(data.raw_total ?? data.total ?? 0)
         setShownTotal(data.total ?? 0)
         setSourceOptions(data.available_sources ?? {})
-        onSourcePreferencesLoaded(normalizeLibraryPreferences(data.preferences), {
-          resetDraft: !isSourceDirtyRef.current,
-        })
+        onSourcePreferencesLoaded(
+          normalizeLibraryPreferences(data.preferences),
+          {
+            resetDraft: !isSourceDirtyRef.current,
+          },
+        )
       } catch {
         setRawTotal(0)
         setShownTotal(0)
@@ -603,6 +616,72 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       </SettingGroup>
 
       <SettingGroup
+        title={t.config.reportSettingsTitle}
+        description={t.config.reportSettingsDesc}
+        icon={<ReportsTitleIcon className="h-3.5 w-3.5" />}
+      >
+        <div className="space-y-3">
+          <SwitchItem
+            itemKey="report-expiry-enabled"
+            label={t.config.reportExpiryEnabled}
+            description={t.config.reportExpiryEnabledDesc}
+            value={reportSettingsDraft.expiryEnabled}
+            onChange={(value) => updateReportSettings({ expiryEnabled: value })}
+          />
+          <SwitchItem
+            itemKey="report-auto-regenerate"
+            label={t.config.reportAutoRegenerate}
+            description={t.config.reportAutoRegenerateDesc}
+            value={reportSettingsDraft.autoRegenerate}
+            onChange={(value) =>
+              updateReportSettings({ autoRegenerate: value })
+            }
+            disabled={!reportSettingsDraft.expiryEnabled}
+          />
+          <label
+            className={`${MODULE_SETTING_CARD_CLASS} block space-y-1 ${
+              reportSettingsDraft.expiryEnabled ? '' : 'opacity-50'
+            }`}
+          >
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+              {t.config.reportExpiryDays}
+            </span>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={365}
+                step={1}
+                disabled={!reportSettingsDraft.expiryEnabled}
+                value={reportSettingsDraft.expiryDays}
+                onChange={(event) => {
+                  const value = Number(event.target.value)
+                  if (Number.isFinite(value)) {
+                    updateReportSettings({ expiryDays: value })
+                  }
+                }}
+                onBlur={() =>
+                  updateReportSettings({
+                    expiryDays: Math.min(
+                      365,
+                      Math.max(1, Math.round(reportSettingsDraft.expiryDays)),
+                    ),
+                  })
+                }
+                className="w-24 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-[var(--color-primary)] disabled:cursor-not-allowed dark:border-white/10 dark:bg-neutral-900 dark:text-gray-100"
+              />
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {t.config.reportExpiryDaysUnit}
+              </span>
+            </div>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+              {t.config.reportExpiryDaysHint}
+            </span>
+          </label>
+        </div>
+      </SettingGroup>
+
+      <SettingGroup
         title={t.config.libraryModuleTitle}
         description={t.config.libraryModuleDesc}
         icon={<LibrarySubtitleIcon />}
@@ -630,9 +709,8 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                   <div className="flex flex-wrap gap-2">
                     {options.map((option) => {
                       const checked =
-                        sourceDraft.categories[type]?.includes(
-                          option.source,
-                        ) ?? false
+                        sourceDraft.categories[type]?.includes(option.source) ??
+                        false
                       return (
                         <button
                           key={option.source}
@@ -776,7 +854,9 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                     type="text"
                     value={hitokotoDraft.customAuthorField ?? ''}
                     onChange={(e) =>
-                      updateHitokotoConfig({ customAuthorField: e.target.value })
+                      updateHitokotoConfig({
+                        customAuthorField: e.target.value,
+                      })
                     }
                     placeholder="from"
                     className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-[var(--color-primary)] dark:border-white/10 dark:bg-neutral-900 dark:text-gray-100"

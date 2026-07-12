@@ -39,6 +39,7 @@ import NotificationPanelList from './NotificationPanelList'
 import {
   notificationSourceFor,
   NotificationSourceIcon,
+  notificationSourceIconAsset,
 } from './notifications/NotificationIcons'
 import { WeatherAssetIcon } from './weather/WeatherAssetIcon'
 import './GlobalControlPanel.css'
@@ -218,11 +219,9 @@ const GlobalControlPanel: React.FC = () => {
   /** 新通知到达：轮播展示 + 高优先级 toast + 后台系统通知 */
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
+      const source = notificationSourceFor(n)
       const icon = (
-        <NotificationSourceIcon
-          source={notificationSourceFor(n)}
-          className="h-4 w-4"
-        />
+        <NotificationSourceIcon source={source} className="h-4 w-4" />
       )
       const snippet = n.body.length > 60 ? `${n.body.slice(0, 60)}…` : n.body
 
@@ -286,6 +285,7 @@ const GlobalControlPanel: React.FC = () => {
           void new Notification(n.title, {
             body: n.body.slice(0, 200),
             tag: n.id,
+            icon: notificationSourceIconAsset(source),
           })
         } catch {
           /* 某些环境不支持构造 Notification，忽略 */
@@ -1821,6 +1821,7 @@ const GlobalControlPanel: React.FC = () => {
                       browserNotificationsEnabled={
                         notificationPreferences.delivery.browser
                       }
+                      canManagePreferences={Boolean(user)}
                     />
                   </div>
                 )}

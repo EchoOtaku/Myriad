@@ -40,6 +40,36 @@
   letter-spacing: 0.01em;
 }
 
+/* 聚焦立绘：放大 90% 让角色更近；聚焦切换时缓慢推近（Ken Burns），
+   元素随聚焦 key 重挂载，动画自动重播 */
+.gp-art {
+  transform: scale(1.9);
+}
+
+.gp-art-upper {
+  transform-origin: center top;
+}
+
+@keyframes gp-art-zoom {
+  from {
+    transform: scale(1.9);
+  }
+
+  to {
+    transform: scale(2.02);
+  }
+}
+
+.gp-art-zoom {
+  animation: gp-art-zoom 4.5s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gp-art-zoom {
+    animation: none;
+  }
+}
+
 /* 官方 wordmark 以 mask 方式渲染，颜色跟随 currentColor（明暗主题自适应） */
 .gp-logo {
   display: inline-block;

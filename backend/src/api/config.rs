@@ -3449,6 +3449,122 @@ pub async fn update_hitokoto_config(
     }
 }
 
+// ========== 报告过期设置 ==========
+
+const REPORT_SETTINGS_KEY: &str = "report_settings";
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSettings {
+    /// 是否启用报告过期（关闭时报告永不过期，保持历史行为）
+    #[serde(default)]
+    pub expiry_enabled: bool,
+    /// 过期后读取时自动后台重新生成（只消耗 AI 调用，不重新抓平台数据）
+    #[serde(default)]
+    pub auto_regenerate: bool,
+    #[serde(default = "default_report_expiry_days")]
+    pub expiry_days: i64,
+}
+
+fn default_report_expiry_days() -> i64 {
+    7
+}
+
+impl Default for ReportSettings {
+    fn default() -> Self {
+        Self {
+            expiry_enabled: false,
+            auto_regenerate: false,
+            expiry_days: default_report_expiry_days(),
+        }
+    }
+}
+
+impl ReportSettings {
+    fn normalized(mut self) -> Self {
+        self.expiry_days = self.expiry_days.clamp(1, 365);
+        self
+    }
+}
+
+pub async fn load_report_settings(db: &DatabaseConnection) -> ReportSettings {
+    let sql = "SELECT value FROM configurations WHERE key = $1";
+    let result = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            vec![REPORT_SETTINGS_KEY.into()],
+        ))
+        .await;
+
+    match result {
+        Ok(Some(row)) => match row.try_get::<Value>("", "value") {
+            Ok(value) => serde_json::from_value::<ReportSettings>(value)
+                .map(ReportSettings::normalized)
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Invalid report settings, using defaults: {}", e);
+                    ReportSettings::default()
+                }),
+            Err(e) => {
+                tracing::warn!("Failed to read report settings: {}", e);
+                ReportSettings::default()
+            }
+        },
+        Ok(None) => ReportSettings::default(),
+        Err(e) => {
+            tracing::warn!("Failed to load report settings: {}", e);
+            ReportSettings::default()
+        }
+    }
+}
+
+pub async fn get_report_settings(
+    State(db): State<DatabaseConnection>,
+) -> (StatusCode, Json<Value>) {
+    let settings = load_report_settings(&db).await;
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "config": settings
+        })),
+    )
+}
+
+pub async fn update_report_settings(
+    State(db): State<DatabaseConnection>,
+    Json(payload): Json<ReportSettings>,
+) -> (StatusCode, Json<Value>) {
+    let settings = payload.normalized();
+    let config_service = crate::services::config_service::ConfigService::new(db);
+
+    match config_service
+        .update_config(
+            REPORT_SETTINGS_KEY,
+            serde_json::to_value(&settings).unwrap_or_else(|_| json!({})),
+        )
+        .await
+    {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "config": settings
+            })),
+        ),
+        Err(e) => {
+            tracing::error!("Failed to save report settings: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": "Failed to save report settings"
+                })),
+            )
+        }
+    }
+}
+
 // ========== 权限配置 API ==========
 
 use crate::middleware::auth::extract_optional_claims;

@@ -852,6 +852,21 @@ export const jaJP: TranslationKeys = {
     hitokotoAuthorFieldHint: 'JSON 内の出典/作者に対応するフィールド名（任意）',
     hitokotoSaved: '一言設定を保存しました',
     hitokotoLoadFailed: '一言設定の読み込みに失敗しました',
+    // レポートページ設定
+    reportSettingsTitle: 'レポートページ設定',
+    reportSettingsDesc: 'レポートの有効期間と期限切れ後の動作を管理',
+    reportExpiryEnabled: 'レポートの有効期限を有効化',
+    reportExpiryEnabledDesc:
+      '無効にすると、既存および新規レポートは期限切れで非表示になりません',
+    reportAutoRegenerate: '期限切れ後に自動再生成',
+    reportAutoRegenerateDesc:
+      '期限切れのプラットフォームレポートを表示しつつ、バックグラウンドで再生成します',
+    reportExpiryDays: '有効期間',
+    reportExpiryDaysUnit: '日',
+    reportExpiryDaysHint:
+      '1～365日で設定できます。新規レポートに適用されます。',
+    reportSettingsSaved: 'レポートページ設定を保存しました',
+    reportSettingsLoadFailed: 'レポートページ設定の読み込みに失敗しました',
     // AI 使用制限設定
     aiQuotaTitle: 'AI 使用制限',
     aiQuotaDesc: '非管理者ユーザーのAI使用制限を設定（管理者は無制限）',
@@ -1542,6 +1557,9 @@ export const jaJP: TranslationKeys = {
     completedGames: 'コンプ済み',
     trophyLevel: 'トロフィーレベル',
     platinumCount: 'プラチナ',
+    xFollowers: 'フォロワー',
+    xFollowing: 'フォロー',
+    xPosts: 'ポスト',
   },
 
   // ソーシャルネットワークウィジェット拡張

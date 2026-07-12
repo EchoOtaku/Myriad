@@ -80,6 +80,8 @@ interface Props {
   onOpenAraelManage?: () => void
   /** 当前用户是否允许浏览器系统通知。 */
   browserNotificationsEnabled?: boolean
+  /** 仅登录用户可以管理服务端通知偏好。 */
+  canManagePreferences?: boolean
 }
 
 function NotificationPanelList({
@@ -89,6 +91,7 @@ function NotificationPanelList({
   onNavigate,
   onOpenAraelManage,
   browserNotificationsEnabled = true,
+  canManagePreferences = true,
 }: Props) {
   const { t, format, locale } = useI18n()
   const { items, removeItem, clearAll } = center
@@ -108,6 +111,10 @@ function NotificationPanelList({
     },
     [],
   )
+
+  useEffect(() => {
+    if (!canManagePreferences) setShowSettings(false)
+  }, [canManagePreferences])
 
   // 问候语 + 本地化日期（组件随 tab 打开重挂载，时点足够新鲜）
   const { greetingText, dateText } = useMemo(() => {
@@ -236,15 +243,17 @@ function NotificationPanelList({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setShowSettings(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/5 text-gray-500 transition-colors hover:bg-black/9 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15"
-            aria-label={t.notificationCenter.settingsDesc}
-            title={t.notificationCenter.settingsDesc}
-          >
-            <LuSettings className="h-3.5 w-3.5" />
-          </button>
+          {canManagePreferences && (
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-black/5 text-gray-500 transition-colors hover:bg-black/9 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15"
+              aria-label={t.notificationCenter.settingsDesc}
+              title={t.notificationCenter.settingsDesc}
+            >
+              <LuSettings className="h-3.5 w-3.5" />
+            </button>
+          )}
           {browserNotificationsEnabled && notifPermission === 'default' && (
             <button
               type="button"

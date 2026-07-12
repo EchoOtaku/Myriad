@@ -110,6 +110,25 @@ impl NotificationType {
             _ => NotificationType::SystemInfo,
         }
     }
+
+    fn source_key(&self) -> &'static str {
+        match self {
+            NotificationType::TaskProgress
+            | NotificationType::TaskCompleted
+            | NotificationType::TaskFailed
+            | NotificationType::TaskCancelled
+            | NotificationType::AgentClarification => "agent",
+            NotificationType::HeartbeatResult => "heartbeat",
+            NotificationType::McpServerStatus => "mcp",
+            NotificationType::BrewNewItems | NotificationType::BrewSourceError => "brew",
+            NotificationType::TappNotification => "tapp",
+            NotificationType::UpdaterStatus => "updater",
+            NotificationType::FederationMessage
+            | NotificationType::FederationFollow
+            | NotificationType::FederationInvite => "federation",
+            NotificationType::SystemInfo => "system",
+        }
+    }
 }
 
 impl NotificationPriority {
@@ -241,13 +260,18 @@ impl NotificationManager {
         let Some(user_id) = notification.user_id else {
             return false;
         };
-        let Some(event_key) = notification.event_key() else {
-            // 历史/第三方生产者没有 event key 时保持兼容和可见。
-            return true;
-        };
-        self.notification_preferences(user_id)
-            .await
-            .allows(event_key)
+        let preferences = self.notification_preferences(user_id).await;
+        if let Some(event_key) = notification.event_key() {
+            preferences.allows(event_key)
+        } else {
+            // 旧数据/第三方生产者缺少精细事件键时，仍必须服从总开关和来源开关。
+            preferences.enabled
+                && preferences
+                    .sources
+                    .get(notification.notification_type.source_key())
+                    .copied()
+                    .unwrap_or(true)
+        }
     }
 
     /// 创建带持久化的管理器，并从 DB 恢复最近历史
@@ -1055,6 +1079,7 @@ mod tests {
     #[tokio::test]
     async fn disabled_event_is_not_persisted_or_streamed() {
         let manager = test_manager();
+        let mut stream = manager.subscribe();
         let user_id = 9001;
         let mut preferences = NotificationPreferences::default();
         preferences
@@ -1073,6 +1098,33 @@ mod tests {
                 )
                 .with_metadata(serde_json::json!({"event_key": "brew.new_items"})),
             )
+            .await;
+
+        assert!(manager.get_history_for_user(user_id, 10).await.is_empty());
+        assert!(matches!(
+            stream.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn master_switch_also_blocks_legacy_notifications_without_event_key() {
+        let manager = test_manager();
+        let user_id = 9004;
+        let preferences = NotificationPreferences {
+            enabled: false,
+            ..NotificationPreferences::default()
+        };
+        notification_preferences::set_cached_for_test(user_id, preferences).await;
+
+        manager
+            .notify(Notification::new(
+                user_id,
+                NotificationType::SystemInfo,
+                NotificationPriority::Normal,
+                "legacy",
+                "body",
+            ))
             .await;
 
         assert!(manager.get_history_for_user(user_id, 10).await.is_empty());

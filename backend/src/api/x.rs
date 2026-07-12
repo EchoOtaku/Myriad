@@ -18,6 +18,8 @@ pub struct XUserResponse {
     pub user: serde_json::Value,
     pub tweets: Vec<serde_json::Value>,
     pub total_tweets: usize,
+    pub following: Vec<serde_json::Value>,
+    pub total_following: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -50,6 +52,11 @@ pub async fn get_x_user(
                 .and_then(|v| v.as_array())
                 .cloned()
                 .unwrap_or_default();
+            let following = bundle
+                .get("following")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
             let user = bundle.get("user").cloned().unwrap_or_default();
             let display = user
                 .get("name")
@@ -63,6 +70,8 @@ pub async fn get_x_user(
                 data: Some(XUserResponse {
                     total_tweets: tweets.len(),
                     tweets,
+                    total_following: following.len(),
+                    following,
                     user,
                 }),
                 message: format!("✓ X user @{} verified ({})", username, display),

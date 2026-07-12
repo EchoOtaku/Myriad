@@ -1,14 +1,20 @@
 import type { AppNotification } from '../../services/notificationApi'
 import type { NotificationSourceKey } from '../../services/notificationPreferencesApi'
-import {
-  LuActivity,
-  LuInfo,
-  LuMessageCircle,
-  LuRefreshCw,
-  LuServer,
-  LuSparkles,
-  MyriadStoreIcon,
-} from '@lib/icons'
+
+const NOTIFICATION_SOURCE_ICON_ASSETS = {
+  agent: '/icons/notifications/arael.png',
+  heartbeat: '/icons/notifications/heartbeat.png',
+  mcp: '/icons/notifications/mcp.png',
+  brew: '/icons/notifications/brew.png',
+  tapp: '/icons/notifications/tapp.png',
+  updater: '/icons/notifications/updater.png',
+  federation: '/icons/notifications/aro.png',
+  system: '/icons/notifications/system.png',
+} satisfies Record<NotificationSourceKey, string>
+
+export function notificationSourceIconAsset(source: NotificationSourceKey) {
+  return NOTIFICATION_SOURCE_ICON_ASSETS[source]
+}
 
 export function notificationSourceFor(
   notification: AppNotification,
@@ -41,38 +47,21 @@ export function notificationSourceFor(
   return 'system'
 }
 
-function BrewIcon({ className }: { className?: string }) {
+function RasterNotificationIcon({
+  src,
+  className,
+}: {
+  src: string
+  className?: string
+}) {
   return (
-    <svg
+    <img
+      src={src}
+      alt=""
+      aria-hidden="true"
       className={className}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-        d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3"
-      />
-    </svg>
-  )
-}
-
-function AroIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M22 2 11 13" />
-      <path d="m22 2-7 20-4-9-9-4 20-7Z" />
-    </svg>
+      draggable={false}
+    />
   )
 }
 
@@ -83,24 +72,10 @@ export function NotificationSourceIcon({
   source: NotificationSourceKey
   className?: string
 }) {
-  switch (source) {
-    case 'agent':
-      return <LuSparkles className={className} />
-    case 'heartbeat':
-      return <LuActivity className={className} />
-    case 'mcp':
-      return <LuServer className={className} />
-    case 'brew':
-      return <BrewIcon className={className} />
-    case 'tapp':
-      return <MyriadStoreIcon className={className} />
-    case 'updater':
-      return <LuRefreshCw className={className} />
-    case 'federation':
-      return <AroIcon className={className} />
-    case 'system':
-      return <LuInfo className={className} />
-    default:
-      return <LuMessageCircle className={className} />
-  }
+  return (
+    <RasterNotificationIcon
+      src={notificationSourceIconAsset(source)}
+      className={className}
+    />
+  )
 }
