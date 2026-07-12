@@ -15,6 +15,7 @@ export {
 export type { LibrarySourcePreferences } from './ModuleConfigSection'
 export { default as MusicConfigSection } from './MusicConfigSection'
 export { default as NetworkConfigSection } from './NetworkConfigSection'
+export { default as NotificationConfigSection } from './NotificationConfigSection'
 export { default as OAuthConfigSection } from './OAuthConfigSection'
 export { default as PermissionsConfigSection } from './PermissionsConfigSection'
 export { default as PlatformConfigSection } from './PlatformConfigSection'

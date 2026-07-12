@@ -1,0 +1,29 @@
+.notification-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.notification-source-group {
+  min-width: 0;
+  margin: 0;
+}
+
+.notification-settings-error {
+  padding: 10px 12px;
+  border: 1px solid rgb(239 68 68 / 20%);
+  border-radius: 10px;
+  background: rgb(239 68 68 / 8%);
+  color: rgb(220 38 38);
+  font-size: 12px;
+}
+
+.dark .notification-settings-error {
+  color: rgb(252 165 165);
+}
+
+@media (max-width: 760px) {
+  .notification-source-grid {
+    grid-template-columns: 1fr;
+  }
+}

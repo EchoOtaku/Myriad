@@ -16,6 +16,7 @@ pub mod discord; // ✅ Discord 数据平台 API
 pub mod game_presence; // ✅ 游戏平台公开状态（Enka / Xbox / PSN，无用户 Cookie）
 pub mod mal; // ✅ MyAnimeList 数据平台 API
 pub mod metrics; // ✅ 系统监控指标 API (P2优化)
+pub mod notification_preferences;
 pub mod oauth; // 🔐 通用 OAuth handler (PR #2 — 取代 auth.rs 里的硬编码 GitHub 流)
 pub mod platforms;
 pub mod profile;

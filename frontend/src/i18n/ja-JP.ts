@@ -324,7 +324,8 @@ export const jaJP: TranslationKeys = {
     updaterChannelGroupDesc:
       'このサーバーがどの系統の更新を受け取るかを決めます。選択すると即座に保存されます。',
     updaterChannelStable: '安定版',
-    updaterChannelStableDesc: '十分にテストされた正式リリース。全員におすすめ。',
+    updaterChannelStableDesc:
+      '十分にテストされた正式リリース。全員におすすめ。',
     updaterChannelPreview: 'プレビュー版',
     updaterChannelPreviewDesc:
       '次のリリースをいち早く試せます。小さな不具合の可能性あり。',
@@ -633,8 +634,7 @@ export const jaJP: TranslationKeys = {
     platformDescX: 'X のプロフィールと投稿を同期。共有は Web Intent',
     platformDescDiscord:
       'Discord のプロフィール、サーバー参加状況、連携アカウントを同期',
-    platformDescMal:
-      'MyAnimeList のアニメ/マンガリスト、評価、視聴状態を同期',
+    platformDescMal: 'MyAnimeList のアニメ/マンガリスト、評価、視聴状態を同期',
     discordConnect: 'Discord で認可',
     discordReconnect: 'Discord を再認可',
     discordConnectHint:
@@ -817,7 +817,8 @@ export const jaJP: TranslationKeys = {
     moduleSettingsDesc: '各機能モジュールの表示と動作を管理',
     libraryModuleTitle: 'ライブラリ',
     libraryModuleDesc: 'カテゴリごとに表示するプラットフォームソースを選択',
-    librarySourceVisibleCount: '現在 {shown} 件を表示中（フィルター前 {total} 件）',
+    librarySourceVisibleCount:
+      '現在 {shown} 件を表示中（フィルター前 {total} 件）',
     librarySourceNoData:
       'ライブラリソースデータがありません。先にプラットフォームデータを取得してください',
     librarySourceSaved: 'ライブラリソース設定を保存しました',
@@ -833,7 +834,8 @@ export const jaJP: TranslationKeys = {
     moduleVisibilityLoadFailed: 'ページ表示範囲設定の読み込みに失敗しました',
     // 一言（ひとこと）設定
     hitokotoTitle: '一言',
-    hitokotoDesc: '一言のソースを選択、または API と他言語のソースをカスタマイズ',
+    hitokotoDesc:
+      '一言のソースを選択、または API と他言語のソースをカスタマイズ',
     hitokotoSourceLabel: '一言ソース',
     hitokotoSourceHitokotoCn: '中国語 · 一言',
     hitokotoSourceHitokotoAnime: '中国語 · アニメ台詞',
@@ -896,8 +898,10 @@ export const jaJP: TranslationKeys = {
     reportNetease: 'NetEase Musicレポート',
     reportBangumi: 'Bangumiレポート',
     reportMal: 'MyAnimeListレポート',
+    reportXbox: 'Xboxレポート',
+    reportPsn: 'PlayStationレポート',
     socialNetwork: 'ソーシャルネットワーク',
-    gamePresence: 'ゲームステータス',
+    gamePresence: 'miHoYoゲームカード',
     library: 'ライブラリ',
     dataReport: 'データレポート',
     multiPlatformAggregation: 'マルチプラットフォームコンテンツ集約',
@@ -1533,6 +1537,11 @@ export const jaJP: TranslationKeys = {
     steamStatusUnknown: '状態不明',
     steamRecent2w: '直近2週',
     steamGamingScore: 'ハードコア指数',
+    gamesCount: 'ゲーム数',
+    completionRate: '達成率',
+    completedGames: 'コンプ済み',
+    trophyLevel: 'トロフィーレベル',
+    platinumCount: 'プラチナ',
   },
 
   // ソーシャルネットワークウィジェット拡張
@@ -1551,38 +1560,23 @@ export const jaJP: TranslationKeys = {
     longPressToEdit: 'ウィジェットを長押しして設定',
   },
 
-  // ゲーム公開ステータスウィジェット
+  // miHoYoゲームカードウィジェット
   gamePresenceWidget: {
-    settingsTitle: 'ゲームステータス設定',
-    selectPlatform: 'プラットフォーム',
+    settingsTitle: 'miHoYoゲームカード設定',
     selectGame: 'ゲーム',
-    hoyolab: 'Hoyoverse ショーケース',
-    xbox: 'Xbox',
-    psn: 'PlayStation',
     genshin: '原神',
     hsr: 'スターレイル',
     zzz: 'ゼンゼロ',
     uidLabel: 'ゲーム UID',
-    gamertagLabel: 'Gamertag',
-    onlineIdLabel: 'Online ID',
     publicOnlyHint:
-      '公開データのみ・Cookie 不要。Xbox / PSN の詳細はサーバーに OPENXBL_API_KEY / PSN_NPSSO が必要です。',
+      'データは Enka.Network の公開ショーケースから取得。ゲーム UID のみでOK、Cookie やサーバーキーは不要です。',
     save: '保存',
     close: '閉じる',
     longPressHint: '長押しで設定',
-    longPressToSetup: '長押しで公開 ID を設定',
+    longPressToSetup: '長押しで UID を設定',
     notConfigured: '未設定',
     fetchFailed: '取得に失敗',
-    playing: 'プレイ中',
-    online: 'オンライン',
-    offline: 'オフライン',
-    nowPlaying: 'プレイ中',
-    statusUnknown: 'ステータス不明',
-    noGameActivity: '公開中のゲーム活動はありません',
-    showcase: 'ショーケース',
     showcaseEmpty: 'ショーケースが非公開または空です',
-    accountId: 'アカウント ID',
-    degraded: '一部データ不可（サーバーキー未設定）',
   },
 
   // Tapp 関連
@@ -2630,5 +2624,7 @@ export const jaJP: TranslationKeys = {
     sourceHeartbeat: '定期タスク',
     sourceMcp: 'MCPサーバー',
     sourceSystem: 'システム',
+    sourceAro: 'Aro',
+    settingsDesc: '通知する送信元とイベント、および表示方法を管理します',
   },
 }

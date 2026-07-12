@@ -795,6 +795,8 @@ export interface TranslationKeys {
     reportNetease: string
     reportBangumi: string
     reportMal: string
+    reportXbox: string
+    reportPsn: string
     socialNetwork: string
     gamePresence: string
     library: string
@@ -1414,6 +1416,11 @@ export interface TranslationKeys {
     steamStatusUnknown: string
     steamRecent2w: string
     steamGamingScore: string
+    gamesCount: string
+    completionRate: string
+    completedGames: string
+    trophyLevel: string
+    platinumCount: string
   }
 
   // 社交网络小组件扩展
@@ -1432,17 +1439,11 @@ export interface TranslationKeys {
   // 游戏公开状态小组件
   gamePresenceWidget: {
     settingsTitle: string
-    selectPlatform: string
     selectGame: string
-    hoyolab: string
-    xbox: string
-    psn: string
     genshin: string
     hsr: string
     zzz: string
     uidLabel: string
-    gamertagLabel: string
-    onlineIdLabel: string
     publicOnlyHint: string
     save: string
     close: string
@@ -1450,16 +1451,7 @@ export interface TranslationKeys {
     longPressToSetup: string
     notConfigured: string
     fetchFailed: string
-    playing: string
-    online: string
-    offline: string
-    nowPlaying: string
-    statusUnknown: string
-    noGameActivity: string
-    showcase: string
     showcaseEmpty: string
-    accountId: string
-    degraded: string
   }
 
   // Tapp 相关
@@ -2495,6 +2487,8 @@ export interface TranslationKeys {
     sourceHeartbeat: string
     sourceMcp: string
     sourceSystem: string
+    sourceAro: string
+    settingsDesc: string
   }
 }
 

@@ -1958,6 +1958,7 @@ fn extract_route_context(path: &str, params: &HashMap<String, Value>) -> Value {
             let platform_lower = platform.to_lowercase();
             if [
                 "bilibili", "bangumi", "steam", "github", "netease", "mal", "x", "discord",
+                "xbox", "psn", "playstation",
             ]
             .contains(&platform_lower.as_str())
             {

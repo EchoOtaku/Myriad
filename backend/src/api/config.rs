@@ -198,6 +198,35 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
         db_config.as_ref().and_then(|c| c.mal_enabled),
         has_mal_username && has_mal_client_id,
     );
+    let has_openxbl_key = db_config
+        .as_ref()
+        .and_then(|c| c.openxbl_api_key.as_ref())
+        .is_some()
+        || std::env::var("OPENXBL_API_KEY").is_ok()
+        || std::env::var("XBL_API_KEY").is_ok();
+    let has_xbox_gamertag = db_config
+        .as_ref()
+        .and_then(|c| c.xbox_gamertag.as_ref())
+        .is_some()
+        || std::env::var("XBOX_GAMERTAG").is_ok();
+    let xbox_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.xbox_enabled),
+        has_openxbl_key && has_xbox_gamertag,
+    );
+    let has_psn_npsso = db_config
+        .as_ref()
+        .and_then(|c| c.psn_npsso.as_ref())
+        .is_some()
+        || std::env::var("PSN_NPSSO").is_ok();
+    let has_psn_online_id = db_config
+        .as_ref()
+        .and_then(|c| c.psn_online_id.as_ref())
+        .is_some()
+        || std::env::var("PSN_ONLINE_ID").is_ok();
+    let psn_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.psn_enabled),
+        has_psn_npsso && has_psn_online_id,
+    );
 
     let config = ConfigResponse {
         platforms: vec![
@@ -475,6 +504,71 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
                             "MAL_CLIENT_ID",
                         )),
                         placeholder: "From myanimelist.net/apiconfig".to_string(),
+                        required: true,
+                    },
+                ],
+            },
+            PlatformConfig {
+                name: "Xbox".to_string(),
+                enabled: xbox_enabled,
+                has_token: has_openxbl_key,
+                icon: "".to_string(),
+                description:
+                    "Sync your Xbox achievements, Gamerscore, and recently played titles"
+                        .to_string(),
+                config_fields: vec![
+                    ConfigField {
+                        key: "gamertag".to_string(),
+                        label: "Gamertag".to_string(),
+                        field_type: "text".to_string(),
+                        value: get_value(
+                            db_config.as_ref().and_then(|c| c.xbox_gamertag.clone()),
+                            "XBOX_GAMERTAG",
+                        ),
+                        placeholder: "Major Nelson 或 名字#1234".to_string(),
+                        required: true,
+                    },
+                    ConfigField {
+                        key: "openxbl_api_key".to_string(),
+                        label: "OpenXBL API Key".to_string(),
+                        field_type: "password".to_string(),
+                        value: mask_sensitive(get_value(
+                            db_config.as_ref().and_then(|c| c.openxbl_api_key.clone()),
+                            "OPENXBL_API_KEY",
+                        )),
+                        placeholder: "From xbl.io profile".to_string(),
+                        required: true,
+                    },
+                ],
+            },
+            PlatformConfig {
+                name: "PlayStation".to_string(),
+                enabled: psn_enabled,
+                has_token: has_psn_npsso,
+                icon: "".to_string(),
+                description: "Sync your PSN trophies, trophy level, and recently played titles"
+                    .to_string(),
+                config_fields: vec![
+                    ConfigField {
+                        key: "online_id".to_string(),
+                        label: "Online ID".to_string(),
+                        field_type: "text".to_string(),
+                        value: get_value(
+                            db_config.as_ref().and_then(|c| c.psn_online_id.clone()),
+                            "PSN_ONLINE_ID",
+                        ),
+                        placeholder: "Your PSN Online ID".to_string(),
+                        required: true,
+                    },
+                    ConfigField {
+                        key: "npsso".to_string(),
+                        label: "NPSSO Token".to_string(),
+                        field_type: "password".to_string(),
+                        value: mask_sensitive(get_value(
+                            db_config.as_ref().and_then(|c| c.psn_npsso.clone()),
+                            "PSN_NPSSO",
+                        )),
+                        placeholder: "64-char token from ca.account.sony.com".to_string(),
                         required: true,
                     },
                 ],
@@ -1488,6 +1582,32 @@ async fn save_to_database(
                     }
                 }
             }
+            "Xbox" => {
+                updates.insert("xbox_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "gamertag" => "xbox_gamertag",
+                        "openxbl_api_key" => "openxbl_api_key",
+                        _ => continue,
+                    };
+                    if !field.value.is_empty() && !is_masked(&field.value) {
+                        updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
+                    }
+                }
+            }
+            "PlayStation" => {
+                updates.insert("psn_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "online_id" => "psn_online_id",
+                        "npsso" => "psn_npsso",
+                        _ => continue,
+                    };
+                    if !field.value.is_empty() && !is_masked(&field.value) {
+                        updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -1744,6 +1864,38 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
                     let key = match field.key.as_str() {
                         "username" => "MAL_USERNAME",
                         "client_id" => "MAL_CLIENT_ID",
+                        _ => continue,
+                    };
+                    if field.value.is_empty()
+                        || field.value.starts_with('•')
+                        || field.value.starts_with('*')
+                    {
+                        continue;
+                    }
+                    env_content = update_env_var(&env_content, key, &field.value);
+                }
+            }
+            "Xbox" => {
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "gamertag" => "XBOX_GAMERTAG",
+                        "openxbl_api_key" => "OPENXBL_API_KEY",
+                        _ => continue,
+                    };
+                    if field.value.is_empty()
+                        || field.value.starts_with('•')
+                        || field.value.starts_with('*')
+                    {
+                        continue;
+                    }
+                    env_content = update_env_var(&env_content, key, &field.value);
+                }
+            }
+            "PlayStation" => {
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "online_id" => "PSN_ONLINE_ID",
+                        "npsso" => "PSN_NPSSO",
                         _ => continue,
                     };
                     if field.value.is_empty()
@@ -2284,6 +2436,168 @@ pub async fn test_platform(
                 ),
             }
         }
+        "Xbox" => {
+            let form_gamertag = config["gamertag"].as_str().unwrap_or("").trim();
+            let form_key = config["openxbl_api_key"]
+                .as_str()
+                .filter(|s| !s.is_empty() && !s.contains('•') && !s.contains('*'))
+                .map(|s| s.to_string());
+
+            let cfg = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+            let gamertag = if !form_gamertag.is_empty() {
+                form_gamertag.to_string()
+            } else {
+                cfg.xbox_gamertag
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .or_else(|| std::env::var("XBOX_GAMERTAG").ok())
+                    .unwrap_or_default()
+            };
+            let api_key = form_key.unwrap_or_else(|| {
+                cfg.openxbl_api_key
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .or_else(|| std::env::var("OPENXBL_API_KEY").ok())
+                    .or_else(|| std::env::var("XBL_API_KEY").ok())
+                    .unwrap_or_default()
+            });
+            drop(cfg);
+
+            if gamertag.trim().is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"success": false, "message": "Gamertag is required"})),
+                );
+            }
+            if api_key.trim().is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": "OpenXBL API Key is required (or re-enter it if the form shows a masked value)"
+                    })),
+                );
+            }
+
+            let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
+            match fetcher
+                .fetch_xbox_profile_bundle(&gamertag, &api_key)
+                .await
+            {
+                Ok(bundle) => {
+                    let titles = bundle
+                        .pointer("/achievements/titles")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    let display = bundle
+                        .get("gamertag")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(&gamertag);
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!(
+                                "✓ Xbox player '{}' verified. {} titles with achievement data",
+                                display, titles
+                            )
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": format!("✗ Failed to verify Xbox player: {}", e)
+                    })),
+                ),
+            }
+        }
+        "PlayStation" => {
+            let form_online_id = config["online_id"].as_str().unwrap_or("").trim();
+            let form_npsso = config["npsso"]
+                .as_str()
+                .filter(|s| !s.is_empty() && !s.contains('•') && !s.contains('*'))
+                .map(|s| s.to_string());
+
+            let cfg = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+            let online_id = if !form_online_id.is_empty() {
+                form_online_id.to_string()
+            } else {
+                cfg.psn_online_id
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .or_else(|| std::env::var("PSN_ONLINE_ID").ok())
+                    .unwrap_or_default()
+            };
+            let npsso = form_npsso.unwrap_or_else(|| {
+                cfg.psn_npsso
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .or_else(|| std::env::var("PSN_NPSSO").ok())
+                    .unwrap_or_default()
+            });
+            drop(cfg);
+
+            if online_id.trim().is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"success": false, "message": "Online ID is required"})),
+                );
+            }
+            if npsso.trim().is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": "NPSSO Token is required (or re-enter it if the form shows a masked value)"
+                    })),
+                );
+            }
+
+            let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
+            match fetcher
+                .fetch_psn_profile_bundle(&online_id, &npsso)
+                .await
+            {
+                Ok(bundle) => {
+                    let titles = bundle
+                        .get("trophy_titles")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    let level = bundle
+                        .pointer("/trophy_summary/trophyLevel")
+                        .and_then(|v| {
+                            v.as_i64()
+                                .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+                        })
+                        .unwrap_or(0);
+                    let display = bundle
+                        .get("online_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(&online_id);
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!(
+                                "✓ PSN player '{}' verified (Lv.{}). {} trophy titles",
+                                display, level, titles
+                            )
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": format!("✗ Failed to verify PSN player: {}", e)
+                    })),
+                ),
+            }
+        }
         _ => (
             StatusCode::OK,
             Json(json!({"success": false, "message": "Platform test not implemented yet"})),
@@ -2431,6 +2745,33 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
                 .is_some()
                 || std::env::var("MAL_CLIENT_ID").is_ok()),
     );
+    let xbox_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.xbox_enabled),
+        (db_config
+            .as_ref()
+            .and_then(|c| c.xbox_gamertag.as_ref())
+            .is_some()
+            || std::env::var("XBOX_GAMERTAG").is_ok())
+            && (db_config
+                .as_ref()
+                .and_then(|c| c.openxbl_api_key.as_ref())
+                .is_some()
+                || std::env::var("OPENXBL_API_KEY").is_ok()
+                || std::env::var("XBL_API_KEY").is_ok()),
+    );
+    let psn_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.psn_enabled),
+        (db_config
+            .as_ref()
+            .and_then(|c| c.psn_online_id.as_ref())
+            .is_some()
+            || std::env::var("PSN_ONLINE_ID").is_ok())
+            && (db_config
+                .as_ref()
+                .and_then(|c| c.psn_npsso.as_ref())
+                .is_some()
+                || std::env::var("PSN_NPSSO").is_ok()),
+    );
 
     // 只返回公开可见的平台配置字段（不包含 API 密钥等敏感信息）
     let public_platforms = vec![
@@ -2574,6 +2915,42 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
                 value: get_value(
                     db_config.as_ref().and_then(|c| c.mal_username.clone()),
                     "MAL_USERNAME",
+                ),
+                placeholder: "".to_string(),
+                required: false,
+            }],
+        },
+        PlatformConfig {
+            name: "Xbox".to_string(),
+            enabled: xbox_enabled,
+            has_token: false,
+            icon: "".to_string(),
+            description: "".to_string(),
+            config_fields: vec![ConfigField {
+                key: "gamertag".to_string(),
+                label: "".to_string(),
+                field_type: "text".to_string(),
+                value: get_value(
+                    db_config.as_ref().and_then(|c| c.xbox_gamertag.clone()),
+                    "XBOX_GAMERTAG",
+                ),
+                placeholder: "".to_string(),
+                required: false,
+            }],
+        },
+        PlatformConfig {
+            name: "PlayStation".to_string(),
+            enabled: psn_enabled,
+            has_token: false,
+            icon: "".to_string(),
+            description: "".to_string(),
+            config_fields: vec![ConfigField {
+                key: "online_id".to_string(),
+                label: "".to_string(),
+                field_type: "text".to_string(),
+                value: get_value(
+                    db_config.as_ref().and_then(|c| c.psn_online_id.clone()),
+                    "PSN_ONLINE_ID",
                 ),
                 placeholder: "".to_string(),
                 required: false,

@@ -16,6 +16,8 @@ fn get_platform_description(name: &str) -> &'static str {
         "x" => "Sync your X profile and posts; share via Web Intent",
         "discord" => "Sync your Discord profile, server footprint, and linked accounts",
         "mal" => "Sync your MyAnimeList anime/manga lists, scores, and watching status",
+        "xbox" => "Sync your Xbox achievements, Gamerscore, and recently played titles",
+        "psn" => "Sync your PSN trophies, trophy level, and recently played titles",
         _ => "Connect and sync your data",
     }
 }

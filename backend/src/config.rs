@@ -228,6 +228,18 @@ pub struct DynamicConfig {
     pub mal_username: Option<String>,
     /// MAL API Client ID（myanimelist.net/apiconfig 申请，公开列表用 X-MAL-CLIENT-ID）
     pub mal_client_id: Option<String>,
+    /// Xbox 数据平台（成就向报告，Xbox Live 不提供游玩时长）
+    pub xbox_enabled: Option<bool>,
+    /// Xbox Gamertag（现代格式可含 #suffix，如 "染川瞳#6234"）
+    pub xbox_gamertag: Option<String>,
+    /// OpenXBL API Key（xbl.io 申请，服务端凭据）
+    pub openxbl_api_key: Option<String>,
+    /// PlayStation 数据平台（奖杯向报告）
+    pub psn_enabled: Option<bool>,
+    /// PSN Online ID
+    pub psn_online_id: Option<String>,
+    /// PSN NPSSO cookie（ca.account.sony.com 获取，服务端凭据）
+    pub psn_npsso: Option<String>,
 
     // Tapp 外部 API 密钥（用于 Tapp API 声明系统）
     pub openweather_api_key: Option<String>,
@@ -449,6 +461,12 @@ impl Default for DynamicConfig {
             mal_enabled: None,
             mal_username: None,
             mal_client_id: None,
+            xbox_enabled: None,
+            xbox_gamertag: None,
+            openxbl_api_key: None,
+            psn_enabled: None,
+            psn_online_id: None,
+            psn_npsso: None,
 
             // Tapp 外部 API 密钥
             openweather_api_key: None,

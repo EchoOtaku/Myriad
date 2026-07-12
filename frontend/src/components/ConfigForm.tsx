@@ -4,6 +4,7 @@ import type { LibrarySourcePreferences } from './config'
 import type { ToastType } from './Toast'
 
 import {
+  FaBell,
   FaExclamationTriangle,
   FaInfoCircle,
   FaSearch,
@@ -64,6 +65,7 @@ import {
   MusicConfigSection,
   NetworkConfigSection,
   normalizeLibraryPreferences,
+  NotificationConfigSection,
   OAuthConfigSection,
   PermissionsConfigSection,
   UiConfigSection,
@@ -138,9 +140,7 @@ interface SaveLibrarySourcePreferencesResponse {
 }
 
 function isMaskedValue(value: string) {
-  return (
-  value.includes('••') || value.includes('**') || value === '********'
-  )
+  return value.includes('••') || value.includes('**') || value === '********'
 }
 
 function hasFieldValue(field?: ConfigField) {
@@ -274,15 +274,16 @@ const ModernConfigForm: React.FC = () => {
     useState<LibrarySourcePreferences>(DEFAULT_LIBRARY_SOURCE_PREFERENCES)
   const [librarySourceSaveRevision, setLibrarySourceSaveRevision] = useState(0)
   const [moduleVisibilityDraft, setModuleVisibilityDraft] =
-    useState<ModuleVisibilityPreferences>(
-      DEFAULT_MODULE_VISIBILITY_PREFERENCES,
-    )
-  const [savedModuleVisibilityPreferences, setSavedModuleVisibilityPreferences] =
-    useState<ModuleVisibilityPreferences>(
-      DEFAULT_MODULE_VISIBILITY_PREFERENCES,
-    )
-  const [hitokotoDraft, setHitokotoDraft] =
-    useState<HitokotoConfig>(DEFAULT_HITOKOTO_CONFIG)
+    useState<ModuleVisibilityPreferences>(DEFAULT_MODULE_VISIBILITY_PREFERENCES)
+  const [
+    savedModuleVisibilityPreferences,
+    setSavedModuleVisibilityPreferences,
+  ] = useState<ModuleVisibilityPreferences>(
+    DEFAULT_MODULE_VISIBILITY_PREFERENCES,
+  )
+  const [hitokotoDraft, setHitokotoDraft] = useState<HitokotoConfig>(
+    DEFAULT_HITOKOTO_CONFIG,
+  )
   const [savedHitokotoConfig, setSavedHitokotoConfig] =
     useState<HitokotoConfig>(DEFAULT_HITOKOTO_CONFIG)
 
@@ -537,6 +538,12 @@ const ModernConfigForm: React.FC = () => {
         section: 'permissions',
       },
       {
+        id: 'notifications',
+        label: t.notificationCenter.title,
+        icon: <FaBell size={15} style={{ color: '#f97316' }} />,
+        section: 'notifications',
+      },
+      {
         id: 'modules',
         label: t.config.moduleSettings,
         icon: <LuPackage size={15} style={{ color: '#14b8a6' }} />,
@@ -679,6 +686,26 @@ const ModernConfigForm: React.FC = () => {
         '镜像',
         'mirror',
         'socks',
+      ],
+    })
+
+    // 高级配置
+    items.push({
+      type: 'section',
+      section: 'notifications',
+      title: t.notificationCenter.title,
+      description: t.notificationCenter.settingsDesc,
+      keywords: [
+        'notification',
+        '通知',
+        '提醒',
+        'toast',
+        'browser',
+        'arael',
+        'brew',
+        'tapp',
+        'mcp',
+        'aro',
       ],
     })
 
@@ -973,7 +1000,9 @@ const ModernConfigForm: React.FC = () => {
 
       if (hasHitokotoChanges) {
         await saveHitokotoDraft()
-        resultMessage = hasConfigChanges ? resultMessage : t.config.hitokotoSaved
+        resultMessage = hasConfigChanges
+          ? resultMessage
+          : t.config.hitokotoSaved
       }
 
       notifyDirtyState(false)
@@ -1421,7 +1450,7 @@ const ModernConfigForm: React.FC = () => {
             </div>
 
             <div className="platforms-grid">
-              {config.platforms.map((platform, index) => (
+              {config.platforms.map((platform, index) =>
                 (() => {
                   const platformConfigured = isPlatformConfigured(platform)
                   const toggleTitle = !platformConfigured
@@ -1456,7 +1485,8 @@ const ModernConfigForm: React.FC = () => {
                       }}
                       onDrop={(e) => {
                         e.preventDefault()
-                        if (dragIndex !== null) reorderPlatform(dragIndex, index)
+                        if (dragIndex !== null)
+                          reorderPlatform(dragIndex, index)
                         setDragIndex(null)
                         setDragOverIndex(null)
                         setDragArmedIndex(null)
@@ -1524,8 +1554,8 @@ const ModernConfigForm: React.FC = () => {
                       </div>
                     </div>
                   )
-                })()
-              ))}
+                })(),
+              )}
             </div>
           </div>
         )
@@ -1600,6 +1630,8 @@ const ModernConfigForm: React.FC = () => {
             {...props}
           />
         )
+      case 'notifications':
+        return <NotificationConfigSection {...props} />
       case 'advanced':
         return (
           <AdvancedConfigSection

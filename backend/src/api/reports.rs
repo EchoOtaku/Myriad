@@ -572,6 +572,118 @@ async fn generate_platform_reports_internal(
                 }
             }
 
+            // 12. Xbox / PSN：用真实成就/奖杯统计覆盖不稳定的 AI 数字
+            if platform == "xbox" {
+                if !card_visuals.is_object() {
+                    card_visuals = json!({});
+                }
+                if let crate::services::smart_filter::ContentAnalysis::Xbox(analysis) =
+                    &metadata.content_analysis
+                {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("gamerscore".to_string(), json!(analysis.gamerscore));
+                        obj.insert("games_count".to_string(), json!(analysis.games_count));
+                        obj.insert(
+                            "completed_games".to_string(),
+                            json!(analysis.completed_games),
+                        );
+                        obj.insert(
+                            "completion_rate".to_string(),
+                            json!(analysis.average_completion.round()),
+                        );
+                        obj.insert(
+                            "total_achievements".to_string(),
+                            json!(analysis.total_achievements_earned),
+                        );
+                        obj.insert(
+                            "top_titles".to_string(),
+                            json!(analysis
+                                .top_completed_titles
+                                .iter()
+                                .take(6)
+                                .map(|t| json!({
+                                    "name": t.name,
+                                    "progress": t.progress.round(),
+                                    "gamerscore": t.gamerscore_earned,
+                                    "image": t.display_image,
+                                }))
+                                .collect::<Vec<_>>()),
+                        );
+                        let library_items: Vec<Value> = analysis
+                            .recent_titles
+                            .iter()
+                            .take(12)
+                            .map(|t| {
+                                json!({
+                                    "title": t.name,
+                                    "type": "game",
+                                    "cover": t.display_image,
+                                    "progress": t.progress.round(),
+                                })
+                            })
+                            .collect();
+                        obj.insert("library_items".to_string(), json!(library_items));
+                    }
+                }
+            }
+
+            if platform == "psn" {
+                if !card_visuals.is_object() {
+                    card_visuals = json!({});
+                }
+                if let crate::services::smart_filter::ContentAnalysis::Psn(analysis) =
+                    &metadata.content_analysis
+                {
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert("trophy_level".to_string(), json!(analysis.trophy_level));
+                        obj.insert(
+                            "platinum_count".to_string(),
+                            json!(analysis.platinum_count),
+                        );
+                        obj.insert("gold_count".to_string(), json!(analysis.gold_count));
+                        obj.insert("silver_count".to_string(), json!(analysis.silver_count));
+                        obj.insert("bronze_count".to_string(), json!(analysis.bronze_count));
+                        obj.insert("games_count".to_string(), json!(analysis.games_count));
+                        obj.insert(
+                            "completed_games".to_string(),
+                            json!(analysis.completed_games),
+                        );
+                        obj.insert(
+                            "completion_rate".to_string(),
+                            json!(analysis.average_progress.round()),
+                        );
+                        obj.insert(
+                            "top_titles".to_string(),
+                            json!(analysis
+                                .top_completed_titles
+                                .iter()
+                                .take(6)
+                                .map(|t| json!({
+                                    "name": t.name,
+                                    "progress": t.progress,
+                                    "platinum": t.earned_platinum > 0,
+                                    "image": t.icon_url,
+                                }))
+                                .collect::<Vec<_>>()),
+                        );
+                        let library_items: Vec<Value> = analysis
+                            .recent_titles
+                            .iter()
+                            .take(12)
+                            .map(|t| {
+                                json!({
+                                    "title": t.name,
+                                    "type": "game",
+                                    "cover": t.icon_url,
+                                    "progress": t.progress,
+                                })
+                            })
+                            .collect();
+                        obj.insert("library_items".to_string(), json!(library_items));
+                    }
+                }
+            }
+
             let mut insights = ai_insights;
 
             // 如果AI没有生成洞察，使用备用逻辑
@@ -663,6 +775,24 @@ async fn generate_platform_reports_internal(
                             insights.push(format!(
                                 "已绑定：{}",
                                 analysis.identity_graph.linked_platforms.join("、")
+                            ));
+                        }
+                    }
+                    crate::services::smart_filter::ContentAnalysis::Xbox(analysis) => {
+                        insights.push(analysis.gaming_summary.clone());
+                        if let Some(title) = analysis.recent_titles.first() {
+                            insights.push(format!(
+                                "最近在玩：{}（成就 {}/{}）",
+                                title.name, title.achievements_earned, title.achievements_total
+                            ));
+                        }
+                    }
+                    crate::services::smart_filter::ContentAnalysis::Psn(analysis) => {
+                        insights.push(analysis.trophy_summary_text.clone());
+                        if let Some(title) = analysis.recent_titles.first() {
+                            insights.push(format!(
+                                "最近奖杯动态：{}（完成度 {}%）",
+                                title.name, title.progress
                             ));
                         }
                     }
@@ -920,6 +1050,24 @@ pub async fn generate_comprehensive_report(
                     all_interests.push(format!("linked:{}", platform));
                 }
             }
+            crate::services::smart_filter::ContentAnalysis::Xbox(analysis) => {
+                all_activities.push("主机游戏".to_string());
+                if analysis.completed_games > 0 {
+                    all_activities.push("全成就攻略".to_string());
+                }
+                for title in analysis.recent_titles.iter().take(3) {
+                    all_interests.push(title.name.clone());
+                }
+            }
+            crate::services::smart_filter::ContentAnalysis::Psn(analysis) => {
+                all_activities.push("主机游戏".to_string());
+                if analysis.platinum_count > 0 {
+                    all_activities.push("白金奖杯收集".to_string());
+                }
+                for title in analysis.recent_titles.iter().take(3) {
+                    all_interests.push(title.name.clone());
+                }
+            }
         }
     }
 
@@ -1102,6 +1250,39 @@ pub async fn generate_all_reports(
             config.mal_enabled.unwrap_or(
                 config.mal_username.as_ref().is_some() && config.mal_client_id.as_ref().is_some(),
             ),
+        ),
+        (
+            "xbox",
+            {
+                let has_gamertag = config
+                    .xbox_gamertag
+                    .as_ref()
+                    .is_some_and(|s| !s.trim().is_empty())
+                    || std::env::var("XBOX_GAMERTAG").is_ok();
+                let has_key = config
+                    .openxbl_api_key
+                    .as_ref()
+                    .is_some_and(|s| !s.trim().is_empty())
+                    || std::env::var("OPENXBL_API_KEY").is_ok()
+                    || std::env::var("XBL_API_KEY").is_ok();
+                config.xbox_enabled.unwrap_or(has_gamertag && has_key)
+            },
+        ),
+        (
+            "psn",
+            {
+                let has_id = config
+                    .psn_online_id
+                    .as_ref()
+                    .is_some_and(|s| !s.trim().is_empty())
+                    || std::env::var("PSN_ONLINE_ID").is_ok();
+                let has_npsso = config
+                    .psn_npsso
+                    .as_ref()
+                    .is_some_and(|s| !s.trim().is_empty())
+                    || std::env::var("PSN_NPSSO").is_ok();
+                config.psn_enabled.unwrap_or(has_id && has_npsso)
+            },
         ),
     ]
     .into_iter()
@@ -1488,6 +1669,16 @@ async fn generate_ai_report(
             "你是一个熟悉社交媒体生态的 X (Twitter) 观察者，擅长从发帖节奏、互动数据和话题偏好读出账号人设。",
             "用简洁有锋芒的互联网口吻，分析用户的发帖风格、互动热度、话题关注点和账号影响力。",
             "card_visuals必须包含 'vibe' (字符串，账号气质标签), 'engagement_level' (字符串，如'高互动'/'沉浸观察者'/'脉冲发帖'), 'signature_topics' (字符串数组，3-6个话题), 'top_posts' (对象数组，字段至少 text 和 like_count), 'stats' (对象，含 followers/following/posts/likes_received)。"
+        ),
+        "xbox" => (
+            "你是一个资深 Xbox 成就猎人，看重 Gamerscore、全成就（绿光成就宴）和稀有成就，说话带主机玩家的梗。",
+            "用成就猎人的口吻分析用户的成就习惯：是全成就强迫症还是浅尝辄止型？最近在肝哪部作品？注意：Xbox 没有游玩时长数据，一切从成就进度和 Gamerscore 说话。",
+            "card_visuals必须包含 'gamer_type' (字符串，如'全成就猎人'/'广撒网玩家'/'剧情通关党'), 'gamerscore' (数字), 'games_count' (数字), 'completion_rate' (数字0-100，平均成就完成度), 'top_titles' (对象数组，字段 name / progress，最多6个，选完成度高或最近在玩的作品)。"
+        ),
+        "psn" => (
+            "你是一个资深 PlayStation 白金猎人，把白金奖杯视为最高勋章，熟悉奖杯难度梗（如'白金神作'、'3秒白金'）。",
+            "用白金猎人的口吻分析用户的奖杯柜：白金数量成色如何？是专注刷完一部再玩下一部，还是奖杯散落一地？最近哪部作品有奖杯动态？注意：PSN 没有游玩时长数据，一切从奖杯等级和完成度说话。",
+            "card_visuals必须包含 'hunter_type' (字符串，如'白金收藏家'/'随缘奖杯党'/'单机通关派'), 'trophy_level' (数字), 'platinum_count' (数字), 'games_count' (数字), 'completion_rate' (数字0-100，平均奖杯完成度), 'top_titles' (对象数组，字段 name / progress / platinum(布尔)，最多6个)。"
         ),
         _ => (
             "你是一个专业的数据分析师，客观理性。",
@@ -1935,6 +2126,74 @@ fn generate_mock_report(
                     "linked_platforms": analysis.identity_graph.linked_platforms,
                     "identity_graph": analysis.identity_graph,
                     "guilds_preview": analysis.guilds_preview.iter().take(8).collect::<Vec<_>>(),
+                }),
+            )
+        }
+        crate::services::smart_filter::ContentAnalysis::Xbox(analysis) => {
+            let top_title = analysis
+                .top_completed_titles
+                .first()
+                .map(|t| t.name.as_str())
+                .unwrap_or("暂无作品");
+            (
+                format!(
+                    "{} 的 Xbox 成就柜写满了绿色的勋章。",
+                    metadata.user_summary.username
+                ),
+                vec![
+                    analysis.gaming_summary.clone(),
+                    format!("完成度最高：{}", top_title),
+                ],
+                json!({
+                    "gamer_type": if analysis.completed_games >= 5 {
+                        "全成就猎人"
+                    } else if analysis.average_completion >= 50.0 {
+                        "深度攻略型"
+                    } else {
+                        "广撒网玩家"
+                    },
+                    "gamerscore": analysis.gamerscore,
+                    "games_count": analysis.games_count,
+                    "completion_rate": analysis.average_completion.round(),
+                    "top_titles": analysis.top_completed_titles.iter().take(6).map(|t| json!({
+                        "name": t.name,
+                        "progress": t.progress.round(),
+                    })).collect::<Vec<_>>(),
+                }),
+            )
+        }
+        crate::services::smart_filter::ContentAnalysis::Psn(analysis) => {
+            let top_title = analysis
+                .top_completed_titles
+                .first()
+                .map(|t| t.name.as_str())
+                .unwrap_or("暂无作品");
+            (
+                format!(
+                    "{} 的 PSN 奖杯柜闪着白金的光。",
+                    metadata.user_summary.username
+                ),
+                vec![
+                    analysis.trophy_summary_text.clone(),
+                    format!("完成度最高：{}", top_title),
+                ],
+                json!({
+                    "hunter_type": if analysis.platinum_count >= 10 {
+                        "白金收藏家"
+                    } else if analysis.platinum_count > 0 {
+                        "单机通关派"
+                    } else {
+                        "随缘奖杯党"
+                    },
+                    "trophy_level": analysis.trophy_level,
+                    "platinum_count": analysis.platinum_count,
+                    "games_count": analysis.games_count,
+                    "completion_rate": analysis.average_progress.round(),
+                    "top_titles": analysis.top_completed_titles.iter().take(6).map(|t| json!({
+                        "name": t.name,
+                        "progress": t.progress,
+                        "platinum": t.earned_platinum > 0,
+                    })).collect::<Vec<_>>(),
                 }),
             )
         }

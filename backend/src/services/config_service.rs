@@ -263,6 +263,38 @@ impl ConfigService {
             config.mal_client_id = v.as_str().map(|s| s.to_string());
         }
 
+        if let Some(v) = map.get("xbox_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.xbox_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.xbox_enabled = Some(s == "true");
+            }
+        }
+
+        if let Some(v) = map.get("xbox_gamertag") {
+            config.xbox_gamertag = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("openxbl_api_key") {
+            config.openxbl_api_key = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("psn_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.psn_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.psn_enabled = Some(s == "true");
+            }
+        }
+
+        if let Some(v) = map.get("psn_online_id") {
+            config.psn_online_id = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("psn_npsso") {
+            config.psn_npsso = v.as_str().map(|s| s.to_string());
+        }
+
         if let Some(v) = map.get("discord_user_id") {
             config.discord_user_id = v.as_str().map(|s| s.to_string()).or_else(|| {
                 v.as_i64()

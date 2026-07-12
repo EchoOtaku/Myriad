@@ -3688,6 +3688,13 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
             "/notifications/stream",
             get(notification_stream).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
+        // 当前用户通知偏好与事件目录
+        .route(
+            "/notifications/preferences",
+            get(crate::api::notification_preferences::get_notification_preferences)
+                .put(crate::api::notification_preferences::update_notification_preferences)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
         // 获取历史通知
         .route(
             "/notifications",

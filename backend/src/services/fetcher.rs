@@ -1524,6 +1524,245 @@ impl PlatformFetcher {
             "manga_list": manga_list,
         }))
     }
+
+    // ==================== Xbox (OpenXBL) ====================
+    //
+    // Xbox Live 不提供游玩时长，报告走"成就向"叙事：
+    // Gamerscore、每个游戏的成就进度、最近游玩的作品。
+
+    async fn openxbl_get(&self, url: &str, api_key: &str) -> Result<serde_json::Value> {
+        let response = self
+            .client
+            .get(url)
+            .header("X-Authorization", api_key)
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+        let status = response.status();
+        let body: serde_json::Value = response.json().await?;
+        if !status.is_success() {
+            let detail = body
+                .get("error")
+                .and_then(|v| v.as_str())
+                .or_else(|| body.get("message").and_then(|v| v.as_str()))
+                .unwrap_or("unknown error");
+            return Err(anyhow!("OpenXBL API error ({}): {}", status, detail));
+        }
+        // OpenXBL 统一包装为 { content: {...}, code: 200 }，解包后再交给上层解析
+        Ok(body
+            .get("content")
+            .cloned()
+            .unwrap_or(body))
+    }
+
+    /// Gamertag → XUID（现代 gamertag 可含 #suffix，搜索时去掉）
+    async fn resolve_xbox_xuid(&self, gamertag: &str, api_key: &str) -> Result<String> {
+        let search_term = gamertag.split('#').next().unwrap_or(gamertag).trim();
+        let url = format!(
+            "https://xbl.io/api/v2/search/{}",
+            urlencoding::encode(search_term)
+        );
+        let body = self.openxbl_get(&url, api_key).await?;
+
+        let person = body
+            .get("people")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .ok_or_else(|| anyhow!("Xbox player not found: {}", gamertag))?;
+
+        person
+            .get("xuid")
+            .and_then(|v| {
+                v.as_str()
+                    .map(|s| s.to_string())
+                    .or_else(|| v.as_u64().map(|n| n.to_string()))
+            })
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow!("Xbox search result missing xuid"))
+    }
+
+    /// 聚合抓取：档案 + 成就标题列表
+    pub async fn fetch_xbox_profile_bundle(
+        &self,
+        gamertag: &str,
+        api_key: &str,
+    ) -> Result<serde_json::Value> {
+        let gamertag = gamertag.trim();
+        let api_key = api_key.trim();
+        if gamertag.is_empty() {
+            return Err(anyhow!("Xbox gamertag is required"));
+        }
+        if api_key.is_empty() {
+            return Err(anyhow!("OpenXBL API key is required"));
+        }
+
+        let xuid = self.resolve_xbox_xuid(gamertag, api_key).await?;
+
+        let profile = self
+            .openxbl_get(&format!("https://xbl.io/api/v2/account/{xuid}"), api_key)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("Xbox account fetch failed for {}: {}", gamertag, e);
+                serde_json::json!({})
+            });
+
+        // 玩家全部游戏的成就进度（OpenXBL 单次返回全部 titles，无分页）
+        let achievements = self
+            .openxbl_get(
+                &format!("https://xbl.io/api/v2/achievements/player/{xuid}"),
+                api_key,
+            )
+            .await?;
+
+        Ok(serde_json::json!({
+            "gamertag": gamertag,
+            "xuid": xuid,
+            "profile": profile,
+            "achievements": achievements,
+        }))
+    }
+
+    // ==================== PlayStation (PSN) ====================
+    //
+    // 同样没有时长数据，报告走"奖杯向"叙事：
+    // 奖杯等级、白金数、每个游戏的奖杯完成度、最近有奖杯动态的作品。
+
+    async fn psn_get(&self, url: &str, access_token: &str) -> Result<serde_json::Value> {
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+        let status = response.status();
+        let body: serde_json::Value = response.json().await?;
+        if !status.is_success() {
+            let detail = body
+                .pointer("/error/message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown error");
+            return Err(anyhow!("PSN API error ({}): {}", status, detail));
+        }
+        Ok(body)
+    }
+
+    /// Online ID → accountId + 搜索返回的公开资料
+    async fn resolve_psn_account(
+        &self,
+        online_id: &str,
+        access_token: &str,
+    ) -> Result<(String, serde_json::Value)> {
+        let url = format!(
+            "https://m.np.playstation.com/api/search/v1/users?searchTerm={}",
+            urlencoding::encode(online_id.trim())
+        );
+        let body = self.psn_get(&url, access_token).await?;
+
+        let metadata = body
+            .get("domains")
+            .and_then(|v| v.as_array())
+            .and_then(|a| {
+                a.iter()
+                    .find(|d| d.get("domain").and_then(|x| x.as_str()) == Some("SocialAllAccounts"))
+            })
+            .and_then(|d| d.get("results"))
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .and_then(|r| r.get("socialMetadata"))
+            .cloned()
+            .ok_or_else(|| anyhow!("PSN player not found: {}", online_id))?;
+
+        let account_id = metadata
+            .get("accountId")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow!("PSN search result missing accountId"))?
+            .to_string();
+
+        Ok((account_id, metadata))
+    }
+
+    /// 聚合抓取：奖杯摘要 + 全部游戏的奖杯标题列表
+    pub async fn fetch_psn_profile_bundle(
+        &self,
+        online_id: &str,
+        npsso: &str,
+    ) -> Result<serde_json::Value> {
+        let online_id = online_id.trim();
+        if online_id.is_empty() {
+            return Err(anyhow!("PSN online ID is required"));
+        }
+        if npsso.trim().is_empty() {
+            return Err(anyhow!("PSN NPSSO is required"));
+        }
+
+        let access_token = crate::api::game_presence::get_psn_access_token(npsso)
+            .await
+            .map_err(|e| anyhow!(e))?;
+
+        let (account_id, social_metadata) =
+            self.resolve_psn_account(online_id, &access_token).await?;
+
+        let trophy_summary = self
+            .psn_get(
+                &format!(
+                    "https://m.np.playstation.com/api/trophy/v1/users/{account_id}/trophySummary"
+                ),
+                &access_token,
+            )
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("PSN trophy summary fetch failed for {}: {}", online_id, e);
+                serde_json::json!({})
+            });
+
+        // 奖杯标题分页拉取（每页上限 250，最多 800 个游戏足够画像用）
+        let mut trophy_titles: Vec<serde_json::Value> = Vec::new();
+        let mut offset = 0usize;
+        const PAGE: usize = 250;
+        const MAX_TITLES: usize = 800;
+        loop {
+            let url = format!(
+                "https://m.np.playstation.com/api/trophy/v1/users/{account_id}/trophyTitles?limit={PAGE}&offset={offset}"
+            );
+            let body = match self.psn_get(&url, &access_token).await {
+                Ok(b) => b,
+                Err(e) => {
+                    if trophy_titles.is_empty() {
+                        return Err(e);
+                    }
+                    tracing::warn!("PSN trophyTitles pagination stopped at {}: {}", offset, e);
+                    break;
+                }
+            };
+            let page = body
+                .get("trophyTitles")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let page_len = page.len();
+            trophy_titles.extend(page);
+
+            let total = body
+                .get("totalItemCount")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as usize;
+            offset += page_len;
+            if page_len == 0 || offset >= total || offset >= MAX_TITLES {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+        }
+
+        Ok(serde_json::json!({
+            "online_id": online_id,
+            "account_id": account_id,
+            "social_metadata": social_metadata,
+            "trophy_summary": trophy_summary,
+            "trophy_titles": trophy_titles,
+        }))
+    }
 }
 
 // ==================== X 分享文案工具（无网络） ====================

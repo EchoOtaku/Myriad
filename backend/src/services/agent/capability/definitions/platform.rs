@@ -16,7 +16,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         input_schema: json!({
             "type": "object",
             "properties": {
-                "platform": { "type": "string", "enum": ["bilibili", "bangumi", "steam", "github", "netease", "x", "discord", "mal"] },
+                "platform": { "type": "string", "enum": ["bilibili", "bangumi", "steam", "github", "netease", "x", "discord", "mal", "xbox", "psn"] },
                 "limit": { "type": "integer", "default": 100 },
                 "offset": { "type": "integer", "default": 0 },
                 "filters": { "type": "object" }
@@ -101,7 +101,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         input_schema: json!({
             "type": "object",
             "properties": {
-                "platform": { "type": "string", "enum": ["bilibili", "bangumi", "steam", "github", "netease", "x", "discord", "mal", "all"] }
+                "platform": { "type": "string", "enum": ["bilibili", "bangumi", "steam", "github", "netease", "x", "discord", "mal", "xbox", "psn", "all"] }
             },
             "required": ["platform"]
         }),

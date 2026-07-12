@@ -8,6 +8,7 @@ pub mod bilibili_utils; // ✅ Bilibili 工具函数（IP伪装、防封技术�
 pub mod config_service;
 pub mod content_databases; // ✅ 预置内容数据库（番剧/游戏/歌手）
 pub mod data_paths; // 📁 数据路径配置（统一管理所有数据目录）
+pub mod enka_assets; // 🎮 Enka 角色元数据（名字/图标/稀有度，米哈游游戏卡片用）
 pub mod fetcher;
 pub mod http_client; // ✅ 统一 HTTP 客户端（代理支持）
 pub mod kugou_service; // ✅ 酷狗音乐服务（逐字歌词 KRC 补充源）

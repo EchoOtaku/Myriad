@@ -833,23 +833,35 @@ pub async fn handle_channel_open(
     };
 
     // 创建本地 Channel 记录
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"INSERT INTO federation_channels
+    let inserted = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_channels
            (channel_id, user_id, remote_actor_id, channel_type, tapp_id, status, transport, initiated_by, created_at)
            VALUES ($1, $2, $3, $4, $5, 'pending', $6, 'remote', NOW())
            ON CONFLICT (channel_id) DO NOTHING"#,
-        [
-            channel_id.into(),
-            target_user_id.into(),
-            remote_actor_id.into(),
-            channel_type.into(),
-            tapp_id.into(),
-            transport.into(),
-        ],
-    ))
-    .await
-    .map_err(|e| e.to_string())?;
+            [
+                channel_id.into(),
+                target_user_id.into(),
+                remote_actor_id.into(),
+                channel_type.into(),
+                tapp_id.into(),
+                transport.into(),
+            ],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if inserted.rows_affected() > 0 {
+        let label = crate::federation::notify::actor_label(db, actor_url_str).await;
+        crate::federation::notify::notify_channel_invite(
+            target_user_id,
+            channel_id,
+            actor_url_str,
+            &label,
+        )
+        .await;
+    }
 
     tracing::info!(
         "[Channel] Received ChannelOpen {} from {}",
@@ -876,7 +888,7 @@ pub async fn handle_channel_message(
     let ch_check = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT c.status FROM federation_channels c
+            r#"SELECT c.status, c.user_id FROM federation_channels c
                JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE c.channel_id = $1 AND ra.actor_url = $2"#,
             [channel_id.into(), actor_url_str.into()],
@@ -898,6 +910,9 @@ pub async fn handle_channel_message(
     if ch_status == "closed" {
         return Err(format!("Channel {} is closed", channel_id));
     }
+    let owner_user_id: Option<i32> = ch_check
+        .as_ref()
+        .and_then(|r| r.try_get::<i32>("", "user_id").ok());
 
     let fallback_msg_id = generate_message_id();
     let message_id = object
@@ -916,23 +931,24 @@ pub async fn handle_channel_message(
     let reply_to = object.get("replyTo").and_then(|v| v.as_str());
 
     // 存入消息
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"INSERT INTO federation_channel_messages
+    let inserted = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_channel_messages
            (channel_id, message_id, sender_actor, message_type, payload, reply_to, is_encrypted, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, false, NOW())
            ON CONFLICT (message_id) DO NOTHING"#,
-        [
-            channel_id.into(),
-            message_id.into(),
-            sender.into(),
-            message_type.into(),
-            payload.clone().into(),
-            reply_to.into(),
-        ],
-    ))
-    .await
-    .map_err(|e| e.to_string())?;
+            [
+                channel_id.into(),
+                message_id.into(),
+                sender.into(),
+                message_type.into(),
+                payload.clone().into(),
+                reply_to.into(),
+            ],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
 
     // 更新通道活动时间
     db.execute(Statement::from_sql_and_values(
@@ -960,6 +976,22 @@ pub async fn handle_channel_message(
         }),
     )
     .await;
+
+    // 新消息才推通知中心（重放/去重不通知）
+    if inserted.rows_affected() > 0 {
+        if let Some(user_id) = owner_user_id {
+            let label = crate::federation::notify::actor_label(db, sender).await;
+            crate::federation::notify::notify_channel_message(
+                user_id,
+                channel_id,
+                sender,
+                &label,
+                message_type,
+                &payload,
+            )
+            .await;
+        }
+    }
 
     tracing::info!(
         "[Channel] Received message {} in channel {}",

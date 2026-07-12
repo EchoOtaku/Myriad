@@ -21,10 +21,10 @@ import { batchRead, batchWrite, observeResize } from '../hooks/animation'
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useMusicPlayer } from '../hooks/useMusicPlayer'
 import { useNotificationCenter } from '../hooks/useNotificationCenter'
+import { useNotificationPreferences } from '../hooks/useNotificationPreferences'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
-import { NOTIFICATION_TYPE_ICONS } from '../services/notificationApi'
 import {
   getGreeting,
   getRandomQuote,
@@ -36,6 +36,10 @@ import { useThemeMode } from '../utils/themeSubscriber'
 import { showToast } from '../utils/toastManager'
 import { UserSection } from './ControlPanel/UserSection'
 import NotificationPanelList from './NotificationPanelList'
+import {
+  notificationSourceFor,
+  NotificationSourceIcon,
+} from './notifications/NotificationIcons'
 import { WeatherAssetIcon } from './weather/WeatherAssetIcon'
 import './GlobalControlPanel.css'
 
@@ -125,6 +129,9 @@ const GlobalControlPanel: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { locale, setLocale, t } = useI18n()
+  const { preferences: notificationPreferences } = useNotificationPreferences(
+    user?.id,
+  )
   const [isExpanded, setIsExpanded] = useState(false)
   const [showDynamicContent, setShowDynamicContent] = useState(true)
   const [showPanelContent, setShowPanelContent] = useState(false)
@@ -211,32 +218,42 @@ const GlobalControlPanel: React.FC = () => {
   /** 新通知到达：轮播展示 + 高优先级 toast + 后台系统通知 */
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
-      const icon = NOTIFICATION_TYPE_ICONS[n.notification_type] ?? '🔔'
+      const icon = (
+        <NotificationSourceIcon
+          source={notificationSourceFor(n)}
+          className="h-4 w-4"
+        />
+      )
       const snippet = n.body.length > 60 ? `${n.body.slice(0, 60)}…` : n.body
 
       // 1. 接入智能岛轮播（置顶展示，20 秒后自动撤下）
-      safeSetDynamicContents((prev) => [
-        {
-          type: 'notification',
-          icon,
-          text: n.title,
-          subtext: snippet,
-          showSubtext: true,
-        },
-        ...prev.filter((c) => c.type !== 'notification'),
-      ])
-      setCurrentContentIndex(0)
-      if (notifCarouselTimerRef.current) {
-        clearTimeout(notifCarouselTimerRef.current)
+      if (notificationPreferences.delivery.island) {
+        safeSetDynamicContents((prev) => [
+          {
+            type: 'notification',
+            icon,
+            text: n.title,
+            subtext: snippet,
+            showSubtext: true,
+          },
+          ...prev.filter((c) => c.type !== 'notification'),
+        ])
+        setCurrentContentIndex(0)
+        if (notifCarouselTimerRef.current) {
+          clearTimeout(notifCarouselTimerRef.current)
+        }
+        notifCarouselTimerRef.current = setTimeout(() => {
+          safeSetDynamicContents((prev) =>
+            prev.filter((c) => c.type !== 'notification'),
+          )
+        }, 20000)
       }
-      notifCarouselTimerRef.current = setTimeout(() => {
-        safeSetDynamicContents((prev) =>
-          prev.filter((c) => c.type !== 'notification'),
-        )
-      }, 20000)
 
       // 2. 高优先级走全局 toast（复用 ToastContainer，点击跳转通知 tab）
-      if (n.priority === 'high' || n.priority === 'urgent') {
+      if (
+        notificationPreferences.delivery.high_priority_toast &&
+        (n.priority === 'high' || n.priority === 'urgent')
+      ) {
         const isFailure =
           n.notification_type === 'task_failed' ||
           n.notification_type === 'brew_source_error' ||
@@ -260,6 +277,7 @@ const GlobalControlPanel: React.FC = () => {
       // 3. 页面在后台时推浏览器系统通知
       if (
         document.hidden &&
+        notificationPreferences.delivery.browser &&
         typeof Notification !== 'undefined' &&
         Notification.permission === 'granted'
       ) {
@@ -274,7 +292,7 @@ const GlobalControlPanel: React.FC = () => {
         }
       }
     },
-    [safeSetDynamicContents],
+    [notificationPreferences.delivery, safeSetDynamicContents],
   )
 
   const notifCenter = useNotificationCenter({
@@ -1800,6 +1818,9 @@ const GlobalControlPanel: React.FC = () => {
                       onOpenSession={handleOpenNotifSession}
                       onNavigate={handleNavigateFromPanel}
                       onOpenAraelManage={handleOpenAraelManage}
+                      browserNotificationsEnabled={
+                        notificationPreferences.delivery.browser
+                      }
                     />
                   </div>
                 )}

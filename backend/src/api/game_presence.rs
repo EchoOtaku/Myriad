@@ -75,6 +75,8 @@ pub struct ShowcaseItem {
     pub name: String,
     pub level: Option<i64>,
     pub icon: Option<String>,
+    /// 大幅立绘（聚焦展示用）
+    pub art: Option<String>,
     pub rarity: Option<i64>,
 }
 
@@ -90,6 +92,8 @@ pub struct PresenceQuery {
     pub id: String,
     /// hoyolab 子游戏：genshin | hsr | zzz（默认 genshin）
     pub game: Option<String>,
+    /// 角色名本地化语言（zh / en / ja，默认 zh）
+    pub lang: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -113,13 +117,14 @@ fn cache_map() -> &'static Mutex<HashMap<String, CacheEntry>> {
     PRESENCE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-const CACHE_TTL: Duration = Duration::from_secs(120);
+/// 展柜/成就类数据变化以天计，6 小时一次足够新鲜
+const CACHE_TTL: Duration = Duration::from_secs(6 * 3600);
 /// 失败结果（无效 id / 上游拒绝等）缓存更短，避免一直被当活的打上游，
 /// 但也不会因为长期缓存把后来纠正过的 id 也一直判定失败。
 const ERROR_CACHE_TTL: Duration = Duration::from_secs(30);
 
-fn cache_key(platform: &str, id: &str, game: &str) -> String {
-    format!("{}:{}:{}", platform.to_ascii_lowercase(), id, game)
+fn cache_key(platform: &str, id: &str, game: &str, lang: &str) -> String {
+    format!("{}:{}:{}:{}", platform.to_ascii_lowercase(), id, game, lang)
 }
 
 fn read_cache(key: &str) -> Option<CachedResult> {
@@ -240,11 +245,13 @@ pub async fn get_game_presence(
         }));
     }
 
-    // 基础校验，防滥用
+    // 基础校验，防滥用。放开到 Unicode 字母数字 + `#`——
+    // 现代 Xbox gamertag 是"名字#四位数字"格式，且不少地区的 gamertag/在线 ID 本身就带非 ASCII 字符；
+    // 实际拼上游 URL 时 urlencoding_simple 按字节 percent-encode，本来就能正确处理这些字符。
     if account_id.len() > 64
         || !account_id
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ' ' | '@' | '.'))
+            .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | ' ' | '@' | '.' | '#'))
     {
         return Ok(Json(ApiResponse {
             success: false,
@@ -253,7 +260,13 @@ pub async fn get_game_presence(
         }));
     }
 
-    let key = cache_key(&platform, &account_id, &game);
+    let lang = match q.lang.as_deref().map(str::trim) {
+        Some(l) if l.starts_with("en") => "en",
+        Some(l) if l.starts_with("ja") => "ja",
+        _ => "zh",
+    };
+
+    let key = cache_key(&platform, &account_id, &game, lang);
     if let Some(cached) = read_cache(&key) {
         return Ok(Json(match cached {
             CachedResult::Ok(data) => ApiResponse {
@@ -270,7 +283,9 @@ pub async fn get_game_presence(
     }
 
     let result = match platform.as_str() {
-        "hoyolab" | "hoyoverse" | "miyoushe" | "enka" => fetch_enka(&account_id, &game).await,
+        "hoyolab" | "hoyoverse" | "miyoushe" | "enka" => {
+            fetch_enka(&account_id, &game, lang).await
+        }
         "xbox" => fetch_xbox(&account_id).await,
         "psn" | "playstation" => fetch_psn(&account_id).await,
         _ => Err(format!("Unsupported platform: {platform}")),
@@ -301,152 +316,189 @@ pub async fn get_game_presence(
 // Enka.Network (Hoyoverse showcase)
 // ---------------------------------------------------------------------------
 
-async fn fetch_enka(uid: &str, game: &str) -> Result<GamePresenceData, String> {
+/// 展柜条目上限（前端 3x2 网格）
+const SHOWCASE_LIMIT: usize = 6;
+
+/// 标签本地化：展柜数据面向访客展示，跟随前端语言
+fn hl(lang: &str, zh: &str, en: &str, ja: &str) -> String {
+    match lang {
+        "en" => en.to_string(),
+        "ja" => ja.to_string(),
+        _ => zh.to_string(),
+    }
+}
+
+async fn fetch_enka(uid: &str, game: &str, lang: &str) -> Result<GamePresenceData, String> {
     if !uid.chars().all(|c| c.is_ascii_digit()) || uid.len() < 5 || uid.len() > 12 {
         return Err("UID must be 5–12 digits".to_string());
     }
 
-    let (url, profile_url, game_label) = match game {
-        "hsr" | "starrail" | "star_rail" => (
-            format!("https://enka.network/api/hsr/uid/{uid}/?info"),
-            format!("https://enka.network/hsr/{uid}"),
-            "Honkai: Star Rail",
-        ),
-        "zzz" | "zenless" => (
-            format!("https://enka.network/api/zzz/uid/{uid}/?info"),
-            format!("https://enka.network/zzz/{uid}"),
-            "Zenless Zone Zero",
-        ),
-        _ => (
-            format!("https://enka.network/api/uid/{uid}/?info"),
-            format!("https://enka.network/u/{uid}"),
-            "Genshin Impact",
-        ),
-    };
-
-    let body = http_get_json(&url, "Myriad/1.0 (game-presence; +https://github.com)").await?;
-    parse_enka_response(uid, game, game_label, &profile_url, &body)
+    // 注意：路径不能带尾斜杠。Enka 会把 `/api/uid/{uid}/?info` 308 重定向到
+    // `/api/uid/{uid}?info`，而我们的 HTTP 客户端为防 SSRF 禁用了重定向，
+    // 带斜杠的写法会直接拿到空 body 的 308 报错。
+    // 原神用 `?info` 精简变体（保留 showAvatarInfoList 摘要）；
+    // 星铁 / 绝区零的 info 变体不保证带展柜列表，用完整响应。
+    let ua = "Myriad/1.0 (game-presence; +https://github.com)";
+    match game {
+        "hsr" | "starrail" | "star_rail" => {
+            let body =
+                http_get_json(&format!("https://enka.network/api/hsr/uid/{uid}"), ua).await?;
+            parse_enka_hsr(uid, lang, &body).await
+        }
+        "zzz" | "zenless" => {
+            let body =
+                http_get_json(&format!("https://enka.network/api/zzz/uid/{uid}"), ua).await?;
+            parse_enka_zzz(uid, lang, &body).await
+        }
+        _ => {
+            let body =
+                http_get_json(&format!("https://enka.network/api/uid/{uid}?info"), ua).await?;
+            parse_enka_gi(uid, lang, &body).await
+        }
+    }
 }
 
-fn parse_enka_response(
-    uid: &str,
-    game: &str,
-    game_label: &str,
-    profile_url: &str,
-    body: &Value,
-) -> Result<GamePresenceData, String> {
-    // Genshin uses playerInfo; HSR/ZZZ may nest differently
+/// 原神：playerInfo（camelCase）
+async fn parse_enka_gi(uid: &str, lang: &str, body: &Value) -> Result<GamePresenceData, String> {
     let player = body
         .get("playerInfo")
-        .or_else(|| body.get("detailInfo"))
-        .cloned()
-        .unwrap_or_else(|| body.clone());
+        .ok_or_else(|| "Enka response missing playerInfo".to_string())?;
 
     let nickname = player
         .get("nickname")
-        .or_else(|| player.get("nickName"))
         .and_then(|v| v.as_str())
         .unwrap_or(uid)
         .to_string();
-
-    let level = player.get("level").and_then(|v| v.as_i64()).or_else(|| {
-        player
-            .get("level")
-            .and_then(|v| v.as_u64())
-            .map(|u| u as i64)
-    });
-
-    let world_level = player
-        .get("worldLevel")
-        .or_else(|| player.get("world_level"))
-        .and_then(|v| v.as_i64());
-
-    let achievements = player
-        .get("finishAchievementNum")
-        .or_else(|| player.get("finish_achievement_num"))
-        .or_else(|| {
-            player
-                .get("recordInfo")
-                .and_then(|r| r.get("achievementCount"))
-        })
-        .and_then(|v| v.as_i64());
-
+    let level = player.get("level").and_then(|v| v.as_i64());
     let signature = player
         .get("signature")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let tower = match (
-        player.get("towerFloorIndex").and_then(|v| v.as_i64()),
-        player.get("towerLevelIndex").and_then(|v| v.as_i64()),
-    ) {
-        (Some(f), Some(l)) if f > 0 => Some(format!("{f}-{l}")),
-        _ => None,
-    };
+    // 资料头像：新版接口给 pfp id，旧版给 avatarId
+    let avatar = crate::services::enka_assets::gi_profile_picture(
+        player.pointer("/profilePicture/id").and_then(|v| v.as_i64()),
+        player
+            .pointer("/profilePicture/avatarId")
+            .and_then(|v| v.as_i64()),
+    )
+    .await;
 
-    // Showcase avatars (summary only on ?info)
     let mut showcase = Vec::new();
     if let Some(arr) = player
         .get("showAvatarInfoList")
-        .or_else(|| player.get("avatarDetailList"))
         .and_then(|v| v.as_array())
     {
-        for item in arr.iter().take(6) {
-            let name = item
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .or_else(|| {
-                    item.get("avatarId")
-                        .or_else(|| item.get("avatar_id"))
-                        .map(|id| format!("#{id}"))
-                })
-                .unwrap_or_else(|| "—".to_string());
-            let av_level = item.get("level").and_then(|v| v.as_i64());
+        for item in arr.iter().take(SHOWCASE_LIMIT) {
+            let Some(avatar_id) = item.get("avatarId").and_then(|v| v.as_i64()) else {
+                continue;
+            };
+            let meta = crate::services::enka_assets::gi_character(avatar_id, lang).await;
             showcase.push(ShowcaseItem {
-                name,
-                level: av_level,
-                icon: None,
-                rarity: item.get("rarity").and_then(|v| v.as_i64()),
+                name: meta.name.unwrap_or_else(|| format!("#{avatar_id}")),
+                level: item.get("level").and_then(|v| v.as_i64()),
+                icon: meta.icon,
+                art: meta.art,
+                rarity: meta.rarity,
             });
         }
     }
 
     let mut highlights = Vec::new();
-    if let Some(a) = achievements {
+    if let Some(a) = player.get("finishAchievementNum").and_then(|v| v.as_i64()) {
         highlights.push(GameHighlight {
-            label: "Achievements".into(),
+            label: hl(lang, "成就", "Achievements", "アチーブメント"),
             value: a.to_string(),
         });
     }
-    if let Some(wl) = world_level {
-        highlights.push(GameHighlight {
-            label: "World Lv".into(),
-            value: wl.to_string(),
-        });
-    }
-    if let Some(t) = tower {
-        highlights.push(GameHighlight {
-            label: "Abyss".into(),
-            value: t,
-        });
-    }
-    highlights.push(GameHighlight {
-        label: "Game".into(),
-        value: game_label.to_string(),
-    });
-
-    let score = level.map(|l| {
-        let label = match game {
-            "hsr" | "starrail" | "star_rail" => "Trailblaze",
-            "zzz" | "zenless" => "Inter-Knot",
-            _ => "AR",
-        };
-        GameScore {
-            label: label.to_string(),
-            value: l.to_string(),
+    if let (Some(f), Some(l)) = (
+        player.get("towerFloorIndex").and_then(|v| v.as_i64()),
+        player.get("towerLevelIndex").and_then(|v| v.as_i64()),
+    ) {
+        if f > 0 {
+            highlights.push(GameHighlight {
+                label: hl(lang, "深渊", "Abyss", "深境螺旋"),
+                value: format!("{f}-{l}"),
+            });
         }
-    });
+    }
+
+    Ok(GamePresenceData {
+        platform: "hoyolab".to_string(),
+        identity: GameIdentity {
+            id: uid.to_string(),
+            name: nickname,
+            avatar,
+            subtitle: signature,
+        },
+        score: level.map(|l| GameScore {
+            label: hl(lang, "冒险等阶", "AR", "冒険ランク"),
+            value: l.to_string(),
+        }),
+        presence: None,
+        highlights,
+        showcase,
+        profile_url: Some(format!("https://enka.network/u/{uid}")),
+        fetched_at: chrono::Utc::now().to_rfc3339(),
+        degraded: false,
+        degrade_reason: None,
+    })
+}
+
+/// 星铁：detailInfo（camelCase），成就等在 recordInfo
+async fn parse_enka_hsr(uid: &str, lang: &str, body: &Value) -> Result<GamePresenceData, String> {
+    let player = body
+        .get("detailInfo")
+        .ok_or_else(|| "Enka response missing detailInfo".to_string())?;
+
+    let nickname = player
+        .get("nickname")
+        .and_then(|v| v.as_str())
+        .unwrap_or(uid)
+        .to_string();
+    let level = player.get("level").and_then(|v| v.as_i64());
+    let signature = player
+        .get("signature")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let mut showcase = Vec::new();
+    if let Some(arr) = player.get("avatarDetailList").and_then(|v| v.as_array()) {
+        for item in arr.iter().take(SHOWCASE_LIMIT) {
+            let Some(avatar_id) = item.get("avatarId").and_then(|v| v.as_i64()) else {
+                continue;
+            };
+            let meta = crate::services::enka_assets::hsr_character(avatar_id, lang).await;
+            showcase.push(ShowcaseItem {
+                name: meta.name.unwrap_or_else(|| format!("#{avatar_id}")),
+                level: item.get("level").and_then(|v| v.as_i64()),
+                icon: meta.icon,
+                art: meta.art,
+                rarity: meta.rarity,
+            });
+        }
+    }
+
+    let record = player.get("recordInfo");
+    let mut highlights = Vec::new();
+    if let Some(a) = record
+        .and_then(|r| r.get("achievementCount"))
+        .and_then(|v| v.as_i64())
+    {
+        highlights.push(GameHighlight {
+            label: hl(lang, "成就", "Achievements", "アチーブメント"),
+            value: a.to_string(),
+        });
+    }
+    if let Some(c) = record
+        .and_then(|r| r.get("avatarCount"))
+        .and_then(|v| v.as_i64())
+    {
+        highlights.push(GameHighlight {
+            label: hl(lang, "角色", "Characters", "キャラ"),
+            value: c.to_string(),
+        });
+    }
 
     Ok(GamePresenceData {
         platform: "hoyolab".to_string(),
@@ -456,11 +508,110 @@ fn parse_enka_response(
             avatar: None,
             subtitle: signature,
         },
-        score,
+        score: level.map(|l| GameScore {
+            label: hl(lang, "开拓等级", "Trailblaze", "開拓レベル"),
+            value: l.to_string(),
+        }),
         presence: None,
         highlights,
         showcase,
-        profile_url: Some(profile_url.to_string()),
+        profile_url: Some(format!("https://enka.network/hsr/{uid}")),
+        fetched_at: chrono::Utc::now().to_rfc3339(),
+        degraded: false,
+        degrade_reason: None,
+    })
+}
+
+/// 绝区零：PlayerInfo（PascalCase），资料在 SocialDetail，展柜在 ShowcaseDetail
+async fn parse_enka_zzz(uid: &str, lang: &str, body: &Value) -> Result<GamePresenceData, String> {
+    let player = body
+        .get("PlayerInfo")
+        .ok_or_else(|| "Enka response missing PlayerInfo".to_string())?;
+    let profile = player.pointer("/SocialDetail/ProfileDetail");
+
+    let nickname = profile
+        .and_then(|p| p.get("Nickname"))
+        .and_then(|v| v.as_str())
+        .unwrap_or(uid)
+        .to_string();
+    let level = profile
+        .and_then(|p| p.get("Level"))
+        .and_then(|v| v.as_i64());
+    let signature = player
+        .pointer("/SocialDetail/Desc")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // 资料头像：ProfileDetail.AvatarId 指向展示的角色
+    let avatar = match profile
+        .and_then(|p| p.get("AvatarId"))
+        .and_then(|v| v.as_i64())
+    {
+        Some(id) => {
+            crate::services::enka_assets::zzz_character(id, lang)
+                .await
+                .icon
+        }
+        None => None,
+    };
+
+    let mut showcase = Vec::new();
+    if let Some(arr) = player
+        .pointer("/ShowcaseDetail/AvatarList")
+        .and_then(|v| v.as_array())
+    {
+        for item in arr.iter().take(SHOWCASE_LIMIT) {
+            let Some(avatar_id) = item.get("Id").and_then(|v| v.as_i64()) else {
+                continue;
+            };
+            let meta = crate::services::enka_assets::zzz_character(avatar_id, lang).await;
+            showcase.push(ShowcaseItem {
+                name: meta.name.unwrap_or_else(|| format!("#{avatar_id}")),
+                level: item.get("Level").and_then(|v| v.as_i64()),
+                icon: meta.icon,
+                art: meta.art,
+                // ZZZ：4 = S 级、3 = A 级，映射到通用五星制方便前端统一判断
+                rarity: meta.rarity.map(|r| if r >= 4 { 5 } else { 4 }),
+            });
+        }
+    }
+
+    let mut highlights = Vec::new();
+    if let Some(medals) = player
+        .pointer("/SocialDetail/MedalList")
+        .and_then(|v| v.as_array())
+    {
+        if !medals.is_empty() {
+            highlights.push(GameHighlight {
+                label: hl(lang, "勋章", "Medals", "メダル"),
+                value: medals.len().to_string(),
+            });
+        }
+    }
+    if let Some(title) = profile
+        .and_then(|p| p.pointer("/Title/Title"))
+        .and_then(|v| v.as_i64())
+    {
+        // 有称号 id 但没有本地化表，先不展示具体称号文本
+        let _ = title;
+    }
+
+    Ok(GamePresenceData {
+        platform: "hoyolab".to_string(),
+        identity: GameIdentity {
+            id: uid.to_string(),
+            name: nickname,
+            avatar,
+            subtitle: signature,
+        },
+        score: level.map(|l| GameScore {
+            label: hl(lang, "绳网等级", "Inter-Knot", "インターノット"),
+            value: l.to_string(),
+        }),
+        presence: None,
+        highlights,
+        showcase,
+        profile_url: Some(format!("https://enka.network/zzz/{uid}")),
         fetched_at: chrono::Utc::now().to_rfc3339(),
         degraded: false,
         degrade_reason: None,
@@ -472,9 +623,17 @@ fn parse_enka_response(
 // ---------------------------------------------------------------------------
 
 async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
-    let api_key = std::env::var("OPENXBL_API_KEY")
-        .or_else(|_| std::env::var("XBL_API_KEY"))
-        .unwrap_or_default();
+    // 优先读 DB 配置（配置页保存后即时生效），env 作为回退
+    let api_key = {
+        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        config
+            .openxbl_api_key
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| std::env::var("OPENXBL_API_KEY").ok())
+            .or_else(|| std::env::var("XBL_API_KEY").ok())
+            .unwrap_or_default()
+    };
 
     if api_key.trim().is_empty() {
         // 降级：仅返回标识 + 公开主页链接
@@ -506,17 +665,20 @@ async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
         return Err("Too many Xbox lookups right now, try again in a bit".to_string());
     }
 
-    // Search player
+    // Search player（OpenXBL 返回 { content: {...}, code }，先解包）
+    // 现代 gamertag 可含 #suffix（如 染川瞳#6234），搜索时去掉后缀
+    let search_term = gamertag.split('#').next().unwrap_or(gamertag).trim();
     let search_url = format!(
         "https://xbl.io/api/v2/search/{}",
-        urlencoding_simple(gamertag)
+        urlencoding_simple(search_term)
     );
-    let search = http_get_json_with_header(
+    let search_raw = http_get_json_with_header(
         &search_url,
         "Myriad/1.0 (game-presence)",
         &[("X-Authorization", api_key.as_str())],
     )
     .await?;
+    let search = openxbl_unwrap_content(search_raw);
 
     // OpenXBL search shapes vary; try common paths
     let person = search
@@ -573,13 +735,14 @@ async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
     if !xuid.is_empty() {
         // Presence
         let presence_url = format!("https://xbl.io/api/v2/presence/{xuid}");
-        if let Ok(pres) = http_get_json_with_header(
+        if let Ok(pres_raw) = http_get_json_with_header(
             &presence_url,
             "Myriad/1.0 (game-presence)",
             &[("X-Authorization", api_key.as_str())],
         )
         .await
         {
+            let pres = openxbl_unwrap_content(pres_raw);
             // Array or object
             let node = pres
                 .as_array()
@@ -622,13 +785,14 @@ async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
         // Account details for gamerscore / avatar if missing
         if gamerscore.is_none() || avatar.is_none() {
             let acc_url = format!("https://xbl.io/api/v2/account/{xuid}");
-            if let Ok(acc) = http_get_json_with_header(
+            if let Ok(acc_raw) = http_get_json_with_header(
                 &acc_url,
                 "Myriad/1.0 (game-presence)",
                 &[("X-Authorization", api_key.as_str())],
             )
             .await
             {
+                let acc = openxbl_unwrap_content(acc_raw);
                 let settings = acc
                     .get("profileUsers")
                     .and_then(|v| v.as_array())
@@ -700,7 +864,16 @@ async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
 // ---------------------------------------------------------------------------
 
 async fn fetch_psn(online_id: &str) -> Result<GamePresenceData, String> {
-    let npsso = std::env::var("PSN_NPSSO").unwrap_or_default();
+    // 优先读 DB 配置（配置页保存后即时生效），env 作为回退
+    let npsso = {
+        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        config
+            .psn_npsso
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| std::env::var("PSN_NPSSO").ok())
+            .unwrap_or_default()
+    };
 
     if npsso.trim().is_empty() {
         return Ok(GamePresenceData {
@@ -739,12 +912,6 @@ async fn fetch_psn(online_id: &str) -> Result<GamePresenceData, String> {
         "https://us-prof.np.community.playstation.net/userProfile/v1/users/{}/profile2?fields=onlineId,aboutMe,languagesUsed,plus,trophySummary(@default,progress,earnedTrophies),isOfficiallyVerified,personalDetail(@default,profilePictureUrls),personalDetailSharing,personalDetailSharingRequestMessageFlag,primaryOnlineStatus,presences(@titleInfo,hasBroadcastData),friendRelation,requestMessageFlag,blocking,mutualFriendsCount,following,followerCount,friendsCount,followingUsersCount&avatarSizes=s,m,l,xl&profilePictureSizes=s,m,l,xl&languagesUsedLanguageSet=set4&psVitaSupport=true&friendStatusSummary=true&npIdHash=true",
         urlencoding_simple(online_id)
     );
-
-    // Prefer modern profile API
-    let modern = format!(
-        "https://m.np.playstation.com/api/userProfile/v1/internal/users/me/basicPresences?type=primary"
-    );
-    let _ = modern; // presence for self only; for others use profile by accountId
 
     // account search
     let search_url = format!(
@@ -963,7 +1130,7 @@ fn psn_token_cache() -> &'static Mutex<Option<PsnTokenEntry>> {
     PSN_TOKEN_CACHE.get_or_init(|| Mutex::new(None))
 }
 
-async fn get_psn_access_token(npsso: &str) -> Result<String, String> {
+pub async fn get_psn_access_token(npsso: &str) -> Result<String, String> {
     if let Ok(guard) = psn_token_cache().lock() {
         if let Some(entry) = guard.as_ref() {
             if entry.fetched_at.elapsed() < PSN_TOKEN_TTL {
@@ -1083,6 +1250,11 @@ fn extract_query_param(url: &str, key: &str) -> Option<String> {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
+/// OpenXBL 统一把业务载荷包在 `{ content: {...}, code: 200 }` 里；没有 content 时原样返回。
+fn openxbl_unwrap_content(body: Value) -> Value {
+    body.get("content").cloned().unwrap_or(body)
+}
+
 async fn http_get_json(url: &str, ua: &str) -> Result<Value, String> {
     http_get_json_with_header(url, ua, &[]).await
 }
@@ -1142,13 +1314,28 @@ fn urlencoding_simple(s: &str) -> String {
 
 /// Lightweight health/capabilities for the widget settings UI
 pub async fn get_game_presence_capabilities() -> Json<Value> {
-    let openxbl = std::env::var("OPENXBL_API_KEY")
-        .or_else(|_| std::env::var("XBL_API_KEY"))
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
-    let psn = std::env::var("PSN_NPSSO")
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
+    let (db_openxbl, db_psn) = {
+        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        (
+            config
+                .openxbl_api_key
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty()),
+            config
+                .psn_npsso
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty()),
+        )
+    };
+    let openxbl = db_openxbl
+        || std::env::var("OPENXBL_API_KEY")
+            .or_else(|_| std::env::var("XBL_API_KEY"))
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
+    let psn = db_psn
+        || std::env::var("PSN_NPSSO")
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
 
     Json(json!({
         "platforms": {

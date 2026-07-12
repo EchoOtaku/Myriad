@@ -329,7 +329,8 @@ export const enUS: TranslationKeys = {
     updaterChannelGroupDesc:
       'Decides which line of updates this server follows. Selecting saves immediately.',
     updaterChannelStable: 'Stable',
-    updaterChannelStableDesc: 'Fully tested official releases. Right for everyone.',
+    updaterChannelStableDesc:
+      'Fully tested official releases. Right for everyone.',
     updaterChannelPreview: 'Preview',
     updaterChannelPreviewDesc:
       'Try upcoming features early; minor issues possible.',
@@ -918,8 +919,10 @@ export const enUS: TranslationKeys = {
     reportNetease: 'NetEase Report',
     reportBangumi: 'Bangumi Report',
     reportMal: 'MyAnimeList Report',
+    reportXbox: 'Xbox Report',
+    reportPsn: 'PlayStation Report',
     socialNetwork: 'Social Network',
-    gamePresence: 'Game Presence',
+    gamePresence: 'HoYoverse Game Card',
     library: 'Library',
     dataReport: 'Data Report',
     multiPlatformAggregation: 'Multi-platform Content Aggregation',
@@ -1548,6 +1551,11 @@ export const enUS: TranslationKeys = {
     steamStatusUnknown: 'Status unknown',
     steamRecent2w: 'Recent',
     steamGamingScore: 'Hardcore Index',
+    gamesCount: 'Games',
+    completionRate: 'Completion',
+    completedGames: 'Completed',
+    trophyLevel: 'Trophy Level',
+    platinumCount: 'Platinum',
   },
 
   // Social Network Widget Extended
@@ -1565,38 +1573,23 @@ export const enUS: TranslationKeys = {
     longPressToEdit: 'Long press widget to edit',
   },
 
-  // Game presence widget
+  // HoYoverse game card widget
   gamePresenceWidget: {
-    settingsTitle: 'Game Presence',
-    selectPlatform: 'Platform',
+    settingsTitle: 'HoYoverse Game Card',
     selectGame: 'Game',
-    hoyolab: 'Hoyoverse Showcase',
-    xbox: 'Xbox',
-    psn: 'PlayStation',
     genshin: 'Genshin',
     hsr: 'Star Rail',
     zzz: 'ZZZ',
     uidLabel: 'Game UID',
-    gamertagLabel: 'Gamertag',
-    onlineIdLabel: 'Online ID',
     publicOnlyHint:
-      'Public data only — no cookies. Full Xbox / PSN data needs OPENXBL_API_KEY / PSN_NPSSO on the server.',
+      'Data comes from the public Enka.Network showcase — only a game UID is needed, no cookies or server keys.',
     save: 'Save',
     close: 'Close',
     longPressHint: 'Long press to configure',
-    longPressToSetup: 'Long press to set public ID',
+    longPressToSetup: 'Long press to set UID',
     notConfigured: 'Not configured',
     fetchFailed: 'Failed to load',
-    playing: 'Playing',
-    online: 'Online',
-    offline: 'Offline',
-    nowPlaying: 'Now playing',
-    statusUnknown: 'Status unknown',
-    noGameActivity: 'No public game activity',
-    showcase: 'Showcase',
     showcaseEmpty: 'Showcase empty or private',
-    accountId: 'Account ID',
-    degraded: 'Partial data (server key missing)',
   },
 
   // Tapp related
@@ -2637,5 +2630,8 @@ export const enUS: TranslationKeys = {
     sourceHeartbeat: 'Scheduled Task',
     sourceMcp: 'MCP Server',
     sourceSystem: 'System',
+    sourceAro: 'Aro',
+    settingsDesc:
+      'Choose which sources and events notify you and how they are presented',
   },
 }

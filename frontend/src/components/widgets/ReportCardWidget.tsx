@@ -11,6 +11,7 @@ import {
   FaPlay,
   FaSteam,
   FaTimes,
+  FaXbox,
   FaXTwitter,
   LuGitFork,
   LuStar,
@@ -18,6 +19,7 @@ import {
   SiBilibili,
   SiMyanimelist,
   SiNeteasecloudmusic,
+  SiPlaystation,
 } from '@lib/icons'
 
 import {
@@ -1868,6 +1870,248 @@ const NeteaseWidget = memo(
 )
 
 // ==================== 平台配置 ====================
+// ==================== Xbox / PSN 共用：成就/奖杯型标题轮播 ====================
+// 两个平台都没有时长数据，卡片走"成就完成度"叙事：
+// 概览 = 核心分数 + 完成度统计；详情 = 作品完成度轮播。
+
+const TrophyTitleRow = memo(
+  ({
+    title,
+    accent,
+  }: {
+    title: { name: string, progress?: number, platinum?: boolean, gamerscore?: number }
+    accent: string
+  }) => (
+    <div className="flex items-center gap-2 min-w-0">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {title.platinum && (
+            <span className="shrink-0 text-[10px]" title="Platinum">
+              🏆
+            </span>
+          )}
+          <span className="truncate text-xs font-medium text-gray-800 dark:text-gray-100">
+            {title.name}
+          </span>
+          <span
+            className="ml-auto shrink-0 text-[10px] tabular-nums font-semibold"
+            style={{ color: accent }}
+          >
+            {Math.round(title.progress ?? 0)}%
+          </span>
+        </div>
+        <div className="mt-1 h-1 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+          <motion.div
+            className="h-full rounded-full"
+            style={{ background: accent }}
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(100, Math.max(0, title.progress ?? 0))}%` }}
+            transition={{ duration: 0.8, ease: 'easeOut' }}
+          />
+        </div>
+      </div>
+    </div>
+  ),
+)
+
+TrophyTitleRow.displayName = 'TrophyTitleRow'
+
+/** 成就/奖杯向报告卡的通用骨架，Xbox / PSN 以配色和统计项区分 */
+const AchievementReportBody = memo(
+  ({
+    icon,
+    accent,
+    typeLabel,
+    scoreValue,
+    scoreLabel,
+    stats,
+    topTitles,
+    showOverview,
+    onContentChange,
+  }: {
+    icon: React.ReactNode
+    accent: string
+    typeLabel: string
+    scoreValue: string
+    scoreLabel: string
+    stats: { label: string, value: string }[]
+    topTitles: { name: string, progress?: number, platinum?: boolean }[]
+    showOverview: boolean
+    onContentChange?: (content: { titles?: string[] } | null) => void
+  }) => {
+    const [pageIndex, setPageIndex] = useState(0)
+    const PAGE_SIZE = 3
+    const pageCount = Math.max(1, Math.ceil(topTitles.length / PAGE_SIZE))
+
+    useEffect(() => {
+      if (showOverview || topTitles.length <= PAGE_SIZE) return
+      const timer = window.setInterval(() => {
+        setPageIndex((prev) => (prev + 1) % pageCount)
+      }, 5000)
+      return () => window.clearInterval(timer)
+    }, [showOverview, topTitles.length, pageCount])
+
+    const currentTitles = useMemo(
+      () => topTitles.slice(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE),
+      [topTitles, pageIndex],
+    )
+
+    useEffect(() => {
+      if (!showOverview && currentTitles.length > 0) {
+        onContentChange?.({ titles: currentTitles.map((t) => t.name) })
+      } else {
+        onContentChange?.(null)
+      }
+    }, [showOverview, currentTitles, onContentChange])
+
+    return (
+      <AnimatePresence mode="wait">
+        {showOverview || currentTitles.length === 0 ? (
+          <motion.div
+            key="stats"
+            initial={CONTENT_FADE_INITIAL}
+            animate={CONTENT_FADE_ANIMATE}
+            exit={CONTENT_FADE_EXIT}
+            transition={CONTENT_FADE_TRANSITION}
+            className="h-full w-full p-3 flex flex-col justify-between"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div
+                  className="flex items-center gap-1.5 text-sm font-bold"
+                  style={{ color: accent }}
+                >
+                  {icon}
+                  <span className="truncate">{typeLabel}</span>
+                </div>
+                <div className="mt-1.5 flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black tabular-nums text-gray-900 dark:text-gray-50 leading-none">
+                    {scoreValue}
+                  </span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                    {scoreLabel}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5">
+              {stats.slice(0, 3).map((s) => (
+                <div
+                  key={s.label}
+                  className="rounded-lg px-2 py-1.5 bg-black/5 dark:bg-white/5"
+                >
+                  <div
+                    className="text-sm font-bold tabular-nums"
+                    style={{ color: accent }}
+                  >
+                    {s.value}
+                  </div>
+                  <div className="text-[9px] text-gray-500 dark:text-gray-400 truncate">
+                    {s.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key={`titles-${pageIndex}`}
+            initial={CONTENT_SLIDE_INITIAL}
+            animate={CONTENT_SLIDE_ANIMATE}
+            exit={CONTENT_SLIDE_EXIT}
+            transition={CONTENT_SLIDE_TRANSITION}
+            className="h-full w-full p-3 flex flex-col justify-center gap-2.5"
+          >
+            {currentTitles.map((title) => (
+              <TrophyTitleRow key={title.name} title={title} accent={accent} />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    )
+  },
+)
+
+AchievementReportBody.displayName = 'AchievementReportBody'
+
+const XboxWidget = memo(({ data, showOverview, onContentChange }: any) => {
+  const { t } = useI18n()
+  const topTitles = useMemo(
+    () => (data?.top_titles || []) as { name: string, progress?: number }[],
+    [data?.top_titles],
+  )
+  return (
+    <AchievementReportBody
+      icon={<FaXbox />}
+      accent="#107C10"
+      typeLabel={data?.gamer_type || 'Xbox'}
+      scoreValue={String(data?.gamerscore ?? 0)}
+      scoreLabel="Gamerscore"
+      stats={[
+        {
+          label: t.reportCardWidget.gamesCount,
+          value: String(data?.games_count ?? 0),
+        },
+        {
+          label: t.reportCardWidget.completionRate,
+          value: `${Math.round(data?.completion_rate ?? 0)}%`,
+        },
+        {
+          label: t.reportCardWidget.completedGames,
+          value: String(data?.completed_games ?? 0),
+        },
+      ]}
+      topTitles={topTitles}
+      showOverview={showOverview}
+      onContentChange={onContentChange}
+    />
+  )
+})
+
+XboxWidget.displayName = 'XboxWidget'
+
+const PsnWidget = memo(({ data, showOverview, onContentChange }: any) => {
+  const { t } = useI18n()
+  const topTitles = useMemo(
+    () =>
+      (data?.top_titles || []) as {
+        name: string
+        progress?: number
+        platinum?: boolean
+      }[],
+    [data?.top_titles],
+  )
+  return (
+    <AchievementReportBody
+      icon={<SiPlaystation />}
+      accent="#0070D1"
+      typeLabel={data?.hunter_type || 'PlayStation'}
+      scoreValue={`Lv.${data?.trophy_level ?? 0}`}
+      scoreLabel={t.reportCardWidget.trophyLevel}
+      stats={[
+        {
+          label: t.reportCardWidget.platinumCount,
+          value: String(data?.platinum_count ?? 0),
+        },
+        {
+          label: t.reportCardWidget.gamesCount,
+          value: String(data?.games_count ?? 0),
+        },
+        {
+          label: t.reportCardWidget.completionRate,
+          value: `${Math.round(data?.completion_rate ?? 0)}%`,
+        },
+      ]}
+      topTitles={topTitles}
+      showOverview={showOverview}
+      onContentChange={onContentChange}
+    />
+  )
+})
+
+PsnWidget.displayName = 'PsnWidget'
+
 const PLATFORM_CONFIG: Record<
   string,
   {
@@ -1934,6 +2178,22 @@ const PLATFORM_CONFIG: Record<
     borderColor: 'rgba(0, 0, 0, 0.25)',
     label: 'X',
     textColor: 'text-gray-900 dark:text-gray-100',
+  },
+  xbox: {
+    icon: <FaXbox />,
+    color: '#107C10',
+    bgColor: 'rgba(16, 124, 16, 0.15)',
+    borderColor: 'rgba(16, 124, 16, 0.3)',
+    label: 'Xbox',
+    textColor: 'text-[#107C10]',
+  },
+  psn: {
+    icon: <SiPlaystation />,
+    color: '#0070D1',
+    bgColor: 'rgba(0, 112, 209, 0.15)',
+    borderColor: 'rgba(0, 112, 209, 0.3)',
+    label: 'PlayStation',
+    textColor: 'text-[#0070D1]',
   },
 }
 
@@ -3026,6 +3286,20 @@ export const ReportCardWidget = memo(
           )}
           {platformId === 'mal' && (
             <MalWidget
+              data={reportData}
+              showOverview={showOverview}
+              onContentChange={handleContentChange}
+            />
+          )}
+          {platformId === 'xbox' && (
+            <XboxWidget
+              data={reportData}
+              showOverview={showOverview}
+              onContentChange={handleContentChange}
+            />
+          )}
+          {platformId === 'psn' && (
+            <PsnWidget
               data={reportData}
               showOverview={showOverview}
               onContentChange={handleContentChange}

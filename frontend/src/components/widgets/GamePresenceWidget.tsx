@@ -1,39 +1,37 @@
 /**
- * 游戏公开状态小组件（固定 4x2）
+ * 米哈游游戏卡片（固定 4x2）
  *
- * 仅使用公开标识（UID / Gamertag / Online ID），不收集用户 Cookie。
+ * Enka.Network 展柜（genshin / hsr / zzz，一卡一游戏），仅使用公开 UID，
+ * 不收集用户 Cookie、不需要服务端密钥。
  * 设置方式与社交网络小组件一致：编辑模式下长按 → 浮窗面板。
  *
- * 平台：
- * - hoyolab：Enka 展柜（genshin / hsr / zzz，一卡一游戏）
- * - xbox：OpenXBL（服务端 OPENXBL_API_KEY）
- * - psn：PSN 只读（服务端 PSN_NPSSO）
- * Switch 暂搁置
+ * Xbox / PSN 已升级为独立的数据报告卡（report-xbox / report-psn），不再挤在这里。
  */
 
 import type { WidgetComponentProps } from '../WidgetGrid'
+import { FaTimes } from '@lib/icons'
 import {
-  FaGamepad,
-  FaTimes,
-  FaXbox,
-  SiPlaystation,
-} from '@lib/icons'
-import { motionShim as motion } from '@lib/motionShim'
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
+import { useVisibilityInterval } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { useThemeMode } from '../../utils/themeSubscriber'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
+import './GamePresenceWidget.css'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type GamePlatformId = 'hoyolab' | 'xbox' | 'psn'
+/** 历史上支持过 xbox / psn；现在它们走独立报告卡，这里只剩米哈游 */
+export type GamePlatformId = 'hoyolab'
 export type HoyoGame = 'genshin' | 'hsr' | 'zzz'
 
 export interface GamePresenceWidgetConfig {
@@ -69,6 +67,8 @@ interface ShowcaseItem {
   name: string
   level?: number | null
   icon?: string | null
+  /** 大幅立绘（聚焦展示用） */
+  art?: string | null
   rarity?: number | null
 }
 
@@ -85,23 +85,12 @@ interface GamePresenceData {
   degrade_reason?: string | null
 }
 
-/** 平台/游戏视觉主题 —— 与品牌色对齐，亮暗双套 */
-interface PlatformTheme {
+/** 游戏视觉主题 —— 与品牌色对齐，亮暗双套 */
+interface GameTheme {
   /** 亮色主色 */
   color: string
   /** 暗色主色 */
   darkColor: string
-  /** 次强调（芯片点缀、稀有度等） */
-  accent: string
-  darkAccent: string
-}
-
-interface PlatformMeta {
-  id: GamePlatformId
-  nameKey: 'hoyolab' | 'xbox' | 'psn'
-  theme: PlatformTheme
-  icon: React.ReactNode
-  idPlaceholder: string
 }
 
 // ---------------------------------------------------------------------------
@@ -109,66 +98,16 @@ interface PlatformMeta {
 // ---------------------------------------------------------------------------
 
 /** 米哈游按子游戏细分（同一平台不同气质） */
-const HOYO_GAME_THEMES: Record<HoyoGame, PlatformTheme> = {
+const HOYO_GAME_THEMES: Record<HoyoGame, GameTheme> = {
   // 原神：琥珀金 / 旅人风
-  genshin: {
-    color: '#C9A227',
-    darkColor: '#E8C547',
-    accent: '#4A90A4',
-    darkAccent: '#7EC8D8',
-  },
-  // 星铁：星轨紫 + 金
-  hsr: {
-    color: '#6B5CE7',
-    darkColor: '#9B8CFF',
-    accent: '#D4A84B',
-    darkAccent: '#F0C96A',
-  },
-  // 绝区零：霓虹黄黑
-  zzz: {
-    color: '#E8C547',
-    darkColor: '#FFE566',
-    accent: '#FF6B35',
-    darkAccent: '#FF8F66',
-  },
+  genshin: { color: '#C9A227', darkColor: '#E8C547' },
+  // 星铁：星轨紫
+  hsr: { color: '#6B5CE7', darkColor: '#9B8CFF' },
+  // 绝区零：霓虹黄
+  zzz: { color: '#E8C547', darkColor: '#FFE566' },
 }
 
-const PLATFORMS: readonly PlatformMeta[] = Object.freeze([
-  {
-    id: 'hoyolab',
-    nameKey: 'hoyolab',
-    // 默认色（实际渲染会按 game 覆盖）
-    theme: HOYO_GAME_THEMES.genshin,
-    icon: <FaGamepad />,
-    idPlaceholder: '800123456',
-  },
-  {
-    id: 'xbox',
-    nameKey: 'xbox',
-    // Xbox 官方绿
-    theme: {
-      color: '#107C10',
-      darkColor: '#3A9D3A',
-      accent: '#9BF00B',
-      darkAccent: '#B5FF2E',
-    },
-    icon: <FaXbox />,
-    idPlaceholder: 'Major Nelson',
-  },
-  {
-    id: 'psn',
-    nameKey: 'psn',
-    // PlayStation 蓝
-    theme: {
-      color: '#00439C',
-      darkColor: '#3D7FE0',
-      accent: '#0070D1',
-      darkAccent: '#5BA3F5',
-    },
-    icon: <SiPlaystation />,
-    idPlaceholder: 'OnlineID',
-  },
-])
+const UID_PLACEHOLDER = '800123456'
 
 const HOYO_GAMES: { id: HoyoGame, labelKey: 'genshin' | 'hsr' | 'zzz' }[] = [
   { id: 'genshin', labelKey: 'genshin' },
@@ -176,45 +115,62 @@ const HOYO_GAMES: { id: HoyoGame, labelKey: 'genshin' | 'hsr' | 'zzz' }[] = [
   { id: 'zzz', labelKey: 'zzz' },
 ]
 
+/** 每个游戏的品牌资产：App 图标（前景）+ wordmark（低透明度背景装饰）+ 游戏字体 */
+const GAME_META: Record<
+  HoyoGame,
+  {
+    /** 官方 App Store 应用图标 */
+    appIcon: string
+    /** wordmark mask class，仅作背景装饰 */
+    logoClass: string
+    fontClass: string
+    /** 立绘裁切焦点（三家立绘构图不同：原神横幅居中 / 星铁签绘偏上 / ZZZ 半身像偏上） */
+    artPos: string
+  }
+> = {
+  genshin: {
+    appIcon: '/game-logos/genshin-icon.png',
+    logoClass: 'gp-logo-genshin',
+    fontClass: 'gp-font-genshin',
+    artPos: 'center 30%',
+  },
+  hsr: {
+    appIcon: '/game-logos/starrail-icon.png',
+    logoClass: 'gp-logo-hsr',
+    fontClass: 'gp-font-hsr',
+    artPos: 'center 25%',
+  },
+  zzz: {
+    appIcon: '/game-logos/zzz-icon.png',
+    logoClass: 'gp-logo-zzz',
+    fontClass: 'gp-font-zzz',
+    artPos: 'center 20%',
+  },
+}
+
+/** 稀有度描边色：5★ 金 / 4★ 紫（ZZZ 的 S/A 级由后端映射成 5/4） */
+function rarityRing(rarity: number | null | undefined, fallback: string): string {
+  if (rarity === 5) return '#E8B33B'
+  if (rarity === 4) return '#A47CE0'
+  return fallback
+}
+
 function resolveTheme(
-  platformId: GamePlatformId,
   game: HoyoGame,
   isDark: boolean,
 ): {
   primary: string
-  accent: string
-  softBg: string
   softBgStrong: string
   border: string
-  chipBg: string
-  panelBg: string
-  gradient: string
 } {
-  const base =
-    platformId === 'hoyolab'
-      ? HOYO_GAME_THEMES[game] || HOYO_GAME_THEMES.genshin
-      : (PLATFORMS.find((p) => p.id === platformId) || PLATFORMS[0]).theme
-
+  const base = HOYO_GAME_THEMES[game] || HOYO_GAME_THEMES.genshin
   const primary = isDark ? base.darkColor : base.color
-  const accent = isDark ? base.darkAccent : base.accent
 
   // 从 hex 主色生成半透明表面（避免每处手写 rgba）
-  const softBg = hexToRgba(primary, isDark ? 0.14 : 0.1)
-  const softBgStrong = hexToRgba(primary, isDark ? 0.22 : 0.16)
-  const border = hexToRgba(primary, isDark ? 0.35 : 0.28)
-  const chipBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.045)'
-  const panelBg = hexToRgba(primary, isDark ? 0.12 : 0.08)
-  const gradient = `linear-gradient(135deg, ${hexToRgba(primary, isDark ? 0.28 : 0.2)} 0%, ${hexToRgba(accent, isDark ? 0.12 : 0.08)} 55%, ${hexToRgba(primary, 0.04)} 100%)`
-
   return {
     primary,
-    accent,
-    softBg,
-    softBgStrong,
-    border,
-    chipBg,
-    panelBg,
-    gradient,
+    softBgStrong: hexToRgba(primary, isDark ? 0.22 : 0.16),
+    border: hexToRgba(primary, isDark ? 0.35 : 0.28),
   }
 }
 
@@ -233,7 +189,6 @@ function hexToRgba(hex: string, alpha: number): string {
 
 interface SettingsState {
   isOpen: boolean
-  platformId: GamePlatformId
   accountId: string
   game: HoyoGame
   anchorRect?: DOMRect
@@ -242,7 +197,6 @@ interface SettingsState {
 
 let globalSettings: SettingsState = {
   isOpen: false,
-  platformId: 'hoyolab',
   accountId: '',
   game: 'genshin',
 }
@@ -250,7 +204,6 @@ let globalSettings: SettingsState = {
 const settingsListeners = new Set<() => void>()
 
 function openGamePresenceSettings(
-  platformId: GamePlatformId,
   accountId: string,
   game: HoyoGame,
   anchorRect: DOMRect,
@@ -258,7 +211,6 @@ function openGamePresenceSettings(
 ) {
   globalSettings = {
     isOpen: true,
-    platformId,
     accountId,
     game,
     anchorRect,
@@ -282,7 +234,6 @@ function subscribeSettings(listener: () => void) {
 const GamePresenceSettingsModal = memo(() => {
   const { t } = useI18n()
   const [, forceUpdate] = useState({})
-  const [draftPlatform, setDraftPlatform] = useState<GamePlatformId>('hoyolab')
   const [draftAccountId, setDraftAccountId] = useState('')
   const [draftGame, setDraftGame] = useState<HoyoGame>('genshin')
   const modalRef = useRef<HTMLDivElement>(null)
@@ -294,7 +245,6 @@ const GamePresenceSettingsModal = memo(() => {
   // Sync draft when opening
   useEffect(() => {
     if (isOpen) {
-      setDraftPlatform(globalSettings.platformId)
       setDraftAccountId(globalSettings.accountId)
       setDraftGame(globalSettings.game)
     }
@@ -343,17 +293,15 @@ const GamePresenceSettingsModal = memo(() => {
     const id = draftAccountId.trim()
     if (!id) return
     onSave?.({
-      platformId: draftPlatform,
+      platformId: 'hoyolab',
       accountId: id,
       game: draftGame,
     })
     closeGamePresenceSettings()
-  }, [draftPlatform, draftAccountId, draftGame, onSave])
+  }, [draftAccountId, draftGame, onSave])
 
   const tw = t.gamePresenceWidget
   const isDark = useThemeMode()
-  const platformMeta = PLATFORMS.find((p) => p.id === draftPlatform) || PLATFORMS[0]
-  const modalTheme = resolveTheme(draftPlatform, draftGame, isDark)
 
   if (!isOpen) return null
 
@@ -370,20 +318,21 @@ const GamePresenceSettingsModal = memo(() => {
         initial={{ opacity: 0, scale: 0.95, y: -5 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className="absolute glass rounded-2xl shadow-2xl overflow-hidden"
+        className="absolute glass rounded-2xl shadow-2xl overflow-hidden border border-white/20 dark:border-white/10"
         style={{
           top: position.top,
           left: position.left,
           width: 300,
           pointerEvents: 'auto',
-          border: `1px solid ${modalTheme.border}`,
         }}
       >
-        <div
-          className="flex items-center justify-between px-4 py-3 border-b"
-          style={{ borderColor: modalTheme.border }}
-        >
-          <span className="font-bold text-sm text-gray-800 dark:text-gray-200">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/50 dark:border-white/10">
+          <span className="flex items-center gap-2 font-bold text-sm text-gray-800 dark:text-gray-200">
+            <img
+              src={GAME_META[draftGame].appIcon}
+              alt=""
+              className="w-5 h-5 rounded-md object-cover"
+            />
             {tw.settingsTitle}
           </span>
           <button
@@ -397,50 +346,38 @@ const GamePresenceSettingsModal = memo(() => {
         </div>
 
         <div className="p-3 space-y-3 max-h-96 overflow-y-auto">
-          {/* Platform select */}
+          {/* Hoyo game */}
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
-              {tw.selectPlatform}
+              {tw.selectGame}
             </label>
-            <div className="space-y-1">
-              {PLATFORMS.map((p) => {
-                const selected = draftPlatform === p.id
-                const c = isDark ? p.theme.darkColor : p.theme.color
+            <div className="flex gap-1.5">
+              {HOYO_GAMES.map((g) => {
+                const selected = draftGame === g.id
                 return (
                   <button
-                    key={p.id}
+                    key={g.id}
                     type="button"
-                    onClick={() => setDraftPlatform(p.id)}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all"
+                    onClick={() => setDraftGame(g.id)}
+                    className="flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl text-xs font-medium transition-all"
                     style={
                       selected
-                        ? {
-                            background: c,
-                            color: '#fff',
-                            boxShadow: `0 2px 8px ${hexToRgba(c, 0.35)}`,
-                          }
+                        ? { background: 'var(--color-primary)', color: '#fff' }
                         : {
                             background: isDark
                               ? 'rgba(255,255,255,0.06)'
                               : 'rgba(0,0,0,0.04)',
-                            color: undefined,
                           }
                     }
                   >
-                    <span
-                      className="text-base"
-                      style={{ color: selected ? '#fff' : c }}
-                    >
-                      {p.icon}
-                    </span>
-                    <span
-                      className={
-                        selected
-                          ? ''
-                          : 'text-gray-700 dark:text-gray-200'
-                      }
-                    >
-                      {tw[p.nameKey]}
+                    <img
+                      src={GAME_META[g.id].appIcon}
+                      alt=""
+                      className="w-7 h-7 rounded-lg object-cover shrink-0"
+                      style={{ opacity: selected ? 1 : 0.8 }}
+                    />
+                    <span className={selected ? '' : 'text-gray-700 dark:text-gray-200'}>
+                      {tw[g.labelKey]}
                     </span>
                   </button>
                 )
@@ -448,67 +385,17 @@ const GamePresenceSettingsModal = memo(() => {
             </div>
           </div>
 
-          {/* Hoyo game */}
-          {draftPlatform === 'hoyolab' && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
-                {tw.selectGame}
-              </label>
-              <div className="flex gap-1.5">
-                {HOYO_GAMES.map((g) => {
-                  const selected = draftGame === g.id
-                  const gt = HOYO_GAME_THEMES[g.id]
-                  const c = isDark ? gt.darkColor : gt.color
-                  return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => setDraftGame(g.id)}
-                      className="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all"
-                      style={
-                        selected
-                          ? { background: c, color: '#fff' }
-                          : {
-                              background: hexToRgba(c, isDark ? 0.15 : 0.1),
-                              color: c,
-                            }
-                      }
-                    >
-                      {tw[g.labelKey]}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Account id */}
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
-              {draftPlatform === 'hoyolab'
-                ? tw.uidLabel
-                : draftPlatform === 'xbox'
-                  ? tw.gamertagLabel
-                  : tw.onlineIdLabel}
+              {tw.uidLabel}
             </label>
             <input
               type="text"
               value={draftAccountId}
               onChange={(e) => setDraftAccountId(e.target.value)}
-              placeholder={platformMeta.idPlaceholder}
-              className="w-full px-3 py-2 rounded-lg border bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm outline-none"
-              style={{
-                borderColor: modalTheme.border,
-                boxShadow: `0 0 0 0 transparent`,
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = modalTheme.primary
-                e.currentTarget.style.boxShadow = `0 0 0 2px ${hexToRgba(modalTheme.primary, 0.25)}`
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = modalTheme.border
-                e.currentTarget.style.boxShadow = 'none'
-              }}
+              placeholder={UID_PLACEHOLDER}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
               autoComplete="off"
               spellCheck={false}
             />
@@ -522,7 +409,7 @@ const GamePresenceSettingsModal = memo(() => {
             onClick={handleSave}
             disabled={!draftAccountId.trim()}
             className="w-full py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity"
-            style={{ background: modalTheme.primary }}
+            style={{ background: 'var(--color-primary)' }}
           >
             {tw.save}
           </button>
@@ -540,15 +427,17 @@ GamePresenceSettingsModal.displayName = 'GamePresenceSettingsModal'
 // ---------------------------------------------------------------------------
 
 const dataCache = new Map<string, { data: GamePresenceData, at: number }>()
-const DATA_TTL = 90_000
+/** 展柜数据变化以天计，6 小时刷新一次足够 */
+const DATA_TTL = 6 * 3600 * 1000
 const inflight = new Map<string, Promise<GamePresenceData | null>>()
 
 async function fetchGamePresence(
   platformId: GamePlatformId,
   accountId: string,
   game: HoyoGame,
+  lang: string,
 ): Promise<GamePresenceData | null> {
-  const key = `${platformId}:${accountId}:${game}`
+  const key = `${platformId}:${accountId}:${game}:${lang}`
   const cached = dataCache.get(key)
   if (cached && Date.now() - cached.at < DATA_TTL) {
     return cached.data
@@ -560,6 +449,7 @@ async function fetchGamePresence(
       const params = new URLSearchParams({
         platform: platformId,
         id: accountId,
+        lang,
       })
       if (platformId === 'hoyolab') params.set('game', game)
       const res = await fetch(
@@ -594,16 +484,13 @@ function resolveConfig(config: WidgetComponentProps['config']): {
   game: HoyoGame
 } {
   const c = (config.config || {}) as GamePresenceWidgetConfig
-  const platformId = (['hoyolab', 'xbox', 'psn'] as const).includes(
-    c.platformId as GamePlatformId,
-  )
-    ? (c.platformId as GamePlatformId)
-    : 'hoyolab'
   const game = (['genshin', 'hsr', 'zzz'] as const).includes(c.game as HoyoGame)
     ? (c.game as HoyoGame)
     : 'genshin'
+  // 旧配置里可能残留 xbox / psn（现已拆成独立报告卡），统一坍缩回 hoyolab；
+  // 残留的 accountId（gamertag 等）对 Enka 无效，会在 UI 上表现为获取失败，重新配置即可
   return {
-    platformId,
+    platformId: 'hoyolab',
     accountId: (c.accountId || '').trim(),
     game,
   }
@@ -611,7 +498,7 @@ function resolveConfig(config: WidgetComponentProps['config']): {
 
 const GamePresenceWidget = memo(
   ({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
-    const { t } = useI18n()
+    const { t, locale } = useI18n()
     const tw = t.gamePresenceWidget
     const isDark = useThemeMode()
     const anim = useAnimationLevel()
@@ -630,7 +517,6 @@ const GamePresenceWidget = memo(
     )
 
     const resolved = resolveConfig(config)
-    const [platformId, setPlatformId] = useState(resolved.platformId)
     const [accountId, setAccountId] = useState(resolved.accountId)
     const [game, setGame] = useState(resolved.game)
 
@@ -644,12 +530,11 @@ const GamePresenceWidget = memo(
     // Sync from config
     useEffect(() => {
       const next = resolveConfig(config)
-      setPlatformId(next.platformId)
       setAccountId(next.accountId)
       setGame(next.game)
-    }, [config.config?.platformId, config.config?.accountId, config.config?.game])
+    }, [config.config?.accountId, config.config?.game])
 
-    // Fetch (initial load + 120s 静默轮询 —— 在线状态/正在玩会变化，不能只拉一次)
+    // Fetch (initial load + 6h 低频轮询 —— 展柜数据变化以天计，长驻页面兜底刷新用)
     useEffect(() => {
       if (isPreview) return
       if (!accountId) {
@@ -664,7 +549,7 @@ const GamePresenceWidget = memo(
           setLoading(true)
           setError(null)
         }
-        const d = await fetchGamePresence(platformId, accountId, game)
+        const d = await fetchGamePresence('hoyolab', accountId, game, locale)
         if (cancelled) return
         if (isInitial) setLoading(false)
         if (d) {
@@ -682,21 +567,42 @@ const GamePresenceWidget = memo(
       const intervalId = window.setInterval(() => {
         if (document.hidden) return
         load(false)
-      }, 120_000)
+      }, DATA_TTL)
 
       return () => {
         cancelled = true
         window.clearInterval(intervalId)
       }
-    }, [platformId, accountId, game, isPreview, tw.fetchFailed])
+    }, [accountId, game, locale, isPreview, tw.fetchFailed])
 
-    const platformMeta =
-      PLATFORMS.find((p) => p.id === platformId) || PLATFORMS[0]
-    const theme = useMemo(
-      () => resolveTheme(platformId, game, isDark),
-      [platformId, game, isDark],
-    )
+    const theme = useMemo(() => resolveTheme(game, isDark), [game, isDark])
     const iconColor = theme.primary
+
+    // 展柜聚焦轮播：4s 一换，后台标签页暂停（共享可见性管理器），低动效模式不轮播
+    const showcaseLen = data?.showcase?.length ?? 0
+    const [focusIndex, setFocusIndex] = useState(0)
+    const queueRef = useRef<HTMLDivElement | null>(null)
+
+    // 队列单行滚动：聚焦项变化时自动滚到可视区中央
+    useEffect(() => {
+      const el = queueRef.current
+      if (!el) return
+      const btn = el.children[focusIndex] as HTMLElement | undefined
+      if (!btn) return
+      el.scrollTo({
+        left: btn.offsetLeft - (el.clientWidth - btn.offsetWidth) / 2,
+        behavior: 'smooth',
+      })
+    }, [focusIndex, showcaseLen])
+
+    useEffect(() => {
+      setFocusIndex(0)
+    }, [accountId, game, showcaseLen])
+
+    useVisibilityInterval(
+      () => setFocusIndex((prev) => (prev + 1) % showcaseLen),
+      { delay: 4000, enabled: !isPreview && anim.loop && showcaseLen > 1 },
+    )
 
     const persist = useCallback(
       (next: {
@@ -704,7 +610,6 @@ const GamePresenceWidget = memo(
         accountId: string
         game: HoyoGame
       }) => {
-        setPlatformId(next.platformId)
         setAccountId(next.accountId)
         setGame(next.game)
         const payload = {
@@ -729,13 +634,12 @@ const GamePresenceWidget = memo(
     const openSettings = useCallback(() => {
       if (!localRef.current) return
       openGamePresenceSettings(
-        platformId,
         accountId,
         game,
         localRef.current.getBoundingClientRect(),
         persist,
       )
-    }, [platformId, accountId, game, persist])
+    }, [accountId, game, persist])
 
     const handlePressStart = useCallback(() => {
       if (!isEditMode) return
@@ -769,59 +673,33 @@ const GamePresenceWidget = memo(
       if (url) window.open(url, '_blank', 'noopener,noreferrer')
     }, [isEditMode, data?.profile_url])
 
-    const platformName = tw[platformMeta.nameKey]
     const hasAccount = Boolean(accountId)
-    /** 米哈游偏展柜；主机偏在线状态 —— 共用数据模型，分体渲染 */
-    const layoutKind: 'showcase' | 'presence' =
-      platformId === 'hoyolab' ? 'showcase' : 'presence'
+    const meta = GAME_META[game]
 
-    const presenceMeta = useMemo(() => {
-      if (!data?.presence) {
-        return { statusLabel: null as string | null, title: null as string | null, online: false }
-      }
-      const raw = (data.presence.status || '').toLowerCase()
-      const online =
-        raw.includes('online') ||
-        raw === 'available' ||
-        Boolean(data.presence.title)
-      let statusLabel: string | null = null
-      if (data.presence.title) {
-        statusLabel = tw.playing
-      } else if (raw.includes('offline')) {
-        statusLabel = tw.offline
-      } else if (online) {
-        statusLabel = tw.online
-      } else if (data.presence.status && data.presence.status !== 'Unknown') {
-        statusLabel = data.presence.status
-      }
-      return {
-        statusLabel,
-        title: data.presence.title || null,
-        online,
-      }
-    }, [data, tw.playing, tw.online, tw.offline])
-
-    // ---- 4x2 content: shared shell + platform body ----
+    // ---- 4x2 content: 顶部数值 → 角色横条 → 底部 App 图标 + 身份信息 ----
     const content = useMemo(() => {
+      const appIcon = (size: number) => (
+        <img
+          src={meta.appIcon}
+          alt={tw[game]}
+          className="rounded-xl object-cover shrink-0 shadow-sm"
+          style={{ width: `${size * fontScale}px`, height: `${size * fontScale}px` }}
+          loading="lazy"
+        />
+      )
+      /* 原 wordmark 降级为背景装饰：低透明度、中性色、右侧垂直居中 */
+      const wordmarkBg = (
+        <span
+          className={`gp-logo ${meta.logoClass} absolute right-2 bottom-1 h-[42%] opacity-[0.05] dark:opacity-[0.07] text-gray-900 dark:text-gray-100 pointer-events-none`}
+          aria-hidden
+        />
+      )
+
       if (!hasAccount) {
         return (
-          <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-center px-4">
-            <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl border"
-              style={{
-                background: theme.softBgStrong,
-                color: theme.primary,
-                borderColor: theme.border,
-              }}
-            >
-              {platformMeta.icon}
-            </div>
-            <div
-              className="font-semibold"
-              style={{ fontSize: `${14 * fontScale}px`, color: theme.primary }}
-            >
-              {platformName}
-            </div>
+          <div className="relative h-full w-full flex flex-col items-center justify-center gap-2.5 text-center px-4">
+            {wordmarkBg}
+            {appIcon(44)}
             <span
               className="text-gray-500 dark:text-gray-400"
               style={{ fontSize: `${12 * fontScale}px` }}
@@ -845,10 +723,9 @@ const GamePresenceWidget = memo(
 
       if (error && !data) {
         return (
-          <div className="h-full w-full flex flex-col items-center justify-center gap-1.5 px-4 text-center">
-            <span className="text-2xl" style={{ color: theme.primary }}>
-              {platformMeta.icon}
-            </span>
+          <div className="relative h-full w-full flex flex-col items-center justify-center gap-2 px-4 text-center">
+            {wordmarkBg}
+            {appIcon(36)}
             <span
               className="text-gray-500 dark:text-gray-400"
               style={{ fontSize: `${12 * fontScale}px` }}
@@ -861,353 +738,211 @@ const GamePresenceWidget = memo(
 
       const name = data?.identity.name || accountId
       const score = data?.score
-      const avatar = data?.identity.avatar
-      const subtitle =
-        data?.identity.subtitle?.trim() ||
-        (platformId === 'hoyolab' ? tw[game] : accountId)
+      const showcase = (data?.showcase || []).slice(0, 6)
+      const focused = showcase[focusIndex % Math.max(1, showcase.length)]
 
-      const avatarNode = avatar ? (
-        <img
-          src={avatar}
-          alt=""
-          className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-sm"
-          style={{ boxShadow: `0 0 0 2px ${theme.border}` }}
-          loading="lazy"
-        />
-      ) : (
-        <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 text-2xl shadow-sm border"
-          style={{
-            background: theme.softBgStrong,
-            color: theme.primary,
-            borderColor: theme.border,
-          }}
-        >
-          {platformMeta.icon}
-        </div>
-      )
-
-      const scoreNode = score ? (
-        <div
-          className="shrink-0 rounded-2xl px-3 py-2 text-right min-w-18 border"
-          style={{
-            background: theme.softBgStrong,
-            borderColor: theme.border,
-          }}
-        >
+      const roundAvatar = (
+        s: (typeof showcase)[number],
+        size: number,
+        ring: string,
+        ringWidth = 2,
+      ) =>
+        s.icon ? (
+          <img
+            src={s.icon}
+            alt={s.name}
+            className="rounded-full object-cover"
+            style={{
+              width: `${size * fontScale}px`,
+              height: `${size * fontScale}px`,
+              background: theme.softBgStrong,
+              boxShadow: `0 0 0 ${ringWidth}px ${ring}`,
+            }}
+            loading="lazy"
+          />
+        ) : (
           <div
-            className="font-bold tabular-nums leading-none"
-            style={{ fontSize: `${24 * fontScale}px`, color: theme.primary }}
+            className="rounded-full flex items-center justify-center font-bold"
+            style={{
+              width: `${size * fontScale}px`,
+              height: `${size * fontScale}px`,
+              background: theme.softBgStrong,
+              color: theme.primary,
+              boxShadow: `0 0 0 ${ringWidth}px ${ring}`,
+              fontSize: `${size * 0.36 * fontScale}px`,
+            }}
           >
-            {score.value}
+            {s.name.slice(0, 1)}
           </div>
-          <div
-            className="mt-1 text-gray-500 dark:text-gray-400"
-            style={{ fontSize: `${11 * fontScale}px` }}
-          >
-            {score.label}
-          </div>
-        </div>
-      ) : null
+        )
 
-      // —— 米哈游：展柜型（等级 + 指标芯片 + 展柜角色）——
-      if (layoutKind === 'showcase') {
-        return (
-          <div className="h-full w-full flex gap-4 min-h-0">
-            <div className="flex flex-col gap-2.5 min-w-0 flex-[1.1]">
-              <div className="flex items-start gap-3 min-w-0">
-                {avatarNode}
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <div
-                    className="font-bold text-gray-900 dark:text-gray-50 truncate leading-tight"
-                    style={{ fontSize: `${18 * fontScale}px` }}
-                  >
-                    {name}
-                  </div>
-                  <div
-                    className="mt-0.5 truncate"
-                    style={{
-                      fontSize: `${12 * fontScale}px`,
-                      color: theme.primary,
-                    }}
-                  >
-                    {tw[game]}
-                    <span className="text-gray-400 dark:text-gray-500">
-                      {' · '}
-                      {platformName}
-                      {accountId ? ` · UID ${accountId}` : ''}
-                    </span>
-                  </div>
-                  {subtitle && subtitle !== tw[game] && (
-                    <div
-                      className="mt-1 text-gray-400 dark:text-gray-500 line-clamp-2"
-                      style={{ fontSize: `${11 * fontScale}px` }}
-                    >
-                      {subtitle}
-                    </div>
-                  )}
-                </div>
-                {scoreNode}
-              </div>
-
-              {data && data.highlights.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-auto">
-                  {data.highlights
-                    .filter((h) => h.label.toLowerCase() !== 'game')
-                    .slice(0, 5)
-                    .map((h) => (
-                      <span
-                        key={`${h.label}-${h.value}`}
-                        className="inline-flex items-baseline gap-1 px-2.5 py-1 rounded-xl border text-gray-700 dark:text-gray-200"
-                        style={{
-                          fontSize: `${12 * fontScale}px`,
-                          background: theme.chipBg,
-                          borderColor: theme.border,
-                        }}
-                      >
-                        <span className="opacity-55">{h.label}</span>
-                        <span
-                          className="font-semibold tabular-nums"
-                          style={{ color: theme.primary }}
-                        >
-                          {h.value}
-                        </span>
-                      </span>
-                    ))}
-                </div>
-              )}
-
-              {data?.degraded && (
-                <div
-                  className="text-amber-600/90 dark:text-amber-400/90"
-                  style={{ fontSize: `${11 * fontScale}px` }}
-                  title={data.degrade_reason || undefined}
-                >
-                  {tw.degraded}
-                </div>
-              )}
-            </div>
-
+      return (
+        <div className={`relative h-full w-full flex gap-3 min-h-0 ${meta.fontClass}`}>
+          {/* 左：角色聚焦面板（1/3 宽、占满全高、大幅立绘 + 底部渐变信息条） */}
+          {showcase.length > 0 && focused && (
             <div
-              className="flex flex-col min-w-0 flex-1 rounded-2xl px-3 py-2.5 border"
+              className="relative w-[34%] shrink-0 h-full rounded-xl overflow-hidden"
               style={{
-                background: theme.panelBg,
-                borderColor: theme.border,
+                background: theme.softBgStrong,
+                boxShadow: `inset 0 0 0 1.5px ${theme.border}`,
               }}
             >
-              <div
-                className="font-semibold mb-2"
-                style={{
-                  fontSize: `${11 * fontScale}px`,
-                  color: theme.primary,
-                }}
-              >
-                {tw.showcase}
-              </div>
-              {data && data.showcase.length > 0 ? (
-                <div className="grid grid-cols-2 gap-1.5 content-start flex-1 min-h-0 overflow-hidden">
-                  {data.showcase.slice(0, 6).map((s, i) => (
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`${focused.name}-${focusIndex}`}
+                  initial={{ opacity: 0, scale: 1.06 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.4, ease: 'easeOut' }}
+                  className="absolute inset-0"
+                >
+                  {focused.art || focused.icon ? (
+                    <img
+                      src={focused.art || focused.icon || undefined}
+                      alt={focused.name}
+                      className="w-full h-full object-cover"
+                      style={{ objectPosition: meta.artPos }}
+                      loading="lazy"
+                    />
+                  ) : (
                     <div
-                      key={`${s.name}-${i}`}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-xl min-w-0 border"
+                      className="w-full h-full flex items-center justify-center font-bold"
                       style={{
-                        background: isDark
-                          ? 'rgba(0,0,0,0.28)'
-                          : 'rgba(255,255,255,0.72)',
-                        borderColor: theme.border,
+                        color: theme.primary,
+                        fontSize: `${30 * fontScale}px`,
                       }}
                     >
+                      {focused.name.slice(0, 1)}
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+
+              {/* 底部渐变信息条：名字 + 等级/星级 */}
+              <div className="absolute inset-x-0 bottom-0 px-2 pt-7 pb-1.5 bg-linear-to-t from-black/75 via-black/30 to-transparent pointer-events-none">
+                <div
+                  className="text-white font-bold truncate leading-tight"
+                  style={{ fontSize: `${12.5 * fontScale}px` }}
+                >
+                  {focused.name}
+                </div>
+                <div
+                  className="mt-0.5 flex items-center gap-1.5 leading-none tabular-nums"
+                  style={{ fontSize: `${9.5 * fontScale}px` }}
+                >
+                  {focused.level != null && (
+                    <span className="text-white/90 font-semibold">
+                      Lv.
+                      {focused.level}
+                    </span>
+                  )}
+                  {focused.rarity != null && (
+                    <span
+                      style={{
+                        color: rarityRing(focused.rarity, '#ffffff'),
+                      }}
+                    >
+                      {'★'.repeat(Math.min(5, Math.max(1, focused.rarity)))}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 右列：待播队列（顶部）→ 指标行 → 弹性留白 → 身份底栏 */}
+          <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
+            {wordmarkBg}
+
+            {showcase.length > 0 ? (
+              <>
+                {/* 待播队列：与顶部对齐 */}
+                <div
+                  ref={queueRef}
+                  className="scrollbar-hide w-full flex items-center gap-2 overflow-x-auto px-0.5 py-1 shrink-0"
+                >
+                  {showcase.map((s, i) => (
+                    <button
+                      key={`${s.name}-${i}`}
+                      type="button"
+                      title={s.level != null ? `${s.name} · Lv.${s.level}` : s.name}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setFocusIndex(i)
+                      }}
+                      className="rounded-full transition-all duration-300 shrink-0"
+                      style={{
+                        opacity: i === focusIndex ? 1 : 0.45,
+                        transform: i === focusIndex ? 'scale(1.1)' : 'scale(1)',
+                      }}
+                    >
+                      {roundAvatar(
+                        s,
+                        30,
+                        i === focusIndex
+                          ? theme.primary
+                          : rarityRing(s.rarity, theme.border),
+                        i === focusIndex ? 2 : 1.5,
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 指标行：待播队列下面（标题在上、数值在下） */}
+                <div className="mt-2 flex items-center gap-5 shrink-0 overflow-hidden">
+                  {[
+                    ...(score ? [{ label: score.label, value: score.value }] : []),
+                    ...(data?.highlights.slice(0, 3) || []),
+                  ].map((h) => (
+                    <div
+                      key={`${h.label}-${h.value}`}
+                      className="flex flex-col items-center justify-center gap-1 shrink-0"
+                    >
                       <span
-                        className="w-1.5 h-1.5 rounded-full shrink-0"
-                        style={{
-                          background:
-                            s.rarity && s.rarity >= 5
-                              ? theme.accent
-                              : theme.primary,
-                        }}
-                      />
-                      <span
-                        className="truncate text-gray-800 dark:text-gray-100 font-medium"
+                        className="text-gray-500 dark:text-gray-400 leading-none whitespace-nowrap"
                         style={{ fontSize: `${12 * fontScale}px` }}
                       >
-                        {s.name}
+                        {h.label}
                       </span>
-                      {s.level != null && (
-                        <span
-                          className="ml-auto shrink-0 tabular-nums"
-                          style={{
-                            fontSize: `${11 * fontScale}px`,
-                            color: theme.primary,
-                          }}
-                        >
-                          Lv.{s.level}
-                        </span>
-                      )}
+                      <span
+                        className="font-bold tabular-nums leading-none whitespace-nowrap"
+                        style={{ fontSize: `${19 * fontScale}px`, color: theme.primary }}
+                      >
+                        {h.value}
+                      </span>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div
-                  className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500 text-center px-2"
-                  style={{ fontSize: `${12 * fontScale}px` }}
-                >
-                  {tw.showcaseEmpty}
-                </div>
-              )}
-            </div>
-          </div>
-        )
-      }
-
-      // —— Xbox / PSN：状态型 ——
-      // 在线用平台主色；在玩用 accent；离线中性灰
-      const presenceColor = presenceMeta.title
-        ? theme.accent
-        : presenceMeta.online
-          ? theme.primary
-          : '#9ca3af'
-
-      return (
-        <div className="h-full w-full flex gap-4 min-h-0">
-          <div className="flex flex-col gap-2.5 min-w-0 flex-1">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="relative shrink-0">
-                {avatarNode}
-                <span
-                  className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-neutral-900"
-                  style={{ background: presenceColor }}
-                  title={presenceMeta.statusLabel || undefined}
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div
-                  className="font-bold text-gray-900 dark:text-gray-50 truncate leading-tight"
-                  style={{ fontSize: `${18 * fontScale}px` }}
-                >
-                  {name}
-                </div>
-                <div
-                  className="mt-0.5 flex items-center gap-1.5 truncate"
-                  style={{ fontSize: `${12 * fontScale}px` }}
-                >
-                  <span style={{ color: theme.primary }}>{platformName}</span>
-                  {presenceMeta.statusLabel && (
-                    <>
-                      <span className="text-gray-400 opacity-50">·</span>
-                      <span style={{ color: presenceColor }}>
-                        {presenceMeta.statusLabel}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-              {scoreNode}
-            </div>
-
-            <div
-              className="flex-1 min-h-0 rounded-2xl px-3.5 py-3 flex flex-col justify-center border"
-              style={{
-                background: presenceMeta.title
-                  ? theme.gradient
-                  : theme.softBg,
-                borderColor: theme.border,
-              }}
-            >
-              {presenceMeta.title ? (
-                <>
-                  <div
-                    className="uppercase tracking-wide font-semibold"
-                    style={{
-                      fontSize: `${11 * fontScale}px`,
-                      color: theme.primary,
-                    }}
-                  >
-                    {tw.nowPlaying}
-                  </div>
-                  <div
-                    className="mt-1 font-bold text-gray-900 dark:text-gray-50 line-clamp-2 leading-snug"
-                    style={{ fontSize: `${18 * fontScale}px` }}
-                  >
-                    {presenceMeta.title}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div
-                    className="font-semibold"
-                    style={{
-                      fontSize: `${14 * fontScale}px`,
-                      color: presenceColor,
-                    }}
-                  >
-                    {presenceMeta.statusLabel || tw.statusUnknown}
-                  </div>
-                  <div
-                    className="mt-1 text-gray-400 dark:text-gray-500"
-                    style={{ fontSize: `${12 * fontScale}px` }}
-                  >
-                    {tw.noGameActivity}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {data?.degraded && (
-              <div
-                className="text-amber-600/90 dark:text-amber-400/90"
-                style={{ fontSize: `${11 * fontScale}px` }}
-                title={data.degrade_reason || undefined}
-              >
-                {tw.degraded}
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2 min-w-0 w-[34%] shrink-0">
-            {data && data.highlights.length > 0 ? (
-              data.highlights.slice(0, 4).map((h) => (
-                <div
-                  key={`${h.label}-${h.value}`}
-                  className="flex-1 min-h-0 rounded-2xl px-3 py-2 flex flex-col justify-center border"
-                  style={{
-                    background: theme.softBg,
-                    borderColor: theme.border,
-                  }}
-                >
-                  <div
-                    className="text-gray-500 dark:text-gray-400"
-                    style={{ fontSize: `${11 * fontScale}px` }}
-                  >
-                    {h.label}
-                  </div>
-                  <div
-                    className="font-bold tabular-nums"
-                    style={{
-                      fontSize: `${16 * fontScale}px`,
-                      color: theme.primary,
-                    }}
-                  >
-                    {h.value}
-                  </div>
-                </div>
-              ))
+              </>
             ) : (
               <div
-                className="flex-1 rounded-2xl px-3 py-3 flex flex-col justify-center border"
-                style={{
-                  fontSize: `${12 * fontScale}px`,
-                  background: theme.softBg,
-                  borderColor: theme.border,
-                }}
+                className="flex-1 flex items-center justify-center text-center text-gray-400 dark:text-gray-500"
+                style={{ fontSize: `${12 * fontScale}px` }}
               >
-                <div className="text-gray-500 dark:text-gray-400">
-                  {tw.accountId}
-                </div>
-                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100 break-all">
-                  {accountId}
-                </div>
+                {tw.showcaseEmpty}
               </div>
             )}
+
+            <div className="flex-1 min-h-0" />
+
+            {/* 底栏：App 图标 + 昵称/UID */}
+            <div className="flex items-center gap-2 shrink-0 min-w-0">
+              {appIcon(30)}
+              <div className="flex flex-col justify-center min-w-0 gap-0.5">
+                <span
+                  className="font-semibold text-gray-900 dark:text-gray-50 truncate leading-none"
+                  style={{ fontSize: `${13 * fontScale}px` }}
+                >
+                  {name}
+                </span>
+                <span
+                  className="tabular-nums text-gray-400 dark:text-gray-500 truncate leading-none"
+                  style={{ fontSize: `${10 * fontScale}px` }}
+                >
+                  UID {accountId}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )
@@ -1216,19 +951,14 @@ const GamePresenceWidget = memo(
       loading,
       data,
       error,
-      iconColor,
-      platformMeta.icon,
       fontScale,
       isEditMode,
       tw,
       accountId,
-      platformName,
-      platformId,
       game,
-      layoutKind,
-      presenceMeta,
+      meta,
       theme,
-      isDark,
+      focusIndex,
     ])
 
     return (
@@ -1298,5 +1028,5 @@ const GamePresenceWidget = memo(
 
 GamePresenceWidget.displayName = 'GamePresenceWidget'
 
-export { GamePresenceWidget, GamePresenceSettingsModal }
+export { GamePresenceSettingsModal, GamePresenceWidget }
 export default GamePresenceWidget

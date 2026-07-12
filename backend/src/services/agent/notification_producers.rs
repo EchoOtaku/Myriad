@@ -23,6 +23,7 @@ impl NotificationManager {
                 result,
             )
             .with_metadata(serde_json::json!({
+                "event_key": if success { "heartbeat.succeeded" } else { "heartbeat.failed" },
                 "action": "open_arael_manage",
                 "tab": "heartbeat",
                 "success": success,
@@ -53,6 +54,7 @@ impl NotificationManager {
             body,
         )
         .with_metadata(serde_json::json!({
+            "event_key": "brew.new_items",
             "route": "/brew",
             "source_id": source_id,
             "new_count": new_count,
@@ -75,6 +77,7 @@ impl NotificationManager {
             error,
         )
         .with_metadata(serde_json::json!({
+            "event_key": "brew.source_error",
             "route": "/brew",
             "source_id": source_id,
             "status": "failed",
@@ -100,6 +103,7 @@ impl NotificationManager {
                 detail,
             )
             .with_metadata(serde_json::json!({
+                "event_key": if connected { "mcp.connected" } else { "mcp.disconnected" },
                 "route": "/config",
                 "server_id": server_id,
                 "status": if connected { "connected" } else { "failed" },
@@ -130,6 +134,11 @@ impl NotificationManager {
             message,
         )
         .with_metadata(serde_json::json!({
+            "event_key": match notification_type {
+                "error" | "danger" => "tapp.error",
+                "warning" => "tapp.warning",
+                _ => "tapp.message",
+            },
             "route": format!("/tapp/run/{}", tapp_id),
             "tapp_id": tapp_id,
             "tapp_notification_type": notification_type,
@@ -163,6 +172,14 @@ impl NotificationManager {
             detail,
         )
         .with_metadata(serde_json::json!({
+            "event_key": match status {
+                "succeeded" => "updater.succeeded",
+                "failed" => "updater.failed",
+                "needs_manual" => "updater.needs_manual",
+                "running" => "updater.running",
+                "unknown" => "updater.unknown",
+                _ => "updater.submitted",
+            },
             "route": "/config",
             "job_id": job_id,
             "kind": kind,

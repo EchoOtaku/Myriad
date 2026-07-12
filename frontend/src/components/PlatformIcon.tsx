@@ -2,11 +2,13 @@ import {
   BangumiIcon,
   FaGithub,
   FaSteam,
+  FaXbox,
   FaXTwitter,
   SiBilibili,
   SiDiscord,
   SiMyanimelist,
   SiNeteasecloudmusic,
+  SiPlaystation,
 } from '@lib/icons'
 
 import React from 'react'
@@ -45,6 +47,11 @@ const PlatformIcon: React.FC<PlatformIconProps> = React.memo(
         return <FaXTwitter className={className} style={style} />
       case 'discord':
         return <SiDiscord className={className} style={style} />
+      case 'xbox':
+        return <FaXbox className={className} style={style} />
+      case 'psn':
+      case 'playstation':
+        return <SiPlaystation className={className} style={style} />
       default:
         return (
           <span className={className} style={style}>

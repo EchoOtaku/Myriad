@@ -20,12 +20,12 @@ import {
 import { getCSRFToken } from '../../utils/csrf'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
 import WidgetGrid from '../WidgetGrid'
+import { GamePresenceWidget } from '../widgets/GamePresenceWidget'
 import { MusicPlayerWidget } from '../widgets/MusicPlayerWidget'
 import { QuickStatsWidget } from '../widgets/QuickStatsWidget'
 import { QuoteWidget } from '../widgets/QuoteWidget'
 import { RecentActivityWidget } from '../widgets/RecentActivityWidget'
 import { ReportCardWidget } from '../widgets/ReportCardWidget'
-import { GamePresenceWidget } from '../widgets/GamePresenceWidget'
 import { SocialNetworkWidget } from '../widgets/SocialNetworkWidget'
 import { WeatherWidget } from '../widgets/WeatherWidget'
 import { WelcomeWidget } from '../widgets/WelcomeWidget'
@@ -101,6 +101,16 @@ const WIDGET_BASE_CONFIG = {
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-mal': {
+    defaultSize: '4x2' as const,
+    component: ReportCardWidget,
+    supportedSizes: ['4x2'] as WidgetSize[],
+  },
+  'report-xbox': {
+    defaultSize: '4x2' as const,
+    component: ReportCardWidget,
+    supportedSizes: ['4x2'] as WidgetSize[],
+  },
+  'report-psn': {
     defaultSize: '4x2' as const,
     component: ReportCardWidget,
     supportedSizes: ['4x2'] as WidgetSize[],
@@ -200,6 +210,16 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
           id: 'report-mal',
           name: t.widgets.reportMal,
           ...WIDGET_BASE_CONFIG['report-mal'],
+        },
+        {
+          id: 'report-xbox',
+          name: t.widgets.reportXbox,
+          ...WIDGET_BASE_CONFIG['report-xbox'],
+        },
+        {
+          id: 'report-psn',
+          name: t.widgets.reportPsn,
+          ...WIDGET_BASE_CONFIG['report-psn'],
         },
       ],
       [t.widgets],

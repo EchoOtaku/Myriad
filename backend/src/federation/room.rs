@@ -1575,22 +1575,36 @@ pub async fn handle_room_invite(
     };
 
     // 添加本地用户作为成员
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"INSERT INTO federation_room_members
+    let inserted = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_room_members
            (room_id, actor_url, is_local, local_user_id, role, invited_by, joined_at)
            VALUES ($1, $2, true, $3, $4, $5, NOW())
            ON CONFLICT (room_id, actor_url) DO NOTHING"#,
-        [
-            room_id.into(),
-            local_actor.into(),
-            target_user_id.into(),
-            role.into(),
-            actor_url_str.into(),
-        ],
-    ))
-    .await
-    .map_err(|e| e.to_string())?;
+            [
+                room_id.into(),
+                local_actor.into(),
+                target_user_id.into(),
+                role.into(),
+                actor_url_str.into(),
+            ],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if inserted.rows_affected() > 0 {
+        let label = crate::federation::notify::actor_label(db, actor_url_str).await;
+        let name = crate::federation::notify::room_name(db, room_id).await;
+        crate::federation::notify::notify_room_invite(
+            target_user_id,
+            room_id,
+            &name,
+            actor_url_str,
+            &label,
+        )
+        .await;
+    }
 
     tracing::info!(
         "[Room] Received invite to room {} from {}",
@@ -1650,25 +1664,26 @@ pub async fn handle_room_message(
     let thread_id = object.get("threadId").and_then(|v| v.as_str());
     let reply_to = object.get("replyTo").and_then(|v| v.as_str());
 
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"INSERT INTO federation_room_messages
+    let inserted = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_room_messages
            (room_id, message_id, sender_actor, message_type, payload, thread_id, reply_to,
             reactions, is_pinned, is_encrypted, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, '{}', false, false, NOW())
            ON CONFLICT (message_id) DO NOTHING"#,
-        [
-            room_id.into(),
-            message_id.into(),
-            sender.into(),
-            message_type.into(),
-            payload.clone().into(),
-            thread_id.into(),
-            reply_to.into(),
-        ],
-    ))
-    .await
-    .map_err(|e| e.to_string())?;
+            [
+                room_id.into(),
+                message_id.into(),
+                sender.into(),
+                message_type.into(),
+                payload.clone().into(),
+                thread_id.into(),
+                reply_to.into(),
+            ],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
 
     // 广播到本地 WebSocket
     crate::federation::ws_gateway::broadcast_to_room(
@@ -1688,6 +1703,40 @@ pub async fn handle_room_message(
         }),
     )
     .await;
+
+    // 新消息才通知本地成员（排除发送者若其为本地用户）
+    if inserted.rows_affected() > 0 {
+        let label = crate::federation::notify::actor_label(db, sender).await;
+        let name = crate::federation::notify::room_name(db, room_id).await;
+        let local_users = crate::federation::notify::room_local_user_ids(db, room_id).await;
+        // 若发送者绑定了本地 user，跳过该 user
+        let sender_local: Option<i32> = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT local_user_id FROM federation_room_members
+                   WHERE room_id = $1 AND actor_url = $2 AND is_local = true"#,
+                [room_id.into(), sender.into()],
+            ))
+            .await
+            .ok()
+            .flatten()
+            .and_then(|r| r.try_get::<i32>("", "local_user_id").ok());
+        for user_id in local_users {
+            if sender_local == Some(user_id) {
+                continue;
+            }
+            crate::federation::notify::notify_room_message(
+                user_id,
+                room_id,
+                &name,
+                sender,
+                &label,
+                message_type,
+                &payload,
+            )
+            .await;
+        }
+    }
 
     tracing::info!("[Room] Received message {} in room {}", message_id, room_id);
     Ok(())

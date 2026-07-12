@@ -1,8 +1,6 @@
 import type { NotificationCenterState } from '../hooks/useNotificationCenter'
-import type {
-  AppNotification,
-  NotificationType,
-} from '../services/notificationApi'
+import type { AppNotification } from '../services/notificationApi'
+import type { NotificationSourceKey } from '../services/notificationPreferencesApi'
 /**
  * 通知列表面板（智能岛「通知」tab 的内容区）
  *
@@ -11,25 +9,26 @@ import type {
  * 点击后变为文本二次确认（3 秒未确认自动还原）。
  * 点击通知直接跳转对应内容（任务类 → Arael 会话），无落点时展开详情。
  */
+import { LuChevronLeft, LuSettings } from '@lib/icons'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
-import { NOTIFICATION_TYPE_ICONS } from '../services/notificationApi'
 import { getGreeting } from '../utils/dynamicContent'
+import NotificationConfigSection from './config/NotificationConfigSection'
+import {
+  notificationSourceFor,
+  NotificationSourceIcon,
+} from './notifications/NotificationIcons'
 
 /** 发信源图标底色（iOS App 图标风格的着色圆角方块） */
-const SOURCE_ICON_BG: Record<NotificationType, string> = {
-  task_progress: 'bg-blue-500/15',
-  task_completed: 'bg-green-500/15',
-  task_failed: 'bg-red-500/15',
-  task_cancelled: 'bg-gray-500/15',
-  heartbeat_result: 'bg-pink-500/15',
-  mcp_server_status: 'bg-indigo-500/15',
-  brew_new_items: 'bg-amber-500/15',
-  brew_source_error: 'bg-red-500/15',
-  tapp_notification: 'bg-violet-500/15',
-  updater_status: 'bg-cyan-500/15',
-  system_info: 'bg-gray-500/15',
-  agent_clarification: 'bg-orange-500/15',
+const SOURCE_ICON_BG: Record<NotificationSourceKey, string> = {
+  agent: 'bg-violet-500/15 text-violet-600 dark:text-violet-300',
+  heartbeat: 'bg-pink-500/15 text-pink-600 dark:text-pink-300',
+  mcp: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-300',
+  brew: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+  tapp: 'bg-purple-500/15 text-purple-600 dark:text-purple-300',
+  updater: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300',
+  federation: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+  system: 'bg-gray-500/15 text-gray-600 dark:text-gray-300',
 }
 
 /** Apple 风格胶囊按钮基础样式 */
@@ -79,6 +78,8 @@ interface Props {
   onNavigate?: (path: string) => void
   /** 打开 Arael 管理面板（Heartbeat 通知） */
   onOpenAraelManage?: () => void
+  /** 当前用户是否允许浏览器系统通知。 */
+  browserNotificationsEnabled?: boolean
 }
 
 function NotificationPanelList({
@@ -87,11 +88,13 @@ function NotificationPanelList({
   onOpenSession,
   onNavigate,
   onOpenAraelManage,
+  browserNotificationsEnabled = true,
 }: Props) {
   const { t, format, locale } = useI18n()
   const { items, removeItem, clearAll } = center
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [notifPermission, setNotifPermission] = useState<string>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
@@ -185,23 +188,40 @@ function NotificationPanelList({
   )
 
   /** 发信源名称（iOS 通知头行的 App 名位置） */
-  const sourceLabels = useMemo<Record<NotificationType, string>>(
+  const sourceLabels = useMemo<Record<NotificationSourceKey, string>>(
     () => ({
-      task_completed: t.notificationCenter.sourceAgent,
-      task_progress: t.notificationCenter.sourceAgent,
-      task_failed: t.notificationCenter.sourceAgent,
-      task_cancelled: t.notificationCenter.sourceAgent,
-      agent_clarification: t.notificationCenter.sourceAgent,
-      heartbeat_result: t.notificationCenter.sourceHeartbeat,
-      mcp_server_status: t.notificationCenter.sourceMcp,
-      brew_new_items: 'Brew',
-      brew_source_error: 'Brew',
-      tapp_notification: 'Tapp',
-      updater_status: t.notificationCenter.sourceSystem,
-      system_info: t.notificationCenter.sourceSystem,
+      agent: t.notificationCenter.sourceAgent,
+      heartbeat: t.notificationCenter.sourceHeartbeat,
+      mcp: t.notificationCenter.sourceMcp,
+      brew: 'Brew',
+      tapp: 'Tapp',
+      updater: t.notificationCenter.sourceSystem,
+      federation: t.notificationCenter.sourceAro,
+      system: t.notificationCenter.sourceSystem,
     }),
     [t],
   )
+
+  if (showSettings) {
+    return (
+      <div className={`min-h-0 overflow-y-auto ${fill ? 'h-full' : ''}`}>
+        <button
+          type="button"
+          className={`${PILL_BTN} mb-2 inline-flex items-center gap-1`}
+          onClick={() => setShowSettings(false)}
+        >
+          <LuChevronLeft className="h-3.5 w-3.5" />
+          {t.notificationCenter.title}
+        </button>
+        <NotificationConfigSection
+          sectionId="notifications-inline"
+          title={t.notificationCenter.title}
+          icon={<LuSettings className="h-4 w-4" />}
+          description={t.notificationCenter.settingsDesc}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className={`flex flex-col min-h-0 ${fill ? 'h-full' : ''}`}>
@@ -216,7 +236,16 @@ function NotificationPanelList({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {notifPermission === 'default' && (
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/5 text-gray-500 transition-colors hover:bg-black/9 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15"
+            aria-label={t.notificationCenter.settingsDesc}
+            title={t.notificationCenter.settingsDesc}
+          >
+            <LuSettings className="h-3.5 w-3.5" />
+          </button>
+          {browserNotificationsEnabled && notifPermission === 'default' && (
             <button
               type="button"
               onClick={() => void requestSystemNotif()}
@@ -277,97 +306,99 @@ function NotificationPanelList({
             {t.notificationCenter.empty}
           </div>
         ) : (
-          items.map((n) => (
-            <div
-              key={n.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => handleItemClick(n)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  handleItemClick(n)
-                }
-              }}
-              className="group relative mb-1.5 flex w-full cursor-pointer items-start gap-2.5
+          items.map((n) => {
+            const source = notificationSourceFor(n)
+            return (
+              <div
+                key={n.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleItemClick(n)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    handleItemClick(n)
+                  }
+                }}
+                className="group relative mb-1.5 flex w-full cursor-pointer items-start gap-2.5
                 rounded-xl px-2.5 py-2.5 text-left transition-colors
                 bg-black/3 hover:bg-black/6
                 dark:bg-white/4 dark:hover:bg-white/8"
-            >
-              {/* 发信源图标：着色圆角方块 */}
-              <span
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base leading-none ${
-                  SOURCE_ICON_BG[n.notification_type] ?? 'bg-gray-500/15'
-                }`}
               >
-                {NOTIFICATION_TYPE_ICONS[n.notification_type] ?? 'ℹ️'}
-              </span>
-
-              <div className="min-w-0 flex-1">
-                {/* 头行：发信源名 + 时间 */}
-                <div className="flex items-center gap-1.5">
-                  <span className="truncate text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                    {sourceLabels[n.notification_type] ??
-                      t.notificationCenter.sourceSystem}
-                  </span>
-                  <span className="ml-auto shrink-0 text-[10px] text-gray-400 dark:text-gray-500">
-                    {relativeTime(n.created_at)}
-                  </span>
-                </div>
-
-                <div className="mt-0.5 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
-                  {n.title}
-                </div>
-                <p
-                  className={`mt-0.5 text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words ${
-                    expandedId === n.id ? '' : 'line-clamp-2'
+                {/* 发信源图标：着色圆角方块 */}
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base leading-none ${
+                    SOURCE_ICON_BG[source]
                   }`}
                 >
-                  {n.body}
-                </p>
-                {typeof n.metadata?.progress === 'number' &&
-                  (n.notification_type === 'task_progress' ||
-                    n.notification_type === 'agent_clarification') && (
-                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/8 dark:bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-blue-500 transition-[width] duration-300 dark:bg-blue-400"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, n.metadata.progress))}%`,
-                        }}
-                      />
-                    </div>
-                  )}
-              </div>
+                  <NotificationSourceIcon source={source} className="h-4 w-4" />
+                </span>
 
-              <button
-                type="button"
-                aria-label={t.common.delete}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void removeItem(n)
-                }}
-                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full
+                <div className="min-w-0 flex-1">
+                  {/* 头行：发信源名 + 时间 */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                      {sourceLabels[source]}
+                    </span>
+                    <span className="ml-auto shrink-0 text-[10px] text-gray-400 dark:text-gray-500">
+                      {relativeTime(n.created_at)}
+                    </span>
+                  </div>
+
+                  <div className="mt-0.5 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
+                    {n.title}
+                  </div>
+                  <p
+                    className={`mt-0.5 text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words ${
+                      expandedId === n.id ? '' : 'line-clamp-2'
+                    }`}
+                  >
+                    {n.body}
+                  </p>
+                  {typeof n.metadata?.progress === 'number' &&
+                    (n.notification_type === 'task_progress' ||
+                      n.notification_type === 'agent_clarification') && (
+                      <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/8 dark:bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-blue-500 transition-[width] duration-300 dark:bg-blue-400"
+                          style={{
+                            width: `${Math.max(0, Math.min(100, n.metadata.progress))}%`,
+                          }}
+                        />
+                      </div>
+                    )}
+                </div>
+
+                <button
+                  type="button"
+                  aria-label={t.common.delete}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void removeItem(n)
+                  }}
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full
                   text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400
                   hover:bg-red-50 dark:hover:bg-red-950/40
                   opacity-0 group-hover:opacity-100 focus:opacity-100 max-sm:opacity-60
                   transition-all"
-              >
-                <svg
-                  className="w-3.5 h-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  viewBox="0 0 24 24"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-          ))
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            )
+          })
         )}
       </div>
     </div>

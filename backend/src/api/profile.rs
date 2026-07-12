@@ -578,6 +578,17 @@ fn platform_data_warning(platform: &str, data: Option<&Value>) -> Option<String>
             .then(|| {
                 "Discord 未返回用户数据。请检查 Access Token 是否有效，且 scope 含 identify / guilds / connections。".to_string()
             }),
+        "xbox" => data
+            .pointer("/achievements/titles")
+            .and_then(|v| v.as_array())
+            .map(|a| a.is_empty())
+            .unwrap_or(true)
+            .then(|| {
+                "Xbox 未返回成就数据。请确认 Gamertag、OpenXBL API Key 正确且资料设为公开。".to_string()
+            }),
+        "psn" => is_empty_array("trophy_titles").then(|| {
+            "PSN 未返回奖杯数据。请确认 Online ID、NPSSO 有效且奖杯设为公开。".to_string()
+        }),
         _ => None,
     }
 }
@@ -717,6 +728,30 @@ async fn fetch_fresh_platform_data(
         "mal" => config.mal_enabled.unwrap_or(
             config.mal_username.as_ref().is_some() && config.mal_client_id.as_ref().is_some(),
         ),
+        "xbox" => {
+            let has_gamertag = config.xbox_gamertag.as_ref().is_some_and(|s| !s.trim().is_empty())
+                || std::env::var("XBOX_GAMERTAG").is_ok();
+            let has_key = config
+                .openxbl_api_key
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+                || std::env::var("OPENXBL_API_KEY").is_ok()
+                || std::env::var("XBL_API_KEY").is_ok();
+            config.xbox_enabled.unwrap_or(has_gamertag && has_key)
+        }
+        "psn" => {
+            let has_id = config
+                .psn_online_id
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+                || std::env::var("PSN_ONLINE_ID").is_ok();
+            let has_npsso = config
+                .psn_npsso
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+                || std::env::var("PSN_NPSSO").is_ok();
+            config.psn_enabled.unwrap_or(has_id && has_npsso)
+        }
         _ => false,
     };
 
@@ -1184,6 +1219,96 @@ async fn fetch_fresh_platform_data(
             }
         } else {
             tracing::warn!("MyAnimeList enabled but username or client_id missing");
+        }
+    }
+
+    // 获取 Xbox 数据（成就向：Gamerscore + 各游戏成就进度）
+    // 凭据：DB 优先，env 回退（与 game_presence / 配置页展示一致）
+    if should_fetch("xbox") && is_platform_enabled("xbox") {
+        let gamertag = config
+            .xbox_gamertag
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| std::env::var("XBOX_GAMERTAG").ok())
+            .unwrap_or_default();
+        let api_key = config
+            .openxbl_api_key
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| std::env::var("OPENXBL_API_KEY").ok())
+            .or_else(|| std::env::var("XBL_API_KEY").ok())
+            .unwrap_or_default();
+
+        if !gamertag.trim().is_empty() && !api_key.trim().is_empty() {
+            match fetcher
+                .fetch_xbox_profile_bundle(&gamertag, &api_key)
+                .await
+            {
+                Ok(bundle) => {
+                    all_data["xbox"] = bundle;
+                    let titles_count = all_data["xbox"]["achievements"]["titles"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    tracing::info!("✓ Xbox data fetched: {} titles", titles_count);
+                }
+                Err(e) => tracing::warn!("Xbox fetch failed: {}", e),
+            }
+
+            if !all_data["xbox"].is_null() {
+                if let Err(e) = metadata_service
+                    .save_platform_metadata(user_id, "xbox", all_data["xbox"].clone())
+                    .await
+                {
+                    tracing::error!("Failed to save Xbox metadata to database: {}", e);
+                }
+            }
+        } else {
+            tracing::warn!("Xbox enabled but gamertag or OpenXBL API key missing");
+        }
+    }
+
+    // 获取 PSN 数据（奖杯向：奖杯等级 + 各游戏奖杯完成度）
+    if should_fetch("psn") && is_platform_enabled("psn") {
+        let online_id = config
+            .psn_online_id
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| std::env::var("PSN_ONLINE_ID").ok())
+            .unwrap_or_default();
+        let npsso = config
+            .psn_npsso
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| std::env::var("PSN_NPSSO").ok())
+            .unwrap_or_default();
+
+        if !online_id.trim().is_empty() && !npsso.trim().is_empty() {
+            match fetcher
+                .fetch_psn_profile_bundle(&online_id, &npsso)
+                .await
+            {
+                Ok(bundle) => {
+                    all_data["psn"] = bundle;
+                    let titles_count = all_data["psn"]["trophy_titles"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    tracing::info!("✓ PSN data fetched: {} trophy titles", titles_count);
+                }
+                Err(e) => tracing::warn!("PSN fetch failed: {}", e),
+            }
+
+            if !all_data["psn"].is_null() {
+                if let Err(e) = metadata_service
+                    .save_platform_metadata(user_id, "psn", all_data["psn"].clone())
+                    .await
+                {
+                    tracing::error!("Failed to save PSN metadata to database: {}", e);
+                }
+            }
+        } else {
+            tracing::warn!("PSN enabled but online_id or NPSSO missing");
         }
     }
 
@@ -3075,6 +3200,8 @@ fn canonical_library_platform(platform: &str) -> String {
         "x" | "twitter" | "xtwitter" => "X".to_string(),
         "netease" | "neteasemusic" | "neteasecloudmusic" => "Netease".to_string(),
         "mal" | "myanimelist" => "MyAnimeList".to_string(),
+        "xbox" => "Xbox".to_string(),
+        "psn" | "playstation" => "PlayStation".to_string(),
         _ => trimmed.to_string(),
     }
 }

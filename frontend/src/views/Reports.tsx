@@ -8,6 +8,7 @@ import {
   FaSteam,
   FaSync,
   FaTimes,
+  FaXbox,
   FaXTwitter,
   LuGlobe,
   SiBangumi,
@@ -15,6 +16,7 @@ import {
   SiDiscord,
   SiMyanimelist,
   SiNeteasecloudmusic,
+  SiPlaystation,
 } from '@lib/icons'
 
 import {
@@ -222,6 +224,26 @@ const PLATFORMS = [
     border: 'border-indigo-200/20 dark:border-indigo-800/20',
     widgetType: 'social',
   },
+  {
+    id: 'xbox',
+    name: 'Xbox',
+    icon: <FaXbox />,
+    color: 'from-green-600 to-green-800',
+    bg: 'bg-green-50/10 dark:bg-green-900/10',
+    text: 'text-[#107C10]',
+    border: 'border-green-200/20 dark:border-green-800/20',
+    widgetType: 'gauge',
+  },
+  {
+    id: 'psn',
+    name: 'PlayStation',
+    icon: <SiPlaystation />,
+    color: 'from-blue-600 to-blue-800',
+    bg: 'bg-blue-50/10 dark:bg-blue-900/10',
+    text: 'text-[#0070D1]',
+    border: 'border-blue-200/20 dark:border-blue-800/20',
+    widgetType: 'gauge',
+  },
 ]
 
 const PLATFORM_NAME_TO_ID: Record<string, string> = {
@@ -236,6 +258,9 @@ const PLATFORM_NAME_TO_ID: Record<string, string> = {
   twitter: 'x',
   'x (twitter)': 'x',
   discord: 'discord',
+  xbox: 'xbox',
+  psn: 'psn',
+  playstation: 'psn',
   'netease music': 'netease',
   'netease cloud music': 'netease',
   'netease cloudmusic': 'netease',

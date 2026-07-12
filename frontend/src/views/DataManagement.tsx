@@ -9,12 +9,14 @@ import {
   FaGithub,
   FaSteam,
   FaSyncAlt,
+  FaXbox,
   FaXTwitter,
   SiBangumi,
   SiBilibili,
   SiDiscord,
   SiMyanimelist,
   SiNeteasecloudmusic,
+  SiPlaystation,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import { useEffect, useState } from 'react'
@@ -49,6 +51,8 @@ const PLATFORMS = [
   { id: 'mal', name: 'MyAnimeList', icon: SiMyanimelist, color: '#2E51A2' },
   { id: 'x', name: 'X', icon: FaXTwitter, color: '#000000' },
   { id: 'discord', name: 'Discord', icon: SiDiscord, color: '#5865F2' },
+  { id: 'xbox', name: 'Xbox', icon: FaXbox, color: '#107C10' },
+  { id: 'psn', name: 'PlayStation', icon: SiPlaystation, color: '#0070D1' },
 ]
 
 interface CacheInfo {

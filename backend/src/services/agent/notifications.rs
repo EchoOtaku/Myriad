@@ -19,6 +19,8 @@ use tokio::sync::{broadcast, RwLock};
 
 use crate::models::entities::agent_notifications as notif_entity;
 
+use super::notification_preferences::{self, NotificationPreferences};
+
 /// 全局通知管理器单例
 static NOTIFICATION_MANAGER: OnceLock<Arc<NotificationManager>> = OnceLock::new();
 
@@ -50,6 +52,12 @@ pub enum NotificationType {
     SystemInfo,
     /// 升级/澄清请求
     AgentClarification,
+    /// 联邦私信 / 群聊新消息
+    FederationMessage,
+    /// 联邦关注（新粉丝 / 关注被接受）
+    FederationFollow,
+    /// 联邦邀请（私信通道 / 群组）
+    FederationInvite,
 }
 
 /// 通知优先级
@@ -77,6 +85,9 @@ impl NotificationType {
             NotificationType::UpdaterStatus => "updater_status",
             NotificationType::SystemInfo => "system_info",
             NotificationType::AgentClarification => "agent_clarification",
+            NotificationType::FederationMessage => "federation_message",
+            NotificationType::FederationFollow => "federation_follow",
+            NotificationType::FederationInvite => "federation_invite",
         }
     }
 
@@ -93,6 +104,9 @@ impl NotificationType {
             "tapp_notification" => NotificationType::TappNotification,
             "updater_status" => NotificationType::UpdaterStatus,
             "agent_clarification" => NotificationType::AgentClarification,
+            "federation_message" => NotificationType::FederationMessage,
+            "federation_follow" => NotificationType::FederationFollow,
+            "federation_invite" => NotificationType::FederationInvite,
             _ => NotificationType::SystemInfo,
         }
     }
@@ -161,6 +175,13 @@ impl Notification {
         self.metadata = Some(metadata);
         self
     }
+
+    pub fn event_key(&self) -> Option<&str> {
+        self.metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("event_key"))
+            .and_then(|value| value.as_str())
+    }
 }
 
 /// SSE 推送事件（broadcast channel 传输类型）
@@ -204,6 +225,31 @@ pub struct NotificationManager {
 }
 
 impl NotificationManager {
+    pub async fn notification_preferences(&self, user_id: i32) -> NotificationPreferences {
+        notification_preferences::load(self.db.as_ref(), user_id).await
+    }
+
+    pub async fn update_notification_preferences(
+        &self,
+        user_id: i32,
+        preferences: NotificationPreferences,
+    ) -> Result<NotificationPreferences, String> {
+        notification_preferences::save(self.db.as_ref(), user_id, preferences).await
+    }
+
+    async fn notification_is_enabled(&self, notification: &Notification) -> bool {
+        let Some(user_id) = notification.user_id else {
+            return false;
+        };
+        let Some(event_key) = notification.event_key() else {
+            // 历史/第三方生产者没有 event key 时保持兼容和可见。
+            return true;
+        };
+        self.notification_preferences(user_id)
+            .await
+            .allows(event_key)
+    }
+
     /// 创建带持久化的管理器，并从 DB 恢复最近历史
     pub async fn new_with_db(max_history: usize, db: DatabaseConnection) -> Self {
         let (tx, _) = broadcast::channel(128);
@@ -281,6 +327,14 @@ impl NotificationManager {
             );
             return;
         }
+        if !self.notification_is_enabled(&notification).await {
+            tracing::debug!(
+                id = %notification.id,
+                event_key = notification.event_key().unwrap_or("unknown"),
+                "Notification disabled by user preference"
+            );
+            return;
+        }
         tracing::debug!(
             id = %notification.id,
             r#type = ?notification.notification_type,
@@ -331,6 +385,24 @@ impl NotificationManager {
                 id = %notification.id,
                 "[Notifications] Rejected ownerless notification update"
             );
+            return;
+        }
+        if !self.notification_is_enabled(&notification).await {
+            let is_status_snapshot = matches!(
+                notification.notification_type,
+                NotificationType::TaskProgress
+                    | NotificationType::TaskCompleted
+                    | NotificationType::TaskFailed
+                    | NotificationType::TaskCancelled
+                    | NotificationType::AgentClarification
+                    | NotificationType::McpServerStatus
+                    | NotificationType::UpdaterStatus
+            );
+            if is_status_snapshot {
+                let user_id = notification.user_id.expect("owner checked above");
+                // 稳定 ID 的运行中通知若终态被关闭，必须移除旧快照，避免永远显示运行中。
+                let _ = self.delete_notification(&notification.id, user_id).await;
+            }
             return;
         }
         tracing::debug!(
@@ -425,6 +497,13 @@ impl NotificationManager {
         };
         let mut notification = Notification::new(user_id, notification_type, priority, title, body)
             .with_metadata(serde_json::json!({
+                "event_key": match status {
+                    "completed" => "agent.task_completed",
+                    "failed" => "agent.task_failed",
+                    "cancelled" => "agent.task_cancelled",
+                    "waiting_for_input" => "agent.clarification",
+                    _ => "agent.task_progress",
+                },
                 "run_id": run_id,
                 "task_id": task_id,
                 "session_id": session_id,
@@ -973,6 +1052,146 @@ mod tests {
         assert!(manager.get_history_for_user(41, 10).await.is_empty());
     }
 
+    #[tokio::test]
+    async fn disabled_event_is_not_persisted_or_streamed() {
+        let manager = test_manager();
+        let user_id = 9001;
+        let mut preferences = NotificationPreferences::default();
+        preferences
+            .events
+            .insert("brew.new_items".to_string(), false);
+        notification_preferences::set_cached_for_test(user_id, preferences).await;
+
+        manager
+            .notify(
+                Notification::new(
+                    user_id,
+                    NotificationType::BrewNewItems,
+                    NotificationPriority::Normal,
+                    "new items",
+                    "body",
+                )
+                .with_metadata(serde_json::json!({"event_key": "brew.new_items"})),
+            )
+            .await;
+
+        assert!(manager.get_history_for_user(user_id, 10).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn disabled_terminal_event_removes_stale_progress_snapshot() {
+        let manager = test_manager();
+        let user_id = 9002;
+        let mut progress = Notification::new(
+            user_id,
+            NotificationType::TaskProgress,
+            NotificationPriority::Normal,
+            "running",
+            "50%",
+        )
+        .with_metadata(serde_json::json!({"event_key": "agent.task_progress"}));
+        progress.id = "stable-run".to_string();
+        manager.upsert(progress).await;
+
+        let mut preferences = NotificationPreferences::default();
+        preferences
+            .events
+            .insert("agent.task_completed".to_string(), false);
+        notification_preferences::set_cached_for_test(user_id, preferences).await;
+        let mut completed = Notification::new(
+            user_id,
+            NotificationType::TaskCompleted,
+            NotificationPriority::Normal,
+            "done",
+            "100%",
+        )
+        .with_metadata(serde_json::json!({"event_key": "agent.task_completed"}));
+        completed.id = "stable-run".to_string();
+        manager.upsert(completed).await;
+
+        assert!(manager.get_history_for_user(user_id, 10).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn disabling_stable_message_events_keeps_existing_history() {
+        let manager = test_manager();
+        let user_id = 9003;
+        let mut previous = Notification::new(
+            user_id,
+            NotificationType::FederationMessage,
+            NotificationPriority::Normal,
+            "Aro",
+            "previous message",
+        );
+        previous.id = "stable-message".to_string();
+        manager.upsert(previous).await;
+
+        let mut preferences = NotificationPreferences::default();
+        preferences
+            .events
+            .insert("federation.channel_message".to_string(), false);
+        notification_preferences::set_cached_for_test(user_id, preferences).await;
+        let mut incoming = Notification::new(
+            user_id,
+            NotificationType::FederationMessage,
+            NotificationPriority::Normal,
+            "Aro",
+            "disabled new message",
+        )
+        .with_metadata(serde_json::json!({
+            "event_key": "federation.channel_message"
+        }));
+        incoming.id = "stable-message".to_string();
+        manager.upsert(incoming).await;
+
+        let history = manager.get_history_for_user(user_id, 10).await;
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].body, "previous message");
+    }
+
+    #[tokio::test]
+    async fn federation_message_upserts_per_conversation() {
+        let manager = test_manager();
+        let mut first = Notification::new(
+            7,
+            NotificationType::FederationMessage,
+            NotificationPriority::Normal,
+            "Alice",
+            "hi",
+        )
+        .with_metadata(serde_json::json!({
+            "route": "/tapp/run/com.myriad.aro?channel=ch1&view=messages",
+            "kind": "channel",
+            "channel_id": "ch1",
+        }));
+        first.id = "fed_ch_test_u7".to_string();
+        manager.upsert(first).await;
+
+        let mut second = Notification::new(
+            7,
+            NotificationType::FederationMessage,
+            NotificationPriority::Normal,
+            "Alice",
+            "hello again",
+        )
+        .with_metadata(serde_json::json!({
+            "route": "/tapp/run/com.myriad.aro?channel=ch1&view=messages",
+            "kind": "channel",
+            "channel_id": "ch1",
+        }));
+        second.id = "fed_ch_test_u7".to_string();
+        manager.upsert(second).await;
+
+        let history = manager.get_history_for_user(7, 10).await;
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].body, "hello again");
+        assert!(matches!(
+            history[0].notification_type,
+            NotificationType::FederationMessage
+        ));
+        assert!(manager.get_history_for_user(8, 10).await.is_empty());
+    }
+
     #[test]
     fn notification_type_storage_names_round_trip() {
         for notification_type in [
@@ -988,6 +1207,9 @@ mod tests {
             NotificationType::UpdaterStatus,
             NotificationType::SystemInfo,
             NotificationType::AgentClarification,
+            NotificationType::FederationMessage,
+            NotificationType::FederationFollow,
+            NotificationType::FederationInvite,
         ] {
             let stored = notification_type.as_str();
             assert_eq!(NotificationType::from_str(stored).as_str(), stored);

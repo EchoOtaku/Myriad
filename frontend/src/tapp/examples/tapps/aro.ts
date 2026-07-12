@@ -1154,7 +1154,11 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "unfollowBtn": "Unfollow",
     "unfollowFail": "Unfollow failed",
     "unpublishFail": "Unpublish failed",
-    "updatingBtn": "Update"
+    "updatingBtn": "Update",
+    "newMessage": "New message",
+    "previewImage": "📷 Image",
+    "previewFile": "📎 File",
+    "previewSystem": "System message"
   },
   "ja": {
     "accept": "承認",
@@ -1311,7 +1315,11 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "unfollowBtn": "フォロー解除",
     "unfollowFail": "フォロー解除失敗",
     "unpublishFail": "公開取消失敗",
-    "updatingBtn": "更新"
+    "updatingBtn": "更新",
+    "newMessage": "新しいメッセージ",
+    "previewImage": "📷 画像",
+    "previewFile": "📎 ファイル",
+    "previewSystem": "システムメッセージ"
   },
   "zh": {
     "accept": "接受",
@@ -1468,7 +1476,11 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "unfollowBtn": "取消关注",
     "unfollowFail": "取消关注失败",
     "unpublishFail": "取消发布失败",
-    "updatingBtn": "更新"
+    "updatingBtn": "更新",
+    "newMessage": "新消息",
+    "previewImage": "📷 图片",
+    "previewFile": "📎 文件",
+    "previewSystem": "系统消息"
   }
 }
 
@@ -1501,6 +1513,8 @@ var state = {
   sending: false,
   pollTimer: null,
   pollInterval: 15000,
+  /** 新消息应用内 Toast（设置项 notifyOnMessage） */
+  notifyOnMessage: true,
   /** Active realtime WS subscription (channel|room) */
   subscribedKind: null,
   subscribedId: null,
@@ -1570,8 +1584,62 @@ function autoResizeInput(el) {
   el.style.height = el.scrollHeight + 'px';
 }
 function getPayloadText(payload) {
-  if (typeof payload === 'object' && payload && payload.text) return String(payload.text);
-  return JSON.stringify(payload);
+  if (payload == null) return '';
+  if (typeof payload === 'string') return payload;
+  if (typeof payload === 'object' && payload.text) return String(payload.text);
+  if (typeof payload === 'object' && payload.content) return String(payload.content);
+  if (typeof payload === 'object' && payload.name) return String(payload.name);
+  try { return JSON.stringify(payload); } catch (e) { return ''; }
+}
+
+/** 会话列表/通知用的短预览 */
+function messagePreview(msg) {
+  if (!msg) return lang.newMessage || '新消息';
+  var mt = msg.message_type || 'text';
+  if (mt === 'image') return lang.previewImage || '📷 图片';
+  if (mt === 'file' || mt === 'file-meta') return lang.previewFile || '📎 文件';
+  if (mt === 'system') return lang.previewSystem || '系统消息';
+  var text = getPayloadText(msg.payload);
+  if (!text) return lang.newMessage || '新消息';
+  return text.length > 80 ? text.slice(0, 79) + '…' : text;
+}
+
+/**
+ * 应用内新消息 Toast。
+ * 条件：设置开启，且（页面在后台 或 当前未打开该会话）。
+ * 全局通知中心由后端 SSE 负责，这里只补 Aro 打开时的即时反馈。
+ */
+function maybeNotifyIncomingMessage(scope, scopeId, msg) {
+  if (!state.notifyOnMessage || !msg) return;
+  var isActive =
+    state.activeKind === scope &&
+    state.activeId === scopeId &&
+    typeof document !== 'undefined' &&
+    !document.hidden;
+  if (isActive) return;
+
+  var title = lang.newMessage || '新消息';
+  if (scope === 'channel') {
+    for (var i = 0; i < state.channels.length; i++) {
+      if (state.channels[i].channel_id === scopeId) {
+        title = state.channels[i].remote_actor_name ||
+          (state.channels[i].remote_actor_url || '').split('/').pop() ||
+          title;
+        break;
+      }
+    }
+  } else if (scope === 'room') {
+    for (var j = 0; j < state.rooms.length; j++) {
+      if (state.rooms[j].room_id === scopeId) {
+        title = state.rooms[j].name || title;
+        break;
+      }
+    }
+  }
+  var preview = messagePreview(msg);
+  try {
+    Tapp.ui.showNotification({ title: title, message: preview, type: 'info' });
+  } catch (e) { /* ignore */ }
 }
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
@@ -3534,18 +3602,30 @@ async function unsubscribeRealtime() {
 }
 
 function handleRealtimeMessage(ev) {
-  if (!ev || !state.activeId) return;
+  if (!ev) return;
   var data = ev.data || {};
+  var scope = ev.scope;
+  var scopeId = scope === 'channel' ? ev.channelId : scope === 'room' ? ev.roomId : null;
   var inScope = false;
-  if (ev.scope === 'channel' && state.activeKind === 'channel' && ev.channelId === state.activeId) {
+  if (scope === 'channel' && state.activeKind === 'channel' && ev.channelId === state.activeId) {
     inScope = true;
-  } else if (ev.scope === 'room' && state.activeKind === 'room' && ev.roomId === state.activeId) {
+  } else if (scope === 'room' && state.activeKind === 'room' && ev.roomId === state.activeId) {
     inScope = true;
   }
-  if (!inScope) return;
+
+  // 非当前会话：Toast + 刷新列表（后端通知中心另有 SSE）
+  if (!inScope) {
+    if (data.type === 'message' && data.message && scopeId) {
+      maybeNotifyIncomingMessage(scope, scopeId, data.message);
+      loadConversations().catch(function () {});
+    }
+    return;
+  }
 
   if (data.type === 'message' && data.message) {
     mergeIncomingMessage(data.message);
+    // 当前会话但页面在后台时仍提示
+    maybeNotifyIncomingMessage(scope, scopeId, data.message);
     return;
   }
   if (data.type === 'room_message_pinned' && data.message_id) {
@@ -4828,6 +4908,9 @@ const PAGE_MOD_INDEX = `\
     var settings = await Tapp.settings.getAll();
     if (settings && settings.pollInterval) {
       state.pollInterval = Math.max(5, Math.min(120, settings.pollInterval)) * 1000;
+    }
+    if (settings && typeof settings.notifyOnMessage !== 'undefined') {
+      state.notifyOnMessage = !!settings.notifyOnMessage;
     }
   } catch (e) { /* ignore */ }
 

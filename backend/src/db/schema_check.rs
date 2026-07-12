@@ -106,6 +106,22 @@ pub fn default_platform_seeds() -> &'static [DefaultPlatformSeed] {
             auth_type: "client_id",
             enabled: false,
         },
+        DefaultPlatformSeed {
+            name: "xbox",
+            display_name: "Xbox",
+            icon: "xbox",
+            api_endpoint: "https://xbl.io/api/v2",
+            auth_type: "api_key",
+            enabled: false,
+        },
+        DefaultPlatformSeed {
+            name: "psn",
+            display_name: "PlayStation",
+            icon: "psn",
+            api_endpoint: "https://m.np.playstation.com/api",
+            auth_type: "npsso",
+            enabled: false,
+        },
     ]
 }
 
@@ -373,6 +389,12 @@ fn get_expected_schema() -> Vec<TableDef> {
                     data_type: "boolean".into(),
                     is_nullable: false,
                     default_value: Some("false".into()),
+                },
+                ColumnDef {
+                    name: "notification_preferences".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: Some("'{}'::jsonb".into()),
                 },
             ],
         },

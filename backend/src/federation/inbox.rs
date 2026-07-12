@@ -251,6 +251,11 @@ async fn handle_follow(
     // 入队投递
     enqueue_delivery(db, local_user_id, &accept, &remote.inbox_url).await?;
 
+    // 新粉丝通知
+    let follower_label = crate::federation::notify::actor_label(db, actor_url_str).await;
+    crate::federation::notify::notify_new_follower(local_user_id, actor_url_str, &follower_label)
+        .await;
+
     tracing::info!("✅ Follow accepted: {} → {}", actor_url_str, local_username);
 
     Ok(StatusCode::ACCEPTED)
@@ -287,6 +292,28 @@ async fn handle_accept(
                 .map_err(db_err)?;
 
             if result.rows_affected() > 0 {
+                // 查远程方标签用于通知
+                let remote_label = if let Ok(Some(row)) = db
+                    .query_one(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"SELECT ra.actor_url FROM federation_channels c
+                           JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+                           WHERE c.channel_id = $1"#,
+                        [channel_id.into()],
+                    ))
+                    .await
+                {
+                    let url: String = row.try_get("", "actor_url").unwrap_or_default();
+                    crate::federation::notify::actor_label(db, &url).await
+                } else {
+                    String::new()
+                };
+                crate::federation::notify::notify_channel_accepted(
+                    local_user_id,
+                    channel_id,
+                    &remote_label,
+                )
+                .await;
                 tracing::info!("✅ Channel accepted: {}", channel_id);
             } else {
                 tracing::debug!(
@@ -298,15 +325,36 @@ async fn handle_accept(
     } else {
         // 标准 Follow Accept
         if !follow_id.is_empty() {
-            db.execute(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"UPDATE federation_follows
+            let result = db
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"UPDATE federation_follows
                    SET status = 'accepted', accepted_at = NOW()
                    WHERE user_id = $1 AND direction = 'outgoing' AND activity_id = $2"#,
-                [local_user_id.into(), follow_id.into()],
-            ))
-            .await
-            .map_err(db_err)?;
+                    [local_user_id.into(), follow_id.into()],
+                ))
+                .await
+                .map_err(db_err)?;
+
+            if result.rows_affected() > 0 {
+                // 尽量解析远程 actor 用于通知文案
+                let actor_url = activity["actor"].as_str().unwrap_or("");
+                let label = if !actor_url.is_empty() {
+                    crate::federation::notify::actor_label(db, actor_url).await
+                } else {
+                    "对方".to_string()
+                };
+                crate::federation::notify::notify_follow_accepted(
+                    local_user_id,
+                    if actor_url.is_empty() {
+                        follow_id
+                    } else {
+                        actor_url
+                    },
+                    &label,
+                )
+                .await;
+            }
 
             tracing::info!("✅ Our follow accepted: {}", follow_id);
         }

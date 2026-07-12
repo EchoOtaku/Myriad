@@ -59,6 +59,7 @@ pub mod intent;
 pub mod mcp;
 pub mod memory;
 pub mod notification_producers;
+pub mod notification_preferences;
 pub mod notifications;
 pub mod orchestrator;
 pub mod planner;

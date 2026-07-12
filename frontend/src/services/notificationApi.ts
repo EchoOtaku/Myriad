@@ -22,6 +22,9 @@ export type NotificationType =
   | 'updater_status'
   | 'system_info'
   | 'agent_clarification'
+  | 'federation_message'
+  | 'federation_follow'
+  | 'federation_invite'
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent'
 
@@ -41,22 +44,6 @@ export interface NotificationListResponse {
   notifications: AppNotification[]
   unread_count: number
   total: number
-}
-
-/** 通知类型 → 展示图标（智能岛轮播 / 通知列表共用；后端新增类型时走兜底图标） */
-export const NOTIFICATION_TYPE_ICONS: Record<NotificationType, string> = {
-  task_progress: '⏳',
-  task_completed: '✅',
-  task_failed: '❌',
-  task_cancelled: '🛑',
-  heartbeat_result: '💓',
-  mcp_server_status: '🔌',
-  brew_new_items: '☕',
-  brew_source_error: '⚠️',
-  tapp_notification: '🧩',
-  updater_status: '🔄',
-  system_info: 'ℹ️',
-  agent_clarification: '❓',
 }
 
 /** SSE 流事件均由后端按 user_id 过滤，只发给通知 owner。 */

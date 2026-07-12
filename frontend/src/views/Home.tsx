@@ -12,12 +12,12 @@ import { useEffect, useMemo, useState } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import { TitleFontSelector } from '../components/TitleFontSelector'
 import WidgetGrid from '../components/WidgetGrid'
+import { GamePresenceWidget } from '../components/widgets/GamePresenceWidget'
 import { MusicPlayerWidget } from '../components/widgets/MusicPlayerWidget'
 import { QuickStatsWidget } from '../components/widgets/QuickStatsWidget'
 import { QuoteWidget } from '../components/widgets/QuoteWidget'
 import { RecentActivityWidget } from '../components/widgets/RecentActivityWidget'
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
-import { GamePresenceWidget } from '../components/widgets/GamePresenceWidget'
 import { SocialNetworkWidget } from '../components/widgets/SocialNetworkWidget'
 import { WeatherWidget } from '../components/widgets/WeatherWidget'
 import { WelcomeWidget } from '../components/widgets/WelcomeWidget'
@@ -191,6 +191,20 @@ export default function Home() {
       {
         id: 'report-mal',
         name: t.widgets.reportMal,
+        defaultSize: '4x2',
+        component: ReportCardWidget,
+        supportedSizes: ['4x2'],
+      },
+      {
+        id: 'report-xbox',
+        name: t.widgets.reportXbox,
+        defaultSize: '4x2',
+        component: ReportCardWidget,
+        supportedSizes: ['4x2'],
+      },
+      {
+        id: 'report-psn',
+        name: t.widgets.reportPsn,
         defaultSize: '4x2',
         component: ReportCardWidget,
         supportedSizes: ['4x2'],

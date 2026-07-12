@@ -25,6 +25,7 @@ pub mod content;
 
 // Phase 3: Channel 实时通信
 pub mod channel;
+pub mod notify;
 pub mod ws_gateway;
 
 // Phase 4: Room 多方通信

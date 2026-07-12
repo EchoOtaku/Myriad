@@ -49,6 +49,73 @@ pub enum ContentAnalysis {
     X(XAnalysis),
     Discord(DiscordAnalysis),
     Mal(MalAnalysis),
+    Xbox(XboxAnalysis),
+    Psn(PsnAnalysis),
+}
+
+/// Xbox 成就分析（Xbox Live 无游玩时长，走成就向叙事）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XboxAnalysis {
+    pub gaming_summary: String,
+    pub gamerscore: i64,
+    pub games_count: usize,
+    /// 成就进度 100% 的游戏数
+    pub completed_games: usize,
+    pub total_achievements_earned: i64,
+    /// 全部游戏的平均成就完成度（0-100）
+    pub average_completion: f64,
+    /// 按最近游玩排序
+    pub recent_titles: Vec<XboxTitleItem>,
+    /// 按完成度排序（优先展示接近全成就的作品）
+    pub top_completed_titles: Vec<XboxTitleItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XboxTitleItem {
+    pub title_id: String,
+    pub name: String,
+    pub display_image: Option<String>,
+    pub achievements_earned: i64,
+    pub achievements_total: i64,
+    pub gamerscore_earned: i64,
+    pub gamerscore_total: i64,
+    /// 成就完成度（0-100）
+    pub progress: f64,
+    pub last_played: Option<String>,
+}
+
+/// PSN 奖杯分析（同样无时长数据，走奖杯向叙事）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PsnAnalysis {
+    pub trophy_summary_text: String,
+    pub trophy_level: i64,
+    pub platinum_count: i64,
+    pub gold_count: i64,
+    pub silver_count: i64,
+    pub bronze_count: i64,
+    pub games_count: usize,
+    /// 奖杯进度 100% 的游戏数
+    pub completed_games: usize,
+    /// 全部游戏的平均奖杯完成度（0-100）
+    pub average_progress: f64,
+    /// 按最近奖杯动态排序
+    pub recent_titles: Vec<PsnTitleItem>,
+    /// 按完成度排序
+    pub top_completed_titles: Vec<PsnTitleItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PsnTitleItem {
+    pub name: String,
+    pub platform: String,
+    pub icon_url: Option<String>,
+    /// 奖杯完成度（0-100）
+    pub progress: i64,
+    pub earned_platinum: i64,
+    pub earned_gold: i64,
+    pub earned_silver: i64,
+    pub earned_bronze: i64,
+    pub last_updated: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -442,6 +509,26 @@ impl SmartFilter {
             }
         }
 
+        if let Some(xbox_data) = all_data.get("xbox") {
+            match SmartFilter::filter("xbox", xbox_data) {
+                Ok(result) => {
+                    Self::save_platform_cache_atomic("xbox", &result)?;
+                    processed_count += 1;
+                }
+                Err(e) => tracing::warn!("Xbox filter failed: {}", e),
+            }
+        }
+
+        if let Some(psn_data) = all_data.get("psn") {
+            match SmartFilter::filter("psn", psn_data) {
+                Ok(result) => {
+                    Self::save_platform_cache_atomic("psn", &result)?;
+                    processed_count += 1;
+                }
+                Err(e) => tracing::warn!("PSN filter failed: {}", e),
+            }
+        }
+
         // Flush unknown content stats to disk
         super::content_databases::learning::flush_unknown_stats();
 
@@ -491,6 +578,8 @@ impl SmartFilter {
             "x" => Self::filter_x(raw_data),
             "discord" => Self::filter_discord(raw_data),
             "mal" => Self::filter_mal(raw_data),
+            "xbox" => Self::filter_xbox(raw_data),
+            "psn" => Self::filter_psn(raw_data),
             _ => Err(format!("Unsupported platform: {}", platform)),
         }
     }
@@ -1289,6 +1378,289 @@ impl SmartFilter {
         })
     }
 
+    /// Xbox 成就过滤：OpenXBL achievements bundle → 成就向画像
+    fn filter_xbox(data: &Value) -> Result<SmartFilteredData, String> {
+        let gamertag = data
+            .get("gamertag")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Xbox 玩家")
+            .to_string();
+        let xuid = data
+            .get("xuid")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        // profile settings 数组里找 Gamerscore
+        let mut gamerscore: i64 = 0;
+        if let Some(settings) = data
+            .pointer("/profile/profileUsers/0/settings")
+            .and_then(|v| v.as_array())
+        {
+            for s in settings {
+                if s.get("id").and_then(|v| v.as_str()) == Some("Gamerscore") {
+                    gamerscore = s
+                        .get("value")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .unwrap_or(0);
+                }
+            }
+        }
+
+        let raw_titles = data
+            .pointer("/achievements/titles")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut titles: Vec<XboxTitleItem> = raw_titles
+            .iter()
+            .filter_map(|t| {
+                let name = t.get("name").and_then(|v| v.as_str())?.to_string();
+                // 过滤掉非游戏条目（如 App）
+                if t.get("type").and_then(|v| v.as_str()) == Some("App") {
+                    return None;
+                }
+                let ach = t.get("achievement");
+                let earned = ach
+                    .and_then(|a| a.get("currentAchievements"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let total = ach
+                    .and_then(|a| a.get("totalAchievements"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let gs_earned = ach
+                    .and_then(|a| a.get("currentGamerscore"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let gs_total = ach
+                    .and_then(|a| a.get("totalGamerscore"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let progress = ach
+                    .and_then(|a| a.get("progressPercentage"))
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                Some(XboxTitleItem {
+                    title_id: t
+                        .get("titleId")
+                        .and_then(|v| {
+                            v.as_str()
+                                .map(str::to_string)
+                                .or_else(|| v.as_u64().map(|n| n.to_string()))
+                        })
+                        .unwrap_or_default(),
+                    name,
+                    display_image: t
+                        .get("displayImage")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    achievements_earned: earned,
+                    achievements_total: total,
+                    gamerscore_earned: gs_earned,
+                    gamerscore_total: gs_total,
+                    progress,
+                    last_played: t
+                        .pointer("/titleHistory/lastTimePlayed")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                })
+            })
+            .collect();
+
+        let games_count = titles.len();
+        let completed_games = titles.iter().filter(|t| t.progress >= 100.0).count();
+        let total_achievements_earned: i64 = titles.iter().map(|t| t.achievements_earned).sum();
+        let average_completion = if games_count > 0 {
+            titles.iter().map(|t| t.progress).sum::<f64>() / games_count as f64
+        } else {
+            0.0
+        };
+
+        let mut recent_titles = titles.clone();
+        recent_titles.sort_by(|a, b| b.last_played.cmp(&a.last_played));
+        recent_titles.truncate(20);
+
+        // 完成度排序时只看玩过的（有成就进度的）游戏，避免一堆 0% 噪音
+        titles.retain(|t| t.achievements_earned > 0);
+        titles.sort_by(|a, b| {
+            b.progress
+                .partial_cmp(&a.progress)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(b.gamerscore_earned.cmp(&a.gamerscore_earned))
+        });
+        titles.truncate(20);
+
+        let gaming_summary = format!(
+            "Xbox Gamerscore {}，共 {} 款游戏，{} 款全成就，累计解锁 {} 个成就，平均完成度 {:.1}%",
+            gamerscore, games_count, completed_games, total_achievements_earned, average_completion
+        );
+
+        Ok(SmartFilteredData {
+            platform: "xbox".to_string(),
+            user_summary: UserSummary {
+                username: gamertag,
+                user_id: xuid,
+                level: None,
+                stats: UserStats {
+                    follower_count: None,
+                    following_count: None,
+                    total_content: games_count,
+                },
+            },
+            content_analysis: ContentAnalysis::Xbox(XboxAnalysis {
+                gaming_summary,
+                gamerscore,
+                games_count,
+                completed_games,
+                total_achievements_earned,
+                average_completion,
+                recent_titles,
+                top_completed_titles: titles,
+            }),
+            raw_unknown_content: vec![],
+        })
+    }
+
+    /// PSN 奖杯过滤：trophyTitles bundle → 奖杯向画像
+    fn filter_psn(data: &Value) -> Result<SmartFilteredData, String> {
+        let online_id = data
+            .get("online_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("PSN 玩家")
+            .to_string();
+        let account_id = data
+            .get("account_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        let summary = data.get("trophy_summary");
+        let trophy_level = summary
+            .and_then(|s| s.get("trophyLevel"))
+            .and_then(|v| {
+                v.as_i64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+            })
+            .unwrap_or(0);
+        let earned = summary.and_then(|s| s.get("earnedTrophies"));
+        let count_of = |kind: &str| -> i64 {
+            earned
+                .and_then(|e| e.get(kind))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0)
+        };
+        let platinum_count = count_of("platinum");
+        let gold_count = count_of("gold");
+        let silver_count = count_of("silver");
+        let bronze_count = count_of("bronze");
+
+        let raw_titles = data
+            .get("trophy_titles")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut titles: Vec<PsnTitleItem> = raw_titles
+            .iter()
+            .filter_map(|t| {
+                let name = t
+                    .get("trophyTitleName")
+                    .and_then(|v| v.as_str())?
+                    .to_string();
+                let earned = t.get("earnedTrophies");
+                let earned_of = |kind: &str| -> i64 {
+                    earned
+                        .and_then(|e| e.get(kind))
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0)
+                };
+                Some(PsnTitleItem {
+                    name,
+                    platform: t
+                        .get("trophyTitlePlatform")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    icon_url: t
+                        .get("trophyTitleIconUrl")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    progress: t.get("progress").and_then(|v| v.as_i64()).unwrap_or(0),
+                    earned_platinum: earned_of("platinum"),
+                    earned_gold: earned_of("gold"),
+                    earned_silver: earned_of("silver"),
+                    earned_bronze: earned_of("bronze"),
+                    last_updated: t
+                        .get("lastUpdatedDateTime")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                })
+            })
+            .collect();
+
+        let games_count = titles.len();
+        let completed_games = titles.iter().filter(|t| t.progress >= 100).count();
+        let average_progress = if games_count > 0 {
+            titles.iter().map(|t| t.progress as f64).sum::<f64>() / games_count as f64
+        } else {
+            0.0
+        };
+
+        let mut recent_titles = titles.clone();
+        recent_titles.sort_by(|a, b| b.last_updated.cmp(&a.last_updated));
+        recent_titles.truncate(20);
+
+        titles.sort_by(|a, b| {
+            b.progress
+                .cmp(&a.progress)
+                .then(b.earned_platinum.cmp(&a.earned_platinum))
+        });
+        titles.truncate(20);
+
+        let trophy_summary_text = format!(
+            "PSN 奖杯等级 {}，白金 {} / 金 {} / 银 {} / 铜 {}，共 {} 款游戏，{} 款 100% 完成，平均完成度 {:.1}%",
+            trophy_level,
+            platinum_count,
+            gold_count,
+            silver_count,
+            bronze_count,
+            games_count,
+            completed_games,
+            average_progress
+        );
+
+        Ok(SmartFilteredData {
+            platform: "psn".to_string(),
+            user_summary: UserSummary {
+                username: online_id,
+                user_id: account_id,
+                level: Some(format!("Lv.{trophy_level}")),
+                stats: UserStats {
+                    follower_count: None,
+                    following_count: None,
+                    total_content: games_count,
+                },
+            },
+            content_analysis: ContentAnalysis::Psn(PsnAnalysis {
+                trophy_summary_text,
+                trophy_level,
+                platinum_count,
+                gold_count,
+                silver_count,
+                bronze_count,
+                games_count,
+                completed_games,
+                average_progress,
+                recent_titles,
+                top_completed_titles: titles,
+            }),
+            raw_unknown_content: vec![],
+        })
+    }
+
     fn filter_x(data: &Value) -> Result<SmartFilteredData, String> {
         let user = data.get("user").unwrap_or(&Value::Null);
         let username = user
@@ -1861,6 +2233,12 @@ impl SmartFilter {
             }
             "mal" => {
                 // MAL 数据已按 { user, anime_list, manga_list } 保存
+            }
+            "xbox" => {
+                // Xbox 数据已按 { gamertag, xuid, profile, achievements } 保存
+            }
+            "psn" => {
+                // PSN 数据已按 { online_id, account_id, social_metadata, trophy_summary, trophy_titles } 保存
             }
             _ => {}
         }

@@ -41,7 +41,8 @@ pub async fn submit_task(
 
     // 验证平台名称
     let valid_platforms = [
-        "netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal",
+        "netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal", "xbox",
+        "psn",
     ];
     if !valid_platforms.contains(&platform.as_str()) {
         return (
@@ -172,7 +173,7 @@ pub async fn list_tasks(State(_db): State<DatabaseConnection>) -> (StatusCode, J
         Json(json!({
             "success": true,
             "message": "Use GET /api/tasks/platform/{platform} to check specific platform tasks",
-            "supported_platforms": ["netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal"]
+            "supported_platforms": ["netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal", "xbox", "psn"]
         })),
     )
 }
