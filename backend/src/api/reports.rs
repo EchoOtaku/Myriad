@@ -630,8 +630,27 @@ async fn generate_platform_reports_internal(
                     &metadata.content_analysis
                 {
                     if let Some(obj) = card_visuals.as_object_mut() {
+                        // 身份
+                        obj.insert(
+                            "gamertag".to_string(),
+                            json!(analysis
+                                .display_gamertag
+                                .clone()
+                                .unwrap_or_else(|| metadata.user_summary.username.clone())),
+                        );
+                        if let Some(ref av) = analysis.avatar {
+                            obj.insert("avatar".to_string(), json!(av));
+                        }
+                        if let Some(ref tier) = analysis.account_tier {
+                            obj.insert("account_tier".to_string(), json!(tier));
+                        }
+                        // 核心指标（一律用实测值，覆盖 AI 幻觉）
                         obj.insert("gamerscore".to_string(), json!(analysis.gamerscore));
                         obj.insert("games_count".to_string(), json!(analysis.games_count));
+                        obj.insert(
+                            "achievement_games".to_string(),
+                            json!(analysis.achievement_games),
+                        );
                         obj.insert(
                             "completed_games".to_string(),
                             json!(analysis.completed_games),
@@ -645,6 +664,35 @@ async fn generate_platform_reports_internal(
                             json!(analysis.total_achievements_earned),
                         );
                         obj.insert(
+                            "total_achievements_available".to_string(),
+                            json!(analysis.total_achievements_available),
+                        );
+                        obj.insert(
+                            "hardcore_score".to_string(),
+                            json!(analysis.hardcore_score),
+                        );
+                        // gamer_type 保留 AI 生成值；缺省时用规则兜底
+                        if !obj.contains_key("gamer_type")
+                            || obj
+                                .get("gamer_type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .is_empty()
+                        {
+                            obj.insert(
+                                "gamer_type".to_string(),
+                                json!(if analysis.completed_games >= 5 {
+                                    "全成就猎人"
+                                } else if analysis.average_completion >= 50.0 {
+                                    "深度攻略型"
+                                } else if analysis.gamerscore >= 10_000 {
+                                    "GS 收藏家"
+                                } else {
+                                    "广撒网玩家"
+                                }),
+                            );
+                        }
+                        obj.insert(
                             "top_titles".to_string(),
                             json!(analysis
                                 .top_completed_titles
@@ -654,20 +702,53 @@ async fn generate_platform_reports_internal(
                                     "name": t.name,
                                     "progress": t.progress.round(),
                                     "gamerscore": t.gamerscore_earned,
+                                    "achievements_earned": t.achievements_earned,
+                                    "achievements_total": t.achievements_total,
                                     "image": t.display_image,
                                 }))
                                 .collect::<Vec<_>>()),
                         );
-                        let library_items: Vec<Value> = analysis
-                            .recent_titles
+                        // 详情轮播：优先「有进度 + 有封面」→ 最近有封面 → 其余
+                        let mut lib_src: Vec<&crate::services::smart_filter::XboxTitleItem> =
+                            Vec::new();
+                        for t in analysis.top_completed_titles.iter() {
+                            if t.display_image.is_some() {
+                                lib_src.push(t);
+                            }
+                        }
+                        for t in analysis.recent_titles.iter() {
+                            if lib_src.len() >= 12 {
+                                break;
+                            }
+                            if t.display_image.is_some()
+                                && !lib_src.iter().any(|x| x.title_id == t.title_id)
+                            {
+                                lib_src.push(t);
+                            }
+                        }
+                        for t in analysis.recent_titles.iter() {
+                            if lib_src.len() >= 12 {
+                                break;
+                            }
+                            if !lib_src.iter().any(|x| x.title_id == t.title_id) {
+                                lib_src.push(t);
+                            }
+                        }
+                        let library_items: Vec<Value> = lib_src
                             .iter()
                             .take(12)
                             .map(|t| {
+                                let cover = t.display_image.as_ref().map(|u| {
+                                    crate::services::smart_filter::SmartFilter::normalize_xbox_media_url(u)
+                                });
                                 json!({
                                     "title": t.name,
                                     "type": "game",
-                                    "cover": t.display_image,
+                                    "cover": cover,
                                     "progress": t.progress.round(),
+                                    "achievements_earned": t.achievements_earned,
+                                    "achievements_total": t.achievements_total,
+                                    "gamerscore": t.gamerscore_earned,
                                 })
                             })
                             .collect();
@@ -684,6 +765,19 @@ async fn generate_platform_reports_internal(
                     &metadata.content_analysis
                 {
                     if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert(
+                            "online_id".to_string(),
+                            json!(analysis
+                                .display_online_id
+                                .clone()
+                                .unwrap_or_else(|| metadata.user_summary.username.clone())),
+                        );
+                        if let Some(ref av) = analysis.avatar {
+                            obj.insert("avatar".to_string(), json!(av));
+                        }
+                        if let Some(plus) = analysis.is_plus {
+                            obj.insert("is_plus".to_string(), json!(plus));
+                        }
                         obj.insert("trophy_level".to_string(), json!(analysis.trophy_level));
                         obj.insert(
                             "platinum_count".to_string(),
@@ -692,6 +786,10 @@ async fn generate_platform_reports_internal(
                         obj.insert("gold_count".to_string(), json!(analysis.gold_count));
                         obj.insert("silver_count".to_string(), json!(analysis.silver_count));
                         obj.insert("bronze_count".to_string(), json!(analysis.bronze_count));
+                        obj.insert(
+                            "total_trophies".to_string(),
+                            json!(analysis.total_trophies),
+                        );
                         obj.insert("games_count".to_string(), json!(analysis.games_count));
                         obj.insert(
                             "completed_games".to_string(),
@@ -702,6 +800,30 @@ async fn generate_platform_reports_internal(
                             json!(analysis.average_progress.round()),
                         );
                         obj.insert(
+                            "hardcore_score".to_string(),
+                            json!(analysis.hardcore_score),
+                        );
+                        if !obj.contains_key("hunter_type")
+                            || obj
+                                .get("hunter_type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .is_empty()
+                        {
+                            obj.insert(
+                                "hunter_type".to_string(),
+                                json!(if analysis.platinum_count >= 10 {
+                                    "白金收藏家"
+                                } else if analysis.platinum_count > 0 {
+                                    "单机通关派"
+                                } else if analysis.average_progress >= 50.0 {
+                                    "深度奖杯党"
+                                } else {
+                                    "随缘奖杯党"
+                                }),
+                            );
+                        }
+                        obj.insert(
                             "top_titles".to_string(),
                             json!(analysis
                                 .top_completed_titles
@@ -711,20 +833,53 @@ async fn generate_platform_reports_internal(
                                     "name": t.name,
                                     "progress": t.progress,
                                     "platinum": t.earned_platinum > 0,
-                                    "image": t.icon_url,
+                                    "platform": t.platform,
+                                    "image": t.icon_url.as_ref().map(|u| {
+                                        SmartFilter::normalize_https_media_url(u)
+                                    }),
                                 }))
                                 .collect::<Vec<_>>()),
                         );
-                        let library_items: Vec<Value> = analysis
-                            .recent_titles
+                        // 详情轮播：有进度+封面优先 → 最近有封面 → 其余
+                        let mut lib_src: Vec<&crate::services::smart_filter::PsnTitleItem> =
+                            Vec::new();
+                        for t in analysis.top_completed_titles.iter() {
+                            if t.icon_url.is_some() {
+                                lib_src.push(t);
+                            }
+                        }
+                        for t in analysis.recent_titles.iter() {
+                            if lib_src.len() >= 12 {
+                                break;
+                            }
+                            if t.icon_url.is_some()
+                                && !lib_src.iter().any(|x| x.name == t.name)
+                            {
+                                lib_src.push(t);
+                            }
+                        }
+                        for t in analysis.recent_titles.iter() {
+                            if lib_src.len() >= 12 {
+                                break;
+                            }
+                            if !lib_src.iter().any(|x| x.name == t.name) {
+                                lib_src.push(t);
+                            }
+                        }
+                        let library_items: Vec<Value> = lib_src
                             .iter()
                             .take(12)
                             .map(|t| {
+                                let cover = t.icon_url.as_ref().map(|u| {
+                                    SmartFilter::normalize_https_media_url(u)
+                                });
                                 json!({
                                     "title": t.name,
                                     "type": "game",
-                                    "cover": t.icon_url,
+                                    "cover": cover,
                                     "progress": t.progress,
+                                    "platinum": t.earned_platinum > 0,
+                                    "platform": t.platform,
                                 })
                             })
                             .collect();
@@ -1375,6 +1530,283 @@ static REPORT_REGEN_IN_FLIGHT: once_cell::sync::Lazy<
     std::sync::Mutex<std::collections::HashSet<String>>,
 > = once_cell::sync::Lazy::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
+/// 读出旧报告时，用 filtered 缓存补齐 Xbox/PSN 封面/头像/库（避免必须重生成报告才有图）
+fn enrich_stored_platform_report(mut report: Value) -> Value {
+    let platform = report
+        .get("platform")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if platform != "xbox" && platform != "psn" {
+        return report;
+    }
+
+    let Some(visuals) = report.get_mut("card_visuals") else {
+        return report;
+    };
+    if !visuals.is_object() {
+        *visuals = json!({});
+    }
+    let Some(obj) = visuals.as_object_mut() else {
+        return report;
+    };
+
+    let normalize_field = |v: &mut Value, xbox: bool| {
+        if let Some(s) = v.as_str() {
+            *v = json!(if xbox {
+                SmartFilter::normalize_xbox_media_url(s)
+            } else {
+                SmartFilter::normalize_https_media_url(s)
+            });
+        }
+    };
+    let is_xbox = platform == "xbox";
+    if let Some(av) = obj.get_mut("avatar") {
+        normalize_field(av, is_xbox);
+    }
+    if let Some(items) = obj.get_mut("library_items").and_then(|v| v.as_array_mut()) {
+        for item in items {
+            if let Some(c) = item.get_mut("cover") {
+                normalize_field(c, is_xbox);
+            }
+        }
+    }
+    if let Some(items) = obj.get_mut("top_titles").and_then(|v| v.as_array_mut()) {
+        for item in items {
+            if let Some(c) = item.get_mut("image") {
+                normalize_field(c, is_xbox);
+            }
+        }
+    }
+
+    let needs_lib = obj
+        .get("library_items")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.is_empty()
+                || a.iter().all(|i| {
+                    i.get("cover")
+                        .and_then(|c| c.as_str())
+                        .map(|s| s.is_empty())
+                        .unwrap_or(true)
+                })
+        })
+        .unwrap_or(true);
+
+    if platform == "xbox" {
+        if let Ok(meta) = SmartFilter::load_platform_cache("xbox") {
+            if let crate::services::smart_filter::ContentAnalysis::Xbox(analysis) =
+                &meta.content_analysis
+            {
+                if obj.get("avatar").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+                    if let Some(ref av) = analysis.avatar {
+                        obj.insert("avatar".to_string(), json!(av));
+                    }
+                }
+                if obj.get("gamertag").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+                    if let Some(ref g) = analysis.display_gamertag {
+                        obj.insert("gamertag".to_string(), json!(g));
+                    }
+                }
+                if !obj.contains_key("hardcore_score") {
+                    obj.insert("hardcore_score".to_string(), json!(analysis.hardcore_score));
+                }
+                if !obj.contains_key("total_achievements") {
+                    obj.insert(
+                        "total_achievements".to_string(),
+                        json!(analysis.total_achievements_earned),
+                    );
+                }
+                obj.insert("gamerscore".to_string(), json!(analysis.gamerscore));
+                obj.insert("games_count".to_string(), json!(analysis.games_count));
+                obj.insert(
+                    "completed_games".to_string(),
+                    json!(analysis.completed_games),
+                );
+                obj.insert(
+                    "completion_rate".to_string(),
+                    json!(analysis.average_completion.round()),
+                );
+
+                if needs_lib {
+                    let mut items: Vec<Value> = Vec::new();
+                    for t in analysis
+                        .top_completed_titles
+                        .iter()
+                        .chain(analysis.recent_titles.iter())
+                    {
+                        if items.len() >= 12 {
+                            break;
+                        }
+                        let Some(cover) = t.display_image.as_ref().filter(|s| !s.is_empty()) else {
+                            continue;
+                        };
+                        let title = t.name.as_str();
+                        if items
+                            .iter()
+                            .any(|x| x.get("title").and_then(|v| v.as_str()) == Some(title))
+                        {
+                            continue;
+                        }
+                        items.push(json!({
+                            "title": t.name,
+                            "type": "game",
+                            "cover": SmartFilter::normalize_xbox_media_url(cover),
+                            "progress": t.progress.round(),
+                            "achievements_earned": t.achievements_earned,
+                            "achievements_total": t.achievements_total,
+                            "gamerscore": t.gamerscore_earned,
+                        }));
+                    }
+                    if !items.is_empty() {
+                        obj.insert("library_items".to_string(), json!(items));
+                    }
+                }
+
+                if let Some(tops) = obj.get_mut("top_titles").and_then(|v| v.as_array_mut()) {
+                    for top in tops.iter_mut() {
+                        let has_img = top
+                            .get("image")
+                            .and_then(|v| v.as_str())
+                            .map(|s| !s.is_empty())
+                            .unwrap_or(false);
+                        if has_img {
+                            continue;
+                        }
+                        let name = top.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                        if let Some(src) = analysis
+                            .top_completed_titles
+                            .iter()
+                            .chain(analysis.recent_titles.iter())
+                            .find(|t| t.name == name)
+                        {
+                            if let Some(ref img) = src.display_image {
+                                if let Some(o) = top.as_object_mut() {
+                                    o.insert(
+                                        "image".to_string(),
+                                        json!(SmartFilter::normalize_xbox_media_url(img)),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return report;
+    }
+
+    // PSN
+    if let Ok(meta) = SmartFilter::load_platform_cache("psn") {
+        if let crate::services::smart_filter::ContentAnalysis::Psn(analysis) =
+            &meta.content_analysis
+        {
+            if obj.get("avatar").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+                if let Some(ref av) = analysis.avatar {
+                    obj.insert("avatar".to_string(), json!(av));
+                }
+            }
+            if obj.get("online_id").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+                if let Some(ref id) = analysis.display_online_id {
+                    obj.insert("online_id".to_string(), json!(id));
+                }
+            }
+            if !obj.contains_key("hardcore_score") {
+                obj.insert("hardcore_score".to_string(), json!(analysis.hardcore_score));
+            }
+            if !obj.contains_key("total_trophies") {
+                obj.insert("total_trophies".to_string(), json!(analysis.total_trophies));
+            }
+            obj.insert("trophy_level".to_string(), json!(analysis.trophy_level));
+            obj.insert("platinum_count".to_string(), json!(analysis.platinum_count));
+            obj.insert("gold_count".to_string(), json!(analysis.gold_count));
+            obj.insert("silver_count".to_string(), json!(analysis.silver_count));
+            obj.insert("bronze_count".to_string(), json!(analysis.bronze_count));
+            obj.insert("games_count".to_string(), json!(analysis.games_count));
+            obj.insert(
+                "completed_games".to_string(),
+                json!(analysis.completed_games),
+            );
+            obj.insert(
+                "completion_rate".to_string(),
+                json!(analysis.average_progress.round()),
+            );
+            if let Some(plus) = analysis.is_plus {
+                obj.insert("is_plus".to_string(), json!(plus));
+            }
+
+            if needs_lib {
+                let mut items: Vec<Value> = Vec::new();
+                for t in analysis
+                    .top_completed_titles
+                    .iter()
+                    .chain(analysis.recent_titles.iter())
+                {
+                    if items.len() >= 12 {
+                        break;
+                    }
+                    let Some(cover) = t.icon_url.as_ref().filter(|s| !s.is_empty()) else {
+                        continue;
+                    };
+                    let title = t.name.as_str();
+                    if items
+                        .iter()
+                        .any(|x| x.get("title").and_then(|v| v.as_str()) == Some(title))
+                    {
+                        continue;
+                    }
+                    items.push(json!({
+                        "title": t.name,
+                        "type": "game",
+                        "cover": SmartFilter::normalize_https_media_url(cover),
+                        "progress": t.progress,
+                        "platinum": t.earned_platinum > 0,
+                        "platform": t.platform,
+                    }));
+                }
+                if !items.is_empty() {
+                    obj.insert("library_items".to_string(), json!(items));
+                }
+            }
+
+            if let Some(tops) = obj.get_mut("top_titles").and_then(|v| v.as_array_mut()) {
+                for top in tops.iter_mut() {
+                    let has_img = top
+                        .get("image")
+                        .and_then(|v| v.as_str())
+                        .map(|s| !s.is_empty())
+                        .unwrap_or(false);
+                    if has_img {
+                        continue;
+                    }
+                    let name = top.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    if let Some(src) = analysis
+                        .top_completed_titles
+                        .iter()
+                        .chain(analysis.recent_titles.iter())
+                        .find(|t| t.name == name)
+                    {
+                        if let Some(ref img) = src.icon_url {
+                            if let Some(o) = top.as_object_mut() {
+                                o.insert(
+                                    "image".to_string(),
+                                    json!(SmartFilter::normalize_https_media_url(img)),
+                                );
+                                o.insert(
+                                    "platinum".to_string(),
+                                    json!(src.earned_platinum > 0),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    report
+}
+
 /// 后台重新生成过期的平台报告（只用已有缓存数据调 AI，不重新抓平台）
 fn spawn_report_auto_regen(db: DatabaseConnection, user_id: i32, platforms: Vec<String>) {
     let to_run: Vec<String> = {
@@ -1438,11 +1870,11 @@ pub async fn get_latest_report(
         let expired_at = r.created_at + chrono::Duration::days(settings.expiry_days);
         let expired = settings.expiry_enabled && expired_at <= now;
         if !expired {
-            platform_reports_list.push(r.report);
+            platform_reports_list.push(enrich_stored_platform_report(r.report));
         } else if settings.auto_regenerate {
             // stale-while-revalidate：先返回旧报告，后台异步重新生成
             expired_platforms.push(r.platform.clone());
-            platform_reports_list.push(r.report);
+            platform_reports_list.push(enrich_stored_platform_report(r.report));
         }
         // 过期且未开自动重生成：直接隐藏
     }
@@ -1781,13 +2213,13 @@ async fn generate_ai_report(
         ),
         "xbox" => (
             "你是一个资深 Xbox 成就猎人，看重 Gamerscore、全成就（绿光成就宴）和稀有成就，说话带主机玩家的梗。",
-            "用成就猎人的口吻分析用户的成就习惯：是全成就强迫症还是浅尝辄止型？最近在肝哪部作品？注意：Xbox 没有游玩时长数据，一切从成就进度和 Gamerscore 说话。",
-            "card_visuals必须包含 'gamer_type' (字符串，如'全成就猎人'/'广撒网玩家'/'剧情通关党'), 'gamerscore' (数字), 'games_count' (数字), 'completion_rate' (数字0-100，平均成就完成度), 'top_titles' (对象数组，字段 name / progress，最多6个，选完成度高或最近在玩的作品)。"
+            "用成就猎人的口吻分析用户的成就习惯：是全成就强迫症还是浅尝辄止型？最近在肝哪部作品？GS 规模与全成就密度如何？注意：Xbox 没有游玩时长数据，一切从成就进度和 Gamerscore 说话；数字字段系统会用实测值覆盖，你重点写准 gamer_type 人设标签。",
+            "card_visuals必须包含 'gamer_type' (字符串，≤8字，如'全成就猎人'/'广撒网玩家'/'剧情通关党'/'GS收藏家'/'周末主机党')。其余数字字段（gamerscore/games_count/completion_rate/hardcore_score/top_titles 等）由系统写入，可省略。"
         ),
         "psn" => (
             "你是一个资深 PlayStation 白金猎人，把白金奖杯视为最高勋章，熟悉奖杯难度梗（如'白金神作'、'3秒白金'）。",
-            "用白金猎人的口吻分析用户的奖杯柜：白金数量成色如何？是专注刷完一部再玩下一部，还是奖杯散落一地？最近哪部作品有奖杯动态？注意：PSN 没有游玩时长数据，一切从奖杯等级和完成度说话。",
-            "card_visuals必须包含 'hunter_type' (字符串，如'白金收藏家'/'随缘奖杯党'/'单机通关派'), 'trophy_level' (数字), 'platinum_count' (数字), 'games_count' (数字), 'completion_rate' (数字0-100，平均奖杯完成度), 'top_titles' (对象数组，字段 name / progress / platinum(布尔)，最多6个)。"
+            "用白金猎人的口吻分析用户的奖杯柜：白金数量成色如何？是专注刷完一部再玩下一部，还是奖杯散落一地？最近哪部作品有奖杯动态？注意：PSN 没有游玩时长数据，一切从奖杯等级和完成度说话；数字字段系统会用实测值覆盖，你重点写准 hunter_type 人设标签。",
+            "card_visuals必须包含 'hunter_type' (字符串，≤8字，如'白金收藏家'/'随缘奖杯党'/'单机通关派'/'深度奖杯党'/'周末主机党')。其余数字字段（trophy_level/platinum_count/hardcore_score/top_titles 等）由系统写入，可省略。"
         ),
         _ => (
             "你是一个专业的数据分析师，客观理性。",
@@ -2244,11 +2676,41 @@ fn generate_mock_report(
                 .first()
                 .map(|t| t.name.as_str())
                 .unwrap_or("暂无作品");
+            let gamertag = analysis
+                .display_gamertag
+                .clone()
+                .unwrap_or_else(|| metadata.user_summary.username.clone());
+            let mut library_items: Vec<Value> = Vec::new();
+            for t in analysis
+                .top_completed_titles
+                .iter()
+                .chain(analysis.recent_titles.iter())
+            {
+                if library_items.len() >= 12 {
+                    break;
+                }
+                if t.display_image.is_none() {
+                    continue;
+                }
+                let title = t.name.as_str();
+                if library_items
+                    .iter()
+                    .any(|x| x.get("title").and_then(|v| v.as_str()) == Some(title))
+                {
+                    continue;
+                }
+                library_items.push(json!({
+                    "title": t.name,
+                    "type": "game",
+                    "cover": t.display_image,
+                    "progress": t.progress.round(),
+                    "achievements_earned": t.achievements_earned,
+                    "achievements_total": t.achievements_total,
+                    "gamerscore": t.gamerscore_earned,
+                }));
+            }
             (
-                format!(
-                    "{} 的 Xbox 成就柜写满了绿色的勋章。",
-                    metadata.user_summary.username
-                ),
+                format!("{} 的 Xbox 成就柜写满了绿色的勋章。", gamertag),
                 vec![
                     analysis.gaming_summary.clone(),
                     format!("完成度最高：{}", top_title),
@@ -2258,16 +2720,29 @@ fn generate_mock_report(
                         "全成就猎人"
                     } else if analysis.average_completion >= 50.0 {
                         "深度攻略型"
+                    } else if analysis.gamerscore >= 10_000 {
+                        "GS 收藏家"
                     } else {
                         "广撒网玩家"
                     },
+                    "gamertag": gamertag,
+                    "avatar": analysis.avatar,
+                    "account_tier": analysis.account_tier,
                     "gamerscore": analysis.gamerscore,
                     "games_count": analysis.games_count,
+                    "achievement_games": analysis.achievement_games,
+                    "completed_games": analysis.completed_games,
                     "completion_rate": analysis.average_completion.round(),
+                    "total_achievements": analysis.total_achievements_earned,
+                    "total_achievements_available": analysis.total_achievements_available,
+                    "hardcore_score": analysis.hardcore_score,
                     "top_titles": analysis.top_completed_titles.iter().take(6).map(|t| json!({
                         "name": t.name,
                         "progress": t.progress.round(),
+                        "gamerscore": t.gamerscore_earned,
+                        "image": t.display_image,
                     })).collect::<Vec<_>>(),
+                    "library_items": library_items,
                 }),
             )
         }
@@ -2277,11 +2752,40 @@ fn generate_mock_report(
                 .first()
                 .map(|t| t.name.as_str())
                 .unwrap_or("暂无作品");
+            let online_id = analysis
+                .display_online_id
+                .clone()
+                .unwrap_or_else(|| metadata.user_summary.username.clone());
+            let mut library_items: Vec<Value> = Vec::new();
+            for t in analysis
+                .top_completed_titles
+                .iter()
+                .chain(analysis.recent_titles.iter())
+            {
+                if library_items.len() >= 12 {
+                    break;
+                }
+                if t.icon_url.is_none() {
+                    continue;
+                }
+                let title = t.name.as_str();
+                if library_items
+                    .iter()
+                    .any(|x| x.get("title").and_then(|v| v.as_str()) == Some(title))
+                {
+                    continue;
+                }
+                library_items.push(json!({
+                    "title": t.name,
+                    "type": "game",
+                    "cover": t.icon_url.as_ref().map(|u| SmartFilter::normalize_https_media_url(u)),
+                    "progress": t.progress,
+                    "platinum": t.earned_platinum > 0,
+                    "platform": t.platform,
+                }));
+            }
             (
-                format!(
-                    "{} 的 PSN 奖杯柜闪着白金的光。",
-                    metadata.user_summary.username
-                ),
+                format!("{} 的 PSN 奖杯柜闪着白金的光。", online_id),
                 vec![
                     analysis.trophy_summary_text.clone(),
                     format!("完成度最高：{}", top_title),
@@ -2291,18 +2795,32 @@ fn generate_mock_report(
                         "白金收藏家"
                     } else if analysis.platinum_count > 0 {
                         "单机通关派"
+                    } else if analysis.average_progress >= 50.0 {
+                        "深度奖杯党"
                     } else {
                         "随缘奖杯党"
                     },
+                    "online_id": online_id,
+                    "avatar": analysis.avatar,
+                    "is_plus": analysis.is_plus,
                     "trophy_level": analysis.trophy_level,
                     "platinum_count": analysis.platinum_count,
+                    "gold_count": analysis.gold_count,
+                    "silver_count": analysis.silver_count,
+                    "bronze_count": analysis.bronze_count,
+                    "total_trophies": analysis.total_trophies,
                     "games_count": analysis.games_count,
+                    "completed_games": analysis.completed_games,
                     "completion_rate": analysis.average_progress.round(),
+                    "hardcore_score": analysis.hardcore_score,
                     "top_titles": analysis.top_completed_titles.iter().take(6).map(|t| json!({
                         "name": t.name,
                         "progress": t.progress,
                         "platinum": t.earned_platinum > 0,
+                        "platform": t.platform,
+                        "image": t.icon_url.as_ref().map(|u| SmartFilter::normalize_https_media_url(u)),
                     })).collect::<Vec<_>>(),
+                    "library_items": library_items,
                 }),
             )
         }

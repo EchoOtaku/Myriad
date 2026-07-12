@@ -196,6 +196,13 @@ export default function Home() {
         supportedSizes: ['4x2'],
       },
       {
+        id: 'report-x',
+        name: t.widgets.reportX,
+        defaultSize: '4x2',
+        component: ReportCardWidget,
+        supportedSizes: ['4x2'],
+      },
+      {
         id: 'report-xbox',
         name: t.widgets.reportXbox,
         defaultSize: '4x2',

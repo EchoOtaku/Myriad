@@ -1821,7 +1821,6 @@ const GlobalControlPanel: React.FC = () => {
                       browserNotificationsEnabled={
                         notificationPreferences.delivery.browser
                       }
-                      canManagePreferences={Boolean(user)}
                     />
                   </div>
                 )}

@@ -105,6 +105,11 @@ const WIDGET_BASE_CONFIG = {
     component: ReportCardWidget,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
+  'report-x': {
+    defaultSize: '4x2' as const,
+    component: ReportCardWidget,
+    supportedSizes: ['4x2'] as WidgetSize[],
+  },
   'report-xbox': {
     defaultSize: '4x2' as const,
     component: ReportCardWidget,
@@ -210,6 +215,11 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
           id: 'report-mal',
           name: t.widgets.reportMal,
           ...WIDGET_BASE_CONFIG['report-mal'],
+        },
+        {
+          id: 'report-x',
+          name: t.widgets.reportX,
+          ...WIDGET_BASE_CONFIG['report-x'],
         },
         {
           id: 'report-xbox',

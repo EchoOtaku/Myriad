@@ -9,27 +9,13 @@ import type { NotificationSourceKey } from '../services/notificationPreferencesA
  * 点击后变为文本二次确认（3 秒未确认自动还原）。
  * 点击通知直接跳转对应内容（任务类 → Arael 会话），无落点时展开详情。
  */
-import { LuChevronLeft, LuSettings } from '@lib/icons'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 import { getGreeting } from '../utils/dynamicContent'
-import NotificationConfigSection from './config/NotificationConfigSection'
 import {
   notificationSourceFor,
   NotificationSourceIcon,
 } from './notifications/NotificationIcons'
-
-/** 发信源图标底色（iOS App 图标风格的着色圆角方块） */
-const SOURCE_ICON_BG: Record<NotificationSourceKey, string> = {
-  agent: 'bg-violet-500/15 text-violet-600 dark:text-violet-300',
-  heartbeat: 'bg-pink-500/15 text-pink-600 dark:text-pink-300',
-  mcp: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-300',
-  brew: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
-  tapp: 'bg-purple-500/15 text-purple-600 dark:text-purple-300',
-  updater: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300',
-  federation: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
-  system: 'bg-gray-500/15 text-gray-600 dark:text-gray-300',
-}
 
 /** Apple 风格胶囊按钮基础样式 */
 const PILL_BTN =
@@ -80,8 +66,6 @@ interface Props {
   onOpenAraelManage?: () => void
   /** 当前用户是否允许浏览器系统通知。 */
   browserNotificationsEnabled?: boolean
-  /** 仅登录用户可以管理服务端通知偏好。 */
-  canManagePreferences?: boolean
 }
 
 function NotificationPanelList({
@@ -91,13 +75,11 @@ function NotificationPanelList({
   onNavigate,
   onOpenAraelManage,
   browserNotificationsEnabled = true,
-  canManagePreferences = true,
 }: Props) {
   const { t, format, locale } = useI18n()
   const { items, removeItem, clearAll } = center
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [showSettings, setShowSettings] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [notifPermission, setNotifPermission] = useState<string>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
@@ -111,10 +93,6 @@ function NotificationPanelList({
     },
     [],
   )
-
-  useEffect(() => {
-    if (!canManagePreferences) setShowSettings(false)
-  }, [canManagePreferences])
 
   // 问候语 + 本地化日期（组件随 tab 打开重挂载，时点足够新鲜）
   const { greetingText, dateText } = useMemo(() => {
@@ -209,27 +187,6 @@ function NotificationPanelList({
     [t],
   )
 
-  if (showSettings) {
-    return (
-      <div className={`min-h-0 overflow-y-auto ${fill ? 'h-full' : ''}`}>
-        <button
-          type="button"
-          className={`${PILL_BTN} mb-2 inline-flex items-center gap-1`}
-          onClick={() => setShowSettings(false)}
-        >
-          <LuChevronLeft className="h-3.5 w-3.5" />
-          {t.notificationCenter.title}
-        </button>
-        <NotificationConfigSection
-          sectionId="notifications-inline"
-          title={t.notificationCenter.title}
-          icon={<LuSettings className="h-4 w-4" />}
-          description={t.notificationCenter.settingsDesc}
-        />
-      </div>
-    )
-  }
-
   return (
     <div className={`flex flex-col min-h-0 ${fill ? 'h-full' : ''}`}>
       {/* 页头：问候语 + 日期，右侧为系统通知开关与清理按钮 */}
@@ -243,17 +200,6 @@ function NotificationPanelList({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {canManagePreferences && (
-            <button
-              type="button"
-              onClick={() => setShowSettings(true)}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-black/5 text-gray-500 transition-colors hover:bg-black/9 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15"
-              aria-label={t.notificationCenter.settingsDesc}
-              title={t.notificationCenter.settingsDesc}
-            >
-              <LuSettings className="h-3.5 w-3.5" />
-            </button>
-          )}
           {browserNotificationsEnabled && notifPermission === 'default' && (
             <button
               type="button"
@@ -334,19 +280,16 @@ function NotificationPanelList({
                 bg-black/3 hover:bg-black/6
                 dark:bg-white/4 dark:hover:bg-white/8"
               >
-                {/* 发信源图标：着色圆角方块 */}
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base leading-none ${
-                    SOURCE_ICON_BG[source]
-                  }`}
-                >
-                  <NotificationSourceIcon source={source} className="h-4 w-4" />
-                </span>
+                {/* 直接展示透明来源图标，不额外叠加背景容器 */}
+                <NotificationSourceIcon
+                  source={source}
+                  className="h-10 w-10 shrink-0 object-contain"
+                />
 
                 <div className="min-w-0 flex-1">
                   {/* 头行：发信源名 + 时间 */}
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    <span className="truncate text-[10px] font-medium tracking-wide text-gray-400 dark:text-gray-500">
                       {sourceLabels[source]}
                     </span>
                     <span className="ml-auto shrink-0 text-[10px] text-gray-400 dark:text-gray-500">

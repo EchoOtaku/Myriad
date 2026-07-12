@@ -145,6 +145,18 @@ const PLATFORM_SOCIAL: Record<
     fieldKey: 'username',
     getUserUrl: (u) => `https://x.com/${String(u).replace(/^@/, '')}`,
   },
+  xbox: {
+    publicName: 'Xbox',
+    fieldKey: 'gamertag',
+    getUserUrl: (u) =>
+      `https://www.xbox.com/play/user/${encodeURIComponent(u)}`,
+  },
+  psn: {
+    publicName: 'PlayStation',
+    fieldKey: 'online_id',
+    getUserUrl: (u) =>
+      `https://profile.playstation.com/me/profile/${encodeURIComponent(u)}`,
+  },
 }
 
 // 从公开配置取各平台用户ID（模块级缓存，避免重复请求）
@@ -219,6 +231,106 @@ async function fetchSteamPresence(
   })()
 
   return steamPresencePromise
+}
+
+/** Xbox 实时状态（OpenXBL presence，走 game/presence 公共接口） */
+interface XboxPresence {
+  gamertag?: string | null
+  avatar?: string | null
+  is_online?: boolean
+  is_in_game?: boolean
+  game_title?: string | null
+  status?: string | null
+  gamerscore?: number | null
+}
+
+const xboxPresenceCache = new Map<
+  string,
+  { data: XboxPresence, at: number }
+>()
+const xboxPresenceInflight = new Map<string, Promise<XboxPresence | null>>()
+
+async function fetchXboxPresence(
+  gamertag: string,
+  maxAgeMs = 60 * 1000,
+): Promise<XboxPresence | null> {
+  const key = gamertag.trim()
+  if (!key) return null
+  const cached = xboxPresenceCache.get(key)
+  if (cached && Date.now() - cached.at < maxAgeMs) return cached.data
+  const inflight = xboxPresenceInflight.get(key)
+  if (inflight) return inflight
+
+  const promise = (async () => {
+    try {
+      const params = new URLSearchParams({
+        platform: 'xbox',
+        id: key,
+      })
+      const res = await fetch(
+        `${API_URL}/api/game/presence?${params.toString()}`,
+        { signal: AbortSignal.timeout(12000) },
+      )
+      if (!res.ok) return null
+      const body = await res.json()
+      const d = body?.data
+      if (!body?.success || !d) return null
+      const status = String(d?.presence?.status || '').toLowerCase()
+      const title = d?.presence?.title ? String(d.presence.title) : null
+      const isOnline =
+        status === 'online' || status === 'away' || status === 'busy'
+      const isInGame = Boolean(title && title !== 'Home')
+      const gsRaw = d?.score?.value
+      const gs =
+        typeof gsRaw === 'string' || typeof gsRaw === 'number'
+          ? Number(gsRaw)
+          : null
+      const presence: XboxPresence = {
+        gamertag: d?.identity?.name || key,
+        avatar: d?.identity?.avatar || null,
+        is_online: isOnline,
+        is_in_game: isInGame,
+        game_title: isInGame ? title : null,
+        status: d?.presence?.status || null,
+        gamerscore: Number.isFinite(gs as number) ? (gs as number) : null,
+      }
+      xboxPresenceCache.set(key, { data: presence, at: Date.now() })
+      return presence
+    } catch {
+      return null
+    } finally {
+      xboxPresenceInflight.delete(key)
+    }
+  })()
+  xboxPresenceInflight.set(key, promise)
+  return promise
+}
+
+/** 协议相对 / http 升 https（PSN 图标、通用外链图） */
+function normalizeHttpsMediaUrl(
+  url?: string | null,
+): string | null {
+  if (!url || typeof url !== 'string') return null
+  let u = url.trim()
+  if (!u) return null
+  if (u.startsWith('//')) u = `https:${u}`
+  if (u.startsWith('http://')) u = `https://${u.slice(7)}`
+  return u
+}
+
+/**
+ * Xbox / MS 商店图常给 http:// 或非 SSL 域名，HTTPS 页面会因混合内容被拦。
+ * 统一升到 https，并把 images-eds → images-eds-ssl。
+ */
+function normalizeXboxMediaUrl(
+  url?: string | null,
+): string | null {
+  const base = normalizeHttpsMediaUrl(url)
+  if (!base) return null
+  return base.replace(
+    '://images-eds.xboxlive.com',
+    '://images-eds-ssl.xboxlive.com',
+  )
 }
 
 function getSteamPresenceFromData(data: any): SteamPresence | null {
@@ -2036,78 +2148,1240 @@ const AchievementReportBody = memo(
 
 AchievementReportBody.displayName = 'AchievementReportBody'
 
-const XboxWidget = memo(({ data, showOverview, onContentChange }: any) => {
+// ==================== Xbox：对齐 Steam 卡的身份+指标+底槽结构 ====================
+// 叙事：成就向（无时长）。概览 = 头像/在线 + GS/库/成就 + 硬核指数/正在玩；
+// 详情 = 作品封面轮播（带完成度角标）。
+
+const XBOX_ACCENT = '#107C10'
+const XBOX_ACCENT_SOFT = '#3A9D23'
+
+const XboxScoreCardBody = memo(
+  ({
+    score,
+    type,
+    anim,
+  }: {
+    score: number
+    type: string
+    anim: AnimationConfig
+  }) => {
+    const { t } = useI18n()
+    const displayScore = useCountUp(
+      score,
+      Math.round(900 * anim.durationScale),
+      300,
+    )
+    const pct = Math.min(Math.max(displayScore, 0), 100)
+
+    return (
+      <>
+        <motion.div
+          className="flex items-center justify-between gap-2"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.12 }}
+        >
+          <span className="flex shrink-0 items-center gap-1">
+            <FaBolt
+              className="h-2.5 w-2.5 shrink-0"
+              style={{ color: XBOX_ACCENT_SOFT }}
+            />
+            <span
+              className="bg-linear-to-r from-gray-700 to-[#107C10] bg-clip-text text-[11px] font-black italic tracking-tight text-transparent dark:from-gray-100 dark:to-[#3A9D23]"
+            >
+              {t.reportCardWidget.xboxHunterScore}
+            </span>
+          </span>
+          <div className="flex h-1.5 w-16 shrink-0 gap-[3px]">
+            {Array.from({ length: SCORE_BAR_SEGMENTS }).map((_, i) => {
+              const lit = i < Math.round((pct / 100) * SCORE_BAR_SEGMENTS)
+              return (
+                <div
+                  key={i}
+                  className={`h-full flex-1 rounded-[2px] transition-colors duration-150 ${
+                    lit
+                      ? 'bg-linear-to-b from-[#3A9D23] to-[#107C10] shadow-[0_0_6px_rgba(16,124,16,0.5)]'
+                      : 'bg-black/8 dark:bg-white/10'
+                  }`}
+                />
+              )
+            })}
+          </div>
+        </motion.div>
+
+        <motion.div
+          className="flex items-center justify-between gap-2.5"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+        >
+          <span className="flex shrink-0 items-baseline gap-0.5">
+            <span className="text-3xl font-black leading-none tracking-tight tabular-nums text-gray-800 dark:text-gray-100">
+              {displayScore}
+            </span>
+            <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400">
+              /100
+            </span>
+          </span>
+          <motion.span
+            className="inline-flex min-w-0 items-center gap-1.5 bg-gray-800/90 py-1 pl-2.5 pr-3 dark:bg-white/90"
+            style={{
+              clipPath:
+                'polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%)',
+            }}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={
+              anim.spring
+                ? { type: 'spring', stiffness: 300, damping: 20, delay: 0.22 }
+                : { duration: 0.25, delay: 0.22 }
+            }
+          >
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${anim.loop ? 'animate-pulse' : ''}`}
+              style={{ backgroundColor: XBOX_ACCENT_SOFT }}
+            />
+            <span className="truncate text-[10px] font-bold uppercase tracking-wide text-gray-100 dark:text-black">
+              {type}
+            </span>
+          </motion.span>
+        </motion.div>
+      </>
+    )
+  },
+)
+XboxScoreCardBody.displayName = 'XboxScoreCardBody'
+
+const XboxStatsWidget = memo(({ data }: any) => {
   const { t } = useI18n()
-  const topTitles = useMemo(
-    () => (data?.top_titles || []) as { name: string, progress?: number }[],
-    [data?.top_titles],
+  const anim = useAnimationLevel()
+
+  const gamertag = useMemo(
+    () =>
+      String(
+        data?.gamertag || data?.display_gamertag || data?.username || '',
+      ).trim(),
+    [data],
   )
+  const fallbackAvatar = useMemo(
+    () => (typeof data?.avatar === 'string' ? data.avatar : null),
+    [data],
+  )
+  const score = useMemo(() => {
+    // 显式有 hardcore_score 字段时信任后端（含 0）；缺失才前端兜底
+    if (
+      data?.hardcore_score !== undefined &&
+      data?.hardcore_score !== null &&
+      Number.isFinite(Number(data.hardcore_score))
+    ) {
+      return Math.min(100, Math.max(0, Math.round(Number(data.hardcore_score))))
+    }
+    // 旧报告无 hardcore_score 时用完成度/全成就/GS 做轻量兜底
+    const completion = Math.min(100, Math.max(0, Number(data?.completion_rate) || 0))
+    const completed = Number(data?.completed_games) || 0
+    const gs = Number(data?.gamerscore) || 0
+    const ach = Number(data?.total_achievements) || 0
+    const gsPart =
+      gs > 0
+        ? (Math.log(1 + gs) / Math.log(1 + 100_000)) * 20
+        : 0
+    return Math.round(
+      Math.min(
+        100,
+        completion * 0.45 +
+          Math.min(completed * 5, 25) +
+          gsPart +
+          Math.min(ach / 50, 10),
+      ),
+    )
+  }, [
+    data?.hardcore_score,
+    data?.completion_rate,
+    data?.completed_games,
+    data?.gamerscore,
+    data?.total_achievements,
+  ])
+  const type = useMemo(
+    () => data?.gamer_type || t.reportCardWidget.xboxGamerDefault,
+    [data?.gamer_type, t.reportCardWidget.xboxGamerDefault],
+  )
+  const gamerscore = useMemo(
+    () => Number(data?.gamerscore) || 0,
+    [data?.gamerscore],
+  )
+  const gamesCount = useMemo(
+    () => Number(data?.games_count) || 0,
+    [data?.games_count],
+  )
+  const achievements = useMemo(
+    () => Number(data?.total_achievements) || 0,
+    [data?.total_achievements],
+  )
+  const completionRate = useMemo(
+    () => Math.round(Number(data?.completion_rate) || 0),
+    [data?.completion_rate],
+  )
+  const completedGames = useMemo(
+    () => Number(data?.completed_games) || 0,
+    [data?.completed_games],
+  )
+
+  const [livePresence, setLivePresence] = useState<XboxPresence | null>(null)
+
+  useEffect(() => {
+    if (!gamertag) return
+    let cancelled = false
+    const refresh = async () => {
+      if (document.hidden) return
+      const next = await fetchXboxPresence(gamertag)
+      if (!cancelled && next) setLivePresence(next)
+    }
+    refresh()
+    const intervalId = window.setInterval(refresh, 120 * 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [gamertag])
+
+  // 无 gamertag 时尝试从公开配置取
+  useEffect(() => {
+    if (gamertag) return
+    let cancelled = false
+    fetchPlatformUserIds().then((ids) => {
+      if (cancelled || !ids.xbox) return
+      fetchXboxPresence(ids.xbox).then((next) => {
+        if (!cancelled && next) setLivePresence(next)
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gamertag])
+
+  const displayName = livePresence?.gamertag || gamertag || 'Xbox'
+  const avatarUrl = livePresence?.avatar || fallbackAvatar
+  const isLive = Boolean(livePresence?.is_online || livePresence?.is_in_game)
+  const nowPlaying =
+    livePresence?.is_in_game && livePresence?.game_title
+      ? livePresence.game_title
+      : null
+  const presenceColor = livePresence?.is_in_game
+    ? XBOX_ACCENT_SOFT
+    : livePresence?.is_online
+      ? '#22c55e'
+      : '#9ca3af'
+  const liveGs =
+    livePresence?.gamerscore != null && livePresence.gamerscore > 0
+      ? livePresence.gamerscore
+      : gamerscore
+
+  // 主指标 + 副指标同一行：游戏数 / GS / 成就 / 完成度 / 全成就
+  const statItems = useMemo(() => {
+    const items: { label: string, value: string, unit: string }[] = [
+      {
+        label: t.reportCardWidget.gamesCount,
+        value: String(gamesCount),
+        unit: '',
+      },
+      {
+        label: 'GS',
+        value: formatCompactNumber(liveGs),
+        unit: '',
+      },
+      {
+        label: t.reportCardWidget.xboxAchievements,
+        value: formatCompactNumber(achievements),
+        unit: '',
+      },
+    ]
+    if (completionRate > 0) {
+      items.push({
+        label: t.reportCardWidget.completionRate,
+        value: String(completionRate),
+        unit: '%',
+      })
+    }
+    if (completedGames > 0) {
+      items.push({
+        label: t.reportCardWidget.completedGames,
+        value: String(completedGames),
+        unit: '',
+      })
+    }
+    return items
+  }, [
+    t,
+    gamesCount,
+    liveGs,
+    achievements,
+    completionRate,
+    completedGames,
+  ])
+
+  // 底槽：有正在玩时在「正在玩」与「猎人指数」间轮播
+  const [slotIndex, setSlotIndex] = useState(0)
+  useEffect(() => {
+    if (!nowPlaying || !anim.loop) {
+      setSlotIndex(nowPlaying ? 1 : 0)
+      return
+    }
+    setSlotIndex(1)
+    let cancelled = false
+    let timeoutId: number | null = null
+    const tick = () => {
+      if (cancelled || document.hidden) return
+      setSlotIndex((prev) => (prev === 0 ? 1 : 0))
+      timeoutId = window.setTimeout(tick, 6000)
+    }
+    timeoutId = window.setTimeout(tick, 6000)
+    const onVisibility = () => {
+      if (document.hidden && timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      } else if (!document.hidden && !cancelled && !timeoutId) {
+        timeoutId = window.setTimeout(tick, 6000)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      cancelled = true
+      if (timeoutId) clearTimeout(timeoutId)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [nowPlaying, anim.loop])
+  const showNowPlaying = Boolean(nowPlaying) && slotIndex === 1
+
+  const safeAvatarUrl = useMemo(
+    () => normalizeXboxMediaUrl(avatarUrl),
+    [avatarUrl],
+  )
+
   return (
-    <AchievementReportBody
-      icon={<FaXbox />}
-      accent="#107C10"
-      typeLabel={data?.gamer_type || 'Xbox'}
-      scoreValue={String(data?.gamerscore ?? 0)}
-      scoreLabel="Gamerscore"
-      stats={[
-        {
-          label: t.reportCardWidget.gamesCount,
-          value: String(data?.games_count ?? 0),
-        },
-        {
-          label: t.reportCardWidget.completionRate,
-          value: `${Math.round(data?.completion_rate ?? 0)}%`,
-        },
-        {
-          label: t.reportCardWidget.completedGames,
-          value: String(data?.completed_games ?? 0),
-        },
-      ]}
-      topTitles={topTitles}
-      showOverview={showOverview}
-      onContentChange={onContentChange}
-    />
+    <div className="relative h-full w-full overflow-hidden">
+      {/* 背景：Xbox 绿对角渐变 */}
+      <div className="absolute inset-0 bg-linear-to-br from-[#107C10]/25 via-[#107C10]/8 to-transparent dark:from-[#107C10]/18 dark:via-[#107C10]/5 clip-diagonal" />
+
+      <div className="relative z-10 flex h-full flex-col justify-between p-4">
+        {/* 身份块：头像 + 昵称 + 指标 tag（主+副同一行） */}
+        <motion.div
+          className="flex min-w-0 items-center gap-3"
+          initial={{ x: -12, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.45 }}
+        >
+          <motion.div
+            className="relative shrink-0"
+            initial={{ scale: 0.7, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            whileHover={{ scale: 1.05 }}
+            transition={
+              anim.spring
+                ? { type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }
+                : { duration: 0.35, delay: 0.1 }
+            }
+            title={
+              livePresence?.status
+                ? String(livePresence.status)
+                : undefined
+            }
+          >
+            {safeAvatarUrl ? (
+              <img
+                src={safeAvatarUrl}
+                alt={displayName}
+                className="h-11 w-11 rounded-xl object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#107C10]/15 ring-1 ring-black/10 dark:bg-[#107C10]/25 dark:ring-white/15">
+                <FaXbox className="h-5 w-5 text-[#107C10]" />
+              </div>
+            )}
+            {/* 在线状态点 */}
+            {livePresence && (
+              <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3">
+                {isLive && anim.loop && (
+                  <span
+                    className="absolute inset-0 rounded-full opacity-40 animate-ping"
+                    style={{ backgroundColor: presenceColor }}
+                  />
+                )}
+                <span
+                  className="absolute inset-0 rounded-full border-2 border-white dark:border-gray-900"
+                  style={{ backgroundColor: presenceColor }}
+                />
+              </span>
+            )}
+          </motion.div>
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span
+              className="truncate text-base font-black tracking-tight text-gray-800 dark:text-gray-100"
+              style={{ WebkitTextStroke: '0.4px currentcolor' }}
+            >
+              {displayName}
+            </span>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              {statItems.map((item, i) => (
+                <motion.span
+                  key={item.label}
+                  className="flex items-baseline gap-1"
+                  initial={{ y: 6, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.35, delay: 0.3 + i * 0.08 }}
+                >
+                  <span className="flex items-baseline gap-0.5">
+                    <span className="text-[11px] font-black leading-none text-gray-800 dark:text-gray-100">
+                      {item.value}
+                    </span>
+                    {item.unit && (
+                      <span className="text-[8px] font-bold text-gray-500 dark:text-gray-400">
+                        {item.unit}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[8px] font-bold text-gray-400 dark:text-gray-500">
+                    {item.label}
+                  </span>
+                </motion.span>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* 底部卡槽：猎人指数 ⇄ 正在玩 */}
+        <div className="translate-y-[3px] pl-13">
+          <div className="relative h-16">
+            <AnimatePresence mode="wait">
+              {showNowPlaying ? (
+                <motion.div
+                  key="playing"
+                  className="absolute inset-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10 dark:ring-white/15"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.4 }}
+                  title={t.reportCardWidget.steamPlaying}
+                >
+                  <div className="absolute inset-0 bg-linear-to-br from-[#107C10] via-[#0B5A0B] to-[#062E06]" />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.18),transparent_55%)]" />
+                  <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 p-1.5">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white text-[#107C10] shadow-md">
+                      <FaPlay className="h-2 w-2 translate-x-px" />
+                    </span>
+                    <span className="truncate text-[11px] font-bold text-white drop-shadow-sm">
+                      {nowPlaying}
+                    </span>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="score"
+                  className="absolute inset-0 flex flex-col justify-center gap-1 rounded-xl bg-white/45 px-3.5 ring-1 ring-black/5 backdrop-blur-md dark:bg-white/8 dark:ring-white/10"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.4 }}
+                >
+                  <XboxScoreCardBody score={score} type={type} anim={anim} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+XboxStatsWidget.displayName = 'XboxStatsWidget'
+
+/** PSN 实时状态（走 game/presence） */
+interface PsnPresence {
+  online_id?: string | null
+  avatar?: string | null
+  is_online?: boolean
+  is_in_game?: boolean
+  game_title?: string | null
+  status?: string | null
+  trophy_level?: number | null
+  platinum?: number | null
+}
+
+const psnPresenceCache = new Map<string, { data: PsnPresence, at: number }>()
+const psnPresenceInflight = new Map<string, Promise<PsnPresence | null>>()
+
+async function fetchPsnPresence(
+  onlineId: string,
+  maxAgeMs = 60 * 1000,
+): Promise<PsnPresence | null> {
+  const key = onlineId.trim()
+  if (!key) return null
+  const cached = psnPresenceCache.get(key)
+  if (cached && Date.now() - cached.at < maxAgeMs) return cached.data
+  const inflight = psnPresenceInflight.get(key)
+  if (inflight) return inflight
+
+  const promise = (async () => {
+    try {
+      const params = new URLSearchParams({ platform: 'psn', id: key })
+      const res = await fetch(
+        `${API_URL}/api/game/presence?${params.toString()}`,
+        { signal: AbortSignal.timeout(12000) },
+      )
+      if (!res.ok) return null
+      const body = await res.json()
+      const d = body?.data
+      if (!body?.success || !d) return null
+      const status = String(d?.presence?.status || '').toLowerCase()
+      const title = d?.presence?.title ? String(d.presence.title) : null
+      const isOnline =
+        status.includes('online') ||
+        status === 'available' ||
+        status === 'away' ||
+        status === 'busy'
+      const isInGame = Boolean(title)
+      const lvRaw = d?.score?.value
+      const lv =
+        typeof lvRaw === 'string' || typeof lvRaw === 'number'
+          ? Number(lvRaw)
+          : null
+      const platHighlight = Array.isArray(d?.highlights)
+        ? d.highlights.find(
+            (h: any) =>
+              String(h?.label || '')
+                .toLowerCase()
+                .includes('platinum'),
+          )
+        : null
+      const plat =
+        platHighlight?.value != null ? Number(platHighlight.value) : null
+      const presence: PsnPresence = {
+        online_id: d?.identity?.name || key,
+        avatar: d?.identity?.avatar || null,
+        is_online: isOnline,
+        is_in_game: isInGame,
+        game_title: isInGame ? title : null,
+        status: d?.presence?.status || null,
+        trophy_level: Number.isFinite(lv as number) ? (lv as number) : null,
+        platinum: Number.isFinite(plat as number) ? (plat as number) : null,
+      }
+      psnPresenceCache.set(key, { data: presence, at: Date.now() })
+      return presence
+    } catch {
+      return null
+    } finally {
+      psnPresenceInflight.delete(key)
+    }
+  })()
+  psnPresenceInflight.set(key, promise)
+  return promise
+}
+
+const XboxWidget = memo(({ data, showOverview, onContentChange }: any) => {
+  // 详情优先 library_items（带封面）；无则回退 top_titles。封面统一升 https。
+  const libraryItems = useMemo(() => {
+    const mapItem = (t: any) => ({
+      title: t.title || t.name,
+      type: 'game',
+      cover: normalizeXboxMediaUrl(t.cover || t.image),
+      progress: t.progress,
+      achievements_earned: t.achievements_earned,
+      achievements_total: t.achievements_total,
+      gamerscore: t.gamerscore,
+    })
+    const lib = Array.isArray(data?.library_items) ? data.library_items : []
+    const fromLib = lib.map(mapItem).filter((x: any) => x.title)
+    // 有封面的优先轮播；全无封面时仍展示文字进度
+    const withCover = fromLib.filter((x: any) => x.cover)
+    if (withCover.length > 0) return withCover
+    if (fromLib.length > 0) return fromLib
+    const tops = Array.isArray(data?.top_titles) ? data.top_titles : []
+    const fromTops = tops.map(mapItem).filter((x: any) => x.title)
+    const topsCover = fromTops.filter((x: any) => x.cover)
+    return topsCover.length > 0 ? topsCover : fromTops
+  }, [data?.library_items, data?.top_titles])
+
+  const { currentItem, currentItemIndex } = useLibraryItemRotation(
+    libraryItems,
+    showOverview,
+  )
+
+  useEffect(() => {
+    if (!showOverview && currentItem) {
+      onContentChange?.({ title: currentItem.title, type: 'game' })
+    } else {
+      onContentChange?.(null)
+    }
+  }, [showOverview, currentItem, onContentChange])
+
+  const progress = Math.round(Number(currentItem?.progress) || 0)
+  const achEarned = Number(currentItem?.achievements_earned) || 0
+  const achTotal = Number(currentItem?.achievements_total) || 0
+
+  return (
+    <AnimatePresence mode="wait">
+      {showOverview || !currentItem ? (
+        <motion.div
+          key="stats"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5 }}
+          className="h-full w-full"
+        >
+          <XboxStatsWidget data={data} />
+        </motion.div>
+      ) : (
+        <motion.div
+          key={`lib-${currentItemIndex}`}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.5 }}
+          className="h-full w-full p-1.5"
+        >
+          <div className="relative h-full w-full overflow-hidden rounded-xl bg-white shadow-lg dark:bg-black/90">
+            <div className="absolute inset-0">
+              {currentItem.cover ? (
+                <img
+                  src={currentItem.cover}
+                  alt={currentItem.title}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-[#0B5A0B]">
+                  <FaXbox className="h-10 w-10 text-white/30" />
+                </div>
+              )}
+              {/* 轻量底渐变即可；标题交给左下角浮动 Logo，避免与背景文字重复 */}
+              <div className="absolute inset-0 bg-linear-to-t from-black/50 via-transparent to-transparent" />
+            </div>
+            {/* 完成度角标（右上）；标题只走 onContentChange → 左下 Logo */}
+            {(progress > 0 || achTotal > 0) && (
+              <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-0.5 backdrop-blur-sm ring-1 ring-white/15">
+                <span
+                  className="text-[10px] font-black tabular-nums text-white"
+                  style={{ color: progress >= 100 ? '#a3e635' : undefined }}
+                >
+                  {progress}%
+                </span>
+                {achTotal > 0 && (
+                  <span className="text-[9px] font-bold text-white/70">
+                    {achEarned}/{achTotal}
+                  </span>
+                )}
+              </div>
+            )}
+            {/* 底部进度条：pl 避开左下浮动 Logo */}
+            {progress > 0 && (
+              <div className="absolute inset-x-0 bottom-0 z-10 px-2.5 pb-2.5 pl-12">
+                <div className="h-1 overflow-hidden rounded-full bg-white/20">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{
+                      background:
+                        progress >= 100
+                          ? 'linear-gradient(90deg,#a3e635,#107C10)'
+                          : XBOX_ACCENT_SOFT,
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{
+                      width: `${Math.min(100, Math.max(0, progress))}%`,
+                    }}
+                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 })
 
 XboxWidget.displayName = 'XboxWidget'
 
-const PsnWidget = memo(({ data, showOverview, onContentChange }: any) => {
+// ==================== PSN：对齐 Xbox/Steam 的身份+指标+底槽结构 ====================
+// 叙事：奖杯向（无时长）。概览 = 头像/在线 + 白金/等级/库 + 猎人指数/正在玩；
+// 详情 = 作品封面轮播（完成度 + 白金角标）。
+
+const PSN_ACCENT = '#0070D1'
+const PSN_ACCENT_SOFT = '#3D9BFF'
+
+const PsnScoreCardBody = memo(
+  ({
+    score,
+    type,
+    anim,
+  }: {
+    score: number
+    type: string
+    anim: AnimationConfig
+  }) => {
+    const { t } = useI18n()
+    const displayScore = useCountUp(
+      score,
+      Math.round(900 * anim.durationScale),
+      300,
+    )
+    const pct = Math.min(Math.max(displayScore, 0), 100)
+
+    return (
+      <>
+        <motion.div
+          className="flex items-center justify-between gap-2"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.12 }}
+        >
+          <span className="flex shrink-0 items-center gap-1">
+            <FaBolt
+              className="h-2.5 w-2.5 shrink-0"
+              style={{ color: PSN_ACCENT_SOFT }}
+            />
+            <span className="bg-linear-to-r from-gray-700 to-[#0070D1] bg-clip-text text-[11px] font-black italic tracking-tight text-transparent dark:from-gray-100 dark:to-[#3D9BFF]">
+              {t.reportCardWidget.psnHunterScore}
+            </span>
+          </span>
+          <div className="flex h-1.5 w-16 shrink-0 gap-[3px]">
+            {Array.from({ length: SCORE_BAR_SEGMENTS }).map((_, i) => {
+              const lit = i < Math.round((pct / 100) * SCORE_BAR_SEGMENTS)
+              return (
+                <div
+                  key={i}
+                  className={`h-full flex-1 rounded-[2px] transition-colors duration-150 ${
+                    lit
+                      ? 'bg-linear-to-b from-[#3D9BFF] to-[#0070D1] shadow-[0_0_6px_rgba(0,112,209,0.5)]'
+                      : 'bg-black/8 dark:bg-white/10'
+                  }`}
+                />
+              )
+            })}
+          </div>
+        </motion.div>
+
+        <motion.div
+          className="flex items-center justify-between gap-2.5"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+        >
+          <span className="flex shrink-0 items-baseline gap-0.5">
+            <span className="text-3xl font-black leading-none tracking-tight tabular-nums text-gray-800 dark:text-gray-100">
+              {displayScore}
+            </span>
+            <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400">
+              /100
+            </span>
+          </span>
+          <motion.span
+            className="inline-flex min-w-0 items-center gap-1.5 bg-gray-800/90 py-1 pl-2.5 pr-3 dark:bg-white/90"
+            style={{
+              clipPath:
+                'polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%)',
+            }}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={
+              anim.spring
+                ? { type: 'spring', stiffness: 300, damping: 20, delay: 0.22 }
+                : { duration: 0.25, delay: 0.22 }
+            }
+          >
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${anim.loop ? 'animate-pulse' : ''}`}
+              style={{ backgroundColor: PSN_ACCENT_SOFT }}
+            />
+            <span className="truncate text-[10px] font-bold uppercase tracking-wide text-gray-100 dark:text-black">
+              {type}
+            </span>
+          </motion.span>
+        </motion.div>
+      </>
+    )
+  },
+)
+PsnScoreCardBody.displayName = 'PsnScoreCardBody'
+
+const PsnStatsWidget = memo(({ data }: any) => {
   const { t } = useI18n()
-  const topTitles = useMemo(
+  const anim = useAnimationLevel()
+
+  const onlineId = useMemo(
     () =>
-      (data?.top_titles || []) as {
-        name: string
-        progress?: number
-        platinum?: boolean
-      }[],
-    [data?.top_titles],
+      String(
+        data?.online_id || data?.display_online_id || data?.username || '',
+      ).trim(),
+    [data],
   )
+  const fallbackAvatar = useMemo(
+    () =>
+      typeof data?.avatar === 'string'
+        ? normalizeHttpsMediaUrl(data.avatar)
+        : null,
+    [data],
+  )
+  const score = useMemo(() => {
+    if (
+      data?.hardcore_score !== undefined &&
+      data?.hardcore_score !== null &&
+      Number.isFinite(Number(data.hardcore_score))
+    ) {
+      return Math.min(100, Math.max(0, Math.round(Number(data.hardcore_score))))
+    }
+    const platinum = Number(data?.platinum_count) || 0
+    const level = Number(data?.trophy_level) || 0
+    const completion = Math.min(
+      100,
+      Math.max(0, Number(data?.completion_rate) || 0),
+    )
+    const completed = Number(data?.completed_games) || 0
+    const games = Number(data?.games_count) || 0
+    const platPart = Math.min(40, platinum * 4)
+    const levelPart =
+      level > 0
+        ? Math.min(25, (Math.log(level) / Math.log(400)) * 25)
+        : 0
+    const completionPart = completion * 0.25
+    const completePart =
+      games > 0 ? Math.min(10, (completed / games) * 10) : 0
+    return Math.round(
+      Math.min(100, platPart + levelPart + completionPart + completePart),
+    )
+  }, [
+    data?.hardcore_score,
+    data?.platinum_count,
+    data?.trophy_level,
+    data?.completion_rate,
+    data?.completed_games,
+    data?.games_count,
+  ])
+  const type = useMemo(
+    () => data?.hunter_type || t.reportCardWidget.psnHunterDefault,
+    [data?.hunter_type, t.reportCardWidget.psnHunterDefault],
+  )
+  const trophyLevel = useMemo(
+    () => Number(data?.trophy_level) || 0,
+    [data?.trophy_level],
+  )
+  const platinum = useMemo(
+    () => Number(data?.platinum_count) || 0,
+    [data?.platinum_count],
+  )
+  const gamesCount = useMemo(
+    () => Number(data?.games_count) || 0,
+    [data?.games_count],
+  )
+  const completionRate = useMemo(
+    () => Math.round(Number(data?.completion_rate) || 0),
+    [data?.completion_rate],
+  )
+  const completedGames = useMemo(
+    () => Number(data?.completed_games) || 0,
+    [data?.completed_games],
+  )
+  const totalTrophies = useMemo(
+    () => Number(data?.total_trophies) || 0,
+    [data?.total_trophies],
+  )
+
+  const [livePresence, setLivePresence] = useState<PsnPresence | null>(null)
+
+  useEffect(() => {
+    if (!onlineId) return
+    let cancelled = false
+    const refresh = async () => {
+      if (document.hidden) return
+      const next = await fetchPsnPresence(onlineId)
+      if (!cancelled && next) setLivePresence(next)
+    }
+    refresh()
+    const intervalId = window.setInterval(refresh, 120 * 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [onlineId])
+
+  useEffect(() => {
+    if (onlineId) return
+    let cancelled = false
+    fetchPlatformUserIds().then((ids) => {
+      if (cancelled || !ids.psn) return
+      fetchPsnPresence(ids.psn).then((next) => {
+        if (!cancelled && next) setLivePresence(next)
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [onlineId])
+
+  const displayName = livePresence?.online_id || onlineId || 'PlayStation'
+  const avatarUrl =
+    normalizeHttpsMediaUrl(livePresence?.avatar) || fallbackAvatar
+  const isLive = Boolean(livePresence?.is_online || livePresence?.is_in_game)
+  const nowPlaying =
+    livePresence?.is_in_game && livePresence?.game_title
+      ? livePresence.game_title
+      : null
+  const presenceColor = livePresence?.is_in_game
+    ? PSN_ACCENT_SOFT
+    : livePresence?.is_online
+      ? '#22c55e'
+      : '#9ca3af'
+  const liveLevel =
+    livePresence?.trophy_level != null && livePresence.trophy_level > 0
+      ? livePresence.trophy_level
+      : trophyLevel
+  const livePlat =
+    livePresence?.platinum != null && livePresence.platinum > 0
+      ? livePresence.platinum
+      : platinum
+
+  const statItems = useMemo(() => {
+    const items: { label: string, value: string, unit: string }[] = [
+      {
+        label: t.reportCardWidget.gamesCount,
+        value: String(gamesCount),
+        unit: '',
+      },
+      {
+        label: t.reportCardWidget.platinumCount,
+        value: formatCompactNumber(livePlat),
+        unit: '',
+      },
+      {
+        label: t.reportCardWidget.trophyLevel,
+        value: String(liveLevel),
+        unit: '',
+      },
+    ]
+    if (completionRate > 0) {
+      items.push({
+        label: t.reportCardWidget.completionRate,
+        value: String(completionRate),
+        unit: '%',
+      })
+    }
+    if (completedGames > 0) {
+      items.push({
+        label: t.reportCardWidget.completedGames,
+        value: String(completedGames),
+        unit: '',
+      })
+    } else if (totalTrophies > 0) {
+      items.push({
+        label: t.reportCardWidget.psnTrophies,
+        value: formatCompactNumber(totalTrophies),
+        unit: '',
+      })
+    }
+    return items
+  }, [
+    t,
+    gamesCount,
+    livePlat,
+    liveLevel,
+    completionRate,
+    completedGames,
+    totalTrophies,
+  ])
+
+  const [slotIndex, setSlotIndex] = useState(0)
+  useEffect(() => {
+    if (!nowPlaying || !anim.loop) {
+      setSlotIndex(nowPlaying ? 1 : 0)
+      return
+    }
+    setSlotIndex(1)
+    let cancelled = false
+    let timeoutId: number | null = null
+    const tick = () => {
+      if (cancelled || document.hidden) return
+      setSlotIndex((prev) => (prev === 0 ? 1 : 0))
+      timeoutId = window.setTimeout(tick, 6000)
+    }
+    timeoutId = window.setTimeout(tick, 6000)
+    const onVisibility = () => {
+      if (document.hidden && timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      } else if (!document.hidden && !cancelled && !timeoutId) {
+        timeoutId = window.setTimeout(tick, 6000)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      cancelled = true
+      if (timeoutId) clearTimeout(timeoutId)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [nowPlaying, anim.loop])
+  const showNowPlaying = Boolean(nowPlaying) && slotIndex === 1
+
   return (
-    <AchievementReportBody
-      icon={<SiPlaystation />}
-      accent="#0070D1"
-      typeLabel={data?.hunter_type || 'PlayStation'}
-      scoreValue={`Lv.${data?.trophy_level ?? 0}`}
-      scoreLabel={t.reportCardWidget.trophyLevel}
-      stats={[
-        {
-          label: t.reportCardWidget.platinumCount,
-          value: String(data?.platinum_count ?? 0),
-        },
-        {
-          label: t.reportCardWidget.gamesCount,
-          value: String(data?.games_count ?? 0),
-        },
-        {
-          label: t.reportCardWidget.completionRate,
-          value: `${Math.round(data?.completion_rate ?? 0)}%`,
-        },
-      ]}
-      topTitles={topTitles}
-      showOverview={showOverview}
-      onContentChange={onContentChange}
-    />
+    <div className="relative h-full w-full overflow-hidden">
+      <div className="absolute inset-0 bg-linear-to-br from-[#0070D1]/25 via-[#0070D1]/8 to-transparent dark:from-[#0070D1]/18 dark:via-[#0070D1]/5 clip-diagonal" />
+
+      <div className="relative z-10 flex h-full flex-col justify-between p-4">
+        <motion.div
+          className="flex min-w-0 items-center gap-3"
+          initial={{ x: -12, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.45 }}
+        >
+          <motion.div
+            className="relative shrink-0"
+            initial={{ scale: 0.7, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            whileHover={{ scale: 1.05 }}
+            transition={
+              anim.spring
+                ? { type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }
+                : { duration: 0.35, delay: 0.1 }
+            }
+            title={
+              livePresence?.status
+                ? String(livePresence.status)
+                : undefined
+            }
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={displayName}
+                className="h-11 w-11 rounded-xl object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#0070D1]/15 ring-1 ring-black/10 dark:bg-[#0070D1]/25 dark:ring-white/15">
+                <SiPlaystation className="h-5 w-5 text-[#0070D1]" />
+              </div>
+            )}
+            {livePresence && (
+              <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3">
+                {isLive && anim.loop && (
+                  <span
+                    className="absolute inset-0 rounded-full opacity-40 animate-ping"
+                    style={{ backgroundColor: presenceColor }}
+                  />
+                )}
+                <span
+                  className="absolute inset-0 rounded-full border-2 border-white dark:border-gray-900"
+                  style={{ backgroundColor: presenceColor }}
+                />
+              </span>
+            )}
+          </motion.div>
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span
+              className="truncate text-base font-black tracking-tight text-gray-800 dark:text-gray-100"
+              style={{ WebkitTextStroke: '0.4px currentcolor' }}
+            >
+              {displayName}
+            </span>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              {statItems.map((item, i) => (
+                <motion.span
+                  key={item.label}
+                  className="flex items-baseline gap-1"
+                  initial={{ y: 6, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.35, delay: 0.3 + i * 0.08 }}
+                >
+                  <span className="flex items-baseline gap-0.5">
+                    <span className="text-[11px] font-black leading-none text-gray-800 dark:text-gray-100">
+                      {item.value}
+                    </span>
+                    {item.unit && (
+                      <span className="text-[8px] font-bold text-gray-500 dark:text-gray-400">
+                        {item.unit}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[8px] font-bold text-gray-400 dark:text-gray-500">
+                    {item.label}
+                  </span>
+                </motion.span>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        <div className="translate-y-[3px] pl-13">
+          <div className="relative h-16">
+            <AnimatePresence mode="wait">
+              {showNowPlaying ? (
+                <motion.div
+                  key="playing"
+                  className="absolute inset-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10 dark:ring-white/15"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.4 }}
+                  title={t.reportCardWidget.steamPlaying}
+                >
+                  <div className="absolute inset-0 bg-linear-to-br from-[#0070D1] via-[#0051A8] to-[#002D5C]" />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.18),transparent_55%)]" />
+                  <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 p-1.5">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white text-[#0070D1] shadow-md">
+                      <FaPlay className="h-2 w-2 translate-x-px" />
+                    </span>
+                    <span className="truncate text-[11px] font-bold text-white drop-shadow-sm">
+                      {nowPlaying}
+                    </span>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="score"
+                  className="absolute inset-0 flex flex-col justify-center gap-1 rounded-xl bg-white/45 px-3.5 ring-1 ring-black/5 backdrop-blur-md dark:bg-white/8 dark:ring-white/10"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.4 }}
+                >
+                  <PsnScoreCardBody score={score} type={type} anim={anim} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+PsnStatsWidget.displayName = 'PsnStatsWidget'
+
+const PsnWidget = memo(({ data, showOverview, onContentChange }: any) => {
+  const libraryItems = useMemo(() => {
+    const mapItem = (t: any) => ({
+      title: t.title || t.name,
+      type: 'game',
+      cover: normalizeHttpsMediaUrl(t.cover || t.image),
+      progress: t.progress,
+      platinum: Boolean(t.platinum),
+      platform: t.platform,
+    })
+    const lib = Array.isArray(data?.library_items) ? data.library_items : []
+    const fromLib = lib.map(mapItem).filter((x: any) => x.title)
+    const withCover = fromLib.filter((x: any) => x.cover)
+    if (withCover.length > 0) return withCover
+    if (fromLib.length > 0) return fromLib
+    const tops = Array.isArray(data?.top_titles) ? data.top_titles : []
+    const fromTops = tops.map(mapItem).filter((x: any) => x.title)
+    const topsCover = fromTops.filter((x: any) => x.cover)
+    return topsCover.length > 0 ? topsCover : fromTops
+  }, [data?.library_items, data?.top_titles])
+
+  const { currentItem, currentItemIndex } = useLibraryItemRotation(
+    libraryItems,
+    showOverview,
+  )
+
+  useEffect(() => {
+    if (!showOverview && currentItem) {
+      onContentChange?.({ title: currentItem.title, type: 'game' })
+    } else {
+      onContentChange?.(null)
+    }
+  }, [showOverview, currentItem, onContentChange])
+
+  const progress = Math.round(Number(currentItem?.progress) || 0)
+  const hasPlatinum = Boolean(currentItem?.platinum)
+
+  return (
+    <AnimatePresence mode="wait">
+      {showOverview || !currentItem ? (
+        <motion.div
+          key="stats"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5 }}
+          className="h-full w-full"
+        >
+          <PsnStatsWidget data={data} />
+        </motion.div>
+      ) : (
+        <motion.div
+          key={`lib-${currentItemIndex}`}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.5 }}
+          className="h-full w-full p-1.5"
+        >
+          <div className="relative h-full w-full overflow-hidden rounded-xl bg-white shadow-lg dark:bg-black/90">
+            <div className="absolute inset-0">
+              {currentItem.cover ? (
+                <img
+                  src={currentItem.cover}
+                  alt={currentItem.title}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-[#0051A8]">
+                  <SiPlaystation className="h-10 w-10 text-white/30" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-linear-to-t from-black/50 via-transparent to-transparent" />
+            </div>
+            {/* 右上：完成度 + 白金标记；标题只走左下 Logo */}
+            {(progress > 0 || hasPlatinum) && (
+              <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-md bg-black/55 px-1.5 py-0.5 backdrop-blur-sm ring-1 ring-white/15">
+                {hasPlatinum && (
+                  <span className="text-[10px]" title="Platinum">
+                    🏆
+                  </span>
+                )}
+                {progress > 0 && (
+                  <span
+                    className="text-[10px] font-black tabular-nums text-white"
+                    style={{
+                      color: progress >= 100 ? '#fbbf24' : undefined,
+                    }}
+                  >
+                    {progress}%
+                  </span>
+                )}
+              </div>
+            )}
+            {progress > 0 && (
+              <div className="absolute inset-x-0 bottom-0 z-10 px-2.5 pb-2.5 pl-12">
+                <div className="h-1 overflow-hidden rounded-full bg-white/20">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{
+                      background:
+                        progress >= 100
+                          ? 'linear-gradient(90deg,#fbbf24,#0070D1)'
+                          : PSN_ACCENT_SOFT,
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{
+                      width: `${Math.min(100, Math.max(0, progress))}%`,
+                    }}
+                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 })
 
@@ -3292,14 +4566,73 @@ export const ReportCardWidget = memo(
 
     useEffect(() => {
       if (isPreview) {
+        // SVG data URI：预览态免外网依赖，头像墙 / 海报墙 / 详情面都能亮起来
+        const previewAvatar = (letter: string, bg: string) => {
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" rx="48" fill="${bg}"/><text x="48" y="58" text-anchor="middle" fill="#fff" font-size="36" font-family="system-ui,sans-serif" font-weight="700">${letter}</text></svg>`
+          return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+        }
+        const previewCover = (
+          letter: string,
+          bg: string,
+          w = 160,
+          h = 200,
+        ) => {
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${bg}"/><stop offset="100%" stop-color="#111827"/></linearGradient></defs><rect width="${w}" height="${h}" fill="url(#g)"/><text x="${w / 2}" y="${h / 2 + 12}" text-anchor="middle" fill="#fff" font-size="42" font-family="system-ui,sans-serif" font-weight="700" opacity="0.92">${letter}</text></svg>`
+          return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+        }
+
+        const sampleGame = t.reportCardWidget.sampleGame
+        const sampleAnime = t.reportCardWidget.sampleAnime
+        const samplePlaylist = t.reportCardWidget.samplePlaylist
+        const sampleProject = t.reportCardWidget.sampleProject
+        const sampleManga = t.reportCardWidget.sampleManga
+        const sampleGame2 = t.reportCardWidget.sampleGame2
+        const sampleAnime2 = t.reportCardWidget.sampleAnime2
+
         setReportData({
+          // —— 通用评分 / 身份标签 ——
           hardcore_score: 85,
           player_type: t.reportCardWidget.hardcorePlayer,
+          gamer_type: t.reportCardWidget.xboxGamerDefault,
+          hunter_type: t.reportCardWidget.psnHunterDefault,
+          contribution_level: t.reportCardWidget.seniorDev,
+          taste_profile: t.reportCardWidget.bangumiTasteDefault,
+
+          // —— Steam ——
           games_count: 120,
           total_playtime: 2500,
-          contribution_level: t.reportCardWidget.seniorDev,
+          personaname: 'PreviewGamer',
+          personastate_label: 'online',
+          is_online: true,
+          is_in_game: false,
+          avatar: previewAvatar('S', '#1b2838'),
+          recent_2weeks_minutes: 840,
+
+          // —— Xbox ——
+          gamertag: 'PreviewGamer',
+          gamerscore: 12500,
+          total_achievements: 340,
+          completion_rate: 42,
+          completed_games: 8,
+
+          // —— PSN ——
+          online_id: 'PreviewPSN',
+          trophy_level: 245,
+          platinum_count: 18,
+          total_trophies: 1260,
+
+          // —— GitHub ——
           total_contributions: 1200,
           repos_count: 45,
+          total_stars: 890,
+          languages: [
+            { name: 'TypeScript', percentage: 42 },
+            { name: 'Rust', percentage: 28 },
+            { name: 'Python', percentage: 18 },
+            { name: 'Go', percentage: 12 },
+          ],
+
+          // —— 网易云 ——
           follower_count: 1200,
           playlist_count: 15,
           level: 8,
@@ -3307,21 +4640,218 @@ export const ReportCardWidget = memo(
             t.reportCardWidget.happyMood,
             t.reportCardWidget.sadMood,
             t.reportCardWidget.passionateMood,
+            t.reportCardWidget.calmMood,
+            t.reportCardWidget.nightMood,
           ],
+
+          // —— Bilibili 弹幕（无则组件有默认） ——
+          danmaku: t.reportCard.danmakuDefault as unknown as string[],
+
+          // —— Bangumi / MAL 收藏结构 ——
+          status_counts: { done: 128, doing: 12, wish: 45 },
+          subject_type_distribution: {
+            anime: 80,
+            book: 28,
+            manga: 28,
+            game: 22,
+            music: 12,
+            real: 8,
+          },
+
+          // —— 详情轮播 / 海报墙（多平台共用，字段取并集） ——
           library_items: [
             {
-              title: t.reportCardWidget.sampleProject,
+              title: sampleProject,
               type: 'repo',
+              language: 'TypeScript',
               stars: 120,
               forks: 30,
               description: t.reportCardWidget.sampleProjectDesc,
             },
-            { title: t.reportCardWidget.sampleGame, type: 'game', cover: '' },
-            { title: t.reportCardWidget.sampleAnime, type: 'anime', cover: '' },
             {
-              title: t.reportCardWidget.samplePlaylist,
+              title: sampleGame,
+              type: 'game',
+              cover: previewCover('G', '#1b2838', 320, 150),
+              progress: 100,
+              achievements_earned: 48,
+              achievements_total: 48,
+              gamerscore: 1000,
+              platinum: true,
+            },
+            {
+              title: sampleGame2,
+              type: 'game',
+              cover: previewCover('H', '#107C10', 320, 150),
+              progress: 72,
+              achievements_earned: 36,
+              achievements_total: 50,
+              gamerscore: 640,
+              platinum: false,
+            },
+            {
+              title: sampleAnime,
+              type: 'anime',
+              cover: previewCover('A', '#f09199'),
+              rate: 9,
+            },
+            {
+              title: sampleAnime2,
+              type: 'anime',
+              cover: previewCover('B', '#2e51a2'),
+              rate: 8,
+            },
+            {
+              title: sampleManga,
+              type: 'book',
+              cover: previewCover('M', '#e11d48'),
+              rate: 10,
+            },
+            {
+              title: samplePlaylist,
               type: 'music',
-              cover: '',
+              cover: previewCover('♪', '#e60026', 200, 200),
+            },
+            {
+              title: t.reportCardWidget.samplePlaylist2,
+              type: 'music',
+              cover: previewCover('♫', '#7B68EE', 200, 200),
+            },
+          ],
+          // Xbox / PSN 无 library 封面时的回退列表
+          top_titles: [
+            {
+              name: sampleGame,
+              title: sampleGame,
+              progress: 100,
+              platinum: true,
+              cover: previewCover('G', '#1b2838', 320, 150),
+              achievements_earned: 48,
+              achievements_total: 48,
+              gamerscore: 1000,
+            },
+            {
+              name: sampleGame2,
+              title: sampleGame2,
+              progress: 72,
+              platinum: false,
+              cover: previewCover('H', '#107C10', 320, 150),
+              achievements_earned: 36,
+              achievements_total: 50,
+              gamerscore: 640,
+            },
+            {
+              name: t.reportCardWidget.sampleGame3,
+              title: t.reportCardWidget.sampleGame3,
+              progress: 45,
+              platinum: false,
+              cover: previewCover('J', '#0070D1', 320, 150),
+              achievements_earned: 18,
+              achievements_total: 40,
+              gamerscore: 280,
+            },
+          ],
+
+          // —— X 关注图谱 + 人设 ——
+          vibe: t.reportCardWidget.xVibeDefault,
+          engagement_level: t.reportCardWidget.xEngagementDefault,
+          signature_topics: [
+            t.reportCardWidget.xCircleIndie,
+            t.reportCardWidget.xCircleOpenSource,
+            t.reportCardWidget.xCircleArt,
+          ],
+          profile: {
+            username: 'preview',
+            name: 'Preview',
+            avatar: previewAvatar('P', '#111827'),
+          },
+          stats: {
+            followers: 1280,
+            following: 420,
+            posts: 86,
+          },
+          interest_circles: [
+            {
+              name: t.reportCardWidget.xCircleIndie,
+              count: 22,
+              accounts: ['pixelcraft', 'roguelike'],
+            },
+            {
+              name: t.reportCardWidget.xCircleOpenSource,
+              count: 15,
+              accounts: ['octocat_lab'],
+            },
+            {
+              name: t.reportCardWidget.xCircleArt,
+              count: 9,
+              accounts: ['inkwave'],
+            },
+          ],
+          following_highlights: [
+            {
+              username: 'pixelcraft',
+              name: 'PixelCraft',
+              tag: t.reportCardWidget.xTagIndie,
+            },
+            {
+              username: 'octocat_lab',
+              name: 'Octocat Lab',
+              tag: t.reportCardWidget.xTagTech,
+            },
+            {
+              username: 'inkwave',
+              name: 'Ink Wave',
+              tag: t.reportCardWidget.xTagArt,
+            },
+          ],
+          following_sample: [
+            {
+              username: 'pixelcraft',
+              name: 'PixelCraft',
+              description: t.reportCardWidget.xPreviewDescIndie,
+              follower_count: 18200,
+              avatar: previewAvatar('P', '#2563eb'),
+            },
+            {
+              username: 'octocat_lab',
+              name: 'Octocat Lab',
+              description: t.reportCardWidget.xPreviewDescTech,
+              follower_count: 9400,
+              avatar: previewAvatar('O', '#7c3aed'),
+            },
+            {
+              username: 'inkwave',
+              name: 'Ink Wave',
+              description: t.reportCardWidget.xPreviewDescArt,
+              follower_count: 5600,
+              avatar: previewAvatar('I', '#db2777'),
+            },
+            {
+              username: 'roguelike',
+              name: 'RogueLike',
+              description: t.reportCardWidget.xPreviewDescIndie,
+              follower_count: 3100,
+              avatar: previewAvatar('R', '#d97706'),
+            },
+            {
+              username: 'synthwave',
+              name: 'SynthWave',
+              description: t.reportCardWidget.xPreviewDescArt,
+              follower_count: 2200,
+              avatar: previewAvatar('S', '#0891b2'),
+            },
+            {
+              username: 'typecraft',
+              name: 'TypeCraft',
+              description: t.reportCardWidget.xPreviewDescTech,
+              follower_count: 4800,
+              avatar: previewAvatar('T', '#059669'),
+            },
+            {
+              username: 'loomstudio',
+              name: 'Loom Studio',
+              description: t.reportCardWidget.xPreviewDescArt,
+              follower_count: 1700,
+              avatar: previewAvatar('L', '#e11d48'),
             },
           ],
         })

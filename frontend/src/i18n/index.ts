@@ -806,6 +806,7 @@ export interface TranslationKeys {
     reportNetease: string
     reportBangumi: string
     reportMal: string
+    reportX: string
     reportXbox: string
     reportPsn: string
     socialNetwork: string
@@ -1413,8 +1414,16 @@ export interface TranslationKeys {
     sampleProject: string
     sampleProjectDesc: string
     sampleGame: string
+    sampleGame2: string
+    sampleGame3: string
     sampleAnime: string
+    sampleAnime2: string
+    sampleManga: string
     samplePlaylist: string
+    samplePlaylist2: string
+    calmMood: string
+    nightMood: string
+    bangumiTasteDefault: string
     fetchReportFailed: string
     steamOnline: string
     steamOffline: string
@@ -1427,6 +1436,12 @@ export interface TranslationKeys {
     steamStatusUnknown: string
     steamRecent2w: string
     steamGamingScore: string
+    xboxHunterScore: string
+    xboxAchievements: string
+    xboxGamerDefault: string
+    psnHunterScore: string
+    psnHunterDefault: string
+    psnTrophies: string
     gamesCount: string
     completionRate: string
     completedGames: string
@@ -1435,6 +1450,17 @@ export interface TranslationKeys {
     xFollowers: string
     xFollowing: string
     xPosts: string
+    xVibeDefault: string
+    xEngagementDefault: string
+    xCircleIndie: string
+    xCircleOpenSource: string
+    xCircleArt: string
+    xTagIndie: string
+    xTagTech: string
+    xTagArt: string
+    xPreviewDescIndie: string
+    xPreviewDescTech: string
+    xPreviewDescArt: string
   }
 
   // 社交网络小组件扩展
