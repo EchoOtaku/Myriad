@@ -1,9 +1,14 @@
 /**
- * 小组件外观主题 Hook
- * 统一控制所有小组件的表面（卡片底）与光晕模式
+ * 表面主题 Hook —— 全站外观的状态与持久化中枢
  *
- * - 表面（surface）：WidgetShell 根据主题挂对应 CSS 类（glass / 纯色 / 轻盈 / 描边）
- * - 光晕（glow）：GlowBackground 根据模式解析颜色（各组件身份色 / 统一主题色 / 关闭）
+ * 两个维度均为「根属性 + CSS 令牌」纯 CSS 驱动，组件零订阅：
+ * - 表面（surface）：写 html[data-surface]，theme.css 切换 --surface-* 令牌，
+ *   驱动全站 .glass / .glass-surface / 浮动 chrome（玻璃 / 纯色 / 轻盈 / 描边）
+ * - 光晕（glow）：写 html[data-glow]，GlowBackground.css 覆盖颜色（primary）
+ *   或隐藏（none），默认 identity 用各组件身份色
+ *
+ * 本 hook 的 React 订阅仅存在于选择器 UI（TitleFontSelector）与全站挂载点
+ * （SurfaceThemeApplier，渲染 null）。
  *
  * 持久化：后端 /api/config/dashboard 的 widget_theme 键（JSON 字符串），
  * 与 useTitleFont 同一套「模块级全局状态 + 订阅者 + 防抖保存」范式。
@@ -57,16 +62,23 @@ export const GLOW_OPTIONS: readonly {
 const SURFACE_IDS = new Set<WidgetSurface>(SURFACE_OPTIONS.map((o) => o.id))
 
 /**
- * 把当前表面写到根元素 data-surface。theme.css 据此切换 --surface-* 令牌，
- * 从而驱动全站所有 .glass 组件（不止小组件）。glass 为默认态，不落属性。
+ * 把当前主题写到根元素属性，之后全部由 CSS 驱动、无组件订阅：
+ * - data-surface → theme.css 切换 --surface-* 令牌，驱动全站 .glass / .glass-surface
+ * - data-glow    → GlowBackground.css 覆盖光晕颜色（primary）或隐藏（none）
+ * 默认态（glass / identity）不落属性。
  */
-function applySurfaceToRoot(surface: WidgetSurface): void {
+function applyThemeToRoot(state: WidgetThemeState): void {
   if (typeof document === 'undefined') return
   const root = document.documentElement
-  if (surface === 'glass') {
+  if (state.surface === 'glass') {
     delete root.dataset.surface
   } else {
-    root.dataset.surface = surface
+    root.dataset.surface = state.surface
+  }
+  if (state.glow === 'identity') {
+    delete root.dataset.glow
+  } else {
+    root.dataset.glow = state.glow
   }
 }
 
@@ -93,11 +105,10 @@ function notifyListeners() {
 }
 
 function updateGlobalState(updates: Partial<WidgetThemeState>) {
-  const surfaceChanged =
-    updates.surface !== undefined && updates.surface !== globalState.surface
+  const prev = globalState
   globalState = { ...globalState, ...updates }
-  if (surfaceChanged) {
-    applySurfaceToRoot(globalState.surface)
+  if (globalState.surface !== prev.surface || globalState.glow !== prev.glow) {
+    applyThemeToRoot(globalState)
   }
   notifyListeners()
 }

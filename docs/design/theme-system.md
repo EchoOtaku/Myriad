@@ -20,13 +20,14 @@
 
 ```
 ┌─ 令牌层    theme.css：--surface-rgb / --surface-alpha / --surface-filter / -border / -shadow
-│            .glass { background: rgb(var(--surface-rgb) / var(--surface-alpha)); … }
+│            .glass / .glass-surface { background: rgb(var(--surface-rgb) / var(--surface-alpha)); … }
 │            表面模式 = :root[data-surface='…'] 只调 alpha + filter(+border/shadow)
 ├─ 状态层    useWidgetTheme.ts：模块级全局 state + 订阅者 + 防抖保存（仿 useTitleFont 范式，无 Context）
-├─ 应用层    surface → html[data-surface] 属性（updateGlobalState 内）
-│            SurfaceThemeApplier.tsx 常驻 AppLayout，保证无小组件的页面也应用
+├─ 应用层    updateGlobalState → html[data-surface] + html[data-glow] 两个根属性，
+│            其后全部由 CSS 驱动（组件零订阅）；React 订阅仅选择器 UI 与
+│            SurfaceThemeApplier.tsx（常驻 AppLayout、渲染 null，保证全页面应用）
 ├─ 持久层    后端 widget_theme 字段（JSON 字符串），复用 /api/config/dashboard
-├─ 消费层    .glass（全站）· GlowBackground（光晕）· chrome 清单（见 §5）
+├─ 消费层    .glass / .glass-surface（全站）· .glow-orb（data-glow 覆盖色/隐藏）· chrome 清单（见 §5）
 └─ 第三方源  Tapp registerTheme → useTappThemes 白名单消毒 → 预设
 ```
 
@@ -59,14 +60,14 @@
 **读（页面加载）**
 ```
 /api/config/ui → useWidgetTheme.init → 白名单校验 → globalState
-              → html[data-surface] → CSS 令牌切换 → 全站 .glass 跟随
+              → html[data-surface] + html[data-glow] → CSS 切换 → 全站跟随
 ```
 访客也走这条：读到站主保存的最终 surface/glow，无需登录、无需解析 Tapp。
 
 **写（管理员切换）**
 ```
 TitleFontSelector（编辑模式）→ setSurface/setGlowMode
-  → updateGlobalState（即时写 html[data-surface]，全站即时生效）
+  → updateGlobalState（即时写根属性，全站纯 CSS 即时生效，零组件重渲染）
   → 防抖 500ms → POST /api/config/dashboard { widget_theme: JSON }
 ```
 
@@ -74,7 +75,7 @@ TitleFontSelector（编辑模式）→ setSurface/setGlowMode
 
 ## 4. 关键设计决策
 
-- **全局 `html[data-surface]` 驱动，而非每组件挂类**：切主题只改根节点一个属性，`.glass` 靠 CSS 令牌继承跟随。WidgetShell 因此回归静态 `.glass`，去掉了每个小组件的 hook 订阅（性能）。
+- **两个维度都是根属性 + CSS 驱动，组件零订阅**：切主题只改 `html[data-surface]` / `html[data-glow]` 两个属性，`.glass` 靠令牌继承、`.glow-orb` 靠属性选择器覆盖（primary 换色 / none 隐藏）。WidgetShell 与 GlowBackground 均无 hook 订阅——切主题零组件重渲染，GlowBackground 的 `memo` 优化完整生效（光晕身份色经内联 `--glow-color` 变量下发，CSS 可覆盖）。
 - **层叠胜出确认过**：构建产物里 App CSS（含 theme.css）排在 astro 内联 `<style>` 之后 → theme.css 的 `.glass` 胜出。故只改 theme.css 一处即驱动全站，未碰两个 astro 入口页的冗余内联 `.glass`（它们只兜首屏、同 head 渲染阻塞无闪烁）。
 - **outline 保留可读性**：描边态是 20% 底 + 3px 模糊 + 明显边框，**非纯透明**，故功能性弹窗在任何 surface 下都可读，无需为它们做例外。
 - **真正的性能档**：`solid`/`flat` 的 `--surface-filter: none`（不是 blur 0），彻底去掉 backdrop-filter 合成开销。
@@ -118,7 +119,7 @@ Tapp 经 `component.registerTheme()` 注册，后端存 `_component:theme:{id}`�
 | 状态 + 持久化 + `html[data-surface]` applier | `frontend/src/hooks/useWidgetTheme.ts` |
 | 全站应用器（AppLayout 常驻） | `frontend/src/components/SurfaceThemeApplier.tsx` |
 | 表面消费（小组件外壳） | `frontend/src/components/widgets/shared/WidgetShell.tsx` |
-| 光晕消费 | `frontend/src/components/widgets/shared/GlowBackground.tsx` |
+| 光晕消费 | `frontend/src/components/widgets/shared/GlowBackground.tsx`（下发 `--glow-color`）· `GlowBackground.css`（`data-glow` 模式规则） |
 | 切换 UI（编辑模式「样式」面板） | `frontend/src/components/TitleFontSelector.tsx` |
 | Tapp 主题消毒消费 | `frontend/src/hooks/useTappThemes.ts` |
 | Tapp 主题契约 | `frontend/src/tapp/services/TappApiService.ts`（`ThemeComponentConfig`） |

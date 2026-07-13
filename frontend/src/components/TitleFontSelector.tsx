@@ -61,16 +61,19 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(
     const { themes: tappThemes } = useTappThemes(isOpen)
 
     // 标签配置 - 使用 i18n；Tapp 预设页仅在存在已注册主题时出现
-    const TABS: { id: TabType; label: string }[] = [
-      { id: 'font', label: t.titleStyle.tabFont },
-      { id: 'size', label: t.titleStyle.tabSize },
-      { id: 'color', label: t.titleStyle.tabColor },
-      { id: 'surface', label: t.titleStyle.tabSurface },
-      { id: 'glow', label: t.titleStyle.tabGlow },
-      ...(tappThemes.length > 0
-        ? [{ id: 'preset' as const, label: t.titleStyle.tabPreset }]
-        : []),
-    ]
+    const TABS = useMemo<{ id: TabType; label: string }[]>(
+      () => [
+        { id: 'font', label: t.titleStyle.tabFont },
+        { id: 'size', label: t.titleStyle.tabSize },
+        { id: 'color', label: t.titleStyle.tabColor },
+        { id: 'surface', label: t.titleStyle.tabSurface },
+        { id: 'glow', label: t.titleStyle.tabGlow },
+        ...(tappThemes.length > 0
+          ? [{ id: 'preset' as const, label: t.titleStyle.tabPreset }]
+          : []),
+      ],
+      [t, tappThemes.length],
+    )
     const [activeTab, setActiveTab] = useState<TabType>('font')
     const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0 })
     const [isDark, setIsDark] = useState(false)
@@ -211,7 +214,7 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(
           ))}
         </div>
       ),
-      [activeTab, handleTabChange],
+      [activeTab, handleTabChange, TABS],
     )
 
     // 渲染字体列表

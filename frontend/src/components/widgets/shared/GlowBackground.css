@@ -15,6 +15,19 @@
   pointer-events: none;
   transform: translate3d(0, 0, 0); /* 强制 GPU 合成层 */
   backface-visibility: hidden;
+  background: var(--glow-color); /* 组件经内联变量下发身份色 */
+}
+
+/* ========== 主题光晕模式（html[data-glow] 驱动，见 useWidgetTheme） ========== */
+
+/* 统一主题色：覆盖各组件身份色 */
+:root[data-glow='primary'] .glow-orb {
+  background: var(--color-primary);
+}
+
+/* 关闭光晕 */
+:root[data-glow='none'] .glow-orb {
+  display: none;
 }
 
 /* ========== 位置变体 ========== */
@@ -122,14 +135,6 @@
 }
 
 /* ========== 性能模式降级 ========== */
-
-/* 低性能模式：禁用动画 */
-.low-fps-mode .glow-animate-primary,
-.low-fps-mode .glow-animate-secondary {
-  animation: none;
-  opacity: var(--glow-opacity, 0.1);
-  transform: translate3d(0, 0, 0) scale(1);
-}
 
 /* 减少动效偏好 */
 @media (prefers-reduced-motion: reduce) {

@@ -143,24 +143,17 @@ html.dark {
   --surface-shadow: none;
 }
 
-/* Glass effect —— 核心表达：基色 + 透明度 + 滤镜，全站统一入口 */
-.glass {
-  background: rgb(var(--surface-rgb) / var(--surface-alpha));
-  backdrop-filter: var(--surface-filter);
-  border: 1px solid var(--surface-border);
-  box-shadow: var(--surface-shadow);
-  transition:
-    background 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
 /* ============================================
-   非 .glass 的浮动 chrome（导航岛 / 控制面板 / 页脚 / AI 面板）：
-   这些组件各自硬编码了调校过的玻璃质感（不透明度不一）。默认态保留其原样，
-   仅当用户选择非玻璃表面（html[data-surface] 存在）时收敛到主题令牌，
-   使它们与小组件一起切换 solid/flat/outline。故切主题前零回归。
+   表面底（基色 + 透明度 + 滤镜）—— 唯一声明处，三类消费者：
+   1. .glass          完整玻璃卡（另带边框/阴影/过渡，见下）
+   2. .glass-surface  手写玻璃卡的统一底（Tapp/Brew 卡片、控制岛等）：
+                      替代内联 `bg-white/X dark:bg-Y backdrop-blur-Z`，
+                      边框/阴影/圆角仍由使用处的工具类保留
+   3. 浮动 chrome     （导航岛/控制面板/页脚/AI 面板）各自硬编码了调校过的
+                      玻璃质感，默认态保留原样，仅切非玻璃表面时收敛跟随
    ============================================ */
+.glass,
+.glass-surface,
 :root[data-surface] .dynamic-island,
 :root[data-surface] .secondary-island,
 :root[data-surface] .control-bar-trigger,
@@ -170,18 +163,18 @@ html.dark {
   backdrop-filter: var(--surface-filter);
 }
 
-/* ============================================
-   手写玻璃卡片的统一底（Tapp / Brew 卡片、控制岛等）
-   替代各处内联的 `bg-white/X dark:bg-Y backdrop-blur-Z`：
-   - 底色 + 滤镜走 --surface 令牌 → 跟随主题（切 solid/flat/outline 时统一收敛）
-   - 边框 / 阴影 / 圆角仍由使用处的工具类保留（各卡片装饰不同）
-   - 透明度用档位类保留；档位仅玻璃默认态生效，切主题时让位给全局收敛
-   ============================================ */
-.glass-surface {
-  background: rgb(var(--surface-rgb) / var(--surface-alpha));
-  backdrop-filter: var(--surface-filter);
+/* 完整玻璃卡的装饰（边框/阴影/过渡） */
+.glass {
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-shadow);
+  transition:
+    background 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* .glass-surface 的透明度档位（默认 80%）：仅玻璃默认态生效，
+   切非玻璃主题时让位给全局收敛 */
 :root:not([data-surface]) .glass-60 {
   --surface-alpha: 60%;
 }
