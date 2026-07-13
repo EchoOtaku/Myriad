@@ -92,7 +92,7 @@ show_help() {
 
 选项:
   -u, --username USER    Registry 用户名（必需用于推送）
-  -t, --tag TAG          镜像标签（默认: 当前 Cargo 版本，如 v0.1.0）
+  -t, --tag TAG          镜像标签（默认: 当前 Cargo 版本，如 v0.2.0）
   -r, --registry URL     镜像仓库地址（默认: docker.io）
   -p, --push             构建后推送
   --backend              构建 backend（默认 ON）
