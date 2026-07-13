@@ -22,20 +22,22 @@ export interface UseNotificationCenterOptions {
   userId?: number
   /** 新通知到达回调（用于轮播展示 / 系统通知 / toast） */
   onNew?: (notification: AppNotification) => void
+  /** 通知面板过滤器；实时与历史使用同一份显示位置策略。 */
+  includeInPanel?: (notification: AppNotification) => boolean
 }
 
 export function useNotificationCenter({
   enabled,
   userId,
   onNew,
+  includeInPanel,
 }: UseNotificationCenterOptions) {
   const [items, setItems] = useState<AppNotification[]>([])
   const [loaded, setLoaded] = useState(false)
   const onNewRef = useRef(onNew)
   onNewRef.current = onNew
-  const lastPresentedRef = useRef(
-    new Map<string, { status?: unknown; progress?: number }>(),
-  )
+  const includeInPanelRef = useRef(includeInPanel)
+  includeInPanelRef.current = includeInPanel
   // enabled 镜像：丢弃登出后才到达的历史响应，避免污染下一个用户的状态
   const enabledRef = useRef(enabled)
   enabledRef.current = enabled
@@ -48,13 +50,11 @@ export function useNotificationCenter({
       // 登出即清空，避免下一个登录用户短暂看到上一用户的通知
       setItems([])
       setLoaded(false)
-      lastPresentedRef.current.clear()
       return
     }
     // 即使两个账号之间 enabled 都是 true，也必须先清掉上一用户的数据并重建连接。
     setItems([])
     setLoaded(false)
-    lastPresentedRef.current.clear()
     const close = notificationApi.subscribe(
       (event: NotificationStreamEvent) => {
         if (event.event === 'new_notification') {
@@ -66,21 +66,9 @@ export function useNotificationCenter({
           setItems((prev) =>
             [n, ...prev.filter((p) => p.id !== n.id)].slice(0, MAX_ITEMS),
           )
-          const status = n.metadata?.status
-          const progress =
-            typeof n.metadata?.progress === 'number'
-              ? n.metadata.progress
-              : undefined
-          const presented = lastPresentedRef.current.get(n.id)
-          const shouldPresent =
-            !presented ||
-            presented.status !== status ||
-            (progress !== undefined &&
-              progress >= (presented.progress ?? 0) + 10)
-          if (shouldPresent) {
-            lastPresentedRef.current.set(n.id, { status, progress })
-            onNewRef.current?.(n)
-          }
+          // 每个后端实时通知事件都进入同一投递器。稳定 ID 只用于替换面板快照，
+          // 不能再成为 Toast/智能岛/系统通知的隐式过滤条件。
+          onNewRef.current?.(n)
         } else if (event.event === 'notification_deleted') {
           if (event.user_id !== userIdRef.current) return
           setItems((prev) => prev.filter((p) => p.id !== event.id))
@@ -136,16 +124,24 @@ export function useNotificationCenter({
     }
   }, [loadHistory])
 
+  const panelItems = useMemo(
+    () =>
+      includeInPanelRef.current
+        ? items.filter(includeInPanelRef.current)
+        : items,
+    [items, includeInPanel],
+  )
+
   // 操作引用仅在账号（loadHistory）变化时更新；普通通知增量不会让下游操作失稳。
   return useMemo(
     () => ({
-      items,
+      items: panelItems,
       loaded,
       loadHistory,
       removeItem,
       clearAll,
     }),
-    [items, loaded, loadHistory, removeItem, clearAll],
+    [panelItems, loaded, loadHistory, removeItem, clearAll],
   )
 }
 

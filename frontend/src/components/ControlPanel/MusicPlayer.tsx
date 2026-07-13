@@ -32,7 +32,6 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
   const {
     currentSong,
     isPlaying,
-    isAudioLoading,
     currentTime,
     audioDuration,
     volume,
@@ -160,7 +159,7 @@ const MusicInfoView: React.FC<MusicPlayerProps> = ({ player }) => {
               onInput={(e) =>
                 handleSeek(Number.parseFloat(e.currentTarget.value))
               }
-              className={`music-progress-bar ${isAudioLoading ? 'loading' : ''}`}
+              className="music-progress-bar"
               aria-label={t.music.progress}
             />
             <span className="music-time">

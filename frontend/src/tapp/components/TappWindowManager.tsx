@@ -10,7 +10,6 @@
  */
 
 import type { TappCodeStructure } from '../examples/tapps/types'
-import type { TappNotificationOptions } from '../runtime/sandbox/types'
 import type { TappInstance } from '../types'
 import {
   FaExclamationTriangle,
@@ -78,8 +77,6 @@ export interface TappWindowManagerProps {
   initialTappId?: string
   /** 返回回调 */
   onBack?: () => void
-  /** 通知回调 */
-  onNotification?: (options: TappNotificationOptions) => void
 }
 
 /** 最大窗口数量 */
@@ -157,7 +154,6 @@ interface TappWindowComponentProps {
   onFocus: (windowId: string) => void
   onMove: (windowId: string, position: { x: number; y: number }) => void
   onResize: (windowId: string, size: { width: number; height: number }) => void
-  onNotification?: (options: TappNotificationOptions) => void
   containerBounds: { width: number; height: number }
 }
 
@@ -169,7 +165,6 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
     onFocus,
     onMove,
     onResize,
-    onNotification,
     containerBounds,
   }) => {
     const { t } = useI18n()
@@ -624,7 +619,6 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
                 tappInstance={window.tapp}
                 code={window.code}
                 onError={(err) => console.error('[TappWindow] Error:', err)}
-                onNotification={onNotification}
               />
             </div>
           ) : null}
@@ -678,7 +672,6 @@ TappWindowComponent.displayName = 'TappWindowComponent'
 export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   initialTappId,
   onBack,
-  onNotification,
 }) => {
   const { t } = useI18n()
   const { isAuthenticated } = useAuth()
@@ -1380,7 +1373,6 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               onFocus={focusWindow}
               onMove={moveWindow}
               onResize={resizeWindow}
-              onNotification={onNotification}
               containerBounds={containerBounds}
             />
           ))}

@@ -167,6 +167,18 @@ export const jaJP: TranslationKeys = {
   // セットアップウィザード
   setup: {
     title: 'システム設定',
+    welcomeEyebrow: '初回セットアップ',
+    welcomeTitle: 'Myriad へようこそ',
+    welcomeDesc:
+      'さまざまなプラットフォームに散らばるデータを、あなたのためのひとつの場所に集約します。PostgreSQL の接続と管理者作成だけで始められます。',
+    welcomeDatabase: 'PostgreSQL データベースに接続',
+    welcomeAdmin: '安全な管理者アカウントを作成',
+    welcomeReady: '設定完了後すぐに利用開始',
+    welcomeFootnote: 'セットアップは通常、数分で完了します',
+    getStarted: 'セットアップを開始',
+    welcomeStep: 'ようこそ',
+    welcomeStepShort: '開始',
+    checkingStatus: 'システム状態を確認しています...',
     databaseConfig: 'データベース設定',
     databaseConfigDesc:
       'PostgreSQLデータベース接続を設定し、マイグレーションを実行',
@@ -198,9 +210,11 @@ export const jaJP: TranslationKeys = {
     createAdmin: '管理者アカウント作成',
     creating: '作成中...',
     adminUsernameHint: 'ユーザー名：3〜20文字、英数字とアンダースコアのみ',
-    adminPasswordHint: 'パスワード：8文字以上',
+    adminPasswordHint: 'パスワード：8文字以上で、英字と数字を含める',
     passwordMismatch: 'パスワードが一致しません',
     enterDbPassword: 'データベースパスワードを入力してください',
+    dbFieldsRequired: 'データベース接続情報をすべて入力してください',
+    invalidPort: 'データベースポートは 1〜65535 の整数で入力してください',
     dbConfigSaved: 'データベース設定を保存しました！',
     dbReconnecting: 'バックエンドを再起動し、データベースへ接続中...',
     waitingForConnection:
@@ -225,6 +239,8 @@ export const jaJP: TranslationKeys = {
     usernameLengthError: 'ユーザー名は3〜20文字である必要があります',
     usernameFormatError: 'ユーザー名は英数字とアンダースコアのみ使用可能です',
     passwordLengthError: 'パスワードは8文字以上必要です',
+    passwordComplexityError:
+      'パスワードは8文字以上で、英字と数字を含める必要があります',
     adminCreated: '管理者アカウント作成成功！',
     createAdminFailed: '管理者アカウント作成失敗',
     createFailed: '作成失敗',
@@ -232,7 +248,7 @@ export const jaJP: TranslationKeys = {
       'システム完全管理権限を持つローカル管理者アカウントを作成',
     saveHint:
       'ヒント：保存後、完全なルートテーブルを読み込むためバックエンドが再起動します',
-    atLeast8Chars: '8文字以上',
+    atLeast8Chars: '8文字以上、英字と数字を含める',
     enterPasswordAgain: 'パスワードを再入力',
   },
 
@@ -853,7 +869,7 @@ export const jaJP: TranslationKeys = {
     hitokotoSaved: '一言設定を保存しました',
     hitokotoLoadFailed: '一言設定の読み込みに失敗しました',
     // レポートページ設定
-    reportSettingsTitle: 'レポートページ設定',
+    reportSettingsTitle: 'レポートページ',
     reportSettingsDesc: 'レポートの有効期間と期限切れ後の動作を管理',
     reportExpiryEnabled: 'レポートの有効期限を有効化',
     reportExpiryEnabledDesc:
@@ -941,6 +957,9 @@ export const jaJP: TranslationKeys = {
     tabFont: 'フォント',
     tabSize: 'サイズ',
     tabColor: '色',
+    tabSurface: 'カード',
+    tabGlow: 'グロー',
+    tabPreset: 'プリセット',
     // 色オプション
     colorPrimary: 'プライマリ',
     colorSecondary: 'セカンダリ',
@@ -953,6 +972,15 @@ export const jaJP: TranslationKeys = {
     sizeLarge: '大',
     sizeXLarge: '特大',
     sizeXXLarge: '極大',
+    // ウィジェット表面オプション
+    surfaceGlass: 'ガラス',
+    surfaceSolid: 'ソリッド',
+    surfaceFlat: 'ライト',
+    surfaceOutline: 'アウトライン',
+    // ウィジェットグローオプション
+    glowIdentity: 'アクセント光',
+    glowPrimary: 'テーマ色光',
+    glowNone: 'グローなし',
   },
 
   // ホーム

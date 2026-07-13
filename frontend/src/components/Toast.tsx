@@ -7,10 +7,8 @@
  * - 主题色适配
  * - 支持多种消息类型
  *
- * 与 Tapp 系统的集成：
- * - 通过 TappSandbox 的 onNotification 回调接收通知
- * - 支持 success/error/warning/info 四种类型
- * - 可选标题和消息组合
+ * 这是统一 Toast 容器的渲染原语。持久业务通知由通知中心流投递到这里；
+ * 当前页面的瞬时操作反馈也可直接复用该原语，但不会伪装成通知中心记录。
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -47,7 +45,7 @@ export interface ToastProps {
   onClick?: () => void
 }
 
-/** 类型配置映射（导出供同族的 tapp/TappToast 复用） */
+/** 类型配置映射 */
 export const TYPE_CONFIG = {
   success: {
     icon: STATUS_ICON_ASSETS.success,

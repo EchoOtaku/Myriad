@@ -145,7 +145,11 @@ pub async fn execute_inline(
                 if let Some(ref v) = restored_version {
                     let mut st = worker.state().read_updater()?;
                     st.current_version = Some(v.clone());
+                    st.current_commit_sha = None;
                     worker.state().write_updater(&st)?;
+                    if let Err(e) = worker.reconcile_current_deploy().await {
+                        warn!(err = %e, "rollback restored version but commit reconciliation failed");
+                    }
                 }
                 return Ok(restored_version);
             }
@@ -227,8 +231,10 @@ mod tests {
     fn resolve_falls_back_to_current_version() {
         let dir = tempdir().unwrap();
         let state = StateDir::open(dir.path()).unwrap();
-        let mut st = UpdaterStateFile::default();
-        st.current_version = Some(DeployTag::parse("v0.8.1").unwrap());
+        let st = UpdaterStateFile {
+            current_version: Some(DeployTag::parse("v0.8.1").unwrap()),
+            ..UpdaterStateFile::default()
+        };
         state.write_updater(&st).unwrap();
         let got = resolve_previous_tag(&state, "snap-missing", None).unwrap();
         assert_eq!(got.as_deref(), Some("v0.8.1"));

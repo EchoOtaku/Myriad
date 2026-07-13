@@ -310,6 +310,7 @@ pub struct DynamicConfig {
     pub dashboard_layout: Option<String>,
     pub dashboard_title: Option<String>,
     pub custom_platforms: Option<String>, // 自定义社交平台数据 (JSON)
+    pub widget_theme: Option<String>,     // 小组件外观主题 (JSON: surface/glow)
 
     // 标题字体样式配置
     pub title_font: Option<String>,   // 标题字体 ID
@@ -523,6 +524,7 @@ impl Default for DynamicConfig {
             dashboard_layout: None,
             dashboard_title: None,
             custom_platforms: None,
+            widget_theme: None,
 
             title_font: None,
             title_font_size: None,

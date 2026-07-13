@@ -38,6 +38,7 @@ import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
 import { useThemeMode } from '../../utils/themeSubscriber'
 import { GlowBackground } from './shared/GlowBackground'
+import { WidgetShell } from './shared/WidgetShell'
 
 // 使用内联 SVG 图标，避免 react-icons 全量导入
 
@@ -1971,32 +1972,36 @@ export const SocialNetworkWidget = memo(
 
     return (
       <>
-        <motion.div
-          ref={mergedRef}
-          className={`relative h-full w-full rounded-xl overflow-hidden glass ${
+        <WidgetShell
+          as={motion.div}
+          containerRef={mergedRef}
+          padding={0}
+          className={`${
             hasInteraction ? 'cursor-pointer' : ''
           } ${isEditMode ? 'cursor-grab' : ''}`}
           style={{
             // 使用 filter 替代 box-shadow 避免布局影响
             transition: 'filter 0.3s ease, border-color 0.3s ease',
           }}
-          {...containerHoverProps}
-          onClick={handleClick}
-          onMouseDown={handlePressStart}
-          onMouseUp={handlePressEnd}
-          onMouseLeave={handleMouseLeave}
-          onMouseEnter={handleMouseEnter}
-          onTouchStart={handlePressStart}
-          onTouchEnd={handlePressEnd}
-          onTouchCancel={handlePressEnd}
+          background={
+            <GlowBackground
+              color={selectedPlatform.color}
+              animLevel={anim.level}
+              shouldAnimate={shouldAnimateGlow}
+            />
+          }
+          rootProps={{
+            ...containerHoverProps,
+            onClick: handleClick,
+            onMouseDown: handlePressStart,
+            onMouseUp: handlePressEnd,
+            onMouseLeave: handleMouseLeave,
+            onMouseEnter: handleMouseEnter,
+            onTouchStart: handlePressStart,
+            onTouchEnd: handlePressEnd,
+            onTouchCancel: handlePressEnd,
+          }}
         >
-          {/* 背景装饰 - 平台色微光效果 (Memoized 组件避免重渲染) */}
-          <GlowBackground
-            color={selectedPlatform.color}
-            animLevel={anim.level}
-            shouldAnimate={shouldAnimateGlow}
-          />
-
           {/* 内容区域 */}
           {content}
           {/* 长按设置提示（编辑模式）- 仅视觉提示，不可点击 */}
@@ -2029,7 +2034,7 @@ export const SocialNetworkWidget = memo(
               </svg>
             </motion.div>
           )}
-        </motion.div>
+        </WidgetShell>
 
         {/* 信息提示 - hover 触发，点击复制 */}
         <AnimatePresence>

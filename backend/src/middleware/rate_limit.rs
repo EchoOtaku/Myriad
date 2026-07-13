@@ -203,6 +203,8 @@ fn is_sensitive_endpoint(path: &str) -> bool {
     path.contains("/auth/login")
         || path.contains("/auth/change-password")
         || path.contains("/setup/create-admin")
+        || path.contains("/setup/database-config")
+        || path.contains("/setup/init-database")
 }
 
 /// Check if endpoint is compute-intensive or abuse-prone

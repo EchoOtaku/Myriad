@@ -8,11 +8,15 @@ COPY proxy/src proxy/src
 
 ARG MYRIAD_VERSION=v0.0.0-dev
 ENV MYRIAD_VERSION=${MYRIAD_VERSION}
+ARG MYRIAD_COMMIT_SHA=unknown
+ENV MYRIAD_COMMIT_SHA=${MYRIAD_COMMIT_SHA}
 
 WORKDIR /work/proxy
 RUN cargo build --release --bin myriad-proxy
 
 FROM debian:bookworm-slim AS runtime
+ARG MYRIAD_COMMIT_SHA=unknown
+LABEL org.opencontainers.image.revision=${MYRIAD_COMMIT_SHA}
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tini \
     && rm -rf /var/lib/apt/lists/*

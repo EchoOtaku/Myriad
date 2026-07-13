@@ -475,6 +475,13 @@ impl ConfigService {
                 config.custom_platforms = Some(v.to_string());
             }
         }
+        if let Some(v) = map.get("widget_theme") {
+            if let Some(s) = v.as_str() {
+                config.widget_theme = Some(s.to_string());
+            } else {
+                config.widget_theme = Some(v.to_string());
+            }
+        }
 
         // 标题字体样式配置
         if let Some(v) = map.get("title_font") {

@@ -11,6 +11,7 @@
 
 import { memo, useMemo } from 'react'
 import { getAnimationConfigSync } from '../../../hooks/useAnimationLevel'
+import { useWidgetTheme } from '../../../hooks/useWidgetTheme'
 import './GlowBackground.css'
 
 // 🔑 模块加载时同步获取动画配置，确保首次渲染正确
@@ -50,6 +51,10 @@ export const GlowBackground = memo(
     size = 'md',
     opacity,
   }: GlowBackgroundProps) => {
+    // 小组件主题：光晕模式（identity=各组件身份色 / primary=统一主题色 / none=关闭）
+    const { glow } = useWidgetTheme()
+    const resolvedColor = glow === 'primary' ? 'var(--color-primary)' : color
+
     // 根据动画级别选择模糊程度
     const blurClass = animLevel === 'standard' ? 'glow-blur-lg' : 'glow-blur-sm'
 
@@ -69,11 +74,15 @@ export const GlowBackground = memo(
     const baseStyle = useMemo(
       () =>
         ({
-          background: color,
+          background: resolvedColor,
           ...(opacity !== undefined && { '--glow-opacity': opacity }),
         }) as React.CSSProperties,
-      [color, opacity],
+      [resolvedColor, opacity],
     )
+
+    if (glow === 'none') {
+      return null
+    }
 
     // 根据 variant 渲染不同布局
     if (variant === 'single-left') {

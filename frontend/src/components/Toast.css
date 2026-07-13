@@ -19,11 +19,6 @@
   animation: toastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Tapp Toast 容器 - 稍宽以容纳更多信息 */
-.toast-container.toast-tapp {
-  max-width: min(90vw, 480px);
-}
-
 /* 隐藏动画 */
 .toast-container.toast-hiding {
   animation: toastSlideOut 0.3s cubic-bezier(0.4, 0, 1, 1) forwards;
@@ -50,12 +45,6 @@
     0 4px 12px -4px rgb(0 0 0 / 10%),
     inset 0 1px 0 rgb(255 255 255 / 80%);
   color: #1f2937;
-}
-
-/* Tapp Toast 消息体 */
-.toast-message.toast-message-tapp {
-  flex-wrap: wrap;
-  padding: 0.75rem 1rem;
 }
 
 /* 带点击动作的 toast（如通知跳转） */
@@ -289,47 +278,6 @@ html.dark .toast-close-btn:hover {
   color: #d1d5db;
 }
 
-/* ============ Tapp 来源标识 ============ */
-.toast-tapp-source {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  width: 100%;
-  margin-bottom: 0.375rem;
-  padding-bottom: 0.375rem;
-  border-bottom: 1px solid rgb(0 0 0 / 5%);
-}
-
-html.dark .toast-tapp-source {
-  border-bottom-color: rgb(255 255 255 / 10%);
-}
-
-.toast-tapp-icon {
-  font-size: 0.875rem;
-  line-height: 1;
-}
-
-.toast-tapp-name {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-html.dark .toast-tapp-name {
-  color: #9ca3af;
-}
-
-.toast-tapp-separator {
-  color: #d1d5db;
-  font-size: 0.75rem;
-}
-
-html.dark .toast-tapp-separator {
-  color: #4b5563;
-}
-
 /* ============ 动画 ============ */
 @keyframes toastSlideIn {
   0% {
@@ -363,10 +311,6 @@ html.dark .toast-tapp-separator {
     right: 1rem;
     transform: none;
     width: auto;
-    max-width: none;
-  }
-
-  .toast-container.toast-tapp {
     max-width: none;
   }
 

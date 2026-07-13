@@ -25,14 +25,7 @@ const TappRunView: React.FC = () => {
 
   // 多任务模式 - 直接进入窗口管理器
   if (isMultiWindowMode) {
-    return (
-      <TappWindowManager
-        onBack={() => navigate('/tapp')}
-        onNotification={(options) => {
-          console.log('[MultiWindow] Notification:', options)
-        }}
-      />
-    )
+    return <TappWindowManager onBack={() => navigate('/tapp')} />
   }
 
   if (!tappId) {

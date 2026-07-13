@@ -271,7 +271,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
         onClick={handleCardClick}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className={`group relative aspect-2/1 rounded-2xl overflow-hidden bg-white/70 dark:bg-black/80 backdrop-blur-xl ${
+        className={`group relative aspect-2/1 rounded-2xl overflow-hidden glass-surface glass-70 ${
           isRunning && hasPage ? 'cursor-pointer' : ''
         }`}
       >
@@ -948,7 +948,7 @@ export function TappListPage() {
             /* 绌虹姸鎬?- 涓庡崱鐗囪璁￠鏍间竴鑷? */
             <div className="relative rounded-2xl overflow-hidden">
               {/* 鑳屾櫙 */}
-              <div className="absolute inset-0 bg-white/70 dark:bg-black/80 backdrop-blur-xl" />
+              <div className="absolute inset-0 glass-surface glass-70" />
 
               {/* 瑁呴グ鍏夋晥 */}
               <div

@@ -292,7 +292,7 @@ export default function EditModal({
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="w-full max-w-3xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-gray-200/50 dark:border-neutral-700/50"
+        className="w-full max-w-3xl glass-surface glass-95 rounded-2xl shadow-2xl overflow-hidden border border-gray-200/50 dark:border-neutral-700/50"
         onClick={(e: MouseEvent) => e.stopPropagation()}
       >
         {/* 头部 */}

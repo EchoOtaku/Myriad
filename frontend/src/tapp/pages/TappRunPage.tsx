@@ -10,9 +10,7 @@
  * - 支持多窗口模式，可同时运行最多3个应用
  */
 
-import type { ToastType } from '../../components/Toast'
 import type { TappCodeStructure } from '../examples/tapps/types'
-import type { TappNotificationOptions } from '../runtime/sandbox/types'
 import type { TappInstance } from '../types'
 
 import {
@@ -37,7 +35,6 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { TappIcon } from '../components/TappIcon'
-import { TappToast } from '../components/TappToast'
 import { TappWindowManager } from '../components/TappWindowManager'
 import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
@@ -66,10 +63,6 @@ export function TappRunPage({ tappId }: TappRunPageProps) {
       <TappWindowManager
         initialTappId={tappId}
         onBack={() => navigate('/tapp')}
-        onNotification={(options) => {
-          // 多窗口模式下的通知处理
-          console.log('[MultiWindow] Notification:', options)
-        }}
       />
     )
   }
@@ -98,32 +91,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [notification, setNotification] = useState<{
-    title?: string
-    message: string
-    type: ToastType
-    tappName?: string
-    tappIcon?: string
-    tappIconSvg?: string
-  } | null>(null)
-
   const runtime = getTappRuntime()
-
-  // 处理 Tapp 通知
-  const handleNotification = useCallback(
-    (options: TappNotificationOptions) => {
-      const toastType: ToastType = options.type || 'info'
-      setNotification({
-        title: options.title,
-        message: options.message,
-        type: toastType,
-        tappName: tapp?.manifest.name,
-        tappIcon: tapp?.manifest.icon,
-        tappIconSvg: tapp?.manifest.iconSvg,
-      })
-    },
-    [tapp],
-  )
 
   // 加载 Tapp
   useEffect(() => {
@@ -667,34 +635,11 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
               onError={(err: Error) =>
                 console.error('[TappRunPage] Error:', err)
               }
-              onNotification={handleNotification}
               safeInsets={safeInsets}
             />
           </div>
         </div>
       )}
-
-      {/* Tapp 通知 Toast */}
-      <AnimatePresence>
-        {notification && (
-          <motion.div
-            initial={noAnimation ? false : { opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={noAnimation ? undefined : { opacity: 0, y: -20, scale: 0.95 }}
-            transition={transitions.elementEnter}
-          >
-            <TappToast
-              title={notification.title}
-              message={notification.message}
-              type={notification.type}
-              tappName={notification.tappName}
-              tappIcon={notification.tappIcon}
-              tappIconSvg={notification.tappIconSvg}
-              onClose={() => setNotification(null)}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }

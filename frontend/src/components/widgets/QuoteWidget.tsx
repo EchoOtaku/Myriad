@@ -14,6 +14,7 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getRandomQuote } from '../../utils/dynamicContent'
 import { GlowBackground } from './shared/GlowBackground'
+import { WidgetShell } from './shared/WidgetShell'
 
 // 缓存配置
 const CACHE_KEY = 'quote_data_cache'
@@ -170,23 +171,26 @@ export const QuoteWidget = memo(
     // 4x2 宽版布局 - 上下结构重构
     if (config.size === '4x2') {
       return (
-        <div
-          ref={containerRef}
-          className="relative h-full w-full rounded-xl overflow-hidden glass flex flex-col p-5"
+        <WidgetShell
+          containerRef={containerRef}
+          padding={20}
+          contentClassName="flex flex-col"
+          background={
+            <>
+              <GlowBackground
+                color={themeColor}
+                animLevel={anim.level}
+                shouldAnimate={anim.loop}
+                variant="single-left"
+                size="lg"
+                opacity={0.2}
+              />
+              <div className="absolute top-2 left-4 text-8xl opacity-[0.08] font-serif text-gray-500 leading-none select-none pointer-events-none">
+                "
+              </div>
+            </>
+          }
         >
-          {/* 背景装饰 */}
-          <GlowBackground
-            color={themeColor}
-            animLevel={anim.level}
-            shouldAnimate={anim.loop}
-            variant="single-left"
-            size="lg"
-            opacity={0.2}
-          />
-          <div className="absolute top-2 left-4 text-8xl opacity-[0.08] font-serif text-gray-500 leading-none select-none pointer-events-none">
-            "
-          </div>
-
           {/* 上半部分：引言内容 (占据主要空间) */}
           <div className="flex-1 flex items-center justify-center relative z-10 w-full min-h-0 overflow-hidden">
             <motion.p
@@ -220,39 +224,38 @@ export const QuoteWidget = memo(
               </span>
             </motion.div>
           )}
-        </div>
+        </WidgetShell>
       )
     }
 
     // 4x1 紧凑横版布局
     if (config.size === '4x1') {
       return (
-        <div
-          ref={containerRef}
-          className="relative h-full w-full rounded-xl overflow-hidden glass"
+        <WidgetShell
+          containerRef={containerRef}
+          padding={{ x: 16, y: 6 }}
+          contentClassName="flex items-center"
+          background={
+            <GlowBackground
+              color={themeColor}
+              animLevel={anim.level}
+              shouldAnimate={false}
+              variant="single-left"
+              size="sm"
+              opacity={0.3}
+            />
+          }
         >
-          {/* 背景装饰 */}
-          <GlowBackground
-            color={themeColor}
-            animLevel={anim.level}
-            shouldAnimate={false}
-            variant="single-left"
-            size="sm"
-            opacity={0.3}
-          />
-
           {/* 引言内容 - 增加右侧内边距避开作者信息 */}
-          <div className="absolute inset-0 flex items-center px-4">
-            <motion.p
-              className="text-sm font-medium text-gray-800 dark:text-gray-100 leading-relaxed font-serif italic w-full pr-12 line-clamp-2"
-              style={{ fontSize: `${14 * fontScale}px` }}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              {quoteData.text}
-            </motion.p>
-          </div>
+          <motion.p
+            className="text-sm font-medium text-gray-800 dark:text-gray-100 leading-relaxed font-serif italic w-full pr-12 line-clamp-2"
+            style={{ fontSize: `${14 * fontScale}px` }}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            {quoteData.text}
+          </motion.p>
 
           {/* 作者信息 - 绝对定位在右下角 */}
           {quoteData.author && (
@@ -270,88 +273,84 @@ export const QuoteWidget = memo(
               </span>
             </motion.div>
           )}
-        </div>
+        </WidgetShell>
       )
     }
 
     return (
-      <div
-        ref={containerRef}
-        className="relative h-full w-full rounded-xl overflow-hidden glass"
+      <WidgetShell
+        containerRef={containerRef}
+        scale={scale}
+        padding={12}
+        contentClassName="flex flex-col"
+        background={
+          <GlowBackground
+            color={themeColor}
+            animLevel={anim.level}
+            shouldAnimate={anim.loop}
+            variant="single"
+            size="md"
+          />
+        }
       >
-        {/* 背景光效 - 呼吸效果 */}
-        <GlowBackground
-          color={themeColor}
-          animLevel={anim.level}
-          shouldAnimate={anim.loop}
-          variant="single"
-          size="md"
-        />
-
-        {/* 主内容区：2x2紧凑布局 */}
-        <div
-          className="absolute inset-0 flex flex-col p-3"
-          style={{ padding: `${12 * scale}px` }}
+        {/* 顶部：图标 */}
+        <motion.div
+          className="mb-1"
+          initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
+          animate={{
+            scale: 1,
+            opacity: 1,
+            rotate: 0,
+          }}
+          transition={{
+            duration: 0.6,
+            ease: [0.34, 1.56, 0.64, 1],
+          }}
         >
-          {/* 顶部：图标 */}
-          <motion.div
-            className="mb-1"
-            initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
-            animate={{
-              scale: 1,
-              opacity: 1,
-              rotate: 0,
+          <svg
+            className="w-6 h-6"
+            style={{
+              color: themeColor,
+              width: `${24 * scale}px`,
+              height: `${24 * scale}px`,
             }}
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" />
+          </svg>
+        </motion.div>
+
+        {/* 中部：引言内容 */}
+        <div className="flex-1 flex flex-col justify-center min-h-0">
+          <motion.p
+            className="text-sm font-medium text-gray-800 dark:text-gray-100 leading-relaxed line-clamp-3"
+            style={{ fontSize: `${14 * fontScale}px`, lineHeight: 1.6 }}
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
             transition={{
               duration: 0.6,
+              delay: 0.2,
               ease: [0.34, 1.56, 0.64, 1],
             }}
           >
-            <svg
-              className="w-6 h-6"
-              style={{
-                color: themeColor,
-                width: `${24 * scale}px`,
-                height: `${24 * scale}px`,
-              }}
-              fill="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" />
-            </svg>
-          </motion.div>
-
-          {/* 中部：引言内容 */}
-          <div className="flex-1 flex flex-col justify-center min-h-0">
-            <motion.p
-              className="text-sm font-medium text-gray-800 dark:text-gray-100 leading-relaxed line-clamp-3"
-              style={{ fontSize: `${14 * fontScale}px`, lineHeight: 1.6 }}
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{
-                duration: 0.6,
-                delay: 0.2,
-                ease: [0.34, 1.56, 0.64, 1],
-              }}
-            >
-              {quoteData.text}
-            </motion.p>
-          </div>
-
-          {/* 底部：作者信息 */}
-          {quoteData.author && (
-            <motion.div
-              className="text-[10px] text-gray-500 dark:text-gray-500 text-right"
-              style={{ fontSize: `${10 * fontScale}px` }}
-              initial={{ y: 10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.3 }}
-            >
-              — {quoteData.author}
-            </motion.div>
-          )}
+            {quoteData.text}
+          </motion.p>
         </div>
-      </div>
+
+        {/* 底部：作者信息 */}
+        {quoteData.author && (
+          <motion.div
+            className="text-[10px] text-gray-500 dark:text-gray-500 text-right"
+            style={{ fontSize: `${10 * fontScale}px` }}
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.4, delay: 0.3 }}
+          >
+            — {quoteData.author}
+          </motion.div>
+        )}
+      </WidgetShell>
     )
   },
 )

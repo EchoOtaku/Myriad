@@ -28,6 +28,8 @@ pub struct PreflightReport {
     pub from_version: Option<DeployTag>,
     /// Tag actually written to MYRIAD_TAG (commit mode: always `dev-<sha>`).
     pub target: DeployTag,
+    /// Full source commit for the target image set.
+    pub target_commit_sha: Option<String>,
     pub backend_digest: String,
     pub frontend_digest: String,
     pub estimated_seconds: u32,
@@ -137,10 +139,7 @@ async fn run_release(
             }
         } else {
             // Current is commit/branch while target is release — use git compare when possible.
-            match gh
-                .compare_deploy_to_ref(Some(curr), target.as_str())
-                .await
-            {
+            match gh.compare_deploy_to_ref(Some(curr), target.as_str()).await {
                 Ok(Some(f)) => {
                     is_downgrade = f.is_downgrade();
                     is_diverged = matches!(f.relation, CommitRelation::Diverged);
@@ -269,10 +268,21 @@ async fn run_release(
     }
 
     let estimated = manifest.migrations.estimated_seconds;
+    let target_commit_sha = match manifest.commit_sha.clone() {
+        some @ Some(_) => some,
+        None => match gh.resolve_commit(target.as_str()).await {
+            Ok(info) => Some(info.sha),
+            Err(e) => {
+                warn!(target = %target, err = %e, "release manifest lacks commit_sha and tag resolution failed");
+                None
+            }
+        },
+    };
     Ok(PreflightReport {
         manifest: Some(manifest),
         from_version,
         target: target.clone(),
+        target_commit_sha,
         backend_digest: backend_pulled,
         frontend_digest: frontend_pulled,
         estimated_seconds: estimated,
@@ -426,6 +436,7 @@ async fn run_commit(
         manifest: None,
         from_version,
         target: effective,
+        target_commit_sha: Some(tip.sha),
         backend_digest: backend_pulled,
         frontend_digest: frontend_pulled,
         estimated_seconds: 60,
@@ -452,40 +463,20 @@ fn require_flag(allowed: bool, msg: &str) -> Result<()> {
     Err(UpdaterError::Precondition(msg.into()))
 }
 
-#[cfg(test)]
-mod risk_flag_tests {
-    use super::*;
-
-    #[test]
-    fn allow_risk_umbrellas_granular_flags() {
-        let r = RiskFlags::from_api(false, true, None, None, None);
-        assert!(r.allow_downgrade);
-        assert!(r.allow_diverged);
-        assert!(r.allow_unknown);
-        assert!(r.allow_irreversible);
-    }
-
-    #[test]
-    fn granular_flags_override_umbrella_defaults() {
-        let r = RiskFlags::from_api(true, false, Some(true), Some(false), None);
-        assert!(r.allow_downgrade);
-        assert!(r.allow_diverged);
-        assert!(!r.allow_unknown);
-        assert!(!r.allow_irreversible);
-    }
-}
-
 /// Image repos must be explicit in .env — never silently use a wrong default registry.
 fn image_repos_required(worker: &Worker) -> Result<(String, String)> {
     let env = EnvFile::load(&worker.cli().env_file)?;
-    let backend = env.get("BACKEND_IMAGE").map(|s| s.to_string()).ok_or_else(|| {
-        UpdaterError::Precondition(
-            "BACKEND_IMAGE missing in .env; required for commit-mode image pulls. \
+    let backend = env
+        .get("BACKEND_IMAGE")
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            UpdaterError::Precondition(
+                "BACKEND_IMAGE missing in .env; required for commit-mode image pulls. \
              Add e.g. BACKEND_IMAGE=docker.io/<org>/myriad-backend (no tag) or re-run \
              scripts/docker/deploy.sh to bootstrap defaults."
-                .into(),
-        )
-    })?;
+                    .into(),
+            )
+        })?;
     let frontend = env
         .get("FRONTEND_IMAGE")
         .map(|s| s.to_string())
@@ -573,4 +564,27 @@ fn fs_size(p: &std::path::Path) -> std::io::Result<u64> {
         .next()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0))
+}
+
+#[cfg(test)]
+mod risk_flag_tests {
+    use super::*;
+
+    #[test]
+    fn allow_risk_umbrellas_granular_flags() {
+        let r = RiskFlags::from_api(false, true, None, None, None);
+        assert!(r.allow_downgrade);
+        assert!(r.allow_diverged);
+        assert!(r.allow_unknown);
+        assert!(r.allow_irreversible);
+    }
+
+    #[test]
+    fn granular_flags_override_umbrella_defaults() {
+        let r = RiskFlags::from_api(true, false, Some(true), Some(false), None);
+        assert!(r.allow_downgrade);
+        assert!(r.allow_diverged);
+        assert!(!r.allow_unknown);
+        assert!(!r.allow_irreversible);
+    }
 }

@@ -6,11 +6,7 @@
 
 import type { TappCodeStructure } from '../examples/tapps/types'
 import type { TappInstance } from '../types'
-import type {
-  AnimationConfigRef,
-  SafeInsets,
-  TappNotificationOptions,
-} from './sandbox'
+import type { AnimationConfigRef, SafeInsets } from './sandbox'
 import type { TappBridge } from './TappBridge'
 import type { TappPermissionController } from './TappPermission'
 
@@ -89,8 +85,6 @@ export interface TappPageSandboxProps {
   onError?: (error: Error) => void
   /** 销毁回调 */
   onDestroy?: () => void
-  /** 通知回调 */
-  onNotification?: (options: TappNotificationOptions) => void
   /** 自定义类名 */
   className?: string
   /** 自定义样式 */
@@ -395,7 +389,6 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   onReady,
   onError,
   onDestroy,
-  onNotification,
   className,
   style,
   safeInsets,
@@ -668,7 +661,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       handleReady,
       handleError,
     )
-    registerUIHandlers(bridge, () => localeRef.current, onNotification)
+    registerUIHandlers(bridge, currentTappInstance, () => localeRef.current)
     registerStorageHandlers(bridge, currentTappInstance.id)
     registerUserHandlers(bridge, currentTappInstance)
     registerFileHandlers(bridge)

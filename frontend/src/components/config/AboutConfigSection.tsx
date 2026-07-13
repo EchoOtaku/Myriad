@@ -7,6 +7,7 @@ import {
   LuTag,
   LuUsers,
 } from '../../lib/icons'
+import { getBuildInfo } from '../../utils/buildInfo'
 import { SettingGroup, SettingSection } from '../settings'
 import { UpdaterInlinePanel } from './UpdaterConfigSection'
 
@@ -17,7 +18,6 @@ interface AboutConfigSectionProps {
   sectionId?: string
 }
 
-const MYRIAD_VERSION = __APP_VERSION__ || '0.1.0'
 const ORG_NAME = 'Myriad-You'
 const REPO_NAME = 'Myriad-You/Myriad'
 const ORG_URL = 'https://github.com/Myriad-You'
@@ -30,6 +30,7 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
   sectionId,
 }) => {
   const { t } = useI18n()
+  const buildInfo = getBuildInfo()
 
   const devInfo: Array<{
     label: string
@@ -39,8 +40,11 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
   }> = [
     {
       label: t.config.aboutVersion,
-      value: `v${MYRIAD_VERSION}`,
+      value: buildInfo.commitSha
+        ? `${buildInfo.version} · ${buildInfo.commitSha.slice(0, 7)}`
+        : buildInfo.version,
       icon: <LuTag />,
+      href: buildInfo.commitUrl ?? undefined,
     },
     { label: t.config.aboutLicense, value: 'GPL-3.0', icon: <LuScale /> },
     {

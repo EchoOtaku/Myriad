@@ -122,6 +122,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}:${{ needs.resolve.outputs.version }}
           build-args: |
             MYRIAD_VERSION=${{ needs.resolve.outputs.version }}
+            MYRIAD_COMMIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.component }}
           cache-to:   type=gha,scope=${{ matrix.component }},mode=max
           # Keep production release builds aligned with the verified beta image workflow.
@@ -175,6 +176,7 @@ jobs:
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
           CHANNEL: ${{ needs.resolve.outputs.channel }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           NS="${{ env.IMAGE_NAMESPACE }}"
@@ -199,6 +201,7 @@ jobs:
           # Pull defaults from release/example.release.json so changes there propagate.
           jq -n \
             --arg version "$VERSION" \
+            --arg commit_sha "$COMMIT_SHA" \
             --arg channel "$CHANNEL" \
             --arg released_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg notes_url "$NOTES_URL" \
@@ -206,6 +209,7 @@ jobs:
             '{
               schema_version: 1,
               version: $version,
+              commit_sha: $commit_sha,
               channel: $channel,
               released_at: $released_at,
               min_from_version: $version,
@@ -226,7 +230,9 @@ jobs:
           fi
 
           # Validate against schema (basic structural check via jq).
-          jq -e 'has("schema_version") and has("version") and (.images | length > 0)' release.json >/dev/null
+          jq -e --arg commit_sha "$COMMIT_SHA" \
+            'has("schema_version") and has("version") and (.commit_sha == $commit_sha) and (.images | length > 0)' \
+            release.json >/dev/null
 
           # Generate checksums.
           ( cd . && sha256sum release.json > SHA256SUMS )
@@ -270,6 +276,7 @@ jobs:
         run: |
           gh release create "${{ needs.resolve.outputs.version }}" \
             --title "${{ needs.resolve.outputs.version }}" \
+            --target "${{ github.sha }}" \
             --notes-file CHANGELOG-fragment.md \
             --prerelease=${{ needs.resolve.outputs.prerelease }} \
             release.json release.json.sig release.json.pem \

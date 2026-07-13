@@ -19,7 +19,10 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { API_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { hasSessionHint } from '../../utils/sessionDetection'
+import { GlowBackground } from './shared/GlowBackground'
+import { WidgetShell } from './shared/WidgetShell'
 
 // 缓存配置
 const CACHE_KEY = 'recent_activities_cache'
@@ -379,6 +382,7 @@ export const RecentActivityWidget = memo(
       checkAuth,
     } = useAuth()
     const { t } = useI18n()
+    const anim = useAnimationLevel()
     const [activities, setActivities] = useState<Activity[]>([])
     const [loading, setLoading] = useState(true)
 
@@ -581,57 +585,65 @@ export const RecentActivityWidget = memo(
     ])
 
     return (
-      <div className="h-full w-full glass rounded-xl p-3 relative overflow-hidden">
-        <div className="absolute inset-0 bg-linear-to-br from-violet-500/5 to-transparent" />
-
-        <div className="relative z-10 h-full flex flex-col">
-          {/* 标题 */}
-          <div className="mb-2 ml-1.5">
-            <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-              {t.recentActivity.widgetTitle}
-            </h3>
-          </div>
-
-          {/* 活动列表 */}
-          <div className="flex-1 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
-            {loading ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {t.common.loading}
-                </div>
-              </div>
-            ) : activities.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <svg
-                  className="w-8 h-8 text-gray-300 dark:text-gray-600 mb-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                  />
-                </svg>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                  {t.common.noResults}
-                </p>
-              </div>
-            ) : (
-              activities.map((activity, index) => (
-                <ActivityItem
-                  key={activity.id}
-                  activity={activity}
-                  index={index}
-                  t={t}
-                />
-              ))
-            )}
-          </div>
+      <WidgetShell
+        padding={12}
+        contentClassName="flex flex-col"
+        background={
+          <GlowBackground
+            color="#8b5cf6"
+            animLevel={anim.level}
+            shouldAnimate={anim.loop}
+            variant="single"
+            size="md"
+          />
+        }
+      >
+        {/* 标题 */}
+        <div className="mb-2 ml-1.5">
+          <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+            {t.recentActivity.widgetTitle}
+          </h3>
         </div>
-      </div>
+
+        {/* 活动列表 */}
+        <div className="flex-1 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {t.common.loading}
+              </div>
+            </div>
+          ) : activities.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <svg
+                className="w-8 h-8 text-gray-300 dark:text-gray-600 mb-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                />
+              </svg>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                {t.common.noResults}
+              </p>
+            </div>
+          ) : (
+            activities.map((activity, index) => (
+              <ActivityItem
+                key={activity.id}
+                activity={activity}
+                index={index}
+                t={t}
+              />
+            ))
+          )}
+        </div>
+      </WidgetShell>
     )
   },
 )

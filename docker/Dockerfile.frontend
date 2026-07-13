@@ -27,12 +27,17 @@ ENV PUBLIC_API_URL=${BACKEND_URL}
 # Build-time version stamp injected into <meta name="myriad-version">.
 ARG MYRIAD_VERSION=v0.0.0-dev
 ENV PUBLIC_MYRIAD_VERSION=${MYRIAD_VERSION}
+ARG MYRIAD_COMMIT_SHA=unknown
+ENV PUBLIC_MYRIAD_COMMIT_SHA=${MYRIAD_COMMIT_SHA}
 
 # Build the application
 RUN pnpm run build
 
 # Runtime stage - lightweight server
 FROM node:${NODE_VERSION}-alpine
+
+ARG MYRIAD_COMMIT_SHA=unknown
+LABEL org.opencontainers.image.revision=${MYRIAD_COMMIT_SHA}
 
 WORKDIR /app
 

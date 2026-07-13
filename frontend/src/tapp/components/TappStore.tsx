@@ -270,7 +270,7 @@ const UnifiedAppCard = forwardRef<
         whileTap={{ scale: 0.98 }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className="group relative aspect-2/1 rounded-2xl overflow-hidden bg-white/70 dark:bg-black/80 backdrop-blur-xl"
+        className="group relative aspect-2/1 rounded-2xl overflow-hidden glass-surface glass-70"
       >
         {/* 动态渐变背�? */}
         <div
@@ -1345,7 +1345,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
               }
             : undefined
         }
-        className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl rounded-2xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200/50 dark:border-neutral-700/50"
+        className="glass-surface rounded-2xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200/50 dark:border-neutral-700/50"
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       >
         {/* 头部 */}

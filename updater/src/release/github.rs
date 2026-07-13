@@ -143,10 +143,7 @@ impl GithubClient {
         }
         // Percent-encode so tags like `v0.1.0` and shas are safe in the path.
         let enc = urlencoding_minimal(rev);
-        let url = format!(
-            "https://api.github.com/repos/{}/commits/{}",
-            self.repo, enc
-        );
+        let url = format!("https://api.github.com/repos/{}/commits/{}", self.repo, enc);
         let resp = self
             .client
             .get(&url)
@@ -176,22 +173,11 @@ impl GithubClient {
             .committer
             .as_ref()
             .and_then(|c| c.date.clone())
-            .or_else(|| {
-                raw.commit
-                    .author
-                    .as_ref()
-                    .and_then(|a| a.date.clone())
-            });
+            .or_else(|| raw.commit.author.as_ref().and_then(|a| a.date.clone()));
         Ok(CommitInfo {
             sha: sha.clone(),
             short_sha: sha[..7].to_string(),
-            message: raw
-                .commit
-                .message
-                .lines()
-                .next()
-                .unwrap_or("")
-                .to_string(),
+            message: raw.commit.message.lines().next().unwrap_or("").to_string(),
             html_url: raw.html_url,
             committed_at,
         })
@@ -244,13 +230,7 @@ impl GithubClient {
                 Some(CommitInfo {
                     sha: c.sha.clone(),
                     short_sha: c.sha[..7].to_string(),
-                    message: c
-                        .commit
-                        .message
-                        .lines()
-                        .next()
-                        .unwrap_or("")
-                        .to_string(),
+                    message: c.commit.message.lines().next().unwrap_or("").to_string(),
                     html_url: c.html_url,
                     committed_at,
                 })
@@ -576,10 +556,7 @@ pub fn deploy_tag_to_git_ref(tag: &crate::version::DeployTag) -> String {
     use crate::version::DeployTagKind;
     match tag.kind() {
         DeployTagKind::Release => tag.as_str().to_string(),
-        DeployTagKind::Commit => tag
-            .commit_sha()
-            .unwrap_or(tag.as_str())
-            .to_string(),
+        DeployTagKind::Commit => tag.commit_sha().unwrap_or(tag.as_str()).to_string(),
         DeployTagKind::Branch => tag.as_str().to_string(),
     }
 }
@@ -703,8 +680,10 @@ impl Freshness {
         !matches!(self.relation, CommitRelation::Identical)
             && (self.is_upgrade()
                 || self.is_downgrade()
-                || matches!(self.relation, CommitRelation::Diverged | CommitRelation::Unknown)
-                    && self.current_sha != self.target_sha)
+                || matches!(
+                    self.relation,
+                    CommitRelation::Diverged | CommitRelation::Unknown
+                ) && self.current_sha != self.target_sha)
     }
 
     /// Back-compat alias used by older call sites.

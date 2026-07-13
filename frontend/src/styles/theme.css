@@ -96,23 +96,133 @@ body {
   }
 }
 
-/* Glass effect */
+/* ============================================
+   表面令牌（surface tokens）
+   .glass 消费这组令牌；表面主题通过 html[data-surface] 切换令牌值，
+   全站所有 .glass 组件（小组件 / 控制岛 / 弹窗 / 页面卡）自动跟随。
+   默认 = 玻璃态，与历史观感一致（零回归）。见 useWidgetTheme。
+   ============================================ */
+:root {
+  /* 基色（随明暗切换）；--surface-alpha 是透明度的抽象点，各组件可覆盖以保留自身配置 */
+  --surface-rgb: 255 255 255;
+  --surface-alpha: 80%;
+  --surface-border: rgb(255 255 255 / 30%);
+  --surface-filter: blur(16px) saturate(180%);
+  --surface-shadow: 0 8px 32px 0 rgb(31 38 135 / 10%);
+}
+
+html.dark {
+  --surface-rgb: 26 26 26;
+  --surface-border: rgb(255 255 255 / 10%);
+  --surface-shadow: 0 8px 32px 0 rgb(0 0 0 / 50%);
+}
+
+/* 表面模式只调「透明度 + 滤镜（+ 边框/阴影）」，基色与各组件 alpha 保持解耦 */
+
+/* 纯色：不透明卡片底，无 backdrop-filter（低端设备更快） */
+:root[data-surface='solid'] {
+  --surface-alpha: 100%;
+  --surface-border: var(--border-color);
+  --surface-filter: none;
+  --surface-shadow: 0 4px 16px 0 var(--shadow-color);
+}
+
+/* 轻盈：半透明纯色，无模糊，壁纸隐约可见 */
+:root[data-surface='flat'] {
+  --surface-alpha: 65%;
+  --surface-border: var(--border-color);
+  --surface-filter: none;
+  --surface-shadow: none;
+}
+
+/* 描边：极淡背景（保证内容可读，非纯透明）+ 明显边框 */
+:root[data-surface='outline'] {
+  --surface-alpha: 20%;
+  --surface-border: var(--border-hover);
+  --surface-filter: blur(3px);
+  --surface-shadow: none;
+}
+
+/* Glass effect —— 核心表达：基色 + 透明度 + 滤镜，全站统一入口 */
 .glass {
-  background: rgb(255 255 255 / 80%);
-  backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgb(255 255 255 / 30%);
-  box-shadow: 0 8px 32px 0 rgb(31 38 135 / 10%);
+  background: rgb(var(--surface-rgb) / var(--surface-alpha));
+  backdrop-filter: var(--surface-filter);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-shadow);
   transition:
     background 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-html.dark .glass {
-  background: rgb(26 26 26 / 80%);
-  backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgb(255 255 255 / 10%);
-  box-shadow: 0 8px 32px 0 rgb(0 0 0 / 50%);
+/* ============================================
+   非 .glass 的浮动 chrome（导航岛 / 控制面板 / 页脚 / AI 面板）：
+   这些组件各自硬编码了调校过的玻璃质感（不透明度不一）。默认态保留其原样，
+   仅当用户选择非玻璃表面（html[data-surface] 存在）时收敛到主题令牌，
+   使它们与小组件一起切换 solid/flat/outline。故切主题前零回归。
+   ============================================ */
+:root[data-surface] .dynamic-island,
+:root[data-surface] .secondary-island,
+:root[data-surface] .control-bar-trigger,
+:root[data-surface] .site-footer-content,
+:root[data-surface] .arael-panel {
+  background: rgb(var(--surface-rgb) / var(--surface-alpha));
+  backdrop-filter: var(--surface-filter);
+}
+
+/* ============================================
+   手写玻璃卡片的统一底（Tapp / Brew 卡片、控制岛等）
+   替代各处内联的 `bg-white/X dark:bg-Y backdrop-blur-Z`：
+   - 底色 + 滤镜走 --surface 令牌 → 跟随主题（切 solid/flat/outline 时统一收敛）
+   - 边框 / 阴影 / 圆角仍由使用处的工具类保留（各卡片装饰不同）
+   - 透明度用档位类保留；档位仅玻璃默认态生效，切主题时让位给全局收敛
+   ============================================ */
+.glass-surface {
+  background: rgb(var(--surface-rgb) / var(--surface-alpha));
+  backdrop-filter: var(--surface-filter);
+}
+
+:root:not([data-surface]) .glass-60 {
+  --surface-alpha: 60%;
+}
+
+:root:not([data-surface]) .glass-70 {
+  --surface-alpha: 70%;
+}
+
+:root:not([data-surface]) .glass-90 {
+  --surface-alpha: 90%;
+}
+
+:root:not([data-surface]) .glass-95 {
+  --surface-alpha: 95%;
+}
+
+/* 主题选择器里的表面预览色块：静态呈现四种质感，
+   不读全局令牌（否则会跟随当前 data-surface 而非展示各自样式） */
+.surface-swatch--glass {
+  background: rgb(255 255 255 / 80%);
+  border: 1px solid rgb(255 255 255 / 45%);
+}
+
+html.dark .surface-swatch--glass {
+  background: rgb(70 70 70 / 85%);
+  border: 1px solid rgb(255 255 255 / 15%);
+}
+
+.surface-swatch--solid {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.surface-swatch--flat {
+  background: color-mix(in srgb, var(--bg-secondary) 60%, transparent);
+  border: 1px solid var(--border-color);
+}
+
+.surface-swatch--outline {
+  background: color-mix(in srgb, var(--bg-secondary) 20%, transparent);
+  border: 1px solid var(--border-hover);
 }
 
 /* 背景网格 */
@@ -193,13 +303,14 @@ html.dark ::placeholder {
     touch-action: pan-y pinch-zoom;
   }
 
-  .glass {
-    backdrop-filter: blur(12px);
-    box-shadow: 0 4px 16px 0 rgb(31 38 135 / 8%);
+  /* 移动端降级：仅影响玻璃默认态的令牌（非玻璃表面各自的令牌特异性更高，不受影响） */
+  :root {
+    --surface-filter: blur(12px) saturate(180%);
+    --surface-shadow: 0 4px 16px 0 rgb(31 38 135 / 8%);
   }
 
-  html.dark .glass {
-    box-shadow: 0 4px 16px 0 rgb(0 0 0 / 40%);
+  html.dark {
+    --surface-shadow: 0 4px 16px 0 rgb(0 0 0 / 40%);
   }
 }
 

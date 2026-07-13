@@ -64,6 +64,7 @@ struct StatusResp {
     schema_version: u32,
     updater_version: String,
     current_version: Option<DeployTag>,
+    current_commit_sha: Option<String>,
     channel: String,
     /// release | commit
     update_mode: UpdateMode,
@@ -121,6 +122,7 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
         schema_version: 1,
         updater_version: crate::self_version().to_string(),
         current_version: u.current_version,
+        current_commit_sha: u.current_commit_sha,
         channel,
         update_mode,
         maintenance_active: m.active,
@@ -331,15 +333,12 @@ async fn update(
         Some(s) => s.parse::<UpdateMode>().map_err(ApiError::from)?,
         None => st.worker.effective_mode(),
     };
-    let raw = body
-        .target_commit
-        .or(body.target_version)
-        .ok_or_else(|| {
-            ApiError(
-                StatusCode::BAD_REQUEST,
-                "target_version or target_commit is required".into(),
-            )
-        })?;
+    let raw = body.target_commit.or(body.target_version).ok_or_else(|| {
+        ApiError(
+            StatusCode::BAD_REQUEST,
+            "target_version or target_commit is required".into(),
+        )
+    })?;
     let target = DeployTag::parse(&raw).map_err(ApiError::from)?;
     // Soft consistency: release mode needs release tags.
     if mode == UpdateMode::Release && !target.is_release() {

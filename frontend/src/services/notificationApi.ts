@@ -46,6 +46,13 @@ export interface NotificationListResponse {
   total: number
 }
 
+export interface TappNotificationRequest {
+  tapp_id: string
+  title?: string
+  message: string
+  notification_type?: 'success' | 'info' | 'warning' | 'error'
+}
+
 /** SSE 流事件均由后端按 user_id 过滤，只发给通知 owner。 */
 export type NotificationStreamEvent =
   | { event: 'init'; unread_count: number }
@@ -60,6 +67,14 @@ const BASE = '/agent/notifications'
 export const notificationApi = {
   async list(limit = 50): Promise<NotificationListResponse> {
     return apiService.get<NotificationListResponse>(`${BASE}?limit=${limit}`)
+  },
+
+  async publishTapp(request: TappNotificationRequest): Promise<string> {
+    const response = await apiService.post<{
+      success: boolean
+      notification_id: string
+    }>('/tapp/notifications', request)
+    return response.notification_id
   },
 
   async remove(id: string): Promise<{ success: boolean }> {

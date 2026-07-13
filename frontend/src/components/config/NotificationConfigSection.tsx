@@ -11,7 +11,12 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useNotificationPreferences } from '../../hooks/useNotificationPreferences'
 import notificationPreferencesApi from '../../services/notificationPreferencesApi'
 import { NotificationSourceIcon } from '../notifications/NotificationIcons'
-import { SettingGroup, SettingSection, SwitchItem } from '../settings'
+import {
+  CheckboxGroupItem,
+  SettingGroup,
+  SettingSection,
+  SwitchItem,
+} from '../settings'
 import './NotificationConfigSection.css'
 
 interface NotificationConfigSectionProps {
@@ -193,11 +198,18 @@ const UI_TEXT = {
     delivery: '展示方式',
     island: '智能岛轮播',
     islandDesc: '新通知到达时在顶部控制岛展示',
-    toast: '高优先级 Toast',
-    toastDesc: '失败、紧急事件使用全局提示',
+    toast: 'Toast 通知',
+    toastDesc: '新通知到达时使用全局提示',
     browser: '浏览器系统通知',
     browserDesc: '页面位于后台且浏览器已授权时展示',
     sourceEnabled: '允许此来源',
+    locations: '显示位置',
+    locationsDesc: '与上方全局展示开关共同生效',
+    events: '通知事件',
+    panelLocation: '通知面板',
+    toastLocation: 'Toast',
+    islandLocation: '智能岛',
+    browserLocation: '系统通知',
     saveFailed: '通知设置保存失败，已恢复服务器设置',
   },
   'en-US': {
@@ -207,11 +219,18 @@ const UI_TEXT = {
     delivery: 'Presentation',
     island: 'Control-island carousel',
     islandDesc: 'Show new notifications in the top control island',
-    toast: 'High-priority toast',
-    toastDesc: 'Use global alerts for failures and urgent events',
+    toast: 'Toast notifications',
+    toastDesc: 'Use global alerts when new notifications arrive',
     browser: 'Browser system notifications',
     browserDesc: 'Show while the page is in the background when permitted',
     sourceEnabled: 'Allow this source',
+    locations: 'Display locations',
+    locationsDesc: 'Combined with the global presentation switches above',
+    events: 'Notification events',
+    panelLocation: 'Notification panel',
+    toastLocation: 'Toast',
+    islandLocation: 'Control island',
+    browserLocation: 'System notification',
     saveFailed:
       'Could not save notification settings; server settings restored',
   },
@@ -221,11 +240,18 @@ const UI_TEXT = {
     delivery: '表示方法',
     island: 'コントロールアイランド',
     islandDesc: '新着通知を上部のコントロールアイランドに表示',
-    toast: '高優先度 Toast',
-    toastDesc: '失敗や緊急イベントをグローバル表示',
+    toast: 'Toast 通知',
+    toastDesc: '新着通知をグローバル表示',
     browser: 'ブラウザー通知',
     browserDesc: '許可済みでページがバックグラウンドの時に表示',
     sourceEnabled: 'この送信元を許可',
+    locations: '表示場所',
+    locationsDesc: '上部のグローバル表示設定と組み合わせて適用します',
+    events: '通知イベント',
+    panelLocation: '通知パネル',
+    toastLocation: 'Toast',
+    islandLocation: 'コントロールアイランド',
+    browserLocation: 'システム通知',
     saveFailed: '通知設定を保存できませんでした。サーバー設定に戻しました',
   },
 } satisfies Record<Locale, Record<string, string>>
@@ -238,6 +264,12 @@ function clonePreferences(
     sources: { ...preferences.sources },
     events: { ...preferences.events },
     delivery: { ...preferences.delivery },
+    locations: Object.fromEntries(
+      Object.entries(preferences.locations).map(([source, locations]) => [
+        source,
+        { ...locations },
+      ]),
+    ) as NotificationPreferences['locations'],
   }
 }
 
@@ -321,11 +353,11 @@ export const NotificationConfigSection: React.FC<
           itemKey="notifications-toast"
           label={ui.toast}
           description={ui.toastDesc}
-          value={preferences.delivery.high_priority_toast}
+          value={preferences.delivery.toast}
           disabled={!preferences.enabled}
           loading={loading || saving}
           onChange={(value) =>
-            update((draft) => void (draft.delivery.high_priority_toast = value))
+            update((draft) => void (draft.delivery.toast = value))
           }
         />
         <SwitchItem
@@ -350,8 +382,6 @@ export const NotificationConfigSection: React.FC<
             title={sourceText[source].title}
             description={sourceText[source].description}
             icon={<NotificationSourceIcon source={source} />}
-            collapsible
-            defaultExpanded={source === 'agent' || source === 'brew'}
             className="notification-source-group"
           >
             <SwitchItem
@@ -364,20 +394,68 @@ export const NotificationConfigSection: React.FC<
                 update((draft) => void (draft.sources[source] = value))
               }
             />
-            {eventsBySource[source].map((event) => (
-              <SwitchItem
-                key={event.key}
-                itemKey={`notification-event-${event.key}`}
-                label={eventText[event.key] || event.key}
-                value={preferences.events[event.key]}
-                disabled={!preferences.enabled || !preferences.sources[source]}
-                loading={loading || saving}
-                size="sm"
-                onChange={(value) =>
-                  update((draft) => void (draft.events[event.key] = value))
-                }
-              />
-            ))}
+            <CheckboxGroupItem
+              label={ui.locations}
+              description={ui.locationsDesc}
+              options={[
+                {
+                  key: 'panel',
+                  label: ui.panelLocation,
+                  value: preferences.locations[source].panel,
+                },
+                {
+                  key: 'toast',
+                  label: ui.toastLocation,
+                  value: preferences.locations[source].toast,
+                },
+                {
+                  key: 'island',
+                  label: ui.islandLocation,
+                  value: preferences.locations[source].island,
+                },
+                {
+                  key: 'browser',
+                  label: ui.browserLocation,
+                  value: preferences.locations[source].browser,
+                },
+              ]}
+              disabled={
+                !preferences.enabled ||
+                !preferences.sources[source] ||
+                loading ||
+                saving
+              }
+              className="notification-switch-group notification-location-switches"
+              onChange={(key, value) =>
+                update(
+                  (draft) =>
+                    void (draft.locations[source][
+                      key as keyof NotificationPreferences['locations'][NotificationSourceKey]
+                    ] = value),
+                )
+              }
+            />
+            <CheckboxGroupItem
+              label={ui.events}
+              options={eventsBySource[source].map((event) => ({
+                key: event.key,
+                label: eventText[event.key] || event.key,
+                value: preferences.events[event.key],
+              }))}
+              disabled={
+                !preferences.enabled ||
+                !preferences.sources[source] ||
+                loading ||
+                saving
+              }
+              className="notification-switch-group notification-event-switches"
+              onChange={(key, value) =>
+                update(
+                  (draft) =>
+                    void (draft.events[key as NotificationEventKey] = value),
+                )
+              }
+            />
           </SettingGroup>
         ))}
       </div>

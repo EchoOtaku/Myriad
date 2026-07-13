@@ -252,7 +252,7 @@ git push origin v0.2.0
 流程：
 
 1. 4 个组件镜像 (backend/frontend/proxy/updater) build & push 到 docker.io
-2. 自动生成 `release.json` 包含每个镜像的 immutable tag + digest
+2. 自动生成 `release.json`，包含精确 `commit_sha` 以及每个镜像的 immutable tag + digest
 3. 发布 GitHub Release，附 `release.json` + `SHA256SUMS`
 
 tag 命名约定：

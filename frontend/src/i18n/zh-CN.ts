@@ -166,6 +166,18 @@ export const zhCN: TranslationKeys = {
   // 设置向导
   setup: {
     title: '系统设置',
+    welcomeEyebrow: '初次使用设置',
+    welcomeTitle: '欢迎使用 Myriad',
+    welcomeDesc:
+      '将散落在各个平台的数据汇聚到一个属于你的空间。只需完成数据库连接与管理员账户创建，即可开始使用。',
+    welcomeDatabase: '连接你的 PostgreSQL 数据库',
+    welcomeAdmin: '创建安全的管理员账户',
+    welcomeReady: '完成后立即开始探索',
+    welcomeFootnote: '整个设置过程通常只需几分钟',
+    getStarted: '开始设置',
+    welcomeStep: '欢迎',
+    welcomeStepShort: '欢迎',
+    checkingStatus: '正在检查系统状态...',
     databaseConfig: '数据库配置',
     databaseConfigDesc: '配置 PostgreSQL 数据库连接并运行迁移',
     adminAccount: '管理员账户',
@@ -194,9 +206,11 @@ export const zhCN: TranslationKeys = {
     createAdmin: '创建管理员账户',
     creating: '创建中...',
     adminUsernameHint: '用户名：3-20 个字符，仅支持字母、数字和下划线',
-    adminPasswordHint: '密码：至少 8 个字符',
+    adminPasswordHint: '密码：至少 8 个字符，且包含字母和数字',
     passwordMismatch: '两次输入的密码不一致',
     enterDbPassword: '请输入数据库密码',
+    dbFieldsRequired: '请完整填写数据库连接信息',
+    invalidPort: '数据库端口必须是 1 到 65535 之间的整数',
     dbConfigSaved: '数据库配置已保存！',
     dbReconnecting: '后端正在重启并连接数据库...',
     waitingForConnection: '请稍候，页面将自动检测连接状态。',
@@ -218,12 +232,13 @@ export const zhCN: TranslationKeys = {
     usernameLengthError: '用户名必须为 3-20 个字符',
     usernameFormatError: '用户名只能包含字母、数字和下划线',
     passwordLengthError: '密码至少需要 8 个字符',
+    passwordComplexityError: '密码至少需要 8 个字符，且必须包含字母和数字',
     adminCreated: '管理员账户创建成功！',
     createAdminFailed: '创建管理员账户失败',
     createFailed: '创建失败',
     adminAccountFullDesc: '创建本地管理员账户，该账户拥有系统完整管理权限',
     saveHint: '提示：保存配置后，后端会重启以加载完整路由',
-    atLeast8Chars: '至少8个字符',
+    atLeast8Chars: '至少 8 个字符，包含字母和数字',
     enterPasswordAgain: '再次输入密码',
   },
 
@@ -803,7 +818,7 @@ export const zhCN: TranslationKeys = {
     hitokotoSaved: '一言设置已保存',
     hitokotoLoadFailed: '加载一言设置失败',
     // 报告页设置
-    reportSettingsTitle: '报告页设置',
+    reportSettingsTitle: '报告页',
     reportSettingsDesc: '管理报告的有效期和过期后的处理方式',
     reportExpiryEnabled: '启用报告过期',
     reportExpiryEnabledDesc: '关闭后已有和新生成的报告均不会因过期而隐藏',
@@ -889,6 +904,9 @@ export const zhCN: TranslationKeys = {
     tabFont: '字体',
     tabSize: '大小',
     tabColor: '颜色',
+    tabSurface: '卡片',
+    tabGlow: '光晕',
+    tabPreset: '预设',
     // 颜色选项
     colorPrimary: '主色',
     colorSecondary: '次色',
@@ -901,6 +919,15 @@ export const zhCN: TranslationKeys = {
     sizeLarge: '大',
     sizeXLarge: '超大',
     sizeXXLarge: '特大',
+    // 小组件表面选项
+    surfaceGlass: '玻璃',
+    surfaceSolid: '纯色',
+    surfaceFlat: '轻盈',
+    surfaceOutline: '描边',
+    // 小组件光晕选项
+    glowIdentity: '彩色光晕',
+    glowPrimary: '主题色光晕',
+    glowNone: '关闭光晕',
   },
 
   // 首页

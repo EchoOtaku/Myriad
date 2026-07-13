@@ -230,16 +230,13 @@ export const WelcomeWidget = memo(
           padding={16}
           contentClassName="flex flex-col justify-start"
           background={
-            <>
-              <div className="absolute inset-0 bg-linear-to-br from-gray-50/50 to-transparent dark:from-white/2 dark:to-transparent" />
-              <GlowBackground
-                color="var(--color-primary)"
-                animLevel={anim.level}
-                shouldAnimate={anim.loop}
-                variant="single"
-                size="md"
-              />
-            </>
+            <GlowBackground
+              color="var(--color-primary)"
+              animLevel={anim.level}
+              shouldAnimate={anim.loop}
+              variant="single"
+              size="md"
+            />
           }
         >
           <motion.div
@@ -288,16 +285,13 @@ export const WelcomeWidget = memo(
         contentClassName="flex flex-row"
         contentStyle={{ gap: `${20 * scale}px` }}
         background={
-          <>
-            <div className="absolute inset-0 bg-linear-to-br from-gray-50/50 to-transparent dark:from-white/2 dark:to-transparent" />
-            <GlowBackground
-              color="var(--color-primary)"
-              animLevel={anim.level}
-              shouldAnimate={anim.loop}
-              variant="single"
-              size="lg"
-            />
-          </>
+          <GlowBackground
+            color="var(--color-primary)"
+            animLevel={anim.level}
+            shouldAnimate={anim.loop}
+            variant="single"
+            size="lg"
+          />
         }
       >
         {/* 左侧：固定问候区 (42%) - 给 CJK 问候语更多单行空间 */}

@@ -9,6 +9,7 @@ import { useLocation } from 'react-router-dom'
 import GlobalControlPanel from '../components/GlobalControlPanel'
 import NavigationIsland from '../components/NavigationIsland'
 import { SiteFooter } from '../components/SiteFooter'
+import { SurfaceThemeApplier } from '../components/SurfaceThemeApplier'
 import { ToastContainer } from '../components/ToastContainer'
 
 import { API_URL } from '../config'
@@ -237,6 +238,9 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <>
+      {/* 表面主题应用器：全站写入 html[data-surface]，渲染 null */}
+      <SurfaceThemeApplier />
+
       {/* 全局控制面板 */}
       <div id="global-control-panel-root">
         <GlobalControlPanel />

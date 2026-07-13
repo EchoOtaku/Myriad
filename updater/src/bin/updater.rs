@@ -97,6 +97,20 @@ async fn main() -> Result<()> {
         config.clone(),
         worker_cli,
     ));
+    if let Err(e) = worker.reconcile_current_deploy().await {
+        warn!(err = %e, "failed to reconcile current deploy identity; continuing with persisted state");
+    }
+    // Compose may start the updater before backend DNS/health is ready. Retry in the background
+    // so a fallback branch tag is replaced by the exact version + SHA embedded in the image.
+    let reconcile_worker = worker.clone();
+    tokio::spawn(async move {
+        for delay_secs in [5, 15, 40] {
+            tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+            if let Err(e) = reconcile_worker.reconcile_current_deploy().await {
+                warn!(err = %e, "background deploy identity reconciliation failed");
+            }
+        }
+    });
     let worker_handle = worker.clone().spawn();
 
     // Phase 6: serve API.

@@ -16,6 +16,9 @@ use crate::SUPPORTED_RELEASE_SCHEMA;
 pub struct Manifest {
     pub schema_version: u32,
     pub version: MyriadVersion,
+    /// Exact source commit used to build every image in this release.
+    #[serde(default)]
+    pub commit_sha: Option<String>,
     pub channel: String,
     pub released_at: DateTime<Utc>,
     #[serde(default)]
@@ -110,6 +113,13 @@ impl Manifest {
                 return Err(UpdaterError::Precondition(format!(
                     "image {name} has invalid digest: {}",
                     img.digest
+                )));
+            }
+        }
+        if let Some(sha) = &self.commit_sha {
+            if sha.len() != 40 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(UpdaterError::Precondition(format!(
+                    "release.json has invalid commit_sha: {sha}"
                 )));
             }
         }

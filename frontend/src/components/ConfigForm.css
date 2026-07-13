@@ -558,92 +558,26 @@ html.dark .nav-header-search .search-input:focus {
   /* 继承 btn-base + btn-primary */
 }
 
-/* 导航图标 - 精致设计 */
+/* 导航图标：直接显示透明 PNG，不添加独立底板。 */
 .nav-icon {
   width: 2.75rem;
   height: 2.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0.875rem;
-  line-height: 1;
-  background: linear-gradient(
-    135deg,
-    rgb(79 70 229 / 14%),
-    rgb(129 140 248 / 6%)
-  );
-  color: #6366f1;
-  box-shadow: 0 2px 8px -2px rgb(99 102 241 / 15%);
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
+  flex: 0 0 auto;
 }
 
-.nav-icon svg {
-  width: 1.125rem;
-  height: 1.125rem;
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.nav-icon::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    rgb(255 255 255 / 30%) 0%,
-    rgb(255 255 255 / 0%) 50%
-  );
-  opacity: 0.5;
-  transition: opacity 0.35s ease;
-}
-
-.config-nav-card:hover .nav-icon {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px -3px rgb(99 102 241 / 20%);
-  background: linear-gradient(
-    135deg,
-    rgb(79 70 229 / 18%),
-    rgb(129 140 248 / 8%)
-  );
-}
-
-.config-nav-card:hover .nav-icon svg {
-  transform: scale(1.06);
-}
-
-.config-nav-card:hover .nav-icon::before {
-  opacity: 0.7;
-}
-
-html.dark .nav-icon {
-  background: linear-gradient(
-    135deg,
-    rgb(99 102 241 / 20%),
-    rgb(129 140 248 / 9%)
-  );
-  box-shadow: 0 2px 8px -2px rgb(0 0 0 / 25%);
-}
-
-html.dark .config-nav-card:hover .nav-icon {
-  box-shadow: 0 4px 14px -3px rgb(99 102 241 / 28%);
-  background: linear-gradient(
-    135deg,
-    rgb(99 102 241 / 25%),
-    rgb(129 140 248 / 12%)
-  );
+.nav-icon .myriad-config-icon {
+  width: 2.75rem;
+  height: 2.75rem;
 }
 
 @media (width >= 640px) {
-  .nav-icon {
+  .nav-icon,
+  .nav-icon .myriad-config-icon {
     width: 3rem;
     height: 3rem;
-    border-radius: 1rem;
-  }
-
-  .nav-icon svg {
-    width: 1.25rem;
-    height: 1.25rem;
   }
 }
 
@@ -886,6 +820,35 @@ html.dark .quick-access-card.active {
   height: 0.9375rem;
 }
 
+/* Myriad 设置分类彩绘 PNG：导航与分类标题复用同一套资产。 */
+.myriad-config-icon {
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgb(15 23 42 / 18%));
+}
+
+.section-icon .myriad-config-icon {
+  position: relative;
+  width: 2.75rem;
+  height: 2.75rem;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .myriad-config-icon {
+    transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .quick-access-card:hover .myriad-config-icon,
+  .quick-access-card.active .myriad-config-icon,
+  .section-icon:hover .myriad-config-icon {
+    transform: scale(1.07);
+  }
+}
+
 .card-label {
   font-size: 0.875rem;
   font-weight: 500;
@@ -1016,239 +979,15 @@ html.dark .config-section:hover {
   flex: 1;
 }
 
-/* 章节图标 - 增强设计 */
+/* 章节图标：透明 PNG 本体，无渐变底板、阴影或高光遮罩。 */
 .section-icon {
-  width: 3rem; /* w-12 */
-  height: 3rem; /* h-12 */
+  width: 3rem;
+  height: 3rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 1rem; /* rounded-xl */
-  font-size: 1.5rem; /* text-2xl */
+  flex: 0 0 auto;
   line-height: 1;
-  box-shadow: 0 4px 12px -2px rgb(0 0 0 / 15%);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.section-icon svg {
-  width: 1.375rem;
-  height: 1.375rem;
-}
-
-.section-icon::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    rgb(255 255 255 / 30%) 0%,
-    rgb(255 255 255 / 0%) 100%
-  );
-  opacity: 0.5;
-}
-
-.section-icon:hover {
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 8px 20px -4px rgb(0 0 0 / 20%);
-}
-
-/* 各区块图标独立背景色 */
-.section-icon.icon-platforms {
-  background: linear-gradient(
-    135deg,
-    rgb(59 130 246 / 18%),
-    rgb(59 130 246 / 8%)
-  );
-  color: #3b82f6;
-}
-
-.section-icon.icon-data {
-  background: linear-gradient(
-    135deg,
-    rgb(16 185 129 / 18%),
-    rgb(16 185 129 / 8%)
-  );
-  color: #10b981;
-}
-
-.section-icon.icon-ai {
-  background: linear-gradient(
-    135deg,
-    rgb(139 92 246 / 18%),
-    rgb(139 92 246 / 8%)
-  );
-  color: #8b5cf6;
-}
-
-.section-icon.icon-ui {
-  background: linear-gradient(
-    135deg,
-    rgb(100 116 139 / 18%),
-    rgb(100 116 139 / 8%)
-  );
-  color: #64748b;
-}
-
-.section-icon.icon-music {
-  background: linear-gradient(
-    135deg,
-    rgb(236 72 153 / 18%),
-    rgb(236 72 153 / 8%)
-  );
-  color: #ec4899;
-}
-
-.section-icon.icon-oauth {
-  background: linear-gradient(
-    135deg,
-    rgb(245 158 11 / 18%),
-    rgb(245 158 11 / 8%)
-  );
-  color: #f59e0b;
-}
-
-.section-icon.icon-network {
-  background: linear-gradient(
-    135deg,
-    rgb(6 182 212 / 18%),
-    rgb(6 182 212 / 8%)
-  );
-  color: #06b6d4;
-}
-
-.section-icon.icon-permissions {
-  background: linear-gradient(
-    135deg,
-    rgb(99 102 241 / 18%),
-    rgb(99 102 241 / 8%)
-  );
-  color: #6366f1;
-}
-
-.section-icon.icon-modules {
-  background: linear-gradient(
-    135deg,
-    rgb(20 184 166 / 18%),
-    rgb(20 184 166 / 8%)
-  );
-  color: #14b8a6;
-}
-
-.section-icon.icon-advanced {
-  background: linear-gradient(
-    135deg,
-    rgb(239 68 68 / 18%),
-    rgb(239 68 68 / 8%)
-  );
-  color: #ef4444;
-}
-
-.section-icon.icon-about {
-  background: linear-gradient(
-    135deg,
-    rgb(201 138 163 / 22%),
-    rgb(164 140 196 / 12%)
-  );
-  color: #b06b85;
-}
-
-html.dark .section-icon.icon-platforms {
-  background: linear-gradient(
-    135deg,
-    rgb(59 130 246 / 25%),
-    rgb(59 130 246 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-data {
-  background: linear-gradient(
-    135deg,
-    rgb(16 185 129 / 25%),
-    rgb(16 185 129 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-ai {
-  background: linear-gradient(
-    135deg,
-    rgb(139 92 246 / 25%),
-    rgb(139 92 246 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-ui {
-  background: linear-gradient(
-    135deg,
-    rgb(100 116 139 / 25%),
-    rgb(100 116 139 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-music {
-  background: linear-gradient(
-    135deg,
-    rgb(236 72 153 / 25%),
-    rgb(236 72 153 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-oauth {
-  background: linear-gradient(
-    135deg,
-    rgb(245 158 11 / 25%),
-    rgb(245 158 11 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-network {
-  background: linear-gradient(
-    135deg,
-    rgb(6 182 212 / 25%),
-    rgb(6 182 212 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-permissions {
-  background: linear-gradient(
-    135deg,
-    rgb(99 102 241 / 25%),
-    rgb(99 102 241 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-modules {
-  background: linear-gradient(
-    135deg,
-    rgb(20 184 166 / 25%),
-    rgb(20 184 166 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-advanced {
-  background: linear-gradient(
-    135deg,
-    rgb(239 68 68 / 25%),
-    rgb(239 68 68 / 10%)
-  );
-}
-
-html.dark .section-icon.icon-about {
-  background: linear-gradient(
-    135deg,
-    rgb(232 168 192 / 28%),
-    rgb(201 182 224 / 14%)
-  );
-  color: #e8a8c0;
-}
-
-@media (width >= 640px) {
-  .section-icon {
-    width: 3rem; /* sm:w-12 */
-    height: 3rem; /* sm:h-12 */
-    font-size: 1.5rem; /* sm:text-2xl */
-  }
 }
 
 /* text-base sm:text-lg font-bold */

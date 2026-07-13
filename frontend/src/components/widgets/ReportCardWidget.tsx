@@ -36,6 +36,8 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { extractColorsFromLoadedImage } from '../../utils/colorExtractor'
 import { getLatestReportDeduped } from '../../utils/requestDedup'
 import { RatingBadge } from '../RatingBadge'
+import { GlowBackground } from './shared/GlowBackground'
+import { WidgetShell } from './shared/WidgetShell'
 
 // 语言构成条分段类型
 interface LangSegment {
@@ -108,7 +110,7 @@ export interface ReportCardWidgetProps {
 // 各平台社交主页链接（长按设置里“打开社交主页”用）
 const PLATFORM_SOCIAL: Record<
   string,
-  { publicName: string, fieldKey: string, getUserUrl: (id: string) => string }
+  { publicName: string; fieldKey: string; getUserUrl: (id: string) => string }
 > = {
   bilibili: {
     publicName: 'Bilibili',
@@ -180,7 +182,7 @@ async function fetchPlatformUserIds(): Promise<Record<string, string>> {
             if (!entry) continue
             const [pid, s] = entry
             const field = (p.config_fields || []).find(
-              (f: { key: string, value?: string }) =>
+              (f: { key: string; value?: string }) =>
                 f.key === s.fieldKey && f.value,
             )
             if (field) map[pid] = field.value as string
@@ -202,10 +204,7 @@ let steamPresencePromise: Promise<SteamPresence | null> | null = null
 async function fetchSteamPresence(
   maxAgeMs = 45 * 1000,
 ): Promise<SteamPresence | null> {
-  if (
-    cachedSteamPresence &&
-    Date.now() - cachedSteamPresenceAt < maxAgeMs
-  ) {
+  if (cachedSteamPresence && Date.now() - cachedSteamPresenceAt < maxAgeMs) {
     return cachedSteamPresence
   }
   if (steamPresencePromise) return steamPresencePromise
@@ -244,10 +243,7 @@ interface XboxPresence {
   gamerscore?: number | null
 }
 
-const xboxPresenceCache = new Map<
-  string,
-  { data: XboxPresence, at: number }
->()
+const xboxPresenceCache = new Map<string, { data: XboxPresence; at: number }>()
 const xboxPresenceInflight = new Map<string, Promise<XboxPresence | null>>()
 
 async function fetchXboxPresence(
@@ -307,9 +303,7 @@ async function fetchXboxPresence(
 }
 
 /** 协议相对 / http 升 https（PSN 图标、通用外链图） */
-function normalizeHttpsMediaUrl(
-  url?: string | null,
-): string | null {
+function normalizeHttpsMediaUrl(url?: string | null): string | null {
   if (!url || typeof url !== 'string') return null
   let u = url.trim()
   if (!u) return null
@@ -322,9 +316,7 @@ function normalizeHttpsMediaUrl(
  * Xbox / MS 商店图常给 http:// 或非 SSL 域名，HTTPS 页面会因混合内容被拦。
  * 统一升到 https，并把 images-eds → images-eds-ssl。
  */
-function normalizeXboxMediaUrl(
-  url?: string | null,
-): string | null {
+function normalizeXboxMediaUrl(url?: string | null): string | null {
   const base = normalizeHttpsMediaUrl(url)
   if (!base) return null
   return base.replace(
@@ -381,8 +373,7 @@ function getSteamPresenceFromData(data: any): SteamPresence | null {
     gameextrainfo,
     gameid,
     avatar: typeof data.avatar === 'string' ? data.avatar : null,
-    personaname:
-      typeof data.personaname === 'string' ? data.personaname : null,
+    personaname: typeof data.personaname === 'string' ? data.personaname : null,
     recent_2weeks_minutes:
       typeof data.recent_2weeks_minutes === 'number'
         ? data.recent_2weeks_minutes
@@ -1390,7 +1381,6 @@ const GithubStatsWidget = memo(({ data }: any) => {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <div className="absolute inset-0 bg-linear-to-br from-gray-50/50 to-transparent dark:from-white/2 dark:to-transparent" />
       <div className="relative h-full flex flex-col p-2 justify-between">
         <div className="space-y-2">
           <div className="flex items-start justify-between">
@@ -1440,30 +1430,30 @@ const GithubStatsWidget = memo(({ data }: any) => {
             </div>
             <div className="flex flex-col items-end gap-1.5">
               <div className="flex gap-[2.5px]">
-              {HEATMAP_WEEKS.map((week) => (
-                <div key={week} className="flex flex-col gap-[2.5px]">
-                  {HEATMAP_DAYS.map((day) => {
-                    // heatmapData 按 week*5+day 顺序生成，直接下标取，避免 O(n²) find
-                    const cell = heatmapData[week * 5 + day]
-                    return (
-                      <motion.div
-                        key={`${week}-${day}`}
-                        className="w-2.5 h-2.5 rounded-0.5"
-                        style={{
-                          backgroundColor: levelColor,
-                          opacity: cell?.opacity || 0.15,
-                        }}
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: cell?.opacity || 0.15 }}
-                        transition={{
-                          duration: 0.2,
-                          delay: (week * 5 + day) * 0.004,
-                        }}
-                      />
-                    )
-                  })}
-                </div>
-              ))}
+                {HEATMAP_WEEKS.map((week) => (
+                  <div key={week} className="flex flex-col gap-[2.5px]">
+                    {HEATMAP_DAYS.map((day) => {
+                      // heatmapData 按 week*5+day 顺序生成，直接下标取，避免 O(n²) find
+                      const cell = heatmapData[week * 5 + day]
+                      return (
+                        <motion.div
+                          key={`${week}-${day}`}
+                          className="w-2.5 h-2.5 rounded-0.5"
+                          style={{
+                            backgroundColor: levelColor,
+                            opacity: cell?.opacity || 0.15,
+                          }}
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: cell?.opacity || 0.15 }}
+                          transition={{
+                            duration: 0.2,
+                            delay: (week * 5 + day) * 0.004,
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+                ))}
               </div>
               {totalStars > 0 && (
                 <motion.div
@@ -1992,7 +1982,12 @@ const TrophyTitleRow = memo(
     title,
     accent,
   }: {
-    title: { name: string, progress?: number, platinum?: boolean, gamerscore?: number }
+    title: {
+      name: string
+      progress?: number
+      platinum?: boolean
+      gamerscore?: number
+    }
     accent: string
   }) => (
     <div className="flex items-center gap-2 min-w-0">
@@ -2018,7 +2013,9 @@ const TrophyTitleRow = memo(
             className="h-full rounded-full"
             style={{ background: accent }}
             initial={{ width: 0 }}
-            animate={{ width: `${Math.min(100, Math.max(0, title.progress ?? 0))}%` }}
+            animate={{
+              width: `${Math.min(100, Math.max(0, title.progress ?? 0))}%`,
+            }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
           />
         </div>
@@ -2047,8 +2044,8 @@ const AchievementReportBody = memo(
     typeLabel: string
     scoreValue: string
     scoreLabel: string
-    stats: { label: string, value: string }[]
-    topTitles: { name: string, progress?: number, platinum?: boolean }[]
+    stats: { label: string; value: string }[]
+    topTitles: { name: string; progress?: number; platinum?: boolean }[]
     showOverview: boolean
     onContentChange?: (content: { titles?: string[] } | null) => void
   }) => {
@@ -2065,7 +2062,11 @@ const AchievementReportBody = memo(
     }, [showOverview, topTitles.length, pageCount])
 
     const currentTitles = useMemo(
-      () => topTitles.slice(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE),
+      () =>
+        topTitles.slice(
+          pageIndex * PAGE_SIZE,
+          pageIndex * PAGE_SIZE + PAGE_SIZE,
+        ),
       [topTitles, pageIndex],
     )
 
@@ -2186,9 +2187,7 @@ const XboxScoreCardBody = memo(
               className="h-2.5 w-2.5 shrink-0"
               style={{ color: XBOX_ACCENT_SOFT }}
             />
-            <span
-              className="bg-linear-to-r from-gray-700 to-[#107C10] bg-clip-text text-[11px] font-black italic tracking-tight text-transparent dark:from-gray-100 dark:to-[#3A9D23]"
-            >
+            <span className="bg-linear-to-r from-gray-700 to-[#107C10] bg-clip-text text-[11px] font-black italic tracking-tight text-transparent dark:from-gray-100 dark:to-[#3A9D23]">
               {t.reportCardWidget.xboxHunterScore}
             </span>
           </span>
@@ -2277,14 +2276,14 @@ const XboxStatsWidget = memo(({ data }: any) => {
       return Math.min(100, Math.max(0, Math.round(Number(data.hardcore_score))))
     }
     // 旧报告无 hardcore_score 时用完成度/全成就/GS 做轻量兜底
-    const completion = Math.min(100, Math.max(0, Number(data?.completion_rate) || 0))
+    const completion = Math.min(
+      100,
+      Math.max(0, Number(data?.completion_rate) || 0),
+    )
     const completed = Number(data?.completed_games) || 0
     const gs = Number(data?.gamerscore) || 0
     const ach = Number(data?.total_achievements) || 0
-    const gsPart =
-      gs > 0
-        ? (Math.log(1 + gs) / Math.log(1 + 100_000)) * 20
-        : 0
+    const gsPart = gs > 0 ? (Math.log(1 + gs) / Math.log(1 + 100_000)) * 20 : 0
     return Math.round(
       Math.min(
         100,
@@ -2378,7 +2377,7 @@ const XboxStatsWidget = memo(({ data }: any) => {
 
   // 主指标 + 副指标同一行：游戏数 / GS / 成就 / 完成度 / 全成就
   const statItems = useMemo(() => {
-    const items: { label: string, value: string, unit: string }[] = [
+    const items: { label: string; value: string; unit: string }[] = [
       {
         label: t.reportCardWidget.gamesCount,
         value: String(gamesCount),
@@ -2410,14 +2409,7 @@ const XboxStatsWidget = memo(({ data }: any) => {
       })
     }
     return items
-  }, [
-    t,
-    gamesCount,
-    liveGs,
-    achievements,
-    completionRate,
-    completedGames,
-  ])
+  }, [t, gamesCount, liveGs, achievements, completionRate, completedGames])
 
   // 底槽：有正在玩时在「正在玩」与「猎人指数」间轮播
   const [slotIndex, setSlotIndex] = useState(0)
@@ -2481,9 +2473,7 @@ const XboxStatsWidget = memo(({ data }: any) => {
                 : { duration: 0.35, delay: 0.1 }
             }
             title={
-              livePresence?.status
-                ? String(livePresence.status)
-                : undefined
+              livePresence?.status ? String(livePresence.status) : undefined
             }
           >
             {safeAvatarUrl ? (
@@ -2609,7 +2599,7 @@ interface PsnPresence {
   platinum?: number | null
 }
 
-const psnPresenceCache = new Map<string, { data: PsnPresence, at: number }>()
+const psnPresenceCache = new Map<string, { data: PsnPresence; at: number }>()
 const psnPresenceInflight = new Map<string, Promise<PsnPresence | null>>()
 
 async function fetchPsnPresence(
@@ -2648,11 +2638,10 @@ async function fetchPsnPresence(
           ? Number(lvRaw)
           : null
       const platHighlight = Array.isArray(d?.highlights)
-        ? d.highlights.find(
-            (h: any) =>
-              String(h?.label || '')
-                .toLowerCase()
-                .includes('platinum'),
+        ? d.highlights.find((h: any) =>
+            String(h?.label || '')
+              .toLowerCase()
+              .includes('platinum'),
           )
         : null
       const plat =
@@ -2944,12 +2933,9 @@ const PsnStatsWidget = memo(({ data }: any) => {
     const games = Number(data?.games_count) || 0
     const platPart = Math.min(40, platinum * 4)
     const levelPart =
-      level > 0
-        ? Math.min(25, (Math.log(level) / Math.log(400)) * 25)
-        : 0
+      level > 0 ? Math.min(25, (Math.log(level) / Math.log(400)) * 25) : 0
     const completionPart = completion * 0.25
-    const completePart =
-      games > 0 ? Math.min(10, (completed / games) * 10) : 0
+    const completePart = games > 0 ? Math.min(10, (completed / games) * 10) : 0
     return Math.round(
       Math.min(100, platPart + levelPart + completionPart + completePart),
     )
@@ -3045,7 +3031,7 @@ const PsnStatsWidget = memo(({ data }: any) => {
       : platinum
 
   const statItems = useMemo(() => {
-    const items: { label: string, value: string, unit: string }[] = [
+    const items: { label: string; value: string; unit: string }[] = [
       {
         label: t.reportCardWidget.gamesCount,
         value: String(gamesCount),
@@ -3147,9 +3133,7 @@ const PsnStatsWidget = memo(({ data }: any) => {
                 : { duration: 0.35, delay: 0.1 }
             }
             title={
-              livePresence?.status
-                ? String(livePresence.status)
-                : undefined
+              livePresence?.status ? String(livePresence.status) : undefined
             }
           >
             {avatarUrl ? (
@@ -4099,49 +4083,49 @@ const BangumiWidget = memo(({ data, showOverview, onContentChange }: any) => {
               {/* 中部：数字区在徽章与左下角 Logo 安全区之间垂直居中（pb 略小于 Logo 区高度，整体略下沉） */}
               <div className="flex-1 min-h-0 flex items-center pb-9.5">
                 <div className="flex items-end gap-3 pl-1">
-                <motion.div
-                  className="flex flex-col"
-                  initial={{ y: 10, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ duration: 0.4, delay: 0.2 }}
-                >
-                  <motion.span
-                    className="text-[40px] font-black text-gray-800 dark:text-gray-100 leading-none tabular-nums"
-                    initial={{ scale: 0.5 }}
-                    animate={{ scale: 1 }}
-                    transition={{
-                      duration: 0.5,
-                      delay: 0.3,
-                      type: 'spring',
-                      stiffness: 200,
-                    }}
+                  <motion.div
+                    className="flex flex-col"
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ duration: 0.4, delay: 0.2 }}
                   >
-                    {done}
-                  </motion.span>
-                  <span className="text-[8px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold mt-0.5">
-                    {t.reportsPage.bangumiDone}
-                  </span>
-                </motion.div>
-                <div className="flex gap-3">
-                  {[
-                    [doing, t.reportsPage.bangumiDoing] as const,
-                    [wish, t.reportsPage.bangumiWish] as const,
-                  ].map(([count, label], i) => (
-                    <motion.div
-                      key={label}
-                      className="flex flex-col"
-                      initial={{ y: 10, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ duration: 0.4, delay: 0.4 + i * 0.1 }}
+                    <motion.span
+                      className="text-[40px] font-black text-gray-800 dark:text-gray-100 leading-none tabular-nums"
+                      initial={{ scale: 0.5 }}
+                      animate={{ scale: 1 }}
+                      transition={{
+                        duration: 0.5,
+                        delay: 0.3,
+                        type: 'spring',
+                        stiffness: 200,
+                      }}
                     >
-                      <span className="text-[22px] font-black text-gray-800 dark:text-gray-200 leading-none tabular-nums">
-                        {count}
-                      </span>
-                      <span className="text-[8px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold mt-0.5">
-                        {label}
-                      </span>
-                    </motion.div>
-                  ))}
+                      {done}
+                    </motion.span>
+                    <span className="text-[8px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold mt-0.5">
+                      {t.reportsPage.bangumiDone}
+                    </span>
+                  </motion.div>
+                  <div className="flex gap-3">
+                    {[
+                      [doing, t.reportsPage.bangumiDoing] as const,
+                      [wish, t.reportsPage.bangumiWish] as const,
+                    ].map(([count, label], i) => (
+                      <motion.div
+                        key={label}
+                        className="flex flex-col"
+                        initial={{ y: 10, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ duration: 0.4, delay: 0.4 + i * 0.1 }}
+                      >
+                        <span className="text-[22px] font-black text-gray-800 dark:text-gray-200 leading-none tabular-nums">
+                          {count}
+                        </span>
+                        <span className="text-[8px] text-gray-500 dark:text-gray-400 uppercase tracking-widest font-bold mt-0.5">
+                          {label}
+                        </span>
+                      </motion.div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -4571,12 +4555,7 @@ export const ReportCardWidget = memo(
           const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" rx="48" fill="${bg}"/><text x="48" y="58" text-anchor="middle" fill="#fff" font-size="36" font-family="system-ui,sans-serif" font-weight="700">${letter}</text></svg>`
           return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
         }
-        const previewCover = (
-          letter: string,
-          bg: string,
-          w = 160,
-          h = 200,
-        ) => {
+        const previewCover = (letter: string, bg: string, w = 160, h = 200) => {
           const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${bg}"/><stop offset="100%" stop-color="#111827"/></linearGradient></defs><rect width="${w}" height="${h}" fill="url(#g)"/><text x="${w / 2}" y="${h / 2 + 12}" text-anchor="middle" fill="#fff" font-size="42" font-family="system-ui,sans-serif" font-weight="700" opacity="0.92">${letter}</text></svg>`
           return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
         }
@@ -5077,25 +5056,33 @@ export const ReportCardWidget = memo(
       PLATFORM_CONFIG[platformId] || PLATFORM_CONFIG.bilibili
 
     return (
-      <div
-        ref={localRef}
-        className={`relative h-full w-full rounded-xl overflow-hidden ${bare ? '' : 'glass'} ${interactive && !isEditMode ? 'cursor-pointer' : ''}`}
-        onClick={interactive ? handleCardClick : undefined}
-        onMouseDown={interactive ? handlePressStart : undefined}
-        onMouseUp={interactive ? handlePressEnd : undefined}
-        onMouseLeave={interactive ? handleMouseLeave : undefined}
-        onTouchStart={interactive ? handlePressStart : undefined}
-        onTouchEnd={interactive ? handlePressEnd : undefined}
-        onTouchCancel={interactive ? handlePressEnd : undefined}
+      <WidgetShell
+        containerRef={localRef}
+        padding={0}
+        glass={!bare}
+        className={interactive && !isEditMode ? 'cursor-pointer' : ''}
+        rootProps={{
+          onClick: interactive ? handleCardClick : undefined,
+          onMouseDown: interactive ? handlePressStart : undefined,
+          onMouseUp: interactive ? handlePressEnd : undefined,
+          onMouseLeave: interactive ? handleMouseLeave : undefined,
+          onTouchStart: interactive ? handlePressStart : undefined,
+          onTouchEnd: interactive ? handlePressEnd : undefined,
+          onTouchCancel: interactive ? handlePressEnd : undefined,
+        }}
+        background={
+          /* 动态背景光效（bare 模式下由外层容器负责，避免重复叠加） */
+          !bare && (
+            <GlowBackground
+              color={platformConfig.color}
+              animLevel={animLevel.level}
+              shouldAnimate={animLevel.loop}
+              variant="single"
+              size="lg"
+            />
+          )
+        }
       >
-        {/* 动态背景光效（bare 模式下由外层容器负责，避免重复叠加） */}
-        {!bare && (
-          <div
-            className={`absolute -right-10 -top-10 w-40 h-40 rounded-full ${animLevel.level === 'standard' ? 'blur-3xl' : 'blur-xl'} opacity-10 group-hover:opacity-20 transition-opacity`}
-            style={{ background: platformConfig.color }}
-          />
-        )}
-
         {/* 主内容区 */}
         <div className="absolute inset-0 flex flex-col z-10">
           {platformId === 'bilibili' && (
@@ -5247,7 +5234,7 @@ export const ReportCardWidget = memo(
             </svg>
           </motion.div>
         )}
-      </div>
+      </WidgetShell>
     )
   },
 )

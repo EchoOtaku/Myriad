@@ -7,8 +7,11 @@ import type { WidgetComponentProps } from '../WidgetGrid'
 import { motionShim as motion } from '@lib/motionShim'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
+import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getLibraryDataDeduped } from '../../utils/requestDedup'
+import { GlowBackground } from './shared/GlowBackground'
+import { WidgetShell } from './shared/WidgetShell'
 
 // 缓存配置
 const CACHE_KEY = 'library_stats_cache'
@@ -209,6 +212,7 @@ export const QuickStatsWidget = memo(
       config.size,
       isPreview ? 1 : undefined,
     )
+    const anim = useAnimationLevel()
     const { t } = useI18n()
     const [stats, setStats] = useState<LibraryStats>({
       total: 0,
@@ -335,96 +339,98 @@ export const QuickStatsWidget = memo(
     // 有数据的分类才显示；加载中或资料库为空时显示全部，避免空白
     const visibleCategories = useMemo(() => {
       const withData = categories.filter(
-        cat => ((stats as any)[cat.key] ?? 0) > 0,
+        (cat) => ((stats as any)[cat.key] ?? 0) > 0,
       )
       return withData.length > 0 ? withData : categories
     }, [categories, stats])
 
     return (
-      <div
-        ref={containerRef}
-        className="relative h-full w-full rounded-xl overflow-hidden glass"
+      <WidgetShell
+        containerRef={containerRef}
+        scale={scale}
+        padding={12}
+        contentClassName="flex flex-col"
+        background={
+          <GlowBackground
+            color="var(--color-primary)"
+            animLevel={anim.level}
+            shouldAnimate={anim.loop}
+            variant="single"
+            size="md"
+          />
+        }
       >
-        {/* 背景装饰 */}
-        <div className="absolute inset-0 bg-linear-to-br from-gray-50/50 to-transparent dark:from-white/2 dark:to-transparent" />
-
-        {/* 主内容 */}
+        {/* 顶部：标题 + 总数 */}
         <div
-          className="relative h-full flex flex-col p-3"
-          style={{ padding: `${12 * scale}px` }}
+          className="flex items-start justify-between mb-2 ml-1.5"
+          style={{
+            marginBottom: `${8 * scale}px`,
+            marginLeft: `${6 * scale}px`,
+          }}
         >
-          {/* 顶部：标题 + 总数 */}
-          <div
-            className="flex items-start justify-between mb-2 ml-1.5"
-            style={{
-              marginBottom: `${8 * scale}px`,
-              marginLeft: `${6 * scale}px`,
-            }}
-          >
-            <div>
-              <h3
-                className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold mb-0.5"
+          <div>
+            <h3
+              className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold mb-0.5"
+              style={{
+                fontSize: `${12 * fontScale}px`,
+                marginBottom: `${2 * scale}px`,
+              }}
+            >
+              {t.quickStats.widgetTitle}
+            </h3>
+            <motion.div
+              className="flex items-baseline gap-1"
+              style={{ gap: `${4 * scale}px` }}
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              <span
+                className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none"
+                style={{ fontSize: `${30 * fontScale}px` }}
+              >
+                {loading ? '---' : stats.total}
+              </span>
+              <span
+                className="text-xs text-gray-500 dark:text-gray-400 font-bold mb-0.5"
                 style={{
                   fontSize: `${12 * fontScale}px`,
                   marginBottom: `${2 * scale}px`,
                 }}
               >
-                {t.quickStats.widgetTitle}
-              </h3>
-              <motion.div
-                className="flex items-baseline gap-1"
-                style={{ gap: `${4 * scale}px` }}
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.4, delay: 0.1 }}
-              >
-                <span
-                  className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none"
-                  style={{ fontSize: `${30 * fontScale}px` }}
-                >
-                  {loading ? '---' : stats.total}
-                </span>
-                <span
-                  className="text-xs text-gray-500 dark:text-gray-400 font-bold mb-0.5"
-                  style={{
-                    fontSize: `${12 * fontScale}px`,
-                    marginBottom: `${2 * scale}px`,
-                  }}
-                >
-                  ITEMS
-                </span>
-              </motion.div>
-            </div>
-          </div>
-
-          {/* 分类统计 */}
-          <div
-            className="flex-1 grid gap-1.5"
-            style={{
-              gap: `${6 * scale}px`,
-              gridTemplateColumns: `repeat(${visibleCategories.length}, minmax(0, 1fr))`,
-            }}
-          >
-            {visibleCategories.map((cat, index) => (
-              <motion.div
-                key={cat.key}
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.3, delay: 0.2 + index * 0.05 }}
-              >
-                <StatCard
-                  cat={cat}
-                  value={(stats as any)[cat.key]}
-                  loading={loading}
-                  index={index}
-                  scale={scale}
-                  fontScale={fontScale}
-                />
-              </motion.div>
-            ))}
+                ITEMS
+              </span>
+            </motion.div>
           </div>
         </div>
-      </div>
+
+        {/* 分类统计 */}
+        <div
+          className="flex-1 grid gap-1.5"
+          style={{
+            gap: `${6 * scale}px`,
+            gridTemplateColumns: `repeat(${visibleCategories.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {visibleCategories.map((cat, index) => (
+            <motion.div
+              key={cat.key}
+              initial={{ y: 10, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.2 + index * 0.05 }}
+            >
+              <StatCard
+                cat={cat}
+                value={(stats as any)[cat.key]}
+                loading={loading}
+                index={index}
+                scale={scale}
+                fontScale={fontScale}
+              />
+            </motion.div>
+          ))}
+        </div>
+      </WidgetShell>
     )
   },
 )

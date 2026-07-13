@@ -59,7 +59,11 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracing::info!("🚀 Starting Myriad Backend v{}", env!("CARGO_PKG_VERSION"));
+    tracing::info!(
+        version = api::build_version(),
+        commit_sha = ?api::build_commit_sha(),
+        "🚀 Starting Myriad Backend"
+    );
 
     // Record process start time for /health.uptime_seconds.
     api::mark_startup();
@@ -4171,6 +4175,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/tapp/media/status",
                 get(api::tapp_runtime::media_status)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            // Tapp notifications - unified notification pipeline
+            .route(
+                "/api/tapp/notifications",
+                post(api::tapp_runtime::create_tapp_notification)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             // P2: Component Registration
             .route(

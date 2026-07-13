@@ -70,6 +70,7 @@ updater 唯一权威数据源。完整 JSON Schema 见 [release/release-schema.j
 {
   "schema_version": 1,
   "version": "v1.2.3",
+  "commit_sha": "0123456789abcdef0123456789abcdef01234567",
   "channel": "stable",
   "released_at": "2026-05-16T10:00:00Z",
   "min_from_version": "v1.2.0",
@@ -262,9 +263,9 @@ idle
 
 1. 更新流程在 `swap_tag` 前从 `.env` 读到的 `MYRIAD_TAG`（同 job 自动回滚）
 2. 快照元数据 `source_version`（创建快照时记录；若 state 无版本则回填 `.env` 的 `MYRIAD_TAG`）
-3. `updater.json.current_version`（仅在健康检查通过的成功升级后推进）
+3. `updater.json.current_version`（成功升级后推进；daemon 启动时也会用 backend build stamp / `.env` 自动恢复）
 
-手动 `POST /rollback` / rescue 与自动回滚共用同一解析逻辑；回滚健康通过后会把 `current_version` 写回恢复到的版本。
+手动 `POST /rollback` / rescue 与自动回滚共用同一解析逻辑；回滚健康通过后会把 `current_version` 写回恢复到的版本。`current_commit_sha` 在无法立即确认时清空，并在下次 daemon 启动时从 build stamp 或 GitHub tag 重新解析，避免保留错误 SHA。
 ```
 
 ### 7.1 崩溃恢复表
@@ -393,6 +394,7 @@ M1 显式拒绝，启动时探测 `docker info` 中 `rootless: true` 或 podman 
 {
   "status": "ok",
   "version": "v1.2.3",
+  "commit_sha": "0123456789abcdef0123456789abcdef01234567",
   "schema_version": 1,
   "db_connected": true,
   "migrations_applied": true,
@@ -406,6 +408,7 @@ backend 必须实现此 schema，updater 严格校验。
 
 - HTTP 200
 - index.html 包含 `<meta name="myriad-version" content="v1.2.3">`
+- index.html 包含 `<meta name="myriad-commit" content="<40-char sha>">`
 - updater 抓取并对比 target version
 
 ### 11.3 deadline

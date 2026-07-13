@@ -5,24 +5,11 @@ import type { LibrarySourcePreferences } from './config'
 import type { ToastType } from './Toast'
 
 import {
-  FaBell,
   FaExclamationTriangle,
-  FaInfoCircle,
   FaSearch,
   FaStar,
   FaTimes,
-  LuDatabase,
-  LuGlobe,
   LuGripVertical,
-  LuLink,
-  LuLock,
-  LuMusic,
-  LuPackage,
-  LuSettings,
-  LuSlidersHorizontal,
-  LuSparkles,
-  LuUsers,
-  LuWrench,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
@@ -77,6 +64,7 @@ import {
   PermissionsConfigSection,
   UiConfigSection,
 } from './config'
+import MyriadConfigIcon from './config/MyriadConfigIcon'
 import PlatformIcon from './PlatformIcon'
 import Toast from './Toast'
 import './ConfigForm.css'
@@ -503,73 +491,73 @@ const ModernConfigForm: React.FC = () => {
       {
         id: 'platforms',
         label: t.config.platforms,
-        icon: <LuGlobe size={15} style={{ color: '#3b82f6' }} />,
+        icon: <MyriadConfigIcon kind="platforms" />,
         section: 'platforms',
       },
       {
         id: 'data',
         label: t.config.data,
-        icon: <LuDatabase size={15} style={{ color: '#10b981' }} />,
+        icon: <MyriadConfigIcon kind="data" />,
         section: 'data',
       },
       {
         id: 'ai',
         label: t.config.ai,
-        icon: <LuSparkles size={15} style={{ color: '#8b5cf6' }} />,
+        icon: <MyriadConfigIcon kind="ai" />,
         section: 'ai',
       },
       {
         id: 'ui',
         label: t.config.basic,
-        icon: <LuSettings size={15} style={{ color: '#64748b' }} />,
+        icon: <MyriadConfigIcon kind="ui" />,
         section: 'ui',
       },
       {
         id: 'music',
         label: t.config.music,
-        icon: <LuMusic size={15} style={{ color: '#ec4899' }} />,
+        icon: <MyriadConfigIcon kind="music" />,
         section: 'music',
       },
       {
         id: 'oauth',
         label: t.config.oauth,
-        icon: <LuLock size={15} style={{ color: '#f59e0b' }} />,
+        icon: <MyriadConfigIcon kind="oauth" />,
         section: 'oauth',
       },
       {
         id: 'network',
         label: t.config.network,
-        icon: <LuLink size={15} style={{ color: '#06b6d4' }} />,
+        icon: <MyriadConfigIcon kind="network" />,
         section: 'network',
       },
       {
         id: 'permissions',
         label: t.config.permissions,
-        icon: <LuUsers size={15} style={{ color: '#6366f1' }} />,
+        icon: <MyriadConfigIcon kind="permissions" />,
         section: 'permissions',
       },
       {
         id: 'notifications',
         label: t.notificationCenter.title,
-        icon: <FaBell size={15} style={{ color: '#f97316' }} />,
+        icon: <MyriadConfigIcon kind="notifications" />,
         section: 'notifications',
       },
       {
         id: 'modules',
         label: t.config.moduleSettings,
-        icon: <LuPackage size={15} style={{ color: '#14b8a6' }} />,
+        icon: <MyriadConfigIcon kind="modules" />,
         section: 'modules',
       },
       {
         id: 'advanced',
         label: t.config.advanced,
-        icon: <LuWrench size={15} style={{ color: '#ef4444' }} />,
+        icon: <MyriadConfigIcon kind="advanced" />,
         section: 'advanced',
       },
       {
         id: 'about',
         label: t.config.about,
-        icon: <FaInfoCircle size={15} style={{ color: '#b06b85' }} />,
+        icon: <MyriadConfigIcon kind="about" />,
         section: 'about',
       },
     ],
@@ -1733,7 +1721,7 @@ const ModernConfigForm: React.FC = () => {
         <div className="config-nav-header">
           <div className="nav-header-left">
             <span className="nav-icon">
-              <LuSlidersHorizontal size={18} />
+              <MyriadConfigIcon kind="ui" />
             </span>
             <div>
               <h3 className="nav-title">{t.config.title}</h3>

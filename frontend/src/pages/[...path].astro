@@ -46,6 +46,8 @@ export function getStaticPaths() {
 
 const title = 'Myriad - A myriad of lights, in one place.'
 const description = 'A myriad of lights, in one place.'
+const myriadVersion = import.meta.env.PUBLIC_MYRIAD_VERSION || 'dev'
+const myriadCommit = import.meta.env.PUBLIC_MYRIAD_COMMIT_SHA || ''
 ---
 
 <!doctype html>
@@ -61,6 +63,8 @@ const description = 'A myriad of lights, in one place.'
 
     <!-- 安全策略 -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="myriad-version" content={myriadVersion} />
+    <meta name="myriad-commit" content={myriadCommit} />
 
     <!-- Astro 6 内置 Fonts API: 全部字体自托管，消除 Google Fonts 外部请求 -->
     <!-- 主体字体（预加载） -->

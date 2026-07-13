@@ -48,7 +48,14 @@ export type NotificationEventKey = (typeof NOTIFICATION_EVENT_KEYS)[number]
 
 export interface NotificationDeliveryPreferences {
   island: boolean
-  high_priority_toast: boolean
+  toast: boolean
+  browser: boolean
+}
+
+export interface NotificationLocationPreferences {
+  panel: boolean
+  toast: boolean
+  island: boolean
   browser: boolean
 }
 
@@ -57,6 +64,7 @@ export interface NotificationPreferences {
   sources: Record<NotificationSourceKey, boolean>
   events: Record<NotificationEventKey, boolean>
   delivery: NotificationDeliveryPreferences
+  locations: Record<NotificationSourceKey, NotificationLocationPreferences>
 }
 
 export interface NotificationEventDefinition {
@@ -83,9 +91,15 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   ) as Record<NotificationEventKey, boolean>,
   delivery: {
     island: true,
-    high_priority_toast: true,
+    toast: true,
     browser: true,
   },
+  locations: Object.fromEntries(
+    NOTIFICATION_SOURCE_KEYS.map((key) => [
+      key,
+      { panel: true, toast: true, island: true, browser: true },
+    ]),
+  ) as Record<NotificationSourceKey, NotificationLocationPreferences>,
 }
 
 export const DEFAULT_NOTIFICATION_CATALOG = {

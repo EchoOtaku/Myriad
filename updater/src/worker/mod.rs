@@ -13,6 +13,7 @@ pub mod self_update;
 pub mod update;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Utc;
 use tokio::sync::{mpsc, Mutex};
@@ -25,7 +26,7 @@ use crate::error::{Result, UpdaterError};
 use crate::release::{GithubClient, Manifest};
 use crate::state::{Job, JobKind, JobStatus, LatestAvailable, MaintenanceFile, Phase, StateDir};
 use crate::version::{
-    commit_branch_for_channel, DeployTag, MyriadVersion, UpdateMode,
+    commit_branch_for_channel, DeployTag, DeployTagKind, MyriadVersion, UpdateMode,
 };
 
 /// CLI parameters shared with the worker.
@@ -91,6 +92,7 @@ pub enum Command {
 
 /// Unified "what's available" for both release and commit modes.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum AvailableInfo {
     Release(Manifest),
     Commit {
@@ -194,6 +196,103 @@ impl Worker {
 
     pub fn sender(&self) -> mpsc::Sender<Command> {
         self.tx.clone()
+    }
+
+    /// Reconcile persisted state with the version embedded in the running backend image.
+    ///
+    /// This runs once at daemon startup. The backend build stamp is the strongest source
+    /// because mutable branch tags may have advanced since the currently running image was
+    /// pulled. Older images do not expose `commit_sha`, so we fall back to resolving the
+    /// deploy tag through GitHub. If the backend is not ready yet, MYRIAD_TAG from the managed
+    /// `.env` still prevents a fresh/cleared state directory from reporting "unknown".
+    pub async fn reconcile_current_deploy(&self) -> Result<()> {
+        let mut st = self.state.read_updater()?;
+        let previous_version = st.current_version.clone();
+
+        let runtime = self.probe_runtime_identity().await;
+        let env_version = crate::env_file::EnvFile::load(&self.cli.env_file)
+            .ok()
+            .and_then(|env| env.get("MYRIAD_TAG").map(str::to_owned))
+            .and_then(|raw| match DeployTag::parse(&raw) {
+                Ok(tag) => Some(tag),
+                Err(e) => {
+                    warn!(value = %raw, err = %e, "ignoring invalid MYRIAD_TAG during startup reconciliation");
+                    None
+                }
+            });
+
+        let (version, embedded_sha, source) = match runtime {
+            Some((version, sha)) => (Some(version), sha, "backend-health"),
+            None => match env_version {
+                Some(version) => (Some(version), None, "env-file"),
+                None => (previous_version.clone(), None, "persisted-state"),
+            },
+        };
+        let Some(version) = version else {
+            warn!("current deploy version remains unknown after startup reconciliation");
+            return Ok(());
+        };
+
+        let version_changed = previous_version.as_ref() != Some(&version);
+        let mut commit_sha = embedded_sha.or_else(|| {
+            version
+                .commit_sha()
+                .filter(|sha| sha.len() == 40)
+                .map(str::to_owned)
+        });
+
+        if commit_sha.is_none() && version.kind() != DeployTagKind::Branch {
+            let git_ref = crate::release::deploy_tag_to_git_ref(&version);
+            match self.github_client() {
+                Ok(gh) => match gh.resolve_commit(&git_ref).await {
+                    Ok(info) => commit_sha = Some(info.sha),
+                    Err(e) => {
+                        warn!(tag = %version, err = %e, "could not resolve current deploy commit during startup");
+                    }
+                },
+                Err(e) => {
+                    warn!(tag = %version, err = %e, "GitHub client unavailable during startup reconciliation")
+                }
+            }
+            if commit_sha.is_none() && !version_changed {
+                commit_sha = st.current_commit_sha.clone();
+            }
+        } else if commit_sha.is_none() && version.kind() == DeployTagKind::Branch {
+            // A mutable branch name only identifies the image that would be pulled now, not the
+            // image already running. Wait for backend /health rather than persisting a false SHA.
+            commit_sha = None;
+        }
+
+        let state_changed =
+            version_changed || st.current_commit_sha != commit_sha || st.current_version.is_none();
+        st.current_version = Some(version.clone());
+        st.current_commit_sha = commit_sha.clone();
+        if state_changed {
+            self.state.write_updater(&st)?;
+        }
+        info!(
+            version = %version,
+            commit_sha = ?commit_sha,
+            %source,
+            "current deploy identity reconciled"
+        );
+        Ok(())
+    }
+
+    async fn probe_runtime_identity(&self) -> Option<(DeployTag, Option<String>)> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .ok()?;
+        let response = client
+            .get("http://backend:1103/health")
+            .send()
+            .await
+            .ok()?
+            .error_for_status()
+            .ok()?;
+        let body: serde_json::Value = response.json().await.ok()?;
+        runtime_identity_from_json(&body)
     }
 
     /// Try to recover from prior crash. Per spec §7.1 we are conservative: anything
@@ -415,10 +514,7 @@ impl Worker {
                     mode,
                     reply,
                 } => {
-                    let res = self
-                        .clone()
-                        .handle_check_updates(channel, mode)
-                        .await;
+                    let res = self.clone().handle_check_updates(channel, mode).await;
                     let _ = reply.send(res);
                 }
                 Command::SetPrefs {
@@ -455,6 +551,7 @@ impl Worker {
             .unwrap_or(UpdateMode::Release)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_update(
         self: Arc<Self>,
         target: DeployTag,
@@ -512,8 +609,7 @@ impl Worker {
             allow_irreversible,
         );
         tokio::spawn(async move {
-            if let Err(e) =
-                update::run(me.clone(), job_id_clone.clone(), target, mode, risk).await
+            if let Err(e) = update::run(me.clone(), job_id_clone.clone(), target, mode, risk).await
             {
                 error!(job = %job_id_clone, err = %e, "update flow exited with error");
             }
@@ -542,12 +638,10 @@ impl Worker {
         channel: Option<String>,
         limit: u32,
     ) -> Result<Vec<crate::release::github::Release>> {
-        let ch_name = channel
-            .filter(|c| !c.trim().is_empty())
-            .unwrap_or_else(|| {
-                crate::version::release_channel_name_for_self_update(&self.effective_channel())
-                    .to_string()
-            });
+        let ch_name = channel.filter(|c| !c.trim().is_empty()).unwrap_or_else(|| {
+            crate::version::release_channel_name_for_self_update(&self.effective_channel())
+                .to_string()
+        });
         let ch: Channel = ch_name.parse().unwrap_or(self.config.channel);
         let gh = self.github_client()?;
         gh.list_releases_for_channel(ch, limit).await
@@ -657,9 +751,7 @@ impl Worker {
             .filter(|c| !c.trim().is_empty())
             .unwrap_or_else(|| self.effective_channel());
         match mode {
-            UpdateMode::Release => {
-                self.check_release_available(&channel, persist_cache).await
-            }
+            UpdateMode::Release => self.check_release_available(&channel, persist_cache).await,
             UpdateMode::Commit => self.check_commit_available(&channel, persist_cache).await,
         }
     }
@@ -670,9 +762,7 @@ impl Worker {
         persist_cache: bool,
     ) -> Result<Option<AvailableInfo>> {
         let gh = self.github_client()?;
-        let ch: Channel = channel
-            .parse()
-            .unwrap_or(self.config.channel);
+        let ch: Channel = channel.parse().unwrap_or(self.config.channel);
         let Some(rel) = gh.latest_for_channel(ch).await? else {
             if persist_cache {
                 let mut st = self.state.read_updater()?;
@@ -690,11 +780,10 @@ impl Worker {
                 .as_ref()
                 .is_some_and(|v| v.older_than(&manifest.updater.min_updater_version));
         let target_tag = DeployTag::from_release(manifest.version.clone());
-        let current = self
-            .state
-            .read_updater()
-            .ok()
-            .and_then(|s| s.current_version);
+        let current_state = self.state.read_updater().ok();
+        let current = current_state
+            .as_ref()
+            .and_then(|s| s.current_version.clone());
         // Prefer semver when both are releases; otherwise git ancestry.
         let (is_upgrade, is_downgrade, relation) = match (
             current.as_ref().and_then(|c| c.as_release()),
@@ -725,13 +814,21 @@ impl Worker {
                 }
             }
         };
+        let target_commit_sha = match manifest.commit_sha.clone() {
+            some @ Some(_) => some,
+            None => gh
+                .resolve_commit(&rel.tag_name)
+                .await
+                .ok()
+                .map(|info| info.sha),
+        };
         let cached = LatestAvailable {
             version: target_tag,
             channel: manifest.channel.clone(),
             mode: UpdateMode::Release,
             seen_at: Utc::now(),
-            commit_sha: None,
-            current_commit_sha: None,
+            commit_sha: target_commit_sha,
+            current_commit_sha: current_state.and_then(|s| s.current_commit_sha),
             relation,
             ahead_by: None,
             behind_by: None,
@@ -805,10 +902,9 @@ impl Worker {
             commit_sha: Some(info.sha.clone()),
             current_commit_sha: freshness
                 .as_ref()
-                .and_then(|f| f.current_sha.clone()),
-            relation: freshness
-                .as_ref()
-                .map(|f| f.relation.as_str().to_string()),
+                .and_then(|f| f.current_sha.clone())
+                .or_else(|| st_now.current_commit_sha.clone()),
+            relation: freshness.as_ref().map(|f| f.relation.as_str().to_string()),
             ahead_by: freshness.as_ref().map(|f| f.ahead_by),
             behind_by: freshness.as_ref().map(|f| f.behind_by),
             is_upgrade: freshness.as_ref().map(|f| f.is_upgrade()),
@@ -832,6 +928,17 @@ impl Worker {
             freshness,
         }))
     }
+}
+
+fn runtime_identity_from_json(body: &serde_json::Value) -> Option<(DeployTag, Option<String>)> {
+    let version = DeployTag::parse(body.get("version")?.as_str()?).ok()?;
+    let commit_sha = body
+        .get("commit_sha")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|sha| sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit()))
+        .map(|sha| sha.to_ascii_lowercase());
+    Some((version, commit_sha))
 }
 
 fn validate_channel_for_mode(channel: &str, mode: UpdateMode) -> Result<()> {
@@ -881,4 +988,41 @@ pub(crate) fn set_phase(
         message_key: message_key.to_string(),
     };
     state.write_maintenance(&m)
+}
+
+#[cfg(test)]
+mod runtime_identity_tests {
+    use super::*;
+
+    #[test]
+    fn parses_release_with_embedded_commit() {
+        let body = serde_json::json!({
+            "version": "v0.1.0",
+            "commit_sha": "ABCDEF0123456789ABCDEF0123456789ABCDEF01"
+        });
+        let (version, sha) = runtime_identity_from_json(&body).expect("runtime identity");
+        assert_eq!(version.as_str(), "v0.1.0");
+        assert_eq!(
+            sha.as_deref(),
+            Some("abcdef0123456789abcdef0123456789abcdef01")
+        );
+    }
+
+    #[test]
+    fn keeps_version_when_old_health_has_no_commit() {
+        let body = serde_json::json!({ "version": "dev-103a5ec" });
+        let (version, sha) = runtime_identity_from_json(&body).expect("runtime identity");
+        assert_eq!(version.as_str(), "dev-103a5ec");
+        assert_eq!(sha, None);
+    }
+
+    #[test]
+    fn ignores_invalid_commit_sha() {
+        let body = serde_json::json!({
+            "version": "v0.1.0",
+            "commit_sha": "not-a-commit"
+        });
+        let (_, sha) = runtime_identity_from_json(&body).expect("runtime identity");
+        assert_eq!(sha, None);
+    }
 }

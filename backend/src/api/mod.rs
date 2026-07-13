@@ -41,6 +41,16 @@ pub fn mark_startup() {
     let _ = STARTED_AT.set(std::time::Instant::now());
 }
 
+pub fn build_version() -> &'static str {
+    option_env!("MYRIAD_VERSION").unwrap_or(concat!("v", env!("CARGO_PKG_VERSION")))
+}
+
+pub fn build_commit_sha() -> Option<&'static str> {
+    option_env!("MYRIAD_COMMIT_SHA")
+        .map(str::trim)
+        .filter(|sha| sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
 /// `/health` endpoint consumed by the Myriad updater health probe.
 ///
 /// Returns the schema described in docs/updater-spec.md §11.1:
@@ -69,7 +79,8 @@ pub async fn health() -> (StatusCode, Json<Value>) {
 
     // Build-time version injected via `MYRIAD_VERSION` env var (set by Dockerfile build-arg).
     // Falls back to crate version so local `cargo run` still works.
-    let version = option_env!("MYRIAD_VERSION").unwrap_or(concat!("v", env!("CARGO_PKG_VERSION")));
+    let version = build_version();
+    let commit_sha = build_commit_sha();
 
     let uptime = STARTED_AT.get().map(|t| t.elapsed().as_secs()).unwrap_or(0);
 
@@ -79,6 +90,7 @@ pub async fn health() -> (StatusCode, Json<Value>) {
             "status": "ok",
             "schema_version": 1,
             "version": version,
+            "commit_sha": commit_sha,
             "db_connected": db_connected,
             "migrations_applied": migrations_applied,
             "uptime_seconds": uptime,

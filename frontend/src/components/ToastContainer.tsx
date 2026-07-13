@@ -62,14 +62,9 @@ export function ToastContainer() {
       id: generateId(),
     }
 
-    setToasts((prev) => {
-      // 限制最大同时显示数量为 5
-      const updated = [...prev, newToast]
-      if (updated.length > 5) {
-        return updated.slice(-5)
-      }
-      return updated
-    })
+    // 队列不丢弃事件；渲染层一次最多展示 5 条，关闭后继续展示后续项。
+    // 这样通知流突发时不会出现“面板有记录但 Toast 从未显示”。
+    setToasts((prev) => [...prev, newToast])
   }, [])
 
   // 订阅全局 Toast 事件
@@ -85,7 +80,7 @@ export function ToastContainer() {
 
   return (
     <div className="toast-container-wrapper">
-      {toasts.map((toast, index) => (
+      {toasts.slice(0, 5).map((toast, index) => (
         <div
           key={toast.id}
           className="toast-container-item"

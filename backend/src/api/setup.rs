@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use url::Url;
 
 /// Setup status response
 #[derive(Debug, Serialize, Deserialize)]
@@ -163,20 +164,9 @@ async fn check_admin_user_exists(db: &DatabaseConnection) -> bool {
 pub async fn init_database(
     State(db): State<DatabaseConnection>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
-    if !config_mode {
-        tracing::warn!("Database initialization rejected outside configuration mode");
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({
-                "error": "Setup endpoint disabled",
-                "message": "Database initialization is available only during initial configuration."
-            })),
-        ));
-    }
-
-    // ✅ SECURITY CHECK: Prevent re-initialization if setup is already completed
-    // Check if admin user exists (indicates setup is complete)
+    // Setup switches out of CONFIG_MODE as soon as the database can be reached.
+    // Keep the recovery migration available until the installation is claimed,
+    // then lock it permanently once an administrator exists.
     let admin_exists = check_admin_user_exists(&db).await;
 
     if admin_exists {
@@ -624,6 +614,41 @@ pub struct DatabaseConfigRequest {
     pub database: String,
 }
 
+fn build_database_url(config: &DatabaseConfigRequest) -> Result<String, String> {
+    let host = config.host.trim();
+    let username = config.username.trim();
+    let database = config.database.trim();
+
+    if host.is_empty() || username.is_empty() || database.is_empty() {
+        return Err("Host, username, and database are required".to_string());
+    }
+    if config.port == 0 {
+        return Err("Database port must be between 1 and 65535".to_string());
+    }
+
+    let mut database_url =
+        Url::parse("postgres://localhost").map_err(|_| "Invalid database URL".to_string())?;
+    database_url
+        .set_host(Some(host))
+        .map_err(|_| "Invalid database host".to_string())?;
+    database_url
+        .set_port(Some(config.port))
+        .map_err(|_| "Invalid database port".to_string())?;
+    database_url
+        .set_username(username)
+        .map_err(|_| "Invalid database username".to_string())?;
+    database_url
+        .set_password(Some(&config.password))
+        .map_err(|_| "Invalid database password".to_string())?;
+    database_url
+        .path_segments_mut()
+        .map_err(|_| "Invalid database name".to_string())?
+        .clear()
+        .push(database);
+
+    Ok(database_url.into())
+}
+
 /// POST /api/setup/database-config
 /// Save database configuration to .env file (专门用于配置数据库)
 /// 🔒 安全保护：只能在 CONFIG_MODE 下修改数据库配置
@@ -654,11 +679,17 @@ pub async fn save_database_config(
 
     tracing::info!("Saving database configuration (CONFIG_MODE verified)");
 
-    // Construct DATABASE_URL
-    let database_url = format!(
-        "postgres://{}:{}@{}:{}/{}",
-        config.username, config.password, config.host, config.port, config.database
-    );
+    // Construct a properly escaped URL so credentials containing characters
+    // such as `@`, `:` or `/` do not corrupt the connection string.
+    let database_url = build_database_url(&config).map_err(|message| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Invalid database configuration",
+                "message": message
+            })),
+        )
+    })?;
 
     tracing::info!("Database URL constructed (password masked)");
 
@@ -818,4 +849,40 @@ fn update_env_variable(content: &str, key: &str, value: &str) -> String {
     }
 
     result.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_database_url, DatabaseConfigRequest};
+
+    #[test]
+    fn database_url_escapes_credentials_and_database_name() {
+        let config = DatabaseConfigRequest {
+            host: "db.example.com".to_string(),
+            port: 5432,
+            username: "setup-user".to_string(),
+            password: "p@ss:word".to_string(),
+            database: "myriad/main".to_string(),
+        };
+
+        let url = build_database_url(&config).expect("database URL should be valid");
+
+        assert_eq!(
+            url,
+            "postgres://setup-user:p%40ss%3Aword@db.example.com:5432/myriad%2Fmain"
+        );
+    }
+
+    #[test]
+    fn database_url_rejects_empty_required_fields() {
+        let config = DatabaseConfigRequest {
+            host: " ".to_string(),
+            port: 5432,
+            username: "postgres".to_string(),
+            password: "password".to_string(),
+            database: "myriad".to_string(),
+        };
+
+        assert!(build_database_url(&config).is_err());
+    }
 }

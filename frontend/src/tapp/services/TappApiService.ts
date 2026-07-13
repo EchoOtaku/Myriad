@@ -1799,8 +1799,23 @@ export interface PageComponentConfig extends ComponentConfig {
 /** Theme 组件配置 */
 export interface ThemeComponentConfig extends ComponentConfig {
   name: string
-  colors?: Record<string, string>
+  /**
+   * 小组件表面样式（受约束枚举）：'glass' | 'solid' | 'flat' | 'outline'
+   * 宿主仅消费此白名单值，见 useTappThemes 的校验。
+   */
+  surface?: string
+  /**
+   * 小组件光晕模式（受约束枚举）：'identity' | 'primary' | 'none'
+   */
+  glow?: string
+  /**
+   * @deprecated 安全原因：宿主不消费自由 CSS 字符串，此字段被忽略。
+   */
   styles?: string
+  /**
+   * 颜色映射。当前宿主不消费（避免与壁纸取色系统冲突），保留供未来扩展。
+   */
+  colors?: Record<string, string>
 }
 
 /** Agent 组件配置 */

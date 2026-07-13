@@ -6,7 +6,7 @@ import type { EmptyStateProps } from '../types'
 import React from 'react'
 
 const ISLAND_GLASS =
-  'rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10'
+  'rounded-2xl glass-surface glass-90 border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10'
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   icon,

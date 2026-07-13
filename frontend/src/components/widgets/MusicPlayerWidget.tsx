@@ -20,6 +20,8 @@ import {
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { audioManager } from '../../utils/musicPlayer'
+import { GlowBackground } from './shared/GlowBackground'
+import { WidgetShell } from './shared/WidgetShell'
 
 // ==================== 漂浮歌词组件 ====================
 
@@ -261,8 +263,7 @@ const FloatingLyrics = memo(
             const tokenStartRatio = cumulativeWeight / totalWeight
             cumulativeWeight += tokenWeights[tokenIdx]
             const tokenEndRatio = cumulativeWeight / totalWeight
-            const tokenTime =
-              pageStartTime + tokenStartRatio * revealDuration
+            const tokenTime = pageStartTime + tokenStartRatio * revealDuration
             const estimatedDuration = Math.max(
               0.08,
               (tokenEndRatio - tokenStartRatio) * revealDuration,
@@ -326,7 +327,7 @@ const FloatingLyrics = memo(
       if (lyricPages.length > 0) {
         const fallbackTime =
           currentLyricIndex >= 0
-            ? lyrics[currentLyricIndex]?.time ?? currentTimeRef.current
+            ? (lyrics[currentLyricIndex]?.time ?? currentTimeRef.current)
             : currentTimeRef.current
         const { chars, positions, batchIndex } =
           computeCurrentBatch(fallbackTime)
@@ -938,100 +939,102 @@ export const MusicPlayerWidget = memo(
 
     const lyrics = isPreview ? previewLyrics : playerControl.lyrics
     const verbatimLyrics = isPreview ? [] : playerControl.verbatimLyrics
-    const currentLyricIndex = isPreview
-      ? 1
-      : playerControl.currentLyricIndex
+    const currentLyricIndex = isPreview ? 1 : playerControl.currentLyricIndex
 
     if (!isEnabled) {
       return (
-        <div
-          ref={containerRef}
-          className="relative h-full w-full rounded-xl overflow-hidden glass"
+        <WidgetShell
+          containerRef={containerRef}
+          scale={scale}
+          padding={12}
+          contentClassName="flex flex-col items-center justify-center"
+          background={
+            <GlowBackground
+              color={themeColor}
+              animLevel={anim.level}
+              shouldAnimate={false}
+              variant="single"
+              size="md"
+            />
+          }
         >
-          {/* 背景光效 - 低端设备使用 blur-xl 减少性能消耗 */}
-          <div
-            className={`absolute -right-8 -top-8 w-32 h-32 rounded-full opacity-10 ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
-            style={{ background: themeColor }}
-          />
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center p-3"
-            style={{ padding: `${12 * scale}px` }}
+          <motion.span
+            className="mb-2"
+            style={{ fontSize: `${30 * scale}px` }}
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
           >
-            <motion.span
-              className="mb-2"
-              style={{ fontSize: `${30 * scale}px` }}
-              initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
-            >
-              <LuMusic
-                style={{ width: `${30 * scale}px`, height: `${30 * scale}px` }}
-              />
-            </motion.span>
-            <span
-              className="text-gray-500 dark:text-gray-400"
-              style={{ fontSize: `${12 * fontScale}px` }}
-            >
-              音乐播放器未启用
-            </span>
-          </div>
-        </div>
+            <LuMusic
+              style={{ width: `${30 * scale}px`, height: `${30 * scale}px` }}
+            />
+          </motion.span>
+          <span
+            className="text-gray-500 dark:text-gray-400"
+            style={{ fontSize: `${12 * fontScale}px` }}
+          >
+            音乐播放器未启用
+          </span>
+        </WidgetShell>
       )
     }
 
     if (!currentSong) {
       return (
-        <div
-          ref={containerRef}
-          className="relative h-full w-full rounded-xl overflow-hidden glass"
+        <WidgetShell
+          containerRef={containerRef}
+          scale={scale}
+          padding={12}
+          contentClassName="flex flex-col items-center justify-center"
+          background={
+            <GlowBackground
+              color={themeColor}
+              animLevel={anim.level}
+              shouldAnimate={false}
+              variant="single"
+              size="md"
+            />
+          }
         >
-          {/* 背景光效 - 低端设备使用 blur-xl */}
-          <div
-            className={`absolute -right-8 -top-8 w-32 h-32 rounded-full opacity-10 ${anim.level === 'standard' ? 'blur-3xl' : 'blur-xl'}`}
-            style={{ background: themeColor }}
-          />
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center p-3"
-            style={{ padding: `${12 * scale}px` }}
+          <motion.span
+            className="mb-2"
+            style={{ fontSize: `${30 * scale}px` }}
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
           >
-            <motion.span
-              className="mb-2"
-              style={{ fontSize: `${30 * scale}px` }}
-              initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
-            >
-              <LuMusic
-                style={{ width: `${30 * scale}px`, height: `${30 * scale}px` }}
-              />
-            </motion.span>
-            <span
-              className="text-gray-500 dark:text-gray-400"
-              style={{ fontSize: `${12 * fontScale}px` }}
-            >
-              {t.music.noPlaying}
-            </span>
-          </div>
-        </div>
+            <LuMusic
+              style={{ width: `${30 * scale}px`, height: `${30 * scale}px` }}
+            />
+          </motion.span>
+          <span
+            className="text-gray-500 dark:text-gray-400"
+            style={{ fontSize: `${12 * fontScale}px` }}
+          >
+            {t.music.noPlaying}
+          </span>
+        </WidgetShell>
       )
     }
 
     // 4x2 布局 - 上下结构重构
     if (config.size === '4x2' && currentSong) {
       return (
-        <div
-          ref={containerRef}
-          className="relative h-full w-full rounded-xl overflow-hidden glass cursor-pointer group flex flex-col"
-          onClick={handleClick}
+        <WidgetShell
+          containerRef={containerRef}
+          padding={0}
+          className="cursor-pointer group"
+          contentClassName="flex flex-col"
+          rootProps={{ onClick: handleClick }}
+          background={
+            <motion.div
+              className="absolute inset-0 opacity-20"
+              style={{
+                background: `linear-gradient(135deg, ${themeColor}40 0%, transparent 100%)`,
+              }}
+            />
+          }
         >
-          {/* 全局背景光效 */}
-          <motion.div
-            className="absolute inset-0 opacity-20"
-            style={{
-              background: `linear-gradient(135deg, ${themeColor}40 0%, transparent 100%)`,
-            }}
-          />
-
           {/* 上半部分：歌词 (2/3) */}
           <div className="flex-1 relative w-full overflow-hidden flex items-center justify-center px-4 z-10">
             {/* 背景：封面高斯模糊 + 呼吸动效 */}
@@ -1210,39 +1213,29 @@ export const MusicPlayerWidget = memo(
               </motion.button>
             </div>
           </div>
-        </div>
+        </WidgetShell>
       )
     }
 
     return (
-      <div
-        ref={containerRef}
-        className="relative h-full w-full rounded-xl overflow-hidden glass cursor-pointer group"
-        onClick={handleClick}
+      <WidgetShell
+        containerRef={containerRef}
+        scale={scale}
+        padding={12}
+        className="cursor-pointer group"
+        contentClassName="flex flex-col"
+        rootProps={{ onClick: handleClick }}
+        background={
+          <GlowBackground
+            color={themeColor}
+            animLevel={anim.level}
+            shouldAnimate={canAnimate}
+            variant="single"
+            size="md"
+          />
+        }
       >
-        {/* 背景光效 - 低端设备禁用动画和减少 blur，受调度器控制 */}
-        {canAnimate ? (
-          <motion.div
-            className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-xl"
-            style={{ background: themeColor }}
-            animate={{
-              opacity: [0.1, 0.2, 0.1],
-              scale: [1, 1.15, 1],
-            }}
-            transition={{
-              duration: 3,
-              repeat: 1, // 有限次数
-              ease: 'easeInOut',
-            }}
-          />
-        ) : (
-          <div
-            className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-xl opacity-10"
-            style={{ background: themeColor }}
-          />
-        )}
-
-        {/* 右上角：专辑封面 - 浮动元素 */}
+        {/* 右上角：专辑封面 - 浮动元素（绝对定位，不受安全区影响） */}
         <AlbumCover
           cover={currentSong.cover}
           name={currentSong.name}
@@ -1252,130 +1245,124 @@ export const MusicPlayerWidget = memo(
           anim={anim}
         />
 
-        {/* 主内容区：2x2紧凑布局 */}
-        <div
-          className="absolute inset-0 flex flex-col p-3"
-          style={{ padding: `${12 * scale}px` }}
+        {/* 顶部：音乐图标 */}
+        <motion.div
+          className="mb-1"
+          initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
+          animate={{
+            scale: 1,
+            opacity: 1,
+            rotate: isPlaying ? [0, 5, 0, -5, 0] : 0,
+          }}
+          transition={{
+            scale: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
+            opacity: { duration: 0.6 },
+            rotate: isPlaying
+              ? {
+                  duration: 2,
+                  repeat: anim.loop ? Infinity : 0,
+                  ease: 'easeInOut',
+                }
+              : {},
+          }}
         >
-          {/* 顶部：音乐图标 */}
-          <motion.div
-            className="mb-1"
-            initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
-            animate={{
-              scale: 1,
-              opacity: 1,
-              rotate: isPlaying ? [0, 5, 0, -5, 0] : 0,
+          <svg
+            className="w-6 h-6"
+            style={{
+              color: themeColor,
+              width: `${24 * scale}px`,
+              height: `${24 * scale}px`,
             }}
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+          </svg>
+        </motion.div>
+
+        {/* 中部：歌曲信息 */}
+        <div className="flex-1 flex flex-col justify-center min-h-0 translate-y-1.5">
+          <motion.div
+            className="font-bold text-gray-800 dark:text-gray-100 truncate mb-0.5 transition-all duration-300 ease-out"
+            style={{ fontSize: `${14 * fontScale}px` }}
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
             transition={{
-              scale: { duration: 0.6, ease: [0.34, 1.56, 0.64, 1] },
-              opacity: { duration: 0.6 },
-              rotate: isPlaying
-                ? {
-                    duration: 2,
-                    repeat: anim.loop ? Infinity : 0,
-                    ease: 'easeInOut',
-                  }
-                : {},
+              duration: 0.6,
+              delay: 0.2,
+              ease: [0.34, 1.56, 0.64, 1],
             }}
           >
-            <svg
-              className="w-6 h-6"
-              style={{
-                color: themeColor,
-                width: `${24 * scale}px`,
-                height: `${24 * scale}px`,
-              }}
-              fill="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-            </svg>
+            {currentSong.name}
           </motion.div>
-
-          {/* 中部：歌曲信息 */}
-          <div className="flex-1 flex flex-col justify-center min-h-0 translate-y-1.5">
-            <motion.div
-              className="font-bold text-gray-800 dark:text-gray-100 truncate mb-0.5 transition-all duration-300 ease-out"
-              style={{ fontSize: `${14 * fontScale}px` }}
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{
-                duration: 0.6,
-                delay: 0.2,
-                ease: [0.34, 1.56, 0.64, 1],
-              }}
-            >
-              {currentSong.name}
-            </motion.div>
-            <motion.div
-              className="text-gray-600 dark:text-gray-400 truncate transition-all duration-300 ease-out"
-              style={{ fontSize: `${12 * fontScale}px` }}
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{
-                duration: 0.6,
-                delay: 0.3,
-                ease: [0.34, 1.56, 0.64, 1],
-              }}
-            >
-              {currentSong.artist}
-            </motion.div>
-          </div>
-
-          {/* 底部：播放控制 */}
           <motion.div
-            className="flex items-center justify-between"
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.4 }}
+            className="text-gray-600 dark:text-gray-400 truncate transition-all duration-300 ease-out"
+            style={{ fontSize: `${12 * fontScale}px` }}
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{
+              duration: 0.6,
+              delay: 0.3,
+              ease: [0.34, 1.56, 0.64, 1],
+            }}
           >
-            <button
-              onClick={handleTogglePlay}
-              className="rounded-full bg-white/80 dark:bg-black/80 backdrop-blur-sm shadow-md flex items-center justify-center hover:scale-110 transition-transform"
-              style={{
-                color: themeColor,
-                width: `${32 * scale}px`,
-                height: `${32 * scale}px`,
-              }}
-              aria-label={isPlaying ? t.music.pause : t.music.play}
-            >
-              {isPlaying ? (
-                <svg
-                  style={{
-                    width: `${14 * scale}px`,
-                    height: `${14 * scale}px`,
-                  }}
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                </svg>
-              ) : (
-                <svg
-                  style={{
-                    width: `${14 * scale}px`,
-                    height: `${14 * scale}px`,
-                  }}
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
-            </button>
-
-            {/* 播放状态指示器 */}
-            {isPlaying && (
-              <PlayingIndicator
-                themeColor={themeColor}
-                scale={scale}
-                anim={anim}
-                isPlaying={isPlaying}
-              />
-            )}
+            {currentSong.artist}
           </motion.div>
         </div>
-      </div>
+
+        {/* 底部：播放控制 */}
+        <motion.div
+          className="flex items-center justify-between"
+          initial={{ y: 10, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.4 }}
+        >
+          <button
+            onClick={handleTogglePlay}
+            className="rounded-full bg-white/80 dark:bg-black/80 backdrop-blur-sm shadow-md flex items-center justify-center hover:scale-110 transition-transform"
+            style={{
+              color: themeColor,
+              width: `${32 * scale}px`,
+              height: `${32 * scale}px`,
+            }}
+            aria-label={isPlaying ? t.music.pause : t.music.play}
+          >
+            {isPlaying ? (
+              <svg
+                style={{
+                  width: `${14 * scale}px`,
+                  height: `${14 * scale}px`,
+                }}
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+              </svg>
+            ) : (
+              <svg
+                style={{
+                  width: `${14 * scale}px`,
+                  height: `${14 * scale}px`,
+                }}
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </button>
+
+          {/* 播放状态指示器 */}
+          {isPlaying && (
+            <PlayingIndicator
+              themeColor={themeColor}
+              scale={scale}
+              anim={anim}
+              isPlaying={isPlaying}
+            />
+          )}
+        </motion.div>
+      </WidgetShell>
     )
   },
 )

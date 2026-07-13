@@ -11,11 +11,9 @@ import type { NotificationSourceKey } from '../services/notificationPreferencesA
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
+import { notificationSourceFor } from '../services/notificationDelivery'
 import { getGreeting } from '../utils/dynamicContent'
-import {
-  notificationSourceFor,
-  NotificationSourceIcon,
-} from './notifications/NotificationIcons'
+import { NotificationSourceIcon } from './notifications/NotificationIcons'
 
 /** Apple 风格胶囊按钮基础样式 */
 const PILL_BTN =

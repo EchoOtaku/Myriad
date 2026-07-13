@@ -12,6 +12,8 @@ COPY updater/src updater/src
 
 ARG MYRIAD_VERSION=v0.0.0-dev
 ENV MYRIAD_VERSION=${MYRIAD_VERSION}
+ARG MYRIAD_COMMIT_SHA=unknown
+ENV MYRIAD_COMMIT_SHA=${MYRIAD_COMMIT_SHA}
 
 WORKDIR /work/updater
 RUN cargo build --release --bins
@@ -19,6 +21,8 @@ RUN cargo build --release --bins
 # ---------- runtime ----------
 FROM debian:bookworm-slim AS runtime
 ARG TARGETARCH
+ARG MYRIAD_COMMIT_SHA=unknown
+LABEL org.opencontainers.image.revision=${MYRIAD_COMMIT_SHA}
 
 # Install docker CLI + compose v2 plugin from Docker's official repo (the only reliable
 # place to get an up-to-date docker-ce-cli for Debian).

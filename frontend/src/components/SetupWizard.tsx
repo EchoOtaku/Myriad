@@ -3,12 +3,16 @@ import {
   FaDatabase,
   FaExclamationTriangle,
   FaUser,
+  LuArrowRight,
   LuClipboardList,
   LuDatabase,
   LuInfo,
+  LuServer,
+  LuShieldCheck,
+  LuSparkles,
   LuWrench,
 } from '@lib/icons'
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 import { Spinner } from './Spinner'
@@ -21,11 +25,30 @@ interface SetupStatus {
   missing_configs: string[]
 }
 
+type SetupNotice = {
+  tone: 'info' | 'success' | 'error'
+  message: string
+} | null
+
+async function getResponseError(response: Response, fallback: string) {
+  try {
+    const body = await response.json()
+    return body.message || body.error || fallback
+  } catch {
+    return fallback
+  }
+}
+
 const SetupWizard: React.FC = () => {
   const { t } = useI18n()
   const [status, setStatus] = useState<SetupStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState<SetupNotice>(null)
+  const [hasEnteredSetup, setHasEnteredSetup] = useState(() => {
+    return sessionStorage.getItem('myriad-setup-started') === 'true'
+  })
+  const pollTimerRef = useRef<number | null>(null)
 
   // 数据库配置
   const [dbConfig, setDbConfig] = useState({
@@ -48,13 +71,10 @@ const SetupWizard: React.FC = () => {
   const [creatingAdmin, setCreatingAdmin] = useState(false)
   const [adminCreated, setAdminCreated] = useState(false)
 
-  useEffect(() => {
-    checkSetupStatus()
-  }, [])
-
-  const checkSetupStatus = async () => {
+  const checkSetupStatus = useCallback(async () => {
     try {
       setLoading(true)
+      setError('')
 
       // 先检查健康状态,看是否处于配置模式
       const healthResponse = await fetch(`${API_URL}/health`)
@@ -106,19 +126,48 @@ const SetupWizard: React.FC = () => {
       // 因为用户接下来就要初始化数据库
       setDbConfigured(healthData.database_connected)
       setAdminCreated(data.has_admin_user)
+      if (!data.is_setup_required) {
+        sessionStorage.removeItem('myriad-setup-started')
+      }
     } catch (_err) {
       setError(t.setup.connectionFailedDesc)
     } finally {
       setLoading(false)
     }
+  }, [t.setup.connectionFailedDesc])
+
+  useEffect(() => {
+    void checkSetupStatus()
+
+    return () => {
+      if (pollTimerRef.current !== null) {
+        window.clearTimeout(pollTimerRef.current)
+      }
+    }
+  }, [checkSetupStatus])
+
+  const enterSetup = () => {
+    sessionStorage.setItem('myriad-setup-started', 'true')
+    setHasEnteredSetup(true)
   }
 
   const handleSaveDbConfig = async () => {
-    if (!dbConfig.password) {
-      alert(t.setup.enterDbPassword)
+    const port = Number(dbConfig.port)
+    if (
+      !dbConfig.host.trim() ||
+      !dbConfig.database.trim() ||
+      !dbConfig.username.trim() ||
+      !dbConfig.password
+    ) {
+      setNotice({ tone: 'error', message: t.setup.dbFieldsRequired })
+      return
+    }
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setNotice({ tone: 'error', message: t.setup.invalidPort })
       return
     }
 
+    setNotice(null)
     setSavingDb(true)
 
     try {
@@ -128,7 +177,7 @@ const SetupWizard: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           host: dbConfig.host,
-          port: Number.parseInt(dbConfig.port),
+          port,
           username: dbConfig.username,
           password: dbConfig.password,
           database: dbConfig.database,
@@ -136,24 +185,33 @@ const SetupWizard: React.FC = () => {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || t.setup.saveConfigFailed)
+        throw new Error(
+          await getResponseError(response, t.setup.saveConfigFailed),
+        )
       }
 
       const result = await response.json()
 
       if (result.restart_triggered || result.reload_triggered) {
-        alert(
-          `${t.setup.dbConfigSaved}\n\n${t.setup.dbReconnecting}\n\n${t.setup.waitingForConnection}`,
-        )
+        setNotice({
+          tone: 'info',
+          message: `${t.setup.dbConfigSaved} ${t.setup.dbReconnecting} ${t.setup.waitingForConnection}`,
+        })
 
         // 后端会由受管环境重启；轮询直到新进程以完整路由表启动
         pollDatabaseConnection()
       } else {
-        alert(`${t.setup.dbConfigSaved}\n\n${t.setup.restartRequired}`)
+        setNotice({
+          tone: 'info',
+          message: `${t.setup.dbConfigSaved} ${t.setup.restartRequired}`,
+        })
+        setSavingDb(false)
       }
     } catch (err: any) {
-      alert(`${t.setup.saveConfigFailed}: ${err.message}`)
+      setNotice({
+        tone: 'error',
+        message: `${t.setup.saveConfigFailed}: ${err.message}`,
+      })
       setSavingDb(false)
     }
   }
@@ -177,12 +235,13 @@ const SetupWizard: React.FC = () => {
             healthData.database_connected &&
             healthData.mode !== 'configuration'
           ) {
-            alert(
-              `${t.setup.dbConnectionSuccess}\n\n${t.setup.systemSwitchedToNormal}`,
-            )
+            setNotice({
+              tone: 'success',
+              message: `${t.setup.dbConnectionSuccess} ${t.setup.systemSwitchedToNormal}`,
+            })
             setSavingDb(false)
             setDbConfigured(true)
-            checkSetupStatus()
+            void checkSetupStatus()
             return
           }
         }
@@ -192,22 +251,23 @@ const SetupWizard: React.FC = () => {
 
       // 如果还没成功且未超过最大尝试次数，继续轮询
       if (attempts < maxAttempts) {
-        setTimeout(checkConnection, pollInterval)
+        pollTimerRef.current = window.setTimeout(checkConnection, pollInterval)
       } else {
-        // 超时
-        alert(
-          `${t.setup.dbConnectionTimeout}\n\n${t.setup.dbConnectionTimeoutDesc}`,
-        )
+        setNotice({
+          tone: 'error',
+          message: `${t.setup.dbConnectionTimeout}: ${t.setup.dbConnectionTimeoutDesc}`,
+        })
         setSavingDb(false)
-        checkSetupStatus()
+        void checkSetupStatus()
       }
     }
 
     // 等待3秒后开始第一次检查（给后端一些处理时间）
-    setTimeout(checkConnection, 3000)
+    pollTimerRef.current = window.setTimeout(checkConnection, 3000)
   }
 
   const handleMigrateDatabase = async () => {
+    setNotice(null)
     setMigratingDb(true)
 
     try {
@@ -216,8 +276,9 @@ const SetupWizard: React.FC = () => {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || t.setup.dbMigrationFailed)
+        throw new Error(
+          await getResponseError(response, t.setup.dbMigrationFailed),
+        )
       }
 
       const result = await response.json()
@@ -233,36 +294,44 @@ const SetupWizard: React.FC = () => {
         message += `\n• ${t.setup.configurationsTable}: ${v.configurations_table ? t.setup.yes : t.setup.no}`
       }
 
-      alert(message)
+      setNotice({ tone: 'success', message })
 
       // 重新检查状态以更新 UI
       await checkSetupStatus()
     } catch (err: any) {
-      alert(`${t.setup.dbMigrationFailed}: ${err.message}`)
+      setNotice({
+        tone: 'error',
+        message: `${t.setup.dbMigrationFailed}: ${err.message}`,
+      })
     } finally {
       setMigratingDb(false)
     }
   }
 
   const handleCreateAdmin = async () => {
+    setNotice(null)
     if (adminForm.username.length < 3 || adminForm.username.length > 20) {
-      alert(t.setup.usernameLengthError)
+      setNotice({ tone: 'error', message: t.setup.usernameLengthError })
       return
     }
 
     const usernameRegex = /^\w+$/
     if (!usernameRegex.test(adminForm.username)) {
-      alert(t.setup.usernameFormatError)
+      setNotice({ tone: 'error', message: t.setup.usernameFormatError })
       return
     }
 
-    if (adminForm.password.length < 8) {
-      alert(t.setup.passwordLengthError)
+    if (
+      adminForm.password.length < 8 ||
+      !/\p{L}/u.test(adminForm.password) ||
+      !/\p{N}/u.test(adminForm.password)
+    ) {
+      setNotice({ tone: 'error', message: t.setup.passwordComplexityError })
       return
     }
 
     if (adminForm.password !== adminForm.confirmPassword) {
-      alert(t.setup.passwordMismatch)
+      setNotice({ tone: 'error', message: t.setup.passwordMismatch })
       return
     }
 
@@ -279,27 +348,37 @@ const SetupWizard: React.FC = () => {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || t.setup.createAdminFailed)
+        throw new Error(
+          await getResponseError(response, t.setup.createAdminFailed),
+        )
       }
 
-      alert(t.setup.adminCreated)
+      setNotice({ tone: 'success', message: t.setup.adminCreated })
       setAdminCreated(true)
-      checkSetupStatus()
+      await checkSetupStatus()
     } catch (err: any) {
-      alert(`${t.setup.createFailed}: ${err.message}`)
+      setNotice({
+        tone: 'error',
+        message: `${t.setup.createFailed}: ${err.message}`,
+      })
     } finally {
       setCreatingAdmin(false)
     }
   }
 
   if (loading) {
-    return null
+    return (
+      <div className="setup-state-card glass" role="status">
+        <img src="/logo.webp" alt="Myriad" className="setup-state-logo" />
+        <Spinner size="md" />
+        <p>{t.setup.checkingStatus}</p>
+      </div>
+    )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="setup-flow flex w-full items-center justify-center">
         <div className="max-w-md w-full glass rounded-2xl shadow-xl p-6 sm:p-8 text-center">
           <div className="w-14 h-14 sm:w-16 sm:h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
             <FaExclamationTriangle className="text-2xl sm:text-3xl text-red-600 dark:text-red-400" />
@@ -311,7 +390,7 @@ const SetupWizard: React.FC = () => {
             {error}
           </p>
           <button
-            onClick={checkSetupStatus}
+            onClick={() => void checkSetupStatus()}
             className="px-6 py-3 text-white rounded-lg transition-colors setup-retry-button min-h-11 text-sm sm:text-base"
           >
             {t.setup.retry}
@@ -323,10 +402,50 @@ const SetupWizard: React.FC = () => {
 
   if (!status) return null
 
+  if (status.is_setup_required && !hasEnteredSetup) {
+    return (
+      <section
+        className="setup-welcome glass"
+        aria-labelledby="setup-welcome-title"
+      >
+        <div className="setup-welcome-glow" aria-hidden="true" />
+        <img src="/logo.webp" alt="Myriad" className="setup-welcome-logo" />
+        <div className="setup-welcome-copy">
+          <p className="setup-eyebrow">{t.setup.welcomeEyebrow}</p>
+          <h1 id="setup-welcome-title">{t.setup.welcomeTitle}</h1>
+          <p className="setup-welcome-description">{t.setup.welcomeDesc}</p>
+        </div>
+        <div className="setup-welcome-features">
+          <div>
+            <LuServer aria-hidden="true" />
+            <span>{t.setup.welcomeDatabase}</span>
+          </div>
+          <div>
+            <LuShieldCheck aria-hidden="true" />
+            <span>{t.setup.welcomeAdmin}</span>
+          </div>
+          <div>
+            <LuSparkles aria-hidden="true" />
+            <span>{t.setup.welcomeReady}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="setup-primary-button"
+          onClick={enterSetup}
+        >
+          <span>{t.setup.getStarted}</span>
+          <LuArrowRight aria-hidden="true" />
+        </button>
+        <p className="setup-welcome-footnote">{t.setup.welcomeFootnote}</p>
+      </section>
+    )
+  }
+
   // 如果设置完成，显示完成页面
   if (!status.is_setup_required) {
     return (
-      <div className="min-h-screen px-4 py-8 md:py-12 pb-24 md:pb-12">
+      <div className="setup-flow w-full py-8 md:py-12">
         <div className="max-w-4xl mx-auto">
           <div className="glass rounded-2xl shadow-xl p-6 sm:p-8 text-center">
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
@@ -351,11 +470,16 @@ const SetupWizard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen px-4 sm:px-6 py-8 md:py-12 pb-24 md:pb-12">
+    <div className="setup-flow w-full py-8 md:py-12">
       <div className="max-w-6xl mx-auto">
         {/* 进度标签栏 */}
         <div className="flex justify-center mb-4 md:mb-6">
           <div className="glass rounded-xl p-1.5 inline-flex gap-1 sm:gap-1.5 w-full sm:w-auto">
+            <div className="setup-step-completed flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold sm:flex-none sm:gap-2 sm:px-6 sm:text-sm">
+              <FaCheck className="text-green-600 dark:text-green-400" />
+              <span className="hidden sm:inline">{t.setup.welcomeStep}</span>
+              <span className="sm:hidden">{t.setup.welcomeStepShort}</span>
+            </div>
             <div
               className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${
                 !dbConfigured
@@ -391,10 +515,33 @@ const SetupWizard: React.FC = () => {
           </div>
         </div>
 
+        {notice && (
+          <div
+            className={`setup-notice setup-notice-${notice.tone}`}
+            role={notice.tone === 'error' ? 'alert' : 'status'}
+            aria-live="polite"
+          >
+            {notice.tone === 'success' ? (
+              <FaCheck aria-hidden="true" />
+            ) : notice.tone === 'error' ? (
+              <FaExclamationTriangle aria-hidden="true" />
+            ) : (
+              <LuInfo aria-hidden="true" />
+            )}
+            <span>{notice.message}</span>
+          </div>
+        )}
+
         <div className="space-y-6">
           {/* 数据库配置卡片 */}
           {!dbConfigured && (
-            <div className="glass rounded-xl p-4 md:p-5">
+            <form
+              className="glass rounded-xl p-4 md:p-5"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleSaveDbConfig()
+              }}
+            >
               <div className="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6">
                 <div className="flex-1 w-full md:w-auto">
                   <div className="flex items-center gap-3 mb-3 md:mb-4">
@@ -418,11 +565,11 @@ const SetupWizard: React.FC = () => {
                         <div className="flex items-start gap-2">
                           <FaExclamationTriangle className="text-amber-600 dark:text-amber-500 mt-0.5 shrink-0" />
                           <div>
-                            <p className="text-sm font-semibold text-amber-800 mb-1">
+                            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-1">
                               <LuWrench size={14} className="inline mr-1" />
                               {t.setup.configurationMode}
                             </p>
-                            <p className="text-xs text-amber-700">
+                            <p className="text-xs text-amber-700 dark:text-amber-300">
                               {t.setup.configurationModeDesc}
                             </p>
                           </div>
@@ -431,17 +578,17 @@ const SetupWizard: React.FC = () => {
                     )}
 
                     {/* 配置表单 */}
-                    <div className="bg-white/50 rounded-lg p-4 border border-gray-200/50">
+                    <div className="setup-form-surface bg-white/50 rounded-lg p-4 border border-gray-200/50">
                       <h3 className="font-semibold text-gray-800 mb-3 text-sm">
                         {t.setup.connectionInfo}
                       </h3>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">
                             {t.setup.host}
                           </label>
                           <input
-                            type="text"
+                            type="number"
                             value={dbConfig.host}
                             onChange={(e) =>
                               setDbConfig({ ...dbConfig, host: e.target.value })
@@ -463,6 +610,8 @@ const SetupWizard: React.FC = () => {
                             }
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             placeholder="5432"
+                            min={1}
+                            max={65535}
                             autoComplete="off"
                           />
                         </div>
@@ -502,7 +651,7 @@ const SetupWizard: React.FC = () => {
                             autoComplete="off"
                           />
                         </div>
-                        <div className="col-span-2">
+                        <div className="sm:col-span-2">
                           <label className="block text-xs font-medium text-gray-700 mb-1">
                             {t.auth.password}
                           </label>
@@ -526,8 +675,8 @@ const SetupWizard: React.FC = () => {
                     {/* 操作按钮 */}
                     <div className="flex gap-3">
                       <button
-                        onClick={handleSaveDbConfig}
-                        disabled={savingDb || !dbConfig.password}
+                        type="submit"
+                        disabled={savingDb}
                         className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg setup-save-button"
                       >
                         {savingDb ? (
@@ -549,12 +698,18 @@ const SetupWizard: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
+            </form>
           )}
 
           {/* 管理员账户卡片 */}
           {dbConfigured && !adminCreated && (
-            <div className="glass rounded-xl p-5">
+            <form
+              className="glass rounded-xl p-5"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleCreateAdmin()
+              }}
+            >
               <div className="flex items-start justify-between gap-6">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-4">
@@ -562,10 +717,10 @@ const SetupWizard: React.FC = () => {
                       <FaUser />
                     </div>
                     <div>
-                      <h2 className="text-lg font-bold text-gray-800">
+                      <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
                         {t.setup.adminAccount}
                       </h2>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {t.setup.adminAccountDesc}
                       </p>
                     </div>
@@ -574,21 +729,22 @@ const SetupWizard: React.FC = () => {
                   <div className="space-y-4">
                     {/* 数据库表初始化提示 */}
                     {status && !status.has_database && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-lg p-3">
                         <div className="flex items-start gap-2">
-                          <FaDatabase className="text-blue-600 mt-0.5 shrink-0" />
+                          <FaDatabase className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
                           <div className="flex-1">
-                            <p className="text-sm font-semibold text-blue-800 mb-2">
+                            <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
                               <LuClipboardList
                                 size={14}
                                 className="inline mr-1"
                               />
                               {t.setup.initDatabase}
                             </p>
-                            <p className="text-xs text-blue-700 mb-3">
+                            <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
                               {t.setup.initDatabaseDesc}
                             </p>
                             <button
+                              type="button"
                               onClick={handleMigrateDatabase}
                               disabled={migratingDb}
                               className="w-full py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-migrate-button"
@@ -613,18 +769,18 @@ const SetupWizard: React.FC = () => {
                     {status && status.has_database && (
                       <>
                         {/* 说明 */}
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                          <p className="text-sm text-blue-800 mb-2">
+                        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-lg p-3">
+                          <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
                             {t.setup.adminAccountFullDesc}
                           </p>
-                          <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                          <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1 list-disc list-inside">
                             <li>{t.setup.adminUsernameHint}</li>
                             <li>{t.setup.adminPasswordHint}</li>
                           </ul>
                         </div>
 
                         {/* 表单 */}
-                        <div className="bg-white/50 rounded-lg p-4 border border-gray-200/50">
+                        <div className="setup-form-surface bg-white/50 rounded-lg p-4 border border-gray-200/50">
                           <div className="space-y-3">
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -688,7 +844,7 @@ const SetupWizard: React.FC = () => {
 
                         {/* 创建按钮 */}
                         <button
-                          onClick={handleCreateAdmin}
+                          type="submit"
                           disabled={creatingAdmin}
                           className="w-full py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-create-admin-button"
                         >
@@ -708,7 +864,7 @@ const SetupWizard: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
+            </form>
           )}
         </div>
       </div>

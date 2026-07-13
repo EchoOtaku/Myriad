@@ -12,6 +12,9 @@ pub struct UpdaterStateFile {
 
     /// Currently running business deploy tag (release or commit/branch).
     pub current_version: Option<DeployTag>,
+    /// Git commit backing the currently running business deploy, when resolved.
+    #[serde(default)]
+    pub current_commit_sha: Option<String>,
     /// Updater binary's own release version (always v-semver when known).
     pub updater_version: Option<MyriadVersion>,
     pub last_checked_at: Option<DateTime<Utc>>,
@@ -40,6 +43,7 @@ impl Default for UpdaterStateFile {
         Self {
             schema_version: 1,
             current_version: None,
+            current_commit_sha: None,
             updater_version: None,
             last_checked_at: None,
             channel: "stable".into(),

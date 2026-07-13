@@ -716,6 +716,65 @@ pub async fn verify_tapp_ownership(
     Ok(())
 }
 
+/// 验证当前可访问的 Tapp 安装记录确实获得了指定权限。
+///
+/// 角色级权限下放只能说明调用者角色可以使用该能力；这里再检查安装时授权，
+/// 防止客户端伪造 tapp_id 绕过 manifest/granted_permissions。
+pub async fn verify_tapp_granted_permission(
+    db: &DatabaseConnection,
+    user_id: i32,
+    tapp_id: &str,
+    permission: TappPermission,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    verify_tapp_ownership(db, user_id, tapp_id).await?;
+    let admin_id = get_admin_user_id(db).await?;
+    let mut candidates = tapps::Entity::find()
+        .filter(tapps::Column::TappId.eq(tapp_id))
+        .all(db)
+        .await
+        .map_err(|error| {
+            tracing::error!("[TAPP] Failed to load granted permissions: {}", error);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
+        })?;
+    candidates.sort_by_key(|tapp| {
+        if tapp.user_id == user_id {
+            0
+        } else if tapp.user_id == admin_id {
+            1
+        } else {
+            2
+        }
+    });
+    let Some(tapp) = candidates.first() else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Tapp not found" })),
+        ));
+    };
+    let granted = tapp
+        .granted_permissions
+        .as_array()
+        .is_some_and(|permissions| {
+            permissions
+                .iter()
+                .any(|value| value.as_str() == Some(permission.as_str()))
+        });
+    if !granted {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Permission denied",
+                "message": format!("Tapp was not granted '{}'", permission.as_str()),
+                "code": "TAPP_PERMISSION_NOT_GRANTED"
+            })),
+        ));
+    }
+    Ok(())
+}
+
 /// 从 Claims 解析 user_id
 pub fn parse_user_id(claims: &Claims) -> Result<i32, (StatusCode, Json<Value>)> {
     claims.sub.parse().map_err(|_| {

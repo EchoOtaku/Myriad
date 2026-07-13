@@ -82,6 +82,8 @@ export interface UpdaterStatus {
   schema_version: number
   updater_version: string
   current_version: string | null
+  /** Exact source commit backing current_version, when resolved. */
+  current_commit_sha?: string | null
   channel: string
   /** release | commit — present on updater ≥ channel/mode support */
   update_mode?: UpdateMode

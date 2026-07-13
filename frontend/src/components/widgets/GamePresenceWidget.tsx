@@ -543,6 +543,23 @@ const GamePresenceWidget = memo(
         return
       }
       let cancelled = false
+      let hasData = false
+      let retryTimer: number | null = null
+
+      // 初次加载失败不该在错误态卡满 6 小时（后端错误只缓存 30s，多半是
+      // Enka 抖动或刚配置好 UID）：60s 后静默重试，拿到数据即恢复
+      const scheduleRetry = () => {
+        if (cancelled || retryTimer != null) return
+        retryTimer = window.setTimeout(() => {
+          retryTimer = null
+          if (cancelled) return
+          if (document.hidden) {
+            scheduleRetry()
+            return
+          }
+          void load(false)
+        }, 60 * 1000)
+      }
 
       const load = async (isInitial: boolean) => {
         if (isInitial) {
@@ -553,12 +570,15 @@ const GamePresenceWidget = memo(
         if (cancelled) return
         if (isInitial) setLoading(false)
         if (d) {
+          hasData = true
           setData(d)
           setError(null)
-        } else if (isInitial) {
-          // 后台轮询失败时保留上一次的数据，避免闪成错误态
+        } else if (!hasData) {
+          // 还没有任何可展示的数据：进入错误态并安排短周期重试；
+          // 有旧数据时后台轮询失败则静默保留，避免闪成错误态
           setData(null)
           setError(tw.fetchFailed)
+          scheduleRetry()
         }
       }
 
@@ -571,6 +591,7 @@ const GamePresenceWidget = memo(
 
       return () => {
         cancelled = true
+        if (retryTimer != null) window.clearTimeout(retryTimer)
         window.clearInterval(intervalId)
       }
     }, [accountId, game, locale, isPreview, tw.fetchFailed])

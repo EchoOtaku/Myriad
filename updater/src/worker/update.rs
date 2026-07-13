@@ -232,6 +232,7 @@ pub async fn run(
     rec.enter(Phase::SwappingProxy, "updater.phase.swapping_proxy")?;
     let mut st = worker.state().read_updater()?;
     st.current_version = Some(target.clone());
+    st.current_commit_sha = pre.target_commit_sha.clone();
     st.updater_version = MyriadVersion::parse(crate::self_version()).ok();
     worker.state().write_updater(&st)?;
     rec.finish_step_ok()?;
@@ -260,9 +261,12 @@ pub async fn run(
 async fn pin_last_good_images(worker: &Arc<Worker>, previous_tag: &str) -> Result<()> {
     const PIN_TAG: &str = "myriad-last-good";
     let env = EnvFile::load(&worker.cli().env_file)?;
-    let backend = env.get("BACKEND_IMAGE").map(|s| s.to_string()).ok_or_else(|| {
-        UpdaterError::Precondition("BACKEND_IMAGE missing; cannot pin last-good".into())
-    })?;
+    let backend = env
+        .get("BACKEND_IMAGE")
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            UpdaterError::Precondition("BACKEND_IMAGE missing; cannot pin last-good".into())
+        })?;
     let frontend = env
         .get("FRONTEND_IMAGE")
         .map(|s| s.to_string())
@@ -304,7 +308,11 @@ async fn finish_with_rollback(
             rec.finalize(JobStatus::Failed)?;
             let mut st = worker.state().read_updater()?;
             if let Some(v) = restored.or_else(|| rec.from_version.clone()) {
+                let version_changed = st.current_version.as_ref() != Some(&v);
                 st.current_version = Some(v);
+                if version_changed {
+                    st.current_commit_sha = None;
+                }
             }
             st.last_failed_update = Some(crate::state::FailedUpdate {
                 from_version: rec.from_version.clone(),
@@ -369,11 +377,7 @@ fn swap_tag(worker: &Arc<Worker>, new_tag: &str) -> Result<String> {
     Ok(prev)
 }
 
-async fn health_probe(
-    worker: &Arc<Worker>,
-    target: &DeployTag,
-    deadline: Duration,
-) -> Result<()> {
+async fn health_probe(worker: &Arc<Worker>, target: &DeployTag, deadline: Duration) -> Result<()> {
     let start = std::time::Instant::now();
     let mut ok_streak = 0;
     while start.elapsed() < deadline {

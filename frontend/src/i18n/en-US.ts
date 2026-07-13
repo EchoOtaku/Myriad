@@ -170,6 +170,18 @@ export const enUS: TranslationKeys = {
   // Setup Wizard
   setup: {
     title: 'System Setup',
+    welcomeEyebrow: 'First-time setup',
+    welcomeTitle: 'Welcome to Myriad',
+    welcomeDesc:
+      'Bring the data scattered across your platforms into one place that is truly yours. Connect PostgreSQL and create an administrator to get started.',
+    welcomeDatabase: 'Connect your PostgreSQL database',
+    welcomeAdmin: 'Create a secure administrator',
+    welcomeReady: 'Start exploring when setup is done',
+    welcomeFootnote: 'Setup usually takes only a few minutes',
+    getStarted: 'Start setup',
+    welcomeStep: 'Welcome',
+    welcomeStepShort: 'Welcome',
+    checkingStatus: 'Checking system status...',
     databaseConfig: 'Database Configuration',
     databaseConfigDesc:
       'Configure PostgreSQL database connection and run migrations',
@@ -202,9 +214,12 @@ export const enUS: TranslationKeys = {
     creating: 'Creating...',
     adminUsernameHint:
       'Username: 3-20 characters, letters, numbers and underscores only',
-    adminPasswordHint: 'Password: at least 8 characters',
+    adminPasswordHint:
+      'Password: at least 8 characters with both letters and numbers',
     passwordMismatch: 'Passwords do not match',
     enterDbPassword: 'Please enter database password',
+    dbFieldsRequired: 'Complete all database connection fields',
+    invalidPort: 'Database port must be an integer from 1 to 65535',
     dbConfigSaved: 'Database configuration saved!',
     dbReconnecting: 'Backend is restarting and connecting to database...',
     waitingForConnection:
@@ -230,6 +245,8 @@ export const enUS: TranslationKeys = {
     usernameFormatError:
       'Username can only contain letters, numbers and underscores',
     passwordLengthError: 'Password must be at least 8 characters',
+    passwordComplexityError:
+      'Password must be at least 8 characters and contain both letters and numbers',
     adminCreated: 'Admin account created successfully!',
     createAdminFailed: 'Failed to create admin account',
     createFailed: 'Creation failed',
@@ -237,7 +254,7 @@ export const enUS: TranslationKeys = {
       'Create local admin account with full system management privileges',
     saveHint:
       'Tip: Backend restarts after saving so the full route table is loaded',
-    atLeast8Chars: 'At least 8 characters',
+    atLeast8Chars: 'At least 8 characters with letters and numbers',
     enterPasswordAgain: 'Enter password again',
   },
 
@@ -962,6 +979,9 @@ export const enUS: TranslationKeys = {
     tabFont: 'Font',
     tabSize: 'Size',
     tabColor: 'Color',
+    tabSurface: 'Card',
+    tabGlow: 'Glow',
+    tabPreset: 'Preset',
     // Color options
     colorPrimary: 'Primary',
     colorSecondary: 'Secondary',
@@ -974,6 +994,15 @@ export const enUS: TranslationKeys = {
     sizeLarge: 'Large',
     sizeXLarge: 'X-Large',
     sizeXXLarge: 'XX-Large',
+    // Widget surface options
+    surfaceGlass: 'Glass',
+    surfaceSolid: 'Solid',
+    surfaceFlat: 'Airy',
+    surfaceOutline: 'Outline',
+    // Widget glow options
+    glowIdentity: 'Accent glow',
+    glowPrimary: 'Theme glow',
+    glowNone: 'No glow',
   },
 
   // Home

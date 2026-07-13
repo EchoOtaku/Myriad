@@ -32,6 +32,7 @@ import {
 import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
 import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
 import { GlowBackground } from './shared/GlowBackground'
+import { WidgetShell } from './shared/WidgetShell'
 
 export interface TappWidgetProps extends WidgetComponentProps {
   /** Tapp Widget 完整 ID (tapp.{tappId}.{widgetId}) */
@@ -269,89 +270,76 @@ const TappWidgetPreview = memo(
       : 'bg-linear-to-br from-indigo-500 to-purple-600'
 
     return (
-      <div
-        className="relative w-full h-full rounded-xl overflow-hidden glass"
+      <WidgetShell
+        padding={12}
         style={{ pointerEvents: 'none' }}
-      >
-        {/* 背景渐变 */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            background: `linear-gradient(135deg, ${themeColor}, transparent 60%)`,
-          }}
-        />
-
-        {/* 光晕背景 */}
-        <GlowBackground
-          color={themeColor}
-          animLevel={animLevel}
-          shouldAnimate={false}
-          variant="single"
-          size={isLarge ? 'lg' : 'md'}
-          opacity={0.15}
-        />
-
-        {/* 主内容 */}
-        <div
-          className={`relative z-10 h-full flex ${isCompact ? 'items-center justify-center' : 'flex-col justify-center items-center'} p-3`}
-        >
-          {/* 图标 */}
-          <div
-            className={`${iconBgClass} flex items-center justify-center text-white shadow-lg relative overflow-hidden shrink-0 ${
-              isCompact
-                ? 'w-8 h-8 rounded-lg'
-                : isLarge
-                  ? 'w-14 h-14 rounded-xl mb-3'
-                  : 'w-10 h-10 rounded-xl mb-2'
-            }`}
-            style={iconBgStyle}
-          >
-            <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
-            <TappIcon
-              icon={previewInfo?.icon}
-              iconSvg={previewInfo?.iconSvg}
-              name={previewInfo?.name || 'Widget'}
-              sizeClass={
-                isCompact ? 'w-5 h-5' : isLarge ? 'w-8 h-8' : 'w-6 h-6'
-              }
-              textSizeClass={
-                isCompact ? 'text-lg' : isLarge ? 'text-2xl' : 'text-xl'
-              }
-              className="relative z-10"
+        contentClassName={`flex ${isCompact ? 'items-center justify-center' : 'flex-col justify-center items-center'}`}
+        background={
+          <>
+            <GlowBackground
+              color={themeColor}
+              animLevel={animLevel}
+              shouldAnimate={false}
+              variant="single"
+              size={isLarge ? 'lg' : 'md'}
+              opacity={0.15}
             />
-          </div>
-
-          {/* 文本信息 - 紧凑模式不显示 */}
-          {!isCompact && (
-            <div className="text-center w-full px-2">
-              <div
-                className={`font-bold text-gray-800 dark:text-gray-100 truncate ${isLarge ? 'text-base mb-1' : 'text-sm'}`}
-              >
-                {previewInfo?.name || 'Widget'}
-              </div>
-
-              {/* 大尺寸显示描述 */}
-              {isLarge && previewInfo?.description && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
-                  {previewInfo.description}
-                </div>
-              )}
-
-              {/* Tapp 名称 - 仅大尺寸显示 */}
-              {isLarge && previewInfo?.tappName && (
-                <div className="mt-2 flex items-center justify-center gap-1.5">
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-gray-500 dark:text-gray-400">
-                    {previewInfo.tappName}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+            {/* 边框效果 */}
+            <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-black/5 dark:ring-white/10 pointer-events-none" />
+          </>
+        }
+      >
+        {/* 图标 */}
+        <div
+          className={`${iconBgClass} flex items-center justify-center text-white shadow-lg relative overflow-hidden shrink-0 ${
+            isCompact
+              ? 'w-8 h-8 rounded-lg'
+              : isLarge
+                ? 'w-14 h-14 rounded-xl mb-3'
+                : 'w-10 h-10 rounded-xl mb-2'
+          }`}
+          style={iconBgStyle}
+        >
+          <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
+          <TappIcon
+            icon={previewInfo?.icon}
+            iconSvg={previewInfo?.iconSvg}
+            name={previewInfo?.name || 'Widget'}
+            sizeClass={isCompact ? 'w-5 h-5' : isLarge ? 'w-8 h-8' : 'w-6 h-6'}
+            textSizeClass={
+              isCompact ? 'text-lg' : isLarge ? 'text-2xl' : 'text-xl'
+            }
+            className="relative z-10"
+          />
         </div>
 
-        {/* 边框效果 */}
-        <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-black/5 dark:ring-white/10 pointer-events-none" />
-      </div>
+        {/* 文本信息 - 紧凑模式不显示 */}
+        {!isCompact && (
+          <div className="text-center w-full px-2">
+            <div
+              className={`font-bold text-gray-800 dark:text-gray-100 truncate ${isLarge ? 'text-base mb-1' : 'text-sm'}`}
+            >
+              {previewInfo?.name || 'Widget'}
+            </div>
+
+            {/* 大尺寸显示描述 */}
+            {isLarge && previewInfo?.description && (
+              <div className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
+                {previewInfo.description}
+              </div>
+            )}
+
+            {/* Tapp 名称 - 仅大尺寸显示 */}
+            {isLarge && previewInfo?.tappName && (
+              <div className="mt-2 flex items-center justify-center gap-1.5">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-gray-500 dark:text-gray-400">
+                  {previewInfo.tappName}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </WidgetShell>
     )
   },
 )
@@ -703,82 +691,73 @@ export const TappWidgetComponent = memo(
         : 'bg-linear-to-br from-indigo-500 to-purple-600'
 
       return (
-        <div
-          ref={containerRef}
-          className="relative w-full h-full rounded-xl overflow-hidden glass"
+        <WidgetShell
+          containerRef={containerRef}
+          padding={{ x: 16, y: 0 }}
           style={pointerEventsStyle}
-        >
-          {/* 背景渐变 */}
-          <div
-            className="absolute inset-0 opacity-[0.05]"
-            style={{
-              background: `linear-gradient(135deg, ${themeColor}, transparent 60%)`,
-            }}
-          />
-
-          {/* 光晕背景 */}
-          <GlowBackground
-            color={themeColor}
-            animLevel={anim.level}
-            shouldAnimate={false}
-            variant="single"
-            size="md"
-            opacity={0.12}
-          />
-
-          {/* 主内容 */}
-          <div className="relative z-10 h-full flex flex-col items-center justify-center px-4">
-            {/* 图标 */}
-            <div
-              className={`w-12 h-12 ${iconBgClass} rounded-xl flex items-center justify-center text-white shadow-lg relative overflow-hidden mb-3`}
-              style={iconBgStyle}
-            >
-              <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
-              <TappIcon
-                icon={widget.config.icon || tappInstance.manifest.icon}
-                iconSvg={tappInstance.manifest.iconSvg}
-                name={widget.config.name || tappInstance.manifest.name}
-                sizeClass="w-7 h-7"
-                textSizeClass="text-2xl"
-                className="relative z-10"
+          contentClassName="flex flex-col items-center justify-center"
+          background={
+            <>
+              <GlowBackground
+                color={themeColor}
+                animLevel={anim.level}
+                shouldAnimate={false}
+                variant="single"
+                size="md"
+                opacity={0.12}
               />
-            </div>
-
-            {/* 名称 */}
-            <div className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 text-center">
-              {widget.config.name}
-            </div>
-
-            {/* 提示 */}
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-4 text-center">
-              需要启动 Tapp 以显示
-            </div>
-
-            {/* 操作按钮 */}
-            {!isEditMode && (
-              <div className="flex gap-2 justify-center">
-                <button
-                  onClick={handleStartTapp}
-                  className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-all shadow-sm hover:shadow-md"
-                  style={{
-                    background: `linear-gradient(135deg, ${themeColor}, color-mix(in srgb, ${themeColor} 80%, black))`,
-                  }}
-                >
-                  启动
-                </button>
-                <button
-                  onClick={handleGoToTapp}
-                  className="px-3 py-1.5 text-xs font-medium bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-gray-700 dark:text-gray-200 rounded-lg transition-colors"
-                >
-                  详情
-                </button>
-              </div>
-            )}
+              {/* 边框效果 */}
+              <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-black/5 dark:ring-white/10 pointer-events-none" />
+            </>
+          }
+        >
+          {/* 图标 */}
+          <div
+            className={`w-12 h-12 ${iconBgClass} rounded-xl flex items-center justify-center text-white shadow-lg relative overflow-hidden mb-3`}
+            style={iconBgStyle}
+          >
+            <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
+            <TappIcon
+              icon={widget.config.icon || tappInstance.manifest.icon}
+              iconSvg={tappInstance.manifest.iconSvg}
+              name={widget.config.name || tappInstance.manifest.name}
+              sizeClass="w-7 h-7"
+              textSizeClass="text-2xl"
+              className="relative z-10"
+            />
           </div>
 
-          {/* 边框效果 */}
-          <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-black/5 dark:ring-white/10 pointer-events-none" />
-        </div>
+          {/* 名称 */}
+          <div className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 text-center">
+            {widget.config.name}
+          </div>
+
+          {/* 提示 */}
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-4 text-center">
+            需要启动 Tapp 以显示
+          </div>
+
+          {/* 操作按钮 */}
+          {!isEditMode && (
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={handleStartTapp}
+                className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-all shadow-sm hover:shadow-md"
+                style={{
+                  background: `linear-gradient(135deg, ${themeColor}, color-mix(in srgb, ${themeColor} 80%, black))`,
+                }}
+              >
+                启动
+              </button>
+              <button
+                onClick={handleGoToTapp}
+                className="px-3 py-1.5 text-xs font-medium bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-gray-700 dark:text-gray-200 rounded-lg transition-colors"
+              >
+                详情
+              </button>
+            </div>
+          )}
+        </WidgetShell>
       )
     }
 

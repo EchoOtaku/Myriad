@@ -150,8 +150,8 @@ fn default_true() -> bool {
 pub struct NotificationDeliveryPreferences {
     #[serde(default = "default_true")]
     pub island: bool,
-    #[serde(default = "default_true")]
-    pub high_priority_toast: bool,
+    #[serde(default = "default_true", alias = "high_priority_toast")]
+    pub toast: bool,
     #[serde(default = "default_true")]
     pub browser: bool,
 }
@@ -160,7 +160,30 @@ impl Default for NotificationDeliveryPreferences {
     fn default() -> Self {
         Self {
             island: true,
-            high_priority_toast: true,
+            toast: true,
+            browser: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationLocationPreferences {
+    #[serde(default = "default_true")]
+    pub panel: bool,
+    #[serde(default = "default_true")]
+    pub toast: bool,
+    #[serde(default = "default_true")]
+    pub island: bool,
+    #[serde(default = "default_true")]
+    pub browser: bool,
+}
+
+impl Default for NotificationLocationPreferences {
+    fn default() -> Self {
+        Self {
+            panel: true,
+            toast: true,
+            island: true,
             browser: true,
         }
     }
@@ -176,6 +199,8 @@ pub struct NotificationPreferences {
     pub events: BTreeMap<String, bool>,
     #[serde(default)]
     pub delivery: NotificationDeliveryPreferences,
+    #[serde(default)]
+    pub locations: BTreeMap<String, NotificationLocationPreferences>,
 }
 
 impl Default for NotificationPreferences {
@@ -191,6 +216,10 @@ impl Default for NotificationPreferences {
                 .map(|event| (event.key.to_string(), true))
                 .collect(),
             delivery: NotificationDeliveryPreferences::default(),
+            locations: SOURCE_KEYS
+                .into_iter()
+                .map(|key| (key.to_string(), NotificationLocationPreferences::default()))
+                .collect(),
         }
     }
 }
@@ -225,6 +254,18 @@ impl NotificationPreferences {
                 })
                 .collect(),
             delivery: self.delivery,
+            locations: SOURCE_KEYS
+                .into_iter()
+                .map(|key| {
+                    (
+                        key.to_string(),
+                        self.locations
+                            .get(key)
+                            .cloned()
+                            .unwrap_or_else(NotificationLocationPreferences::default),
+                    )
+                })
+                .collect(),
         }
     }
 
@@ -346,6 +387,8 @@ mod tests {
         assert!(!preferences.events["agent.task_failed"]);
         assert!(preferences.events["brew.source_error"]);
         assert!(!preferences.sources.contains_key("removed"));
+        assert!(preferences.locations["agent"].toast);
+        assert!(!preferences.locations.contains_key("removed"));
     }
 
     #[test]
@@ -359,6 +402,23 @@ mod tests {
             .insert("brew.source_error".to_string(), false);
         assert!(!preferences.allows("brew.source_error"));
         assert!(preferences.allows("future.critical_event"));
+    }
+
+    #[test]
+    fn legacy_high_priority_toast_setting_migrates_to_unified_toast_switch() {
+        let preferences: NotificationPreferences = serde_json::from_value(serde_json::json!({
+            "delivery": {
+                "island": true,
+                "high_priority_toast": false,
+                "browser": true
+            }
+        }))
+        .unwrap();
+        let normalized = preferences.normalized();
+
+        assert!(!normalized.delivery.toast);
+        assert!(normalized.locations.values().all(|location| location.panel));
+        assert!(normalized.locations.values().all(|location| location.toast));
     }
 
     #[tokio::test]
@@ -387,12 +447,14 @@ mod tests {
         let mut changed = defaults;
         changed.sources.insert("brew".to_string(), false);
         changed.delivery.browser = false;
+        changed.locations.get_mut("brew").unwrap().panel = false;
         save(Some(&db), user_id, changed).await.unwrap();
         clear_cached_for_test(user_id).await;
 
         let restored = load(Some(&db), user_id).await;
         assert!(!restored.sources["brew"]);
         assert!(!restored.delivery.browser);
+        assert!(!restored.locations["brew"].panel);
         assert!(!restored.allows("brew.source_error"));
 
         db.execute(Statement::from_sql_and_values(

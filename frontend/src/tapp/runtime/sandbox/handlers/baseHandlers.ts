@@ -9,6 +9,7 @@ import type { TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
 
 import type { TappNotificationOptions } from '../types'
+import notificationApi from '../../../../services/notificationApi'
 import * as TappApiService from '../../../services/TappApiService'
 import { sanitizeStorageValue, validateStorageKey } from '../security'
 
@@ -56,8 +57,8 @@ export function registerLifecycleHandlers(
  */
 export function registerUIHandlers(
   bridge: TappBridge,
+  tappInstance: TappInstance,
   getLocale?: () => string,
-  onNotification?: (options: TappNotificationOptions) => void,
 ): void {
   bridge.registerHandler('ui.getTheme', async () => {
     const isDark = document.documentElement.classList.contains('dark')
@@ -82,21 +83,27 @@ export function registerUIHandlers(
 
   bridge.registerHandler('ui.showNotification', async (message) => {
     const [options] = (message.payload as { args: unknown[] }).args || []
-    if (onNotification && options) {
-      const opts = options as {
-        title?: string
-        message?: string
-        type?: string
-        duration?: number
-      }
-      onNotification({
+    if (!options) {
+      return { success: false, error: 'Notification options required' }
+    }
+    const opts = options as TappNotificationOptions
+    try {
+      const notificationId = await notificationApi.publishTapp({
+        tapp_id: tappInstance.id,
         title: opts.title || 'Tapp 通知',
         message: opts.message || '',
-        type: (opts.type as 'success' | 'info' | 'warning' | 'error') || 'info',
-        duration: opts.duration,
+        notification_type: opts.type || 'info',
       })
+      return { success: true, data: { notificationId } }
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to publish notification',
+      }
     }
-    return { success: true, data: null }
   })
 
   bridge.registerHandler('ui.confirm', async (message) => {

@@ -95,17 +95,17 @@ pub async fn rollback(ctx: &Context, snapshot_id: &str) -> Result<()> {
         if let Ok(v) = crate::version::DeployTag::parse(tag) {
             let mut st = ctx.state.read_updater()?;
             st.current_version = Some(v);
+            st.current_commit_sha = None;
             ctx.state.write_updater(&st)?;
         }
     }
 
     ctx.state.clear_maintenance()?;
     ctx.state.set_current_job(None)?;
-    ctx.state
-        .append_history(&format!(
-            "rescue rollback to snapshot {snapshot_id} (tag={})",
-            prev_tag.as_deref().unwrap_or("unchanged")
-        ))?;
+    ctx.state.append_history(&format!(
+        "rescue rollback to snapshot {snapshot_id} (tag={})",
+        prev_tag.as_deref().unwrap_or("unchanged")
+    ))?;
     info!("rescue rollback complete");
     Ok(())
 }

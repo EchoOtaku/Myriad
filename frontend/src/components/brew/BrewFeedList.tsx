@@ -181,7 +181,7 @@ export default function BrewFeedList({
   if (items.length === 0 && !loading) {
     return (
       <div className="flex flex-col items-start py-8">
-        <div className="rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 flex items-center gap-3 px-5 py-3">
+        <div className="rounded-2xl glass-surface glass-90 border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 flex items-center gap-3 px-5 py-3">
           <div className="w-9 h-9 rounded-xl bg-gray-100/80 dark:bg-white/5 flex items-center justify-center text-gray-400 dark:text-gray-500 shrink-0">
             <FileText className="w-5.5 h-5.5" />
           </div>

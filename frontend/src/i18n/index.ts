@@ -168,6 +168,17 @@ export interface TranslationKeys {
   // 设置向导
   setup: {
     title: string
+    welcomeEyebrow: string
+    welcomeTitle: string
+    welcomeDesc: string
+    welcomeDatabase: string
+    welcomeAdmin: string
+    welcomeReady: string
+    welcomeFootnote: string
+    getStarted: string
+    welcomeStep: string
+    welcomeStepShort: string
+    checkingStatus: string
     databaseConfig: string
     databaseConfigDesc: string
     adminAccount: string
@@ -198,6 +209,8 @@ export interface TranslationKeys {
     adminPasswordHint: string
     passwordMismatch: string
     enterDbPassword: string
+    dbFieldsRequired: string
+    invalidPort: string
     dbConfigSaved: string
     dbReconnecting: string
     waitingForConnection: string
@@ -218,6 +231,7 @@ export interface TranslationKeys {
     usernameLengthError: string
     usernameFormatError: string
     passwordLengthError: string
+    passwordComplexityError: string
     adminCreated: string
     createAdminFailed: string
     createFailed: string
@@ -834,6 +848,9 @@ export interface TranslationKeys {
     tabFont: string
     tabSize: string
     tabColor: string
+    tabSurface: string
+    tabGlow: string
+    tabPreset: string
     // 颜色选项
     colorPrimary: string
     colorSecondary: string
@@ -846,6 +863,15 @@ export interface TranslationKeys {
     sizeLarge: string
     sizeXLarge: string
     sizeXXLarge: string
+    // 小组件表面选项
+    surfaceGlass: string
+    surfaceSolid: string
+    surfaceFlat: string
+    surfaceOutline: string
+    // 小组件光晕选项
+    glowIdentity: string
+    glowPrimary: string
+    glowNone: string
   }
 
   // 首页

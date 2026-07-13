@@ -23,6 +23,7 @@ mod declared_api;
 mod events;
 mod media;
 mod metrics;
+mod notifications;
 mod platform;
 mod reports;
 mod shortcuts;
@@ -69,6 +70,9 @@ pub use events::{get_event_subscriptions, publish_event, update_event_subscripti
 
 // Metrics API
 pub use metrics::{get_rate_limit_status, get_tapp_metrics, reset_tapp_metrics};
+
+// Notifications API
+pub use notifications::create_tapp_notification;
 
 // Declared API System
 pub use declared_api::{execute_tapp_api, invalidate_tapp_apis_cache, list_tapp_apis};

@@ -109,6 +109,10 @@ enum CachedResult {
 struct CacheEntry {
     result: CachedResult,
     fetched_at: Instant,
+    /// live presence（在线状态/正在玩）上次刷新时间。
+    /// Xbox / PSN 报告卡把这个接口当实时状态用，presence 部分单独走短 TTL；
+    /// 其余平台（Enka 展柜）没有 live 数据，该字段恒等于 fetched_at。
+    presence_refreshed_at: Instant,
 }
 
 static PRESENCE_CACHE: OnceLock<Mutex<HashMap<String, CacheEntry>>> = OnceLock::new();
@@ -119,6 +123,10 @@ fn cache_map() -> &'static Mutex<HashMap<String, CacheEntry>> {
 
 /// 展柜/成就类数据变化以天计，6 小时一次足够新鲜
 const CACHE_TTL: Duration = Duration::from_secs(6 * 3600);
+/// Xbox / PSN 的 live presence 短 TTL：前端报告卡 120s 轮询在线状态，
+/// 必须明显短于轮询间隔缓存才有意义。刷新只花 1 次上游调用
+/// （身份/GS/奖杯沿用 6h 快照），配额由 credential-spend guard 兜底。
+const PRESENCE_TTL: Duration = Duration::from_secs(90);
 /// 失败结果（无效 id / 上游拒绝等）缓存更短，避免一直被当活的打上游，
 /// 但也不会因为长期缓存把后来纠正过的 id 也一直判定失败。
 const ERROR_CACHE_TTL: Duration = Duration::from_secs(30);
@@ -127,27 +135,65 @@ fn cache_key(platform: &str, id: &str, game: &str, lang: &str) -> String {
     format!("{}:{}:{}:{}", platform.to_ascii_lowercase(), id, game, lang)
 }
 
-fn read_cache(key: &str) -> Option<CachedResult> {
-    let guard = cache_map().lock().ok()?;
-    let entry = guard.get(key)?;
-    let ttl = match &entry.result {
-        CachedResult::Ok(_) => CACHE_TTL,
-        CachedResult::Err(_) => ERROR_CACHE_TTL,
+enum CacheLookup {
+    Hit(CachedResult),
+    /// 快照仍新鲜，但 live presence 过期：由本次请求负责单独刷新。
+    /// 返回前已抢占更新时间戳，并发请求只有第一个会打上游，其余先用旧 presence。
+    RefreshPresence(Box<GamePresenceData>),
+    Miss,
+}
+
+fn read_cache(key: &str, has_live_presence: bool) -> CacheLookup {
+    let Ok(mut guard) = cache_map().lock() else {
+        return CacheLookup::Miss;
     };
-    if entry.fetched_at.elapsed() < ttl {
-        Some(entry.result.clone())
-    } else {
-        None
+    let Some(entry) = guard.get_mut(key) else {
+        return CacheLookup::Miss;
+    };
+    match &entry.result {
+        CachedResult::Err(_) => {
+            if entry.fetched_at.elapsed() < ERROR_CACHE_TTL {
+                CacheLookup::Hit(entry.result.clone())
+            } else {
+                CacheLookup::Miss
+            }
+        }
+        CachedResult::Ok(data) => {
+            if entry.fetched_at.elapsed() >= CACHE_TTL {
+                return CacheLookup::Miss;
+            }
+            if has_live_presence
+                && !data.degraded
+                && entry.presence_refreshed_at.elapsed() >= PRESENCE_TTL
+            {
+                entry.presence_refreshed_at = Instant::now();
+                return CacheLookup::RefreshPresence(data.clone());
+            }
+            CacheLookup::Hit(entry.result.clone())
+        }
+    }
+}
+
+/// presence 单独刷新成功后回写缓存（不动 fetched_at，快照 6h 过期节奏不变）
+fn update_cached_presence(key: &str, presence: &GamePresenceInfo) {
+    if let Ok(mut guard) = cache_map().lock() {
+        if let Some(entry) = guard.get_mut(key) {
+            if let CachedResult::Ok(data) = &mut entry.result {
+                data.presence = Some(presence.clone());
+            }
+        }
     }
 }
 
 fn store_cache(key: &str, result: CachedResult) {
     if let Ok(mut guard) = cache_map().lock() {
+        let now = Instant::now();
         guard.insert(
             key.to_string(),
             CacheEntry {
                 result,
-                fetched_at: Instant::now(),
+                fetched_at: now,
+                presence_refreshed_at: now,
             },
         );
         // 简单上限，避免无限增长
@@ -267,19 +313,42 @@ pub async fn get_game_presence(
     };
 
     let key = cache_key(&platform, &account_id, &game, lang);
-    if let Some(cached) = read_cache(&key) {
-        return Ok(Json(match cached {
-            CachedResult::Ok(data) => ApiResponse {
+    let has_live_presence = matches!(platform.as_str(), "xbox" | "psn" | "playstation");
+    match read_cache(&key, has_live_presence) {
+        CacheLookup::Hit(cached) => {
+            return Ok(Json(match cached {
+                CachedResult::Ok(data) => ApiResponse {
+                    success: true,
+                    data: Some(*data),
+                    message: "ok (cache)".to_string(),
+                },
+                CachedResult::Err(msg) => ApiResponse {
+                    success: false,
+                    data: None,
+                    message: msg,
+                },
+            }));
+        }
+        CacheLookup::RefreshPresence(mut data) => {
+            let refreshed = match platform.as_str() {
+                "xbox" => refresh_xbox_presence(&data).await,
+                _ => refresh_psn_presence(&data).await,
+            };
+            match refreshed {
+                Ok(presence) => {
+                    update_cached_presence(&key, &presence);
+                    data.presence = Some(presence);
+                }
+                // 刷新失败就先给旧 presence，下个 PRESENCE_TTL 窗口再试
+                Err(e) => tracing::debug!("presence refresh failed ({key}): {e}"),
+            }
+            return Ok(Json(ApiResponse {
                 success: true,
                 data: Some(*data),
-                message: "ok (cache)".to_string(),
-            },
-            CachedResult::Err(msg) => ApiResponse {
-                success: false,
-                data: None,
-                message: msg,
-            },
-        }));
+                message: "ok (cache+presence)".to_string(),
+            }));
+        }
+        CacheLookup::Miss => {}
     }
 
     let result = match platform.as_str() {
@@ -622,18 +691,92 @@ async fn parse_enka_zzz(uid: &str, lang: &str, body: &Value) -> Result<GamePrese
 // Xbox via OpenXBL
 // ---------------------------------------------------------------------------
 
+/// 优先读 DB 配置（配置页保存后即时生效），env 作为回退
+async fn xbox_api_key() -> String {
+    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+    config
+        .openxbl_api_key
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("OPENXBL_API_KEY").ok())
+        .or_else(|| std::env::var("XBL_API_KEY").ok())
+        .unwrap_or_default()
+}
+
+/// 解析 OpenXBL presence 响应（数组 / 对象两种形态），返回 (state, 正在玩的标题)
+fn parse_xbox_presence(pres_raw: Value) -> (Option<String>, Option<String>) {
+    let pres = openxbl_unwrap_content(pres_raw);
+    let node = pres
+        .as_array()
+        .and_then(|a| a.first())
+        .cloned()
+        .unwrap_or(pres);
+    let status = node
+        .get("state")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let mut title: Option<String> = None;
+    if let Some(devices) = node.get("devices").and_then(|v| v.as_array()) {
+        // 多设备同时在线时（比如手机开着 Xbox App、主机在玩游戏），
+        // 一旦某个设备给出 Full/Fill 占位的 title 就认定是"正在玩"，
+        // 不能让后面设备的 title 再覆盖掉——所以命中后要跳出外层循环，
+        // 而不只是内层的 titles 循环。
+        'devices: for dev in devices {
+            if let Some(titles) = dev.get("titles").and_then(|v| v.as_array()) {
+                for t in titles {
+                    let name = t.get("name").and_then(|v| v.as_str());
+                    let placement = t.get("placement").and_then(|v| v.as_str());
+                    if placement == Some("Full") || placement == Some("Fill") {
+                        if let Some(n) = name {
+                            title = Some(n.to_string());
+                            break 'devices;
+                        }
+                    }
+                    if title.is_none() {
+                        if let Some(n) = name {
+                            if n != "Home" {
+                                title = Some(n.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    (status, title)
+}
+
+/// 仅刷新 Xbox live presence：1 次上游调用，身份 / GS 沿用 6h 快照
+async fn refresh_xbox_presence(data: &GamePresenceData) -> Result<GamePresenceInfo, String> {
+    let xuid = data.identity.id.trim();
+    // 快照没解析出 xuid 时 identity.id 是 gamertag，无法走 presence 端点
+    if xuid.is_empty() || !xuid.chars().all(|c| c.is_ascii_digit()) {
+        return Err("no xuid in cached snapshot".to_string());
+    }
+    let api_key = xbox_api_key().await;
+    if api_key.trim().is_empty() {
+        return Err("OPENXBL_API_KEY not configured".to_string());
+    }
+    if !try_spend_credential_call(Platform::Xbox) {
+        return Err("Xbox credential budget exhausted".to_string());
+    }
+    let presence_url = format!("https://xbl.io/api/v2/presence/{xuid}");
+    let pres_raw = http_get_json_with_header(
+        &presence_url,
+        "Myriad/1.0 (game-presence)",
+        &[("X-Authorization", api_key.as_str())],
+    )
+    .await?;
+    let (status, title) = parse_xbox_presence(pres_raw);
+    Ok(GamePresenceInfo {
+        status: status.unwrap_or_else(|| "Unknown".into()),
+        title,
+        detail: None,
+    })
+}
+
 async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
-    // 优先读 DB 配置（配置页保存后即时生效），env 作为回退
-    let api_key = {
-        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
-        config
-            .openxbl_api_key
-            .clone()
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| std::env::var("OPENXBL_API_KEY").ok())
-            .or_else(|| std::env::var("XBL_API_KEY").ok())
-            .unwrap_or_default()
-    };
+    let api_key = xbox_api_key().await;
 
     if api_key.trim().is_empty() {
         // 降级：仅返回标识 + 公开主页链接
@@ -742,44 +885,9 @@ async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
         )
         .await
         {
-            let pres = openxbl_unwrap_content(pres_raw);
-            // Array or object
-            let node = pres
-                .as_array()
-                .and_then(|a| a.first())
-                .cloned()
-                .unwrap_or(pres);
-            presence_status = node
-                .get("state")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            if let Some(devices) = node.get("devices").and_then(|v| v.as_array()) {
-                // 多设备同时在线时（比如手机开着 Xbox App、主机在玩游戏），
-                // 一旦某个设备给出 Full/Fill 占位的 title 就认定是"正在玩"，
-                // 不能让后面设备的 title 再覆盖掉——所以命中后要跳出外层循环，
-                // 而不只是内层的 titles 循环。
-                'devices: for dev in devices {
-                    if let Some(titles) = dev.get("titles").and_then(|v| v.as_array()) {
-                        for t in titles {
-                            let name = t.get("name").and_then(|v| v.as_str());
-                            let placement = t.get("placement").and_then(|v| v.as_str());
-                            if placement == Some("Full") || placement == Some("Fill") {
-                                if let Some(n) = name {
-                                    presence_title = Some(n.to_string());
-                                    break 'devices;
-                                }
-                            }
-                            if presence_title.is_none() {
-                                if let Some(n) = name {
-                                    if n != "Home" {
-                                        presence_title = Some(n.to_string());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            let (status, title) = parse_xbox_presence(pres_raw);
+            presence_status = status;
+            presence_title = title;
         }
 
         // Account details for gamerscore / avatar if missing
@@ -863,17 +971,116 @@ async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
 // PlayStation (optional server NPSSO)
 // ---------------------------------------------------------------------------
 
-async fn fetch_psn(online_id: &str) -> Result<GamePresenceData, String> {
-    // 优先读 DB 配置（配置页保存后即时生效），env 作为回退
-    let npsso = {
-        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
-        config
-            .psn_npsso
-            .clone()
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| std::env::var("PSN_NPSSO").ok())
-            .unwrap_or_default()
+/// 优先读 DB 配置（配置页保存后即时生效），env 作为回退
+async fn psn_npsso() -> String {
+    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+    config
+        .psn_npsso
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("PSN_NPSSO").ok())
+        .unwrap_or_default()
+}
+
+/// legacy profile2 的 presences[0] → (onlineStatus, titleName)
+fn parse_psn_legacy_presence(profile: &Value) -> (Option<String>, Option<String>) {
+    let pres = profile
+        .get("presences")
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first());
+    let status = pres
+        .and_then(|p| p.get("onlineStatus"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let title = pres
+        .and_then(|p| p.get("titleName"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    (status, title)
+}
+
+/// basicPresences 响应 → (onlineStatus, titleName)
+fn parse_psn_basic_presence(pres: &Value) -> (Option<String>, Option<String>) {
+    let Some(bp) = pres.get("basicPresence") else {
+        return (None, None);
     };
+    let status = bp
+        .get("primaryPlatformInfo")
+        .and_then(|p| p.get("onlineStatus"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            bp.get("availability")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        });
+    let title = bp
+        .get("gameTitleInfoList")
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first())
+        .and_then(|t| t.get("titleName"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    (status, title)
+}
+
+/// 仅刷新 PSN live presence：1 次上游调用，奖杯 / 头像沿用 6h 快照
+async fn refresh_psn_presence(data: &GamePresenceData) -> Result<GamePresenceInfo, String> {
+    let npsso = psn_npsso().await;
+    if npsso.trim().is_empty() {
+        return Err("PSN_NPSSO not configured".to_string());
+    }
+    if !try_spend_credential_call(Platform::Psn) {
+        return Err("PSN credential budget exhausted".to_string());
+    }
+    let access_token = get_psn_access_token(&npsso).await?;
+    let auth = format!("Bearer {access_token}");
+
+    // 快照走过 search 回退路径时 identity.id 是纯数字 accountId
+    // （online ID 必须以字母开头，不会与之混淆），直接查 basicPresences
+    let account_id = data.identity.id.trim();
+    if !account_id.is_empty() && account_id.chars().all(|c| c.is_ascii_digit()) {
+        let url = format!(
+            "https://m.np.playstation.com/api/userProfile/v1/internal/users/{account_id}/basicPresences?type=primary"
+        );
+        let pres = http_get_json_with_header(
+            &url,
+            "Myriad/1.0 (game-presence)",
+            &[("Authorization", &auth)],
+        )
+        .await?;
+        let (status, title) = parse_psn_basic_presence(&pres);
+        return Ok(GamePresenceInfo {
+            status: status.unwrap_or_else(|| "Unknown".into()),
+            title,
+            detail: None,
+        });
+    }
+
+    // 否则快照来自 legacy profile2：identity.name 就是 onlineId，同一端点一次调用带回 presence
+    let url = format!(
+        "https://us-prof.np.community.playstation.net/userProfile/v1/users/{}/profile2?fields=onlineId,primaryOnlineStatus,presences(@titleInfo,hasBroadcastData)",
+        urlencoding_simple(&data.identity.name)
+    );
+    let legacy = http_get_json_with_header(
+        &url,
+        "Myriad/1.0 (game-presence)",
+        &[("Authorization", &auth)],
+    )
+    .await?;
+    let profile = legacy
+        .get("profile")
+        .ok_or_else(|| "profile2 response missing profile".to_string())?;
+    let (status, title) = parse_psn_legacy_presence(profile);
+    Ok(GamePresenceInfo {
+        status: status.unwrap_or_else(|| "Unknown".into()),
+        title,
+        detail: None,
+    })
+}
+
+async fn fetch_psn(online_id: &str) -> Result<GamePresenceData, String> {
+    let npsso = psn_npsso().await;
 
     if npsso.trim().is_empty() {
         return Ok(GamePresenceData {
@@ -959,20 +1166,9 @@ async fn fetch_psn(online_id: &str) -> Result<GamePresenceData, String> {
                     .and_then(|e| e.get("platinum"))
                     .and_then(|v| v.as_i64().map(|n| n.to_string()));
             }
-            if let Some(pres) = p
-                .get("presences")
-                .and_then(|v| v.as_array())
-                .and_then(|a| a.first())
-            {
-                presence_status = pres
-                    .get("onlineStatus")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                presence_title = pres
-                    .get("titleName")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-            }
+            let (status, title) = parse_psn_legacy_presence(p);
+            presence_status = status;
+            presence_title = title;
         }
     } else {
         // Fallback: search users
@@ -1047,25 +1243,9 @@ async fn fetch_psn(online_id: &str) -> Result<GamePresenceData, String> {
             )
             .await
             {
-                if let Some(bp) = pres.get("basicPresence") {
-                    presence_status = bp
-                        .get("primaryPlatformInfo")
-                        .and_then(|p| p.get("onlineStatus"))
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                        .or_else(|| {
-                            bp.get("availability")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string())
-                        });
-                    presence_title = bp
-                        .get("gameTitleInfoList")
-                        .and_then(|v| v.as_array())
-                        .and_then(|a| a.first())
-                        .and_then(|t| t.get("titleName"))
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                }
+                let (status, title) = parse_psn_basic_presence(&pres);
+                presence_status = status;
+                presence_title = title;
             }
         }
     }

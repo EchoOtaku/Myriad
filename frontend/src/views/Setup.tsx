@@ -11,7 +11,7 @@ export default function Setup() {
   useSetupScheduler()
 
   return (
-    <AnimatedView className="min-h-screen flex items-center justify-center px-4 pt-20">
+    <AnimatedView className="min-h-screen flex items-center justify-center px-4 pt-20 pb-16">
       <SetupWizard />
     </AnimatedView>
   )

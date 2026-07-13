@@ -11,7 +11,7 @@
  * 换成本组件即可获得一致的保护区，内容排版通过 `contentClassName` 传入。
  */
 
-import type { CSSProperties, ReactNode, Ref } from 'react'
+import type { CSSProperties, ElementType, ReactNode, Ref } from 'react'
 
 /** 安全区基准内边距（px，会乘以 scale） */
 export const WIDGET_SAFE_PADDING = 14
@@ -34,6 +34,12 @@ export interface WidgetShellProps {
   className?: string
   style?: CSSProperties
   containerRef?: Ref<HTMLDivElement>
+  /** 根节点组件，默认 'div'；可传 motion.div 以支持根级交互动画 */
+  as?: ElementType
+  /** 透传给根节点的额外 props（事件处理器、motion 动画属性等） */
+  rootProps?: Record<string, unknown>
+  /** 是否渲染表面底（默认 true；内嵌进已有外壳的容器时关掉） */
+  glass?: boolean
 }
 
 function cx(...parts: (string | false | undefined)[]): string {
@@ -50,18 +56,24 @@ export function WidgetShell({
   className,
   style,
   containerRef,
+  as: Root = 'div',
+  rootProps,
+  glass = true,
 }: WidgetShellProps) {
   const px = typeof padding === 'number' ? padding : padding.x
   const py = typeof padding === 'number' ? padding : padding.y
 
   return (
-    <div
+    <Root
       ref={containerRef}
       className={cx(
-        'relative h-full w-full overflow-hidden rounded-xl glass',
+        // 表面主题由全局 html[data-surface] 驱动 .glass，无需在此挂类
+        'relative h-full w-full overflow-hidden rounded-xl',
+        glass && 'glass',
         className,
       )}
       style={style}
+      {...rootProps}
     >
       {background}
       <div
@@ -74,6 +86,6 @@ export function WidgetShell({
       >
         {children}
       </div>
-    </div>
+    </Root>
   )
 }

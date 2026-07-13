@@ -26,6 +26,11 @@ import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
+  notificationSourceFor,
+  notificationToastType,
+  shouldDeliverNotification,
+} from '../services/notificationDelivery'
+import {
   getGreeting,
   getRandomQuote,
   getWeatherInfo,
@@ -37,7 +42,6 @@ import { showToast } from '../utils/toastManager'
 import { UserSection } from './ControlPanel/UserSection'
 import NotificationPanelList from './NotificationPanelList'
 import {
-  notificationSourceFor,
   NotificationSourceIcon,
   notificationSourceIconAsset,
 } from './notifications/NotificationIcons'
@@ -183,16 +187,21 @@ const GlobalControlPanel: React.FC = () => {
   // 页面恢复可见时，应用所有暂存的更新
   useEffect(() => {
     if (isPageVisible && pendingUpdatesRef.current.length > 0) {
+      // 先截取并清空队列，再把稳定快照交给 React。
+      // setState 的函数式 updater 不保证在调用点同步执行；若在其外部先清空
+      // pendingUpdatesRef，稍后执行的 updater 会读到空数组，导致后台期间积累的
+      // 问候语、天气、通知等更新全部丢失。
+      const pendingUpdates = pendingUpdatesRef.current
+      pendingUpdatesRef.current = []
+
       // 合并所有暂存的更新
       setDynamicContents((prev) => {
         let result = prev
-        for (const updater of pendingUpdatesRef.current) {
+        for (const updater of pendingUpdates) {
           result = updater(result)
         }
         return result
       })
-      // 清空暂存
-      pendingUpdatesRef.current = []
     }
   }, [isPageVisible])
 
@@ -216,7 +225,7 @@ const GlobalControlPanel: React.FC = () => {
     [],
   )
 
-  /** 新通知到达：轮播展示 + 高优先级 toast + 后台系统通知 */
+  /** 新通知到达：按统一投递策略分发到面板之外的展示位置。 */
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
       const source = notificationSourceFor(n)
@@ -226,7 +235,7 @@ const GlobalControlPanel: React.FC = () => {
       const snippet = n.body.length > 60 ? `${n.body.slice(0, 60)}…` : n.body
 
       // 1. 接入智能岛轮播（置顶展示，20 秒后自动撤下）
-      if (notificationPreferences.delivery.island) {
+      if (shouldDeliverNotification(notificationPreferences, n, 'island')) {
         safeSetDynamicContents((prev) => [
           {
             type: 'notification',
@@ -248,35 +257,34 @@ const GlobalControlPanel: React.FC = () => {
         }, 20000)
       }
 
-      // 2. 高优先级走全局 toast（复用 ToastContainer，点击跳转通知 tab）
-      if (
-        notificationPreferences.delivery.high_priority_toast &&
-        (n.priority === 'high' || n.priority === 'urgent')
-      ) {
-        const isFailure =
-          n.notification_type === 'task_failed' ||
-          n.notification_type === 'brew_source_error' ||
-          n.metadata?.status === 'failed' ||
-          n.metadata?.tapp_notification_type === 'error' ||
-          n.metadata?.tapp_notification_type === 'danger'
+      // 2. 所有允许投递到 Toast 的通知都走同一全局容器。
+      // 通知优先级只决定视觉类型，不再决定通知是否展示。
+      if (shouldDeliverNotification(notificationPreferences, n, 'toast')) {
+        const showInPanel = shouldDeliverNotification(
+          notificationPreferences,
+          n,
+          'panel',
+        )
         showToast({
           title: n.title,
           message: snippet,
-          type: isFailure || n.priority === 'urgent' ? 'error' : 'warning',
+          type: notificationToastType(n),
           duration: 6000,
           showCloseButton: true,
-          onClick: () => {
-            setPanelTab('notifications')
-            // 复用既有的打开面板事件（已展开时该监听为 no-op，只切 tab）
-            window.dispatchEvent(new CustomEvent('open-control-panel'))
-          },
+          onClick: showInPanel
+            ? () => {
+                setPanelTab('notifications')
+                // 复用既有的打开面板事件（已展开时该监听为 no-op，只切 tab）
+                window.dispatchEvent(new CustomEvent('open-control-panel'))
+              }
+            : undefined,
         })
       }
 
       // 3. 页面在后台时推浏览器系统通知
       if (
         document.hidden &&
-        notificationPreferences.delivery.browser &&
+        shouldDeliverNotification(notificationPreferences, n, 'browser') &&
         typeof Notification !== 'undefined' &&
         Notification.permission === 'granted'
       ) {
@@ -292,13 +300,20 @@ const GlobalControlPanel: React.FC = () => {
         }
       }
     },
-    [notificationPreferences.delivery, safeSetDynamicContents],
+    [notificationPreferences, safeSetDynamicContents],
+  )
+
+  const includeNotificationInPanel = useCallback(
+    (notification: AppNotification) =>
+      shouldDeliverNotification(notificationPreferences, notification, 'panel'),
+    [notificationPreferences],
   )
 
   const notifCenter = useNotificationCenter({
     enabled: !!user,
     userId: user?.id,
     onNew: handleNewNotification,
+    includeInPanel: includeNotificationInPanel,
   })
   const { loaded: notifLoaded, loadHistory: loadNotifHistory } = notifCenter
 
@@ -745,49 +760,75 @@ const GlobalControlPanel: React.FC = () => {
   // 动态内容轮播（带淡入淡出效果）- 仅在有有效内容时运行
   useEffect(() => {
     // 在以下情况禁用轮播：展开面板 / 悬停 / 有效内容为空 / 页面隐藏
-    if (validContents.length === 0 || isExpanded || isHovering) return
+    if (validContents.length === 0 || isExpanded || isHovering) {
+      // 若依赖恰好在 300ms 淡出窗口内变化，上一轮 effect 会取消换页定时器；
+      // 此处必须同步撤销淡出，否则内容会一直停留在 hidden 状态。
+      setIsTransitioning(false)
+      return
+    }
 
-    let timerId: number | null = null
+    let cycleTimerId: number | null = null
+    let swapTimerId: number | null = null
+    let revealTimerId: number | null = null
     let cancelled = false
+
+    const clearTimers = () => {
+      if (cycleTimerId !== null) {
+        clearTimeout(cycleTimerId)
+        cycleTimerId = null
+      }
+      if (swapTimerId !== null) {
+        clearTimeout(swapTimerId)
+        swapTimerId = null
+      }
+      if (revealTimerId !== null) {
+        clearTimeout(revealTimerId)
+        revealTimerId = null
+      }
+    }
 
     const cycle = () => {
       if (cancelled || document.hidden) return
       setIsTransitioning(true)
-      timerId = window.setTimeout(() => {
+      swapTimerId = window.setTimeout(() => {
+        swapTimerId = null
         if (cancelled) return
         setCurrentContentIndex((prev) => (prev + 1) % validContents.length)
         // 稍等一帧后开始淡入，确保内容已更新
-        window.setTimeout(setIsTransitioning, 80, false)
+        revealTimerId = window.setTimeout(() => {
+          revealTimerId = null
+          if (!cancelled) setIsTransitioning(false)
+        }, 80)
         // 下一次循环：延长停留时间到 15秒，低端设备 30秒
         const base = 15000
         const nextDelay = Math.round(base * (anim.durationScale || 1))
-        timerId = window.setTimeout(cycle, nextDelay)
+        cycleTimerId = window.setTimeout(cycle, nextDelay)
       }, 300)
     }
 
     // 首次延迟启动，等待 6 秒后开始轮播
     const startDelay = Math.round(6000 * (anim.durationScale || 1))
-    timerId = window.setTimeout(cycle, startDelay)
+    cycleTimerId = window.setTimeout(cycle, startDelay)
 
     const handleVisibility = () => {
       if (document.hidden) {
-        // 页面隐藏时清除定时器
-        if (timerId) {
-          clearTimeout(timerId)
-          timerId = null
-        }
+        // 页面隐藏时中止完整过渡，避免停在已淡出但尚未换页的中间态
+        clearTimers()
+        setIsTransitioning(false)
       } else if (!cancelled) {
         // 页面重新可见时重新启动轮播
-        if (timerId) clearTimeout(timerId)
+        clearTimers()
+        setIsTransitioning(false)
         const restartDelay = Math.round(2000 * (anim.durationScale || 1))
-        timerId = window.setTimeout(cycle, restartDelay)
+        cycleTimerId = window.setTimeout(cycle, restartDelay)
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
       cancelled = true
-      if (timerId) clearTimeout(timerId)
+      clearTimers()
+      setIsTransitioning(false)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [validContents.length, isExpanded, isHovering, anim.durationScale])

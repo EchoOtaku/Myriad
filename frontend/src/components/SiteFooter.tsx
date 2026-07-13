@@ -9,10 +9,8 @@ import React, { memo, useEffect, useState } from 'react'
 
 import { API_URL } from '../config'
 import { fetchJson } from '../utils/apiHelper'
+import { getBuildInfo } from '../utils/buildInfo'
 import './SiteFooter.css'
-
-// Myriad 版本号 - 从 package.json 读取
-const MYRIAD_VERSION = __APP_VERSION__ || '0.1.0'
 
 interface SiteConfig {
   site_icp?: string
@@ -98,6 +96,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
   ({ isHomePage = false }) => {
     const [config, setConfig] = useState<SiteConfig | null>(null)
     const [isMobile, setIsMobile] = useState(false)
+    const buildInfo = getBuildInfo()
 
     // 检测移动端（带防抖，避免拖拽窗口时频繁 setState）
     useEffect(() => {
@@ -209,7 +208,19 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
           {/* 版本号 */}
           <div className="footer-version">
             <span className="version-label">Myriad</span>
-            <span className="version-number">v{MYRIAD_VERSION}</span>
+            {buildInfo.commitUrl ? (
+              <a
+                className="version-number version-link"
+                href={buildInfo.commitUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                title={buildInfo.commitSha ?? undefined}
+              >
+                {buildInfo.version} · {buildInfo.commitSha?.slice(0, 7)}
+              </a>
+            ) : (
+              <span className="version-number">{buildInfo.version}</span>
+            )}
           </div>
 
           {/* 分隔符 */}

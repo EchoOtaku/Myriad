@@ -13,6 +13,7 @@ const description = 'A myriad of lights, in one place.'
 // Build-time version stamp consumed by the Myriad updater health probe.
 // Falls back to `dev` outside of release builds.
 const myriadVersion = import.meta.env.PUBLIC_MYRIAD_VERSION || 'dev'
+const myriadCommit = import.meta.env.PUBLIC_MYRIAD_COMMIT_SHA || ''
 ---
 
 <!doctype html>
@@ -32,6 +33,7 @@ const myriadVersion = import.meta.env.PUBLIC_MYRIAD_VERSION || 'dev'
     <!-- Build-time version stamp; consumed by the Myriad updater health probe to detect
          stale browser caches after an upgrade. -->
     <meta name="myriad-version" content={myriadVersion} />
+    <meta name="myriad-commit" content={myriadCommit} />
 
     <!-- Astro 6 内置 Fonts API: 全部字体自托管，消除 Google Fonts 外部请求 -->
     <!-- 主体字体（预加载） -->

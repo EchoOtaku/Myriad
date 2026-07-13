@@ -779,7 +779,7 @@ export default function BrewSourceGrid({
         />
 
         <div className="flex flex-col items-start py-8">
-          <div className="rounded-2xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 flex items-center gap-3 px-5 py-3">
+          <div className="rounded-2xl glass-surface glass-90 border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 flex items-center gap-3 px-5 py-3">
             <div className="w-9 h-9 rounded-xl bg-gray-100/80 dark:bg-white/5 flex items-center justify-center text-gray-400 dark:text-gray-500 shrink-0">
               <Rss className="w-5.5 h-5.5" />
             </div>
@@ -864,7 +864,7 @@ export default function BrewSourceGrid({
                     className="col-span-1 md:col-span-2 xl:col-span-3 flex items-center gap-2 pt-6 pb-1 first:pt-0"
                     style={{ gridRow: 'span 2' }}
                   >
-                    <span className="px-3 py-1.5 rounded-lg bg-white/60 dark:bg-black/40 backdrop-blur-sm text-[13px] font-medium text-gray-600 dark:text-gray-300 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+                    <span className="px-3 py-1.5 rounded-lg glass-surface glass-60 text-[13px] font-medium text-gray-600 dark:text-gray-300 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
                       {currentCategory}
                       <span className="ml-1.5 text-[11px] text-gray-400 dark:text-gray-500">
                         {

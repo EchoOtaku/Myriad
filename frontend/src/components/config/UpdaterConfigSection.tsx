@@ -39,6 +39,7 @@ import './UpdaterConfigSection.css'
 
 const POLL_INTERVAL = 4_000
 const TEMPLATE_RE = /\{(\w+)\}/g
+const COMMIT_URL = 'https://github.com/Myriad-You/Myriad/commit/'
 
 type U = ReturnType<typeof useI18n>['t']['config']
 
@@ -950,7 +951,20 @@ function StatusHero({
         <span>
           {u.updaterCurrentVersion}{' '}
           {status?.current_version ? (
-            <code>{status.current_version}</code>
+            <>
+              <code>{status.current_version}</code>
+              {status.current_commit_sha && (
+                <a
+                  className="updater-commit-link"
+                  href={`${COMMIT_URL}${status.current_commit_sha}`}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title={status.current_commit_sha}
+                >
+                  {status.current_commit_sha.slice(0, 7)}
+                </a>
+              )}
+            </>
           ) : (
             <em>{u.updaterUnknown}</em>
           )}

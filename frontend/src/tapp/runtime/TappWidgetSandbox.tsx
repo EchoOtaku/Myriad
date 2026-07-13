@@ -544,7 +544,7 @@ export const TappWidgetSandbox = memo(
       // 注册处理器（Widget 只需要基础 API）
       const permission = new TappPermissionController(currentTappInstance)
       registerLifecycleHandlers(bridge, currentTappInstance, handleReady)
-      registerUIHandlers(bridge)
+      registerUIHandlers(bridge, currentTappInstance)
       registerStorageHandlers(bridge, currentTappInstance.id)
       registerFileHandlers(bridge)
       registerWidgetAIHandler(bridge, permission, currentTappInstance.id)
