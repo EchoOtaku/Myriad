@@ -21,6 +21,7 @@ import type { WidgetGlowMode, WidgetSurface } from './useWidgetTheme'
 
 import { useEffect, useRef, useState } from 'react'
 import { listAllComponentsByType } from '../tapp/services/TappApiService'
+import { GLOW_OPTIONS, SURFACE_OPTIONS } from './useWidgetTheme'
 
 // ==================== 类型 ====================
 
@@ -32,22 +33,18 @@ export interface SafeTappTheme {
   glow?: WidgetGlowMode
 }
 
-const VALID_SURFACES: readonly WidgetSurface[] = [
-  'glass',
-  'solid',
-  'flat',
-  'outline',
-]
-const VALID_GLOWS: readonly WidgetGlowMode[] = ['identity', 'primary', 'none']
+// 白名单从选项配置派生，新增表面/光晕模式时自动跟上
+const VALID_SURFACES = new Set<WidgetSurface>(SURFACE_OPTIONS.map((o) => o.id))
+const VALID_GLOWS = new Set<WidgetGlowMode>(GLOW_OPTIONS.map((o) => o.id))
 
 function asSurface(v: unknown): WidgetSurface | undefined {
-  return typeof v === 'string' && VALID_SURFACES.includes(v as WidgetSurface)
+  return typeof v === 'string' && VALID_SURFACES.has(v as WidgetSurface)
     ? (v as WidgetSurface)
     : undefined
 }
 
 function asGlow(v: unknown): WidgetGlowMode | undefined {
-  return typeof v === 'string' && VALID_GLOWS.includes(v as WidgetGlowMode)
+  return typeof v === 'string' && VALID_GLOWS.has(v as WidgetGlowMode)
     ? (v as WidgetGlowMode)
     : undefined
 }

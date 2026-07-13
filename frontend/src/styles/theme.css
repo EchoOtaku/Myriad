@@ -135,12 +135,59 @@ html.dark {
   --surface-shadow: none;
 }
 
-/* 描边：极淡背景（保证内容可读，非纯透明）+ 明显边框 */
+/* 描边：极淡背景（保证内容可读，非纯透明）+ 克制的细边框 */
 :root[data-surface='outline'] {
   --surface-alpha: 20%;
-  --surface-border: var(--border-hover);
+  --surface-border: var(--border-color);
   --surface-filter: blur(3px);
   --surface-shadow: none;
+}
+
+/* 流体玻璃（Liquid Glass 风格）：低模糊高透底（透出壁纸细节）吸附壁纸主色 +
+   噪点微纹理（磨砂质感，兼消渐变色带）+ 顶部浸润高光 + 镜面高光边 +
+   底部暗色发丝线（玻璃厚度）+ 双层投影（贴地短影 + 环境长影）+
+   边缘色散弯光环（见下方 liquid 环规则） */
+:root[data-surface='liquid'] {
+  /* 背景分三层令牌，--surface-bg 只组合一次；明暗/chrome 各自只覆盖需要的一层：
+     noise 磨砂纹理（明暗通用）· sheen 顶部浸润高光 · tint 吸色玻璃底 */
+  --surface-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)'/%3E%3C/svg%3E");
+  --surface-sheen: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 14%),
+    rgb(255 255 255 / 0%) 45%
+  );
+  --surface-tint: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb) / 55%),
+    var(--color-primary) 5%
+  );
+  --surface-bg:
+    var(--surface-noise) repeat, var(--surface-sheen), var(--surface-tint);
+  --surface-filter: blur(12px) saturate(200%) brightness(1.06);
+  --surface-border: rgb(255 255 255 / 55%);
+  --surface-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 45%), inset 0 -1px 0 rgb(0 0 0 / 6%),
+    0 2px 6px -2px rgb(31 38 135 / 12%), 0 16px 48px -16px rgb(31 38 135 / 20%);
+}
+
+/* 暗色流体 = 烟熏玻璃：压暗背景（brightness<1）而非提亮——
+   暗卡提亮背景会发灰泛白；只需覆盖 sheen/tint（--surface-bg 惰性求值自动取暗值） */
+html.dark[data-surface='liquid'] {
+  --surface-sheen: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 6%),
+    rgb(255 255 255 / 0%) 45%
+  );
+  --surface-tint: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb) / 64%),
+    var(--color-primary) 6%
+  );
+  --surface-filter: blur(12px) saturate(150%) brightness(0.88);
+  --surface-border: rgb(255 255 255 / 14%);
+  --surface-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 10%), inset 0 -1px 0 rgb(0 0 0 / 30%),
+    0 2px 6px -2px rgb(0 0 0 / 35%), 0 16px 48px -16px rgb(0 0 0 / 55%);
 }
 
 /* ============================================
@@ -159,7 +206,9 @@ html.dark {
 :root[data-surface] .control-bar-trigger,
 :root[data-surface] .site-footer-content,
 :root[data-surface] .arael-panel {
-  background: rgb(var(--surface-rgb) / var(--surface-alpha));
+  /* --surface-bg 是逃逸令牌：表面模式可用它声明任意背景表达式
+     （如 liquid 的 color-mix 吸色），未声明时回落到基色+透明度 */
+  background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
   backdrop-filter: var(--surface-filter);
 }
 
@@ -171,6 +220,75 @@ html.dark {
     background 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 内容密集的 chrome（控制面板信息岛 / Arael 面板）原生为 90%+ 不透明底，
+   流体的 55% 高透底会压穿其可读性——只覆盖 tint 一层升到 84% 不透明，
+   噪点/高光/滤镜/弯光环全部自动保留（基色随明暗自适应） */
+:root[data-surface='liquid'] .control-bar-trigger,
+:root[data-surface='liquid'] .arael-panel {
+  --surface-tint: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb) / 84%),
+    var(--color-primary) 4%
+  );
+}
+
+/* ============================================
+   流体玻璃的边缘弯光环
+   卡片边缘一圈角向渐变镜面环（顶部最亮、两侧收暗、底部回亮），
+   模拟玻璃边缘的光线弯折。纯绘制层渐变，零额外 backdrop 采样。
+   注意不能用嵌套 backdrop-filter 实现折射：父级玻璃自身就是
+   backdrop root，子层采样不到卡片背后的内容，只会渲染成乳白带。
+   mask-composite 不支持时静默退化为无环的流体观感；
+   排除 .fixed/.absolute 定位的玻璃（强制 relative 会破坏其锚定）。
+   ============================================ */
+@supports (mask-composite: exclude) {
+  :root[data-surface='liquid']
+    :is(.glass, .glass-surface):not(.fixed, .absolute) {
+    position: relative;
+  }
+
+  /* 环内掺极低透明度的冷蓝/暖橙/紫，模拟玻璃边缘色散 */
+  :root[data-surface='liquid']
+    :is(.glass, .glass-surface):not(.fixed, .absolute)::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 2px;
+    pointer-events: none;
+    background: conic-gradient(
+      from 0deg,
+      rgb(255 255 255 / 70%) 0deg,
+      rgb(205 230 255 / 34%) 45deg,
+      rgb(255 255 255 / 10%) 85deg,
+      rgb(255 236 220 / 16%) 168deg,
+      rgb(255 255 255 / 38%) 180deg,
+      rgb(255 255 255 / 10%) 275deg,
+      rgb(228 214 255 / 28%) 318deg,
+      rgb(255 255 255 / 70%) 360deg
+    );
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+
+  html.dark[data-surface='liquid']
+    :is(.glass, .glass-surface):not(.fixed, .absolute)::before {
+    background: conic-gradient(
+      from 0deg,
+      rgb(255 255 255 / 22%) 0deg,
+      rgb(185 215 255 / 12%) 45deg,
+      rgb(255 255 255 / 4%) 85deg,
+      rgb(255 230 210 / 6%) 168deg,
+      rgb(255 255 255 / 10%) 180deg,
+      rgb(255 255 255 / 4%) 275deg,
+      rgb(215 200 255 / 10%) 318deg,
+      rgb(255 255 255 / 22%) 360deg
+    );
+  }
 }
 
 /* .glass-surface 的透明度档位（默认 80%）：仅玻璃默认态生效，
@@ -215,7 +333,31 @@ html.dark .surface-swatch--glass {
 
 .surface-swatch--outline {
   background: color-mix(in srgb, var(--bg-secondary) 20%, transparent);
-  border: 1px solid var(--border-hover);
+  border: 1px solid var(--border-color);
+}
+
+.surface-swatch--liquid {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, rgb(255 255 255 / 70%), var(--color-primary) 12%),
+    rgb(255 255 255 / 35%)
+  );
+  border: 1px solid rgb(255 255 255 / 70%);
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 35%),
+    inset 0 1px 0 rgb(255 255 255 / 55%);
+}
+
+html.dark .surface-swatch--liquid {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, rgb(80 80 80 / 75%), var(--color-primary) 14%),
+    rgb(50 50 50 / 45%)
+  );
+  border: 1px solid rgb(255 255 255 / 28%);
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 14%),
+    inset 0 1px 0 rgb(255 255 255 / 18%);
 }
 
 /* 背景网格 */
@@ -298,12 +440,17 @@ html.dark ::placeholder {
 
   /* 移动端降级：仅影响玻璃默认态的令牌（非玻璃表面各自的令牌特异性更高，不受影响） */
   :root {
-    --surface-filter: blur(12px) saturate(180%);
+    --surface-filter: blur(8px) saturate(180%);
     --surface-shadow: 0 4px 16px 0 rgb(31 38 135 / 8%);
   }
 
   html.dark {
     --surface-shadow: 0 4px 16px 0 rgb(0 0 0 / 40%);
+  }
+
+  /* liquid 是最重的表面（大 blur 三连），移动端强制降回轻滤镜 */
+  :root[data-surface='liquid'] {
+    --surface-filter: blur(8px) saturate(180%);
   }
 }
 

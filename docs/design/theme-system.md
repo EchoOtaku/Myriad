@@ -9,7 +9,7 @@
 
 | 维度 | 取值 | 作用 |
 | --- | --- | --- |
-| **surface（表面）** | `glass` / `solid` / `flat` / `outline` | 卡片底的质感：玻璃 / 不透明纯色 / 半透明无模糊 / 极淡描边。作用于**全站**所有 `.glass` 组件 |
+| **surface（表面）** | `glass` / `solid` / `flat` / `outline` / `liquid` | 卡片底的质感：玻璃 / 不透明纯色 / 半透明无模糊 / 极淡描边 / 流体玻璃（Liquid Glass 风格：高透底吸附壁纸主色 + 镜面高光边 + 边缘弯光环）。作用于**全站**所有 `.glass` 组件 |
 | **glow（光晕）** | `identity` / `primary` / `none` | 小组件光晕取色：各组件身份色 / 统一主题色 / 关闭。仅作用于 `GlowBackground` |
 
 默认 `{ surface: 'glass', glow: 'identity' }` —— 等于系统引入前的历史观感，**零视觉回归**。
@@ -51,7 +51,28 @@
 }
 ```
 
-四种模式只调 `alpha` 与 `filter`：`glass` 80% / `solid` 100%+none / `flat` 65%+none / `outline` 20%+blur(3px)。
+基础四模式只调 `alpha` 与 `filter`：`glass` 80% / `solid` 100%+none / `flat` 65%+none / `outline` 20%+blur(3px)。
+
+**逃逸令牌 `--surface-bg`**：背景表达式默认 `rgb(rgb基色 / alpha)`，模式可用 `--surface-bg` 声明任意表达式覆盖。
+
+**`liquid` 的背景三层令牌**（`--surface-bg` 只组合一次，明暗/chrome 各自只覆盖需要的一层，靠 CSS 变量惰性求值自动取值）：
+- `--surface-noise`：SVG feTurbulence 磨砂纹理（~5% 白噪点，明暗通用，兼消渐变色带）
+- `--surface-sheen`：顶部浸润高光渐变（亮 14% / 暗 6%）
+- `--surface-tint`：吸色玻璃底 `color-mix(rgb基色, --color-primary)` —— 换壁纸自动换吸附色，纯 CSS
+
+低模糊 `blur(12px)` 让壁纸细节透出（比传统毛玻璃更"流体"）；`saturate(200%)` + 明暗分向 `brightness`
+（亮 1.06 提亮 / 暗 0.88 **压暗**——暗卡提亮会发灰泛白，故暗色走烟熏玻璃）；双层投影（贴地短影 + 环境长影）+
+底部暗色发丝线（`inset 0 -1px 0`，玻璃厚度感）。
+
+**`liquid` 的边缘色散弯光环**：`::before` 环形 mask + 角向 conic 渐变（顶部最亮、两侧收暗、底部回亮），
+掺极低透明度冷蓝/暖橙/紫模拟边缘色散。纯绘制层渐变，零额外 backdrop 采样，桌面移动通用。
+**不能用嵌套 backdrop-filter 做真折射**：父级玻璃自身就是 backdrop root，子层的 backdrop-filter
+采样不到卡片背后的内容，只会渲染成乳白带（已踩坑验证）。
+门控：`@supports (mask-composite: exclude)` + 排除 `.fixed`/`.absolute` 定位的玻璃
+（避免强制 relative 破坏锚定），不满足时静默退化为无环的流体观感。移动端重滤镜由专属媒体降级回 blur(8px)。
+
+**内容密集 chrome 变体**：控制面板信息岛 / Arael 面板原生 90%+ 不透明底，流体 55% 高透会压穿可读性 ——
+只覆盖 `--surface-tint` 一层升到 84% 不透明，噪点/高光/滤镜/弯光环全部自动保留。
 
 ---
 

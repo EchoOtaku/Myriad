@@ -977,6 +977,7 @@ export const jaJP: TranslationKeys = {
     surfaceSolid: 'ソリッド',
     surfaceFlat: 'ライト',
     surfaceOutline: 'アウトライン',
+    surfaceLiquid: 'リキッド',
     // ウィジェットグローオプション
     glowIdentity: 'アクセント光',
     glowPrimary: 'テーマ色光',

@@ -924,6 +924,7 @@ export const zhCN: TranslationKeys = {
     surfaceSolid: '纯色',
     surfaceFlat: '轻盈',
     surfaceOutline: '描边',
+    surfaceLiquid: '流体',
     // 小组件光晕选项
     glowIdentity: '彩色光晕',
     glowPrimary: '主题色光晕',

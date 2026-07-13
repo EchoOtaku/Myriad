@@ -22,7 +22,7 @@ import { getUIConfigDeduped } from '../utils/requestDedup'
 
 // ==================== 类型定义 ====================
 
-export type WidgetSurface = 'glass' | 'solid' | 'flat' | 'outline'
+export type WidgetSurface = 'glass' | 'solid' | 'flat' | 'outline' | 'liquid'
 export type WidgetGlowMode = 'identity' | 'primary' | 'none'
 
 interface WidgetThemeState {
@@ -41,6 +41,11 @@ export const SURFACE_OPTIONS: readonly {
   className: string
 }[] = Object.freeze([
   { id: 'glass', nameKey: 'surfaceGlass', className: 'surface-swatch--glass' },
+  {
+    id: 'liquid',
+    nameKey: 'surfaceLiquid',
+    className: 'surface-swatch--liquid',
+  },
   { id: 'solid', nameKey: 'surfaceSolid', className: 'surface-swatch--solid' },
   { id: 'flat', nameKey: 'surfaceFlat', className: 'surface-swatch--flat' },
   {

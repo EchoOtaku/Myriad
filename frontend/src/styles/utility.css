@@ -286,13 +286,6 @@
   animation: none !important;
 }
 
-/* 低帧率模式 - 全局降级 */
-.low-fps-mode [class*='backdrop-blur'],
-.low-fps-mode [class*='blur-'] {
-  backdrop-filter: none !important;
-  filter: none !important;
-}
-
 /* 滚动时降级（通过 JS 添加） */
 .is-scrolling [class*='transition-'] {
   transition-duration: 0s !important;

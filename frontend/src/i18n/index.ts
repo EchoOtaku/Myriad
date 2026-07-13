@@ -868,6 +868,7 @@ export interface TranslationKeys {
     surfaceSolid: string
     surfaceFlat: string
     surfaceOutline: string
+    surfaceLiquid: string
     // 小组件光晕选项
     glowIdentity: string
     glowPrimary: string

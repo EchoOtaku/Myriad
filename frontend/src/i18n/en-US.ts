@@ -999,6 +999,7 @@ export const enUS: TranslationKeys = {
     surfaceSolid: 'Solid',
     surfaceFlat: 'Airy',
     surfaceOutline: 'Outline',
+    surfaceLiquid: 'Liquid',
     // Widget glow options
     glowIdentity: 'Accent glow',
     glowPrimary: 'Theme glow',
