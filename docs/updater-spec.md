@@ -95,7 +95,7 @@ updater 唯一权威数据源。完整 JSON Schema 见 [release/release-schema.j
   },
   "postgres": {
     "min_pg_version": "15",
-    "max_pg_version": "16"
+    "max_pg_version": "unbounded"
   },
   "notes_url": "https://github.com/.../releases/tag/v1.2.3",
   "signature": null
@@ -107,6 +107,8 @@ updater 唯一权威数据源。完整 JSON Schema 见 [release/release-schema.j
 - `schema_version`：增量整数。updater 必须能解析自己 ≤ 的版本，更高版本拒绝。
 - `min_from_version`：禁止跨太多版本直接升，强制走中间版本。
 - `min_updater_version`：高于当前 updater → 拒绝业务更新，提示先升级 updater。
+- `postgres.min_pg_version`：唯一有效的 PostgreSQL 兼容边界；不设置上限。
+- `postgres.max_pg_version`：仅为兼容旧 updater 保留，可省略；`unbounded` 明确表示无上限。
 - `signature`：M2 启用 cosign 签名，M1 留 null。
 - 未知字段：updater 必须忽略不报错（向前兼容）。
 
@@ -157,9 +159,9 @@ services:
     depends_on: [postgres]
 
   postgres:
-    image: postgres:16
+    image: postgres:18
     volumes:
-      - ./pgdata:/var/lib/postgresql/data   # bind mount, 必须
+      - ./pgdata:/var/lib/postgresql        # PostgreSQL 18+ bind mount, 必须
 
   updater:
     image: <registry>/myriad-updater:${UPDATER_TAG}

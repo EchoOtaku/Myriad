@@ -1187,11 +1187,7 @@ async fn list_items(
     if !is_admin {
         sources_q = sources_q.filter(brew_sources::Column::AdminOnly.eq(false));
     }
-    let all_sources: Vec<i32> = sources_q
-        .into_tuple()
-        .all(&db)
-        .await
-        .unwrap_or_default();
+    let all_sources: Vec<i32> = sources_q.into_tuple().all(&db).await.unwrap_or_default();
 
     if all_sources.is_empty() {
         return (

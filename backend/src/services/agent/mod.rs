@@ -2811,8 +2811,7 @@ pub async fn ensure_agent_usage_allowed(
         return Ok(true);
     }
 
-    let prefs =
-        crate::api::config::load_module_visibility_preferences_for_agent(db).await;
+    let prefs = crate::api::config::load_module_visibility_preferences_for_agent(db).await;
     let visibility = prefs.agent_visibility();
     if visibility == "admin" {
         return Err("Agent 仅管理员可用".to_string());
@@ -2843,10 +2842,8 @@ fn agent_perm_to_tapp(perm: &str) -> Option<crate::services::permission_service:
         // 读（basic，默认全员）
         "brew:read" => Some(TappPermission::BrewRead),
         "report:read" => Some(TappPermission::ReportRead),
-        "platform:read" | "steam:read" | "bilibili:read" | "bangumi:read"
-        | "github:read" | "netease:read" | "weather:read" | "metadata:read" => {
-            Some(TappPermission::PlatformRead)
-        }
+        "platform:read" | "steam:read" | "bilibili:read" | "bangumi:read" | "github:read"
+        | "netease:read" | "weather:read" | "metadata:read" => Some(TappPermission::PlatformRead),
         "tapp:read" => Some(TappPermission::TappListRead),
         // 写 / 出站（elevated 或 privileged）
         "brew:write" => Some(TappPermission::BrewWrite),
@@ -2868,8 +2865,8 @@ pub async fn get_user_permissions(
     db: &sea_orm::DatabaseConnection,
     user_id: i32,
 ) -> std::collections::HashSet<String> {
-    use std::collections::HashSet;
     use crate::services::permission_service::{TappPermissionService, UserRole};
+    use std::collections::HashSet;
 
     // 系统用户或管理员：全部权限
     if user_is_current_admin(db, user_id).await {
@@ -2881,8 +2878,7 @@ pub async fn get_user_permissions(
             .collect();
     }
 
-    let prefs =
-        crate::api::config::load_module_visibility_preferences_for_agent(db).await;
+    let prefs = crate::api::config::load_module_visibility_preferences_for_agent(db).await;
     // 可见性 admin-only 时，非管理员无任何 agent 能力
     if prefs.agent_visibility() == "admin" {
         return HashSet::new();
@@ -3135,10 +3131,7 @@ mod tests {
     #[test]
     fn agent_perm_to_tapp_force_alignment_map() {
         use crate::services::permission_service::TappPermission;
-        assert_eq!(
-            agent_perm_to_tapp("ai:chat"),
-            Some(TappPermission::AiChat)
-        );
+        assert_eq!(agent_perm_to_tapp("ai:chat"), Some(TappPermission::AiChat));
         assert_eq!(
             agent_perm_to_tapp("ai:search"),
             Some(TappPermission::AiGenerate)

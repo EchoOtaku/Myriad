@@ -66,17 +66,17 @@ Manifest 顶层 `settings` 由整个 Tapp 共享；`widgets[].settings` 则为�
 
 渲染函数接收的 `props` 对象：
 
-| 属性           | 类型    | 说明                         |
-| -------------- | ------- | ---------------------------- |
-| `size`         | string  | 当前尺寸 ('1x1', '2x2' 等)   |
+| 属性           | 类型    | 说明                          |
+| -------------- | ------- | ----------------------------- |
+| `size`         | string  | 当前尺寸 ('1x1', '2x2' 等)    |
 | `config`       | object  | 当前 Dashboard 实例的有效配置 |
-| `isEditMode`   | boolean | 是否处于编辑模式             |
-| `isPreview`    | boolean | 是否预览模式                 |
-| `theme`        | string  | 当前主题 ('light' \| 'dark') |
-| `primaryColor` | string  | 系统主题色（如 #8b5cf6）     |
-| `scale`        | number  | 缩放比例（0.1-2）            |
-| `fontScale`    | number  | 字体缩放（0.6-1.2）          |
-| `locale`       | string  | 用户语言（如 'zh-CN'）       |
+| `isEditMode`   | boolean | 是否处于编辑模式              |
+| `isPreview`    | boolean | 是否预览模式                  |
+| `theme`        | string  | 当前主题 ('light' \| 'dark')  |
+| `primaryColor` | string  | 系统主题色（如 #8b5cf6）      |
+| `scale`        | number  | 缩放比例（0.1-2）             |
+| `fontScale`    | number  | 字体缩放（0.6-1.2）           |
+| `locale`       | string  | 用户语言（如 'zh-CN'）        |
 
 ---
 
@@ -549,8 +549,8 @@ container.innerHTML = `
   <!-- 装饰光斑 -->
   <div class="absolute top-0 right-0 w-6 h-6 rounded-full blur-xl opacity-20"
        style="background: ${itemColor}; width: ${24 * scale}px; height: ${
-  24 * scale
-}px;"></div>
+         24 * scale
+       }px;"></div>
   
   <!-- 内容 -->
   <div class="relative z-10 flex flex-col items-center gap-0.5">
@@ -608,8 +608,8 @@ container.innerHTML = `
 `<button class="rounded-full bg-white/80 dark:bg-black/80 backdrop-blur-sm shadow-md 
                 flex items-center justify-center hover:scale-110 transition-transform"
          style="color: ${themeColor}; width: ${32 * scale}px; height: ${
-  32 * scale
-}px;">
+           32 * scale
+         }px;">
   ${playIcon}
 </button>` // 次要按钮
 `<button class="px-3 py-1.5 text-xs font-medium 
@@ -714,7 +714,7 @@ window.parent.postMessage(
     widgetId: "my-widget",
     messageType: "refresh",
   },
-  "*"
+  "*",
 );
 ```
 
@@ -782,21 +782,21 @@ Tapp.widgets["stats"] = {
                 stats.played,
                 "已玩",
                 scale,
-                fontScale
+                fontScale,
               )}
               ${this.renderStatItem(
                 "📦",
                 stats.unplayed,
                 "未玩",
                 scale,
-                fontScale
+                fontScale,
               )}
               ${this.renderStatItem(
                 "⭐",
                 stats.favorite,
                 "收藏",
                 scale,
-                fontScale
+                fontScale,
               )}
             </div>
           </div>

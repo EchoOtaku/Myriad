@@ -717,6 +717,29 @@ const canUse = await Tapp.user.canUsePermissionLevel("elevated");
 
 ---
 
+## Federation Feed API
+
+**权限**: `federation:read`
+
+```javascript
+const role = await Tapp.user.getRole();
+const feed = await Tapp.federation.getFeed();
+
+// 游客：feed.audience === "public"
+// 普通用户/管理员：feed.audience === "public+personal"
+// feed.items 中的 scope 为 "public" 或 "personal"
+```
+
+`getFeed()` 是面向 Tapp 的角色感知入口：游客只能读取公开 Activity，已登录用户读取
+公开 Activity 与自己的 Federation Timeline。游客不会取得 `federation:write`、
+`federation:message` 或 `federation:files`。Tapp 应使用 `Tapp.user.getRole()` 调整界面，
+不要向游客展示关注、发布、私聊、Room 或文件传输操作。
+
+`getTimeline()` 保留为已登录用户的原始个人 Timeline 接口；需要同时展示公开内容时应
+优先使用 `getFeed()`。
+
+---
+
 ## 组件注册 API
 
 **权限**: `component:theme`, `component:agent`

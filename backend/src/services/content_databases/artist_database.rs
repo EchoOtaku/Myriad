@@ -255,27 +255,30 @@ impl ArtistDatabase {
         regions.sort_by(|a, b| b.1.cmp(a.1));
         let top_region = regions.first().map(|(r, _)| r.as_str()).unwrap_or("");
 
+        let mut preference_parts = Vec::new();
+        if !top_region.is_empty() {
+            preference_parts.push(top_region);
+        }
+        if !top_genre.is_empty() {
+            preference_parts.push(top_genre);
+        }
+        let preference_str = preference_parts.join("");
+
         let summary = if favorite_artists.is_empty() {
-            format!("收藏了 {} 首歌曲", total_songs)
-        } else {
-            let mut preference_parts = Vec::new();
-            if !top_region.is_empty() {
-                preference_parts.push(top_region);
-            }
-            if !top_genre.is_empty() {
-                preference_parts.push(top_genre);
-            }
-
-            let preference_str = if preference_parts.is_empty() {
-                "多元化".to_string()
+            if preference_str.is_empty() {
+                format!("收藏了 {} 首歌曲", total_songs)
             } else {
-                preference_parts.join("")
-            };
-
+                format!("收藏了 {} 首歌曲，偏好{}音乐", total_songs, preference_str)
+            }
+        } else {
             format!(
                 "收藏了 {} 首歌曲，偏好{}音乐，常听{}",
                 total_songs,
-                preference_str,
+                if preference_str.is_empty() {
+                    "多元化"
+                } else {
+                    &preference_str
+                },
                 favorite_artists
                     .iter()
                     .take(3)
@@ -307,16 +310,31 @@ impl Default for ArtistDatabase {
 mod tests {
     use super::*;
 
+    fn test_database() -> ArtistDatabase {
+        let mut db = ArtistDatabase {
+            entries: HashMap::new(),
+        };
+        for name in ["周杰伦", "陈奕迅", "林俊杰"] {
+            db.add_entry(ArtistEntry {
+                name: name.to_string(),
+                genres: vec!["流行".to_string()],
+                region: "华语".to_string(),
+                style: Vec::new(),
+            });
+        }
+        db
+    }
+
     #[test]
     fn test_find() {
-        let db = ArtistDatabase::new();
+        let db = test_database();
         assert!(db.find("周杰伦").is_some());
         assert!(db.find("不存在的歌手").is_none());
     }
 
     #[test]
     fn test_analyze() {
-        let db = ArtistDatabase::new();
+        let db = test_database();
         let song_list = vec![
             ("晴天".to_string(), "周杰伦".to_string()),
             ("十年".to_string(), "陈奕迅".to_string()),

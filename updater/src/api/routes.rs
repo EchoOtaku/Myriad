@@ -269,7 +269,7 @@ fn available_to_json(info: Option<AvailableInfo>) -> Value {
                     "min_updater_version": crate::self_version(),
                     "self_update_required": false
                 },
-                "postgres": { "min_pg_version": "15", "max_pg_version": "16" },
+                "postgres": { "min_pg_version": "15", "max_pg_version": "unbounded" },
                 "signature": null
             })
         }

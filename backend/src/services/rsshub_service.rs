@@ -344,14 +344,13 @@ impl RsshubService {
         let test_route = "/";
         let url = format!("{}{}", instance.url.trim_end_matches('/'), test_route);
 
-        let (target_url, client) =
-            crate::services::outbound_security::build_public_http_client(
-                &url,
-                Duration::from_secs(self.config.request_timeout_secs),
-                Some("Myriad Brew Reader/1.0 (RSSHub Health Check)"),
-            )
-            .await
-            .map_err(|e| format!("Unsafe RSSHub URL blocked: {e}"))?;
+        let (target_url, client) = crate::services::outbound_security::build_public_http_client(
+            &url,
+            Duration::from_secs(self.config.request_timeout_secs),
+            Some("Myriad Brew Reader/1.0 (RSSHub Health Check)"),
+        )
+        .await
+        .map_err(|e| format!("Unsafe RSSHub URL blocked: {e}"))?;
 
         let start = Instant::now();
         let response = client

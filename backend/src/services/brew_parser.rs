@@ -154,14 +154,13 @@ impl FeedParser {
 
     /// 抓取并解析订阅源（SSRF 安全）
     pub async fn fetch_and_parse(&self, url: &str) -> Result<ParsedFeed, ParseError> {
-        let (target_url, client) =
-            crate::services::outbound_security::build_public_http_client(
-                url,
-                Duration::from_secs(30),
-                Some(Self::USER_AGENT),
-            )
-            .await
-            .map_err(|e| ParseError::InvalidUrl(format!("Unsafe or invalid URL: {e}")))?;
+        let (target_url, client) = crate::services::outbound_security::build_public_http_client(
+            url,
+            Duration::from_secs(30),
+            Some(Self::USER_AGENT),
+        )
+        .await
+        .map_err(|e| ParseError::InvalidUrl(format!("Unsafe or invalid URL: {e}")))?;
 
         // 抓取内容（客户端已禁用重定向并钉扎公网解析结果）
         let response = client

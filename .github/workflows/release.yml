@@ -217,7 +217,7 @@ jobs:
               env: { required: ["POSTGRES_PASSWORD", "JWT_SECRET", "CORS_ORIGINS"], new: [], removed: [] },
               migrations: { irreversible: false, estimated_seconds: 30, requires_full_backup: true },
               updater: { min_updater_version: $version, self_update_required: false },
-              postgres: { min_pg_version: "16", max_pg_version: "16" },
+              postgres: { min_pg_version: "16", max_pg_version: "unbounded" },
               notes_url: $notes_url,
               signature: null
             }' > release.json

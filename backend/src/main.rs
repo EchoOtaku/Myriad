@@ -4188,6 +4188,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 get(api::tapp_runtime::get_context_system)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
+            // Federation feed: guests see public items; users see public + personal items.
+            .route(
+                "/api/tapp/federation/feed",
+                get(api::tapp_runtime::get_federation_feed)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
             // ============ Tapp P1 扩展 API ============
             // AI Chat - 🔓 支持权限下放
             .route(

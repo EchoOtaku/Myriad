@@ -179,8 +179,6 @@ impl TappPermission {
             | TappPermission::AiAnalyze
             | TappPermission::AiChat
             | TappPermission::AiImage
-            | TappPermission::BrewWrite
-            | TappPermission::BrewComment
             | TappPermission::NetworkFetch
             | TappPermission::MediaControl
             | TappPermission::ComponentTheme
@@ -384,6 +382,19 @@ impl TappPermissionService {
         // 管理员拥有所有权限
         if role == UserRole::Admin {
             return true;
+        }
+
+        // 游客的 federation 能力严格只读：可以读取经过内容级过滤的公开
+        // Feed，但不能关注、发布、通信或传输文件。
+        if role == UserRole::Guest
+            && matches!(
+                permission,
+                TappPermission::FederationWrite
+                    | TappPermission::FederationMessage
+                    | TappPermission::FederationFiles
+            )
+        {
+            return false;
         }
 
         match permission.level() {
@@ -686,6 +697,26 @@ mod tests {
                 "federation:files"
             ]
         );
+    }
+
+    #[test]
+    fn test_guest_federation_permissions_are_public_read_only() {
+        let config = DynamicConfig::default();
+        let requested = vec![
+            "federation:read".to_string(),
+            "federation:write".to_string(),
+            "federation:message".to_string(),
+            "federation:files".to_string(),
+            "federation:trust".to_string(),
+        ];
+
+        let granted = TappPermissionService::filter_permissions_for_role(
+            &config,
+            UserRole::Guest,
+            &requested,
+        );
+
+        assert_eq!(granted, vec!["federation:read"]);
     }
 
     #[test]

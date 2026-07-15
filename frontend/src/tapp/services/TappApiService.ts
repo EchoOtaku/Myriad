@@ -24,6 +24,7 @@ import type {
   TappCodeStructure,
   WidgetRegistration,
 } from '../types'
+import type { TimelineResponse } from '../../types/federation'
 import { API_URL } from '../../config'
 import { getCSRFToken } from '../../utils/csrf'
 import { generateOnDemandTailwindCSS } from '../runtime/sandbox/styles'
@@ -263,6 +264,17 @@ export async function revokeTappRuntimeGrant(
     `/api/tapps/${encodeURIComponent(tappId)}/runtime-grants/${encodeURIComponent(runtimeId)}`,
     { method: 'DELETE' },
   )
+}
+
+export interface FederationFeedResponse extends TimelineResponse {
+  audience: 'public' | 'public+personal'
+}
+
+/** Role-aware federation feed. The runtime grant determines visible content. */
+export async function getFederationFeed(
+  runtimeGrant: string,
+): Promise<FederationFeedResponse> {
+  return apiRequest('/api/tapp/federation/feed', { runtimeGrant })
 }
 
 export interface PrepareDataExchangeRequest {

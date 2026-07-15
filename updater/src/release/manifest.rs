@@ -80,7 +80,10 @@ pub struct UpdaterReq {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PostgresReq {
     pub min_pg_version: String,
-    pub max_pg_version: String,
+    /// Deprecated compatibility field. Missing or `unbounded` means there is
+    /// no PostgreSQL upper bound.
+    #[serde(default)]
+    pub max_pg_version: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -128,5 +131,53 @@ impl Manifest {
 
     pub fn image(&self, comp: &str) -> Option<&ImageRef> {
         self.images.get(comp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Manifest;
+    use serde_json::json;
+
+    fn manifest_json(postgres: serde_json::Value) -> Vec<u8> {
+        let digest = format!("sha256:{}", "0".repeat(64));
+        serde_json::to_vec(&json!({
+            "schema_version": 1,
+            "version": "v0.2.1",
+            "channel": "stable",
+            "released_at": "2026-07-15T00:00:00Z",
+            "images": {
+                "backend": { "ref": "example/backend:v0.2.1", "digest": digest },
+                "frontend": { "ref": "example/frontend:v0.2.1", "digest": format!("sha256:{}", "1".repeat(64)) }
+            },
+            "env": { "required": [], "new": [], "removed": [] },
+            "migrations": { "irreversible": false, "estimated_seconds": 30 },
+            "updater": { "min_updater_version": "v0.2.1" },
+            "postgres": postgres,
+            "notes_url": "https://example.com/releases/v0.2.1"
+        }))
+        .expect("manifest fixture serializes")
+    }
+
+    #[test]
+    fn postgres_upper_bound_is_optional() {
+        let manifest = Manifest::from_json(&manifest_json(json!({
+            "min_pg_version": "16"
+        })))
+        .expect("manifest without upper bound parses");
+        assert!(manifest.postgres.max_pg_version.is_none());
+    }
+
+    #[test]
+    fn unbounded_marker_keeps_old_release_payloads_compatible() {
+        let manifest = Manifest::from_json(&manifest_json(json!({
+            "min_pg_version": "16",
+            "max_pg_version": "unbounded"
+        })))
+        .expect("compatibility marker parses");
+        assert_eq!(
+            manifest.postgres.max_pg_version.as_deref(),
+            Some("unbounded")
+        );
     }
 }

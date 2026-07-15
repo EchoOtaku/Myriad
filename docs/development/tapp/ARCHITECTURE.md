@@ -88,7 +88,9 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
 
 - 管理员安装的 Tapp 是全局可见的管理员 Tapp。
 - 普通用户可拥有自己的临时 Tapp；列表由管理员 Tapp 加当前用户 Tapp 组成。
-- 游客只能读取允许公开读取的管理员 Tapp 信息，不能执行需要登录的变更。
+- 游客只能运行管理员共享的 Tapp；Tapp 可通过 `Tapp.user.getRole()` 感知角色。对于
+  Federation 内容，游客只获得公开 Feed，已登录用户获得公开内容与自己的个人内容；
+  游客不能关注、发布、私聊、进入私有 Room 或传输文件。
 - 同 ID 在不同 owner 上下文中可能并存；当前兼容规则统一为管理员公开版本优先，详情、
   资源、最终授权和 Manifest 声明 API 必须选择同一安装记录。V2 将由 Runtime Grant 显式
   携带 owner，消除仅凭 `tappId` 推断的歧义。

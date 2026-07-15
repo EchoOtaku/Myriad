@@ -431,6 +431,22 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
             ));
         }
     }
+    if let Some(author) = &manifest.author {
+        if author.name.trim().is_empty() || author.name.len() > 255 {
+            return Err("Tapp author.name must contain 1-255 characters".to_string());
+        }
+        if author.email.as_ref().is_some_and(|email| {
+            email.len() > 320 || email.chars().any(char::is_whitespace) || !email.contains('@')
+        }) {
+            return Err("Invalid Tapp author.email".to_string());
+        }
+        if let Some(url) = &author.url {
+            let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid Tapp author.url")?;
+            if !matches!(parsed.scheme(), "http" | "https") || url.len() > 2_048 {
+                return Err("Tapp author.url must be an HTTP(S) URL".to_string());
+            }
+        }
+    }
     if manifest.permissions.len() > 64 {
         return Err("Tapp permissions accepts at most 64 entries".to_string());
     }
@@ -5186,6 +5202,40 @@ mod manifest_tests {
 
         manifest.min_system_version = Some("not-a-version".to_string());
         assert!(validate_tapp_manifest(&manifest).is_err());
+    }
+
+    #[test]
+    fn validates_author_contact_fields() {
+        let parse = |author: serde_json::Value| {
+            serde_json::from_value::<TappManifest>(json!({
+                "id": "com.example.author",
+                "name": "Author metadata",
+                "version": "1.0.0",
+                "main": "main.js",
+                "permissions": [],
+                "author": author
+            }))
+            .unwrap()
+        };
+
+        let valid = parse(json!({
+            "name": "Example Team",
+            "email": "team@example.com",
+            "url": "https://example.com/team"
+        }));
+        validate_tapp_manifest(&valid).unwrap();
+
+        assert!(validate_tapp_manifest(&parse(json!({ "name": "" }))).is_err());
+        assert!(validate_tapp_manifest(&parse(json!({
+            "name": "Example Team",
+            "email": "not-an-email"
+        })))
+        .is_err());
+        assert!(validate_tapp_manifest(&parse(json!({
+            "name": "Example Team",
+            "url": "javascript:alert(1)"
+        })))
+        .is_err());
     }
 
     #[test]

@@ -870,9 +870,7 @@ async fn parse_user_id_with_agent_access(
     db: &DatabaseConnection,
 ) -> Result<i32, (StatusCode, Json<Value>)> {
     let user_id = parse_user_id(claims)?;
-    if let Err(msg) =
-        crate::services::agent::ensure_agent_usage_allowed(db, user_id).await
-    {
+    if let Err(msg) = crate::services::agent::ensure_agent_usage_allowed(db, user_id).await {
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({ "error": msg, "code": "agent_access_denied" })),

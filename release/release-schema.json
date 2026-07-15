@@ -127,11 +127,18 @@
     },
     "postgres": {
       "type": "object",
-      "required": ["min_pg_version", "max_pg_version"],
+      "required": ["min_pg_version"],
       "additionalProperties": false,
       "properties": {
         "min_pg_version": { "type": "string", "pattern": "^[0-9]+$" },
-        "max_pg_version": { "type": "string", "pattern": "^[0-9]+$" }
+        "max_pg_version": {
+          "description": "Deprecated compatibility field. Omit it or use 'unbounded' for no upper limit.",
+          "type": "string",
+          "anyOf": [
+            { "pattern": "^[0-9]+$" },
+            { "const": "unbounded" }
+          ]
+        }
       }
     },
     "notes_url": {

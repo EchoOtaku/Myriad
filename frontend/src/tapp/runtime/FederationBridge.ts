@@ -19,6 +19,7 @@
 import type { TappInstance, TappMessage } from '../types'
 import type { TappBridge } from './TappBridge'
 import { federationApi } from '../../services/federationApi'
+import { getFederationFeed } from '../services/TappApiService'
 
 /**
  * 注册联邦处理器到 TappBridge
@@ -122,6 +123,19 @@ export function registerFederationHandlers(
   })
 
   // ==================== 时间线 ====================
+
+  bridge.registerHandler('federation.getFeed', async () => {
+    try {
+      const runtimeGrant = await bridge.getRuntimeGrant()
+      const data = await getFederationFeed(runtimeGrant)
+      return { success: true, data }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get feed',
+      }
+    }
+  })
 
   bridge.registerHandler('federation.getTimeline', async () => {
     try {

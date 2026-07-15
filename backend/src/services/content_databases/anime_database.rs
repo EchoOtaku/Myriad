@@ -294,16 +294,32 @@ impl Default for AnimeDatabase {
 mod tests {
     use super::*;
 
+    fn test_database() -> AnimeDatabase {
+        let mut db = AnimeDatabase {
+            entries: HashMap::new(),
+        };
+        for title in ["鬼灭之刃", "进击的巨人", "咒术回战"] {
+            db.add_entry(AnimeEntry {
+                title: title.to_string(),
+                category: ContentCategory::Anime,
+                genre: vec!["热血".to_string()],
+                rating: 9.0,
+                aliases: Vec::new(),
+            });
+        }
+        db
+    }
+
     #[test]
     fn test_find() {
-        let db = AnimeDatabase::new();
+        let db = test_database();
         assert!(db.find("鬼灭之刃").is_some());
         assert!(db.find("不存在的动画").is_none());
     }
 
     #[test]
     fn test_analyze() {
-        let db = AnimeDatabase::new();
+        let db = test_database();
         let watch_list = vec![
             ("鬼灭之刃".to_string(), "某作者".to_string()),
             ("进击的巨人".to_string(), "某作者".to_string()),

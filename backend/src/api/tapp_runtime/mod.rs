@@ -25,6 +25,7 @@ mod data;
 mod data_exchange;
 mod declared_api;
 mod events;
+mod federation;
 mod media;
 mod metrics;
 mod notifications;
@@ -93,6 +94,9 @@ pub use events::{
     get_event_subscriptions, publish_event, publish_event_v2, stream_events_v2,
     update_event_subscriptions,
 };
+
+// Federation API
+pub use federation::get_federation_feed;
 
 // Metrics API
 pub use metrics::{get_rate_limit_status, get_tapp_metrics, reset_tapp_metrics};

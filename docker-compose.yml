@@ -34,7 +34,9 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Track the latest PostgreSQL 18 patch release on Alpine for fresh deployments.
+    # Existing pre-18 clusters still require pg_upgrade or dump/restore before changing majors.
+    image: postgres:18-alpine
     container_name: myriad-postgres
     deploy:
       resources:
@@ -63,7 +65,8 @@ services:
       TZ: Asia/Shanghai
     volumes:
       # IMPORTANT: bind mount, not named volume. The updater relies on file-level snapshots.
-      - ./pgdata:/var/lib/postgresql/data
+      # PostgreSQL 18+ uses a major-version-specific PGDATA below /var/lib/postgresql.
+      - ./pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U myriad -d myriad"]
       interval: 10s

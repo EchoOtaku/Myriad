@@ -539,6 +539,9 @@ impl AgentMemory {
     }
 
     /// 记住一条记忆（完整参数，带实体和能力关联）
+    // This is the single internal boundary that expands all memory metadata.
+    // Keep the call shape stable until the Agent memory API moves to a request object.
+    #[allow(clippy::too_many_arguments)]
     pub async fn remember_full(
         &self,
         content: &str,
@@ -693,13 +696,8 @@ impl AgentMemory {
 
         // 2. 如果失败，记录执行教训（规则匹配）
         if !success {
-            self.record_failure_lesson(
-                user_input,
-                execution_results,
-                capabilities_used,
-                user_id,
-            )
-            .await;
+            self.record_failure_lesson(user_input, execution_results, capabilities_used, user_id)
+                .await;
         }
 
         // 3. AI 提取深层记忆
@@ -1465,12 +1463,7 @@ impl AgentMemory {
     /// 更新指定 ID 的记忆内容（仅所有者）
     ///
     /// 锁顺序：index 先，entries 后（与其他所有路径一致，避免死锁）
-    pub async fn update_memory(
-        &self,
-        memory_id: &str,
-        new_content: &str,
-        user_id: i32,
-    ) -> bool {
+    pub async fn update_memory(&self, memory_id: &str, new_content: &str, user_id: i32) -> bool {
         let allowed = {
             let entries = self.entries.read().await;
             entries

@@ -39,6 +39,7 @@ import { getTappRuntime } from '../runtime'
 import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import * as TappApiService from '../services/TappApiService'
 import { getTappIconStyle } from '../utils/tappColors'
+import { sanitizeUrl } from '../../utils/inputSanitizer'
 
 // 使用 TappIcon 组件统一处理图标渲染
 
@@ -560,6 +561,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
   }
 
   const { manifest } = tapp
+  const authorUrl = manifest.author?.url ? sanitizeUrl(manifest.author.url) : ''
 
   return (
     <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
@@ -956,9 +958,26 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                   <span className="text-sm text-gray-500 dark:text-gray-400">
                     {t.tapp.author}
                   </span>
-                  <span className="text-sm text-gray-800 dark:text-gray-100">
-                    {manifest.author.name}
-                  </span>
+                  <div className="text-right">
+                    <div className="text-sm text-gray-800 dark:text-gray-100">
+                      {manifest.author.name}
+                    </div>
+                    {manifest.author.email && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {manifest.author.email}
+                      </div>
+                    )}
+                    {authorUrl && (
+                      <a
+                        href={authorUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 hover:underline"
+                      >
+                        {t.tapp.homepage}
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
               <div className="flex items-center justify-between py-2 border-b border-gray-200/50 dark:border-neutral-700/50">

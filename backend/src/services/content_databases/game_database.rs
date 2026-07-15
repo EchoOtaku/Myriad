@@ -223,16 +223,35 @@ impl Default for GameDatabase {
 mod tests {
     use super::*;
 
+    fn test_database() -> GameDatabase {
+        let mut db = GameDatabase {
+            entries: HashMap::new(),
+        };
+        for (name, genre) in [
+            ("Counter-Strike: Global Offensive", "FPS"),
+            ("Dota 2", "MOBA"),
+            ("The Witcher 3: Wild Hunt", "RPG"),
+        ] {
+            db.add_entry(GameEntry {
+                name: name.to_string(),
+                genres: vec![genre.to_string()],
+                tags: Vec::new(),
+                rating: 9.0,
+            });
+        }
+        db
+    }
+
     #[test]
     fn test_find() {
-        let db = GameDatabase::new();
+        let db = test_database();
         assert!(db.find("Counter-Strike: Global Offensive").is_some());
         assert!(db.find("不存在的游戏").is_none());
     }
 
     #[test]
     fn test_analyze() {
-        let db = GameDatabase::new();
+        let db = test_database();
         let game_list = vec![
             ("Counter-Strike: Global Offensive".to_string(), 5000),
             ("Dota 2".to_string(), 3000),

@@ -259,7 +259,7 @@ EOF
     cat > "$DEV_UPDATER_DIR/docker-compose.yml" <<'EOF'
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
   backend:
     image: example/myriad-backend:${MYRIAD_TAG}
   frontend:

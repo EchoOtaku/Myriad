@@ -36,6 +36,9 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `pageModules`            | string[] | ❌   | `page/` 模块执行顺序               |
 | `category`               | string   | ❌   | 应用分类                           |
 
+`author.name` 必填；`author.email` 与 `author.url` 可选。作者名称会显示在商店卡片和 Tapp
+详情页，详情页还会显示邮箱，并为通过 HTTP(S) 校验的作者主页生成外部链接。
+
 所有资源路径都是相对安装根目录的安全路径。`.tapp` 文件安装会保留经过校验的嵌套
 目录，例如 `templates/widget-2x2.html`；direct/store 安装也会把内容写到 Manifest
 声明的位置。绝对路径、隐藏组件和 `..` 会被拒绝。`pageModules` 的每项是 `page/`

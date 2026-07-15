@@ -78,6 +78,17 @@ export function generateFullSDK(
   const dataExchangeProviders = new Map();
   const lifecycleCallbacks = { ready: [], destroy: [], pause: [], resume: [] };
 
+  // security wrapper 会收窄 window.parent。这里接收包装前保存的真实
+  // WindowProxy，用于发送消息和验证宿主响应来源，随后立即清除 handoff。
+  const _HOST_WINDOW = (() => {
+    const takeNativeParent = window.__TAPP_TAKE_NATIVE_PARENT__;
+    const hostWindow = typeof takeNativeParent === 'function'
+      ? takeNativeParent()
+      : window.parent;
+    try { delete window.__TAPP_TAKE_NATIVE_PARENT__; } catch (e) {}
+    return hostWindow;
+  })();
+
   // 🎯 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
   // 解决父窗口推送 mediaStateChange 早于 Tapp 代码注册 onStateChange 的竞态问题
   const _eventBuffer = new Map();
@@ -116,7 +127,7 @@ export function generateFullSDK(
       pendingRequests.set(id, { resolve, reject, timeout });
 
       // 消息中包含 session token 用于验证
-      window.parent.postMessage({
+      _HOST_WINDOW.postMessage({
         type: 'request',
         id,
         action: \`\${api}.\${method}\`,
@@ -129,7 +140,7 @@ export function generateFullSDK(
   };
 
   window.addEventListener('message', async (event) => {
-    if (event.source !== window.parent) return;
+    if (event.source !== _HOST_WINDOW) return;
     const { data: message } = event;
     if (!message?.type) return;
 
@@ -637,6 +648,7 @@ export function generateFullSDK(
       // 身份
       getIdentity: () => sendRequest('federation', 'getIdentity', []),
       // 时间线
+      getFeed: () => sendRequest('federation', 'getFeed', []),
       getTimeline: () => sendRequest('federation', 'getTimeline', []),
       // 关注
       follow: (target) => sendRequest('federation', 'follow', [target]),

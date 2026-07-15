@@ -148,6 +148,21 @@ export function generateSecurityWrapper(sessionToken: string): string {
     // 回退：使用 postMessage 的通用调用方式
     _parentPostMessage = (msg, origin) => window.parent.postMessage(msg, origin);
   }
+
+  // SDK 需要使用真实的父窗口 WindowProxy 校验响应来源。下面会把
+  // window.parent 收窄为仅暴露 postMessage 的代理，因此通过一次性 handoff
+  // 将原始引用交给紧随其后加载的 SDK；SDK 读取后会立即删除该属性。
+  const _nativeParentWindow = window.parent;
+  try {
+    Object.defineProperty(window, '__TAPP_TAKE_NATIVE_PARENT__', {
+      value: () => _nativeParentWindow,
+      writable: false,
+      enumerable: false,
+      configurable: true
+    });
+  } catch (e) {
+    window.__TAPP_TAKE_NATIVE_PARENT__ = () => _nativeParentWindow;
+  }
   
   // 会话 token（用于消息验证）
   const _SESSION_TOKEN = '${sessionToken}';

@@ -22,11 +22,7 @@ const DIRECT_BASE = '/_updater'
 export type TransportMode = 'backend' | 'direct'
 
 export type CommitRelation =
-  | 'ahead'
-  | 'behind'
-  | 'identical'
-  | 'diverged'
-  | 'unknown'
+  'ahead' | 'behind' | 'identical' | 'diverged' | 'unknown'
 
 export interface LatestAvailable {
   version: string
@@ -143,7 +139,7 @@ export interface ReleaseManifest {
     requires_full_backup: boolean
   }
   updater: { min_updater_version: string; self_update_required: boolean }
-  postgres: { min_pg_version: string; max_pg_version: string }
+  postgres: { min_pg_version: string; max_pg_version?: string }
   notes_url: string
   signature: string | null
 }
@@ -200,7 +196,9 @@ async function callOnce<T>(
   body: unknown | undefined,
   opts: CallOptions,
   forceCsrfRefresh: boolean,
-): Promise<{ ok: true; data: T } | { ok: false; status: number; detail: string }> {
+): Promise<
+  { ok: true; data: T } | { ok: false; status: number; detail: string }
+> {
   const mode: TransportMode = opts.mode ?? 'backend'
   const base = mode === 'backend' ? BACKEND_BASE : DIRECT_BASE
 
