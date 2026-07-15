@@ -1462,39 +1462,33 @@ pub async fn generate_all_reports(
                 config.mal_username.as_ref().is_some() && config.mal_client_id.as_ref().is_some(),
             ),
         ),
-        (
-            "xbox",
-            {
-                let has_gamertag = config
-                    .xbox_gamertag
-                    .as_ref()
-                    .is_some_and(|s| !s.trim().is_empty())
-                    || std::env::var("XBOX_GAMERTAG").is_ok();
-                let has_key = config
-                    .openxbl_api_key
-                    .as_ref()
-                    .is_some_and(|s| !s.trim().is_empty())
-                    || std::env::var("OPENXBL_API_KEY").is_ok()
-                    || std::env::var("XBL_API_KEY").is_ok();
-                config.xbox_enabled.unwrap_or(has_gamertag && has_key)
-            },
-        ),
-        (
-            "psn",
-            {
-                let has_id = config
-                    .psn_online_id
-                    .as_ref()
-                    .is_some_and(|s| !s.trim().is_empty())
-                    || std::env::var("PSN_ONLINE_ID").is_ok();
-                let has_npsso = config
-                    .psn_npsso
-                    .as_ref()
-                    .is_some_and(|s| !s.trim().is_empty())
-                    || std::env::var("PSN_NPSSO").is_ok();
-                config.psn_enabled.unwrap_or(has_id && has_npsso)
-            },
-        ),
+        ("xbox", {
+            let has_gamertag = config
+                .xbox_gamertag
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+                || std::env::var("XBOX_GAMERTAG").is_ok();
+            let has_key = config
+                .openxbl_api_key
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+                || std::env::var("OPENXBL_API_KEY").is_ok()
+                || std::env::var("XBL_API_KEY").is_ok();
+            config.xbox_enabled.unwrap_or(has_gamertag && has_key)
+        }),
+        ("psn", {
+            let has_id = config
+                .psn_online_id
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+                || std::env::var("PSN_ONLINE_ID").is_ok();
+            let has_npsso = config
+                .psn_npsso
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+                || std::env::var("PSN_NPSSO").is_ok();
+            config.psn_enabled.unwrap_or(has_id && has_npsso)
+        }),
     ]
     .into_iter()
     .filter(|&(_, enabled)| enabled)
@@ -1598,12 +1592,22 @@ fn enrich_stored_platform_report(mut report: Value) -> Value {
             if let crate::services::smart_filter::ContentAnalysis::Xbox(analysis) =
                 &meta.content_analysis
             {
-                if obj.get("avatar").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+                if obj
+                    .get("avatar")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .is_empty()
+                {
                     if let Some(ref av) = analysis.avatar {
                         obj.insert("avatar".to_string(), json!(av));
                     }
                 }
-                if obj.get("gamertag").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+                if obj
+                    .get("gamertag")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .is_empty()
+                {
                     if let Some(ref g) = analysis.display_gamertag {
                         obj.insert("gamertag".to_string(), json!(g));
                     }
@@ -1701,12 +1705,22 @@ fn enrich_stored_platform_report(mut report: Value) -> Value {
         if let crate::services::smart_filter::ContentAnalysis::Psn(analysis) =
             &meta.content_analysis
         {
-            if obj.get("avatar").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            if obj
+                .get("avatar")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+            {
                 if let Some(ref av) = analysis.avatar {
                     obj.insert("avatar".to_string(), json!(av));
                 }
             }
-            if obj.get("online_id").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            if obj
+                .get("online_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+            {
                 if let Some(ref id) = analysis.display_online_id {
                     obj.insert("online_id".to_string(), json!(id));
                 }
@@ -1792,10 +1806,7 @@ fn enrich_stored_platform_report(mut report: Value) -> Value {
                                     "image".to_string(),
                                     json!(SmartFilter::normalize_https_media_url(img)),
                                 );
-                                o.insert(
-                                    "platinum".to_string(),
-                                    json!(src.earned_platinum > 0),
-                                );
+                                o.insert("platinum".to_string(), json!(src.earned_platinum > 0));
                             }
                         }
                     }

@@ -49,70 +49,6 @@ function resolveWindowTarget(
   return null
 }
 
-function findTappIframe(
-  action: FrontendAction,
-  windowsRef: React.RefObject<WindowRef[]>,
-  activeWindowIdRef: React.RefObject<string | null>,
-): HTMLIFrameElement | null {
-  const target = action.target as WindowTarget | undefined
-  const directWindowId = action.windowId
-  const tappWindowId = action.tappId
-    ? windowsRef.current?.find((window) => window.tappId === action.tappId)
-        ?.windowId
-    : null
-  const windowId =
-    directWindowId ||
-    tappWindowId ||
-    (target
-      ? resolveWindowTarget(target, windowsRef, activeWindowIdRef)
-      : activeWindowIdRef.current)
-
-  if (!windowId) return null
-  const container = document.querySelector(
-    `[data-window-id="${CSS.escape(windowId)}"]`,
-  )
-  return container?.querySelector('iframe') ?? null
-}
-
-function requestTappData(
-  iframe: HTMLIFrameElement,
-  action: FrontendAction,
-): Promise<Record<string, unknown>> {
-  const requestId = crypto.randomUUID()
-
-  return new Promise((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => {
-      window.removeEventListener('message', handleResponse)
-      reject(new Error('Tapp data read timed out'))
-    }, 5000)
-
-    const handleResponse = (event: MessageEvent) => {
-      if (
-        event.source !== iframe.contentWindow ||
-        event.data?.type !== 'AGENT_READ_DATA_RESPONSE' ||
-        event.data?.requestId !== requestId
-      ) {
-        return
-      }
-      window.clearTimeout(timeoutId)
-      window.removeEventListener('message', handleResponse)
-      resolve((event.data.data as Record<string, unknown>) ?? {})
-    }
-
-    window.addEventListener('message', handleResponse)
-    iframe.contentWindow?.postMessage(
-      {
-        type: 'AGENT_READ_DATA',
-        requestId,
-        fields: action.data?.fields,
-        readType: action.readType ?? 'all',
-        selector: action.selector,
-      },
-      '*',
-    )
-  })
-}
-
 /**
  * 注册 Agent 前端操作处理器，在卸载时自动注销
  */
@@ -174,55 +110,12 @@ export function useWindowAgentHandler({
             return false
           }
 
-          case 'fill_data': {
-            const data = action.data as Record<string, unknown> | undefined
-            const iframe = findTappIframe(
-              action,
-              windowsRef,
-              activeWindowIdRef,
-            )
-            if (iframe?.contentWindow && data) {
-              iframe.contentWindow.postMessage(
-                {
-                  type: 'AGENT_FILL_DATA',
-                  data,
-                  autoSubmit: action.autoSubmit,
-                },
-                '*',
-              )
-              return true
-            }
-            return false
-          }
-
-          case 'read_data': {
-            const iframe = findTappIframe(
-              action,
-              windowsRef,
-              activeWindowIdRef,
-            )
-            if (iframe?.contentWindow) {
-              return requestTappData(iframe, action)
-            }
-            return false
-          }
-
-          case 'tapp_interact': {
-            const iframe = findTappIframe(
-              action,
-              windowsRef,
-              activeWindowIdRef,
-            )
-            if (!iframe?.contentWindow || !action.commands?.length) {
-              return false
-            }
-            iframe.contentWindow.postMessage(
-              {
-                type: 'AGENT_INTERACT',
-                commands: action.commands,
-              },
-              '*',
-            )
+          case 'agent_interaction': {
+            if (!action.tappId || !action.interactionId) return false
+            // The backend already created and schema-validated the interaction.
+            // Opening the Tapp establishes its host-owned SSE stream; pending
+            // interactions are replayed from the short-lived registry.
+            await openTappWindow(action.tappId)
             return true
           }
 

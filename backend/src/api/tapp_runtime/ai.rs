@@ -9,11 +9,51 @@ use crate::middleware::auth::Claims;
 use crate::services::analyzer::AiAnalyzer;
 use crate::services::permission_service::TappPermission;
 
-use super::common::{
-    check_rate_limit, check_tapp_permission, get_ai_config_for_tier, get_ai_image_config,
-    get_available_platforms, get_cached_platform_data, parse_user_id, record_metric,
-    validate_image_prompt_security, validate_prompt_security, verify_tapp_ownership, HTTP_CLIENT,
+use super::ai_quota::{
+    get_ai_usage, release_ai_token_reservation, reserve_ai_quota, settle_ai_quota,
 };
+use super::common::{
+    authorize_tapp_permission, check_rate_limit, current_tapp_user_role, get_ai_config_for_tier,
+    get_ai_image_config, get_available_platforms, get_cached_platform_data, record_metric,
+    validate_image_prompt_security, validate_prompt_security, HTTP_CLIENT,
+};
+use super::runtime_grant::RuntimeGrantContext;
+
+/// GET /api/tapp/ai/usage
+pub async fn ai_usage(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if ![
+        TappPermission::AiGenerate,
+        TappPermission::AiAnalyze,
+        TappPermission::AiChat,
+        TappPermission::AiImage,
+    ]
+    .into_iter()
+    .any(|permission| runtime_grant.has(permission))
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Runtime grant has no AI capability",
+                "code": "RUNTIME_GRANT_PERMISSION_DENIED"
+            })),
+        ));
+    }
+
+    let role = current_tapp_user_role(&claims).await;
+    let usage = get_ai_usage(
+        &db,
+        role,
+        runtime_grant.subject_id(),
+        runtime_grant.owner_id(),
+        runtime_grant.tapp_id(),
+    )
+    .await?;
+    Ok(Json(json!({ "success": true, "usage": usage })))
+}
 
 // ============ AI Generate ============
 
@@ -21,9 +61,7 @@ use super::common::{
 pub struct TappAiGenerateRequest {
     pub tapp_id: String,
     pub prompt: String,
-    #[allow(dead_code)]
     pub context: Option<Value>,
-    #[allow(dead_code)]
     pub options: Option<Value>,
     /// 是否偏好使用 Pro 模型（可选，默认 false，Pro 未配置时自动回退标准模型）
     #[serde(default)]
@@ -34,8 +72,21 @@ pub struct TappAiGenerateRequest {
 pub async fn ai_generate(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<TappAiGenerateRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::AiGenerate)?;
+    if req.context.is_some() || req.options.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "V1 generate context/options are not implemented; use AI Task V2",
+                "code": "UNSUPPORTED_V1_OPTION",
+                "fields": ["context", "options"]
+            })),
+        ));
+    }
     let start = std::time::Instant::now();
 
     // 输入验证前置：在昂贵的权限/DB查询之前进行廉价检查
@@ -57,9 +108,8 @@ pub async fn ai_generate(
         ));
     }
 
-    check_tapp_permission(&claims, TappPermission::AiGenerate).await?;
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::AiGenerate).await?;
     check_rate_limit(user_id, &req.tapp_id, "ai.generate").await?;
 
     tracing::info!(
@@ -94,6 +144,16 @@ pub async fn ai_generate(
         - Do not generate content that violates safety guidelines",
         req.tapp_id
     );
+    let role = current_tapp_user_role(&claims).await;
+    let reservation = reserve_ai_quota(
+        &db,
+        role,
+        user_id,
+        runtime_grant.owner_id(),
+        &req.tapp_id,
+        (req.prompt.len() + system_prompt.len()) / 4 + 1000,
+    )
+    .await?;
 
     match analyzer
         .analyze_with_system(&system_prompt, &req.prompt)
@@ -105,6 +165,9 @@ pub async fn ai_generate(
 
             let prompt_tokens = (req.prompt.len() + system_prompt.len()) / 4;
             let completion_tokens = result.len() / 4;
+            settle_ai_quota(&db, &reservation, prompt_tokens + completion_tokens).await?;
+            let usage_snapshot =
+                get_ai_usage(&db, role, user_id, runtime_grant.owner_id(), &req.tapp_id).await?;
 
             tracing::info!(
                 user_id = user_id, tapp_id = %req.tapp_id,
@@ -120,10 +183,13 @@ pub async fn ai_generate(
                     "completionTokens": completion_tokens,
                     "totalTokens": prompt_tokens + completion_tokens
                 },
-                "quotaRemaining": 50
+                "usageSnapshot": usage_snapshot
             })))
         }
         Err(e) => {
+            if let Err(error) = release_ai_token_reservation(&db, &reservation).await {
+                tracing::error!(?error, "[TAPP] Failed to release AI token reservation");
+            }
             let duration_ms = start.elapsed().as_millis() as u64;
             record_metric("ai.generate", duration_ms, true).await;
             tracing::error!(user_id = user_id, tapp_id = %req.tapp_id, error = %e, "[TAPP] AI generate error");
@@ -153,8 +219,11 @@ pub struct TappAiAnalyzeRequest {
 pub async fn ai_analyze(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<TappAiAnalyzeRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::AiAnalyze)?;
     // 输入验证前置
     let data_str = serde_json::to_string_pretty(&req.data).unwrap_or_default();
     if data_str.len() > 50_000 {
@@ -164,9 +233,9 @@ pub async fn ai_analyze(
         ));
     }
 
-    check_tapp_permission(&claims, TappPermission::AiAnalyze).await?;
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::AiAnalyze).await?;
+    check_rate_limit(user_id, &req.tapp_id, "ai.analyze").await?;
 
     tracing::info!(
         "[TAPP] ai_analyze - User: {}, Tapp: {}, Type: {}",
@@ -213,6 +282,12 @@ pub async fn ai_analyze(
         ),
         "custom" => {
             if let Some(instruction) = &req.instruction {
+                if let Some(reason) = validate_prompt_security(instruction) {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({ "error": "Instruction contains disallowed content", "reason": reason })),
+                    ));
+                }
                 format!(
                     "{}\n\nData:\n{}",
                     instruction,
@@ -241,18 +316,36 @@ pub async fn ai_analyze(
     )
     .await;
 
+    let role = current_tapp_user_role(&claims).await;
+    let reservation = reserve_ai_quota(
+        &db,
+        role,
+        user_id,
+        runtime_grant.owner_id(),
+        &req.tapp_id,
+        analysis_prompt.len() / 4 + 1000,
+    )
+    .await?;
+
     match analyzer.analyze(&analysis_prompt).await {
         Ok(result) => {
+            let actual_tokens = (analysis_prompt.len() + result.len()) / 4;
+            settle_ai_quota(&db, &reservation, actual_tokens).await?;
+            let usage_snapshot =
+                get_ai_usage(&db, role, user_id, runtime_grant.owner_id(), &req.tapp_id).await?;
             let analysis =
                 serde_json::from_str::<Value>(&result).unwrap_or(json!({ "result": result }));
             Ok(Json(json!({
                 "success": true,
                 "analysis": analysis,
                 "confidence": 0.8,
-                "quotaRemaining": 50
+                "usageSnapshot": usage_snapshot
             })))
         }
         Err(e) => {
+            if let Err(error) = release_ai_token_reservation(&db, &reservation).await {
+                tracing::error!(?error, "[TAPP] Failed to release AI token reservation");
+            }
             tracing::error!("[TAPP] AI analyze error: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -265,7 +358,6 @@ pub async fn ai_analyze(
 // ============ AI Chat ============
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct AIChatRequest {
     pub tapp_id: String,
     pub messages: Vec<ChatMessage>,
@@ -293,11 +385,11 @@ pub struct ChatContext {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ChatOptions {
-    #[allow(dead_code)]
+    #[serde(rename = "maxTokens")]
     pub max_tokens: Option<u32>,
-    #[allow(dead_code)]
+    #[serde(rename = "temperature")]
     pub temperature: Option<f32>,
-    #[allow(dead_code)]
+    #[serde(rename = "stream")]
     pub stream: Option<bool>,
 }
 
@@ -305,8 +397,23 @@ pub struct ChatOptions {
 pub async fn ai_chat(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<AIChatRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::AiChat)?;
+    if req.options.as_ref().is_some_and(|options| {
+        options.max_tokens.is_some() || options.temperature.is_some() || options.stream.is_some()
+    }) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "V1 chat options are not implemented; use AI Task V2",
+                "code": "UNSUPPORTED_V1_OPTION",
+                "fields": ["options.maxTokens", "options.temperature", "options.stream"]
+            })),
+        ));
+    }
     // 输入验证前置
     if req.messages.len() > 100 {
         return Err((
@@ -314,10 +421,34 @@ pub async fn ai_chat(
             Json(json!({ "error": "Too many messages (max 100)" })),
         ));
     }
+    let total_message_bytes: usize = req
+        .messages
+        .iter()
+        .map(|message| message.content.len())
+        .sum();
+    if total_message_bytes > 50_000
+        || req.messages.iter().any(|message| {
+            message.content.len() > 10_000
+                || !matches!(message.role.as_str(), "user" | "assistant" | "system")
+        })
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid or oversized chat messages" })),
+        ));
+    }
+    for message in &req.messages {
+        if let Some(reason) = validate_prompt_security(&message.content) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Message contains disallowed content", "reason": reason })),
+            ));
+        }
+    }
 
-    check_tapp_permission(&claims, TappPermission::AiChat).await?;
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::AiChat).await?;
+    check_rate_limit(user_id, &req.tapp_id, "ai.chat").await?;
 
     tracing::debug!(
         "[TAPP] ai_chat - User: {}, Tapp: {}, Messages: {}",
@@ -408,25 +539,47 @@ pub async fn ai_chat(
     let prompt_data = json!({
         "prompt": combined_prompt
     });
+    let role = current_tapp_user_role(&claims).await;
+    let reservation = reserve_ai_quota(
+        &db,
+        role,
+        user_id,
+        runtime_grant.owner_id(),
+        &req.tapp_id,
+        prompt_data.to_string().len() / 4 + 1000,
+    )
+    .await?;
 
     match analyzer.analyze_profile(&prompt_data).await {
         Ok(response) => {
             let prompt_len = prompt_data.to_string().len();
             let prompt_tokens = (prompt_len / 4) as u32;
             let completion_tokens = (response.len() / 4) as u32;
+            settle_ai_quota(
+                &db,
+                &reservation,
+                (prompt_tokens + completion_tokens) as usize,
+            )
+            .await?;
+            let usage_snapshot =
+                get_ai_usage(&db, role, user_id, runtime_grant.owner_id(), &req.tapp_id).await?;
 
             Ok(Json(json!({
                 "success": true,
                 "message": { "role": "assistant", "content": response },
                 "usage": {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                    "total_tokens": prompt_tokens + completion_tokens
+                    "promptTokens": prompt_tokens,
+                    "completionTokens": completion_tokens,
+                    "totalTokens": prompt_tokens + completion_tokens
                 },
-                "session_id": null
+                "usageSnapshot": usage_snapshot,
+                "sessionId": null
             })))
         }
         Err(e) => {
+            if let Err(error) = release_ai_token_reservation(&db, &reservation).await {
+                tracing::error!(?error, "[TAPP] Failed to release AI token reservation");
+            }
             tracing::error!("[TAPP] AI chat error: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -449,12 +602,23 @@ pub struct TappAiImageGenerateRequest {
     pub seed: Option<i64>,
 }
 
+fn is_safe_external_id(value: &str, max_len: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= max_len
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
 /// POST /api/tapp/ai/image
 pub async fn ai_image_generate(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<TappAiImageGenerateRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::AiImage)?;
     let start = std::time::Instant::now();
 
     // 输入验证前置
@@ -475,10 +639,19 @@ pub async fn ai_image_generate(
             Json(json!({ "error": "Prompt contains disallowed content", "reason": reason })),
         ));
     }
+    if req
+        .model
+        .as_deref()
+        .is_some_and(|model| !is_safe_external_id(model, 128))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid image model" })),
+        ));
+    }
 
-    check_tapp_permission(&claims, TappPermission::AiImage).await?;
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::AiImage).await?;
     check_rate_limit(user_id, &req.tapp_id, "ai.image").await?;
 
     tracing::info!(
@@ -491,13 +664,24 @@ pub async fn ai_image_generate(
     let height = req.height.unwrap_or(image_config.height).clamp(256, 2048);
     let model = req.model.clone().unwrap_or(image_config.model.clone());
     let enhance = req.enhance.unwrap_or(true);
+    let role = current_tapp_user_role(&claims).await;
 
     match image_config.provider.as_str() {
         "pollinations" => {
+            let reservation = reserve_ai_quota(
+                &db,
+                role,
+                user_id,
+                runtime_grant.owner_id(),
+                &req.tapp_id,
+                0,
+            )
+            .await?;
             let encoded_prompt = urlencoding::encode(&req.prompt);
+            let encoded_model = urlencoding::encode(&model);
             let mut url = format!(
                 "https://image.pollinations.ai/prompt/{}?width={}&height={}&model={}&nologo=true&private=true&enhance={}",
-                encoded_prompt, width, height, model, enhance
+                encoded_prompt, width, height, encoded_model, enhance
             );
             if let Some(seed) = req.seed {
                 url.push_str(&format!("&seed={}", seed));
@@ -510,6 +694,9 @@ pub async fn ai_image_generate(
                 user_id = user_id, tapp_id = %req.tapp_id, duration_ms = duration_ms,
                 provider = "pollinations", "[TAPP] ai_image_generate success"
             );
+            settle_ai_quota(&db, &reservation, 0).await?;
+            let usage_snapshot =
+                get_ai_usage(&db, role, user_id, runtime_grant.owner_id(), &req.tapp_id).await?;
 
             Ok(Json(json!({
                 "success": true,
@@ -519,7 +706,7 @@ pub async fn ai_image_generate(
                 "height": height,
                 "model": model,
                 "prompt": req.prompt,
-                "quotaRemaining": 100
+                "usageSnapshot": usage_snapshot
             })))
         }
         "pixai" => {
@@ -537,9 +724,19 @@ pub async fn ai_image_generate(
                 ));
             }
 
+            let reservation = reserve_ai_quota(
+                &db,
+                role,
+                user_id,
+                runtime_grant.owner_id(),
+                &req.tapp_id,
+                0,
+            )
+            .await?;
+
             let client = &*HTTP_CLIENT;
 
-            let pixai_response = client
+            let pixai_response = match client
                 .post("https://api.pixai.art/v1/task")
                 .header("Authorization", format!("Bearer {}", api_key))
                 .header("Content-Type", "application/json")
@@ -555,13 +752,19 @@ pub async fn ai_image_generate(
                 }))
                 .send()
                 .await
-                .map_err(|e| {
+            {
+                Ok(response) => response,
+                Err(e) => {
                     tracing::error!("[TAPP] PixAI API request failed: {}", e);
-                    (
+                    if let Err(error) = release_ai_token_reservation(&db, &reservation).await {
+                        tracing::error!(?error, "[TAPP] Failed to release AI token reservation");
+                    }
+                    return Err((
                         StatusCode::BAD_GATEWAY,
                         Json(json!({ "error": format!("PixAI API error: {}", e) })),
-                    )
-                })?;
+                    ));
+                }
+            };
 
             if !pixai_response.status().is_success() {
                 let status = pixai_response.status();
@@ -589,6 +792,9 @@ pub async fn ai_image_generate(
                 user_id = user_id, tapp_id = %req.tapp_id, duration_ms = duration_ms,
                 provider = "pixai", "[TAPP] ai_image_generate success"
             );
+            settle_ai_quota(&db, &reservation, 0).await?;
+            let usage_snapshot =
+                get_ai_usage(&db, role, user_id, runtime_grant.owner_id(), &req.tapp_id).await?;
 
             Ok(Json(json!({
                 "success": true,
@@ -596,7 +802,7 @@ pub async fn ai_image_generate(
                 "task_id": result.get("id"),
                 "status": result.get("status").unwrap_or(&json!("waiting")),
                 "result": result,
-                "quotaRemaining": 50
+                "usageSnapshot": usage_snapshot
             })))
         }
         _ => {
@@ -623,11 +829,18 @@ pub struct PixaiTaskStatusRequest {
 pub async fn ai_image_task_status(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<PixaiTaskStatusRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    check_tapp_permission(&claims, TappPermission::AiImage).await?;
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::AiImage)?;
+    if !is_safe_external_id(&req.task_id, 128) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid task ID" })),
+        ));
+    }
+    authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::AiImage).await?;
 
     let image_config = get_ai_image_config().await?;
     let api_key = image_config.pixai_api_key.ok_or_else(|| {

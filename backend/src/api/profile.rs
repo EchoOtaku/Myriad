@@ -498,7 +498,10 @@ async fn fetch_fresh_platform_data(
             config.mal_username.as_ref().is_some() && config.mal_client_id.as_ref().is_some(),
         ),
         "xbox" => {
-            let has_gamertag = config.xbox_gamertag.as_ref().is_some_and(|s| !s.trim().is_empty())
+            let has_gamertag = config
+                .xbox_gamertag
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
                 || std::env::var("XBOX_GAMERTAG").is_ok();
             let has_key = config
                 .openxbl_api_key
@@ -1009,10 +1012,7 @@ async fn fetch_fresh_platform_data(
             .unwrap_or_default();
 
         if !gamertag.trim().is_empty() && !api_key.trim().is_empty() {
-            match fetcher
-                .fetch_xbox_profile_bundle(&gamertag, &api_key)
-                .await
-            {
+            match fetcher.fetch_xbox_profile_bundle(&gamertag, &api_key).await {
                 Ok(bundle) => {
                     all_data["xbox"] = bundle;
                     let titles_count = all_data["xbox"]["achievements"]["titles"]
@@ -1053,10 +1053,7 @@ async fn fetch_fresh_platform_data(
             .unwrap_or_default();
 
         if !online_id.trim().is_empty() && !npsso.trim().is_empty() {
-            match fetcher
-                .fetch_psn_profile_bundle(&online_id, &npsso)
-                .await
-            {
+            match fetcher.fetch_psn_profile_bundle(&online_id, &npsso).await {
                 Ok(bundle) => {
                     all_data["psn"] = bundle;
                     let titles_count = all_data["psn"]["trophy_titles"]
@@ -1683,10 +1680,7 @@ fn clean_platform_data(data: &mut Value) {
         }
 
         // 关注列表字段精简：只保留 SmartFilter 消费的字段（entities 等全量字段体积很大）
-        if let Some(following) = x_data
-            .get_mut("following")
-            .and_then(|v| v.as_array_mut())
-        {
+        if let Some(following) = x_data.get_mut("following").and_then(|v| v.as_array_mut()) {
             for account in following.iter_mut() {
                 if let Some(obj) = account.as_object_mut() {
                     obj.retain(|key, _| {

@@ -7,10 +7,14 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use crate::middleware::auth::Claims;
+use crate::services::permission_service::TappPermission;
 
 use super::common::{
-    get_cached_platform_data, parse_user_id, validate_platform_name, verify_tapp_ownership,
+    acquire_platform_lock, authorize_tapp_permissions, get_cached_platform_data, parse_user_id,
+    update_cached_platform_data, validate_platform_name, verify_tapp_ownership,
 };
+use super::runtime_grant::RuntimeGrantContext;
+use crate::api::tapp_store::{validate_storage_key, validate_storage_value_size};
 
 #[derive(Debug, Deserialize)]
 pub struct DataTransformRequest {
@@ -42,7 +46,6 @@ pub enum DataOutput {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
-#[allow(dead_code)]
 pub enum ProcessStep {
     #[serde(rename = "filter")]
     Filter {
@@ -125,10 +128,44 @@ pub enum MapOp {
 pub async fn data_transform(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<DataTransformRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    let mut required_permissions = Vec::with_capacity(2);
+    match &req.input {
+        DataInput::Platform { .. } => required_permissions.push(TappPermission::PlatformRead),
+        DataInput::Storage { key } => {
+            validate_storage_key(key)
+                .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
+            required_permissions.push(TappPermission::Storage);
+        }
+        DataInput::Inline { .. } => {}
+    }
+    match &req.output {
+        Some(DataOutput::Platform { .. }) => {
+            required_permissions.push(TappPermission::PlatformWrite)
+        }
+        Some(DataOutput::Storage { key }) => {
+            validate_storage_key(key)
+                .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
+            if !required_permissions.contains(&TappPermission::Storage) {
+                required_permissions.push(TappPermission::Storage);
+            }
+        }
+        None => {}
+    }
+    for permission in &required_permissions {
+        runtime_grant.require(*permission)?;
+    }
+
+    let user_id = if required_permissions.is_empty() {
+        let user_id = parse_user_id(&claims)?;
+        verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+        user_id
+    } else {
+        authorize_tapp_permissions(&db, &claims, &req.tapp_id, &required_permissions).await?
+    };
 
     tracing::debug!(
         "[TAPP] data_transform - User: {}, Tapp: {}, Steps: {}",
@@ -147,9 +184,12 @@ pub async fn data_transform(
     // 1. 获取输入数据
     let mut items: Vec<Value> = match req.input {
         DataInput::Platform { platform } => {
-            let data = get_cached_platform_data(&platform)
-                .await
-                .unwrap_or(json!({"items": []}));
+            let data = get_cached_platform_data(&platform).await.map_err(|error| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": error })),
+                )
+            })?;
             data.get("items")
                 .and_then(|v| v.as_array())
                 .cloned()
@@ -188,12 +228,22 @@ pub async fn data_transform(
             DataOutput::Platform { platform } => {
                 validate_platform_name(&platform)
                     .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
+                let _platform_guard = acquire_platform_lock(&platform)
+                    .await
+                    .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
                 let cache_dir = std::path::Path::new("cache/platforms");
                 let cache_file =
                     cache_dir.join(format!("{}_filtered.json", platform.to_lowercase()));
                 let data = json!({ "items": items });
-                let _ = tokio::fs::create_dir_all(cache_dir).await;
-                tokio::fs::write(&cache_file, serde_json::to_string_pretty(&data).unwrap())
+                tokio::fs::create_dir_all(cache_dir).await.map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "error": "Failed to create platform cache directory" })),
+                    )
+                })?;
+                let tmp_file =
+                    cache_file.with_extension(format!("json.{}.tmp", uuid::Uuid::new_v4()));
+                tokio::fs::write(&tmp_file, serde_json::to_vec_pretty(&data).unwrap())
                     .await
                     .map_err(|_| {
                         (
@@ -201,11 +251,30 @@ pub async fn data_transform(
                             Json(json!({ "error": "Failed to write platform data" })),
                         )
                     })?;
+                if tokio::fs::rename(&tmp_file, &cache_file).await.is_err() {
+                    let _ = tokio::fs::remove_file(&tmp_file).await;
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "error": "Failed to commit platform data" })),
+                    ));
+                }
+                update_cached_platform_data(&platform, data)
+                    .await
+                    .map_err(|error| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({ "error": error })),
+                        )
+                    })?;
             }
             DataOutput::Storage { key } => {
                 use crate::models::entities::tapp_storage;
                 use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, Set};
 
+                let storage_value = json!(items);
+                validate_storage_value_size(&storage_value).map_err(|status| {
+                    (status, Json(json!({ "error": "Storage value too large" })))
+                })?;
                 let now = chrono::Utc::now().fixed_offset();
                 let existing = tapp_storage::Entity::find()
                     .filter(tapp_storage::Column::UserId.eq(user_id))
@@ -222,7 +291,7 @@ pub async fn data_transform(
 
                 if let Some(item) = existing {
                     let mut active: tapp_storage::ActiveModel = item.into();
-                    active.value = Set(json!(items));
+                    active.value = Set(storage_value.clone());
                     active.updated_at = Set(now);
                     active.update(&db).await.map_err(|_| {
                         (
@@ -236,7 +305,7 @@ pub async fn data_transform(
                         tapp_id: Set(req.tapp_id.clone()),
                         user_id: Set(user_id),
                         key: Set(key),
-                        value: Set(json!(items)),
+                        value: Set(storage_value),
                         created_at: Set(now),
                         updated_at: Set(now),
                     };

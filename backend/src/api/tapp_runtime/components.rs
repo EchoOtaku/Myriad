@@ -11,13 +11,14 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use crate::middleware::auth::Claims;
+use crate::services::permission_service::TappPermission;
 
-use super::common::{parse_user_id, verify_tapp_ownership};
+use super::common::{authorize_tapp_permission, parse_user_id, verify_tapp_ownership};
+use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ComponentType {
-    Page,
     Theme,
     Agent,
 }
@@ -33,16 +34,16 @@ pub struct RegisterComponentRequest {
 pub async fn register_component(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<RegisterComponentRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
-
-    let type_str = match &req.component_type {
-        ComponentType::Page => "page",
-        ComponentType::Theme => "theme",
-        ComponentType::Agent => "agent",
+    let (type_str, permission) = match &req.component_type {
+        ComponentType::Theme => ("theme", TappPermission::ComponentTheme),
+        ComponentType::Agent => ("agent", TappPermission::ComponentAgent),
     };
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(permission)?;
+    let user_id = authorize_tapp_permission(&db, &claims, &req.tapp_id, permission).await?;
 
     tracing::info!(
         "[TAPP] register_component - User: {}, Tapp: {}, Type: {}",
@@ -133,8 +134,22 @@ pub async fn register_component(
 pub async fn unregister_component(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, component_type, component_id)): Path<(String, String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let permission = match component_type.as_str() {
+        "theme" => TappPermission::ComponentTheme,
+        "agent" => TappPermission::ComponentAgent,
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Invalid component type" })),
+            ));
+        }
+    };
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(permission)?;
+    let user_id = authorize_tapp_permission(&db, &claims, &tapp_id, permission).await?;
     tracing::info!(
         "[TAPP] unregister_component - User: {}, Tapp: {}, Type: {}, ID: {}",
         claims.username,
@@ -144,13 +159,6 @@ pub async fn unregister_component(
     );
 
     use crate::models::entities::tapp_storage;
-
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
 
     let storage_key = format!("_component:{}:{}", component_type, component_id);
 
@@ -184,9 +192,13 @@ pub async fn unregister_component(
 pub async fn list_components(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    let user_id = parse_user_id(&claims)?;
+    verify_tapp_ownership(&db, user_id, &tapp_id).await?;
     tracing::debug!(
         "[TAPP] list_components - User: {}, Tapp: {}",
         claims.username,
@@ -195,14 +207,23 @@ pub async fn list_components(
 
     use crate::models::entities::tapp_storage;
 
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
-
     let type_filter = params.get("type");
+    if type_filter.is_some_and(|value| !matches!(value.as_str(), "theme" | "agent")) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid component type" })),
+        ));
+    }
+    match type_filter.map(String::as_str) {
+        Some("theme") => runtime_grant.require(TappPermission::ComponentTheme)?,
+        Some("agent") => runtime_grant.require(TappPermission::ComponentAgent)?,
+        None if !runtime_grant.has(TappPermission::ComponentTheme)
+            && !runtime_grant.has(TappPermission::ComponentAgent) =>
+        {
+            runtime_grant.require(TappPermission::ComponentTheme)?
+        }
+        _ => {}
+    }
     let key_prefix = if let Some(t) = type_filter {
         format!("_component:{}:", t)
     } else {
@@ -223,7 +244,15 @@ pub async fn list_components(
             )
         })?;
 
-    let components: Vec<Value> = items.into_iter().map(|item| item.value).collect();
+    let components: Vec<Value> = items
+        .into_iter()
+        .map(|item| item.value)
+        .filter(|value| match value.get("type").and_then(Value::as_str) {
+            Some("theme") => runtime_grant.has(TappPermission::ComponentTheme),
+            Some("agent") => runtime_grant.has(TappPermission::ComponentAgent),
+            _ => false,
+        })
+        .collect();
 
     Ok(Json(json!({ "success": true, "components": components })))
 }
@@ -232,8 +261,19 @@ pub async fn list_components(
 pub async fn list_all_components_by_type(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path(component_type): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match component_type.as_str() {
+        "theme" => runtime_grant.require(TappPermission::ComponentTheme)?,
+        "agent" => runtime_grant.require(TappPermission::ComponentAgent)?,
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Invalid component type" })),
+            ))
+        }
+    }
     tracing::debug!(
         "[TAPP] list_all_components_by_type - User: {}, Type: {}",
         claims.username,

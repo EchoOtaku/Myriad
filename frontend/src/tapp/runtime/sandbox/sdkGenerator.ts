@@ -75,6 +75,7 @@ export function generateFullSDK(
   let messageIdCounter = 0;
   const pendingRequests = new Map();
   const eventListeners = new Map();
+  const dataExchangeProviders = new Map();
   const lifecycleCallbacks = { ready: [], destroy: [], pause: [], resume: [] };
 
   // 🎯 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
@@ -128,6 +129,7 @@ export function generateFullSDK(
   };
 
   window.addEventListener('message', async (event) => {
+    if (event.source !== window.parent) return;
     const { data: message } = event;
     if (!message?.type) return;
 
@@ -142,135 +144,33 @@ export function generateFullSDK(
           pending.reject(new Error(message.payload?.error || 'Unknown error'));
         }
       }
-    } else if (message.type === 'AGENT_FILL_DATA') {
-      // 🤖 Agent 数据填充请求
-      const data = message.data;
-      if (data && typeof data === 'object') {
-        eventListeners.get('agentFill')?.forEach((cb) => { try { cb(data); } catch (e) {} });
-        const fields = Array.isArray(data.fields)
-          ? data.fields
-          : Object.entries(data)
-              .filter(([key]) => !['content', 'fromStep', 'fromWindow'].includes(key))
-              .map(([target, value]) => ({ target, value, type: 'input' }));
-        if (data.content != null) fields.push({ target: 'main-input', value: data.content, type: 'input' });
-
-        // 自动填充表单字段
-        fields.forEach((field) => {
-          const key = String(field.target || '');
-          const value = field.value;
-          let el = null;
-          try {
-            el = key.startsWith('#') || key.startsWith('.') || key.startsWith('[')
-              ? document.querySelector(key)
-              : document.getElementById(key) || document.querySelector(\`[name="\${key}"]\`) || document.querySelector(\`[data-field="\${key}"]\`);
-          } catch (e) {}
-          if (el) {
-            if (el instanceof HTMLInputElement && (field.type === 'checkbox' || field.type === 'radio')) {
-              el.checked = Boolean(value);
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-            } else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-              el.value = String(value);
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-            } else if (el instanceof HTMLSelectElement) {
-              el.value = String(value);
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-            } else {
-              el.textContent = String(value);
-            }
-          }
-        });
-        if (message.autoSubmit) {
-          const form = document.querySelector('form');
-          if (form?.requestSubmit) form.requestSubmit();
-          else document.querySelector('button[type="submit"], input[type="submit"]')?.click();
-        }
-      }
-    } else if (message.type === 'AGENT_READ_DATA') {
-      // 🤖 Agent 数据读取请求
-      const fields = message.fields;
-      const readType = message.readType || 'all';
-      const result = {};
-
-      if (readType === 'inputs' || readType === 'all') {
-        // 收集表单数据
-        const forms = document.querySelectorAll('form');
-        forms.forEach(form => {
-          const formData = new FormData(form);
-          formData.forEach((value, key) => {
-            if (!fields || fields.includes(key)) {
-              result[key] = value;
-            }
-          });
-        });
-
-        // 收集指定字段
-        if (fields && Array.isArray(fields)) {
-          fields.forEach(field => {
-            if (result[field] === undefined) {
-              const el = document.querySelector(\`[name="\${field}"]\`) ||
-                         document.getElementById(field) ||
-                         document.querySelector(\`[data-field="\${field}"]\`);
-              if (el) {
-                if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
-                  result[field] = el.value;
-                } else {
-                  result[field] = el.textContent;
-                }
-              }
-            }
-          });
-        }
-      } else if (readType === 'content') {
-        let contentElement = document.body;
-        if (message.selector) {
-          try { contentElement = document.querySelector(message.selector); } catch (e) { contentElement = null; }
-        }
-        result.content = contentElement?.textContent || '';
-      } else if (readType === 'storage') {
-        try {
-          const keys = await Tapp.storage.keys();
-          for (const key of keys || []) result[key] = await Tapp.storage.get(key);
-        } catch (e) {
-          result.error = e?.message || String(e);
-        }
-      }
-
-      // 回复数据给父窗口
-      window.parent.postMessage({
-        type: 'AGENT_READ_DATA_RESPONSE',
-        requestId: message.requestId,
-        data: result,
-        source: '${id}',
-        _sessionToken: _SESSION_TOKEN,
-      }, '*');
-    } else if (message.type === 'AGENT_INTERACT') {
-      // 🤖 Agent 安全交互请求（仅执行结构化 DOM 操作，不执行任意脚本）
-      const commands = Array.isArray(message.commands) ? message.commands : [];
-      for (const command of commands) {
-        const target = String(command.target || '');
-        let el = null;
-        try {
-          el = target.startsWith('#') || target.startsWith('.') || target.startsWith('[')
-            ? document.querySelector(target)
-            : document.getElementById(target) || document.querySelector(\`[name="\${target}"]\`) || document.querySelector(\`[data-field="\${target}"]\`);
-        } catch (e) {}
-        if (!el) continue;
-
-        const action = command.action || 'click';
-        if (action === 'click' || action === 'submit') el.click();
-        else if (action === 'focus') el.focus();
-        else if (action === 'input' || action === 'fill' || action === 'select') {
-          if ('value' in el) {
-            el.value = command.value == null ? '' : String(command.value);
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        }
-        const delay = Number(command.delay || 0);
-        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(delay, 2000)));
-      }
     } else if (message.type === 'event') {
+      if (message.action === 'dataExchange:invoke') {
+        const invocation = message.payload || {};
+        const handler = dataExchangeProviders.get(invocation.exportId);
+        if (!handler) {
+          sendRequest('dataExchange', 'respond', [{
+            requestId: invocation.requestId,
+            ok: false,
+            error: 'Data Exchange provider is not registered'
+          }]).catch(() => {});
+        } else {
+          Promise.resolve()
+            .then(() => handler(invocation.params, {
+              purpose: invocation.purpose,
+              requestId: invocation.requestId
+            }))
+            .then(
+              (data) => sendRequest('dataExchange', 'respond', [{ requestId: invocation.requestId, ok: true, data }]),
+              (error) => sendRequest('dataExchange', 'respond', [{
+                requestId: invocation.requestId,
+                ok: false,
+                error: error?.message || String(error)
+              }])
+            )
+            .catch(() => {});
+        }
+      }
       // 缓存有状态事件的最新值（统一映射为 camelCase key，与 addEventListener 回放一致）
       const _bufKey = _ACTION_TO_EVENT[message.action] || message.action;
       if (_BUFFERED_EVENTS.has(_bufKey)) {
@@ -420,6 +320,30 @@ export function generateFullSDK(
       canGenerate: () => sendRequest('ai', 'canGenerate', []),
       chat: (m, c, o) => sendRequest('ai', 'chat', [{ messages: m, context: c, options: o }]),
       image: (r) => sendRequest('ai', 'image', [r]),
+      tasks: {
+        create: (request) => sendRequest('ai', 'tasks.create', [request]),
+        get: (taskId) => sendRequest('ai', 'tasks.get', [taskId]),
+        cancel: (taskId) => sendRequest('ai', 'tasks.cancel', [taskId]),
+        usage: () => sendRequest('ai', 'tasks.usage', []),
+        subscribe: (taskId, callback) => {
+          if (typeof taskId !== 'string' || typeof callback !== 'function') {
+            return Promise.reject(new Error('taskId and callback are required'));
+          }
+          const removeListener = addEventListener('aiTaskEvent', (event) => {
+            if (event?.taskId === taskId) callback({ event: event.event, data: event.data });
+          });
+          return sendRequest('ai', 'tasks.subscribe', [taskId]).then(
+            () => () => {
+              removeListener();
+              sendRequest('ai', 'tasks.unsubscribe', [taskId]).catch(() => {});
+            },
+            (error) => {
+              removeListener();
+              throw error;
+            },
+          );
+        },
+      },
     },
 
     report: {
@@ -440,6 +364,27 @@ export function generateFullSDK(
       keys: () => sendRequest('storage', 'keys', []),
       clear: () => sendRequest('storage', 'clear', []),
       usage: () => sendRequest('storage', 'usage', []),
+      onChanged: (cb) => addEventListener('storageChanged', cb),
+    },
+
+    dataExchange: {
+      request: (request) => sendRequest('dataExchange', 'request', [request]),
+      provide: async (exportId, handler) => {
+        if (typeof exportId !== 'string' || typeof handler !== 'function') {
+          throw new Error('exportId and provider handler are required');
+        }
+        dataExchangeProviders.set(exportId, handler);
+        try {
+          await sendRequest('dataExchange', 'registerProvider', [exportId]);
+        } catch (error) {
+          dataExchangeProviders.delete(exportId);
+          throw error;
+        }
+        return () => {
+          dataExchangeProviders.delete(exportId);
+          sendRequest('dataExchange', 'unregisterProvider', [exportId]).catch(() => {});
+        };
+      },
     },
 
     settings: {
@@ -533,28 +478,49 @@ export function generateFullSDK(
 
     // 🤖 Agent 交互 API - 允许 Tapp 与 Agent 进行数据交互
     agent: {
-      // 监听 Agent 填充数据事件
-      onFill: (cb) => addEventListener('agentFill', cb),
-      // 向 Agent 报告表单数据
-      reportData: (data) => {
-        window.parent.postMessage({
-          type: 'AGENT_TAPP_DATA',
-          data: data,
-          source: '${id}',
-          _sessionToken: _SESSION_TOKEN,
-        }, '*');
+      onInteraction: (type, callback) => {
+        if (typeof type !== 'string' || typeof callback !== 'function') {
+          throw new Error('interaction type and callback are required');
+        }
+        return addEventListener('agentInteractionV2', (raw) => {
+          if (raw?.type !== type) return;
+          const interaction = {
+            ...raw,
+            accept: () => sendRequest('agent', 'v2.accept', [raw.interactionId]),
+            submitResult: (result) => sendRequest('agent', 'v2.result', [raw.interactionId, {
+              ...result,
+              idempotencyKey: result?.idempotencyKey || \`result-\${raw.interactionId}\`,
+            }]),
+            reject: (reason) => sendRequest('agent', 'v2.reject', [raw.interactionId, reason]),
+            requestIntent: (request) => sendRequest('agent', 'v2.intent', [raw.interactionId, request]),
+          };
+          callback(interaction);
+        });
       },
-      // 请求 Agent 执行操作
-      requestAction: (action, params) => {
-        return sendRequest('agent', 'action', [action, params]);
-      },
+      // One-version adapter; Tapp must declare legacy.fill in Agent V2 manifest.
+      onFill: (callback) => Tapp.agent.onInteraction('legacy.fill', (interaction) => callback(interaction.input?.data, interaction)),
+      reportData: () => Promise.reject(new Error('UNSUPPORTED_LEGACY_AGENT_ACTION: use interaction.submitResult')),
+      requestAction: () => Promise.reject(new Error('UNSUPPORTED_LEGACY_AGENT_ACTION: use interaction.requestIntent')),
     },
 
     event: {
       publish: (t, p, tgt) => sendRequest('event', 'publish', [t, p, tgt]),
       subscribe: (ts) => sendRequest('event', 'subscribe', [ts]),
       unsubscribe: (ts) => sendRequest('event', 'unsubscribe', [ts]),
-      on: (t, cb) => addEventListener(\`tapp:\${t}\`, cb),
+      on: (topic, callback) => addEventListener('tappEventV2', (event) => {
+        if (event?.topic === topic) callback({ source: event.source?.tappId, payload: event.payload });
+      }),
+      v2: {
+        publish: (request) => sendRequest('event', 'v2.publish', [request]),
+        on: (topic, callback) => {
+          if (typeof topic !== 'string' || typeof callback !== 'function') {
+            throw new Error('topic and callback are required');
+          }
+          return addEventListener('tappEventV2', (event) => {
+            if (event?.topic === topic) callback(event);
+          });
+        },
+      },
     },
 
     dom: {
@@ -748,10 +714,10 @@ export function generateFullSDK(
   Object.freeze(Tapp.ai);
   Object.freeze(Tapp.report);
   Object.freeze(Tapp.storage);
+  Object.freeze(Tapp.dataExchange);
   Object.freeze(Tapp.settings);
   Object.freeze(Tapp.ui);
   Object.freeze(Tapp.ui.fullscreen);
-  Object.freeze(Tapp.fetch);
   Object.freeze(Tapp.data);
   Object.freeze(Tapp.context);
   Object.freeze(Tapp.media);
@@ -813,6 +779,7 @@ export function generateWidgetSDK(
   var messageIdCounter = 0;
   var pendingRequests = new Map();
   var eventListeners = new Map();
+  var dataExchangeProviders = new Map();
   // 🎯 添加生命周期回调支持
   var lifecycleCallbacks = { pause: [], resume: [] };
 
@@ -893,6 +860,35 @@ export function generateWidgetSDK(
 
     // 处理事件
     if (msg.type === 'event') {
+      if (msg.action === 'dataExchange:invoke') {
+        var invocation = msg.payload || {};
+        var provider = dataExchangeProviders.get(invocation.exportId);
+        if (!provider) {
+          sendRequest('dataExchange', 'respond', [{
+            requestId: invocation.requestId,
+            ok: false,
+            error: 'Data Exchange provider is not registered'
+          }]).catch(function() {});
+        } else {
+          Promise.resolve()
+            .then(function() {
+              return provider(invocation.params, {
+                purpose: invocation.purpose,
+                requestId: invocation.requestId
+              });
+            })
+            .then(function(data) {
+              return sendRequest('dataExchange', 'respond', [{ requestId: invocation.requestId, ok: true, data: data }]);
+            }, function(error) {
+              return sendRequest('dataExchange', 'respond', [{
+                requestId: invocation.requestId,
+                ok: false,
+                error: error && error.message ? error.message : String(error)
+              }]);
+            })
+            .catch(function() {});
+        }
+      }
       // 🎯 缓存有状态事件的最新值（供 addEventListener 回放，统一 camelCase key）
       var _bufKey = _ACTION_TO_EVENT[msg.action] || msg.action;
       if (_BUFFERED_EVENTS[_bufKey]) {
@@ -979,6 +975,9 @@ export function generateWidgetSDK(
       else if (msg.action === 'mediaProgress') {
         eventListeners.get('mediaProgress')?.forEach(function(cb) { try { cb(msg.payload); } catch(e) {} });
       }
+      else if (msg.action === 'storageChanged') {
+        eventListeners.get('storageChanged')?.forEach(function(cb) { try { cb(msg.payload); } catch(e) {} });
+      }
     }
   });
 
@@ -996,12 +995,44 @@ export function generateWidgetSDK(
       onResume: function(cb) { lifecycleCallbacks.resume.push(cb); }
     },
 
+    widget: {
+      getInstanceSettings: function() {
+        return Object.assign({}, (window._TAPP_WIDGET_PROPS && window._TAPP_WIDGET_PROPS.config) || {});
+      },
+      updateInstanceSettings: function(patch) {
+        return sendRequest('widget', 'instanceSettings.update', [patch]);
+      },
+      invalidate: function(reason) {
+        return sendRequest('widget', 'invalidate', [reason]);
+      }
+    },
+
     storage: {
       get: function(k) { validateStorageKey(k); return sendRequest('storage', 'get', [k]); },
       set: function(k, v) { validateStorageKey(k); return sendRequest('storage', 'set', [k, v]); },
       remove: function(k) { validateStorageKey(k); return sendRequest('storage', 'remove', [k]); },
       keys: function() { return sendRequest('storage', 'keys', []); },
-      clear: function() { return sendRequest('storage', 'clear', []); }
+      clear: function() { return sendRequest('storage', 'clear', []); },
+      onChanged: function(cb) { return addEventListener('storageChanged', cb); }
+    },
+
+    dataExchange: {
+      request: function(request) { return sendRequest('dataExchange', 'request', [request]); },
+      provide: function(exportId, handler) {
+        if (typeof exportId !== 'string' || typeof handler !== 'function') {
+          return Promise.reject(new Error('exportId and provider handler are required'));
+        }
+        dataExchangeProviders.set(exportId, handler);
+        return sendRequest('dataExchange', 'registerProvider', [exportId]).then(function() {
+          return function() {
+            dataExchangeProviders.delete(exportId);
+            sendRequest('dataExchange', 'unregisterProvider', [exportId]).catch(function() {});
+          };
+        }, function(error) {
+          dataExchangeProviders.delete(exportId);
+          throw error;
+        });
+      }
     },
 
     settings: {
@@ -1021,7 +1052,68 @@ export function generateWidgetSDK(
       }
     },
 
-    ai: { chat: function(m, c, o) { return sendRequest('ai', 'chat', [{ messages: m, context: c, options: o }]); } },
+    ai: {
+      chat: function(m, c, o) { return sendRequest('ai', 'chat', [{ messages: m, context: c, options: o }]); },
+      tasks: {
+        create: function(request) { return sendRequest('ai', 'tasks.create', [request]); },
+        get: function(taskId) { return sendRequest('ai', 'tasks.get', [taskId]); },
+        cancel: function(taskId) { return sendRequest('ai', 'tasks.cancel', [taskId]); },
+        usage: function() { return sendRequest('ai', 'tasks.usage', []); },
+        subscribe: function(taskId, callback) {
+          if (typeof taskId !== 'string' || typeof callback !== 'function') {
+            return Promise.reject(new Error('taskId and callback are required'));
+          }
+          var removeListener = addEventListener('aiTaskEvent', function(event) {
+            if (event && event.taskId === taskId) callback({ event: event.event, data: event.data });
+          });
+          return sendRequest('ai', 'tasks.subscribe', [taskId]).then(function() {
+            return function() {
+              removeListener();
+              sendRequest('ai', 'tasks.unsubscribe', [taskId]).catch(function() {});
+            };
+          }, function(error) {
+            removeListener();
+            throw error;
+          });
+        }
+      }
+    },
+
+    event: {
+      v2: {
+        publish: function(request) { return sendRequest('event', 'v2.publish', [request]); },
+        on: function(topic, callback) {
+          if (typeof topic !== 'string' || typeof callback !== 'function') {
+            throw new Error('topic and callback are required');
+          }
+          return addEventListener('tappEventV2', function(event) {
+            if (event && event.topic === topic) callback(event);
+          });
+        }
+      }
+    },
+
+    agent: {
+      onInteraction: function(type, callback) {
+        if (typeof type !== 'string' || typeof callback !== 'function') {
+          throw new Error('interaction type and callback are required');
+        }
+        return addEventListener('agentInteractionV2', function(raw) {
+          if (!raw || raw.type !== type) return;
+          callback(Object.assign({}, raw, {
+            accept: function() { return sendRequest('agent', 'v2.accept', [raw.interactionId]); },
+            submitResult: function(result) {
+              result = result || {};
+              return sendRequest('agent', 'v2.result', [raw.interactionId, Object.assign({}, result, {
+                idempotencyKey: result.idempotencyKey || ('result-' + raw.interactionId)
+              })]);
+            },
+            reject: function(reason) { return sendRequest('agent', 'v2.reject', [raw.interactionId, reason]); },
+            requestIntent: function(request) { return sendRequest('agent', 'v2.intent', [raw.interactionId, request]); }
+          }));
+        });
+      }
+    },
 
     media: {
       play: function() { return sendRequest('media', 'control', [{ action: 'play' }]); },
@@ -1168,6 +1260,7 @@ export function generateWidgetSDK(
   Object.freeze(Tapp);
   Object.freeze(Tapp.lifecycle);
   Object.freeze(Tapp.storage);
+  Object.freeze(Tapp.dataExchange);
   Object.freeze(Tapp.settings);
   Object.freeze(Tapp.ai);
   Object.freeze(Tapp.platform);

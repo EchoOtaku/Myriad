@@ -96,7 +96,7 @@ bash scripts/docker/deploy.sh up
 # 后端（需要 Rust 1.88+，推荐 1.90；PostgreSQL 16+）
 cd backend && cp .env.example .env && cargo run
 
-# 前端（需要 Node 20+、pnpm）
+# 前端（需要 Node 25、pnpm）
 cd frontend && pnpm install && pnpm dev
 ```
 

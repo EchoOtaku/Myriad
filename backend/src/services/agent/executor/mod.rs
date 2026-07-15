@@ -131,6 +131,10 @@ impl Executor {
             recipe.page_context.clone(),
             recipe.conversation_context.clone(),
         );
+        context.variables.insert(
+            "_task_id".to_string(),
+            Value::String(task_state.task_id.clone()),
+        );
 
         // 记录对话上下文信息
         if let Some(ref history) = context.conversation_context {
@@ -254,7 +258,10 @@ impl Executor {
 
         // 构建 DAG 调度器（检测是否有并行依赖）
         let mut dag_scheduler = dag::DagScheduler::new(&all_steps).ok();
-        let mut use_dag = dag_scheduler.as_ref().is_some_and(|d| d.is_parallel_mode());
+        let mut use_dag = dag_scheduler.as_ref().is_some_and(|d| d.is_parallel_mode())
+            && !all_steps
+                .iter()
+                .any(|step| step.capability_id == "tapp.interact");
         // 追踪被注入 DAG 的动态子步骤 ID（区分原始 recipe 步骤和 Skill 子步骤）
         let mut dag_injected_ids: HashSet<String> = HashSet::new();
         if use_dag {
@@ -408,6 +415,7 @@ impl Executor {
                         let step_analyzer = self.get_analyzer_for_tier(step_tier);
                         let ctx_snapshot = context.clone();
                         let step_clone = step.clone();
+                        let executor_task_id = task_state.task_id.clone();
                         in_flight.push(Box::pin(async move {
                             let start = std::time::Instant::now();
                             let mut ctx = ctx_snapshot;
@@ -415,6 +423,7 @@ impl Executor {
                                 db: &self.db,
                                 ai_analyzer: step_analyzer,
                                 user_id,
+                                task_id: Some(executor_task_id),
                                 execution_context: Some(ctx.clone()),
                             };
                             let pre_dyn = ctx.pending_dynamic_steps.len();
@@ -712,6 +721,7 @@ impl Executor {
                                             let new_analyzer = self.get_analyzer_for_tier(new_tier);
                                             let ctx_snapshot = context.clone();
                                             let new_step_clone = new_step.clone();
+                                            let executor_task_id = task_state.task_id.clone();
                                             in_flight.push(Box::pin(async move {
                                                 let start = std::time::Instant::now();
                                                 let mut ctx = ctx_snapshot;
@@ -719,6 +729,7 @@ impl Executor {
                                                     db: &self.db,
                                                     ai_analyzer: new_analyzer,
                                                     user_id,
+                                                    task_id: Some(executor_task_id),
                                                     execution_context: Some(ctx.clone()),
                                                 };
                                                 let pre_dyn = ctx.pending_dynamic_steps.len();
@@ -1221,6 +1232,29 @@ impl Executor {
                     evolution
                         .on_execution_complete(&step.capability_id, true, None)
                         .await;
+                }
+
+                if let Some(question) = tapp_interaction_wait_question(&output) {
+                    emitter
+                        .waiting_for_input(&task_state.task_id, &question)
+                        .await;
+                    task_state.status = TaskStatus::WaitingForInput;
+                    task_state.set_pending_question(question);
+                    task_state.recipe = Some(recipe.clone());
+                    context.retry_budget_remaining = global_retry_budget;
+                    task_state.execution_context = Some(context);
+                    {
+                        let mut store = TASK_STORE.write().await;
+                        if let Some(task) = store.get_mut(&task_state.task_id) {
+                            *task = task_state.clone();
+                        }
+                    }
+                    task_store::save_task_to_db(user_id, &task_state)
+                        .await
+                        .map_err(|error| {
+                            format!("persist Tapp interaction wait state failed: {error}")
+                        })?;
+                    return Ok(task_state);
                 }
 
                 // 动态分析：检查是否需要用户输入
@@ -2342,6 +2376,10 @@ impl Executor {
 
         // 恢复执行上下文
         let mut context = task_state.execution_context.take().unwrap_or_default();
+        context.variables.insert(
+            "_task_id".to_string(),
+            Value::String(task_state.task_id.clone()),
+        );
 
         // 清理已过期的排队问题，避免 resume 后发送过期问题
         let now = chrono::Utc::now();
@@ -2496,7 +2534,10 @@ impl Executor {
 
         // 构建 DAG 调度器（检测是否有并行依赖）
         let mut dag_scheduler = dag::DagScheduler::new(&all_steps).ok();
-        let mut use_dag = dag_scheduler.as_ref().is_some_and(|d| d.is_parallel_mode());
+        let mut use_dag = dag_scheduler.as_ref().is_some_and(|d| d.is_parallel_mode())
+            && !all_steps
+                .iter()
+                .any(|step| step.capability_id == "tapp.interact");
 
         // 已完成的步骤需要在 DAG 中标记
         if let Some(ref mut dag) = dag_scheduler {
@@ -2671,6 +2712,35 @@ impl Executor {
                         None,
                     )
                     .await;
+
+                task_state
+                    .step_results
+                    .insert(step.id.clone(), outcome.to_step_result(&step.id));
+                if let Some(ref mut dag) = dag_scheduler {
+                    dag.mark_completed(&step.id);
+                }
+                if let Some(question) = tapp_interaction_wait_question(&output) {
+                    emitter
+                        .waiting_for_input(&task_state.task_id, &question)
+                        .await;
+                    task_state.status = TaskStatus::WaitingForInput;
+                    task_state.set_pending_question(question);
+                    task_state.recipe = Some(recipe.clone());
+                    context.retry_budget_remaining = global_retry_budget;
+                    task_state.execution_context = Some(context);
+                    {
+                        let mut store = TASK_STORE.write().await;
+                        if let Some(task) = store.get_mut(&task_state.task_id) {
+                            *task = task_state.clone();
+                        }
+                    }
+                    task_store::save_task_to_db(user_id, &task_state)
+                        .await
+                        .map_err(|error| {
+                            format!("persist Tapp interaction wait state failed: {error}")
+                        })?;
+                    return Ok(task_state);
+                }
 
                 // 动态步骤生成器
                 if !_is_dynamic {
@@ -3772,6 +3842,32 @@ impl Executor {
             }
         }
     }
+}
+
+fn tapp_interaction_wait_question(output: &Value) -> Option<UserQuestion> {
+    let interaction = output.get("interaction")?;
+    let interaction_id = interaction
+        .get("interactionId")
+        .or_else(|| interaction.get("interaction_id"))?
+        .as_str()?;
+    let expires_at = interaction
+        .get("deadline")
+        .and_then(Value::as_str)
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.with_timezone(&chrono::Utc));
+    Some(UserQuestion {
+        question_id: format!("tapp_interaction:{interaction_id}"),
+        question_type: QuestionType::FreeText,
+        question: "等待 Tapp 完成交互".to_string(),
+        context: format!(
+            "Tapp Agent Interaction {interaction_id} 将在提交结构化结果后自动恢复此任务"
+        ),
+        options: None,
+        required: true,
+        default_value: None,
+        created_at: chrono::Utc::now(),
+        expires_at,
+    })
 }
 
 #[cfg(test)]

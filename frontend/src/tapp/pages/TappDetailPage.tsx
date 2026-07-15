@@ -36,6 +36,7 @@ import { useI18n } from '../../contexts/I18nContext'
 import { TappIcon } from '../components/TappIcon'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { getTappRuntime } from '../runtime'
+import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import * as TappApiService from '../services/TappApiService'
 import { getTappIconStyle } from '../utils/tappColors'
 
@@ -52,230 +53,192 @@ const PERMISSION_CONFIG: Record<
     icon: typeof FaGamepad
     labelKey: string
     descriptionKey: string
-    level: 'basic' | 'elevated' | 'privileged'
   }
 > = {
   'widget:register': {
     icon: FaGamepad,
     labelKey: 'permRegisterWidget',
     descriptionKey: 'permRegisterWidgetDesc',
-    level: 'basic',
   },
   'platform:read': {
     icon: FaDatabase,
     labelKey: 'permReadPlatform',
     descriptionKey: 'permReadPlatformDesc',
-    level: 'basic',
   },
   'platform:write': {
     icon: FaDatabase,
     labelKey: 'permWritePlatform',
     descriptionKey: 'permWritePlatformDesc',
-    level: 'elevated',
   },
   'platform:register': {
     icon: FaDatabase,
     labelKey: 'permRegisterPlatform',
     descriptionKey: 'permRegisterPlatformDesc',
-    level: 'privileged',
   },
   'ai:generate': {
     icon: FaRobot,
     labelKey: 'permAiGenerate',
     descriptionKey: 'permAiGenerateDesc',
-    level: 'elevated',
   },
   'ai:analyze': {
     icon: FaRobot,
     labelKey: 'permAiAnalyze',
     descriptionKey: 'permAiAnalyzeDesc',
-    level: 'elevated',
   },
   'ai:chat': {
     icon: FaRobot,
     labelKey: 'permAiChat',
     descriptionKey: 'permAiChatDesc',
-    level: 'elevated',
   },
   'ai:image': {
     icon: FaRobot,
     labelKey: 'permAiImage',
     descriptionKey: 'permAiImageDesc',
-    level: 'elevated',
   },
   'report:read': {
     icon: FaChartBar,
     labelKey: 'permReadReport',
     descriptionKey: 'permReadReportDesc',
-    level: 'basic',
   },
   'report:write': {
     icon: FaChartBar,
     labelKey: 'permWriteReport',
     descriptionKey: 'permWriteReportDesc',
-    level: 'elevated',
   },
   storage: {
     icon: FaHdd,
     labelKey: 'permStorage',
     descriptionKey: 'permStorageDesc',
-    level: 'basic',
   },
   'ui:notification': {
     icon: FaBell,
     labelKey: 'permNotification',
     descriptionKey: 'permNotificationDesc',
-    level: 'basic',
   },
   'ui:fullscreen': {
     icon: FaChevronUp,
     labelKey: 'permFullscreen',
     descriptionKey: 'permFullscreenDesc',
-    level: 'basic',
   },
   'ui:theme': {
     icon: FaChevronUp,
     labelKey: 'permReadTheme',
     descriptionKey: 'permReadThemeDesc',
-    level: 'basic',
   },
   'ui:confirm': {
     icon: FaChevronUp,
     labelKey: 'permConfirm',
     descriptionKey: 'permConfirmDesc',
-    level: 'basic',
   },
   'network:fetch': {
     icon: FaDatabase,
     labelKey: 'permNetworkFetch',
     descriptionKey: 'permNetworkFetchDesc',
-    level: 'elevated',
   },
   'media:control': {
     icon: FaGamepad,
     labelKey: 'permMediaControl',
     descriptionKey: 'permMediaControlDesc',
-    level: 'elevated',
   },
   'media:read': {
     icon: FaGamepad,
     labelKey: 'permMediaRead',
     descriptionKey: 'permMediaReadDesc',
-    level: 'basic',
   },
   'component:theme': {
     icon: FaChevronUp,
     labelKey: 'permRegisterTheme',
     descriptionKey: 'permRegisterThemeDesc',
-    level: 'elevated',
   },
   'component:agent': {
     icon: FaRobot,
     labelKey: 'permRegisterAgent',
     descriptionKey: 'permRegisterAgentDesc',
-    level: 'privileged',
   },
   'shortcut:register': {
     icon: FaGamepad,
     labelKey: 'permRegisterShortcut',
     descriptionKey: 'permRegisterShortcutDesc',
-    level: 'elevated',
   },
   'event:publish': {
     icon: FaBell,
     labelKey: 'permPublishEvent',
     descriptionKey: 'permPublishEventDesc',
-    level: 'elevated',
   },
   'event:subscribe': {
     icon: FaBell,
     labelKey: 'permSubscribeEvent',
     descriptionKey: 'permSubscribeEventDesc',
-    level: 'basic',
   },
   'scheduler:register': {
     icon: FaCog,
     labelKey: 'permSchedulerRegister',
     descriptionKey: 'permSchedulerRegisterDesc',
-    level: 'elevated',
   },
   'speech:tts': {
     icon: FaMicrophone,
     labelKey: 'permSpeechTts',
     descriptionKey: 'permSpeechTtsDesc',
-    level: 'elevated',
   },
   'speech:asr': {
     icon: FaMicrophone,
     labelKey: 'permSpeechAsr',
     descriptionKey: 'permSpeechAsrDesc',
-    level: 'elevated',
   },
   'tappList:read': {
     icon: FaDatabase,
     labelKey: 'permReadTappList',
     descriptionKey: 'permReadTappListDesc',
-    level: 'basic',
   },
   'tappList:manage': {
     icon: FaDatabase,
     labelKey: 'permManageTappList',
     descriptionKey: 'permManageTappListDesc',
-    level: 'elevated',
   },
   'brew:read': {
     icon: FaDatabase,
     labelKey: 'permReadBrew',
     descriptionKey: 'permReadBrewDesc',
-    level: 'basic',
   },
   'brew:write': {
     icon: FaDatabase,
     labelKey: 'permWriteBrew',
     descriptionKey: 'permWriteBrewDesc',
-    level: 'elevated',
   },
   'brew:comment': {
     icon: FaBell,
     labelKey: 'permCommentBrew',
     descriptionKey: 'permCommentBrewDesc',
-    level: 'elevated',
   },
   'brew:manage': {
     icon: FaCog,
     labelKey: 'permManageBrew',
     descriptionKey: 'permManageBrewDesc',
-    level: 'privileged',
   },
   'federation:read': {
     icon: FaDatabase,
     labelKey: 'permReadFederation',
     descriptionKey: 'permReadFederationDesc',
-    level: 'basic',
   },
   'federation:write': {
     icon: FaDatabase,
     labelKey: 'permWriteFederation',
     descriptionKey: 'permWriteFederationDesc',
-    level: 'elevated',
   },
   'federation:message': {
     icon: FaBell,
     labelKey: 'permMessageFederation',
     descriptionKey: 'permMessageFederationDesc',
-    level: 'elevated',
   },
   'federation:trust': {
     icon: FaLock,
     labelKey: 'permTrustFederation',
     descriptionKey: 'permTrustFederationDesc',
-    level: 'privileged',
   },
   'federation:files': {
     icon: FaDownload,
     labelKey: 'permFederationFiles',
     descriptionKey: 'permFederationFilesDesc',
-    level: 'elevated',
   },
 }
 
@@ -907,6 +870,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                 if (!config) return null
 
                 const Icon = config.icon
+                const level = PERMISSION_LEVELS[permission]
                 const levelColors = {
                   basic:
                     'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -936,9 +900,9 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                           {t.tapp[config.labelKey as keyof typeof t.tapp]}
                         </span>
                         <span
-                          className={`px-1.5 py-0.5 text-xs rounded ${levelColors[config.level]}`}
+                          className={`px-1.5 py-0.5 text-xs rounded ${levelColors[level]}`}
                         >
-                          {levelLabels[config.level]}
+                          {levelLabels[level]}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">

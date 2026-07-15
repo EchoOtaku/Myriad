@@ -25,6 +25,8 @@ pub struct Model {
     #[sea_orm(column_type = "Json", nullable)]
     pub execution_context: Option<Json>,
     #[sea_orm(column_type = "Json", nullable)]
+    pub recipe: Option<Json>,
+    #[sea_orm(column_type = "Json", nullable)]
     pub pending_question: Option<Json>,
     pub progress: i16,
     #[sea_orm(column_type = "Text", nullable)]

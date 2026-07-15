@@ -113,16 +113,12 @@ impl MigrationTrait for Migration {
             .await?;
 
         // 3b. 拆掉 "admin 必须 local" 的约束
-        db.execute_unprepared(
-            "ALTER TABLE users DROP CONSTRAINT IF EXISTS check_admin_local_only",
-        )
-        .await?;
+        db.execute_unprepared("ALTER TABLE users DROP CONSTRAINT IF EXISTS check_admin_local_only")
+            .await?;
 
         // 3c. 扩展 auth_provider 取值范围
-        db.execute_unprepared(
-            "ALTER TABLE users DROP CONSTRAINT IF EXISTS check_auth_provider",
-        )
-        .await?;
+        db.execute_unprepared("ALTER TABLE users DROP CONSTRAINT IF EXISTS check_auth_provider")
+            .await?;
         db.execute_unprepared(
             "ALTER TABLE users ADD CONSTRAINT check_auth_provider \
              CHECK (auth_provider IN ('local','github','oidc','federated'))",
@@ -179,20 +175,16 @@ impl MigrationTrait for Migration {
         let db = manager.get_connection();
 
         // 5. 删除配置项
-        db.execute_unprepared(
-            "DELETE FROM configurations WHERE key = 'allow_local_registration'",
-        )
-        .await?;
+        db.execute_unprepared("DELETE FROM configurations WHERE key = 'allow_local_registration'")
+            .await?;
 
         // 4. 拆掉 username 唯一索引
         db.execute_unprepared("DROP INDEX IF EXISTS idx_users_username_unique")
             .await?;
 
         // 3. 恢复约束（按 001_initial_schema 原状）
-        db.execute_unprepared(
-            "ALTER TABLE users DROP CONSTRAINT IF EXISTS check_auth_provider",
-        )
-        .await?;
+        db.execute_unprepared("ALTER TABLE users DROP CONSTRAINT IF EXISTS check_auth_provider")
+            .await?;
         db.execute_unprepared(
             "ALTER TABLE users ADD CONSTRAINT check_auth_provider \
              CHECK (auth_provider IN ('local','github'))",

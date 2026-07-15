@@ -20,16 +20,20 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, Set,
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter, Set, Statement,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path as FsPath, PathBuf};
 use tokio::fs;
 
 use crate::api::tapp_runtime::common as tapp_common;
+use crate::api::tapp_runtime::RuntimeGrantContext;
+use crate::config::DynamicConfig;
 use crate::middleware::auth::{
-    auth_middleware, ensure_current_admin, extract_optional_claims, Claims,
+    auth_middleware, ensure_current_admin, extract_optional_claims, optional_auth_middleware,
+    Claims,
 };
 use crate::models::entities::{
     tapp_storage, tapp_store_sources, tapp_user_activities, tapp_widgets, tapps,
@@ -37,6 +41,37 @@ use crate::models::entities::{
 use crate::services::data_paths::paths;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::GLOBAL_DYNAMIC_CONFIG;
+
+fn tapp_detail_from_model(
+    tapp: tapps::Model,
+    role: UserRole,
+    is_temporary: bool,
+    is_admin_tapp: bool,
+    config: &DynamicConfig,
+) -> TappDetail {
+    let all_permissions: Vec<String> =
+        serde_json::from_value(tapp.granted_permissions.clone()).unwrap_or_default();
+    let granted_permissions =
+        TappPermissionService::filter_permissions_for_role(config, role, &all_permissions);
+
+    TappDetail {
+        id: tapp.tapp_id,
+        name: tapp.name,
+        version: tapp.version,
+        description: tapp.description,
+        author: tapp.author,
+        icon: tapp.icon,
+        theme_color: tapp.theme_color,
+        manifest: tapp.manifest,
+        status: format!("{:?}", tapp.status).to_lowercase(),
+        granted_permissions,
+        installed_at: tapp.installed_at.to_rfc3339(),
+        last_run_at: tapp.last_run_at.map(|dt| dt.to_rfc3339()),
+        user_role: role.as_str().to_string(),
+        is_temporary,
+        is_admin_tapp,
+    }
+}
 
 /// 获取管理员用户 ID（委托给 tapp_runtime::common 的缓存版本）
 async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, StatusCode> {
@@ -47,6 +82,22 @@ async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, StatusCode> {
 
 async fn current_is_admin(claims: &Claims) -> bool {
     ensure_current_admin(claims).await.is_ok()
+}
+
+fn optional_authenticated_user_id(claims: Option<&Claims>) -> Option<i32> {
+    claims
+        .and_then(|claims| claims.sub.parse::<i32>().ok())
+        .filter(|user_id| *user_id >= 0)
+}
+
+fn require_runtime_storage_grant(
+    grant: &RuntimeGrantContext,
+    tapp_id: &str,
+) -> Result<(), StatusCode> {
+    grant
+        .require_tapp_id(tapp_id)
+        .and_then(|_| grant.require(TappPermission::Storage))
+        .map_err(|(status, _)| status)
 }
 
 async fn current_user_role(claims: &Claims) -> UserRole {
@@ -70,18 +121,13 @@ async fn filter_install_permissions(role: UserRole, permissions: Vec<String>) ->
     granted
 }
 
-/// 🔒 验证用户对 Tapp 的访问权限（委托给 tapp_runtime::common 的统一版本）
-///
-/// 安全校验规则：
-/// - 管理员：可以访问所有 Tapp
-/// - 普通用户：可以访问自己安装的 Tapp + 管理员的公开 Tapp
-/// - 游客：只能访问管理员的公开 Tapp
-async fn verify_tapp_ownership(
+async fn authorize_tapp_permission(
     db: &DatabaseConnection,
-    user_id: i32,
+    claims: &Claims,
     tapp_id: &str,
-) -> Result<(), StatusCode> {
-    tapp_common::verify_tapp_ownership(db, user_id, tapp_id)
+    permission: TappPermission,
+) -> Result<i32, StatusCode> {
+    tapp_common::authorize_tapp_permission(db, claims, tapp_id, permission)
         .await
         .map_err(|(status, _)| status)
 }
@@ -117,6 +163,72 @@ fn api_error(message: impl Into<String>) -> Json<ApiResponse<()>> {
 
 const MAX_TAPP_ID_LEN: usize = 128;
 const MAX_RESOURCE_PATH_LEN: usize = 256;
+const MAX_TAPP_ARCHIVE_BYTES: usize = 25 * 1024 * 1024;
+const MAX_TAPP_ARCHIVE_FILES: usize = 512;
+const MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES: u64 = 100 * 1024 * 1024;
+const MAX_TAPP_RESOURCE_BYTES: u64 = 25 * 1024 * 1024;
+const MAX_TAPP_MANIFEST_BYTES: u64 = 256 * 1024;
+const MAX_WIDGETS_PER_TAPP: usize = 64;
+const MAX_DATA_EXCHANGE_DECLARATIONS: usize = 32;
+const MAX_DATA_EXCHANGE_ID_LEN: usize = 128;
+const MAX_DATA_EXCHANGE_SCHEMA_BYTES: usize = 64 * 1024;
+const MAX_DATA_EXCHANGE_RESPONSE_BYTES: usize = 512 * 1024;
+
+fn valid_data_exchange_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_DATA_EXCHANGE_ID_LEN
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+}
+
+pub(crate) fn validate_inline_data_schema(schema: &serde_json::Value) -> Result<(), String> {
+    let object = schema
+        .as_object()
+        .ok_or_else(|| "Data Exchange schema must be an inline JSON object".to_string())?;
+    let encoded = serde_json::to_vec(schema)
+        .map_err(|_| "Data Exchange schema cannot be serialized".to_string())?;
+    if encoded.len() > MAX_DATA_EXCHANGE_SCHEMA_BYTES {
+        return Err(format!(
+            "Data Exchange schema is too large (max {MAX_DATA_EXCHANGE_SCHEMA_BYTES} bytes)"
+        ));
+    }
+
+    fn reject_refs(value: &serde_json::Value, depth: usize) -> Result<(), String> {
+        if depth > 32 {
+            return Err("Data Exchange schema nesting is too deep".to_string());
+        }
+        match value {
+            serde_json::Value::Object(map) => {
+                if map.contains_key("$ref") {
+                    return Err("Data Exchange schema does not support $ref".to_string());
+                }
+                for child in map.values() {
+                    reject_refs(child, depth + 1)?;
+                }
+            }
+            serde_json::Value::Array(values) => {
+                for child in values {
+                    reject_refs(child, depth + 1)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    reject_refs(schema, 0)?;
+    if !object.contains_key("type")
+        && !object.contains_key("properties")
+        && !object.contains_key("enum")
+        && !object.contains_key("const")
+    {
+        return Err(
+            "Data Exchange schema must declare type, properties, enum, or const".to_string(),
+        );
+    }
+    Ok(())
+}
 
 fn is_safe_path_component(value: &str) -> bool {
     !value.is_empty()
@@ -176,9 +288,169 @@ fn validate_resource_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn is_valid_widget_size(size: &str) -> bool {
+    matches!(
+        size,
+        "1x1" | "1x2" | "2x1" | "2x2" | "2x3" | "3x2" | "4x1" | "4x2" | "2x4" | "3x3" | "4x4"
+    )
+}
+
+fn validate_tapp_settings(settings: &[TappSettingDef], scope: &str) -> Result<(), String> {
+    if settings.len() > 64 {
+        return Err(format!("{scope} accepts at most 64 settings"));
+    }
+    let mut keys = std::collections::HashSet::new();
+    for setting in settings {
+        if validate_storage_key(&setting.key).is_err()
+            || !keys.insert(setting.key.as_str())
+            || setting.label.is_empty()
+            || setting.label.len() > 255
+            || !matches!(
+                setting.setting_type.as_str(),
+                "toggle" | "select" | "input" | "number" | "color"
+            )
+        {
+            return Err(format!(
+                "Invalid or duplicate {scope} setting: {}",
+                setting.key
+            ));
+        }
+        if setting.setting_type == "select"
+            && setting
+                .options
+                .as_ref()
+                .is_none_or(|options| options.is_empty() || options.len() > 100)
+        {
+            return Err(format!(
+                "Select {scope} setting {} requires 1-100 options",
+                setting.key
+            ));
+        }
+        if let Some(options) = &setting.options {
+            let mut values = std::collections::HashSet::new();
+            if setting.setting_type != "select"
+                || options.iter().any(|option| {
+                    option.value.is_empty()
+                        || option.value.len() > 255
+                        || option.label.is_empty()
+                        || option.label.len() > 255
+                        || !values.insert(option.value.as_str())
+                })
+            {
+                return Err(format!(
+                    "Invalid options for {scope} setting: {}",
+                    setting.key
+                ));
+            }
+        }
+        let has_numeric_constraints =
+            setting.min.is_some() || setting.max.is_some() || setting.step.is_some();
+        if (has_numeric_constraints && setting.setting_type != "number")
+            || (setting.placeholder.is_some() && setting.setting_type != "input")
+        {
+            return Err(format!(
+                "Incompatible fields for {scope} setting: {}",
+                setting.key
+            ));
+        }
+        if setting
+            .min
+            .zip(setting.max)
+            .is_some_and(|(min, max)| min > max)
+            || setting.step.is_some_and(|step| step <= 0.0)
+        {
+            return Err(format!(
+                "Invalid numeric range for {scope} setting: {}",
+                setting.key
+            ));
+        }
+        if let Some(default) = &setting.default_value {
+            let valid_default = match setting.setting_type.as_str() {
+                "toggle" => default.is_boolean(),
+                "input" | "color" => default.is_string(),
+                "select" => default.as_str().is_some_and(|value| {
+                    setting
+                        .options
+                        .as_ref()
+                        .is_some_and(|options| options.iter().any(|option| option.value == value))
+                }),
+                "number" => default.as_f64().is_some_and(|value| {
+                    value.is_finite()
+                        && setting.min.is_none_or(|min| value >= min)
+                        && setting.max.is_none_or(|max| value <= max)
+                }),
+                _ => false,
+            };
+            if !valid_default {
+                return Err(format!(
+                    "Invalid defaultValue for {scope} setting: {}",
+                    setting.key
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_widget_refresh_policy(
+    policy: &TappWidgetRefreshPolicy,
+    widget_id: &str,
+) -> Result<(), String> {
+    match policy.mode {
+        TappWidgetRefreshMode::Event if policy.interval_seconds.is_some() => Err(format!(
+            "Event-driven Widget {widget_id} cannot declare intervalSeconds"
+        )),
+        TappWidgetRefreshMode::Event => Ok(()),
+        TappWidgetRefreshMode::Interval
+            if !matches!(policy.interval_seconds, Some(15..=86_400)) =>
+        {
+            Err(format!(
+                "Interval Widget {widget_id} requires intervalSeconds between 15 and 86400"
+            ))
+        }
+        TappWidgetRefreshMode::Interval => Ok(()),
+    }
+}
+
+fn parse_system_version(value: &str) -> Result<semver::Version, String> {
+    let normalized = value.strip_prefix('v').unwrap_or(value);
+    semver::Version::parse(normalized)
+        .map_err(|_| format!("Invalid minSystemVersion: {value}; expected semantic version"))
+}
+
 fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
     validate_tapp_id(&manifest.id)?;
     validate_resource_path(&manifest.main)?;
+    if let Some(required) = manifest.min_system_version.as_deref() {
+        let required = parse_system_version(required)?;
+        let current = semver::Version::parse(env!("CARGO_PKG_VERSION"))
+            .expect("backend package version must be valid semver");
+        if current < required {
+            return Err(format!(
+                "Tapp requires Myriad {required} or newer; current version is {current}"
+            ));
+        }
+    }
+    if manifest.permissions.len() > 64 {
+        return Err("Tapp permissions accepts at most 64 entries".to_string());
+    }
+    let mut permissions = std::collections::HashSet::new();
+    for permission in &manifest.permissions {
+        if TappPermission::from_str(permission).is_none()
+            || !permissions.insert(permission.as_str())
+        {
+            return Err(format!(
+                "Unknown or duplicate Tapp permission: {permission}"
+            ));
+        }
+    }
+    if manifest
+        .css_mode
+        .as_deref()
+        .is_some_and(|mode| !matches!(mode, "unified" | "separated"))
+    {
+        return Err("Tapp cssMode must be unified or separated".to_string());
+    }
 
     for path in [
         manifest.styles.as_deref(),
@@ -194,7 +466,369 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
 
     if let Some(modules) = &manifest.page_modules {
         for module in modules {
-            validate_resource_path(module)?;
+            if !is_safe_path_component(module) {
+                return Err(format!(
+                    "Invalid page module filename: {module}; paths are relative to page/"
+                ));
+            }
+        }
+    }
+
+    if let Some(requirements) = &manifest.background_requirements {
+        if requirements.len() > 16 {
+            return Err("Tapp backgroundRequirements accepts at most 16 entries".to_string());
+        }
+        let mut seen = std::collections::HashSet::new();
+        for requirement in requirements {
+            if !matches!(
+                requirement.as_str(),
+                "widget"
+                    | "media"
+                    | "sync"
+                    | "notification"
+                    | "scheduler"
+                    | "event-listener"
+                    | "realtime"
+            ) || !seen.insert(requirement.as_str())
+            {
+                return Err(format!(
+                    "Unknown or duplicate background requirement: {requirement}"
+                ));
+            }
+        }
+    }
+
+    if let Some(settings) = &manifest.settings {
+        validate_tapp_settings(settings, "Tapp")?;
+    }
+
+    if let Some(widgets) = &manifest.widgets {
+        if widgets.len() > MAX_WIDGETS_PER_TAPP {
+            return Err(format!("Too many Widgets (max {MAX_WIDGETS_PER_TAPP})"));
+        }
+        let mut template_paths_by_size = std::collections::HashMap::new();
+        let mut widget_ids = std::collections::HashSet::new();
+        for widget in widgets {
+            if !is_safe_path_component(&widget.id) || !widget_ids.insert(widget.id.as_str()) {
+                return Err(format!("Invalid or duplicate Widget ID: {}", widget.id));
+            }
+            if widget.name.is_empty() || widget.name.len() > 255 {
+                return Err(format!("Invalid Widget name: {}", widget.id));
+            }
+            if widget.sizes.is_empty()
+                || widget.sizes.len() > 10
+                || widget.sizes.iter().any(|size| !is_valid_widget_size(size))
+                || !widget.sizes.contains(&widget.default_size)
+            {
+                return Err(format!("Invalid Widget sizes: {}", widget.id));
+            }
+            if widget.legacy_min_refresh_interval == Some(0) {
+                return Err(format!(
+                    "Legacy Widget minRefreshInterval must be positive: {}",
+                    widget.id
+                ));
+            }
+            validate_tapp_settings(&widget.settings, &format!("Widget {}", widget.id))?;
+            if let Some(policy) = &widget.refresh_policy {
+                validate_widget_refresh_policy(policy, &widget.id)?;
+            }
+            if let Some(templates) = &widget.templates {
+                for (size, path) in templates {
+                    if !is_valid_widget_size(size) || !widget.sizes.contains(size) {
+                        return Err(format!(
+                            "Widget template uses an undeclared size {size}: {}",
+                            widget.id
+                        ));
+                    }
+                    if let Some(existing) = template_paths_by_size.insert(size, path) {
+                        if existing != path {
+                            return Err(format!(
+                                "Widget template size {size} maps to multiple files; current runtime keys templates by size"
+                            ));
+                        }
+                    }
+                    validate_resource_path(path)?;
+                }
+            }
+        }
+    }
+
+    if let Some(apis) = &manifest.apis {
+        if apis.len() > 64 {
+            return Err("Tapp apis accepts at most 64 entries".to_string());
+        }
+        for (name, api) in apis {
+            if !valid_agent_name(name) {
+                return Err(format!("Invalid Tapp API name: {name}"));
+            }
+            if api.cache_ttl > 86_400 {
+                return Err(format!(
+                    "Tapp API {name} cacheTtl must not exceed 86400 seconds"
+                ));
+            }
+            match api.api_type.as_str() {
+                "http" => {
+                    if api.endpoint.is_some() == api.url.is_some() {
+                        return Err(format!(
+                            "HTTP Tapp API {name} must declare exactly one of endpoint or url"
+                        ));
+                    }
+                    if api.builtin.is_some() {
+                        return Err(format!("HTTP Tapp API {name} cannot declare builtin"));
+                    }
+                }
+                "builtin" => {
+                    let Some(builtin) = api.builtin.as_deref() else {
+                        return Err(format!("Builtin Tapp API {name} requires builtin"));
+                    };
+                    if !matches!(builtin, "geo" | "ai:chat" | "ai:generate") {
+                        return Err(format!("Unknown builtin Tapp API: {builtin}"));
+                    }
+                    if api.endpoint.is_some()
+                        || api.url.is_some()
+                        || api.params.is_some()
+                        || api.headers.is_some()
+                        || api.body.is_some()
+                        || api.spoof.is_some()
+                        || api.inject.is_some()
+                    {
+                        return Err(format!("Builtin Tapp API {name} contains HTTP-only fields"));
+                    }
+                }
+                other => return Err(format!("Unknown Tapp API type: {other}")),
+            }
+            if api.method.len() > 16 || api.method.parse::<reqwest::Method>().is_err() {
+                return Err(format!("Invalid HTTP method for Tapp API {name}"));
+            }
+            if let Some(inject) = &api.inject {
+                if inject.len() > 32 {
+                    return Err(format!("Tapp API {name} inject accepts at most 32 aliases"));
+                }
+                for (alias, template) in inject {
+                    if !valid_agent_name(alias)
+                        || ["user.", "geo.", "secrets.", "params."]
+                            .iter()
+                            .any(|prefix| alias.starts_with(prefix))
+                    {
+                        return Err(format!(
+                            "Invalid or reserved inject alias for Tapp API {name}: {alias}"
+                        ));
+                    }
+                    if template.is_empty() || template.len() > 2_048 {
+                        return Err(format!(
+                            "Invalid inject template for Tapp API {name}: {alias}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(exchange) = &manifest.data_exchange {
+        if exchange.exports.len() > MAX_DATA_EXCHANGE_DECLARATIONS
+            || exchange.imports.len() > MAX_DATA_EXCHANGE_DECLARATIONS
+        {
+            return Err(format!(
+                "Too many Data Exchange declarations (max {MAX_DATA_EXCHANGE_DECLARATIONS} per direction)"
+            ));
+        }
+
+        let mut export_ids = std::collections::HashSet::new();
+        for export in &exchange.exports {
+            if !valid_data_exchange_id(&export.id) || !export_ids.insert(export.id.as_str()) {
+                return Err(format!(
+                    "Invalid or duplicate Data Exchange export id: {}",
+                    export.id
+                ));
+            }
+            if export.max_bytes == 0 || export.max_bytes > MAX_DATA_EXCHANGE_RESPONSE_BYTES {
+                return Err(format!(
+                    "Data Exchange export {} maxBytes must be between 1 and {MAX_DATA_EXCHANGE_RESPONSE_BYTES}",
+                    export.id
+                ));
+            }
+            if export
+                .max_records
+                .is_some_and(|limit| limit == 0 || limit > 10_000)
+            {
+                return Err(format!(
+                    "Data Exchange export {} maxRecords must be between 1 and 10000",
+                    export.id
+                ));
+            }
+            if export
+                .description
+                .as_ref()
+                .is_some_and(|description| description.len() > 500)
+            {
+                return Err(format!(
+                    "Data Exchange export {} description is too long",
+                    export.id
+                ));
+            }
+            validate_inline_data_schema(&export.schema)?;
+        }
+
+        let mut imports = std::collections::HashSet::new();
+        for import in &exchange.imports {
+            validate_tapp_id(&import.tapp_id)?;
+            if !valid_data_exchange_id(&import.export_id)
+                || !imports.insert((import.tapp_id.as_str(), import.export_id.as_str()))
+            {
+                return Err(format!(
+                    "Invalid or duplicate Data Exchange import: {} / {}",
+                    import.tapp_id, import.export_id
+                ));
+            }
+        }
+    }
+
+    if let Some(ai) = &manifest.ai {
+        if ai.protocol_version != 2 {
+            return Err("Tapp AI protocolVersion must be 2".to_string());
+        }
+        if ai.operations.is_empty() || ai.operations.len() > 4 {
+            return Err("Tapp AI operations must contain 1-4 entries".to_string());
+        }
+        if ai.output_formats.is_empty() || ai.output_formats.len() > 3 {
+            return Err("Tapp AI outputFormats must contain 1-3 entries".to_string());
+        }
+
+        let mut operations = std::collections::HashSet::new();
+        for operation in &ai.operations {
+            if !operations.insert(*operation) {
+                return Err("Tapp AI operations contains duplicates".to_string());
+            }
+            let permission = operation.permission();
+            if !manifest.permissions.iter().any(|value| value == permission) {
+                return Err(format!(
+                    "Tapp AI operation requires manifest permission {permission}"
+                ));
+            }
+        }
+
+        let mut context_sources = std::collections::HashSet::new();
+        if ai.context_sources.len() > 4
+            || ai
+                .context_sources
+                .iter()
+                .any(|source| !context_sources.insert(*source))
+        {
+            return Err(
+                "Tapp AI contextSources contains duplicates or too many entries".to_string(),
+            );
+        }
+        if context_sources.contains(&TappAiContextSource::Platform)
+            && !manifest
+                .permissions
+                .iter()
+                .any(|value| value == "platform:read")
+        {
+            return Err("Tapp AI platform context requires platform:read".to_string());
+        }
+        if context_sources.contains(&TappAiContextSource::Report)
+            && !manifest
+                .permissions
+                .iter()
+                .any(|value| value == "report:read")
+        {
+            return Err("Tapp AI report context requires report:read".to_string());
+        }
+
+        let mut output_formats = std::collections::HashSet::new();
+        if ai
+            .output_formats
+            .iter()
+            .any(|format| !output_formats.insert(*format))
+        {
+            return Err("Tapp AI outputFormats contains duplicates".to_string());
+        }
+        if operations.contains(&TappAiOperation::Image)
+            && !output_formats.contains(&TappAiOutputFormat::Image)
+        {
+            return Err("Tapp AI image operation requires image output format".to_string());
+        }
+    }
+
+    if let Some(events) = &manifest.events {
+        if events.publish.len() > 100 || events.subscribe.len() > 100 {
+            return Err("Tapp events publish/subscribe accept at most 100 topics".to_string());
+        }
+        let publish_prefix = format!("tapp.{}.", manifest.id);
+        let mut publish_topics = std::collections::HashSet::new();
+        for topic in &events.publish {
+            if !valid_event_topic(topic)
+                || !topic.starts_with(&publish_prefix)
+                || !publish_topics.insert(topic.as_str())
+            {
+                return Err(format!(
+                    "Invalid or duplicate Tapp event publish topic: {topic}"
+                ));
+            }
+        }
+        let mut subscribe_topics = std::collections::HashSet::new();
+        for topic in &events.subscribe {
+            if !valid_event_topic(topic)
+                || (!topic.starts_with("tapp.") && !topic.starts_with("system."))
+                || !subscribe_topics.insert(topic.as_str())
+            {
+                return Err(format!(
+                    "Invalid or duplicate Tapp event subscribe topic: {topic}"
+                ));
+            }
+        }
+        let declares =
+            |permission: &str| manifest.permissions.iter().any(|value| value == permission);
+        if !events.publish.is_empty() && !declares("event:publish") {
+            return Err("Tapp event publish topics require event:publish".to_string());
+        }
+        if !events.subscribe.is_empty() && !declares("event:subscribe") {
+            return Err("Tapp event subscribe topics require event:subscribe".to_string());
+        }
+    }
+
+    if let Some(agent) = &manifest.agent {
+        if agent.protocol_version != 2 {
+            return Err("Tapp agent protocolVersion must be 2".to_string());
+        }
+        if agent.interactions.is_empty() || agent.interactions.len() > 32 {
+            return Err("Tapp agent interactions must contain 1-32 entries".to_string());
+        }
+        let mut interaction_types = std::collections::HashSet::new();
+        for interaction in &agent.interactions {
+            if !valid_agent_name(&interaction.interaction_type)
+                || !interaction_types.insert(interaction.interaction_type.as_str())
+            {
+                return Err(format!(
+                    "Invalid or duplicate Agent interaction type: {}",
+                    interaction.interaction_type
+                ));
+            }
+            for schema in [
+                interaction.input_schema.as_deref(),
+                interaction.result_schema.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                validate_resource_path(schema)?;
+                if !schema.ends_with(".json") {
+                    return Err(format!("Agent schema must be a JSON resource: {schema}"));
+                }
+            }
+        }
+        if agent.intents.len() > 16 {
+            return Err("Tapp agent intents accepts at most 16 entries".to_string());
+        }
+        let mut intents = std::collections::HashSet::new();
+        for intent in &agent.intents {
+            if !matches!(
+                intent.as_str(),
+                "ui.open" | "report.create" | "dataExchange.request"
+            ) || !intents.insert(intent.as_str())
+            {
+                return Err(format!("Invalid or duplicate Agent intent: {intent}"));
+            }
         }
     }
     Ok(())
@@ -217,11 +851,21 @@ fn tapp_dir_for(user_id: i32, tapp_id: &str) -> Result<PathBuf, String> {
     Ok(paths().tapp_user_dir(user_id).join(tapp_id))
 }
 
-fn installed_tapp_dir(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
+pub(crate) fn installed_tapp_dir(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
     tapp_dir_for(tapp.user_id, &tapp.tapp_id).map_err(|_| StatusCode::BAD_REQUEST)
 }
 
 fn installed_code_path(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
+    // 新安装遵循 Manifest 的 main。旧安装可能曾把任意入口统一写为根目录
+    // main.js/index.js，因此仅在 Manifest 路径不存在时回退持久化元数据。
+    if let Some(main) = tapp.manifest.get("main").and_then(|value| value.as_str()) {
+        if let Some(path) = resource_path(&installed_tapp_dir(tapp)?, main) {
+            if path.is_file() {
+                return Ok(path);
+            }
+        }
+    }
+
     let stored_code_path = PathBuf::from(&tapp.code_path);
     let filename = stored_code_path
         .file_name()
@@ -231,14 +875,182 @@ fn installed_code_path(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
     Ok(installed_tapp_dir(tapp)?.join(filename))
 }
 
-fn resource_path(tapp_dir: &FsPath, relative: &str) -> Option<PathBuf> {
+pub(crate) fn resource_path(tapp_dir: &FsPath, relative: &str) -> Option<PathBuf> {
     validate_resource_path(relative).ok()?;
     Some(tapp_dir.join(relative))
 }
 
+async fn write_tapp_resource(
+    tapp_dir: &FsPath,
+    relative: &str,
+    content: impl AsRef<[u8]>,
+) -> Result<PathBuf, std::io::Error> {
+    let path = tapp_dir.join(relative);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).await?;
+    }
+    fs::write(&path, content).await?;
+    Ok(path)
+}
+
+fn widget_template_path(manifest: &TappManifest, size: &str) -> String {
+    manifest
+        .widgets
+        .as_ref()
+        .into_iter()
+        .flatten()
+        .filter_map(|widget| widget.templates.as_ref())
+        .find_map(|templates| templates.get(size))
+        .cloned()
+        .unwrap_or_else(|| format!("widget-{size}.html"))
+}
+
+fn validate_installed_resources(manifest: &TappManifest, tapp_dir: &FsPath) -> Result<(), String> {
+    let mut resources = vec![manifest.main.as_str()];
+    resources.extend(
+        [
+            manifest.styles.as_deref(),
+            manifest.widget_styles.as_deref(),
+            manifest.page_styles.as_deref(),
+            manifest.page_template.as_deref(),
+        ]
+        .into_iter()
+        .flatten(),
+    );
+    if let Some(widgets) = &manifest.widgets {
+        for widget in widgets {
+            if let Some(templates) = &widget.templates {
+                resources.extend(templates.values().map(String::as_str));
+            }
+        }
+    }
+    if let Some(agent) = &manifest.agent {
+        for interaction in &agent.interactions {
+            resources.extend(
+                [
+                    interaction.input_schema.as_deref(),
+                    interaction.result_schema.as_deref(),
+                ]
+                .into_iter()
+                .flatten(),
+            );
+        }
+    }
+
+    for relative in resources {
+        let path = resource_path(tapp_dir, relative)
+            .ok_or_else(|| format!("Invalid Tapp resource path: {relative}"))?;
+        if !path.is_file() {
+            return Err(format!("Declared Tapp resource not found: {relative}"));
+        }
+    }
+
+    if let Some(modules) = &manifest.page_modules {
+        for module in modules {
+            let relative = format!("page/{module}");
+            let path = resource_path(tapp_dir, &relative)
+                .ok_or_else(|| format!("Invalid Tapp resource path: {relative}"))?;
+            if !path.is_file() {
+                return Err(format!("Declared Tapp resource not found: {relative}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn archive_entry_path(tapp_dir: &FsPath, entry_name: &str) -> Result<PathBuf, String> {
+    let relative = entry_name.trim_end_matches('/');
+    validate_resource_path(relative)?;
+    Ok(tapp_dir.join(relative))
+}
+
+fn validate_tapp_archive<R: std::io::Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+) -> Result<(), String> {
+    if archive.len() > MAX_TAPP_ARCHIVE_FILES {
+        return Err(format!(
+            "Tapp archive contains too many entries (max {MAX_TAPP_ARCHIVE_FILES})"
+        ));
+    }
+
+    let mut total_size = 0_u64;
+    let mut paths = std::collections::HashSet::new();
+    for index in 0..archive.len() {
+        let file = archive
+            .by_index(index)
+            .map_err(|error| format!("Invalid Tapp archive entry: {error}"))?;
+        let name = file.name().trim_end_matches('/');
+        validate_resource_path(name)?;
+        if !paths.insert(name.to_string()) {
+            return Err(format!("Duplicate Tapp archive entry: {name}"));
+        }
+        if file.is_dir() {
+            continue;
+        }
+        if file.size() > MAX_TAPP_RESOURCE_BYTES {
+            return Err(format!(
+                "Tapp archive entry is too large: {name} (max {MAX_TAPP_RESOURCE_BYTES} bytes)"
+            ));
+        }
+        total_size = total_size
+            .checked_add(file.size())
+            .ok_or_else(|| "Tapp archive size overflow".to_string())?;
+        if total_size > MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES {
+            return Err(format!(
+                "Tapp archive expands beyond {MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES} bytes"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn append_directory_to_zip<W: std::io::Write + std::io::Seek>(
+    zip: &mut zip::ZipWriter<W>,
+    root: &FsPath,
+    directory: &FsPath,
+    options: zip::write::SimpleFileOptions,
+) -> Result<(), std::io::Error> {
+    use std::io::{Read, Write};
+
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+
+        // Installed resources are regular files. Never follow a manually inserted
+        // symlink while exporting, because it may point outside the Tapp directory.
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            append_directory_to_zip(zip, root, &path, options)?;
+            continue;
+        }
+        if !file_type.is_file() {
+            continue;
+        }
+
+        let relative = path.strip_prefix(root).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Tapp export path escaped root",
+            )
+        })?;
+        let filename = relative.to_string_lossy().replace('\\', "/");
+        let mut file = std::fs::File::open(&path)?;
+        let mut content = Vec::new();
+        file.read_to_end(&mut content)?;
+        zip.start_file(filename, options)?;
+        zip.write_all(&content)?;
+    }
+
+    Ok(())
+}
+
 /// Tapp 清单
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TappManifest {
     pub id: String,
     pub name: String,
@@ -251,16 +1063,17 @@ pub struct TappManifest {
     pub page_styles: Option<String>,
     pub page_template: Option<String>,
     pub css_mode: Option<String>,
-    pub permissions: Vec<String>,
     #[serde(default)]
-    pub optional_permissions: Vec<String>,
+    pub permissions: Vec<String>,
     pub icon: Option<String>,
     /// 内联 SVG 图标代码（优先于 icon）
     pub icon_svg: Option<String>,
     pub theme_color: Option<String>,
-    pub min_system_version: Option<String>,
     pub homepage: Option<String>,
     pub repository: Option<String>,
+    /// Minimum compatible Myriad release. Installation and update fail closed
+    /// when the running backend package version is older.
+    pub min_system_version: Option<String>,
     pub widgets: Option<Vec<TappWidgetDef>>,
     #[serde(default)]
     pub has_page: bool,
@@ -279,6 +1092,156 @@ pub struct TappManifest {
     /// 允许 Tapp 声明可调用的外部 API，后端自动注入上下文和密钥
     #[serde(default)]
     pub apis: Option<std::collections::HashMap<String, TappApiDef>>,
+    /// 显式声明的跨 Tapp 数据导入/导出契约。声明本身不授予访问权；
+    /// 每次调用仍必须经过宿主的一次性授权流程。
+    #[serde(default)]
+    pub data_exchange: Option<TappDataExchangeManifest>,
+    /// Server-governed AI Task V2 declaration. Provider/model parameters are
+    /// deliberately absent: the host resolves those from its own policy.
+    #[serde(default)]
+    pub ai: Option<TappAiManifest>,
+    /// Declared Event V2 topics. Subscription state is derived from this
+    /// manifest and the online runtime registry, never persisted separately.
+    #[serde(default)]
+    pub events: Option<TappEventsManifest>,
+    /// Stateful Agent Interaction V2 declaration.
+    #[serde(default)]
+    pub agent: Option<TappAgentManifest>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum TappAiOperation {
+    Generate,
+    Analyze,
+    Chat,
+    Image,
+}
+
+impl TappAiOperation {
+    pub fn permission(self) -> &'static str {
+        match self {
+            Self::Generate => "ai:generate",
+            Self::Analyze => "ai:analyze",
+            Self::Chat => "ai:chat",
+            Self::Image => "ai:image",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TappAiModelTier {
+    Standard,
+    Pro,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum TappAiContextSource {
+    Platform,
+    Report,
+    Profile,
+    Custom,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum TappAiOutputFormat {
+    Text,
+    Json,
+    Image,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappAiManifest {
+    pub protocol_version: u8,
+    pub operations: Vec<TappAiOperation>,
+    pub model_tier: TappAiModelTier,
+    #[serde(default)]
+    pub context_sources: Vec<TappAiContextSource>,
+    pub output_formats: Vec<TappAiOutputFormat>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappEventsManifest {
+    #[serde(default)]
+    pub publish: Vec<String>,
+    #[serde(default)]
+    pub subscribe: Vec<String>,
+}
+
+fn valid_event_topic(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && !value.starts_with('.')
+        && !value.ends_with('.')
+        && !value.contains("..")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappAgentManifest {
+    pub protocol_version: u8,
+    pub interactions: Vec<TappAgentInteractionDef>,
+    #[serde(default)]
+    pub intents: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappAgentInteractionDef {
+    #[serde(rename = "type")]
+    pub interaction_type: String,
+    #[serde(default)]
+    pub input_schema: Option<String>,
+    #[serde(default)]
+    pub result_schema: Option<String>,
+}
+
+fn valid_agent_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && !value.starts_with('.')
+        && !value.ends_with('.')
+        && !value.contains("..")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappDataExchangeManifest {
+    #[serde(default)]
+    pub exports: Vec<TappDataExport>,
+    #[serde(default)]
+    pub imports: Vec<TappDataImport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappDataExport {
+    pub id: String,
+    /// 受支持的内联 JSON Schema 子集；不允许远程或文件 `$ref`。
+    pub schema: serde_json::Value,
+    pub max_bytes: usize,
+    #[serde(default)]
+    pub max_records: Option<usize>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappDataImport {
+    pub tapp_id: String,
+    pub export_id: String,
 }
 
 /// Tapp API 访问级别
@@ -299,7 +1262,7 @@ pub enum TappApiAccess {
 /// 1. HTTP API：调用外部 HTTP 服务
 /// 2. 内置 API：调用后端内置功能（如 geo、ai 等）
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TappApiDef {
     /// 访问级别: public（所有人）或 protected（需要权限）
     #[serde(default)]
@@ -369,6 +1332,7 @@ fn default_http_method() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TappAuthor {
     pub name: String,
     pub email: Option<String>,
@@ -376,17 +1340,50 @@ pub struct TappAuthor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TappWidgetDef {
     pub id: String,
     pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
     pub default_size: String,
     pub sizes: Vec<String>,
+    /// Legacy tapp-store ingestion shim. The old field was never connected to
+    /// a refresh scheduler, so accepted manifests are normalized without it.
+    #[serde(rename = "minRefreshInterval", default, skip_serializing)]
+    pub legacy_min_refresh_interval: Option<u64>,
+    pub category: Option<String>,
+    pub templates: Option<std::collections::HashMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub settings: Vec<TappSettingDef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_policy: Option<TappWidgetRefreshPolicy>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TappWidgetRefreshMode {
+    Event,
+    Interval,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappWidgetRefreshPolicy {
+    pub mode: TappWidgetRefreshMode,
+    #[serde(default)]
+    pub interval_seconds: Option<u32>,
+    #[serde(default = "default_true")]
+    pub refresh_on_visible: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Tapp 设置项定义
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TappSettingDef {
     pub key: String,
     pub label: String,
@@ -403,6 +1400,7 @@ pub struct TappSettingDef {
 
 /// Tapp 设置选项（用于 select 类型）
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TappSettingOption {
     pub value: String,
     pub label: String,
@@ -476,6 +1474,7 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/{tapp_id}/widgets/{widget_id}", delete(unregister_widget))
         .route("/{tapp_id}/storage", get(list_storage_keys))
         .route("/{tapp_id}/storage", delete(clear_storage))
+        .route("/{tapp_id}/storage/usage", get(get_storage_usage))
         .route("/{tapp_id}/storage/{key}", get(get_storage))
         .route("/{tapp_id}/storage/{key}", post(set_storage))
         .route("/{tapp_id}/storage/{key}", delete(delete_storage))
@@ -492,6 +1491,7 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
     // 公开路由（支持可选认证）
     let public_routes = Router::new()
         .route("/", get(list_tapps))
+        .route("/details", get(list_tapp_details))
         .route("/widgets", get(list_all_widgets))
         .route("/store/sources", get(list_store_sources))
         .route("/{tapp_id}", get(get_tapp))
@@ -500,8 +1500,25 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/{tapp_id}/export", get(export_tapp))
         .route("/{tapp_id}/widgets", get(list_widgets));
 
+    // Runtime Grant issuance also supports guests running an administrator-shared Tapp.
+    // The optional auth layer always injects a real or stable guest Claims value.
+    let runtime_grant_routes = Router::new()
+        .route(
+            "/{tapp_id}/runtime-grants",
+            post(crate::api::tapp_runtime::issue_runtime_grant),
+        )
+        .route(
+            "/{tapp_id}/runtime-grants/{runtime_id}",
+            delete(crate::api::tapp_runtime::revoke_runtime_grant),
+        )
+        .route_layer(from_fn_with_state((), |req, next| async {
+            optional_auth_middleware(req, next).await
+        }));
+
     // 合并路由
-    public_routes.merge(authenticated_routes)
+    public_routes
+        .merge(authenticated_routes)
+        .merge(runtime_grant_routes)
 }
 
 /// 获取 Tapp 列表
@@ -516,7 +1533,7 @@ async fn list_tapps(
 ) -> Result<Json<ApiResponse<Vec<TappListItem>>>, StatusCode> {
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
-    let user_id: Option<i32> = claims.as_ref().and_then(|c| c.sub.parse().ok());
+    let user_id = optional_authenticated_user_id(claims.as_ref());
     let is_admin = match claims.as_ref() {
         Some(claims) => current_is_admin(claims).await,
         None => false,
@@ -526,6 +1543,7 @@ async fn list_tapps(
     let admin_id = get_admin_user_id(&db).await?;
 
     let mut items: Vec<TappListItem> = Vec::new();
+    let mut seen_tapp_ids = std::collections::HashSet::new();
 
     // 1. 获取管理员的 Tapp 列表（所有人可见）
     let admin_tapps = tapps::Entity::find()
@@ -535,6 +1553,7 @@ async fn list_tapps(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     for t in admin_tapps {
+        seen_tapp_ids.insert(t.tapp_id.clone());
         // 从 manifest 中提取 iconSvg
         let icon_svg = t
             .manifest
@@ -556,9 +1575,9 @@ async fn list_tapps(
         });
     }
 
-    // 2. 如果是已登录的普通用户，还要获取自己临时安装的 Tapp
+    // 2. 已登录用户还可看到自己拥有的 Tapp；普通用户版本是临时安装。
     if let Some(uid) = user_id {
-        if !is_admin && uid != admin_id {
+        if uid != admin_id {
             let user_tapps = tapps::Entity::find()
                 .filter(tapps::Column::UserId.eq(uid))
                 .all(&db)
@@ -566,6 +1585,9 @@ async fn list_tapps(
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
             for t in user_tapps {
+                if !seen_tapp_ids.insert(t.tapp_id.clone()) {
+                    continue;
+                }
                 // 从 manifest 中提取 iconSvg
                 let icon_svg = t
                     .manifest
@@ -582,7 +1604,7 @@ async fn list_tapps(
                     status: format!("{:?}", t.status).to_lowercase(),
                     installed_at: t.installed_at.to_rfc3339(),
                     last_run_at: t.last_run_at.map(|dt| dt.to_rfc3339()),
-                    is_temporary: true, // 普通用户的 Tapp 都是临时的
+                    is_temporary: !is_admin,
                     is_admin_tapp: false,
                 });
             }
@@ -590,6 +1612,66 @@ async fn list_tapps(
     }
 
     Ok(Json(ApiResponse::success(items)))
+}
+
+/// 批量获取当前会话可见的全部 Tapp 详情。
+///
+/// 与 `GET /api/tapps/{tapp_id}` 保持相同的可见性和权限过滤规则，但固定只执行
+/// 管理员 Tapp 与当前用户 Tapp 两次查询，避免前端列表同步产生 N+1 请求。
+async fn list_tapp_details(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<Vec<TappDetail>>>, StatusCode> {
+    let claims = extract_optional_claims(&headers);
+    let parsed_user_id = optional_authenticated_user_id(claims.as_ref());
+    let role = match claims.as_ref() {
+        Some(claims) if current_is_admin(claims).await => UserRole::Admin,
+        _ if parsed_user_id.is_some() => UserRole::User,
+        _ => UserRole::Guest,
+    };
+    let admin_id = get_admin_user_id(&db).await?;
+
+    let admin_tapps = tapps::Entity::find()
+        .filter(tapps::Column::UserId.eq(admin_id))
+        .all(&db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let user_tapps = if let Some(user_id) = parsed_user_id {
+        if user_id != admin_id {
+            tapps::Entity::find()
+                .filter(tapps::Column::UserId.eq(user_id))
+                .all(&db)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    // 同一 tapp_id 同时存在时，管理员版本与单项详情接口一样拥有优先级。
+    let mut seen = std::collections::HashSet::new();
+    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let mut details = Vec::with_capacity(admin_tapps.len() + user_tapps.len());
+    for tapp in admin_tapps {
+        seen.insert(tapp.tapp_id.clone());
+        details.push(tapp_detail_from_model(tapp, role, false, true, &config));
+    }
+    for tapp in user_tapps {
+        if seen.insert(tapp.tapp_id.clone()) {
+            details.push(tapp_detail_from_model(
+                tapp,
+                role,
+                role != UserRole::Admin,
+                false,
+                &config,
+            ));
+        }
+    }
+
+    Ok(Json(ApiResponse::success(details)))
 }
 
 /// 从远程商店下载 Tapp 文件
@@ -754,12 +1836,21 @@ async fn fetch_from_store(
         )
     })?;
 
-    let manifest: TappManifest = manifest_resp.json().await.map_err(|e| {
+    let mut manifest: TappManifest = manifest_resp.json().await.map_err(|e| {
         (
             StatusCode::BAD_GATEWAY,
             api_error(format!("Invalid manifest: {}", e)),
         )
     })?;
+    // The official store historically kept this compatibility declaration in
+    // index.json. Carry it into the authoritative installed manifest until all
+    // packages declare minSystemVersion themselves.
+    if manifest.min_system_version.is_none() {
+        manifest.min_system_version = app_info
+            .get("min_myriad_version")
+            .and_then(|value| value.as_str())
+            .map(String::from);
+    }
 
     // 下载主代码
     let code_path = download
@@ -1116,6 +2207,14 @@ async fn install_tapp(
     // 创建存储目录
     let tapp_dir = tapp_dir_for(user_id, &manifest.id)
         .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+    if tapp_dir.exists() {
+        fs::remove_dir_all(&tapp_dir).await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                api_error("Failed to clear incomplete installation"),
+            )
+        })?;
+    }
     fs::create_dir_all(&tapp_dir).await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1123,74 +2222,132 @@ async fn install_tapp(
         )
     })?;
 
-    // 保存主代码文件
-    let code_path = tapp_dir.join("main.js");
-    fs::write(&code_path, &code).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            api_error("Failed to save code"),
-        )
-    })?;
+    // 保存到 Manifest 声明的入口；安装/导出往返后路径保持一致。
+    let code_path = write_tapp_resource(&tapp_dir, &manifest.main, &code)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                api_error("Failed to save code"),
+            )
+        })?;
 
     // 保存可选资源
     if let Some(styles) = &styles {
-        let styles_path = tapp_dir.join("styles.css");
-        let _ = fs::write(&styles_path, styles).await;
+        let path = manifest.styles.as_deref().unwrap_or("styles.css");
+        write_tapp_resource(&tapp_dir, path, styles)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    api_error("Failed to save styles"),
+                )
+            })?;
     }
 
     // 🎯 保存分离式 CSS（从商店下载的）
     if let Some(ws) = &widget_styles {
-        let widget_styles_path = tapp_dir.join("widget.css");
-        let _ = fs::write(&widget_styles_path, ws).await;
+        let path = manifest.widget_styles.as_deref().unwrap_or("widget.css");
+        write_tapp_resource(&tapp_dir, path, ws)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    api_error("Failed to save widget styles"),
+                )
+            })?;
     }
     if let Some(ps) = &page_styles {
-        let page_styles_path = tapp_dir.join("page.css");
-        let _ = fs::write(&page_styles_path, ps).await;
+        let path = manifest.page_styles.as_deref().unwrap_or("page.css");
+        write_tapp_resource(&tapp_dir, path, ps)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    api_error("Failed to save page styles"),
+                )
+            })?;
     }
 
     // 🎯 保存分离式 CSS（从请求直接传的）
     if let Some(widget_css) = &req.widget_css {
         let widget_css_path = tapp_dir.join("widget.css");
-        let _ = fs::write(&widget_css_path, widget_css).await;
+        fs::write(&widget_css_path, widget_css).await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                api_error("Failed to save generated widget CSS"),
+            )
+        })?;
     }
     if let Some(page_css) = &req.page_css {
         let page_css_path = tapp_dir.join("page.css");
-        let _ = fs::write(&page_css_path, page_css).await;
+        fs::write(&page_css_path, page_css).await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                api_error("Failed to save generated page CSS"),
+            )
+        })?;
     }
 
     if let Some(page) = &page_template {
-        let page_path = tapp_dir.join("page.html");
-        let _ = fs::write(&page_path, page).await;
+        let path = manifest.page_template.as_deref().unwrap_or("page.html");
+        write_tapp_resource(&tapp_dir, path, page)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    api_error("Failed to save page template"),
+                )
+            })?;
     }
 
     if let Some(templates) = &widget_templates {
         for (size, content) in templates {
-            let widget_path = tapp_dir.join(format!("widget-{}.html", size));
-            let _ = fs::write(&widget_path, content).await;
+            let path = widget_template_path(&manifest, size);
+            write_tapp_resource(&tapp_dir, &path, content)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save widget template"),
+                    )
+                })?;
         }
     }
 
     // 保存 i18n 翻译文件（direct 模式从 req.i18n，store 模式从 store_i18n）
     let i18n_to_save = req.i18n.as_ref().or(store_i18n.as_ref());
     if let Some(i18n) = i18n_to_save {
-        let i18n_dir = tapp_dir.join("i18n");
-        let _ = fs::create_dir_all(&i18n_dir).await;
         for (lang_code, data) in i18n {
-            let i18n_path = i18n_dir.join(format!("{}.json", lang_code));
-            if let Ok(json_str) = serde_json::to_string_pretty(data) {
-                let _ = fs::write(&i18n_path, json_str).await;
-            }
+            let json = serde_json::to_string_pretty(data).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    api_error("Failed to serialize i18n resource"),
+                )
+            })?;
+            write_tapp_resource(&tapp_dir, &format!("i18n/{lang_code}.json"), json)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save i18n resource"),
+                    )
+                })?;
         }
     }
 
     // 保存 Page 模块文件（direct 模式从 req.page_modules，store 模式从 store_page_modules）
     let pm_to_save = req.page_modules.as_ref().or(store_page_modules.as_ref());
     if let Some(page_modules) = pm_to_save {
-        let page_dir = tapp_dir.join("page");
-        let _ = fs::create_dir_all(&page_dir).await;
         for (filename, code_content) in page_modules {
-            let page_path = page_dir.join(filename);
-            let _ = fs::write(&page_path, code_content).await;
+            write_tapp_resource(&tapp_dir, &format!("page/{filename}"), code_content)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save page module"),
+                    )
+                })?;
         }
     }
 
@@ -1205,6 +2362,9 @@ async fn install_tapp(
                 api_error("Failed to save manifest"),
             )
         })?;
+
+    validate_installed_resources(&manifest, &tapp_dir)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
     // 确定授权的权限
     let permissions = req.permissions.unwrap_or_default();
@@ -1297,7 +2457,7 @@ async fn install_tapp_file(
     let mut file_data: Option<Vec<u8>> = None;
     let mut permissions: Vec<String> = Vec::new();
 
-    while let Some(field) = multipart.next_field().await.map_err(|_| {
+    while let Some(mut field) = multipart.next_field().await.map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
             api_error("Failed to read multipart"),
@@ -1306,13 +2466,21 @@ async fn install_tapp_file(
         let name = field.name().unwrap_or("").to_string();
 
         if name == "file" {
-            file_data = Some(
-                field
-                    .bytes()
-                    .await
-                    .map_err(|_| (StatusCode::BAD_REQUEST, api_error("Failed to read file")))?
-                    .to_vec(),
-            );
+            let mut bytes = Vec::new();
+            while let Some(chunk) = field
+                .chunk()
+                .await
+                .map_err(|_| (StatusCode::BAD_REQUEST, api_error("Failed to read file")))?
+            {
+                if bytes.len().saturating_add(chunk.len()) > MAX_TAPP_ARCHIVE_BYTES {
+                    return Err((
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        api_error(format!(".tapp file exceeds {MAX_TAPP_ARCHIVE_BYTES} bytes")),
+                    ));
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            file_data = Some(bytes);
         } else if name == "permissions" {
             let text = field.text().await.map_err(|_| {
                 (
@@ -1337,6 +2505,8 @@ async fn install_tapp_file(
             api_error("Invalid .tapp file format"),
         )
     })?;
+    validate_tapp_archive(&mut archive)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
     // 读取 manifest.json
     let manifest_content = {
@@ -1346,6 +2516,14 @@ async fn install_tapp_file(
                 api_error("manifest.json not found in .tapp file"),
             )
         })?;
+        if manifest_file.size() > MAX_TAPP_MANIFEST_BYTES {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                api_error(format!(
+                    "manifest.json exceeds {MAX_TAPP_MANIFEST_BYTES} bytes"
+                )),
+            ));
+        }
         let mut content = String::new();
         std::io::Read::read_to_string(&mut manifest_file, &mut content).map_err(|_| {
             (
@@ -1385,6 +2563,14 @@ async fn install_tapp_file(
     // 创建存储目录
     let tapp_dir = tapp_dir_for(user_id, &manifest.id)
         .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+    if tapp_dir.exists() {
+        fs::remove_dir_all(&tapp_dir).await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                api_error("Failed to clear incomplete installation"),
+            )
+        })?;
+    }
     fs::create_dir_all(&tapp_dir).await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1392,15 +2578,13 @@ async fn install_tapp_file(
         )
     })?;
 
-    // 🎯 解压所有文件到目标文件夹，保留允许的子目录结构（i18n/, page/）
+    // 解压到目标文件夹并保留经过校验的相对路径。Manifest 允许 templates/、
+    // page/ 等嵌套资源；扁平化会让清单中的路径在安装后失效。
     let tapp_dir_clone = tapp_dir.clone();
     let file_data_clone = file_data.clone();
 
     tokio::task::spawn_blocking(move || -> Result<(), std::io::Error> {
         use std::io::Read;
-
-        // 允许的子目录白名单
-        const ALLOWED_SUBDIRS: &[&str] = &["i18n", "page"];
 
         let cursor = std::io::Cursor::new(&file_data_clone);
         let mut archive = zip::ZipArchive::new(cursor)?;
@@ -1409,38 +2593,16 @@ async fn install_tapp_file(
             let mut file = archive.by_index(i)?;
             let file_name = file.name().to_string();
 
-            // 跳过目录条目和路径遍历攻击
-            if file_name.ends_with('/') || file_name.contains("..") {
+            let out_path = archive_entry_path(&tapp_dir_clone, &file_name)
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+
+            if file.is_dir() {
+                std::fs::create_dir_all(&out_path)?;
                 continue;
             }
-
-            let path = std::path::Path::new(&file_name);
-            let components: Vec<_> = path.components().collect();
-
-            let out_path = if components.len() == 2 {
-                // 文件在子目录中，如 "i18n/zh.json" 或 "page/state.js"
-                let dir_name = components[0].as_os_str().to_str().unwrap_or("");
-                if ALLOWED_SUBDIRS.contains(&dir_name) {
-                    let subdir = tapp_dir_clone.join(dir_name);
-                    std::fs::create_dir_all(&subdir)?;
-                    let fname = components[1].as_os_str().to_str().unwrap_or("");
-                    subdir.join(fname)
-                } else {
-                    // 非白名单子目录 → 扁平化到根
-                    let safe_name = path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or(&file_name);
-                    tapp_dir_clone.join(safe_name)
-                }
-            } else {
-                // 根目录文件或深层嵌套 → 只提取文件名
-                let safe_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or(&file_name);
-                tapp_dir_clone.join(safe_name)
-            };
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
 
             let mut content = Vec::new();
             file.read_to_end(&mut content)?;
@@ -1463,12 +2625,10 @@ async fn install_tapp_file(
         )
     })?;
 
-    // 确定代码文件路径（优先 index.js，回退 main.js）
-    let code_path = if tapp_dir.join("index.js").exists() {
-        tapp_dir.join("index.js")
-    } else {
-        tapp_dir.join("main.js")
-    };
+    // Manifest 声明的入口和资源必须真实存在；避免安装成功后第一次运行才报错。
+    let code_path = tapp_dir.join(&manifest.main);
+    validate_installed_resources(&manifest, &tapp_dir)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
     // 确定授权的权限
     let requested_permissions: Vec<String> = if permissions.is_empty() {
@@ -1554,7 +2714,7 @@ async fn get_tapp(
 ) -> Result<Json<ApiResponse<TappDetail>>, StatusCode> {
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
-    let user_id: Option<i32> = claims.as_ref().and_then(|c| c.sub.parse().ok());
+    let user_id = optional_authenticated_user_id(claims.as_ref());
     let is_admin = match claims.as_ref() {
         Some(claims) => current_is_admin(claims).await,
         None => false,
@@ -1585,7 +2745,7 @@ async fn get_tapp(
 
                 if tapp.is_some() {
                     is_admin_tapp = false;
-                    is_temporary = true;
+                    is_temporary = !is_admin;
                 }
             }
         }
@@ -1593,60 +2753,16 @@ async fn get_tapp(
 
     let tapp = tapp.ok_or(StatusCode::NOT_FOUND)?;
 
-    let all_permissions: Vec<String> =
-        serde_json::from_value(tapp.granted_permissions.clone()).unwrap_or_default();
-
-    // 根据用户角色确定可用的权限级别
-    let user_role = if is_admin {
-        "admin"
-    } else if user_id.is_some() {
-        "user"
+    let role = if is_admin {
+        UserRole::Admin
+    } else if user_id.is_some_and(|user_id| user_id >= 0) {
+        UserRole::User
     } else {
-        "guest"
+        UserRole::Guest
     };
-
-    // 将用户角色转换为 UserRole 枚举
-    let role = match user_role {
-        "admin" => UserRole::Admin,
-        "user" => UserRole::User,
-        _ => UserRole::Guest,
-    };
-
-    // 使用 TappPermissionService 根据配置动态过滤权限
-    // 这会检查权限下放配置，而不是硬编码只允许 basic 权限
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-    let permissions: Vec<String> = all_permissions
-        .into_iter()
-        .filter(|p| {
-            // 解析权限字符串
-            if let Some(perm) = TappPermission::from_str(p) {
-                // 使用权限服务检查用户是否有此权限
-                TappPermissionService::check(&config, role, perm)
-            } else {
-                // 未知权限，默认不授予
-                false
-            }
-        })
-        .collect();
-    drop(config); // 显式释放读锁
-
-    Ok(Json(ApiResponse::success(TappDetail {
-        id: tapp.tapp_id,
-        name: tapp.name,
-        version: tapp.version,
-        description: tapp.description,
-        author: tapp.author,
-        icon: tapp.icon,
-        theme_color: tapp.theme_color,
-        manifest: tapp.manifest,
-        status: format!("{:?}", tapp.status).to_lowercase(),
-        granted_permissions: permissions,
-        installed_at: tapp.installed_at.to_rfc3339(),
-        last_run_at: tapp.last_run_at.map(|dt| dt.to_rfc3339()),
-        user_role: user_role.to_string(),
-        is_temporary,
-        is_admin_tapp,
-    })))
+    let detail = tapp_detail_from_model(tapp, role, is_temporary, is_admin_tapp, &config);
+    Ok(Json(ApiResponse::success(detail)))
 }
 
 /// 获取 Tapp 代码
@@ -1661,7 +2777,7 @@ async fn get_tapp_code(
 ) -> Result<String, StatusCode> {
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
-    let user_id: Option<i32> = claims.as_ref().and_then(|c| c.sub.parse().ok());
+    let user_id = optional_authenticated_user_id(claims.as_ref());
     let admin_id = get_admin_user_id(&db).await?;
 
     // 先尝试从管理员的 Tapp 中查找
@@ -1747,7 +2863,7 @@ async fn get_tapp_resources(
 ) -> Result<Json<TappResourcesResponse>, StatusCode> {
     // 可选认证
     let claims = extract_optional_claims(&headers);
-    let user_id: Option<i32> = claims.as_ref().and_then(|c| c.sub.parse().ok());
+    let user_id = optional_authenticated_user_id(claims.as_ref());
     let admin_id = get_admin_user_id(&db).await?;
 
     // 查找 Tapp（先管理员，再用户）
@@ -2018,7 +3134,7 @@ async fn export_tapp(
 ) -> Result<impl IntoResponse, StatusCode> {
     // 可选认证
     let claims = extract_optional_claims(&headers);
-    let user_id: Option<i32> = claims.as_ref().and_then(|c| c.sub.parse().ok());
+    let user_id = optional_authenticated_user_id(claims.as_ref());
     let admin_id = get_admin_user_id(&db).await?;
 
     // 查找 Tapp（先管理员，再用户）
@@ -2052,7 +3168,6 @@ async fn export_tapp(
     let tapp_id_clone = tapp_id.clone();
 
     let zip_data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, std::io::Error> {
-        use std::io::{Read, Write};
         use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
 
@@ -2062,23 +3177,8 @@ async fn export_tapp(
         let options =
             SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
-        // 🎯 遍历整个 Tapp 目录，打包所有文件（完全避免兼容性问题）
         if tapp_dir_owned.is_dir() {
-            for entry in std::fs::read_dir(&tapp_dir_owned)? {
-                let entry = entry?;
-                let path = entry.path();
-
-                // 只打包文件，跳过子目录
-                if path.is_file() {
-                    if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                        let mut file = std::fs::File::open(&path)?;
-                        let mut content = Vec::new();
-                        file.read_to_end(&mut content)?;
-                        zip.start_file(filename, options)?;
-                        zip.write_all(&content)?;
-                    }
-                }
-            }
+            append_directory_to_zip(&mut zip, &tapp_dir_owned, &tapp_dir_owned, options)?;
         }
 
         let cursor = zip.finish()?;
@@ -2254,6 +3354,7 @@ async fn stop_tapp(
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         }
         // 普通用户停止管理员的 Tapp，不修改数据库（只读）
+        crate::api::tapp_runtime::revoke_tapp_runtime_grants(user_id, &tapp_id).await;
         return Ok(Json(ApiResponse::success(())));
     }
 
@@ -2275,6 +3376,7 @@ async fn stop_tapp(
                 .update(&db)
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            crate::api::tapp_runtime::revoke_tapp_runtime_grants(user_id, &tapp_id).await;
             return Ok(Json(ApiResponse::success(())));
         }
     }
@@ -2354,7 +3456,7 @@ async fn get_recent_tapps(
         tapp_map.insert(tapp.tapp_id.clone(), tapp);
     }
     for tapp in &user_tapps {
-        tapp_map.insert(tapp.tapp_id.clone(), tapp);
+        tapp_map.entry(tapp.tapp_id.clone()).or_insert(tapp);
     }
 
     // 构建响应
@@ -2453,6 +3555,8 @@ async fn do_uninstall_tapp(
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id = tapp.user_id;
     let tapp_id = &tapp.tapp_id;
+
+    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(tapp_id).await;
 
     // Never trust the persisted file_path for deletion. Recompute the path from
     // the validated owner and Tapp id so legacy/corrupt rows cannot escape the
@@ -2684,61 +3788,109 @@ async fn update_tapp(
     })?;
 
     // 更新代码文件
-    let code_path = tapp_dir.join("main.js");
-    fs::write(&code_path, &code).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            api_error("Failed to save code"),
-        )
-    })?;
+    let code_path = write_tapp_resource(&tapp_dir, &manifest.main, &code)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                api_error("Failed to save code"),
+            )
+        })?;
 
     // 更新可选资源
     if let Some(styles) = &styles {
-        let styles_path = tapp_dir.join("styles.css");
-        let _ = fs::write(&styles_path, styles).await;
+        let path = manifest.styles.as_deref().unwrap_or("styles.css");
+        write_tapp_resource(&tapp_dir, path, styles)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    api_error("Failed to save styles"),
+                )
+            })?;
     }
 
     // 更新分离式 CSS
     if let Some(ws) = &widget_styles {
-        let widget_styles_path = tapp_dir.join("widget.css");
-        let _ = fs::write(&widget_styles_path, ws).await;
+        let path = manifest.widget_styles.as_deref().unwrap_or("widget.css");
+        write_tapp_resource(&tapp_dir, path, ws)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    api_error("Failed to save widget styles"),
+                )
+            })?;
     }
     if let Some(ps) = &page_styles {
-        let page_styles_path = tapp_dir.join("page.css");
-        let _ = fs::write(&page_styles_path, ps).await;
+        let path = manifest.page_styles.as_deref().unwrap_or("page.css");
+        write_tapp_resource(&tapp_dir, path, ps)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    api_error("Failed to save page styles"),
+                )
+            })?;
     }
 
     if let Some(page) = &page_template {
-        let page_path = tapp_dir.join("page.html");
-        let _ = fs::write(&page_path, page).await;
+        let path = manifest.page_template.as_deref().unwrap_or("page.html");
+        write_tapp_resource(&tapp_dir, path, page)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    api_error("Failed to save page template"),
+                )
+            })?;
     }
 
     if let Some(templates) = &widget_templates {
         for (size, content) in templates {
-            let widget_path = tapp_dir.join(format!("widget-{}.html", size));
-            let _ = fs::write(&widget_path, content).await;
+            let path = widget_template_path(&manifest, size);
+            write_tapp_resource(&tapp_dir, &path, content)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save widget template"),
+                    )
+                })?;
         }
     }
 
     // 更新 i18n 翻译文件
     if let Some(i18n) = &i18n_data {
-        let i18n_dir = tapp_dir.join("i18n");
-        let _ = fs::create_dir_all(&i18n_dir).await;
         for (lang_code, data) in i18n {
-            let i18n_path = i18n_dir.join(format!("{}.json", lang_code));
-            if let Ok(json_str) = serde_json::to_string_pretty(data) {
-                let _ = fs::write(&i18n_path, json_str).await;
-            }
+            let json = serde_json::to_string_pretty(data).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    api_error("Failed to serialize i18n resource"),
+                )
+            })?;
+            write_tapp_resource(&tapp_dir, &format!("i18n/{lang_code}.json"), json)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save i18n resource"),
+                    )
+                })?;
         }
     }
 
     // 更新 Page 模块文件
     if let Some(page_modules) = &page_modules_data {
-        let page_dir = tapp_dir.join("page");
-        let _ = fs::create_dir_all(&page_dir).await;
         for (filename, code_content) in page_modules {
-            let page_path = page_dir.join(filename);
-            let _ = fs::write(&page_path, code_content).await;
+            write_tapp_resource(&tapp_dir, &format!("page/{filename}"), code_content)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save page module"),
+                    )
+                })?;
         }
     }
 
@@ -2753,6 +3905,9 @@ async fn update_tapp(
                 api_error("Failed to save manifest"),
             )
         })?;
+
+    validate_installed_resources(&manifest, &tapp_dir)
+        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
     // 确定授权的权限（保留原有权限或使用新权限）
     let requested_permissions: Vec<String> = if let Some(perms) = permissions {
@@ -2802,6 +3957,9 @@ async fn update_tapp(
             api_error(format!("Database error: {}", e)),
         )
     })?;
+
+    // Code or permissions may have changed; existing grants must not survive the update.
+    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(&tapp_id).await;
 
     // manifest 已更新，清除 API 解析缓存
     crate::api::tapp_runtime::invalidate_tapp_apis_cache(&tapp_id).await;
@@ -2882,11 +4040,10 @@ async fn list_all_widgets(
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, StatusCode> {
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
-    let user_id: Option<i32> = claims.as_ref().and_then(|c| c.sub.parse().ok());
+    let user_id = optional_authenticated_user_id(claims.as_ref());
     let admin_id = get_admin_user_id(&db).await?;
 
     let mut items: Vec<serde_json::Value> = Vec::new();
-
     // 1. 获取管理员的小组件
     let admin_widgets = tapp_widgets::Entity::find()
         .filter(tapp_widgets::Column::UserId.eq(admin_id))
@@ -2906,7 +4063,8 @@ async fn list_all_widgets(
                 "defaultSize": w.default_size,
                 "sizes": w.sizes,
                 "category": w.category,
-                "configSchema": w.config,
+                "settings": w.config.get("settings").cloned().unwrap_or_else(|| serde_json::json!([])),
+                "refreshPolicy": w.config.get("refreshPolicy").cloned().unwrap_or(serde_json::Value::Null),
             },
             "instanceCount": 0,
             "registeredAt": w.registered_at.to_rfc3339(),
@@ -2935,7 +4093,8 @@ async fn list_all_widgets(
                         "defaultSize": w.default_size,
                         "sizes": w.sizes,
                         "category": w.category,
-                        "configSchema": w.config,
+                        "settings": w.config.get("settings").cloned().unwrap_or_else(|| serde_json::json!([])),
+                        "refreshPolicy": w.config.get("refreshPolicy").cloned().unwrap_or(serde_json::Value::Null),
                     },
                     "instanceCount": 0,
                     "registeredAt": w.registered_at.to_rfc3339(),
@@ -2960,7 +4119,7 @@ async fn list_widgets(
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, StatusCode> {
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
-    let user_id: Option<i32> = claims.as_ref().and_then(|c| c.sub.parse().ok());
+    let user_id = optional_authenticated_user_id(claims.as_ref());
     let admin_id = get_admin_user_id(&db).await?;
 
     // 先尝试从管理员的小组件中查找
@@ -2999,7 +4158,8 @@ async fn list_widgets(
                     "defaultSize": w.default_size,
                     "sizes": w.sizes,
                     "category": w.category,
-                    "configSchema": w.config,
+                    "settings": w.config.get("settings").cloned().unwrap_or_else(|| serde_json::json!([])),
+                    "refreshPolicy": w.config.get("refreshPolicy").cloned().unwrap_or(serde_json::Value::Null),
                 },
                 "instanceCount": 0,
                 "registeredAt": w.registered_at.to_rfc3339(),
@@ -3021,7 +4181,9 @@ pub struct RegisterWidgetRequest {
     pub sizes: Vec<String>,
     pub category: Option<String>,
     #[serde(default)]
-    pub config: serde_json::Value,
+    pub settings: Vec<TappSettingDef>,
+    #[serde(default)]
+    pub refresh_policy: Option<TappWidgetRefreshPolicy>,
 }
 
 /// 注册小组件
@@ -3031,17 +4193,27 @@ async fn register_widget(
     Path(tapp_id): Path<String>,
     Json(req): Json<RegisterWidgetRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, StatusCode> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-
-    // 验证 Tapp 存在
-    let _tapp = tapps::Entity::find()
-        .filter(tapps::Column::UserId.eq(user_id))
-        .filter(tapps::Column::TappId.eq(&tapp_id))
-        .one(&db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::WidgetRegister).await?;
+    if !is_safe_path_component(&req.id)
+        || req.name.is_empty()
+        || req.name.len() > 255
+        || req.sizes.is_empty()
+        || req.sizes.len() > 10
+        || req.sizes.iter().any(|size| !is_valid_widget_size(size))
+        || !req.sizes.contains(&req.default_size)
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    validate_tapp_settings(&req.settings, &format!("Widget {}", req.id))
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    if let Some(policy) = &req.refresh_policy {
+        validate_widget_refresh_policy(policy, &req.id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    }
+    let runtime_config = serde_json::json!({
+        "settings": &req.settings,
+        "refreshPolicy": &req.refresh_policy,
+    });
     let widget_id = format!("tapp.{}.{}", tapp_id, req.id);
     let now = Utc::now().fixed_offset();
 
@@ -3062,12 +4234,21 @@ async fn register_widget(
         active.default_size = Set(req.default_size.clone());
         active.sizes = Set(serde_json::to_value(&req.sizes).unwrap());
         active.category = Set(req.category.clone());
-        active.config = Set(req.config.clone());
+        active.config = Set(runtime_config.clone());
         active
             .update(&db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     } else {
+        let widget_count = tapp_widgets::Entity::find()
+            .filter(tapp_widgets::Column::UserId.eq(user_id))
+            .filter(tapp_widgets::Column::TappId.eq(&tapp_id))
+            .count(&db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if widget_count >= MAX_WIDGETS_PER_TAPP as u64 {
+            return Err(StatusCode::BAD_REQUEST);
+        }
         // 创建新的
         let widget = tapp_widgets::ActiveModel {
             id: NotSet,
@@ -3080,7 +4261,7 @@ async fn register_widget(
             default_size: Set(req.default_size.clone()),
             sizes: Set(serde_json::to_value(&req.sizes).unwrap()),
             category: Set(req.category.clone()),
-            config: Set(req.config.clone()),
+            config: Set(runtime_config),
             registered_at: Set(now),
         };
         widget
@@ -3102,8 +4283,13 @@ async fn unregister_widget(
     Extension(claims): Extension<Claims>,
     Path((tapp_id, widget_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::WidgetRegister).await?;
     let full_widget_id = if widget_id.starts_with("tapp.") {
+        let expected_prefix = format!("tapp.{}.", tapp_id);
+        if !widget_id.starts_with(&expected_prefix) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
         widget_id
     } else {
         format!("tapp.{}.{}", tapp_id, widget_id)
@@ -3122,11 +4308,11 @@ async fn unregister_widget(
 /// 验证存储 key 格式（防止路径遍历攻击）
 ///
 /// 规则：
-/// - 只允许字母、数字、下划线、连字符、点
+/// - 只允许字母、数字、下划线、连字符、点、冒号
 /// - 不允许连续的点（..）
 /// - 不允许以点开头或结尾
 /// - 长度限制 1-256 字符
-fn validate_storage_key(key: &str) -> Result<(), &'static str> {
+pub(crate) fn validate_storage_key(key: &str) -> Result<(), &'static str> {
     if key.is_empty() {
         return Err("Key cannot be empty");
     }
@@ -3142,25 +4328,59 @@ fn validate_storage_key(key: &str) -> Result<(), &'static str> {
     // 只允许安全字符
     let valid = key
         .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.');
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | ':'));
     if !valid {
         return Err(
-            "Key contains invalid characters (only alphanumeric, underscore, hyphen, dot allowed)",
+            "Key contains invalid characters (only alphanumeric, underscore, hyphen, dot, colon allowed)",
         );
     }
     Ok(())
+}
+
+pub(crate) fn validate_storage_value_size(value: &serde_json::Value) -> Result<(), StatusCode> {
+    let size = serde_json::to_vec(value)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .len();
+    if size > 1024 * 1024 {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    Ok(())
+}
+
+const TAPP_STORAGE_QUOTA_BYTES: i64 = 5 * 1024 * 1024;
+
+#[derive(FromQueryResult)]
+struct StorageBytesRow {
+    bytes: i64,
+}
+
+async fn storage_bytes(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    tapp_id: &str,
+) -> Result<i64, StatusCode> {
+    StorageBytesRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT AS bytes
+           FROM tapp_storage WHERE user_id = $1 AND tapp_id = $2"#,
+        vec![user_id.into(), tapp_id.into()],
+    ))
+    .one(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    .map(|row| row.map_or(0, |row| row.bytes))
 }
 
 /// 列出存储键
 async fn list_storage_keys(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<String>>>, StatusCode> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-
-    // 🔒 安全校验：验证用户对 Tapp 的访问权限
-    verify_tapp_ownership(&db, user_id, &tapp_id).await?;
+    require_runtime_storage_grant(&runtime_grant, &tapp_id)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::Storage).await?;
 
     let items = tapp_storage::Entity::find()
         .filter(tapp_storage::Column::UserId.eq(user_id))
@@ -3174,21 +4394,45 @@ async fn list_storage_keys(
     Ok(Json(ApiResponse::success(keys)))
 }
 
+#[derive(Debug, Serialize)]
+struct TappStorageUsage {
+    used: usize,
+    quota: usize,
+}
+
+/// Return storage usage with one database query instead of one request per key.
+async fn get_storage_usage(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
+    Path(tapp_id): Path<String>,
+) -> Result<Json<ApiResponse<TappStorageUsage>>, StatusCode> {
+    require_runtime_storage_grant(&runtime_grant, &tapp_id)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::Storage).await?;
+    let used = storage_bytes(&db, user_id, &tapp_id).await? as usize;
+
+    Ok(Json(ApiResponse::success(TappStorageUsage {
+        used,
+        quota: TAPP_STORAGE_QUOTA_BYTES as usize,
+    })))
+}
+
 /// 获取存储值
 async fn get_storage(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, key)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, StatusCode> {
+    require_runtime_storage_grant(&runtime_grant, &tapp_id)?;
     // 🔒 安全校验：验证 key 格式
     if let Err(_e) = validate_storage_key(&key) {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-
-    // 🔒 安全校验：验证用户对 Tapp 的访问权限
-    verify_tapp_ownership(&db, user_id, &tapp_id).await?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::Storage).await?;
 
     let item = tapp_storage::Entity::find()
         .filter(tapp_storage::Column::UserId.eq(user_id))
@@ -3208,57 +4452,83 @@ async fn get_storage(
 async fn set_storage(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, key)): Path<(String, String)>,
     Json(value): Json<serde_json::Value>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
+    require_runtime_storage_grant(&runtime_grant, &tapp_id)?;
     // 🔒 安全校验：验证 key 格式
     if let Err(_e) = validate_storage_key(&key) {
         return Err(StatusCode::BAD_REQUEST);
     }
 
     // 🔒 安全校验：限制值大小（1MB）
-    let value_str = serde_json::to_string(&value).unwrap_or_default();
-    if value_str.len() > 1024 * 1024 {
-        return Err(StatusCode::PAYLOAD_TOO_LARGE);
-    }
+    validate_storage_value_size(&value)?;
 
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::Storage).await?;
 
-    // 🔒 安全校验：验证用户对 Tapp 的访问权限
-    verify_tapp_ownership(&db, user_id, &tapp_id).await?;
-
-    let now = Utc::now().fixed_offset();
-
-    let existing = tapp_storage::Entity::find()
-        .filter(tapp_storage::Column::UserId.eq(user_id))
-        .filter(tapp_storage::Column::TappId.eq(&tapp_id))
-        .filter(tapp_storage::Column::Key.eq(&key))
-        .one(&db)
+    // Serialize concurrent writes for one subject/Tapp. The projection and
+    // upsert share a transaction, so two replicas cannot both pass a stale
+    // quota check.
+    let txn = db
+        .begin()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    if let Some(item) = existing {
-        let mut active: tapp_storage::ActiveModel = item.into();
-        active.value = Set(value);
-        active.updated_at = Set(now);
-        active
-            .update(&db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    } else {
-        let item = tapp_storage::ActiveModel {
-            id: NotSet,
-            tapp_id: Set(tapp_id),
-            user_id: Set(user_id),
-            key: Set(key),
-            value: Set(value),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
-        item.insert(&db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    txn.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        vec![format!("tapp-storage:{user_id}:{tapp_id}").into()],
+    ))
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    #[derive(FromQueryResult)]
+    struct ProjectedBytesRow {
+        bytes: i64,
     }
+    let projected = ProjectedBytesRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+SELECT (
+    COALESCE(SUM(octet_length(key) + octet_length(value::text))
+        FILTER (WHERE key <> $3), 0)
+    + octet_length($3)
+    + octet_length($4::jsonb::text)
+)::BIGINT AS bytes
+FROM tapp_storage
+WHERE user_id = $1 AND tapp_id = $2
+"#,
+        vec![
+            user_id.into(),
+            tapp_id.clone().into(),
+            key.clone().into(),
+            value.clone().into(),
+        ],
+    ))
+    .one(&txn)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map_or(i64::MAX, |row| row.bytes);
+    if projected > TAPP_STORAGE_QUOTA_BYTES {
+        txn.rollback().await.ok();
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    txn.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+INSERT INTO tapp_storage (tapp_id, user_id, key, value, created_at, updated_at)
+VALUES ($1, $2, $3, $4, NOW(), NOW())
+ON CONFLICT (user_id, tapp_id, key) DO UPDATE SET
+    value = EXCLUDED.value,
+    updated_at = NOW()
+"#,
+        vec![tapp_id.into(), user_id.into(), key.into(), value.into()],
+    ))
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    txn.commit()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(ApiResponse::success(())))
 }
@@ -3267,17 +4537,17 @@ async fn set_storage(
 async fn delete_storage(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, key)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
+    require_runtime_storage_grant(&runtime_grant, &tapp_id)?;
     // 🔒 安全校验：验证 key 格式
     if let Err(_e) = validate_storage_key(&key) {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-
-    // 🔒 安全校验：验证用户对 Tapp 的访问权限
-    verify_tapp_ownership(&db, user_id, &tapp_id).await?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::Storage).await?;
 
     tapp_storage::Entity::delete_many()
         .filter(tapp_storage::Column::UserId.eq(user_id))
@@ -3294,12 +4564,12 @@ async fn delete_storage(
 async fn clear_storage(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-
-    // 🔒 安全校验：验证用户对 Tapp 的访问权限
-    verify_tapp_ownership(&db, user_id, &tapp_id).await?;
+    require_runtime_storage_grant(&runtime_grant, &tapp_id)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::Storage).await?;
 
     tapp_storage::Entity::delete_many()
         .filter(tapp_storage::Column::UserId.eq(user_id))
@@ -3576,9 +4846,12 @@ async fn update_separated_css(
 #[cfg(test)]
 mod manifest_tests {
     use super::{
-        tapp_dir_for, validate_resource_path, validate_tapp_id, validate_tapp_manifest,
-        TappManifest,
+        append_directory_to_zip, archive_entry_path, tapp_dir_for, validate_installed_resources,
+        validate_resource_path, validate_tapp_archive, validate_tapp_id, validate_tapp_manifest,
+        widget_template_path, TappManifest, TappWidgetDef,
     };
+    use crate::models::entities::tapps;
+    use crate::services::permission_service::UserRole;
     use serde_json::json;
 
     #[test]
@@ -3601,6 +4874,567 @@ mod manifest_tests {
     }
 
     #[test]
+    fn preserves_and_validates_data_exchange_during_manifest_round_trip() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.exchange",
+            "name": "Exchange app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["storage"],
+            "dataExchange": {
+                "exports": [{
+                    "id": "playlist.current",
+                    "description": "Current playlist",
+                    "maxBytes": 262144,
+                    "maxRecords": 200,
+                    "schema": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
+                }],
+                "imports": [{
+                    "tappId": "com.example.player",
+                    "exportId": "playlist.current"
+                }]
+            }
+        }))
+        .expect("manifest should deserialize");
+
+        validate_tapp_manifest(&manifest).expect("exchange declaration should validate");
+        let value = serde_json::to_value(manifest).expect("manifest should serialize");
+        assert_eq!(
+            value["dataExchange"]["exports"][0]["id"],
+            "playlist.current"
+        );
+        assert_eq!(
+            value["dataExchange"]["imports"][0]["tappId"],
+            "com.example.player"
+        );
+    }
+
+    #[test]
+    fn preserves_and_validates_ai_v2_during_manifest_round_trip() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.ai",
+            "name": "AI app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["ai:generate", "platform:read"],
+            "ai": {
+                "protocolVersion": 2,
+                "operations": ["generate"],
+                "modelTier": "standard",
+                "contextSources": ["platform", "custom"],
+                "outputFormats": ["text", "json"]
+            }
+        }))
+        .expect("manifest should deserialize");
+
+        validate_tapp_manifest(&manifest).expect("AI declaration should validate");
+        let value = serde_json::to_value(manifest).expect("manifest should serialize");
+        assert_eq!(value["ai"]["protocolVersion"], 2);
+        assert_eq!(value["ai"]["operations"], json!(["generate"]));
+    }
+
+    #[test]
+    fn rejects_ai_operation_without_matching_permission() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.ai",
+            "name": "AI app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": [],
+            "ai": {
+                "protocolVersion": 2,
+                "operations": ["chat"],
+                "modelTier": "standard",
+                "contextSources": [],
+                "outputFormats": ["text"]
+            }
+        }))
+        .expect("manifest should deserialize");
+
+        assert!(validate_tapp_manifest(&manifest).is_err());
+    }
+
+    #[test]
+    fn preserves_and_validates_event_v2_topics() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.player",
+            "name": "Event app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["event:publish", "event:subscribe"],
+            "events": {
+                "publish": ["tapp.com.example.player.track.changed"],
+                "subscribe": ["system.theme.changed", "tapp.com.example.other.invalidated"]
+            }
+        }))
+        .expect("manifest should deserialize");
+
+        validate_tapp_manifest(&manifest).expect("event declaration should validate");
+        let value = serde_json::to_value(manifest).expect("manifest should serialize");
+        assert_eq!(
+            value["events"]["publish"],
+            json!(["tapp.com.example.player.track.changed"])
+        );
+    }
+
+    #[test]
+    fn rejects_event_publish_topic_outside_tapp_namespace() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.player",
+            "name": "Event app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["event:publish"],
+            "events": {
+                "publish": ["tapp.com.example.other.track.changed"]
+            }
+        }))
+        .expect("manifest should deserialize");
+
+        assert!(validate_tapp_manifest(&manifest).is_err());
+    }
+
+    #[test]
+    fn preserves_and_validates_agent_v2_manifest() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.reporter",
+            "name": "Agent app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": [],
+            "agent": {
+                "protocolVersion": 2,
+                "interactions": [{
+                    "type": "report.compose",
+                    "inputSchema": "schemas/report-input.json",
+                    "resultSchema": "schemas/report-result.json"
+                }],
+                "intents": ["ui.open", "report.create"]
+            }
+        }))
+        .expect("manifest should deserialize");
+
+        validate_tapp_manifest(&manifest).expect("Agent declaration should validate");
+        let value = serde_json::to_value(manifest).expect("manifest should serialize");
+        assert_eq!(value["agent"]["protocolVersion"], 2);
+        assert_eq!(value["agent"]["interactions"][0]["type"], "report.compose");
+    }
+
+    #[test]
+    fn rejects_external_data_exchange_schema_references() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.exchange",
+            "name": "Exchange app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": [],
+            "dataExchange": {
+                "exports": [{
+                    "id": "unsafe",
+                    "maxBytes": 1024,
+                    "schema": { "$ref": "https://example.com/schema.json" }
+                }]
+            }
+        }))
+        .expect("manifest should deserialize");
+
+        assert!(validate_tapp_manifest(&manifest).is_err());
+    }
+
+    #[test]
+    fn preserves_widget_metadata_during_manifest_round_trip() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.widget",
+            "name": "Widget app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["widget:register"],
+            "widgets": [{
+                "id": "summary",
+                "name": "Summary",
+                "description": "Daily summary",
+                "icon": "chart",
+                "defaultSize": "2x2",
+                "sizes": ["2x2", "4x2"],
+                "category": "stats",
+                "templates": {
+                    "2x2": "templates/widget-2x2.html",
+                    "4x2": "templates/widget-4x2.html"
+                },
+                "settings": [{
+                    "key": "compact",
+                    "label": "Compact layout",
+                    "type": "toggle",
+                    "defaultValue": false
+                }],
+                "refreshPolicy": {
+                    "mode": "interval",
+                    "intervalSeconds": 60,
+                    "refreshOnVisible": true
+                }
+            }]
+        }))
+        .expect("manifest should deserialize");
+
+        validate_tapp_manifest(&manifest).expect("widget metadata should validate");
+        let value = serde_json::to_value(manifest).expect("manifest should serialize");
+        let widget = &value["widgets"][0];
+        assert_eq!(widget["description"], json!("Daily summary"));
+        assert_eq!(widget["icon"], json!("chart"));
+        assert_eq!(widget["category"], json!("stats"));
+        assert_eq!(
+            widget["templates"]["4x2"],
+            json!("templates/widget-4x2.html")
+        );
+        assert_eq!(widget["settings"][0]["key"], json!("compact"));
+        assert_eq!(widget["refreshPolicy"]["mode"], json!("interval"));
+        assert_eq!(widget["refreshPolicy"]["intervalSeconds"], json!(60));
+        let parsed: TappManifest = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            widget_template_path(&parsed, "4x2"),
+            "templates/widget-4x2.html"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_widget_settings_and_refresh_policy() {
+        let parse = |widget: serde_json::Value| {
+            serde_json::from_value::<TappManifest>(json!({
+                "id": "com.example.invalid-widget",
+                "name": "Invalid widget",
+                "version": "1.0.0",
+                "main": "main.js",
+                "permissions": ["widget:register"],
+                "widgets": [widget]
+            }))
+            .unwrap()
+        };
+
+        let too_frequent = parse(json!({
+            "id": "summary",
+            "name": "Summary",
+            "defaultSize": "2x2",
+            "sizes": ["2x2"],
+            "refreshPolicy": { "mode": "interval", "intervalSeconds": 5 }
+        }));
+        assert!(validate_tapp_manifest(&too_frequent).is_err());
+
+        let invalid_setting = parse(json!({
+            "id": "summary",
+            "name": "Summary",
+            "defaultSize": "2x2",
+            "sizes": ["2x2"],
+            "settings": [{ "key": "mode", "label": "Mode", "type": "select" }]
+        }));
+        assert!(validate_tapp_manifest(&invalid_setting).is_err());
+    }
+
+    #[test]
+    fn normalizes_legacy_widget_refresh_hint_out_of_manifest() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.legacy-refresh",
+            "name": "Legacy refresh hint",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["widget:register"],
+            "widgets": [{
+                "id": "summary",
+                "name": "Summary",
+                "defaultSize": "2x2",
+                "sizes": ["2x2"],
+                "minRefreshInterval": 1000
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(
+            manifest.widgets.as_ref().unwrap()[0].legacy_min_refresh_interval,
+            Some(1000)
+        );
+        let normalized = serde_json::to_value(manifest).unwrap();
+        assert!(normalized["widgets"][0]
+            .as_object()
+            .unwrap()
+            .get("minRefreshInterval")
+            .is_none());
+    }
+
+    #[test]
+    fn enforces_minimum_system_version_on_install_and_update_validation() {
+        let mut manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.compatibility",
+            "name": "Compatibility gate",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": [],
+            "minSystemVersion": env!("CARGO_PKG_VERSION")
+        }))
+        .unwrap();
+
+        validate_tapp_manifest(&manifest).unwrap();
+        let serialized = serde_json::to_value(&manifest).unwrap();
+        assert_eq!(
+            serialized["minSystemVersion"],
+            json!(env!("CARGO_PKG_VERSION"))
+        );
+
+        manifest.min_system_version = Some("999.0.0".to_string());
+        assert!(validate_tapp_manifest(&manifest).is_err());
+
+        manifest.min_system_version = Some("not-a-version".to_string());
+        assert!(validate_tapp_manifest(&manifest).is_err());
+    }
+
+    #[test]
+    fn rejects_removed_or_unknown_manifest_fields() {
+        let removed_top_level = serde_json::from_value::<TappManifest>(json!({
+            "id": "com.example.legacy",
+            "name": "Legacy app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": [],
+            "optionalPermissions": ["network:fetch"]
+        }));
+        assert!(removed_top_level.is_err());
+
+        let removed_widget_field = serde_json::from_value::<TappManifest>(json!({
+            "id": "com.example.legacy-widget",
+            "name": "Legacy widget",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["widget:register"],
+            "widgets": [{
+                "id": "summary",
+                "name": "Summary",
+                "defaultSize": "2x2",
+                "sizes": ["2x2"],
+                "refreshInterval": 60000
+            }]
+        }));
+        assert!(removed_widget_field.is_err());
+    }
+
+    #[test]
+    fn validates_declared_api_shape_and_inject_aliases() {
+        let valid: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.api",
+            "name": "API app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["network:fetch"],
+            "apis": {
+                "weather.current": {
+                    "type": "http",
+                    "endpoint": "https://example.com/weather?city={{city}}",
+                    "inject": { "city": "{{geo.city}}" }
+                }
+            }
+        }))
+        .unwrap();
+        validate_tapp_manifest(&valid).unwrap();
+
+        let mut reserved_alias = valid.clone();
+        reserved_alias
+            .apis
+            .as_mut()
+            .unwrap()
+            .get_mut("weather.current")
+            .unwrap()
+            .inject = Some(std::collections::HashMap::from([(
+            "user.id".to_string(),
+            "{{geo.city}}".to_string(),
+        )]));
+        assert!(validate_tapp_manifest(&reserved_alias).is_err());
+
+        let mut ambiguous_endpoint = valid;
+        ambiguous_endpoint
+            .apis
+            .as_mut()
+            .unwrap()
+            .get_mut("weather.current")
+            .unwrap()
+            .url = Some("https://example.com/legacy".to_string());
+        assert!(validate_tapp_manifest(&ambiguous_endpoint).is_err());
+    }
+
+    #[test]
+    fn rejects_unbounded_widget_manifests() {
+        let mut manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.too-many-widgets",
+            "name": "Too many widgets",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["widget:register"]
+        }))
+        .unwrap();
+        manifest.widgets = Some(
+            (0..65)
+                .map(|index| TappWidgetDef {
+                    id: format!("widget-{index}"),
+                    name: format!("Widget {index}"),
+                    description: None,
+                    icon: None,
+                    default_size: "2x2".to_string(),
+                    sizes: vec!["2x2".to_string()],
+                    legacy_min_refresh_interval: None,
+                    category: None,
+                    templates: None,
+                    settings: Vec::new(),
+                    refresh_policy: None,
+                })
+                .collect(),
+        );
+
+        assert!(validate_tapp_manifest(&manifest).is_err());
+    }
+
+    #[test]
+    fn batch_detail_mapping_applies_current_role_and_brew_capability_rules() {
+        let now = chrono::Utc::now().fixed_offset();
+        let tapp = tapps::Model {
+            id: 1,
+            tapp_id: "com.example.detail".to_string(),
+            user_id: 7,
+            name: "Detail".to_string(),
+            version: "1.0.0".to_string(),
+            description: None,
+            author: None,
+            icon: None,
+            theme_color: None,
+            manifest: json!({
+                "id": "com.example.detail",
+                "name": "Detail",
+                "version": "1.0.0",
+                "main": "main.js",
+                "permissions": ["storage", "brew:write", "ai:generate"]
+            }),
+            status: tapps::TappStatus::Installed,
+            granted_permissions: json!(["storage", "brew:write", "ai:generate"]),
+            file_path: "manifest.json".to_string(),
+            code_path: "main.js".to_string(),
+            installed_at: now,
+            last_run_at: None,
+            updated_at: now,
+            error_message: None,
+        };
+
+        let detail = super::tapp_detail_from_model(
+            tapp,
+            UserRole::User,
+            true,
+            false,
+            &crate::config::DynamicConfig::default(),
+        );
+
+        assert_eq!(detail.user_role, "user");
+        assert!(detail.is_temporary);
+        assert!(!detail.is_admin_tapp);
+        assert_eq!(detail.granted_permissions, vec!["storage", "brew:write"]);
+    }
+
+    #[test]
+    fn validates_all_declared_install_resources() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.resources",
+            "name": "Resources",
+            "version": "1.0.0",
+            "main": "src/main.js",
+            "permissions": [],
+            "styles": "css/shared.css",
+            "pageModules": ["index.js"],
+            "widgets": [{
+                "id": "summary",
+                "name": "Summary",
+                "defaultSize": "2x2",
+                "sizes": ["2x2"],
+                "templates": { "2x2": "templates/summary.html" }
+            }]
+        }))
+        .unwrap();
+
+        let unique = format!(
+            "myriad-tapp-resource-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        for relative in [
+            "src/main.js",
+            "css/shared.css",
+            "page/index.js",
+            "templates/summary.html",
+        ] {
+            let path = root.join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "test").unwrap();
+        }
+
+        assert!(validate_installed_resources(&manifest, &root).is_ok());
+        std::fs::remove_file(root.join("templates/summary.html")).unwrap();
+        assert!(validate_installed_resources(&manifest, &root).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exports_nested_resource_paths_without_flattening() {
+        let unique = format!(
+            "myriad-tapp-export-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let nested = root.join("templates/dashboard/widget.html");
+        std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
+        std::fs::write(root.join("manifest.json"), "{}").unwrap();
+        std::fs::write(&nested, "<main>nested</main>").unwrap();
+
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        append_directory_to_zip(&mut writer, &root, &root, options).unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut names = (0..archive.len())
+            .map(|index| archive.by_index(index).unwrap().name().to_string())
+            .collect::<Vec<_>>();
+        names.sort();
+        assert_eq!(
+            names,
+            vec![
+                "manifest.json".to_string(),
+                "templates/dashboard/widget.html".to_string()
+            ]
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_colliding_archive_entries() {
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        let options = zip::write::SimpleFileOptions::default();
+        writer.add_directory("templates/", options).unwrap();
+        writer.start_file("templates", options).unwrap();
+        std::io::Write::write_all(&mut writer, b"collision").unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        assert!(validate_tapp_archive(&mut archive).is_err());
+    }
+
+    #[test]
     fn rejects_tapp_ids_and_resource_paths_that_escape_the_sandbox() {
         for invalid in ["", ".", "..", "../escape", "/tmp/escape", ".hidden"] {
             assert!(validate_tapp_id(invalid).is_err(), "accepted {invalid}");
@@ -3615,6 +5449,12 @@ mod manifest_tests {
             );
         }
         assert!(validate_resource_path("page/state.js").is_ok());
+        let root = std::path::Path::new("/tmp/tapps/com.example.safe");
+        assert_eq!(
+            archive_entry_path(root, "templates/widget-2x2.html").unwrap(),
+            root.join("templates/widget-2x2.html")
+        );
+        assert!(archive_entry_path(root, "../outside.html").is_err());
     }
 
     #[test]
@@ -3632,5 +5472,52 @@ mod manifest_tests {
 
         manifest.page_template = Some("../../outside.html".to_string());
         assert!(validate_tapp_manifest(&manifest).is_err());
+
+        manifest.page_template = None;
+        manifest.page_modules = Some(vec!["nested/index.js".to_string()]);
+        assert!(validate_tapp_manifest(&manifest).is_err());
+
+        let manifest_with_escaping_widget_template: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.unsafe-widget",
+            "name": "Unsafe widget",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": [],
+            "widgets": [{
+                "id": "unsafe",
+                "name": "Unsafe",
+                "defaultSize": "2x2",
+                "sizes": ["2x2"],
+                "templates": { "2x2": "../outside.html" }
+            }]
+        }))
+        .unwrap();
+        assert!(validate_tapp_manifest(&manifest_with_escaping_widget_template).is_err());
+
+        let conflicting_templates: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.conflicting-widgets",
+            "name": "Conflicting widgets",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": [],
+            "widgets": [
+                {
+                    "id": "one",
+                    "name": "One",
+                    "defaultSize": "2x2",
+                    "sizes": ["2x2"],
+                    "templates": { "2x2": "templates/one.html" }
+                },
+                {
+                    "id": "two",
+                    "name": "Two",
+                    "defaultSize": "2x2",
+                    "sizes": ["2x2"],
+                    "templates": { "2x2": "templates/two.html" }
+                }
+            ]
+        }))
+        .unwrap();
+        assert!(validate_tapp_manifest(&conflicting_templates).is_err());
     }
 }

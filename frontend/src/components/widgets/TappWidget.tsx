@@ -15,7 +15,7 @@
  * - 添加光晕背景效果，与普通小组件保持一致
  */
 
-import type { TappCodeStructure } from '../../tapp/examples/tapps/types'
+import type { TappCodeStructure } from '../../tapp/types'
 import type { RegisteredWidget, TappInstance } from '../../tapp/types'
 import type { WidgetComponentProps } from '../WidgetGrid'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -350,7 +350,13 @@ TappWidgetPreview.displayName = 'TappWidgetPreview'
  * Tapp Widget 组件（使用 TappSandbox 实现完整 API 支持）
  */
 export const TappWidgetComponent = memo(
-  ({ config, isEditMode, isPreview, tappWidgetId }: TappWidgetProps) => {
+  ({
+    config,
+    isEditMode,
+    isPreview,
+    tappWidgetId,
+    onConfigChange,
+  }: TappWidgetProps) => {
     const anim = useAnimationLevel()
 
     // 🎯 预览模式优化：渲染美观的 Glass 风格预览卡片
@@ -386,11 +392,9 @@ export const TappWidgetComponent = memo(
 
     // 🎯 集成动画调度器的页面可见性感知
     // 页面不可见时跳过非必要的状态更新，减少后台 CPU 开销
-    const pageVisibleRef = useRef(isPageVisible())
+    const [pageVisible, setPageVisible] = useState(isPageVisible())
     useEffect(() => {
-      return onVisibility((visible) => {
-        pageVisibleRef.current = visible
-      })
+      return onVisibility(setPageVisible)
     }, [])
 
     // 🎯 视口门控：widget 的 iframe 沙箱仅在进入视口（附近 300px）时挂载，
@@ -417,6 +421,25 @@ export const TappWidgetComponent = memo(
       () => () => {
         viewportObserverRef.current?.disconnect()
         viewportObserverRef.current = null
+      },
+      [],
+    )
+
+    // 宿主级刷新统一做去抖，避免同一批 storage 写入或多个 invalidate 请求
+    // 连续销毁/重建 iframe。刷新只在页面与 Widget 都可见时执行。
+    const [refreshGeneration, setRefreshGeneration] = useState(0)
+    const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const requestRefresh = useCallback(() => {
+      if (!pageVisible || !inViewport) return
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null
+        setRefreshGeneration((generation) => generation + 1)
+      }, 500)
+    }, [pageVisible, inViewport])
+    useEffect(
+      () => () => {
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
       },
       [],
     )
@@ -602,6 +625,15 @@ export const TappWidgetComponent = memo(
     // scale 和 fontScale 由 TappWidgetSandbox 内部自动计算并注入到 iframe
     // 使用 JSON.stringify 稳定 config.config 的依赖比较
     const configString = JSON.stringify(config.config || {})
+    const declaredDefaults = useMemo(
+      () =>
+        Object.fromEntries(
+          (widget?.config.settings || [])
+            .filter((setting) => setting.defaultValue !== undefined)
+            .map((setting) => [setting.key, setting.defaultValue]),
+        ),
+      [widget],
+    )
     const widgetProps = useMemo(() => {
       const isDark = document.documentElement.classList.contains('dark')
       // 获取主题色
@@ -611,14 +643,92 @@ export const TappWidgetComponent = memo(
           .trim() || '#8b5cf6'
       return {
         size: config.size,
-        config: config.config || {},
+        config: { ...declaredDefaults, ...(config.config || {}) },
         isEditMode: isEditMode || false,
         isPreview: isPreview || false,
         theme: (isDark ? 'dark' : 'light') as 'light' | 'dark',
         primaryColor,
         locale,
       }
-    }, [config.size, configString, isEditMode, isPreview, locale])
+    }, [
+      config.size,
+      configString,
+      declaredDefaults,
+      isEditMode,
+      isPreview,
+      locale,
+    ])
+
+    const handleInstanceSettingsChange = useCallback(
+      (patch: Record<string, unknown>): boolean => {
+        if (!widget || !onConfigChange) return false
+        const declarations = widget.config.settings || []
+        const byKey = new Map(
+          declarations.map((setting) => [setting.key, setting]),
+        )
+        const accepted: Record<string, unknown> = {}
+
+        for (const [key, value] of Object.entries(patch)) {
+          const setting = byKey.get(key)
+          if (!setting) return false
+          if (setting.type === 'toggle' && typeof value !== 'boolean')
+            return false
+          if (
+            (setting.type === 'input' || setting.type === 'color') &&
+            typeof value !== 'string'
+          ) {
+            return false
+          }
+          if (
+            setting.type === 'select' &&
+            (typeof value !== 'string' ||
+              !setting.options?.some((option) => option.value === value))
+          ) {
+            return false
+          }
+          if (setting.type === 'number') {
+            if (typeof value !== 'number' || !Number.isFinite(value))
+              return false
+            if (setting.min !== undefined && value < setting.min) return false
+            if (setting.max !== undefined && value > setting.max) return false
+          }
+          accepted[key] = value
+        }
+
+        onConfigChange({ ...(config.config || {}), ...accepted })
+        return true
+      },
+      [config.config, onConfigChange, widget],
+    )
+
+    // interval 是可选策略，并且只在可见、运行中的实例上计时。
+    useEffect(() => {
+      const policy = widget?.config.refreshPolicy
+      if (
+        policy?.mode !== 'interval' ||
+        !policy.intervalSeconds ||
+        !pageVisible ||
+        !inViewport ||
+        !isRunning
+      ) {
+        return
+      }
+      const timer = setInterval(requestRefresh, policy.intervalSeconds * 1000)
+      return () => clearInterval(timer)
+    }, [widget, pageVisible, inViewport, isRunning, requestRefresh])
+
+    const previousPageVisibleRef = useRef(pageVisible)
+    useEffect(() => {
+      if (
+        pageVisible &&
+        !previousPageVisibleRef.current &&
+        inViewport &&
+        widget?.config.refreshPolicy?.refreshOnVisible !== false
+      ) {
+        requestRefresh()
+      }
+      previousPageVisibleRef.current = pageVisible
+    }, [pageVisible, inViewport, requestRefresh, widget])
 
     // 启动 Tapp
     const handleStartTapp = useCallback(async () => {
@@ -772,6 +882,7 @@ export const TappWidgetComponent = memo(
         <div ref={sandboxHostRef} className="w-full h-full">
           {inViewport && (
             <TappWidgetSandbox
+              key={refreshGeneration}
               tappInstance={tappInstance}
               code={code}
               widgetId={widget.config.id || widget.id.split('.').pop() || ''}
@@ -779,6 +890,8 @@ export const TappWidgetComponent = memo(
               onError={(err: Error) => {
                 setError(err.message)
               }}
+              onInstanceSettingsChange={handleInstanceSettingsChange}
+              onInvalidate={requestRefresh}
               className="w-full h-full"
             />
           )}

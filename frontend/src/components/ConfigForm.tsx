@@ -224,7 +224,7 @@ const ModernConfigForm: React.FC = () => {
     return saved ? JSON.parse(saved) : ['platforms', 'ai']
   })
 
-  // Tapp 权限下放配置状态（9个 elevated 权限 × 2 角色 + AI 限额配置）
+  // Tapp 权限下放配置状态（13 项 elevated 权限 × 2 角色 + AI 限额配置）
   const [permissionConfig, setPermissionConfig] = useState({
     // 普通用户 elevated 权限 (platform:write 和 platform:register 已升为 privileged)
     user_perm_ai_generate: false,

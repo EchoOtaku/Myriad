@@ -1247,6 +1247,7 @@ export const jaJP: TranslationKeys = {
     canPlace: '配置可能',
     prevPage: '前のページ',
     nextPage: '次のページ',
+    widgetSettings: 'ウィジェット設定',
   },
 
   // ソーシャルネットワークウィジェット

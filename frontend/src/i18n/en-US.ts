@@ -1262,6 +1262,7 @@ export const enUS: TranslationKeys = {
     canPlace: 'Can place',
     prevPage: 'Previous page',
     nextPage: 'Next page',
+    widgetSettings: 'Widget settings',
   },
 
   // Social Network Widget

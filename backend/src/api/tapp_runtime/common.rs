@@ -20,7 +20,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
 
 use crate::middleware::auth::{ensure_current_admin, Claims};
 use crate::models::entities::tapps;
@@ -68,17 +68,6 @@ impl<V: Clone> TtlCache<V> {
                 created_at: Instant::now(),
             },
         );
-    }
-
-    #[allow(dead_code)]
-    pub fn invalidate(&mut self, key: &str) {
-        self.data.remove(key);
-    }
-
-    #[allow(dead_code)]
-    pub fn cleanup(&mut self) {
-        self.data
-            .retain(|_, entry| entry.created_at.elapsed() < self.ttl);
     }
 
     pub fn len(&self) -> usize {
@@ -137,6 +126,10 @@ pub static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
 pub static PLATFORM_CACHE: Lazy<Arc<RwLock<TtlCache<Value>>>> =
     Lazy::new(|| Arc::new(RwLock::new(TtlCache::new(Duration::from_secs(30)))));
 
+/// 每个平台共享一把锁，使缓存未命中的文件读取和 read-modify-write 串行化。
+static PLATFORM_LOCKS: Lazy<RwLock<HashMap<String, Arc<Mutex<()>>>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
 /// 平台列表缓存（60秒 TTL）
 static PLATFORM_LIST_CACHE: Lazy<Arc<RwLock<SingleCache<Vec<String>>>>> =
     Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(60)))));
@@ -191,7 +184,42 @@ pub fn validate_platform_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 获取平台数据（带缓存，double-check locking 防止 thundering herd）
+/// 获取规范化平台名对应的共享 I/O 锁。
+pub async fn acquire_platform_lock(platform: &str) -> Result<OwnedMutexGuard<()>, String> {
+    validate_platform_name(platform)?;
+    let key = platform.to_lowercase();
+    let lock = {
+        if let Some(lock) = PLATFORM_LOCKS.read().await.get(&key).cloned() {
+            lock
+        } else {
+            let mut locks = PLATFORM_LOCKS.write().await;
+            locks
+                .entry(key)
+                .or_insert_with(|| Arc::new(Mutex::new(())))
+                .clone()
+        }
+    };
+    Ok(lock.lock_owned().await)
+}
+
+/// 文件写入成功后立即刷新内存缓存，避免最多 30 秒的陈旧读取。
+pub async fn update_cached_platform_data(platform: &str, data: Value) -> Result<(), String> {
+    validate_platform_name(platform)?;
+    let key = platform.to_lowercase();
+    PLATFORM_CACHE.write().await.set(key.clone(), data);
+
+    let mut list_cache = PLATFORM_LIST_CACHE.write().await;
+    if let Some(mut platforms) = list_cache.get() {
+        if !platforms.iter().any(|value| value == &key) {
+            platforms.push(key);
+            platforms.sort();
+            list_cache.set(platforms);
+        }
+    }
+    Ok(())
+}
+
+/// 获取平台数据（带缓存；同平台缓存未命中只执行一次文件读取）
 pub async fn get_cached_platform_data(platform: &str) -> Result<Value, String> {
     validate_platform_name(platform)?;
     let key = platform.to_lowercase();
@@ -204,22 +232,23 @@ pub async fn get_cached_platform_data(platform: &str) -> Result<Value, String> {
         }
     }
 
-    // 缓存未命中，先 double-check（持有 write lock）
+    let _platform_guard = acquire_platform_lock(&key).await?;
+
+    // 获得同平台锁后再次检查，前一个请求可能已经填充缓存。
     {
-        let cache = PLATFORM_CACHE.write().await;
+        let cache = PLATFORM_CACHE.read().await;
         if let Some(data) = cache.get(&key) {
             return Ok(data.clone());
         }
-        // 确认未命中后立即释放写锁，再做耗时的文件 I/O
     }
 
-    // 在锁外读取文件（多线程可能并发读，但最终写入相同内容，可接受）
     let cache_file = format!("cache/platforms/{}_filtered.json", key);
     let content = tokio::fs::read_to_string(&cache_file)
         .await
         .map_err(|e| format!("Failed to read cache: {}", e))?;
 
-    let data: Value = serde_json::from_str(&content).unwrap_or(json!({ "items": [] }));
+    let data: Value = serde_json::from_str(&content)
+        .map_err(|error| format!("Failed to parse cache: {}", error))?;
 
     // 重新获取写锁写入缓存
     {
@@ -262,12 +291,6 @@ static AI_PRO_CONFIG_CACHE: Lazy<Arc<RwLock<SingleCache<AiConfig>>>> =
 /// AI 图片配置缓存（5分钟 TTL）
 static AI_IMAGE_CONFIG_CACHE: Lazy<Arc<RwLock<SingleCache<AiImageConfig>>>> =
     Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(300)))));
-
-/// 获取标准层级 AI 配置（向后兼容）
-#[allow(dead_code)]
-pub async fn get_ai_config() -> Result<AiConfig, (StatusCode, Json<Value>)> {
-    get_ai_config_for_tier(crate::config::ModelTier::Standard).await
-}
 
 /// 获取指定层级的 AI 配置（带缓存）
 pub async fn get_ai_config_for_tier(
@@ -347,13 +370,6 @@ pub async fn get_ai_image_config() -> Result<AiImageConfig, (StatusCode, Json<Va
 struct RateLimitEntry {
     count: u32,
     window_start: Instant,
-}
-
-/// 速率限制配置（未使用但保留用于将来扩展）
-#[allow(dead_code)]
-struct RateLimitConfig {
-    limit: u32,
-    window_secs: u64,
 }
 
 /// 获取操作的速率限制配置
@@ -620,13 +636,6 @@ pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCo
     Ok(id)
 }
 
-/// 使管理员 ID 缓存失效（管理员变更时调用）
-#[allow(dead_code)]
-pub async fn invalidate_admin_id_cache() {
-    let mut cache = ADMIN_ID_CACHE.write().await;
-    *cache = SingleCache::new(Duration::from_secs(60));
-}
-
 /// 验证用户是否有权访问指定的 Tapp
 ///
 /// 安全校验规则：
@@ -716,16 +725,15 @@ pub async fn verify_tapp_ownership(
     Ok(())
 }
 
-/// 验证当前可访问的 Tapp 安装记录确实获得了指定权限。
+/// Resolve the exact installation record used to execute a Tapp for this subject.
 ///
-/// 角色级权限下放只能说明调用者角色可以使用该能力；这里再检查安装时授权，
-/// 防止客户端伪造 tapp_id 绕过 manifest/granted_permissions。
-pub async fn verify_tapp_granted_permission(
+/// Shared administrator Tapps intentionally win over a same-id user installation so code,
+/// resources, declared APIs and granted permissions always come from one record.
+pub async fn resolve_accessible_tapp(
     db: &DatabaseConnection,
     user_id: i32,
     tapp_id: &str,
-    permission: TappPermission,
-) -> Result<(), (StatusCode, Json<Value>)> {
+) -> Result<tapps::Model, (StatusCode, Json<Value>)> {
     verify_tapp_ownership(db, user_id, tapp_id).await?;
     let admin_id = get_admin_user_id(db).await?;
     let mut candidates = tapps::Entity::find()
@@ -733,36 +741,43 @@ pub async fn verify_tapp_granted_permission(
         .all(db)
         .await
         .map_err(|error| {
-            tracing::error!("[TAPP] Failed to load granted permissions: {}", error);
+            tracing::error!(%error, "[TAPP] Failed to resolve accessible Tapp");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": "Database error" })),
             )
         })?;
-    candidates.sort_by_key(|tapp| {
-        if tapp.user_id == user_id {
-            0
-        } else if tapp.user_id == admin_id {
-            1
-        } else {
-            2
-        }
-    });
-    let Some(tapp) = candidates.first() else {
-        return Err((
+    candidates.sort_by_key(|tapp| tapp_owner_priority(tapp.user_id, user_id, admin_id));
+    candidates.into_iter().next().ok_or_else(|| {
+        (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "Tapp not found" })),
-        ));
-    };
-    let granted = tapp
+        )
+    })
+}
+
+/// 验证当前可访问的 Tapp 安装记录确实获得了指定权限。
+///
+/// 角色级权限下放只能说明调用者角色可以使用该能力；这里再检查安装时授权，
+/// 防止客户端伪造 tapp_id 绕过 manifest/granted_permissions。
+pub async fn verify_tapp_granted_permissions(
+    db: &DatabaseConnection,
+    user_id: i32,
+    tapp_id: &str,
+    permissions: &[TappPermission],
+) -> Result<(), (StatusCode, Json<Value>)> {
+    let tapp = resolve_accessible_tapp(db, user_id, tapp_id).await?;
+    let granted_permissions = tapp
         .granted_permissions
         .as_array()
-        .is_some_and(|permissions| {
-            permissions
-                .iter()
-                .any(|value| value.as_str() == Some(permission.as_str()))
-        });
-    if !granted {
+        .cloned()
+        .unwrap_or_default();
+    let missing_permission = permissions.iter().find(|permission| {
+        !granted_permissions
+            .iter()
+            .any(|value| value.as_str() == Some(permission.as_str()))
+    });
+    if let Some(permission) = missing_permission {
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({
@@ -773,6 +788,45 @@ pub async fn verify_tapp_granted_permission(
         ));
     }
     Ok(())
+}
+
+fn tapp_owner_priority(owner_id: i32, user_id: i32, admin_id: i32) -> u8 {
+    // 详情、资源和批量同步都优先管理员公开版本。授权必须选择同一安装记录，
+    // 否则执行管理员代码时可能错误读取用户同 ID Tapp 的授权集合。
+    if owner_id == admin_id {
+        0
+    } else if owner_id == user_id {
+        1
+    } else {
+        2
+    }
+}
+
+/// 完整授权一个带 `tapp_id` 的运行时能力调用。
+///
+/// 同时验证角色级权限下放、当前用户可访问该 Tapp，以及安装记录确实获授此权限。
+/// 返回解析后的用户 ID，避免各端点重复且容易漏掉其中一层检查。
+pub async fn authorize_tapp_permission(
+    db: &DatabaseConnection,
+    claims: &Claims,
+    tapp_id: &str,
+    permission: TappPermission,
+) -> Result<i32, (StatusCode, Json<Value>)> {
+    authorize_tapp_permissions(db, claims, tapp_id, &[permission]).await
+}
+
+pub async fn authorize_tapp_permissions(
+    db: &DatabaseConnection,
+    claims: &Claims,
+    tapp_id: &str,
+    permissions: &[TappPermission],
+) -> Result<i32, (StatusCode, Json<Value>)> {
+    for permission in permissions {
+        check_tapp_permission(claims, *permission).await?;
+    }
+    let user_id = parse_user_id(claims)?;
+    verify_tapp_granted_permissions(db, user_id, tapp_id, permissions).await?;
+    Ok(user_id)
 }
 
 /// 从 Claims 解析 user_id
@@ -790,17 +844,7 @@ pub async fn check_tapp_permission(
     claims: &Claims,
     permission: TappPermission,
 ) -> Result<(), (StatusCode, Json<Value>)> {
-    let role = if claims.is_admin && ensure_current_admin(claims).await.is_ok() {
-        UserRole::Admin
-    } else if let Ok(user_id) = claims.sub.parse::<i32>() {
-        if user_id < 0 {
-            UserRole::Guest
-        } else {
-            UserRole::User
-        }
-    } else {
-        UserRole::Guest
-    };
+    let role = current_tapp_user_role(claims).await;
 
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
     let has_permission = TappPermissionService::check(&config, role, permission);
@@ -825,6 +869,21 @@ pub async fn check_tapp_permission(
     }
 
     Ok(())
+}
+
+/// Resolve the current role used by Tapp capability filtering.
+pub async fn current_tapp_user_role(claims: &Claims) -> UserRole {
+    if claims.is_admin && ensure_current_admin(claims).await.is_ok() {
+        UserRole::Admin
+    } else if let Ok(user_id) = claims.sub.parse::<i32>() {
+        if user_id < 0 {
+            UserRole::Guest
+        } else {
+            UserRole::User
+        }
+    } else {
+        UserRole::Guest
+    }
 }
 
 // ============ Prompt 安全验证 ============
@@ -920,4 +979,16 @@ pub fn validate_image_prompt_security(prompt: &str) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tapp_owner_priority;
+
+    #[test]
+    fn shared_admin_tapp_precedes_same_id_user_tapp() {
+        assert_eq!(tapp_owner_priority(1, 42, 1), 0);
+        assert_eq!(tapp_owner_priority(42, 42, 1), 1);
+        assert_eq!(tapp_owner_priority(99, 42, 1), 2);
+    }
 }

@@ -91,11 +91,19 @@ export function registerSchedulerHandlers(
       const scheduler = ensureScheduler()
       let task
       try {
-        task = await scheduler.registerTask(tappInstance.id, opts)
+        task = await scheduler.registerTask(
+          tappInstance.id,
+          opts,
+          await bridge.getRuntimeGrant(),
+        )
       } catch (error) {
         // core 会在 Page/Widget/headless 生命周期中重复启动。注册操作保持幂等：
         // 若后端已有同 ID 任务，复用现有定义并重新绑定本次沙箱回调。
-        task = await scheduler.getTask(tappInstance.id, opts.taskId)
+        task = await scheduler.getTask(
+          tappInstance.id,
+          opts.taskId,
+          await bridge.getRuntimeGrant(),
+        )
         if (!task) throw error
       }
       bindTask(opts.taskId)
@@ -110,7 +118,11 @@ export function registerSchedulerHandlers(
     if (!taskId) return { success: false, error: 'taskId required' }
     try {
       const scheduler = ensureScheduler()
-      await scheduler.unregisterTask(tappInstance.id, taskId as string)
+      await scheduler.unregisterTask(
+        tappInstance.id,
+        taskId as string,
+        await bridge.getRuntimeGrant(),
+      )
       unbindTask(taskId as string)
       return { success: true, data: { taskId, cancelled: true } }
     } catch (error) {
@@ -121,7 +133,10 @@ export function registerSchedulerHandlers(
   bridge.registerHandler('scheduler.list', async () => {
     try {
       const scheduler = ensureScheduler()
-      const tasks = await scheduler.listTasks(tappInstance.id)
+      const tasks = await scheduler.listTasks(
+        tappInstance.id,
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: tasks }
     } catch (error) {
       return errResult(error)
@@ -135,6 +150,7 @@ export function registerSchedulerHandlers(
       const task = await ensureScheduler().getTask(
         tappInstance.id,
         taskId as string,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: task }
     } catch (error) {
@@ -145,24 +161,25 @@ export function registerSchedulerHandlers(
   for (const [action, operation] of [
     [
       'enable',
-      (taskId: string) => ensureScheduler().enableTask(tappInstance.id, taskId),
+      (taskId: string, runtimeGrant: string) =>
+        ensureScheduler().enableTask(tappInstance.id, taskId, runtimeGrant),
     ],
     [
       'disable',
-      (taskId: string) =>
-        ensureScheduler().disableTask(tappInstance.id, taskId),
+      (taskId: string, runtimeGrant: string) =>
+        ensureScheduler().disableTask(tappInstance.id, taskId, runtimeGrant),
     ],
     [
       'trigger',
-      (taskId: string) =>
-        ensureScheduler().triggerTask(tappInstance.id, taskId),
+      (taskId: string, runtimeGrant: string) =>
+        ensureScheduler().triggerTask(tappInstance.id, taskId, runtimeGrant),
     ],
   ] as const) {
     bridge.registerHandler(`scheduler.${action}`, async (message) => {
       const [taskId] = (message.payload as { args: unknown[] }).args || []
       if (!taskId) return { success: false, error: 'taskId required' }
       try {
-        await operation(taskId as string)
+        await operation(taskId as string, await bridge.getRuntimeGrant())
         return { success: true, data: { taskId, [action]: true } }
       } catch (error) {
         return errResult(error)

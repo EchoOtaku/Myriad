@@ -2237,6 +2237,7 @@ dependencies = [
  "scraper",
  "sea-orm",
  "sea-orm-migration",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml",

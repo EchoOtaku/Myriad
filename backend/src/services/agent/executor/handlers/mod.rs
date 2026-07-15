@@ -21,6 +21,9 @@ pub struct HandlerContext<'a> {
     pub db: &'a DatabaseConnection,
     pub ai_analyzer: Option<&'a AiAnalyzer>,
     pub user_id: i32,
+    /// Executor-owned task identity. Capability input is never trusted to
+    /// choose which task an asynchronous Tapp result will resume.
+    pub task_id: Option<String>,
     /// 执行上下文快照（包含对话历史、角色身份等）
     pub execution_context: Option<ExecutionContext>,
 }

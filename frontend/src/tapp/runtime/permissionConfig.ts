@@ -7,14 +7,16 @@
 
 import type { PermissionLevel, TappPermission } from '../types'
 
+type TappPermissionLevel = Exclude<PermissionLevel, 'public'>
+
 /**
  * 权限级别映射（与 TappPermission.ts 保持同步）
  */
-export const PERMISSION_LEVELS: Record<TappPermission, PermissionLevel> = {
+export const PERMISSION_LEVELS: Record<TappPermission, TappPermissionLevel> = {
   'widget:register': 'basic',
   'platform:read': 'basic',
-  'platform:write': 'elevated',
-  'platform:register': 'elevated',
+  'platform:write': 'privileged',
+  'platform:register': 'privileged',
   'ai:generate': 'elevated',
   'ai:analyze': 'elevated',
   'ai:chat': 'elevated',
@@ -40,8 +42,8 @@ export const PERMISSION_LEVELS: Record<TappPermission, PermissionLevel> = {
   'tappList:read': 'basic',
   'tappList:manage': 'privileged',
   'brew:read': 'basic',
-  'brew:write': 'elevated',
-  'brew:comment': 'elevated',
+  'brew:write': 'basic',
+  'brew:comment': 'basic',
   'brew:manage': 'privileged',
   'federation:read': 'basic',
   'federation:write': 'basic',
@@ -92,11 +94,20 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['api.execute', 'public'],
     ['api.list', 'public'],
 
+    // 跨 Tapp 数据访问由双方 manifest + Runtime Grant + 每次宿主授权共同控制，
+    // 不使用可长期授予的静态权限。
+    ['dataExchange.registerProvider', 'public'],
+    ['dataExchange.unregisterProvider', 'public'],
+    ['dataExchange.request', 'public'],
+    ['dataExchange.respond', 'public'],
+
     // 小组件权限
     ['widget.register', 'widget:register'],
     ['widget.unregister', 'widget:register'],
     ['widget.listRegistered', 'widget:register'],
     ['widget.updateConfig', 'widget:register'],
+    ['widget.instanceSettings.update', 'public'],
+    ['widget.invalidate', 'public'],
 
     // 内容列表权限 — Tapp
     ['tappList.list', 'tappList:read'],
@@ -154,10 +165,18 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     // AI 权限
     ['ai.generate', 'ai:generate'],
     ['ai.analyze', 'ai:analyze'],
-    ['ai.getQuota', 'ai:generate'],
-    ['ai.canGenerate', 'ai:generate'],
+    // 后端要求 Runtime Grant 至少拥有一个 AI capability。
+    ['ai.getQuota', 'public'],
+    ['ai.canGenerate', 'public'],
     ['ai.chat', 'ai:chat'],
     ['ai.image', 'ai:image'],
+    // AI V2 operation/context permissions are resolved dynamically by backend.
+    ['ai.tasks.create', 'public'],
+    ['ai.tasks.get', 'public'],
+    ['ai.tasks.cancel', 'public'],
+    ['ai.tasks.usage', 'public'],
+    ['ai.tasks.subscribe', 'public'],
+    ['ai.tasks.unsubscribe', 'public'],
 
     // 报告权限
     ['report.listReports', 'report:read'],
@@ -201,7 +220,8 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     // 组件权限
     ['component.registerTheme', 'component:theme'],
     ['component.registerAgent', 'component:agent'],
-    ['component.unregister', 'component:theme'],
+    // 类型相关权限由后端根据 theme/agent 动态校验。
+    ['component.unregister', 'public'],
 
     // 快捷键权限
     ['shortcut.register', 'shortcut:register'],
@@ -209,8 +229,16 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
 
     // 事件权限
     ['event.publish', 'event:publish'],
+    ['event.v2.publish', 'event:publish'],
     ['event.subscribe', 'event:subscribe'],
     ['event.unsubscribe', 'event:subscribe'],
+
+    // Agent V2 is governed by Manifest declaration, interaction state, schema,
+    // accepting runtime identity, and host intent confirmation on the backend.
+    ['agent.v2.accept', 'public'],
+    ['agent.v2.result', 'public'],
+    ['agent.v2.reject', 'public'],
+    ['agent.v2.intent', 'public'],
 
     // 后台权限
     ['background.require', 'event:subscribe'],

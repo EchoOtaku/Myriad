@@ -6,6 +6,7 @@
 
 | 文档                                  | 说明                                      |
 | ------------------------------------- | ----------------------------------------- |
+| [架构总览](tapp/ARCHITECTURE.md)      | 安装态、运行态、沙箱、后台 core 与调度器  |
 | [快速入门](tapp/QUICKSTART.md)        | 5 分钟创建第一个 Tapp，代码架构，生命周期 |
 | [Manifest 配置](tapp/MANIFEST.md)     | 完整的 manifest.json 配置参考             |
 | [SDK API 参考](tapp/API_REFERENCE.md) | 所有 Tapp SDK API 详细文档                |
@@ -32,14 +33,16 @@
 
 ### 高级功能
 
-1. [Manifest 配置 - API 声明](tapp/MANIFEST.md#api-声明) - API 声明与 Spoof 模式
-2. [SDK API 参考 - 定时任务](tapp/API_REFERENCE.md#定时任务-api) - 定时任务调度
-3. [REST API](tapp/REST_API.md) - 直接调用后端接口
+1. [架构总览](tapp/ARCHITECTURE.md) - 先理解宿主、沙箱和后端边界
+2. [Manifest 配置 - API 声明](tapp/MANIFEST.md#api-声明-apis) - API 声明与 Spoof 模式
+3. [SDK API 参考 - 定时任务](tapp/API_REFERENCE.md#定时任务-api) - 持久化定时任务
+4. [REST API](tapp/REST_API.md) - 宿主内部使用的后端契约
 
 ## 📁 目录结构
 
 ```
 docs/development/tapp/
+├── ARCHITECTURE.md     # 架构与数据流总览
 ├── QUICKSTART.md       # 快速入门
 ├── MANIFEST.md         # Manifest 配置
 ├── API_REFERENCE.md    # SDK API 参考
@@ -51,56 +54,9 @@ docs/development/tapp/
 └── TROUBLESHOOTING.md  # 故障排除
 ```
 
----
+## 文档维护原则
 
-## 📝 更新日志
-
-### 2025-01-XX - 故障排除文档 & 安全更新
-
-- 📚 新增 [故障排除](tapp/TROUBLESHOOTING.md) 文档，汇总常见问题和解决方案
-- 🔧 更新 SANDBOX.md：移除废弃的 `prefetch-src` CSP 指令，添加已知浏览器警告说明
-- 🔧 更新 QUICKSTART.md：新增混合渲染模式说明和商店发布文件结构要求
-- 🔧 更新 MANIFEST.md：补充 Widget templates 配置详细说明
-
-### 2025-12-08 - 文档重构
-
-- 📚 将单一 4500 行文档拆分为 7 个模块化文档
-- 🆕 新增导航索引，便于快速定位
-- 🆕 `api_declarations` 配置：声明外部 API 端点
-- 🆕 Spoof 模式：隐藏真实 API 端点，显示伪装地址
-- 🆕 后端 `spoof_utils.rs` 服务支持
-
-### 2025-12-06 - 样式规范文档修正
-
-- 📝 Widget 模式完全支持 Tailwind CSS
-- 📝 Page 模式使用内联 style + tapp-\* 工具类
-- 🔧 修正 `Tapp.ui.confirm()` 等 API 签名
-
-### 2025-12-05 - 主色调 API & 后台运行需求
-
-- 🆕 `Tapp.ui.getPrimaryColor()` 获取壁纸主色调
-- 🆕 `Tapp.background` API 声明后台运行需求
-- 🆕 7 种后台需求类型
-
-### 2025-11-20 - 自适应尺寸 + i18n
-
-- 🆕 自动注入自适应 CSS 变量
-- 🆕 响应式工具类
-- 🆕 `Tapp.ui.getLocale()` 获取用户语言
-
-### 2025-10-15 - 代码分离架构
-
-- 🆕 分离模式：core, widget, page 代码分离
-- 🆕 Widget 预注册机制
-
-### 2025-09-01 - 安全增强版本
-
-- 🆕 `Tapp.dom` 安全 API
-- 🆕 增强 AI 提示词安全检测
-
-### 2025-08-01 - 初始版本
-
-- 基础 API (storage, ui, lifecycle)
-- 小组件系统
-- 平台数据访问
-- AI 集成
+- 架构结论以当前运行路径为准，不把旧更新日志当作契约。
+- Manifest 字段以安装后的 round-trip 结果为准。
+- SDK 方法必须同时存在权限映射和目标沙箱 handler。
+- REST 端点以后端路由注册为准，Tapp 代码优先使用 SDK 而不是直接调用 REST。

@@ -17,13 +17,14 @@ sea-orm-cli migrate generate create_new_table
 
 ## Available Migrations
 
-1. `m20240101_000001_create_platforms` - Creates platforms table
-2. `m20240101_000002_create_user_profiles` - Creates user_profiles table
-3. `m20240101_000003_create_user_activities` - Creates user_activities table
-4. `m20240101_000004_create_analysis_results` - Creates analysis_results table
-5. `m20240101_000005_create_configurations` - Creates configurations table
-6. `m20240101_000006_create_api_keys` - Creates api_keys table
-7. `m20240101_000007_create_fetch_jobs` - Creates fetch_jobs table
+1. `001_initial_schema` - Core users, platforms, profiles, reports and configuration
+2. `002_tapp_system` - Tapp installations, storage, widgets, quota and scheduler tables
+3. `003_brew_system` - Brew sources, items and annotations
+4. `004_agent_system` - Agent tasks, memory and notification state
+5. `005_federation` - Federation identities and messages
+6. `006_oauth_identities` - OAuth/OIDC identity bindings
+7. `007_notification_preferences` - Per-user notification preferences
+8. `008_tapp_runtime_registry` - Multi-replica Tapp Runtime V2 TTL registry and mailbox
 
 ## Manual SQL Migration
 

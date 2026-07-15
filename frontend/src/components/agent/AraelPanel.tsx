@@ -1178,9 +1178,7 @@ export const AraelPanel: React.FC = () => {
             if (
               result &&
               typeof result === 'object' &&
-              ['query_windows', 'read_data', 'music_get_status'].includes(
-                action.type,
-              )
+              ['query_windows', 'music_get_status'].includes(action.type)
             ) {
               visibleResults.push(result)
             }
@@ -1207,9 +1205,7 @@ export const AraelPanel: React.FC = () => {
           if (
             result &&
             typeof result === 'object' &&
-            ['query_windows', 'read_data', 'music_get_status'].includes(
-              frontendAction.type,
-            )
+            ['query_windows', 'music_get_status'].includes(frontendAction.type)
           ) {
             const serialized = JSON.stringify(result, null, 2).slice(0, 4000)
             updateMessage(messageId, {

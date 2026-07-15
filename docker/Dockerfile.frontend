@@ -1,5 +1,5 @@
 # Frontend Dockerfile - Multi-stage build
-ARG NODE_VERSION=22
+ARG NODE_VERSION=25
 ARG PNPM_VERSION=10.28.2
 FROM node:${NODE_VERSION}-alpine AS builder
 

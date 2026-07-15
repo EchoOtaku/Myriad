@@ -19,6 +19,7 @@ import type {
 } from '../types'
 import { getQuotaManager } from '../services/QuotaManager'
 import { PERMISSION_MAP } from './permissionConfig'
+import type { TappRuntimeGrant } from './TappRuntimeGrant'
 
 type MessageHandler = (message: TappMessage) => Promise<TappAPIResponse>
 
@@ -83,6 +84,9 @@ export class TappBridge {
   /** 会话 token（用于验证消息来源） */
   private sessionToken: string = ''
 
+  /** Host-only backend identity for this concrete Page/Widget/headless runtime. */
+  private runtimeGrant: TappRuntimeGrant | null = null
+
   /** 最近请求时间戳（用于频率限制） */
   private lastRequestTime: number = 0
 
@@ -105,9 +109,11 @@ export class TappBridge {
     iframe: HTMLIFrameElement,
     tappInstance: TappInstance,
     sessionToken?: string,
+    runtimeGrant?: TappRuntimeGrant,
   ): void {
     this.iframe = iframe
     this.tappInstance = tappInstance
+    this.runtimeGrant = runtimeGrant ?? null
 
     // 设置会话 token（如果未提供则生成一个）
     if (sessionToken) {
@@ -136,6 +142,27 @@ export class TappBridge {
     return this.sessionToken
   }
 
+  async getRuntimeGrant(): Promise<string> {
+    if (!this.runtimeGrant) {
+      throw new Error('Tapp runtime grant is not initialized')
+    }
+    return this.runtimeGrant.getToken()
+  }
+
+  async getRuntimeOwnerId(): Promise<number> {
+    if (!this.runtimeGrant) {
+      throw new Error('Tapp runtime grant is not initialized')
+    }
+    return this.runtimeGrant.getOwnerId()
+  }
+
+  async getRuntimeId(): Promise<string> {
+    if (!this.runtimeGrant) {
+      throw new Error('Tapp runtime grant is not initialized')
+    }
+    return this.runtimeGrant.getRuntimeId()
+  }
+
   /**
    * 销毁 Bridge
    */
@@ -154,6 +181,8 @@ export class TappBridge {
 
     this.iframe = null
     this.tappInstance = null
+    this.runtimeGrant?.destroy()
+    this.runtimeGrant = null
   }
 
   /**
@@ -380,7 +409,7 @@ export class TappBridge {
       const response = await handler(message)
 
       // 记录配额使用
-      if (this.tappInstance) {
+      if (this.tappInstance && response.success) {
         const quotaManager = getQuotaManager()
         quotaManager.recordUsage(this.tappInstance.id, action)
       }

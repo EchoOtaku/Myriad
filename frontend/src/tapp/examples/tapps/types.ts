@@ -2,7 +2,10 @@
  * 示例 Tapp 类型定义
  */
 
-import type { TappManifest } from '../../types'
+import type { TappCodeStructure, TappManifest } from '../../types'
+
+export type { TappCodeStructure } from '../../types'
+export { getCodeForMode } from '../../runtime/codeStructure'
 
 /**
  * Tapp 代码结构（分离架构）
@@ -16,31 +19,6 @@ import type { TappManifest } from '../../types'
  * - widgetHtml: '<div class="tapp-container"><button id="send-btn">发送</button></div>'
  * - core: 'document.getElementById("send-btn").onclick = function() { ... }'
  */
-export interface TappCodeStructure {
-  /** 核心代码 - 共享逻辑，所有模式都会加载 */
-  core: string
-  /** Widget 代码 - 仅 widget 模式加载（JS） */
-  widget?: string
-  /** 页面代码 - 仅 page 模式加载（JS） */
-  page?: string
-  /** 自定义 CSS 样式 */
-  styles?: string
-  /** Widget HTML 模板 - 直接注入到容器，与 JS 配合使用 */
-  widgetHtml?: string
-  /** Page HTML 模板 - 直接注入到容器，与 JS 配合使用 */
-  pageHtml?: string
-  /** Widget 专用编译后的 Tailwind CSS */
-  widgetCSS?: string
-  /** Page 专用编译后的 Tailwind CSS */
-  pageCSS?: string
-  /** i18n 翻译数据（语言代码 → 键值对） */
-  i18n?: Record<string, unknown>
-  /** Page 模块文件（文件名 → 代码内容） */
-  pageModules?: Record<string, string>
-  /** Page 模块加载顺序（优先于 manifest.pageModules） */
-  pageModuleOrder?: string[]
-}
-
 /** 示例 Tapp 数据 */
 export interface ExampleTapp {
   manifest: TappManifest
@@ -48,25 +26,4 @@ export interface ExampleTapp {
   code: TappCodeStructure
   category: 'widget' | 'tool' | 'platform' | 'demo' | 'test' | 'social'
   tags: string[]
-}
-
-/** 获取指定模式的完整代码 */
-export function getCodeForMode(
-  code: TappCodeStructure,
-  mode: 'widget' | 'page' | 'background',
-): string {
-  switch (mode) {
-    case 'widget':
-      return code.widget
-        ? `${code.core}\n\n// ========== Widget Code ==========\n${code.widget}`
-        : code.core
-    case 'page':
-      return code.page
-        ? `${code.core}\n\n// ========== Page Code ==========\n${code.page}`
-        : code.core
-    case 'background':
-      return code.core
-    default:
-      return code.core
-  }
 }

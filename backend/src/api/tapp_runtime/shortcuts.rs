@@ -13,7 +13,8 @@ use std::collections::HashMap;
 use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 
-use super::common::{check_tapp_permission, parse_user_id, verify_tapp_ownership};
+use super::common::authorize_tapp_permission;
+use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterShortcutRequest {
@@ -29,11 +30,14 @@ pub struct RegisterShortcutRequest {
 pub async fn register_shortcut(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<RegisterShortcutRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    check_tapp_permission(&claims, TappPermission::ShortcutRegister).await?;
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::ShortcutRegister)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::ShortcutRegister)
+            .await?;
 
     tracing::info!(
         "[TAPP] register_shortcut - User: {}, Tapp: {}, Keys: {}",
@@ -145,8 +149,13 @@ pub async fn register_shortcut(
 pub async fn unregister_shortcut(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, shortcut_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::ShortcutRegister)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::ShortcutRegister).await?;
     tracing::info!(
         "[TAPP] unregister_shortcut - User: {}, Tapp: {}, ID: {}",
         claims.username,
@@ -155,13 +164,6 @@ pub async fn unregister_shortcut(
     );
 
     use crate::models::entities::tapp_storage;
-
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
 
     let storage_key = format!("_shortcut:{}", shortcut_id);
 
@@ -194,8 +196,10 @@ pub async fn unregister_shortcut(
 pub async fn list_shortcuts(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require(TappPermission::ShortcutRegister)?;
     tracing::debug!("[TAPP] list_shortcuts - User: {}", claims.username);
 
     use crate::models::entities::tapp_storage;
@@ -212,8 +216,9 @@ pub async fn list_shortcuts(
         .filter(tapp_storage::Column::Key.starts_with("_shortcut:"));
 
     if let Some(tapp_id) = params.get("tapp_id") {
-        query = query.filter(tapp_storage::Column::TappId.eq(tapp_id));
+        runtime_grant.require_tapp_id(tapp_id)?;
     }
+    query = query.filter(tapp_storage::Column::TappId.eq(runtime_grant.tapp_id()));
 
     let items = query
         .order_by_asc(tapp_storage::Column::CreatedAt)

@@ -1650,10 +1650,7 @@ impl PlatformFetcher {
             return Err(anyhow!("OpenXBL API error ({}): {}", status, detail));
         }
         // OpenXBL 统一包装为 { content: {...}, code: 200 }，解包后再交给上层解析
-        Ok(body
-            .get("content")
-            .cloned()
-            .unwrap_or(body))
+        Ok(body.get("content").cloned().unwrap_or(body))
     }
 
     /// Gamertag → XUID（现代 gamertag 可含 #suffix，搜索时去掉）

@@ -22,7 +22,8 @@
 | 分类         | Widget SDK                     | Full SDK (Page 模式) |
 | ------------ | ------------------------------ | -------------------- |
 | **存储**     | ✅ storage                     | ✅ 相同              |
-| **设置**     | ✅ settings                    | ✅ 相同              |
+| **全局设置** | ✅ settings                    | ✅ 相同              |
+| **实例设置** | ✅ widget 实例 API             | ❌ 仅 Widget 沙箱    |
 | **UI**       | ✅ 基础 UI（主题、通知、语言） | ✅ 完整 UI           |
 | **DOM**      | ✅ 基础 DOM                    | ✅ 完整 DOM          |
 | **AI**       | ⚠️ 仅 ai.chat                  | ✅ 完整 AI           |
@@ -53,6 +54,12 @@ Tapp.widgets["my-widget"] = {
 
 > **注意**：Widget 模式下不会执行 `Tapp.lifecycle.onReady()`。
 
+Manifest 顶层 `settings` 由整个 Tapp 共享；`widgets[].settings` 则为每个 Dashboard
+实例独立保存。Widget 可读取 `props.config` 或 `Tapp.widget.getInstanceSettings()`，并用
+`Tapp.widget.updateInstanceSettings(patch)` 更新已声明字段。数据准备完成后可调用
+`Tapp.widget.invalidate(reason)` 请求宿主刷新。storage 的跨 Page/Widget/headless 变化可用
+`Tapp.storage.onChanged(callback)` 订阅。
+
 ---
 
 ## Props 参数
@@ -62,7 +69,7 @@ Tapp.widgets["my-widget"] = {
 | 属性           | 类型    | 说明                         |
 | -------------- | ------- | ---------------------------- |
 | `size`         | string  | 当前尺寸 ('1x1', '2x2' 等)   |
-| `config`       | object  | 用户配置                     |
+| `config`       | object  | 当前 Dashboard 实例的有效配置 |
 | `isEditMode`   | boolean | 是否处于编辑模式             |
 | `isPreview`    | boolean | 是否预览模式                 |
 | `theme`        | string  | 当前主题 ('light' \| 'dark') |

@@ -13,7 +13,17 @@ export type TappStatus = 'installed' | 'running' | 'suspended' | 'error'
 
 /** 小组件尺寸（与系统保持一致） */
 export type WidgetSize =
-  '1x1' | '1x2' | '2x1' | '2x2' | '2x3' | '3x2' | '4x2' | '2x4' | '3x3' | '4x4'
+  | '1x1'
+  | '1x2'
+  | '2x1'
+  | '2x2'
+  | '2x3'
+  | '3x2'
+  | '4x1'
+  | '4x2'
+  | '2x4'
+  | '3x3'
+  | '4x4'
 
 /** 小组件分类 */
 export type WidgetCategory =
@@ -61,25 +71,14 @@ export interface TappManifest {
   /** 所需权限 */
   permissions: TappPermission[]
 
-  /** 可选权限（运行时请求） */
-  optionalPermissions?: TappPermission[]
-
-  /** 内容安全策略 */
-  contentSecurityPolicy?: {
-    'connect-src'?: string
-    'script-src'?: string
-    'style-src'?: string
-    'img-src'?: string
-  }
-
-  /** 最低系统版本要求 */
-  minSystemVersion?: string
-
   /** 主页 URL */
   homepage?: string
 
   /** 仓库 URL */
   repository?: string
+
+  /** 最低兼容 Myriad 版本（语义版本） */
+  minSystemVersion?: string
 
   /** 小组件定义（声明式，安装时自动注册） */
   widgets?: ManifestWidget[]
@@ -125,6 +124,156 @@ export interface TappManifest {
 
   /** 设置项定义 */
   settings?: TappSettingItem[]
+
+  /** 命名 API 声明；由后端执行并统一实施权限、缓存与出站访问控制 */
+  apis?: Record<string, TappApiDefinition>
+
+  /** 跨 Tapp 数据契约；实际读取仍需每次通过宿主授权弹窗。 */
+  dataExchange?: TappDataExchangeManifest
+
+  /** 服务端治理的 AI Task V2 能力声明。 */
+  ai?: TappAIManifest
+
+  /** 在线、at-most-once 的 Event V2 topic 声明。 */
+  events?: TappEventsManifest
+
+  /** Agent Interaction V2 声明。 */
+  agent?: TappAgentManifest
+}
+
+export type TappAIOperation = 'generate' | 'analyze' | 'chat' | 'image'
+export type TappAIContextSource = 'platform' | 'report' | 'profile' | 'custom'
+export type TappAIOutputFormat = 'text' | 'json' | 'image'
+
+export interface TappAIManifest {
+  protocolVersion: 2
+  operations: TappAIOperation[]
+  modelTier: 'standard' | 'pro'
+  contextSources: TappAIContextSource[]
+  outputFormats: TappAIOutputFormat[]
+}
+
+export interface TappEventsManifest {
+  publish?: string[]
+  subscribe?: string[]
+}
+
+export interface TappAgentManifest {
+  protocolVersion: 2
+  interactions: Array<{
+    type: string
+    inputSchema?: string
+    resultSchema?: string
+  }>
+  intents?: Array<'ui.open' | 'report.create' | 'dataExchange.request'>
+}
+
+export type AgentInteractionState =
+  'pending' | 'accepted' | 'completed' | 'rejected' | 'expired' | 'cancelled'
+
+export interface AgentInteractionV2<TInput = unknown> {
+  version: 2
+  interactionId: string
+  type: string
+  tappId: string
+  state: AgentInteractionState
+  input: TInput
+  inputSchema?: string
+  resultSchema?: string
+  deadline: string
+  source: { agentId: string; taskId?: string }
+  createdAt: string
+  updatedAt: string
+  result?: unknown
+  rejectionReason?: string
+}
+
+export interface TappEventV2<T = unknown> {
+  version: 2
+  eventId: string
+  topic: string
+  scope: 'instance' | 'owner'
+  source: { tappId: string; runtimeId: string }
+  payload: T
+  occurredAt: string
+  dedupeKey?: string
+}
+
+export interface PublishEventV2Request {
+  topic: string
+  scope: 'instance' | 'owner'
+  payload?: unknown
+  dedupeKey?: string
+}
+
+export interface TappDataExchangeManifest {
+  exports?: TappDataExport[]
+  imports?: TappDataImport[]
+}
+
+export interface TappDataExport {
+  id: string
+  /** 受支持的内联 JSON Schema 子集；不支持 `$ref`。 */
+  schema: Record<string, unknown>
+  maxBytes: number
+  maxRecords?: number
+  description?: string
+}
+
+export interface TappDataImport {
+  tappId: string
+  exportId: string
+}
+
+/** Manifest 中的命名 API 声明 */
+export interface TappApiDefinition {
+  /** public 无需 network:fetch；protected（默认）需要该权限 */
+  access?: 'public' | 'protected'
+  /** HTTP 代理或平台内置能力 */
+  type?: 'http' | 'builtin'
+  /** HTTP 端点；支持后端模板变量 */
+  endpoint?: string
+  /** endpoint 的兼容别名 */
+  url?: string
+  /** 兼容旧格式的查询参数模板 */
+  params?: Record<string, string>
+  /** HTTP 方法，默认 GET */
+  method?: string
+  headers?: Record<string, string>
+  body?: unknown
+  /** type=builtin 时的能力名，例如 geo、ai:chat、ai:generate */
+  builtin?: string
+  /** 后端上下文注入映射 */
+  inject?: Record<string, string>
+  /** 响应缓存秒数，0 表示不缓存 */
+  cacheTtl?: number
+  /** 区域伪装配置 */
+  spoof?: string
+  description?: string
+}
+
+/**
+ * 宿主加载后的 Tapp 代码结构。
+ * 这是运行时契约，不属于示例应用专用类型。
+ */
+export interface TappCodeStructure {
+  /** 所有模式共享；headless 后台模式只执行这一部分 */
+  core: string
+  /** 仅 Widget 模式执行 */
+  widget?: string
+  /** 仅 Page 模式执行 */
+  page?: string
+  /** 共享自定义样式 */
+  styles?: string
+  widgetHtml?: string
+  pageHtml?: string
+  widgetCSS?: string
+  pageCSS?: string
+  i18n?: Record<string, unknown>
+  /** 已加载的 Page 模块内容（文件名到代码） */
+  pageModules?: Record<string, string>
+  /** Page 模块执行顺序，优先于 manifest.pageModules */
+  pageModuleOrder?: string[]
 }
 
 /** Manifest 中的 Widget 声明 */
@@ -143,12 +292,20 @@ export interface ManifestWidget {
   sizes: WidgetSize[]
   /** 组件分类 */
   category?: WidgetCategory
-  /** 刷新间隔（毫秒） */
-  refreshInterval?: number
-  /** 配置 Schema */
-  configSchema?: WidgetConfigSchema
   /** HTML 模板文件路径（按尺寸） */
   templates?: Record<string, string>
+
+  /** 每个 Dashboard Widget 实例独立保存的设置 */
+  settings?: TappSettingItem[]
+
+  /** 宿主管理的可见性刷新策略 */
+  refreshPolicy?: WidgetRefreshPolicy
+}
+
+export interface WidgetRefreshPolicy {
+  mode: 'event' | 'interval'
+  intervalSeconds?: number
+  refreshOnVisible?: boolean
 }
 
 /** Tapp 设置项类型 */
@@ -295,19 +452,6 @@ export interface TappInstance {
   /** 是否为管理员的 Tapp（对所有用户可见） */
   isAdminTapp?: boolean
 
-  /** 配额使用情况 */
-  quotaUsage?: {
-    ai: {
-      dailyCalls: number
-      dailyTokens: number
-      lastReset: string
-    }
-    storage: {
-      used: number
-      limit: number
-    }
-  }
-
   /** 错误信息（如果状态为 error） */
   error?: string
 }
@@ -337,27 +481,11 @@ export interface WidgetRegistration {
   /** 组件分类 */
   category: WidgetCategory
 
-  /** 配置 Schema */
-  configSchema?: WidgetConfigSchema
+  /** 每实例设置声明 */
+  settings?: TappSettingItem[]
 
-  /** 刷新间隔（毫秒，最小 60000） */
-  refreshInterval?: number
-}
-
-/** 小组件配置 Schema */
-export interface WidgetConfigSchema {
-  type: 'object'
-  properties: Record<
-    string,
-    {
-      type: 'string' | 'number' | 'boolean' | 'select'
-      title: string
-      description?: string
-      default?: unknown
-      options?: Array<{ label: string; value: unknown }>
-    }
-  >
-  required?: string[]
+  /** 宿主管理的可见性刷新策略 */
+  refreshPolicy?: WidgetRefreshPolicy
 }
 
 /** 已注册的小组件 */
@@ -513,7 +641,7 @@ export interface AIGenerateResponse {
     completionTokens: number
     totalTokens: number
   }
-  quotaRemaining: number
+  usageSnapshot: AIUsageSnapshot
 }
 
 /** AI 分析请求 */
@@ -536,7 +664,82 @@ export interface AIAnalyzeResponse {
   success: boolean
   analysis: unknown
   confidence?: number
-  quotaRemaining: number
+  usageSnapshot: AIUsageSnapshot
+}
+
+/** 服务端权威 AI 用量；null limit/remaining 表示管理员无限制。 */
+export interface AIUsageSnapshot {
+  calls: {
+    limit: number | null
+    used: number
+    remaining: number | null
+    resetsAt: string
+  }
+  tokens: {
+    limit: number | null
+    used: number
+    remaining: number | null
+    resetsAt: string
+  }
+  cooldown: {
+    requiredSeconds: number
+    remainingSeconds: number
+  }
+  restricted: boolean
+  restrictionReason?: 'daily_calls' | 'daily_tokens' | 'cooldown'
+  unlimited: boolean
+  role: UserRole
+}
+
+export type AIContextRef =
+  | { type: 'platform'; platform: string; selector: string }
+  | { type: 'report'; reportId: number }
+  | { type: 'profile'; fields: Array<'id' | 'username' | 'role'> }
+  | { type: 'custom'; value: unknown }
+
+export interface AITaskRequest {
+  version: 2
+  operation: TappAIOperation
+  input: unknown
+  context?: AIContextRef[]
+  output?: {
+    format: TappAIOutputFormat
+    schema?: Record<string, unknown>
+  }
+  delivery?: 'result' | 'stream'
+  idempotencyKey?: string
+}
+
+export type AITaskStatus =
+  'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface AITaskSnapshot {
+  taskId: string
+  status: AITaskStatus
+  operation: TappAIOperation
+  delivery: 'result' | 'stream'
+  createdAt: string
+  updatedAt: string
+  result?: {
+    format: TappAIOutputFormat
+    value: unknown
+    contextProvenance: unknown[]
+  }
+  error?: { code: string; message: string }
+  usage: AIUsageSnapshot
+}
+
+export interface AITaskEvent {
+  event:
+    | 'snapshot'
+    | 'state'
+    | 'delta'
+    | 'progress'
+    | 'result'
+    | 'error'
+    | 'cancelled'
+    | 'resync'
+  data: unknown
 }
 
 /** AI 配额状态（基于用户角色的限额） */
@@ -566,18 +769,6 @@ export interface AIQuotaStatus {
   unlimited?: boolean
   /** 当前用户角色 */
   userRole?: UserRole
-}
-
-/** AI 限额配置（从后端获取） */
-export interface AIQuotaLimits {
-  /** 每日调用次数限制 */
-  dailyCalls: number
-  /** 每日 Token 限制 */
-  dailyTokens: number
-  /** 冷却时间（秒） */
-  cooldownSeconds: number
-  /** 是否无限制 */
-  unlimited: boolean
 }
 
 // ============ 消息通信 ============
@@ -627,57 +818,4 @@ export interface TappAPIResponse<T = unknown> {
   data?: T
   error?: string
   code?: string
-}
-
-// ============ 配额管理 ============
-
-/** 配额配置 */
-export interface TappQuotaConfig {
-  ai: {
-    dailyLimit: number
-    monthlyLimit: number
-    maxTokensPerRequest: number
-  }
-  platform: {
-    readPerMinute: number
-    writePerMinute: number
-    maxItemsPerBatch: number
-  }
-  storage: {
-    maxKeys: number
-    maxValueSize: number
-    maxTotalSize: number
-  }
-  widget: {
-    maxRegistrations: number
-    minRefreshInterval: number
-  }
-}
-
-/** 使用统计 */
-export interface TappUsageStats {
-  tappId: string
-  ai: {
-    used: number
-    limit: number
-    remaining: number
-    resetAt: string
-  }
-  platformRead: {
-    used: number
-    limit: number
-    remaining: number
-    resetAt: string
-  }
-  platformWrite: {
-    used: number
-    limit: number
-    remaining: number
-    resetAt: string
-  }
-  history: {
-    type: string
-    count: number
-    lastReset: string
-  }[]
 }

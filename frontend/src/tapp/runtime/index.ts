@@ -22,10 +22,7 @@ export type { TappPageSandboxProps } from './TappPageSandbox'
 
 // 兼容性导出（保持向后兼容，TappSandbox 作为 TappPageSandbox 的别名）
 export { TappPageSandbox as TappSandbox } from './TappPageSandbox'
-export {
-  createPermissionController,
-  TappPermissionController,
-} from './TappPermission'
+export { TappPermissionController } from './TappPermission'
 export { getTappRuntime, TappRuntime } from './TappRuntime'
 export { getTappScheduler, TappScheduler } from './TappScheduler'
 

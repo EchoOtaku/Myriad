@@ -41,8 +41,7 @@ pub async fn submit_task(
 
     // 验证平台名称
     let valid_platforms = [
-        "netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal", "xbox",
-        "psn",
+        "netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal", "xbox", "psn",
     ];
     if !valid_platforms.contains(&platform.as_str()) {
         return (

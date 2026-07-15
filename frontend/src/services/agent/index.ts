@@ -49,7 +49,6 @@ export type {
   FrontendActionType,
   // Heartbeat
   HeartbeatTask,
-  InteractionCommand,
   // 记忆
   MemoryEntry,
   PageElementTarget,

@@ -3415,13 +3415,13 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .filter_map(|origin| origin.parse().ok())
         .collect();
 
-    // Custom request headers used by the SPA (CSRF) must be listed for cross-origin preflight.
-    // Without X-CSRF-Token here, browsers report a CORS failure even when the real issue is elsewhere.
+    // Custom request headers used by the SPA must be listed for cross-origin preflight.
     let cors_allowed_headers = [
         axum::http::header::CONTENT_TYPE,
         axum::http::header::AUTHORIZATION,
         axum::http::header::ACCEPT,
         axum::http::header::HeaderName::from_static("x-csrf-token"),
+        axum::http::header::HeaderName::from_static("x-tapp-runtime-grant"),
         axum::http::header::HeaderName::from_static("x-requested-with"),
     ];
 
@@ -4086,7 +4086,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::tapp_runtime::add_platform_items_batch)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
-            // AI API - � 支持权限下放（使用 optional_auth）
+            // AI API - 支持权限下放（使用 optional_auth）
             .route(
                 "/api/tapp/ai/generate",
                 post(api::tapp_runtime::ai_generate)
@@ -4107,12 +4107,60 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::tapp_runtime::ai_image_task_status)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
+            .route(
+                "/api/tapp/ai/usage",
+                get(api::tapp_runtime::ai_usage)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/ai/v2/tasks",
+                post(api::tapp_runtime::create_ai_task)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/ai/v2/tasks/{task_id}",
+                get(api::tapp_runtime::get_ai_task)
+                    .delete(api::tapp_runtime::cancel_ai_task)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/ai/v2/tasks/{task_id}/events",
+                get(api::tapp_runtime::stream_ai_task_events)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/ai/v2/usage",
+                get(api::tapp_runtime::ai_v2_usage)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
             // ============ Tapp P0 扩展 API ============
             // Data Processing - 🔒 REQUIRE AUTHENTICATION
             .route(
                 "/api/tapp/data/transform",
                 post(api::tapp_runtime::data_transform)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            // Cross-Tapp data remains private until a visible one-shot host
+            // authorization has produced a consumable Data Access Grant.
+            .route(
+                "/api/tapp/data-exchange/requests",
+                post(api::tapp_runtime::prepare_data_exchange)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/data-exchange/requests/{request_id}/authorize",
+                post(api::tapp_runtime::authorize_data_exchange)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/data-exchange/requests/{request_id}",
+                delete(api::tapp_runtime::cancel_data_exchange)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/data-exchange/consume",
+                post(api::tapp_runtime::consume_data_exchange)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // Context API - 🔓 支持权限下放（公开信息）
             .route(
@@ -4151,6 +4199,21 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/tapp/reports",
                 post(api::tapp_runtime::create_report)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/report-catalog",
+                get(api::tapp_runtime::list_runtime_reports)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/report-catalog/{report_id}",
+                get(api::tapp_runtime::get_runtime_report)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/report-catalog/platform/{platform}",
+                get(api::tapp_runtime::get_runtime_platform_report)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(
@@ -4224,6 +4287,46 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/tapp/events/publish",
                 post(api::tapp_runtime::publish_event)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/tapp/events/v2/publish",
+                post(api::tapp_runtime::publish_event_v2)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/events/v2/stream",
+                get(api::tapp_runtime::stream_events_v2)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/agent/v2/interactions/stream",
+                get(api::tapp_runtime::stream_agent_interactions)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/agent/v2/interactions/{interaction_id}",
+                get(api::tapp_runtime::get_agent_interaction)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/agent/v2/interactions/{interaction_id}/accept",
+                post(api::tapp_runtime::accept_agent_interaction)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/agent/v2/interactions/{interaction_id}/result",
+                post(api::tapp_runtime::submit_agent_interaction_result)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/agent/v2/interactions/{interaction_id}/reject",
+                post(api::tapp_runtime::reject_agent_interaction)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/agent/v2/interactions/{interaction_id}/intents",
+                post(api::tapp_runtime::request_agent_intent)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
                 "/api/tapp/events/subscriptions/{tapp_id}",
@@ -4302,7 +4405,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // Context Geo - 公开 API，获取客户端地理位置
             .route(
                 "/api/tapp/context/geo",
-                get(api::tapp_runtime::get_context_geo),
+                get(api::tapp_runtime::get_context_geo)
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // Image proxy route
             .route("/api/proxy/image", get(api::proxy::proxy_image))

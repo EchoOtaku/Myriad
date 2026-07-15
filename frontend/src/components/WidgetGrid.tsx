@@ -3,7 +3,7 @@
  * 16x4 网格布局，支持拖拽编辑
  */
 
-import { FaChevronRight, FaTimes } from '@lib/icons'
+import { FaChevronRight, FaCog, FaTimes } from '@lib/icons'
 
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -20,6 +20,7 @@ import {
   usePerformanceProfile,
 } from '../hooks/usePerformanceProfile'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
+import type { TappSettingItem } from '../tapp/types'
 import './WidgetGrid.css'
 
 // ⚗️ 移动端检测 - 使用统一的性能检测系统
@@ -41,7 +42,17 @@ function getGridIndices(width: number, height: number): number[] {
 
 // 小组件尺寸配置
 export type WidgetSize =
-  '1x1' | '2x1' | '1x2' | '2x2' | '2x4' | '4x1' | '4x2' | '4x4'
+  | '1x1'
+  | '2x1'
+  | '1x2'
+  | '2x2'
+  | '2x3'
+  | '3x2'
+  | '3x3'
+  | '2x4'
+  | '4x1'
+  | '4x2'
+  | '4x4'
 
 // 小组件配置接口
 export interface WidgetConfig {
@@ -71,10 +82,142 @@ const SIZE_TO_DIMENSIONS: Record<WidgetSize, { w: number; h: number }> = {
   '2x1': { w: 2, h: 1 },
   '1x2': { w: 1, h: 2 },
   '2x2': { w: 2, h: 2 },
+  '2x3': { w: 2, h: 3 },
+  '3x2': { w: 3, h: 2 },
+  '3x3': { w: 3, h: 3 },
   '2x4': { w: 2, h: 4 },
   '4x1': { w: 4, h: 1 },
   '4x2': { w: 4, h: 2 },
   '4x4': { w: 4, h: 4 },
+}
+
+function WidgetSettingsDialog({
+  title,
+  settings,
+  value,
+  onSave,
+  onClose,
+}: {
+  title: string
+  settings: TappSettingItem[]
+  value: Record<string, unknown>
+  onSave: (value: Record<string, unknown>) => void
+  onClose: () => void
+}) {
+  const { t } = useI18n()
+  const [draft, setDraft] = useState<Record<string, unknown>>(() => ({
+    ...Object.fromEntries(
+      settings
+        .filter((setting) => setting.defaultValue !== undefined)
+        .map((setting) => [setting.key, setting.defaultValue]),
+    ),
+    ...value,
+  }))
+
+  const update = (key: string, next: unknown) =>
+    setDraft((current) => ({ ...current, [key]: next }))
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-5 shadow-2xl dark:border-white/10 dark:bg-neutral-900"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 text-base font-semibold text-neutral-900 dark:text-white">
+          {title}
+        </div>
+        <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+          {settings.map((setting) => {
+            const current = draft[setting.key] ?? setting.defaultValue
+            return (
+              <label key={setting.key} className="block space-y-1.5">
+                <span className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                  {setting.label}
+                </span>
+                {setting.description && (
+                  <span className="block text-xs text-neutral-500 dark:text-neutral-400">
+                    {setting.description}
+                  </span>
+                )}
+                {setting.type === 'toggle' ? (
+                  <input
+                    type="checkbox"
+                    checked={current === true}
+                    onChange={(event) =>
+                      update(setting.key, event.target.checked)
+                    }
+                    className="h-5 w-5 accent-[var(--color-primary)]"
+                  />
+                ) : setting.type === 'select' ? (
+                  <select
+                    value={String(current ?? '')}
+                    onChange={(event) =>
+                      update(setting.key, event.target.value)
+                    }
+                    className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-neutral-800"
+                  >
+                    {setting.options?.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={
+                      setting.type === 'number'
+                        ? 'number'
+                        : setting.type === 'color'
+                          ? 'color'
+                          : 'text'
+                    }
+                    value={String(current ?? '')}
+                    min={setting.min}
+                    max={setting.max}
+                    step={setting.step}
+                    placeholder={setting.placeholder}
+                    onChange={(event) =>
+                      update(
+                        setting.key,
+                        setting.type === 'number'
+                          ? event.target.value === ''
+                            ? null
+                            : Number(event.target.value)
+                          : event.target.value,
+                      )
+                    }
+                    className={`${setting.type === 'color' ? 'h-10' : 'px-3 py-2'} w-full rounded-lg border border-black/10 bg-white text-sm dark:border-white/10 dark:bg-neutral-800`}
+                  />
+                )}
+              </label>
+            )
+          })}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/10"
+          >
+            {t.common.cancel}
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(draft)}
+            className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white"
+          >
+            {t.common.save}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
 }
 
 // Memoized Widget Item Component
@@ -120,6 +263,8 @@ const WidgetGridItem = React.memo(
     const perf = usePerformanceProfile()
     const anim = useAnimationLevel()
     const { t } = useI18n()
+    const [showSettings, setShowSettings] = useState(false)
+    const instanceSettings = widgetType.settings || []
 
     // 使用统一动画协调系统；none 模式直接显示且不进入调度队列。
     const animationsEnabled = anim.level !== 'none'
@@ -224,6 +369,22 @@ const WidgetGridItem = React.memo(
                 <FaTimes size={10} />
               </button>
 
+              {instanceSettings.length > 0 && onConfigChange && (
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setShowSettings(true)
+                  }}
+                  className="absolute top-1.5 right-8 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-700/85 text-white opacity-0 shadow-md transition-all hover:scale-110 hover:bg-neutral-800 group-hover:opacity-100 z-30"
+                  title={t.widgetGrid.widgetSettings}
+                  aria-label={t.widgetGrid.widgetSettings}
+                >
+                  <FaCog size={10} />
+                </button>
+              )}
+
               {/* 调整大小手柄 - 明显的倒L型设计，触控时区域更大 */}
               {canResize && (
                 <div
@@ -248,6 +409,18 @@ const WidgetGridItem = React.memo(
             </>
           )}
         </div>
+        {showSettings && instanceSettings.length > 0 && onConfigChange && (
+          <WidgetSettingsDialog
+            title={`${widgetType.name} · ${t.widgetGrid.widgetSettings}`}
+            settings={instanceSettings}
+            value={(widget.config || {}) as Record<string, unknown>}
+            onClose={() => setShowSettings(false)}
+            onSave={(next) => {
+              onConfigChange(next)
+              setShowSettings(false)
+            }}
+          />
+        )}
       </motion.div>
     )
   },
@@ -356,6 +529,7 @@ export interface WidgetType {
   defaultSize: WidgetSize
   component: React.ComponentType<WidgetComponentProps>
   supportedSizes?: WidgetSize[] // 支持的尺寸列表，如果未定义则支持所有尺寸
+  settings?: TappSettingItem[] // Tapp Widget 每实例设置声明
 }
 
 // 将 widget id 转换为翻译键 (kebab-case -> camelCase)
@@ -995,6 +1169,14 @@ export default function WidgetGrid({
         type: widgetType.id,
         size: widgetType.defaultSize,
         position: hoveredCell,
+        config:
+          widgetType.settings && widgetType.settings.length > 0
+            ? Object.fromEntries(
+                widgetType.settings
+                  .filter((setting) => setting.defaultValue !== undefined)
+                  .map((setting) => [setting.key, setting.defaultValue]),
+              )
+            : undefined,
       }
 
       // 为特定类型的小组件自动设置配置

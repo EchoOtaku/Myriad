@@ -57,7 +57,7 @@ Tapp 使用**分离模式**，将代码分为三部分：
 
 ```
 TappCodeStructure {
-  core: string    // 核心代码：共享工具函数
+  core: string    // 共享逻辑；也是 headless 后台入口
   widget?: string // 小组件代码：Widget 渲染逻辑
   page?: string   // 页面代码：页面渲染 + 生命周期
 }
@@ -71,10 +71,14 @@ TappCodeStructure {
 
 ### 代码加载规则
 
-| 模式        | 加载的代码      | 执行内容                      |
-| ----------- | --------------- | ----------------------------- |
-| Widget 模式 | `core + widget` | 只渲染 Widget，跳过 `onReady` |
-| Page 模式   | `core + page`   | 执行完整生命周期，渲染页面    |
+| 模式          | 加载的代码                     | 执行内容                        |
+| ------------- | ------------------------------ | ------------------------------- |
+| Widget 模式   | `core + widget`                | Widget 精简 SDK、模板与渲染逻辑 |
+| Page 模式     | `core + page` 或 `pageModules` | 完整 SDK、生命周期和页面 UI     |
+| Headless 模式 | 仅 `core`                      | 完整 Bridge，无 Page/Widget UI  |
+
+三个模式都有各自的 iframe 生命周期，不能把 `onReady` 是否触发当作代码分层边界。
+共享和后台逻辑放在 `core`，可见界面逻辑分别放在 `widget` / `page`。
 
 ### 代码结构示例
 
@@ -253,7 +257,8 @@ Tapp.widgets["my-widget"] = {
 
 ### 文件完整性
 
-1. **index.json** 中的 `code` 字段必须指向实际存在的 JS 文件
+1. 商店 `index.json` 中的 `download.code` 必须指向实际存在的 JS 文件，并与
+   `manifest.main` 表示同一入口
 2. 如果 manifest 声明了 `styles`、`pageTemplate` 或 Widget `templates`，对应文件必须存在
 3. 所有文件路径区分大小写
 
@@ -262,14 +267,23 @@ Tapp.widgets["my-widget"] = {
 ```json
 // ❌ 错误：文件名不匹配
 {
-  "code": "index.js"  // 但实际文件是 main.js
+  "download": {
+    "manifest": "apps/com.example.my-tapp/manifest.json",
+    "code": "apps/com.example.my-tapp/index.js"
+  }
 }
 
 // ✅ 正确
 {
-  "code": "main.js"
+  "download": {
+    "manifest": "apps/com.example.my-tapp/manifest.json",
+    "code": "apps/com.example.my-tapp/main.js"
+  }
 }
 ```
+
+商店索引路径是仓库级下载定位；`manifest.main` 是安装包/安装目录内的相对入口。两者
+不要求字符串完全相同，但必须下载和安装同一份入口代码。
 
 ### 版本号同步
 

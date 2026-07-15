@@ -98,10 +98,13 @@ export function registerWidgetHandlers(
 export function registerPlatformHandlers(
   bridge: TappBridge,
   tappInstance: TappInstance,
+  options: { readOnly?: boolean } = {},
 ): void {
   bridge.registerHandler('platform.listEnabled', async () => {
     try {
-      const platforms = await TappApiService.listEnabledPlatforms()
+      const platforms = await TappApiService.listEnabledPlatforms(
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: platforms }
     } catch (error) {
       return {
@@ -119,6 +122,7 @@ export function registerPlatformHandlers(
       const data = await TappApiService.getPlatformData(
         platform as string,
         options as Record<string, unknown>,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data }
     } catch (error) {
@@ -133,7 +137,10 @@ export function registerPlatformHandlers(
     const [platform] = (message.payload as { args: unknown[] }).args || []
     if (!platform) return { success: false, error: 'Platform required' }
     try {
-      const stats = await TappApiService.getPlatformStats(platform as string)
+      const stats = await TappApiService.getPlatformStats(
+        platform as string,
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: stats }
     } catch (error) {
       return {
@@ -152,6 +159,7 @@ export function registerPlatformHandlers(
       const dist = await TappApiService.getPlatformDistribution(
         platform as string,
         dimension as string,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: dist }
     } catch (error) {
@@ -162,6 +170,8 @@ export function registerPlatformHandlers(
     }
   })
 
+  if (options.readOnly) return
+
   bridge.registerHandler('platform.addItem', async (message) => {
     const [item] = (message.payload as { args: unknown[] }).args || []
     if (!item) return { success: false, error: 'Item required' }
@@ -169,6 +179,7 @@ export function registerPlatformHandlers(
       const result = await TappApiService.addPlatformItem(
         tappInstance.id,
         item as NewPlatformItem,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
     } catch (error) {
@@ -187,6 +198,7 @@ export function registerPlatformHandlers(
       const result = await TappApiService.addPlatformItems(
         tappInstance.id,
         items,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
     } catch (error) {

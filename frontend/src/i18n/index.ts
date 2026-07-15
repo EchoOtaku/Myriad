@@ -762,7 +762,7 @@ export interface TranslationKeys {
     // Guest elevated permissions
     guestElevatedPermissions: string
     guestElevatedPermissionsDesc: string
-    // 11 elevated permissions (9 configurable, platform:write and platform:register are privileged)
+    // 13 configurable elevated permissions
     permAiGenerate: string
     permAiGenerateHint: string
     permAiAnalyze: string
@@ -1126,6 +1126,7 @@ export interface TranslationKeys {
     canPlace: string
     prevPage: string
     nextPage: string
+    widgetSettings: string
   }
 
   // 社交网络小组件

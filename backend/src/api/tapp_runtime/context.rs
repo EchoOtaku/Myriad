@@ -10,10 +10,12 @@ use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
 use super::common::get_available_platforms;
+use super::runtime_grant::RuntimeGrantContext;
 
 /// GET /api/tapp/context/app
 pub async fn get_context_app(
     Extension(claims): Extension<Claims>,
+    _runtime_grant: RuntimeGrantContext,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!("[TAPP] get_context_app - User: {}", claims.username);
 
@@ -35,6 +37,7 @@ pub async fn get_context_app(
 pub async fn get_context_user(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    _runtime_grant: RuntimeGrantContext,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!("[TAPP] get_context_user - User: {}", claims.username);
 
@@ -108,6 +111,7 @@ pub async fn get_context_user(
 /// GET /api/tapp/context/player
 pub async fn get_context_player(
     Extension(claims): Extension<Claims>,
+    _runtime_grant: RuntimeGrantContext,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!("[TAPP] get_context_player - User: {}", claims.username);
 
@@ -127,6 +131,7 @@ pub async fn get_context_player(
 /// GET /api/tapp/context/navigation
 pub async fn get_context_navigation(
     Extension(claims): Extension<Claims>,
+    _runtime_grant: RuntimeGrantContext,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!("[TAPP] get_context_navigation - User: {}", claims.username);
 
@@ -149,6 +154,7 @@ pub async fn get_context_navigation(
 pub async fn get_context_system(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    _runtime_grant: RuntimeGrantContext,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::debug!("[TAPP] get_context_system - User: {}", claims.username);
 
@@ -194,6 +200,7 @@ pub async fn get_context_system(
 
 /// GET /api/tapp/context/geo
 pub async fn get_context_geo(
+    _runtime_grant: RuntimeGrantContext,
     headers: axum::http::HeaderMap,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
@@ -213,7 +220,6 @@ pub async fn get_context_geo(
         user_id: -1,
         username: "guest".to_string(),
         is_admin: false,
-        role: crate::services::permission_service::UserRole::Guest,
         client_ip: Some(client_ip),
         granted_permissions: vec![],
     };

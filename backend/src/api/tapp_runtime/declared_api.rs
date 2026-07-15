@@ -22,6 +22,7 @@ use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
 use super::common::{get_admin_user_id, verify_tapp_ownership};
+use super::runtime_grant::RuntimeGrantContext;
 
 // ============ Manifest API 解析缓存 ============
 
@@ -84,6 +85,23 @@ async fn find_accessible_tapp(
 ) -> Result<tapps::Model, (StatusCode, Json<Value>)> {
     verify_tapp_ownership(db, user_id, tapp_id).await?;
 
+    let admin_id = get_admin_user_id(db).await?;
+    if let Some(tapp) = tapps::Entity::find()
+        .filter(tapps::Column::UserId.eq(admin_id))
+        .filter(tapps::Column::TappId.eq(tapp_id))
+        .one(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "[TAPP API] Failed to resolve shared Tapp");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            )
+        })?
+    {
+        return Ok(tapp);
+    }
+
     if let Some(tapp) = tapps::Entity::find()
         .filter(tapps::Column::UserId.eq(user_id))
         .filter(tapps::Column::TappId.eq(tapp_id))
@@ -100,7 +118,7 @@ async fn find_accessible_tapp(
         return Ok(tapp);
     }
 
-    let admin_id = get_admin_user_id(db).await?;
+    // 管理员可访问其他 owner 的 Tapp；普通用户到这里说明既没有共享版本也没有自己的版本。
     let mut query = tapps::Entity::find().filter(tapps::Column::TappId.eq(tapp_id));
     if !crate::services::agent::user_is_current_admin(db, user_id).await {
         query = query.filter(tapps::Column::UserId.eq(admin_id));
@@ -133,11 +151,13 @@ pub struct TappApiCallRequest {
 pub async fn execute_tapp_api(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     headers: axum::http::HeaderMap,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
     Path((tapp_id, api_name)): Path<(String, String)>,
     Json(body): Json<TappApiCallRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
     tracing::debug!(
         "[TAPP API] Execute {} for tapp {} by user {}",
         api_name,
@@ -152,7 +172,7 @@ pub async fn execute_tapp_api(
         )
     })?;
 
-    // 1. 当前用户自己的临时 Tapp 优先，管理员公开 Tapp 作为回退。
+    // 1. Resolve the same administrator-first installation bound into the Runtime Grant.
     let tapp = find_accessible_tapp(&db, user_id, &tapp_id).await?;
 
     // 2. 解析 manifest 中的 APIs（带缓存）
@@ -211,7 +231,6 @@ pub async fn execute_tapp_api(
         user_id,
         username: claims.username.clone(),
         is_admin: is_current_admin,
-        role,
         client_ip,
         granted_permissions,
     };
@@ -235,8 +254,10 @@ pub async fn execute_tapp_api(
 pub async fn list_tapp_apis(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
     tracing::debug!(
         "[TAPP API] List APIs for tapp {} by user {}",
         tapp_id,

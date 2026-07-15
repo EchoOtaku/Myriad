@@ -4,12 +4,12 @@
  * 包含 Lifecycle, UI, Storage 等基础处理器
  */
 
-import type { TappInstance } from '../../../types'
+import type { PermissionLevel, TappInstance } from '../../../types'
 
 import type { TappBridge } from '../../TappBridge'
+import { emitTappStorageChange } from '../../WidgetRuntimeSignals'
 
 import type { TappNotificationOptions } from '../types'
-import notificationApi from '../../../../services/notificationApi'
 import * as TappApiService from '../../../services/TappApiService'
 import { sanitizeStorageValue, validateStorageKey } from '../security'
 
@@ -88,12 +88,15 @@ export function registerUIHandlers(
     }
     const opts = options as TappNotificationOptions
     try {
-      const notificationId = await notificationApi.publishTapp({
-        tapp_id: tappInstance.id,
-        title: opts.title || 'Tapp 通知',
-        message: opts.message || '',
-        notification_type: opts.type || 'info',
-      })
+      const notificationId = await TappApiService.createTappNotification(
+        {
+          tappId: tappInstance.id,
+          title: opts.title || 'Tapp 通知',
+          message: opts.message || '',
+          notificationType: opts.type || 'info',
+        },
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: { notificationId } }
     } catch (error) {
       return {
@@ -220,7 +223,11 @@ export function registerStorageHandlers(
     }
 
     try {
-      const value = await TappApiService.getStorage(tappId, key as string)
+      const value = await TappApiService.getStorage(
+        tappId,
+        key as string,
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: value }
     } catch (error) {
       return {
@@ -251,7 +258,18 @@ export function registerStorageHandlers(
     }
 
     try {
-      await TappApiService.setStorage(tappId, key as string, sanitizedValue)
+      await TappApiService.setStorage(
+        tappId,
+        key as string,
+        sanitizedValue,
+        await bridge.getRuntimeGrant(),
+      )
+      emitTappStorageChange({
+        tappId,
+        key: key as string,
+        operation: 'set',
+        source: bridge,
+      })
       return { success: true, data: null }
     } catch (error) {
       return {
@@ -272,7 +290,17 @@ export function registerStorageHandlers(
     }
 
     try {
-      await TappApiService.removeStorage(tappId, key as string)
+      await TappApiService.removeStorage(
+        tappId,
+        key as string,
+        await bridge.getRuntimeGrant(),
+      )
+      emitTappStorageChange({
+        tappId,
+        key: key as string,
+        operation: 'remove',
+        source: bridge,
+      })
       return { success: true, data: null }
     } catch (error) {
       return {
@@ -284,7 +312,10 @@ export function registerStorageHandlers(
 
   bridge.registerHandler('storage.keys', async () => {
     try {
-      const keys = await TappApiService.listStorageKeys(tappId)
+      const keys = await TappApiService.listStorageKeys(
+        tappId,
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: keys }
     } catch (error) {
       return {
@@ -296,7 +327,12 @@ export function registerStorageHandlers(
 
   bridge.registerHandler('storage.clear', async () => {
     try {
-      await TappApiService.clearStorage(tappId)
+      await TappApiService.clearStorage(tappId, await bridge.getRuntimeGrant())
+      emitTappStorageChange({
+        tappId,
+        operation: 'clear',
+        source: bridge,
+      })
       return { success: true, data: null }
     } catch (error) {
       return {
@@ -308,13 +344,11 @@ export function registerStorageHandlers(
 
   bridge.registerHandler('storage.usage', async () => {
     try {
-      const keys = await TappApiService.listStorageKeys(tappId)
-      let used = 0
-      for (const key of keys) {
-        const value = await TappApiService.getStorage(tappId, key)
-        used += (key.length + JSON.stringify(value).length) * 2
-      }
-      return { success: true, data: { used, quota: 5 * 1024 * 1024 } }
+      const usage = await TappApiService.getStorageUsage(
+        tappId,
+        await bridge.getRuntimeGrant(),
+      )
+      return { success: true, data: usage }
     } catch (error) {
       return {
         success: false,
@@ -351,29 +385,38 @@ export function registerUserHandlers(
   })
 
   bridge.registerHandler('user.getAllowedPermissionLevels', async () => {
-    const role = tappInstance.userRole || 'guest'
-    const levels =
-      role === 'admin'
-        ? ['public', 'basic', 'elevated', 'privileged']
-        : role === 'user'
-          ? ['public', 'basic']
-          : ['public']
-    return { success: true, data: levels }
+    try {
+      const levels = await TappApiService.getAllowedPermissionLevels()
+      return { success: true, data: levels }
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to load permission levels',
+      }
+    }
   })
 
   bridge.registerHandler('user.canUsePermissionLevel', async (message) => {
     const [level] = (message.payload as { args: unknown[] }).args || []
     if (!level) return { success: false, error: 'Level required' }
-    const role = tappInstance.userRole || 'guest'
-    const allowed =
-      role === 'admin'
-        ? ['public', 'basic', 'elevated', 'privileged'].includes(
-            level as string,
-          )
-        : role === 'user'
-          ? ['public', 'basic'].includes(level as string)
-          : level === 'public'
-    return { success: true, data: allowed }
+    try {
+      const levels = await TappApiService.getAllowedPermissionLevels()
+      return {
+        success: true,
+        data: levels.includes(level as PermissionLevel),
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to load permission levels',
+      }
+    }
   })
 }
 

@@ -1186,6 +1186,7 @@ export const zhCN: TranslationKeys = {
     canPlace: '可以放置',
     prevPage: '上一页',
     nextPage: '下一页',
+    widgetSettings: '小组件设置',
   },
 
   // 社交网络小组件

@@ -14,25 +14,26 @@ use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 
 use super::common::{
-    check_tapp_permission, get_cached_platform_data, parse_user_id, validate_platform_name,
-    verify_tapp_ownership,
+    acquire_platform_lock, authorize_tapp_permission, get_cached_platform_data,
+    update_cached_platform_data, validate_platform_name,
 };
+use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize)]
 pub struct PlatformDataQuery {
     pub limit: Option<u32>,
     pub offset: Option<u32>,
-    #[allow(dead_code)]
-    pub filter: Option<String>,
 }
 
 /// GET /api/tapp/platform/{platform}/data
 pub async fn get_platform_data(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path(platform): Path<String>,
     Query(query): Query<PlatformDataQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require(TappPermission::PlatformRead)?;
     tracing::debug!(
         "[TAPP] get_platform_data - User: {}, Platform: {}",
         claims.username,
@@ -72,8 +73,10 @@ pub async fn get_platform_data(
 pub async fn get_platform_stats(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path(platform): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require(TappPermission::PlatformRead)?;
     tracing::debug!(
         "[TAPP] get_platform_stats - User: {}, Platform: {}",
         claims.username,
@@ -109,8 +112,10 @@ pub async fn get_platform_stats(
 pub async fn get_platform_distribution(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((platform, dimension)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require(TappPermission::PlatformRead)?;
     tracing::debug!(
         "[TAPP] get_platform_distribution - User: {}, Platform: {}, Dimension: {}",
         claims.username,
@@ -179,12 +184,12 @@ pub struct PlatformItemResult {
 pub async fn add_platform_item(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<AddPlatformItemRequest>,
 ) -> Result<Json<PlatformItemResult>, (StatusCode, Json<Value>)> {
-    check_tapp_permission(&claims, TappPermission::PlatformWrite).await?;
-
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::PlatformWrite)?;
+    authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::PlatformWrite).await?;
 
     validate_platform_name(&req.item.platform)
         .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
@@ -196,12 +201,7 @@ pub async fn add_platform_item(
         req.item.platform
     );
 
-    let item_id = format!(
-        "tapp_{}_{}_{}",
-        req.tapp_id,
-        req.item.platform,
-        chrono::Utc::now().timestamp_millis()
-    );
+    let item_id = format!("tapp_{}", uuid::Uuid::new_v4());
 
     let cache_dir = std::path::Path::new("cache/platforms");
     let cache_file = cache_dir.join(format!(
@@ -209,16 +209,37 @@ pub async fn add_platform_item(
         req.item.platform.to_lowercase()
     ));
 
-    let mut data = if cache_file.exists() {
-        match tokio::fs::read_to_string(&cache_file).await {
-            Ok(content) => {
-                serde_json::from_str::<Value>(&content).unwrap_or(json!({ "items": [] }))
-            }
-            Err(_) => json!({ "items": [] }),
+    let _platform_guard = acquire_platform_lock(&req.item.platform)
+        .await
+        .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
+    tokio::fs::create_dir_all(cache_dir)
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                "[TAPP] Failed to create platform cache directory: {}",
+                error
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to save platform data" })),
+            )
+        })?;
+    let mut data = match tokio::fs::read_to_string(&cache_file).await {
+        Ok(content) => serde_json::from_str::<Value>(&content).map_err(|error| {
+            tracing::error!("[TAPP] Invalid platform cache file: {}", error);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Invalid platform cache data" })),
+            )
+        })?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => json!({ "items": [] }),
+        Err(error) => {
+            tracing::error!("[TAPP] Failed to read platform cache: {}", error);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to read platform data" })),
+            ));
         }
-    } else {
-        let _ = tokio::fs::create_dir_all(cache_dir).await;
-        json!({ "items": [] })
     };
 
     let new_item = json!({
@@ -238,7 +259,7 @@ pub async fn add_platform_item(
     }
 
     // 原子写入：先写临时文件再重命名，避免并发写入导致数据损坏
-    let tmp_file = cache_file.with_extension("json.tmp");
+    let tmp_file = cache_file.with_extension(format!("json.{}.tmp", uuid::Uuid::new_v4()));
     let content = serde_json::to_string_pretty(&data).unwrap();
     if let Err(e) = tokio::fs::write(&tmp_file, &content).await {
         tracing::error!("[TAPP] Failed to write temp cache file: {}", e);
@@ -255,6 +276,15 @@ pub async fn add_platform_item(
             Json(json!({ "error": "Failed to save platform data" })),
         ));
     }
+    update_cached_platform_data(&req.item.platform, data)
+        .await
+        .map_err(|error| {
+            tracing::error!("[TAPP] Failed to refresh platform cache: {}", error);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to refresh platform data" })),
+            )
+        })?;
 
     Ok(Json(PlatformItemResult {
         success: true,
@@ -273,12 +303,12 @@ pub struct AddPlatformItemsBatchRequest {
 pub async fn add_platform_items_batch(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<AddPlatformItemsBatchRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    check_tapp_permission(&claims, TappPermission::PlatformWrite).await?;
-
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::PlatformWrite)?;
+    authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::PlatformWrite).await?;
 
     tracing::info!(
         "[TAPP] add_platform_items_batch - User: {}, Tapp: {}, Count: {}",
@@ -309,20 +339,50 @@ pub async fn add_platform_items_batch(
 
     let mut results = Vec::new();
     let cache_dir = std::path::Path::new("cache/platforms");
-    let _ = tokio::fs::create_dir_all(cache_dir).await;
+    tokio::fs::create_dir_all(cache_dir)
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                "[TAPP] Failed to create platform cache directory: {}",
+                error
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to save platform data" })),
+            )
+        })?;
 
     for (platform, items) in grouped_items {
         let cache_file = cache_dir.join(format!("{}_filtered.json", platform));
+        let _platform_guard = acquire_platform_lock(&platform)
+            .await
+            .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
+        let result_start = results.len();
 
-        let mut data = if cache_file.exists() {
-            match tokio::fs::read_to_string(&cache_file).await {
-                Ok(content) => {
-                    serde_json::from_str::<Value>(&content).unwrap_or(json!({ "items": [] }))
-                }
-                Err(_) => json!({ "items": [] }),
+        let mut data = match tokio::fs::read_to_string(&cache_file).await {
+            Ok(content) => serde_json::from_str::<Value>(&content).map_err(|error| {
+                tracing::error!(
+                    "[TAPP] Invalid platform cache file for {}: {}",
+                    platform,
+                    error
+                );
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "Invalid platform cache data" })),
+                )
+            })?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => json!({ "items": [] }),
+            Err(error) => {
+                tracing::error!(
+                    "[TAPP] Failed to read platform cache for {}: {}",
+                    platform,
+                    error
+                );
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "Failed to read platform data" })),
+                ));
             }
-        } else {
-            json!({ "items": [] })
         };
 
         let data_items = data
@@ -332,12 +392,7 @@ pub async fn add_platform_items_batch(
 
         if let Some(data_items) = data_items {
             for item in items {
-                let item_id = format!(
-                    "tapp_{}_{}_{}",
-                    req.tapp_id,
-                    item.platform,
-                    chrono::Utc::now().timestamp_millis()
-                );
+                let item_id = format!("tapp_{}", uuid::Uuid::new_v4());
 
                 let new_item = json!({
                     "id": item_id.clone(),
@@ -366,7 +421,7 @@ pub async fn add_platform_items_batch(
         }
 
         // 原子写入：先写临时文件再重命名
-        let tmp_file = cache_file.with_extension("json.tmp");
+        let tmp_file = cache_file.with_extension(format!("json.{}.tmp", uuid::Uuid::new_v4()));
         let content = serde_json::to_string_pretty(&data).unwrap();
         let write_ok = match tokio::fs::write(&tmp_file, &content).await {
             Ok(_) => match tokio::fs::rename(&tmp_file, &cache_file).await {
@@ -387,14 +442,17 @@ pub async fn add_platform_items_batch(
             }
         };
         if !write_ok {
-            let platform_count = results
-                .iter()
-                .filter(|r| r.get("success").and_then(|v| v.as_bool()).unwrap_or(false))
-                .count();
-            for _ in 0..platform_count {
-                if let Some(last) = results.last_mut() {
-                    *last = json!({ "success": false, "error": "Failed to save platform data" });
-                }
+            for result in &mut results[result_start..] {
+                *result = json!({ "success": false, "error": "Failed to save platform data" });
+            }
+        } else if let Err(error) = update_cached_platform_data(&platform, data).await {
+            tracing::error!(
+                "[TAPP] Failed to refresh platform cache for {}: {}",
+                platform,
+                error
+            );
+            for result in &mut results[result_start..] {
+                *result = json!({ "success": false, "error": "Failed to refresh platform data" });
             }
         }
     }

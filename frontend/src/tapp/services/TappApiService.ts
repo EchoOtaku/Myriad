@@ -3,17 +3,25 @@
  * 提供 Tapp 与后端 API 的通信功能
  */
 
-import type { TappCodeStructure } from '../examples/tapps/types'
 import type {
   AIAnalyzeRequest,
   AIAnalyzeResponse,
   AIGenerateRequest,
   AIGenerateResponse,
+  AITaskEvent,
+  AITaskRequest,
+  AITaskSnapshot,
+  AIUsageSnapshot,
+  AgentInteractionV2,
   NewPlatformItem,
+  PermissionLevel,
   PlatformInfo,
   PlatformItemResult,
+  PublishEventV2Request,
   RegisteredWidget,
   TappManifest,
+  TappEventV2,
+  TappCodeStructure,
   WidgetRegistration,
 } from '../types'
 import { API_URL } from '../../config'
@@ -30,12 +38,12 @@ export interface TappListItem {
   /** 内联 SVG 图标代码（优先于 icon） */
   iconSvg?: string
   status: string
-  installed_at: string
-  last_run_at?: string
+  installedAt: string
+  lastRunAt?: string
   /** 是否为临时安装（普通用户安装的 Tapp） */
-  is_temporary?: boolean
+  isTemporary?: boolean
   /** 是否为管理员的 Tapp */
-  is_admin_tapp?: boolean
+  isAdminTapp?: boolean
 }
 
 /** Tapp 详情 */
@@ -70,11 +78,18 @@ export interface TappDetail {
  * 对于 GET 请求，不需要 CSRF token（只读操作）
  * 对于 POST/PUT/DELETE 等修改请求，需要 CSRF token
  */
+interface ApiRequestOptions extends RequestInit {
+  /** Host-only runtime identity; never exposed to sandbox code. */
+  runtimeGrant?: string
+}
+
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {},
+  options: ApiRequestOptions = {},
   retryOnCsrf: boolean = true,
+  retryOnRuntimeGrant: boolean = true,
 ): Promise<T> {
+  const { runtimeGrant, ...fetchOptions } = options
   // 只有非 GET 请求才需要 CSRF token
   const method = (options.method || 'GET').toUpperCase()
   const needsCsrf =
@@ -86,33 +101,53 @@ async function apiRequest<T>(
     ...(options.headers as Record<string, string>),
   }
 
+  if (runtimeGrant) {
+    headers['X-Tapp-Runtime-Grant'] = runtimeGrant
+  }
+
   // 只在需要时添加 CSRF token
   if (needsCsrf && csrfToken) {
     headers['X-CSRF-Token'] = csrfToken
   }
 
   const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
+    ...fetchOptions,
     headers,
     credentials: 'include',
   })
 
-  // 如果 CSRF Token 无效，尝试刷新后重试一次
-  if (response.status === 403 && retryOnCsrf) {
+  if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
     if (
-      errorData.error?.includes('CSRF') ||
-      errorData.error?.includes('csrf')
+      response.status === 403 &&
+      retryOnCsrf &&
+      (errorData.error?.includes('CSRF') || errorData.error?.includes('csrf'))
     ) {
       // 强制刷新 CSRF Token
       await getCSRFToken(true)
       // 重试请求（不再重试）
-      return apiRequest(endpoint, options, false)
+      return apiRequest(endpoint, options, false, retryOnRuntimeGrant)
     }
-  }
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
+    if (
+      response.status === 401 &&
+      retryOnRuntimeGrant &&
+      runtimeGrant &&
+      errorData.code === 'INVALID_RUNTIME_GRANT'
+    ) {
+      const { TappRuntimeGrant } = await import('../runtime/TappRuntimeGrant')
+      const replacement =
+        await TappRuntimeGrant.recoverRejectedToken(runtimeGrant)
+      if (replacement) {
+        return apiRequest(
+          endpoint,
+          { ...options, runtimeGrant: replacement },
+          retryOnCsrf,
+          false,
+        )
+      }
+    }
+
     const detail =
       errorData.message || errorData.error || response.statusText || 'unknown'
     throw new Error(`API Error: ${response.status} ${detail}`)
@@ -138,6 +173,187 @@ async function apiRequest<T>(
   return result as T
 }
 
+/** Shared host-only SSE parser used by bounded runtime streams. */
+async function streamRuntimeEvents(
+  endpoint: string,
+  runtimeGrant: string,
+  onEvent: (event: string, data: unknown) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    headers: {
+      Accept: 'text/event-stream',
+      'X-Tapp-Runtime-Grant': runtimeGrant,
+    },
+    credentials: 'include',
+    signal,
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      error.error || `Runtime event stream failed (${response.status})`,
+    )
+  }
+  if (!response.body)
+    throw new Error('Runtime event stream has no response body')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, '\n')
+    let boundary = buffer.indexOf('\n\n')
+    while (boundary >= 0) {
+      const block = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      let eventName = 'message'
+      const data: string[] = []
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim()
+        if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
+      }
+      if (data.length > 0) {
+        const raw = data.join('\n')
+        let parsed: unknown = raw
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          // Control events may intentionally contain short plain text.
+        }
+        onEvent(eventName, parsed)
+      }
+      boundary = buffer.indexOf('\n\n')
+    }
+    if (done) break
+  }
+}
+
+export type RuntimeGrantKind = 'page' | 'widget' | 'headless'
+
+export interface TappRuntimeGrantResponse {
+  version: 2
+  token: string
+  runtimeId: string
+  tappId: string
+  ownerId: number
+  subjectId: number
+  instanceId: string
+  kind: RuntimeGrantKind
+  permissions: string[]
+  expiresAt: string
+}
+
+export async function issueTappRuntimeGrant(
+  tappId: string,
+  instanceId: string,
+  kind: RuntimeGrantKind,
+): Promise<TappRuntimeGrantResponse> {
+  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/runtime-grants`, {
+    method: 'POST',
+    body: JSON.stringify({ instanceId, kind }),
+  })
+}
+
+export async function revokeTappRuntimeGrant(
+  tappId: string,
+  runtimeId: string,
+): Promise<void> {
+  await apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/runtime-grants/${encodeURIComponent(runtimeId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export interface PrepareDataExchangeRequest {
+  targetTappId: string
+  exportId: string
+  params?: unknown
+  purpose: string
+}
+
+export interface PreparedDataExchange {
+  requestId: string
+  requesterTappId: string
+  requesterName: string
+  providerTappId: string
+  providerOwnerId: number
+  providerName: string
+  exportId: string
+  exportDescription?: string
+  purpose: string
+  maxBytes: number
+  maxRecords?: number
+  expiresAt: string
+}
+
+export interface OneShotDataAccessGrant {
+  version: 1
+  grantId: string
+  token: string
+  requestId: string
+  providerTappId: string
+  providerOwnerId: number
+  exportId: string
+  params: unknown
+  purpose: string
+  requestHash: string
+  maxBytes: number
+  maxRecords?: number
+  expiresAt: string
+}
+
+export async function prepareDataExchange(
+  request: PrepareDataExchangeRequest,
+  runtimeGrant: string,
+): Promise<PreparedDataExchange> {
+  return apiRequest('/api/tapp/data-exchange/requests', {
+    method: 'POST',
+    body: JSON.stringify(request),
+    runtimeGrant,
+  })
+}
+
+export async function authorizeDataExchange(
+  requestId: string,
+  runtimeGrant: string,
+): Promise<OneShotDataAccessGrant> {
+  return apiRequest(
+    `/api/tapp/data-exchange/requests/${encodeURIComponent(requestId)}/authorize`,
+    { method: 'POST', runtimeGrant },
+  )
+}
+
+export async function cancelDataExchange(
+  requestId: string,
+  runtimeGrant: string,
+): Promise<void> {
+  await apiRequest(
+    `/api/tapp/data-exchange/requests/${encodeURIComponent(requestId)}`,
+    { method: 'DELETE', runtimeGrant },
+  )
+}
+
+export async function consumeDataExchange(
+  grantToken: string,
+  response: unknown,
+  providerRuntimeGrant: string,
+): Promise<unknown> {
+  return apiRequest('/api/tapp/data-exchange/consume', {
+    method: 'POST',
+    body: JSON.stringify({ grantToken, response }),
+    runtimeGrant: providerRuntimeGrant,
+  })
+}
+
+/** 获取当前用户在系统配置下可使用的 Tapp 权限等级。 */
+export async function getAllowedPermissionLevels(): Promise<PermissionLevel[]> {
+  const response = await apiRequest<{ allowed_levels: PermissionLevel[] }>(
+    '/api/config/permissions',
+  )
+  return response.allowed_levels
+}
+
 // ============ Tapp 应用管理 API ============
 
 /**
@@ -145,6 +361,11 @@ async function apiRequest<T>(
  */
 export async function listTapps(): Promise<TappListItem[]> {
   return apiRequest('/api/tapps')
+}
+
+/** 一次获取当前会话可见的全部 Tapp 详情，避免列表同步产生 N+1 请求。 */
+export async function listTappDetails(): Promise<TappDetail[]> {
+  return apiRequest('/api/tapps/details')
 }
 
 /** 最近使用的 Tapp 项 */
@@ -851,7 +1072,8 @@ export async function registerTappWidget(
     default_size: config.defaultSize,
     sizes: config.sizes,
     category: config.category,
-    config: config.configSchema || {},
+    settings: config.settings || [],
+    refresh_policy: config.refreshPolicy,
   }
 
   const result = await apiRequest(
@@ -887,9 +1109,11 @@ export async function unregisterTappWidget(
 export async function getStorage(
   tappId: string,
   key: string,
+  runtimeGrant?: string,
 ): Promise<unknown> {
   return apiRequest(
     `/api/tapps/${encodeURIComponent(tappId)}/storage/${encodeURIComponent(key)}`,
+    { runtimeGrant },
   )
 }
 
@@ -900,12 +1124,14 @@ export async function setStorage(
   tappId: string,
   key: string,
   value: unknown,
+  runtimeGrant?: string,
 ): Promise<void> {
   return apiRequest(
     `/api/tapps/${encodeURIComponent(tappId)}/storage/${encodeURIComponent(key)}`,
     {
       method: 'POST',
       body: JSON.stringify(value),
+      runtimeGrant,
     },
   )
 }
@@ -916,11 +1142,13 @@ export async function setStorage(
 export async function removeStorage(
   tappId: string,
   key: string,
+  runtimeGrant?: string,
 ): Promise<void> {
   return apiRequest(
     `/api/tapps/${encodeURIComponent(tappId)}/storage/${encodeURIComponent(key)}`,
     {
       method: 'DELETE',
+      runtimeGrant,
     },
   )
 }
@@ -928,16 +1156,34 @@ export async function removeStorage(
 /**
  * 获取所有存储键
  */
-export async function listStorageKeys(tappId: string): Promise<string[]> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/storage`)
+export async function listStorageKeys(
+  tappId: string,
+  runtimeGrant?: string,
+): Promise<string[]> {
+  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/storage`, {
+    runtimeGrant,
+  })
 }
 
 /**
  * 清除所有存储
  */
-export async function clearStorage(tappId: string): Promise<void> {
+export async function clearStorage(
+  tappId: string,
+  runtimeGrant?: string,
+): Promise<void> {
   return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/storage`, {
     method: 'DELETE',
+    runtimeGrant,
+  })
+}
+
+export async function getStorageUsage(
+  tappId: string,
+  runtimeGrant?: string,
+): Promise<{ used: number; quota: number }> {
+  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/storage/usage`, {
+    runtimeGrant,
   })
 }
 
@@ -946,8 +1192,15 @@ export async function clearStorage(tappId: string): Promise<void> {
 /**
  * 获取已启用的平台列表
  */
-export async function listEnabledPlatforms(): Promise<PlatformInfo[]> {
-  const data = await apiRequest<{ platforms: PlatformInfo[] }>('/api/platforms')
+export async function listEnabledPlatforms(
+  runtimeGrant?: string,
+): Promise<PlatformInfo[]> {
+  const data = await apiRequest<{ platforms: PlatformInfo[] }>(
+    '/api/platforms',
+    {
+      runtimeGrant,
+    },
+  )
   return data.platforms.filter((p) => p.enabled)
 }
 
@@ -959,31 +1212,38 @@ export async function getPlatformData(
   options?: {
     limit?: number
     offset?: number
-    filter?: Record<string, unknown>
   },
+  runtimeGrant?: string,
 ): Promise<{
   items: unknown[]
   total: number
   platform: string
 }> {
   const params = new URLSearchParams()
-  if (options?.limit) params.set('limit', String(options.limit))
-  if (options?.offset) params.set('offset', String(options.offset))
-  if (options?.filter) params.set('filter', JSON.stringify(options.filter))
+  if (options?.limit !== undefined) params.set('limit', String(options.limit))
+  if (options?.offset !== undefined)
+    params.set('offset', String(options.offset))
 
-  return apiRequest(`/api/tapp/platform/${platform}/data?${params}`)
+  const query = params.size > 0 ? `?${params}` : ''
+  return apiRequest(
+    `/api/tapp/platform/${encodeURIComponent(platform)}/data${query}`,
+    { runtimeGrant },
+  )
 }
 
 /**
  * 获取平台统计数据
  */
-export async function getPlatformStats(platform: string): Promise<{
+export async function getPlatformStats(
+  platform: string,
+  runtimeGrant?: string,
+): Promise<{
   platform: string
   total: number
   distribution: Record<string, number>
   recentActivity: { date: string; count: number }[]
 }> {
-  return apiRequest(`/api/tapp/platform/${platform}/stats`)
+  return apiRequest(`/api/tapp/platform/${platform}/stats`, { runtimeGrant })
 }
 
 /**
@@ -992,8 +1252,14 @@ export async function getPlatformStats(platform: string): Promise<{
 export async function getPlatformDistribution(
   platform: string,
   dimension: string,
+  runtimeGrant?: string,
 ): Promise<{ dimension: string; data: { label: string; value: number }[] }> {
-  return apiRequest(`/api/tapp/platform/${platform}/distribution/${dimension}`)
+  return apiRequest(
+    `/api/tapp/platform/${platform}/distribution/${dimension}`,
+    {
+      runtimeGrant,
+    },
+  )
 }
 
 /**
@@ -1002,6 +1268,7 @@ export async function getPlatformDistribution(
 export async function addPlatformItem(
   tappId: string,
   item: NewPlatformItem,
+  runtimeGrant?: string,
 ): Promise<PlatformItemResult> {
   return apiRequest('/api/tapp/platform/items', {
     method: 'POST',
@@ -1009,6 +1276,7 @@ export async function addPlatformItem(
       tapp_id: tappId,
       item,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1018,6 +1286,7 @@ export async function addPlatformItem(
 export async function addPlatformItems(
   tappId: string,
   items: NewPlatformItem[],
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; results: PlatformItemResult[] }> {
   return apiRequest('/api/tapp/platform/items/batch', {
     method: 'POST',
@@ -1025,6 +1294,7 @@ export async function addPlatformItems(
       tapp_id: tappId,
       items,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1036,6 +1306,7 @@ export async function addPlatformItems(
 export async function aiGenerate(
   tappId: string,
   request: AIGenerateRequest,
+  runtimeGrant?: string,
 ): Promise<AIGenerateResponse> {
   return apiRequest('/api/tapp/ai/generate', {
     method: 'POST',
@@ -1044,6 +1315,7 @@ export async function aiGenerate(
       ...request,
       prefer_pro: request.preferPro,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1053,6 +1325,7 @@ export async function aiGenerate(
 export async function aiAnalyze(
   tappId: string,
   request: AIAnalyzeRequest,
+  runtimeGrant?: string,
 ): Promise<AIAnalyzeResponse> {
   return apiRequest('/api/tapp/ai/analyze', {
     method: 'POST',
@@ -1061,6 +1334,7 @@ export async function aiAnalyze(
       ...request,
       prefer_pro: request.preferPro,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1090,7 +1364,78 @@ export interface AIImageGenerateResponse {
   height: number
   model: string
   prompt: string
-  quotaRemaining: number
+  usageSnapshot: AIUsageSnapshot
+}
+
+export async function getAIUsage(
+  runtimeGrant: string,
+): Promise<AIUsageSnapshot> {
+  const response = await apiRequest<{ usage: AIUsageSnapshot }>(
+    '/api/tapp/ai/usage',
+    { runtimeGrant },
+  )
+  return response.usage
+}
+
+/** 创建由服务端治理的 AI V2 任务。 */
+export async function createAITask(
+  request: AITaskRequest,
+  runtimeGrant: string,
+): Promise<AITaskSnapshot> {
+  return apiRequest('/api/tapp/ai/v2/tasks', {
+    method: 'POST',
+    body: JSON.stringify(request),
+    runtimeGrant,
+  })
+}
+
+/** 读取当前 Tapp/subject 范围内的 AI V2 任务。 */
+export async function getAITask(
+  taskId: string,
+  runtimeGrant: string,
+): Promise<AITaskSnapshot> {
+  return apiRequest(`/api/tapp/ai/v2/tasks/${encodeURIComponent(taskId)}`, {
+    runtimeGrant,
+  })
+}
+
+/** 请求取消仍在运行的 AI V2 任务。 */
+export async function cancelAITask(
+  taskId: string,
+  runtimeGrant: string,
+): Promise<{ success: boolean; taskId: string }> {
+  return apiRequest(`/api/tapp/ai/v2/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'DELETE',
+    runtimeGrant,
+  })
+}
+
+export async function getAIV2Usage(
+  runtimeGrant: string,
+): Promise<AIUsageSnapshot> {
+  const response = await apiRequest<{ usage: AIUsageSnapshot }>(
+    '/api/tapp/ai/v2/usage',
+    { runtimeGrant },
+  )
+  return response.usage
+}
+
+/**
+ * Host-only SSE reader. The Runtime Grant remains in the host and parsed
+ * events are forwarded through TappBridge; sandbox code never receives it.
+ */
+export async function streamAITaskEvents(
+  taskId: string,
+  runtimeGrant: string,
+  onEvent: (event: AITaskEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return streamRuntimeEvents(
+    `/api/tapp/ai/v2/tasks/${encodeURIComponent(taskId)}/events`,
+    runtimeGrant,
+    (event, data) => onEvent({ event: event as AITaskEvent['event'], data }),
+    signal,
+  )
 }
 
 /**
@@ -1099,6 +1444,7 @@ export interface AIImageGenerateResponse {
 export async function aiImageGenerate(
   tappId: string,
   request: AIImageGenerateRequest,
+  runtimeGrant?: string,
 ): Promise<AIImageGenerateResponse> {
   return apiRequest('/api/tapp/ai/image', {
     method: 'POST',
@@ -1106,6 +1452,7 @@ export async function aiImageGenerate(
       tapp_id: tappId,
       ...request,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1125,6 +1472,7 @@ export interface AIImageTaskStatusResponse {
 export async function aiImageTaskStatus(
   tappId: string,
   taskId: string,
+  runtimeGrant?: string,
 ): Promise<AIImageTaskStatusResponse> {
   return apiRequest('/api/tapp/ai/image/status', {
     method: 'POST',
@@ -1132,6 +1480,7 @@ export async function aiImageTaskStatus(
       tapp_id: tappId,
       task_id: taskId,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1140,7 +1489,7 @@ export async function aiImageTaskStatus(
 /**
  * 获取报告列表
  */
-export async function listReports(): Promise<{
+export async function listReports(runtimeGrant?: string): Promise<{
   reports: {
     id: string
     platform: string
@@ -1149,26 +1498,37 @@ export async function listReports(): Promise<{
     summary?: string
   }[]
 }> {
-  return apiRequest('/api/reports/list')
+  return apiRequest('/api/tapp/report-catalog', { runtimeGrant })
 }
 
 /**
  * 获取单个报告
  */
-export async function getReport(reportId: string): Promise<{
+export async function getReport(
+  reportId: string,
+  runtimeGrant?: string,
+): Promise<{
   id: string
   platform?: string
   type: 'platform' | 'comprehensive'
   content: unknown
   createdAt: string
 }> {
-  return apiRequest(`/api/reports/${reportId}`)
+  return apiRequest(
+    `/api/tapp/report-catalog/${encodeURIComponent(reportId)}`,
+    {
+      runtimeGrant,
+    },
+  )
 }
 
 /**
  * 获取平台报告
  */
-export async function getPlatformReport(platform: string): Promise<{
+export async function getPlatformReport(
+  platform: string,
+  runtimeGrant?: string,
+): Promise<{
   platform: string
   summary: string
   insights: string[]
@@ -1177,7 +1537,10 @@ export async function getPlatformReport(platform: string): Promise<{
   createdAt: string
 } | null> {
   try {
-    return await apiRequest(`/api/reports/platform/${platform}`)
+    return await apiRequest(
+      `/api/tapp/report-catalog/platform/${encodeURIComponent(platform)}`,
+      { runtimeGrant },
+    )
   } catch {
     return null
   }
@@ -1298,6 +1661,7 @@ export interface DataTransformResponse {
  */
 export async function dataTransform(
   request: DataTransformRequest,
+  runtimeGrant?: string,
 ): Promise<DataTransformResponse> {
   return apiRequest('/api/tapp/data/transform', {
     method: 'POST',
@@ -1307,6 +1671,7 @@ export async function dataTransform(
       pipeline: request.pipeline,
       output: request.output,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1404,36 +1769,46 @@ export interface SystemContext {
 /**
  * 获取应用上下文
  */
-export async function getContextApp(): Promise<AppContext> {
-  return apiRequest('/api/tapp/context/app')
+export async function getContextApp(
+  runtimeGrant?: string,
+): Promise<AppContext> {
+  return apiRequest('/api/tapp/context/app', { runtimeGrant })
 }
 
 /**
  * 获取用户上下文
  */
-export async function getContextUser(): Promise<UserContext> {
-  return apiRequest('/api/tapp/context/user')
+export async function getContextUser(
+  runtimeGrant?: string,
+): Promise<UserContext> {
+  return apiRequest('/api/tapp/context/user', { runtimeGrant })
 }
 
 /**
  * 获取播放器上下文
  */
-export async function getContextPlayer(): Promise<PlayerContext> {
-  return apiRequest('/api/tapp/context/player')
+export async function getContextPlayer(
+  runtimeGrant?: string,
+): Promise<PlayerContext> {
+  return apiRequest('/api/tapp/context/player', { runtimeGrant })
 }
 
 /**
  * 获取导航上下文
  */
-export async function getContextNavigation(): Promise<NavigationContext> {
-  return apiRequest('/api/tapp/context/navigation')
+export async function getContextNavigation(
+  runtimeGrant?: string,
+): Promise<NavigationContext> {
+  return apiRequest('/api/tapp/context/navigation', { runtimeGrant })
 }
 
 /**
  * 获取系统上下文
  */
-export async function getContextSystem(): Promise<SystemContext> {
-  return apiRequest('/api/tapp/context/system')
+export async function getContextSystem(
+  runtimeGrant?: string,
+): Promise<SystemContext> {
+  return apiRequest('/api/tapp/context/system', { runtimeGrant })
 }
 
 // ============ 地理位置 API ============
@@ -1453,9 +1828,12 @@ export interface GeoContext {
  * 获取客户端地理位置信息
  * 这是一个公开 API，所有用户（包括游客）都可以调用
  */
-export async function getContextGeo(): Promise<GeoContext> {
+export async function getContextGeo(
+  runtimeGrant?: string,
+): Promise<GeoContext> {
   const result = await apiRequest<{ success: boolean; data: GeoContext }>(
     '/api/tapp/context/geo',
+    { runtimeGrant },
   )
   if (result.success && result.data) {
     return result.data
@@ -1509,6 +1887,7 @@ export async function executeTappApi(
   tappId: string,
   apiName: string,
   params?: Record<string, unknown>,
+  runtimeGrant?: string,
 ): Promise<TappApiExecuteResponse> {
   // 不使用 apiRequest 因为它会自动解包 data 字段
   // 这里需要返回完整的 { success, data, error, cached } 响应
@@ -1521,6 +1900,7 @@ export async function executeTappApi(
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-Token': csrfToken,
+        ...(runtimeGrant ? { 'X-Tapp-Runtime-Grant': runtimeGrant } : {}),
       },
       body: JSON.stringify({ params }),
       credentials: 'include',
@@ -1544,9 +1924,13 @@ export async function executeTappApi(
  * @param tappId - Tapp ID
  * @returns API 列表
  */
-export async function listTappApis(tappId: string): Promise<TappApiInfo[]> {
+export async function listTappApis(
+  tappId: string,
+  runtimeGrant?: string,
+): Promise<TappApiInfo[]> {
   const result = await apiRequest<{ success: boolean; apis: TappApiInfo[] }>(
     `/api/tapp/${encodeURIComponent(tappId)}/apis`,
+    { runtimeGrant },
   )
   return result.apis || []
 }
@@ -1586,13 +1970,17 @@ export interface AIChatResponse {
     completionTokens: number
     totalTokens: number
   }
+  usageSnapshot: AIUsageSnapshot
   sessionId?: string
 }
 
 /**
  * AI 对话
  */
-export async function aiChat(request: AIChatRequest): Promise<AIChatResponse> {
+export async function aiChat(
+  request: AIChatRequest,
+  runtimeGrant?: string,
+): Promise<AIChatResponse> {
   return apiRequest('/api/tapp/ai/chat', {
     method: 'POST',
     body: JSON.stringify({
@@ -1608,6 +1996,7 @@ export async function aiChat(request: AIChatRequest): Promise<AIChatResponse> {
       options: request.options,
       prefer_pro: request.preferPro,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1638,6 +2027,7 @@ export interface TappReport {
  */
 export async function createTappReport(
   request: CreateReportRequest,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; report: TappReport }> {
   return apiRequest('/api/tapp/reports', {
     method: 'POST',
@@ -1648,6 +2038,7 @@ export async function createTappReport(
       content: request.content,
       metadata: request.metadata,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1656,8 +2047,11 @@ export async function createTappReport(
  */
 export async function listTappReports(
   tappId: string,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; reports: TappReport[] }> {
-  return apiRequest(`/api/tapp/reports/tapp/${encodeURIComponent(tappId)}`)
+  return apiRequest(`/api/tapp/reports/tapp/${encodeURIComponent(tappId)}`, {
+    runtimeGrant,
+  })
 }
 
 /**
@@ -1666,9 +2060,11 @@ export async function listTappReports(
 export async function getTappReport(
   tappId: string,
   reportId: string,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; report: TappReport }> {
   return apiRequest(
     `/api/tapp/reports/${encodeURIComponent(tappId)}/${encodeURIComponent(reportId)}`,
+    { runtimeGrant },
   )
 }
 
@@ -1679,12 +2075,14 @@ export async function updateTappReport(
   tappId: string,
   reportId: string,
   updates: { title?: string; content?: unknown; metadata?: unknown },
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; report: TappReport }> {
   return apiRequest(
     `/api/tapp/reports/${encodeURIComponent(tappId)}/${encodeURIComponent(reportId)}`,
     {
       method: 'PUT',
       body: JSON.stringify(updates),
+      runtimeGrant,
     },
   )
 }
@@ -1695,11 +2093,13 @@ export async function updateTappReport(
 export async function deleteTappReport(
   tappId: string,
   reportId: string,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; deleted: string }> {
   return apiRequest(
     `/api/tapp/reports/${encodeURIComponent(tappId)}/${encodeURIComponent(reportId)}`,
     {
       method: 'DELETE',
+      runtimeGrant,
     },
   )
 }
@@ -1755,6 +2155,7 @@ export interface MediaStatus {
  */
 export async function mediaControl(
   request: MediaControlRequest,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; action: string; value?: unknown }> {
   return apiRequest('/api/tapp/media/control', {
     method: 'POST',
@@ -1763,37 +2164,54 @@ export async function mediaControl(
       action: request.action,
       value: request.value,
     }),
+    runtimeGrant,
   })
 }
 
 /**
  * 获取媒体状态
  */
-export async function mediaStatus(): Promise<{
+export async function mediaStatus(runtimeGrant?: string): Promise<{
   success: boolean
   status: MediaStatus
 }> {
-  return apiRequest('/api/tapp/media/status')
+  return apiRequest('/api/tapp/media/status', { runtimeGrant })
+}
+
+export async function createTappNotification(
+  request: {
+    tappId: string
+    title?: string
+    message: string
+    notificationType?: 'success' | 'info' | 'warning' | 'error'
+  },
+  runtimeGrant?: string,
+): Promise<string> {
+  const response = await apiRequest<{
+    success: boolean
+    notification_id: string
+  }>('/api/tapp/notifications', {
+    method: 'POST',
+    body: JSON.stringify({
+      tapp_id: request.tappId,
+      title: request.title,
+      message: request.message,
+      notification_type: request.notificationType,
+    }),
+    runtimeGrant,
+  })
+  return response.notification_id
 }
 
 // ============ P2: Component Registration API ============
 
 /** 组件类型 */
-export type ComponentType = 'page' | 'theme' | 'agent'
+export type ComponentType = 'theme' | 'agent'
 
 /** 组件配置基础接口 */
 export interface ComponentConfig {
   id: string
   [key: string]: unknown
-}
-
-/** Page 组件配置 */
-export interface PageComponentConfig extends ComponentConfig {
-  path: string
-  title: string
-  icon?: string
-  menu?: boolean
-  order?: number
 }
 
 /** Theme 组件配置 */
@@ -1842,6 +2260,7 @@ export async function registerComponent(
   tappId: string,
   componentType: ComponentType,
   config: ComponentConfig,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; component: RegisteredComponent }> {
   return apiRequest('/api/tapp/components/register', {
     method: 'POST',
@@ -1850,6 +2269,7 @@ export async function registerComponent(
       component_type: componentType,
       config,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1860,6 +2280,7 @@ export async function unregisterComponent(
   tappId: string,
   componentType: ComponentType,
   componentId: string,
+  runtimeGrant?: string,
 ): Promise<{
   success: boolean
   unregistered: { id: string; type: string; tappId: string }
@@ -1868,6 +2289,7 @@ export async function unregisterComponent(
     `/api/tapp/components/${encodeURIComponent(tappId)}/${componentType}/${encodeURIComponent(componentId)}`,
     {
       method: 'DELETE',
+      runtimeGrant,
     },
   )
 }
@@ -1878,11 +2300,12 @@ export async function unregisterComponent(
 export async function listComponents(
   tappId: string,
   type?: ComponentType,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; components: RegisteredComponent[] }> {
   const url = type
     ? `/api/tapp/components/${encodeURIComponent(tappId)}?type=${type}`
     : `/api/tapp/components/${encodeURIComponent(tappId)}`
-  return apiRequest(url)
+  return apiRequest(url, { runtimeGrant })
 }
 
 /**
@@ -1890,12 +2313,15 @@ export async function listComponents(
  */
 export async function listAllComponentsByType(
   componentType: ComponentType,
+  runtimeGrant?: string,
 ): Promise<{
   success: boolean
   type: string
   components: RegisteredComponent[]
 }> {
-  return apiRequest(`/api/tapp/components/all/${componentType}`)
+  return apiRequest(`/api/tapp/components/all/${componentType}`, {
+    runtimeGrant,
+  })
 }
 
 // ============ P2: Shortcut Registration API ============
@@ -1927,6 +2353,7 @@ export interface RegisteredShortcut {
 export async function registerShortcut(
   tappId: string,
   config: ShortcutConfig,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; shortcut: RegisteredShortcut }> {
   return apiRequest('/api/tapp/shortcuts/register', {
     method: 'POST',
@@ -1938,6 +2365,7 @@ export async function registerShortcut(
       action: config.action,
       scope: config.scope,
     }),
+    runtimeGrant,
   })
 }
 
@@ -1947,11 +2375,13 @@ export async function registerShortcut(
 export async function unregisterShortcut(
   tappId: string,
   shortcutId: string,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; unregistered: string }> {
   return apiRequest(
     `/api/tapp/shortcuts/${encodeURIComponent(tappId)}/${encodeURIComponent(shortcutId)}`,
     {
       method: 'DELETE',
+      runtimeGrant,
     },
   )
 }
@@ -1961,72 +2391,115 @@ export async function unregisterShortcut(
  */
 export async function listShortcuts(
   tappId?: string,
+  runtimeGrant?: string,
 ): Promise<{ success: boolean; shortcuts: RegisteredShortcut[] }> {
   const url = tappId
     ? `/api/tapp/shortcuts?tapp_id=${encodeURIComponent(tappId)}`
     : '/api/tapp/shortcuts'
-  return apiRequest(url)
+  return apiRequest(url, { runtimeGrant })
 }
 
 // ============ P2: Event Bus API ============
 
-/** 事件发布请求 */
-export interface PublishEventRequest {
-  tappId: string
-  eventType: string
-  payload: unknown
-  target?: 'all' | 'self' | string
-}
-
-/** 发布的事件 */
-export interface PublishedEvent {
-  id: string
-  type: string
-  tappId: string
-  target: string
-  timestamp: string
-}
-
-/**
- * 发布事件
- */
-export async function publishEvent(
-  request: PublishEventRequest,
-): Promise<{ success: boolean; event: PublishedEvent }> {
-  return apiRequest('/api/tapp/events/publish', {
+export async function publishEventV2(
+  request: PublishEventV2Request,
+  runtimeGrant: string,
+): Promise<{
+  accepted: boolean
+  deduplicated: boolean
+  delivered: number
+  event: TappEventV2
+}> {
+  return apiRequest('/api/tapp/events/v2/publish', {
     method: 'POST',
-    body: JSON.stringify({
-      tapp_id: request.tappId,
-      event_type: request.eventType,
-      payload: request.payload,
-      target: request.target,
-    }),
+    body: JSON.stringify(request),
+    runtimeGrant,
   })
 }
 
-/**
- * 获取事件订阅
- */
-export async function getEventSubscriptions(
-  tappId: string,
-): Promise<{ success: boolean; tappId: string; subscriptions: string[] }> {
-  return apiRequest(
-    `/api/tapp/events/subscriptions/${encodeURIComponent(tappId)}`,
+export async function streamEventsV2(
+  runtimeGrant: string,
+  onEvent: (event: string, data: unknown) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return streamRuntimeEvents(
+    '/api/tapp/events/v2/stream',
+    runtimeGrant,
+    onEvent,
+    signal,
   )
 }
 
-/**
- * 更新事件订阅
- */
-export async function updateEventSubscriptions(
-  tappId: string,
-  subscriptions: string[],
-): Promise<{ success: boolean; tappId: string; subscriptions: string[] }> {
+export async function streamAgentInteractions(
+  runtimeGrant: string,
+  onInteraction: (interaction: AgentInteractionV2) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return streamRuntimeEvents(
+    '/api/tapp/agent/v2/interactions/stream',
+    runtimeGrant,
+    (event, data) => {
+      if (event === 'interaction' && data && typeof data === 'object') {
+        onInteraction(data as AgentInteractionV2)
+      }
+    },
+    signal,
+  )
+}
+
+export async function getAgentInteraction(
+  interactionId: string,
+  runtimeGrant: string,
+): Promise<AgentInteractionV2> {
   return apiRequest(
-    `/api/tapp/events/subscriptions/${encodeURIComponent(tappId)}`,
+    `/api/tapp/agent/v2/interactions/${encodeURIComponent(interactionId)}`,
+    { runtimeGrant },
+  )
+}
+
+export async function acceptAgentInteraction(
+  interactionId: string,
+  runtimeGrant: string,
+): Promise<AgentInteractionV2> {
+  return apiRequest(
+    `/api/tapp/agent/v2/interactions/${encodeURIComponent(interactionId)}/accept`,
+    { method: 'POST', runtimeGrant },
+  )
+}
+
+export async function submitAgentInteractionResult(
+  interactionId: string,
+  result: { data: unknown; summary?: string; idempotencyKey: string },
+  runtimeGrant: string,
+): Promise<AgentInteractionV2> {
+  return apiRequest(
+    `/api/tapp/agent/v2/interactions/${encodeURIComponent(interactionId)}/result`,
+    { method: 'POST', body: JSON.stringify(result), runtimeGrant },
+  )
+}
+
+export async function rejectAgentInteraction(
+  interactionId: string,
+  reason: string,
+  runtimeGrant: string,
+): Promise<AgentInteractionV2> {
+  return apiRequest(
+    `/api/tapp/agent/v2/interactions/${encodeURIComponent(interactionId)}/reject`,
+    { method: 'POST', body: JSON.stringify({ reason }), runtimeGrant },
+  )
+}
+
+export async function requestAgentIntent(
+  interactionId: string,
+  request: { type: string; params?: unknown; reason: string },
+  runtimeGrant: string,
+): Promise<unknown> {
+  return apiRequest(
+    `/api/tapp/agent/v2/interactions/${encodeURIComponent(interactionId)}/intents`,
     {
-      method: 'PUT',
-      body: JSON.stringify({ subscriptions }),
+      method: 'POST',
+      body: JSON.stringify({ ...request, hostConfirmed: true }),
+      runtimeGrant,
     },
   )
 }

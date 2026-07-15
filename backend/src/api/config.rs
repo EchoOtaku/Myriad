@@ -1583,7 +1583,10 @@ async fn save_to_database(
                 }
             }
             "Xbox" => {
-                updates.insert("xbox_enabled".to_string(), JsonValue::Bool(platform.enabled));
+                updates.insert(
+                    "xbox_enabled".to_string(),
+                    JsonValue::Bool(platform.enabled),
+                );
                 for field in &platform.config_fields {
                     let key = match field.key.as_str() {
                         "gamertag" => "xbox_gamertag",
@@ -2480,10 +2483,7 @@ pub async fn test_platform(
             }
 
             let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
-            match fetcher
-                .fetch_xbox_profile_bundle(&gamertag, &api_key)
-                .await
-            {
+            match fetcher.fetch_xbox_profile_bundle(&gamertag, &api_key).await {
                 Ok(bundle) => {
                     let titles = bundle
                         .pointer("/achievements/titles")
@@ -2557,10 +2557,7 @@ pub async fn test_platform(
             }
 
             let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
-            match fetcher
-                .fetch_psn_profile_bundle(&online_id, &npsso)
-                .await
-            {
+            match fetcher.fetch_psn_profile_bundle(&online_id, &npsso).await {
                 Ok(bundle) => {
                     let titles = bundle
                         .get("trophy_titles")
@@ -3702,7 +3699,7 @@ pub async fn get_permissions(
 /// 更新 Tapp 权限下放配置（仅管理员）
 #[derive(Debug, Deserialize)]
 pub struct UpdatePermissionsPayload {
-    // 普通用户 elevated 权限 (11个, platform:write 和 platform:register 已升为 privileged)
+    // 普通用户可下放的 elevated 权限（13 项）
     pub user_perm_ai_generate: Option<bool>,
     pub user_perm_ai_analyze: Option<bool>,
     pub user_perm_ai_chat: Option<bool>,
@@ -3715,7 +3712,9 @@ pub struct UpdatePermissionsPayload {
     pub user_perm_shortcut_register: Option<bool>,
     pub user_perm_event_publish: Option<bool>,
     pub user_perm_scheduler_register: Option<bool>,
-    // 游客 elevated 权限 (11个)
+    pub user_perm_speech_tts: Option<bool>,
+    pub user_perm_speech_asr: Option<bool>,
+    // 游客可下放的 elevated 权限（13 项）
     pub guest_perm_ai_generate: Option<bool>,
     pub guest_perm_ai_analyze: Option<bool>,
     pub guest_perm_ai_chat: Option<bool>,
@@ -3728,6 +3727,8 @@ pub struct UpdatePermissionsPayload {
     pub guest_perm_shortcut_register: Option<bool>,
     pub guest_perm_event_publish: Option<bool>,
     pub guest_perm_scheduler_register: Option<bool>,
+    pub guest_perm_speech_tts: Option<bool>,
+    pub guest_perm_speech_asr: Option<bool>,
     // AI 使用限额配置
     pub user_ai_daily_calls: Option<i32>,
     pub user_ai_daily_tokens: Option<i32>,
@@ -3735,6 +3736,27 @@ pub struct UpdatePermissionsPayload {
     pub guest_ai_daily_calls: Option<i32>,
     pub guest_ai_daily_tokens: Option<i32>,
     pub guest_ai_cooldown_seconds: Option<i32>,
+}
+
+#[cfg(test)]
+mod tapp_permission_payload_tests {
+    use super::UpdatePermissionsPayload;
+
+    #[test]
+    fn accepts_speech_permission_delegation_fields() {
+        let payload: UpdatePermissionsPayload = serde_json::from_value(serde_json::json!({
+            "user_perm_speech_tts": true,
+            "user_perm_speech_asr": false,
+            "guest_perm_speech_tts": false,
+            "guest_perm_speech_asr": true
+        }))
+        .unwrap();
+
+        assert_eq!(payload.user_perm_speech_tts, Some(true));
+        assert_eq!(payload.user_perm_speech_asr, Some(false));
+        assert_eq!(payload.guest_perm_speech_tts, Some(false));
+        assert_eq!(payload.guest_perm_speech_asr, Some(true));
+    }
 }
 
 #[axum::debug_handler]
@@ -3745,7 +3767,7 @@ pub async fn update_permissions(
     let config_service = crate::services::config_service::ConfigService::new(db);
     let mut updates = std::collections::HashMap::new();
 
-    // 普通用户权限 (10个 elevated)
+    // 普通用户权限（13 项 elevated）
     if let Some(v) = payload.user_perm_ai_generate {
         updates.insert("user_perm_ai_generate".to_string(), json!(v));
     }
@@ -3778,8 +3800,14 @@ pub async fn update_permissions(
     if let Some(v) = payload.user_perm_scheduler_register {
         updates.insert("user_perm_scheduler_register".to_string(), json!(v));
     }
+    if let Some(v) = payload.user_perm_speech_tts {
+        updates.insert("user_perm_speech_tts".to_string(), json!(v));
+    }
+    if let Some(v) = payload.user_perm_speech_asr {
+        updates.insert("user_perm_speech_asr".to_string(), json!(v));
+    }
 
-    // 游客权限 (11个 elevated)
+    // 游客权限（13 项 elevated）
     if let Some(v) = payload.guest_perm_ai_generate {
         updates.insert("guest_perm_ai_generate".to_string(), json!(v));
     }
@@ -3811,6 +3839,12 @@ pub async fn update_permissions(
     }
     if let Some(v) = payload.guest_perm_scheduler_register {
         updates.insert("guest_perm_scheduler_register".to_string(), json!(v));
+    }
+    if let Some(v) = payload.guest_perm_speech_tts {
+        updates.insert("guest_perm_speech_tts".to_string(), json!(v));
+    }
+    if let Some(v) = payload.guest_perm_speech_asr {
+        updates.insert("guest_perm_speech_asr".to_string(), json!(v));
     }
 
     // AI 使用限额配置

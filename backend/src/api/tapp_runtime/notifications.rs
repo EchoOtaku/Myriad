@@ -12,7 +12,8 @@ use crate::middleware::auth::Claims;
 use crate::services::agent::notifications::get_notification_manager;
 use crate::services::permission_service::TappPermission;
 
-use super::common::{check_tapp_permission, parse_user_id, verify_tapp_granted_permission};
+use super::common::authorize_tapp_permission;
+use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize)]
 pub struct TappNotificationRequest {
@@ -32,13 +33,14 @@ fn default_notification_type() -> String {
 pub async fn create_tapp_notification(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(request): Json<TappNotificationRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    check_tapp_permission(&claims, TappPermission::UiNotification).await?;
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_granted_permission(
+    runtime_grant.require_tapp_id(&request.tapp_id)?;
+    runtime_grant.require(TappPermission::UiNotification)?;
+    let user_id = authorize_tapp_permission(
         &db,
-        user_id,
+        &claims,
         &request.tapp_id,
         TappPermission::UiNotification,
     )

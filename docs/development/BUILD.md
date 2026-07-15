@@ -6,7 +6,7 @@ This document provides detailed build and compilation instructions for the Myria
 
 ### Required Tools
 - **Rust**: 1.88 or later; 1.90 recommended ([install](https://rustup.rs/))
-- **Node.js**: 20 or later ([install](https://nodejs.org/))
+- **Node.js**: 25.x ([install](https://nodejs.org/))
 - **PostgreSQL**: 16 or later ([install](https://www.postgresql.org/download/))
 - **Git**: Latest version
 
@@ -325,7 +325,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: 20
+          node-version: 25
       - run: cd frontend && corepack enable && pnpm install --frozen-lockfile && pnpm run build
 ```
 

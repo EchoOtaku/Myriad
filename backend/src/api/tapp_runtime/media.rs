@@ -1,13 +1,15 @@
 //! 媒体控制 API
 
-use axum::{http::StatusCode, Extension, Json};
+use axum::{extract::State, http::StatusCode, Extension, Json};
+use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 
-use super::common::check_tapp_permission;
+use super::common::authorize_tapp_permission;
+use super::runtime_grant::RuntimeGrantContext;
 
 #[derive(Debug, Deserialize)]
 pub struct MediaControlRequest {
@@ -18,10 +20,14 @@ pub struct MediaControlRequest {
 
 /// POST /api/tapp/media/control
 pub async fn media_control(
+    State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<MediaControlRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    check_tapp_permission(&claims, TappPermission::MediaControl).await?;
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::MediaControl)?;
+    authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::MediaControl).await?;
 
     tracing::info!(
         "[TAPP] media_control - User: {}, Tapp: {}, Action: {}",
@@ -88,7 +94,9 @@ pub async fn media_control(
 /// GET /api/tapp/media/status
 pub async fn media_status(
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require(TappPermission::MediaRead)?;
     tracing::debug!("[TAPP] media_status - User: {}", claims.username);
 
     Ok(Json(json!({

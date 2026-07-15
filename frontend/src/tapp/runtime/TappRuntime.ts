@@ -13,12 +13,12 @@
  * - 懒加载按需获取 Tapp 详情
  */
 
-import type { TappCodeStructure } from '../examples/tapps/types'
 import type {
   BackgroundRequirement,
   CustomPlatformConfig,
   RegisteredWidget,
   TappInstance,
+  TappCodeStructure,
   TappManifest,
   TappPermission,
   TappStatus,
@@ -157,68 +157,29 @@ export class TappRuntime {
       this.syncing = true
 
       try {
-        // 获取 Tapp 列表
-        const tapps = await TappApiService.listTapps()
+        const details = await TappApiService.listTappDetails()
         this.installedTapps.clear()
         this.runningTapps.clear()
 
-        // 并行获取所有 Tapp 详情，限制并发数为 5
-        const CONCURRENCY_LIMIT = 5
-        const chunks: (typeof tapps)[] = []
-        for (let i = 0; i < tapps.length; i += CONCURRENCY_LIMIT) {
-          chunks.push(tapps.slice(i, i + CONCURRENCY_LIMIT))
-        }
-
-        for (const chunk of chunks) {
-          const detailPromises = chunk.map(async (tapp) => {
-            try {
-              const detail = await TappApiService.getTapp(tapp.id)
-              // 将后端返回的 user_role 转换为 UserRole 类型
-              const userRole =
-                (detail.user_role as 'guest' | 'user' | 'admin') || 'guest'
-
-              const backendPerms =
-                detail.granted_permissions as TappPermission[]
-              const manifest = detail.manifest as TappManifest
-
-              const instance: TappInstance = {
-                id: detail.id,
-                manifest,
-                status: detail.status as TappStatus,
-                installedAt: detail.installed_at,
-                lastRunAt: detail.last_run_at,
-                grantedPermissions: backendPerms,
-                userRole,
-                isTemporary: detail.is_temporary ?? tapp.is_temporary ?? false,
-                isAdminTapp:
-                  detail.is_admin_tapp ?? tapp.is_admin_tapp ?? false,
-              }
-              return {
-                success: true,
-                tappId: tapp.id,
-                instance,
-                isRunning: detail.status === 'running',
-              }
-            } catch (error) {
-              console.warn(
-                `[TappRuntime] Failed to get details for ${tapp.id}:`,
-                error,
-              )
-              return { success: false, tappId: tapp.id }
-            }
-          })
-
-          const results = await Promise.all(detailPromises)
-          for (const result of results) {
-            if (result.success && result.instance) {
-              this.installedTapps.set(result.tappId, result.instance)
-              if (result.isRunning) {
-                this.runningTapps.add(result.tappId)
-                // 恢复运行态的 Tapp 也要补注册 manifest 后台需求，
-                // 否则重载后 headless core 不会被拉起。
-                this.registerManifestBackgroundRequirements(result.instance)
-              }
-            }
+        for (const detail of details) {
+          const instance: TappInstance = {
+            id: detail.id,
+            manifest: detail.manifest as TappManifest,
+            status: detail.status as TappStatus,
+            installedAt: detail.installed_at,
+            lastRunAt: detail.last_run_at,
+            grantedPermissions: detail.granted_permissions as TappPermission[],
+            userRole:
+              (detail.user_role as 'guest' | 'user' | 'admin') || 'guest',
+            isTemporary: detail.is_temporary ?? false,
+            isAdminTapp: detail.is_admin_tapp ?? false,
+          }
+          this.installedTapps.set(detail.id, instance)
+          if (detail.status === 'running') {
+            this.runningTapps.add(detail.id)
+            // 恢复运行态的 Tapp 也要补注册 manifest 后台需求，
+            // 否则重载后 headless core 不会被拉起。
+            this.registerManifestBackgroundRequirements(instance)
           }
         }
 
@@ -254,8 +215,8 @@ export class TappRuntime {
                   sizes: widgetDef.sizes,
                   defaultSize: widgetDef.defaultSize,
                   category: widgetDef.category || 'utility',
-                  configSchema: widgetDef.configSchema,
-                  refreshInterval: widgetDef.refreshInterval,
+                  settings: widgetDef.settings,
+                  refreshPolicy: widgetDef.refreshPolicy,
                 },
                 instanceCount: 0,
                 registeredAt: new Date().toISOString(),
@@ -298,7 +259,7 @@ export class TappRuntime {
         this.synced = true
         this.lastSyncTime = Date.now()
         this.emit('sync:complete', {
-          tapps: tapps.length,
+          tapps: details.length,
           widgets: this.registeredWidgets.size,
         })
       } catch (error) {
@@ -381,8 +342,8 @@ export class TappRuntime {
       lastRunAt: detail.last_run_at,
       grantedPermissions: backendPerms,
       userRole,
-      isTemporary: detail.is_temporary ?? result.is_temporary ?? false,
-      isAdminTapp: detail.is_admin_tapp ?? result.is_admin_tapp ?? false,
+      isTemporary: detail.is_temporary ?? result.isTemporary ?? false,
+      isAdminTapp: detail.is_admin_tapp ?? result.isAdminTapp ?? false,
     }
 
     // 添加到内存缓存
@@ -433,8 +394,8 @@ export class TappRuntime {
           sizes: widgetDef.sizes,
           defaultSize: widgetDef.defaultSize,
           category: widgetDef.category || 'utility',
-          configSchema: widgetDef.configSchema,
-          refreshInterval: widgetDef.refreshInterval,
+          settings: widgetDef.settings,
+          refreshPolicy: widgetDef.refreshPolicy,
         },
         instanceCount: 0,
         registeredAt: new Date().toISOString(),

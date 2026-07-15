@@ -1592,8 +1592,10 @@ impl SmartFilter {
         let achievement_games = achievement_titles.len();
         let completed_games = titles.iter().filter(|t| t.progress >= 100.0).count();
         let total_achievements_earned: i64 = titles.iter().map(|t| t.achievements_earned).sum();
-        let total_achievements_available: i64 =
-            achievement_titles.iter().map(|t| t.achievements_total).sum();
+        let total_achievements_available: i64 = achievement_titles
+            .iter()
+            .map(|t| t.achievements_total)
+            .sum();
         let average_completion = if achievement_games > 0 {
             achievement_titles.iter().map(|t| t.progress).sum::<f64>() / achievement_games as f64
         } else {
@@ -1612,7 +1614,8 @@ impl SmartFilter {
             let complete_part = (complete_ratio * 25.0).clamp(0.0, 25.0);
             let gs_part = if gamerscore > 0 {
                 // log10(1+gs) / log10(1+100000) * 20 → 100k GS 打满 20 分
-                let ratio = ((1.0 + gamerscore as f64).ln() / (1.0_f64 + 100_000.0).ln()).clamp(0.0, 1.0);
+                let ratio =
+                    ((1.0 + gamerscore as f64).ln() / (1.0_f64 + 100_000.0).ln()).clamp(0.0, 1.0);
                 ratio * 20.0
             } else {
                 0.0
@@ -1633,11 +1636,7 @@ impl SmartFilter {
         recent_titles.sort_by(|a, b| {
             b.last_played
                 .cmp(&a.last_played)
-                .then_with(|| {
-                    b.display_image
-                        .is_some()
-                        .cmp(&a.display_image.is_some())
-                })
+                .then_with(|| b.display_image.is_some().cmp(&a.display_image.is_some()))
         });
         recent_titles.truncate(20);
 
@@ -1727,13 +1726,13 @@ impl SmartFilter {
             .filter(|s| !s.is_empty())
             .map(str::to_string);
         let is_plus = social.and_then(|s| {
-            s.get("isPlus")
-                .or_else(|| s.get("plus"))
-                .and_then(|v| v.as_bool().or_else(|| {
-                    v.as_i64().map(|n| n != 0).or_else(|| {
-                        v.as_str().map(|s| s == "true" || s == "1")
-                    })
-                }))
+            s.get("isPlus").or_else(|| s.get("plus")).and_then(|v| {
+                v.as_bool().or_else(|| {
+                    v.as_i64()
+                        .map(|n| n != 0)
+                        .or_else(|| v.as_str().map(|s| s == "true" || s == "1"))
+                })
+            })
         });
         // 有时头像在 profile 结构外
         if avatar.is_none() {

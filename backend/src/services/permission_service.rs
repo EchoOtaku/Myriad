@@ -16,7 +16,8 @@
 //! ## Tapp 权限完整列表
 //!
 //! ### Basic - 默认开放
-//! - widget:register, platform:read, tappList:read, brew:read, report:read, storage
+//! - widget:register, platform:read, tappList:read, brew:read, brew:write, brew:comment
+//! - report:read, storage
 //! - ui:notification, ui:fullscreen, ui:theme, ui:confirm
 //! - media:read, event:subscribe
 //! - federation:read, federation:write, federation:message, federation:files
@@ -68,7 +69,7 @@ impl From<&str> for UserRole {
 /// Tapp 权限（与前端 TappPermission 类型对应）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TappPermission {
-    // Basic 级别（10个）
+    // Basic 级别
     #[serde(rename = "widget:register")]
     WidgetRegister,
     #[serde(rename = "platform:read")]
@@ -77,6 +78,10 @@ pub enum TappPermission {
     TappListRead,
     #[serde(rename = "brew:read")]
     BrewRead,
+    #[serde(rename = "brew:write")]
+    BrewWrite,
+    #[serde(rename = "brew:comment")]
+    BrewComment,
     #[serde(rename = "report:read")]
     ReportRead,
     #[serde(rename = "storage")]
@@ -102,7 +107,7 @@ pub enum TappPermission {
     #[serde(rename = "federation:files")]
     FederationFiles,
 
-    // Elevated 级别（10个）
+    // Elevated 级别
     #[serde(rename = "ai:generate")]
     AiGenerate,
     #[serde(rename = "ai:analyze")]
@@ -113,10 +118,6 @@ pub enum TappPermission {
     AiImage,
     #[serde(rename = "report:write")]
     ReportWrite,
-    #[serde(rename = "brew:write")]
-    BrewWrite,
-    #[serde(rename = "brew:comment")]
-    BrewComment,
     #[serde(rename = "network:fetch")]
     NetworkFetch,
     #[serde(rename = "media:control")]
@@ -134,7 +135,7 @@ pub enum TappPermission {
     #[serde(rename = "speech:asr")]
     SpeechAsr,
 
-    // Privileged 级别（3个）
+    // Privileged 级别
     #[serde(rename = "platform:write")]
     PlatformWrite,
     #[serde(rename = "platform:register")]
@@ -158,6 +159,8 @@ impl TappPermission {
             | TappPermission::PlatformRead
             | TappPermission::TappListRead
             | TappPermission::BrewRead
+            | TappPermission::BrewWrite
+            | TappPermission::BrewComment
             | TappPermission::ReportRead
             | TappPermission::Storage
             | TappPermission::UiNotification
@@ -305,7 +308,6 @@ impl TappPermission {
     }
 
     /// 转换为字符串
-    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             TappPermission::WidgetRegister => "widget:register",
@@ -552,60 +554,6 @@ pub struct ElevatedPermissions {
     pub speech_asr: bool,
 }
 
-/// AI 使用限额配置（根据用户角色返回不同的限额）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct AiQuotaLimits {
-    /// 每日 AI 调用次数限制（所有 AI 权限共享）
-    pub daily_calls: i32,
-    /// 每日 AI Token 限制
-    pub daily_tokens: i32,
-    /// AI 调用冷却时间（秒）
-    pub cooldown_seconds: i32,
-    /// 是否无限制（管理员）
-    pub unlimited: bool,
-}
-
-impl TappPermissionService {
-    /// 获取用户的 AI 使用限额
-    ///
-    /// - 管理员：无限制
-    /// - 普通用户：根据配置的限额
-    /// - 游客：根据配置的限额（通常更严格）
-    #[allow(dead_code)]
-    pub fn get_ai_quota_limits(config: &DynamicConfig, role: UserRole) -> AiQuotaLimits {
-        match role {
-            UserRole::Admin => AiQuotaLimits {
-                daily_calls: i32::MAX,
-                daily_tokens: i32::MAX,
-                cooldown_seconds: 0,
-                unlimited: true,
-            },
-            UserRole::User => AiQuotaLimits {
-                daily_calls: config.user_ai_daily_calls,
-                daily_tokens: config.user_ai_daily_tokens,
-                cooldown_seconds: config.user_ai_cooldown_seconds,
-                unlimited: false,
-            },
-            UserRole::Guest => AiQuotaLimits {
-                daily_calls: config.guest_ai_daily_calls,
-                daily_tokens: config.guest_ai_daily_tokens,
-                cooldown_seconds: config.guest_ai_cooldown_seconds,
-                unlimited: false,
-            },
-        }
-    }
-
-    /// 检查用户是否有任何 AI 权限
-    #[allow(dead_code)]
-    pub fn has_any_ai_permission(config: &DynamicConfig, role: UserRole) -> bool {
-        Self::check(config, role, TappPermission::AiGenerate)
-            || Self::check(config, role, TappPermission::AiAnalyze)
-            || Self::check(config, role, TappPermission::AiChat)
-            || Self::check(config, role, TappPermission::AiImage)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -695,6 +643,24 @@ mod tests {
             UserRole::Guest,
             TappPermission::ComponentAgent
         ));
+    }
+
+    #[test]
+    fn test_brew_mutation_permissions_are_tapp_capabilities_for_all_roles() {
+        let config = DynamicConfig::default();
+
+        for role in [UserRole::User, UserRole::Guest] {
+            assert!(TappPermissionService::check(
+                &config,
+                role,
+                TappPermission::BrewWrite
+            ));
+            assert!(TappPermissionService::check(
+                &config,
+                role,
+                TappPermission::BrewComment
+            ));
+        }
     }
 
     #[test]

@@ -13,7 +13,6 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `main`                   | string   | ✅   | 入口文件名                         |
 | `author`                 | object   | ❌   | 作者信息 `{name, email?, url?}`    |
 | `permissions`            | string[] | ❌   | 所需权限列表                       |
-| `optionalPermissions`    | string[] | ❌   | 可选权限（运行时请求）             |
 | `icon`                   | string   | ❌   | 图标（emoji 或 URL）               |
 | `iconSvg`                | string   | ❌   | 内联 SVG 图标代码（优先于 icon）   |
 | `themeColor`             | string   | ❌   | 主题色（十六进制，如 #6366f1）     |
@@ -22,12 +21,33 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `backgroundRequirements` | string[] | ❌   | 启动后需常驻的 headless core 能力  |
 | `settings`               | object[] | ❌   | 用户可配置的设置项                 |
 | `apis`                   | object   | ❌   | 命名 API 声明（代理+权限校验）     |
-| `contentSecurityPolicy`  | object   | ❌   | 覆盖默认 CSP 指令                  |
-| `minSystemVersion`       | string   | ❌   | 最低系统版本要求                   |
+| `dataExchange`           | object   | ❌   | 跨 Tapp 具名 import/export 契约    |
+| `ai`                     | object   | ❌   | 服务端治理的 AI Task V2 声明       |
+| `events`                 | object   | ❌   | Event V2 发布/订阅 topic 声明      |
+| `agent`                  | object   | ❌   | Agent Interaction V2 声明          |
+| `minSystemVersion`       | string   | ❌   | 最低兼容 Myriad 语义版本           |
 | `homepage`               | string   | ❌   | 应用主页 URL                       |
 | `repository`             | string   | ❌   | 代码仓库 URL                       |
 | `styles`                 | string   | ❌   | 自定义样式文件路径                 |
+| `cssMode`                | string   | ❌   | `unified`（默认）或 `separated`    |
+| `widgetStyles`           | string   | ❌   | Widget 专用 CSS 路径               |
+| `pageStyles`             | string   | ❌   | Page 专用 CSS 路径                 |
 | `pageTemplate`           | string   | ❌   | 页面 HTML 模板路径                 |
+| `pageModules`            | string[] | ❌   | `page/` 模块执行顺序               |
+| `category`               | string   | ❌   | 应用分类                           |
+
+所有资源路径都是相对安装根目录的安全路径。`.tapp` 文件安装会保留经过校验的嵌套
+目录，例如 `templates/widget-2x2.html`；direct/store 安装也会把内容写到 Manifest
+声明的位置。绝对路径、隐藏组件和 `..` 会被拒绝。`pageModules` 的每项是 `page/`
+目录内的文件名，不能再次包含目录前缀。
+
+Manifest 采用严格字段校验：未声明字段、拼写错误以及已经移除的字段都会让安装失败，
+不会再被静默忽略。所有运行能力都必须直接写入 `permissions`；宿主只会在真正调用时
+按权限和运行时策略决定是否授权。
+
+`minSystemVersion` 使用语义版本。直接安装、商店安装和更新都会由后端与当前 Myriad
+包版本比较；当前版本过低或字段格式无效时会拒绝写入，避免出现“安装成功但运行时才
+发现 API 不兼容”。商店索引的旧字段 `min_myriad_version` 会在安装时归一化为该字段。
 
 ## 完整示例
 
@@ -45,13 +65,17 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
   },
   "icon": "🚀",
   "themeColor": "#6366f1",
-  "permissions": ["storage", "ui:notification", "platform:read"],
-  "optionalPermissions": ["network:fetch"],
+  "permissions": [
+    "storage",
+    "ui:notification",
+    "platform:read",
+    "network:fetch"
+  ],
   "hasPage": true,
   "backgroundRequirements": ["scheduler", "sync"],
   "homepage": "https://example.com",
   "repository": "https://github.com/example/my-tapp",
-  "minSystemVersion": "1.0.0",
+  "minSystemVersion": "0.2.0",
   "apis": {
     "weather": {
       "type": "http",
@@ -59,7 +83,8 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
       "endpoint": "https://api.weather.com/v1/current",
       "method": "GET",
       "description": "获取天气信息",
-      "spoof": "china"
+      "spoof": "china",
+      "inject": { "city": "{{geo.city}}" }
     }
   },
   "widgets": [
@@ -70,7 +95,6 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
       "icon": "📊",
       "defaultSize": "2x2",
       "sizes": ["1x1", "1x2", "2x1", "2x2", "4x2", "4x4"],
-      "refreshInterval": 60000,
       "category": "tool"
     }
   ],
@@ -104,18 +128,22 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
       "icon": "🧊",
       "defaultSize": "2x2",
       "sizes": ["1x1", "1x2", "2x1", "2x2", "3x2", "4x2", "4x4"],
-      "refreshInterval": 60000,
       "category": "tool",
       "templates": {
         "2x2": "templates/widget-2x2.html",
         "4x2": "templates/widget-4x2.html"
       },
-      "configSchema": {
-        "type": "object",
-        "properties": {
-          "title": { "type": "string", "title": "标题" },
-          "showChart": { "type": "boolean", "title": "显示图表" }
+      "settings": [
+        {
+          "key": "compact",
+          "type": "toggle",
+          "label": "紧凑布局",
+          "defaultValue": false
         }
+      ],
+      "refreshPolicy": {
+        "mode": "event",
+        "refreshOnVisible": true
       }
     }
   ]
@@ -124,18 +152,31 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 
 ### Widget 字段说明
 
-| 字段              | 类型     | 必填 | 说明                             |
-| ----------------- | -------- | ---- | -------------------------------- |
-| `id`              | string   | ✅   | Widget 唯一标识符                |
-| `name`            | string   | ✅   | Widget 显示名称                  |
-| `description`     | string   | ❌   | Widget 描述                      |
-| `icon`            | string   | ❌   | Widget 图标（emoji 或 URL）      |
-| `defaultSize`     | string   | ✅   | 默认尺寸（如 "2x2"）             |
-| `sizes`           | string[] | ❌   | 支持的尺寸列表                   |
-| `refreshInterval` | number   | ❌   | 刷新间隔（毫秒）                 |
-| `category`        | string   | ❌   | 分类（tool, data, media, custom) |
-| `templates`       | object   | ❌   | HTML 模板（按尺寸覆盖）          |
-| `configSchema`    | object   | ❌   | 配置 Schema（声明式配置 UI）     |
+| 字段            | 类型     | 必填 | 说明                              |
+| --------------- | -------- | ---- | --------------------------------- |
+| `id`            | string   | ✅   | Widget 唯一标识符                 |
+| `name`          | string   | ✅   | Widget 显示名称                   |
+| `description`   | string   | ❌   | Widget 描述                       |
+| `icon`          | string   | ❌   | Widget 图标（emoji 或 URL）       |
+| `defaultSize`   | string   | ✅   | 默认尺寸（如 "2x2"）              |
+| `sizes`         | string[] | ✅   | 支持的尺寸列表                    |
+| `category`      | string   | ❌   | 分类（tool, data, media, custom)  |
+| `templates`     | object   | ❌   | HTML 模板（按尺寸覆盖）           |
+| `settings`      | object[] | ❌   | 每个 Dashboard 实例独立的设置声明 |
+| `refreshPolicy` | object   | ❌   | 宿主管理的刷新策略                |
+
+单个 Tapp 最多声明或动态注册 64 个 Widget；每个 Widget 最多声明 10 个尺寸，且
+`defaultSize` 必须包含在 `sizes` 中。超出限制会在安装或注册时被后端拒绝。
+顶层 `settings` 是整个 Tapp 共用的全局设置；`widgets[].settings` 则属于单个 Dashboard
+Widget 实例，因此同一种 Widget 添加两次时可以采用不同配置。实例设置会由 Dashboard
+设置面板保存并通过 `props.config`、`Tapp.widget.getInstanceSettings()` 提供给沙箱。
+
+`refreshPolicy.mode` 默认为事件驱动语义：同一 Tapp 的其他运行实例发生 storage 变更时
+宿主会通知并刷新 Widget；当前 Widget 可用 `Tapp.widget.invalidate()` 显式请求刷新。
+确实需要轮询时可设为 `interval` 并提供
+`intervalSeconds`（15–86400 秒）；计时器仅在页面和 Widget 可见且 Tapp 运行时工作。
+`refreshOnVisible` 默认为 `true`。后台同步应使用 scheduler/headless core，而不是依赖
+Widget 的可见计时器。
 
 ### templates 配置说明
 
@@ -190,6 +231,7 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `2x2` | 200×200      | 标准小组件       |
 | `2x3` | 200×300      | 列表 / 纵向卡片  |
 | `3x2` | 300×200      | 横向信息块       |
+| `4x1` | 400×100      | 紧凑横幅         |
 | `4x2` | 400×200      | 宽幅展示、图表   |
 | `2x4` | 200×400      | 长列表 / Feed    |
 | `3x3` | 300×300      | 中等复杂组件     |
@@ -313,7 +355,7 @@ const value = await Tapp.storage.get("_settings.refreshInterval");
     "data": {
       "type": "http",
       "access": "protected",
-      "endpoint": "https://api.example.com/data",
+      "endpoint": "https://api.example.com/data?city={{city}}",
       "method": "GET",
       "headers": { "X-Region": "{{params.region}}" },
       "cacheTtl": 60,
@@ -338,14 +380,24 @@ const value = await Tapp.storage.get("_settings.refreshInterval");
 | `type`        | string | ❌   | `http`（默认）或 `builtin`                        |
 | `access`      | string | ❌   | `protected`（默认）或 `public`                    |
 | `endpoint`    | string | HTTP | HTTP URL，可使用 `{{params.*}}` 等模板            |
+| `url`         | string | 兼容 | `endpoint` 的旧别名，不能与其同时声明             |
+| `params`      | object | 兼容 | 旧版查询参数模板，会编码后追加到 URL              |
 | `method`      | string | ❌   | HTTP 方法，默认 `GET`                             |
 | `headers`     | object | ❌   | 请求头模板                                        |
 | `body`        | object | ❌   | JSON 请求体模板                                   |
 | `builtin`     | string | 内置 | `geo`、`ai:chat` 或 `ai:generate`                 |
-| `inject`      | object | ❌   | 用户、地理位置或后端 secrets 的模板注入声明       |
+| `inject`      | object | ❌   | 将宿主模板值映射为可复用别名                      |
 | `cacheTtl`    | number | ❌   | 响应缓存秒数；缓存按 Tapp、用户、客户端上下文隔离 |
 | `spoof`       | string | ❌   | 区域伪装：`china`、`japan` 或 `us`                |
 | `description` | string | ❌   | API 描述                                          |
+
+`inject` 的键是新别名，值是宿主上下文模板。例如
+`{"city":"{{geo.city}}"}` 会创建 `{{city}}`，供 `endpoint`、`headers` 或 `body`
+复用；精确引用会保留数字、布尔值等 JSON 类型。别名不能覆盖 `user.*`、`geo.*`、
+`secrets.*` 或 `params.*`。HTTP API 必须且只能声明 `endpoint` 或兼容字段 `url`
+其中之一；内置 API 只接受 `geo`、`ai:chat`、`ai:generate`，不能混入 HTTP 字段。
+单个 Manifest 最多声明 64 个 API，每个 API 最多声明 32 个注入别名，`cacheTtl` 上限
+为 86400 秒。
 
 ### 区域伪装 (`spoof`)
 
@@ -368,49 +420,168 @@ const response = await Tapp.api("data", { region: "jp" });
 const summary = await Tapp.api("summarize", { prompt: "总结这些数据" });
 ```
 
-> `Tapp.api(name, params)` 只能调用当前 manifest 的 `apis[name]`；同 ID 的用户临时 Tapp 与管理员公开 Tapp 分别缓存定义。
+> `Tapp.api(name, params)` 只能调用当前解析到的 manifest 的 `apis[name]`。缓存键包含 owner，
+> 不会在不同 owner 间复用定义；同 ID 冲突时当前兼容规则选择管理员公开版本。
+
+---
+
+## 跨 Tapp 数据契约 (`dataExchange`)
+
+Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 而开放。提供方必须声明
+具名 `exports`，调用方必须声明匹配的 `imports`；声明只表示接口兼容，每次真实调用仍会
+显示宿主的“仅本次”授权弹窗。
+
+```json
+{
+  "dataExchange": {
+    "exports": [
+      {
+        "id": "playlist.current",
+        "description": "当前播放列表",
+        "maxBytes": 262144,
+        "maxRecords": 200,
+        "schema": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "required": ["id", "title"],
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string", "maxLength": 200 },
+              "artist": { "type": "string", "maxLength": 200 }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "imports": [
+      {
+        "tappId": "com.example.player",
+        "exportId": "playlist.current"
+      }
+    ]
+  }
+}
+```
+
+约束：
+
+- 每个方向最多 32 条声明；export ID 最长 128 字节，只允许字母、数字、`_-.`；
+- `maxBytes` 为 1–524288，`maxRecords` 可选且为 1–10000；
+- `schema` 必须是最多 64 KiB 的内联对象，当前支持 `type`、`properties`、`required`、
+  `additionalProperties: false`、`items`、`min/maxItems`、`min/maxLength`、
+  `minimum/maximum`、`enum` 和 `const`；不支持 `$ref` 或外部 schema；
+- 响应失败、超限或 schema 不匹配同样会耗尽一次性 Grant，不能修改参数后重放；
+- 相同 Tapp 内部读取应使用自己的私有 API，不走跨 Tapp 交换。
+
+运行时用法见 [Data Exchange API](API_REFERENCE.md#跨-tapp-data-exchange-api)。
+
+---
+
+## AI、Event 与 Agent V2 声明
+
+```json
+{
+  "permissions": ["ai:generate", "event:publish", "event:subscribe"],
+  "ai": {
+    "protocolVersion": 2,
+    "operations": ["generate", "chat"],
+    "modelTier": "standard",
+    "contextSources": ["platform", "report", "profile", "custom"],
+    "outputFormats": ["text", "json"]
+  },
+  "events": {
+    "publish": ["tapp.com.example.my-tapp.status.changed"],
+    "subscribe": [
+      "system.theme.changed",
+      "tapp.com.example.player.track.changed"
+    ]
+  },
+  "agent": {
+    "protocolVersion": 2,
+    "interactions": [
+      {
+        "type": "report.compose",
+        "inputSchema": "schemas/report-input.json",
+        "resultSchema": "schemas/report-result.json"
+      }
+    ],
+    "intents": ["ui.open", "report.create", "dataExchange.request"]
+  }
+}
+```
+
+- AI operation 必须同时声明匹配的 `ai:*` 权限；模型供应商、模型名和生成参数不进入 Manifest；
+- Event publish topic 必须位于 `tapp.<当前 id>.*`；Tapp 不能发布 `system.*`；每个方向最多
+  100 个 topic；
+- `system.*` 只能由宿主发布；当前提供 theme、network、locale、visibility 和 navigation
+  状态变更 producer；
+- Event `owner` 作用域只允许有界状态元数据，跨 Tapp 正文必须使用 `dataExchange`；
+- Agent interaction type 最多 32 个。schema 是安装根目录内的 JSON 资源，安装时校验存在，
+  运行时限制为 64 KiB、禁止 `$ref`，输入和结果都由后端验证；
+- 兼容交互必须显式声明 `legacy.fill`、`legacy.interact` 或 `legacy.read`，不会自动获得任意
+  DOM 操作权限。
 
 ---
 
 ## 权限列表
 
-详细的权限说明请参考 [权限系统](./PERMISSIONS.md)。
+权限等级与运行时边界见 [架构文档的权限模型](./ARCHITECTURE.md#权限模型)。Manifest
+中的权限仍需经过安装授权；“基础”不表示 Tapp 可以省略申请。
 
 ### 基础权限（所有用户可用）
 
-| 权限              | 说明           |
-| ----------------- | -------------- |
-| `storage`         | 本地数据存储   |
-| `ui:notification` | 显示通知       |
-| `ui:theme`        | 读取主题信息   |
-| `ui:confirm`      | 显示确认对话框 |
-| `ui:fullscreen`   | 请求全屏显示   |
-| `platform:read`   | 读取平台数据   |
-| `report:read`     | 读取报告       |
-| `media:read`      | 读取媒体状态   |
-| `event:subscribe` | 订阅系统事件   |
-| `widget:register` | 注册小组件     |
+| 权限                 | 说明             |
+| -------------------- | ---------------- |
+| `storage`            | 本地数据存储     |
+| `ui:notification`    | 显示通知         |
+| `ui:theme`           | 读取主题信息     |
+| `ui:confirm`         | 显示确认对话框   |
+| `ui:fullscreen`      | 请求全屏显示     |
+| `platform:read`      | 读取平台数据     |
+| `tappList:read`      | 读取 Tapp 列表   |
+| `brew:read`          | 读取 Brew 内容   |
+| `brew:write`         | 修改 Brew 状态   |
+| `brew:comment`       | 操作 Brew 评论   |
+| `report:read`        | 读取报告         |
+| `media:read`         | 读取媒体状态     |
+| `event:subscribe`    | 订阅声明的 topic |
+| `widget:register`    | 注册小组件       |
+| `federation:read`    | 读取联邦数据     |
+| `federation:write`   | 联邦个人操作     |
+| `federation:message` | 联邦消息         |
+| `federation:files`   | 联邦文件传输     |
 
-### 提升权限（仅管理员可用）
+### 提升权限（管理员可配置下放）
 
-| 权限                 | 说明           |
-| -------------------- | -------------- |
-| `platform:write`     | 写入平台数据   |
-| `ai:generate`        | AI 文本生成    |
-| `ai:analyze`         | AI 数据分析    |
-| `ai:chat`            | AI 对话        |
-| `ai:image`           | AI 图片生成    |
-| `report:write`       | 创建/修改报告  |
-| `network:fetch`      | 发送 HTTP 请求 |
-| `media:control`      | 控制媒体播放   |
-| `component:theme`    | 注册自定义主题 |
-| `shortcut:register`  | 注册键盘快捷键 |
-| `event:publish`      | 发布系统事件   |
-| `scheduler:register` | 注册定时任务   |
+| 权限                 | 说明              |
+| -------------------- | ----------------- |
+| `ai:generate`        | AI 文本生成       |
+| `ai:analyze`         | AI 数据分析       |
+| `ai:chat`            | AI 对话           |
+| `ai:image`           | AI 图片生成       |
+| `report:write`       | 创建/修改报告     |
+| `network:fetch`      | 发送 HTTP 请求    |
+| `media:control`      | 控制媒体播放      |
+| `component:theme`    | 注册自定义主题    |
+| `shortcut:register`  | 注册键盘快捷键    |
+| `event:publish`      | 发布本 Tapp topic |
+| `scheduler:register` | 注册定时任务      |
+| `speech:tts`         | 文本转语音        |
+| `speech:asr`         | 语音转文本        |
+
+`brew:write` 与 `brew:comment` 描述的是 Tapp 能力，不按宿主用户角色下放。Tapp 仍必须在
+Manifest 中声明并在安装时获授；实际读写始终落在当前会话可访问的 Brew 数据范围内。
 
 ### 特权权限
 
 | 权限                | 说明           |
 | ------------------- | -------------- |
+| `platform:write`    | 写入平台数据   |
 | `platform:register` | 注册自定义平台 |
 | `component:agent`   | 注册 AI Agent  |
+| `tappList:manage`   | 管理 Tapp      |
+| `brew:manage`       | 管理 Brew      |
+| `federation:trust`  | 管理联邦信任   |

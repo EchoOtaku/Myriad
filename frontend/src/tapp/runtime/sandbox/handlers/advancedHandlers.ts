@@ -94,20 +94,24 @@ export function registerMediaHandlers(
 
       // 非高频操作异步记录日志（不阻塞 UI 响应）
       if (!HIGH_FREQUENCY_ACTIONS.has(action || '')) {
-        TappApiService.mediaControl({
-          tappId: tappInstance.id,
-          action: (action || 'play') as
-            | 'play'
-            | 'pause'
-            | 'next'
-            | 'prev'
-            | 'seek'
-            | 'volume'
-            | 'mute'
-            | 'unmute'
-            | 'mode',
-          value,
-        }).catch(() => {})
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        TappApiService.mediaControl(
+          {
+            tappId: tappInstance.id,
+            action: (action || 'play') as
+              | 'play'
+              | 'pause'
+              | 'next'
+              | 'prev'
+              | 'seek'
+              | 'volume'
+              | 'mute'
+              | 'unmute'
+              | 'mode',
+            value,
+          },
+          runtimeGrant,
+        ).catch(() => {})
       }
 
       return { success: true, data: { action, value } }
@@ -273,7 +277,9 @@ export function registerMediaHandlers(
     const { value } = (params || {}) as { value?: boolean }
     const skipVip = !!value
     window.dispatchEvent(
-      new CustomEvent('music-player-set-skip-vip', { detail: { value: skipVip } }),
+      new CustomEvent('music-player-set-skip-vip', {
+        detail: { value: skipVip },
+      }),
     )
     return { success: true, data: { skipVip } }
   })
@@ -316,7 +322,8 @@ export function registerMediaHandlers(
         spectrum, // 4 柱视觉重排数据 (0-1 范围，兼容旧消费方)
         bands, // 原始 8 频段 (0-1 范围，bass→high)
         energy, // 能量值 (0-1 范围)
-        bass: bands.length >= 8 ? (bands[0] + bands[1]) * 0.5 : spectrum[0] || 0,
+        bass:
+          bands.length >= 8 ? (bands[0] + bands[1]) * 0.5 : spectrum[0] || 0,
         mid: bands.length >= 8 ? (bands[3] + bands[4]) * 0.5 : spectrum[2] || 0,
         high: bands.length >= 8 ? (bands[6] + bands[7]) * 0.5 : 0,
       }
@@ -399,8 +406,7 @@ export function registerMediaHandlers(
       window as { __musicPlayerState?: Record<string, unknown> }
     ).__musicPlayerState
     const currentSong = globalState?.currentSong as
-      | { id?: string; source?: string; url?: string }
-      | undefined
+      { id?: string; source?: string; url?: string } | undefined
     if (!currentSong?.url || !currentSong?.id) {
       return { success: true, data: { available: false } }
     }
@@ -955,6 +961,7 @@ export function registerAdvancedHandlers(
         tappInstance.id,
         'theme',
         config as TappApiService.ComponentConfig,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
     } catch (error) {
@@ -972,6 +979,7 @@ export function registerAdvancedHandlers(
         tappInstance.id,
         'agent',
         config as TappApiService.ComponentConfig,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
     } catch (error) {
@@ -989,6 +997,7 @@ export function registerAdvancedHandlers(
         tappInstance.id,
         type as TappApiService.ComponentType,
         id as string,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
     } catch (error) {
@@ -1005,6 +1014,7 @@ export function registerAdvancedHandlers(
       const result = await TappApiService.listComponents(
         tappInstance.id,
         type as TappApiService.ComponentType | undefined,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
     } catch (error) {
@@ -1022,6 +1032,7 @@ export function registerAdvancedHandlers(
       const result = await TappApiService.registerShortcut(
         tappInstance.id,
         config as TappApiService.ShortcutConfig,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
     } catch (error) {
@@ -1038,6 +1049,7 @@ export function registerAdvancedHandlers(
       const result = await TappApiService.unregisterShortcut(
         tappInstance.id,
         id as string,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
     } catch (error) {
@@ -1050,65 +1062,9 @@ export function registerAdvancedHandlers(
 
   bridge.registerHandler('shortcut.list', async () => {
     try {
-      const result = await TappApiService.listShortcuts(tappInstance.id)
-      return { success: true, data: result }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed',
-      }
-    }
-  })
-
-  // Event handlers
-  bridge.registerHandler('event.publish', async (message) => {
-    const [eventType, payload, target] =
-      (message.payload as { args: unknown[] }).args || []
-    try {
-      const result = await TappApiService.publishEvent({
-        tappId: tappInstance.id,
-        eventType: eventType as string,
-        payload,
-        target: target as string,
-      })
-      bridge.emit(`tapp:${eventType}`, { source: tappInstance.id, payload })
-      return { success: true, data: result }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed',
-      }
-    }
-  })
-
-  bridge.registerHandler('event.subscribe', async (message) => {
-    const [eventTypes] = (message.payload as { args: unknown[] }).args || []
-    try {
-      const result = await TappApiService.updateEventSubscriptions(
+      const result = await TappApiService.listShortcuts(
         tappInstance.id,
-        eventTypes as string[],
-      )
-      return { success: true, data: result }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed',
-      }
-    }
-  })
-
-  bridge.registerHandler('event.unsubscribe', async (message) => {
-    const [eventTypes] = (message.payload as { args: unknown[] }).args || []
-    try {
-      const current = await TappApiService.getEventSubscriptions(
-        tappInstance.id,
-      )
-      const updated = ((current.subscriptions || []) as string[]).filter(
-        (t) => !(eventTypes as string[]).includes(t),
-      )
-      const result = await TappApiService.updateEventSubscriptions(
-        tappInstance.id,
-        updated,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
     } catch (error) {
@@ -1129,7 +1085,12 @@ export function registerContextHandlers(
 ): void {
   bridge.registerHandler('context.getApp', async () => {
     try {
-      return { success: true, data: await TappApiService.getContextApp() }
+      return {
+        success: true,
+        data: await TappApiService.getContextApp(
+          await bridge.getRuntimeGrant(),
+        ),
+      }
     } catch (error) {
       return {
         success: false,
@@ -1140,7 +1101,12 @@ export function registerContextHandlers(
 
   bridge.registerHandler('context.getUser', async () => {
     try {
-      return { success: true, data: await TappApiService.getContextUser() }
+      return {
+        success: true,
+        data: await TappApiService.getContextUser(
+          await bridge.getRuntimeGrant(),
+        ),
+      }
     } catch (error) {
       return {
         success: false,
@@ -1230,7 +1196,9 @@ export function registerContextHandlers(
     try {
       return {
         success: true,
-        data: await TappApiService.getContextNavigation(),
+        data: await TappApiService.getContextNavigation(
+          await bridge.getRuntimeGrant(),
+        ),
       }
     } catch (error) {
       return {
@@ -1242,7 +1210,12 @@ export function registerContextHandlers(
 
   bridge.registerHandler('context.getSystem', async () => {
     try {
-      return { success: true, data: await TappApiService.getContextSystem() }
+      return {
+        success: true,
+        data: await TappApiService.getContextSystem(
+          await bridge.getRuntimeGrant(),
+        ),
+      }
     } catch (error) {
       return {
         success: false,
@@ -1261,12 +1234,15 @@ export function registerContextHandlers(
     if (!req?.input || !req?.pipeline)
       return { success: false, error: 'Input and pipeline required' }
     try {
-      const response = await TappApiService.dataTransform({
-        tappId: tappInstance.id,
-        input: req.input as TappApiService.DataInput,
-        pipeline: req.pipeline as TappApiService.ProcessStep[],
-        output: req.output as TappApiService.DataOutput | undefined,
-      })
+      const response = await TappApiService.dataTransform(
+        {
+          tappId: tappInstance.id,
+          input: req.input as TappApiService.DataInput,
+          pipeline: req.pipeline as TappApiService.ProcessStep[],
+          output: req.output as TappApiService.DataOutput | undefined,
+        },
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: response }
     } catch (error) {
       return {
@@ -1291,6 +1267,7 @@ export function registerContextHandlers(
         tappInstance.id,
         apiName,
         params as Record<string, unknown> | undefined,
+        await bridge.getRuntimeGrant(),
       )
       return {
         success: response.success,
@@ -1308,7 +1285,10 @@ export function registerContextHandlers(
   // 列出 Tapp 可用的 API
   bridge.registerHandler('api.list', async () => {
     try {
-      const apis = await TappApiService.listTappApis(tappInstance.id)
+      const apis = await TappApiService.listTappApis(
+        tappInstance.id,
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: apis }
     } catch (error) {
       return {
@@ -1321,7 +1301,9 @@ export function registerContextHandlers(
   // 获取客户端地理位置
   bridge.registerHandler('context.getGeo', async () => {
     try {
-      const geo = await TappApiService.getContextGeo()
+      const geo = await TappApiService.getContextGeo(
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: geo }
     } catch (error) {
       return {

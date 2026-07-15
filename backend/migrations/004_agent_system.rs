@@ -29,7 +29,11 @@ impl MigrationTrait for Migration {
                     // 所属用户
                     .col(ColumnDef::new(AgentTasks::UserId).integer().not_null())
                     // 关联的方案 ID
-                    .col(ColumnDef::new(AgentTasks::RecipeId).string_len(64).not_null())
+                    .col(
+                        ColumnDef::new(AgentTasks::RecipeId)
+                            .string_len(64)
+                            .not_null(),
+                    )
                     // 任务名称
                     .col(ColumnDef::new(AgentTasks::Name).string_len(255))
                     // 任务状态: pending, running, paused, waiting_for_input, completed, failed, cancelled
@@ -271,7 +275,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     // 所属用户
-                    .col(ColumnDef::new(AgentTaskPresets::UserId).integer().not_null())
+                    .col(
+                        ColumnDef::new(AgentTaskPresets::UserId)
+                            .integer()
+                            .not_null(),
+                    )
                     // 原始用户输入
                     .col(ColumnDef::new(AgentTaskPresets::Input).text().not_null())
                     // 预设类型: favorite(收藏), history(历史)

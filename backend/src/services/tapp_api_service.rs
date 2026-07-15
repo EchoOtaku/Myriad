@@ -20,7 +20,6 @@ use tokio::sync::RwLock;
 
 use crate::api::tapp_runtime::common::HTTP_CLIENT;
 use crate::api::tapp_store::{TappApiAccess, TappApiDef};
-use crate::services::permission_service::UserRole;
 use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
@@ -56,9 +55,6 @@ pub struct ApiExecutionContext {
     pub username: String,
     /// 是否是管理员
     pub is_admin: bool,
-    /// 用户角色（保留供将来使用）
-    #[allow(dead_code)]
-    pub role: UserRole,
     /// 客户端 IP
     pub client_ip: Option<String>,
     /// Tapp 已授权的权限
@@ -227,15 +223,10 @@ impl TappApiService {
         inject_context.insert("user.username".to_string(), json!(context.username));
         inject_context.insert("user.isAdmin".to_string(), json!(context.is_admin));
 
-        // 检查是否需要注入地理位置
-        let needs_geo = api_def
-            .inject
-            .as_ref()
-            .is_some_and(|inject| inject.values().any(|v| v.contains("{{geo.")))
-            || api_def
-                .endpoint
-                .as_ref()
-                .is_some_and(|e| e.contains("{{geo."));
+        // Every templated HTTP surface can consume host context. Inspect them
+        // all so direct references in headers/body/legacy params do not resolve
+        // to empty strings merely because endpoint itself has no placeholder.
+        let needs_geo = Self::api_uses_template_prefix(api_def, "{{geo.");
 
         if needs_geo {
             let geo = Self::get_geo_info(context.client_ip.as_deref()).await;
@@ -246,24 +237,66 @@ impl TappApiService {
             inject_context.insert("geo.country".to_string(), json!(geo.country));
         }
 
-        // 检查是否需要注入密钥
-        if let Some(inject) = &api_def.inject {
-            for template in inject.values() {
-                if template.contains("{{secrets.") {
-                    Self::inject_secrets(&mut inject_context).await?;
-                    break;
-                }
-            }
+        if Self::api_uses_template_prefix(api_def, "{{secrets.") {
+            Self::inject_secrets(&mut inject_context).await?;
         }
 
-        // 检查 endpoint 是否需要密钥
-        if let Some(endpoint) = &api_def.endpoint {
-            if endpoint.contains("{{secrets.") {
-                Self::inject_secrets(&mut inject_context).await?;
-            }
-        }
+        Self::apply_inject_aliases(api_def.inject.as_ref(), &mut inject_context);
 
         Ok(inject_context)
+    }
+
+    fn api_uses_template_prefix(api_def: &TappApiDef, prefix: &str) -> bool {
+        api_def
+            .endpoint
+            .iter()
+            .chain(api_def.url.iter())
+            .any(|value| value.contains(prefix))
+            || api_def
+                .params
+                .iter()
+                .chain(api_def.headers.iter())
+                .flat_map(|values| values.values())
+                .any(|value| value.contains(prefix))
+            || api_def
+                .inject
+                .iter()
+                .flat_map(|values| values.values())
+                .any(|value| value.contains(prefix))
+            || api_def
+                .body
+                .as_ref()
+                .is_some_and(|body| Self::json_contains_template_prefix(body, prefix))
+    }
+
+    fn json_contains_template_prefix(value: &Value, prefix: &str) -> bool {
+        match value {
+            Value::String(value) => value.contains(prefix),
+            Value::Array(values) => values
+                .iter()
+                .any(|value| Self::json_contains_template_prefix(value, prefix)),
+            Value::Object(values) => values
+                .values()
+                .any(|value| Self::json_contains_template_prefix(value, prefix)),
+            _ => false,
+        }
+    }
+
+    fn apply_inject_aliases(
+        aliases: Option<&HashMap<String, String>>,
+        context: &mut HashMap<String, Value>,
+    ) {
+        let Some(aliases) = aliases else {
+            return;
+        };
+        // Resolve every alias from the same host context snapshot. This keeps
+        // behavior deterministic and prevents HashMap iteration order from
+        // turning alias-to-alias chains into an accidental API contract.
+        let source = context.clone();
+        for (alias, template) in aliases {
+            let value = Self::resolve_json_templates(&Value::String(template.clone()), &source);
+            context.insert(alias.clone(), value);
+        }
     }
 
     /// 注入密钥
@@ -780,28 +813,35 @@ impl TappApiService {
         let now = Instant::now();
         cache.retain(|_, entry| entry.expires_at > now);
     }
-
-    /// 列出 Tapp 可用的 API
-    #[allow(dead_code)]
-    pub fn list_apis(manifest: &Value) -> Vec<String> {
-        manifest
-            .get("apis")
-            .and_then(|apis| apis.as_object())
-            .map(|obj| obj.keys().cloned().collect())
-            .unwrap_or_default()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn api_def() -> TappApiDef {
+        TappApiDef {
+            access: TappApiAccess::Protected,
+            api_type: "http".to_string(),
+            endpoint: Some("https://example.com".to_string()),
+            url: None,
+            params: None,
+            method: "GET".to_string(),
+            headers: None,
+            body: None,
+            builtin: None,
+            inject: None,
+            cache_ttl: 0,
+            spoof: None,
+            description: None,
+        }
+    }
+
     fn context(user_id: i32, ip: &str) -> ApiExecutionContext {
         ApiExecutionContext {
             user_id,
             username: format!("user-{user_id}"),
             is_admin: false,
-            role: UserRole::User,
             client_ip: Some(ip.to_string()),
             granted_permissions: Vec::new(),
         }
@@ -831,5 +871,42 @@ mod tests {
 
         assert_ne!(first, other_user);
         assert_ne!(first, other_ip);
+    }
+
+    #[test]
+    fn declared_api_inject_aliases_preserve_host_value_types() {
+        let mut values = HashMap::from([
+            ("geo.city".to_string(), json!("Tokyo")),
+            ("user.id".to_string(), json!(42)),
+        ]);
+        let aliases = HashMap::from([
+            ("city".to_string(), "{{geo.city}}".to_string()),
+            ("viewerId".to_string(), "{{user.id}}".to_string()),
+            (
+                "label".to_string(),
+                "city={{geo.city}} user={{user.id}}".to_string(),
+            ),
+        ]);
+
+        TappApiService::apply_inject_aliases(Some(&aliases), &mut values);
+
+        assert_eq!(values.get("city"), Some(&json!("Tokyo")));
+        assert_eq!(values.get("viewerId"), Some(&json!(42)));
+        assert_eq!(values.get("label"), Some(&json!("city=Tokyo user=42")));
+    }
+
+    #[test]
+    fn declared_api_scans_every_templated_http_surface() {
+        let mut api = api_def();
+        api.endpoint = Some("https://example.com".to_string());
+        api.headers = Some(HashMap::from([(
+            "X-City".to_string(),
+            "{{geo.city}}".to_string(),
+        )]));
+        api.body = Some(json!({ "token": "{{secrets.OPENWEATHER_KEY}}" }));
+
+        assert!(TappApiService::api_uses_template_prefix(&api, "{{geo."));
+        assert!(TappApiService::api_uses_template_prefix(&api, "{{secrets."));
+        assert!(!TappApiService::api_uses_template_prefix(&api, "{{user."));
     }
 }

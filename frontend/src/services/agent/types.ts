@@ -351,9 +351,7 @@ export type FrontendActionType =
   | 'open_window'
   | 'close_window'
   | 'focus_window'
-  | 'fill_data'
-  | 'read_data'
-  | 'tapp_interact'
+  | 'agent_interaction'
   | 'navigate'
   | 'page_interact'
   | 'brew_open_article'
@@ -378,15 +376,6 @@ export interface PageElementTarget {
   ariaLabel?: string
   role?: string
   index?: number
-}
-
-/** 交互命令 */
-export interface InteractionCommand {
-  action: string
-  target: string
-  value?: string
-  command: string
-  autoDetect?: boolean
 }
 
 /** 滚动选项 */
@@ -420,8 +409,7 @@ export interface FrontendAction {
   target?: WindowTarget | PageElementTarget
   tappId?: string
   windowId?: string
-  commands?: InteractionCommand[]
-  autoSubmit?: boolean
+  interactionId?: string
   script?: string
   timestamp: number
   /** 操作数据 */
@@ -446,7 +434,6 @@ export interface FrontendAction {
   source?: string
   /** 是否自动播放 */
   autoPlay?: boolean
-  readType?: 'all' | 'inputs' | 'content' | 'storage'
   selector?: string
   /** 滚动选项 */
   scrollOptions?: ScrollOptions

@@ -499,23 +499,29 @@ export class TappScheduler {
   async registerTask(
     tappId: string,
     options: TaskRegistrationOptions,
+    runtimeGrant?: string,
   ): Promise<RegisteredTask> {
     const response = await this.apiRequest<{
       success: boolean
       task: RegisteredTask
-    }>('POST', '/tasks', {
-      tapp_id: tappId,
-      task_id: options.taskId,
-      name: options.name,
-      schedule_type: options.scheduleType,
-      schedule: options.schedule,
-      payload: options.payload,
-      execution_target: options.executionTarget || 'frontend',
-      backend_actions: options.backendActions,
-      missed_policy: options.missedPolicy || 'skip',
-      scope: options.scope || 'user',
-      retry: options.retry,
-    })
+    }>(
+      'POST',
+      '/tasks',
+      {
+        tapp_id: tappId,
+        task_id: options.taskId,
+        name: options.name,
+        schedule_type: options.scheduleType,
+        schedule: options.schedule,
+        payload: options.payload,
+        execution_target: options.executionTarget || 'frontend',
+        backend_actions: options.backendActions,
+        missed_policy: options.missedPolicy || 'skip',
+        scope: options.scope || 'user',
+        retry: options.retry,
+      },
+      runtimeGrant,
+    )
 
     if (!response.success) {
       throw new Error('Failed to register task')
@@ -527,19 +533,31 @@ export class TappScheduler {
   /**
    * 注销定时任务
    */
-  async unregisterTask(tappId: string, taskId: string): Promise<void> {
-    await this.apiRequest('DELETE', `/${tappId}/tasks/${taskId}`)
+  async unregisterTask(
+    tappId: string,
+    taskId: string,
+    runtimeGrant?: string,
+  ): Promise<void> {
+    await this.apiRequest(
+      'DELETE',
+      `/${tappId}/tasks/${taskId}`,
+      undefined,
+      runtimeGrant,
+    )
   }
 
   /**
    * 获取任务列表
    */
-  async listTasks(tappId?: string): Promise<RegisteredTask[]> {
+  async listTasks(
+    tappId?: string,
+    runtimeGrant?: string,
+  ): Promise<RegisteredTask[]> {
     const endpoint = tappId ? `/${tappId}/tasks` : '/tasks'
     const response = await this.apiRequest<{
       success: boolean
       tasks: RegisteredTask[]
-    }>('GET', endpoint)
+    }>('GET', endpoint, undefined, runtimeGrant)
     return response.tasks || []
   }
 
@@ -549,12 +567,13 @@ export class TappScheduler {
   async getTask(
     tappId: string,
     taskId: string,
+    runtimeGrant?: string,
   ): Promise<RegisteredTask | null> {
     try {
       const response = await this.apiRequest<{
         success: boolean
         task: RegisteredTask
-      }>('GET', `/${tappId}/tasks/${taskId}`)
+      }>('GET', `/${tappId}/tasks/${taskId}`, undefined, runtimeGrant)
       return response.task || null
     } catch {
       return null
@@ -564,22 +583,49 @@ export class TappScheduler {
   /**
    * 启用任务
    */
-  async enableTask(tappId: string, taskId: string): Promise<void> {
-    await this.apiRequest('POST', `/${tappId}/tasks/${taskId}/enable`)
+  async enableTask(
+    tappId: string,
+    taskId: string,
+    runtimeGrant?: string,
+  ): Promise<void> {
+    await this.apiRequest(
+      'POST',
+      `/${tappId}/tasks/${taskId}/enable`,
+      undefined,
+      runtimeGrant,
+    )
   }
 
   /**
    * 禁用任务
    */
-  async disableTask(tappId: string, taskId: string): Promise<void> {
-    await this.apiRequest('POST', `/${tappId}/tasks/${taskId}/disable`)
+  async disableTask(
+    tappId: string,
+    taskId: string,
+    runtimeGrant?: string,
+  ): Promise<void> {
+    await this.apiRequest(
+      'POST',
+      `/${tappId}/tasks/${taskId}/disable`,
+      undefined,
+      runtimeGrant,
+    )
   }
 
   /**
    * 手动触发任务
    */
-  async triggerTask(tappId: string, taskId: string): Promise<void> {
-    await this.apiRequest('POST', `/${tappId}/tasks/${taskId}/trigger`)
+  async triggerTask(
+    tappId: string,
+    taskId: string,
+    runtimeGrant?: string,
+  ): Promise<void> {
+    await this.apiRequest(
+      'POST',
+      `/${tappId}/tasks/${taskId}/trigger`,
+      undefined,
+      runtimeGrant,
+    )
   }
 
   /**
@@ -614,6 +660,7 @@ export class TappScheduler {
     method: string,
     endpoint: string,
     body?: unknown,
+    runtimeGrant?: string,
   ): Promise<T> {
     const url = `${this.apiBaseUrl}/tapp/scheduler${endpoint}`
 
@@ -625,6 +672,9 @@ export class TappScheduler {
     // authToken 保留为可选 Bearer（兼容 token 部署），但默认走 cookie。
     if (this.authToken) {
       headers.Authorization = `Bearer ${this.authToken}`
+    }
+    if (runtimeGrant) {
+      headers['X-Tapp-Runtime-Grant'] = runtimeGrant
     }
     const upper = method.toUpperCase()
     if (upper !== 'GET' && upper !== 'HEAD' && upper !== 'OPTIONS') {

@@ -352,9 +352,7 @@ pub async fn get_game_presence(
     }
 
     let result = match platform.as_str() {
-        "hoyolab" | "hoyoverse" | "miyoushe" | "enka" => {
-            fetch_enka(&account_id, &game, lang).await
-        }
+        "hoyolab" | "hoyoverse" | "miyoushe" | "enka" => fetch_enka(&account_id, &game, lang).await,
         "xbox" => fetch_xbox(&account_id).await,
         "psn" | "playstation" => fetch_psn(&account_id).await,
         _ => Err(format!("Unsupported platform: {platform}")),
@@ -446,7 +444,9 @@ async fn parse_enka_gi(uid: &str, lang: &str, body: &Value) -> Result<GamePresen
 
     // 资料头像：新版接口给 pfp id，旧版给 avatarId
     let avatar = crate::services::enka_assets::gi_profile_picture(
-        player.pointer("/profilePicture/id").and_then(|v| v.as_i64()),
+        player
+            .pointer("/profilePicture/id")
+            .and_then(|v| v.as_i64()),
         player
             .pointer("/profilePicture/avatarId")
             .and_then(|v| v.as_i64()),
@@ -454,10 +454,7 @@ async fn parse_enka_gi(uid: &str, lang: &str, body: &Value) -> Result<GamePresen
     .await;
 
     let mut showcase = Vec::new();
-    if let Some(arr) = player
-        .get("showAvatarInfoList")
-        .and_then(|v| v.as_array())
-    {
+    if let Some(arr) = player.get("showAvatarInfoList").and_then(|v| v.as_array()) {
         for item in arr.iter().take(SHOWCASE_LIMIT) {
             let Some(avatar_id) = item.get("avatarId").and_then(|v| v.as_i64()) else {
                 continue;

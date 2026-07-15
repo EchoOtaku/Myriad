@@ -5,7 +5,7 @@
 
 import type { ToastType } from '../../components/Toast'
 
-import type { TappInstance, TappManifest } from '../types'
+import type { TappInstance, TappManifest, TappPermission } from '../types'
 import type { IconStyle } from '../utils/tappColors'
 import {
   FaCog,
@@ -25,7 +25,15 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  forwardRef,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../../components/AnimatedView'
@@ -39,11 +47,11 @@ import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { useTitleFont } from '../../hooks/useTitleFont'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { TappIcon } from '../components/TappIcon'
-import { TappStore } from '../components/TappStore'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { getTappRuntime } from '../runtime'
 import { isWebKit } from '../runtime/TappPageSandbox'
+import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import * as TappApiService from '../services/TappApiService'
 import { getTappIconStyle as getTappIconStyleFromManifest } from '../utils/tappColors'
 
@@ -54,37 +62,23 @@ function getTappIconStyle(tapp: TappInstance): IconStyle {
   return getTappIconStyleFromManifest(tapp.manifest)
 }
 
-/** 鑾峰彇鍚勬潈闄愮瓑绾х殑鏁伴噺缁熻 */
-function getPermissionCounts(permissions: string[]): {
+const TappStore = lazy(() => import('../components/TappStore'))
+
+/** 按后端一致的权限等级统计 Manifest 权限。 */
+function getPermissionCounts(permissions: TappPermission[]): {
   basic: number
   elevated: number
   admin: number
 } {
-  // 绠＄悊鍛樻潈闄愶細娑夊強绯荤粺鏍稿績鍔熻兘
-  const adminPermissions = [
-    'component:theme',
-    'component:agent',
-    'platform:write',
-    'platform:register',
-  ]
-  // 鎻愬崌鏉冮檺锛氭秹鍙婃晱鎰熸暟鎹垨鎵╁睍鍔熻兘
-  const elevatedPermissions = [
-    'ai:generate',
-    'ai:analyze',
-    'ai:chat',
-    'network:fetch',
-    'report:write',
-    'media:control',
-  ]
-
   let basic = 0
   let elevated = 0
   let admin = 0
 
   for (const p of permissions) {
-    if (adminPermissions.includes(p)) {
+    const level = PERMISSION_LEVELS[p]
+    if (level === 'privileged') {
       admin++
-    } else if (elevatedPermissions.includes(p)) {
+    } else if (level === 'elevated') {
       elevated++
     } else {
       basic++
@@ -1045,15 +1039,17 @@ export function TappListPage() {
       </AnimatePresence>
 
       {/* 搴旂敤鍟嗗簵 */}
-      <AnimatePresence>
-        {showStore && (
-          <TappStore
-            isOpen={showStore}
-            onClose={() => setShowStore(false)}
-            onInstalled={() => loadTapps(true)}
-          />
-        )}
-      </AnimatePresence>
+      <Suspense fallback={null}>
+        <AnimatePresence>
+          {showStore && (
+            <TappStore
+              isOpen={showStore}
+              onClose={() => setShowStore(false)}
+              onInstalled={() => loadTapps(true)}
+            />
+          )}
+        </AnimatePresence>
+      </Suspense>
 
       {/* 卸载确认对话框 */}
       <UninstallConfirmDialog

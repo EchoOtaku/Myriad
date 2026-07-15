@@ -1,213 +1,237 @@
-# .tapp 文件格式规范
+# `.tapp` 文件格式
 
-## 概述
+`.tapp` 是 ZIP 格式的 Tapp 安装包。当前文件安装入口是
+`POST /api/tapps/install-file`，multipart 文件字段名为 `file`。
 
-`.tapp` 文件是 Myriad Tapp 应用的标准打包格式，本质上是一个 ZIP 压缩包，包含应用的清单、代码和资源文件。
+开发模型与运行时边界见 [Tapp 架构](../development/tapp/ARCHITECTURE.md)，完整字段见
+[Manifest 配置](../development/tapp/MANIFEST.md)。
 
-## 文件结构
+## 最小包
 
-```
-my-app.tapp (ZIP 格式)
-├── manifest.json      # 应用清单（必需）
-├── main.js            # 主入口代码（必需）
-├── icon.png           # 应用图标（可选，推荐 128x128）
-├── README.md          # 说明文档（可选）
-├── styles.css         # 共享样式（可选）
-├── page.html          # 页面 HTML 模板（可选）
-├── page.css           # 页面专用 CSS（可选）
-├── widget.css         # 小组件专用 CSS（可选）
-├── i18n/              # 国际化翻译文件夹（可选）
-│   ├── zh.json
-│   ├── en.json
-│   └── ja.json
-├── page/              # 页面模块文件夹（可选，替代 main.js 中的页面代码）
-│   ├── i18n.js
-│   ├── state.js
-│   ├── helpers.js
-│   └── index.js
-└── assets/            # 资源文件夹（可选）
-    └── ...
+```text
+com.example.app.tapp
+├── manifest.json
+└── main.js
 ```
 
-> **模块化架构**：当存在 `i18n/` 目录时，翻译数据会通过 `window._TAPP_I18N` 注入到沙箱中。当存在 `page/` 目录时，模块文件会按 manifest 中 `pageModules` 声明的顺序拼接执行。`main.js` 始终作为回退使用。
-
-## manifest.json 规范
+`manifest.json`：
 
 ```json
 {
-  "id": "com.example.my-app",
-  "name": "My App",
+  "id": "com.example.app",
+  "name": "Example App",
   "version": "1.0.0",
-  "description": "应用描述",
-  "author": {
-    "name": "Author Name",
-    "email": "author@example.com",
-    "url": "https://example.com"
-  },
+  "description": "示例应用",
   "main": "main.js",
-  "permissions": ["widget:register", "storage"],
-  "optionalPermissions": ["ai:generate"],
-  "icon": "icon.png",
-  "themeColor": "#3b82f6",
-  "minSystemVersion": "1.0.0",
-  "homepage": "https://github.com/example/my-app",
-  "repository": "https://github.com/example/my-app",
-  "widgets": [
-    {
-      "id": "clock",
-      "name": "数字时钟",
-      "defaultSize": "2x2",
-      "sizes": ["1x1", "2x1", "2x2"]
-    }
-  ],
-  "hasPage": true,
-  "pageModules": ["i18n.js", "state.js", "helpers.js", "index.js"]
+  "permissions": []
 }
 ```
 
-> **`pageModules`**（可选）：声明 `page/` 目录下模块文件的加载顺序。省略时按字母排序，`index.js` 自动排最后。
+`main` 是相对包根目录的入口路径。安装器会校验该路径并确认解包后文件真实存在，
+不会再默认猜测一个不存在的 `main.js` 或 `index.js`。
 
-## 权限列表
+## 完整结构示例
 
-| 权限                | 说明             |
-| ------------------- | ---------------- |
-| `widget:register`   | 注册自定义小组件 |
-| `platform:read`     | 读取平台数据     |
-| `platform:write`    | 写入平台数据     |
-| `platform:register` | 注册自定义平台   |
-| `ai:generate`       | 使用 AI 生成功能 |
-| `ai:analyze`        | 使用 AI 分析功能 |
-| `report:read`       | 读取报告数据     |
-| `storage`           | 使用本地存储     |
-| `ui:notification`   | 显示通知         |
-| `ui:fullscreen`     | 请求全屏         |
-| `ui:theme`          | 获取主题信息     |
-| `ui:confirm`        | 显示确认对话框   |
-
-## 数据库存储
-
-### tapps 表
-
-存储已安装的 Tapp 元数据：
-
-| 字段                | 类型         | 说明                                    |
-| ------------------- | ------------ | --------------------------------------- |
-| id                  | SERIAL       | 主键                                    |
-| tapp_id             | VARCHAR(255) | Tapp 唯一标识符                         |
-| user_id             | INTEGER      | 所属用户                                |
-| name                | VARCHAR(255) | 显示名称                                |
-| version             | VARCHAR(50)  | 版本号                                  |
-| manifest            | JSONB        | 完整清单                                |
-| status              | VARCHAR(20)  | 状态: installed/running/suspended/error |
-| granted_permissions | JSONB        | 已授权权限                              |
-| installed_at        | TIMESTAMP    | 安装时间                                |
-| last_run_at         | TIMESTAMP    | 最后运行时间                            |
-| error_message       | TEXT         | 错误信息                                |
-
-### tapp_widgets 表
-
-存储 Tapp 注册的小组件：
-
-| 字段          | 类型         | 说明          |
-| ------------- | ------------ | ------------- |
-| id            | SERIAL       | 主键          |
-| widget_id     | VARCHAR(255) | 完整小组件 ID |
-| tapp_id       | VARCHAR(255) | 所属 Tapp     |
-| user_id       | INTEGER      | 所属用户      |
-| config        | JSONB        | 小组件配置    |
-| registered_at | TIMESTAMP    | 注册时间      |
-
-### tapp_storage 表
-
-存储 Tapp 的键值数据：
-
-| 字段       | 类型         | 说明      |
-| ---------- | ------------ | --------- |
-| id         | SERIAL       | 主键      |
-| tapp_id    | VARCHAR(255) | 所属 Tapp |
-| user_id    | INTEGER      | 所属用户  |
-| key        | VARCHAR(255) | 键名      |
-| value      | JSONB        | 值        |
-| created_at | TIMESTAMP    | 创建时间  |
-| updated_at | TIMESTAMP    | 更新时间  |
-
-## 文件存储
-
-`.tapp` 文件本体存储在服务器文件系统中：
-
-```
-data/
-└── tapps/
-    └── {user_id}/
-        └── {tapp_id}/
-            ├── manifest.json     # 解压的清单
-            ├── main.js           # 主代码（回退用）
-            ├── styles.css        # 共享样式
-            ├── page.html         # 页面模板
-            ├── i18n/             # 国际化（可选）
-            │   ├── zh.json
-            │   └── en.json
-            └── page/             # 页面模块（可选）
-                ├── i18n.js
-                ├── state.js
-                └── index.js
+```text
+com.example.app.tapp
+├── manifest.json
+├── src/
+│   └── main.js
+├── styles.css
+├── widget.css
+├── page.css
+├── page.html
+├── templates/
+│   ├── widget-2x2.html
+│   └── widget-4x2.html
+├── i18n/
+│   ├── zh-CN.json
+│   ├── en-US.json
+│   └── ja-JP.json
+└── page/
+    ├── state.js
+    ├── helpers.js
+    └── index.js
 ```
 
-## API 接口
+对应 Manifest 片段：
 
-### 上传安装 Tapp
-
-```
-POST /api/tapps/install
-Content-Type: multipart/form-data
-Body: file=@my-app.tapp
-```
-
-### 获取 Tapp 列表
-
-```
-GET /api/tapps
-Response: [{ id, name, version, status, ... }]
-```
-
-### 获取 Tapp 详情
-
-```
-GET /api/tapps/{tapp_id}
-Response: { manifest, status, code_url, ... }
-```
-
-### 获取 Tapp 代码
-
-```
-GET /api/tapps/{tapp_id}/code
-Response: JavaScript 代码文本
-```
-
-### 启动/停止 Tapp
-
-```
-POST /api/tapps/{tapp_id}/start
-POST /api/tapps/{tapp_id}/stop
+```json
+{
+  "main": "src/main.js",
+  "cssMode": "separated",
+  "styles": "styles.css",
+  "widgetStyles": "widget.css",
+  "pageStyles": "page.css",
+  "pageTemplate": "page.html",
+  "pageModules": ["state.js", "helpers.js", "index.js"],
+  "widgets": [
+    {
+      "id": "summary",
+      "name": "摘要",
+      "defaultSize": "2x2",
+      "sizes": ["2x2", "4x2"],
+      "templates": {
+        "2x2": "templates/widget-2x2.html",
+        "4x2": "templates/widget-4x2.html"
+      },
+      "settings": [
+        {
+          "key": "compact",
+          "type": "toggle",
+          "label": "紧凑布局",
+          "defaultValue": false
+        }
+      ],
+      "refreshPolicy": { "mode": "event", "refreshOnVisible": true }
+    }
+  ]
+}
 ```
 
-### 卸载 Tapp
+经过安全校验的嵌套目录会在安装和导出时保留，保证“安装 → 导出 → 再安装”不会因
+路径被拍平而丢失 Page 模块或 Widget 模板。
 
-```
-DELETE /api/tapps/{tapp_id}
+`widgets[].settings` 描述每个 Dashboard 实例独立保存的配置；它与 Manifest 顶层、整个
+Tapp 共享的 `settings` 不同。`refreshPolicy` 采用事件优先策略，可选的 interval 只会在
+Widget 可见时运行，后台任务仍由 scheduler/headless core 承担。
+
+## 路径规则
+
+Tapp ID 和 Manifest 资源路径用于构造安装目录，必须遵守严格规则：
+
+- 只允许相对路径；
+- 不允许 `..`、绝对路径或反斜杠；
+- 每个路径组件只允许 ASCII 字母、数字、点、下划线和连字符；
+- 不允许以点开头的隐藏路径；
+- Manifest 中的 `main`、CSS、Page template、Page modules 和 Widget templates
+  都会校验；
+- ZIP 内不符合规则的条目会使安装失败，而不是静默写到包根目录之外。
+
+不要依赖 ZIP 中的符号链接或平台特定路径语义。
+
+为避免压缩炸弹和歧义覆盖，上传包限制为 25 MiB、最多 512 个条目、单文件最多
+25 MiB、总解压量最多 100 MiB，`manifest.json` 最多 256 KiB；重复 ZIP 路径会被
+拒绝。导出只包含安装目录内的普通文件，不跟随符号链接。
+
+## 代码与资源如何进入运行时
+
+包内目录结构不等于浏览器可直接访问的静态站点：
+
+- `main` 由后端读取后交给 ResourceLoader 拆分为 core/widget/page；
+- `pageTemplate` 和 Widget `templates` 以字符串注入 sandbox iframe；
+- `styles`、`widgetStyles`、`pageStyles` 和预生成 CSS 会按模式组合；
+- `i18n/*.json` 以 `window._TAPP_I18N` 数据注入；
+- `page/*.js` 按 `pageModules` 顺序组合；省略顺序时按文件名排序并把 `index.js`
+  放到最后。
+
+任意放入 `assets/` 的文件不会自动获得公开 URL。需要图片时使用允许的远程 URL、
+`data:`/`blob:`，或先扩展经过权限和路径校验的资源 API；不要假设
+`<img src="assets/a.png">` 会读取后端安装目录。
+
+## CSS 模式
+
+### unified
+
+```json
+{
+  "cssMode": "unified",
+  "styles": "styles.css"
+}
 ```
 
-### 注册小组件
+共享样式由 Widget 和 Page 使用；宿主可按源码生成各模式需要的 Tailwind CSS。
 
-```
-POST /api/tapps/{tapp_id}/widgets
-Body: { id, name, config, ... }
+### separated
+
+```json
+{
+  "cssMode": "separated",
+  "styles": "shared.css",
+  "widgetStyles": "widget.css",
+  "pageStyles": "page.css"
+}
 ```
 
-### 存储操作
+`styles` 是可选共享层，专用 CSS 只进入对应模式。商店已提供 separated CSS 时，安装器
+不能用前端按需生成结果覆盖它。
 
+## Widget 模板
+
+模板路径位于 `manifest.widgets[].templates`，key 是尺寸：
+
+```json
+{
+  "id": "summary",
+  "name": "摘要",
+  "defaultSize": "2x2",
+  "sizes": ["2x2", "4x2"],
+  "templates": {
+    "2x2": "templates/widget-2x2.html",
+    "4x2": "templates/widget-4x2.html"
+  }
+}
 ```
-GET /api/tapps/{tapp_id}/storage/{key}
-PUT /api/tapps/{tapp_id}/storage/{key}
-DELETE /api/tapps/{tapp_id}/storage/{key}
+
+安装/更新会保留 Widget 的 `description`、`icon`、`category`、`templates`、`settings`
+和 `refreshPolicy`。
+这些字段有后端 round-trip 测试保护，不能只在前端 TypeScript 类型中添加。刷新策略由
+宿主按事件优先、可见 interval 的规则执行；后台周期工作仍由 scheduler/headless core
+负责。顶层 `settings` 是 Tapp 全局设置，`widgets[].settings` 是 Dashboard 实例设置。
+当前模板内容传输以尺寸为 key；同一 Tapp 中多个 Widget 若把
+相同尺寸映射到不同文件会被拒绝，避免运行时静默覆盖。
+
+历史商店包中的 `minRefreshInterval` 从未接入刷新调度。安装器暂时只为旧包接受该字段，
+随后会在规范化 Manifest 时移除；新 Tapp 不应再声明它。
+
+## Page 模块
+
+`pageModules` 声明的是 `page/` 目录内的文件名和执行顺序：
+
+```json
+{
+  "hasPage": true,
+  "pageModules": ["state.js", "helpers.js", "index.js"]
+}
 ```
+
+存在 Page 模块时，它们是 Page 逻辑来源；`main` 仍是 Widget/core 的安装入口和兼容
+回退。后台 headless 模式只运行 core，不运行 Page 模块。
+
+## 安装流程
+
+1. 浏览器获取 CSRF token 并上传 multipart；
+2. 后端读取并反序列化 `manifest.json`；
+3. 校验 `minSystemVersion`，当前 Myriad 版本过低时立即拒绝；
+4. 校验 ID、所有 Manifest 路径和 Widget 模板路径；
+5. 检查同 owner 下是否已安装；
+6. 安全解包并保留合法相对目录；
+7. 确认 `manifest.main` 文件存在；
+8. 按当前实时角色和动态权限配置过滤最终授权；
+9. 把 Manifest/状态/授权写入 PostgreSQL，把资源保存在 owner 目录；
+10. 前端下一次同步加载实例并补注册 Manifest Widget。
+
+## 导出与往返保证
+
+`GET /api/tapps/{tappId}/export` 会递归打包该安装目录并保留相对路径。导出的包应能再次
+通过 `install-file` 安装，且以下内容不能静默丢失：
+
+- `manifest.main` 及其文件；
+- Manifest 未知于 UI 但已纳入后端结构的字段；
+- Widget 完整元数据和 templates；
+- nested CSS/Page/i18n/template 文件；
+- `backgroundRequirements`、`pageModules` 和 `apis`。
+
+修改包格式后至少运行后端 Manifest 定向测试、Tapp 定向测试、前端 build check，并做
+一次真实的导出 ZIP 文件清单检查。
+
+## 常见错误
+
+| 现象                            | 原因                                    | 修正                                    |
+| ------------------------------- | --------------------------------------- | --------------------------------------- |
+| 安装返回 `Main entry not found` | `manifest.main` 与 ZIP 文件不一致       | 修正路径和大小写                        |
+| Widget 模板为空                 | `templates` 路径不存在或尺寸 key 不匹配 | 核对 Manifest 与 ZIP 清单               |
+| Page 模块顺序错误               | `pageModules` 遗漏/拼写错误             | 显式声明顺序                            |
+| 样式被覆盖                      | separated 资源被当成 unified 重新生成   | 设置 `cssMode: separated`               |
+| 本地图片 404                    | 安装目录不是公开静态目录                | 使用受支持 URL/data/blob 或新增资源 API |
+| 权限少于 Manifest               | 当前用户角色不允许全部申请权限          | 以 `granted_permissions` 为准           |

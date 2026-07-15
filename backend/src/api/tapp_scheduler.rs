@@ -19,6 +19,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::api::tapp_runtime::common::{check_tapp_permission, verify_tapp_ownership};
+use crate::api::tapp_runtime::RuntimeGrantContext;
 use crate::middleware::auth::{ensure_current_admin, Claims};
 use crate::models::entities::tapp_scheduled_tasks::{
     ExecutionTarget, MissedPolicy, ScheduleType, TaskScope,
@@ -290,8 +291,11 @@ fn task_to_response(task: &crate::models::entities::tapp_scheduled_tasks::Model)
 pub async fn register_task(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<RegisterTaskRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     check_tapp_permission(&claims, TappPermission::SchedulerRegister).await?;
     verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
@@ -372,8 +376,11 @@ pub async fn register_task(
 pub async fn unregister_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
     let scheduler = scheduler.read().await;
@@ -429,8 +436,11 @@ pub async fn list_tasks(
 pub async fn list_tapp_tasks(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
     let scheduler = scheduler.read().await;
@@ -460,8 +470,11 @@ pub async fn list_tapp_tasks(
 pub async fn get_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
     let scheduler = scheduler.read().await;
@@ -493,8 +506,11 @@ pub async fn get_task(
 pub async fn enable_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
     let scheduler = scheduler.read().await;
@@ -520,8 +536,11 @@ pub async fn enable_task(
 pub async fn disable_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
     let scheduler = scheduler.read().await;
@@ -547,8 +566,11 @@ pub async fn disable_task(
 pub async fn trigger_task(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
     let scheduler = scheduler.read().await;

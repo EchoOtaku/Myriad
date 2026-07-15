@@ -421,8 +421,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
                     }
                 },
                 "frontendAction": {
-                    "type": "object",
-                    "description": "前端执行指令（如果 autoExecute=true）"
+                    "type": ["object", "null"],
+                    "description": "V2 分析只返回计划，此字段固定为 null；执行必须另建 interaction"
                 }
             }
         }),
@@ -438,48 +438,20 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "tapp.interact".to_string(),
         name: "Tapp UI 交互".to_string(),
-        description: "与 Tapp 应用进行交互，包括点击按钮、输入文本、提交表单、调用函数等操作".to_string(),
+        description: "创建 Manifest 声明的 Agent Interaction，由 Tapp 接受并按 schema 返回结果".to_string(),
         category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Execute, IntentAction::Create, IntentAction::Update],
         input_schema: json!({
             "type": "object",
             "properties": {
                 "tappId": { "type": "string", "description": "Tapp 应用 ID" },
-                "userId": { "type": "integer", "description": "用户 ID" },
-                "action": {
-                    "type": "string",
-                    "enum": ["click", "input", "submit", "call", "focus", "clear", "select", "scroll"],
-                    "description": "操作类型"
-                },
-                "target": { 
-                    "type": "string", 
-                    "description": "目标元素 ID 或选择器" 
-                },
-                "value": { 
-                    "type": "string", 
-                    "description": "输入的值（用于 input 操作）" 
-                },
-                "functionName": { 
-                    "type": "string", 
-                    "description": "要调用的函数名（用于 call 操作）" 
-                },
-                "args": { 
-                    "type": "array", 
-                    "description": "函数参数（用于 call 操作）" 
-                },
-                "sequence": {
-                    "type": "array",
-                    "description": "操作序列，用于执行多个连续操作",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "action": { "type": "string" },
-                            "target": { "type": "string" },
-                            "value": { "type": "string" },
-                            "delay": { "type": "integer", "description": "操作前延迟（毫秒）" }
-                        }
-                    }
-                }
+                "interactionType": { "type": "string", "description": "Manifest agent.interactions 中声明的类型；省略时使用显式声明的 legacy.interact" },
+                "input": { "description": "按该 interaction inputSchema 校验的输入" },
+                "taskId": { "type": "string", "description": "可选 Agent 任务关联 ID" },
+                "action": { "type": "string", "description": "legacy.interact 兼容输入" },
+                "target": { "type": "string", "description": "legacy.interact 兼容输入" },
+                "value": { "description": "legacy.interact 兼容输入" },
+                "sequence": { "type": "array", "description": "legacy.interact 兼容输入" }
             },
             "required": ["tappId"]
         }),
@@ -487,25 +459,15 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "type": "object",
             "properties": {
                 "success": { "type": "boolean" },
-                "commands": {
-                    "type": "array",
-                    "description": "生成的前端执行命令列表"
-                },
-                "script": {
-                    "type": "string",
-                    "description": "完整的可执行脚本"
-                },
-                "websocketMessage": {
-                    "type": "object",
-                    "description": "可通过 WebSocket 发送的消息格式"
-                }
+                "interaction": { "type": "object", "description": "已创建的 V2 interaction 快照" },
+                "frontendAction": { "type": "object", "description": "仅用于打开目标 Tapp，不包含 DOM 命令" }
             }
         }),
         required_permissions: vec!["tapp:write".to_string(), "tapp:interact".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(100),
         requires_confirmation: true,
-        confirmation_message: Some("即将执行 Tapp UI 操作".to_string()),
+        confirmation_message: Some("即将向 Tapp 发起声明式交互请求".to_string()),
         risk_level: RiskLevel::Low,
     });
 
@@ -689,7 +651,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "tapp.fill".to_string(),
         name: "填充数据".to_string(),
-        description: "将数据填充到指定 Tapp 窗口的输入框中，支持跨窗口数据传递".to_string(),
+        description: "通过目标 Tapp 声明的 legacy.fill interaction 请求其处理数据；宿主不直接写 DOM".to_string(),
         category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Update, IntentAction::Create],
         input_schema: json!({
@@ -742,18 +704,10 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "type": "object",
             "properties": {
                 "success": { "type": "boolean" },
-                "filledFields": { "type": "integer" },
-                "targetWindowId": { "type": "string" },
-                "targetTappName": { "type": "string" },
-                "script": { "type": "string", "description": "生成的填充脚本" },
+                "interaction": { "type": "object", "description": "legacy.fill interaction 快照" },
                 "frontendAction": {
                     "type": "object",
-                    "description": "前端执行指令",
-                    "properties": {
-                        "type": { "type": "string" },
-                        "windowId": { "type": "string" },
-                        "commands": { "type": "array" }
-                    }
+                    "description": "打开目标 Tapp 的 agent_interaction 动作"
                 }
             }
         }),
@@ -768,7 +722,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "tapp.read".to_string(),
         name: "读取窗口数据".to_string(),
-        description: "从指定 Tapp 窗口读取当前显示的数据或输入框的值".to_string(),
+        description: "通过目标 Tapp 声明的 legacy.read interaction 请求结构化结果；宿主不抓取 iframe DOM".to_string(),
         category: CapabilityCategory::UiControl,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({
@@ -797,17 +751,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "type": "object",
             "properties": {
                 "success": { "type": "boolean" },
-                "windowId": { "type": "string" },
-                "tappId": { "type": "string" },
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "inputs": { "type": "object", "description": "输入框当前值 {elementId: value}" },
-                        "content": { "type": "string", "description": "页面文本内容" },
-                        "storage": { "type": "object", "description": "Tapp 存储数据" }
-                    }
-                },
-                "frontendAction": { "type": "object" }
+                "interaction": { "type": "object", "description": "legacy.read interaction 快照" },
+                "frontendAction": { "type": "object", "description": "打开目标 Tapp 的 agent_interaction 动作" }
             }
         }),
         required_permissions: vec!["tapp:read".to_string()],

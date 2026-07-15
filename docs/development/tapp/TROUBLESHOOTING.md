@@ -40,8 +40,9 @@ Refused to load the script/style/image '...' because it violates the following C
 
 1. **外部脚本**：不支持直接加载外部 JS 文件，将代码内联到 `main.js`
 2. **外部样式**：使用 `styles.css` 文件或内联样式
-3. **图片/媒体**：大部分来源都被允许，检查 URL 格式是否正确
-4. **API 请求**：使用 `Tapp.http.request()` 通过代理发送请求
+3. **图片**：允许 `data:`、`blob:` 和 HTTP(S)，检查 URL 与响应类型
+4. **媒体**：CSP 默认禁止直接加载；使用宿主媒体 API
+5. **API 请求**：在 Manifest 的 `apis` 中声明，再调用 `Tapp.api(name, params)`
 
 ---
 
@@ -65,14 +66,14 @@ The Content-Security-Policy directive 'prefetch-src' is not implemented...
 
 **可能原因**：
 
-1. **`index.json` 引用的文件不存在**
+1. **入口文件不存在或商店下载路径不一致**
 
    ```json
-   // ❌ 错误：引用了不存在的文件
-   { "code": "main.js" } // 但实际文件是 index.js
+   // manifest.json：安装后的入口
+   { "main": "main.js" }
 
-   // ✅ 正确
-   { "code": "index.js" }
+   // 商店 index.json：仓库中的下载位置
+   { "download": { "code": "apps/com.example/main.js" } }
    ```
 
 2. **manifest 声明的资源缺失**
@@ -94,9 +95,10 @@ The Content-Security-Policy directive 'prefetch-src' is not implemented...
 
 **解决方案**：
 
-1. 检查 `index.json` 中的 `code` 字段是否指向正确的 JS 文件
-2. 确保 manifest 中声明的所有文件都实际存在
-3. 文件名区分大小写
+1. 检查 `manifest.main` 是否指向安装根目录内真实存在的 JS 文件
+2. 商店发布时检查 `index.json` 的 `download.code` 是否下载同一入口
+3. 确保 Manifest 中声明的所有资源文件都实际存在
+4. 文件名区分大小写
 
 ---
 
@@ -339,11 +341,8 @@ Tapp.widgets["my-widget"] = {
 // ❌ 错误
 fetch("https://api.example.com/data");
 
-// ✅ 正确
-Tapp.http.request({
-  url: "https://api.example.com/data",
-  method: "GET",
-});
+// ✅ 正确：先在 manifest.apis 中声明 "data"
+const data = await Tapp.api("data", {});
 ```
 
 ---
@@ -355,7 +354,8 @@ Tapp.http.request({
 **原因**：
 
 1. 未在 manifest 的 `apis` 中声明对应名称
-2. API 端点不允许跨域请求
+2. `protected` API 未授予 `network:fetch`
+3. 后端出站安全或参数模板校验拒绝了请求
 
 **解决方案**：
 
@@ -368,11 +368,15 @@ Tapp.http.request({
       "type": "http",
       "endpoint": "https://api.example.com",
       "method": "GET",
+      "access": "protected",
       "description": "数据 API"
     }
   }
 }
 ```
+
+并在 `permissions` 中申请 `network:fetch`。如果 API 确实可匿名调用，可把 `access`
+明确设为 `public`；它仍会经过 Manifest 与后端出站安全校验。
 
 ---
 
@@ -419,7 +423,8 @@ Tapp.lifecycle.onReady(async function () {
 
 ### 发布前检查
 
-- [ ] `index.json` 中的文件路径与实际文件名一致
+- [ ] `manifest.main` 与实际入口一致
+- [ ] 商店 `index.json` 的 `download.code` 能下载同一入口
 - [ ] manifest 声明的所有资源文件都存在
 - [ ] 版本号在 `index.json` 和 `manifest.json` 中一致
 - [ ] Widget 模板文件格式正确

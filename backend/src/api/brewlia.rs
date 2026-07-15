@@ -273,18 +273,17 @@ async fn generate_and_save_annotations(
     content: &str,
 ) -> axum::response::Response {
     // 调用 AI 服务（provider 感知：Gemini/OpenAI 兼容均正确路由，不再硬编码 Gemini 端点）
-    let ai_analyzer =
-        match create_ai_analyzer_for_tier(crate::config::ModelTier::Standard).await {
-            Some(analyzer) => analyzer,
-            None => {
-                tracing::error!("AI analyzer unavailable: no API key configured");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "success": false, "error": "AI service unavailable" })),
-                )
-                    .into_response();
-            }
-        };
+    let ai_analyzer = match create_ai_analyzer_for_tier(crate::config::ModelTier::Standard).await {
+        Some(analyzer) => analyzer,
+        None => {
+            tracing::error!("AI analyzer unavailable: no API key configured");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "success": false, "error": "AI service unavailable" })),
+            )
+                .into_response();
+        }
+    };
 
     // 限制内容长度
     let max_len = 30000;
@@ -841,18 +840,17 @@ async fn get_podcast_script(
     }
 
     // 初始化 AI 服务（provider 感知）
-    let ai_analyzer =
-        match create_ai_analyzer_for_tier(crate::config::ModelTier::Standard).await {
-            Some(analyzer) => analyzer,
-            None => {
-                tracing::error!("AI analyzer unavailable: no API key configured");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "success": false, "error": "AI service unavailable" })),
-                )
-                    .into_response();
-            }
-        };
+    let ai_analyzer = match create_ai_analyzer_for_tier(crate::config::ModelTier::Standard).await {
+        Some(analyzer) => analyzer,
+        None => {
+            tracing::error!("AI analyzer unavailable: no API key configured");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "success": false, "error": "AI service unavailable" })),
+            )
+                .into_response();
+        }
+    };
 
     // 限制内容长度
     let max_len = 20000;
@@ -1297,18 +1295,17 @@ async fn generate_style_tags(
     tracing::debug!("Articles summary for AI:\n{}", articles_summary);
 
     // 初始化 AI 服务（provider 感知）
-    let ai_analyzer =
-        match create_ai_analyzer_for_tier(crate::config::ModelTier::Standard).await {
-            Some(analyzer) => analyzer,
-            None => {
-                tracing::error!("AI analyzer unavailable: no API key configured");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "success": false, "error": "AI service unavailable" })),
-                )
-                    .into_response();
-            }
-        };
+    let ai_analyzer = match create_ai_analyzer_for_tier(crate::config::ModelTier::Standard).await {
+        Some(analyzer) => analyzer,
+        None => {
+            tracing::error!("AI analyzer unavailable: no API key configured");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "success": false, "error": "AI service unavailable" })),
+            )
+                .into_response();
+        }
+    };
 
     // 构建提示词
     let prompt = build_style_tags_prompt(&source.name, &articles_summary);

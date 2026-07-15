@@ -19,6 +19,9 @@ const TAPP_SIZE_MAP: Record<string, WidgetSize> = {
   '2x1': '2x1',
   '1x2': '1x2',
   '2x2': '2x2',
+  '2x3': '2x3',
+  '3x2': '3x2',
+  '3x3': '3x3',
   '2x4': '2x4',
   '4x1': '4x1',
   '4x2': '4x2',
@@ -71,6 +74,7 @@ function createTappWidgetType(widget: RegisteredWidget): TappWidgetType {
     defaultSize: mapTappSize(config.defaultSize),
     component: WrappedComponent,
     supportedSizes: mapTappSizes(config.sizes),
+    settings: config.settings,
     // Tapp 特定字段
     isTappWidget: true,
     tappId: widget.tappId,

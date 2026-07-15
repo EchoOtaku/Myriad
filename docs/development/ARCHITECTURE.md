@@ -63,6 +63,13 @@ browser ─► astro dev(:1102) ─► /api/* proxy ─► backend(:1103) ─►
 
 ## Components
 
+### Tapp extension runtime
+
+Tapp 是 Myriad 内的第三方应用运行时，不是普通 React 组件或后端插件。安装资源由后端
+校验并按 owner 持久化，前端按 Page、Widget 或 headless 场景创建隔离 iframe，Tapp
+只能通过带权限检查的 Bridge 与宿主/后端交互。完整边界、安装链路、生命周期、调度器、
+声明式 API 与性能约束见 [Tapp 架构](tapp/ARCHITECTURE.md)。
+
 ### Frontend (Astro + React)
 
 **Location**: `frontend/`

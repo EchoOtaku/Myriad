@@ -169,7 +169,8 @@ async fn load_pending_tasks_from_db(db: &DatabaseConnection) -> Result<(), Strin
         .filter(
             agent_tasks::Column::Status
                 .eq("pending")
-                .or(agent_tasks::Column::Status.eq("running")),
+                .or(agent_tasks::Column::Status.eq("running"))
+                .or(agent_tasks::Column::Status.eq("waiting_for_input")),
         )
         .order_by_desc(agent_tasks::Column::StartedAt)
         .all(db)
@@ -180,11 +181,10 @@ async fn load_pending_tasks_from_db(db: &DatabaseConnection) -> Result<(), Strin
     let mut recovered = 0u32;
     for task_model in pending_tasks {
         if let Ok(mut task_state) = task_model_to_state(&task_model) {
-            // 服务重启时，Running/WaitingForInput 状态的任务无法恢复执行，标记为 Cancelled
-            if matches!(
-                task_state.status,
-                TaskStatus::Running | TaskStatus::WaitingForInput
-            ) {
+            // A running call has no safe continuation point after restart.
+            // WaitingForInput does: recipe/context/question are persisted and
+            // can be resumed by any replica when its interaction completes.
+            if task_state.status == TaskStatus::Running {
                 tracing::warn!(
                     task_id = %task_state.task_id,
                     old_status = ?task_state.status,
@@ -234,6 +234,11 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok());
 
+    let recipe: Option<Recipe> = model
+        .recipe
+        .as_ref()
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
+
     Ok(TaskState {
         task_id: model.id.clone(),
         recipe_id: model.recipe_id.clone(),
@@ -248,7 +253,7 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
         execution_context,
         lane_id: None,
         execution_trace: None,
-        recipe: None, // Recipe 不持久化到 DB，仅在内存中保持
+        recipe,
     })
 }
 
@@ -284,6 +289,7 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
         active_model.progress = Set(task.progress as i16);
         active_model.pending_question = Set(task.pending_question.as_ref().map(|q| json!(q)));
         active_model.execution_context = Set(task.execution_context.as_ref().map(|c| json!(c)));
+        active_model.recipe = Set(task.recipe.as_ref().map(|recipe| json!(recipe)));
 
         active_model
             .update(db)
@@ -304,6 +310,7 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
             progress: Set(task.progress as i16),
             pending_question: Set(task.pending_question.as_ref().map(|q| json!(q))),
             execution_context: Set(task.execution_context.as_ref().map(|c| json!(c))),
+            recipe: Set(task.recipe.as_ref().map(|recipe| json!(recipe))),
             original_request: Set(None),
             updated_at: Set(chrono::Utc::now().into()),
             session_id: Set(None),
@@ -357,19 +364,34 @@ pub fn persist_task_async(user_id: i32, task: TaskState) {
 ///
 /// 仅当任务属于指定用户时才返回，防止 IDOR
 pub async fn get_task_for_user(task_id: &str, user_id: i32) -> Option<TaskState> {
-    let store = TASK_STORE.read().await;
-    // 先确认 task_id 在该用户的任务列表中
-    let user_owns_task = store
-        .user_tasks
-        .get(&user_id)
-        .map(|ids| ids.iter().any(|id| id == task_id))
-        .unwrap_or(false);
-
-    if user_owns_task {
-        store.get(task_id).cloned()
-    } else {
-        None
+    {
+        let store = TASK_STORE.read().await;
+        let user_owns_task = store
+            .user_tasks
+            .get(&user_id)
+            .is_some_and(|ids| ids.iter().any(|id| id == task_id));
+        if user_owns_task {
+            return store.get(task_id).cloned();
+        }
     }
+
+    // Requests and Tapp result callbacks may land on a different replica from
+    // the original executor. Hydrate the persisted task on demand instead of
+    // treating a local cache miss as "not found".
+    let db = DB_FOR_TASKS.read().await.clone()?;
+    let model = agent_tasks::Entity::find_by_id(task_id)
+        .filter(agent_tasks::Column::UserId.eq(user_id))
+        .one(&db)
+        .await
+        .ok()??;
+    let task = task_model_to_state(&model).ok()?;
+    let mut store = TASK_STORE.write().await;
+    store.tasks.insert(task_id.to_string(), task.clone());
+    let ids = store.user_tasks.entry(user_id).or_default();
+    if !ids.iter().any(|id| id == task_id) {
+        ids.push(task_id.to_string());
+    }
+    Some(task)
 }
 
 /// 取消任务（带所有权校验）
@@ -466,5 +488,39 @@ mod tests {
 
         assert!(store.get("test_task").is_some());
         assert_eq!(store.get_user_tasks(1).len(), 1);
+    }
+
+    #[test]
+    fn task_model_restores_recipe_for_cross_replica_resume() {
+        let recipe = Recipe::new("resume interaction", "open a Tapp", ExecutionType::Instant);
+        let now = Utc::now().fixed_offset();
+        let model = agent_tasks::Model {
+            id: "task-with-recipe".to_string(),
+            user_id: 7,
+            recipe_id: recipe.id.clone(),
+            name: None,
+            status: "waiting_for_input".to_string(),
+            current_step: 1,
+            total_steps: Some(1),
+            step_results: json!({}),
+            execution_context: None,
+            recipe: Some(json!(recipe)),
+            pending_question: None,
+            progress: 50,
+            error: None,
+            original_request: None,
+            session_id: None,
+            lane_id: None,
+            started_at: now,
+            completed_at: None,
+            updated_at: now,
+        };
+
+        let restored = task_model_to_state(&model).expect("task model should deserialize");
+        let restored_recipe = restored.recipe.expect("recipe should be restored");
+
+        assert_eq!(restored.status, TaskStatus::WaitingForInput);
+        assert_eq!(restored_recipe.id, model.recipe_id);
+        assert_eq!(restored_recipe.execution_type, ExecutionType::Instant);
     }
 }

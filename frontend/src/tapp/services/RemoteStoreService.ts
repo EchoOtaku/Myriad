@@ -535,7 +535,7 @@ class RemoteStoreServiceImpl {
     }
 
     const indexWithBase = { ...storeIndex, base_url: baseUrl }
-    const [manifest, code, styles, widgetCss, pageCss, pageTemplate] =
+    const [downloadedManifest, code, styles, widgetCss, pageCss, pageTemplate] =
       await Promise.all([
         this.downloadManifest(app, indexWithBase),
         this.downloadCode(app, indexWithBase),
@@ -544,6 +544,11 @@ class RemoteStoreServiceImpl {
         downloadText(app.download.page_styles),
         downloadText(app.download.page_template),
       ])
+    const manifest: TappManifest = {
+      ...downloadedManifest,
+      minSystemVersion:
+        downloadedManifest.minSystemVersion || app.min_myriad_version,
+    }
 
     let widgetTemplates: Record<string, string> | undefined
     if (app.download.widget_templates) {

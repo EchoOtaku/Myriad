@@ -115,14 +115,20 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(FederationRemoteActors::MfpVersion).string_len(20))
                     // 远程实例 Tapp 能力列表
                     .col(ColumnDef::new(FederationRemoteActors::TappCapabilities).json())
-                    .col(ColumnDef::new(FederationRemoteActors::LastFetchedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(FederationRemoteActors::LastFetchedAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .col(
                         ColumnDef::new(FederationRemoteActors::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .extra("DEFAULT NOW()".to_owned()),
                     )
-                    .col(ColumnDef::new(FederationRemoteActors::UpdatedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(FederationRemoteActors::UpdatedAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -182,7 +188,10 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(FederationInstances::OpenRegistrations).boolean())
                     .col(ColumnDef::new(FederationInstances::TappCapabilities).json())
                     .col(ColumnDef::new(FederationInstances::LastSeenAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(FederationInstances::LastSuccessAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(FederationInstances::LastSuccessAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .col(
                         ColumnDef::new(FederationInstances::FailureCount)
                             .integer()
@@ -334,7 +343,9 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .extra("DEFAULT NOW()".to_owned()),
                     )
-                    .col(ColumnDef::new(FederationActivities::ReceivedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(FederationActivities::ReceivedAt).timestamp_with_time_zone(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -420,7 +431,10 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(12),
                     )
-                    .col(ColumnDef::new(FederationDeliveryQueue::LastAttemptAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(FederationDeliveryQueue::LastAttemptAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .col(
                         ColumnDef::new(FederationDeliveryQueue::NextRetryAt)
                             .timestamp_with_time_zone()
@@ -509,7 +523,10 @@ impl MigrationTrait for Migration {
                             .string_len(10)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(FederationChannels::LastActivityAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(FederationChannels::LastActivityAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .col(
                         ColumnDef::new(FederationChannels::CreatedAt)
                             .timestamp_with_time_zone()
@@ -895,7 +912,10 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(FederationRingMemberships::GossipConfig).json())
                     .col(ColumnDef::new(FederationRingMemberships::KnownPeers).json())
-                    .col(ColumnDef::new(FederationRingMemberships::LastSyncAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(FederationRingMemberships::LastSyncAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .col(
                         ColumnDef::new(FederationRingMemberships::JoinedAt)
                             .timestamp_with_time_zone()
@@ -954,7 +974,10 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .extra("DEFAULT NOW()".to_owned()),
                     )
-                    .col(ColumnDef::new(FederationPublishedContent::UpdatedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(FederationPublishedContent::UpdatedAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -1110,7 +1133,10 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .extra("DEFAULT NOW()".to_owned()),
                     )
-                    .col(ColumnDef::new(FederationFileTransfers::CompletedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(FederationFileTransfers::CompletedAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -1120,21 +1146,79 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // 按依赖顺序反向删除
-        manager.drop_table(Table::drop().table(FederationFileTransfers::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationTimeline::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationPublishedContent::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationRingMemberships::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationRoomMessages::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationRoomMembers::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationRooms::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationChannelMessages::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationChannels::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationDeliveryQueue::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationActivities::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationFollows::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationInstances::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationRemoteActors::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(FederationKeys::Table).to_owned()).await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(FederationFileTransfers::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(FederationTimeline::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(FederationPublishedContent::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(FederationRingMemberships::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(FederationRoomMessages::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(FederationRoomMembers::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(FederationRooms::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(FederationChannelMessages::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(FederationChannels::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(FederationDeliveryQueue::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(FederationActivities::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(FederationFollows::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(FederationInstances::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(FederationRemoteActors::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(FederationKeys::Table).to_owned())
+            .await?;
         Ok(())
     }
 }

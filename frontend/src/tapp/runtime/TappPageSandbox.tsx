@@ -4,17 +4,16 @@
  * 用于渲染 Tapp 的页面模式（全屏应用）
  */
 
-import type { TappCodeStructure } from '../examples/tapps/types'
+import type { TappCodeStructure } from '../types'
 import type { TappInstance } from '../types'
 import type { AnimationConfigRef, SafeInsets } from './sandbox'
 import type { TappBridge } from './TappBridge'
-import type { TappPermissionController } from './TappPermission'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { getIsDarkMode } from '../../utils/themeSubscriber'
-import { getCodeForMode } from '../examples/tapps/types'
+import { getCodeForMode } from './codeStructure'
 import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 import {
   generateCSP,
@@ -28,12 +27,15 @@ import {
 } from './sandbox'
 import {
   registerAdvancedHandlers,
+  registerAgentInteractionHandlers,
   registerAIHandlers,
   registerAnimationHandlers,
   registerBackgroundHandlers,
   registerBrewListHandlers,
   registerContextHandlers,
+  registerDataExchangeHandlers,
   registerDynamicContentHandlers,
+  registerEventHandlers,
   registerFederationHandlers,
   registerFileHandlers,
   registerLifecycleHandlers,
@@ -49,8 +51,9 @@ import {
   registerWidgetHandlers,
 } from './sandbox/handlers'
 import { createTappBridge } from './TappBridge'
-import { createPermissionController } from './TappPermission'
+import { TappRuntimeGrant } from './TappRuntimeGrant'
 import { useSandboxSubscriptions } from './useSandboxSubscriptions'
+import { onTappStorageChange } from './WidgetRuntimeSignals'
 
 // 核心模块
 
@@ -396,7 +399,6 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const bridgeRef = useRef<TappBridge | null>(null)
-  const permissionRef = useRef<TappPermissionController | null>(null)
   const [isReady, setIsReady] = useState(false)
 
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
@@ -413,6 +415,26 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
   // 🎯 集成动画调度器的页面可见性感知 + 主题/主色调订阅（共享 hook）
   useSandboxSubscriptions(bridgeRef, isReady)
+
+  // 同一 Tapp 的其他 Page、headless core 或 Widget 修改 storage 时通知本沙箱。
+  useEffect(
+    () =>
+      onTappStorageChange((change) => {
+        const bridge = bridgeRef.current
+        if (
+          !bridge ||
+          change.tappId !== tappInstance.id ||
+          change.source === bridge
+        ) {
+          return
+        }
+        bridge.emit('storageChanged', {
+          key: change.key,
+          operation: change.operation,
+        })
+      }),
+    [tappInstance.id],
+  )
 
   // 🎯 生成稳定的代码指纹，只有代码实际变化时才重建 iframe
   const codeFingerprint = useMemo(() => {
@@ -649,10 +671,13 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     const bridge = createTappBridge()
     bridgeRef.current = bridge
 
-    const permission = createPermissionController(currentTappInstance)
-    permissionRef.current = permission
+    const runtimeGrant = new TappRuntimeGrant(
+      currentTappInstance.id,
+      `${headless ? 'headless' : 'page'}_${sessionToken.slice(0, 32)}`,
+      headless ? 'headless' : 'page',
+    )
 
-    bridge.initialize(iframe, currentTappInstance, sessionToken)
+    bridge.initialize(iframe, currentTappInstance, sessionToken, runtimeGrant)
 
     // 注册所有处理器
     registerLifecycleHandlers(
@@ -669,7 +694,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerPlatformHandlers(bridge, currentTappInstance)
     registerTappListHandlers(bridge, currentTappInstance)
     registerBrewListHandlers(bridge, currentTappInstance)
-    registerAIHandlers(bridge, permission, currentTappInstance)
+    const closeAITaskStreams = registerAIHandlers(bridge, currentTappInstance)
     registerReportHandlers(bridge, currentTappInstance)
     registerMediaHandlers(bridge, currentTappInstance)
     registerSpeechHandlers(bridge, currentTappInstance)
@@ -686,6 +711,15 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       currentTappInstance,
     )
     registerContextHandlers(bridge, currentTappInstance)
+    const closeDataExchange = registerDataExchangeHandlers(
+      bridge,
+      currentTappInstance,
+    )
+    const closeEventStream = registerEventHandlers(bridge, currentTappInstance)
+    const closeAgentInteractions = registerAgentInteractionHandlers(
+      bridge,
+      currentTappInstance,
+    )
 
     // 收集 URL 启动参数传递给沙箱
     const launchParams: Record<string, string> = {}
@@ -711,7 +745,14 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         )
 
     // 清理函数列表
-    const cleanups: (() => void)[] = [closeFederationSockets, closeScheduler]
+    const cleanups: (() => void)[] = [
+      closeFederationSockets,
+      closeScheduler,
+      closeDataExchange,
+      closeAITaskStreams,
+      closeEventStream,
+      closeAgentInteractions,
+    ]
 
     if (isWebKit) {
       // 🎯 Safari/WebKit Portal 模式

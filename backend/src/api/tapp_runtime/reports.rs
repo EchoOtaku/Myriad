@@ -12,7 +12,8 @@ use serde_json::{json, Value};
 use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 
-use super::common::{check_tapp_permission, parse_user_id, verify_tapp_ownership};
+use super::common::{authorize_tapp_permission, parse_user_id, validate_platform_name};
+use super::runtime_grant::RuntimeGrantContext;
 
 /// GET /api/reports/list
 pub async fn list_reports(
@@ -59,6 +60,105 @@ pub async fn list_reports(
     Ok(Json(json!({ "reports": report_list })))
 }
 
+fn platform_report_payload(report: &crate::models::entities::platform_reports::Model) -> Value {
+    json!({
+        "id": report.id,
+        "platform": report.platform,
+        "type": "platform",
+        "summary": report.report.get("summary").and_then(Value::as_str).unwrap_or(""),
+        "content": report.report,
+        "metadata": report.metadata,
+        "createdAt": report.created_at.to_string()
+    })
+}
+
+/// GET /api/tapp/report-catalog
+pub async fn list_runtime_reports(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require(TappPermission::ReportRead)?;
+    let user_id = parse_user_id(&claims)?;
+    use crate::models::entities::platform_reports;
+    let reports = platform_reports::Entity::find()
+        .filter(platform_reports::Column::UserId.eq(user_id))
+        .order_by_desc(platform_reports::Column::CreatedAt)
+        .all(&db)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "[TAPP] Failed to list runtime report catalog");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to fetch reports" })),
+            )
+        })?;
+    Ok(Json(json!({
+        "reports": reports.iter().map(platform_report_payload).collect::<Vec<_>>()
+    })))
+}
+
+/// GET /api/tapp/report-catalog/{report_id}
+pub async fn get_runtime_report(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
+    Path(report_id): Path<i32>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require(TappPermission::ReportRead)?;
+    let user_id = parse_user_id(&claims)?;
+    use crate::models::entities::platform_reports;
+    let report = platform_reports::Entity::find_by_id(report_id)
+        .filter(platform_reports::Column::UserId.eq(user_id))
+        .one(&db)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to fetch report" })),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Report not found" })),
+            )
+        })?;
+    Ok(Json(platform_report_payload(&report)))
+}
+
+/// GET /api/tapp/report-catalog/platform/{platform}
+pub async fn get_runtime_platform_report(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
+    Path(platform): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require(TappPermission::ReportRead)?;
+    validate_platform_name(&platform)
+        .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
+    let user_id = parse_user_id(&claims)?;
+    use crate::models::entities::platform_reports;
+    let report = platform_reports::Entity::find()
+        .filter(platform_reports::Column::UserId.eq(user_id))
+        .filter(platform_reports::Column::Platform.eq(platform.to_lowercase()))
+        .order_by_desc(platform_reports::Column::CreatedAt)
+        .one(&db)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to fetch report" })),
+            )
+        })?;
+    Ok(Json(
+        report
+            .as_ref()
+            .map(platform_report_payload)
+            .unwrap_or(Value::Null),
+    ))
+}
+
 // ============ Report CRUD ============
 
 #[derive(Debug, Deserialize)]
@@ -87,11 +187,13 @@ pub struct ListReportsQuery {
 pub async fn create_report(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Json(req): Json<CreateReportRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    check_tapp_permission(&claims, TappPermission::ReportWrite).await?;
-    let user_id = parse_user_id(&claims)?;
-    verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
+    runtime_grant.require_tapp_id(&req.tapp_id)?;
+    runtime_grant.require(TappPermission::ReportWrite)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::ReportWrite).await?;
 
     tracing::info!(
         "[TAPP] create_report - User: {}, Tapp: {}, Type: {}",
@@ -150,9 +252,14 @@ pub async fn create_report(
 pub async fn list_tapp_reports(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
     Query(query): Query<ListReportsQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::ReportRead)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::ReportRead).await?;
     tracing::debug!(
         "[TAPP] list_tapp_reports - User: {}, Tapp: {}",
         claims.username,
@@ -160,13 +267,6 @@ pub async fn list_tapp_reports(
     );
 
     use crate::models::entities::tapp_storage;
-
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
 
     let limit = query.limit.unwrap_or(50).min(100) as u64;
     let offset = query.offset.unwrap_or(0) as u64;
@@ -212,8 +312,13 @@ pub async fn list_tapp_reports(
 pub async fn get_tapp_report(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, report_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::ReportRead)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::ReportRead).await?;
     tracing::debug!(
         "[TAPP] get_tapp_report - User: {}, Report: {}",
         claims.username,
@@ -221,13 +326,6 @@ pub async fn get_tapp_report(
     );
 
     use crate::models::entities::tapp_storage;
-
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
 
     let storage_key = format!("_report:{}", report_id);
 
@@ -257,9 +355,14 @@ pub async fn get_tapp_report(
 pub async fn update_tapp_report(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, report_id)): Path<(String, String)>,
     Json(req): Json<UpdateReportRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::ReportWrite)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::ReportWrite).await?;
     tracing::info!(
         "[TAPP] update_tapp_report - User: {}, Report: {}",
         claims.username,
@@ -268,13 +371,6 @@ pub async fn update_tapp_report(
 
     use crate::models::entities::tapp_storage;
     use sea_orm::{ActiveModelTrait, Set};
-
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
 
     let storage_key = format!("_report:{}", report_id);
 
@@ -329,8 +425,13 @@ pub async fn update_tapp_report(
 pub async fn delete_tapp_report(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    runtime_grant: RuntimeGrantContext,
     Path((tapp_id, report_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    runtime_grant.require(TappPermission::ReportWrite)?;
+    let user_id =
+        authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::ReportWrite).await?;
     tracing::info!(
         "[TAPP] delete_tapp_report - User: {}, Report: {}",
         claims.username,
@@ -338,13 +439,6 @@ pub async fn delete_tapp_report(
     );
 
     use crate::models::entities::tapp_storage;
-
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
-        )
-    })?;
 
     let storage_key = format!("_report:{}", report_id);
 

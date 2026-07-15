@@ -10,15 +10,19 @@
 //! - media:       媒体控制 API
 //! - components:  组件注册 API
 //! - shortcuts:   快捷键注册 API
-//! - events:      事件总线 API
+//! - events:      事件声明与当前 Bridge 通知 API
 //! - metrics:     性能指标 API
 //! - declared_api: Tapp API 声明系统
 
+mod agent_interactions;
 mod ai;
+mod ai_quota;
+mod ai_tasks;
 pub mod common;
 mod components;
 mod context;
 mod data;
+mod data_exchange;
 mod declared_api;
 mod events;
 mod media;
@@ -26,6 +30,8 @@ mod metrics;
 mod notifications;
 mod platform;
 mod reports;
+mod runtime_grant;
+mod shared_registry;
 mod shortcuts;
 
 // ============ 公开 re-export（保持 api::tapp::* 路径兼容） ============
@@ -37,16 +43,33 @@ pub use platform::{
 };
 
 // AI API
-pub use ai::{ai_analyze, ai_chat, ai_generate, ai_image_generate, ai_image_task_status};
+pub use agent_interactions::create_agent_interaction_internal;
+pub use agent_interactions::{
+    accept_agent_interaction, get_agent_interaction, reject_agent_interaction,
+    request_agent_intent, stream_agent_interactions, submit_agent_interaction_result,
+};
+pub use ai::{ai_analyze, ai_chat, ai_generate, ai_image_generate, ai_image_task_status, ai_usage};
+pub use ai_tasks::{
+    ai_v2_usage, cancel_ai_task, create_ai_task, get_ai_task, stream_ai_task_events,
+};
 
 // Reports API
 pub use reports::{
-    create_report, delete_tapp_report, get_tapp_report, list_reports, list_tapp_reports,
-    update_tapp_report,
+    create_report, delete_tapp_report, get_runtime_platform_report, get_runtime_report,
+    get_tapp_report, list_reports, list_runtime_reports, list_tapp_reports, update_tapp_report,
+};
+
+// Runtime identity grants
+pub use runtime_grant::{
+    issue_runtime_grant, revoke_all_tapp_runtime_grants, revoke_runtime_grant,
+    revoke_tapp_runtime_grants, RuntimeGrantContext,
 };
 
 // Data API
 pub use data::data_transform;
+pub use data_exchange::{
+    authorize_data_exchange, cancel_data_exchange, consume_data_exchange, prepare_data_exchange,
+};
 
 // Context API
 pub use context::{
@@ -66,7 +89,10 @@ pub use components::{
 pub use shortcuts::{list_shortcuts, register_shortcut, unregister_shortcut};
 
 // Events API
-pub use events::{get_event_subscriptions, publish_event, update_event_subscriptions};
+pub use events::{
+    get_event_subscriptions, publish_event, publish_event_v2, stream_events_v2,
+    update_event_subscriptions,
+};
 
 // Metrics API
 pub use metrics::{get_rate_limit_status, get_tapp_metrics, reset_tapp_metrics};

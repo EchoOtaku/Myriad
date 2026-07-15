@@ -103,6 +103,11 @@ impl Executor {
                 db: &self.db,
                 ai_analyzer: step_analyzer,
                 user_id,
+                task_id: context
+                    .variables
+                    .get("_task_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
                 execution_context: Some(context.clone()),
             };
 

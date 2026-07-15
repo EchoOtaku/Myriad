@@ -40,17 +40,6 @@ static RE_ON_PROP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\.on(\w+)\s*="#).unw
 static RE_I18N_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r#"t\(['\"]([^'\"]+)['\"]\)"#).unwrap());
 static RE_FUNC_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\w+)\s*\("#).unwrap());
 
-/// Escape a string for safe embedding in a JS single-quoted string literal.
-/// Prevents injection when values are interpolated into generated JavaScript.
-fn sanitize_js_string(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('\'', "\\'")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('<', "\\x3c")
-}
-
 /// 执行 UI 控制能力
 pub async fn execute(
     capability_id: &str,
@@ -190,12 +179,6 @@ async fn execute_tapp_understand(
         .get("userIntent")
         .and_then(|v| v.as_str())
         .ok_or("Missing userIntent - 请描述你想要执行的操作")?;
-    let window_id = params.get("windowId").and_then(|v| v.as_str());
-    let auto_execute = params
-        .get("autoExecute")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
     // 获取或复用 UI 分析结果
     let ui_analysis = if let Some(existing) = params.get("uiAnalysis") {
         existing.clone()
@@ -266,44 +249,9 @@ async fn execute_tapp_understand(
             })
         });
 
-    let frontend_action = if auto_execute {
-        if let Some(steps) = parsed
-            .get("plan")
-            .and_then(|p| p.get("steps"))
-            .and_then(|s| s.as_array())
-        {
-            if !steps.is_empty()
-                && parsed
-                    .get("plan")
-                    .and_then(|p| p.get("canFulfill"))
-                    .and_then(|c| c.as_bool())
-                    .unwrap_or(false)
-            {
-                let sequence: Vec<Value> = steps.iter().map(|step| {
-                    json!({
-                        "action": step.get("action").and_then(|a| a.as_str()).unwrap_or("click"),
-                        "target": step.get("target").and_then(|t| t.as_str()).unwrap_or(""),
-                        "value": step.get("value"),
-                        "delay": 100
-                    })
-                }).collect();
-
-                Some(json!({
-                    "type": "tapp_interact",
-                    "tappId": tapp_id,
-                    "windowId": window_id,
-                    "commands": sequence,
-                    "timestamp": chrono::Utc::now().timestamp_millis()
-                }))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    // Analysis no longer emits executable DOM commands. Callers must create a
+    // declared Agent Interaction V2 via `tapp.interact` after reviewing this plan.
+    let frontend_action: Option<Value> = None;
 
     Ok(json!({
         "tappId": tapp_id,
@@ -325,92 +273,39 @@ async fn execute_tapp_interact(
         .get("tappId")
         .and_then(|v| v.as_str())
         .ok_or("Missing tappId")?;
-    // 始终使用已认证的 user_id，防止 IDOR
-    let user_id = ctx.user_id;
-    let action = params.get("action").and_then(|v| v.as_str());
-    let target = params.get("target").and_then(|v| v.as_str());
-    let value = params.get("value").and_then(|v| v.as_str());
-    let function_name = params.get("functionName").and_then(|v| v.as_str());
-    let args = params.get("args").and_then(|v| v.as_array());
-    let sequence = params.get("sequence").and_then(|v| v.as_array());
-
-    // 验证 Tapp 存在
-    let tapp = tapps::Entity::find()
-        .filter(tapps::Column::TappId.eq(tapp_id))
-        .filter(tapps::Column::UserId.eq(user_id))
-        .one(ctx.db)
-        .await
-        .map_err(|e| format!("Failed to fetch tapp: {}", e))?
-        .ok_or("Tapp not found")?;
-
-    let mut commands = vec![];
-    let mut script_parts = vec![];
-
-    // 处理序列操作
-    if let Some(seq) = sequence {
-        for (i, op) in seq.iter().enumerate() {
-            let op_action = op.get("action").and_then(|v| v.as_str()).unwrap_or("click");
-            let op_target = op.get("target").and_then(|v| v.as_str()).unwrap_or("");
-            let op_value = op.get("value").and_then(|v| v.as_str());
-            let op_delay = op.get("delay").and_then(|v| v.as_u64()).unwrap_or(0);
-
-            let (cmd, script) =
-                generate_interaction_command(op_action, op_target, op_value, None, None, op_delay);
-
-            commands.push(json!({
-                "step": i + 1,
-                "action": op_action,
-                "target": op_target,
-                "value": op_value,
-                "delay": op_delay,
-                "command": cmd
-            }));
-            script_parts.push(script);
-        }
-    } else if let Some(act) = action {
-        let (cmd, script) =
-            generate_interaction_command(act, target.unwrap_or(""), value, function_name, args, 0);
-        commands.push(json!({ "action": act, "target": target, "value": value, "command": cmd }));
-        script_parts.push(script);
-    }
-
-    let full_script = if script_parts.len() > 1 {
-        format!(
-            "(async function() {{\n  {}\n}})();",
-            script_parts.join("\n  ")
-        )
-    } else {
-        script_parts.join("")
-    };
-
-    let ws_message = json!({
-        "type": "tapp_interact",
-        "tappId": tapp_id,
-        "userId": user_id,
-        "commands": commands,
-        "timestamp": chrono::Utc::now().timestamp_millis()
+    let interaction_type = params
+        .get("interactionType")
+        .and_then(Value::as_str)
+        .unwrap_or("legacy.interact");
+    let input = params.get("input").cloned().unwrap_or_else(|| {
+        json!({
+            "action": params.get("action"),
+            "target": params.get("target"),
+            "value": params.get("value"),
+            "sequence": params.get("sequence"),
+        })
     });
+    let task_id = ctx.task_id.clone();
+    let interaction = crate::api::tapp_runtime::create_agent_interaction_internal(
+        ctx.db,
+        ctx.user_id,
+        tapp_id,
+        interaction_type,
+        input,
+        task_id,
+    )
+    .await?;
+    let interaction_id = interaction.interaction_id().to_string();
 
     Ok(json!({
         "success": true,
         "tappId": tapp_id,
-        "tappName": tapp.name,
-        "commands": commands,
-        "script": full_script,
+        "interaction": interaction,
         "frontendAction": {
-            "type": "tapp_interact",
+            "type": "agent_interaction",
             "tappId": tapp_id,
-            "commands": commands,
+            "interactionId": interaction_id,
             "timestamp": chrono::Utc::now().timestamp_millis()
-        },
-        "websocketMessage": ws_message,
-        "instructions": {
-            "frontend": "前端可通过以下方式执行操作",
-            "methods": [
-                { "name": "直接执行脚本", "description": "在 Tapp iframe 的 contentWindow 中执行 script 字段" },
-                { "name": "WebSocket 消息", "description": "通过 WebSocket 发送 websocketMessage" },
-                { "name": "postMessage", "description": "使用 postMessage API 向 Tapp iframe 发送" }
-            ]
         }
     }))
 }
@@ -1127,7 +1022,10 @@ async fn execute_tapp_fill(
     let target_window = params
         .get("targetWindow")
         .ok_or("Missing targetWindow parameter")?;
-    let data = params.get("data").ok_or("Missing data parameter")?;
+    let data = params
+        .get("data")
+        .cloned()
+        .ok_or("Missing data parameter")?;
     let auto_submit = params
         .get("autoSubmit")
         .and_then(|v| v.as_bool())
@@ -1135,63 +1033,33 @@ async fn execute_tapp_fill(
 
     let window_target = resolve_window_target(target_window, ctx).await?;
 
-    let mut commands = vec![];
-    let mut script_parts = vec![];
-
-    if let Some(fields) = data.get("fields").and_then(|f| f.as_array()) {
-        for field in fields {
-            let target = field.get("target").and_then(|t| t.as_str()).unwrap_or("");
-            let value = field.get("value").and_then(|v| v.as_str()).unwrap_or("");
-            let field_type = field
-                .get("type")
-                .and_then(|t| t.as_str())
-                .unwrap_or("input");
-
-            let (cmd, script) =
-                generate_interaction_command(field_type, target, Some(value), None, None, 0);
-
-            commands.push(
-                json!({ "action": field_type, "target": target, "value": value, "command": cmd }),
-            );
-            script_parts.push(script);
-        }
-    }
-
-    if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
-        let (cmd, script) =
-            generate_interaction_command("input", "main-input", Some(content), None, None, 0);
-        commands.push(json!({ "action": "input", "target": "main-input", "value": content, "command": cmd, "autoDetect": true }));
-        script_parts.push(script);
-    }
-
-    if auto_submit {
-        let (cmd, script) =
-            generate_interaction_command("click", "submit-button", None, None, None, 100);
-        commands.push(json!({ "action": "submit", "target": "submit-button", "command": cmd, "autoDetect": true }));
-        script_parts.push(script);
-    }
-
-    let full_script = if script_parts.len() > 1 {
-        format!(
-            "(async function() {{\n  {}\n}})();",
-            script_parts.join("\n  ")
-        )
-    } else {
-        script_parts.join("")
-    };
+    let tapp_id = window_target
+        .get("tappId")
+        .and_then(Value::as_str)
+        .or_else(|| params.get("tappId").and_then(Value::as_str))
+        .ok_or("targetWindow must resolve to a tappId")?;
+    let interaction = crate::api::tapp_runtime::create_agent_interaction_internal(
+        ctx.db,
+        ctx.user_id,
+        tapp_id,
+        "legacy.fill",
+        json!({ "data": data, "autoSubmit": auto_submit }),
+        params
+            .get("taskId")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    )
+    .await?;
+    let interaction_id = interaction.interaction_id().to_string();
 
     Ok(json!({
         "success": true,
-        "filledFields": commands.len(),
         "targetWindow": window_target,
-        "commands": commands,
-        "script": full_script,
+        "interaction": interaction,
         "frontendAction": {
-            "type": "fill_data",
-            "target": target_window,
-            "data": data,
-            "commands": commands,
-            "autoSubmit": auto_submit,
+            "type": "agent_interaction",
+            "tappId": tapp_id,
+            "interactionId": interaction_id,
             "timestamp": chrono::Utc::now().timestamp_millis()
         }
     }))
@@ -1213,45 +1081,33 @@ async fn execute_tapp_read(
 
     let window_target = resolve_window_target(source_window, ctx).await?;
 
-    let read_script = match read_type {
-        "inputs" => r#"
-            const inputs = {};
-            document.querySelectorAll('input, textarea, select').forEach(el => {
-                if (el.id) inputs[el.id] = el.value;
-            });
-            return inputs;
-        "#.to_string(),
-        "content" => {
-            if let Some(sel) = selector {
-                let safe_sel = sanitize_js_string(sel);
-                format!(r#"const el = document.querySelector('{}'); return el ? el.textContent : null;"#, safe_sel)
-            } else {
-                r#"return document.body.textContent;"#.to_string()
-            }
-        }
-        "storage" => r#"return Tapp.storage ? Tapp.storage.getAll() : {};"#.to_string(),
-        _ => r#"
-            const data = { inputs: {}, content: document.body.textContent, storage: Tapp.storage ? Tapp.storage.getAll() : {} };
-            document.querySelectorAll('input, textarea, select').forEach(el => { if (el.id) data.inputs[el.id] = el.value; });
-            return data;
-        "#.to_string(),
-    };
+    let tapp_id = window_target
+        .get("tappId")
+        .and_then(Value::as_str)
+        .ok_or("sourceWindow must resolve to a tappId")?;
+    let interaction = crate::api::tapp_runtime::create_agent_interaction_internal(
+        ctx.db,
+        ctx.user_id,
+        tapp_id,
+        "legacy.read",
+        json!({ "readType": read_type, "selector": selector }),
+        params
+            .get("taskId")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    )
+    .await?;
+    let interaction_id = interaction.interaction_id().to_string();
 
     Ok(json!({
         "success": true,
         "targetWindow": window_target,
-        "readType": read_type,
+        "interaction": interaction,
         "frontendAction": {
-            "type": "read_data",
-            "target": source_window,
-            "readType": read_type,
-            "selector": selector,
-            "script": read_script,
+            "type": "agent_interaction",
+            "tappId": tapp_id,
+            "interactionId": interaction_id,
             "timestamp": chrono::Utc::now().timestamp_millis()
-        },
-        "instructions": {
-            "description": "前端执行 script 并返回结果",
-            "scriptContext": "在目标 Tapp 的 iframe contentWindow 中执行"
         }
     }))
 }
@@ -1708,115 +1564,6 @@ fn generate_suggested_actions(elements: &Value, _functions: &[Value]) -> Vec<Val
     actions
 }
 
-/// 生成单个交互命令
-fn generate_interaction_command(
-    action: &str,
-    target: &str,
-    value: Option<&str>,
-    function_name: Option<&str>,
-    args: Option<&Vec<Value>>,
-    delay: u64,
-) -> (String, String) {
-    let delay_script = if delay > 0 {
-        format!("await new Promise(r => setTimeout(r, {}));\n  ", delay)
-    } else {
-        String::new()
-    };
-
-    let safe_target = target.replace('-', "_");
-    let escaped_target = sanitize_js_string(target);
-
-    match action {
-        "click" => {
-            let cmd = format!("document.getElementById('{}').click()", escaped_target);
-            let script = format!(
-                "{}const el_{} = document.getElementById('{}');\n  if (el_{}) el_{}.click();",
-                delay_script, safe_target, escaped_target, safe_target, safe_target
-            );
-            (cmd, script)
-        }
-        "input" => {
-            let val = value.unwrap_or("");
-            let escaped_val = sanitize_js_string(val);
-            let cmd = format!(
-                "document.getElementById('{}').value = '{}'",
-                escaped_target, escaped_val
-            );
-            let script = format!(
-                "{}const input_{} = document.getElementById('{}');\n  if (input_{}) {{\n    input_{}.value = '{}';\n    input_{}.dispatchEvent(new Event('input', {{ bubbles: true }}));\n  }}",
-                delay_script, safe_target, escaped_target, safe_target, safe_target, escaped_val, safe_target
-            );
-            (cmd, script)
-        }
-        "submit" => {
-            let cmd = format!("document.getElementById('{}').submit()", escaped_target);
-            let script = format!(
-                "{}const form_{} = document.getElementById('{}');\n  if (form_{}) form_{}.submit();",
-                delay_script, safe_target, escaped_target, safe_target, safe_target
-            );
-            (cmd, script)
-        }
-        "call" => {
-            let func = function_name.unwrap_or(target);
-            let safe_func = sanitize_js_string(func);
-            let args_str = args
-                .map(|a| {
-                    a.iter()
-                        .map(|v| {
-                            if v.is_string() {
-                                format!("'{}'", sanitize_js_string(v.as_str().unwrap_or("")))
-                            } else {
-                                v.to_string()
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                })
-                .unwrap_or_default();
-            let cmd = format!("{}({})", safe_func, args_str);
-            let script = format!(
-                "{}if (typeof {} === 'function') {}({});",
-                delay_script, safe_func, safe_func, args_str
-            );
-            (cmd, script)
-        }
-        "focus" => {
-            let cmd = format!("document.getElementById('{}').focus()", escaped_target);
-            let script = format!(
-                "{}const focus_{} = document.getElementById('{}');\n  if (focus_{}) focus_{}.focus();",
-                delay_script, safe_target, escaped_target, safe_target, safe_target
-            );
-            (cmd, script)
-        }
-        "clear" => {
-            let cmd = format!("document.getElementById('{}').value = ''", escaped_target);
-            let script = format!(
-                "{}const clear_{} = document.getElementById('{}');\n  if (clear_{}) {{\n    clear_{}.value = '';\n    clear_{}.dispatchEvent(new Event('input', {{ bubbles: true }}));\n  }}",
-                delay_script, safe_target, escaped_target, safe_target, safe_target, safe_target
-            );
-            (cmd, script)
-        }
-        "select" => {
-            let val = value.unwrap_or("");
-            let escaped_val = sanitize_js_string(val);
-            let cmd = format!(
-                "document.getElementById('{}').value = '{}'",
-                escaped_target, escaped_val
-            );
-            let script = format!(
-                "{}const select_{} = document.getElementById('{}');\n  if (select_{}) {{\n    select_{}.value = '{}';\n    select_{}.dispatchEvent(new Event('change', {{ bubbles: true }}));\n  }}",
-                delay_script, safe_target, escaped_target, safe_target, safe_target, escaped_val, safe_target
-            );
-            (cmd, script)
-        }
-        _ => {
-            let cmd = format!("// Unknown action: {}", action);
-            let script = format!("{}// Unknown action: {}", delay_script, action);
-            (cmd, script)
-        }
-    }
-}
-
 /// 解析窗口目标参数
 async fn resolve_window_target(target: &Value, ctx: &HandlerContext<'_>) -> Result<Value, String> {
     let window_id = target.get("windowId").and_then(|v| v.as_str());
@@ -1957,8 +1704,17 @@ fn extract_route_context(path: &str, params: &HashMap<String, Value>) -> Value {
         if let Some(platform) = segments.get(1).or(segments.first()) {
             let platform_lower = platform.to_lowercase();
             if [
-                "bilibili", "bangumi", "steam", "github", "netease", "mal", "x", "discord",
-                "xbox", "psn", "playstation",
+                "bilibili",
+                "bangumi",
+                "steam",
+                "github",
+                "netease",
+                "mal",
+                "x",
+                "discord",
+                "xbox",
+                "psn",
+                "playstation",
             ]
             .contains(&platform_lower.as_str())
             {

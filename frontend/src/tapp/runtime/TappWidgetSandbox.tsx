@@ -11,15 +11,11 @@
  * - 响应式主题：实时响应主题和主色调变化
  */
 
-import type { TappCodeStructure } from '../examples/tapps/types'
-
-import type { TappInstance } from '../types'
+import type { TappCodeStructure, TappInstance } from '../types'
 import type { WidgetRenderProps } from './sandbox'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getCodeForMode } from '../examples/tapps/types'
+import { getCodeForMode } from './codeStructure'
 
-import { getQuotaManager } from '../services/QuotaManager'
-import * as TappApiService from '../services/TappApiService'
 import {
   calculateWidgetDimensions,
   sendResizeMessage,
@@ -37,18 +33,27 @@ import {
 } from './sandbox'
 // 处理器
 import {
+  registerAnimationHandlers,
+  registerAIHandlers,
+  registerAgentInteractionHandlers,
   registerBackgroundHandlers,
   registerContextHandlers,
+  registerDataExchangeHandlers,
+  registerEventHandlers,
   registerFileHandlers,
   registerLifecycleHandlers,
   registerMediaHandlers,
+  registerPlatformHandlers,
+  registerReportHandlers,
   registerSchedulerHandlers,
+  registerSpeechHandlers,
   registerStorageHandlers,
   registerUIHandlers,
 } from './sandbox/handlers'
 import { TappBridge } from './TappBridge'
-import { TappPermissionController } from './TappPermission'
+import { TappRuntimeGrant } from './TappRuntimeGrant'
 import { useSandboxSubscriptions } from './useSandboxSubscriptions'
+import { onTappStorageChange } from './WidgetRuntimeSignals'
 
 export interface TappWidgetSandboxProps {
   /** Tapp 实例 */
@@ -63,6 +68,10 @@ export interface TappWidgetSandboxProps {
   onError?: (error: Error) => void
   /** 就绪回调 */
   onReady?: () => void
+  /** 当前 Dashboard 实例设置变更回调 */
+  onInstanceSettingsChange?: (patch: Record<string, unknown>) => boolean
+  /** 请求刷新当前 Widget 实例 */
+  onInvalidate?: (reason: string) => void
   /** 额外的 className */
   className?: string
   /** 额外的 style */
@@ -224,64 +233,6 @@ function generateWidgetHTML(
 }
 
 /**
- * 注册 Widget 专用的 AI 处理器（精简版）
- *
- * 安全增强：添加配额检查
- */
-function registerWidgetAIHandler(
-  bridge: TappBridge,
-  permission: TappPermissionController,
-  tappId: string,
-): void {
-  const quotaManager = getQuotaManager()
-
-  bridge.registerHandler('ai.chat', async (message) => {
-    // 🔒 权限检查
-    if (!permission.hasPermission('ai:chat')) {
-      return { success: false, error: 'Permission denied: ai:chat' }
-    }
-
-    // 🔒 配额检查
-    const quotaCheck = quotaManager.checkQuota(tappId, 'ai.generate')
-    if (!quotaCheck.allowed) {
-      return {
-        success: false,
-        error: quotaCheck.reason || 'Quota exceeded',
-        code: 'QUOTA_EXCEEDED',
-      }
-    }
-
-    const [params] = (message.payload as { args: unknown[] }).args || []
-    const { messages, context, options } = (params || {}) as {
-      messages?: Array<{
-        role: 'user' | 'assistant' | 'system'
-        content: string
-      }>
-      context?: Record<string, unknown>
-      options?: Record<string, unknown>
-    }
-    try {
-      const result = await TappApiService.aiChat({
-        tappId,
-        messages: messages || [],
-        context,
-        options,
-      })
-
-      // 记录配额使用
-      quotaManager.recordUsage(tappId, 'ai.generate')
-
-      return { success: true, data: result }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'AI error',
-      }
-    }
-  })
-}
-
-/**
  * Tapp Widget 沙箱组件
  */
 export const TappWidgetSandbox = memo(
@@ -291,6 +242,8 @@ export const TappWidgetSandbox = memo(
     widgetId,
     widgetProps,
     onReady,
+    onInstanceSettingsChange,
+    onInvalidate,
     className,
     style,
   }: TappWidgetSandboxProps) => {
@@ -303,8 +256,12 @@ export const TappWidgetSandbox = memo(
     // 这些对象的内容变化通过 ID 来追踪，而不是对象引用
     const tappInstanceRef = useRef(tappInstance)
     const codeRef = useRef(code)
+    const instanceSettingsChangeRef = useRef(onInstanceSettingsChange)
+    const invalidateRef = useRef(onInvalidate)
     tappInstanceRef.current = tappInstance
     codeRef.current = code
+    instanceSettingsChangeRef.current = onInstanceSettingsChange
+    invalidateRef.current = onInvalidate
 
     // 稳定化核心 widgetProps（不包含 theme 和 primaryColor，因为它们通过事件更新）
     // 这样主题/颜色变化不会触发整个沙箱重建
@@ -341,6 +298,27 @@ export const TappWidgetSandbox = memo(
 
     // 🎯 共享订阅 hook：主题/主色调/页面可见性联动
     useSandboxSubscriptions(bridgeRef, isReady)
+
+    // 同一个 Tapp 的 Page/其他 Widget 改写共享 storage 后，通知当前沙箱并刷新视图。
+    useEffect(
+      () =>
+        onTappStorageChange((change) => {
+          const bridge = bridgeRef.current
+          if (
+            !bridge ||
+            change.tappId !== tappInstance.id ||
+            change.source === bridge
+          ) {
+            return
+          }
+          bridge.emit('storageChanged', {
+            key: change.key,
+            operation: change.operation,
+          })
+          invalidateRef.current?.('storage-changed')
+        }),
+      [tappInstance.id],
+    )
 
     // 构建媒体状态对象（供 mediaStateChange 事件使用）
     const buildMediaState = useCallback((detail: Record<string, unknown>) => {
@@ -538,20 +516,78 @@ export const TappWidgetSandbox = memo(
 
       // 创建 Bridge（在 DOM 插入前设置消息监听）
       const bridge = new TappBridge()
-      bridge.initialize(iframe, currentTappInstance, sessionToken)
+      const runtimeGrant = new TappRuntimeGrant(
+        currentTappInstance.id,
+        `widget_${sessionToken.slice(0, 32)}`,
+        'widget',
+      )
+      bridge.initialize(iframe, currentTappInstance, sessionToken, runtimeGrant)
       bridgeRef.current = bridge
 
       // 注册处理器（Widget 只需要基础 API）
-      const permission = new TappPermissionController(currentTappInstance)
       registerLifecycleHandlers(bridge, currentTappInstance, handleReady)
       registerUIHandlers(bridge, currentTappInstance)
       registerStorageHandlers(bridge, currentTappInstance.id)
+      bridge.registerHandler(
+        'widget.instanceSettings.update',
+        async (message) => {
+          const [patch] = (message.payload as { args?: unknown[] }).args || []
+          if (
+            !patch ||
+            typeof patch !== 'object' ||
+            Array.isArray(patch) ||
+            Object.getPrototypeOf(patch) !== Object.prototype
+          ) {
+            return {
+              success: false,
+              error: 'Settings patch must be a plain object',
+            }
+          }
+          if (JSON.stringify(patch).length > 64 * 1024) {
+            return { success: false, error: 'Settings patch exceeds 64 KiB' }
+          }
+          const accepted = instanceSettingsChangeRef.current?.(
+            patch as Record<string, unknown>,
+          )
+          if (accepted === false) {
+            return {
+              success: false,
+              error: 'Settings patch failed schema validation',
+            }
+          }
+          return { success: true, data: null }
+        },
+      )
+      bridge.registerHandler('widget.invalidate', async (message) => {
+        const [rawReason] = (message.payload as { args?: unknown[] }).args || []
+        const reason =
+          typeof rawReason === 'string' ? rawReason.slice(0, 256) : 'requested'
+        invalidateRef.current?.(reason)
+        return { success: true, data: null }
+      })
       registerFileHandlers(bridge)
-      registerWidgetAIHandler(bridge, permission, currentTappInstance.id)
+      const closeAITaskStreams = registerAIHandlers(bridge, currentTappInstance)
+      // Widget SDK 只暴露平台/报告读取能力，避免注册未暴露的写入 handler。
+      registerPlatformHandlers(bridge, currentTappInstance, { readOnly: true })
+      registerReportHandlers(bridge, currentTappInstance, { readOnly: true })
       // 🎯 注册 Context 处理器（包含 api.execute 和 context.getGeo）
       registerContextHandlers(bridge, currentTappInstance)
+      const closeDataExchange = registerDataExchangeHandlers(
+        bridge,
+        currentTappInstance,
+      )
+      const closeEventStream = registerEventHandlers(
+        bridge,
+        currentTappInstance,
+      )
+      const closeAgentInteractions = registerAgentInteractionHandlers(
+        bridge,
+        currentTappInstance,
+      )
       // 🎵 注册 Media 处理器（供音乐播放器 Tapp 使用）
       registerMediaHandlers(bridge, currentTappInstance)
+      registerSpeechHandlers(bridge, currentTappInstance)
+      registerAnimationHandlers(bridge)
       // 共享 core 在 Widget 模式同样会执行，必须能声明后台保活需求。
       registerBackgroundHandlers(bridge, currentTappInstance)
       // ⏰ 注册 Scheduler 处理器（定时任务，与 SDK Tapp.scheduler 对应）
@@ -582,6 +618,10 @@ export const TappWidgetSandbox = memo(
       return () => {
         unsubscribeReady()
         closeScheduler()
+        closeDataExchange()
+        closeAITaskStreams()
+        closeEventStream()
+        closeAgentInteractions()
         iframeRef.current = null
         if (container.contains(iframe)) {
           container.removeChild(iframe)

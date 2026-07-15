@@ -1,15 +1,20 @@
 use axum::{
     extract::Request,
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use hmac::{Hmac, Mac};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::env;
+use subtle::ConstantTimeEq;
+use uuid::Uuid;
 
 /// JWT Claims structure (must match auth.rs)
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -160,19 +165,51 @@ fn admin_forbidden() -> (StatusCode, Json<serde_json::Value>) {
     )
 }
 
-/// 根据 IP 生成稳定的游客 ID
-///
-/// 使用 IP 的哈希值生成负数 ID（与正数用户 ID 区分）
-/// 范围: -2147483648 到 -1
-fn generate_guest_id(ip: &str) -> i32 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+const GUEST_SESSION_COOKIE: &str = "myriad_guest_session";
+const GUEST_SESSION_MAX_AGE: i64 = 30 * 24 * 60 * 60;
 
-    let mut hasher = DefaultHasher::new();
-    ip.hash(&mut hasher);
-    // 生成负数 ID（范围 -2147483647 到 -1）
-    let hash = hasher.finish();
-    -((hash % 2147483647) as i32 + 1)
+fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                let (cookie_name, value) = cookie.trim().split_once('=')?;
+                (cookie_name == name).then_some(value)
+            })
+        })
+}
+
+fn guest_signature(secret: &[u8], session_id: &str) -> Option<Vec<u8>> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret).ok()?;
+    mac.update(b"myriad-guest-session-v1\0");
+    mac.update(session_id.as_bytes());
+    Some(mac.finalize().into_bytes().to_vec())
+}
+
+fn sign_guest_session(secret: &[u8], session_id: &str) -> Option<String> {
+    let signature = guest_signature(secret, session_id)?;
+    Some(format!(
+        "{session_id}.{}",
+        URL_SAFE_NO_PAD.encode(signature)
+    ))
+}
+
+fn verify_guest_session(secret: &[u8], token: &str) -> Option<String> {
+    let (session_id, encoded_signature) = token.split_once('.')?;
+    if session_id.len() != 32 || !session_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let supplied = URL_SAFE_NO_PAD.decode(encoded_signature).ok()?;
+    let expected = guest_signature(secret, session_id)?;
+    (supplied.len() == expected.len() && supplied.as_slice().ct_eq(expected.as_slice()).into())
+        .then(|| session_id.to_ascii_lowercase())
+}
+
+fn guest_id(session_id: &str) -> i32 {
+    let digest = Sha256::digest(session_id.as_bytes());
+    let value = u32::from_be_bytes(digest[..4].try_into().expect("SHA-256 prefix"));
+    -((value % i32::MAX as u32) as i32 + 1)
 }
 
 /// Optional authentication middleware - allows guest access
@@ -182,8 +219,8 @@ fn generate_guest_id(ip: &str) -> i32 {
 /// - 如果没有 token 或 token 无效，注入游客 Claims
 ///
 /// 游客 ID 策略：
-/// - 基于客户端 IP 生成稳定的负数 ID
-/// - 同一 IP 的游客始终获得相同的 ID
+/// - 使用浏览器持有的 HttpOnly 签名 session，而不是共享出口 IP
+/// - 同一浏览器 session 获得稳定的负数 ID
 /// - 负数 ID 与正数用户 ID 区分，便于管理
 ///
 /// 安全说明：
@@ -191,35 +228,54 @@ fn generate_guest_id(ip: &str) -> i32 {
 /// - API 端点需要自行检查权限（通过 TappPermissionService）
 pub async fn optional_auth_middleware(req: Request, next: Next) -> Response {
     let headers = req.headers();
-
+    let mut set_guest_cookie = None;
     let claims = match verify_jwt_token(headers) {
         Ok(claims) => claims,
         Err(_) => {
-            // 无 token 或 token 无效，创建游客 Claims
-            let client_ip = crate::middleware::client_ip::extract_client_ip(&req)
-                .map(|ip| ip.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            let guest_id = generate_guest_id(&client_ip);
-
-            tracing::debug!(
-                "🎭 Guest access from IP: {} -> Guest ID: {}",
-                client_ip,
-                guest_id
-            );
+            let secret = match env::var("JWT_SECRET") {
+                Ok(secret) if !secret.is_empty() => secret,
+                _ => {
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(json!({"error": "Guest session signing is unavailable"})),
+                    )
+                        .into_response()
+                }
+            };
+            let session_id = cookie_value(headers, GUEST_SESSION_COOKIE)
+                .and_then(|token| verify_guest_session(secret.as_bytes(), token))
+                .unwrap_or_else(|| {
+                    let session_id = Uuid::new_v4().simple().to_string();
+                    set_guest_cookie = sign_guest_session(secret.as_bytes(), &session_id);
+                    session_id
+                });
+            let guest_id = guest_id(&session_id);
+            tracing::debug!(guest_id, "Guest access through signed browser session");
 
             Claims {
-                sub: guest_id.to_string(), // 负数 ID 字符串
-                username: format!("guest:{}", &client_ip),
+                sub: guest_id.to_string(),
+                username: format!("guest:{}", &session_id[..8]),
                 is_admin: false,
-                exp: 0,
-                iat: 0,
+                exp: chrono::Utc::now().timestamp() + GUEST_SESSION_MAX_AGE,
+                iat: chrono::Utc::now().timestamp(),
             }
         }
     };
 
     let mut req = req;
     req.extensions_mut().insert(claims);
-    next.run(req).await
+    let mut response = next.run(req).await;
+    if let Some(token) = set_guest_cookie {
+        let is_production = crate::oauth_url_builder::SiteConfig::is_production().await;
+        let cookie = format!(
+            "{GUEST_SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={GUEST_SESSION_MAX_AGE}{}",
+            if is_production { "; Secure" } else { "" }
+        );
+        if let Ok(value) = HeaderValue::from_str(&cookie) {
+            response.headers_mut().append(header::SET_COOKIE, value);
+        }
+    }
+    response
 }
 
 /// Verify JWT token from Authorization header or Cookie
@@ -330,4 +386,30 @@ pub fn extract_optional_claims(headers: &HeaderMap) -> Option<Claims> {
     )
     .ok()
     .map(|data| data.claims)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{guest_id, sign_guest_session, verify_guest_session};
+
+    #[test]
+    fn signed_guest_session_is_stable_and_tamper_evident() {
+        let secret = b"test-secret-at-least-thirty-two-bytes-long";
+        let session_id = "0123456789abcdef0123456789abcdef";
+        let token = sign_guest_session(secret, session_id).expect("session signs");
+        assert_eq!(
+            verify_guest_session(secret, &token).as_deref(),
+            Some(session_id)
+        );
+        assert!(verify_guest_session(secret, &format!("{token}x")).is_none());
+        assert!(verify_guest_session(b"different-secret", &token).is_none());
+    }
+
+    #[test]
+    fn guest_ids_are_negative_and_browser_session_scoped() {
+        let first = guest_id("0123456789abcdef0123456789abcdef");
+        assert!(first < 0);
+        assert_eq!(first, guest_id("0123456789abcdef0123456789abcdef"));
+        assert_ne!(first, guest_id("fedcba9876543210fedcba9876543210"));
+    }
 }
