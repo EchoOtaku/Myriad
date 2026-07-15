@@ -579,18 +579,25 @@ async fn add_source(
     }
 }
 
-/// 获取单个订阅源
-/// 获取单个订阅源（游客可访问）
+/// 获取单个订阅源（游客可访问；admin_only 源仅管理员可见）
 async fn get_source(
     State(db): State<DatabaseConnection>,
-    _headers: axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     Path(id): Path<i32>,
 ) -> impl IntoResponse {
-    // 游客可访问，不需要验证用户身份
+    let (_, is_admin) = get_user_and_admin_status(&headers).await;
+
     let source = brew_sources::Entity::find_by_id(id).one(&db).await;
 
     match source {
         Ok(Some(source)) => {
+            if source.admin_only && !is_admin {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({ "success": false, "error": "Source not found" })),
+                )
+                    .into_response();
+            }
             let response: brew_sources::SourceResponse = source.into();
             (
                 StatusCode::OK,
@@ -836,7 +843,16 @@ struct DiscoverRequest {
     url: String,
 }
 
-async fn discover_source(Json(req): Json<DiscoverRequest>) -> impl IntoResponse {
+/// 探测订阅源信息（需管理员；出站经 FeedParser SSRF 防护）
+async fn discover_source(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<DiscoverRequest>,
+) -> impl IntoResponse {
+    if let Err(resp) = get_admin_user_id_from_headers(&headers, &db).await {
+        return resp;
+    }
+
     let parser = FeedParser::new();
 
     match parser.fetch_and_parse(&req.url).await {
@@ -961,17 +977,22 @@ async fn import_opml(
         .into_response()
 }
 
-/// 导出 OPML（游客可访问）
+/// 导出 OPML（游客可访问；非管理员不导出 admin_only 源）
 async fn export_opml(
     State(db): State<DatabaseConnection>,
-    _headers: axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    // 游客可访问，导出所有订阅源
-    let sources = brew_sources::Entity::find()
+    let (_, is_admin) = get_user_and_admin_status(&headers).await;
+
+    let mut query = brew_sources::Entity::find()
         .order_by_asc(brew_sources::Column::Category)
-        .order_by_asc(brew_sources::Column::Name)
-        .all(&db)
-        .await;
+        .order_by_asc(brew_sources::Column::Name);
+
+    if !is_admin {
+        query = query.filter(brew_sources::Column::AdminOnly.eq(false));
+    }
+
+    let sources = query.all(&db).await;
 
     match sources {
         Ok(sources) => {
@@ -1150,18 +1171,23 @@ async fn delete_category(
 
 /// 获取文章列表（游客可访问）
 /// 游客不计算已读/收藏状态以节约计算
+/// 非管理员看不到 admin_only 源下的文章
 async fn list_items(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Query(query): Query<brew_items::ItemsQuery>,
 ) -> impl IntoResponse {
-    // 获取可选用户 ID（游客为 None）
-    let user_id = get_optional_user_id_from_headers(&headers);
+    // 获取可选用户 ID 与管理员状态
+    let (user_id, is_admin) = get_user_and_admin_status(&headers).await;
 
-    // 获取所有订阅源 ID（游客看到所有）
-    let all_sources: Vec<i32> = brew_sources::Entity::find()
+    // 可见订阅源 ID（非管理员过滤 admin_only）
+    let mut sources_q = brew_sources::Entity::find()
         .select_only()
-        .column(brew_sources::Column::Id)
+        .column(brew_sources::Column::Id);
+    if !is_admin {
+        sources_q = sources_q.filter(brew_sources::Column::AdminOnly.eq(false));
+    }
+    let all_sources: Vec<i32> = sources_q
         .into_tuple()
         .all(&db)
         .await
@@ -1410,13 +1436,14 @@ async fn list_items(
 /// 获取单篇文章详情（游客可访问）
 /// 游客不查询已读/收藏状态以节约计算
 /// 性能优化：并行查询 AI 状态
+/// admin_only 源下的文章仅管理员可见
 async fn get_item(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Path(id): Path<i32>,
 ) -> impl IntoResponse {
-    // 获取可选用户 ID（游客为 None）
-    let user_id = get_optional_user_id_from_headers(&headers);
+    // 获取可选用户 ID 与管理员状态
+    let (user_id, is_admin) = get_user_and_admin_status(&headers).await;
 
     // 获取文章
     let item = brew_items::Entity::find_by_id(id).one(&db).await;
@@ -1429,6 +1456,13 @@ async fn get_item(
                 .await;
 
             if let Ok(Some(source)) = source {
+                if source.admin_only && !is_admin {
+                    return (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({ "success": false, "error": "Item not found" })),
+                    )
+                        .into_response();
+                }
                 // 只有登录用户才查询已读/收藏状态，游客跳过以节约计算
                 let (is_read, is_starred, read_progress) = if let Some(uid) = user_id {
                     let state = brew_user_states::Entity::find()
@@ -1704,13 +1738,17 @@ async fn mark_all_read(
         Ok(id) => id,
         Err(resp) => return resp,
     };
+    // 共享订阅库：按当前用户可见源标记，而非「我创建的源」
+    let (_, is_admin) = get_user_and_admin_status(&headers).await;
 
     // 获取要标记的文章
     let mut query = brew_items::Entity::find();
 
-    // 获取用户的订阅源
-    let mut source_filter =
-        brew_sources::Entity::find().filter(brew_sources::Column::UserId.eq(user_id));
+    // 可见订阅源（非管理员排除 admin_only）
+    let mut source_filter = brew_sources::Entity::find();
+    if !is_admin {
+        source_filter = source_filter.filter(brew_sources::Column::AdminOnly.eq(false));
+    }
 
     if let Some(source_id) = req.source_id {
         source_filter = source_filter.filter(brew_sources::Column::Id.eq(source_id));
@@ -1873,14 +1911,17 @@ async fn sync_states(
     let now = Utc::now();
     let mut synced = 0;
     let mut conflicts = Vec::new();
+    // source_id -> unread_count delta（与 update_item_state 一致维护全局缓存列）
+    let mut source_unread_deltas: std::collections::HashMap<i32, i32> =
+        std::collections::HashMap::new();
 
-    // 性能优化：批量查询所有相关状态，避免 N+1 查询
+    // 性能优化：批量查询所有相关状态与文章 source_id，避免 N+1
     let item_ids: Vec<i32> = req.states.iter().map(|s| s.item_id).collect();
     let existing_states: std::collections::HashMap<i32, brew_user_states::Model> =
         if !item_ids.is_empty() {
             brew_user_states::Entity::find()
                 .filter(brew_user_states::Column::UserId.eq(user_id))
-                .filter(brew_user_states::Column::ItemId.is_in(item_ids))
+                .filter(brew_user_states::Column::ItemId.is_in(item_ids.clone()))
                 .all(&db)
                 .await
                 .unwrap_or_default()
@@ -1890,6 +1931,22 @@ async fn sync_states(
         } else {
             std::collections::HashMap::new()
         };
+
+    let item_source_map: std::collections::HashMap<i32, i32> = if !item_ids.is_empty() {
+        brew_items::Entity::find()
+            .filter(brew_items::Column::Id.is_in(item_ids))
+            .select_only()
+            .column(brew_items::Column::Id)
+            .column(brew_items::Column::SourceId)
+            .into_tuple::<(i32, i32)>()
+            .all(&db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .collect()
+    } else {
+        std::collections::HashMap::new()
+    };
 
     for state_item in req.states {
         if let Some(server_state) = existing_states.get(&state_item.item_id) {
@@ -1904,6 +1961,8 @@ async fn sync_states(
                 });
                 continue;
             }
+
+            let was_read = server_state.is_read;
 
             // 应用客户端更新
             let mut active: brew_user_states::ActiveModel = server_state.clone().into();
@@ -1926,20 +1985,30 @@ async fn sync_states(
 
             if active.update(&db).await.is_ok() {
                 synced += 1;
+                if let Some(is_read) = state_item.is_read {
+                    if is_read != was_read {
+                        if let Some(&source_id) = item_source_map.get(&state_item.item_id) {
+                            let delta = if is_read { -1 } else { 1 };
+                            *source_unread_deltas.entry(source_id).or_insert(0) += delta;
+                        }
+                    }
+                }
             }
         } else {
+            // 跳过不存在的文章，避免为任意 item_id 写状态
+            if !item_source_map.contains_key(&state_item.item_id) {
+                continue;
+            }
+
+            let is_read = state_item.is_read.unwrap_or(false);
             // 创建新记录
             let new_state = brew_user_states::ActiveModel {
                 user_id: Set(user_id),
                 item_id: Set(state_item.item_id),
-                is_read: Set(state_item.is_read.unwrap_or(false)),
+                is_read: Set(is_read),
                 is_starred: Set(state_item.is_starred.unwrap_or(false)),
                 read_progress: Set(state_item.read_progress),
-                read_at: Set(if state_item.is_read == Some(true) {
-                    Some(now.into())
-                } else {
-                    None
-                }),
+                read_at: Set(if is_read { Some(now.into()) } else { None }),
                 starred_at: Set(if state_item.is_starred == Some(true) {
                     Some(now.into())
                 } else {
@@ -1950,7 +2019,18 @@ async fn sync_states(
             };
             if new_state.insert(&db).await.is_ok() {
                 synced += 1;
+                if is_read {
+                    if let Some(&source_id) = item_source_map.get(&state_item.item_id) {
+                        *source_unread_deltas.entry(source_id).or_insert(0) -= 1;
+                    }
+                }
             }
+        }
+    }
+
+    for (source_id, delta) in source_unread_deltas {
+        if delta != 0 {
+            let _ = update_source_unread_count(&db, source_id, delta).await;
         }
     }
 
@@ -1972,14 +2052,15 @@ async fn get_stats(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    // 获取可选用户 ID（游客为 None）
-    let user_id = get_optional_user_id_from_headers(&headers);
+    // 获取可选用户 ID 与管理员状态
+    let (user_id, is_admin) = get_user_and_admin_status(&headers).await;
 
-    // 获取所有订阅源统计
-    let sources = brew_sources::Entity::find()
-        .all(&db)
-        .await
-        .unwrap_or_default();
+    // 可见订阅源统计（非管理员排除 admin_only）
+    let mut sources_q = brew_sources::Entity::find();
+    if !is_admin {
+        sources_q = sources_q.filter(brew_sources::Column::AdminOnly.eq(false));
+    }
+    let sources = sources_q.all(&db).await.unwrap_or_default();
 
     let total_sources = sources.len();
     let total_items: i32 = sources.iter().map(|s| s.item_count).sum();
@@ -2416,15 +2497,20 @@ async fn create_comment(
         Err(resp) => return resp,
     };
 
-    // 验证文章是否存在
-    let item_exists = brew_items::Entity::find_by_id(item_id)
-        .one(&db)
-        .await
-        .ok()
-        .flatten()
-        .is_some();
+    // 验证文章是否存在且对当前用户可见（admin_only 源需管理员）
+    let (_, is_admin) = get_user_and_admin_status(&headers).await;
+    let item_visible = match brew_items::Entity::find_by_id(item_id).one(&db).await {
+        Ok(Some(item)) => match brew_sources::Entity::find_by_id(item.source_id)
+            .one(&db)
+            .await
+        {
+            Ok(Some(source)) => !source.admin_only || is_admin,
+            _ => false,
+        },
+        _ => false,
+    };
 
-    if !item_exists {
+    if !item_visible {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "success": false, "error": "Article not found" })),
@@ -2432,10 +2518,11 @@ async fn create_comment(
             .into_response();
     }
 
-    // 如果是回复，验证父评论是否存在
+    // 如果是回复，验证父评论属于同一用户、同一文章
     if let Some(parent_id) = req.parent_id {
         let parent_exists = brew_comments::Entity::find_by_id(parent_id)
             .filter(brew_comments::Column::ItemId.eq(item_id))
+            .filter(brew_comments::Column::UserId.eq(user_id))
             .one(&db)
             .await
             .ok()
@@ -2553,6 +2640,13 @@ async fn update_comment(
             let mut active: brew_comments::ActiveModel = comment.clone().into();
 
             if let Some(comment_text) = req.comment {
+                if comment_text.len() > 2000 {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({ "success": false, "error": "Comment too long (max 2000 chars)" })),
+                    )
+                        .into_response();
+                }
                 active.comment = Set(comment_text);
             }
             if let Some(color) = req.color {
@@ -2801,6 +2895,7 @@ async fn add_rsshub_instance(
         Ok(id) => id,
         Err(resp) => return resp,
     };
+    let (_, is_admin) = get_user_and_admin_status(&headers).await;
 
     let rsshub_service = RsshubService::new(db);
 
@@ -2811,6 +2906,7 @@ async fn add_rsshub_instance(
             req.url,
             req.access_key,
             req.priority,
+            is_admin,
         )
         .await
     {
@@ -2851,6 +2947,7 @@ async fn update_rsshub_instance(
         Ok(id) => id,
         Err(resp) => return resp,
     };
+    let (_, is_admin) = get_user_and_admin_status(&headers).await;
 
     let rsshub_service = RsshubService::new(db);
 
@@ -2863,6 +2960,7 @@ async fn update_rsshub_instance(
             req.access_key,
             req.priority,
             req.enabled,
+            is_admin,
         )
         .await
     {
@@ -2893,10 +2991,14 @@ async fn delete_rsshub_instance(
         Ok(id) => id,
         Err(resp) => return resp,
     };
+    let (_, is_admin) = get_user_and_admin_status(&headers).await;
 
     let rsshub_service = RsshubService::new(db);
 
-    match rsshub_service.delete_instance(id, Some(user_id)).await {
+    match rsshub_service
+        .delete_instance(id, Some(user_id), is_admin)
+        .await
+    {
         Ok(()) => (StatusCode::OK, Json(json!({ "success": true }))).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -2977,14 +3079,18 @@ async fn reset_rsshub_instance(
     Path(id): Path<i32>,
 ) -> impl IntoResponse {
     // 验证用户身份
-    let _user_id = match get_user_id_from_headers(&headers, &db).await {
+    let user_id = match get_user_id_from_headers(&headers, &db).await {
         Ok(id) => id,
         Err(resp) => return resp,
     };
+    let (_, is_admin) = get_user_and_admin_status(&headers).await;
 
     let rsshub_service = RsshubService::new(db);
 
-    match rsshub_service.reset_instance_stats(id).await {
+    match rsshub_service
+        .reset_instance_stats(id, Some(user_id), is_admin)
+        .await
+    {
         Ok(()) => (StatusCode::OK, Json(json!({ "success": true }))).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,

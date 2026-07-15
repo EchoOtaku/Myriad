@@ -297,17 +297,23 @@ const ModernConfigForm: React.FC = () => {
     [],
   )
 
-  // 更新权限配置
+  // 更新权限配置（单键或批量补丁，供预设模板一次写入）
   const updatePermissionConfig = useCallback(
-    async (key: string, value: boolean | number) => {
-      const prevValue = permissionConfig[key as keyof typeof permissionConfig]
-      setPermissionConfig((prev) => ({ ...prev, [key]: value }))
+    async (
+      keyOrPatch: string | Record<string, boolean | number>,
+      value?: boolean | number,
+    ) => {
+      const patch: Record<string, boolean | number> =
+        typeof keyOrPatch === 'string'
+          ? { [keyOrPatch]: value as boolean | number }
+          : keyOrPatch
 
-      // 自动保存权限配置
+      const prevSnapshot = { ...permissionConfig }
+      setPermissionConfig((prev) => ({ ...prev, ...patch }))
+
       try {
-        // 强制刷新 CSRF Token 确保有效
         await getCSRFToken(true)
-        const response = await updatePermissionsConfig({ [key]: value })
+        const response = await updatePermissionsConfig(patch)
 
         if (response.success) {
           showMessage(t.config.permissionsSaved, 'success', 2000)
@@ -317,8 +323,7 @@ const ModernConfigForm: React.FC = () => {
       } catch (error) {
         console.error('Failed to save permission:', error)
         showMessage(t.config.permissionsSaveFailed, 'error')
-        // 回滚
-        setPermissionConfig((prev) => ({ ...prev, [key]: prevValue }))
+        setPermissionConfig(prevSnapshot)
       }
     },
     [t, permissionConfig, showMessage],

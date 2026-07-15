@@ -790,10 +790,19 @@ export const jaJP: TranslationKeys = {
     permissionsTitle: 'Tapp権限管理',
     tappPermissionsInfoTitle: '権限レベルについて',
     tappPermissionsInfo:
-      'Tappには4つの権限レベルがあります：public（公開）、basic（基本、全員利用可能）、elevated（昇格、委譲可能）、privileged（特権、管理者のみ）。ここでは11のelevated権限をユーザーやゲストに委譲できます。',
+      'public/basic は既定で開放、elevated はここで委譲、privileged（report:write 含む）は管理者のみ。AI アシスタントは本ページと強制整合：上部の「アシスタントプリセット」または個別スイッチ（会話は ai:chat、出站は network:fetch）。',
+    agentPresetTitle: 'AIアシスタントプリセット',
+    agentPresetDesc:
+      'Agent 関連の elevated スイッチを一括適用。下で個別調整可。メディア/テーマなど無関係項目は変更しません',
+    agentPresetUserHint:
+      '無効=AI/出站オフ；会話のみ=ai:chat+analyze；標準=全AI；拡張=AI+出站+スケジューラ',
+    agentPresetGuestHint:
+      'ゲストに Agent セッションはありません。ai:chat 等は入口表示と Tapp AI 向け。慎重に開放してください',
+    agentPresetCustom: 'カスタム',
     // ユーザーelevated権限
     userElevatedPermissions: 'ユーザー権限委譲',
-    userElevatedPermissionsDesc: '一般ユーザーに付与するelevated権限を選択',
+    userElevatedPermissionsDesc:
+      'elevated を個別付与。AI/出站/スケジューラは上部プリセットでも一括設定可',
     // ゲストelevated権限
     guestElevatedPermissions: 'ゲスト権限委譲',
     guestElevatedPermissionsDesc:
@@ -848,6 +857,18 @@ export const jaJP: TranslationKeys = {
     moduleVisibilityAdmin: '管理者ユーザー',
     moduleVisibilitySaved: 'ページ表示範囲設定を保存しました',
     moduleVisibilityLoadFailed: 'ページ表示範囲設定の読み込みに失敗しました',
+    agentUsageTitle: 'AIアシスタント利用権限',
+    agentUsageDesc: 'Tapp権限管理のアシスタントプリセットに統合済み',
+    agentUsageGuest: 'ゲスト',
+    agentUsageGuestHint: 'Tapp権限のアシスタントプリセットを参照',
+    agentUsageGuestHidden: '非表示',
+    agentUsageGuestVisible: '入口を表示',
+    agentUsageUser: '一般ユーザー',
+    agentUsageUserHint: 'Tapp権限のアシスタントプリセットを参照',
+    agentUsageNone: '無効',
+    agentUsageChat: '会話のみ',
+    agentUsageStandard: '標準',
+    agentUsageElevated: '拡張',
     // 一言（ひとこと）設定
     hitokotoTitle: '一言',
     hitokotoDesc:

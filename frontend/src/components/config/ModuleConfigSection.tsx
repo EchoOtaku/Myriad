@@ -545,6 +545,8 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             ...prev.modules,
             [moduleKey]: visibility,
           },
+          // 兼容旧字段；能力档位已迁至 Tapp 权限预设
+          agentUsage: prev.agentUsage,
         }),
       )
     },

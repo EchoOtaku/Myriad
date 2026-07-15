@@ -229,11 +229,12 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
-    // 标记文章状态
+    // 标记文章状态（个人已读/收藏，不修改共享订阅库）
+    // 权限用 brew:read：共享库下普通用户只读订阅源，但仍可维护自己的阅读状态
     registry.register(Capability {
         id: "brew.mark".to_string(),
         name: "标记文章状态".to_string(),
-        description: "标记 Brew 文章为已读/未读/收藏/稍后阅读".to_string(),
+        description: "标记 Brew 文章为已读/未读/收藏/稍后阅读（仅当前用户的个人状态）".to_string(),
         category: CapabilityCategory::DataWrite,
         supported_actions: vec![IntentAction::Update],
         input_schema: json!({
@@ -251,7 +252,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 "status": { "type": "string" }
             }
         }),
-        required_permissions: vec!["brew:write".to_string()],
+        required_permissions: vec!["brew:read".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(200),
         ..Default::default()

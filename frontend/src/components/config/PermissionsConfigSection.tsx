@@ -1,16 +1,85 @@
 /**
- * 权限配置区块示例
- * 演示如何使用通用设置组件重构 ConfigForm 中的权限配置部分
- *
- * 重构前：约 400 行代码
- * 重构后：约 80 行代码
+ * Tapp 权限配置：elevated 下放开关 + Agent 预设模板 + AI 配额
  */
 
 import type { PermissionItem, QuotaItem } from '../settings'
-import React from 'react'
+import React, { useCallback, useMemo } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
-import { PermissionGroup, QuotaGroup, SettingSection } from '../settings'
+import { PermissionGroup, QuotaGroup, SettingGroup, SettingSection } from '../settings'
+
+/** Agent 相关 elevated 键（预设只改这些，不碰媒体/主题等） */
+const AGENT_PRESET_PERM_KEYS = [
+  'ai_chat',
+  'ai_analyze',
+  'ai_generate',
+  'ai_image',
+  'network_fetch',
+  'scheduler_register',
+] as const
+
+type AgentPresetKey = (typeof AGENT_PRESET_PERM_KEYS)[number]
+export type AgentPermissionPreset = 'none' | 'chat' | 'standard' | 'elevated'
+
+const AGENT_PRESET_FLAGS: Record<
+  AgentPermissionPreset,
+  Record<AgentPresetKey, boolean>
+> = {
+  none: {
+    ai_chat: false,
+    ai_analyze: false,
+    ai_generate: false,
+    ai_image: false,
+    network_fetch: false,
+    scheduler_register: false,
+  },
+  chat: {
+    ai_chat: true,
+    ai_analyze: true,
+    ai_generate: false,
+    ai_image: false,
+    network_fetch: false,
+    scheduler_register: false,
+  },
+  standard: {
+    ai_chat: true,
+    ai_analyze: true,
+    ai_generate: true,
+    ai_image: true,
+    network_fetch: false,
+    scheduler_register: false,
+  },
+  elevated: {
+    ai_chat: true,
+    ai_analyze: true,
+    ai_generate: true,
+    ai_image: true,
+    network_fetch: true,
+    scheduler_register: true,
+  },
+}
+
+const AGENT_PRESET_LEVELS: AgentPermissionPreset[] = [
+  'none',
+  'chat',
+  'standard',
+  'elevated',
+]
+
+function detectAgentPreset(
+  values: Record<string, boolean>,
+): AgentPermissionPreset | 'custom' {
+  for (const level of AGENT_PRESET_LEVELS) {
+    const flags = AGENT_PRESET_FLAGS[level]
+    if (AGENT_PRESET_PERM_KEYS.every((k) => values[k] === flags[k])) {
+      return level
+    }
+  }
+  return 'custom'
+}
+
+const PRESET_CARD_CLASS =
+  'rounded-lg border border-gray-100 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/[0.03]'
 
 interface PermissionsConfigSectionProps {
   permissionConfig: {
@@ -49,7 +118,10 @@ interface PermissionsConfigSectionProps {
     guest_ai_daily_tokens: number
     guest_ai_cooldown_seconds: number
   }
-  updatePermissionConfig: (key: string, value: boolean | number) => void
+  updatePermissionConfig: (
+    key: string | Record<string, boolean | number>,
+    value?: boolean | number,
+  ) => void
   loading?: boolean
   title: string
   icon: React.ReactNode
@@ -110,13 +182,7 @@ export const PermissionsConfigSection: React.FC<
       label: t.config.permSpeechAsr,
       hint: t.config.permSpeechAsrHint,
     },
-    // 数据与网络
-    {
-      key: 'report_write',
-      code: 'report:write',
-      label: t.config.permReportWrite,
-      hint: t.config.permReportWriteHint,
-    },
+    // 网络（report:write 已仅管理员，不再展示下放开关）
     {
       key: 'network_fetch',
       code: 'network:fetch',
@@ -216,6 +282,90 @@ export const PermissionsConfigSection: React.FC<
     cooldown_seconds: permissionConfig.guest_ai_cooldown_seconds,
   })
 
+  const userAgentValues = useMemo(() => {
+    const values: Record<string, boolean> = {}
+    for (const k of AGENT_PRESET_PERM_KEYS) {
+      values[k] = permissionConfig[
+        `user_perm_${k}` as keyof typeof permissionConfig
+      ] as boolean
+    }
+    return values
+  }, [permissionConfig])
+
+  const guestAgentValues = useMemo(() => {
+    const values: Record<string, boolean> = {}
+    for (const k of AGENT_PRESET_PERM_KEYS) {
+      values[k] = permissionConfig[
+        `guest_perm_${k}` as keyof typeof permissionConfig
+      ] as boolean
+    }
+    return values
+  }, [permissionConfig])
+
+  const userPreset = detectAgentPreset(userAgentValues)
+  const guestPreset = detectAgentPreset(guestAgentValues)
+
+  const presetLabels = useMemo(
+    () => ({
+      none: t.config.agentUsageNone,
+      chat: t.config.agentUsageChat,
+      standard: t.config.agentUsageStandard,
+      elevated: t.config.agentUsageElevated,
+      custom: t.config.agentPresetCustom,
+    }),
+    [t],
+  )
+
+  const applyAgentPreset = useCallback(
+    (role: 'user' | 'guest', level: AgentPermissionPreset) => {
+      if (loading) return
+      const flags = AGENT_PRESET_FLAGS[level]
+      const patch: Record<string, boolean> = {}
+      for (const k of AGENT_PRESET_PERM_KEYS) {
+        patch[`${role}_perm_${k}`] = flags[k]
+      }
+      updatePermissionConfig(patch)
+    },
+    [loading, updatePermissionConfig],
+  )
+
+  const renderPresetButtons = (
+    role: 'user' | 'guest',
+    current: AgentPermissionPreset | 'custom',
+  ) => (
+    <div className="grid grid-cols-2 gap-1 rounded-lg border border-gray-100 bg-gray-50/80 p-1 dark:border-white/10 dark:bg-white/[0.03] sm:grid-cols-4">
+      {AGENT_PRESET_LEVELS.map((level) => {
+        const checked = current === level
+        return (
+          <button
+            key={level}
+            type="button"
+            disabled={loading}
+            aria-pressed={checked}
+            onClick={() => applyAgentPreset(role, level)}
+            className={`min-h-8 rounded-md px-2 text-xs font-medium transition-colors ${
+              checked
+                ? 'text-[var(--color-primary)]'
+                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
+            } disabled:opacity-50`}
+            style={
+              checked
+                ? {
+                    backgroundColor:
+                      'color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)',
+                    boxShadow:
+                      '0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 18%, transparent)',
+                  }
+                : undefined
+            }
+          >
+            {presetLabels[level]}
+          </button>
+        )
+      })}
+    </div>
+  )
+
   return (
     <SettingSection
       title={title}
@@ -223,6 +373,43 @@ export const PermissionsConfigSection: React.FC<
       description={description}
       sectionId={sectionId}
     >
+      {/* Agent 预设：批量开关下方 elevated 项 */}
+      <SettingGroup
+        title={t.config.agentPresetTitle}
+        description={t.config.agentPresetDesc}
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className={PRESET_CARD_CLASS}>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                {t.config.agentUsageUser}
+              </span>
+              <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                {presetLabels[userPreset]}
+              </span>
+            </div>
+            <p className="mb-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+              {t.config.agentPresetUserHint}
+            </p>
+            {renderPresetButtons('user', userPreset)}
+          </div>
+          <div className={PRESET_CARD_CLASS}>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                {t.config.agentUsageGuest}
+              </span>
+              <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                {presetLabels[guestPreset]}
+              </span>
+            </div>
+            <p className="mb-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+              {t.config.agentPresetGuestHint}
+            </p>
+            {renderPresetButtons('guest', guestPreset)}
+          </div>
+        </div>
+      </SettingGroup>
+
       {/* 普通用户权限 */}
       <PermissionGroup
         title={t.config.userElevatedPermissions}

@@ -33,6 +33,8 @@ use crate::services::agent::{
 /// 等待用户回答的任务上下文
 /// process_stream 注册后等待 oneshot 信号；answer_task_question_stream 完成后通过此信号回传结果
 struct WaitingTaskCtx {
+    /// 任务所有者；take 时必须匹配，防止跨用户抢 oneshot
+    user_id: i32,
     /// 后端 run 的进度 sender；answer 阶段继续写入同一个 run hub
     progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
     /// 单次信号：answer 处理完成后将最终 response Value 发送至此
@@ -44,6 +46,24 @@ struct WaitingTaskCtx {
 static WAITING_TASKS: once_cell::sync::Lazy<
     tokio::sync::RwLock<std::collections::HashMap<String, WaitingTaskCtx>>,
 > = once_cell::sync::Lazy::new(|| tokio::sync::RwLock::new(std::collections::HashMap::new()));
+
+/// 仅任务所有者可取出 waiting 上下文；错误用户不 remove，避免抢 oneshot
+async fn take_waiting_task(task_id: &str, user_id: i32) -> Option<WaitingTaskCtx> {
+    let mut map = WAITING_TASKS.write().await;
+    match map.get(task_id) {
+        Some(ctx) if ctx.user_id != user_id => {
+            tracing::warn!(
+                task_id = %task_id,
+                caller = user_id,
+                owner = ctx.user_id,
+                "[Agent API] WAITING_TASKS ownership mismatch"
+            );
+            None
+        }
+        Some(_) => map.remove(task_id),
+        None => None,
+    }
+}
 
 fn agent_run_event_stream(run: Arc<AgentRun>) -> impl Stream<Item = Result<Event, Infallible>> {
     async_stream::stream! {
@@ -844,6 +864,23 @@ fn parse_user_id(claims: &Claims) -> Result<i32, (StatusCode, Json<Value>)> {
     })
 }
 
+/// 解析 user_id 并校验 Agent 可见性/使用权限
+async fn parse_user_id_with_agent_access(
+    claims: &Claims,
+    db: &DatabaseConnection,
+) -> Result<i32, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(claims)?;
+    if let Err(msg) =
+        crate::services::agent::ensure_agent_usage_allowed(db, user_id).await
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": msg, "code": "agent_access_denied" })),
+        ));
+    }
+    Ok(user_id)
+}
+
 /// 验证输入长度
 fn validate_input(input: &str) -> Result<(), (StatusCode, Json<Value>)> {
     if input.len() > MAX_INPUT_LEN {
@@ -872,7 +909,7 @@ pub async fn process(
     Extension(claims): Extension<Claims>,
     Json(req): Json<ProcessRequest>,
 ) -> Result<Json<ApiResponse>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
     validate_input(&req.input)?;
 
     tracing::info!(
@@ -975,7 +1012,7 @@ pub async fn process_stream(
     Extension(claims): Extension<Claims>,
     Json(req): Json<ProcessRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
     validate_input(&req.input)?;
 
     tracing::info!(
@@ -1148,6 +1185,7 @@ pub async fn process_stream(
                             map.insert(
                                 task_id.clone(),
                                 WaitingTaskCtx {
+                                    user_id, // process_stream 的 user_id 在外层 spawn 中可用
                                     progress_tx: tx.clone(),
                                     done_tx,
                                     session_id: session_id_clone.clone(),
@@ -1234,9 +1272,7 @@ pub async fn process_stream(
                             Ok(Err(_)) => {
                                 // done_tx 被丢弃（answer stream 未找到对应的等待条目）
                                 tracing::warn!("[Agent API] Answer sender dropped unexpectedly");
-                                {
-                                    WAITING_TASKS.write().await.remove(&task_id);
-                                }
+                                let _ = take_waiting_task(&task_id, user_id).await;
                                 break;
                             }
                             Err(_) => {
@@ -1244,9 +1280,7 @@ pub async fn process_stream(
                                     task_id = %task_id,
                                     "[Agent API] Timeout waiting for answer (600s)"
                                 );
-                                {
-                                    WAITING_TASKS.write().await.remove(&task_id);
-                                }
+                                let _ = take_waiting_task(&task_id, user_id).await;
 
                                 // 检查任务的真实状态（可能在 timeout 前已被其他路径完成）
                                 let current_task = {
@@ -1600,7 +1634,7 @@ pub async fn cancel_task(
     if cancelled {
         // 等待输入中的 run 正阻塞在 done_rx；显式取消必须立即唤醒它，
         // 否则通知会在最多十分钟内仍错误显示为“等待回答”。
-        if let Some(waiting) = WAITING_TASKS.write().await.remove(&task_id) {
+        if let Some(waiting) = take_waiting_task(&task_id, user_id).await {
             let _ = waiting.done_tx.send(json!({
                 "success": false,
                 "responseType": "error",
@@ -1645,7 +1679,7 @@ pub async fn answer_task_question(
     Path(task_id): Path<String>,
     Json(req): Json<AnswerQuestionRequest>,
 ) -> Result<Json<ApiResponse>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
 
     tracing::info!(
         user_id = user_id,
@@ -1684,7 +1718,7 @@ pub async fn answer_task_question_stream(
     Path(task_id): Path<String>,
     Json(req): Json<AnswerQuestionRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
 
     tracing::info!(
         user_id = user_id,
@@ -1699,12 +1733,8 @@ pub async fn answer_task_question_stream(
     tokio::spawn(async move {
         let agent = Agent::new(db_clone.clone()).await;
 
-        // 从 WAITING_TASKS 获取后端 run 上下文（如果存在），
-        // 这样 resume 的进度事件会继续写入同一个可重连 run。
-        let waiting_ctx = {
-            let mut map = WAITING_TASKS.write().await;
-            map.remove(&task_id)
-        };
+        // 从 WAITING_TASKS 获取后端 run 上下文（仅所有者可取，防跨用户抢 oneshot）
+        let waiting_ctx = take_waiting_task(&task_id, user_id).await;
 
         // 持久化用户的回答到会话消息历史（确保后续 Planner 能看到完整对话）
         let ctx_session_id = waiting_ctx
@@ -1830,7 +1860,7 @@ pub async fn clarify(
     Extension(claims): Extension<Claims>,
     Json(req): Json<ClarifyRequest>,
 ) -> Result<Json<ApiResponse>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
     validate_input(&req.original_input)?;
 
     tracing::info!(
@@ -1867,7 +1897,7 @@ pub async fn confirm_operation(
     Extension(claims): Extension<Claims>,
     Json(req): Json<ConfirmRequest>,
 ) -> Result<Json<ApiResponse>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
 
     tracing::info!(
         confirmation_id = %req.confirmation_id,
@@ -2304,7 +2334,7 @@ pub async fn execute_preset(
     Extension(claims): Extension<Claims>,
     Path(preset_id): Path<i32>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
 
     // 查找预设
     let preset = agent_task_presets::Entity::find_by_id(preset_id)
@@ -2547,8 +2577,11 @@ async fn list_skills() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     Ok(Json(json!({ "skills": skills_json })))
 }
 
-/// 获取记忆条目
-async fn list_memories() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+/// 获取记忆条目（当前用户）
+async fn list_memories(
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
     let memory = crate::services::agent::memory::get_memory().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2556,7 +2589,7 @@ async fn list_memories() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
         )
     })?;
 
-    let entries = memory.list_recent(50).await;
+    let entries = memory.list_recent(50, user_id).await;
     let memories_json: Vec<Value> = entries
         .iter()
         .map(|e| {
@@ -2577,10 +2610,12 @@ async fn list_memories() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     Ok(Json(json!({ "memories": memories_json })))
 }
 
-/// 删除记忆条目
+/// 删除记忆条目（仅本人）
 async fn delete_memory(
+    Extension(claims): Extension<Claims>,
     Path(memory_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
     let memory = crate::services::agent::memory::get_memory().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2588,7 +2623,7 @@ async fn delete_memory(
         )
     })?;
 
-    if memory.remove_memory(&memory_id).await {
+    if memory.remove_memory(&memory_id, user_id).await {
         Ok(Json(json!({ "success": true })))
     } else {
         Err((
@@ -2598,11 +2633,13 @@ async fn delete_memory(
     }
 }
 
-/// 更新记忆条目
+/// 更新记忆条目（仅本人）
 async fn update_memory(
+    Extension(claims): Extension<Claims>,
     Path(memory_id): Path<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(&claims)?;
     let content = body["content"].as_str().ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
@@ -2617,7 +2654,7 @@ async fn update_memory(
         )
     })?;
 
-    if memory.update_memory(&memory_id, content).await {
+    if memory.update_memory(&memory_id, content, user_id).await {
         Ok(Json(json!({ "success": true })))
     } else {
         Err((
@@ -2751,7 +2788,7 @@ async fn steer_session(
     Extension(claims): Extension<Claims>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let _user_id = parse_user_id(&claims)?;
+    let user_id = parse_user_id(&claims)?;
     let instruction = body
         .get("instruction")
         .and_then(|v| v.as_str())
@@ -2770,11 +2807,12 @@ async fn steer_session(
         ));
     }
 
-    // 记录转向指令到记忆系统（供后续步骤参考）
+    // 记录转向指令到记忆系统（供后续步骤参考，按用户隔离）
     if let Some(mem) = crate::services::agent::memory::get_memory() {
         mem.remember(
             &format!("用户中途转向指令: {}", instruction),
             crate::services::agent::memory::MemoryType::SessionInsight,
+            user_id,
         )
         .await;
     }

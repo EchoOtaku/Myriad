@@ -39,6 +39,7 @@ import {
   playNeteaseSong,
   processEmbeds,
 } from '../../utils/embedProcessor'
+import { escapeHtml } from '../../utils/inputSanitizer'
 import { processRssContent } from '../../utils/rssContentProcessor'
 import {
   AnnotationTooltip,
@@ -568,6 +569,7 @@ export default function BrewReader({
     if (!contentReady) return ''
 
     // 🔴 网络搜索文章：直接显示 AI 生成的摘要（不再支持加载原文）
+    // 必须 HTML 转义，禁止把模型/搜索文本当 HTML 注入
     if (item.fromWebSearch && !item.content) {
       const hasSummary = item.summary && item.summary.trim().length > 20
       if (hasSummary) {
@@ -575,7 +577,7 @@ export default function BrewReader({
           .summary!.split(/\n\n|\n/)
           .filter((p) => p.trim())
         const summaryHtml = paragraphs
-          .map((p) => `<p>${p.trim()}</p>`)
+          .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
           .join('\n')
         return `<div class="web-search-summary">
           ${summaryHtml}

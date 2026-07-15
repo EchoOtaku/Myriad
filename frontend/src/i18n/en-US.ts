@@ -802,15 +802,23 @@ export const enUS: TranslationKeys = {
     // Tapp permission management settings
     permissions: 'Permission Management',
     permissionsDesc:
-      'Configure Tapp elevated permission delegation and AI usage quotas. 4 levels: public, basic, elevated (delegable), privileged (admin only)',
+      'Configure Tapp elevated delegation and AI quotas. Levels: public / basic / elevated (delegable) / privileged (admin only). Report generation is not delegable',
     permissionsTitle: 'Tapp Permission Management',
     tappPermissionsInfoTitle: 'Permission Levels',
     tappPermissionsInfo:
-      'Tapp has 4 permission levels: public (open), basic (default for all), elevated (configurable delegation), privileged (admin only). Here you can delegate 11 elevated permissions to users or guests.',
+      'public/basic are open by default; elevated can be delegated here; privileged (including report:write) is admin-only. The AI assistant is force-aligned with these toggles — use Assistant presets above or fine-tune switches (chat needs ai:chat; outbound needs network:fetch).',
+    agentPresetTitle: 'AI Assistant Presets',
+    agentPresetDesc:
+      'One-click templates for agent-related elevated toggles; fine-tune below. Does not change media/theme and other unrelated items',
+    agentPresetUserHint:
+      'Disabled=off AI/outbound; Chat=ai:chat+analyze; Standard=all AI; Elevated=AI+outbound+scheduler',
+    agentPresetGuestHint:
+      'Guests have no agent sessions; enabling ai:chat mainly affects entry visibility and Tapp AI. Use with caution',
+    agentPresetCustom: 'Custom',
     // User elevated permissions
     userElevatedPermissions: 'User Permission Delegation',
     userElevatedPermissionsDesc:
-      'Select elevated permissions to grant to regular users',
+      'Grant elevated permissions per toggle; AI/outbound/scheduler can also be set via Assistant presets above',
     // Guest elevated permissions
     guestElevatedPermissions: 'Guest Permission Delegation',
     guestElevatedPermissionsDesc:
@@ -867,6 +875,18 @@ export const enUS: TranslationKeys = {
     moduleVisibilityAdmin: 'Admins',
     moduleVisibilitySaved: 'Page visibility settings saved',
     moduleVisibilityLoadFailed: 'Failed to load page visibility settings',
+    agentUsageTitle: 'AI Assistant Usage',
+    agentUsageDesc: 'Moved into Tapp Permission Management as Assistant presets',
+    agentUsageGuest: 'Guests',
+    agentUsageGuestHint: 'See Assistant presets under Tapp permissions',
+    agentUsageGuestHidden: 'Hidden',
+    agentUsageGuestVisible: 'Show entry',
+    agentUsageUser: 'Regular users',
+    agentUsageUserHint: 'See Assistant presets under Tapp permissions',
+    agentUsageNone: 'Disabled',
+    agentUsageChat: 'Chat only',
+    agentUsageStandard: 'Standard',
+    agentUsageElevated: 'Elevated',
     // Hitokoto (quote) settings
     hitokotoTitle: 'Daily Quote',
     hitokotoDesc:

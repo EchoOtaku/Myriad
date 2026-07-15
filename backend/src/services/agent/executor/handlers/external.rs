@@ -4,70 +4,23 @@
 
 use super::HandlerContext;
 use crate::services::fetcher::PlatformFetcher;
+use crate::services::outbound_security;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::time::Duration;
 
-/// 验证 URL 安全性，防止 SSRF 攻击
-///
-/// 仅允许 http/https scheme，屏蔽私有/保留 IP 段
-fn validate_url_for_fetch(url_str: &str) -> Result<(), String> {
-    let url = url::Url::parse(url_str).map_err(|e| format!("URL 格式无效: {}", e))?;
+const FETCH_USER_AGENT: &str = "Myriad Agent/1.0 (http.fetch)";
+const SCRAPE_USER_AGENT: &str = "Mozilla/5.0 (compatible; Myriad/1.0)";
 
-    // 只允许 http/https
-    match url.scheme() {
-        "http" | "https" => {}
-        scheme => return Err(format!("不允许的 URL scheme: {}", scheme)),
-    }
-
-    // 必须有 host
-    let host = url.host_str().ok_or("URL 缺少 host")?;
-
-    // 禁止 localhost 及其变体
-    let host_lower = host.to_lowercase();
-    if host_lower == "localhost" || host_lower == "ip6-localhost" {
-        return Err("不允许访问 localhost".to_string());
-    }
-
-    // 如果 host 是 IP 地址，检查是否为私有/保留段
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        if is_private_or_reserved_ip(ip) {
-            return Err(format!("不允许访问私有/保留 IP: {}", ip));
-        }
-    }
-
-    Ok(())
-}
-
-/// 检查 IP 是否属于私有或保留地址段
-fn is_private_or_reserved_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            let octets = v4.octets();
-            // 127.x.x.x — loopback
-            octets[0] == 127
-            // 10.x.x.x — RFC1918
-            || octets[0] == 10
-            // 172.16-31.x.x — RFC1918
-            || (octets[0] == 172 && (16..=31).contains(&octets[1]))
-            // 192.168.x.x — RFC1918
-            || (octets[0] == 192 && octets[1] == 168)
-            // 169.254.x.x — link-local
-            || (octets[0] == 169 && octets[1] == 254)
-            // 0.0.0.0
-            || octets[0] == 0
-            // 100.64-127.x.x — shared address (RFC6598)
-            || (octets[0] == 100 && (64..=127).contains(&octets[1]))
-        }
-        IpAddr::V6(v6) => {
-            // ::1 — loopback
-            v6.is_loopback()
-            // fc00::/7 — unique local
-            || (v6.segments()[0] & 0xfe00) == 0xfc00
-            // fe80::/10 — link-local
-            || (v6.segments()[0] & 0xffc0) == 0xfe80
-        }
-    }
+/// 构建仅允许公网目标的 HTTP 客户端（DNS 钉扎、禁止重定向 → 防 SSRF）
+async fn public_client(
+    url: &str,
+    timeout: Duration,
+    user_agent: &str,
+) -> Result<(url::Url, reqwest::Client), String> {
+    outbound_security::build_public_http_client(url, timeout, Some(user_agent))
+        .await
+        .map_err(|e| format!("URL 安全校验失败（SSRF 防护）: {e}"))
 }
 
 /// 执行外部集成能力
@@ -106,30 +59,25 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
         .and_then(|v| v.as_str())
         .ok_or("Missing URL parameter")?;
 
-    // SSRF 防护：验证 URL scheme 并屏蔽私有 IP
-    validate_url_for_fetch(url)?;
-
     let method = params
         .get("method")
         .and_then(|v| v.as_str())
         .unwrap_or("GET");
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    let (target_url, client) =
+        public_client(url, Duration::from_secs(30), FETCH_USER_AGENT).await?;
     let response = match method {
         "POST" => {
             let body = params.get("body").cloned().unwrap_or(json!({}));
             client
-                .post(url)
+                .post(target_url)
                 .json(&body)
                 .send()
                 .await
                 .map_err(|e| format!("HTTP request failed: {}", e))?
         }
         _ => client
-            .get(url)
+            .get(target_url)
             .send()
             .await
             .map_err(|e| format!("HTTP request failed: {}", e))?,
@@ -643,8 +591,9 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
         .and_then(|v| v.as_str())
         .ok_or("Missing url parameter")?;
 
-    // SSRF 防护
-    validate_url_for_fetch(url)?;
+    // SSRF 防护：公网 DNS 钉扎、禁止重定向（不再 follow 到内网）
+    let (target_url, client) =
+        public_client(url, Duration::from_secs(15), SCRAPE_USER_AGENT).await?;
 
     let selector_str = params
         .get("selector")
@@ -655,15 +604,8 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
         .and_then(|v| v.as_u64())
         .unwrap_or(5000) as usize;
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()
-        .map_err(|e| format!("Client error: {}", e))?;
-
     let response = client
-        .get(url)
-        .header("User-Agent", "Mozilla/5.0 (compatible; Myriad/1.0)")
+        .get(target_url)
         .header("Accept", "text/html,application/xhtml+xml,*/*")
         .send()
         .await

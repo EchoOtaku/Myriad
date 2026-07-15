@@ -45,6 +45,9 @@ const MERGE_SIMILARITY_THRESHOLD: f32 = 0.70;
 pub struct MemoryEntry {
     /// 唯一 ID（内容 hash）
     pub id: String,
+    /// 所属用户（None = 遗留/全局，仅系统可读；新写入必须带 user_id）
+    #[serde(default)]
+    pub user_id: Option<i32>,
     /// 记忆类型
     pub memory_type: MemoryType,
     /// 记忆层级
@@ -71,6 +74,14 @@ pub struct MemoryEntry {
     /// 关联能力 ID（该记忆涉及哪些 capability）
     #[serde(default)]
     pub related_capabilities: Vec<String>,
+}
+
+/// 条目是否对用户可见（严格：仅自己的；系统 user_id=0 可见全部）
+fn entry_visible_to(entry: &MemoryEntry, user_id: i32) -> bool {
+    if user_id == 0 {
+        return true;
+    }
+    entry.user_id == Some(user_id)
 }
 
 fn default_tier() -> MemoryTier {
@@ -382,6 +393,8 @@ pub struct RecallQuery {
     pub tier_filter: Option<Vec<MemoryTier>>,
     /// 仅搜索指定类型（None = 全部）
     pub type_filter: Option<Vec<MemoryType>>,
+    /// 仅召回该用户的记忆（必填于多租户路径）
+    pub user_id: Option<i32>,
     /// 语义相似度权重
     pub similarity_weight: f32,
     /// 时间衰减权重
@@ -397,6 +410,7 @@ impl Default for RecallQuery {
             limit: 5,
             tier_filter: None,
             type_filter: None,
+            user_id: None,
             similarity_weight: 0.5,
             recency_weight: 0.3,
             importance_weight: 0.2,
@@ -498,8 +512,8 @@ impl AgentMemory {
     // ==================== 写入 ====================
 
     /// 记住一条记忆
-    pub async fn remember(&self, content: &str, memory_type: MemoryType) {
-        self.remember_with_tier(content, memory_type, MemoryTier::LongTerm, 0.5)
+    pub async fn remember(&self, content: &str, memory_type: MemoryType, user_id: i32) {
+        self.remember_with_tier(content, memory_type, MemoryTier::LongTerm, 0.5, user_id)
             .await;
     }
 
@@ -510,6 +524,7 @@ impl AgentMemory {
         memory_type: MemoryType,
         tier: MemoryTier,
         importance: f32,
+        user_id: i32,
     ) {
         self.remember_full(
             content,
@@ -518,6 +533,7 @@ impl AgentMemory {
             importance,
             Vec::new(),
             Vec::new(),
+            user_id,
         )
         .await;
     }
@@ -531,8 +547,9 @@ impl AgentMemory {
         importance: f32,
         entities: Vec<String>,
         related_capabilities: Vec<String>,
+        user_id: i32,
     ) {
-        // 去重检查：如果已有高度相似的记忆，跳过或合并
+        // 去重检查：如果已有高度相似的记忆，跳过或合并（仅同用户）
         if self
             .should_dedup_or_merge(
                 content,
@@ -540,13 +557,14 @@ impl AgentMemory {
                 &entities,
                 &related_capabilities,
                 importance,
+                user_id,
             )
             .await
         {
             return;
         }
 
-        let id = Self::make_id(content);
+        let id = Self::make_id(&format!("{user_id}:{content}"));
 
         // 构建索引文本（需要在 move 之前）
         let mut index_text = content.to_string();
@@ -561,6 +579,7 @@ impl AgentMemory {
 
         let entry = MemoryEntry {
             id: id.clone(),
+            user_id: Some(user_id),
             memory_type,
             tier,
             content: content.to_string(),
@@ -609,6 +628,7 @@ impl AgentMemory {
         execution_results: &HashMap<String, Value>,
         success: bool,
         capabilities_used: &[String],
+        user_id: i32,
     ) {
         // Short-circuit: 极简交互不需要触发 AI 提取
         let input_chars: usize = user_input.chars().count();
@@ -668,17 +688,22 @@ impl AgentMemory {
         let context = context_parts.join("\n\n");
 
         // 1. 检测纠错模式（规则匹配，不需要 AI）
-        self.detect_and_store_corrections(user_input, conversation_history)
+        self.detect_and_store_corrections(user_input, conversation_history, user_id)
             .await;
 
         // 2. 如果失败，记录执行教训（规则匹配）
         if !success {
-            self.record_failure_lesson(user_input, execution_results, capabilities_used)
-                .await;
+            self.record_failure_lesson(
+                user_input,
+                execution_results,
+                capabilities_used,
+                user_id,
+            )
+            .await;
         }
 
         // 3. AI 提取深层记忆
-        let existing_memories = self.get_existing_summary().await;
+        let existing_memories = self.get_existing_summary(user_id).await;
         let prompt = format!(
             r#"你是记忆提取引擎。从以下对话和执行记录中提取**值得长期记住**的信息。
 
@@ -733,6 +758,7 @@ impl AgentMemory {
                             mem.importance.clamp(0.3, 1.0),
                             mem.entities,
                             mem.capabilities,
+                            user_id,
                         )
                         .await;
                     }
@@ -756,6 +782,7 @@ impl AgentMemory {
         &self,
         user_input: &str,
         conversation_history: Option<&[Value]>,
+        user_id: i32,
     ) {
         let input_lower = user_input.to_lowercase();
 
@@ -799,6 +826,7 @@ impl AgentMemory {
             0.9, // 纠错信息高重要性
             Vec::new(),
             Vec::new(),
+            user_id,
         )
         .await;
 
@@ -811,6 +839,7 @@ impl AgentMemory {
         user_input: &str,
         execution_results: &HashMap<String, Value>,
         capabilities_used: &[String],
+        user_id: i32,
     ) {
         for (step_id, output) in execution_results {
             let error = output.get("error").and_then(|e| e.as_str()).or_else(|| {
@@ -844,6 +873,7 @@ impl AgentMemory {
                     0.8,
                     Vec::new(),
                     vec![cap_id],
+                    user_id,
                 )
                 .await;
             }
@@ -851,12 +881,16 @@ impl AgentMemory {
     }
 
     /// 获取已有记忆摘要（用于 AI 提取时避免重复）
-    async fn get_existing_summary(&self) -> String {
+    async fn get_existing_summary(&self, user_id: i32) -> String {
         let entries = self.entries.read().await;
         // 按重要性降序取最高价值的记忆，给 AI 提取时避免重复
         let mut filtered: Vec<&MemoryEntry> = entries
             .values()
-            .filter(|e| e.tier == MemoryTier::LongTerm && e.memory_type != MemoryType::Interaction)
+            .filter(|e| {
+                entry_visible_to(e, user_id)
+                    && e.tier == MemoryTier::LongTerm
+                    && e.memory_type != MemoryType::Interaction
+            })
             .collect();
         filtered.sort_by(|a, b| {
             b.importance
@@ -903,6 +937,7 @@ impl AgentMemory {
         new_entities: &[String],
         new_capabilities: &[String],
         new_importance: f32,
+        user_id: i32,
     ) -> bool {
         let mut idx = self.index.write().await;
         let similar = idx.search(new_content, 3);
@@ -916,6 +951,10 @@ impl AgentMemory {
 
         for (id, score) in &similar {
             if let Some(existing) = entries.get(id) {
+                // 跨用户不去重
+                if !entry_visible_to(existing, user_id) {
+                    continue;
+                }
                 // 完全重复：跳过
                 if *score > DEDUP_SIMILARITY_THRESHOLD {
                     tracing::debug!(
@@ -929,7 +968,7 @@ impl AgentMemory {
                 // 可合并：同类型且高度相似 — 用新内容替换旧内容并提升重要性
                 if *score > MERGE_SIMILARITY_THRESHOLD && existing.memory_type == *new_type {
                     let id_clone = id.clone();
-                    let new_id = Self::make_id(new_content);
+                    let new_id = Self::make_id(&format!("{user_id}:{new_content}"));
                     drop(entries);
 
                     // 在 entries 写锁内完成合并 + 提取索引数据，避免 drop 后竞态
@@ -1073,7 +1112,12 @@ impl AgentMemory {
     }
 
     /// 按实体召回相关记忆
-    pub async fn recall_by_entity(&self, entity: &str, limit: usize) -> Vec<MemoryEntry> {
+    pub async fn recall_by_entity(
+        &self,
+        entity: &str,
+        limit: usize,
+        user_id: i32,
+    ) -> Vec<MemoryEntry> {
         if entity.trim().is_empty() {
             return Vec::new();
         }
@@ -1087,6 +1131,7 @@ impl AgentMemory {
         let entries = self.entries.read().await;
         let mut scored: Vec<(&MemoryEntry, f32)> = entries
             .values()
+            .filter(|e| entry_visible_to(e, user_id))
             .filter_map(|e| {
                 let content_lower = e.content.to_lowercase();
                 let entity_names: Vec<String> =
@@ -1332,7 +1377,7 @@ impl AgentMemory {
     /// 归档会话洞察到 LongTerm 记忆
     ///
     /// 在会话结束或切换时调用，用 AI 从会话历史中提炼关键信息。
-    pub async fn consolidate_session(&self, summary: &str) {
+    pub async fn consolidate_session(&self, summary: &str, user_id: i32) {
         if summary.trim().is_empty() {
             return;
         }
@@ -1341,6 +1386,7 @@ impl AgentMemory {
             MemoryType::SessionInsight,
             MemoryTier::MediumTerm,
             0.6,
+            user_id,
         )
         .await;
     }
@@ -1369,12 +1415,12 @@ impl AgentMemory {
 
     // ==================== 列举 ====================
 
-    /// 列出最近的记忆条目（按创建时间降序，排除 ShortTerm）
-    pub async fn list_recent(&self, limit: usize) -> Vec<MemoryEntry> {
+    /// 列出最近的记忆条目（按创建时间降序，排除 ShortTerm，按用户隔离）
+    pub async fn list_recent(&self, limit: usize, user_id: i32) -> Vec<MemoryEntry> {
         let entries = self.entries.read().await;
         let mut recent: Vec<&MemoryEntry> = entries
             .values()
-            .filter(|e| e.tier != MemoryTier::ShortTerm)
+            .filter(|e| entry_visible_to(e, user_id) && e.tier != MemoryTier::ShortTerm)
             .collect();
         recent.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         recent.truncate(limit);
@@ -1383,50 +1429,72 @@ impl AgentMemory {
 
     // ==================== 管理操作 ====================
 
-    /// 删除指定 ID 的记忆条目
+    /// 删除指定 ID 的记忆条目（仅所有者或系统用户）
     ///
     /// 锁顺序：index 先，entries 后（与其他所有路径一致，避免死锁）
-    pub async fn remove_memory(&self, memory_id: &str) -> bool {
-        // 先检查是否存在（read 锁）
-        let exists = {
+    pub async fn remove_memory(&self, memory_id: &str, user_id: i32) -> bool {
+        // 先检查是否存在且归属正确（read 锁）
+        let allowed = {
             let entries = self.entries.read().await;
-            entries.contains_key(memory_id)
+            entries
+                .get(memory_id)
+                .is_some_and(|e| entry_visible_to(e, user_id))
         };
-        if !exists {
+        if !allowed {
             return false;
         }
         // 按正确顺序获取写锁
         {
             let mut idx = self.index.write().await;
             let mut entries = self.entries.write().await;
+            // 再验一次归属
+            if !entries
+                .get(memory_id)
+                .is_some_and(|e| entry_visible_to(e, user_id))
+            {
+                return false;
+            }
             idx.remove_document(memory_id);
             entries.remove(memory_id);
         }
         self.save_all().await;
-        tracing::info!(id = memory_id, "[Memory] Removed memory entry");
+        tracing::info!(id = memory_id, user_id, "[Memory] Removed memory entry");
         true
     }
 
-    /// 更新指定 ID 的记忆内容
+    /// 更新指定 ID 的记忆内容（仅所有者）
     ///
     /// 锁顺序：index 先，entries 后（与其他所有路径一致，避免死锁）
-    pub async fn update_memory(&self, memory_id: &str, new_content: &str) -> bool {
-        let new_id = Self::make_id(new_content);
-        // 先检查是否存在
-        let exists = {
+    pub async fn update_memory(
+        &self,
+        memory_id: &str,
+        new_content: &str,
+        user_id: i32,
+    ) -> bool {
+        let allowed = {
             let entries = self.entries.read().await;
-            entries.contains_key(memory_id)
+            entries
+                .get(memory_id)
+                .is_some_and(|e| entry_visible_to(e, user_id))
         };
-        if !exists {
+        if !allowed {
             return false;
         }
+        let new_id = Self::make_id(&format!("{user_id}:{new_content}"));
         {
             let mut idx = self.index.write().await;
             let mut entries = self.entries.write().await;
+            if !entries
+                .get(memory_id)
+                .is_some_and(|e| entry_visible_to(e, user_id))
+            {
+                return false;
+            }
             idx.remove_document(memory_id);
             if let Some(mut entry) = entries.remove(memory_id) {
                 entry.content = new_content.to_string();
                 entry.id = new_id.clone();
+                entry.user_id = Some(user_id);
                 entry.last_accessed_at = Some(Utc::now().to_rfc3339());
                 // 索引文本包含实体和能力关键词，与其他写入路径保持一致
                 let mut index_text = new_content.to_string();
@@ -1443,7 +1511,7 @@ impl AgentMemory {
             }
         }
         self.save_all().await;
-        tracing::info!(old_id = memory_id, new_id = %new_id, "[Memory] Updated memory entry");
+        tracing::info!(old_id = memory_id, new_id = %new_id, user_id, "[Memory] Updated memory entry");
         true
     }
 
@@ -1474,6 +1542,13 @@ impl AgentMemory {
             .into_iter()
             .filter_map(|(id, sim_score)| {
                 let entry = entries.get(&id)?;
+
+                // 用户隔离
+                if let Some(uid) = params.user_id {
+                    if !entry_visible_to(entry, uid) {
+                        return None;
+                    }
+                }
 
                 // 层级过滤
                 if let Some(ref tiers) = params.tier_filter {
@@ -1761,6 +1836,7 @@ impl AgentMemory {
 
                 Some(MemoryEntry {
                     id,
+                    user_id: None, // 遗留 markdown 导入，不归属具体用户
                     memory_type,
                     tier: MemoryTier::LongTerm,
                     content,
@@ -1981,5 +2057,33 @@ mod tests {
             (decay - 0.3).abs() < f32::EPSILON,
             "decay should floor at 0.3, got {decay}"
         );
+    }
+
+    #[test]
+    fn entry_visible_to_isolates_users() {
+        let a = MemoryEntry {
+            id: "a".into(),
+            user_id: Some(1),
+            memory_type: MemoryType::Preference,
+            tier: MemoryTier::LongTerm,
+            content: "user1".into(),
+            source: None,
+            importance: 0.5,
+            access_count: 0,
+            created_at: Utc::now().to_rfc3339(),
+            last_accessed_at: None,
+            entities: vec![],
+            related_capabilities: vec![],
+        };
+        let legacy = MemoryEntry {
+            user_id: None,
+            content: "legacy".into(),
+            ..a.clone()
+        };
+        assert!(entry_visible_to(&a, 1));
+        assert!(!entry_visible_to(&a, 2));
+        assert!(entry_visible_to(&a, 0)); // system sees all
+        assert!(!entry_visible_to(&legacy, 1)); // orphan legacy not visible to users
+        assert!(entry_visible_to(&legacy, 0));
     }
 }

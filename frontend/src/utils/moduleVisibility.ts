@@ -9,8 +9,20 @@ export type ModuleVisibilityKey =
   | 'tapp'
   | 'agent'
 
+/** 游客：仅控制是否展示助手入口（无后端能力档） */
+export type AgentGuestUsageLevel = 'none' | 'visible'
+/** 普通用户 Agent 使用档 */
+export type AgentUserUsageLevel = 'none' | 'chat' | 'standard' | 'elevated'
+
+export interface AgentUsagePreferences {
+  guest: AgentGuestUsageLevel
+  user: AgentUserUsageLevel
+}
+
 export interface ModuleVisibilityPreferences {
   modules: Record<ModuleVisibilityKey, ModuleVisibilityLevel>
+  /** Agent 游客/普通用户使用权限（管理员始终完整） */
+  agentUsage: AgentUsagePreferences
 }
 
 interface ModuleVisibilityResponse {
@@ -33,8 +45,25 @@ export const MODULE_VISIBILITY_LEVELS: ModuleVisibilityLevel[] = [
   'admin',
 ]
 
+export const AGENT_GUEST_USAGE_LEVELS: AgentGuestUsageLevel[] = [
+  'none',
+  'visible',
+]
+
+export const AGENT_USER_USAGE_LEVELS: AgentUserUsageLevel[] = [
+  'none',
+  'chat',
+  'standard',
+  'elevated',
+]
+
 export const MODULE_VISIBILITY_UPDATED_EVENT =
   'module-visibility-preferences-updated'
+
+export const DEFAULT_AGENT_USAGE_PREFERENCES: AgentUsagePreferences = {
+  guest: 'none',
+  user: 'standard',
+}
 
 export const DEFAULT_MODULE_VISIBILITY_PREFERENCES: ModuleVisibilityPreferences =
   {
@@ -45,6 +74,7 @@ export const DEFAULT_MODULE_VISIBILITY_PREFERENCES: ModuleVisibilityPreferences 
       tapp: 'all',
       agent: 'all',
     },
+    agentUsage: { ...DEFAULT_AGENT_USAGE_PREFERENCES },
   }
 
 function isVisibilityLevel(value: unknown): value is ModuleVisibilityLevel {
@@ -53,9 +83,25 @@ function isVisibilityLevel(value: unknown): value is ModuleVisibilityLevel {
   )
 }
 
+function isGuestUsageLevel(value: unknown): value is AgentGuestUsageLevel {
+  return value === 'none' || value === 'visible'
+}
+
+function isUserUsageLevel(value: unknown): value is AgentUserUsageLevel {
+  return (
+    value === 'none' ||
+    value === 'chat' ||
+    value === 'standard' ||
+    value === 'elevated'
+  )
+}
+
 export function normalizeModuleVisibilityPreferences(
-  preferences?: Partial<ModuleVisibilityPreferences>,
+  preferences?: Partial<ModuleVisibilityPreferences> & {
+    agentUsage?: Partial<AgentUsagePreferences>
+  },
 ): ModuleVisibilityPreferences {
+  const usage = preferences?.agentUsage
   return {
     modules: MODULE_VISIBILITY_KEYS.reduce(
       (acc, key) => {
@@ -67,6 +113,14 @@ export function normalizeModuleVisibilityPreferences(
       },
       {} as Record<ModuleVisibilityKey, ModuleVisibilityLevel>,
     ),
+    agentUsage: {
+      guest: isGuestUsageLevel(usage?.guest)
+        ? usage.guest
+        : DEFAULT_AGENT_USAGE_PREFERENCES.guest,
+      user: isUserUsageLevel(usage?.user)
+        ? usage.user
+        : DEFAULT_AGENT_USAGE_PREFERENCES.user,
+    },
   }
 }
 
@@ -74,8 +128,13 @@ export function areModuleVisibilityPreferencesEqual(
   left: ModuleVisibilityPreferences,
   right: ModuleVisibilityPreferences,
 ) {
-  return MODULE_VISIBILITY_KEYS.every(
+  const modulesEqual = MODULE_VISIBILITY_KEYS.every(
     (key) => left.modules[key] === right.modules[key],
+  )
+  return (
+    modulesEqual &&
+    left.agentUsage.guest === right.agentUsage.guest &&
+    left.agentUsage.user === right.agentUsage.user
   )
 }
 
@@ -86,6 +145,38 @@ export function canAccessModuleVisibility(
   if (visibility === 'all') return true
   if (visibility === 'authenticated') return viewer.isAuthenticated
   return viewer.isAdmin
+}
+
+/**
+ * Agent 是否应对当前观众展示/可用。
+ * 综合「页面可见性」与 Tapp `ai:chat`（权限页预设模板的真相源）：
+ * - 管理员：仅受可见性约束
+ * - 游客：可见性允许 + guest_perm_ai_chat
+ * - 普通用户：可见性允许 + user_perm_ai_chat
+ *
+ * 兼容：若未传入 elevatedAiChat，回退旧 agentUsage 字段（迁移期）
+ */
+export function canUseAgent(
+  preferences: ModuleVisibilityPreferences,
+  viewer: { isAuthenticated: boolean; isAdmin: boolean },
+  elevatedAiChat?: { user?: boolean; guest?: boolean },
+): boolean {
+  if (
+    !canAccessModuleVisibility(preferences.modules.agent, viewer)
+  ) {
+    return false
+  }
+  if (viewer.isAdmin) return true
+  if (!viewer.isAuthenticated) {
+    if (elevatedAiChat !== undefined) {
+      return elevatedAiChat.guest === true
+    }
+    return preferences.agentUsage.guest === 'visible'
+  }
+  if (elevatedAiChat !== undefined) {
+    return elevatedAiChat.user === true
+  }
+  return preferences.agentUsage.user !== 'none'
 }
 
 export function getModuleVisibilityKeyForPath(

@@ -716,34 +716,17 @@ async fn execute_bookmark_save(
     let bookmark_id = format!("bookmark_{}", Utc::now().timestamp_millis());
     let now = Utc::now();
 
-    // 尝试获取网页标题（SSRF 防护：仅允许 http/https，阻止内网地址）
+    // 尝试获取网页标题（SSRF：outbound_security 公网 DNS 钉扎、禁止重定向）
     let fetched_title = if title.is_none() {
-        let is_safe = url::Url::parse(url)
-            .ok()
-            .filter(|u| matches!(u.scheme(), "http" | "https"))
-            .and_then(|u| u.host_str().map(|h| h.to_string()))
-            .filter(|host| {
-                host != "localhost"
-                    && !host.ends_with(".local")
-                    && !host.ends_with(".internal")
-                    && !host.parse::<std::net::IpAddr>().is_ok_and(|ip| {
-                        ip.is_loopback()
-                            || match ip {
-                                std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
-                                std::net::IpAddr::V6(v6) => v6.is_loopback(),
-                            }
-                    })
-            })
-            .is_some();
-        if !is_safe {
-            None
-        } else {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(10))
-                .build()
-                .ok();
-            if let Some(client) = client {
-                if let Ok(resp) = client.get(url).send().await {
+        match crate::services::outbound_security::build_public_http_client(
+            url,
+            std::time::Duration::from_secs(10),
+            Some("Myriad Agent/1.0 (bookmark title)"),
+        )
+        .await
+        {
+            Ok((target_url, client)) => {
+                if let Ok(resp) = client.get(target_url).send().await {
                     if let Ok(body) = resp.text().await {
                         let body_limited: String = body.chars().take(100_000).collect();
                         if let Some(start) = body_limited.find("<title>") {
@@ -759,7 +742,9 @@ async fn execute_bookmark_save(
                 } else {
                     None
                 }
-            } else {
+            }
+            Err(e) => {
+                tracing::debug!(url = %url, error = %e, "[Bookmark] title fetch blocked/failed");
                 None
             }
         }

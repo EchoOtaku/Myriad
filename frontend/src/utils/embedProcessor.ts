@@ -11,6 +11,8 @@
  * 样式与资料库卡片风格一致
  */
 
+import { isTrustedIframeHost } from './rssContentProcessor'
+
 // ==================== 缓存系统 ====================
 // 简单的内存缓存，避免重复请求相同资源（尤其是 GitHub API 有速率限制）
 const CACHE_TTL = 5 * 60 * 1000 // 5分钟缓存
@@ -448,6 +450,22 @@ export function processEmbeds(content: string, isDark: boolean): string {
       }
     }
     return match
+  })
+
+  // 5. 剥离仍残留的非可信 iframe（与 rssContentProcessor 共用主机白名单）
+  result = result.replace(/<iframe\b[\s\S]*?<\/iframe>/gi, (match) => {
+    const srcMatch =
+      match.match(/\bsrc\s*=\s*(["'])([^"']*)\1/i) ||
+      match.match(/\bsrc\s*=\s*([^\s>]+)/i)
+    if (!srcMatch) return ''
+    const rawSrc = (srcMatch[2] || srcMatch[1] || '').trim()
+    try {
+      const href = rawSrc.startsWith('//') ? `https:${rawSrc}` : rawSrc
+      const host = new URL(href, 'https://example.invalid').hostname
+      return isTrustedIframeHost(host) ? match : ''
+    } catch {
+      return ''
+    }
   })
 
   return result

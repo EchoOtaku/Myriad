@@ -1197,13 +1197,40 @@ impl Agent {
         &self,
         confirmation: UserConfirmation,
     ) -> Result<AgentResponse, String> {
+        // 仅允许确认自己的 pending；错误用户不得 remove，以免抢确认权
         let pending = {
             let mut store = PENDING_CONFIRMATIONS.write().await;
-            store.remove(&confirmation.confirmation_id)
+            match store.get(&confirmation.confirmation_id) {
+                Some(p) if p.user_id != confirmation.user_id => {
+                    tracing::warn!(
+                        confirmation_id = %confirmation.confirmation_id,
+                        caller = confirmation.user_id,
+                        owner = p.user_id,
+                        "[Agent] Confirmation ownership mismatch"
+                    );
+                    None
+                }
+                Some(_) => store.remove(&confirmation.confirmation_id),
+                None => None,
+            }
         };
 
         match pending {
             Some(pending_confirmation) => {
+                // 二次校验（防御性）
+                if pending_confirmation.user_id != confirmation.user_id {
+                    return Ok(AgentResponse {
+                        response_type: AgentResponseType::Error,
+                        message: response_agent::confirmation_not_found(),
+                        data: None,
+                        data_display: None,
+                        suggestions: response_agent::retry_operation_suggestions(),
+                        task: None,
+                        confirmation: None,
+                        frontend_action: None,
+                    });
+                }
+
                 if !confirmation.confirmed {
                     return Ok(AgentResponse {
                         response_type: AgentResponseType::Answer,
@@ -1243,7 +1270,7 @@ impl Agent {
                     "[Agent] User confirmed sensitive operation"
                 );
 
-                // 直接执行已确认的配方
+                // 始终以 pending 所有者身份执行（已与 caller 对齐）
                 let task_state = self
                     .executor
                     .execute(&pending_confirmation.recipe, pending_confirmation.user_id)
@@ -2591,6 +2618,7 @@ async fn record_execution_memory(params: MemoryRecordParams<'_>) {
         &exec_results,
         ok,
         &step_caps,
+        params.user_id,
     )
     .await;
 
@@ -2611,6 +2639,7 @@ async fn record_execution_memory(params: MemoryRecordParams<'_>) {
             0.8,
             Vec::new(),
             step_caps.clone(),
+            params.user_id,
         )
         .await;
     }
@@ -2641,7 +2670,8 @@ async fn record_execution_memory(params: MemoryRecordParams<'_>) {
                 params.planner_steps_len,
                 if ok { "成功" } else { "失败" }
             );
-            mem.consolidate_session(&session_summary).await;
+            mem.consolidate_session(&session_summary, params.user_id)
+                .await;
         }
     }
 
@@ -2685,16 +2715,161 @@ pub(crate) async fn user_is_current_admin(db: &sea_orm::DatabaseConnection, user
     }
 }
 
+/// Agent 能力预设（与 Tapp 权限页「开关模板」对应；运行时以 Tapp 开关为准）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // 预设档位名 / 单测映射
+pub enum AgentUsageMode {
+    /// 禁用（Agent 相关 elevated 全关）
+    None,
+    /// 仅 AI 对话/分析
+    Chat,
+    /// 标准（平台/共享 Brew 只读 + AI；无出站）
+    Standard,
+    /// 扩展（标准 + 出站抓取 + 调度 + 个人 Tapp 写）
+    Elevated,
+}
+
+impl AgentUsageMode {
+    #[allow(dead_code)]
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "chat" => Self::Chat,
+            "standard" => Self::Standard,
+            "elevated" => Self::Elevated,
+            _ => Self::None,
+        }
+    }
+}
+
+/// 某预设对应的 Agent 权限串（不含 brew:write / report:write）
+fn permissions_for_usage_mode(mode: AgentUsageMode) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    let mut perms = HashSet::new();
+    match mode {
+        AgentUsageMode::None => {}
+        AgentUsageMode::Chat => {
+            for p in &["ai:chat", "ai:analyze", "system:read"] {
+                perms.insert((*p).to_string());
+            }
+        }
+        // 共享订阅库：普通用户永不授予 brew:write（加/改/删源仅管理员）
+        AgentUsageMode::Standard | AgentUsageMode::Elevated => {
+            for p in &[
+                "platform:read",
+                "steam:read",
+                "bilibili:read",
+                "bangumi:read",
+                "github:read",
+                "netease:read",
+                "ai:analyze",
+                "ai:chat",
+                "ai:search",
+                "ai:image",
+                "brew:read", // 读共享库 + 个人已读/收藏（brew.mark）
+                "report:read",
+                "tapp:read",
+                "system:read",
+            ] {
+                perms.insert((*p).to_string());
+            }
+            if mode == AgentUsageMode::Elevated {
+                // 扩展：出站 + 调度 + 仅自己的 Tapp；报告生成仅管理员
+                for p in &[
+                    "http:fetch",
+                    "web:scrape",
+                    "tapp:write",
+                    "weather:read",
+                    "metadata:read",
+                    "proxy:read",
+                    "scheduler:read",
+                    "scheduler:write",
+                ] {
+                    perms.insert((*p).to_string());
+                }
+            }
+        }
+    }
+    perms
+}
+
+/// 非管理员 Agent 能力候选全集（再经 Tapp 开关过滤）
+fn max_user_agent_permissions() -> std::collections::HashSet<String> {
+    permissions_for_usage_mode(AgentUsageMode::Elevated)
+}
+
+/// 校验当前用户是否允许使用 Agent（页面可见性 + Tapp `ai:chat`）
+///
+/// 返回 Ok(is_admin)；禁用时返回 403 语义错误字符串
+pub async fn ensure_agent_usage_allowed(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+) -> Result<bool, String> {
+    use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
+
+    let is_admin = user_is_current_admin(db, user_id).await;
+    if is_admin || user_id == SYSTEM_USER_ID {
+        return Ok(true);
+    }
+
+    let prefs =
+        crate::api::config::load_module_visibility_preferences_for_agent(db).await;
+    let visibility = prefs.agent_visibility();
+    if visibility == "admin" {
+        return Err("Agent 仅管理员可用".to_string());
+    }
+
+    // 能力真相源：Tapp 权限（设置页预设模板会批量开关这些项）
+    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+    if !TappPermissionService::check(&config, UserRole::User, TappPermission::AiChat) {
+        return Err(
+            "Agent 未对普通用户开放 AI 对话（请在「Tapp 权限管理」中下放 ai:chat 或选用助手预设）"
+                .to_string(),
+        );
+    }
+    Ok(false)
+}
+
+/// Agent 权限串 → Tapp 权限（强制对齐；未映射的权限非管理员一律拒绝，仅 `system:read` 例外）
+///
+/// 非管理员能力 = 候选全集 ∩ Tapp 下放开关（与权限页预设模板同一真相源）
+fn agent_perm_to_tapp(perm: &str) -> Option<crate::services::permission_service::TappPermission> {
+    use crate::services::permission_service::TappPermission;
+    match perm {
+        // AI（elevated，须在 Tapp 权限管理中下放）
+        "ai:chat" => Some(TappPermission::AiChat),
+        "ai:analyze" => Some(TappPermission::AiAnalyze),
+        "ai:image" => Some(TappPermission::AiImage),
+        "ai:search" | "ai:generate" => Some(TappPermission::AiGenerate),
+        // 读（basic，默认全员）
+        "brew:read" => Some(TappPermission::BrewRead),
+        "report:read" => Some(TappPermission::ReportRead),
+        "platform:read" | "steam:read" | "bilibili:read" | "bangumi:read"
+        | "github:read" | "netease:read" | "weather:read" | "metadata:read" => {
+            Some(TappPermission::PlatformRead)
+        }
+        "tapp:read" => Some(TappPermission::TappListRead),
+        // 写 / 出站（elevated 或 privileged）
+        "brew:write" => Some(TappPermission::BrewWrite),
+        "report:write" => Some(TappPermission::ReportWrite),
+        "http:fetch" | "web:scrape" | "proxy:read" => Some(TappPermission::NetworkFetch),
+        "scheduler:read" | "scheduler:write" => Some(TappPermission::SchedulerRegister),
+        // 个人 Tapp 写：用 storage（basic）表达「可持久化自己的内容」，非 manage 全站
+        "tapp:write" => Some(TappPermission::Storage),
+        // system:read 无 Tapp 对应，见 retain 特例
+        _ => None,
+    }
+}
+
 /// 获取用户在 Agent 系统中的权限集
 ///
-/// 权限检查逻辑：
-/// - 系统用户/当前数据库管理员：全部权限
-/// - 其他已认证用户：基础读取 + 有限写入权限
+/// - 管理员 / 系统用户：全部能力权限
+/// - 其他：候选全集 ∩ Tapp 权限检查（强制对齐；无独立 agentUsage 天花板）
 pub async fn get_user_permissions(
     db: &sea_orm::DatabaseConnection,
     user_id: i32,
 ) -> std::collections::HashSet<String> {
     use std::collections::HashSet;
+    use crate::services::permission_service::{TappPermissionService, UserRole};
 
     // 系统用户或管理员：全部权限
     if user_is_current_admin(db, user_id).await {
@@ -2706,48 +2881,28 @@ pub async fn get_user_permissions(
             .collect();
     }
 
-    let mut perms = HashSet::new();
-
-    // 所有已认证用户默认拥有的权限
-    for p in &[
-        "platform:read",
-        "steam:read",
-        "bilibili:read",
-        "bangumi:read",
-        "github:read",
-        "netease:read",
-        "ai:analyze",
-        "ai:chat",
-        "ai:search",
-        "ai:image",
-        "http:fetch",
-        "web:scrape",
-        "brew:read",
-        "brew:write",
-        "report:read",
-        "report:write",
-        "tapp:read",
-        "tapp:write",
-        "system:read",
-    ] {
-        perms.insert(p.to_string());
+    let prefs =
+        crate::api::config::load_module_visibility_preferences_for_agent(db).await;
+    // 可见性 admin-only 时，非管理员无任何 agent 能力
+    if prefs.agent_visibility() == "admin" {
+        return HashSet::new();
     }
 
-    // Keep Agent scheduler capabilities aligned with the live Tapp permission
-    // switch instead of making them permanently administrator-only.
-    {
-        use crate::services::permission_service::{
-            TappPermission, TappPermissionService, UserRole,
-        };
-        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
-        if TappPermissionService::check(&config, UserRole::User, TappPermission::SchedulerRegister)
-        {
-            perms.insert("scheduler:read".to_string());
-            perms.insert("scheduler:write".to_string());
+    let mut perms = max_user_agent_permissions();
+
+    // 强制与 Tapp 对齐
+    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+    perms.retain(|p| {
+        if p == "system:read" {
+            return true; // Agent 内部只读元信息，无 Tapp 对应
         }
-    }
+        match agent_perm_to_tapp(p) {
+            Some(tp) => TappPermissionService::check(&config, UserRole::User, tp),
+            // 未映射权限：非管理员拒绝（避免旁路）
+            None => false,
+        }
+    });
 
-    // 非管理员不授予 platform:write（修改外部平台绑定）等高危权限
     perms
 }
 
@@ -2941,5 +3096,66 @@ mod tests {
             }
             other => panic!("Critical 应被拒绝，got {:?}", other.map(|r| r.is_ok())),
         }
+    }
+
+    #[test]
+    fn agent_usage_mode_parse_and_permission_sets() {
+        assert_eq!(AgentUsageMode::parse("none"), AgentUsageMode::None);
+        assert_eq!(AgentUsageMode::parse("chat"), AgentUsageMode::Chat);
+        assert_eq!(AgentUsageMode::parse("standard"), AgentUsageMode::Standard);
+        assert_eq!(AgentUsageMode::parse("elevated"), AgentUsageMode::Elevated);
+        assert_eq!(AgentUsageMode::parse("bogus"), AgentUsageMode::None);
+
+        let none = permissions_for_usage_mode(AgentUsageMode::None);
+        assert!(none.is_empty());
+
+        let chat = permissions_for_usage_mode(AgentUsageMode::Chat);
+        assert!(chat.contains("ai:chat"));
+        assert!(!chat.contains("brew:write"));
+        assert!(!chat.contains("http:fetch"));
+
+        let standard = permissions_for_usage_mode(AgentUsageMode::Standard);
+        assert!(standard.contains("brew:read"));
+        assert!(!standard.contains("brew:write"));
+        assert!(standard.contains("ai:chat"));
+        assert!(!standard.contains("http:fetch"));
+
+        let elevated = permissions_for_usage_mode(AgentUsageMode::Elevated);
+        assert!(elevated.contains("http:fetch"));
+        assert!(elevated.contains("web:scrape"));
+        assert!(elevated.contains("tapp:write"));
+        assert!(elevated.contains("scheduler:read"));
+        assert!(!elevated.contains("brew:write"));
+        assert!(!elevated.contains("report:write"));
+
+        let max = max_user_agent_permissions();
+        assert_eq!(max, elevated);
+    }
+
+    #[test]
+    fn agent_perm_to_tapp_force_alignment_map() {
+        use crate::services::permission_service::TappPermission;
+        assert_eq!(
+            agent_perm_to_tapp("ai:chat"),
+            Some(TappPermission::AiChat)
+        );
+        assert_eq!(
+            agent_perm_to_tapp("ai:search"),
+            Some(TappPermission::AiGenerate)
+        );
+        assert_eq!(
+            agent_perm_to_tapp("http:fetch"),
+            Some(TappPermission::NetworkFetch)
+        );
+        assert_eq!(
+            agent_perm_to_tapp("brew:read"),
+            Some(TappPermission::BrewRead)
+        );
+        assert_eq!(
+            agent_perm_to_tapp("report:write"),
+            Some(TappPermission::ReportWrite)
+        );
+        assert_eq!(agent_perm_to_tapp("system:read"), None); // 特例：不经 Tapp
+        assert_eq!(agent_perm_to_tapp("unknown:perm"), None);
     }
 }

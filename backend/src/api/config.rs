@@ -3195,11 +3195,56 @@ pub async fn update_tapp_window_schemes(
 const MODULE_VISIBILITY_PREFERENCES_KEY: &str = "module_visibility_preferences";
 const MODULE_VISIBILITY_KEYS: [&str; 5] = ["library", "brew", "reports", "tapp", "agent"];
 const MODULE_VISIBILITY_LEVELS: [&str; 3] = ["all", "authenticated", "admin"];
+/// 兼容旧配置字段（能力已迁至 Tapp 权限预设；读写仍规范化但不参与鉴权）
+const AGENT_GUEST_USAGE_LEVELS: [&str; 2] = ["none", "visible"];
+const AGENT_USER_USAGE_LEVELS: [&str; 4] = ["none", "chat", "standard", "elevated"];
+
+/// 旧版 Agent 使用档位（已弃用：运行时以 Tapp `user_perm_*` / 预设模板为准）
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentUsagePreferences {
+    #[serde(default = "default_agent_guest_usage")]
+    pub guest: String,
+    #[serde(default = "default_agent_user_usage")]
+    pub user: String,
+}
+
+fn default_agent_guest_usage() -> String {
+    "none".to_string()
+}
+fn default_agent_user_usage() -> String {
+    "standard".to_string()
+}
+
+impl Default for AgentUsagePreferences {
+    fn default() -> Self {
+        Self {
+            guest: default_agent_guest_usage(),
+            user: default_agent_user_usage(),
+        }
+    }
+}
+
+impl AgentUsagePreferences {
+    pub fn normalized(mut self) -> Self {
+        if !AGENT_GUEST_USAGE_LEVELS.contains(&self.guest.as_str()) {
+            self.guest = default_agent_guest_usage();
+        }
+        if !AGENT_USER_USAGE_LEVELS.contains(&self.user.as_str()) {
+            self.user = default_agent_user_usage();
+        }
+        self
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ModuleVisibilityPreferences {
     #[serde(default = "default_module_visibility_modules")]
     pub modules: std::collections::HashMap<String, String>,
+    /// 旧版 Agent 档位（兼容存储；鉴权请用 Tapp 权限）
+    #[serde(default)]
+    pub agent_usage: AgentUsagePreferences,
 }
 
 fn default_module_visibility_modules() -> std::collections::HashMap<String, String> {
@@ -3216,12 +3261,13 @@ impl Default for ModuleVisibilityPreferences {
     fn default() -> Self {
         Self {
             modules: default_module_visibility_modules(),
+            agent_usage: AgentUsagePreferences::default(),
         }
     }
 }
 
 impl ModuleVisibilityPreferences {
-    fn normalized(mut self) -> Self {
+    pub fn normalized(mut self) -> Self {
         let defaults = default_module_visibility_modules();
         let mut normalized = std::collections::HashMap::new();
 
@@ -3239,8 +3285,24 @@ impl ModuleVisibilityPreferences {
         }
 
         self.modules = normalized;
+        self.agent_usage = self.agent_usage.normalized();
         self
     }
+
+    /// Agent 模块页面可见级别
+    pub fn agent_visibility(&self) -> &str {
+        self.modules
+            .get("agent")
+            .map(String::as_str)
+            .unwrap_or("all")
+    }
+}
+
+/// 供 Agent 服务读取模块可见性与使用权限（公开给 agent 模块）
+pub async fn load_module_visibility_preferences_for_agent(
+    db: &DatabaseConnection,
+) -> ModuleVisibilityPreferences {
+    load_module_visibility_preferences(db).await
 }
 
 async fn load_module_visibility_preferences(
@@ -3645,7 +3707,8 @@ pub struct UpdatePermissionsPayload {
     pub user_perm_ai_analyze: Option<bool>,
     pub user_perm_ai_chat: Option<bool>,
     pub user_perm_ai_image: Option<bool>,
-    pub user_perm_report_write: Option<bool>,
+    #[allow(dead_code)]
+    pub user_perm_report_write: Option<bool>, // 忽略：强制 false
     pub user_perm_network_fetch: Option<bool>,
     pub user_perm_media_control: Option<bool>,
     pub user_perm_component_theme: Option<bool>,
@@ -3657,7 +3720,8 @@ pub struct UpdatePermissionsPayload {
     pub guest_perm_ai_analyze: Option<bool>,
     pub guest_perm_ai_chat: Option<bool>,
     pub guest_perm_ai_image: Option<bool>,
-    pub guest_perm_report_write: Option<bool>,
+    #[allow(dead_code)]
+    pub guest_perm_report_write: Option<bool>, // 忽略：强制 false
     pub guest_perm_network_fetch: Option<bool>,
     pub guest_perm_media_control: Option<bool>,
     pub guest_perm_component_theme: Option<bool>,
@@ -3694,9 +3758,8 @@ pub async fn update_permissions(
     if let Some(v) = payload.user_perm_ai_image {
         updates.insert("user_perm_ai_image".to_string(), json!(v));
     }
-    if let Some(v) = payload.user_perm_report_write {
-        updates.insert("user_perm_report_write".to_string(), json!(v));
-    }
+    // report:write 不再下放：强制写入 false
+    updates.insert("user_perm_report_write".to_string(), json!(false));
     if let Some(v) = payload.user_perm_network_fetch {
         updates.insert("user_perm_network_fetch".to_string(), json!(v));
     }
@@ -3729,9 +3792,8 @@ pub async fn update_permissions(
     if let Some(v) = payload.guest_perm_ai_image {
         updates.insert("guest_perm_ai_image".to_string(), json!(v));
     }
-    if let Some(v) = payload.guest_perm_report_write {
-        updates.insert("guest_perm_report_write".to_string(), json!(v));
-    }
+    // report:write 不再下放：强制写入 false
+    updates.insert("guest_perm_report_write".to_string(), json!(false));
     if let Some(v) = payload.guest_perm_network_fetch {
         updates.insert("guest_perm_network_fetch".to_string(), json!(v));
     }

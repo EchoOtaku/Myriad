@@ -116,6 +116,7 @@ const TRACKING_PARAMS = [
 
 /**
  * 危险标签 - 需要完全移除
+ * 注意：iframe 不在此列表（见 stripUntrustedIframes），以免误删可信嵌入前的源标签
  */
 const DANGEROUS_TAGS = [
   'script',
@@ -137,10 +138,14 @@ const DANGEROUS_TAGS = [
   'datalist',
   'svg',
   'math',
+  'template',
+  'frame',
+  'frameset',
+  'portal',
 ]
 
 /**
- * 需要移除的危险属性
+ * 需要移除的危险属性（显式列表 + 通用 on* 处理见 removeDangerousAttrs）
  */
 const DANGEROUS_ATTRS = [
   'onload',
@@ -171,11 +176,83 @@ const DANGEROUS_ATTRS = [
   'ontouchend',
   'onpointerdown',
   'onpointerup',
+  'onpointerenter',
+  'onpointerleave',
+  'onanimationend',
+  'onanimationstart',
+  'ontransitionend',
+  'onfocusin',
+  'onfocusout',
+  'onformdata',
+  'oninput',
+  'oninvalid',
+  'onsearch',
+  'onpaste',
+  'oncopy',
+  'oncut',
   'formaction',
   'xlink:href',
   'xmlns',
   'srcdoc',
 ]
+
+/**
+ * 阅读器允许保留的 iframe 主机（精确匹配 hostname，小写）
+ *
+ * 设计取舍：
+ * - 仅白名单「常见官方播放器 / oEmbed」主机，防止 feed 嵌任意钓鱼页
+ * - 比「只放 B 站+网易云」更贴近真实 RSS（YouTube / Vimeo / Spotify 等很常见）
+ * - 不放 codepen/jsfiddle/codesandbox 等可执行任意前端的沙箱站
+ * - 不放裸 bilibili.com / youtube.com 非 player 路径站：仍靠 host 判断（见下表官方 embed 域）
+ */
+export const TRUSTED_IFRAME_HOSTS: readonly string[] = [
+  // 视频 · 国内
+  'player.bilibili.com',
+  'www.bilibili.com', // blackboard / html5 播放器路径
+  'player.youku.com',
+  'v.qq.com',
+  'open.iqiyi.com',
+  // 视频 · 国际
+  'www.youtube.com',
+  'youtube.com',
+  'www.youtube-nocookie.com',
+  'youtube-nocookie.com',
+  'player.vimeo.com',
+  'www.dailymotion.com',
+  'geo.dailymotion.com',
+  // 音乐 / 播客
+  'music.163.com',
+  'y.music.163.com',
+  'i.y.qq.com',
+  'y.qq.com',
+  'open.spotify.com',
+  'embed.music.apple.com',
+  'w.soundcloud.com',
+  'www.mixcloud.com',
+  // 文档 / 演示（只读嵌入）
+  'www.slideshare.net',
+  'docs.google.com',
+  'drive.google.com',
+  'www.figma.com',
+  // 社交官方 embed（相对可控）
+  'platform.twitter.com',
+  'platform.x.com',
+  'www.instagram.com',
+  // 其他常见
+  'www.google.com', // maps embed
+  'maps.google.com',
+  'www.openstreetmap.org',
+]
+
+/** 是否可信 iframe 主机（支持 www. 与无 www. 等价时由列表显式收录） */
+export function isTrustedIframeHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '')
+  if (TRUSTED_IFRAME_HOSTS.includes(host)) return true
+  // 常见子域：*.youtube.com 仅允许已列；音乐站子域
+  if (host.endsWith('.music.163.com')) return true
+  if (host.endsWith('.youtube.com') && host.includes('nocookie')) return true
+  return false
+}
 
 /**
  * 空内容标签 - 可以移除
@@ -215,23 +292,84 @@ function removeDangerousTags(html: string): string {
 function removeDangerousAttrs(html: string): string {
   const attrPattern = DANGEROUS_ATTRS.join('|')
   // 匹配事件属性：支持空白符或 / 作为属性分隔符（防止 <tag/onload=... 绕过）
-  const regex = new RegExp(
+  const listed = new RegExp(
     `[\\s/](${attrPattern})\\s*=\\s*["'][^"']*["']|[\\s/](${attrPattern})\\s*=\\s*[^\\s>]+`,
     'gi',
   )
-  return html.replace(regex, '')
+  // 兜底：剥离所有 on* 事件处理器（含未列入表的）
+  const anyHandler = /[\s/]on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi
+  return html.replace(listed, '').replace(anyHandler, '')
 }
 
 /**
- * 移除 javascript: 协议链接
+ * 移除 javascript: / data:text/html 等危险协议链接
  */
 function removeJavascriptLinks(html: string): string {
-  // 阻止 href、src、action 等属性中的 javascript: 和 data:text/html 协议
+  // 含实体编码变体的 javascript:（如 javascrip&#116;:）
+  const dangerousProtocol =
+    /(?:javascript|vbscript|data\s*:\s*text\s*\/\s*html)/i
+
+  const scrubAttr = (attr: string, value: string, quote: string) => {
+    const decoded = value
+      .replace(/&#x([0-9a-f]+);?/gi, (_, h) =>
+        String.fromCharCode(Number.parseInt(h, 16)),
+      )
+      .replace(/&#(\d+);?/g, (_, d) =>
+        String.fromCharCode(Number.parseInt(d, 10)),
+      )
+      .replace(/&colon;/gi, ':')
+      .replace(/\s+/g, '')
+    if (dangerousProtocol.test(decoded)) {
+      if (attr.toLowerCase() === 'href' || attr.toLowerCase() === 'action') {
+        return `${attr}=${quote}#${quote}`
+      }
+      return `${attr}=${quote}${quote}`
+    }
+    return `${attr}=${quote}${value}${quote}`
+  }
+
   return html
-    .replace(/href\s*=\s*["']\s*javascript:[^"']*["']/gi, 'href="#"')
-    .replace(/src\s*=\s*["']\s*javascript:[^"']*["']/gi, 'src=""')
-    .replace(/src\s*=\s*["']\s*data:text\/html[^"']*["']/gi, 'src=""')
-    .replace(/action\s*=\s*["']\s*javascript:[^"']*["']/gi, 'action="#"')
+    .replace(
+      /\b(href|src|action|xlink:href)\s*=\s*(["'])([\s\S]*?)\2/gi,
+      (_m, attr, quote, value) => scrubAttr(attr, value, quote),
+    )
+    .replace(
+      /\b(href|src|action)\s*=\s*([^\s"'=<>`]+)/gi,
+      (_m, attr, value) => scrubAttr(attr, value, '"'),
+    )
+}
+
+/**
+ * 仅保留可信域名的 iframe，其余剥离（防 feed 注入任意嵌套页）
+ */
+export function stripUntrustedIframes(html: string): string {
+  if (!html) return html
+
+  const keepIfTrusted = (tag: string): string => {
+    const srcMatch =
+      tag.match(/\bsrc\s*=\s*(["'])([^"']*)\1/i) ||
+      tag.match(/\bsrc\s*=\s*([^\s>]+)/i)
+    if (!srcMatch) return ''
+    const rawSrc = (srcMatch[2] || srcMatch[1] || '').trim()
+    // 拒绝 data:/javascript: 等非 http(s) 嵌入
+    if (/^(javascript|data|vbscript|blob):/i.test(rawSrc.trim())) return ''
+    try {
+      // 协议相对 //host 需补全才能解析
+      const href = rawSrc.startsWith('//') ? `https:${rawSrc}` : rawSrc
+      const parsed = new URL(href, 'https://example.invalid')
+      if (!['http:', 'https:'].includes(parsed.protocol)) return ''
+      if (isTrustedIframeHost(parsed.hostname)) {
+        return tag
+      }
+    } catch {
+      return ''
+    }
+    return ''
+  }
+
+  return html
+    .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, (m) => keepIfTrusted(m))
+    .replace(/<iframe\b[^>]*\/?>/gi, (m) => keepIfTrusted(m))
 }
 
 /**
@@ -963,7 +1101,8 @@ export function processRssContent(
   result = processImages(result, opts)
   result = processVideos(result)
   result = processAudio(result)
-  // 注意：不再调用 processIframes，让 embedProcessor 统一处理
+  // iframe 白名单：仅保留 B 站/网易云等可信源（embedProcessor 会再注入官方播放器）
+  result = stripUntrustedIframes(result)
 
   // 5. 文本格式处理
   result = processBlockquotes(result, opts.isDark || false)
@@ -983,6 +1122,10 @@ export function processRssContent(
   }
   // 注意：不再调用 normalizeWhitespace，避免破坏 HTML 结构
   result = result.trim()
+
+  // 收尾再跑一轮属性/协议清洗，防止中间步骤重新引入
+  result = removeDangerousAttrs(result)
+  result = removeJavascriptLinks(result)
 
   return result
 }
@@ -1252,6 +1395,9 @@ export function analyzeContent(html: string): ContentAnalysis {
 
 export default {
   processRssContent,
+  stripUntrustedIframes,
+  isTrustedIframeHost,
+  TRUSTED_IFRAME_HOSTS,
   extractPlainText,
   isCodeContent,
   isImageContent,
@@ -1263,4 +1409,44 @@ export default {
   detectLanguage,
   decodeHtmlEntities,
   analyzeContent,
+}
+
+/**
+ * 轻量自检：在 Node 下 `npx tsx -e "import './rssContentProcessor'"` 或 CI 结构测试中调用。
+ * 返回失败消息列表；空数组表示通过。
+ */
+export function selfCheckSanitize(): string[] {
+  const failures: string[] = []
+  const xss = processRssContent(
+    '<p>hi</p><script>alert(1)</script><img src=x onerror=alert(1)><iframe src="https://evil.example/phish"></iframe>',
+  )
+  if (/<script/i.test(xss)) failures.push('script tag survived')
+  if (/onerror/i.test(xss)) failures.push('onerror survived')
+  if (/evil\.example/i.test(xss)) failures.push('untrusted iframe survived')
+
+  const trusted = processRssContent(
+    '<iframe src="//player.bilibili.com/player.html?bvid=BV1xx411c7XW"></iframe>',
+  )
+  if (!/player\.bilibili\.com/i.test(trusted)) {
+    failures.push('trusted bilibili iframe stripped')
+  }
+
+  const yt = processRssContent(
+    '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>',
+  )
+  if (!/youtube\.com/i.test(yt)) {
+    failures.push('trusted youtube iframe stripped')
+  }
+
+  if (!isTrustedIframeHost('open.spotify.com')) {
+    failures.push('spotify host not trusted')
+  }
+  if (isTrustedIframeHost('evil.example')) {
+    failures.push('evil host incorrectly trusted')
+  }
+
+  const jsLink = processRssContent('<a href="javascript:alert(1)">x</a>')
+  if (/javascript:/i.test(jsLink)) failures.push('javascript: href survived')
+
+  return failures
 }

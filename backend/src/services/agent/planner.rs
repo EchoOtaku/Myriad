@@ -175,6 +175,7 @@ impl Planner {
                         memory::MemoryTier::LongTerm,
                         memory::MemoryTier::MediumTerm,
                     ]),
+                    user_id: Some(request.user_id),
                     ..Default::default()
                 })
                 .await;
@@ -208,7 +209,9 @@ impl Planner {
             }
 
             // 2b. 实体相关记忆（从用户输入提取的实体）
-            let entity_memories = mem.recall_by_entity(&request.raw_input, 3).await;
+            let entity_memories = mem
+                .recall_by_entity(&request.raw_input, 3, request.user_id)
+                .await;
             for m in &entity_memories {
                 if !semantic_memories.iter().any(|sm| sm.id == m.id) {
                     mem_lines.push(format!("- 🏷️ {}", m.content));
@@ -224,6 +227,7 @@ impl Planner {
                         memory::MemoryType::ExecutionLesson,
                         memory::MemoryType::EffectivePattern,
                     ]),
+                    user_id: Some(request.user_id),
                     ..Default::default()
                 })
                 .await;

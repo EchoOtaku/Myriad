@@ -35,6 +35,7 @@ import { recordNavigation } from './router/navigationHistory'
 import { preloadCriticalRoutes } from './utils/codeSplitting'
 import {
   canAccessModuleVisibility,
+  canUseAgent,
   useModuleVisibilityPreferences,
 } from './utils/moduleVisibility'
 import './styles/fonts.css'
@@ -135,21 +136,56 @@ function ModuleVisibilityGuard({
 
 /**
  * Agent（Arael AI 助手）访问门禁 - 悬浮面板，不做路由跳转，
- * 无权限时直接不渲染面板（与页面可见性共用同一套偏好）。
+ * 无权限时直接不渲染面板。
+ * 门禁：页面可见性 + Tapp ai:chat（与权限页 Agent 预设同一真相源）。
  */
 function AgentAccessGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isAdmin, hasChecked } = useAuth()
   const { preferences, isLoading } = useModuleVisibilityPreferences()
+  const [elevatedAiChat, setElevatedAiChat] = useState<
+    { user: boolean; guest: boolean } | undefined
+  >(undefined)
+  const [permLoaded, setPermLoaded] = useState(false)
 
-  if (!hasChecked || isLoading) {
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { fetchPermissionsConfig } = await import('./lib/api')
+        const response = await fetchPermissionsConfig()
+        if (cancelled) return
+        if (response?.success && response.config) {
+          setElevatedAiChat({
+            user: !!response.config.user?.ai_chat,
+            guest: !!response.config.guest?.ai_chat,
+          })
+        } else {
+          setElevatedAiChat(undefined)
+        }
+      } catch {
+        if (!cancelled) setElevatedAiChat(undefined)
+      } finally {
+        if (!cancelled) setPermLoaded(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (!hasChecked || isLoading || !permLoaded) {
     return null
   }
 
   if (
-    !canAccessModuleVisibility(preferences.modules.agent, {
-      isAuthenticated,
-      isAdmin,
-    })
+    !canUseAgent(
+      preferences,
+      {
+        isAuthenticated,
+        isAdmin,
+      },
+      elevatedAiChat,
+    )
   ) {
     return null
   }

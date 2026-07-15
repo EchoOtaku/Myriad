@@ -23,17 +23,15 @@
 //!
 //! ### Elevated - 可配置下放
 //! - ai:generate, ai:analyze, ai:chat, ai:image
-//! - report:write, brew:write, brew:comment
-//! - network:fetch
-//! - media:control
-//! - component:theme
-//! - shortcut:register
-//! - event:publish
+//! - network:fetch, media:control, component:theme
+//! - shortcut:register, event:publish
 //! - scheduler:register, speech:tts, speech:asr
+//! - （brew:write / brew:comment 等级为 elevated，但不开放下放，见 check）
 //!
 //! ### Privileged - 仅管理员
 //! - platform:write, platform:register, component:agent
 //! - tappList:manage, brew:manage, federation:trust
+//! - **report:write**（数据报告生成，不可下放）
 
 use crate::config::DynamicConfig;
 use serde::{Deserialize, Serialize};
@@ -173,12 +171,11 @@ impl TappPermission {
             | TappPermission::FederationMessage
             | TappPermission::FederationFiles => PermissionLevel::Basic,
 
-            // Elevated
+            // Elevated（可配置下放的集合见 all_elevated；brew:write 不在其中）
             TappPermission::AiGenerate
             | TappPermission::AiAnalyze
             | TappPermission::AiChat
             | TappPermission::AiImage
-            | TappPermission::ReportWrite
             | TappPermission::BrewWrite
             | TappPermission::BrewComment
             | TappPermission::NetworkFetch
@@ -196,7 +193,8 @@ impl TappPermission {
             | TappPermission::ComponentAgent
             | TappPermission::TappListManage
             | TappPermission::BrewManage
-            | TappPermission::FederationTrust => PermissionLevel::Privileged,
+            | TappPermission::FederationTrust
+            | TappPermission::ReportWrite => PermissionLevel::Privileged,
         }
     }
 
@@ -244,14 +242,13 @@ impl TappPermission {
         }
     }
 
-    /// 获取所有可配置下放的 elevated 级别权限
+    /// 获取所有可配置下放的 elevated 级别权限（不含 report:write / brew:write）
     pub fn all_elevated() -> Vec<TappPermission> {
         vec![
             TappPermission::AiGenerate,
             TappPermission::AiAnalyze,
             TappPermission::AiChat,
             TappPermission::AiImage,
-            TappPermission::ReportWrite,
             TappPermission::NetworkFetch,
             TappPermission::MediaControl,
             TappPermission::ComponentTheme,
@@ -411,7 +408,7 @@ impl TappPermissionService {
             TappPermission::AiAnalyze => config.user_perm_ai_analyze,
             TappPermission::AiChat => config.user_perm_ai_chat,
             TappPermission::AiImage => config.user_perm_ai_image,
-            TappPermission::ReportWrite => config.user_perm_report_write,
+            // report:write 已升 privileged；brew:write 不开放下放
             TappPermission::NetworkFetch => config.user_perm_network_fetch,
             TappPermission::MediaControl => config.user_perm_media_control,
             TappPermission::ComponentTheme => config.user_perm_component_theme,
@@ -431,7 +428,6 @@ impl TappPermissionService {
             TappPermission::AiAnalyze => config.guest_perm_ai_analyze,
             TappPermission::AiChat => config.guest_perm_ai_chat,
             TappPermission::AiImage => config.guest_perm_ai_image,
-            TappPermission::ReportWrite => config.guest_perm_report_write,
             TappPermission::NetworkFetch => config.guest_perm_network_fetch,
             TappPermission::MediaControl => config.guest_perm_media_control,
             TappPermission::ComponentTheme => config.guest_perm_component_theme,
@@ -475,7 +471,7 @@ impl TappPermissionService {
                 ai_analyze: config.user_perm_ai_analyze,
                 ai_chat: config.user_perm_ai_chat,
                 ai_image: config.user_perm_ai_image,
-                report_write: config.user_perm_report_write,
+                report_write: false, // 不再下放
                 network_fetch: config.user_perm_network_fetch,
                 media_control: config.user_perm_media_control,
                 component_theme: config.user_perm_component_theme,
@@ -490,7 +486,7 @@ impl TappPermissionService {
                 ai_analyze: config.guest_perm_ai_analyze,
                 ai_chat: config.guest_perm_ai_chat,
                 ai_image: config.guest_perm_ai_image,
-                report_write: config.guest_perm_report_write,
+                report_write: false, // 不再下放
                 network_fetch: config.guest_perm_network_fetch,
                 media_control: config.guest_perm_media_control,
                 component_theme: config.guest_perm_component_theme,
@@ -536,13 +532,15 @@ pub struct AiQuotaConfig {
     pub cooldown_seconds: i32,
 }
 
-/// Elevated 级别权限配置（11个权限，platform:write 和 platform:register 已升为 privileged）
+/// Elevated 级别权限配置（report:write 已升 privileged，不可下放）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ElevatedPermissions {
     pub ai_generate: bool,
     pub ai_analyze: bool,
     pub ai_chat: bool,
     pub ai_image: bool,
+    /// 保留字段：始终为 false，前端不再展示
+    #[serde(default)]
     pub report_write: bool,
     pub network_fetch: bool,
     pub media_control: bool,

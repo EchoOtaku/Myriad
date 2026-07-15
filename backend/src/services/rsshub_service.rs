@@ -3,7 +3,7 @@
 //! 提供 RSSHub 实例管理、健康检查、自动故障转移功能
 
 use chrono::Utc;
-use reqwest::{Client, Url};
+use reqwest::Url;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder,
@@ -43,7 +43,6 @@ impl Default for RsshubConfig {
 /// RSSHub 服务
 pub struct RsshubService {
     db: DatabaseConnection,
-    client: Client,
     parser: FeedParser,
     config: RsshubConfig,
     /// 缓存的可用实例列表
@@ -54,15 +53,8 @@ pub struct RsshubService {
 impl RsshubService {
     /// 创建新的 RSSHub 服务
     pub fn new(db: DatabaseConnection) -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            .build()
-            .unwrap_or_default();
-
         Self {
             db,
-            client,
             parser: FeedParser::new(),
             config: RsshubConfig::default(),
             cached_instances: Arc::new(RwLock::new(Vec::new())),
@@ -72,15 +64,8 @@ impl RsshubService {
     /// 使用自定义配置创建服务
     #[allow(dead_code)]
     pub fn with_config(db: DatabaseConnection, config: RsshubConfig) -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(config.request_timeout_secs))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            .build()
-            .unwrap_or_default();
-
         Self {
             db,
-            client,
             parser: FeedParser::new(),
             config,
             cached_instances: Arc::new(RwLock::new(Vec::new())),
@@ -353,16 +338,24 @@ impl RsshubService {
         }
     }
 
-    /// 执行健康检查
+    /// 执行健康检查（出站经 outbound_security，防 SSRF）
     pub async fn health_check(&self, instance: &InstanceModel) -> Result<i32, String> {
         // 使用一个简单的路由进行健康检查
         let test_route = "/";
         let url = format!("{}{}", instance.url.trim_end_matches('/'), test_route);
 
+        let (target_url, client) =
+            crate::services::outbound_security::build_public_http_client(
+                &url,
+                Duration::from_secs(self.config.request_timeout_secs),
+                Some("Myriad Brew Reader/1.0 (RSSHub Health Check)"),
+            )
+            .await
+            .map_err(|e| format!("Unsafe RSSHub URL blocked: {e}"))?;
+
         let start = Instant::now();
-        let response = self
-            .client
-            .get(&url)
+        let response = client
+            .get(target_url)
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
@@ -407,6 +400,15 @@ impl RsshubService {
         Ok(())
     }
 
+    /// 校验实例 URL 必须为公网 HTTP(S)（防 SSRF）
+    async fn validate_instance_url(url: &str) -> Result<String, String> {
+        let trimmed = url.trim().trim_end_matches('/').to_string();
+        FeedParser::validate_public_url(&trimmed)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(trimmed)
+    }
+
     /// 添加新实例
     pub async fn add_instance(
         &self,
@@ -415,13 +417,20 @@ impl RsshubService {
         url: String,
         access_key: Option<String>,
         priority: Option<i32>,
+        // 创建全局实例需要管理员
+        is_admin: bool,
     ) -> Result<InstanceModel, String> {
+        if user_id.is_none() && !is_admin {
+            return Err("Only admins can create global RSSHub instances".to_string());
+        }
+
+        let safe_url = Self::validate_instance_url(&url).await?;
         let now = Utc::now();
 
         let new_instance = rsshub_instances::ActiveModel {
             user_id: Set(user_id),
             name: Set(name),
-            url: Set(url.trim_end_matches('/').to_string()),
+            url: Set(safe_url),
             access_key: Set(access_key),
             priority: Set(priority.unwrap_or(100)),
             enabled: Set(true),
@@ -451,6 +460,7 @@ impl RsshubService {
         access_key: Option<String>,
         priority: Option<i32>,
         enabled: Option<bool>,
+        is_admin: bool,
     ) -> Result<InstanceModel, String> {
         let instance = rsshub_instances::Entity::find_by_id(id)
             .one(&self.db)
@@ -458,8 +468,12 @@ impl RsshubService {
             .map_err(|e| format!("Failed to find instance: {}", e))?
             .ok_or_else(|| "Instance not found".to_string())?;
 
-        // 检查权限：只能修改自己的实例或全局实例（管理员）
-        if instance.user_id != user_id && instance.user_id.is_some() {
+        // 全局实例仅管理员可改；用户实例仅本人可改
+        if instance.user_id.is_none() {
+            if !is_admin {
+                return Err("Only admins can modify global RSSHub instances".to_string());
+            }
+        } else if instance.user_id != user_id {
             return Err("Permission denied".to_string());
         }
 
@@ -470,7 +484,8 @@ impl RsshubService {
             active.name = Set(n);
         }
         if let Some(u) = url {
-            active.url = Set(u.trim_end_matches('/').to_string());
+            let safe_url = Self::validate_instance_url(&u).await?;
+            active.url = Set(safe_url);
         }
         if let Some(k) = access_key {
             active.access_key = Set(Some(k));
@@ -490,21 +505,28 @@ impl RsshubService {
     }
 
     /// 删除实例
-    pub async fn delete_instance(&self, id: i32, user_id: Option<i32>) -> Result<(), String> {
+    pub async fn delete_instance(
+        &self,
+        id: i32,
+        user_id: Option<i32>,
+        is_admin: bool,
+    ) -> Result<(), String> {
         let instance = rsshub_instances::Entity::find_by_id(id)
             .one(&self.db)
             .await
             .map_err(|e| format!("Failed to find instance: {}", e))?
             .ok_or_else(|| "Instance not found".to_string())?;
 
-        // 检查权限
-        if instance.user_id != user_id && instance.user_id.is_some() {
+        if instance.user_id.is_none() {
+            if !is_admin {
+                return Err("Only admins can delete global RSSHub instances".to_string());
+            }
+            // 不允许删除全局默认实例
+            if instance.priority == 0 {
+                return Err("Cannot delete the default global instance".to_string());
+            }
+        } else if instance.user_id != user_id {
             return Err("Permission denied".to_string());
-        }
-
-        // 不允许删除全局默认实例
-        if instance.user_id.is_none() && instance.priority == 0 {
-            return Err("Cannot delete the default global instance".to_string());
         }
 
         rsshub_instances::Entity::delete_by_id(id)
@@ -515,13 +537,26 @@ impl RsshubService {
         Ok(())
     }
 
-    /// 重置实例统计
-    pub async fn reset_instance_stats(&self, id: i32) -> Result<(), String> {
+    /// 重置实例统计（全局需管理员；用户实例需本人）
+    pub async fn reset_instance_stats(
+        &self,
+        id: i32,
+        user_id: Option<i32>,
+        is_admin: bool,
+    ) -> Result<(), String> {
         let instance = rsshub_instances::Entity::find_by_id(id)
             .one(&self.db)
             .await
             .map_err(|e| format!("Failed to find instance: {}", e))?
             .ok_or_else(|| "Instance not found".to_string())?;
+
+        if instance.user_id.is_none() {
+            if !is_admin {
+                return Err("Only admins can reset global RSSHub instances".to_string());
+            }
+        } else if instance.user_id != user_id {
+            return Err("Permission denied".to_string());
+        }
 
         let now = Utc::now();
         let mut active: rsshub_instances::ActiveModel = instance.into();

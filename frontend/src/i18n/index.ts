@@ -708,6 +708,23 @@ export interface TranslationKeys {
     moduleVisibilityAdmin: string
     moduleVisibilitySaved: string
     moduleVisibilityLoadFailed: string
+    agentUsageTitle: string
+    agentUsageDesc: string
+    agentUsageGuest: string
+    agentUsageGuestHint: string
+    agentUsageGuestHidden: string
+    agentUsageGuestVisible: string
+    agentUsageUser: string
+    agentUsageUserHint: string
+    agentUsageNone: string
+    agentUsageChat: string
+    agentUsageStandard: string
+    agentUsageElevated: string
+    agentPresetTitle: string
+    agentPresetDesc: string
+    agentPresetUserHint: string
+    agentPresetGuestHint: string
+    agentPresetCustom: string
     hitokotoTitle: string
     hitokotoDesc: string
     hitokotoSourceLabel: string

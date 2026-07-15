@@ -113,7 +113,11 @@ impl std::fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 /// Feed 解析器
+///
+/// 出站请求经 `outbound_security` 做公网 DNS 钉扎与禁用重定向，防止 SSRF。
 pub struct FeedParser {
+    /// 保留字段供未来扩展；实际抓取使用 per-request 安全客户端
+    #[allow(dead_code)]
     client: Client,
 }
 
@@ -124,26 +128,44 @@ impl Default for FeedParser {
 }
 
 impl FeedParser {
+    pub const USER_AGENT: &'static str = "Myriad Brew Reader/1.0 (RSS/Atom Feed Reader)";
+
     pub fn new() -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
-            .user_agent("Myriad Brew Reader/1.0 (RSS/Atom Feed Reader)")
+            .user_agent(Self::USER_AGENT)
             .build()
             .unwrap_or_else(|_| Client::new());
 
         Self { client }
     }
 
-    /// 抓取并解析订阅源
-    pub async fn fetch_and_parse(&self, url: &str) -> Result<ParsedFeed, ParseError> {
-        // 验证 URL
-        let _parsed_url = reqwest::Url::parse(url)
-            .map_err(|e| ParseError::InvalidUrl(format!("Invalid URL: {}", e)))?;
+    /// 校验 URL 是否允许作为出站 feed 目标（公网 HTTP/HTTPS，无凭据，DNS 非内网）
+    pub async fn validate_public_url(url: &str) -> Result<(), ParseError> {
+        crate::services::outbound_security::build_public_http_client(
+            url,
+            Duration::from_secs(5),
+            Some(Self::USER_AGENT),
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| ParseError::InvalidUrl(format!("Unsafe or invalid URL: {e}")))
+    }
 
-        // 抓取内容
-        let response = self
-            .client
-            .get(url)
+    /// 抓取并解析订阅源（SSRF 安全）
+    pub async fn fetch_and_parse(&self, url: &str) -> Result<ParsedFeed, ParseError> {
+        let (target_url, client) =
+            crate::services::outbound_security::build_public_http_client(
+                url,
+                Duration::from_secs(30),
+                Some(Self::USER_AGENT),
+            )
+            .await
+            .map_err(|e| ParseError::InvalidUrl(format!("Unsafe or invalid URL: {e}")))?;
+
+        // 抓取内容（客户端已禁用重定向并钉扎公网解析结果）
+        let response = client
+            .get(target_url)
             .send()
             .await
             .map_err(|e| ParseError::FetchError(format!("Failed to fetch: {}", e)))?;
@@ -1438,5 +1460,37 @@ mod tests {
         let (words, time) = calculate_reading_stats("Hello world, this is a test.");
         assert!(words > 0);
         assert!(time >= 1);
+    }
+
+    #[tokio::test]
+    async fn validate_public_url_rejects_loopback_literal() {
+        let err = FeedParser::validate_public_url("http://127.0.0.1/feed.xml")
+            .await
+            .expect_err("loopback must be rejected");
+        assert!(
+            matches!(err, ParseError::InvalidUrl(_)),
+            "expected InvalidUrl, got {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_public_url_rejects_metadata_ip() {
+        let err = FeedParser::validate_public_url("http://169.254.169.254/latest/meta-data/")
+            .await
+            .expect_err("link-local metadata must be rejected");
+        assert!(matches!(err, ParseError::InvalidUrl(_)));
+    }
+
+    #[tokio::test]
+    async fn fetch_and_parse_rejects_private_target() {
+        let parser = FeedParser::new();
+        let err = parser
+            .fetch_and_parse("http://10.0.0.1/rss.xml")
+            .await
+            .expect_err("private range must be rejected before connect");
+        assert!(
+            matches!(err, ParseError::InvalidUrl(_)),
+            "expected InvalidUrl for SSRF block, got {err}"
+        );
     }
 }

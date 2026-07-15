@@ -168,6 +168,7 @@ impl Executor {
                     query: recipe.original_request.clone(),
                     limit: 4,
                     tier_filter: Some(vec![MemoryTier::LongTerm, MemoryTier::MediumTerm]),
+                    user_id: Some(user_id),
                     ..Default::default()
                 })
                 .await;

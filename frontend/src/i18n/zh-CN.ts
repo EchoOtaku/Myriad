@@ -739,14 +739,23 @@ export const zhCN: TranslationKeys = {
     // Tapp 权限管理配置
     permissions: '权限管理',
     permissionsDesc:
-      '配置 Tapp 的 elevated 权限下放及 AI 使用配额，权限分 4 级：public、basic、elevated（可下放）、privileged（仅管理员）',
+      '配置 Tapp elevated 权限下放及 AI 配额。等级：public / basic / elevated（可下放）/ privileged（仅管理员）。生成报告、管理 Brew 等不可下放',
     permissionsTitle: 'Tapp 权限管理',
     tappPermissionsInfoTitle: '权限等级说明',
     tappPermissionsInfo:
-      'Tapp 有4个权限等级：public（公开）、basic（基础，默认所有人可用）、elevated（提升，可配置下放）、privileged（特权，仅管理员）。这里可以配置将11个 elevated 权限下放给普通用户或游客。',
+      'public/basic 默认开放；elevated 可在此下放；privileged（含 report:write）仅管理员。AI 助手与本页强制对齐：可用上方「助手预设」一键套用，或逐项开关；对话需 ai:chat，出站需 network:fetch。',
+    agentPresetTitle: 'AI 助手预设',
+    agentPresetDesc:
+      '一键套用与 Agent 相关的 elevated 开关模板；仍可在下方逐项微调。不改动媒体/主题等与助手无关的项',
+    agentPresetUserHint:
+      '禁用=关掉 AI/出站；仅对话=ai:chat+analyze；标准=全部 AI；扩展=AI+出站+定时任务',
+    agentPresetGuestHint:
+      '游客无后端 Agent 会话；开启 ai:chat 等仅影响入口展示与 Tapp 侧 AI。请谨慎开放',
+    agentPresetCustom: '自定义',
     // 用户 elevated 权限
     userElevatedPermissions: '普通用户权限下放',
-    userElevatedPermissionsDesc: '选择允许普通用户使用的 elevated 级别权限',
+    userElevatedPermissionsDesc:
+      '逐项下放 elevated 权限；AI/出站/调度亦由上方助手预设批量写入',
     // 游客 elevated 权限
     guestElevatedPermissions: '游客权限下放',
     guestElevatedPermissionsDesc:
@@ -799,6 +808,18 @@ export const zhCN: TranslationKeys = {
     moduleVisibilityAdmin: '管理员用户',
     moduleVisibilitySaved: '页面可见性设置已保存',
     moduleVisibilityLoadFailed: '加载页面可见性设置失败',
+    agentUsageTitle: 'AI 助手使用权限',
+    agentUsageDesc: '已并入「Tapp 权限管理」中的助手预设',
+    agentUsageGuest: '游客',
+    agentUsageGuestHint: '见 Tapp 权限中的助手预设',
+    agentUsageGuestHidden: '不展示',
+    agentUsageGuestVisible: '展示入口',
+    agentUsageUser: '普通用户',
+    agentUsageUserHint: '见 Tapp 权限中的助手预设',
+    agentUsageNone: '禁用',
+    agentUsageChat: '仅对话',
+    agentUsageStandard: '标准',
+    agentUsageElevated: '扩展',
     // 一言设置
     hitokotoTitle: '一言',
     hitokotoDesc: '选择一言来源，或自定义 API 地址与其他语言的一言源',
