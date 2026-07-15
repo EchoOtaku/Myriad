@@ -11,9 +11,10 @@ COPY frontend/package.json frontend/pnpm-lock.yaml ./
 # Disable husky in Docker (no .git directory)
 ENV HUSKY=0
 
-# Install dependencies. pnpm is the canonical frontend package manager.
+# Install dependencies. Node 25 images no longer bundle Corepack, so install
+# the repository-pinned pnpm version explicitly.
 ARG PNPM_VERSION
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate && \
+RUN npm install --global pnpm@${PNPM_VERSION} && \
     pnpm install --frozen-lockfile
 
 # Copy source code and config
