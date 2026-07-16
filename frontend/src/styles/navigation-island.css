@@ -286,10 +286,12 @@ html.dark [aria-current='page'].nav-item {
   }
 
   .dynamic-island {
-    padding: 10px 14px;
+    /* 外层只留薄边；垂直呼吸空间交给 .nav-island-scroll 内边距 */
+    padding: 4px 6px;
     max-width: calc(100vw - 2rem);
     display: flex;
     flex-direction: row;
+    align-items: center;
     /* 圆角裁剪与毛玻璃同层；滚动见 .nav-island-scroll（AppLayout.css） */
     overflow: hidden;
   }
@@ -306,10 +308,11 @@ html.dark [aria-current='page'].nav-item {
     ) !important;
   }
 
+  /* 选中点：仍在按钮下方，但由 scroll 内边距承接，避免被 overflow 裁掉 */
   [aria-current='page'].nav-item::after {
     left: 50% !important;
     top: auto !important;
-    bottom: -6px !important;
+    bottom: -4px !important;
     transform: translateX(-50%) !important;
   }
 }

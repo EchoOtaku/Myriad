@@ -315,7 +315,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
             )}
           </AnimatePresence>
         )
-        // Safari/WebKit: portal 到 body，避免被 portal iframe（z-70）盖住
+        // Safari/WebKit: portal 到 body，避免被页面 fixed 壳层叠层影响
         return isWebKit ? createPortal(toolbar, document.body) : toolbar
       })()}
 
@@ -557,14 +557,8 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
               </AnimatePresence>
             </div>
 
-            {/* 沙箱区域 - 与控制栏在同一容器内
-                WebKit 下真实 iframe portal 到 body，这里只做布局占位；
-                必须 pointer-events-none，否则空层会与 portal iframe 抢触摸 */}
-            <div
-              className={`flex-1 min-h-0 rounded-b-xl overflow-hidden bg-gray-100 dark:bg-neutral-900 ${
-                isWebKit ? 'pointer-events-none' : 'pointer-events-auto'
-              }`}
-            >
+            {/* 沙箱区域 - 与控制栏在同一容器内；真实 iframe 叠在外层绝对定位壳上 */}
+            <div className="flex-1 min-h-0 rounded-b-xl overflow-hidden bg-gray-100 dark:bg-neutral-900 pointer-events-none">
               {/* 根据状态显示不同内容 */}
               <AnimatePresence mode="wait" initial={false}>
                 {loading ? (
@@ -608,14 +602,14 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
         </div>
       </motion.div>
 
-      {/* 🎯 沙箱容器 - 只渲染一次，通过 CSS 切换全屏/普通模式 */}
-      {/* 🎯 Safari 兼容：使用原生 div + CSS transition 代替 motion.div，避免 framer-motion 干扰布局 */}
-      {/* WebKit：真实 iframe portal 到 body，此壳仅作几何锚点 → pointer-events:none，避免抢触摸 */}
+      {/* 沙箱容器 - 只渲染一次，通过 CSS 切换全屏/普通模式
+          使用原生 div + CSS transition（避免 framer-motion 干扰布局/触摸）
+          iframe 内联在此壳内，必须 pointer-events-auto 才能收到点击 */}
       {tapp && code && (
         <div
-          className={`overflow-hidden transition-all duration-300 ease-out ${
+          className={`pointer-events-auto overflow-hidden transition-all duration-300 ease-out ${
             isFullscreen ? 'rounded-none' : 'rounded-b-xl'
-          } ${isWebKit ? 'pointer-events-none' : 'pointer-events-auto'}`}
+          }`}
           style={
             isFullscreen
               ? {
@@ -636,14 +630,11 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                   maxWidth: '72rem',
                   marginLeft: 'auto',
                   marginRight: 'auto',
-                  // 非 WebKit：强制 GPU 合成层，减轻部分浏览器 fixed 内 iframe 绘制问题
-                  // WebKit 已 portal 到 body，此处 translateZ 反而可能干扰 getBoundingClientRect
-                  ...(isWebKit
-                    ? {}
-                    : {
-                        WebkitTransform: 'translateZ(0)',
-                        transform: 'translateZ(0)',
-                      }),
+                  // 独立合成层：减轻 WebKit 在 overflow:hidden 祖先下的 iframe 绘制问题
+                  // （页面级 opacity 动画已在 App.tsx 对 /tapp/run 关闭）
+                  WebkitTransform: 'translateZ(0)',
+                  transform: 'translateZ(0)',
+                  isolation: 'isolate',
                 }
           }
         >

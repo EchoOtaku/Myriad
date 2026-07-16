@@ -552,11 +552,31 @@ export const IFRAME_RESIZE_CSS = `
     z-index: 1;
     overflow: auto;
     box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    /* 允许纵向滚动，同时让点击更快被识别为 tap 而非 scroll 手势 */
+    touch-action: pan-y pinch-zoom;
     /* 安全区域内边距 - 开发者无需手动处理 */
     padding-top: var(--tapp-safe-inset-top, 0px);
     padding-right: var(--tapp-safe-inset-right, 0px);
     padding-bottom: var(--tapp-safe-inset-bottom, 0px);
     padding-left: var(--tapp-safe-inset-left, 0px);
+  }
+
+  /* 移动端控件：避免 300ms 语义延迟、保证可点 */
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  [role='button'],
+  [onclick] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: color-mix(
+      in srgb,
+      var(--color-primary, #6366f1) 18%,
+      transparent
+    );
   }
 
   /* Widget 模式下不需要分层和安全区域 */

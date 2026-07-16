@@ -30,19 +30,25 @@
  *
  * 残影修复：backdrop-filter 与 overflow 滚动不能落在同一元素上。
  * 外层 .dynamic-island 只负责毛玻璃 + 圆角裁剪（overflow: hidden），
- * 内层 .nav-island-scroll 承担横向滚动。资料库等二级菜单项较多时
- * 再滑动就不会拖出毛玻璃残影。
+ * 内层 .nav-island-scroll 承担横向滚动。
+ *
+ * 裁切注意：scrollport 的 overflow-y 实际会变成 auto（与 overflow-x
+ * 非 visible 时规范行为），选中指示点（bottom: -6px）和阴影会落在
+ * 内容盒外。必须用内边距把装饰画进 clip 区域，并抬高 min-height。
  */
 @media (width <= 767px) {
   .dynamic-island {
     width: auto;
     height: auto;
-    min-height: 65px;
+    /* 44px 图标 + 上下内边距 + 底部指示点/阴影余量 */
+    min-height: 72px;
     max-width: calc(100vw - 2rem);
+    box-sizing: border-box;
 
     /* 仅裁剪，不滚动 — 避免 backdrop-filter 随 scroll 重采样 */
     overflow: hidden;
     display: flex;
+    align-items: center;
     justify-content: flex-start;
 
     /* 独立合成层：毛玻璃静态贴在岛上，不与内部滚动层纠缠 */
@@ -64,7 +70,14 @@
     touch-action: pan-x;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE 10+ */
-    padding: 0 4px; /* 防止图标贴边 */
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    /*
+     * 上下/左右内边距把 active 指示点、box-shadow、:active scale
+     * 收进 clip 区，避免被 overflow 裁成半截按钮。
+     */
+    padding: 6px 10px 10px;
   }
 
   .nav-island-scroll::-webkit-scrollbar {
@@ -74,6 +87,9 @@
   .nav-island-content {
     flex-direction: row;
     width: max-content;
+    align-items: center;
+    /* 首尾项再留一点，避免贴圆角边缘被裁 */
+    padding-inline: 2px;
   }
 
   /* 防止图标被压缩 */

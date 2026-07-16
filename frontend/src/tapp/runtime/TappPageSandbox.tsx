@@ -66,21 +66,17 @@ import { onTappStorageChange } from './WidgetRuntimeSignals'
 
 // 处理器
 
-// 🎯 WebKit/Safari 检测（仅在模块加载时计算一次）
-// Safari 及 iOS 浏览器存在合成层 bug，需要将 iframe portal 到 body
-// 检测策略：UA + vendor 双重验证，避免单一信号误判
+// WebKit/Safari 检测（模块加载时一次）
+// 供运行页工具栏 portal、禁用多窗口等宿主决策使用。
+// 注意：Page iframe 已统一内联挂载，不再依赖 portal 规避合成层 bug
+// （/tapp/run 已去掉页面级 opacity 动画，见 App.tsx）。
 const RE_APPLE_WEBKIT = /\bAppleWebKit\b/
 const RE_CHROMIUM = /\bChrom(e|ium)\b/
 export const isWebKit: boolean = (() => {
   if (typeof navigator === 'undefined') return false
   const ua = navigator.userAgent
-  // UA 检测：包含 AppleWebKit 但排除桌面版 Chrome/Chromium
-  // iOS 上所有浏览器（CriOS、FxiOS 等）不含 Chrome/Chromium 标识，会被正确识别
   const uaIsWebKit = RE_APPLE_WEBKIT.test(ua) && !RE_CHROMIUM.test(ua)
-  // vendor 检测：Apple 平台的 WebKit 浏览器 vendor 固定为 "Apple Computer, Inc."
-  // 包括 macOS Safari、iOS Safari/Chrome/Firefox 等
   const isAppleVendor = navigator.vendor === 'Apple Computer, Inc.'
-  // 双重验证：UA + vendor 同时满足才启用 portal 模式
   return uaIsWebKit && isAppleVendor
 })()
 
@@ -753,119 +749,27 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       closeAgentInteractions,
     ]
 
-    if (isWebKit) {
-      // 🎯 Safari/WebKit Portal 模式
-      // WebKit 存在合成层 bug：当 iframe 嵌套在含 opacity 动画、overflow:hidden 的祖先链中时，
-      // iframe 内容无法被绘制到屏幕上。
-      // 解决方案：将 iframe 挂载到 body，使用 position:fixed + 持续几何同步。
-      //
-      // z-index 70：
-      // - 高于 TappRunPage 壳层（z-60）与 NavigationIsland（z-50）
-      // - 低于控制面板/同意弹窗（998+/10050）
-      // 若与运行页同为 60，同层绘制顺序不稳定：壳层空 div 会抢走触摸，
-      // 表现为「偶尔能点、过一会儿完全无法操作」。
-      //
-      // 几何同步不能只靠 ResizeObserver + 2s 轮询：
-      // - RO 只对尺寸变化敏感，对 transform/地址栏伸缩/visualViewport 位移不触发
-      // - 动画结束后停止轮询 → iframe 与占位框错位 → 看得见点不中
-      iframe.style.cssText =
-        'position:fixed;border:none;display:block;z-index:70;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;pointer-events:auto;'
+    // 内联挂载（含 WebKit）
+    //
+    // 历史：WebKit 在 opacity 动画祖先下 iframe 不绘制，曾 portal 到 body + 几何同步。
+    // 问题：fixed portal 与运行页壳层叠层/亚像素同步 thrash，移动端「摸得到但不触发」。
+    // 现策略：/tapp/run 去掉页面级 opacity 动画（见 App.tsx AnimatedPage fixed），
+    // iframe 安全内联；位置由布局自然决定，触摸直达 contentDocument。
+    iframe.style.cssText =
+      'position:absolute;inset:0;width:100%;height:100%;border:none;display:block;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;pointer-events:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent;'
 
-      // 占位容器本身不接收事件，避免与 portal iframe 叠层抢点击
-      container.style.pointerEvents = 'none'
+    // 确保容器可命中（portal 时代曾设为 none）
+    container.style.pointerEvents = 'auto'
 
-      let lastRect = ''
-      let rafId = 0
-      let syncScheduled = false
+    container.appendChild(iframe)
+    iframe.srcdoc = html
 
-      const applyRect = () => {
-        if (!document.body.contains(iframe)) return
-        const rect = container.getBoundingClientRect()
-        const width = Math.max(0, rect.width)
-        const height = Math.max(0, rect.height)
-        const key = `${rect.top.toFixed(2)},${rect.left.toFixed(2)},${width.toFixed(2)},${height.toFixed(2)}`
-        if (key === lastRect) return
-        lastRect = key
-
-        iframe.style.top = `${rect.top}px`
-        iframe.style.left = `${rect.left}px`
-        iframe.style.width = `${width}px`
-        iframe.style.height = `${height}px`
-
-        // 零尺寸时禁用命中，防止错位幽灵层吞掉全屏触摸
-        const interactive = width >= 1 && height >= 1
-        iframe.style.pointerEvents = interactive ? 'auto' : 'none'
-        iframe.style.visibility = interactive ? 'visible' : 'hidden'
+    cleanups.push(() => {
+      container.style.pointerEvents = ''
+      if (container.contains(iframe)) {
+        container.removeChild(iframe)
       }
-
-      const syncPosition = () => {
-        syncScheduled = false
-        applyRect()
-      }
-
-      const scheduleSync = () => {
-        if (syncScheduled) return
-        syncScheduled = true
-        rafId = requestAnimationFrame(syncPosition)
-      }
-
-      const resizeObserver = new ResizeObserver(scheduleSync)
-      resizeObserver.observe(container)
-      if (container.parentElement) {
-        resizeObserver.observe(container.parentElement)
-      }
-
-      // 地址栏显隐 / 软键盘 / 双指缩放：改的是 visualViewport，不是元素 offset
-      const vv = window.visualViewport
-      vv?.addEventListener('resize', scheduleSync)
-      vv?.addEventListener('scroll', scheduleSync)
-      window.addEventListener('resize', scheduleSync)
-      // capture：页面内任意滚动祖先变化时也能收到
-      window.addEventListener('scroll', scheduleSync, true)
-      window.addEventListener('orientationchange', scheduleSync)
-      document.addEventListener('visibilitychange', scheduleSync)
-
-      // 可见期间低频兜底：补 RO/viewport 事件漏掉的 transform 动画帧
-      const syncInterval = window.setInterval(() => {
-        if (typeof document !== 'undefined' && document.hidden) return
-        scheduleSync()
-      }, 500)
-
-      scheduleSync()
-
-      document.body.appendChild(iframe)
-      iframe.srcdoc = html
-
-      cleanups.push(() => {
-        resizeObserver.disconnect()
-        cancelAnimationFrame(rafId)
-        clearInterval(syncInterval)
-        vv?.removeEventListener('resize', scheduleSync)
-        vv?.removeEventListener('scroll', scheduleSync)
-        window.removeEventListener('resize', scheduleSync)
-        window.removeEventListener('scroll', scheduleSync, true)
-        window.removeEventListener('orientationchange', scheduleSync)
-        document.removeEventListener('visibilitychange', scheduleSync)
-        container.style.pointerEvents = ''
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe)
-        }
-      })
-    } else {
-      // 🎯 非 Safari 内联模式
-      // iframe 直接放在 container 内，位置/尺寸自然跟随父元素，无延迟
-      iframe.style.cssText =
-        'position:absolute;inset:0;width:100%;height:100%;border:none;display:block;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
-
-      container.appendChild(iframe)
-      iframe.srcdoc = html
-
-      cleanups.push(() => {
-        if (container.contains(iframe)) {
-          container.removeChild(iframe)
-        }
-      })
-    }
+    })
 
     return () => {
       cleanups.forEach((fn) => fn())
@@ -900,9 +804,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       }}
       data-no-ripple
     >
-      {/* iframe 挂载方式：
-          - Safari/WebKit: Portal 到 document.body（解决合成层 bug）
-          - 其他浏览器: 内联在 container 内（无位置同步延迟） */}
+      {/* iframe 内联挂载到本容器（全浏览器一致） */}
     </div>
   )
 }

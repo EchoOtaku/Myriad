@@ -242,6 +242,19 @@ function AnimatedPage({
       ? { position: 'absolute' as const, inset: 0 }
       : { width: '100%' }
 
+  // /tapp/run 自带 fixed 全屏壳：不要做 opacity 进场动画。
+  // WebKit 在「opacity 动画祖先 + overflow:hidden」链上嵌套 iframe 时会出现
+  // 合成层 bug（内容看得见/DOM 在但点不到，或干脆不绘制）。原先用 body portal
+  // 规避绘制，却引入几何同步与命中错乱，移动端表现为「摸得到但不触发交互」。
+  // 去掉页面级 opacity 后，iframe 可安全内联，触摸链路恢复正常。
+  if (style === 'fixed') {
+    return (
+      <div key={animationKey ?? location.pathname} style={wrapperStyle}>
+        {children}
+      </div>
+    )
+  }
+
   return (
     <AnimatePresence mode="wait">
       <motion.div
