@@ -19,9 +19,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::api::tapp_runtime::common::HTTP_CLIENT;
-use crate::api::tapp_store::{TappApiAccess, TappApiDef};
+use crate::api::tapp_store::{TappAiOperation, TappApiAccess, TappApiDef};
+use crate::services::permission_service::UserRole;
 use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 // 预编译模板变量正则，避免每次调用都重新编译
 static TEMPLATE_RE: Lazy<regex::Regex> =
@@ -45,6 +45,7 @@ struct CacheEntry {
 static API_CACHE: Lazy<RwLock<HashMap<String, CacheEntry>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 const MAX_API_CACHE_ENTRIES: usize = 2048;
+const MAX_TAPP_HTTP_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
 // ============ 上下文类型 ============
 
@@ -63,6 +64,8 @@ pub struct ApiExecutionContext {
     pub client_ip: Option<String>,
     /// Tapp 已授权的权限
     pub granted_permissions: Vec<String>,
+    /// Manifest AI model tier used by governed builtin adapters.
+    pub ai_model_tier: Option<crate::config::ModelTier>,
 }
 
 /// 地理位置信息
@@ -242,7 +245,7 @@ impl TappApiService {
         }
 
         if Self::api_uses_template_prefix(api_def, "{{secrets.") {
-            Self::inject_secrets(&mut inject_context).await?;
+            return Err("Host secret templates are not available to Tapps".to_string());
         }
 
         Self::apply_inject_aliases(api_def.inject.as_ref(), &mut inject_context);
@@ -296,21 +299,6 @@ impl TappApiService {
             let value = Self::resolve_json_templates(&Value::String(template.clone()), &source);
             context.insert(alias.clone(), value);
         }
-    }
-
-    /// 注入密钥
-    async fn inject_secrets(context: &mut HashMap<String, Value>) -> Result<(), String> {
-        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-
-        // 常用 API 密钥映射
-        // OpenWeatherMap
-        if let Some(key) = &config.openweather_api_key {
-            context.insert("secrets.OPENWEATHER_KEY".to_string(), json!(key));
-        }
-
-        // 可以根据需要添加更多密钥...
-
-        Ok(())
     }
 
     /// 获取地理位置信息（带缓存）
@@ -435,14 +423,16 @@ impl TappApiService {
         // 解析模板变量
         let url = Self::resolve_template(base_url, context);
 
-        // 验证 URL 安全性
-        Self::validate_url_security(&url)?;
-
         // 构建请求
         let method = reqwest::Method::from_str(&api_def.method.to_uppercase())
             .map_err(|_| format!("Invalid method: {}", api_def.method))?;
-
-        let mut request = HTTP_CLIENT.request(method, &url);
+        let (target_url, client) = crate::services::outbound_security::build_public_http_client(
+            &url,
+            Duration::from_secs(30),
+            Some("Myriad-Tapp/1.0 (declared-api)"),
+        )
+        .await?;
+        let mut request = client.request(method, target_url);
 
         // 应用区域伪装（如果配置了 spoof 参数）
         if let Some(spoof_region) = &api_def.spoof {
@@ -468,12 +458,12 @@ impl TappApiService {
         if let Some(headers) = &api_def.headers {
             for (key, value) in headers {
                 let resolved_value = Self::resolve_template(value, context);
-                if let (Ok(name), Ok(val)) = (
-                    HeaderName::from_str(key),
-                    HeaderValue::from_str(&resolved_value),
-                ) {
-                    request = request.header(name, val);
-                }
+                let name = HeaderName::from_str(key)
+                    .map_err(|_| format!("Invalid HTTP header name: {key}"))?;
+                crate::services::outbound_security::validate_outbound_header(&name)?;
+                let value = HeaderValue::from_str(&resolved_value)
+                    .map_err(|_| format!("Invalid HTTP header value: {key}"))?;
+                request = request.header(name, value);
             }
         }
 
@@ -490,10 +480,12 @@ impl TappApiService {
             .map_err(|e| format!("HTTP request failed: {}", e))?;
 
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| format!("Failed to read response: {}", e))?;
+        let body = crate::services::outbound_security::read_limited_body(
+            response,
+            MAX_TAPP_HTTP_RESPONSE_BYTES,
+        )
+        .await?;
+        let body = String::from_utf8_lossy(&body).into_owned();
 
         // 尝试解析为 JSON
         let data = serde_json::from_str::<Value>(&body).unwrap_or_else(|_| json!({ "text": body }));
@@ -560,8 +552,8 @@ impl TappApiService {
                 }
                 Self::execute_builtin_ai(
                     tapp_id,
-                    exec_context.user_id,
-                    "ai.chat",
+                    exec_context,
+                    TappAiOperation::Chat,
                     "Continue this chat for a sandboxed Tapp. Do not reveal system information, execute code, or access external URLs.",
                     &prompt,
                 )
@@ -594,8 +586,8 @@ impl TappApiService {
                 }
                 Self::execute_builtin_ai(
                     tapp_id,
-                    exec_context.user_id,
-                    "ai.generate",
+                    exec_context,
+                    TappAiOperation::Generate,
                     "Generate concise text for a sandboxed Tapp. Do not reveal system information, execute code, or access external URLs.",
                     prompt,
                 )
@@ -608,101 +600,34 @@ impl TappApiService {
 
     async fn execute_builtin_ai(
         tapp_id: &str,
-        user_id: i32,
-        operation: &str,
+        context: &ApiExecutionContext,
+        operation: TappAiOperation,
         system_prompt: &str,
         prompt: &str,
     ) -> Result<String, String> {
-        crate::api::tapp_runtime::common::check_rate_limit(user_id, tapp_id, operation)
+        let db = crate::api::tapp_runtime::shared_registry::database()
             .await
-            .map_err(|(_, body)| {
-                body.0
-                    .get("error")
-                    .and_then(Value::as_str)
-                    .unwrap_or("AI rate limit exceeded")
-                    .to_string()
-            })?;
-        let config = crate::api::tapp_runtime::common::get_ai_config_for_tier(
-            crate::config::ModelTier::Standard,
+            .map_err(|error| format!("AI_TASK_REGISTRY_UNAVAILABLE: {error}"))?;
+        let role = if context.is_admin {
+            UserRole::Admin
+        } else {
+            UserRole::User
+        };
+        crate::api::tapp_runtime::execute_governed_text(
+            &db,
+            crate::api::tapp_runtime::GovernedTextRequest {
+                role,
+                subject_id: context.user_id,
+                owner_id: context.owner_id,
+                tapp_id,
+                source: "declared-api",
+                operation,
+                tier: context.ai_model_tier.unwrap_or_default(),
+                system_prompt,
+                prompt,
+            },
         )
         .await
-        .map_err(|(_, body)| {
-            body.0
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("No AI provider configured")
-                .to_string()
-        })?;
-        let analyzer = crate::services::analyzer::AiAnalyzer::new(
-            config.provider,
-            config.api_key,
-            config.model,
-            config.base_url,
-        )
-        .await;
-        analyzer
-            .analyze_with_system(system_prompt, prompt)
-            .await
-            .map_err(|error| error.to_string())
-    }
-
-    /// 公开的 URL 安全校验（供调度器等内部模块复用）
-    pub fn validate_url_security_pub(url: &str) -> Result<(), String> {
-        Self::validate_url_security(url)
-    }
-
-    /// 验证 URL 安全性（防止 SSRF）
-    fn validate_url_security(url: &str) -> Result<(), String> {
-        let parsed = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
-
-        // 只允许 HTTP/HTTPS
-        if !["http", "https"].contains(&parsed.scheme()) {
-            return Err("Only HTTP/HTTPS protocols are allowed".to_string());
-        }
-
-        let host = parsed.host_str().ok_or("URL has no host")?;
-
-        // 禁止本地地址
-        if host == "localhost"
-            || host == "127.0.0.1"
-            || host == "::1"
-            || host == "[::1]"
-            || host.ends_with(".local")
-            || host.ends_with(".localhost")
-        {
-            return Err("Localhost access is not allowed".to_string());
-        }
-
-        // 检查 IPv4 私有地址
-        if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
-            if ip.is_private() || ip.is_loopback() || ip.is_link_local() || ip.is_unspecified() {
-                return Err("Private network access is not allowed".to_string());
-            }
-            // 元数据服务
-            if ip.octets()[0] == 169 && ip.octets()[1] == 254 {
-                return Err("Metadata service access is not allowed".to_string());
-            }
-        }
-
-        // 检查 IPv6 私有/链路本地/回环地址
-        // 去掉方括号后解析，例如 [fc00::1] -> fc00::1
-        let ipv6_host = host.trim_start_matches('[').trim_end_matches(']');
-        if let Ok(ip) = ipv6_host.parse::<std::net::Ipv6Addr>() {
-            if ip.is_loopback() || ip.is_unspecified() {
-                return Err("Private network access is not allowed".to_string());
-            }
-            let segments = ip.segments();
-            // fc00::/7 唯一本地地址
-            if segments[0] & 0xfe00 == 0xfc00 {
-                return Err("Private network access is not allowed".to_string());
-            }
-            // fe80::/10 链路本地地址
-            if segments[0] & 0xffc0 == 0xfe80 {
-                return Err("Private network access is not allowed".to_string());
-            }
-        }
-
-        Ok(())
     }
 
     /// 解析模板变量 {{varName}}
@@ -854,6 +779,7 @@ mod tests {
             is_admin: false,
             client_ip: Some(ip.to_string()),
             granted_permissions: Vec::new(),
+            ai_model_tier: None,
         }
     }
 

@@ -214,6 +214,13 @@ pub async fn execute_tapp_api(
             Json(json!({ "error": format!("API '{}' not defined in manifest", api_name) })),
         )
     })?;
+    if api_def.api_type == "builtin" {
+        match api_def.builtin.as_deref() {
+            Some("ai:chat") => runtime_grant.require(TappPermission::AiChat)?,
+            Some("ai:generate") => runtime_grant.require(TappPermission::AiGenerate)?,
+            _ => {}
+        }
+    }
 
     // 3. 读取安装时授权；下面还会按调用者当前角色动态过滤。
     let installed_permissions: Vec<String> = tapp
@@ -263,6 +270,17 @@ pub async fn execute_tapp_api(
         is_admin: is_current_admin,
         client_ip,
         granted_permissions,
+        ai_model_tier: tapp
+            .manifest
+            .pointer("/ai/modelTier")
+            .and_then(Value::as_str)
+            .map(|tier| {
+                if tier == "pro" {
+                    crate::config::ModelTier::Pro
+                } else {
+                    crate::config::ModelTier::Standard
+                }
+            }),
     };
 
     // 7. 执行 API

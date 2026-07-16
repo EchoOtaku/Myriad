@@ -403,11 +403,19 @@ const value = await Tapp.storage.get("_settings.refreshInterval");
 
 `inject` 的键是新别名，值是宿主上下文模板。例如
 `{"city":"{{geo.city}}"}` 会创建 `{{city}}`，供 `endpoint`、`headers` 或 `body`
-复用；精确引用会保留数字、布尔值等 JSON 类型。别名不能覆盖 `user.*`、`geo.*`、
-`secrets.*` 或 `params.*`。HTTP API 必须声明 `endpoint`，查询参数直接写在 URL 中；
+复用；精确引用会保留数字、布尔值等 JSON 类型。别名不能覆盖 `user.*`、`geo.*` 或
+`params.*`。Tapp 不提供 `secrets.*` 模板；Manifest 中出现宿主 secret 引用会在安装时被拒绝。
+HTTP API 必须声明 `endpoint`，查询参数直接写在 URL 中；
 内置 API 只接受 `geo`、`ai:chat`、`ai:generate`，不能混入 HTTP 字段。
+AI 内置 API 除对应 `ai:*` 权限外，还必须在 `manifest.ai` 中声明 V2 的相同 operation 和
+`text` output；模型层级取自该 AI 声明。调用仍进入统一 AI Task registry、并发限制和持久配额
+账本，不是独立的模型直连入口。
 单个 Manifest 最多声明 64 个 API，每个 API 最多声明 32 个注入别名，`cacheTtl` 上限
 为 86400 秒。
+
+HTTP endpoint 在请求前解析并钉扎全部公网 DNS 地址，禁止自动重定向、URL credentials 与
+Host/Connection 等路由或 hop-by-hop 请求头；响应体以流式方式强制限制为 2 MiB。Scheduler
+`fetch` 使用相同边界，不能通过 DNS rebinding、跳转或超大响应绕过宿主。
 
 ### 区域伪装 (`spoof`)
 

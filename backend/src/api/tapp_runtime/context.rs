@@ -223,6 +223,7 @@ pub async fn get_context_geo(
         is_admin: false,
         client_ip: Some(client_ip),
         granted_permissions: vec![],
+        ai_model_tier: None,
     };
 
     let geo_api = TappApiDef {

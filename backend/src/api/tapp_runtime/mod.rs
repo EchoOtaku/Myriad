@@ -50,6 +50,7 @@ pub use agent_interactions::{
     submit_agent_interaction_result,
 };
 pub use ai_tasks::{ai_usage, cancel_ai_task, create_ai_task, get_ai_task, stream_ai_task_events};
+pub(crate) use ai_tasks::{execute_governed_text, GovernedTextRequest};
 
 // Reports API
 pub use reports::{

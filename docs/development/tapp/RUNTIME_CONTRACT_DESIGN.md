@@ -373,6 +373,9 @@ Manifest 只声明能力与预算层级，不暴露供应商参数：
   advisory lock 原子递增；所有副本与指标端点读取同一计数，数据库故障时受限操作 fail closed。
 - AI task 的并发/保留计数与 idempotency claim 在 subject advisory-lock 事务内完成；只有注册
   成功的请求才保留 quota 预留并启动 provider，注册竞态或故障完整回滚 calls/tokens。
+- Scheduler `ai.generate` 和 Declared API AI builtin 是同步等待结果的宿主 adapter，但内部必须
+  注册同一种 AI Task；注册与延迟执行都重验 Runtime Grant、安装授权及 Manifest V2 operation，
+  不允许形成第二套模型客户端或配额旁路。
 - `temperature/maxTokens` 不由 Tapp 任意指定。若产品需要可调，只提供服务器定义的
   `quality = fast | balanced | high`，并映射到受限参数。
 - 上下文按引用解析并记录 provenance，每类来源有独立字节预算；Tapp 不能把“读取所有
@@ -395,8 +398,9 @@ Manifest 只声明能力与预算层级，不暴露供应商参数：
 状态机、上下文/输出校验和 SSE；4 已完成在线 at-most-once 路由与 Manifest allowlist；5 已完成
 interaction schema、CAS 接受/提交/拒绝状态机、Executor 恢复以及
 `ui.open`、`report.create`、`dataExchange.request` 宿主 adapter。在线状态使用 PostgreSQL
-TTL registry、durable mailbox 与 `pg_notify` 提示；Agent run 的最近 256 个 SSE 事件同样写入
-共享 TTL registry，可跨副本重新订阅并补读。第 6 步已完成：Agent 旧方法、Event V1
+TTL registry、durable mailbox 与 `pg_notify` 提示；Agent run 元数据和最近 256 个 SSE 事件
+同样写入共享 TTL registry，事件使用独立 sequence 记录追加而非反复重写历史，可跨副本重新
+订阅并补读。第 6 步已完成：Agent 旧方法、Event V1
 适配与 AI V1 端点均已删除。
 
 每一阶段都应同时交付 Rust/TypeScript 类型、Manifest round-trip、权限矩阵、端到端测试和

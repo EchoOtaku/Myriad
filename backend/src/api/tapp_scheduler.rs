@@ -18,7 +18,10 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::api::tapp_runtime::common::{check_tapp_permission, verify_tapp_ownership};
+use crate::api::tapp_runtime::common::{
+    check_tapp_permission, resolve_accessible_tapp, verify_tapp_granted_permissions,
+    verify_tapp_ownership,
+};
 use crate::api::tapp_runtime::RuntimeGrantContext;
 use crate::middleware::auth::{ensure_current_admin, Claims};
 use crate::models::entities::tapp_scheduled_tasks::{
@@ -26,7 +29,8 @@ use crate::models::entities::tapp_scheduled_tasks::{
 };
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_scheduler::{
-    backend_action_permissions, normalize_backend_actions, TappSchedulerEngine,
+    backend_action_permissions, normalize_backend_actions, validate_backend_action_declarations,
+    TappSchedulerEngine,
 };
 
 /// 全局调度器引擎
@@ -324,6 +328,24 @@ pub async fn register_task(
         ));
     }
     check_backend_action_permissions(&claims, &backend_actions).await?;
+    let action_permissions = backend_action_permissions(&backend_actions).map_err(bad_request)?;
+    for permission in &action_permissions {
+        runtime_grant.require(*permission)?;
+    }
+    let mut installed_permissions = vec![TappPermission::SchedulerRegister];
+    installed_permissions.extend(action_permissions);
+    verify_tapp_granted_permissions(&db, user_id, &req.tapp_id, &installed_permissions).await?;
+    let tapp = resolve_accessible_tapp(&db, user_id, &req.tapp_id).await?;
+    if tapp.user_id != runtime_grant.owner_id() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Runtime grant installation mismatch",
+                "code": "RUNTIME_GRANT_OWNER_MISMATCH"
+            })),
+        ));
+    }
+    validate_backend_action_declarations(&tapp.manifest, &backend_actions).map_err(bad_request)?;
 
     let schedule_config = serde_json::to_value(&req.schedule).map_err(|e| {
         (

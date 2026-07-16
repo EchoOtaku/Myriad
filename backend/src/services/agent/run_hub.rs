@@ -8,17 +8,19 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use once_cell::sync::Lazy;
+use sea_orm::{ConnectionTrait, DbBackend, FromQueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{broadcast, Mutex, RwLock};
 
-use crate::api::tapp_runtime::shared_registry::{self, RegistryIdentity};
+use crate::api::tapp_runtime::shared_registry;
 
 use super::notifications::get_notification_manager;
 use super::AgentProgressEvent;
 
 const EVENT_HISTORY_LIMIT: usize = 256;
 const RUN_REGISTRY_NAMESPACE: &str = "agent_run";
+const RUN_EVENT_REGISTRY_NAMESPACE: &str = "agent_run_event";
 const RUN_RETENTION_HOURS: i64 = 24;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -45,13 +47,17 @@ struct PersistedAgentRun {
     session_id: Option<String>,
     created_at: chrono::DateTime<Utc>,
     next_sequence: u64,
-    events: VecDeque<AgentRunEnvelope>,
     task_id: Option<String>,
     status: String,
     progress: u8,
     message: String,
     completed: bool,
     updated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(FromQueryResult)]
+struct PersistedAgentRunEventRow {
+    payload: Value,
 }
 
 pub struct AgentRun {
@@ -88,7 +94,10 @@ impl AgentRun {
         })
     }
 
-    fn from_persisted(persisted: PersistedAgentRun) -> Arc<Self> {
+    fn from_persisted(
+        persisted: PersistedAgentRun,
+        events: VecDeque<AgentRunEnvelope>,
+    ) -> Arc<Self> {
         let (events_tx, _) = broadcast::channel(EVENT_HISTORY_LIMIT);
         Arc::new(Self {
             run_id: persisted.run_id,
@@ -97,7 +106,7 @@ impl AgentRun {
             created_at: persisted.created_at,
             state: Mutex::new(AgentRunState {
                 next_sequence: persisted.next_sequence,
-                events: persisted.events,
+                events,
                 task_id: persisted.task_id,
                 status: persisted.status,
                 progress: persisted.progress,
@@ -142,7 +151,6 @@ impl AgentRun {
             session_id: self.session_id.clone(),
             created_at: self.created_at,
             next_sequence: state.next_sequence,
-            events: state.events.clone(),
             task_id: state.task_id.clone(),
             status: state.status.clone(),
             progress: state.progress,
@@ -152,7 +160,42 @@ impl AgentRun {
         }
     }
 
-    async fn persist(&self) {
+    async fn load_persisted_events(
+        db: &impl ConnectionTrait,
+        run_id: &str,
+    ) -> Result<VecDeque<AgentRunEnvelope>, sea_orm::DbErr> {
+        let rows = PersistedAgentRunEventRow::find_by_statement(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+SELECT payload
+FROM (
+    SELECT record_id, payload
+    FROM tapp_runtime_registry
+    WHERE namespace = $1
+      AND runtime_id = $2
+      AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT
+    ORDER BY record_id DESC
+    LIMIT $3
+) AS recent
+ORDER BY record_id ASC
+"#,
+            vec![
+                RUN_EVENT_REGISTRY_NAMESPACE.into(),
+                run_id.to_string().into(),
+                (EVENT_HISTORY_LIMIT as i64).into(),
+            ],
+        ))
+        .all(db)
+        .await?;
+        rows.into_iter()
+            .map(|row| {
+                serde_json::from_value(row.payload)
+                    .map_err(|error| sea_orm::DbErr::Json(error.to_string()))
+            })
+            .collect()
+    }
+
+    async fn persist(&self, envelope: &AgentRunEnvelope) {
         let Ok(db) = shared_registry::database().await else {
             tracing::warn!(run_id = %self.run_id, "[Agent Run] Database unavailable; run snapshot remains local");
             return;
@@ -160,22 +203,108 @@ impl AgentRun {
         let snapshot = self.persisted_snapshot().await;
         let expires_at =
             (snapshot.updated_at + chrono::Duration::hours(RUN_RETENTION_HOURS)).timestamp();
-        if let Err(error) = shared_registry::put(
-            &db,
-            RUN_REGISTRY_NAMESPACE,
-            &self.run_id,
-            RegistryIdentity {
-                subject_id: Some(self.user_id),
-                owner_id: Some(self.user_id),
-                tapp_id: None,
-                runtime_id: None,
-            },
-            &snapshot,
-            expires_at,
-        )
-        .await
-        {
+        let snapshot_payload = match serde_json::to_value(&snapshot) {
+            Ok(payload) => payload,
+            Err(error) => {
+                tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to serialize run snapshot");
+                return;
+            }
+        };
+        let event_payload = match serde_json::to_value(envelope) {
+            Ok(payload) => payload,
+            Err(error) => {
+                tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to serialize run event");
+                return;
+            }
+        };
+        let event_record_id = format!("{}:{:020}", self.run_id, envelope.sequence);
+        let transaction = match db.begin().await {
+            Ok(transaction) => transaction,
+            Err(error) => {
+                tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to begin persistence transaction");
+                return;
+            }
+        };
+        let result = async {
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                    vec![format!("agent_run:{}", self.run_id).into()],
+                ))
+                .await?;
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    r#"
+INSERT INTO tapp_runtime_registry
+    (namespace, record_id, subject_id, owner_id, runtime_id, payload, expires_at, updated_at)
+VALUES ($1, $2, $3, $3, $4, $5, $6, NOW())
+ON CONFLICT (namespace, record_id) DO NOTHING
+"#,
+                    vec![
+                        RUN_EVENT_REGISTRY_NAMESPACE.into(),
+                        event_record_id.into(),
+                        self.user_id.into(),
+                        self.run_id.clone().into(),
+                        event_payload.into(),
+                        expires_at.into(),
+                    ],
+                ))
+                .await?;
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    r#"
+INSERT INTO tapp_runtime_registry
+    (namespace, record_id, subject_id, owner_id, payload, expires_at, updated_at)
+VALUES ($1, $2, $3, $3, $4, $5, NOW())
+ON CONFLICT (namespace, record_id) DO UPDATE SET
+    subject_id = EXCLUDED.subject_id,
+    owner_id = EXCLUDED.owner_id,
+    payload = EXCLUDED.payload,
+    expires_at = EXCLUDED.expires_at,
+    updated_at = NOW()
+WHERE COALESCE((tapp_runtime_registry.payload ->> 'next_sequence')::BIGINT, 0)
+      <= (EXCLUDED.payload ->> 'next_sequence')::BIGINT
+"#,
+                    vec![
+                        RUN_REGISTRY_NAMESPACE.into(),
+                        self.run_id.clone().into(),
+                        self.user_id.into(),
+                        snapshot_payload.into(),
+                        expires_at.into(),
+                    ],
+                ))
+                .await?;
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    r#"
+DELETE FROM tapp_runtime_registry
+WHERE namespace = $1 AND runtime_id = $2
+  AND record_id NOT IN (
+      SELECT record_id
+      FROM tapp_runtime_registry
+      WHERE namespace = $1 AND runtime_id = $2
+      ORDER BY record_id DESC
+      LIMIT $3
+  )
+"#,
+                    vec![
+                        RUN_EVENT_REGISTRY_NAMESPACE.into(),
+                        self.run_id.clone().into(),
+                        (EVENT_HISTORY_LIMIT as i64).into(),
+                    ],
+                ))
+                .await?;
+            transaction.commit().await
+        }
+        .await;
+        if let Err(error) = result {
             tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to persist shared run snapshot");
+        } else {
+            shared_registry::maybe_cleanup(&db).await;
         }
     }
 
@@ -198,20 +327,26 @@ impl AgentRun {
                 return Vec::new();
             }
         };
+        let persisted_events = match Self::load_persisted_events(&db, &self.run_id).await {
+            Ok(events) => events,
+            Err(error) => {
+                tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to refresh shared run events");
+                return Vec::new();
+            }
+        };
 
         let mut state = self.state.lock().await;
         if persisted.next_sequence <= state.next_sequence {
             return Vec::new();
         }
         let last_local_sequence = state.next_sequence.saturating_sub(1);
-        let new_events = persisted
-            .events
+        let new_events = persisted_events
             .iter()
             .filter(|event| event.sequence > last_local_sequence)
             .cloned()
             .collect::<Vec<_>>();
         state.next_sequence = persisted.next_sequence;
-        state.events = persisted.events;
+        state.events = persisted_events;
         state.task_id = persisted.task_id;
         state.status = persisted.status;
         state.progress = persisted.progress;
@@ -346,8 +481,8 @@ impl AgentRun {
             )
         };
 
-        let _ = self.events_tx.send(envelope);
-        self.persist().await;
+        let _ = self.events_tx.send(envelope.clone());
+        self.persist(&envelope).await;
 
         if notify {
             if let Some(manager) = get_notification_manager() {
@@ -423,7 +558,8 @@ pub async fn get_run_for_user(run_id: &str, user_id: i32) -> Option<Arc<AgentRun
     if persisted.user_id != user_id || persisted.run_id != run_id {
         return None;
     }
-    let run = AgentRun::from_persisted(persisted);
+    let events = AgentRun::load_persisted_events(&db, run_id).await.ok()?;
+    let run = AgentRun::from_persisted(persisted, events);
     let mut runs = AGENT_RUNS.write().await;
     Some(
         runs.entry(run_id.to_string())
@@ -477,7 +613,7 @@ mod tests {
 
         let encoded = serde_json::to_value(run.persisted_snapshot().await).unwrap();
         let persisted: PersistedAgentRun = serde_json::from_value(encoded).unwrap();
-        let restored = AgentRun::from_persisted(persisted);
+        let restored = AgentRun::from_persisted(persisted, history.into());
         let (restored_history, restored_sequence, restored_completed) = restored.snapshot().await;
         assert_eq!(restored_history.len(), 3);
         assert_eq!(restored_sequence, 3);

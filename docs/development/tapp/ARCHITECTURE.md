@@ -334,9 +334,10 @@ recipe/context/question 的 `waiting_for_input` 才进入内存恢复索引。�
 `waiting_for_input` 抢占为 `running`，避免两个副本执行同一 continuation；原始 run hub 每 2 秒
 强制刷新数据库，因此结果落到其他副本时不会被本地旧缓存遮蔽或等待十分钟才完成。任务取消
 同样先原子写入 `agent_tasks`；执行副本在步骤边界及最终成功提交前读取权威状态，跨副本取消
-不会失效，也不会被最后一个迟到步骤重新覆盖为 `completed`。Agent run 的最近 256 个 SSE
-事件快照也保存在共享 TTL registry；重新订阅落到其他副本时可恢复历史，并每 2 秒补读更新，
-终态或失活 run 统一保留 24 小时。
+不会失效，也不会被最后一个迟到步骤重新覆盖为 `completed`。Agent run 元数据与最近 256 个
+SSE 事件也保存在共享 TTL registry；事件按 sequence 追加，元数据更新、事件写入和有界清理在
+同一 advisory-lock 事务内完成，避免每次进度都重写整段历史。重新订阅落到其他副本时可恢复
+历史，并每 2 秒补读更新；终态或失活 run 统一保留 24 小时。
 
 Scoped Event Broker 使用 Manifest publish/subscribe allowlist 与 Runtime Grant 路由在线实例。
 `instance` 只协调当前 Tapp runtime，`owner` 可通知同一 subject 下明确订阅的其他在线 Tapp；
@@ -354,12 +355,23 @@ calls、tokens 与 cooldown 以 `(subject, owner, tapp, UTC day)` 持久化，�
 失败或取消释放未消耗 token。subject 级 advisory-lock 事务原子检查并发/保留上限和幂等键；
 相同身份与幂等键使用稳定 task ID，只有注册赢家启动模型调用，注册竞态或 registry 故障会完整
 回滚 calls 与 token 预留。SDK 只公开 Task API，旧的 generate/analyze/chat/image 与配额
-适配入口已删除。
+适配入口已删除。保留的 Declared API `ai:generate` / `ai:chat` builtin 与 Scheduler
+`ai.generate` 只是同步宿主 adapter：它们必须具备匹配的 Manifest AI V2 operation，并在注册及
+执行时重验 Runtime Grant、安装授权和当前角色；实际调用仍注册为统一 AI Task，不能绕过共享
+并发、速率、calls、tokens 或 cooldown。
 
 通用 Tapp 请求限流同样写入 PostgreSQL TTL registry。计数键包含 subject、Tapp 与 operation，
 每次递增由 advisory transaction lock 串行化，因此增加后端副本不会放大可用额度；指标与状态
 端点读取同一份权威计数。数据库不可用时受限操作返回 `503 RATE_LIMITER_UNAVAILABLE`，不会
 退回到进程内计数或静默放行。
+
+Declared HTTP API 与 Scheduler `fetch` 共用公网出站边界：解析出的每个地址都必须可公网路由，
+DNS 结果钉扎到本次客户端并禁止自动重定向；URL credentials、路由/hop-by-hop 头被拒绝，响应
+按 chunk 读取且最多 2 MiB。旧的字符串级私网判断已删除，避免 DNS rebinding、重定向 SSRF 和
+无界响应内存占用。
+宿主配置密钥不进入 Tapp 模板上下文；`{{secrets.*}}` 在 Manifest 校验和运行时都 fail closed。
+若未来需要第三方凭据，应设计绑定 provider、目标域名与用途的专用 credential capability，不能
+恢复任意 endpoint 可引用的全局 secret map。
 
 当前 Tapp storage 按 `user_id + tapp_id` 隔离，单值上限 1 MiB，总量上限 5 MiB；写入在同一
 事务内加 subject/Tapp advisory lock、计算替换后的 JSONB 字节并 upsert，并发副本不能越过

@@ -312,6 +312,9 @@ Tapp 通知进入 Myriad 的统一通知流，不存在独立的 Tapp-only toast
 ## 调度器
 
 全部需要登录；注册还检查 `scheduler:register`、Tapp 所有权、scope 和 backendActions。
+AI backendAction 还要求 Manifest AI V2 `generate` 声明；每次执行前重验安装授权，并进入统一
+AI Task registry 与配额账本。
+`fetch` 使用公网 DNS 钉扎、禁止重定向和 2 MiB 流式响应上限。
 
 | 方法     | 路径                                                  | 说明                        |
 | -------- | ----------------------------------------------------- | --------------------------- |

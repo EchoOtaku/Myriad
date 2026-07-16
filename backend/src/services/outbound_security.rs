@@ -42,6 +42,24 @@ pub fn is_public_ip(ip: IpAddr) -> bool {
     }
 }
 
+pub fn validate_outbound_header(name: &reqwest::header::HeaderName) -> Result<(), String> {
+    if matches!(
+        name.as_str(),
+        "host"
+            | "connection"
+            | "content-length"
+            | "transfer-encoding"
+            | "upgrade"
+            | "proxy-authorization"
+            | "proxy-connection"
+            | "te"
+            | "trailer"
+    ) {
+        return Err(format!("HTTP header is not allowed: {name}"));
+    }
+    Ok(())
+}
+
 /// Validate and pin DNS for an outbound HTTP target.
 ///
 /// Every resolved address must be globally routable. The resulting client has
@@ -100,6 +118,32 @@ pub async fn build_public_http_client(
     Ok((parsed, client))
 }
 
+/// Read an HTTP body without ever buffering more than the declared limit.
+pub async fn read_limited_body(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes as u64)
+    {
+        return Err(format!("Response exceeds {max_bytes} bytes"));
+    }
+    let mut body =
+        Vec::with_capacity(response.content_length().unwrap_or(0).min(max_bytes as u64) as usize);
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("Failed to read response: {error}"))?
+    {
+        if body.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(format!("Response exceeds {max_bytes} bytes"));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,5 +180,12 @@ mod tests {
         )
         .await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_hop_by_hop_and_routing_headers() {
+        assert!(validate_outbound_header(&reqwest::header::HOST).is_err());
+        assert!(validate_outbound_header(&reqwest::header::CONNECTION).is_err());
+        assert!(validate_outbound_header(&reqwest::header::AUTHORIZATION).is_ok());
     }
 }

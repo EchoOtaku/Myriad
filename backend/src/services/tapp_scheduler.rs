@@ -20,7 +20,10 @@ use tokio::sync::{broadcast, RwLock};
 
 use std::collections::HashMap;
 
-use crate::api::tapp_runtime::common::HTTP_CLIENT;
+use crate::api::tapp_store::{
+    TappAiManifest, TappAiModelTier, TappAiOperation, TappAiOutputFormat,
+};
+use crate::config::ModelTier;
 use crate::models::entities::tapp_scheduled_tasks::{
     self, BackendAction, BackendActionWrapper, ExecutionTarget, MissedPolicy, RetryConfig,
     ScheduleConfig, ScheduleType, TaskScope, TaskStats,
@@ -30,8 +33,9 @@ use crate::services::permission_service::{TappPermission, TappPermissionService,
 use crate::services::platform_auto_refresh::{
     core_platform_from_task, is_core_platform_sync_task, CORE_PLATFORM_SYNC_TAPP_ID,
 };
-use crate::services::tapp_api_service::TappApiService;
 use crate::GLOBAL_DYNAMIC_CONFIG;
+
+const MAX_SCHEDULER_FETCH_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
 /// Normalize the public SDK action shape (`type`) to the persisted Rust enum
 /// tag (`action`) and validate every action before a task is stored.
@@ -95,6 +99,57 @@ pub fn backend_action_permissions(
     permissions.sort_by_key(|permission| permission.as_str());
     permissions.dedup();
     Ok(permissions)
+}
+
+/// Validate delayed backend actions against the installed Manifest contract.
+/// Permissions alone are insufficient: AI execution must also be declared in
+/// manifest.ai so every entry path uses the same V2 operation/model boundary.
+pub fn validate_backend_action_declarations(
+    manifest: &serde_json::Value,
+    actions: &Option<serde_json::Value>,
+) -> Result<Option<ModelTier>, String> {
+    let Some(serde_json::Value::Array(actions)) = actions else {
+        return Ok(None);
+    };
+    let uses_ai_generate = actions.iter().try_fold(false, |uses_ai, value| {
+        let wrapper: BackendActionWrapper = serde_json::from_value(value.clone())
+            .map_err(|error| format!("Invalid backend action: {error}"))?;
+        Ok::<_, String>(uses_ai || matches!(wrapper.action, BackendAction::AiGenerate { .. }))
+    })?;
+    if !uses_ai_generate {
+        return Ok(None);
+    }
+
+    let declaration: TappAiManifest = manifest
+        .get("ai")
+        .cloned()
+        .ok_or_else(|| "ai.generate backend action requires manifest.ai".to_string())
+        .and_then(|value| {
+            serde_json::from_value(value)
+                .map_err(|_| "Stored manifest.ai declaration is invalid".to_string())
+        })?;
+    if declaration.protocol_version != 2
+        || !declaration.operations.contains(&TappAiOperation::Generate)
+        || !declaration
+            .output_formats
+            .contains(&TappAiOutputFormat::Text)
+    {
+        return Err(
+            "ai.generate backend action requires AI V2 generate operation and text output"
+                .to_string(),
+        );
+    }
+    Ok(Some(match declaration.model_tier {
+        TappAiModelTier::Standard => ModelTier::Standard,
+        TappAiModelTier::Pro => ModelTier::Pro,
+    }))
+}
+
+#[derive(Clone, Copy)]
+struct ScheduledExecutionAuthority {
+    role: UserRole,
+    owner_id: i32,
+    ai_model_tier: Option<ModelTier>,
 }
 
 /// 任务执行上下文（发送给前端）
@@ -464,9 +519,8 @@ impl TappSchedulerEngine {
             .map_err(|e| format!("Failed to create execution record: {}", e))?;
 
         let mut result: Option<serde_json::Value> = None;
-        let mut error = Self::validate_task_execution_permissions(db, task)
-            .await
-            .err();
+        let authority = Self::validate_task_execution_permissions(db, task).await;
+        let mut error = authority.as_ref().err().cloned();
         let mut status = if error.is_some() {
             ExecutionStatus::Failed
         } else {
@@ -481,7 +535,14 @@ impl TappSchedulerEngine {
                 // 执行后端操作
                 if status == ExecutionStatus::Success {
                     if let Some(actions) = &task.backend_actions {
-                        match Self::execute_backend_actions(db, task, actions).await {
+                        match Self::execute_backend_actions(
+                            db,
+                            task,
+                            actions,
+                            authority.as_ref().expect("validated authority"),
+                        )
+                        .await
+                        {
                             Ok(r) => result = Some(r),
                             Err(e) => {
                                 error = Some(e);
@@ -801,7 +862,7 @@ impl TappSchedulerEngine {
     async fn validate_task_execution_permissions(
         db: &DatabaseConnection,
         task: &tapp_scheduled_tasks::Model,
-    ) -> Result<(), String> {
+    ) -> Result<ScheduledExecutionAuthority, String> {
         let row = db
             .query_one(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -825,7 +886,11 @@ impl TappSchedulerEngine {
         // or delegated permission lifecycle.
         if is_core_platform_sync_task(task) {
             return if is_admin {
-                Ok(())
+                Ok(ScheduledExecutionAuthority {
+                    role,
+                    owner_id: task.user_id,
+                    ai_model_tier: None,
+                })
             } else {
                 Err("Core platform refresh requires current administrator access".to_string())
             };
@@ -839,15 +904,52 @@ impl TappSchedulerEngine {
         required.extend(backend_action_permissions(&task.backend_actions)?);
 
         let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-        for permission in required {
-            if !TappPermissionService::check(&config, role, permission) {
+        for permission in &required {
+            if !TappPermissionService::check(&config, role, *permission) {
                 return Err(format!(
                     "Permission revoked before scheduled execution: {}",
                     permission.as_str()
                 ));
             }
         }
-        Ok(())
+        drop(config);
+
+        let tapp = crate::api::tapp_runtime::common::resolve_accessible_tapp(
+            db,
+            task.user_id,
+            &task.tapp_id,
+        )
+        .await
+        .map_err(|(_, body)| {
+            body.0
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("Scheduled Tapp is no longer accessible")
+                .to_string()
+        })?;
+        let granted = tapp
+            .granted_permissions
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        for permission in required {
+            if !granted
+                .iter()
+                .any(|value| value.as_str() == Some(permission.as_str()))
+            {
+                return Err(format!(
+                    "Tapp permission revoked before scheduled execution: {}",
+                    permission.as_str()
+                ));
+            }
+        }
+        let ai_model_tier =
+            validate_backend_action_declarations(&tapp.manifest, &task.backend_actions)?;
+        Ok(ScheduledExecutionAuthority {
+            role,
+            owner_id: tapp.user_id,
+            ai_model_tier,
+        })
     }
 
     /// 执行后端操作（支持结果链式传递）
@@ -855,6 +957,7 @@ impl TappSchedulerEngine {
         db: &DatabaseConnection,
         task: &tapp_scheduled_tasks::Model,
         actions_json: &serde_json::Value,
+        authority: &ScheduledExecutionAuthority,
     ) -> Result<serde_json::Value, String> {
         // 尝试解析为新格式（带 resultAs），否则回退到旧格式
         let action_wrappers: Vec<BackendActionWrapper> =
@@ -896,7 +999,8 @@ impl TappSchedulerEngine {
             }
 
             // 执行操作（带模板替换）
-            let result = Self::execute_single_action(db, task, &wrapper.action, &context).await;
+            let result =
+                Self::execute_single_action(db, task, &wrapper.action, &context, authority).await;
 
             match &result {
                 Ok(r) => {
@@ -924,6 +1028,7 @@ impl TappSchedulerEngine {
         task: &tapp_scheduled_tasks::Model,
         action: &BackendAction,
         context: &HashMap<String, serde_json::Value>,
+        authority: &ScheduledExecutionAuthority,
     ) -> Result<serde_json::Value, String> {
         match action {
             BackendAction::PlatformSync { platform } => {
@@ -945,7 +1050,7 @@ impl TappSchedulerEngine {
             }
             BackendAction::AiGenerate { prompt } => {
                 let prompt = Self::resolve_template(prompt, context);
-                Self::action_ai_generate(task.user_id, &task.tapp_id, &prompt).await
+                Self::action_ai_generate(db, task, authority, &prompt).await
             }
             BackendAction::Fetch {
                 url,
@@ -1239,8 +1344,9 @@ impl TappSchedulerEngine {
 
     /// 执行 AI 生成
     async fn action_ai_generate(
-        user_id: i32,
-        tapp_id: &str,
+        db: &DatabaseConnection,
+        task: &tapp_scheduled_tasks::Model,
+        authority: &ScheduledExecutionAuthority,
         prompt: &str,
     ) -> Result<serde_json::Value, String> {
         if prompt.len() > 2000 {
@@ -1249,44 +1355,28 @@ impl TappSchedulerEngine {
         if let Some(reason) = crate::api::tapp_runtime::common::validate_prompt_security(prompt) {
             return Err(format!("Prompt contains disallowed content: {reason}"));
         }
-        crate::api::tapp_runtime::common::check_rate_limit(user_id, tapp_id, "ai.generate")
-            .await
-            .map_err(|(_, body)| {
-                body.0
-                    .get("error")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("AI rate limit exceeded")
-                    .to_string()
-            })?;
         tracing::info!(
             "[TappScheduler] AI generate: {}...",
             &prompt[..prompt.len().min(50)]
         );
-        let config = crate::api::tapp_runtime::common::get_ai_config_for_tier(
-            crate::config::ModelTier::Standard,
-        )
-        .await
-        .map_err(|(_, body)| {
-            body.0
-                .get("error")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("No AI provider configured")
-                .to_string()
-        })?;
-        let analyzer = crate::services::analyzer::AiAnalyzer::new(
-            config.provider,
-            config.api_key,
-            config.model,
-            config.base_url,
-        )
-        .await;
-        let text = analyzer
-            .analyze_with_system(
-                "You are executing a background task for a sandboxed Tapp. Do not reveal system information, execute code, or access external URLs. Return concise text only.",
+        let tier = authority
+            .ai_model_tier
+            .ok_or_else(|| "Scheduled AI action has no validated Manifest tier".to_string())?;
+        let text = crate::api::tapp_runtime::execute_governed_text(
+            db,
+            crate::api::tapp_runtime::GovernedTextRequest {
+                role: authority.role,
+                subject_id: task.user_id,
+                owner_id: authority.owner_id,
+                tapp_id: &task.tapp_id,
+                source: "scheduler",
+                operation: TappAiOperation::Generate,
+                tier,
+                system_prompt: "You are executing a background task for a sandboxed Tapp. Do not reveal system information, execute code, or access external URLs. Return concise text only.",
                 prompt,
-            )
-            .await
-            .map_err(|error| error.to_string())?;
+            },
+        )
+        .await?;
         Ok(json!({ "text": text, "generated": true }))
     }
 
@@ -1297,20 +1387,27 @@ impl TappSchedulerEngine {
         headers: Option<serde_json::Value>,
         body: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
-        // SSRF 防护：复用与 TappApiService 相同的 URL 安全校验
-        TappApiService::validate_url_security_pub(url)?;
-
         let method_str = method.unwrap_or_else(|| "GET".to_string());
         let method = reqwest::Method::from_str(&method_str)
             .map_err(|_| format!("Invalid method: {}", method_str))?;
-
-        let mut request = HTTP_CLIENT.request(method, url);
+        let (target_url, client) = crate::services::outbound_security::build_public_http_client(
+            url,
+            std::time::Duration::from_secs(30),
+            Some("Myriad-Tapp/1.0 (scheduler)"),
+        )
+        .await?;
+        let mut request = client.request(method, target_url);
 
         if let Some(headers_json) = headers {
             if let Some(headers_map) = headers_json.as_object() {
                 for (key, value) in headers_map {
                     if let Some(v) = value.as_str() {
-                        request = request.header(key.as_str(), v);
+                        let name = reqwest::header::HeaderName::from_str(key)
+                            .map_err(|_| format!("Invalid HTTP header name: {key}"))?;
+                        crate::services::outbound_security::validate_outbound_header(&name)?;
+                        let value = reqwest::header::HeaderValue::from_str(v)
+                            .map_err(|_| format!("Invalid HTTP header value: {key}"))?;
+                        request = request.header(name, value);
                     }
                 }
             }
@@ -1326,10 +1423,12 @@ impl TappSchedulerEngine {
             .map_err(|e| format!("Fetch failed: {}", e))?;
 
         let status = response.status().as_u16();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| format!("Failed to read response: {}", e))?;
+        let body = crate::services::outbound_security::read_limited_body(
+            response,
+            MAX_SCHEDULER_FETCH_RESPONSE_BYTES,
+        )
+        .await?;
+        let body = String::from_utf8_lossy(&body).into_owned();
 
         Ok(json!({ "status": status, "body": body }))
     }
@@ -1768,5 +1867,33 @@ mod tests {
         .expect("next run");
 
         assert_eq!(next.timestamp_millis(), 1_030_000);
+    }
+
+    #[test]
+    fn scheduled_ai_requires_matching_manifest_v2_declaration() {
+        let actions = normalize_backend_actions(Some(json!([{
+            "type": "ai.generate",
+            "prompt": "Summarize {{input}}"
+        }])))
+        .unwrap();
+        let without_ai = json!({
+            "permissions": ["scheduler:register", "ai:generate"]
+        });
+        assert!(validate_backend_action_declarations(&without_ai, &actions).is_err());
+
+        let declared = json!({
+            "permissions": ["scheduler:register", "ai:generate"],
+            "ai": {
+                "protocolVersion": 2,
+                "operations": ["generate"],
+                "modelTier": "pro",
+                "contextSources": [],
+                "outputFormats": ["text"]
+            }
+        });
+        assert_eq!(
+            validate_backend_action_declarations(&declared, &actions).unwrap(),
+            Some(ModelTier::Pro)
+        );
     }
 }

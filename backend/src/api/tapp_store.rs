@@ -626,6 +626,11 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
                     "Tapp API {name} cacheTtl must not exceed 86400 seconds"
                 ));
             }
+            if serde_json::to_string(api).is_ok_and(|encoded| encoded.contains("{{secrets.")) {
+                return Err(format!(
+                    "Tapp API {name} cannot reference host secret templates"
+                ));
+            }
             match api.api_type.as_str() {
                 "http" => {
                     if api.endpoint.is_none() {
@@ -675,6 +680,26 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
                             "Builtin Tapp API {name} requires permission {}",
                             required_permission.expect("checked permission")
                         ));
+                    }
+                    let required_operation = match builtin {
+                        "ai:chat" => Some(TappAiOperation::Chat),
+                        "ai:generate" => Some(TappAiOperation::Generate),
+                        _ => None,
+                    };
+                    if let Some(operation) = required_operation {
+                        let ai = manifest.ai.as_ref().ok_or_else(|| {
+                            format!(
+                                "Builtin Tapp API {name} requires a protocolVersion 2 AI declaration"
+                            )
+                        })?;
+                        if ai.protocol_version != 2 || !ai.operations.contains(&operation) {
+                            return Err(format!(
+                                "Builtin Tapp API {name} requires the matching AI operation"
+                            ));
+                        }
+                        if !ai.output_formats.contains(&TappAiOutputFormat::Text) {
+                            return Err(format!("Builtin Tapp API {name} requires AI text output"));
+                        }
                     }
                 }
                 other => return Err(format!("Unknown Tapp API type: {other}")),
@@ -4993,6 +5018,36 @@ mod manifest_tests {
     }
 
     #[test]
+    fn ai_builtin_requires_matching_v2_declaration() {
+        let base = json!({
+            "id": "com.example.ai-builtin",
+            "name": "AI builtin app",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["ai:generate"],
+            "apis": {
+                "summary": {
+                    "type": "builtin",
+                    "builtin": "ai:generate"
+                }
+            }
+        });
+        let missing: TappManifest = serde_json::from_value(base.clone()).unwrap();
+        assert!(validate_tapp_manifest(&missing).is_err());
+
+        let mut declared = base;
+        declared["ai"] = json!({
+            "protocolVersion": 2,
+            "operations": ["generate"],
+            "modelTier": "standard",
+            "contextSources": [],
+            "outputFormats": ["text"]
+        });
+        let declared: TappManifest = serde_json::from_value(declared).unwrap();
+        validate_tapp_manifest(&declared).unwrap();
+    }
+
+    #[test]
     fn rejects_ai_operation_without_matching_permission() {
         let manifest: TappManifest = serde_json::from_value(json!({
             "id": "com.example.ai",
@@ -5394,6 +5449,19 @@ mod manifest_tests {
             "{{geo.city}}".to_string(),
         )]));
         assert!(validate_tapp_manifest(&reserved_alias).is_err());
+
+        let mut secret_template = valid.clone();
+        secret_template
+            .apis
+            .as_mut()
+            .unwrap()
+            .get_mut("weather.current")
+            .unwrap()
+            .headers = Some(std::collections::HashMap::from([(
+            "Authorization".to_string(),
+            "Bearer {{secrets.OPENWEATHER_KEY}}".to_string(),
+        )]));
+        assert!(validate_tapp_manifest(&secret_template).is_err());
 
         let removed_api_url = serde_json::from_value::<TappManifest>(json!({
             "id": "com.example.legacy-api",

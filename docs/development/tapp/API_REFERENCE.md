@@ -936,6 +936,14 @@ const unsubscribe = Tapp.scheduler.onTask("refresh", async (payload) => {
 { type: 'transform', input: 'varName', extract: '$.data' }
 ```
 
+`ai.generate` 后端操作要求当前 Runtime Grant、安装授权和 `manifest.ai` 同时包含
+`ai:generate` / V2 `generate` / `text` output。注册时检查一次，每次延迟执行前再次检查；执行
+进入与 `Tapp.ai.tasks` 相同的共享并发、速率、calls、tokens 和 cooldown 账本。Declared API 的
+`ai:generate`、`ai:chat` builtin 也遵守相同规则。
+
+`fetch` 与声明式 HTTP API 仅连接解析后全部为公网的目标，DNS 在客户端中钉扎且不自动跟随
+重定向；Host/Connection 等路由或 hop-by-hop 头会被拒绝，响应体上限为 2 MiB。
+
 ---
 
 ## 声明式网络 API
