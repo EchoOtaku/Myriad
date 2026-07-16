@@ -17,9 +17,9 @@ use crate::services::brew_parser::{FeedParser, ParsedFeed};
 
 /// RSSHub 服务配置
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub struct RsshubConfig {
-    /// 健康检查间隔（秒）
+    /// 健康检查间隔（秒）— 预留；当前由调用方/调度器控制周期
+    #[allow(dead_code)]
     pub health_check_interval_secs: u64,
     /// 请求超时（秒）
     pub request_timeout_secs: u64,
@@ -45,7 +45,7 @@ pub struct RsshubService {
     db: DatabaseConnection,
     parser: FeedParser,
     config: RsshubConfig,
-    /// 缓存的可用实例列表
+    /// 缓存的可用实例列表（预留热缓存）
     #[allow(dead_code)]
     cached_instances: Arc<RwLock<Vec<InstanceModel>>>,
 }
@@ -61,16 +61,6 @@ impl RsshubService {
         }
     }
 
-    /// 使用自定义配置创建服务
-    #[allow(dead_code)]
-    pub fn with_config(db: DatabaseConnection, config: RsshubConfig) -> Self {
-        Self {
-            db,
-            parser: FeedParser::new(),
-            config,
-            cached_instances: Arc::new(RwLock::new(Vec::new())),
-        }
-    }
 
     /// 获取用户的所有实例（包括全局默认实例）
     pub async fn get_instances(&self, user_id: Option<i32>) -> Result<Vec<InstanceModel>, String> {
@@ -166,19 +156,6 @@ impl RsshubService {
             .collect())
     }
 
-    /// 选择最佳实例
-    #[allow(dead_code)]
-    pub async fn select_best_instance(
-        &self,
-        user_id: Option<i32>,
-    ) -> Result<InstanceModel, String> {
-        let instances = self.get_healthy_instances(user_id).await?;
-
-        instances
-            .into_iter()
-            .next()
-            .ok_or_else(|| "No healthy RSSHub instances available".to_string())
-    }
 
     /// 构建完整的 RSSHub URL
     pub fn build_url(&self, instance: &InstanceModel, route: &str) -> String {
@@ -577,22 +554,4 @@ impl RsshubService {
     }
 }
 
-/// 全局 RSSHub 服务实例
-#[allow(dead_code)]
-static RSSHUB_SERVICE: once_cell::sync::OnceCell<Arc<RsshubService>> =
-    once_cell::sync::OnceCell::new();
 
-/// 初始化 RSSHub 服务
-#[allow(dead_code)]
-pub fn init_rsshub_service(db: DatabaseConnection) {
-    let service = Arc::new(RsshubService::new(db));
-    if RSSHUB_SERVICE.set(service).is_err() {
-        tracing::warn!("[RSSHub] Service already initialized");
-    }
-}
-
-/// 获取 RSSHub 服务实例
-#[allow(dead_code)]
-pub fn get_rsshub_service() -> Option<Arc<RsshubService>> {
-    RSSHUB_SERVICE.get().cloned()
-}

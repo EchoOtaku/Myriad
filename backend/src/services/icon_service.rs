@@ -209,34 +209,6 @@ impl IconService {
         Ok(())
     }
 
-    /// 获取已缓存的图标路径
-    #[allow(dead_code)]
-    pub async fn get_cached_icon(&self, source_id: i32) -> Option<String> {
-        let extensions = ["ico", "png", "jpg", "gif", "webp", "svg"];
-
-        for ext in extensions {
-            let filename = format!("source_{}.{}", source_id, ext);
-            let file_path = self.icons_dir.join(&filename);
-
-            if file_path.exists() {
-                return Some(format!("/api/brew/icons/{}", filename));
-            }
-        }
-
-        None
-    }
-
-    /// 检查图标是否已缓存
-    #[allow(dead_code)]
-    pub async fn is_icon_cached(&self, source_id: i32) -> bool {
-        self.get_cached_icon(source_id).await.is_some()
-    }
-
-    /// 获取图标目录路径
-    #[allow(dead_code)]
-    pub fn get_icons_dir(&self) -> &PathBuf {
-        &self.icons_dir
-    }
 }
 
 impl Default for IconService {

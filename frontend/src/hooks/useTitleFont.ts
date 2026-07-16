@@ -12,6 +12,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { API_URL } from '../config'
+import { usePrimaryColor } from '../utils/colorSubscriber'
+import { deriveAdaptiveTitleColor } from '../utils/readableColor'
+import { useThemeMode } from '../utils/themeSubscriber'
 
 // ==================== 类型定义 ====================
 
@@ -76,8 +79,8 @@ export const AVAILABLE_COLORS: readonly ColorOption[] = Object.freeze([
     id: 'adaptive',
     nameKey: 'colorAdaptive',
     value: 'adaptive',
-    cssValue:
-      'color-mix(in srgb, var(--color-primary) 50%, var(--adaptive-base))',
+    // 静态兜底：运行时由 getTitleColorCss / deriveAdaptiveTitleColor 按对比度重算
+    cssValue: 'var(--color-primary)',
   },
 ])
 
@@ -444,15 +447,46 @@ export function getCurrentTitleColorId(): string {
   return globalState.color
 }
 
+/**
+ * 解析标题颜色 CSS 值。
+ * adaptive：对齐 Tapp 音乐播放器歌词填色 —— 基于 WCAG 对比度在主题背景下推导可读色。
+ */
 export function getTitleColorCss(colorId?: string, isDark?: boolean): string {
   const id = colorId || globalState.color
   const color = colorMap.get(id)
   if (!color) return AVAILABLE_COLORS[0].cssValue
 
   if (id === 'adaptive') {
-    const adaptiveBase = isDark ? '#ffffff' : '#000000'
-    return `color-mix(in srgb, var(--color-primary) 50%, ${adaptiveBase})`
+    const dark =
+      isDark ??
+      (typeof document !== 'undefined'
+        ? document.documentElement.classList.contains('dark')
+        : false)
+    return deriveAdaptiveTitleColor(dark)
   }
 
   return color.cssValue
+}
+
+/**
+ * 响应式标题色：跟随标题色设置、明暗主题、壁纸主色变化自动重算。
+ * 页面 Hero 统一用此 hook，避免各处重复 MutationObserver + adaptive 逻辑。
+ */
+export function useResolvedTitleColor(
+  colorType: 'primary' | 'accent' = 'primary',
+): string {
+  const { titleColor } = useTitleFont()
+  const isDark = useThemeMode()
+  // 壁纸取色变更时触发重算（adaptive 依赖 --color-*）
+  const primaryColor = usePrimaryColor()
+
+  return useMemo(() => {
+    // primaryColor 作为壁纸色指纹：CSS 变量更新时强制重算 adaptive
+    void primaryColor
+    // Reports 默认双色：仅当用户未改标题色时，第二标题可用 accent
+    if (titleColor === 'primary' && colorType === 'accent') {
+      return 'color-mix(in srgb, var(--color-accent) 70%, transparent)'
+    }
+    return getTitleColorCss(titleColor, isDark)
+  }, [titleColor, isDark, primaryColor, colorType])
 }

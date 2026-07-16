@@ -2153,7 +2153,6 @@ AchievementReportBody.displayName = 'AchievementReportBody'
 // 叙事：成就向（无时长）。概览 = 头像/在线 + GS/库/成就 + 硬核指数/正在玩；
 // 详情 = 作品封面轮播（带完成度角标）。
 
-const XBOX_ACCENT = '#107C10'
 const XBOX_ACCENT_SOFT = '#3A9D23'
 
 const XboxScoreCardBody = memo(
@@ -2799,7 +2798,6 @@ XboxWidget.displayName = 'XboxWidget'
 // 叙事：奖杯向（无时长）。概览 = 头像/在线 + 白金/等级/库 + 猎人指数/正在玩；
 // 详情 = 作品封面轮播（完成度 + 白金角标）。
 
-const PSN_ACCENT = '#0070D1'
 const PSN_ACCENT_SOFT = '#3D9BFF'
 
 const PsnScoreCardBody = memo(

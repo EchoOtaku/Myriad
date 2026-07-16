@@ -866,12 +866,27 @@ async fn handle_mfp_activity(
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:KeyExchange" => {
-            crate::federation::channel::handle_key_exchange(db, actor_url_str, activity)
-                .await
-                .map_err(|e| {
-                    tracing::error!("KeyExchange handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+            // Channel vs Room：object.room 优先，否则走 Channel
+            let is_room = activity
+                .get("object")
+                .and_then(|o| o.get("room"))
+                .and_then(|v| v.as_str())
+                .is_some();
+            if is_room {
+                crate::federation::room::handle_key_exchange(db, actor_url_str, activity)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Room KeyExchange handling failed: {}", e);
+                        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
+                    })?;
+            } else {
+                crate::federation::channel::handle_key_exchange(db, actor_url_str, activity)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Channel KeyExchange handling failed: {}", e);
+                        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
+                    })?;
+            }
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:RoomJoin" => {

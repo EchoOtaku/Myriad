@@ -6,7 +6,6 @@
 //! - TTS: https://cloud.tencent.com/document/product/1073/37995
 //! - ASR: https://cloud.tencent.com/document/product/1093/35646
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use reqwest::Client;
@@ -529,44 +528,6 @@ impl TencentSpeechService {
             .await
     }
 
-    /// 文本转语音（简化版）
-    ///
-    /// # Arguments
-    /// * `text` - 要转换的文本
-    /// * `voice_type` - 音色ID（可选）
-    ///
-    /// # Returns
-    /// * 音频数据的Base64编码字符串
-    #[allow(dead_code)]
-    pub async fn tts_simple(
-        &self,
-        text: &str,
-        voice_type: Option<i32>,
-    ) -> Result<String, TencentSpeechError> {
-        let request = TtsRequest {
-            text: text.to_string(),
-            voice_type,
-            ..Default::default()
-        };
-
-        let response = self.text_to_speech(request).await?;
-        response
-            .audio
-            .ok_or_else(|| TencentSpeechError::ParseError("No audio in response".to_string()))
-    }
-
-    /// 文本转语音并解码为字节
-    #[allow(dead_code)]
-    pub async fn tts_to_bytes(
-        &self,
-        text: &str,
-        voice_type: Option<i32>,
-    ) -> Result<Vec<u8>, TencentSpeechError> {
-        let audio_base64 = self.tts_simple(text, voice_type).await?;
-        BASE64
-            .decode(&audio_base64)
-            .map_err(|e| TencentSpeechError::ParseError(format!("Base64 decode error: {}", e)))
-    }
 
     // ==================== ASR 语音转文本 ====================
 
@@ -613,67 +574,7 @@ impl TencentSpeechService {
             .await
     }
 
-    /// 一句话语音识别（简化版 - 从字节数据）
-    ///
-    /// # Arguments
-    /// * `audio_data` - 音频数据字节
-    /// * `format` - 音频格式 (wav, mp3, pcm等)
-    /// * `engine` - 引擎类型 (16k_zh, 16k_en等)
-    ///
-    /// # Returns
-    /// * 识别的文本结果
-    #[allow(dead_code)]
-    pub async fn stt_from_bytes(
-        &self,
-        audio_data: &[u8],
-        format: &str,
-        engine: Option<&str>,
-    ) -> Result<String, TencentSpeechError> {
-        let data_base64 = BASE64.encode(audio_data);
-        let request = AsrRequest {
-            eng_ser_vice_type: engine.unwrap_or("16k_zh").to_string(),
-            source_type: 1,
-            voice_format: format.to_string(),
-            data: Some(data_base64),
-            data_len: Some(audio_data.len() as i32),
-            ..Default::default()
-        };
 
-        let response = self.speech_to_text(request).await?;
-        response
-            .result
-            .ok_or_else(|| TencentSpeechError::ParseError("No result in response".to_string()))
-    }
-
-    /// 一句话语音识别（简化版 - 从URL）
-    ///
-    /// # Arguments
-    /// * `url` - 音频文件URL
-    /// * `format` - 音频格式 (wav, mp3, pcm等)
-    /// * `engine` - 引擎类型 (16k_zh, 16k_en等)
-    ///
-    /// # Returns
-    /// * 识别的文本结果
-    #[allow(dead_code)]
-    pub async fn stt_from_url(
-        &self,
-        url: &str,
-        format: &str,
-        engine: Option<&str>,
-    ) -> Result<String, TencentSpeechError> {
-        let request = AsrRequest {
-            eng_ser_vice_type: engine.unwrap_or("16k_zh").to_string(),
-            source_type: 0,
-            voice_format: format.to_string(),
-            url: Some(url.to_string()),
-            ..Default::default()
-        };
-
-        let response = self.speech_to_text(request).await?;
-        response
-            .result
-            .ok_or_else(|| TencentSpeechError::ParseError("No result in response".to_string()))
-    }
 }
 
 // ==================== 音色ID定义 ====================

@@ -53,6 +53,9 @@ pub struct SendRoomMessageRequest {
     pub payload: serde_json::Value,
     pub thread_id: Option<String>,
     pub reply_to: Option<String>,
+    /// 是否使用 Room E2E 多方加密（需成员已完成密钥发布）
+    #[serde(default)]
+    pub encrypt: Option<bool>,
 }
 
 /// Room 概要
@@ -129,6 +132,19 @@ pub struct SendRoomMessageResponse {
     pub success: bool,
     pub message_id: String,
     pub room_id: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_encrypted: bool,
+}
+
+/// 发起 Room E2E 密钥发布响应
+#[derive(Debug, Serialize)]
+pub struct RoomE2eKeyExchangeResponse {
+    pub success: bool,
+    pub room_id: String,
+    pub public_key: String,
+    pub algorithm: String,
+    /// 当前已登记公钥的成员数（含自己）
+    pub published_key_count: usize,
 }
 
 /// Pin/Unpin Room 消息请求
@@ -1214,6 +1230,7 @@ pub async fn send_room_message(
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
     let message_type = req.message_type.as_deref().unwrap_or("text");
+    let want_encrypt = req.encrypt.unwrap_or(false);
 
     // 验证成员身份
     let my_role = get_member_role(db, room_id, &local_actor)
@@ -1234,6 +1251,46 @@ pub async fn send_room_message(
         ));
     }
 
+    let (stored_payload, is_encrypted) = if want_encrypt {
+        let recipients = collect_room_e2e_recipients(db, room_id, &local_actor)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": format!("E2E recipients unavailable: {e}")})),
+                )
+            })?;
+        if recipients.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "No peer E2E public keys yet; members must POST .../e2e/key-exchange"
+                })),
+            ));
+        }
+        // 也给自己 wrap 一份，便于本端历史解密
+        let mut all = recipients;
+        if let Ok((my_pk, _)) = load_member_e2e_keys(db, room_id, &local_actor).await {
+            if !all.iter().any(|(_, pk)| pk == &my_pk) {
+                all.push((local_actor.clone(), my_pk));
+            }
+        }
+        let encrypted = crate::federation::e2e::encrypt_json_for_recipients(
+            &req.payload,
+            room_id.as_bytes(),
+            &all,
+        )
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("E2E encrypt failed: {e}")})),
+            )
+        })?;
+        (encrypted, true)
+    } else {
+        (req.payload.clone(), false)
+    };
+
     let message_id = generate_message_id();
 
     db.execute(Statement::from_sql_and_values(
@@ -1241,15 +1298,16 @@ pub async fn send_room_message(
         r#"INSERT INTO federation_room_messages
            (room_id, message_id, sender_actor, message_type, payload, thread_id, reply_to,
             reactions, is_pinned, is_encrypted, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, '{}', false, false, NOW())"#,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, '{}', false, $8, NOW())"#,
         [
             room_id.into(),
             message_id.clone().into(),
             local_actor.clone().into(),
             message_type.into(),
-            req.payload.clone().into(),
+            stored_payload.clone().into(),
             req.thread_id.clone().into(),
             req.reply_to.clone().into(),
+            is_encrypted.into(),
         ],
     ))
     .await
@@ -1263,7 +1321,8 @@ pub async fn send_room_message(
             "message_id": &message_id,
             "sender_actor": &local_actor,
             "message_type": message_type,
-            "payload": &req.payload,
+            "payload": &stored_payload,
+            "is_encrypted": is_encrypted,
             "thread_id": &req.thread_id,
             "reply_to": &req.reply_to,
             "created_at": now_iso8601()
@@ -1284,7 +1343,8 @@ pub async fn send_room_message(
             "messageId": &message_id,
             "messageType": message_type,
             "from": &local_actor,
-            "payload": &req.payload,
+            "payload": &stored_payload,
+            "isEncrypted": is_encrypted,
             "threadId": &req.thread_id,
             "replyTo": &req.reply_to,
             "timestamp": now_iso8601()
@@ -1306,6 +1366,7 @@ pub async fn send_room_message(
         success: true,
         message_id,
         room_id: room_id.to_string(),
+        is_encrypted,
     })
 }
 
@@ -1334,6 +1395,7 @@ pub async fn get_room_messages(
 
     let _ = user_id;
     let limit = limit.unwrap_or(50).min(200);
+    let my_keys = load_member_e2e_keys(db, room_id, &local_actor).await.ok();
 
     let rows = if let Some(before_id) = before {
         db.query_all(Statement::from_sql_and_values(
@@ -1364,24 +1426,38 @@ pub async fn get_room_messages(
         .map_err(db_err)?
     };
 
-    let mut messages: Vec<RoomMessageItem> = rows
-        .iter()
-        .map(|r| RoomMessageItem {
+    let mut messages: Vec<RoomMessageItem> = Vec::with_capacity(rows.len());
+    for r in rows {
+        let is_encrypted: bool = r.try_get("", "is_encrypted").unwrap_or(false);
+        let mut payload: serde_json::Value = r.try_get("", "payload").unwrap_or(json!(null));
+        if is_encrypted {
+            if let Some((pk, sk)) = my_keys.as_ref() {
+                if let Ok(plain) = crate::federation::e2e::decrypt_json_for_recipient(
+                    &payload,
+                    sk,
+                    pk,
+                    room_id.as_bytes(),
+                ) {
+                    payload = plain;
+                }
+            }
+        }
+        messages.push(RoomMessageItem {
             message_id: r.try_get("", "message_id").unwrap_or_default(),
             sender_actor: r.try_get("", "sender_actor").unwrap_or_default(),
             message_type: r.try_get("", "message_type").unwrap_or_default(),
-            payload: r.try_get("", "payload").unwrap_or(json!(null)),
+            payload,
             thread_id: r.try_get::<Option<String>>("", "thread_id").unwrap_or(None),
             reply_to: r.try_get::<Option<String>>("", "reply_to").unwrap_or(None),
             reactions: r.try_get("", "reactions").unwrap_or(json!({})),
             is_pinned: r.try_get::<bool>("", "is_pinned").unwrap_or(false),
-            is_encrypted: r.try_get::<bool>("", "is_encrypted").unwrap_or(false),
+            is_encrypted,
             created_at: r
                 .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
                 .map(|t| t.to_rfc3339())
                 .unwrap_or_default(),
-        })
-        .collect();
+        });
+    }
 
     messages.reverse();
     Ok(messages)
@@ -1663,6 +1739,10 @@ pub async fn handle_room_message(
     let payload = object.get("payload").cloned().unwrap_or(json!(null));
     let thread_id = object.get("threadId").and_then(|v| v.as_str());
     let reply_to = object.get("replyTo").and_then(|v| v.as_str());
+    let is_encrypted = object
+        .get("isEncrypted")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let inserted = db
         .execute(Statement::from_sql_and_values(
@@ -1670,7 +1750,7 @@ pub async fn handle_room_message(
             r#"INSERT INTO federation_room_messages
            (room_id, message_id, sender_actor, message_type, payload, thread_id, reply_to,
             reactions, is_pinned, is_encrypted, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, '{}', false, false, NOW())
+           VALUES ($1, $2, $3, $4, $5, $6, $7, '{}', false, $8, NOW())
            ON CONFLICT (message_id) DO NOTHING"#,
             [
                 room_id.into(),
@@ -1680,6 +1760,7 @@ pub async fn handle_room_message(
                 payload.clone().into(),
                 thread_id.into(),
                 reply_to.into(),
+                is_encrypted.into(),
             ],
         ))
         .await
@@ -1696,6 +1777,7 @@ pub async fn handle_room_message(
                 "sender_actor": sender,
                 "message_type": message_type,
                 "payload": payload,
+                "is_encrypted": is_encrypted,
                 "thread_id": thread_id,
                 "reply_to": reply_to,
                 "created_at": now_iso8601()
@@ -1961,6 +2043,349 @@ pub async fn handle_room_governance(
         room_id,
         actor_url_str,
         changes
+    );
+    Ok(())
+}
+
+// ==================== Room E2E 多方加密 ====================
+
+/// 从成员 custom_permissions 读取本地 E2E 密钥对
+async fn load_member_e2e_keys(
+    db: &DatabaseConnection,
+    room_id: &str,
+    actor_url: &str,
+) -> Result<(String, String), String> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT custom_permissions FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
+            [room_id.into(), actor_url.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("Member row not found")?;
+
+    let perms = row
+        .try_get::<Option<serde_json::Value>>("", "custom_permissions")
+        .ok()
+        .flatten()
+        .ok_or("No custom_permissions / e2e keys")?;
+    let e2e = perms.get("e2e").ok_or("No e2e state on member")?;
+    let pk = e2e
+        .get("local_public_key")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing local_public_key")?
+        .to_string();
+    let sk = e2e
+        .get("local_private_key")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing local_private_key")?
+        .to_string();
+    Ok((pk, sk))
+}
+
+/// 收集房间已发布的对端公钥（不含 exclude_actor）
+async fn collect_room_e2e_recipients(
+    db: &DatabaseConnection,
+    room_id: &str,
+    exclude_actor: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("Room not found")?;
+
+    let shared = row
+        .try_get::<Option<serde_json::Value>>("", "shared_data_config")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({}));
+    let published = shared
+        .pointer("/e2e/published_keys")
+        .and_then(|v| v.as_object())
+        .ok_or("No published E2E keys on room; members must run key-exchange")?;
+
+    let mut out = Vec::new();
+    for (actor, pk_val) in published {
+        if actor == exclude_actor {
+            continue;
+        }
+        if let Some(pk) = pk_val.as_str() {
+            crate::federation::e2e::validate_public_key_b64(pk)
+                .map_err(|e| format!("bad key for {actor}: {e}"))?;
+            out.push((actor.clone(), pk.to_string()));
+        }
+    }
+    Ok(out)
+}
+
+/// 发起 Room E2E 密钥发布：生成本地密钥、登记到 published_keys、fan-out KeyExchange
+pub async fn initiate_e2e_key_exchange(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    db: &DatabaseConnection,
+) -> Result<RoomE2eKeyExchangeResponse, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    let my_role = get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a member"})),
+            )
+        })?;
+    if my_role == "observer" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Observers cannot publish E2E keys"})),
+        ));
+    }
+
+    let session = crate::federation::e2e::create_session(room_id);
+    let public_key = session.local_keypair.public_key.clone();
+    let private_key = session.local_keypair.private_key.clone();
+
+    // 1) 写入本成员 custom_permissions.e2e
+    let member_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT custom_permissions FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
+            [room_id.into(), local_actor.clone().into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Member row not found"})),
+            )
+        })?;
+
+    let mut perms = member_row
+        .try_get::<Option<serde_json::Value>>("", "custom_permissions")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({}));
+    perms["e2e"] = json!({
+        "local_public_key": public_key,
+        "local_private_key": private_key,
+        "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+    });
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_room_members SET custom_permissions = $3 WHERE room_id = $1 AND actor_url = $2",
+        [
+            room_id.into(),
+            local_actor.clone().into(),
+            perms.into(),
+        ],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    // 2) 登记到 room.shared_data_config.e2e.published_keys
+    let room_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Room not found"})),
+            )
+        })?;
+
+    let mut shared = room_row
+        .try_get::<Option<serde_json::Value>>("", "shared_data_config")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({}));
+    if shared.get("e2e").is_none() {
+        shared["e2e"] = json!({ "published_keys": {} });
+    }
+    if shared["e2e"].get("published_keys").is_none() {
+        shared["e2e"]["published_keys"] = json!({});
+    }
+    shared["e2e"]["published_keys"][&local_actor] = json!(public_key);
+    shared["e2e"]["algorithm"] = json!(crate::federation::e2e::E2E_ALGORITHM);
+
+    let published_key_count = shared["e2e"]["published_keys"]
+        .as_object()
+        .map(|o| o.len())
+        .unwrap_or(0);
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
+        [room_id.into(), shared.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    // 3) Fan-out KeyExchange activity
+    let activity_id = generate_activity_id(&base_url);
+    let kx_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:KeyExchange",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:KeyExchange",
+            "room": room_id,
+            "publicKey": &public_key,
+            "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+            "timestamp": now_iso8601()
+        }
+    });
+
+    let _ = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &kx_activity,
+        "KeyExchange",
+        "KeyExchange",
+    )
+    .await;
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "key_exchange",
+            "room_id": room_id,
+            "from": local_actor,
+            "publicKey": public_key,
+            "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+            "published_key_count": published_key_count,
+            "direction": "outbound"
+        }),
+    )
+    .await;
+
+    tracing::info!(
+        "[Room] E2E key published for {} in room {} (published={})",
+        username,
+        room_id,
+        published_key_count
+    );
+
+    Ok(RoomE2eKeyExchangeResponse {
+        success: true,
+        room_id: room_id.to_string(),
+        public_key,
+        algorithm: crate::federation::e2e::E2E_ALGORITHM.to_string(),
+        published_key_count,
+    })
+}
+
+/// 处理 Room 的 myriad:KeyExchange：登记对方公钥到 shared_data_config
+pub async fn handle_key_exchange(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    let object = activity.get("object").ok_or("Missing object")?;
+    let room_id = object
+        .get("room")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing room")?;
+    let public_key = object
+        .get("publicKey")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing publicKey")?;
+    let algorithm = object
+        .get("algorithm")
+        .and_then(|v| v.as_str())
+        .unwrap_or(crate::federation::e2e::E2E_ALGORITHM);
+
+    crate::federation::e2e::validate_public_key_b64(public_key)
+        .map_err(|e| format!("Invalid remote E2E public key: {e}"))?;
+
+    // 发送方必须是成员
+    let is_member = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
+            [room_id.into(), actor_url_str.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+    if is_member.is_none() {
+        return Err(format!(
+            "Actor {} is not a member of room {}",
+            actor_url_str, room_id
+        ));
+    }
+
+    let room_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("Room not found")?;
+
+    let mut shared = room_row
+        .try_get::<Option<serde_json::Value>>("", "shared_data_config")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({}));
+    if shared.get("e2e").is_none() {
+        shared["e2e"] = json!({ "published_keys": {} });
+    }
+    if shared["e2e"].get("published_keys").is_none() {
+        shared["e2e"]["published_keys"] = json!({});
+    }
+    shared["e2e"]["published_keys"][actor_url_str] = json!(public_key);
+    shared["e2e"]["algorithm"] = json!(algorithm);
+    let published_key_count = shared["e2e"]["published_keys"]
+        .as_object()
+        .map(|o| o.len())
+        .unwrap_or(0);
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
+        [room_id.into(), shared.into()],
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "key_exchange",
+            "room_id": room_id,
+            "from": actor_url_str,
+            "publicKey": public_key,
+            "algorithm": algorithm,
+            "published_key_count": published_key_count
+        }),
+    )
+    .await;
+
+    tracing::info!(
+        "[Room] KeyExchange received in room {} from {} (published={})",
+        room_id,
+        actor_url_str,
+        published_key_count
     );
     Ok(())
 }

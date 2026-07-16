@@ -15,12 +15,6 @@ export const PRESET_CATEGORY_DB_VALUES = ['友情链接', '我']
 /** 默认主题色（用于无图标或提取失败的情况） */
 export const DEFAULT_THEME_COLOR = '#6b7280'
 
-/** 卡片尺寸顺序 */
-export const SIZE_ORDER: CardSize[] = ['tiny', 'mini', 'full']
-
-/** 尺寸变化阈值（像素） */
-export const RESIZE_THRESHOLD = 100
-
 /** 尺寸对应的 row-span */
 export const SIZE_TO_ROWS: Record<CardSize, number> = {
   full: 8, // 8 × 24px = 192px
@@ -29,32 +23,7 @@ export const SIZE_TO_ROWS: Record<CardSize, number> = {
 }
 
 /** 短文阈值（字符数）- 低于此值视为简讯/短文 */
-export const SHORT_CONTENT_THRESHOLD = 280
-
-// ==================== 动画配置 ====================
-
-/** Spring 动画 - 快速 */
-export const SPRING_SNAPPY = {
-  type: 'spring',
-  stiffness: 400,
-  damping: 25,
-} as const
-
-/** Spring 动画 - 平滑 */
-export const SPRING_SMOOTH = {
-  type: 'spring',
-  stiffness: 350,
-  damping: 28,
-} as const
-
-/** 过渡动画 - 快速 */
-export const TRANSITION_QUICK = { duration: 0.12 } as const
-
-/** 过渡动画 - 正常 */
-export const TRANSITION_NORMAL = { duration: 0.15 } as const
-
-/** 过渡动画 - 慢速 */
-export const TRANSITION_SLOW = { duration: 0.25, ease: 'easeOut' } as const
+const SHORT_CONTENT_THRESHOLD = 280
 
 // ==================== API 配置 ====================
 
@@ -113,7 +82,7 @@ export function getPlainText(html: string | null): string {
 /**
  * 提取完整纯文本 - 用于短文判断和显示
  */
-export function getFullPlainText(html: string | null): string {
+function getFullPlainText(html: string | null): string {
   if (!html) return ''
   return html.replace(/<[^>]*>/g, '').trim()
 }
@@ -125,7 +94,7 @@ export function getFullPlainText(html: string | null): string {
  * 启发式：标签占比再高，HTML 长度若 ≥ threshold * 8，剥标签后仍几乎必 ≥ threshold
  * （保守系数，保证不把真正的短文误判为长文）
  */
-export function isLikelyLongHtml(
+function isLikelyLongHtml(
   html: string | null,
   threshold: number = SHORT_CONTENT_THRESHOLD,
 ): boolean {
@@ -149,27 +118,6 @@ export function getShortContentText(
   const plain = getFullPlainText(html)
   if (!plain || plain.length >= threshold) return null
   return plain
-}
-
-/**
- * 判断是否为 base64 图片数据
- */
-export function isBase64Image(str: string | null): boolean {
-  if (!str) return false
-  return str.startsWith('data:image/')
-}
-
-/**
- * 从 base64 提取 MIME 类型和扩展名
- */
-export function getBase64Info(base64: string): { mime: string; ext: string } {
-  const match = base64.match(/^data:(image\/\w+);base64,/)
-  if (match) {
-    const mime = match[1]
-    const ext = mime.split('/')[1] || 'png'
-    return { mime, ext }
-  }
-  return { mime: 'image/png', ext: 'png' }
 }
 
 /**

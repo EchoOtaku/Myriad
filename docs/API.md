@@ -451,16 +451,23 @@ Invoke-RestMethod -Uri "http://localhost:1103/api/fetch" `
 The frontend includes a TypeScript client in `frontend/src/lib/api.ts`:
 
 ```typescript
-import { fetchConfig, triggerFetch, fetchAnalysis } from "@lib/api";
+import {
+  fetchConfig,
+  updateConfig,
+  reloadSystemConfig,
+} from "../frontend/src/lib/api";
+// 或在前端工程内使用相对路径 / path alias 导入。
+// 注：平台抓取与分析请走 services/api 或后端 REST；
+// lib/api 目前主要封装配置/备份/权限/语音状态等。
 
 // Get configuration
 const config = await fetchConfig();
 
-// Trigger data fetch
-await triggerFetch();
+// Update configuration
+await updateConfig(config);
 
-// Get analysis results
-const analysis = await fetchAnalysis();
+// Reload system config after env changes
+await reloadSystemConfig();
 ```
 
 ### Rust
@@ -660,7 +667,7 @@ async function updateConfig(newConfig) {
   return response.json();
 }
 
-// Trigger data fetch
+// Trigger data fetch (raw REST example — not a lib/api helper)
 async function triggerFetch(platforms = null) {
   const body = platforms ? { platforms } : {};
   const response = await fetch("http://localhost:1103/api/fetch", {

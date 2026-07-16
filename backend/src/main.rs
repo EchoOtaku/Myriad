@@ -2084,6 +2084,50 @@ async fn federation_accept_channel_wrapper(req: axum::extract::Request) -> Respo
     }
 }
 
+/// 发起 Channel E2E 密钥交换
+async fn federation_e2e_key_exchange_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+    let channel_id = req
+        .uri()
+        .path()
+        .strip_prefix("/api/federation/channels/")
+        .unwrap_or("")
+        .strip_suffix("/e2e/key-exchange")
+        .unwrap_or("")
+        .to_string();
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::channel::initiate_e2e_key_exchange(
+                user_id,
+                &claims.username,
+                &channel_id,
+                db,
+            )
+            .await
+            {
+                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
 /// 发送消息
 async fn federation_send_message_wrapper(req: axum::extract::Request) -> Response {
     let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
@@ -2570,6 +2614,50 @@ async fn federation_leave_room_wrapper(req: axum::extract::Request) -> Response 
             let user_id: i32 = claims.sub.parse().unwrap_or(0);
             match federation::room::leave_room(user_id, &claims.username, &room_id, db).await {
                 Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+/// 发起 Room E2E 密钥发布
+async fn federation_room_e2e_key_exchange_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+    let room_id = req
+        .uri()
+        .path()
+        .strip_prefix("/api/federation/rooms/")
+        .unwrap_or("")
+        .strip_suffix("/e2e/key-exchange")
+        .unwrap_or("")
+        .to_string();
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::room::initiate_e2e_key_exchange(
+                user_id,
+                &claims.username,
+                &room_id,
+                db,
+            )
+            .await
+            {
+                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
                 Err((status, json)) => (status, json).into_response(),
             }
         }
@@ -3894,6 +3982,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
+            "/api/federation/channels/{channel_id}/e2e/key-exchange",
+            post(federation_e2e_key_exchange_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
             "/api/federation/channels/{channel_id}/messages",
             get(federation_get_messages_wrapper)
                 .post(federation_send_message_wrapper)
@@ -3942,6 +4035,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/federation/rooms/{room_id}/messages",
             get(federation_get_room_messages_wrapper)
                 .post(federation_send_room_message_wrapper)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/federation/rooms/{room_id}/e2e/key-exchange",
+            post(federation_room_e2e_key_exchange_wrapper)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(

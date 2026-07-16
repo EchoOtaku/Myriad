@@ -1919,5 +1919,5 @@ export default function RSSHubConfigComponent({
   )
 }
 
-export { POPULAR_ROUTES, ROUTE_CATEGORIES_KEYS }
+
 export type { RSSHubConfigProps }

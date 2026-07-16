@@ -244,25 +244,6 @@ impl ImageCacheService {
             Some(url.to_string())
         }
     }
-
-    /// 批量处理图片 URL
-    #[allow(dead_code)]
-    pub async fn process_image_urls(&self, urls: Vec<Option<String>>) -> Vec<Option<String>> {
-        let mut results = Vec::with_capacity(urls.len());
-
-        for url in urls {
-            let processed = self.process_image_url(url.as_deref()).await;
-            results.push(processed);
-        }
-
-        results
-    }
-
-    /// 获取缓存文件的绝对路径（用于静态文件服务）
-    #[allow(dead_code)]
-    pub fn get_cache_file_path(&self, subdir: &str, filename: &str) -> PathBuf {
-        self.cache_dir.join(subdir).join(filename)
-    }
 }
 
 #[cfg(test)]

@@ -98,7 +98,7 @@ fn generate_region_spoof(client_ip: String, accept_language: &str) -> SpoofHeade
 // ============ IP 地址生成 ============
 
 /// 生成随机的中国大陆 IP 地址
-pub fn get_random_china_ip() -> String {
+fn get_random_china_ip() -> String {
     let mut rng = rand::rng();
 
     // 中国大陆主流运营商的真实 IP 段
@@ -132,7 +132,7 @@ pub fn get_random_china_ip() -> String {
 }
 
 /// 生成随机的日本 IP 地址
-pub fn get_random_japan_ip() -> String {
+fn get_random_japan_ip() -> String {
     let mut rng = rand::rng();
 
     let japan_ip_ranges = [
@@ -152,7 +152,7 @@ pub fn get_random_japan_ip() -> String {
 }
 
 /// 生成随机的美国 IP 地址
-pub fn get_random_us_ip() -> String {
+fn get_random_us_ip() -> String {
     let mut rng = rand::rng();
 
     let us_ip_ranges = [
@@ -172,7 +172,7 @@ pub fn get_random_us_ip() -> String {
 }
 
 /// 生成随机的韩国 IP 地址
-pub fn get_random_korea_ip() -> String {
+fn get_random_korea_ip() -> String {
     let mut rng = rand::rng();
 
     let korea_ip_ranges = [
@@ -190,7 +190,7 @@ pub fn get_random_korea_ip() -> String {
 }
 
 /// 生成随机的台湾 IP 地址
-pub fn get_random_taiwan_ip() -> String {
+fn get_random_taiwan_ip() -> String {
     let mut rng = rand::rng();
 
     let taiwan_ip_ranges = [
@@ -208,7 +208,7 @@ pub fn get_random_taiwan_ip() -> String {
 }
 
 /// 生成随机的香港 IP 地址
-pub fn get_random_hongkong_ip() -> String {
+fn get_random_hongkong_ip() -> String {
     let mut rng = rand::rng();
 
     let hk_ip_ranges = [
@@ -228,7 +228,7 @@ pub fn get_random_hongkong_ip() -> String {
 // ============ User-Agent 生成 ============
 
 /// 通用 User-Agent
-pub fn get_random_common_ua() -> &'static str {
+fn get_random_common_ua() -> &'static str {
     let mut rng = rand::rng();
     let user_agents = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

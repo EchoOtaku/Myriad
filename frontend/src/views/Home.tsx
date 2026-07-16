@@ -26,7 +26,10 @@ import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useHomeScheduler, usePageReady } from '../hooks/animation'
 import { useTappWidgets } from '../hooks/useTappWidgets'
-import { useTitleFont } from '../hooks/useTitleFont'
+import {
+  useResolvedTitleColor,
+  useTitleFont,
+} from '../hooks/useTitleFont'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
 import {
@@ -49,39 +52,9 @@ export default function Home() {
   const [csrfToken, setCsrfToken] = useState<string>('')
 
   // 标题字体 Hook
-  const { currentFont, titleFontSize, titleColor } = useTitleFont()
-
-  // 检测深色模式
-  const [isDark, setIsDark] = useState(false)
-  useEffect(() => {
-    const checkDarkMode = () => {
-      setIsDark(document.documentElement.classList.contains('dark'))
-    }
-    checkDarkMode()
-    const observer = new MutationObserver(checkDarkMode)
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
-    return () => observer.disconnect()
-  }, [])
-
-  // 计算标题颜色
-  const getTitleColor = () => {
-    if (titleColor === 'adaptive') {
-      return isDark
-        ? 'color-mix(in srgb, var(--color-primary) 50%, #ffffff)'
-        : 'color-mix(in srgb, var(--color-primary) 50%, #000000)'
-    }
-    const colorMap: Record<string, string> = {
-      primary: 'var(--color-primary)',
-      secondary: 'var(--color-secondary)',
-      accent: 'var(--color-accent)',
-      light: 'var(--color-light)',
-      dark: 'var(--color-dark)',
-    }
-    return `color-mix(in srgb, ${colorMap[titleColor] || 'var(--color-primary)'} 70%, transparent)`
-  }
+  const { currentFont, titleFontSize } = useTitleFont()
+  // 自适应色对齐 Tapp 音乐播放器歌词：对比度推导，随主题/壁纸色更新
+  const titleColorCss = useResolvedTitleColor()
 
   // 默认小组件布局
   const DEFAULT_WIDGETS: WidgetConfig[] = useMemo(
@@ -467,8 +440,8 @@ export default function Home() {
                   style={{
                     top: `calc(30px - ${7.5 * titleFontSize}rem)`,
                     fontSize: `${6 * titleFontSize}rem`,
-                    color: getTitleColor(),
-                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
+                    color: titleColorCss,
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${titleColorCss} 30%, transparent)`,
                     lineHeight: 1,
                     fontFamily: currentFont.family,
                     fontWeight: 700,
@@ -480,8 +453,8 @@ export default function Home() {
                   style={{
                     top: `calc(30px - ${7.5 * titleFontSize}rem)`,
                     fontSize: `${6 * titleFontSize}rem`,
-                    color: getTitleColor(),
-                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
+                    color: titleColorCss,
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${titleColorCss} 30%, transparent)`,
                     fontFamily: currentFont.family,
                     fontWeight: 700,
                   }}

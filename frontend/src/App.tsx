@@ -47,6 +47,7 @@ import './styles/utility.css'
 import './styles/modals.css'
 import './styles/overrides.css'
 import './styles/performance.css'
+import './styles/global.css'
 
 // TappBackgroundRunner 懒加载，避免其错误阻塞主应用
 const TappBackgroundRunner = lazy(
