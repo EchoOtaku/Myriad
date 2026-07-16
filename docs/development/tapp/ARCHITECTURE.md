@@ -76,6 +76,13 @@ flowchart LR
 安装和更新时必须先校验 Tapp ID、Manifest 资源路径和命名资源键。安全的嵌套相对
 路径会原样保留；绝对路径、隐藏路径、反斜杠和 `..` 会被拒绝。
 
+资源不会直接写入在线目录。安装和更新先写入同一文件系统下的 staging 目录，完整校验后
+通过 rename 原子切换；数据库写入失败会恢复旧目录。卸载先把在线目录原子移入隔离位置，
+再在一个数据库事务中删除 Widget、调度任务/执行记录、可选 storage 和安装记录；事务失败
+会把目录移回。最终冲突复核、目录切换和数据库写入由按公开 `tappId` 获取的 PostgreSQL
+advisory transaction lock 串行化；管理员命名空间和普通用户命名空间也使用同一把锁，避免
+多个后端副本同时通过查重后互相覆盖。这样故障只会留下旧版本或新版本之一，不会暴露半写入资源。
+
 ### 两类持久化
 
 - PostgreSQL 保存 Tapp 元数据、完整 Manifest、状态、最终授权、Widget、存储、
@@ -95,9 +102,10 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
 - 游客只能运行管理员共享的 Tapp；Tapp 可通过 `Tapp.user.getRole()` 感知角色。对于
   Federation 内容，游客只获得公开 Feed，已登录用户获得公开内容与自己的个人内容；
   游客不能关注、发布、私聊、进入私有 Room 或传输文件。
-- 同 ID 在不同 owner 上下文中可能并存；当前兼容规则统一为管理员公开版本优先，详情、
-  资源、最终授权和 Manifest 声明 API 必须选择同一安装记录。当前运行时由 Runtime Grant 显式
-  携带 owner，消除仅凭 `tappId` 推断的歧义。
+- 新安装会拒绝与管理员公开命名空间冲突的 ID；管理员发布新 ID 时也拒绝覆盖现有用户安装。
+  历史数据库若仍有同 ID 记录，读取兼容规则为管理员公开版本优先，详情、资源、Widget、
+  最终授权和 Manifest 声明 API 必须选择同一安装记录。storage/Widget 的 ORM 不提供仅按
+  `tappId` 的关联，查询必须显式携带 `user_id + tapp_id`。
 
 ## `core`、`widget`、`page` 三层
 
@@ -119,12 +127,14 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
 
 ## 生命周期和状态
 
-后端 `installed/running/...` 是持久化状态；`TappRuntime` 是前端缓存和事件协调器，
-不是第二个权威数据库。
+后端 `installed/running/...` 只表示安装 owner 自己的持久生命周期。管理员 Tapp 对其他用户
+是“可见的共享安装”，不能把管理员的 running 传播成访客或普通用户已经运行。
+`TappRuntime` 另外维护当前浏览器会话主动启动的共享 Tapp；强制同步会保留该会话状态，
+但首次访客同步绝不会自动拉起共享 Tapp 的 Page、Widget 或 headless core。
 
 启动流程：
 
-1. `TappRuntime.startTapp` 调用后端 start；
+1. owner 启动自己的安装时调用后端 start；共享 Tapp 只记录当前浏览器会话状态；
 2. 本地状态改为 running；
 3. 注册 Manifest 的 `backgroundRequirements`；
 4. 页面、Widget 或后台 Runner 按需要创建独立 iframe；
@@ -134,8 +144,11 @@ SDK 的 `lifecycle.onDestroy` 同时监听 `pagehide` 与 `beforeunload`，并�
 单个生命周期回调抛错不能阻断其他回调。宿主资源释放仍由 iframe 外部 cleanup 负责，不能把
 授权撤销或服务端取消只寄托在浏览器卸载回调上。
 
-存储批量读取使用 `storage.getAll` 对应的单次数据库查询；设置批量读取在宿主返回后只筛选
-`_settings.` 前缀，不能退回 `keys + N 次 get` 的跨 Bridge/HTTP 路径。
+沙箱内设置仍使用带 Runtime Grant 的 storage，并以 `_settings.` 作为保留前缀。详情页的
+宿主设置编辑器属于控制面：访客不显示、不发请求；已登录用户只可通过专用 settings 路由
+读写当前 Manifest 声明的 key，写值还必须符合类型、选项与数值范围。它不能伪装成 Page
+runtime，也不能获得任意 storage 绕过。
+storage 批量读取使用 `storage.getAll` 对应的单次数据库查询，不能退回 `keys + N 次 get`。
 
 停止会清除动态与 Manifest 后台需求并卸载 headless 实例。卸载还会清理资源缓存、
 Widget/平台内存注册和安装资源；是否保留用户数据由 `keep_data` 选项决定。
@@ -188,6 +201,10 @@ Page、Widget 和 headless 每个实例启动时由宿主申请 5 分钟 Runtime
 runtime ID 和最终权限；停止、更新、卸载或 Bridge 销毁会撤销对应 Grant。Grant 的哈希与
 租约保存在 PostgreSQL `tapp_runtime_registry`，签发上限与同实例替换在事务锁内完成，因此
 后端重启或请求切换副本不会使有效 Grant 丢失。
+
+所有携带 Grant 的宿主通道（普通请求、声明 API、scheduler 和 SSE）遇到一次
+`401 + INVALID_RUNTIME_GRANT` 时都会让对应 `TappRuntimeGrant` 清除旧 token、换发并重试一次；
+第二次失败直接返回，避免无限重试。SSE 被撤销后重连也走同一规则。
 
 公开商店/Tapp 列表读取和 scheduler 的宿主共享 WebSocket 不属于
 单个沙箱请求，不要求 Runtime Grant。Brew、语音和联邦等由宿主代理的旧服务仍依赖
@@ -253,6 +270,12 @@ sequenceDiagram
 - `executionTarget=backend|both` 必须声明并通过后端校验 `backendActions`。
 - global scope 仅管理员可注册；所有注册仍检查 Tapp 所有权和
   `scheduler:register`。
+- 每个到期任务先在 PostgreSQL 行锁事务中领取，并把 `next_run_at` 临时设置为根据重试次数、
+  后端动作数与最多 5 次补偿执行计算的 15 至 360 分钟恢复租约；同一 occurrence 只能被一个副本执行，worker
+  崩溃后会重新变为到期。注册最多允许 2 次重试、60 秒重试延迟和 8 个串行后端动作，旧数据
+  在执行时也按相同边界收敛，避免执行或补偿仍在进行而租约提前失效。
+- total/success/failed/missed 统计每次都锁定任务行、读取最新 JSON 后增量更新；补偿、重试、
+  前端回执和超时不会再用旧快照覆盖彼此。卸载会删除任务及执行历史。
 
 需要刷新后继续接收 frontend 任务的应用，应把 `scheduler` 写入
 `backgroundRequirements`，并在 core 中注册 `onTask`。
@@ -276,6 +299,9 @@ sequenceDiagram
 - ResourceLoader 对 raw/Widget/Page/CSS 分层缓存，并对同 key 请求去重；安装、更新、
   卸载后必须清理对应 Tapp 缓存。普通 Widget 挂载、尺寸变化、storage 刷新不得清空资源
   缓存；尺寸本身已经进入缓存键。
+- 每个 Tapp 缓存有独立代际。clear 后的新请求不会复用旧 in-flight promise，旧请求即使
+  迟到也必须丢弃结果并按新代际重取；更新完成会发送 `tapp:updated`，标准 Page、多窗口、
+  Widget 与 headless iframe 都按新版本重建。
 - Widget HTML 与生成 CSS 都按 `tappId + widgetId + size` 缓存，不能只按尺寸复用；分离模式
   的原生 styles 与生成/预编译 CSS 分开注入，不能把原生 styles 合并后再重复注入一次。
   后端只要返回了分离 CSS（包括合法空文件）就视为权威产物；仅字段缺失时才在浏览器分析
@@ -305,6 +331,9 @@ sequenceDiagram
   Widget 可见时计时。Page、Widget、headless core 间的同 Tapp storage 变更由宿主广播。
 - Manifest 顶层 `settings` 是 Tapp 全局设置；`widgets[].settings` 保存到 Dashboard
   布局中的实例 `config`，同类 Widget 的多个实例互不覆盖。
+- Manifest Widget 是安装控制面注册：安装/更新时后端按 Manifest 完整 upsert，并删除旧
+  Manifest 已移除的项。运行时 `Tapp.widget.register/unregister` 必须携带 Runtime Grant，
+  只能管理 `source=runtime` 项，不能覆盖或删除 Manifest Widget。
 
 `syncFromBackend` 通过 `GET /api/tapps/details` 一次读取当前会话可见的完整详情。后端固定
 查询管理员 Tapp 与当前用户 Tapp，并复用单项接口的角色权限过滤；同 ID 时管理员版本优先。

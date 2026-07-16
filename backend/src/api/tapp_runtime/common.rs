@@ -569,13 +569,18 @@ pub async fn get_rate_limiter_active_count() -> Result<usize, (StatusCode, Json<
 static ADMIN_ID_CACHE: Lazy<Arc<RwLock<SingleCache<i32>>>> =
     Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(60)))));
 
-/// 获取管理员用户 ID（带缓存，使用参数化查询）
-pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCode, Json<Value>)> {
+/// 获取可选管理员用户 ID（带缓存，使用参数化查询）。
+///
+/// 全新数据库在 setup 创建站点 owner 前合法地没有管理员；公开读取路径应把它视为空集合，
+/// 需要 owner 的控制面路径再通过 `get_admin_user_id` 提升为错误。
+pub async fn find_admin_user_id(
+    db: &DatabaseConnection,
+) -> Result<Option<i32>, (StatusCode, Json<Value>)> {
     // 检查缓存
     {
         let cache = ADMIN_ID_CACHE.read().await;
         if let Some(id) = cache.get() {
-            return Ok(id);
+            return Ok(Some(id));
         }
     }
 
@@ -591,13 +596,11 @@ pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCo
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": "Database error" })),
             )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "No admin user found" })),
-            )
         })?;
+
+    let Some(result) = result else {
+        return Ok(None);
+    };
 
     let id = result.try_get::<i32>("", "id").map_err(|e| {
         tracing::error!("[TAPP] Error parsing admin ID: {}", e);
@@ -613,7 +616,17 @@ pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCo
         cache.set(id);
     }
 
-    Ok(id)
+    Ok(Some(id))
+}
+
+/// 获取管理员用户 ID；仅用于确实要求站点 owner 已完成 setup 的路径。
+pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCode, Json<Value>)> {
+    find_admin_user_id(db).await?.ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "No admin user found" })),
+        )
+    })
 }
 
 /// 验证用户是否有权访问指定的 Tapp

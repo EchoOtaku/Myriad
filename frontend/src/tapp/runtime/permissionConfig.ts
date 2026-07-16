@@ -22,7 +22,7 @@ export const PERMISSION_LEVELS: Record<TappPermission, TappPermissionLevel> = {
   'ai:chat': 'elevated',
   'ai:image': 'elevated',
   'report:read': 'basic',
-  'report:write': 'elevated',
+  'report:write': 'privileged',
   storage: 'basic',
   'ui:notification': 'basic',
   'ui:fullscreen': 'basic',
@@ -159,7 +159,9 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['platform.addItem', 'platform:write'],
     ['platform.addItems', 'platform:write'],
     ['platform.registerPlatform', 'platform:register'],
-    ['data.transform', 'platform:read'],
+    // Input/output permissions depend on the request shape and are enforced by
+    // the backend Runtime Grant (`inline` needs none; platform/storage are dynamic).
+    ['data.transform', 'public'],
 
     // AI 权限
     // AI Task operation/context permissions are resolved dynamically by backend.

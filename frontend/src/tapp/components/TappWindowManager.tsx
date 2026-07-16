@@ -792,6 +792,62 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     return cancelIdle
   }, [runtime])
 
+  // 更新已打开的多窗口实例。资源缓存代际已在 runtime 事件发出前提升，所有同 ID
+  // 窗口共享一次重新加载，然后各自重建沙箱。
+  useEffect(() => {
+    let cancelled = false
+    const unsubscribe = runtime.on('tapp:updated', (data) => {
+      const tappId = (data as { id: string }).id
+      setWindows((prev) =>
+        prev.map((item) =>
+          item.tappId === tappId
+            ? { ...item, loading: true, error: null, tapp: null, code: null }
+            : item,
+        ),
+      )
+      void (async () => {
+        try {
+          const instance = runtime.getTapp(tappId)
+          if (!instance) throw new Error(t.tapp.appNotExist)
+          const resources = await loadPageResources(instance)
+          if (cancelled) return
+          const code: TappCodeStructure = {
+            core: resources.core,
+            page: resources.page,
+            pageHtml: resources.html,
+            styles: resources.styles,
+            pageCSS: resources.css,
+            i18n: resources.i18n,
+            pageModules: resources.pageModules,
+            pageModuleOrder: resources.pageModuleOrder,
+          }
+          setWindows((prev) =>
+            prev.map((item) =>
+              item.tappId === tappId
+                ? { ...item, tapp: instance, code, loading: false }
+                : item,
+            ),
+          )
+        } catch (error) {
+          if (cancelled) return
+          const message =
+            error instanceof Error ? error.message : t.tapp.loadAppFailed
+          setWindows((prev) =>
+            prev.map((item) =>
+              item.tappId === tappId
+                ? { ...item, loading: false, error: message }
+                : item,
+            ),
+          )
+        }
+      })()
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [runtime, t.tapp.appNotExist, t.tapp.loadAppFailed])
+
   // 初始化第一个窗口
   useEffect(() => {
     if (initialTappId && windows.length === 0) {

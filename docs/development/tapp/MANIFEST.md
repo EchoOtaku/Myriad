@@ -57,6 +57,10 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
 包版本比较；当前版本过低或字段格式无效时会拒绝写入，避免出现“安装成功但运行时才
 发现 API 不兼容”。最低版本只写在包内 Manifest；商店 index 不重复维护第二份版本来源。
 
+`id` 还属于管理员公开命名空间：普通用户不能安装与管理员公开 Tapp 同 ID 的包，管理员也
+不能发布会遮蔽已有用户安装的 ID。安装/更新采用 staging 校验和原子目录切换，失败不会把
+半份 Manifest 或资源留在在线目录。
+
 ## 完整示例
 
 ```json
@@ -125,6 +129,10 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
 ## widgets 配置
 
 小组件定义允许用户将应用添加到 Dashboard。
+
+Manifest 是这些注册元数据的权威来源。安装和每次更新都会 upsert 当前声明，并删除上一版
+Manifest 已移除的 Widget。运行时 `Tapp.widget.register()` 创建的是独立动态注册，必须有
+`widget:register` 与 Runtime Grant；动态代码不能覆盖或注销 Manifest 声明项。
 
 ```json
 {
@@ -583,7 +591,6 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 | `ai:analyze`         | AI 数据分析       |
 | `ai:chat`            | AI 对话           |
 | `ai:image`           | AI 图片生成       |
-| `report:write`       | 创建/修改报告     |
 | `network:fetch`      | 发送 HTTP 请求    |
 | `media:control`      | 控制媒体播放      |
 | `component:theme`    | 注册自定义主题    |
@@ -606,3 +613,4 @@ Manifest 中声明并在安装时获授；实际读写始终落在当前会话�
 | `tappList:manage`   | 管理 Tapp      |
 | `brew:manage`       | 管理 Brew      |
 | `federation:trust`  | 管理联邦信任   |
+| `report:write`      | 创建/修改报告  |

@@ -176,6 +176,7 @@ async function streamRuntimeEvents(
   runtimeGrant: string,
   onEvent: (event: string, data: unknown) => void,
   signal?: AbortSignal,
+  retryOnRuntimeGrant: boolean = true,
 ): Promise<void> {
   const response = await fetch(`${API_URL}${endpoint}`, {
     headers: {
@@ -187,8 +188,28 @@ async function streamRuntimeEvents(
   })
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
+    if (
+      response.status === 401 &&
+      retryOnRuntimeGrant &&
+      error.code === 'INVALID_RUNTIME_GRANT'
+    ) {
+      const { TappRuntimeGrant } = await import('../runtime/TappRuntimeGrant')
+      const replacement =
+        await TappRuntimeGrant.recoverRejectedToken(runtimeGrant)
+      if (replacement) {
+        return streamRuntimeEvents(
+          endpoint,
+          replacement,
+          onEvent,
+          signal,
+          false,
+        )
+      }
+    }
     throw new Error(
-      error.error || `Runtime event stream failed (${response.status})`,
+      error.message ||
+        error.error ||
+        `Runtime event stream failed (${response.status})`,
     )
   }
   if (!response.body)
@@ -1044,6 +1065,7 @@ export async function getAllWidgets(): Promise<RegisteredWidget[]> {
 export async function registerTappWidget(
   tappId: string,
   config: WidgetRegistration,
+  runtimeGrant: string,
 ): Promise<RegisteredWidget> {
   const requestBody = {
     id: config.id,
@@ -1062,6 +1084,7 @@ export async function registerTappWidget(
     {
       method: 'POST',
       body: JSON.stringify(requestBody),
+      runtimeGrant,
     },
   )
   return result as RegisteredWidget
@@ -1073,16 +1096,39 @@ export async function registerTappWidget(
 export async function unregisterTappWidget(
   tappId: string,
   widgetId: string,
+  runtimeGrant: string,
 ): Promise<void> {
   return apiRequest(
     `/api/tapps/${encodeURIComponent(tappId)}/widgets/${encodeURIComponent(widgetId)}`,
     {
       method: 'DELETE',
+      runtimeGrant,
     },
   )
 }
 
 // ============ Tapp 存储 API ============
+
+/** Host settings editor. Only manifest-declared keys are accepted by backend. */
+export async function getTappSetting(
+  tappId: string,
+  key: string,
+): Promise<unknown> {
+  return apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/settings/${encodeURIComponent(key)}`,
+  )
+}
+
+export async function setTappSetting(
+  tappId: string,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  return apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/settings/${encodeURIComponent(key)}`,
+    { method: 'POST', body: JSON.stringify(value) },
+  )
+}
 
 /**
  * 获取存储值
@@ -1509,7 +1555,18 @@ export type ProcessStep =
       field?: string
     }
   | { type: 'dedupe'; key: string }
-  | { type: 'map'; expression: string }
+  | { type: 'map'; operations: MapOperation[] }
+
+export type MapOperation =
+  | { op: 'rename'; from: string; to: string }
+  | { op: 'remove'; field: string }
+  | { op: 'set'; field: string; value: unknown }
+  | { op: 'copy'; from: string; to: string }
+  | { op: 'template'; field: string; template: string }
+  | { op: 'lower' | 'upper' | 'to_string' | 'to_number'; field: string }
+  | { op: 'default'; field: string; value: unknown }
+  | { op: 'concat'; fields: string[]; separator?: string; to: string }
+  | { op: 'coalesce'; fields: string[]; to: string }
 
 /** 数据转换请求 */
 export interface DataTransformRequest {
@@ -1751,33 +1808,56 @@ export async function executeTappApi(
   params?: Record<string, unknown>,
   runtimeGrant?: string,
 ): Promise<TappApiExecuteResponse> {
-  // 不使用 apiRequest 因为它会自动解包 data 字段
-  // 这里需要返回完整的 { success, data, error, cached } 响应
-  const csrfToken = (await getCSRFToken()) || ''
-
-  const response = await fetch(
-    `${API_URL}/api/tapp/${encodeURIComponent(tappId)}/api/${encodeURIComponent(apiName)}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken,
-        ...(runtimeGrant ? { 'X-Tapp-Runtime-Grant': runtimeGrant } : {}),
+  const execute = async (
+    grant: string | undefined,
+    retryOnRuntimeGrant: boolean,
+  ): Promise<TappApiExecuteResponse> => {
+    const csrfToken = (await getCSRFToken()) || ''
+    const response = await fetch(
+      `${API_URL}/api/tapp/${encodeURIComponent(tappId)}/api/${encodeURIComponent(apiName)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+          ...(grant ? { 'X-Tapp-Runtime-Grant': grant } : {}),
+        },
+        body: JSON.stringify({ params }),
+        credentials: 'include',
       },
-      body: JSON.stringify({ params }),
-      credentials: 'include',
-    },
-  )
+    )
 
-  const result = await response.json()
+    const result = await response.json().catch(() => ({}))
+    if (
+      response.status === 401 &&
+      retryOnRuntimeGrant &&
+      grant &&
+      result.code === 'INVALID_RUNTIME_GRANT'
+    ) {
+      const { TappRuntimeGrant } = await import('../runtime/TappRuntimeGrant')
+      const replacement = await TappRuntimeGrant.recoverRejectedToken(grant)
+      if (replacement) return execute(replacement, false)
+    }
 
-  // 返回完整的响应结构
-  return {
-    success: result.success ?? false,
-    data: result.data,
-    error: result.error,
-    cached: result.cached,
+    if (!response.ok) {
+      return {
+        success: false,
+        error:
+          result.message ||
+          result.error ||
+          `Declared API request failed (${response.status})`,
+      }
+    }
+
+    return {
+      success: result.success ?? false,
+      data: result.data,
+      error: result.error,
+      cached: result.cached,
+    }
   }
+
+  return execute(runtimeGrant, true)
 }
 
 /**

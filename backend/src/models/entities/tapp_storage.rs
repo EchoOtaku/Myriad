@@ -32,20 +32,9 @@ pub struct Model {
     pub updated_at: DateTimeWithTimeZone,
 }
 
+// Ownership is `(user_id, tapp_id)`. Do not expose a misleading tapp_id-only
+// SeaORM relation; callers must filter by both columns explicitly.
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::tapps::Entity",
-        from = "Column::TappId",
-        to = "super::tapps::Column::TappId"
-    )]
-    Tapp,
-}
-
-impl Related<super::tapps::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Tapp.def()
-    }
-}
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

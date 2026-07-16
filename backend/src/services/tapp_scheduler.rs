@@ -10,7 +10,8 @@ use chrono::{DateTime, Duration, NaiveTime, TimeZone, Utc};
 use cron::Schedule;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Statement,
+    DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -36,6 +37,12 @@ use crate::services::platform_auto_refresh::{
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
 const MAX_SCHEDULER_FETCH_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_SCHEDULER_BACKEND_ACTIONS: usize = 8;
+pub const MAX_SCHEDULER_RETRIES: i32 = 2;
+pub const MAX_SCHEDULER_RETRY_DELAY_MS: i64 = 60_000;
+const SCHEDULER_ACTION_BUDGET_MS: i64 = 130_000;
+const MIN_SCHEDULER_LEASE_MINUTES: i64 = 15;
+const MAX_SCHEDULER_LEASE_MINUTES: i64 = 360;
 
 /// Normalize the public SDK action shape (`type`) to the persisted Rust enum
 /// tag (`action`) and validate every action before a task is stored.
@@ -48,6 +55,11 @@ pub fn normalize_backend_actions(
             Some(_) => Err("backendActions must be an array".to_string()),
         };
     };
+    if actions.len() > MAX_SCHEDULER_BACKEND_ACTIONS {
+        return Err(format!(
+            "backendActions exceeds the maximum of {MAX_SCHEDULER_BACKEND_ACTIONS}"
+        ));
+    }
 
     let mut normalized = Vec::with_capacity(actions.len());
     for mut value in actions {
@@ -277,6 +289,9 @@ impl TappSchedulerEngine {
         tracing::debug!("[TappScheduler] Found {} due tasks", due_tasks.len());
 
         for task in due_tasks {
+            let Some(task) = Self::claim_due_task(db, task, now).await? else {
+                continue;
+            };
             // 检查是否有错过的执行需要补偿
             let missed_count = Self::calculate_missed_executions(&task, now);
 
@@ -343,6 +358,87 @@ impl TappSchedulerEngine {
         }
 
         Ok(())
+    }
+
+    /// Atomically claim one due row. `next_run_at` doubles as a recovery lease:
+    /// another replica cannot run the same occurrence, while a crashed worker
+    /// makes the task eligible again after the lease expires.
+    async fn claim_due_task(
+        db: &DatabaseConnection,
+        candidate: tapp_scheduled_tasks::Model,
+        now: DateTime<Utc>,
+    ) -> Result<Option<tapp_scheduled_tasks::Model>, String> {
+        let txn = db
+            .begin()
+            .await
+            .map_err(|e| format!("Failed to begin scheduler claim: {e}"))?;
+        let current = tapp_scheduled_tasks::Entity::find_by_id(candidate.id)
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|e| format!("Failed to lock due task: {e}"))?;
+        let Some(current) = current else {
+            txn.rollback().await.ok();
+            return Ok(None);
+        };
+        let is_due = current.enabled
+            && current
+                .next_run_at
+                .is_some_and(|next| next.with_timezone(&Utc) <= now);
+        if !is_due {
+            txn.rollback().await.ok();
+            return Ok(None);
+        }
+
+        let lease_duration = Self::recovery_lease_duration(&current, now);
+        let mut active: tapp_scheduled_tasks::ActiveModel = current.clone().into();
+        active.next_run_at = Set(Some((now + lease_duration).into()));
+        active.updated_at = Set(now.into());
+        active
+            .update(&txn)
+            .await
+            .map_err(|e| format!("Failed to claim due task: {e}"))?;
+        txn.commit()
+            .await
+            .map_err(|e| format!("Failed to commit scheduler claim: {e}"))?;
+        Ok(Some(current))
+    }
+
+    /// Size the crash-recovery lease from the validated retry/action envelope.
+    /// Legacy rows are clamped to the current contract, so malformed historical
+    /// retry JSON cannot create either an instant duplicate or an endless lease.
+    fn recovery_lease_duration(task: &tapp_scheduled_tasks::Model, now: DateTime<Utc>) -> Duration {
+        let retry: RetryConfig = task
+            .retry_config
+            .as_ref()
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default();
+        let retries = retry.max_retries.clamp(0, MAX_SCHEDULER_RETRIES) as i64;
+        let retry_delay = retry.retry_delay.clamp(1_000, MAX_SCHEDULER_RETRY_DELAY_MS);
+        let action_count = task
+            .backend_actions
+            .as_ref()
+            .and_then(serde_json::Value::as_array)
+            .map_or(1_i64, |actions| {
+                actions.len().clamp(1, MAX_SCHEDULER_BACKEND_ACTIONS) as i64
+            });
+        let missed_count = Self::calculate_missed_executions(task, now).max(0);
+        let compensation_count = match task.missed_policy {
+            MissedPolicy::Skip => 0,
+            MissedPolicy::RunOnce => i64::from(missed_count > 0),
+            MissedPolicy::RunAll => missed_count.min(5),
+        };
+        let occurrence_count = compensation_count.saturating_add(1);
+        let execution_budget = (retries + 1)
+            .saturating_mul(action_count)
+            .saturating_mul(SCHEDULER_ACTION_BUDGET_MS)
+            .saturating_add(retries.saturating_mul(retry_delay))
+            .saturating_mul(occurrence_count)
+            .saturating_add(Duration::minutes(5).num_milliseconds());
+        Duration::milliseconds(execution_budget).clamp(
+            Duration::minutes(MIN_SCHEDULER_LEASE_MINUTES),
+            Duration::minutes(MAX_SCHEDULER_LEASE_MINUTES),
+        )
     }
 
     /// 计算错过的执行次数
@@ -417,18 +513,31 @@ impl TappSchedulerEngine {
         task: &tapp_scheduled_tasks::Model,
         missed_count: i64,
     ) -> Result<(), String> {
-        let mut stats: TaskStats = serde_json::from_value(task.stats.clone()).unwrap_or_default();
+        let txn = db
+            .begin()
+            .await
+            .map_err(|e| format!("Failed to begin missed stats update: {e}"))?;
+        let current = tapp_scheduled_tasks::Entity::find_by_id(task.id)
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|e| format!("Failed to lock missed stats: {e}"))?
+            .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
+        let mut stats: TaskStats =
+            serde_json::from_value(current.stats.clone()).unwrap_or_default();
         stats.missed_runs += missed_count;
 
-        let mut active: tapp_scheduled_tasks::ActiveModel = task.clone().into();
+        let mut active: tapp_scheduled_tasks::ActiveModel = current.into();
         active.stats = Set(serde_json::to_value(&stats).unwrap_or(json!({})));
         active.updated_at = Set(Utc::now().into());
 
         active
-            .update(db)
+            .update(&txn)
             .await
             .map_err(|e| format!("Failed to update missed stats: {}", e))?;
-
+        txn.commit()
+            .await
+            .map_err(|e| format!("Failed to commit missed stats: {e}"))?;
         Ok(())
     }
 
@@ -446,13 +555,24 @@ impl TappSchedulerEngine {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
-        let max_retries = retry_config.max_retries.max(0);
-        let retry_delay_ms = retry_config.retry_delay.max(1000); // 最小1秒
+        let max_retries = retry_config.max_retries.clamp(0, MAX_SCHEDULER_RETRIES);
+        let retry_delay_ms = retry_config
+            .retry_delay
+            .clamp(1000, MAX_SCHEDULER_RETRY_DELAY_MS);
 
         let mut last_error = String::new();
 
         for attempt in 0..=max_retries {
-            match Self::execute_task(db, frontend_tx, task, is_compensation, attempt).await {
+            match Self::execute_task(
+                db,
+                frontend_tx,
+                task,
+                is_compensation,
+                attempt,
+                attempt == max_retries,
+            )
+            .await
+            {
                 Ok(()) => return Ok(()),
                 Err(e) => {
                     last_error = e.clone();
@@ -487,6 +607,7 @@ impl TappSchedulerEngine {
         task: &tapp_scheduled_tasks::Model,
         is_compensation: bool,
         retry_count: i32,
+        final_attempt: bool,
     ) -> Result<(), String> {
         let now = Utc::now();
         let scheduled_at = task.next_run_at.unwrap_or(now.into());
@@ -646,7 +767,15 @@ impl TappSchedulerEngine {
             .map_err(|e| format!("Failed to update execution record: {}", e))?;
 
         // 更新任务状态和统计
-        Self::update_task_after_execution(db, task, &status, result, error.clone()).await?;
+        Self::update_task_after_execution(
+            db,
+            task,
+            &status,
+            result,
+            error.clone(),
+            status == ExecutionStatus::Success || final_attempt,
+        )
+        .await?;
 
         if status == ExecutionStatus::Failed {
             let failure = error.unwrap_or_else(|| "Scheduled task failed".to_string());
@@ -977,6 +1106,11 @@ impl TappSchedulerEngine {
                         .collect()
                 }
             };
+        if action_wrappers.len() > MAX_SCHEDULER_BACKEND_ACTIONS {
+            return Err(format!(
+                "Backend action pipeline exceeds the maximum of {MAX_SCHEDULER_BACKEND_ACTIONS}"
+            ));
+        }
 
         // 结果上下文：存储命名结果
         let mut context: HashMap<String, serde_json::Value> = HashMap::new();
@@ -1464,12 +1598,23 @@ impl TappSchedulerEngine {
         backend_result: Option<serde_json::Value>,
     ) -> Result<(), String> {
         let now = Utc::now();
-        let mut stats: TaskStats = serde_json::from_value(task.stats.clone()).unwrap_or_default();
+        let txn = db
+            .begin()
+            .await
+            .map_err(|e| format!("Failed to begin frontend dispatch update: {e}"))?;
+        let current = tapp_scheduled_tasks::Entity::find_by_id(task.id)
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|e| format!("Failed to lock frontend dispatch task: {e}"))?
+            .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
+        let mut stats: TaskStats =
+            serde_json::from_value(current.stats.clone()).unwrap_or_default();
         stats.total_runs += 1;
         let next_run_at =
             Self::calculate_next_run(&task.schedule_type, &task.schedule_config, now)?;
 
-        let mut active: tapp_scheduled_tasks::ActiveModel = task.clone().into();
+        let mut active: tapp_scheduled_tasks::ActiveModel = current.into();
         active.last_run_at = Set(Some(now.into()));
         active.last_run_result = Set(Some(json!({
             "status": "running",
@@ -1484,9 +1629,12 @@ impl TappSchedulerEngine {
         }
 
         active
-            .update(db)
+            .update(&txn)
             .await
             .map_err(|e| format!("Failed to advance frontend task: {}", e))?;
+        txn.commit()
+            .await
+            .map_err(|e| format!("Failed to commit frontend dispatch: {e}"))?;
         Ok(())
     }
 
@@ -1498,14 +1646,25 @@ impl TappSchedulerEngine {
         result: Option<serde_json::Value>,
         error: Option<String>,
     ) -> Result<(), String> {
-        let mut stats: TaskStats = serde_json::from_value(task.stats.clone()).unwrap_or_default();
+        let txn = db
+            .begin()
+            .await
+            .map_err(|e| format!("Failed to begin frontend stats update: {e}"))?;
+        let current = tapp_scheduled_tasks::Entity::find_by_id(task.id)
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|e| format!("Failed to lock frontend stats task: {e}"))?
+            .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
+        let mut stats: TaskStats =
+            serde_json::from_value(current.stats.clone()).unwrap_or_default();
         match status {
             ExecutionStatus::Success => stats.success_runs += 1,
             ExecutionStatus::Failed | ExecutionStatus::Timeout => stats.failed_runs += 1,
             _ => {}
         }
 
-        let mut active: tapp_scheduled_tasks::ActiveModel = task.clone().into();
+        let mut active: tapp_scheduled_tasks::ActiveModel = current.into();
         active.last_run_result = Set(Some(json!({
             "status": format!("{:?}", status).to_lowercase(),
             "result": result,
@@ -1514,9 +1673,12 @@ impl TappSchedulerEngine {
         active.stats = Set(serde_json::to_value(&stats).unwrap_or(json!({})));
         active.updated_at = Set(Utc::now().into());
         active
-            .update(db)
+            .update(&txn)
             .await
             .map_err(|e| format!("Failed to finalize frontend task stats: {}", e))?;
+        txn.commit()
+            .await
+            .map_err(|e| format!("Failed to commit frontend stats: {e}"))?;
         Ok(())
     }
 
@@ -1527,11 +1689,22 @@ impl TappSchedulerEngine {
         status: &ExecutionStatus,
         result: Option<serde_json::Value>,
         error: Option<String>,
+        advance_schedule: bool,
     ) -> Result<(), String> {
         let now = Utc::now();
 
-        // 解析统计数据
-        let mut stats: TaskStats = serde_json::from_value(task.stats.clone()).unwrap_or_default();
+        let txn = db
+            .begin()
+            .await
+            .map_err(|e| format!("Failed to begin task stats update: {e}"))?;
+        let current = tapp_scheduled_tasks::Entity::find_by_id(task.id)
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|e| format!("Failed to lock task stats: {e}"))?
+            .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
+        let mut stats: TaskStats =
+            serde_json::from_value(current.stats.clone()).unwrap_or_default();
         stats.total_runs += 1;
         match status {
             ExecutionStatus::Success => stats.success_runs += 1,
@@ -1540,11 +1713,14 @@ impl TappSchedulerEngine {
         }
 
         // 计算下次执行时间
-        let next_run_at =
-            Self::calculate_next_run(&task.schedule_type, &task.schedule_config, now)?;
+        let next_run_at = if advance_schedule {
+            Self::calculate_next_run(&task.schedule_type, &task.schedule_config, now)?
+        } else {
+            current.next_run_at.map(|time| time.with_timezone(&Utc))
+        };
 
         // 更新任务
-        let mut active: tapp_scheduled_tasks::ActiveModel = task.clone().into();
+        let mut active: tapp_scheduled_tasks::ActiveModel = current.into();
         active.last_run_at = Set(Some(now.into()));
         active.last_run_result = Set(Some(json!({
             "status": format!("{:?}", status),
@@ -1556,14 +1732,18 @@ impl TappSchedulerEngine {
         active.updated_at = Set(now.into());
 
         // 如果是 once 类型且已执行，禁用任务
-        if matches!(task.schedule_type, ScheduleType::Once) {
+        if advance_schedule && matches!(task.schedule_type, ScheduleType::Once) {
             active.enabled = Set(false);
         }
 
         active
-            .update(db)
+            .update(&txn)
             .await
             .map_err(|e| format!("Failed to update task: {}", e))?;
+
+        txn.commit()
+            .await
+            .map_err(|e| format!("Failed to commit task stats: {e}"))?;
 
         Ok(())
     }
@@ -1806,7 +1986,7 @@ impl TappSchedulerEngine {
             .await?
             .ok_or_else(|| format!("Task {} not found", task_id))?;
 
-        Self::execute_task(&self.db, &self.frontend_tx, &task, false, 0).await
+        Self::execute_task(&self.db, &self.frontend_tx, &task, false, 0, true).await
     }
 }
 
@@ -1867,6 +2047,21 @@ mod tests {
         .expect("next run");
 
         assert_eq!(next.timestamp_millis(), 1_030_000);
+    }
+
+    #[test]
+    fn backend_action_pipeline_is_bounded_for_recovery_lease() {
+        let actions = (0..=MAX_SCHEDULER_BACKEND_ACTIONS)
+            .map(|index| {
+                json!({
+                    "type": "storage.set",
+                    "key": format!("key{index}"),
+                    "value": index,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert!(normalize_backend_actions(Some(json!(actions))).is_err());
     }
 
     #[test]

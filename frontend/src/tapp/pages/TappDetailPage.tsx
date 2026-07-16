@@ -30,6 +30,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../contexts/AuthContext'
 import AnimatedView from '../../components/AnimatedView'
 import Toast from '../../components/Toast'
 import { useI18n } from '../../contexts/I18nContext'
@@ -249,6 +250,7 @@ const PERMISSION_CONFIG: Record<
 export function TappDetailPage({ tappId }: TappDetailPageProps) {
   const navigate = useNavigate()
   const { t, format } = useI18n()
+  const { isAuthenticated, hasChecked } = useAuth()
 
   const [tapp, setTapp] = useState<TappInstance | null>(null)
   const [loading, setLoading] = useState(true)
@@ -291,9 +293,9 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
       try {
         // 骞惰鍔犺浇鎵€鏈夎缃€硷紝鎻愬崌鍔犺浇鎬ц兘
         const settingsPromises = manifest.settings.map(async (setting) => {
-          const stored = await TappApiService.getStorage(
+          const stored = await TappApiService.getTappSetting(
             tappId,
-            `_settings.${setting.key}`,
+            setting.key,
           )
           return {
             key: setting.key,
@@ -319,7 +321,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     async (key: string, value: unknown, showHint = true) => {
       setSettingsSaving(key)
       try {
-        await TappApiService.setStorage(tappId, `_settings.${key}`, value)
+        await TappApiService.setTappSetting(tappId, key, value)
         setSettingsValues((prev) => ({ ...prev, [key]: value }))
         // 从待保存列表中移除
         delete pendingChangesRef.current[key]
@@ -413,9 +415,9 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
       // 同步保存（尽力而为）
       const keys = Object.keys(pendingChangesRef.current)
       for (const key of keys) {
-        TappApiService.setStorage(
+        void TappApiService.setTappSetting(
           tappId,
-          `_settings.${key}`,
+          key,
           pendingChangesRef.current[key],
         )
       }
@@ -444,8 +446,10 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         setTapp(instance)
         setIsRunning(runtime.isRunning(tappId))
 
-        // 鍔犺浇璁剧疆鍊?
-        await loadSettings(instance.manifest)
+        // 设置属于已登录查看者的控制面数据；访客只使用 manifest 默认值。
+        if (hasChecked && isAuthenticated) {
+          await loadSettings(instance.manifest)
+        }
 
         setLoading(false)
       } catch (err) {
@@ -457,18 +461,18 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     loadTapp()
 
     // 鐩戝惉鐘舵€佸彉鍖?
-    const unsubStarted = runtime.on('tapp:started', (id) => {
-      if (id === tappId) setIsRunning(true)
+    const unsubStarted = runtime.on('tapp:started', (data) => {
+      if ((data as { id: string }).id === tappId) setIsRunning(true)
     })
-    const unsubStopped = runtime.on('tapp:stopped', (id) => {
-      if (id === tappId) setIsRunning(false)
+    const unsubStopped = runtime.on('tapp:stopped', (data) => {
+      if ((data as { id: string }).id === tappId) setIsRunning(false)
     })
 
     return () => {
       unsubStarted()
       unsubStopped()
     }
-  }, [tappId, runtime])
+  }, [tappId, runtime, hasChecked, isAuthenticated, loadSettings, t])
 
   // 杩斿洖
   const goBack = useCallback(() => {
@@ -689,167 +693,173 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         </div>
 
         {/* 搴旂敤璁剧疆 - 鏀惧湪鏉冮檺涔嬪墠 */}
-        <div className="mb-4 md:mb-6">
-          <div className="glass rounded-xl p-4 md:p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/50 dark:to-teal-900/50 flex items-center justify-center">
-                <FaCog className="text-emerald-600 dark:text-emerald-400" />
+        {isAuthenticated && (
+          <div className="mb-4 md:mb-6">
+            <div className="glass rounded-xl p-4 md:p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/50 dark:to-teal-900/50 flex items-center justify-center">
+                  <FaCog className="text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">
+                    {t.tapp.appSettings}
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {manifest.settings && manifest.settings.length > 0
+                      ? t.tapp.customizeBehavior
+                      : t.tapp.noSettingsDesc}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">
-                  {t.tapp.appSettings}
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {manifest.settings && manifest.settings.length > 0
-                    ? t.tapp.customizeBehavior
-                    : t.tapp.noSettingsDesc}
-                </p>
-              </div>
-            </div>
 
-            {manifest.settings && manifest.settings.length > 0 ? (
-              <div className="space-y-4">
-                {manifest.settings.map((setting: TappSettingItem) => (
-                  <div
-                    key={setting.key}
-                    className="p-3 bg-white/50 dark:bg-neutral-900/50 rounded-lg border border-gray-200/50 dark:border-neutral-700/50"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <label className="font-medium text-gray-800 dark:text-gray-100 text-sm">
-                          {setting.label}
-                        </label>
-                        {setting.description && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                            {setting.description}
-                          </p>
-                        )}
-                      </div>
-                      <div className="shrink-0">
-                        {/* Toggle 寮€鍏? */}
-                        {setting.type === 'toggle' && (
-                          <label className="relative inline-flex cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={settingsValues[setting.key] === true}
+              {manifest.settings && manifest.settings.length > 0 ? (
+                <div className="space-y-4">
+                  {manifest.settings.map((setting: TappSettingItem) => (
+                    <div
+                      key={setting.key}
+                      className="p-3 bg-white/50 dark:bg-neutral-900/50 rounded-lg border border-gray-200/50 dark:border-neutral-700/50"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <label className="font-medium text-gray-800 dark:text-gray-100 text-sm">
+                            {setting.label}
+                          </label>
+                          {setting.description && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              {setting.description}
+                            </p>
+                          )}
+                        </div>
+                        <div className="shrink-0">
+                          {/* Toggle 寮€鍏? */}
+                          {setting.type === 'toggle' && (
+                            <label className="relative inline-flex cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={settingsValues[setting.key] === true}
+                                onChange={(e) =>
+                                  saveSetting(setting.key, e.target.checked)
+                                }
+                                disabled={settingsSaving === setting.key}
+                                className="sr-only peer"
+                                aria-label={setting.label}
+                              />
+                              <div
+                                className={`w-11 h-6 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-indigo-300 ${
+                                  settingsValues[setting.key] === true
+                                    ? 'bg-indigo-600'
+                                    : 'bg-gray-300 dark:bg-neutral-600'
+                                } ${settingsSaving === setting.key ? 'opacity-50' : ''}`}
+                              >
+                                <span
+                                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                                    settingsValues[setting.key] === true
+                                      ? 'translate-x-5'
+                                      : ''
+                                  }`}
+                                />
+                              </div>
+                            </label>
+                          )}
+
+                          {/* Select 涓嬫媺 */}
+                          {setting.type === 'select' && (
+                            <select
+                              value={String(settingsValues[setting.key] ?? '')}
                               onChange={(e) =>
-                                saveSetting(setting.key, e.target.checked)
+                                saveSetting(setting.key, e.target.value)
                               }
                               disabled={settingsSaving === setting.key}
-                              className="sr-only peer"
                               aria-label={setting.label}
-                            />
-                            <div
-                              className={`w-11 h-6 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-indigo-300 ${
-                                settingsValues[setting.key] === true
-                                  ? 'bg-indigo-600'
-                                  : 'bg-gray-300 dark:bg-neutral-600'
-                              } ${settingsSaving === setting.key ? 'opacity-50' : ''}`}
+                              className="px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
                             >
-                              <span
-                                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                                  settingsValues[setting.key] === true
-                                    ? 'translate-x-5'
-                                    : ''
-                                }`}
-                              />
-                            </div>
-                          </label>
-                        )}
+                              {setting.options?.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
 
-                        {/* Select 涓嬫媺 */}
-                        {setting.type === 'select' && (
-                          <select
-                            value={String(settingsValues[setting.key] ?? '')}
-                            onChange={(e) =>
-                              saveSetting(setting.key, e.target.value)
-                            }
-                            disabled={settingsSaving === setting.key}
-                            aria-label={setting.label}
-                            className="px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
-                          >
-                            {setting.options?.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        )}
+                          {/* Input 杈撳叆妗? */}
+                          {setting.type === 'input' && (
+                            <input
+                              type="text"
+                              value={
+                                localInputValues[setting.key] ??
+                                String(settingsValues[setting.key] ?? '')
+                              }
+                              onChange={(e) =>
+                                handleInputChange(setting.key, e.target.value)
+                              }
+                              onBlur={() =>
+                                handleInputBlur(setting.key, 'input')
+                              }
+                              placeholder={setting.placeholder}
+                              disabled={settingsSaving === setting.key}
+                              className="w-40 px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
+                            />
+                          )}
 
-                        {/* Input 杈撳叆妗? */}
-                        {setting.type === 'input' && (
-                          <input
-                            type="text"
-                            value={
-                              localInputValues[setting.key] ??
-                              String(settingsValues[setting.key] ?? '')
-                            }
-                            onChange={(e) =>
-                              handleInputChange(setting.key, e.target.value)
-                            }
-                            onBlur={() => handleInputBlur(setting.key, 'input')}
-                            placeholder={setting.placeholder}
-                            disabled={settingsSaving === setting.key}
-                            className="w-40 px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
-                          />
-                        )}
+                          {/* Number 鏁板瓧杈撳叆 */}
+                          {setting.type === 'number' && (
+                            <input
+                              type="number"
+                              value={
+                                localInputValues[setting.key] ??
+                                Number(
+                                  settingsValues[setting.key] ??
+                                    setting.min ??
+                                    0,
+                                )
+                              }
+                              onChange={(e) =>
+                                handleNumberChange(
+                                  setting.key,
+                                  Number(e.target.value),
+                                )
+                              }
+                              onBlur={() =>
+                                handleInputBlur(setting.key, 'number')
+                              }
+                              min={setting.min}
+                              max={setting.max}
+                              step={setting.step}
+                              disabled={settingsSaving === setting.key}
+                              aria-label={setting.label}
+                              className="w-24 px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
+                            />
+                          )}
 
-                        {/* Number 鏁板瓧杈撳叆 */}
-                        {setting.type === 'number' && (
-                          <input
-                            type="number"
-                            value={
-                              localInputValues[setting.key] ??
-                              Number(
-                                settingsValues[setting.key] ?? setting.min ?? 0,
-                              )
-                            }
-                            onChange={(e) =>
-                              handleNumberChange(
-                                setting.key,
-                                Number(e.target.value),
-                              )
-                            }
-                            onBlur={() =>
-                              handleInputBlur(setting.key, 'number')
-                            }
-                            min={setting.min}
-                            max={setting.max}
-                            step={setting.step}
-                            disabled={settingsSaving === setting.key}
-                            aria-label={setting.label}
-                            className="w-24 px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
-                          />
-                        )}
-
-                        {/* Color 棰滆壊閫夋嫨 */}
-                        {setting.type === 'color' && (
-                          <input
-                            type="color"
-                            value={String(
-                              settingsValues[setting.key] ?? '#6366f1',
-                            )}
-                            onChange={(e) =>
-                              saveSetting(setting.key, e.target.value)
-                            }
-                            disabled={settingsSaving === setting.key}
-                            aria-label={setting.label}
-                            title={setting.label}
-                            className="w-10 h-8 rounded cursor-pointer border-0"
-                          />
-                        )}
+                          {/* Color 棰滆壊閫夋嫨 */}
+                          {setting.type === 'color' && (
+                            <input
+                              type="color"
+                              value={String(
+                                settingsValues[setting.key] ?? '#6366f1',
+                              )}
+                              onChange={(e) =>
+                                saveSetting(setting.key, e.target.value)
+                              }
+                              disabled={settingsSaving === setting.key}
+                              aria-label={setting.label}
+                              title={setting.label}
+                              className="w-10 h-8 rounded cursor-pointer border-0"
+                            />
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-                {t.tapp.noSettingsAvailable}
-              </p>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                  {t.tapp.noSettingsAvailable}
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 鏉冮檺鍒楄〃 */}
         <div className="mb-4 md:mb-6">

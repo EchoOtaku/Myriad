@@ -109,6 +109,8 @@ export const TappBackgroundRunner: React.FC = () => {
     const unsubStopped = runtime.on('tapp:stopped', handleTappEvent)
     const unsubInstalled = runtime.on('tapp:installed', handleTappEvent)
     const unsubUninstalled = runtime.on('tapp:uninstalled', handleTappEvent)
+    const unsubUpdated = runtime.on('tapp:updated', handleTappEvent)
+    const unsubSync = runtime.on('sync:complete', handleTappEvent)
     // 监听后台需求变化
     const unsubBackground = runtime.on('background:changed', handleTappEvent)
 
@@ -117,6 +119,8 @@ export const TappBackgroundRunner: React.FC = () => {
       unsubStopped()
       unsubInstalled()
       unsubUninstalled()
+      unsubUpdated()
+      unsubSync()
       unsubBackground()
     }
   }, [runtime, loadBackgroundTapps])
@@ -135,7 +139,7 @@ export const TappBackgroundRunner: React.FC = () => {
 
         return (
           <TappPageSandbox
-            key={tapp.id}
+            key={`${tapp.id}:${tapp.manifest.version}`}
             tappInstance={tapp}
             code={code}
             headless

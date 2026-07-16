@@ -10,6 +10,7 @@
 
 import type { TappAPIResponse } from '../types'
 import { getCSRFToken } from '../../utils/csrf'
+import { TappRuntimeGrant } from './TappRuntimeGrant'
 
 // ============ 类型定义 ============
 
@@ -674,6 +675,7 @@ export class TappScheduler {
     endpoint: string,
     body?: unknown,
     runtimeGrant?: string,
+    retryOnRuntimeGrant: boolean = true,
   ): Promise<T> {
     const url = `${this.apiBaseUrl}/tapp/scheduler${endpoint}`
 
@@ -706,6 +708,18 @@ export class TappScheduler {
       const error = await response
         .json()
         .catch(() => ({ error: 'Request failed' }))
+      if (
+        response.status === 401 &&
+        retryOnRuntimeGrant &&
+        runtimeGrant &&
+        error.code === 'INVALID_RUNTIME_GRANT'
+      ) {
+        const replacement =
+          await TappRuntimeGrant.recoverRejectedToken(runtimeGrant)
+        if (replacement) {
+          return this.apiRequest(method, endpoint, body, replacement, false)
+        }
+      }
       throw new Error(error.error || `HTTP ${response.status}`)
     }
 

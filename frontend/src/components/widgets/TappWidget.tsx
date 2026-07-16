@@ -536,12 +536,23 @@ const TappWidgetRuntime = ({
       }
     }
 
+    const handleUpdated = (data: unknown) => {
+      const eventData = data as { id: string }
+      if (eventData.id === widget.tappId && runtime.isRunning(widget.tappId)) {
+        setError(null)
+        setCode(null)
+        setLoading(true)
+      }
+    }
+
     const unsubStart = runtime.on('tapp:started', handleStarted)
     const unsubStop = runtime.on('tapp:stopped', handleStopped)
+    const unsubUpdated = runtime.on('tapp:updated', handleUpdated)
 
     return () => {
       unsubStart()
       unsubStop()
+      unsubUpdated()
     }
   }, [widget, runtime])
 

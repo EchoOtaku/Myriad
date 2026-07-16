@@ -488,7 +488,9 @@ Tapp.dom.renderList(container, items, (item, index) => {
 
 ## 数据处理 API
 
-**无需权限** - 数据转换管道
+权限按数据流动态计算：inline 输入且无输出不需要静态权限；platform 输入需要
+`platform:read`，platform 输出需要 `platform:write`，storage 输入/输出需要 `storage`。
+后端同时校验 Runtime Grant 与安装授权。
 
 ```javascript
 const result = await Tapp.data.transform({
@@ -498,6 +500,13 @@ const result = await Tapp.data.transform({
     { type: "sort", field: "createdAt", order: "desc" },
     { type: "limit", count: 10 },
     { type: "select", fields: ["id", "title", "date"] },
+    {
+      type: "map",
+      operations: [
+        { op: "rename", from: "title", to: "name" },
+        { op: "default", field: "date", value: null },
+      ],
+    },
   ],
   output: { target: "storage", key: "my-data" },
 });
@@ -513,17 +522,17 @@ const result = await Tapp.data.transform({
 
 ### 管道操作
 
-| 操作        | 参数                         | 说明     |
-| ----------- | ---------------------------- | -------- |
-| `filter`    | `field`, `operator`, `value` | 过滤数据 |
-| `sort`      | `field`, `order`             | 排序     |
-| `limit`     | `count`                      | 限制数量 |
-| `offset`    | `count`                      | 跳过数量 |
-| `select`    | `fields`                     | 选择字段 |
-| `group`     | `by`                         | 分组     |
-| `aggregate` | `operation`, `field`         | 聚合统计 |
-| `dedupe`    | `key`                        | 去重     |
-| `map`       | `expression`                 | 映射转换 |
+| 操作        | 参数                         | 说明                         |
+| ----------- | ---------------------------- | ---------------------------- |
+| `filter`    | `field`, `operator`, `value` | 过滤数据                     |
+| `sort`      | `field`, `order`             | 排序                         |
+| `limit`     | `count`                      | 限制数量                     |
+| `offset`    | `count`                      | 跳过数量                     |
+| `select`    | `fields`                     | 选择字段                     |
+| `group`     | `by`                         | 分组                         |
+| `aggregate` | `operation`, `field`         | 聚合统计                     |
+| `dedupe`    | `key`                        | 去重                         |
+| `map`       | `operations`                 | 声明式字段映射；不执行表达式 |
 
 ---
 
@@ -808,14 +817,14 @@ const hasSync = await Tapp.background.has("sync");
 
 ### 需求类型
 
-| 类型             | 说明               |
-| ---------------- | ------------------ |
-| `media`          | 媒体控制功能       |
-| `sync`           | 后台数据同步       |
-| `notification`   | 定时通知功能       |
-| `scheduler`      | 定时任务执行       |
-| `event-listener` | 跨 Tapp 事件监听   |
-| `realtime`       | 实时数据更新       |
+| 类型             | 说明             |
+| ---------------- | ---------------- |
+| `media`          | 媒体控制功能     |
+| `sync`           | 后台数据同步     |
+| `notification`   | 定时通知功能     |
+| `scheduler`      | 定时任务执行     |
+| `event-listener` | 跨 Tapp 事件监听 |
+| `realtime`       | 实时数据更新     |
 
 ---
 

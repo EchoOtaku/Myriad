@@ -24,7 +24,6 @@ import type {
   TappStatus,
   WidgetRegistration,
 } from '../types'
-import { TAPP_ICON_TOKENS } from '../constants/icons'
 import * as TappApiService from '../services/TappApiService'
 import { getResourceLoader } from './sandbox/resourceLoader'
 import { TappPermissionController } from './TappPermission'
@@ -35,6 +34,7 @@ type RuntimeEvent =
   | 'tapp:uninstalled'
   | 'tapp:started'
   | 'tapp:stopped'
+  | 'tapp:updated'
   | 'tapp:error'
   | 'widget:registered'
   | 'widget:unregistered'
@@ -74,6 +74,14 @@ export class TappRuntime {
 
   /** 运行中的 Tapp */
   private runningTapps: Set<string> = new Set()
+
+  /**
+   * 当前浏览器会话主动启动的共享管理员 Tapp。
+   *
+   * 管理员安装记录的数据库 status 表示管理员自己的持久运行态，不能直接
+   * 传播成其他用户或访客的运行态。共享 Tapp 对非所有者只在当前会话中运行。
+   */
+  private sessionRunningTapps: Set<string> = new Set()
 
   /** 已注册的小组件（内存缓存） */
   private registeredWidgets: Map<string, RegisteredWidget> = new Map()
@@ -159,28 +167,55 @@ export class TappRuntime {
     return this.deduplicator.dedupe('sync', async () => {
       try {
         const details = await TappApiService.listTappDetails()
-        this.installedTapps.clear()
+        const previousTapps = this.installedTapps
+        this.installedTapps = new Map()
         this.runningTapps.clear()
 
         for (const detail of details) {
+          const userRole =
+            (detail.user_role as 'guest' | 'user' | 'admin') || 'guest'
+          const isAdminTapp = detail.is_admin_tapp ?? false
+          const previous = previousTapps.get(detail.id)
+          if (previous && previous.userRole !== userRole) {
+            this.sessionRunningTapps.delete(detail.id)
+          }
+
+          const persistsLifecycle =
+            (userRole === 'admin' && isAdminTapp) ||
+            (userRole === 'user' && detail.is_temporary === true)
+          const isRunning =
+            this.sessionRunningTapps.has(detail.id) ||
+            (persistsLifecycle && detail.status === 'running')
+
           const instance: TappInstance = {
             id: detail.id,
             manifest: detail.manifest as TappManifest,
-            status: detail.status as TappStatus,
+            status: isRunning
+              ? 'running'
+              : detail.status === 'error'
+                ? 'error'
+                : 'installed',
             installedAt: detail.installed_at,
             lastRunAt: detail.last_run_at,
             grantedPermissions: detail.granted_permissions as TappPermission[],
-            userRole:
-              (detail.user_role as 'guest' | 'user' | 'admin') || 'guest',
+            userRole,
             isTemporary: detail.is_temporary ?? false,
-            isAdminTapp: detail.is_admin_tapp ?? false,
+            isAdminTapp,
           }
           this.installedTapps.set(detail.id, instance)
-          if (detail.status === 'running') {
+          if (isRunning) {
             this.runningTapps.add(detail.id)
             // 恢复运行态的 Tapp 也要补注册 manifest 后台需求，
             // 否则重载后 headless core 不会被拉起。
             this.registerManifestBackgroundRequirements(instance)
+          }
+        }
+
+        // 跨标签页或其他副本卸载后，不保留同 ID 的本地会话运行标记；否则将来
+        // 重新安装同名 Tapp 会被误判为已经运行。
+        for (const tappId of this.sessionRunningTapps) {
+          if (!this.installedTapps.has(tappId)) {
+            this.sessionRunningTapps.delete(tappId)
           }
         }
 
@@ -189,63 +224,6 @@ export class TappRuntime {
         this.registeredWidgets.clear()
         for (const widget of backendWidgets) {
           this.registeredWidgets.set(widget.id, widget)
-        }
-
-        // 从 manifest 补充注册缺失的 widgets（批量处理优化）
-        const widgetsToSync: Array<{
-          tappId: string
-          widget: RegisteredWidget
-        }> = []
-
-        for (const [tappId, instance] of this.installedTapps) {
-          const { manifest } = instance
-          if (!manifest.widgets || manifest.widgets.length === 0) continue
-
-          for (const widgetDef of manifest.widgets) {
-            const fullId = `tapp.${tappId}.${widgetDef.id}`
-            if (!this.registeredWidgets.has(fullId)) {
-              const widget: RegisteredWidget = {
-                id: fullId,
-                tappId,
-                config: {
-                  id: widgetDef.id,
-                  name: widgetDef.name,
-                  description: widgetDef.description || '',
-                  icon:
-                    widgetDef.icon || manifest.icon || TAPP_ICON_TOKENS.package,
-                  sizes: widgetDef.sizes,
-                  defaultSize: widgetDef.defaultSize,
-                  category: widgetDef.category || 'utility',
-                  settings: widgetDef.settings,
-                  refreshPolicy: widgetDef.refreshPolicy,
-                },
-                instanceCount: 0,
-                registeredAt: new Date().toISOString(),
-              }
-              this.registeredWidgets.set(fullId, widget)
-              widgetsToSync.push({ tappId, widget })
-            }
-          }
-        }
-
-        // 批量同步 widgets 到后端（限制并发）
-        const WIDGET_SYNC_CONCURRENCY = 3
-        for (
-          let i = 0;
-          i < widgetsToSync.length;
-          i += WIDGET_SYNC_CONCURRENCY
-        ) {
-          const batch = widgetsToSync.slice(i, i + WIDGET_SYNC_CONCURRENCY)
-          await Promise.allSettled(
-            batch.map(({ tappId, widget }) =>
-              TappApiService.registerTappWidget(
-                tappId,
-                widget.config as WidgetRegistration,
-              ).catch(() => {
-                /* 静默失败，widget 可在下次同步时重试 */
-              }),
-            ),
-          )
         }
 
         // 外部停止/卸载或跨标签页状态变化后，不应残留动态或 Manifest 后台来源。
@@ -347,69 +325,12 @@ export class TappRuntime {
     // 安装内容可能覆盖同 ID 的资源，确保真实资源加载器不会返回旧页面/widget/core。
     getResourceLoader().clearCache(manifest.id)
 
-    // 从 manifest 预注册 widgets（无需运行 Tapp 代码）
-    await this.registerWidgetsFromManifest(instance)
+    // 后端在安装事务中对账 Manifest Widget；同步一次取得权威注册表。
+    await this.syncFromBackend(true)
+    const synchronized = this.installedTapps.get(manifest.id) || instance
+    this.emit('tapp:installed', { id: manifest.id, instance: synchronized })
 
-    // 触发事件
-    this.emit('tapp:installed', instance)
-
-    return instance
-  }
-
-  /**
-   * 从 manifest 预注册 widgets
-   */
-  private async registerWidgetsFromManifest(
-    instance: TappInstance,
-  ): Promise<void> {
-    const { manifest } = instance
-    if (!manifest.widgets || manifest.widgets.length === 0) {
-      return
-    }
-
-    for (const widgetDef of manifest.widgets) {
-      const fullId = `tapp.${manifest.id}.${widgetDef.id}`
-
-      // 检查是否已注册
-      if (this.registeredWidgets.has(fullId)) {
-        continue
-      }
-
-      const widget: RegisteredWidget = {
-        id: fullId,
-        tappId: manifest.id,
-        config: {
-          id: widgetDef.id,
-          name: widgetDef.name,
-          description: widgetDef.description || '',
-          icon: widgetDef.icon || manifest.icon || TAPP_ICON_TOKENS.package,
-          sizes: widgetDef.sizes,
-          defaultSize: widgetDef.defaultSize,
-          category: widgetDef.category || 'utility',
-          settings: widgetDef.settings,
-          refreshPolicy: widgetDef.refreshPolicy,
-        },
-        instanceCount: 0,
-        registeredAt: new Date().toISOString(),
-      }
-
-      this.registeredWidgets.set(fullId, widget)
-
-      // 同步到后端
-      try {
-        await TappApiService.registerTappWidget(
-          manifest.id,
-          widget.config as WidgetRegistration,
-        )
-      } catch (error) {
-        console.error(
-          `[TappRuntime] Failed to sync widget ${fullId} to backend:`,
-          error,
-        )
-      }
-
-      this.emit('widget:registered', widget)
-    }
+    return synchronized
   }
 
   /**
@@ -456,6 +377,7 @@ export class TappRuntime {
 
       // 从列表中移除
       this.installedTapps.delete(tappId)
+      this.sessionRunningTapps.delete(tappId)
 
       // 触发事件
       this.emit('tapp:uninstalled', { id: tappId })
@@ -479,12 +401,17 @@ export class TappRuntime {
 
       if (this.runningTapps.has(tappId)) return
 
-      await TappApiService.startTapp(tappId)
+      const persistsLifecycle = this.persistsLifecycle(instance)
+      if (persistsLifecycle) {
+        await TappApiService.startTapp(tappId)
+      } else {
+        this.sessionRunningTapps.add(tappId)
+      }
       instance.status = 'running'
       instance.lastRunAt = new Date().toISOString()
       this.runningTapps.add(tappId)
       this.registerManifestBackgroundRequirements(instance)
-      this.emit('tapp:started', instance)
+      this.emit('tapp:started', { id: tappId, instance })
     })
   }
 
@@ -504,6 +431,14 @@ export class TappRuntime {
       })
     this.lifecycleTransitions.set(tappId, transition)
     return transition
+  }
+
+  /** 是否由当前查看者拥有并可把生命周期状态持久化到安装记录。 */
+  private persistsLifecycle(instance: TappInstance): boolean {
+    return (
+      (instance.userRole === 'admin' && instance.isAdminTapp === true) ||
+      (instance.userRole === 'user' && instance.isTemporary === true)
+    )
   }
 
   /**
@@ -560,11 +495,15 @@ export class TappRuntime {
 
       if (!this.runningTapps.has(tappId)) return
 
-      await TappApiService.stopTapp(tappId)
+      if (this.persistsLifecycle(instance)) {
+        await TappApiService.stopTapp(tappId)
+      } else {
+        this.sessionRunningTapps.delete(tappId)
+      }
       this.clearBackgroundRequirements(tappId)
       instance.status = 'installed'
       this.runningTapps.delete(tappId)
-      this.emit('tapp:stopped', { id: tappId })
+      this.emit('tapp:stopped', { id: tappId, instance })
     })
   }
 
@@ -589,6 +528,16 @@ export class TappRuntime {
     getResourceLoader().clearCache(tappId)
   }
 
+  /** 使资源缓存失效、重新同步清单，并通知现有运行实例重建。 */
+  async refreshTapp(tappId: string): Promise<void> {
+    this.clearCodeCache(tappId)
+    await this.syncFromBackend(true)
+    const instance = this.installedTapps.get(tappId)
+    if (instance) {
+      this.emit('tapp:updated', { id: tappId, instance })
+    }
+  }
+
   /**
    * 检查 Tapp 是否在运行
    */
@@ -602,6 +551,7 @@ export class TappRuntime {
   async registerWidget(
     tappId: string,
     config: RegisteredWidget['config'],
+    runtimeGrant: string,
   ): Promise<RegisteredWidget> {
     const instance = this.installedTapps.get(tappId)
     if (!instance) {
@@ -624,6 +574,7 @@ export class TappRuntime {
     await TappApiService.registerTappWidget(
       tappId,
       config as WidgetRegistration,
+      runtimeGrant,
     )
 
     // 更新内存缓存
@@ -646,7 +597,11 @@ export class TappRuntime {
   /**
    * 注销小组件
    */
-  async unregisterWidget(tappId: string, widgetId: string): Promise<void> {
+  async unregisterWidget(
+    tappId: string,
+    widgetId: string,
+    runtimeGrant: string,
+  ): Promise<void> {
     const fullId = widgetId.startsWith('tapp.')
       ? widgetId
       : `tapp.${tappId}.${widgetId}`
@@ -663,7 +618,7 @@ export class TappRuntime {
     }
 
     // 同步到后端
-    await TappApiService.unregisterTappWidget(tappId, widgetId)
+    await TappApiService.unregisterTappWidget(tappId, widgetId, runtimeGrant)
 
     // 从内存缓存移除
     this.registeredWidgets.delete(fullId)

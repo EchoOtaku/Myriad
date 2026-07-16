@@ -70,8 +70,8 @@ Tapp 管理接口大多返回：
 | GET  | `/api/tapps/{tappId}/resources` | 代码、CSS、HTML、i18n、Page 模块等资源对象   |
 | GET  | `/api/tapps/{tappId}/export`    | 导出 `.tapp` ZIP                             |
 
-读取与运行时授权先查管理员 owner；若未找到且用户已登录，再查当前用户 owner。同 ID 时
-管理员公开版本优先，详情、资源、最终授权和 Manifest 声明 API 必须保持同一选择结果。
+读取与运行时授权先查管理员 owner；若未找到且用户已登录，再查当前用户 owner。新安装会
+拒绝管理员公开命名空间冲突；历史同 ID 数据仍按管理员版本优先处理。
 
 `/details` 是 `TappRuntime` 的启动同步接口。它固定执行管理员集合与当前用户集合查询，
 同 ID 时保留管理员版本，并对每项应用与单项 `/api/tapps/{tappId}` 相同的动态角色权限过滤，
@@ -87,7 +87,7 @@ interface TappResources {
   pageStyles?: string;
   widgetCSS?: string;
   pageCSS?: string;
-  widgetTemplates?: Record<string, string>;
+  widgetTemplates?: Record<string, Record<string, string>>;
   pageTemplate?: string;
   cssMode?: "unified" | "separated";
   i18n?: Record<string, unknown>;
@@ -98,17 +98,17 @@ interface TappResources {
 
 ### 需要登录的变更路由
 
-| 方法   | 路径                                 | 说明                                  |
-| ------ | ------------------------------------ | ------------------------------------- |
-| POST   | `/api/tapps/install`                 | direct/store 统一安装                 |
-| POST   | `/api/tapps/install-file`            | multipart 上传 `.tapp`，字段名 `file` |
-| POST   | `/api/tapps/cleanup-temporary`       | 清理当前用户临时 Tapp                 |
-| GET    | `/api/tapps/recent?limit=10`         | 当前用户最近运行的 Tapp               |
-| POST   | `/api/tapps/{tappId}/update`         | direct/store 更新，保留用户数据       |
-| POST   | `/api/tapps/{tappId}/start`          | 标记为 running                        |
-| POST   | `/api/tapps/{tappId}/stop`           | 停止并清理后台运行需求                |
-| DELETE | `/api/tapps/{tappId}?keep_data=true` | 卸载；可选保留存储/设置               |
-| POST   | `/api/tapps/{tappId}/separated-css`  | 写入生成后的 Widget/Page CSS          |
+| 方法   | 路径                                 | 说明                                    |
+| ------ | ------------------------------------ | --------------------------------------- |
+| POST   | `/api/tapps/install`                 | direct/store 统一安装                   |
+| POST   | `/api/tapps/install-file`            | multipart 上传 `.tapp`，字段名 `file`   |
+| POST   | `/api/tapps/cleanup-temporary`       | 清理当前用户临时 Tapp                   |
+| GET    | `/api/tapps/recent?limit=10`         | 当前用户最近运行的 Tapp                 |
+| POST   | `/api/tapps/{tappId}/update`         | direct/store 更新，保留用户数据         |
+| POST   | `/api/tapps/{tappId}/start`          | 持久化 owner 自己的 running 状态        |
+| POST   | `/api/tapps/{tappId}/stop`           | 停止 owner 安装并撤销对应 Runtime Grant |
+| DELETE | `/api/tapps/{tappId}?keep_data=true` | 卸载；可选保留存储/设置                 |
+| POST   | `/api/tapps/{tappId}/separated-css`  | 写入生成后的 Widget/Page CSS            |
 
 直接安装请求：
 
@@ -125,7 +125,7 @@ interface TappResources {
   "code": "console.log('hello')",
   "styles": "...",
   "pageTemplate": "...",
-  "widgetTemplates": { "2x2": "..." },
+  "widgetTemplates": { "clock": { "2x2": "..." } },
   "widgetCss": "...",
   "pageCss": "...",
   "i18n": { "zh-CN": {} },
@@ -148,6 +148,11 @@ interface TappResources {
 `permissions` 是用户同意的申请子集，不是可信授权；后端会按 Manifest、当前实时角色和
 动态权限配置再次过滤。
 
+安装/更新资源先进入 staging，校验后原子替换在线目录；数据库失败恢复旧目录。卸载把文件
+移入隔离目录后，在一个事务中清理安装记录、Manifest/动态 Widget、调度任务及执行历史；
+`keep_data=true` 只保留 storage，不保留任务或 Widget。相同公开 `tappId` 的最终冲突复核、
+文件切换和数据库变更由 PostgreSQL advisory transaction lock 串行化，跨后端副本也不能并发覆盖。
+
 ### Runtime Grant
 
 以下路由使用可选认证，因此游客运行管理员共享 Tapp 时也能获得绑定稳定 guest subject 的
@@ -163,19 +168,27 @@ Grant；游客仍不能借此访问普通用户的临时安装。
 相关 Grant。Grant 哈希与 TTL 租约存储在 PostgreSQL，可由任意副本校验；只有被撤销或到期的
 Grant 才返回 `INVALID_RUNTIME_GRANT`。
 
-### Widget 与存储
+### 设置、Widget 与存储
 
-| 方法   | 路径                                     | 说明             |
-| ------ | ---------------------------------------- | ---------------- |
-| POST   | `/api/tapps/{tappId}/widgets`            | 注册/更新 Widget |
-| DELETE | `/api/tapps/{tappId}/widgets/{widgetId}` | 注销 Widget      |
-| GET    | `/api/tapps/{tappId}/storage`            | 列出 key         |
-| DELETE | `/api/tapps/{tappId}/storage`            | 清空存储         |
-| GET    | `/api/tapps/{tappId}/storage/entries`    | 一次返回全部键值 |
-| GET    | `/api/tapps/{tappId}/storage/usage`      | 一次统计使用字节 |
-| GET    | `/api/tapps/{tappId}/storage/{key}`      | 读取值           |
-| POST   | `/api/tapps/{tappId}/storage/{key}`      | 写入值           |
-| DELETE | `/api/tapps/{tappId}/storage/{key}`      | 删除值           |
+| 方法   | 路径                                     | 说明                               |
+| ------ | ---------------------------------------- | ---------------------------------- |
+| GET    | `/api/tapps/{tappId}/settings/{key}`     | 登录宿主读取 Manifest 声明的设置   |
+| POST   | `/api/tapps/{tappId}/settings/{key}`     | 登录宿主写入 Manifest 声明的设置   |
+| POST   | `/api/tapps/{tappId}/widgets`            | Runtime Grant 注册/更新动态 Widget |
+| DELETE | `/api/tapps/{tappId}/widgets/{widgetId}` | Runtime Grant 注销动态 Widget      |
+| GET    | `/api/tapps/{tappId}/storage`            | 列出 key                           |
+| DELETE | `/api/tapps/{tappId}/storage`            | 清空存储                           |
+| GET    | `/api/tapps/{tappId}/storage/entries`    | 一次返回全部键值                   |
+| GET    | `/api/tapps/{tappId}/storage/usage`      | 一次统计使用字节                   |
+| GET    | `/api/tapps/{tappId}/storage/{key}`      | 读取值                             |
+| POST   | `/api/tapps/{tappId}/storage/{key}`      | 写入值                             |
+| DELETE | `/api/tapps/{tappId}/storage/{key}`      | 删除值                             |
+
+settings 路由是详情页宿主控制面，只接受已登录会话与当前 Manifest 的真实 key，不接受
+`X-Tapp-Runtime-Grant` 代替登录，也不能访问任意 storage key。写入值必须符合声明的
+type、select options 与 number min/max；游客只使用 Manifest 默认值。
+Manifest Widget 由安装/更新自动对账；动态 Widget 路由要求 `widget:register` 同时存在于
+Runtime Grant、安装授权和当前角色，并拒绝覆盖/删除 Manifest 来源的注册。
 
 注意写入方法是 `POST`，不是旧文档中的 `PUT`。
 Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外，还可包含
@@ -346,7 +359,9 @@ AI Task registry 与配额账本。
 
 `execution_target` 为 `backend` 或 `both` 时必须提供非空 `backend_actions`；global scope 仅
 当前仍为管理员的用户可注册。frontend 执行通过 WS 下发，直到沙箱回调上报完成前，执行
-记录保持 running。
+记录保持 running。`maxRetries` 范围为 0–2，`retryDelay` 范围为 0–60000 ms（0 按 1 秒执行）；
+单个任务最多 8 个串行 `backend_actions`。领取租约还会计入最多 5 次补偿执行，按这些边界
+动态计算为 15–360 分钟。
 
 ## Manifest 声明 API
 

@@ -44,10 +44,7 @@ import { useTappScheduler, useTappStagger } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
-import {
-  useResolvedTitleColor,
-  useTitleFont,
-} from '../../hooks/useTitleFont'
+import { useResolvedTitleColor, useTitleFont } from '../../hooks/useTitleFont'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { TappIcon } from '../components/TappIcon'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
@@ -177,15 +174,11 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     // - admin: 可以操作所有 Tapp
     // - user: 只能操作自己临时安装的 Tapp（isTemporary=true），不能操作管理员的 Tapp
     // - guest: 只能查看，不能操作
-    const canStartStop =
-      tapp.userRole === 'admin' ||
-      (tapp.userRole === 'user' && tapp.isTemporary === true)
+    const canStartStop = tapp.userRole !== 'guest'
     const canUninstall =
       tapp.userRole === 'admin' ||
       (tapp.userRole === 'user' && tapp.isTemporary === true)
-    const canConfigure =
-      tapp.userRole === 'admin' ||
-      (tapp.userRole === 'user' && tapp.isTemporary === true) // 使用类型安全的方式获取分类翻译
+    const canConfigure = tapp.userRole !== 'guest' // 使用类型安全的方式获取分类翻译
     const categoryTranslations: Record<string, string> = {
       categoryAI: t.tapp.categoryAI,
       categoryDataExtension: t.tapp.categoryDataExtension,

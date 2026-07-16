@@ -1152,7 +1152,6 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
           const { updateTappFromCode } =
             await import('../services/TappApiService')
           await updateTappFromCode(app.localTapp.manifest, app.localTapp.code)
-          runtime.clearCodeCache(app.id)
         } else if (app.source === 'remote' && app.remoteApp) {
           // 找到该应用所在商店源的数据库 ID
           const source = sources.find((s) => s.url === app.remoteApp!.sourceUrl)
@@ -1166,6 +1165,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
           await updateTappFromStore(app.id, {
             source: source.id ? String(source.id) : source.url,
           })
+          runtime.clearCodeCache(app.id)
 
           // 仅统一模式需要回写前端生成的 Tailwind CSS。
           // separated 模式的 page.css/widget.css 来自商店资源，不能在这里覆盖。
@@ -1207,8 +1207,8 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
           throw new Error('Unsupported update source')
         }
 
-        // 刷新 runtime 缓存
-        await runtime.syncFromBackend(true)
+        // 刷新清单并重建仍在运行的 Page/Widget/headless 实例。
+        await runtime.refreshTapp(app.id)
 
         // 更新本地状态
         setInstalledTapps((prev) => {

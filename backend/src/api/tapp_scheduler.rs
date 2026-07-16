@@ -30,7 +30,7 @@ use crate::models::entities::tapp_scheduled_tasks::{
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_scheduler::{
     backend_action_permissions, normalize_backend_actions, validate_backend_action_declarations,
-    TappSchedulerEngine,
+    TappSchedulerEngine, MAX_SCHEDULER_RETRIES, MAX_SCHEDULER_RETRY_DELAY_MS,
 };
 
 /// 全局调度器引擎
@@ -207,6 +207,28 @@ fn parse_scope(s: &str) -> Result<TaskScope, (StatusCode, Json<Value>)> {
     }
 }
 
+fn normalize_retry_config(
+    retry: Option<RetryConfigRequest>,
+) -> Result<Option<Value>, (StatusCode, Json<Value>)> {
+    let Some(retry) = retry else {
+        return Ok(None);
+    };
+    if !(0..=MAX_SCHEDULER_RETRIES).contains(&retry.max_retries) {
+        return Err(bad_request(format!(
+            "retry.maxRetries must be between 0 and {MAX_SCHEDULER_RETRIES}"
+        )));
+    }
+    if !(0..=MAX_SCHEDULER_RETRY_DELAY_MS).contains(&retry.retry_delay) {
+        return Err(bad_request(format!(
+            "retry.retryDelay must be between 0 and {MAX_SCHEDULER_RETRY_DELAY_MS}ms"
+        )));
+    }
+    Ok(Some(json!({
+        "max_retries": retry.max_retries,
+        "retry_delay": retry.retry_delay.max(1_000),
+    })))
+}
+
 fn bad_request(message: impl Into<String>) -> (StatusCode, Json<Value>) {
     (
         StatusCode::BAD_REQUEST,
@@ -354,12 +376,7 @@ pub async fn register_task(
         )
     })?;
 
-    let retry_config = req.retry.map(|r| {
-        json!({
-            "max_retries": r.max_retries,
-            "retry_delay": r.retry_delay,
-        })
-    });
+    let retry_config = normalize_retry_config(req.retry)?;
 
     let scheduler = get_scheduler()?;
     let scheduler = scheduler.read().await;
@@ -800,6 +817,28 @@ mod tests {
 
         assert_eq!(retry.max_retries, 3);
         assert_eq!(retry.retry_delay, 2500);
+    }
+
+    #[test]
+    fn retry_config_is_bounded_by_scheduler_lease_contract() {
+        let normalized = normalize_retry_config(Some(RetryConfigRequest {
+            max_retries: MAX_SCHEDULER_RETRIES,
+            retry_delay: 0,
+        }))
+        .expect("bounded retry should be accepted")
+        .expect("retry config");
+        assert_eq!(normalized["retry_delay"], 1_000);
+
+        assert!(normalize_retry_config(Some(RetryConfigRequest {
+            max_retries: MAX_SCHEDULER_RETRIES + 1,
+            retry_delay: 1_000,
+        }))
+        .is_err());
+        assert!(normalize_retry_config(Some(RetryConfigRequest {
+            max_retries: 0,
+            retry_delay: MAX_SCHEDULER_RETRY_DELAY_MS + 1,
+        }))
+        .is_err());
     }
 
     #[test]

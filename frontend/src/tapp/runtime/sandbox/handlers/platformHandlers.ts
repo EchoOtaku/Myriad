@@ -27,6 +27,7 @@ export function registerWidgetHandlers(
       const widget = await runtime.registerWidget(
         tappInstance.id,
         config as WidgetRegistration,
+        await bridge.getRuntimeGrant(),
       )
       return { success: true, data: widget }
     } catch (error) {
@@ -42,7 +43,11 @@ export function registerWidgetHandlers(
     if (!widgetId) return { success: false, error: 'Widget ID is required' }
     try {
       const runtime = getTappRuntime()
-      await runtime.unregisterWidget(tappInstance.id, widgetId as string)
+      await runtime.unregisterWidget(
+        tappInstance.id,
+        widgetId as string,
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: null }
     } catch (error) {
       return {
@@ -72,11 +77,19 @@ export function registerWidgetHandlers(
       return { success: false, error: 'Widget ID and config required' }
     try {
       const runtime = getTappRuntime()
-      await runtime.unregisterWidget(tappInstance.id, widgetId as string)
-      const widget = await runtime.registerWidget(tappInstance.id, {
-        ...(config as WidgetRegistration),
-        id: widgetId as string,
-      })
+      await runtime.unregisterWidget(
+        tappInstance.id,
+        widgetId as string,
+        await bridge.getRuntimeGrant(),
+      )
+      const widget = await runtime.registerWidget(
+        tappInstance.id,
+        {
+          ...(config as WidgetRegistration),
+          id: widgetId as string,
+        },
+        await bridge.getRuntimeGrant(),
+      )
       return { success: true, data: widget }
     } catch (error) {
       return {

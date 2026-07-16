@@ -154,6 +154,15 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
     t.tapp.loadAppFailed,
   ])
 
+  // 安装更新完成后，资源代际已由 runtime 提升；重新走完整 Page 加载并重建 iframe。
+  useEffect(() => {
+    return runtime.on('tapp:updated', (data) => {
+      if ((data as { id: string }).id === tappId) {
+        setRetryGeneration((generation) => generation + 1)
+      }
+    })
+  }, [runtime, tappId])
+
   // 重试加载
   const handleRetry = useCallback(() => {
     setRetryGeneration((generation) => generation + 1)
@@ -223,12 +232,8 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const hasError = !loading && (error || !tapp || !code)
 
   // 权限检查（只有在 tapp 存在时才有意义）
-  const canStartStop =
-    tapp?.userRole === 'admin' ||
-    (tapp?.userRole === 'user' && tapp?.isTemporary === true)
-  const canConfigure =
-    tapp?.userRole === 'admin' ||
-    (tapp?.userRole === 'user' && tapp?.isTemporary === true)
+  const canStartStop = tapp?.userRole !== 'guest'
+  const canConfigure = tapp?.userRole !== 'guest'
   const iconStyle = tapp ? getTappIconStyle(tapp.manifest) : null
 
   // 🎯 统一渲染：始终显示相同的页面结构，只是内容不同

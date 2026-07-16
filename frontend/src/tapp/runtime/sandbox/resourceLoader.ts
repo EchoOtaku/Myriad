@@ -235,7 +235,23 @@ export class TappResourceLoader {
   /** 请求去重器 */
   private deduplicator = new RequestDeduplicator()
 
+  /** 每个 Tapp 的缓存代际；清缓存后旧请求不得回填新代际。 */
+  private cacheGenerations = new Map<string, number>()
+
   private constructor() {}
+
+  private generationFor(tappId: string): number {
+    const current = this.cacheGenerations.get(tappId)
+    if (current !== undefined) return current
+    // 记录所有启动过加载的 ID。这样 clearCache() 即使发生在首次请求尚未回填
+    // 任意缓存时，也能提升其代际并阻止旧请求复活缓存。
+    this.cacheGenerations.set(tappId, 0)
+    return 0
+  }
+
+  private generationIsCurrent(tappId: string, generation: number): boolean {
+    return this.generationFor(tappId) === generation
+  }
 
   static getInstance(): TappResourceLoader {
     if (!TappResourceLoader.instance) {
@@ -254,29 +270,36 @@ export class TappResourceLoader {
    */
   async loadCoreResources(tappInstance: TappInstance): Promise<CoreResources> {
     const cacheKey = tappInstance.id
+    const generation = this.generationFor(tappInstance.id)
     const cached = getCachedEntry(this.coreCache, cacheKey)
     if (cached) return cached.data
 
-    return this.deduplicator.dedupe(`core:${cacheKey}`, async () => {
-      const raw = await this.fetchRawResources(tappInstance.id)
-      const resources: CoreResources = {
-        core: this.extractCoreCode(raw.code),
-        i18n: raw.i18n,
-      }
+    return this.deduplicator.dedupe(
+      `core:${cacheKey}:${generation}`,
+      async () => {
+        const raw = await this.fetchRawResources(tappInstance.id)
+        if (!this.generationIsCurrent(tappInstance.id, generation)) {
+          return this.loadCoreResources(tappInstance)
+        }
+        const resources: CoreResources = {
+          core: this.extractCoreCode(raw.code),
+          i18n: raw.i18n,
+        }
 
-      setCachedEntry(
-        this.coreCache,
-        cacheKey,
-        {
-          data: resources,
-          timestamp: Date.now(),
-          ttl: CACHE_TTL.page,
-        },
-        CACHE_LIMIT.page,
-      )
+        setCachedEntry(
+          this.coreCache,
+          cacheKey,
+          {
+            data: resources,
+            timestamp: Date.now(),
+            ttl: CACHE_TTL.page,
+          },
+          CACHE_LIMIT.page,
+        )
 
-      return resources
-    })
+        return resources
+      },
+    )
   }
 
   // ============ Widget 资源加载 ============
@@ -299,86 +322,97 @@ export class TappResourceLoader {
     widgetId: string,
   ): Promise<WidgetResources> {
     const cacheKey = `${tappInstance.id}:${widgetId}:${size}`
+    const generation = this.generationFor(tappInstance.id)
 
     // 检查缓存
     const cached = getCachedEntry(this.widgetCache, cacheKey)
     if (cached) return cached.data
 
     // 使用请求去重
-    return this.deduplicator.dedupe(`widget:${cacheKey}`, async () => {
-      // 获取原始资源
-      const raw = await this.fetchRawResources(tappInstance.id)
-
-      // 提取代码
-      const coreCode = this.extractCoreCode(raw.code)
-      const widgetCode = this.extractModeCode(raw.code, 'widget')
-
-      // 选择对应尺寸的 HTML 模板
-      let html = ''
-      const templates = raw.widgetTemplates?.[widgetId]
-      if (templates) {
-        html = templates[size] || ''
-        if (!html) {
-          const defaultKey = Object.keys(templates)[0]
-          if (defaultKey) html = templates[defaultKey]
+    return this.deduplicator.dedupe(
+      `widget:${cacheKey}:${generation}`,
+      async () => {
+        // 获取原始资源
+        const raw = await this.fetchRawResources(tappInstance.id)
+        if (!this.generationIsCurrent(tappInstance.id, generation)) {
+          return this.loadWidgetResources(tappInstance, size, widgetId)
         }
-      }
 
-      // 🎯 确定 CSS 架构模式和样式来源
-      const cssMode = raw.cssMode || 'unified'
-      // 分离模式：合并 styles（共享）+ widgetStyles（专用）
-      // 统一模式：仅使用 styles
-      let effectiveStyles: string | undefined
-      if (cssMode === 'separated') {
-        // 混合模式：共享样式 + Widget 专用样式
-        const parts: string[] = []
-        if (raw.styles) parts.push(raw.styles)
-        if (raw.widgetStyles) parts.push(raw.widgetStyles)
-        effectiveStyles = parts.length > 0 ? parts.join('\n') : undefined
-      } else {
-        effectiveStyles = raw.styles
-      }
+        // 提取代码
+        const coreCode = this.extractCoreCode(raw.code)
+        const widgetCode = this.extractModeCode(raw.code, 'widget')
 
-      // 🎯 生成 Widget 专用 CSS
-      // 原生 CSS 由 styles 字段单独交给沙箱；这里仅处理 Tailwind CSS。
-      const tailwindCSS = await this.ensureWidgetCSS(
-        tappInstance.id,
-        widgetId,
-        size,
-        coreCode,
-        widgetCode,
-        html,
-        effectiveStyles,
-        raw.widgetCSS, // 使用后端预分离的 Widget CSS
-      )
-      // 原生 CSS 由 resources.styles 单独注入；这里只保留生成/预编译 CSS，
-      // 避免 separated 模式把同一份样式写进 iframe 两次。
-      const css = tailwindCSS
+        // 选择对应尺寸的 HTML 模板
+        let html = ''
+        const templates = raw.widgetTemplates?.[widgetId]
+        if (templates) {
+          html = templates[size] || ''
+          if (!html) {
+            const defaultKey = Object.keys(templates)[0]
+            if (defaultKey) html = templates[defaultKey]
+          }
+        }
 
-      const resources: WidgetResources = {
-        core: coreCode,
-        widget: widgetCode,
-        html,
-        styles: effectiveStyles,
-        css,
-        size,
-        cssMode,
-      }
+        // 🎯 确定 CSS 架构模式和样式来源
+        const cssMode = raw.cssMode || 'unified'
+        // 分离模式：合并 styles（共享）+ widgetStyles（专用）
+        // 统一模式：仅使用 styles
+        let effectiveStyles: string | undefined
+        if (cssMode === 'separated') {
+          // 混合模式：共享样式 + Widget 专用样式
+          const parts: string[] = []
+          if (raw.styles) parts.push(raw.styles)
+          if (raw.widgetStyles) parts.push(raw.widgetStyles)
+          effectiveStyles = parts.length > 0 ? parts.join('\n') : undefined
+        } else {
+          effectiveStyles = raw.styles
+        }
 
-      // 存入缓存
-      setCachedEntry(
-        this.widgetCache,
-        cacheKey,
-        {
-          data: resources,
-          timestamp: Date.now(),
-          ttl: CACHE_TTL.widget,
-        },
-        CACHE_LIMIT.widget,
-      )
+        // 🎯 生成 Widget 专用 CSS
+        // 原生 CSS 由 styles 字段单独交给沙箱；这里仅处理 Tailwind CSS。
+        const tailwindCSS = await this.ensureWidgetCSS(
+          tappInstance.id,
+          widgetId,
+          size,
+          coreCode,
+          widgetCode,
+          html,
+          effectiveStyles,
+          raw.widgetCSS, // 使用后端预分离的 Widget CSS
+        )
+        // 原生 CSS 由 resources.styles 单独注入；这里只保留生成/预编译 CSS，
+        // 避免 separated 模式把同一份样式写进 iframe 两次。
+        const css = tailwindCSS
 
-      return resources
-    })
+        const resources: WidgetResources = {
+          core: coreCode,
+          widget: widgetCode,
+          html,
+          styles: effectiveStyles,
+          css,
+          size,
+          cssMode,
+        }
+
+        if (!this.generationIsCurrent(tappInstance.id, generation)) {
+          return this.loadWidgetResources(tappInstance, size, widgetId)
+        }
+
+        // 存入缓存
+        setCachedEntry(
+          this.widgetCache,
+          cacheKey,
+          {
+            data: resources,
+            timestamp: Date.now(),
+            ttl: CACHE_TTL.widget,
+          },
+          CACHE_LIMIT.widget,
+        )
+
+        return resources
+      },
+    )
   }
 
   // ============ Page 资源加载 ============
@@ -396,75 +430,86 @@ export class TappResourceLoader {
    */
   async loadPageResources(tappInstance: TappInstance): Promise<PageResources> {
     const cacheKey = tappInstance.id
+    const generation = this.generationFor(tappInstance.id)
 
     // 检查缓存
     const cached = getCachedEntry(this.pageCache, cacheKey)
     if (cached) return cached.data
 
     // 使用请求去重
-    return this.deduplicator.dedupe(`page:${cacheKey}`, async () => {
-      // 获取原始资源
-      const raw = await this.fetchRawResources(tappInstance.id)
+    return this.deduplicator.dedupe(
+      `page:${cacheKey}:${generation}`,
+      async () => {
+        // 获取原始资源
+        const raw = await this.fetchRawResources(tappInstance.id)
+        if (!this.generationIsCurrent(tappInstance.id, generation)) {
+          return this.loadPageResources(tappInstance)
+        }
 
-      // 提取代码
-      const coreCode = this.extractCoreCode(raw.code)
-      const pageCode = this.extractModeCode(raw.code, 'page')
+        // 提取代码
+        const coreCode = this.extractCoreCode(raw.code)
+        const pageCode = this.extractModeCode(raw.code, 'page')
 
-      // 🎯 确定 CSS 架构模式和样式来源
-      const cssMode = raw.cssMode || 'unified'
-      // 分离模式：合并 styles（共享）+ pageStyles（专用）
-      // 统一模式：仅使用 styles
-      let effectiveStyles: string | undefined
-      if (cssMode === 'separated') {
-        // 混合模式：共享样式 + Page 专用样式
-        const parts: string[] = []
-        if (raw.styles) parts.push(raw.styles)
-        if (raw.pageStyles) parts.push(raw.pageStyles)
-        effectiveStyles = parts.length > 0 ? parts.join('\n') : undefined
-      } else {
-        effectiveStyles = raw.styles
-      }
+        // 🎯 确定 CSS 架构模式和样式来源
+        const cssMode = raw.cssMode || 'unified'
+        // 分离模式：合并 styles（共享）+ pageStyles（专用）
+        // 统一模式：仅使用 styles
+        let effectiveStyles: string | undefined
+        if (cssMode === 'separated') {
+          // 混合模式：共享样式 + Page 专用样式
+          const parts: string[] = []
+          if (raw.styles) parts.push(raw.styles)
+          if (raw.pageStyles) parts.push(raw.pageStyles)
+          effectiveStyles = parts.length > 0 ? parts.join('\n') : undefined
+        } else {
+          effectiveStyles = raw.styles
+        }
 
-      // 🎯 生成 Page 专用 CSS
-      // 原生 CSS 由 styles 字段单独交给沙箱；这里仅处理 Tailwind CSS。
-      const tailwindCSS = await this.ensurePageCSS(
-        tappInstance.id,
-        coreCode,
-        pageCode,
-        raw.pageTemplate,
-        effectiveStyles,
-        raw.pageCSS, // 使用后端预分离的 Page CSS
-        raw.pageModules,
-      )
-      // 原生 CSS 由 resources.styles 单独注入，避免 separated 模式重复注入。
-      const css = tailwindCSS
+        // 🎯 生成 Page 专用 CSS
+        // 原生 CSS 由 styles 字段单独交给沙箱；这里仅处理 Tailwind CSS。
+        const tailwindCSS = await this.ensurePageCSS(
+          tappInstance.id,
+          coreCode,
+          pageCode,
+          raw.pageTemplate,
+          effectiveStyles,
+          raw.pageCSS, // 使用后端预分离的 Page CSS
+          raw.pageModules,
+        )
+        // 原生 CSS 由 resources.styles 单独注入，避免 separated 模式重复注入。
+        const css = tailwindCSS
 
-      const resources: PageResources = {
-        core: coreCode,
-        page: pageCode,
-        html: raw.pageTemplate,
-        styles: effectiveStyles,
-        css,
-        cssMode,
-        i18n: raw.i18n,
-        pageModules: raw.pageModules,
-        pageModuleOrder: raw.pageModuleOrder,
-      }
+        const resources: PageResources = {
+          core: coreCode,
+          page: pageCode,
+          html: raw.pageTemplate,
+          styles: effectiveStyles,
+          css,
+          cssMode,
+          i18n: raw.i18n,
+          pageModules: raw.pageModules,
+          pageModuleOrder: raw.pageModuleOrder,
+        }
 
-      // 存入缓存
-      setCachedEntry(
-        this.pageCache,
-        cacheKey,
-        {
-          data: resources,
-          timestamp: Date.now(),
-          ttl: CACHE_TTL.page,
-        },
-        CACHE_LIMIT.page,
-      )
+        if (!this.generationIsCurrent(tappInstance.id, generation)) {
+          return this.loadPageResources(tappInstance)
+        }
 
-      return resources
-    })
+        // 存入缓存
+        setCachedEntry(
+          this.pageCache,
+          cacheKey,
+          {
+            data: resources,
+            timestamp: Date.now(),
+            ttl: CACHE_TTL.page,
+          },
+          CACHE_LIMIT.page,
+        )
+
+        return resources
+      },
+    )
   }
 
   // ============ CSS 处理（分离式） ============
@@ -583,12 +628,17 @@ export class TappResourceLoader {
   private async fetchRawResources(
     tappId: string,
   ): Promise<TappApiService.TappResources> {
+    const generation = this.generationFor(tappId)
     const cached = getCachedEntry(this.rawResourceCache, tappId)
     if (cached) return cached.data
 
-    return this.deduplicator.dedupe(`raw:${tappId}`, async () => {
+    return this.deduplicator.dedupe(`raw:${tappId}:${generation}`, async () => {
       try {
         const resources = await TappApiService.getTappResources(tappId)
+
+        if (!this.generationIsCurrent(tappId, generation)) {
+          return this.fetchRawResources(tappId)
+        }
 
         setCachedEntry(
           this.rawResourceCache,
@@ -605,6 +655,9 @@ export class TappResourceLoader {
       } catch {
         // 回退到只获取代码
         const code = await TappApiService.getTappCode(tappId)
+        if (!this.generationIsCurrent(tappId, generation)) {
+          return this.fetchRawResources(tappId)
+        }
         return { code }
       }
     })
@@ -681,6 +734,7 @@ export class TappResourceLoader {
    */
   clearCache(tappId?: string): void {
     if (tappId) {
+      this.cacheGenerations.set(tappId, this.generationFor(tappId) + 1)
       // 清除该 Tapp 的所有缓存
       for (const key of this.widgetCache.keys()) {
         if (key.startsWith(`${tappId}:`)) {
@@ -697,6 +751,9 @@ export class TappResourceLoader {
       this.pageCssCache.delete(tappId)
       this.rawResourceCache.delete(tappId)
     } else {
+      for (const tappId of this.cacheGenerations.keys()) {
+        this.cacheGenerations.set(tappId, this.generationFor(tappId) + 1)
+      }
       // 清除所有缓存
       this.coreCache.clear()
       this.widgetCache.clear()
