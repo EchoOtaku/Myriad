@@ -34,6 +34,11 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VERSION="1.0.0"
 DEV_UPDATER_DIR="$PROJECT_ROOT/.dev-updater"
 DEV_UPDATER_TOKEN_DEFAULT="9xQ3vN8mP2rT5wY7zA1bC4dF6hJ8kL0n"
+BACKEND_PORT=1103
+FRONTEND_PORT=1102
+BACKEND_DIR="$PROJECT_ROOT/backend"
+FRONTEND_DIR="$PROJECT_ROOT/frontend"
+KILL_WAIT_SECS=5
 
 # ==================== Unicode Icons ====================
 ICON_CHECK="✔"
@@ -65,16 +70,219 @@ get_terminal_size() {
     TERM_COLS=$(tput cols 2>/dev/null || echo 80)
 }
 
-list_backend_pids() {
-    ps -axo pid=,command= | awk -v root="$PROJECT_ROOT" '
-        index($0, root "/backend") && ($0 ~ /(cargo run|myriad-backend)/) { print $1 }
-    '
+# Unique, sorted PIDs from multi-line input (ignores empty / non-numeric).
+normalize_pids() {
+    awk '
+        {
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ /^[0-9]+$/) print $i
+            }
+        }
+    ' | sort -n | uniq
 }
 
+# Current working directory of a PID (macOS/Linux via lsof).
+proc_cwd() {
+    local pid="$1"
+    if ! command -v lsof >/dev/null 2>&1; then
+        return 0
+    fi
+    lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '/^n/ { print substr($0, 2); exit }'
+}
+
+# PIDs listening on a TCP port.
+list_listen_pids() {
+    local port="$1"
+    if ! command -v lsof >/dev/null 2>&1; then
+        return 0
+    fi
+    # -nP avoids DNS/service-name resolution delays
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | normalize_pids || true
+}
+
+# Direct children of given PIDs (one level; call repeatedly or use expand_process_tree).
+list_child_pids() {
+    local parent
+    for parent in "$@"; do
+        [[ "$parent" =~ ^[0-9]+$ ]] || continue
+        ps -axo pid=,ppid= 2>/dev/null | awk -v p="$parent" '$2 == p { print $1 }'
+    done | normalize_pids
+}
+
+# Expand seed PIDs to include all descendants (BFS).
+expand_process_tree() {
+    local seeds
+    seeds="$(printf '%s\n' "$@" | normalize_pids)"
+    [[ -z "$seeds" ]] && return 0
+
+    local -a queue=()
+    local -a all=()
+    local pid child
+    local seen=""
+
+    while IFS= read -r pid; do
+        [[ -n "$pid" ]] || continue
+        queue+=("$pid")
+        all+=("$pid")
+        seen="$seen $pid "
+    done <<< "$seeds"
+
+    local i=0
+    while [[ $i -lt ${#queue[@]} ]]; do
+        pid="${queue[$i]}"
+        i=$((i + 1))
+        while IFS= read -r child; do
+            [[ -n "$child" ]] || continue
+            case "$seen" in
+                *" $child "*) continue ;;
+            esac
+            seen="$seen $child "
+            queue+=("$child")
+            all+=("$child")
+        done < <(list_child_pids "$pid")
+    done
+
+    printf '%s\n' "${all[@]}" | normalize_pids
+}
+
+# Soft kill → wait → hard kill. Expands each PID to its descendant tree first.
+terminate_pids() {
+    local label="${1:-process}"
+    shift || true
+    local seeds
+    seeds="$(printf '%s\n' "$@" | normalize_pids)"
+    [[ -z "$seeds" ]] && return 0
+
+    local pids
+    # shellcheck disable=SC2086
+    pids="$(expand_process_tree $seeds)"
+    [[ -z "$pids" ]] && return 0
+
+    local -a pid_arr=()
+    while IFS= read -r pid; do
+        [[ -n "$pid" ]] && pid_arr+=("$pid")
+    done <<< "$pids"
+
+    print_info "Sending SIGTERM to ${#pid_arr[@]} $label PID(s): ${pid_arr[*]}"
+    kill -TERM "${pid_arr[@]}" 2>/dev/null || true
+
+    local remaining
+    local ticks=0
+    local max_ticks=$((KILL_WAIT_SECS * 4))
+    while [[ $ticks -lt $max_ticks ]]; do
+        remaining=()
+        for pid in "${pid_arr[@]}"; do
+            if kill -0 "$pid" 2>/dev/null; then
+                remaining+=("$pid")
+            fi
+        done
+        [[ ${#remaining[@]} -eq 0 ]] && return 0
+        sleep 0.25
+        ticks=$((ticks + 1))
+    done
+
+    remaining=()
+    for pid in "${pid_arr[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            remaining+=("$pid")
+        fi
+    done
+    if [[ ${#remaining[@]} -gt 0 ]]; then
+        print_warning "Force killing stubborn $label PID(s): ${remaining[*]}"
+        kill -KILL "${remaining[@]}" 2>/dev/null || true
+        sleep 0.2
+    fi
+}
+
+# Free a TCP listen port (kill listeners + their trees).
+free_port() {
+    local port="$1"
+    local label="${2:-port $port}"
+    local pids
+    pids="$(list_listen_pids "$port")"
+    if [[ -z "$pids" ]]; then
+        return 0
+    fi
+    print_info "Freeing $label (listeners: $(echo "$pids" | tr '\n' ' '))"
+    # shellcheck disable=SC2086
+    terminate_pids "$label" $pids
+    # Final sweep if something re-bound or ignored signals
+    pids="$(list_listen_pids "$port")"
+    if [[ -n "$pids" ]]; then
+        # shellcheck disable=SC2086
+        kill -KILL $pids 2>/dev/null || true
+        sleep 0.2
+    fi
+}
+
+# Match backend via:
+#   1) cmdline contains this project's backend path + cargo/myriad-backend
+#   2) process cwd under this project's backend + cargo/myriad-backend
+#   3) whoever is listening on BACKEND_PORT (must free port to restart)
+list_backend_pids() {
+    local -a found=()
+    local pid cmd cwd
+
+    while IFS= read -r line; do
+        # pid is first field; remainder is command (may contain spaces)
+        pid="${line%% *}"
+        cmd="${line#${pid}}"
+        cmd="${cmd#"${cmd%%[![:space:]]*}"}" # ltrim
+        [[ "$pid" =~ ^[0-9]+$ ]] || continue
+
+        local match=0
+        if [[ "$cmd" == *"$BACKEND_DIR"* && ( "$cmd" == *cargo* || "$cmd" == *myriad-backend* ) ]]; then
+            match=1
+        elif [[ "$cmd" == *myriad-backend* || "$cmd" == *"cargo run"* || "$cmd" == *"cargo-watch"* || "$cmd" == *"cargo watch"* ]]; then
+            cwd="$(proc_cwd "$pid" 2>/dev/null || true)"
+            if [[ -n "$cwd" && ( "$cwd" == "$BACKEND_DIR" || "$cwd" == "$BACKEND_DIR"/* ) ]]; then
+                match=1
+            fi
+        fi
+        [[ $match -eq 1 ]] && found+=("$pid")
+    done < <(ps -axo pid=,command= 2>/dev/null || true)
+
+    while IFS= read -r pid; do
+        [[ -n "$pid" ]] && found+=("$pid")
+    done < <(list_listen_pids "$BACKEND_PORT")
+
+    if [[ ${#found[@]} -eq 0 ]]; then
+        return 0
+    fi
+    printf '%s\n' "${found[@]}" | normalize_pids
+}
+
+# Match frontend via cmdline path, cwd under this project's frontend, and FRONTEND_PORT.
 list_frontend_pids() {
-    ps -axo pid=,command= | awk -v root="$PROJECT_ROOT" '
-        index($0, root "/frontend") && ($0 ~ /(pnpm|astro|vite|node)/) { print $1 }
-    '
+    local -a found=()
+    local pid cmd cwd
+
+    while IFS= read -r line; do
+        pid="${line%% *}"
+        cmd="${line#${pid}}"
+        cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+        [[ "$pid" =~ ^[0-9]+$ ]] || continue
+
+        local match=0
+        if [[ "$cmd" == *"$FRONTEND_DIR"* && ( "$cmd" == *pnpm* || "$cmd" == *astro* || "$cmd" == *vite* || "$cmd" == *node* ) ]]; then
+            match=1
+        elif [[ "$cmd" == *pnpm* || "$cmd" == *astro* || "$cmd" == *vite* || "$cmd" == *node* ]]; then
+            cwd="$(proc_cwd "$pid" 2>/dev/null || true)"
+            if [[ -n "$cwd" && ( "$cwd" == "$FRONTEND_DIR" || "$cwd" == "$FRONTEND_DIR"/* ) ]]; then
+                match=1
+            fi
+        fi
+        [[ $match -eq 1 ]] && found+=("$pid")
+    done < <(ps -axo pid=,command= 2>/dev/null || true)
+
+    while IFS= read -r pid; do
+        [[ -n "$pid" ]] && found+=("$pid")
+    done < <(list_listen_pids "$FRONTEND_PORT")
+
+    if [[ ${#found[@]} -eq 0 ]]; then
+        return 0
+    fi
+    printf '%s\n' "${found[@]}" | normalize_pids
 }
 
 # Draw a box
@@ -199,7 +407,15 @@ get_status_text() {
 }
 
 backend_health_ok() {
-    curl -fsS --max-time 1 "http://127.0.0.1:1103/health" >/dev/null 2>&1
+    curl -fsS --max-time 1 "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null 2>&1
+}
+
+backend_port_in_use() {
+    [[ -n "$(list_listen_pids "$BACKEND_PORT")" ]]
+}
+
+frontend_port_in_use() {
+    [[ -n "$(list_listen_pids "$FRONTEND_PORT")" ]]
 }
 
 updater_health_ok() {
@@ -209,7 +425,7 @@ updater_health_ok() {
 wait_for_backend() {
     local timeout="${1:-90}"
     local elapsed=0
-    print_info "Waiting for backend health on http://127.0.0.1:1103/health ..."
+    print_info "Waiting for backend health on http://127.0.0.1:${BACKEND_PORT}/health ..."
     while [[ $elapsed -lt $timeout ]]; do
         if backend_health_ok; then
             print_success "Backend is ready"
@@ -304,8 +520,8 @@ show_status_dashboard() {
     draw_box_line "" $width "$BRIGHT_CYAN"
     
     if $backend_status || $frontend_status || $updater_status; then
-        $backend_status && draw_box_line "${DIM}API:      http://localhost:1103${NC}" $width "$BRIGHT_CYAN"
-        $frontend_status && draw_box_line "${DIM}Frontend: http://localhost:1102${NC}" $width "$BRIGHT_CYAN"
+        $backend_status && draw_box_line "${DIM}API:      http://localhost:${BACKEND_PORT}${NC}" $width "$BRIGHT_CYAN"
+        $frontend_status && draw_box_line "${DIM}Frontend: http://localhost:${FRONTEND_PORT}${NC}" $width "$BRIGHT_CYAN"
         $updater_status && draw_box_line "${DIM}Updater:  http://127.0.0.1:1101${NC}" $width "$BRIGHT_CYAN"
     fi
     
@@ -381,16 +597,25 @@ stop_updater() {
 
 start_backend() {
     print_step "Starting Rust backend..."
-    
-    if get_service_status backend; then
-        print_warning "Backend process is already running"
-        if ! wait_for_backend 30; then
-            print_warning "Backend process exists, but /health is not ready yet"
-        fi
+
+    # Healthy and process visible → nothing to do.
+    if backend_health_ok && get_service_status backend; then
+        print_warning "Backend is already running and healthy"
         return 0
     fi
-    
-    cd "$PROJECT_ROOT/backend"
+
+    # Stale process, wrong cwd, or port occupied by an orphan binary → hard reset.
+    if get_service_status backend || backend_port_in_use || backend_health_ok; then
+        print_warning "Clearing existing backend / port ${BACKEND_PORT} before start..."
+        stop_backend || true
+        sleep 0.5
+        if backend_port_in_use; then
+            print_error "Port ${BACKEND_PORT} still in use; cannot start backend"
+            return 1
+        fi
+    fi
+
+    cd "$BACKEND_DIR"
 
     local cargo_cmd="cargo run"
     local updater_url="http://127.0.0.1:1101"
@@ -399,12 +624,12 @@ start_backend() {
         cargo_cmd="MYRIAD_UPDATER_URL=$updater_url UPDATE_TOKEN=$(dev_updater_token) cargo run"
         print_info "Backend updater proxy enabled: $updater_url"
     fi
-    
+
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        osascript -e 'tell application "Terminal" to do script "cd '"$PROJECT_ROOT/backend"' && echo \"🦀 Myriad Backend\" && source ~/.cargo/env 2>/dev/null; '"$cargo_cmd"'"' 2>/dev/null
+        osascript -e 'tell application "Terminal" to do script "cd '"$BACKEND_DIR"' && echo \"🦀 Myriad Backend\" && source ~/.cargo/env 2>/dev/null; '"$cargo_cmd"'"' 2>/dev/null
     else
         if command -v gnome-terminal &> /dev/null; then
-            gnome-terminal -- bash -c "cd '$PROJECT_ROOT/backend' && echo '🦀 Myriad Backend' && $cargo_cmd; exec bash" 2>/dev/null
+            gnome-terminal -- bash -c "cd '$BACKEND_DIR' && echo '🦀 Myriad Backend' && $cargo_cmd; exec bash" 2>/dev/null
         else
             if dev_updater_enabled; then
                 MYRIAD_UPDATER_URL="$updater_url" UPDATE_TOKEN="$(dev_updater_token)" nohup cargo run > "$PROJECT_ROOT/backend.log" 2>&1 &
@@ -414,10 +639,13 @@ start_backend() {
             print_info "Backend running in background (logs: backend.log)"
         fi
     fi
-    
+
     if ! wait_for_backend 90; then
         print_warning "Backend did not become ready within 90s"
         print_warning "Check the backend terminal, or backend.log if it was started in background."
+        if backend_port_in_use; then
+            print_info "Port ${BACKEND_PORT} listeners: $(list_listen_pids "$BACKEND_PORT" | tr '\n' ' ')"
+        fi
     fi
 }
 
@@ -425,48 +653,90 @@ stop_backend() {
     print_step "Stopping backend..."
     local pids
     pids="$(list_backend_pids)"
-    if [[ -z "$pids" ]]; then
+
+    if [[ -z "$pids" ]] && ! backend_port_in_use; then
         print_info "No Myriad backend process found"
         return 0
     fi
-    kill $pids 2>/dev/null || true
+
+    if [[ -n "$pids" ]]; then
+        # shellcheck disable=SC2086
+        terminate_pids "backend" $pids
+    fi
+
+    # Always free the listen port — handles relative-path binaries and foreign clones.
+    free_port "$BACKEND_PORT" "backend port ${BACKEND_PORT}"
+
+    if backend_port_in_use || [[ -n "$(list_backend_pids)" ]]; then
+        print_error "Backend may still be running (port ${BACKEND_PORT} or matching PIDs remain)"
+        local leftover
+        leftover="$(list_backend_pids)"
+        [[ -n "$leftover" ]] && print_info "Remaining PIDs: $(echo "$leftover" | tr '\n' ' ')"
+        leftover="$(list_listen_pids "$BACKEND_PORT")"
+        [[ -n "$leftover" ]] && print_info "Port listeners: $(echo "$leftover" | tr '\n' ' ')"
+        return 1
+    fi
+
     print_success "Backend stopped"
 }
 
 start_frontend() {
     print_step "Starting Astro frontend..."
-    
-    if get_service_status frontend; then
+
+    if get_service_status frontend && frontend_port_in_use; then
         print_warning "Frontend is already running"
         return 0
     fi
-    
-    cd "$PROJECT_ROOT/frontend"
-    
+
+    if get_service_status frontend || frontend_port_in_use; then
+        print_warning "Clearing existing frontend / port ${FRONTEND_PORT} before start..."
+        stop_frontend || true
+        sleep 0.5
+        if frontend_port_in_use; then
+            print_error "Port ${FRONTEND_PORT} still in use; cannot start frontend"
+            return 1
+        fi
+    fi
+
+    cd "$FRONTEND_DIR"
+
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        osascript -e 'tell application "Terminal" to do script "cd '"$PROJECT_ROOT/frontend"' && echo \"⚡ Myriad Frontend\" && pnpm run dev"' 2>/dev/null
+        osascript -e 'tell application "Terminal" to do script "cd '"$FRONTEND_DIR"' && echo \"⚡ Myriad Frontend\" && pnpm run dev"' 2>/dev/null
     else
         if command -v gnome-terminal &> /dev/null; then
-            gnome-terminal -- bash -c "cd '$PROJECT_ROOT/frontend' && echo '⚡ Myriad Frontend' && pnpm run dev; exec bash" 2>/dev/null
+            gnome-terminal -- bash -c "cd '$FRONTEND_DIR' && echo '⚡ Myriad Frontend' && pnpm run dev; exec bash" 2>/dev/null
         else
             nohup pnpm run dev > "$PROJECT_ROOT/frontend.log" 2>&1 &
             print_info "Frontend running in background (logs: frontend.log)"
         fi
     fi
-    
+
     sleep 2
-    print_success "Frontend starting on http://localhost:1102"
+    print_success "Frontend starting on http://localhost:${FRONTEND_PORT}"
 }
 
 stop_frontend() {
     print_step "Stopping frontend..."
     local pids
     pids="$(list_frontend_pids)"
-    if [[ -z "$pids" ]]; then
+
+    if [[ -z "$pids" ]] && ! frontend_port_in_use; then
         print_info "No Myriad frontend process found"
         return 0
     fi
-    kill $pids 2>/dev/null || true
+
+    if [[ -n "$pids" ]]; then
+        # shellcheck disable=SC2086
+        terminate_pids "frontend" $pids
+    fi
+
+    free_port "$FRONTEND_PORT" "frontend port ${FRONTEND_PORT}"
+
+    if frontend_port_in_use || [[ -n "$(list_frontend_pids)" ]]; then
+        print_error "Frontend may still be running (port ${FRONTEND_PORT} or matching PIDs remain)"
+        return 1
+    fi
+
     print_success "Frontend stopped"
 }
 
@@ -493,7 +763,7 @@ start_all() {
     start_backend
     if ! backend_health_ok; then
         echo ""
-        print_error "Backend is not ready; frontend was not started to avoid 127.0.0.1:1103 ECONNREFUSED."
+        print_error "Backend is not ready; frontend was not started to avoid 127.0.0.1:${BACKEND_PORT} ECONNREFUSED."
         print_info "Fix the backend error first, then run: ./scripts/dev/dev.sh start frontend"
         return 1
     fi
@@ -504,9 +774,9 @@ start_all() {
     echo -e "${GREEN}${BOLD}${ICON_CHECK} All services started!${NC}"
     echo ""
     echo -e "${DIM}URLs:${NC}"
-    echo -e "  ${CYAN}Frontend:${NC} http://localhost:1102"
-    echo -e "  ${CYAN}Backend:${NC}  http://localhost:1103"
-    echo -e "  ${CYAN}Health:${NC}   http://localhost:1103/health"
+    echo -e "  ${CYAN}Frontend:${NC} http://localhost:${FRONTEND_PORT}"
+    echo -e "  ${CYAN}Backend:${NC}  http://localhost:${BACKEND_PORT}"
+    echo -e "  ${CYAN}Health:${NC}   http://localhost:${BACKEND_PORT}/health"
     if get_service_status updater; then
         echo -e "  ${CYAN}Updater:${NC}  http://127.0.0.1:1101"
     fi
@@ -517,12 +787,14 @@ stop_all() {
     echo ""
     echo -e "${BRIGHT_YELLOW}${BOLD}${ICON_STOP} Stopping All Services${NC}"
     echo ""
-    
-    stop_frontend
-    stop_backend
-    stop_updater
-    stop_database
-    
+
+    # Best-effort: individual stoppers may return non-zero if a process resists;
+    # continue so database/updater still get cleaned up under `set -e`.
+    stop_frontend || true
+    stop_backend || true
+    stop_updater || true
+    stop_database || true
+
     echo ""
     print_success "All services stopped"
     echo ""
