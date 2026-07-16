@@ -310,6 +310,12 @@ sequenceDiagram
 查询管理员 Tapp 与当前用户 Tapp，并复用单项接口的角色权限过滤；同 ID 时管理员版本优先。
 前端不再执行列表后逐项详情读取的 N+1 请求。
 
+Manifest 声明 API 的解析缓存以安装 owner、Tapp ID 和 `apis` 内容指纹寻址；每次请求仍从数据库
+取得当前 Manifest，因此另一副本完成更新后，本副本不会在 5 分钟 TTL 内继续执行旧 endpoint。
+响应缓存键包含安装 owner、subject、用户名/角色、客户端 IP、完整 API 定义指纹和参数摘要；
+API 定义变化会自然换 key。解析缓存、响应缓存与 Geo 缓存都清理过期项并执行容量淘汰，避免
+大量 Tapp、参数或客户端 IP 让进程内 Map 无界增长。
+
 Widget 模板在商店索引、安装请求和资源响应中统一按 `widgetId + 尺寸` 寻址，Widget
 宿主也使用当前 Widget ID 选择模板。因此同一 Tapp 的多个 Widget 可以为相同尺寸声明
 不同模板，不会在安装或运行时互相覆盖。
@@ -341,7 +347,11 @@ calls、tokens 与 cooldown 以 `(subject, owner, tapp, UTC day)` 持久化，�
 事务内加 subject/Tapp advisory lock、计算替换后的 JSONB 字节并 upsert，并发副本不能越过
 总量边界。Tapp 不能直接指定另一个 Tapp 的 key。已实现的
 One-shot Data Exchange 使用 Manifest 具名 export/import、同 subject 隔离、宿主“仅本次”
-授权弹窗和绑定 provider 安装 owner 的服务端原子消费一次性 Data Access Grant。提供方 handler
+授权队列和绑定 provider 安装 owner 的服务端原子消费一次性 Data Access Grant。弹窗结构化
+显示双方 Tapp、export、参数范围、用途、上限和过期倒计时；拒绝为默认焦点，并发请求逐项
+排队。requester runtime 销毁、Tapp 停止/更新/卸载及 provider 停止/卸载都会主动撤销对应
+prepared request 和活动 Grant，TTL 只负责最终兜底。每个 runtime 最多并行 3 个交换；共享
+registry 的 subject 上限在 advisory lock 事务内计数并写入，多副本不能同时越界。提供方 handler
 只能返回声明 schema
 内、大小/记录数上限内的结果；失败也会耗尽 token。首版只选择已在线并注册 export 的
 Page、Widget 或 headless runtime，不隐式拉起没有后台需求的完整 Page。Event 仍只负责

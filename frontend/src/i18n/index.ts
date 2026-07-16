@@ -1593,6 +1593,21 @@ export interface TranslationKeys {
     installing: string
     version: string
     author: string
+    dataExchangeConsentTitle: string
+    dataExchangeConsentSubtitle: string
+    dataExchangeRoute: string
+    dataExchangeRequester: string
+    dataExchangeProvider: string
+    dataExchangeData: string
+    dataExchangePurpose: string
+    dataExchangeScope: string
+    dataExchangeNoScope: string
+    dataExchangeLimit: string
+    dataExchangeExpires: string
+    dataExchangeQueued: string
+    dataExchangeOnceHint: string
+    dataExchangeDeny: string
+    dataExchangeAllowOnce: string
 
     // 分类
     categoryAI: string

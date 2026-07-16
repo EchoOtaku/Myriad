@@ -32,6 +32,7 @@ import { useRouteScheduler } from './hooks/animation/useRouteScheduler'
 import { useAnimationLevel } from './hooks/useAnimationLevel'
 import { AppLayout } from './layouts/AppLayout'
 import { recordNavigation } from './router/navigationHistory'
+import { TappDataExchangeConsentHost } from './tapp/components/TappDataExchangeConsentHost'
 import { preloadCriticalRoutes } from './utils/codeSplitting'
 import {
   canAccessModuleVisibility,
@@ -538,6 +539,7 @@ export function App() {
                     <Suspense fallback={null}>
                       <TappBackgroundRunner />
                     </Suspense>
+                    <TappDataExchangeConsentHost />
                     <AppLayout>
                       <AppRoutes />
                     </AppLayout>

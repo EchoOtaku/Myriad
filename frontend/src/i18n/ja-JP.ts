@@ -1735,6 +1735,23 @@ export const jaJP: TranslationKeys = {
     installing: 'インストール中...',
     version: 'バージョン',
     author: '作者',
+    dataExchangeConsentTitle: '今回のデータ取得を許可しますか？',
+    dataExchangeConsentSubtitle:
+      '両方の Tapp がこのデータ契約を宣言していますが、今回限りの許可が必要です。',
+    dataExchangeRoute: 'データ取得の方向',
+    dataExchangeRequester: 'リクエスト元',
+    dataExchangeProvider: 'データ提供元',
+    dataExchangeData: 'データ',
+    dataExchangePurpose: '用途',
+    dataExchangeScope: 'リクエスト範囲',
+    dataExchangeNoScope: '追加範囲の指定なし',
+    dataExchangeLimit: '最大レスポンス',
+    dataExchangeExpires: '自動失効まで',
+    dataExchangeQueued: 'ほかに {count} 件のリクエストが確認待ちです',
+    dataExchangeOnceHint:
+      '許可はこのリクエストだけに適用され、完了・失敗・タイムアウト時に失効します。',
+    dataExchangeDeny: '拒否',
+    dataExchangeAllowOnce: '今回だけ許可',
 
     // カテゴリ
     categoryAI: 'AI アプリ',

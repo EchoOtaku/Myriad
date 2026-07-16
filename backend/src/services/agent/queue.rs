@@ -119,10 +119,10 @@ impl LaneQueue {
     /// 清理空闲 Lane（请求驱动调用，防止 HashMap 无限增长）
     pub async fn cleanup_idle_lanes(&self) {
         let mut lanes = self.lanes.write().await;
-        lanes.retain(|_, mutex| {
-            // 如果锁没被持有，说明 lane 空闲，可以清理
-            mutex.try_lock().is_ok()
-        });
+        // Map 自身持有一个 Arc；执行中的 guard 和等待者各自还会持有一个。
+        // 只有 strong_count == 1 时才能安全删除，否则后续请求可能创建第二把锁，
+        // 破坏同 lane 串行执行保证。
+        lanes.retain(|_, mutex| Arc::strong_count(mutex) > 1);
     }
 }
 
@@ -152,4 +152,45 @@ pub struct QueueStatus {
     pub total_lanes: usize,
     pub max_concurrent: usize,
     pub available_permits: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cleanup_removes_only_idle_lanes() {
+        let queue = LaneQueue::new(2);
+        let active = queue.acquire("active").await.unwrap();
+        let idle = queue.get_or_create_lane("idle").await;
+        drop(idle);
+
+        queue.cleanup_idle_lanes().await;
+
+        let lanes = queue.lanes.read().await;
+        assert!(lanes.contains_key("active"));
+        assert!(!lanes.contains_key("idle"));
+        drop(lanes);
+        drop(active);
+
+        queue.cleanup_idle_lanes().await;
+        assert_eq!(queue.get_status().await.total_lanes, 0);
+    }
+
+    #[tokio::test]
+    async fn cleanup_keeps_waiters_on_the_same_lane_lock() {
+        let queue = Arc::new(LaneQueue::new(2));
+        let active = queue.acquire("shared").await.unwrap();
+        let waiter_lock = queue.get_or_create_lane("shared").await;
+        let waiter = tokio::spawn(async move { waiter_lock.lock_owned().await });
+
+        queue.cleanup_idle_lanes().await;
+        assert_eq!(queue.get_status().await.total_lanes, 1);
+
+        drop(active);
+        let waiting_guard = waiter.await.unwrap();
+        drop(waiting_guard);
+        queue.cleanup_idle_lanes().await;
+        assert_eq!(queue.get_status().await.total_lanes, 0);
+    }
 }

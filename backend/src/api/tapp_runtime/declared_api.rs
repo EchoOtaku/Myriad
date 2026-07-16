@@ -9,8 +9,8 @@ use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
@@ -28,22 +28,37 @@ use super::runtime_grant::RuntimeGrantContext;
 
 /// 缓存条目：已解析的 API 定义 + 缓存时间
 struct ApisCacheEntry {
+    tapp_id: String,
+    cache_scope: String,
     apis: HashMap<String, TappApiDef>,
     cached_at: Instant,
 }
 
-/// 全局缓存（tapp_id → 解析结果，5 分钟 TTL）
-static TAPP_APIS_CACHE: Lazy<Arc<RwLock<HashMap<String, ApisCacheEntry>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+/// 进程内解析缓存。key 包含 Manifest APIs 内容指纹，因此其他副本更新数据库后，
+/// 本副本下一次请求也不会继续命中旧定义。
+static TAPP_APIS_CACHE: Lazy<RwLock<HashMap<String, ApisCacheEntry>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
 const APIS_CACHE_TTL: Duration = Duration::from_secs(300);
+const MAX_APIS_CACHE_ENTRIES: usize = 1024;
+
+fn manifest_apis_fingerprint(manifest: &Value) -> String {
+    let encoded = serde_json::to_vec(manifest.get("apis").unwrap_or(&Value::Null))
+        .unwrap_or_else(|_| b"null".to_vec());
+    format!("{:x}", Sha256::digest(encoded))
+}
 
 /// 从 manifest JSON 解析 API 定义，优先命中内存缓存
-async fn get_tapp_apis(cache_key: &str, manifest: &Value) -> HashMap<String, TappApiDef> {
+async fn get_tapp_apis(
+    cache_scope: &str,
+    tapp_id: &str,
+    manifest: &Value,
+) -> HashMap<String, TappApiDef> {
+    let cache_key = format!("{cache_scope}:{}", manifest_apis_fingerprint(manifest));
     // 读缓存
     {
         let cache = TAPP_APIS_CACHE.read().await;
-        if let Some(entry) = cache.get(cache_key) {
+        if let Some(entry) = cache.get(&cache_key) {
             if entry.cached_at.elapsed() < APIS_CACHE_TTL {
                 return entry.apis.clone();
             }
@@ -59,9 +74,24 @@ async fn get_tapp_apis(cache_key: &str, manifest: &Value) -> HashMap<String, Tap
     // 写缓存
     {
         let mut cache = TAPP_APIS_CACHE.write().await;
+        cache.retain(|_, entry| {
+            entry.cached_at.elapsed() < APIS_CACHE_TTL && entry.cache_scope != cache_scope
+        });
+        while cache.len() >= MAX_APIS_CACHE_ENTRIES {
+            let Some(oldest) = cache
+                .iter()
+                .min_by_key(|(_, entry)| entry.cached_at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            cache.remove(&oldest);
+        }
         cache.insert(
-            cache_key.to_string(),
+            cache_key,
             ApisCacheEntry {
+                tapp_id: tapp_id.to_string(),
+                cache_scope: cache_scope.to_string(),
                 apis: apis.clone(),
                 cached_at: Instant::now(),
             },
@@ -74,8 +104,7 @@ async fn get_tapp_apis(cache_key: &str, manifest: &Value) -> HashMap<String, Tap
 /// Tapp 更新/卸载时使缓存失效
 pub async fn invalidate_tapp_apis_cache(tapp_id: &str) {
     let mut cache = TAPP_APIS_CACHE.write().await;
-    let suffix = format!(":{tapp_id}");
-    cache.retain(|key, _| key != tapp_id && !key.ends_with(&suffix));
+    cache.retain(|_, entry| entry.tapp_id != tapp_id);
 }
 
 async fn find_accessible_tapp(
@@ -177,7 +206,7 @@ pub async fn execute_tapp_api(
 
     // 2. 解析 manifest 中的 APIs（带缓存）
     let manifest_cache_key = format!("{}:{}", tapp.user_id, tapp_id);
-    let apis = get_tapp_apis(&manifest_cache_key, &tapp.manifest).await;
+    let apis = get_tapp_apis(&manifest_cache_key, &tapp_id, &tapp.manifest).await;
 
     let api_def = apis.get(&api_name).ok_or_else(|| {
         (
@@ -229,6 +258,7 @@ pub async fn execute_tapp_api(
     // 6. 构建执行上下文
     let context = ApiExecutionContext {
         user_id,
+        owner_id: tapp.user_id,
         username: claims.username.clone(),
         is_admin: is_current_admin,
         client_ip,
@@ -273,7 +303,7 @@ pub async fn list_tapp_apis(
     let tapp = find_accessible_tapp(&db, user_id, &tapp_id).await?;
 
     let manifest_cache_key = format!("{}:{}", tapp.user_id, tapp_id);
-    let apis = get_tapp_apis(&manifest_cache_key, &tapp.manifest).await;
+    let apis = get_tapp_apis(&manifest_cache_key, &tapp_id, &tapp.manifest).await;
 
     let api_list: Vec<Value> = apis
         .iter()
@@ -292,4 +322,35 @@ pub async fn list_tapp_apis(
         .collect();
 
     Ok(Json(json!({ "success": true, "apis": api_list })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::manifest_apis_fingerprint;
+    use serde_json::json;
+
+    #[test]
+    fn declared_api_cache_fingerprint_tracks_only_api_contract() {
+        let first = json!({
+            "name": "Example",
+            "apis": { "weather": { "endpoint": "https://one.example" } }
+        });
+        let metadata_only = json!({
+            "name": "Renamed",
+            "apis": { "weather": { "endpoint": "https://one.example" } }
+        });
+        let changed_api = json!({
+            "name": "Example",
+            "apis": { "weather": { "endpoint": "https://two.example" } }
+        });
+
+        assert_eq!(
+            manifest_apis_fingerprint(&first),
+            manifest_apis_fingerprint(&metadata_only)
+        );
+        assert_ne!(
+            manifest_apis_fingerprint(&first),
+            manifest_apis_fingerprint(&changed_api)
+        );
+    }
 }

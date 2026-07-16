@@ -218,6 +218,7 @@ pub async fn get_context_geo(
 
     let context = ApiExecutionContext {
         user_id: -1,
+        owner_id: 0,
         username: "guest".to_string(),
         is_admin: false,
         client_ip: Some(client_ip),

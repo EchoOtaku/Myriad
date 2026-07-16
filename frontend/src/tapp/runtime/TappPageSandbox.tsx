@@ -241,7 +241,7 @@ function generatePageHTML(
   if (code.pageModules && Object.keys(code.pageModules).length > 0) {
     loadingMode = 'modular'
     // 优先使用 code.pageModuleOrder（从后端资源响应，始终最新），
-    // 其次 manifest.pageModules（可能因 DB 序列化丢失），
+    // 其次使用 manifest.pageModules 声明顺序，
     // 最后按字母序（index.js 最后）
     const moduleOrder =
       code.pageModuleOrder || tappInstance.manifest.pageModules

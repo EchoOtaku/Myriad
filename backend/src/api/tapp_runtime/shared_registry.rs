@@ -2,6 +2,7 @@
 
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, FromQueryResult, Statement,
+    TransactionTrait,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -82,6 +83,89 @@ ON CONFLICT (namespace, record_id) DO UPDATE SET
     .await?;
     maybe_cleanup(db).await;
     Ok(())
+}
+
+/// Atomically enforce a per-subject live-record limit and insert a registry
+/// entry. The advisory lock is shared by every backend replica, so concurrent
+/// requests cannot all pass a stale count.
+pub async fn put_with_subject_limit<T: Serialize>(
+    db: &DatabaseConnection,
+    namespace: &str,
+    record_id: &str,
+    identity: RegistryIdentity<'_>,
+    payload: &T,
+    expires_at: i64,
+    max_records: usize,
+) -> Result<bool, DbErr> {
+    let subject_id = identity
+        .subject_id
+        .ok_or_else(|| DbErr::Custom("subject_id is required for a registry limit".to_string()))?;
+    let payload = serde_json::to_value(payload).map_err(|error| DbErr::Json(error.to_string()))?;
+    let transaction = db.begin().await?;
+    let lock_key = format!("tapp_registry:{namespace}:{subject_id}");
+    transaction
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            vec![lock_key.into()],
+        ))
+        .await?;
+    transaction
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM tapp_runtime_registry WHERE namespace = $1 AND subject_id = $2 AND expires_at <= EXTRACT(EPOCH FROM NOW())::BIGINT",
+            vec![namespace.into(), subject_id.into()],
+        ))
+        .await?;
+
+    #[derive(FromQueryResult)]
+    struct CountRow {
+        count: i64,
+    }
+    let count = CountRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT COUNT(*)::BIGINT AS count FROM tapp_runtime_registry WHERE namespace = $1 AND subject_id = $2 AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT",
+        vec![namespace.into(), subject_id.into()],
+    ))
+    .one(&transaction)
+    .await?
+    .map_or(0, |row| row.count);
+    if count >= max_records as i64 {
+        transaction.rollback().await?;
+        return Ok(false);
+    }
+
+    transaction
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO tapp_runtime_registry
+    (namespace, record_id, subject_id, owner_id, tapp_id, runtime_id, payload, expires_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+ON CONFLICT (namespace, record_id) DO UPDATE SET
+    subject_id = EXCLUDED.subject_id,
+    owner_id = EXCLUDED.owner_id,
+    tapp_id = EXCLUDED.tapp_id,
+    runtime_id = EXCLUDED.runtime_id,
+    payload = EXCLUDED.payload,
+    expires_at = EXCLUDED.expires_at,
+    updated_at = NOW()
+"#,
+            vec![
+                namespace.into(),
+                record_id.into(),
+                identity.subject_id.into(),
+                identity.owner_id.into(),
+                identity.tapp_id.map(str::to_string).into(),
+                identity.runtime_id.map(str::to_string).into(),
+                payload.into(),
+                expires_at.into(),
+            ],
+        ))
+        .await?;
+    transaction.commit().await?;
+    maybe_cleanup(db).await;
+    Ok(true)
 }
 
 pub async fn get<T: DeserializeOwned>(
@@ -188,6 +272,39 @@ WHERE namespace = $1
                 subject_id.into(),
                 tapp_id.map(str::to_string).into(),
                 runtime_id.map(str::to_string).into(),
+            ],
+        ))
+        .await?;
+    Ok(result.rows_affected())
+}
+
+pub async fn delete_matching_payload_text(
+    db: &impl ConnectionTrait,
+    namespace: &str,
+    subject_id: Option<i32>,
+    tapp_id: Option<&str>,
+    runtime_id: Option<&str>,
+    payload_field: &str,
+    payload_value: &str,
+) -> Result<u64, DbErr> {
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+DELETE FROM tapp_runtime_registry
+WHERE namespace = $1
+  AND ($2::INTEGER IS NULL OR subject_id = $2)
+  AND ($3::TEXT IS NULL OR tapp_id = $3)
+  AND ($4::TEXT IS NULL OR runtime_id = $4)
+  AND payload ->> ($5::TEXT) = $6
+"#,
+            vec![
+                namespace.into(),
+                subject_id.into(),
+                tapp_id.map(str::to_string).into(),
+                runtime_id.map(str::to_string).into(),
+                payload_field.into(),
+                payload_value.into(),
             ],
         ))
         .await?;

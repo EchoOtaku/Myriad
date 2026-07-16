@@ -402,6 +402,8 @@ pub async fn revoke_runtime_grant(
         super::ai_tasks::cancel_runtime_ai_tasks(&runtime_id).await;
         super::events::disconnect_runtime_events(&runtime_id).await;
         super::agent_interactions::disconnect_runtime_interactions(&runtime_id).await;
+        super::data_exchange::cancel_runtime_data_exchanges(subject_id, &tapp_id, &runtime_id)
+            .await;
     }
     Ok(Json(json!({
         "success": true,
@@ -428,6 +430,7 @@ pub async fn revoke_tapp_runtime_grants(subject_id: i32, tapp_id: &str) -> usize
     };
     super::ai_tasks::cancel_tapp_ai_tasks(subject_id, tapp_id).await;
     super::events::disconnect_tapp_events(subject_id, tapp_id).await;
+    super::data_exchange::cancel_tapp_data_exchanges(subject_id, tapp_id).await;
     revoked
 }
 
@@ -450,6 +453,7 @@ pub async fn revoke_all_tapp_runtime_grants(tapp_id: &str) -> usize {
     };
     super::ai_tasks::cancel_all_tapp_ai_tasks(tapp_id).await;
     super::events::disconnect_all_tapp_events(tapp_id).await;
+    super::data_exchange::cancel_all_tapp_data_exchanges(tapp_id).await;
     revoked
 }
 

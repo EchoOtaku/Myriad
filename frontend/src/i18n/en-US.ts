@@ -1749,6 +1749,23 @@ export const enUS: TranslationKeys = {
     installing: 'Installing...',
     version: 'Version',
     author: 'Author',
+    dataExchangeConsentTitle: 'Allow this data request?',
+    dataExchangeConsentSubtitle:
+      'Both Tapps declare this data contract, but your one-time approval is still required.',
+    dataExchangeRoute: 'Data request direction',
+    dataExchangeRequester: 'Requester',
+    dataExchangeProvider: 'Data provider',
+    dataExchangeData: 'Data',
+    dataExchangePurpose: 'Purpose',
+    dataExchangeScope: 'Requested scope',
+    dataExchangeNoScope: 'No additional scope specified',
+    dataExchangeLimit: 'Maximum response',
+    dataExchangeExpires: 'Expires in',
+    dataExchangeQueued: '{count} more requests are waiting for approval',
+    dataExchangeOnceHint:
+      'Approval applies only to this exact request and expires after completion, failure, or timeout.',
+    dataExchangeDeny: 'Deny',
+    dataExchangeAllowOnce: 'Allow once',
 
     // Categories
     categoryAI: 'AI App',

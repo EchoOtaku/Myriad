@@ -1664,6 +1664,23 @@ export const zhCN: TranslationKeys = {
     installing: '安装中...',
     version: '版本',
     author: '作者',
+    dataExchangeConsentTitle: '允许本次数据调取？',
+    dataExchangeConsentSubtitle:
+      '两个 Tapp 都已声明此数据接口，但仍需要你的单次授权。',
+    dataExchangeRoute: '数据调取方向',
+    dataExchangeRequester: '调用方',
+    dataExchangeProvider: '数据提供方',
+    dataExchangeData: '数据',
+    dataExchangePurpose: '用途',
+    dataExchangeScope: '请求范围',
+    dataExchangeNoScope: '未指定额外范围',
+    dataExchangeLimit: '最大返回',
+    dataExchangeExpires: '自动过期',
+    dataExchangeQueued: '另有 {count} 个请求正在等待确认',
+    dataExchangeOnceHint:
+      '授权只对上面这一项请求生效，完成、失败或超时后立即失效。',
+    dataExchangeDeny: '拒绝',
+    dataExchangeAllowOnce: '仅允许本次',
 
     // 分类
     categoryAI: 'AI 应用',

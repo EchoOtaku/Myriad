@@ -226,13 +226,15 @@ Manifest operation/model tier/context/output 声明，并将任务绑定 subject
 | ------ | -------------------------------------------------------- | ---------------------------- |
 | POST   | `/api/tapp/data-exchange/requests`                       | 校验双方 Manifest 并准备请求 |
 | POST   | `/api/tapp/data-exchange/requests/{requestId}/authorize` | 宿主确认后签发一次性 Grant   |
-| DELETE | `/api/tapp/data-exchange/requests/{requestId}`           | 拒绝/关闭弹窗时取消          |
+| DELETE | `/api/tapp/data-exchange/requests/{requestId}`           | 拒绝/关闭并撤销请求或 Grant  |
 | POST   | `/api/tapp/data-exchange/consume`                        | 提供方提交并原子消费 Grant   |
 
 准备请求 body 为 `{targetTappId, exportId, params, purpose}`。只有调用方声明 import、提供方
-声明同名 export、双方可由同一 subject 访问时才返回弹窗元数据。授权端点只允许原 requester
-runtime 调用；返回的一次性 token 60 秒过期且留在宿主。consume 必须携带匹配 Tapp ID、subject
-与安装 owner 的 provider Runtime Grant，服务端先删除一次性 token，再验证响应 schema、
+声明同名 export、双方可由同一 subject 访问时才返回包含 `params` 的弹窗元数据。授权端点只
+允许原 requester runtime 调用；返回的一次性 token 60 秒过期且留在宿主。DELETE 在授权前
+删除 prepared request，授权后按 requestId 删除活动 Grant。runtime 撤销、Tapp 停止、更新和
+卸载也会清理 requester 状态；提供方 Tapp 停止或卸载会清理指向它的请求与 Grant。consume
+必须携带匹配 Tapp ID、subject 与安装 owner 的 provider Runtime Grant，服务端先删除一次性 token，再验证响应 schema、
 `maxBytes` 和 `maxRecords`，因此失败
 也不能重放。详细 SDK 契约见 [Data Exchange API](API_REFERENCE.md#跨-tapp-data-exchange-api)。
 

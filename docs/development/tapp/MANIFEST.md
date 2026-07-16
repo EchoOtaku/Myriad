@@ -430,8 +430,10 @@ const response = await Tapp.api("data", { region: "jp" });
 const summary = await Tapp.api("summarize", { prompt: "总结这些数据" });
 ```
 
-> `Tapp.api(name, params)` 只能调用当前解析到的 manifest 的 `apis[name]`。缓存键包含 owner，
-> 不会在不同 owner 间复用定义；同 ID 冲突时当前兼容规则选择管理员公开版本。
+> `Tapp.api(name, params)` 只能调用当前解析到的 manifest 的 `apis[name]`。声明解析缓存键包含
+> owner 和 `apis` 内容指纹，其他副本更新 Manifest 后不会继续执行旧定义。响应缓存还包含
+> owner、当前用户/角色、客户端上下文、API 定义指纹和参数摘要，不会跨安装或旧 endpoint
+> 复用；进程内解析、响应和 Geo 缓存均有 TTL 与容量回收。同 ID 冲突时选择管理员公开版本。
 
 ---
 
@@ -439,7 +441,8 @@ const summary = await Tapp.api("summarize", { prompt: "总结这些数据" });
 
 Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 而开放。提供方必须声明
 具名 `exports`，调用方必须声明匹配的 `imports`；声明只表示接口兼容，每次真实调用仍会
-显示宿主的“仅本次”授权弹窗。
+进入宿主授权队列，并显示包含双方 Tapp、请求范围、用途、返回上限和过期时间的“仅本次”
+授权弹窗。
 
 ```json
 {

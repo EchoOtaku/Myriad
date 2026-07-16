@@ -101,11 +101,13 @@ const playlist = await Tapp.dataExchange.request({
   exportId: "playlist.current",
   params: { fields: ["title", "artist"] },
   purpose: "把当前播放列表加入周报",
-每次 `request()` 都会显示一次宿主授权弹窗，列出调用方、提供方、数据名称、用途和上限。
-首版不提供“始终允许”。用户拒绝、弹窗关闭、提供方离线、30 秒未响应、响应超限或 schema
-不匹配都会拒绝调用；不会返回部分结果。Runtime Grant 与一次性 token 都只存在于宿主，
-不会进入 iframe 或 `postMessage`。当前仅从已在线并注册 handler 的 Page、Widget 或
-headless runtime 中选择提供方，不会为没有后台实例的 Tapp 隐式启动完整 Page。
+每次 `request()` 都会进入宿主授权队列，并显示一张结构化弹窗，列出调用方、提供方、数据
+名称、请求参数/字段范围、用途、返回上限和自动过期倒计时。弹窗默认聚焦“拒绝”，Escape、
+遮罩和关闭按钮都视为拒绝；多个请求按顺序逐项确认。首版不提供“始终允许”。用户拒绝、
+弹窗关闭、调用方销毁、提供方离线、30 秒未响应、响应超限或 schema 不匹配都会拒绝调用；
+不会返回部分结果。Runtime Grant 与一次性 token 都只存在于宿主，不会进入 iframe 或
+`postMessage`。当前仅从已在线并注册 handler 的 Page、Widget 或 headless runtime 中选择
+提供方，不会为没有后台实例的 Tapp 隐式启动完整 Page。
 
 ---
 

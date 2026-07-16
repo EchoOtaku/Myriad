@@ -18,7 +18,7 @@ use sea_orm::{
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
 
@@ -127,7 +127,7 @@ pub static PLATFORM_CACHE: Lazy<Arc<RwLock<TtlCache<Value>>>> =
     Lazy::new(|| Arc::new(RwLock::new(TtlCache::new(Duration::from_secs(30)))));
 
 /// 每个平台共享一把锁，使缓存未命中的文件读取和 read-modify-write 串行化。
-static PLATFORM_LOCKS: Lazy<RwLock<HashMap<String, Arc<Mutex<()>>>>> =
+static PLATFORM_LOCKS: Lazy<RwLock<HashMap<String, Weak<Mutex<()>>>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
 /// 平台列表缓存（60秒 TTL）
@@ -189,14 +189,14 @@ pub async fn acquire_platform_lock(platform: &str) -> Result<OwnedMutexGuard<()>
     validate_platform_name(platform)?;
     let key = platform.to_lowercase();
     let lock = {
-        if let Some(lock) = PLATFORM_LOCKS.read().await.get(&key).cloned() {
+        let mut locks = PLATFORM_LOCKS.write().await;
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = locks.get(&key).and_then(Weak::upgrade) {
             lock
         } else {
-            let mut locks = PLATFORM_LOCKS.write().await;
-            locks
-                .entry(key)
-                .or_insert_with(|| Arc::new(Mutex::new(())))
-                .clone()
+            let lock = Arc::new(Mutex::new(()));
+            locks.insert(key, Arc::downgrade(&lock));
+            lock
         }
     };
     Ok(lock.lock_owned().await)

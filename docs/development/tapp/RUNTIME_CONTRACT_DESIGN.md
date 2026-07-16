@@ -99,9 +99,11 @@ const playlist = await Tapp.dataExchange.request({
 });
 ```
 
-声明只表示接口兼容，不等于用户已授权。每次逻辑数据交换都必须由宿主展示原生授权弹窗，
-清楚列出：调用方 Tapp、数据提供方 Tapp、export/字段范围、用途、最大记录数或字节数，以及
-“仅本次”有效范围。当前版本不提供“始终允许”；关闭弹窗、拒绝或超时都返回明确错误。
+声明只表示接口兼容，不等于用户已授权。每次逻辑数据交换都必须进入宿主统一授权队列，由
+可访问的 React 弹窗清楚列出：调用方 Tapp、数据提供方 Tapp、export、请求参数/字段范围、
+用途、最大记录数或字节数、剩余有效时间，以及“仅本次”有效范围。弹窗默认聚焦“拒绝”，
+支持 Escape、点击遮罩和关闭按钮拒绝；并发请求逐项排队，不会用多个浏览器对话框抢占页面。
+当前版本不提供“始终允许”；关闭、拒绝、runtime 销毁或超时都返回明确错误。
 
 ### 一次性 Data Access Grant
 
@@ -126,9 +128,13 @@ const playlist = await Tapp.dataExchange.request({
 ```
 
 - Grant 只存在于宿主与后端之间，不暴露给任一 iframe；60 秒过期。
+- 每个 subject 最多 32 个 prepared request 和 32 个活动 Grant；计数与写入在 PostgreSQL
+  advisory lock 事务内完成，多副本并发不能绕过上限。单个 runtime 在宿主侧最多同时发起
+  3 个交换，避免恶意或失控 Tapp 制造授权弹窗洪泛。
 - 后端在 Provider 返回后以原子操作消费 Grant。一次逻辑请求只能返回一个受限结果，不能
   换参数、换 export、换目标或重放；成功和失败响应都会耗尽 token。宿主超时后丢弃 pending
-  调用，未消费 token 最迟在 60 秒 TTL 到期时失效。
+  调用并主动撤销 token。请求方 runtime 关闭、Tapp 停止/更新/卸载或提供方停止/卸载时，
+  对应 prepared request 和已签发 Grant 也会立即从共享 registry 删除；TTL 只是最终兜底。
 - 只允许相同 `subjectId` 的 Tapp 交换数据。跨用户、跨租户数据访问不能靠弹窗放行。
 - Provider 的 Tapp ID 和安装 owner 都必须与其 Runtime Grant 一致，防止管理员共享版与用户
   自有同 ID 安装发生错配。
@@ -150,7 +156,7 @@ sequenceDiagram
   R->>H: request(target, export, params, purpose)
   H->>X: Runtime Grant + request
   X->>X: validate both manifests and same subject
-  H->>U: one-shot consent dialog
+  H->>U: queued one-shot consent dialog
   U-->>H: allow once
   H->>X: authorize one-shot Data Access Grant
   X-->>H: host-only token
@@ -374,8 +380,8 @@ Manifest 只声明能力与预算层级，不暴露供应商参数：
 5. Agent Interaction：在 Runtime Grant 与事件/任务基础上实现 Interaction 状态机；
 6. 删除无消费者的旧 SDK、Bridge handler 与后端端点，只保留当前协议。
 
-当前进度：1 已完成核心路由迁移和共享 Grant；2 已完成 Manifest round-trip、宿主授权弹窗、在线
-Provider broker、一次性 Grant、同 subject 隔离及响应边界；3 已完成持久化用量账本、任务
+当前进度：1 已完成核心路由迁移和共享 Grant；2 已完成 Manifest round-trip、宿主授权队列与
+结构化弹窗、在线 Provider broker、一次性 Grant、同 subject 隔离、主动撤销及响应边界；3 已完成持久化用量账本、任务
 状态机、上下文/输出校验和 SSE；4 已完成在线 at-most-once 路由与 Manifest allowlist；5 已完成
 interaction schema、CAS 接受/提交/拒绝状态机、Executor 恢复以及
 `ui.open`、`report.create`、`dataExchange.request` 宿主 adapter。在线状态使用 PostgreSQL

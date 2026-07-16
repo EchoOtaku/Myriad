@@ -454,14 +454,18 @@ export function generateFullSDK(
         if (typeof exportId !== 'string' || typeof handler !== 'function') {
           throw new Error('exportId and provider handler are required');
         }
+        if (dataExchangeProviders.has(exportId)) {
+          throw new Error('Data Exchange provider is already registered: ' + exportId);
+        }
         dataExchangeProviders.set(exportId, handler);
         try {
           await sendRequest('dataExchange', 'registerProvider', [exportId]);
         } catch (error) {
-          dataExchangeProviders.delete(exportId);
+          if (dataExchangeProviders.get(exportId) === handler) dataExchangeProviders.delete(exportId);
           throw error;
         }
         return () => {
+          if (dataExchangeProviders.get(exportId) !== handler) return;
           dataExchangeProviders.delete(exportId);
           sendRequest('dataExchange', 'unregisterProvider', [exportId]).catch(() => {});
         };
@@ -1072,14 +1076,18 @@ export function generateWidgetSDK(
         if (typeof exportId !== 'string' || typeof handler !== 'function') {
           return Promise.reject(new Error('exportId and provider handler are required'));
         }
+        if (dataExchangeProviders.has(exportId)) {
+          return Promise.reject(new Error('Data Exchange provider is already registered: ' + exportId));
+        }
         dataExchangeProviders.set(exportId, handler);
         return sendRequest('dataExchange', 'registerProvider', [exportId]).then(function() {
           return function() {
+            if (dataExchangeProviders.get(exportId) !== handler) return;
             dataExchangeProviders.delete(exportId);
             sendRequest('dataExchange', 'unregisterProvider', [exportId]).catch(function() {});
           };
         }, function(error) {
-          dataExchangeProviders.delete(exportId);
+          if (dataExchangeProviders.get(exportId) === handler) dataExchangeProviders.delete(exportId);
           throw error;
         });
       }

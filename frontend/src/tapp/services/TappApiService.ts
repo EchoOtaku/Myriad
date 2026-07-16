@@ -289,6 +289,7 @@ export interface PreparedDataExchange {
   providerName: string
   exportId: string
   exportDescription?: string
+  params: unknown
   purpose: string
   maxBytes: number
   maxRecords?: number

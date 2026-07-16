@@ -53,6 +53,7 @@ struct PreparedRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct StoredDataAccessGrant {
     grant_id: String,
+    request_id: String,
     requester_runtime_id: String,
     requester_tapp_id: String,
     provider_tapp_id: String,
@@ -86,6 +87,7 @@ pub struct PreparedDataExchangeResponse {
     provider_name: String,
     export_id: String,
     export_description: Option<String>,
+    params: Value,
     purpose: String,
     max_bytes: usize,
     max_records: Option<usize>,
@@ -463,23 +465,7 @@ pub async fn prepare_data_exchange(
         expires_at,
     };
 
-    let pending = shared_registry::list(&db, PREPARED_NAMESPACE, Some(grant.subject_id()), None)
-        .await
-        .map_err(|_| {
-            api_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "DATA_EXCHANGE_REGISTRY_UNAVAILABLE",
-                "Data Exchange registry is unavailable",
-            )
-        })?;
-    if pending.len() >= MAX_PENDING_REQUESTS_PER_SUBJECT {
-        return Err(api_error(
-            StatusCode::TOO_MANY_REQUESTS,
-            "DATA_EXCHANGE_PENDING_LIMIT",
-            "Too many pending Data Exchange requests",
-        ));
-    }
-    shared_registry::put(
+    let inserted = shared_registry::put_with_subject_limit(
         &db,
         PREPARED_NAMESPACE,
         &request_id,
@@ -491,6 +477,7 @@ pub async fn prepare_data_exchange(
         },
         &prepared,
         expires_at,
+        MAX_PENDING_REQUESTS_PER_SUBJECT,
     )
     .await
     .map_err(|_| {
@@ -500,6 +487,13 @@ pub async fn prepare_data_exchange(
             "Data Exchange registry is unavailable",
         )
     })?;
+    if !inserted {
+        return Err(api_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "DATA_EXCHANGE_PENDING_LIMIT",
+            "Too many pending Data Exchange requests",
+        ));
+    }
 
     Ok(Json(PreparedDataExchangeResponse {
         request_id,
@@ -510,6 +504,7 @@ pub async fn prepare_data_exchange(
         provider_name: provider.name,
         export_id: export.id,
         export_description: export.description,
+        params: prepared.params,
         purpose,
         max_bytes: export.max_bytes,
         max_records: export.max_records,
@@ -576,6 +571,7 @@ pub async fn authorize_data_exchange(
     let expires_at = now + DATA_ACCESS_GRANT_TTL.as_secs() as i64;
     let stored = StoredDataAccessGrant {
         grant_id: grant_id.clone(),
+        request_id: prepared.request_id.clone(),
         requester_runtime_id: prepared.requester_runtime_id.clone(),
         requester_tapp_id: prepared.requester_tapp_id.clone(),
         provider_tapp_id: prepared.provider_tapp_id.clone(),
@@ -588,34 +584,19 @@ pub async fn authorize_data_exchange(
         expires_at,
     };
 
-    let grants = shared_registry::list(&db, DATA_GRANT_NAMESPACE, Some(grant.subject_id()), None)
-        .await
-        .map_err(|_| {
-            api_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "DATA_EXCHANGE_REGISTRY_UNAVAILABLE",
-                "Data Exchange registry is unavailable",
-            )
-        })?;
-    if grants.len() >= MAX_ACTIVE_GRANTS_PER_SUBJECT {
-        return Err(api_error(
-            StatusCode::TOO_MANY_REQUESTS,
-            "DATA_ACCESS_GRANT_LIMIT",
-            "Too many active one-shot Data Access Grants",
-        ));
-    }
-    shared_registry::put(
+    let inserted = shared_registry::put_with_subject_limit(
         &db,
         DATA_GRANT_NAMESPACE,
         &token_hash(&token),
         RegistryIdentity {
             subject_id: Some(grant.subject_id()),
-            owner_id: Some(prepared.provider_owner_id),
-            tapp_id: Some(&prepared.provider_tapp_id),
-            runtime_id: None,
+            owner_id: Some(grant.owner_id()),
+            tapp_id: Some(&prepared.requester_tapp_id),
+            runtime_id: Some(&prepared.requester_runtime_id),
         },
         &stored,
         expires_at,
+        MAX_ACTIVE_GRANTS_PER_SUBJECT,
     )
     .await
     .map_err(|_| {
@@ -625,6 +606,13 @@ pub async fn authorize_data_exchange(
             "Data Exchange registry is unavailable",
         )
     })?;
+    if !inserted {
+        return Err(api_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "DATA_ACCESS_GRANT_LIMIT",
+            "Too many active one-shot Data Access Grants",
+        ));
+    }
 
     tracing::info!(
         grant_id = %grant_id,
@@ -668,15 +656,125 @@ pub async fn cancel_data_exchange(
                 "Data Exchange registry is unavailable",
             )
         })?;
-    let belongs = request.as_ref().is_some_and(|request| {
+    let prepared_belongs = request.as_ref().is_some_and(|request| {
         request.subject_id == grant.subject_id()
             && request.requester_runtime_id == grant.runtime_id()
             && request.requester_tapp_id == grant.tapp_id()
     });
-    if belongs {
-        let _ = shared_registry::delete(&db, PREPARED_NAMESPACE, &request_id).await;
+    let mut cancelled = false;
+    if prepared_belongs {
+        cancelled = shared_registry::delete(&db, PREPARED_NAMESPACE, &request_id)
+            .await
+            .map_err(|_| {
+                api_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "DATA_EXCHANGE_REGISTRY_UNAVAILABLE",
+                    "Data Exchange registry is unavailable",
+                )
+            })?;
     }
-    Ok(Json(json!({ "success": true, "cancelled": belongs })))
+
+    // Once authorized, the prepared request has already been removed. Locate
+    // the host-only one-shot grant by its request id so runtime teardown and
+    // explicit cancellation revoke it immediately instead of waiting for TTL.
+    cancelled |= shared_registry::delete_matching_payload_text(
+        &db,
+        DATA_GRANT_NAMESPACE,
+        Some(grant.subject_id()),
+        Some(grant.tapp_id()),
+        Some(grant.runtime_id()),
+        "request_id",
+        &request_id,
+    )
+    .await
+    .map_err(|_| {
+        api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "DATA_EXCHANGE_REGISTRY_UNAVAILABLE",
+            "Data Exchange registry is unavailable",
+        )
+    })? > 0;
+    Ok(Json(json!({ "success": true, "cancelled": cancelled })))
+}
+
+async fn delete_exchange_scope(
+    namespace: &str,
+    subject_id: Option<i32>,
+    tapp_id: Option<&str>,
+    runtime_id: Option<&str>,
+) {
+    match shared_registry::database().await {
+        Ok(db) => {
+            if let Err(error) =
+                shared_registry::delete_matching(&db, namespace, subject_id, tapp_id, runtime_id)
+                    .await
+            {
+                tracing::error!(%error, namespace, "[TAPP] Failed to revoke Data Exchange state");
+            }
+        }
+        Err(error) => {
+            tracing::error!(%error, namespace, "[TAPP] Data Exchange registry is unavailable during revocation");
+        }
+    }
+}
+
+async fn delete_provider_exchange_scope(subject_id: Option<i32>, provider_tapp_id: &str) {
+    let db = match shared_registry::database().await {
+        Ok(db) => db,
+        Err(error) => {
+            tracing::error!(%error, "[TAPP] Data Exchange registry is unavailable during provider revocation");
+            return;
+        }
+    };
+
+    for namespace in [PREPARED_NAMESPACE, DATA_GRANT_NAMESPACE] {
+        if let Err(error) = shared_registry::delete_matching_payload_text(
+            &db,
+            namespace,
+            subject_id,
+            None,
+            None,
+            "provider_tapp_id",
+            provider_tapp_id,
+        )
+        .await
+        {
+            tracing::error!(%error, namespace, "[TAPP] Failed to revoke provider Data Exchange state");
+        }
+    }
+}
+
+pub(super) async fn cancel_runtime_data_exchanges(
+    subject_id: i32,
+    tapp_id: &str,
+    runtime_id: &str,
+) {
+    delete_exchange_scope(
+        PREPARED_NAMESPACE,
+        Some(subject_id),
+        Some(tapp_id),
+        Some(runtime_id),
+    )
+    .await;
+    delete_exchange_scope(
+        DATA_GRANT_NAMESPACE,
+        Some(subject_id),
+        Some(tapp_id),
+        Some(runtime_id),
+    )
+    .await;
+}
+
+pub(super) async fn cancel_tapp_data_exchanges(subject_id: i32, tapp_id: &str) {
+    delete_exchange_scope(PREPARED_NAMESPACE, Some(subject_id), Some(tapp_id), None).await;
+    delete_exchange_scope(DATA_GRANT_NAMESPACE, Some(subject_id), Some(tapp_id), None).await;
+    delete_provider_exchange_scope(Some(subject_id), tapp_id).await;
+}
+
+pub(super) async fn cancel_all_tapp_data_exchanges(tapp_id: &str) {
+    delete_exchange_scope(PREPARED_NAMESPACE, None, Some(tapp_id), None).await;
+    delete_exchange_scope(DATA_GRANT_NAMESPACE, None, Some(tapp_id), None).await;
+    delete_provider_exchange_scope(None, tapp_id).await;
 }
 
 /// POST /api/tapp/data-exchange/consume

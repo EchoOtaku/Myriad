@@ -1,21 +1,30 @@
+import type { OneShotDataAccessGrant } from '../services/TappApiService'
 import type { TappInstance, TappMessage } from '../types'
+import type { TappBridge } from './TappBridge'
 import {
   authorizeDataExchange,
   cancelDataExchange,
   consumeDataExchange,
   prepareDataExchange,
-  type OneShotDataAccessGrant,
-  type PreparedDataExchange,
 } from '../services/TappApiService'
-import type { TappBridge } from './TappBridge'
+import { requestDataExchangeConsent } from './DataExchangeConsent'
 
 const PROVIDER_TIMEOUT_MS = 30_000
-const DATA_EXCHANGE_ID = /^[A-Za-z0-9_.-]{1,128}$/
+const MAX_ACTIVE_REQUESTS_PER_RUNTIME = 3
+const DATA_EXCHANGE_ID = /^[\w.-]{1,128}$/
 
 interface RuntimeRegistration {
   bridge: TappBridge
   instance: TappInstance
   exports: Set<string>
+  activeRequests: number
+}
+
+interface PendingConsentInvocation {
+  requester: RuntimeRegistration
+  provider: RuntimeRegistration
+  exportId: string
+  controller: AbortController
 }
 
 interface DataExchangeRequest {
@@ -46,48 +55,9 @@ function getArgs(message: TappMessage): unknown[] {
   return (message.payload as { args?: unknown[] } | undefined)?.args ?? []
 }
 
-function formatLimit(prepared: PreparedDataExchange): string {
-  const byteLimit = `${Math.ceil(prepared.maxBytes / 1024)} KiB`
-  return prepared.maxRecords
-    ? `${prepared.maxRecords} 条记录 / ${byteLimit}`
-    : byteLimit
-}
-
-/**
- * Trusted host consent surface. The sandbox cannot call window.confirm itself
- * and never receives either the Runtime Grant or one-shot Data Access token.
- */
-function confirmOneShotAccess(prepared: PreparedDataExchange): boolean {
-  const language = navigator.language.toLowerCase()
-  if (language.startsWith('ja')) {
-    return window.confirm(
-      `「${prepared.requesterName}」が「${prepared.providerName}」からデータを取得しようとしています。\n\n` +
-        `データ: ${prepared.exportDescription || prepared.exportId}\n` +
-        `目的: ${prepared.purpose}\n` +
-        `上限: ${formatLimit(prepared)}\n\n` +
-        '今回の1回だけ許可しますか？',
-    )
-  }
-  if (!language.startsWith('zh')) {
-    return window.confirm(
-      `“${prepared.requesterName}” wants data from “${prepared.providerName}”.\n\n` +
-        `Data: ${prepared.exportDescription || prepared.exportId}\n` +
-        `Purpose: ${prepared.purpose}\n` +
-        `Limit: ${formatLimit(prepared)}\n\n` +
-        'Allow this request once?',
-    )
-  }
-  return window.confirm(
-    `“${prepared.requesterName}”想从“${prepared.providerName}”调取数据。\n\n` +
-      `数据：${prepared.exportDescription || prepared.exportId}\n` +
-      `用途：${prepared.purpose}\n` +
-      `上限：${formatLimit(prepared)}\n\n` +
-      '是否仅允许本次调用？',
-  )
-}
-
 class DataExchangeBroker {
   private readonly runtimes = new Set<RuntimeRegistration>()
+  private readonly pendingConsents = new Set<PendingConsentInvocation>()
   private readonly pending = new Map<string, PendingInvocation>()
 
   register(bridge: TappBridge, instance: TappInstance): () => void {
@@ -95,6 +65,7 @@ class DataExchangeBroker {
       bridge,
       instance,
       exports: new Set(),
+      activeRequests: 0,
     }
     this.runtimes.add(runtime)
 
@@ -121,6 +92,12 @@ class DataExchangeBroker {
       async (message) => {
         const [exportId] = getArgs(message) as [string]
         runtime.exports.delete(exportId)
+        for (const consent of this.pendingConsents) {
+          if (consent.provider === runtime && consent.exportId === exportId) {
+            consent.controller.abort()
+            this.pendingConsents.delete(consent)
+          }
+        }
         return { success: true, data: null }
       },
     )
@@ -155,6 +132,12 @@ class DataExchangeBroker {
 
     return () => {
       this.runtimes.delete(runtime)
+      for (const consent of this.pendingConsents) {
+        if (consent.requester === runtime || consent.provider === runtime) {
+          consent.controller.abort()
+          this.pendingConsents.delete(consent)
+        }
+      }
       for (const [requestId, invocation] of this.pending) {
         if (
           invocation.provider === runtime ||
@@ -227,60 +210,110 @@ class DataExchangeBroker {
       throw new Error('Invalid Data Exchange request')
     }
 
-    const runtimeGrant = await requester.bridge.getRuntimeGrant()
-    const prepared = await prepareDataExchange(
-      {
-        targetTappId: request.targetTappId,
-        exportId: request.exportId,
-        params: request.params ?? null,
-        purpose: request.purpose,
-      },
-      runtimeGrant,
-    )
+    if (requester.activeRequests >= MAX_ACTIVE_REQUESTS_PER_RUNTIME) {
+      throw new Error('Too many active Data Exchange requests')
+    }
+    requester.activeRequests += 1
 
-    const provider = await this.findProvider(
-      request.targetTappId,
-      request.exportId,
-      prepared.providerOwnerId,
-    )
-    if (!provider) {
-      await cancelDataExchange(prepared.requestId, runtimeGrant).catch(() => {})
-      throw new Error(
-        `Data provider is not running: ${request.targetTappId}/${request.exportId}`,
+    try {
+      const runtimeGrant = await requester.bridge.getRuntimeGrant()
+      const prepared = await prepareDataExchange(
+        {
+          targetTappId: request.targetTappId,
+          exportId: request.exportId,
+          params: request.params ?? null,
+          purpose: request.purpose,
+        },
+        runtimeGrant,
       )
-    }
 
-    if (!confirmOneShotAccess(prepared)) {
-      await cancelDataExchange(prepared.requestId, runtimeGrant).catch(() => {})
-      throw new Error('Data Exchange request was denied')
-    }
-
-    const access = await authorizeDataExchange(prepared.requestId, runtimeGrant)
-
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(prepared.requestId)
-        void cancelDataExchange(prepared.requestId, runtimeGrant).catch(
+      const provider = await this.findProvider(
+        request.targetTappId,
+        request.exportId,
+        prepared.providerOwnerId,
+      )
+      if (!provider) {
+        await cancelDataExchange(prepared.requestId, runtimeGrant).catch(
           () => {},
         )
-        reject(new Error('Data provider response timed out'))
-      }, PROVIDER_TIMEOUT_MS)
-      this.pending.set(prepared.requestId, {
+        throw new Error(
+          `Data provider is not running: ${request.targetTappId}/${request.exportId}`,
+        )
+      }
+
+      const consentController = new AbortController()
+      const pendingConsent: PendingConsentInvocation = {
         requester,
         provider,
-        requesterRuntimeGrant: runtimeGrant,
-        access,
-        resolve,
-        reject,
-        timeout,
+        exportId: request.exportId,
+        controller: consentController,
+      }
+      this.pendingConsents.add(pendingConsent)
+      const consent = await requestDataExchangeConsent(
+        prepared,
+        consentController.signal,
+      ).finally(() => this.pendingConsents.delete(pendingConsent))
+      if (consent !== 'allow') {
+        await cancelDataExchange(prepared.requestId, runtimeGrant).catch(
+          () => {},
+        )
+        if (consent === 'expired') {
+          throw new Error('Data Exchange authorization expired')
+        }
+        if (consent === 'cancelled') {
+          throw new Error('Data Exchange runtime stopped')
+        }
+        throw new Error('Data Exchange request was denied')
+      }
+      if (!this.runtimes.has(requester)) {
+        await cancelDataExchange(prepared.requestId, runtimeGrant).catch(
+          () => {},
+        )
+        throw new Error('Data Exchange requester runtime stopped')
+      }
+      if (
+        !this.runtimes.has(provider) ||
+        !provider.exports.has(request.exportId)
+      ) {
+        await cancelDataExchange(prepared.requestId, runtimeGrant).catch(
+          () => {},
+        )
+        throw new Error('Data provider stopped before authorization completed')
+      }
+
+      const access = await authorizeDataExchange(
+        prepared.requestId,
+        runtimeGrant,
+      )
+
+      const result = await new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.pending.delete(prepared.requestId)
+          void cancelDataExchange(prepared.requestId, runtimeGrant).catch(
+            () => {},
+          )
+          reject(new Error('Data provider response timed out'))
+        }, PROVIDER_TIMEOUT_MS)
+        this.pending.set(prepared.requestId, {
+          requester,
+          provider,
+          requesterRuntimeGrant: runtimeGrant,
+          access,
+          resolve,
+          reject,
+          timeout,
+        })
+        provider.bridge.emit('dataExchange:invoke', {
+          requestId: prepared.requestId,
+          exportId: prepared.exportId,
+          params: access.params,
+          purpose: access.purpose,
+        })
       })
-      provider.bridge.emit('dataExchange:invoke', {
-        requestId: prepared.requestId,
-        exportId: prepared.exportId,
-        params: access.params,
-        purpose: access.purpose,
-      })
-    })
+      return result
+    } finally {
+      requester.activeRequests = Math.max(0, requester.activeRequests - 1)
+    }
   }
 
   private async respond(

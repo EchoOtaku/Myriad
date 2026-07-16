@@ -12,9 +12,9 @@ use once_cell::sync::Lazy;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
@@ -23,26 +23,28 @@ use crate::api::tapp_store::{TappApiAccess, TappApiDef};
 use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
-type GeoCache = Arc<RwLock<HashMap<String, (GeoInfo, Instant)>>>;
-
 // 预编译模板变量正则，避免每次调用都重新编译
 static TEMPLATE_RE: Lazy<regex::Regex> =
     Lazy::new(|| regex::Regex::new(r"\{\{([^}]+)\}\}").expect("Invalid template regex"));
 
 // Geo 信息缓存（按 IP，10分钟 TTL）
-static GEO_CACHE: Lazy<GeoCache> = Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+static GEO_CACHE: Lazy<RwLock<HashMap<String, (GeoInfo, Instant)>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
 const GEO_CACHE_TTL: Duration = Duration::from_secs(600);
+const MAX_GEO_CACHE_ENTRIES: usize = 2048;
 
 // ============ API 响应缓存 ============
 
 struct CacheEntry {
     data: Value,
     expires_at: Instant,
+    cached_at: Instant,
 }
 
-static API_CACHE: Lazy<Arc<RwLock<HashMap<String, CacheEntry>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+static API_CACHE: Lazy<RwLock<HashMap<String, CacheEntry>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+const MAX_API_CACHE_ENTRIES: usize = 2048;
 
 // ============ 上下文类型 ============
 
@@ -51,6 +53,8 @@ static API_CACHE: Lazy<Arc<RwLock<HashMap<String, CacheEntry>>>> =
 pub struct ApiExecutionContext {
     /// 用户 ID（负数表示游客）
     pub user_id: i32,
+    /// Manifest 所属安装 owner；共享管理员 Tapp 与用户 Tapp 不能共用响应缓存。
+    pub owner_id: i32,
     /// 用户名
     pub username: String,
     /// 是否是管理员
@@ -114,7 +118,7 @@ impl TappApiService {
         }
 
         // 2. 检查缓存
-        let cache_key = Self::generate_cache_key(tapp_id, api_name, &params, context);
+        let cache_key = Self::generate_cache_key(tapp_id, api_name, api_def, &params, context);
         if api_def.cache_ttl > 0 {
             if let Some(cached) = Self::get_cached(&cache_key).await {
                 return ApiExecutionResult {
@@ -398,6 +402,17 @@ impl TappApiService {
                             .to_string(),
                     };
                     let mut cache = GEO_CACHE.write().await;
+                    cache.retain(|_, (_, cached_at)| cached_at.elapsed() < GEO_CACHE_TTL);
+                    while cache.len() >= MAX_GEO_CACHE_ENTRIES {
+                        let Some(oldest) = cache
+                            .iter()
+                            .min_by_key(|(_, (_, cached_at))| *cached_at)
+                            .map(|(key, _)| key.clone())
+                        else {
+                            break;
+                        };
+                        cache.remove(&oldest);
+                    }
                     cache.insert(ip.to_string(), (geo.clone(), Instant::now()));
                     return geo;
                 }
@@ -743,21 +758,33 @@ impl TappApiService {
     fn generate_cache_key(
         tapp_id: &str,
         api_name: &str,
+        api_def: &TappApiDef,
         params: &Option<Value>,
         context: &ApiExecutionContext,
     ) -> String {
         let params_hash = params
             .as_ref()
-            .map(|p| format!("{:x}", md5::compute(p.to_string())))
+            .map(|params| format!("{:x}", Sha256::digest(params.to_string().as_bytes())))
             .unwrap_or_else(|| "none".to_string());
         let ip_hash = context
             .client_ip
             .as_ref()
-            .map(|ip| format!("{:x}", md5::compute(ip)))
+            .map(|ip| format!("{:x}", Sha256::digest(ip.as_bytes())))
             .unwrap_or_else(|| "none".to_string());
+        let username_hash = format!("{:x}", Sha256::digest(context.username.as_bytes()));
+        let definition = serde_json::to_vec(api_def).unwrap_or_default();
+        let definition_hash = format!("{:x}", Sha256::digest(definition));
         format!(
-            "tapp_api:{}:{}:{}:{}:{}",
-            tapp_id, context.user_id, ip_hash, api_name, params_hash
+            "tapp_api:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+            tapp_id,
+            context.owner_id,
+            context.user_id,
+            username_hash,
+            context.is_admin,
+            ip_hash,
+            api_name,
+            definition_hash,
+            params_hash
         )
     }
 
@@ -776,17 +803,26 @@ impl TappApiService {
     /// 设置缓存
     async fn set_cached(key: &str, data: &Value, ttl: u32) {
         let mut cache = API_CACHE.write().await;
+        let now = Instant::now();
+        cache.retain(|_, entry| entry.expires_at > now);
+        while cache.len() >= MAX_API_CACHE_ENTRIES {
+            let Some(oldest) = cache
+                .iter()
+                .min_by_key(|(_, entry)| entry.cached_at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            cache.remove(&oldest);
+        }
         cache.insert(
             key.to_string(),
             CacheEntry {
                 data: data.clone(),
-                expires_at: Instant::now() + Duration::from_secs(ttl as u64),
+                expires_at: now + Duration::from_secs(ttl as u64),
+                cached_at: now,
             },
         );
-
-        // 每次写入都清理过期条目，避免长期积压
-        let now = Instant::now();
-        cache.retain(|_, entry| entry.expires_at > now);
     }
 }
 
@@ -813,6 +849,7 @@ mod tests {
     fn context(user_id: i32, ip: &str) -> ApiExecutionContext {
         ApiExecutionContext {
             user_id,
+            owner_id: user_id,
             username: format!("user-{user_id}"),
             is_admin: false,
             client_ip: Some(ip.to_string()),
@@ -826,24 +863,75 @@ mod tests {
         let first = TappApiService::generate_cache_key(
             "com.example.app",
             "profile",
+            &api_def(),
             &params,
             &context(1, "203.0.113.1"),
         );
         let other_user = TappApiService::generate_cache_key(
             "com.example.app",
             "profile",
+            &api_def(),
             &params,
             &context(2, "203.0.113.1"),
         );
         let other_ip = TappApiService::generate_cache_key(
             "com.example.app",
             "profile",
+            &api_def(),
             &params,
             &context(1, "203.0.113.2"),
         );
 
         assert_ne!(first, other_user);
         assert_ne!(first, other_ip);
+    }
+
+    #[test]
+    fn declared_api_cache_changes_with_owner_and_definition() {
+        let params = Some(json!({ "query": "same" }));
+        let base = api_def();
+        let first_context = context(1, "203.0.113.1");
+        let first = TappApiService::generate_cache_key(
+            "com.example.app",
+            "profile",
+            &base,
+            &params,
+            &first_context,
+        );
+
+        let mut other_owner = first_context.clone();
+        other_owner.owner_id = 99;
+        let owner_key = TappApiService::generate_cache_key(
+            "com.example.app",
+            "profile",
+            &base,
+            &params,
+            &other_owner,
+        );
+
+        let mut elevated = first_context.clone();
+        elevated.is_admin = true;
+        let role_key = TappApiService::generate_cache_key(
+            "com.example.app",
+            "profile",
+            &base,
+            &params,
+            &elevated,
+        );
+
+        let mut changed = base.clone();
+        changed.endpoint = Some("https://changed.example".to_string());
+        let definition_key = TappApiService::generate_cache_key(
+            "com.example.app",
+            "profile",
+            &changed,
+            &params,
+            &first_context,
+        );
+
+        assert_ne!(first, owner_key);
+        assert_ne!(first, role_key);
+        assert_ne!(first, definition_key);
     }
 
     #[test]
