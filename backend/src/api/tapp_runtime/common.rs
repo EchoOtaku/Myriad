@@ -587,7 +587,10 @@ pub async fn find_admin_user_id(
     let result = db
         .query_one(Statement::from_string(
             DbBackend::Postgres,
-            "SELECT id FROM users WHERE is_admin = true LIMIT 1".to_string(),
+            // The public Tapp namespace belongs to the original site owner.
+            // Multiple administrator accounts may exist, so selection must be
+            // deterministic and match the profile/setup ownership rule.
+            "SELECT id FROM users WHERE is_admin = true ORDER BY id ASC LIMIT 1".to_string(),
         ))
         .await
         .map_err(|e| {
@@ -632,9 +635,10 @@ pub async fn get_admin_user_id(db: &DatabaseConnection) -> Result<i32, (StatusCo
 /// 验证用户是否有权访问指定的 Tapp
 ///
 /// 安全校验规则：
-/// - 管理员：可以访问所有 Tapp
-/// - 普通用户：可以访问自己安装的 Tapp + 管理员的公开 Tapp
-/// - 游客：只能访问管理员的公开 Tapp
+/// - 站点所有者、管理员和普通用户：只能运行站点所有者的公开 Tapp 或自己的安装
+/// - 游客：只能运行站点所有者的公开 Tapp
+///
+/// 管理员的控制面权限不能隐式变成其他用户 Tapp 的代码、授权或私有数据访问权。
 pub async fn verify_tapp_ownership(
     db: &DatabaseConnection,
     user_id: i32,
@@ -642,76 +646,37 @@ pub async fn verify_tapp_ownership(
 ) -> Result<(), (StatusCode, Json<Value>)> {
     let admin_id = get_admin_user_id(db).await?;
     let is_guest = user_id < 0;
-
-    if is_guest {
-        let admin_tapp = tapps::Entity::find()
-            .filter(tapps::Column::TappId.eq(tapp_id))
-            .filter(tapps::Column::UserId.eq(admin_id))
-            .one(db)
-            .await
-            .map_err(|e| {
-                tracing::error!("[TAPP] Database error in ownership verification: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": "Database error" })),
-                )
-            })?;
-
-        if admin_tapp.is_none() {
-            return Err((
-                StatusCode::FORBIDDEN,
-                Json(
-                    json!({ "error": "Access denied", "message": "This Tapp is not available for guest access" }),
-                ),
-            ));
-        }
-        return Ok(());
-    }
-
-    // 管理员可以访问所有 Tapp
-    if user_id == admin_id {
-        return Ok(());
-    }
-    let is_admin = db
-        .query_one(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT is_admin FROM users WHERE id = $1 LIMIT 1",
-            [user_id.into()],
-        ))
-        .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.try_get::<bool>("", "is_admin").ok())
-        .unwrap_or(false);
-
-    if is_admin {
-        return Ok(());
-    }
-
-    // 普通用户：检查自己拥有的 Tapp 或管理员的公开 Tapp
-    let tapp = tapps::Entity::find()
+    let mut query = tapps::Entity::find()
         .filter(tapps::Column::TappId.eq(tapp_id))
-        .filter(
-            tapps::Column::UserId
-                .eq(user_id)
-                .or(tapps::Column::UserId.eq(admin_id)),
+        .filter(tapps::Column::UserId.eq(admin_id));
+    if !is_guest && user_id != admin_id {
+        query = tapps::Entity::find()
+            .filter(tapps::Column::TappId.eq(tapp_id))
+            .filter(
+                tapps::Column::UserId
+                    .eq(admin_id)
+                    .or(tapps::Column::UserId.eq(user_id)),
+            );
+    }
+    let tapp = query.one(db).await.map_err(|e| {
+        tracing::error!("[TAPP] Database error in ownership verification: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Database error" })),
         )
-        .one(db)
-        .await
-        .map_err(|e| {
-            tracing::error!("[TAPP] Database error in ownership verification: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
-            )
-        })?;
+    })?;
 
     if tapp.is_none() {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(
-                json!({ "error": "Access denied", "message": "You do not have permission to access this Tapp" }),
-            ),
+            Json(json!({
+                "error": "Access denied",
+                "message": if is_guest {
+                    "This Tapp is not available for guest access"
+                } else {
+                    "You do not have permission to access this Tapp"
+                }
+            })),
         ));
     }
 
@@ -727,10 +692,14 @@ pub async fn resolve_accessible_tapp(
     user_id: i32,
     tapp_id: &str,
 ) -> Result<tapps::Model, (StatusCode, Json<Value>)> {
-    verify_tapp_ownership(db, user_id, tapp_id).await?;
     let admin_id = get_admin_user_id(db).await?;
+    let mut owner_ids = vec![admin_id];
+    if user_id >= 0 && user_id != admin_id {
+        owner_ids.push(user_id);
+    }
     let mut candidates = tapps::Entity::find()
         .filter(tapps::Column::TappId.eq(tapp_id))
+        .filter(tapps::Column::UserId.is_in(owner_ids))
         .all(db)
         .await
         .map_err(|error| {
@@ -743,8 +712,15 @@ pub async fn resolve_accessible_tapp(
     candidates.sort_by_key(|tapp| tapp_owner_priority(tapp.user_id, user_id, admin_id));
     candidates.into_iter().next().ok_or_else(|| {
         (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Tapp not found" })),
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Access denied",
+                "message": if user_id < 0 {
+                    "This Tapp is not available for guest access"
+                } else {
+                    "You do not have permission to access this Tapp"
+                }
+            })),
         )
     })
 }

@@ -86,6 +86,55 @@ async fn find_admin_user_id(db: &DatabaseConnection) -> Result<Option<i32>, Stat
         .map_err(|(status, _)| status)
 }
 
+/// One public-route lookup rule for details, code, resources and export.
+/// The deterministic site-owner installation wins; otherwise an authenticated
+/// viewer may resolve only their own installation. A fresh database has no
+/// site owner yet and therefore returns `None`, not a server error.
+struct VisibleTappInstallation {
+    tapp: tapps::Model,
+    is_site_owner: bool,
+}
+
+async fn find_visible_tapp(
+    db: &DatabaseConnection,
+    user_id: Option<i32>,
+    tapp_id: &str,
+) -> Result<Option<VisibleTappInstallation>, StatusCode> {
+    validate_tapp_id(tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let site_owner_id = find_admin_user_id(db).await?;
+    if let Some(site_owner_id) = site_owner_id {
+        let public_tapp = tapps::Entity::find()
+            .filter(tapps::Column::UserId.eq(site_owner_id))
+            .filter(tapps::Column::TappId.eq(tapp_id))
+            .one(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if let Some(tapp) = public_tapp {
+            return Ok(Some(VisibleTappInstallation {
+                tapp,
+                is_site_owner: true,
+            }));
+        }
+    }
+
+    if let Some(user_id) = user_id.filter(|user_id| Some(*user_id) != site_owner_id) {
+        let tapp = tapps::Entity::find()
+            .filter(tapps::Column::UserId.eq(user_id))
+            .filter(tapps::Column::TappId.eq(tapp_id))
+            .one(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if let Some(tapp) = tapp {
+            return Ok(Some(VisibleTappInstallation {
+                tapp,
+                is_site_owner: false,
+            }));
+        }
+    }
+
+    Ok(None)
+}
+
 /// Serialize every live-path or ownership mutation for one public Tapp ID.
 ///
 /// The lock is deliberately global across owner namespaces: an administrator
@@ -126,6 +175,14 @@ async fn current_user_role(claims: &Claims) -> UserRole {
         UserRole::Admin
     } else {
         UserRole::User
+    }
+}
+
+fn canonical_installation_owner_id(role: UserRole, actor_id: i32, site_owner_id: i32) -> i32 {
+    if role == UserRole::Admin {
+        site_owner_id
+    } else {
+        actor_id
     }
 }
 
@@ -1772,11 +1829,6 @@ async fn list_tapps(
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
     let user_id = optional_authenticated_user_id(claims.as_ref());
-    let is_admin = match claims.as_ref() {
-        Some(claims) => current_is_admin(claims).await,
-        None => false,
-    };
-
     // 获取管理员用户 ID
     let admin_id = find_admin_user_id(&db).await?;
 
@@ -1846,7 +1898,10 @@ async fn list_tapps(
                     status: format!("{:?}", t.status).to_lowercase(),
                     installed_at: t.installed_at.to_rfc3339(),
                     last_run_at: t.last_run_at.map(|dt| dt.to_rfc3339()),
-                    is_temporary: !is_admin,
+                    // Every installation outside the one site-owner namespace
+                    // follows the per-user temporary lifecycle, even when the
+                    // current account also has an administrator role.
+                    is_temporary: true,
                     is_admin_tapp: false,
                 });
             }
@@ -1907,13 +1962,7 @@ async fn list_tapp_details(
     }
     for tapp in user_tapps {
         if seen.insert(tapp.tapp_id.clone()) {
-            details.push(tapp_detail_from_model(
-                tapp,
-                role,
-                role != UserRole::Admin,
-                false,
-                &config,
-            ));
+            details.push(tapp_detail_from_model(tapp, role, true, false, &config));
         }
     }
 
@@ -2316,7 +2365,6 @@ async fn install_tapp(
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
     let role = current_user_role(&claims).await;
     let is_current_admin = role == UserRole::Admin;
-
     // 根据来源获取 manifest 和代码
     let (
         manifest,
@@ -2435,6 +2483,9 @@ async fn install_tapp(
             api_error("Failed to resolve administrator namespace"),
         )
     })?;
+    // Every current administrator operates the one canonical public namespace;
+    // the actor account is not used as a second public installation owner.
+    let installation_owner_id = canonical_installation_owner_id(role, user_id, admin_id);
     let mut existing_query = tapps::Entity::find().filter(tapps::Column::TappId.eq(&manifest.id));
     if !is_current_admin {
         existing_query = existing_query.filter(tapps::Column::UserId.is_in([user_id, admin_id]));
@@ -2451,7 +2502,7 @@ async fn install_tapp(
     }
 
     // 所有资源先写入同文件系统的 staging 目录；校验通过后再原子切换。
-    let final_tapp_dir = tapp_dir_for(user_id, &manifest.id)
+    let final_tapp_dir = tapp_dir_for(installation_owner_id, &manifest.id)
         .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
     let stage = TappDirStage::create(&final_tapp_dir).await.map_err(|_| {
         (
@@ -2667,7 +2718,7 @@ async fn install_tapp(
     let tapp = tapps::ActiveModel {
         id: NotSet,
         tapp_id: Set(manifest.id.clone()),
-        user_id: Set(user_id),
+        user_id: Set(installation_owner_id),
         name: Set(manifest.name.clone()),
         version: Set(manifest.version.clone()),
         description: Set(manifest.description.clone()),
@@ -2700,7 +2751,7 @@ async fn install_tapp(
         }
     };
     if let Err(status) =
-        reconcile_manifest_widgets(&txn, user_id, &manifest.id, &manifest, None).await
+        reconcile_manifest_widgets(&txn, installation_owner_id, &manifest.id, &manifest, None).await
     {
         txn.rollback().await.ok();
         activated.rollback().await;
@@ -2715,7 +2766,7 @@ async fn install_tapp(
     }
     activated.commit().await;
 
-    // 普通用户安装的 Tapp 都是临时的
+    // Only the deterministic site-owner namespace is public and persistent.
     let is_temporary = !is_current_admin;
 
     // 从 manifest 中提取 iconSvg
@@ -2754,7 +2805,6 @@ async fn install_tapp_file(
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
     let role = current_user_role(&claims).await;
     let is_current_admin = role == UserRole::Admin;
-
     // 读取上传的文件
     let mut file_data: Option<Vec<u8>> = None;
     let mut permissions: Vec<String> = Vec::new();
@@ -2852,6 +2902,7 @@ async fn install_tapp_file(
             api_error("Failed to resolve administrator namespace"),
         )
     })?;
+    let installation_owner_id = canonical_installation_owner_id(role, user_id, admin_id);
     let mut existing_query = tapps::Entity::find().filter(tapps::Column::TappId.eq(&manifest.id));
     if !is_current_admin {
         existing_query = existing_query.filter(tapps::Column::UserId.is_in([user_id, admin_id]));
@@ -2867,7 +2918,7 @@ async fn install_tapp_file(
         return Err((StatusCode::CONFLICT, api_error("Tapp already installed")));
     }
 
-    let final_tapp_dir = tapp_dir_for(user_id, &manifest.id)
+    let final_tapp_dir = tapp_dir_for(installation_owner_id, &manifest.id)
         .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
     let stage = TappDirStage::create(&final_tapp_dir).await.map_err(|_| {
         (
@@ -2989,7 +3040,7 @@ async fn install_tapp_file(
     let tapp = tapps::ActiveModel {
         id: NotSet,
         tapp_id: Set(manifest.id.clone()),
-        user_id: Set(user_id),
+        user_id: Set(installation_owner_id),
         name: Set(manifest.name.clone()),
         version: Set(manifest.version.clone()),
         description: Set(manifest.description.clone()),
@@ -3022,7 +3073,7 @@ async fn install_tapp_file(
         }
     };
     if let Err(status) =
-        reconcile_manifest_widgets(&txn, user_id, &manifest.id, &manifest, None).await
+        reconcile_manifest_widgets(&txn, installation_owner_id, &manifest.id, &manifest, None).await
     {
         txn.rollback().await.ok();
         activated.rollback().await;
@@ -3037,7 +3088,7 @@ async fn install_tapp_file(
     }
     activated.commit().await;
 
-    // 普通用户安装的 Tapp 都是临时的
+    // Only the deterministic site-owner namespace is public and persistent.
     let is_temporary = !is_current_admin;
 
     // 从 manifest 中提取 iconSvg
@@ -3079,39 +3130,9 @@ async fn get_tapp(
         Some(claims) => current_is_admin(claims).await,
         None => false,
     };
-    let admin_id = get_admin_user_id(&db).await?;
-
-    // 先尝试从管理员的 Tapp 中查找
-    let mut tapp = tapps::Entity::find()
-        .filter(tapps::Column::UserId.eq(admin_id))
-        .filter(tapps::Column::TappId.eq(&tapp_id))
-        .one(&db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let mut is_admin_tapp = tapp.is_some();
-    let mut is_temporary = false;
-
-    // 如果不是管理员的 Tapp，且用户已登录，尝试从用户自己的临时 Tapp 中查找
-    if tapp.is_none() {
-        if let Some(uid) = user_id {
-            if uid != admin_id {
-                tapp = tapps::Entity::find()
-                    .filter(tapps::Column::UserId.eq(uid))
-                    .filter(tapps::Column::TappId.eq(&tapp_id))
-                    .one(&db)
-                    .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-                if tapp.is_some() {
-                    is_admin_tapp = false;
-                    is_temporary = !is_admin;
-                }
-            }
-        }
-    }
-
-    let tapp = tapp.ok_or(StatusCode::NOT_FOUND)?;
+    let visible = find_visible_tapp(&db, user_id, &tapp_id)
+        .await?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     let role = if is_admin {
         UserRole::Admin
@@ -3121,7 +3142,13 @@ async fn get_tapp(
         UserRole::Guest
     };
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-    let detail = tapp_detail_from_model(tapp, role, is_temporary, is_admin_tapp, &config);
+    let detail = tapp_detail_from_model(
+        visible.tapp,
+        role,
+        !visible.is_site_owner,
+        visible.is_site_owner,
+        &config,
+    );
     Ok(Json(ApiResponse::success(detail)))
 }
 
@@ -3138,31 +3165,10 @@ async fn get_tapp_code(
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
     let user_id = optional_authenticated_user_id(claims.as_ref());
-    let admin_id = get_admin_user_id(&db).await?;
-
-    // 先尝试从管理员的 Tapp 中查找
-    let mut tapp = tapps::Entity::find()
-        .filter(tapps::Column::UserId.eq(admin_id))
-        .filter(tapps::Column::TappId.eq(&tapp_id))
-        .one(&db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // 如果不是管理员的 Tapp，且用户已登录，尝试从用户自己的临时 Tapp 中查找
-    if tapp.is_none() {
-        if let Some(uid) = user_id {
-            if uid != admin_id {
-                tapp = tapps::Entity::find()
-                    .filter(tapps::Column::UserId.eq(uid))
-                    .filter(tapps::Column::TappId.eq(&tapp_id))
-                    .one(&db)
-                    .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            }
-        }
-    }
-
-    let tapp = tapp.ok_or(StatusCode::NOT_FOUND)?;
+    let tapp = find_visible_tapp(&db, user_id, &tapp_id)
+        .await?
+        .ok_or(StatusCode::NOT_FOUND)?
+        .tapp;
 
     let code = fs::read_to_string(installed_code_path(&tapp)?)
         .await
@@ -3224,30 +3230,10 @@ async fn get_tapp_resources(
     // 可选认证
     let claims = extract_optional_claims(&headers);
     let user_id = optional_authenticated_user_id(claims.as_ref());
-    let admin_id = get_admin_user_id(&db).await?;
-
-    // 查找 Tapp（先管理员，再用户）
-    let mut tapp = tapps::Entity::find()
-        .filter(tapps::Column::UserId.eq(admin_id))
-        .filter(tapps::Column::TappId.eq(&tapp_id))
-        .one(&db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    if tapp.is_none() {
-        if let Some(uid) = user_id {
-            if uid != admin_id {
-                tapp = tapps::Entity::find()
-                    .filter(tapps::Column::UserId.eq(uid))
-                    .filter(tapps::Column::TappId.eq(&tapp_id))
-                    .one(&db)
-                    .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            }
-        }
-    }
-
-    let tapp = tapp.ok_or(StatusCode::NOT_FOUND)?;
+    let tapp = find_visible_tapp(&db, user_id, &tapp_id)
+        .await?
+        .ok_or(StatusCode::NOT_FOUND)?
+        .tapp;
 
     // Recompute trusted paths from owner + validated id. Persisted paths are
     // compatibility metadata only and never define the sandbox boundary.
@@ -3491,30 +3477,10 @@ async fn export_tapp(
     // 可选认证
     let claims = extract_optional_claims(&headers);
     let user_id = optional_authenticated_user_id(claims.as_ref());
-    let admin_id = get_admin_user_id(&db).await?;
-
-    // 查找 Tapp（先管理员，再用户）
-    let mut tapp = tapps::Entity::find()
-        .filter(tapps::Column::UserId.eq(admin_id))
-        .filter(tapps::Column::TappId.eq(&tapp_id))
-        .one(&db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    if tapp.is_none() {
-        if let Some(uid) = user_id {
-            if uid != admin_id {
-                tapp = tapps::Entity::find()
-                    .filter(tapps::Column::UserId.eq(uid))
-                    .filter(tapps::Column::TappId.eq(&tapp_id))
-                    .one(&db)
-                    .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            }
-        }
-    }
-
-    let tapp = tapp.ok_or(StatusCode::NOT_FOUND)?;
+    let tapp = find_visible_tapp(&db, user_id, &tapp_id)
+        .await?
+        .ok_or(StatusCode::NOT_FOUND)?
+        .tapp;
 
     // Recompute the sandbox path rather than trusting persisted code_path.
     let tapp_dir = installed_tapp_dir(&tapp)?;
@@ -4070,8 +4036,15 @@ async fn update_tapp(
         .parse()
         .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
     let role = current_user_role(&claims).await;
-    let is_current_admin = role == UserRole::Admin;
     validate_tapp_id(&tapp_id).map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+    let admin_id = get_admin_user_id(&db).await.map_err(|status| {
+        (
+            status,
+            api_error("Failed to resolve administrator namespace"),
+        )
+    })?;
+    let target_owner_id = canonical_installation_owner_id(role, user_id, admin_id);
+    let is_site_owner = target_owner_id == admin_id;
 
     let UpdateTappRequest {
         source,
@@ -4088,9 +4061,10 @@ async fn update_tapp(
         permissions,
     } = req;
 
-    // 查找用户已安装的 Tapp
+    // Administrators update the canonical public installation; ordinary users
+    // update only their own temporary installation.
     let existing_tapp = tapps::Entity::find()
-        .filter(tapps::Column::UserId.eq(user_id))
+        .filter(tapps::Column::UserId.eq(target_owner_id))
         .filter(tapps::Column::TappId.eq(&tapp_id))
         .one(&db)
         .await
@@ -4184,7 +4158,7 @@ async fn update_tapp(
     )
     .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
 
-    let final_tapp_dir = tapp_dir_for(user_id, &tapp_id)
+    let final_tapp_dir = tapp_dir_for(target_owner_id, &tapp_id)
         .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
     let stage = TappDirStage::create(&final_tapp_dir).await.map_err(|_| {
         (
@@ -4328,7 +4302,7 @@ async fn update_tapp(
         )
     })?;
     let existing_tapp = tapps::Entity::find_by_id(existing_tapp.id)
-        .filter(tapps::Column::UserId.eq(user_id))
+        .filter(tapps::Column::UserId.eq(target_owner_id))
         .filter(tapps::Column::TappId.eq(&tapp_id))
         .one(&txn)
         .await
@@ -4407,7 +4381,7 @@ async fn update_tapp(
     };
     if let Err(status) = reconcile_manifest_widgets(
         &txn,
-        user_id,
+        target_owner_id,
         &tapp_id,
         &manifest,
         Some(&existing_tapp.manifest),
@@ -4433,8 +4407,8 @@ async fn update_tapp(
     // manifest 已更新，清除 API 解析缓存
     crate::api::tapp_runtime::invalidate_tapp_apis_cache(&tapp_id).await;
 
-    // 普通用户安装的 Tapp 都是临时的
-    let is_temporary = !is_current_admin;
+    // Only the deterministic site-owner namespace is public and persistent.
+    let is_temporary = !is_site_owner;
 
     tracing::info!(
         "[TAPP] Updated Tapp {} from {} to {} for user {}",
@@ -4462,7 +4436,7 @@ async fn update_tapp(
         installed_at: result.installed_at.to_rfc3339(),
         last_run_at: result.last_run_at.map(|dt| dt.to_rfc3339()),
         is_temporary,
-        is_admin_tapp: is_current_admin,
+        is_admin_tapp: is_site_owner,
     })))
 }
 
@@ -4474,10 +4448,9 @@ async fn cleanup_temporary_tapps(
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<ApiResponse<i32>>, StatusCode> {
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-    let admin_id = get_admin_user_id(&db).await?;
-
-    // 管理员没有临时 Tapp
-    if user_id == admin_id {
+    // Current administrators operate the canonical public namespace and never
+    // receive session-temporary installations.
+    if current_is_admin(&claims).await {
         return Ok(Json(ApiResponse::success(0)));
     }
 
@@ -4510,23 +4483,31 @@ async fn list_all_widgets(
     // 可选认证：游客也可以访问
     let claims = extract_optional_claims(&headers);
     let user_id = optional_authenticated_user_id(claims.as_ref());
-    let admin_id = get_admin_user_id(&db).await?;
-    let admin_tapp_ids: std::collections::HashSet<String> = tapps::Entity::find()
-        .filter(tapps::Column::UserId.eq(admin_id))
-        .all(&db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .into_iter()
-        .map(|tapp| tapp.tapp_id)
-        .collect();
+    let admin_id = find_admin_user_id(&db).await?;
+    let admin_tapp_ids: std::collections::HashSet<String> = if let Some(admin_id) = admin_id {
+        tapps::Entity::find()
+            .filter(tapps::Column::UserId.eq(admin_id))
+            .all(&db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .into_iter()
+            .map(|tapp| tapp.tapp_id)
+            .collect()
+    } else {
+        std::collections::HashSet::new()
+    };
 
     let mut items: Vec<serde_json::Value> = Vec::new();
     // 1. 获取管理员的小组件
-    let admin_widgets = tapp_widgets::Entity::find()
-        .filter(tapp_widgets::Column::UserId.eq(admin_id))
-        .all(&db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let admin_widgets = if let Some(admin_id) = admin_id {
+        tapp_widgets::Entity::find()
+            .filter(tapp_widgets::Column::UserId.eq(admin_id))
+            .all(&db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    } else {
+        Vec::new()
+    };
 
     for w in admin_widgets {
         items.push(serde_json::json!({
@@ -4551,7 +4532,7 @@ async fn list_all_widgets(
 
     // 2. 如果是已登录的普通用户，还要获取自己临时安装的 Tapp 的小组件
     if let Some(uid) = user_id {
-        if uid != admin_id {
+        if Some(uid) != admin_id {
             let user_widgets = tapp_widgets::Entity::find()
                 .filter(tapp_widgets::Column::UserId.eq(uid))
                 .all(&db)
@@ -5439,10 +5420,13 @@ async fn update_separated_css(
     Json(req): Json<UpdateSeparatedCssRequest>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let role = current_user_role(&claims).await;
+    let site_owner_id = get_admin_user_id(&db).await?;
+    let owner_id = canonical_installation_owner_id(role, user_id, site_owner_id);
 
     // 验证 Tapp 存在且用户有权限
     let tapp = tapps::Entity::find()
-        .filter(tapps::Column::UserId.eq(user_id))
+        .filter(tapps::Column::UserId.eq(owner_id))
         .filter(tapps::Column::TappId.eq(&tapp_id))
         .one(&db)
         .await
@@ -5483,15 +5467,22 @@ async fn update_separated_css(
 #[cfg(test)]
 mod manifest_tests {
     use super::{
-        append_directory_to_zip, archive_entry_path, tapp_dir_for, tapp_setting_value_is_valid,
-        validate_installed_resources, validate_resource_path, validate_tapp_archive,
-        validate_tapp_id, validate_tapp_manifest, validate_widget_template_contents,
-        widget_template_path, TappDirStage, TappManifest, TappSettingDef, TappWidgetDef,
-        WidgetTemplateContents,
+        append_directory_to_zip, archive_entry_path, canonical_installation_owner_id, tapp_dir_for,
+        tapp_setting_value_is_valid, validate_installed_resources, validate_resource_path,
+        validate_tapp_archive, validate_tapp_id, validate_tapp_manifest,
+        validate_widget_template_contents, widget_template_path, TappDirStage, TappManifest,
+        TappSettingDef, TappWidgetDef, WidgetTemplateContents,
     };
     use crate::models::entities::tapps;
     use crate::services::permission_service::UserRole;
     use serde_json::json;
+
+    #[test]
+    fn every_admin_operates_the_canonical_public_owner_namespace() {
+        assert_eq!(canonical_installation_owner_id(UserRole::Admin, 9, 1), 1);
+        assert_eq!(canonical_installation_owner_id(UserRole::User, 9, 1), 9);
+        assert_eq!(canonical_installation_owner_id(UserRole::Guest, -9, 1), -9);
+    }
 
     #[test]
     fn preserves_background_requirements_during_manifest_round_trip() {

@@ -97,7 +97,8 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
 
 ### 所有权与可见性
 
-- 管理员安装的 Tapp 是全局可见的管理员 Tapp。
+- 站点首次创建的管理员 ID 是规范的公开安装 owner（按最小 ID 确定）；所有当前管理员都在
+  这个单一命名空间中安装、更新和管理全局 Tapp，不会以各自账号产生多个公开副本。
 - 普通用户可拥有自己的临时 Tapp；列表由管理员 Tapp 加当前用户 Tapp 组成。
 - 游客只能运行管理员共享的 Tapp；Tapp 可通过 `Tapp.user.getRole()` 感知角色。对于
   Federation 内容，游客只获得公开 Feed，已登录用户获得公开内容与自己的个人内容；
@@ -106,6 +107,9 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
   历史数据库若仍有同 ID 记录，读取兼容规则为管理员公开版本优先，详情、资源、Widget、
   最终授权和 Manifest 声明 API 必须选择同一安装记录。storage/Widget 的 ORM 不提供仅按
   `tappId` 的关联，查询必须显式携带 `user_id + tapp_id`。
+- 管理员控制面权限不等于普通用户私有安装的运行时访问权。代码、资源、Manifest、授权和
+  Runtime Grant 只能解析到规范公开 owner 或当前主体自己的 owner，不能从其他用户同 ID
+  记录中任意选择。
 
 ## `core`、`widget`、`page` 三层
 
@@ -144,10 +148,11 @@ SDK 的 `lifecycle.onDestroy` 同时监听 `pagehide` 与 `beforeunload`，并�
 单个生命周期回调抛错不能阻断其他回调。宿主资源释放仍由 iframe 外部 cleanup 负责，不能把
 授权撤销或服务端取消只寄托在浏览器卸载回调上。
 
-沙箱内设置仍使用带 Runtime Grant 的 storage，并以 `_settings.` 作为保留前缀。详情页的
-宿主设置编辑器属于控制面：访客不显示、不发请求；已登录用户只可通过专用 settings 路由
-读写当前 Manifest 声明的 key，写值还必须符合类型、选项与数值范围。它不能伪装成 Page
-runtime，也不能获得任意 storage 绕过。
+沙箱内设置仍使用带 Runtime Grant 的 storage，并以 `_settings.` 作为保留前缀；该持久能力
+只签发给已登录用户。访客不获得 `storage`，只使用 Manifest 默认设置。详情页的宿主设置
+编辑器属于控制面：访客不显示、不发请求；已登录用户只可通过专用 settings 路由读写当前
+Manifest 声明的 key，写值还必须符合类型、选项与数值范围。它不能伪装成 Page runtime，
+也不能获得任意 storage 绕过。
 storage 批量读取使用 `storage.getAll` 对应的单次数据库查询，不能退回 `keys + N 次 get`。
 
 停止会清除动态与 Manifest 后台需求并卸载 headless 实例。卸载还会清理资源缓存、
@@ -225,7 +230,7 @@ handler、后端路由/服务和文档。
 
 | 等级       | 默认含义                                                                |
 | ---------- | ----------------------------------------------------------------------- |
-| basic      | 基础能力；仍需在 Manifest 申请并被授予                                  |
+| basic      | 基础能力；仍需在 Manifest 申请并被授予；持久 `storage` 不向访客签发       |
 | elevated   | 管理员可配置向普通用户/游客下放                                         |
 | privileged | 仅管理员，例如 `platform:write`、`platform:register`、`component:agent` |
 
@@ -235,6 +240,10 @@ handler、后端路由/服务和文档。
 `Tapp.user.getAllowedPermissionLevels()` 查询后端当前动态下放配置，回答角色在系统层面
 能否使用某个等级；`Tapp.permissions` 才是当前安装实例实际获得的权限集合。两者不能
 互相替代。
+
+Runtime Grant 是签发时能力的上限而不是冻结授权。服务端每次验证都重新解析当前可见安装，
+核对 owner，并将令牌权限与当前角色、动态下放配置和安装授权取交集；角色/配置收紧后旧
+Grant 不能继续保留已撤销能力，安装 owner 改变则令牌失效并由宿主重新签发。
 
 ## 调度器
 

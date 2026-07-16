@@ -37,6 +37,8 @@
 
 **权限**: `storage`
 
+该能力仅向已登录用户的 Runtime Grant 签发。访客运行公开 Tapp 时没有持久 storage。
+
 ```javascript
 // 获取数据
 const value = await Tapp.storage.get("key");
@@ -117,6 +119,9 @@ const playlist = await Tapp.dataExchange.request({
 ## 设置 API
 
 **权限**: `storage`（使用 `_settings.` 前缀存储）
+
+访客不会获得 `storage`，因此只使用 Manifest 中的默认设置；以下读写 API 仅在已登录
+用户的 Tapp runtime 中可用。
 
 ```javascript
 // 获取设置项

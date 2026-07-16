@@ -152,6 +152,8 @@ interface TappResources {
 移入隔离目录后，在一个事务中清理安装记录、Manifest/动态 Widget、调度任务及执行历史；
 `keep_data=true` 只保留 storage，不保留任务或 Widget。相同公开 `tappId` 的最终冲突复核、
 文件切换和数据库变更由 PostgreSQL advisory transaction lock 串行化，跨后端副本也不能并发覆盖。
+所有当前管理员都操作首次站点管理员对应的规范公开 owner；普通用户仍写入自己的临时 owner。
+管理员身份不会让 Runtime 自动读取其他普通用户的私有安装。
 
 ### Runtime Grant
 
@@ -167,6 +169,8 @@ Grant；游客仍不能借此访问普通用户的临时安装。
 `widget` 或 `headless`。令牌只返回宿主一次，服务端仅存 SHA-256。停止、更新、卸载会撤销
 相关 Grant。Grant 哈希与 TTL 租约存储在 PostgreSQL，可由任意副本校验；只有被撤销或到期的
 Grant 才返回 `INVALID_RUNTIME_GRANT`。
+每次使用 Grant 时还会重新核对当前可见安装 owner，并以当前角色、动态权限配置和安装授权
+收缩权限；owner 改变的旧 Grant 会返回 `INVALID_RUNTIME_GRANT`，由宿主执行一次重签重试。
 
 ### 设置、Widget 与存储
 
@@ -187,6 +191,8 @@ Grant 才返回 `INVALID_RUNTIME_GRANT`。
 settings 路由是详情页宿主控制面，只接受已登录会话与当前 Manifest 的真实 key，不接受
 `X-Tapp-Runtime-Grant` 代替登录，也不能访问任意 storage key。写入值必须符合声明的
 type、select options 与 number min/max；游客只使用 Manifest 默认值。
+`storage` 路由同样要求登录身份和 Runtime Grant；访客 Grant 不包含 `storage`，因此沙箱内
+的 `Tapp.storage`/`Tapp.settings` 也不能为访客创建持久数据。
 Manifest Widget 由安装/更新自动对账；动态 Widget 路由要求 `widget:register` 同时存在于
 Runtime Grant、安装授权和当前角色，并拒绝覆盖/删除 Manifest 来源的注册。
 

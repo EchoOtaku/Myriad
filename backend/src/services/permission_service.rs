@@ -4,12 +4,12 @@
 //!
 //! ## 权限层级（来自 Tapp 系统）
 //! - **public**: 无需权限，所有人可用
-//! - **basic**: 基础权限，默认所有用户（包括游客）可用
+//! - **basic**: 基础权限，默认所有角色可用；需要持久身份的数据能力可排除游客
 //! - **elevated**: 提升权限，默认仅管理员，可配置下放
 //! - **privileged**: 特权权限，始终仅管理员可用
 //!
 //! ## 设计原则
-//! - basic 级别权限默认对所有用户开放，无需配置
+//! - basic 级别权限默认对所有角色开放；`storage` 需要登录用户的持久身份
 //! - elevated 级别权限可由管理员选择性下放给普通用户或游客
 //! - privileged 级别权限始终仅限管理员
 //!
@@ -384,6 +384,13 @@ impl TappPermissionService {
             return true;
         }
 
+        // Guests do not have a durable application user row. Never issue a
+        // persistence capability that the authenticated storage routes cannot
+        // honor; Tapp settings therefore stay at manifest defaults for guests.
+        if role == UserRole::Guest && permission == TappPermission::Storage {
+            return false;
+        }
+
         // 游客的 federation 能力严格只读：可以读取经过内容级过滤的公开
         // Feed，但不能关注、发布、通信或传输文件。
         if role == UserRole::Guest
@@ -399,7 +406,7 @@ impl TappPermissionService {
 
         match permission.level() {
             PermissionLevel::Public => true,
-            PermissionLevel::Basic => true, // 所有用户都有 basic 权限
+            PermissionLevel::Basic => true,
             PermissionLevel::Elevated => Self::check_elevated(config, role, permission),
             PermissionLevel::Privileged => false, // 仅管理员
         }
@@ -595,6 +602,25 @@ mod tests {
         assert!(TappPermissionService::check(
             &config,
             UserRole::User,
+            TappPermission::Storage
+        ));
+    }
+
+    #[test]
+    fn test_guest_runtime_grant_excludes_persistent_storage() {
+        let config = DynamicConfig::default();
+        let requested = vec!["platform:read".to_string(), "storage".to_string()];
+
+        let granted = TappPermissionService::filter_permissions_for_role(
+            &config,
+            UserRole::Guest,
+            &requested,
+        );
+
+        assert_eq!(granted, vec!["platform:read"]);
+        assert!(!TappPermissionService::check(
+            &config,
+            UserRole::Guest,
             TappPermission::Storage
         ));
     }

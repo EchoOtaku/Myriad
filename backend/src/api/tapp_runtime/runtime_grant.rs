@@ -154,6 +154,14 @@ fn valid_instance_id(instance_id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
 }
 
+fn intersect_current_permissions(issued: &mut Vec<String>, currently_allowed: &[String]) {
+    issued.retain(|permission| {
+        currently_allowed
+            .iter()
+            .any(|current| current == permission)
+    });
+}
+
 async fn validate_runtime_grant(
     token: &str,
     claims: &Claims,
@@ -164,7 +172,7 @@ async fn validate_runtime_grant(
         tracing::error!(%error, "[TAPP] Runtime Grant database unavailable");
         api_error_unavailable()
     })?;
-    let grant = shared_registry::get::<StoredRuntimeGrant>(&db, RUNTIME_GRANT_NAMESPACE, &hash)
+    let mut grant = shared_registry::get::<StoredRuntimeGrant>(&db, RUNTIME_GRANT_NAMESPACE, &hash)
         .await
         .map_err(|error| {
             tracing::error!(%error, "[TAPP] Runtime Grant lookup failed");
@@ -203,6 +211,33 @@ async fn validate_runtime_grant(
             })),
         ));
     }
+
+    // A grant is a short-lived upper bound, not a frozen authorization fact.
+    // Rebind it to the installation that is visible now and intersect its
+    // permissions with the current role/config/installation on every request.
+    // This closes the window after role demotion, delegation revocation,
+    // installation replacement or a public-namespace owner change.
+    let tapp = match resolve_accessible_tapp(&db, subject_id, &grant.tapp_id).await {
+        Ok(tapp) if tapp.user_id == grant.owner_id => tapp,
+        Ok(_) | Err(_) => {
+            let _ = shared_registry::delete(&db, RUNTIME_GRANT_NAMESPACE, &hash).await;
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error": "Runtime grant installation scope changed",
+                    "code": "INVALID_RUNTIME_GRANT"
+                })),
+            ));
+        }
+    };
+    let role = current_tapp_user_role(claims).await;
+    let installed_permissions: Vec<String> =
+        serde_json::from_value(tapp.granted_permissions).unwrap_or_default();
+    let currently_allowed = {
+        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+        TappPermissionService::filter_permissions_for_role(&config, role, &installed_permissions)
+    };
+    intersect_current_permissions(&mut grant.permissions, &currently_allowed);
 
     tracing::debug!(
         runtime_id = %grant.runtime_id,
@@ -459,7 +494,7 @@ pub async fn revoke_all_tapp_runtime_grants(tapp_id: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{token_hash, valid_instance_id};
+    use super::{intersect_current_permissions, token_hash, valid_instance_id};
 
     #[test]
     fn runtime_instance_ids_are_bounded_and_path_neutral() {
@@ -475,5 +510,19 @@ mod tests {
         assert_eq!(hash.len(), 64);
         assert_eq!(hash, token_hash("trg_secret"));
         assert_ne!(hash, token_hash("trg_other"));
+    }
+
+    #[test]
+    fn runtime_grant_permissions_only_shrink_after_issuance() {
+        let mut issued = vec![
+            "platform:read".to_string(),
+            "storage".to_string(),
+            "network:fetch".to_string(),
+        ];
+        let current = vec!["platform:read".to_string(), "ai:chat".to_string()];
+
+        intersect_current_permissions(&mut issued, &current);
+
+        assert_eq!(issued, vec!["platform:read"]);
     }
 }
