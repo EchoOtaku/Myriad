@@ -1,9 +1,9 @@
 // Service layer modules
+pub mod activity_event_service;
 pub mod agent; // 🤖 AI Agent 自然语言任务编排系统
 pub mod ai; // 🤖 AI 服务工厂（统一创建 AI 分析器）
 pub mod analyzer;
 pub mod background_processor; // ✅ 后台任务处理系统（异步处理、任务队列）
-pub mod batch_saver; // ✅ 批量数据保存服务（分批异步写入）
 pub mod bilibili_utils; // ✅ Bilibili 工具函数（IP伪装、防封技术）
 pub mod config_service;
 pub mod content_databases; // ✅ 预置内容数据库（番剧/游戏/歌手）
@@ -19,6 +19,7 @@ pub mod netease_utils; // ✅ 网易云音乐工具函数
 pub mod oauth; // 🔐 OAuth Provider 抽象（GitHub / OIDC / ...）
 pub mod outbound_security; // 🔒 Outbound URL validation, DNS pinning, and redirect policy
 pub mod permission_service; // ✅ 权限服务（细粒度权限配置）
+pub mod platform_auto_refresh; // Core 平台自动刷新任务（复用 Tapp 调度引擎）
 pub mod smart_filter; // ✅ 智能内容过滤器（新版，使用数据库）
 pub mod spoof_utils; // ✅ 请求伪装工具（区域IP/UA伪装，绕过地区限制）
 pub mod tapp_api_service; // ✅ Tapp API 声明执行服务（public/protected 两级权限）

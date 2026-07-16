@@ -1,6 +1,6 @@
-// Service Worker v2.2 for Myriad
+// Service Worker for Myriad
 // 性能优化版 - 缓存策略 + 安全过滤 + 206 响应处理
-// v2.2: 移除壁纸图片缓存，避免跨域问题
+// 当前缓存策略不缓存壁纸图片，避免跨域问题
 
 const CACHE_VERSION = 'myriad-v2.2'
 const STATIC_CACHE = `${CACHE_VERSION}-static`

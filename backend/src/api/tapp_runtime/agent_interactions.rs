@@ -1,4 +1,4 @@
-//! Stateful Agent Interaction V2 between Myriad Agent tasks and Tapp runtimes.
+//! Stateful Agent Interaction between Myriad Agent tasks and Tapp runtimes.
 
 use std::{convert::Infallible, time::Duration};
 
@@ -151,7 +151,7 @@ fn parse_agent_manifest(manifest: &Value) -> Result<TappAgentManifest, ApiError>
             api_error(
                 StatusCode::FORBIDDEN,
                 "AGENT_V2_NOT_DECLARED",
-                "Tapp manifest does not declare Agent Interaction V2",
+                "Tapp manifest does not declare Agent Interaction",
             )
         })
         .and_then(|value| {
@@ -468,7 +468,7 @@ pub async fn create_agent_interaction_internal(
     let manifest = parse_agent_manifest(&tapp.manifest).map_err(|(_, body)| {
         body.0["error"]
             .as_str()
-            .unwrap_or("Agent V2 unavailable")
+            .unwrap_or("Agent Interaction unavailable")
             .to_string()
     })?;
     let definition: TappAgentInteractionDef = manifest

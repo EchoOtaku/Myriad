@@ -203,7 +203,7 @@ interface PlaylistCacheEntry {
 
 const playlistMemoryCache = new Map<string, PlaylistCacheEntry>()
 const PLAYLIST_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000 // 7天
-// v2：QQ 音频改为后端代理，旧缓存里的 fromtag=46 直连 URL 已失效
+// QQ 音频现由后端代理，旧缓存里的 fromtag=46 直连 URL 已失效
 const PLAYLIST_STORAGE_KEY = 'myriad_playlist_cache_v2'
 const MAX_PLAYLIST_CACHE_SIZE = 5
 

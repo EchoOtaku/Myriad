@@ -250,7 +250,7 @@ async fn execute_tapp_understand(
         });
 
     // Analysis no longer emits executable DOM commands. Callers must create a
-    // declared Agent Interaction V2 via `tapp.interact` after reviewing this plan.
+    // declared Agent Interaction via `tapp.interact` after reviewing this plan.
     let frontend_action: Option<Value> = None;
 
     Ok(json!({

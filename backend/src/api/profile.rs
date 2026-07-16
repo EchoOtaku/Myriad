@@ -27,7 +27,7 @@ const PLATFORM_CACHE_HOURS: i64 = 12; // 数据缓存12小时
 
 use std::collections::{HashMap, HashSet};
 
-async fn site_owner_user_id(db: &DatabaseConnection) -> Result<i32, String> {
+pub(crate) async fn site_owner_user_id(db: &DatabaseConnection) -> Result<i32, String> {
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Postgres,
@@ -2021,7 +2021,7 @@ impl Default for LibrarySourcePreferences {
 }
 
 impl LibrarySourcePreferences {
-    fn normalized(mut self) -> Self {
+    pub(crate) fn normalized(mut self) -> Self {
         let defaults = default_library_source_categories();
         let mut normalized = HashMap::new();
 
@@ -2959,82 +2959,128 @@ pub struct ActivityQuery {
 
 #[derive(Debug, Serialize)]
 pub struct ActivityItem {
-    pub id: i32,
     pub platform_name: String,
-    pub changed_fields: Value,
+    pub event_type: String,
+    pub title: String,
+    pub changes: Value,
+    pub change_count: i32,
     pub change_date: String,
-    pub item_type: Option<String>,
-    pub item_title: Option<String>,
+    pub legacy: bool,
+}
+
+struct LegacyActivityGroup {
+    platform_name: String,
+    change_count: i32,
+    change_date: String,
 }
 
 pub async fn get_recent_activities(
     Query(params): Query<ActivityQuery>,
     State(db): State<DatabaseConnection>,
 ) -> (StatusCode, Json<Value>) {
-    use crate::models::entities::metadata_history;
-    use sea_orm::{EntityTrait, QueryOrder, QuerySelect};
+    use crate::models::entities::{activity_events, metadata_history};
+    use crate::services::activity_event_service::{platform_label, public_activity_changes};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
-    let limit = params.limit.unwrap_or(10).min(50); // 最多50条
+    let limit = params.limit.unwrap_or(10).clamp(1, 50);
+    let user_id = match site_owner_user_id(&db).await {
+        Ok(user_id) => user_id,
+        Err(error) => return site_owner_error(error),
+    };
+
+    // Legacy rows are collapsed by platform/day, so fetch extra audit records
+    // before applying the user-facing limit.
+    let audit_limit = (limit * 10).min(500);
 
     match metadata_history::Entity::find()
+        .filter(metadata_history::Column::UserId.eq(user_id))
         .order_by_desc(metadata_history::Column::ChangeDate)
-        .limit(limit)
+        .limit(audit_limit)
         .all(&db)
         .await
     {
         Ok(records) => {
-            let activities: Vec<ActivityItem> = records
-                .into_iter()
-                .map(|record| {
-                    let changed_fields = record.changed_fields.clone();
-
-                    // 尝试从 new_data 或 old_data 中提取标题和类型
-                    let (item_title, item_type) = if let Some(new_data) = &record.new_data {
-                        let title = new_data
-                            .get("title")
-                            .and_then(|v| v.as_str())
-                            .or_else(|| new_data.get("name").and_then(|v| v.as_str()))
-                            .or_else(|| new_data.get("full_name").and_then(|v| v.as_str()))
-                            .map(String::from);
-
-                        let item_type = new_data
-                            .get("type")
-                            .and_then(|v| v.as_str())
-                            .map(String::from);
-
-                        (title, item_type)
-                    } else if let Some(old_data) = &record.old_data {
-                        let title = old_data
-                            .get("title")
-                            .and_then(|v| v.as_str())
-                            .or_else(|| old_data.get("name").and_then(|v| v.as_str()))
-                            .or_else(|| old_data.get("full_name").and_then(|v| v.as_str()))
-                            .map(String::from);
-
-                        let item_type = old_data
-                            .get("type")
-                            .and_then(|v| v.as_str())
-                            .map(String::from);
-
-                        (title, item_type)
-                    } else {
-                        (None, None)
-                    };
-
-                    // 如果 new_data/old_data 中没有标题，尝试使用平台名称作为后备
-                    let final_title =
-                        item_title.or_else(|| Some(format!("{} 数据", record.platform_name)));
-
-                    ActivityItem {
-                        id: record.id,
-                        platform_name: record.platform_name,
-                        changed_fields,
-                        change_date: record.change_date.to_string(),
-                        item_type,
-                        item_title: final_title,
+            let history_ids: Vec<i32> = records.iter().map(|record| record.id).collect();
+            let normalized = if history_ids.is_empty() {
+                Vec::new()
+            } else {
+                match activity_events::Entity::find()
+                    .filter(activity_events::Column::UserId.eq(user_id))
+                    .filter(activity_events::Column::MetadataHistoryId.is_in(history_ids))
+                    .all(&db)
+                    .await
+                {
+                    Ok(events) => events,
+                    Err(error) => {
+                        // During a rolling deploy an old replica may serve before
+                        // migration 009 is visible. Legacy summaries remain usable.
+                        tracing::warn!("Failed to load normalized activity events: {}", error);
+                        Vec::new()
                     }
-                })
+                }
+            };
+            let mut normalized_by_history: HashMap<i32, activity_events::Model> = normalized
+                .into_iter()
+                .map(|event| (event.metadata_history_id, event))
                 .collect();
+
+            let mut activities = Vec::new();
+            let mut legacy_groups: HashMap<String, LegacyActivityGroup> = HashMap::new();
+
+            for record in records {
+                if let Some(event) = normalized_by_history.remove(&record.id) {
+                    if event.event_type == "suppressed" {
+                        continue;
+                    }
+                    activities.push(ActivityItem {
+                        platform_name: event.platform_name,
+                        event_type: event.event_type,
+                        title: event.title,
+                        changes: public_activity_changes(&event.changes),
+                        change_count: event.change_count,
+                        change_date: event.occurred_at.to_string(),
+                        legacy: false,
+                    });
+                    continue;
+                }
+
+                let day = record.change_date.date().to_string();
+                let key = format!("{}:{}", record.platform_name, day);
+                let field_count = record
+                    .changed_fields
+                    .as_array()
+                    .map(|fields| i32::try_from(fields.len()).unwrap_or(i32::MAX))
+                    .unwrap_or(1);
+                legacy_groups
+                    .entry(key)
+                    .and_modify(|group| {
+                        group.change_count = group.change_count.saturating_add(field_count);
+                        if record.change_date.to_string() > group.change_date {
+                            group.change_date = record.change_date.to_string();
+                        }
+                    })
+                    .or_insert_with(|| LegacyActivityGroup {
+                        platform_name: record.platform_name,
+                        change_count: field_count,
+                        change_date: record.change_date.to_string(),
+                    });
+            }
+
+            activities.extend(legacy_groups.into_values().map(|group| ActivityItem {
+                title: platform_label(&group.platform_name).to_string(),
+                platform_name: group.platform_name,
+                event_type: "legacy_updated".to_string(),
+                changes: json!([{
+                    "kind": "legacy_summary",
+                    "metric": "data_changes",
+                    "new": group.change_count
+                }]),
+                change_count: group.change_count,
+                change_date: group.change_date,
+                legacy: true,
+            }));
+            activities.sort_by(|a, b| b.change_date.cmp(&a.change_date));
+            activities.truncate(limit as usize);
 
             (
                 StatusCode::OK,

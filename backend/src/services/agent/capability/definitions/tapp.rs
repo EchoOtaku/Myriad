@@ -422,7 +422,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 },
                 "frontendAction": {
                     "type": ["object", "null"],
-                    "description": "V2 分析只返回计划，此字段固定为 null；执行必须另建 interaction"
+                    "description": "当前分析只返回计划，此字段固定为 null；执行必须另建 interaction"
                 }
             }
         }),
@@ -459,7 +459,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "type": "object",
             "properties": {
                 "success": { "type": "boolean" },
-                "interaction": { "type": "object", "description": "已创建的 V2 interaction 快照" },
+                "interaction": { "type": "object", "description": "已创建的 interaction 快照" },
                 "frontendAction": { "type": "object", "description": "仅用于打开目标 Tapp，不包含 DOM 命令" }
             }
         }),

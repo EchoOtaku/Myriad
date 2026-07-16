@@ -362,7 +362,7 @@ fn validate_schema(schema: &Value, value: &Value, path: &str, depth: usize) -> R
     Ok(())
 }
 
-/// Shared deterministic JSON Schema subset used by Data Exchange and AI V2
+/// Shared deterministic JSON Schema subset used by Data Exchange and AI Task
 /// structured output. Schema shape/size and `$ref` rejection are validated by
 /// `tapp_store::validate_inline_data_schema` before this function is called.
 pub(super) fn validate_inline_json_value(schema: &Value, value: &Value) -> Result<(), String> {

@@ -219,8 +219,31 @@ export async function fetchSettingsBackup() {
   return response.data
 }
 
+export interface SettingsRestorePreview {
+  backup_version: number
+  current_version: number
+  restore_count: number
+  preserve_count: number
+  ignored_count: number
+  migrated_count: number
+  invalid_count: number
+  ignored_keys: string[]
+  invalid_keys: string[]
+}
+
+export async function previewSettingsBackup(backup: unknown) {
+  const response = await api.post('/api/config/settings-backup/preview', backup)
+  if (response.status >= 400 || !response.data?.preview) {
+    throw new Error(response.data?.error || 'Failed to preview settings backup')
+  }
+  return response.data.preview as SettingsRestorePreview
+}
+
 export async function restoreSettingsBackup(backup: unknown) {
   const response = await api.post('/api/config/settings-backup', backup)
+  if (response.status >= 400 || response.data?.success !== true) {
+    throw new Error(response.data?.error || 'Failed to restore settings backup')
+  }
   return response.data
 }
 

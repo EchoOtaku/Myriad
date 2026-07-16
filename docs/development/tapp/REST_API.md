@@ -212,8 +212,8 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 | POST   | `/api/tapp/ai/chat`                                      | 可选认证 | `Tapp.ai.chat`                  |
 | POST   | `/api/tapp/ai/image`                                     | 可选认证 | 图片生成                        |
 | POST   | `/api/tapp/ai/image/status`                              | 可选认证 | 图片任务状态                    |
-| GET    | `/api/tapp/ai/usage`                                     | 可选认证 | V1/兼容权威用量                 |
-| POST   | `/api/tapp/ai/v2/tasks`                                  | 可选认证 | 创建 AI V2 任务                 |
+| GET    | `/api/tapp/ai/usage`                                     | 可选认证 | 旧接口兼容权威用量              |
+| POST   | `/api/tapp/ai/v2/tasks`                                  | 可选认证 | 创建 AI 任务                    |
 | GET    | `/api/tapp/ai/v2/tasks/{taskId}`                         | 可选认证 | 读取任务快照                    |
 | DELETE | `/api/tapp/ai/v2/tasks/{taskId}`                         | 可选认证 | 取消非终态任务                  |
 | GET    | `/api/tapp/ai/v2/tasks/{taskId}/events`                  | 可选认证 | SSE token/progress/state        |
@@ -221,7 +221,7 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 | POST   | `/api/tapp/data/transform`                               | 登录     | `Tapp.data.transform`           |
 
 AI 权限、每分钟速率、每日 calls/tokens 与 cooldown 全由后端执行。配额在模型调用前事务预留、
-完成后按实际估算结算、失败/取消释放未消耗 token；calls 仍记录一次尝试。AI V2 还校验
+完成后按实际估算结算、失败/取消释放未消耗 token；calls 仍记录一次尝试。AI Task 还校验
 Manifest operation/model tier/context/output 声明，并将任务绑定 subject、安装 owner 和 Tapp。
 
 ### One-shot Data Exchange
@@ -242,7 +242,7 @@ runtime 调用；返回的一次性 token 60 秒过期且留在宿主。consume 
 `maxBytes` 和 `maxRecords`，因此失败
 也不能重放。详细 SDK 契约见 [Data Exchange API](API_REFERENCE.md#跨-tapp-data-exchange-api)。
 
-### Event V2 与 Agent Interaction V2
+### Event Broker 与 Agent Interaction
 
 | 方法 | 路径                                           | 说明                       |
 | ---- | ---------------------------------------------- | -------------------------- |
@@ -255,7 +255,7 @@ runtime 调用；返回的一次性 token 60 秒过期且留在宿主。consume 
 | POST | `/api/tapp/agent/v2/interactions/{id}/reject`  | 拒绝并终止                 |
 | POST | `/api/tapp/agent/v2/interactions/{id}/intents` | 宿主确认后记录 intent 授权 |
 
-Event V2 仅在线 at-most-once，不做积压；SSE 在 Runtime Grant 到期时关闭，由宿主刷新 Grant 后
+Event Broker 仅在线 at-most-once，不做积压；SSE 在 Runtime Grant 到期时关闭，由宿主刷新 Grant 后
 重连。Agent Interaction 由可信 Agent 执行代码在后端创建，Tapp 不能伪造 source/task；只有实际
 accept 的 runtime 可提交结果，结果会恢复持久化的原 Agent 任务；intent 经授权后由受支持的
 宿主 adapter 执行。Runtime Grant、Data Exchange、Event、Agent interaction 和 AI task 使用

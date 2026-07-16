@@ -1,13 +1,13 @@
-# Tapp Runtime V2 契约设计
+# Tapp Runtime 契约设计
 
-状态：**V2 主路径已实现，多副本与编排闭环已完成**。Runtime Grant、One-shot Data
+状态：**当前主路径已实现，多副本与编排闭环已完成**。Runtime Grant、One-shot Data
 Exchange、Server-governed AI Task、Scoped Event Broker 和 Agent Interaction 均已有代码与
 SDK；共享 registry/mailbox、Agent 任务暂停/恢复和 intent 执行 adapter 已接入。当前行为以
 [架构文档](ARCHITECTURE.md) 和 [SDK API](API_REFERENCE.md) 为准。
 
 ## 设计目标
 
-V2 不再继续给现有占位字段补零散 handler，而是统一解决五个问题：
+当前契约不再继续给现有占位字段补零散 handler，而是统一解决五个问题：
 
 1. 后端能识别“哪个用户的哪个 Tapp 实例”正在调用，而不只知道登录用户；
 2. Agent 交互有明确的请求、结果、意图和生命周期；
@@ -44,7 +44,7 @@ Cookie 只能证明用户身份，不能证明调用来自哪个 Tapp。当前�
   请求体里的 `tappId` 只作一致性校验，不再是可信身份来源。
 - Runtime Grant 只约束 Tapp 运行时 API；公开 Tapp 列表和商店读取不需要它。
 
-这一步是跨 Tapp Data Exchange、Agent、Event、AI V2 的共同前置条件。当前 `/api/tapp`
+这一步是跨 Tapp Data Exchange、Agent、Event、AI Task 的共同前置条件。当前 `/api/tapp`
 运行时路由和 Tapp storage 已迁移；Brew、语音和联邦等宿主代理旧服务仍需继续补服务端
 Tapp 归因。Grant 哈希与租约位于 PostgreSQL 共享 TTL registry，支持跨副本校验与撤销。
 
@@ -101,7 +101,7 @@ const playlist = await Tapp.dataExchange.request({
 
 声明只表示接口兼容，不等于用户已授权。每次逻辑数据交换都必须由宿主展示原生授权弹窗，
 清楚列出：调用方 Tapp、数据提供方 Tapp、export/字段范围、用途、最大记录数或字节数，以及
-“仅本次”有效范围。V2 首版不提供“始终允许”；关闭弹窗、拒绝或超时都返回明确错误。
+“仅本次”有效范围。当前版本不提供“始终允许”；关闭弹窗、拒绝或超时都返回明确错误。
 
 ### 一次性 Data Access Grant
 
@@ -235,14 +235,14 @@ await interaction.requestIntent({
 ### 迁移
 
 `onFill()` 在一个版本周期内由适配器映射为 `type = "legacy.fill"`。现有无消费者的
-`reportData()`、`requestAction()` 标记 deprecated，并在 V2 模式下明确返回
+`reportData()`、`requestAction()` 标记 deprecated，并在当前模式下明确返回
 `UNSUPPORTED_LEGACY_AGENT_ACTION`，不再静默成功。
 
 ## 方案二：Scoped Event Broker
 
 ### 新模型
 
-V2 Event 是后端路由的实时消息，不再是“保存订阅数组后只回送给当前 iframe”。第一版
+Event Broker 是后端路由的实时消息，不再是“保存订阅数组后只回送给当前 iframe”。第一版
 明确选择 **在线 at-most-once**：在线实例尽力投递一次，离线不积压。需要离线可靠投递的
 业务继续使用 scheduler 或专门的数据模型，避免把事件总线变成隐式任务队列。
 
@@ -306,12 +306,12 @@ sequenceDiagram
   在线注册表是实际接收者。
 - payload 建议上限 64 KiB，topic 上限 128 字符；按 Runtime Grant 限速。
 - `owner` 事件只用于状态通知和失效提示；跨 Tapp 数据正文必须走 One-shot Data Exchange。
-- 发布成功只表示 Broker 接受，不表示每个订阅者已处理。V2 不提供 ACK、重试或离线积压。
+- 发布成功只表示 Broker 接受，不表示每个订阅者已处理。当前契约不提供 ACK、重试或离线积压。
 - `dedupeKey` 只在短窗口内防止发布方重试造成重复，不提升投递保证。
 
 ### 迁移
 
-旧 `subscribe/unsubscribe` 存储数据不自动迁移为 V2 订阅；安装更新时从新 Manifest 生成
+旧 `subscribe/unsubscribe` 存储数据不自动迁移为声明式订阅；安装更新时从新 Manifest 生成
 声明。旧 `publish(type, payload, target)` 仅允许 `target = "self"` 并映射为 `instance`，
 其他 target 返回明确错误，直到旧接口移除。
 
@@ -379,19 +379,19 @@ Manifest 只声明能力与预算层级，不暴露供应商参数：
 
 ### 迁移
 
-V1 适配器只映射已实际支持的字段：prompt/messages、chat context、`preferPro`。当前被忽略
+旧接口适配器只映射已实际支持的字段：prompt/messages、chat context、`preferPro`。当前被忽略
 的 `generate.context/options` 与 `chat.maxTokens/temperature/stream` 在迁移期返回带字段名的
-`UNSUPPORTED_V1_OPTION`，促使调用方显式迁移。V1 响应中的硬编码 `quotaRemaining` 改为
+`UNSUPPORTED_V1_OPTION`，促使调用方显式迁移。旧接口响应中的硬编码 `quotaRemaining` 改为
 真实 usage 快照；一个版本周期后移除旧端点。
 
 ## 推荐实施顺序
 
 1. Runtime Grant：先覆盖所有 `/api/tapp` 路由，并增加停止/卸载撤销测试；
 2. One-shot Data Exchange：先交付 Manifest 契约、授权弹窗、一次性 Grant 和同用户隔离；
-3. AI V2：成本与权限风险最高，把真实配额、任务状态和流式契约收口；
-4. Event V2：复用 Runtime 注册表/连接层，实现在线 at-most-once Broker；
-5. Agent V2：在 Runtime Grant 与事件/任务基础上实现 Interaction 状态机；
-6. 保留一个版本周期的窄适配器，记录 V1 使用量，再删除无消费者入口与兼容字段。
+3. AI Task：成本与权限风险最高，把真实配额、任务状态和流式契约收口；
+4. Event Broker：复用 Runtime 注册表/连接层，实现在线 at-most-once Broker；
+5. Agent Interaction：在 Runtime Grant 与事件/任务基础上实现 Interaction 状态机；
+6. 保留一个版本周期的窄适配器，记录旧接口使用量，再删除无消费者入口与兼容字段。
 
 当前进度：1 已完成核心路由迁移和共享 Grant；2 已完成 Manifest round-trip、宿主授权弹窗、在线
 Provider broker、一次性 Grant、同 subject 隔离及响应边界；3 已完成持久化用量账本、任务
@@ -399,7 +399,7 @@ Provider broker、一次性 Grant、同 subject 隔离及响应边界；3 已完
 legacy adapter；5 已完成 interaction schema、CAS 接受/提交/拒绝状态机、Executor 恢复以及
 `ui.open`、`report.create`、`dataExchange.request` 宿主 adapter。在线状态使用 PostgreSQL
 TTL registry、durable mailbox 与 `pg_notify` 提示。尚未完成的是第 6 步兼容接口观测期后的
-最终删除；它需要依据实际 V1 使用量单独安排。
+最终删除；它需要依据实际旧接口使用量单独安排。
 
 每一阶段都应同时交付 Rust/TypeScript 类型、Manifest round-trip、权限矩阵、端到端测试和
 迁移说明。任何阶段都不应通过继续扩大前端 Bridge 信任面来替代后端验证。

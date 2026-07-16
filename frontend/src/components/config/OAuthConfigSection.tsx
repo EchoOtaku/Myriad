@@ -10,6 +10,8 @@
  * 详见 docs/oauth-refactor-plan.md + oauthPresets.ts
  */
 
+import type { OAuthProviderEntry } from '../../utils/oauthSettings'
+
 import {
   FaCheck,
   FaClipboard,
@@ -18,12 +20,9 @@ import {
   FaPlus,
   FaTrash,
 } from '@lib/icons'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { API_URL } from '../../config'
+import React, { useCallback, useMemo, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
-import { fetchJson } from '../../utils/apiHelper'
-import { getCSRFToken } from '../../utils/csrf'
 import {
   normalizeOAuthIconUrl,
   preloadOAuthIcons,
@@ -53,33 +52,15 @@ interface ConfigField {
 
 interface OAuthConfigSectionProps {
   configFields: ConfigField[]
-  updateValue: (key: string, value: string) => void
   title: string
   icon: React.ReactNode
   description: string
   sectionId?: string
-}
-
-/** 与后端 config::OAuthProviderEntry 对齐 */
-interface OAuthProviderEntry {
-  slug: string
-  kind: 'github' | 'oidc'
-  display_name: string
-  enabled: boolean
-  client_id: string
-  client_secret: string
-  scopes: string[]
-  discovery_url?: string | null
-  icon_url?: string | null
-}
-
-function normalizeProviderEntry(
-  provider: OAuthProviderEntry,
-): OAuthProviderEntry {
-  return {
-    ...provider,
-    icon_url: normalizeOAuthIconUrl(provider.icon_url),
-  }
+  providers: OAuthProviderEntry[]
+  allowRegister: boolean
+  loading?: boolean
+  onProvidersChange: (providers: OAuthProviderEntry[]) => void
+  onAllowRegisterChange: (allow: boolean) => void
 }
 
 function openPresetPicker(
@@ -92,11 +73,15 @@ function openPresetPicker(
 
 export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
   configFields,
-  updateValue: _updateValue,
   title,
   icon,
   description,
   sectionId,
+  providers,
+  allowRegister,
+  loading = false,
+  onProvidersChange,
+  onAllowRegisterChange,
 }) => {
   const { t } = useI18n()
 
@@ -110,51 +95,16 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
   const baseUrl = getFieldValue('base_url').replace(/\/$/, '')
 
   // ---- providers + 开关 ----
-  const [providers, setProviders] = useState<OAuthProviderEntry[]>([])
-  const [allowRegister, setAllowRegister] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
-
   // 选 preset 的弹层状态
   const [picker, setPicker] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      setLoading(true)
-      try {
-        const data = await fetchJson(`${API_URL}/api/config/oauth-providers`, {
-          credentials: 'include',
-        })
-        if (cancelled) return
-        const normalizedProviders: OAuthProviderEntry[] = Array.isArray(
-          data?.providers,
-        )
-          ? data.providers.map(normalizeProviderEntry)
-          : []
-        preloadOAuthIcons(normalizedProviders.map((provider) => provider.icon_url))
-        setProviders(normalizedProviders)
-        setAllowRegister(Boolean(data?.allow_local_registration))
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || 'Load failed')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const updateProvider = (idx: number, patch: Partial<OAuthProviderEntry>) => {
-    setProviders((prev) =>
-      prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)),
+    onProvidersChange(
+      providers.map((p, i) => (i === idx ? { ...p, ...patch } : p)),
     )
   }
   const removeProvider = (idx: number) => {
-    setProviders((prev) => prev.filter((_, i) => i !== idx))
+    onProvidersChange(providers.filter((_, i) => i !== idx))
   }
 
   const addFromPreset = (presetId: string) => {
@@ -178,58 +128,8 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
       discovery_url: preset.discovery_url || '',
       icon_url: preset.icon_url || null,
     }
-    setProviders((prev) => [...prev, entry])
+    onProvidersChange([...providers, entry])
     setPicker(false)
-  }
-
-  const save = async () => {
-    setSaving(true)
-    setError(null)
-    setSaved(false)
-    try {
-      const payload = {
-        providers: providers.map((p) => ({
-          ...p,
-          discovery_url: p.discovery_url || null,
-          icon_url: normalizeOAuthIconUrl(p.icon_url),
-          scopes: p.scopes.filter(Boolean),
-        })),
-        allow_local_registration: allowRegister,
-      }
-      // 加 CSRF token — admin 端点经过 csrf_middleware
-      const csrfToken = await getCSRFToken()
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-      if (csrfToken) headers['X-CSRF-Token'] = csrfToken
-
-      await fetchJson(`${API_URL}/api/config/oauth-providers`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers,
-        body: JSON.stringify(payload),
-      })
-      // 保存成功后重新拉一次，让后端做的规范化（slug 大小写、secret 掩码等）反映到 UI
-      const refreshed = await fetchJson(
-        `${API_URL}/api/config/oauth-providers`,
-        {
-          credentials: 'include',
-        },
-      )
-      if (Array.isArray(refreshed?.providers)) {
-        const normalizedProviders: OAuthProviderEntry[] =
-          refreshed.providers.map(normalizeProviderEntry)
-        preloadOAuthIcons(normalizedProviders.map((provider) => provider.icon_url))
-        setProviders(normalizedProviders)
-        setAllowRegister(Boolean(refreshed?.allow_local_registration))
-      }
-      setSaved(true)
-      setTimeout(setSaved, 2500, false)
-    } catch (e: any) {
-      setError(e?.message || 'Save failed')
-    } finally {
-      setSaving(false)
-    }
   }
 
   // 可用 preset = 全部 - 已用 GitHub 的（一个实例足够）
@@ -282,7 +182,8 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
         label={t.config.allowRegisterTitle}
         description={t.config.allowRegisterDesc}
         value={allowRegister}
-        onChange={setAllowRegister}
+        loading={loading}
+        onChange={onAllowRegisterChange}
       />
 
       {/* providers 列表 */}
@@ -337,28 +238,6 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
           />
         ))}
 
-        {(providers.length > 0 || error || saved) && (
-          <div className="oidc-save-bar">
-            <div className="oidc-save-bar-status">
-              {saved && (
-                <span className="oidc-status success">
-                  <FaCheck />
-                  {t.config.oidcSaved}
-                </span>
-              )}
-              {error && <span className="oidc-status error">{error}</span>}
-            </div>
-            <button
-              type="button"
-              className="btn-base btn-primary"
-              onClick={save}
-              disabled={saving}
-            >
-              <FaCheck />
-              {saving ? t.config.oidcSaving : t.config.oidcSaveConfig}
-            </button>
-          </div>
-        )}
       </div>
     </SettingSection>
   )

@@ -32,6 +32,7 @@ import { useI18n } from '../contexts/I18nContext'
 import { useDataManagementScheduler, usePageReady } from '../hooks/animation'
 import { useBackgroundTasks } from '../hooks/useBackgroundTasks'
 import { getCSRFToken } from '../utils/csrf'
+import { notifyRecentActivityUpdated } from '../utils/recentActivity'
 import { hasSessionHint } from '../utils/sessionDetection'
 import '../components/ConfigForm.css'
 
@@ -217,6 +218,7 @@ export default function DataManagement() {
       const data = await response.json()
 
       if (data.success) {
+        notifyRecentActivityUpdated()
         showMessage(
           t.dataManagement.dataRefreshed.replace('{platform}', platformName),
           'success',

@@ -2109,24 +2109,23 @@ async fn get_platform_data(
         return Ok(cached_data);
     }
 
-    // 4. 🚀 NEW: 尝试从数据库读取数据（支持分片数据）
-    let batch_saver = crate::services::batch_saver::BatchSaver::new(db.clone());
+    // 4. 从统一元数据服务读取。新数据直接是完整 JSONB，该方法也会
+    // 合并旧版 BatchSaver 留下的 `*_chunk_N` 记录。
+    let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
+    if let Ok(all_metadata) = metadata_service.get_all_latest_metadata(user_id).await {
+        if let Some(platform_data) = all_metadata.get(platform) {
+            tracing::info!("✓ Loaded {} from unified metadata storage", platform);
 
-    if let Ok(Some(platform_data)) = batch_saver.load_chunked_metadata(user_id, platform).await {
-        tracing::info!(
-            "✓ Loaded {} from database (with chunked data support)",
-            platform
-        );
+            // 处理并缓存该平台数据
+            let filtered_data = SmartFilter::process_and_save_single(platform, platform_data)
+                .map_err(|e| format!("Failed to process {}: {}", platform, e))?;
 
-        // 处理并缓存该平台数据
-        let filtered_data = SmartFilter::process_and_save_single(platform, &platform_data)
-            .map_err(|e| format!("Failed to process {}: {}", platform, e))?;
-
-        tracing::info!(
-            "✓ Successfully processed and cached {} from database",
-            platform
-        );
-        return Ok(filtered_data);
+            tracing::info!(
+                "✓ Successfully processed and cached {} from database",
+                platform
+            );
+            return Ok(filtered_data);
+        }
     }
 
     // 5. FALLBACK: 从平台特定的raw文件读取数据

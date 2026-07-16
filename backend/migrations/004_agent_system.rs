@@ -61,6 +61,8 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(AgentTasks::StepResults).json().not_null())
                     // 执行上下文 (JSON) - 包含动态步骤、变量等
                     .col(ColumnDef::new(AgentTasks::ExecutionContext).json())
+                    // 完整执行配方（Planner 输出）
+                    .col(ColumnDef::new(AgentTasks::Recipe).json_binary())
                     // 待回答问题 (JSON)
                     .col(ColumnDef::new(AgentTasks::PendingQuestion).json())
                     // 进度百分比
@@ -471,6 +473,7 @@ pub enum AgentTasks {
     TotalSteps,
     StepResults,
     ExecutionContext,
+    Recipe,
     PendingQuestion,
     Progress,
     Error,

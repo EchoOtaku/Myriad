@@ -139,6 +139,13 @@ async fn run_server() -> anyhow::Result<()> {
             Ok(db) => {
                 tracing::info!("✅ Database connection established");
 
+                // Retired migration files have been folded into the base schema.
+                // Remove only their known history rows before SeaORM validates
+                // migration-file/history parity; schema_check owns the backfill.
+                if let Err(e) = db::schema_check::reconcile_retired_migration_history(&db).await {
+                    tracing::warn!("Failed to reconcile retired migration history: {}", e);
+                }
+
                 // Run database migrations automatically on startup (idempotent - skips already applied migrations)
                 use sea_orm_migration::MigratorTrait;
                 tracing::debug!("Checking for pending database migrations...");
@@ -198,6 +205,22 @@ async fn run_server() -> anyhow::Result<()> {
                 // Initialize Tapp scheduler engine
                 api::tapp_scheduler::init_scheduler(db.clone()).await;
                 tracing::info!("✅ Tapp scheduler engine initialized");
+
+                // Reconcile Myriad Core platform refresh jobs after the shared
+                // scheduler is ready. Failure does not block startup; the admin
+                // settings save path will retry and report the error directly.
+                match api::config::reconcile_platform_auto_refresh(&db).await {
+                    Ok(summary) => tracing::info!(
+                        enabled_tasks = summary.enabled_tasks,
+                        disabled_tasks = summary.disabled_tasks,
+                        interval_hours = summary.interval_hours,
+                        "✅ Core platform auto-refresh tasks reconciled"
+                    ),
+                    Err(error) => tracing::warn!(
+                        "Failed to reconcile Core platform auto-refresh tasks: {}",
+                        error
+                    ),
+                }
 
                 // Initialize Brew scheduler engine (RSS/Atom feed updates)
                 services::brew_scheduler::init_brew_scheduler(db.clone()).await;
@@ -834,6 +857,20 @@ async fn export_settings_wrapper(headers: axum::http::HeaderMap) -> Response {
         )
             .into_response(),
     }
+}
+
+/// Preview an adaptive settings restore without changing persisted state.
+async fn preview_settings_restore_wrapper(
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<api::config::SettingsBackup>,
+) -> Response {
+    if let Err((status, json)) = middleware::auth::verify_current_admin_from_headers(&headers).await
+    {
+        return (status, json).into_response();
+    }
+
+    let (status, json) = api::config::preview_settings_restore(Json(payload)).await;
+    (status, json).into_response()
 }
 
 /// Atomically restore a versioned settings backup.
@@ -3662,6 +3699,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/config/settings-backup",
             get(export_settings_wrapper)
                 .post(restore_settings_wrapper)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/config/settings-backup/preview",
+            post(preview_settings_restore_wrapper)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(

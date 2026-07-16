@@ -426,7 +426,40 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // ==================== 6. PLATFORM_REPORTS 表 ====================
+        // ==================== 6. ACTIVITY_EVENTS 表 ====================
+        // 面向用户的数据平台活动事件；原始字段 diff 仍保留在 metadata_history。
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+CREATE TABLE IF NOT EXISTS activity_events (
+    id SERIAL PRIMARY KEY,
+    metadata_history_id INTEGER NOT NULL UNIQUE,
+    metadata_id INTEGER,
+    user_id INTEGER NOT NULL,
+    platform_name VARCHAR(64) NOT NULL,
+    event_type VARCHAR(32) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    changes JSONB NOT NULL DEFAULT '[]'::jsonb,
+    change_count INTEGER NOT NULL DEFAULT 0,
+    importance SMALLINT NOT NULL DEFAULT 0,
+    occurred_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_activity_events_history
+        FOREIGN KEY (metadata_history_id)
+        REFERENCES metadata_history(id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_events_user_date
+    ON activity_events (user_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_events_platform_date
+    ON activity_events (platform_name, occurred_at DESC);
+"#,
+            )
+            .await?;
+
+        // ==================== 7. PLATFORM_REPORTS 表 ====================
         // 报告存储
         manager
             .create_table(
@@ -492,6 +525,10 @@ impl MigrationTrait for Migration {
         // 删除所有表（按依赖顺序反向）
         manager
             .drop_table(Table::drop().table(PlatformReports::Table).to_owned())
+            .await?;
+        manager
+            .get_connection()
+            .execute_unprepared("DROP TABLE IF EXISTS activity_events;")
             .await?;
         manager
             .drop_table(Table::drop().table(MetadataHistory::Table).to_owned())

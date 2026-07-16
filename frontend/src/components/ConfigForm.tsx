@@ -1,7 +1,17 @@
+import type {
+  NotificationEventDefinition,
+  NotificationPreferences,
+  NotificationSourceKey,
+} from '../services/notificationPreferencesApi'
 import type { ModuleVisibilityPreferences } from '../utils/moduleVisibility'
+import type { OAuthSettings } from '../utils/oauthSettings'
 import type { HitokotoConfig } from '../utils/quote'
 import type { ReportSettings } from '../utils/reportSettings'
-import type { LibrarySourcePreferences } from './config'
+import type {
+  LibrarySourcePreferences,
+  PlatformAutoFetchConfig,
+} from './config'
+import type { PermissionConfigValues } from './config/PermissionsConfigSection'
 import type { ToastType } from './Toast'
 
 import {
@@ -16,6 +26,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API_URL } from '../config'
 
+import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useDebounce } from '../hooks/useDebounce'
 import {
@@ -27,6 +38,12 @@ import {
   updatePermissionsConfig,
 } from '../lib/api'
 import apiService from '../services/api'
+import notificationPreferencesApi, {
+  areNotificationPreferencesEqual,
+  cloneNotificationPreferences,
+  DEFAULT_NOTIFICATION_CATALOG,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+} from '../services/notificationPreferencesApi'
 import { getCSRFToken } from '../utils/csrf'
 import {
   areModuleVisibilityPreferencesEqual,
@@ -36,6 +53,13 @@ import {
   normalizeModuleVisibilityPreferences,
   updateModuleVisibilityPreferences,
 } from '../utils/moduleVisibility'
+import {
+  areOAuthSettingsEqual,
+  cloneOAuthSettings,
+  DEFAULT_OAUTH_SETTINGS,
+  fetchOAuthSettings,
+  updateOAuthSettings,
+} from '../utils/oauthSettings'
 import {
   areHitokotoConfigsEqual,
   DEFAULT_HITOKOTO_CONFIG,
@@ -62,6 +86,7 @@ import {
   NotificationConfigSection,
   OAuthConfigSection,
   PermissionsConfigSection,
+  PlatformAutoRefreshSettings,
   UiConfigSection,
 } from './config'
 import MyriadConfigIcon from './config/MyriadConfigIcon'
@@ -115,6 +140,7 @@ interface UiConfig {
 
 interface Config {
   platforms: PlatformConfig[]
+  auto_fetch: PlatformAutoFetchConfig
   ai_config: AiConfig
   report_config: ReportConfig
   ui_config: UiConfig
@@ -132,6 +158,62 @@ interface SaveLibrarySourcePreferencesResponse {
   success: boolean
   preferences?: LibrarySourcePreferences
   message?: string
+}
+
+const DEFAULT_PERMISSION_CONFIG: PermissionConfigValues = {
+  user_perm_ai_generate: false,
+  user_perm_ai_analyze: false,
+  user_perm_ai_chat: false,
+  user_perm_report_write: false,
+  user_perm_network_fetch: false,
+  user_perm_media_control: false,
+  user_perm_component_theme: false,
+  user_perm_shortcut_register: false,
+  user_perm_event_publish: false,
+  user_perm_ai_image: false,
+  user_perm_scheduler_register: false,
+  user_perm_speech_tts: false,
+  user_perm_speech_asr: false,
+  guest_perm_ai_generate: false,
+  guest_perm_ai_analyze: false,
+  guest_perm_ai_chat: false,
+  guest_perm_report_write: false,
+  guest_perm_network_fetch: false,
+  guest_perm_media_control: false,
+  guest_perm_component_theme: false,
+  guest_perm_shortcut_register: false,
+  guest_perm_event_publish: false,
+  guest_perm_ai_image: false,
+  guest_perm_scheduler_register: false,
+  guest_perm_speech_tts: false,
+  guest_perm_speech_asr: false,
+  user_ai_daily_calls: 50,
+  user_ai_daily_tokens: 20000,
+  user_ai_cooldown_seconds: 5,
+  guest_ai_daily_calls: 10,
+  guest_ai_daily_tokens: 5000,
+  guest_ai_cooldown_seconds: 10,
+}
+
+const DEFAULT_CONFIG_FAVORITES = ['platforms', 'ai']
+const DEFAULT_AUTO_FETCH_CONFIG: PlatformAutoFetchConfig = {
+  enabled: false,
+  interval_hours: 24,
+}
+
+function loadConfigFavorites(): string[] {
+  if (typeof window === 'undefined') return DEFAULT_CONFIG_FAVORITES
+  try {
+    const saved = localStorage.getItem('config_favorites')
+    if (!saved) return DEFAULT_CONFIG_FAVORITES
+    const parsed: unknown = JSON.parse(saved)
+    return Array.isArray(parsed) &&
+      parsed.every((item) => typeof item === 'string')
+      ? parsed
+      : DEFAULT_CONFIG_FAVORITES
+  } catch {
+    return DEFAULT_CONFIG_FAVORITES
+  }
 }
 
 function isMaskedValue(value: string) {
@@ -204,9 +286,11 @@ QuickAccessCard.displayName = 'QuickAccessCard'
 const ModernConfigForm: React.FC = () => {
   const navigate = useNavigate()
   const { t } = useI18n()
+  const { user } = useAuth()
   const [config, setConfig] = useState<Config | null>(null)
   const [initialConfig, setInitialConfig] = useState<Config | null>(null)
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<ToastType>('info')
   const [activeSection, setActiveSection] = useState<string>('platforms')
@@ -218,51 +302,34 @@ const ModernConfigForm: React.FC = () => {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [dragArmedIndex, setDragArmedIndex] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [favorites, setFavorites] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return ['platforms', 'ai']
-    const saved = localStorage.getItem('config_favorites')
-    return saved ? JSON.parse(saved) : ['platforms', 'ai']
-  })
+  const [favorites, setFavorites] = useState<string[]>(loadConfigFavorites)
+  const [savedFavorites, setSavedFavorites] =
+    useState<string[]>(loadConfigFavorites)
 
   // Tapp 权限下放配置状态（13 项 elevated 权限 × 2 角色 + AI 限额配置）
-  const [permissionConfig, setPermissionConfig] = useState({
-    // 普通用户 elevated 权限 (platform:write 和 platform:register 已升为 privileged)
-    user_perm_ai_generate: false,
-    user_perm_ai_analyze: false,
-    user_perm_ai_chat: false,
-    user_perm_report_write: false,
-    user_perm_network_fetch: false,
-    user_perm_media_control: false,
-    user_perm_component_theme: false,
-    user_perm_shortcut_register: false,
-    user_perm_event_publish: false,
-    user_perm_ai_image: false,
-    user_perm_scheduler_register: false,
-    user_perm_speech_tts: false,
-    user_perm_speech_asr: false,
-    // 游客 elevated 权限
-    guest_perm_ai_generate: false,
-    guest_perm_ai_analyze: false,
-    guest_perm_ai_chat: false,
-    guest_perm_report_write: false,
-    guest_perm_network_fetch: false,
-    guest_perm_media_control: false,
-    guest_perm_component_theme: false,
-    guest_perm_shortcut_register: false,
-    guest_perm_event_publish: false,
-    guest_perm_ai_image: false,
-    guest_perm_scheduler_register: false,
-    guest_perm_speech_tts: false,
-    guest_perm_speech_asr: false,
-    // AI 使用限额配置
-    user_ai_daily_calls: 50,
-    user_ai_daily_tokens: 20000,
-    user_ai_cooldown_seconds: 5,
-    guest_ai_daily_calls: 10,
-    guest_ai_daily_tokens: 5000,
-    guest_ai_cooldown_seconds: 10,
-  })
+  const [permissionConfig, setPermissionConfig] =
+    useState<PermissionConfigValues>(DEFAULT_PERMISSION_CONFIG)
+  const [savedPermissionConfig, setSavedPermissionConfig] =
+    useState<PermissionConfigValues>(DEFAULT_PERMISSION_CONFIG)
   const [permissionLoading, setPermissionLoading] = useState(false)
+  const [notificationDraft, setNotificationDraft] =
+    useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES)
+  const [savedNotificationPreferences, setSavedNotificationPreferences] =
+    useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES)
+  const [notificationSources, setNotificationSources] = useState<
+    NotificationSourceKey[]
+  >(DEFAULT_NOTIFICATION_CATALOG.sources)
+  const [notificationEvents, setNotificationEvents] = useState<
+    NotificationEventDefinition[]
+  >(DEFAULT_NOTIFICATION_CATALOG.events)
+  const [notificationLoading, setNotificationLoading] = useState(false)
+  const [oauthDraft, setOAuthDraft] = useState<OAuthSettings>(
+    DEFAULT_OAUTH_SETTINGS,
+  )
+  const [savedOAuthSettings, setSavedOAuthSettings] = useState<OAuthSettings>(
+    DEFAULT_OAUTH_SETTINGS,
+  )
+  const [oauthLoading, setOAuthLoading] = useState(false)
   const [librarySourceDraft, setLibrarySourceDraft] =
     useState<LibrarySourcePreferences>(DEFAULT_LIBRARY_SOURCE_PREFERENCES)
   const [savedLibrarySourcePreferences, setSavedLibrarySourcePreferences] =
@@ -297,9 +364,9 @@ const ModernConfigForm: React.FC = () => {
     [],
   )
 
-  // 更新权限配置（单键或批量补丁，供预设模板一次写入）
+  // 所有设置项只更新草稿；实际写入统一由 handleSave 完成。
   const updatePermissionConfig = useCallback(
-    async (
+    (
       keyOrPatch: string | Record<string, boolean | number>,
       value?: boolean | number,
     ) => {
@@ -308,25 +375,9 @@ const ModernConfigForm: React.FC = () => {
           ? { [keyOrPatch]: value as boolean | number }
           : keyOrPatch
 
-      const prevSnapshot = { ...permissionConfig }
       setPermissionConfig((prev) => ({ ...prev, ...patch }))
-
-      try {
-        await getCSRFToken(true)
-        const response = await updatePermissionsConfig(patch)
-
-        if (response.success) {
-          showMessage(t.config.permissionsSaved, 'success', 2000)
-        } else {
-          throw new Error(response.message || 'Failed')
-        }
-      } catch (error) {
-        console.error('Failed to save permission:', error)
-        showMessage(t.config.permissionsSaveFailed, 'error')
-        setPermissionConfig(prevSnapshot)
-      }
     },
-    [t, permissionConfig, showMessage],
+    [],
   )
 
   // 加载权限配置
@@ -337,7 +388,7 @@ const ModernConfigForm: React.FC = () => {
 
       if (response.success && response.config) {
         const { guest, user, user_ai_quota, guest_ai_quota } = response.config
-        setPermissionConfig({
+        const loaded: PermissionConfigValues = {
           // 普通用户权限
           user_perm_ai_generate: user.ai_generate,
           user_perm_ai_analyze: user.ai_analyze,
@@ -373,7 +424,9 @@ const ModernConfigForm: React.FC = () => {
           guest_ai_daily_calls: guest_ai_quota?.daily_calls ?? 10,
           guest_ai_daily_tokens: guest_ai_quota?.daily_tokens ?? 5000,
           guest_ai_cooldown_seconds: guest_ai_quota?.cooldown_seconds ?? 10,
-        })
+        }
+        setPermissionConfig(loaded)
+        setSavedPermissionConfig(loaded)
       }
     } catch (error) {
       console.error('Failed to load permissions:', error)
@@ -381,6 +434,37 @@ const ModernConfigForm: React.FC = () => {
       setPermissionLoading(false)
     }
   }, [])
+
+  const loadNotificationSettings = useCallback(async () => {
+    try {
+      setNotificationLoading(true)
+      const response = await notificationPreferencesApi.get()
+      const loaded = cloneNotificationPreferences(response.preferences)
+      setNotificationDraft(loaded)
+      setSavedNotificationPreferences(cloneNotificationPreferences(loaded))
+      setNotificationSources(response.catalog.sources)
+      setNotificationEvents(response.catalog.events)
+    } catch (error) {
+      console.error('Failed to load notification settings:', error)
+      showMessage(t.config.loadConfigFailed, 'error')
+    } finally {
+      setNotificationLoading(false)
+    }
+  }, [showMessage, t])
+
+  const loadOAuthSettings = useCallback(async () => {
+    try {
+      setOAuthLoading(true)
+      const loaded = await fetchOAuthSettings()
+      setOAuthDraft(cloneOAuthSettings(loaded))
+      setSavedOAuthSettings(cloneOAuthSettings(loaded))
+    } catch (error) {
+      console.error('Failed to load OAuth settings:', error)
+      showMessage(t.config.loadConfigFailed, 'error')
+    } finally {
+      setOAuthLoading(false)
+    }
+  }, [showMessage, t])
 
   const getPlatformDescription = useCallback(
     (platform: PlatformConfig) => {
@@ -811,13 +895,9 @@ const ModernConfigForm: React.FC = () => {
   // 切换收藏
   const toggleFavorite = React.useCallback((section: string) => {
     setFavorites((prev) => {
-      const updated = prev.includes(section)
+      return prev.includes(section)
         ? prev.filter((s) => s !== section)
         : [...prev, section]
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('config_favorites', JSON.stringify(updated))
-      }
-      return updated
     })
   }, [])
 
@@ -957,13 +1037,29 @@ const ModernConfigForm: React.FC = () => {
       reportSettingsDraft,
       savedReportSettings,
     )
+    const hasPermissionChanges =
+      JSON.stringify(permissionConfig) !== JSON.stringify(savedPermissionConfig)
+    const hasNotificationChanges = !areNotificationPreferencesEqual(
+      notificationDraft,
+      savedNotificationPreferences,
+    )
+    const hasOAuthChanges = !areOAuthSettingsEqual(
+      oauthDraft,
+      savedOAuthSettings,
+    )
+    const hasFavoriteChanges =
+      JSON.stringify(favorites) !== JSON.stringify(savedFavorites)
 
     if (
       !hasConfigChanges &&
       !hasLibrarySourceChanges &&
       !hasModuleVisibilityChanges &&
       !hasHitokotoChanges &&
-      !hasReportSettingsChanges
+      !hasReportSettingsChanges &&
+      !hasPermissionChanges &&
+      !hasNotificationChanges &&
+      !hasOAuthChanges &&
+      !hasFavoriteChanges
     ) {
       notifyDirtyState(false)
       window.dispatchEvent(
@@ -996,6 +1092,7 @@ const ModernConfigForm: React.FC = () => {
     }
 
     showMessage(t.config.savingConfig, 'info', 0)
+    setSaving(true)
 
     try {
       let resultMessage = t.config.configSaved
@@ -1035,6 +1132,46 @@ const ModernConfigForm: React.FC = () => {
         resultMessage = hasConfigChanges
           ? resultMessage
           : t.config.reportSettingsSaved
+      }
+
+      if (hasPermissionChanges) {
+        await getCSRFToken(true)
+        const patch = Object.fromEntries(
+          Object.entries(permissionConfig).filter(
+            ([key, value]) => savedPermissionConfig[key] !== value,
+          ),
+        )
+        const response = await updatePermissionsConfig(patch)
+        if (!response.success) {
+          throw new Error(response.message || t.config.permissionsSaveFailed)
+        }
+        setSavedPermissionConfig({ ...permissionConfig })
+        resultMessage = hasConfigChanges
+          ? resultMessage
+          : t.config.permissionsSaved
+      }
+
+      if (hasNotificationChanges) {
+        const saved = await notificationPreferencesApi.update(
+          notificationDraft,
+          user?.id,
+        )
+        const normalized = cloneNotificationPreferences(saved)
+        setNotificationDraft(normalized)
+        setSavedNotificationPreferences(
+          cloneNotificationPreferences(normalized),
+        )
+      }
+
+      if (hasOAuthChanges) {
+        const saved = await updateOAuthSettings(oauthDraft)
+        setOAuthDraft(cloneOAuthSettings(saved))
+        setSavedOAuthSettings(cloneOAuthSettings(saved))
+      }
+
+      if (hasFavoriteChanges) {
+        localStorage.setItem('config_favorites', JSON.stringify(favorites))
+        setSavedFavorites([...favorites])
       }
 
       notifyDirtyState(false)
@@ -1084,6 +1221,8 @@ const ModernConfigForm: React.FC = () => {
           detail: { success: false, message: errorMsg },
         }),
       )
+    } finally {
+      setSaving(false)
     }
   }, [
     config,
@@ -1098,6 +1237,15 @@ const ModernConfigForm: React.FC = () => {
     reportSettingsDraft,
     savedReportSettings,
     saveReportSettingsDraft,
+    permissionConfig,
+    savedPermissionConfig,
+    notificationDraft,
+    savedNotificationPreferences,
+    oauthDraft,
+    savedOAuthSettings,
+    favorites,
+    savedFavorites,
+    user?.id,
     savedLibrarySourcePreferences,
     savedModuleVisibilityPreferences,
     savedHitokotoConfig,
@@ -1107,12 +1255,14 @@ const ModernConfigForm: React.FC = () => {
 
   const handleReset = React.useCallback(async () => {
     showMessage(t.config.resettingConfig, 'info', 0)
+    setSaving(true)
 
     try {
       const data = await fetchConfig()
 
       const clearedData = {
         ...data,
+        auto_fetch: DEFAULT_AUTO_FETCH_CONFIG,
         platforms: data.platforms.map((platform: any) => ({
           ...platform,
           enabled: false,
@@ -1153,7 +1303,6 @@ const ModernConfigForm: React.FC = () => {
       }
 
       setConfig(clearedData)
-      notifyDirtyState(false)
 
       await new Promise((resolve) => setTimeout(resolve, 200))
 
@@ -1163,6 +1312,7 @@ const ModernConfigForm: React.FC = () => {
       await getCSRFToken(true)
 
       const saveResult = await updateConfig(clearedData)
+      setInitialConfig(JSON.parse(JSON.stringify(clearedData)))
 
       showMessage(t.config.configReset, 'success', 5000)
 
@@ -1182,15 +1332,21 @@ const ModernConfigForm: React.FC = () => {
           detail: { success: false, message: errorMsg },
         }),
       )
+    } finally {
+      setSaving(false)
     }
-  }, [])
+  }, [showMessage, t])
 
   const loadConfig = React.useCallback(async () => {
     setLoading(true)
     try {
       const data = await fetchConfig()
-      setConfig(data)
-      setInitialConfig(JSON.parse(JSON.stringify(data)))
+      const normalizedData = {
+        ...data,
+        auto_fetch: data.auto_fetch || DEFAULT_AUTO_FETCH_CONFIG,
+      }
+      setConfig(normalizedData)
+      setInitialConfig(JSON.parse(JSON.stringify(normalizedData)))
       notifyDirtyState(false)
 
       const event = new CustomEvent('config-loaded', { detail: data })
@@ -1208,12 +1364,16 @@ const ModernConfigForm: React.FC = () => {
     loadModuleVisibilityPreferences()
     loadHitokotoSettings()
     loadReportSettings()
+    loadNotificationSettings()
+    loadOAuthSettings()
   }, [
     loadConfig,
     loadPermissionConfig,
     loadModuleVisibilityPreferences,
     loadHitokotoSettings,
     loadReportSettings,
+    loadNotificationSettings,
+    loadOAuthSettings,
   ])
 
   // Discord 一键授权回调：/config?section=platforms&discord_oauth=ok|error
@@ -1387,6 +1547,15 @@ const ModernConfigForm: React.FC = () => {
     [config, notifyDirtyState],
   )
 
+  const updateAutoFetchConfig = React.useCallback(
+    (auto_fetch: PlatformAutoFetchConfig) => {
+      if (!config) return
+      setConfig({ ...config, auto_fetch })
+      notifyDirtyState(true)
+    },
+    [config, notifyDirtyState],
+  )
+
   // 🆕 调整平台顺序（拖拽排序）：该顺序会作为报告页平台卡片的出现顺序保存
   // fromIndex 的卡片移动到 toIndex 位置
   const reorderPlatform = React.useCallback(
@@ -1444,16 +1613,57 @@ const ModernConfigForm: React.FC = () => {
     [reportSettingsDraft, savedReportSettings],
   )
 
+  const isPermissionDirty = useMemo(
+    () =>
+      JSON.stringify(permissionConfig) !==
+      JSON.stringify(savedPermissionConfig),
+    [permissionConfig, savedPermissionConfig],
+  )
+
+  const isNotificationDirty = useMemo(
+    () =>
+      !areNotificationPreferencesEqual(
+        notificationDraft,
+        savedNotificationPreferences,
+      ),
+    [notificationDraft, savedNotificationPreferences],
+  )
+
+  const isOAuthDirty = useMemo(
+    () => !areOAuthSettingsEqual(oauthDraft, savedOAuthSettings),
+    [oauthDraft, savedOAuthSettings],
+  )
+
+  const isFavoritesDirty = useMemo(
+    () => JSON.stringify(favorites) !== JSON.stringify(savedFavorites),
+    [favorites, savedFavorites],
+  )
+
   const isConfigDirty =
     isBaseConfigDirty ||
     isLibrarySourceDirty ||
     isModuleVisibilityDirty ||
     isHitokotoDirty ||
-    isReportSettingsDirty
+    isReportSettingsDirty ||
+    isPermissionDirty ||
+    isNotificationDirty ||
+    isOAuthDirty ||
+    isFavoritesDirty
 
   useEffect(() => {
     notifyDirtyState(isConfigDirty)
   }, [isConfigDirty, notifyDirtyState])
+
+  useEffect(() => {
+    if (!isConfigDirty) return
+
+    const warnAboutUnsavedChanges = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+    }
+    window.addEventListener('beforeunload', warnAboutUnsavedChanges)
+    return () =>
+      window.removeEventListener('beforeunload', warnAboutUnsavedChanges)
+  }, [isConfigDirty])
 
   const getSectionProps = (sectionId: string) => {
     const item = quickAccessItems.find((i) => i.id === sectionId)
@@ -1491,6 +1701,14 @@ const ModernConfigForm: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            <PlatformAutoRefreshSettings
+              value={config.auto_fetch}
+              enabledPlatformCount={
+                config.platforms.filter((platform) => platform.enabled).length
+              }
+              onChange={updateAutoFetchConfig}
+            />
 
             <div className="platforms-grid">
               {config.platforms.map((platform, index) =>
@@ -1625,7 +1843,18 @@ const ModernConfigForm: React.FC = () => {
         return (
           <OAuthConfigSection
             configFields={config.ui_config.config_fields}
-            updateValue={updateUiFieldValue}
+            providers={oauthDraft.providers}
+            allowRegister={oauthDraft.allowLocalRegistration}
+            loading={oauthLoading}
+            onProvidersChange={(providers) =>
+              setOAuthDraft((current) => ({ ...current, providers }))
+            }
+            onAllowRegisterChange={(allowLocalRegistration) =>
+              setOAuthDraft((current) => ({
+                ...current,
+                allowLocalRegistration,
+              }))
+            }
             {...props}
           />
         )
@@ -1676,7 +1905,16 @@ const ModernConfigForm: React.FC = () => {
           />
         )
       case 'notifications':
-        return <NotificationConfigSection {...props} />
+        return (
+          <NotificationConfigSection
+            preferences={notificationDraft}
+            sources={notificationSources}
+            events={notificationEvents}
+            loading={notificationLoading}
+            onChange={setNotificationDraft}
+            {...props}
+          />
+        )
       case 'advanced':
         return (
           <AdvancedConfigSection
@@ -1974,6 +2212,7 @@ const ModernConfigForm: React.FC = () => {
             onClick={handleSave}
             className="btn-base btn-primary floating-save-btn"
             aria-label={t.config.saveConfigLabel}
+            disabled={saving}
           >
             <svg
               fill="none"
@@ -1989,7 +2228,7 @@ const ModernConfigForm: React.FC = () => {
                 d="M5 13l4 4L19 7"
               />
             </svg>
-            <span>{t.config.saveConfig}</span>
+            <span>{saving ? t.config.savingConfig : t.config.saveConfig}</span>
           </button>
         </div>
       )}

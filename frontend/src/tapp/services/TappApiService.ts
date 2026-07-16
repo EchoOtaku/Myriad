@@ -1389,7 +1389,7 @@ export async function getAIUsage(
   return response.usage
 }
 
-/** 创建由服务端治理的 AI V2 任务。 */
+/** 创建由服务端治理的 AI 任务。 */
 export async function createAITask(
   request: AITaskRequest,
   runtimeGrant: string,
@@ -1401,7 +1401,7 @@ export async function createAITask(
   })
 }
 
-/** 读取当前 Tapp/subject 范围内的 AI V2 任务。 */
+/** 读取当前 Tapp/subject 范围内的 AI 任务。 */
 export async function getAITask(
   taskId: string,
   runtimeGrant: string,
@@ -1411,7 +1411,7 @@ export async function getAITask(
   })
 }
 
-/** 请求取消仍在运行的 AI V2 任务。 */
+/** 请求取消仍在运行的 AI 任务。 */
 export async function cancelAITask(
   taskId: string,
   runtimeGrant: string,

@@ -81,8 +81,8 @@ function detectAgentPreset(
 const PRESET_CARD_CLASS =
   'rounded-lg border border-gray-100 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/[0.03]'
 
-interface PermissionsConfigSectionProps {
-  permissionConfig: {
+export interface PermissionConfigValues
+  extends Record<string, boolean | number> {
     user_perm_ai_generate: boolean
     user_perm_ai_analyze: boolean
     user_perm_ai_chat: boolean
@@ -117,7 +117,10 @@ interface PermissionsConfigSectionProps {
     guest_ai_daily_calls: number
     guest_ai_daily_tokens: number
     guest_ai_cooldown_seconds: number
-  }
+}
+
+interface PermissionsConfigSectionProps {
+  permissionConfig: PermissionConfigValues
   updatePermissionConfig: (
     key: string | Record<string, boolean | number>,
     value?: boolean | number,

@@ -1,4 +1,4 @@
-//! Manifest-scoped, online at-most-once Event V2 broker.
+//! Manifest-scoped, online at-most-once event broker.
 //!
 //! Events are transient notifications, not a data transport or task queue.
 //! Cross-Tapp data bodies must use the consent-gated Data Exchange API.
@@ -167,7 +167,7 @@ fn parse_event_manifest(manifest: &Value) -> Result<TappEventsManifest, ApiError
             api_error(
                 StatusCode::FORBIDDEN,
                 "EVENT_V2_NOT_DECLARED",
-                "Tapp manifest does not declare Event V2",
+                "Tapp manifest does not declare Event Broker",
             )
         })
         .and_then(|value| {
@@ -584,8 +584,8 @@ pub async fn stream_events_v2(
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
-/// V1 migration adapter. Only explicit `target = self` is retained and maps
-/// to Event V2 instance scope; free-form targets and the old implicit `all`
+/// Legacy migration adapter. Only explicit `target = self` is retained and maps
+/// to Event Broker instance scope; free-form targets and the old implicit `all`
 /// behavior are rejected.
 pub async fn publish_event(
     State(db): State<DatabaseConnection>,
@@ -598,7 +598,7 @@ pub async fn publish_event(
         return Err(api_error(
             StatusCode::BAD_REQUEST,
             "UNSUPPORTED_LEGACY_EVENT_TARGET",
-            "Legacy event publish only supports target=self; use Event V2 scope",
+            "Legacy event publish only supports target=self; use Event Broker scope",
         ));
     }
     publish_v2(
@@ -620,7 +620,7 @@ pub struct UpdateSubscriptionsRequest {
     pub subscriptions: Vec<String>,
 }
 
-/// Legacy subscription persistence is deliberately removed: Manifest V2 is
+/// Legacy subscription persistence is deliberately removed: Manifest is
 /// the only subscription declaration and online streams are runtime state.
 pub async fn get_event_subscriptions(
     _runtime: RuntimeGrantContext,

@@ -1,4 +1,4 @@
-//! Server-governed AI Task V2 for Tapp runtimes.
+//! Server-governed AI Task for Tapp runtimes.
 //!
 //! Tasks are scoped to the subject/owner/Tapp identity carried by a Runtime
 //! Grant. The registry intentionally contains only short-lived execution state;
@@ -396,7 +396,7 @@ fn parse_ai_manifest(manifest: &Value) -> Result<TappAiManifest, ApiError> {
             api_error(
                 StatusCode::FORBIDDEN,
                 "AI_V2_NOT_DECLARED",
-                "Tapp manifest does not declare AI Task V2",
+                "Tapp manifest does not declare AI Task",
             )
         })
         .and_then(|value| {
@@ -1173,12 +1173,12 @@ async fn execute_task(execution: AiTaskExecution) {
     match outcome {
         Ok((result, actual_tokens)) => {
             if let Err(error) = settle_ai_quota(&db, &reservation, actual_tokens).await {
-                tracing::error!(?error, task_id, "[TAPP] Failed to settle AI V2 quota");
+                tracing::error!(?error, task_id, "[TAPP] Failed to settle AI Task quota");
             }
             let usage = get_ai_usage(&db, role, subject_id, owner_id, &tapp_id)
                 .await
                 .map_err(|error| {
-                    tracing::error!(?error, task_id, "[TAPP] Failed to refresh AI V2 usage");
+                    tracing::error!(?error, task_id, "[TAPP] Failed to refresh AI Task usage");
                 })
                 .ok();
             finish_task(&task_id, AiTaskStatus::Completed, Some(result), None, usage).await;
@@ -1188,13 +1188,13 @@ async fn execute_task(execution: AiTaskExecution) {
                 tracing::error!(
                     ?error,
                     task_id,
-                    "[TAPP] Failed to release AI V2 reservation"
+                    "[TAPP] Failed to release AI Task reservation"
                 );
             }
             let usage = get_ai_usage(&db, role, subject_id, owner_id, &tapp_id)
                 .await
                 .map_err(|error| {
-                    tracing::error!(?error, task_id, "[TAPP] Failed to refresh AI V2 usage");
+                    tracing::error!(?error, task_id, "[TAPP] Failed to refresh AI Task usage");
                 })
                 .ok();
             let status = if code == "AI_TASK_CANCELLED" {

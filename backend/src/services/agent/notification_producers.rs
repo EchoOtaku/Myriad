@@ -85,6 +85,23 @@ impl NotificationManager {
         self.notify(notification).await;
     }
 
+    pub async fn notify_platform_sync_error(&self, user_id: i32, platform: &str, error: &str) {
+        let notification = Notification::new(
+            user_id,
+            NotificationType::SystemInfo,
+            NotificationPriority::High,
+            format!("{} 自动刷新失败", platform),
+            error,
+        )
+        .with_metadata(serde_json::json!({
+            "event_key": "platform.sync.failed",
+            "route": "/config?section=platforms",
+            "platform": platform,
+            "status": "failed",
+        }));
+        self.notify(notification).await;
+    }
+
     pub async fn notify_mcp_server_status(&self, server_id: &str, connected: bool, detail: &str) {
         for user_id in self.admin_user_ids().await {
             let mut notification = Notification::new(

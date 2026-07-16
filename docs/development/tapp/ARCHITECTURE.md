@@ -6,8 +6,8 @@
 [REST API](REST_API.md) 为准。
 
 Runtime Grant、One-shot Data Exchange、AI Task、Scoped Event Broker 和 Agent Interaction
-的 V2 契约与迁移状态见
-[Tapp Runtime V2 契约设计](CONTRACT_V2_DESIGN.md)。共享 registry/mailbox、Agent task 恢复、
+的当前契约与迁移状态见
+[Tapp Runtime 契约设计](RUNTIME_CONTRACT_DESIGN.md)。共享 registry/mailbox、Agent task 恢复、
 宿主 intent adapter、签名 guest session 与硬存储配额均已进入当前实现。
 
 ## 一句话模型
@@ -92,7 +92,7 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
   Federation 内容，游客只获得公开 Feed，已登录用户获得公开内容与自己的个人内容；
   游客不能关注、发布、私聊、进入私有 Room 或传输文件。
 - 同 ID 在不同 owner 上下文中可能并存；当前兼容规则统一为管理员公开版本优先，详情、
-  资源、最终授权和 Manifest 声明 API 必须选择同一安装记录。V2 将由 Runtime Grant 显式
+  资源、最终授权和 Manifest 声明 API 必须选择同一安装记录。当前运行时由 Runtime Grant 显式
   携带 owner，消除仅凭 `tappId` 推断的歧义。
 
 ## `core`、`widget`、`page` 三层
@@ -276,7 +276,7 @@ sequenceDiagram
 会拒绝这种会在运行时覆盖的 Manifest。若要支持它，需要同步升级商店索引、安装请求、
 资源响应和 Widget 宿主选择逻辑，属于需要单独设计的版本化契约变更。
 
-Agent Interaction V2 由可信 Agent 后端创建具名 interaction，Tapp 通过在线 SSE 接收并由单一
+Agent Interaction 由可信 Agent 后端创建具名 interaction，Tapp 通过在线 SSE 接收并由单一
 runtime 接受；输入与结果都按 Manifest schema 校验，生命周期、幂等和 intent 的宿主确认由
 后端状态机约束。旧 `onFill()` 只映射显式声明的 `legacy.fill`；无消费者的 `reportData()` 与
 `requestAction()` 已改为明确返回 `UNSUPPORTED_LEGACY_AGENT_ACTION`。当前结果会安全存储并可
@@ -295,10 +295,10 @@ Scoped Event Broker 使用 Manifest publish/subscribe allowlist 与 Runtime Gran
 宿主已提供 `system.theme.changed`、`system.network.changed`、`system.locale.changed`、
 `system.visibility.changed` 与 `system.navigation.changed` producer。
 
-AI V2 将 generate/analyze/chat/image 统一为服务端任务，校验 Manifest operation、model tier、
+AI Task 将 generate/analyze/chat/image 统一为服务端任务，校验 Manifest operation、model tier、
 context source 与 output format，限制并发和执行/保留时间，并通过 SSE 返回 delta/progress/state。
 calls、tokens 与 cooldown 以 `(subject, owner, tapp, UTC day)` 持久化，调用前预留、完成时结算、
-失败或取消释放未消耗 token。V1 仍保留已真实支持字段；过去被忽略的 options 现在返回
+失败或取消释放未消耗 token。旧接口仍保留已真实支持字段；过去被忽略的 options 现在返回
 `UNSUPPORTED_V1_OPTION`，不再接受后静默忽略。
 
 当前 Tapp storage 按 `user_id + tapp_id` 隔离，单值上限 1 MiB，总量上限 5 MiB；写入在同一
@@ -312,7 +312,7 @@ Page、Widget 或 headless runtime，不隐式拉起没有后台需求的完整 
 通知，不能承载 export 正文绕过这次授权。
 
 上述能力的边界与迁移方案统一记录在版本化的
-[V2 契约设计](CONTRACT_V2_DESIGN.md)。Runtime Grant、Data Exchange、AI Task、Event Broker
+[当前契约设计](RUNTIME_CONTRACT_DESIGN.md)。Runtime Grant、Data Exchange、AI Task、Event Broker
 与 Agent Interaction 协议均已有首版；Runtime Grant、Data Exchange、Event、AI task 和 Agent
 interaction 使用 PostgreSQL TTL registry 与持久 mailbox。写入同时发出可供 listener 使用的
 `pg_notify` 唤醒信号；当前 SSE 以 mailbox 轮询作为消费与补读路径，通知丢失或副本切换不会

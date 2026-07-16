@@ -17,7 +17,6 @@
  * - 使用 Uint32Array 批量读写像素
  *
  * @module useEvocativeWallpaper
- * @version 2.0
  */
 
 import { useEffect, useRef } from 'react'

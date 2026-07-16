@@ -1,15 +1,14 @@
 import type React from 'react'
 import type { Locale } from '../../i18n'
 import type {
+  NotificationEventDefinition,
   NotificationEventKey,
   NotificationPreferences,
   NotificationSourceKey,
 } from '../../services/notificationPreferencesApi'
-import { useMemo, useState } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
+import { useMemo } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { useNotificationPreferences } from '../../hooks/useNotificationPreferences'
-import notificationPreferencesApi from '../../services/notificationPreferencesApi'
+import { cloneNotificationPreferences } from '../../services/notificationPreferencesApi'
 import { NotificationSourceIcon } from '../notifications/NotificationIcons'
 import {
   CheckboxGroupItem,
@@ -24,6 +23,11 @@ interface NotificationConfigSectionProps {
   icon?: React.ReactNode
   description?: string
   sectionId?: string
+  preferences: NotificationPreferences
+  sources: NotificationSourceKey[]
+  events: NotificationEventDefinition[]
+  loading?: boolean
+  onChange: (preferences: NotificationPreferences) => void
 }
 
 const SOURCE_TEXT: Record<
@@ -210,7 +214,6 @@ const UI_TEXT = {
     toastLocation: 'Toast',
     islandLocation: '智能岛',
     browserLocation: '系统通知',
-    saveFailed: '通知设置保存失败，已恢复服务器设置',
   },
   'en-US': {
     master: 'Enable notification center',
@@ -231,8 +234,6 @@ const UI_TEXT = {
     toastLocation: 'Toast',
     islandLocation: 'Control island',
     browserLocation: 'System notification',
-    saveFailed:
-      'Could not save notification settings; server settings restored',
   },
   'ja-JP': {
     master: '通知センターを有効にする',
@@ -252,36 +253,23 @@ const UI_TEXT = {
     toastLocation: 'Toast',
     islandLocation: 'コントロールアイランド',
     browserLocation: 'システム通知',
-    saveFailed: '通知設定を保存できませんでした。サーバー設定に戻しました',
   },
 } satisfies Record<Locale, Record<string, string>>
 
-function clonePreferences(
-  preferences: NotificationPreferences,
-): NotificationPreferences {
-  return {
-    ...preferences,
-    sources: { ...preferences.sources },
-    events: { ...preferences.events },
-    delivery: { ...preferences.delivery },
-    locations: Object.fromEntries(
-      Object.entries(preferences.locations).map(([source, locations]) => [
-        source,
-        { ...locations },
-      ]),
-    ) as NotificationPreferences['locations'],
-  }
-}
-
 export const NotificationConfigSection: React.FC<
   NotificationConfigSectionProps
-> = ({ title, icon, description, sectionId }) => {
-  const { user } = useAuth()
+> = ({
+  title,
+  icon,
+  description,
+  sectionId,
+  preferences,
+  sources,
+  events,
+  loading = false,
+  onChange,
+}) => {
   const { locale } = useI18n()
-  const { preferences, setPreferences, sources, events, loading, reload } =
-    useNotificationPreferences(user?.id)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
   const sourceText = SOURCE_TEXT[locale]
   const eventText = EVENT_TEXT[locale]
   const ui = UI_TEXT[locale]
@@ -297,26 +285,10 @@ export const NotificationConfigSection: React.FC<
     [events, sources],
   )
 
-  const save = async (next: NotificationPreferences) => {
-    setPreferences(next)
-    setSaving(true)
-    setError('')
-    try {
-      const saved = await notificationPreferencesApi.update(next, user?.id)
-      setPreferences(saved)
-    } catch (saveError) {
-      console.error('[Notifications] Failed to save preferences:', saveError)
-      setError(ui.saveFailed)
-      await reload()
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const update = (mutate: (draft: NotificationPreferences) => void) => {
-    const next = clonePreferences(preferences)
+    const next = cloneNotificationPreferences(preferences)
     mutate(next)
-    void save(next)
+    onChange(next)
   }
 
   return (
@@ -332,7 +304,7 @@ export const NotificationConfigSection: React.FC<
           label={ui.master}
           description={ui.masterDesc}
           value={preferences.enabled}
-          loading={loading || saving}
+          loading={loading}
           onChange={(value) => update((draft) => void (draft.enabled = value))}
         />
       </SettingGroup>
@@ -344,7 +316,7 @@ export const NotificationConfigSection: React.FC<
           description={ui.islandDesc}
           value={preferences.delivery.island}
           disabled={!preferences.enabled}
-          loading={loading || saving}
+          loading={loading}
           onChange={(value) =>
             update((draft) => void (draft.delivery.island = value))
           }
@@ -355,7 +327,7 @@ export const NotificationConfigSection: React.FC<
           description={ui.toastDesc}
           value={preferences.delivery.toast}
           disabled={!preferences.enabled}
-          loading={loading || saving}
+          loading={loading}
           onChange={(value) =>
             update((draft) => void (draft.delivery.toast = value))
           }
@@ -366,14 +338,12 @@ export const NotificationConfigSection: React.FC<
           description={ui.browserDesc}
           value={preferences.delivery.browser}
           disabled={!preferences.enabled}
-          loading={loading || saving}
+          loading={loading}
           onChange={(value) =>
             update((draft) => void (draft.delivery.browser = value))
           }
         />
       </SettingGroup>
-
-      {error && <div className="notification-settings-error">{error}</div>}
 
       <div className="notification-source-grid">
         {sources.map((source) => (
@@ -389,7 +359,7 @@ export const NotificationConfigSection: React.FC<
               label={ui.sourceEnabled}
               value={preferences.sources[source]}
               disabled={!preferences.enabled}
-              loading={loading || saving}
+              loading={loading}
               onChange={(value) =>
                 update((draft) => void (draft.sources[source] = value))
               }
@@ -422,8 +392,7 @@ export const NotificationConfigSection: React.FC<
               disabled={
                 !preferences.enabled ||
                 !preferences.sources[source] ||
-                loading ||
-                saving
+                loading
               }
               className="notification-switch-group notification-location-switches"
               onChange={(key, value) =>
@@ -445,8 +414,7 @@ export const NotificationConfigSection: React.FC<
               disabled={
                 !preferences.enabled ||
                 !preferences.sources[source] ||
-                loading ||
-                saving
+                loading
               }
               className="notification-switch-group notification-event-switches"
               onChange={(key, value) =>

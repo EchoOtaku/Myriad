@@ -3,21 +3,23 @@
 //! 通过解析迁移文件定义的期望结构，与数据库实际结构比对，
 //! 自动补全缺失的字段和索引。
 //!
-//! 使用版本标记避免每次启动都执行比对。
-//! 当需要新的 schema 变更时，只需递增 SCHEMA_VERSION 常量。
+//! 使用版本标记记录已部署的结构基线；为修复不完整升级，每次启动仍会安全比对。
+//! 当需要新的 schema 变更时，应同步递增 SCHEMA_VERSION 常量。
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr};
 use std::collections::HashSet;
 
 /// Schema 版本号
 ///
-/// 修改此版本号将触发下次启动时的 schema 比对和补全。
+/// 修改此版本号用于记录新的结构基线；schema 安全比对本身会在每次启动执行。
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
 ///
 /// 变更日志：
-/// - 2026.07.10.1: 默认平台种子同步（含 X），与 001 插入列表对齐
+/// - 2026.07.16.2: 008 内容并入基础迁移，并由 schema 自愈补齐旧库
+/// - 2026.07.16.1: 补齐 activity_events 表与索引
 /// - 2026.07.11.1: 新增 Discord 数据平台种子
-const SCHEMA_VERSION: &str = "2026.07.11.1";
+/// - 2026.07.10.1: 默认平台种子同步（含 X），与 001 插入列表对齐
+const SCHEMA_VERSION: &str = "2026.07.16.2";
 
 /// 内置平台种子定义（与 migrations/001_initial_schema.rs 中 INSERT 保持同步）
 ///
@@ -123,6 +125,27 @@ pub fn default_platform_seeds() -> &'static [DefaultPlatformSeed] {
             enabled: false,
         },
     ]
+}
+
+/// 清理已经并入基础结构、代码中不再保留的迁移历史项。
+///
+/// 必须在 SeaORM 检查迁移状态前调用，否则旧数据库会把已执行但已删除的迁移
+/// 判断为历史损坏。这里只删除已由本模块完整接管的迁移名，不改动其他记录。
+pub async fn reconcile_retired_migration_history(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+DO $$
+BEGIN
+    IF to_regclass('public.seaql_migrations') IS NOT NULL THEN
+        DELETE FROM seaql_migrations
+         WHERE version IN ('008_tapp_runtime_registry', '009_activity_events');
+    END IF;
+END $$;
+"#,
+    )
+    .await?;
+
+    Ok(())
 }
 
 /// 将缺失的默认平台行补入 `platforms` 表（ON CONFLICT DO NOTHING，不覆盖用户已有配置）
@@ -560,6 +583,84 @@ fn get_expected_schema() -> Vec<TableDef> {
                 },
             ],
         },
+        // ==================== activity_events 表 ====================
+        TableDef {
+            name: "activity_events".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "metadata_history_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "metadata_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "platform_name".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "event_type".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "title".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "changes".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: Some("'[]'::jsonb".into()),
+                },
+                ColumnDef {
+                    name: "change_count".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "importance".into(),
+                    data_type: "smallint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "occurred_at".into(),
+                    data_type: "timestamp without time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp without time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
         // ==================== platform_reports 表 ====================
         TableDef {
             name: "platform_reports".to_string(),
@@ -852,6 +953,108 @@ fn get_expected_schema() -> Vec<TableDef> {
                     data_type: "timestamp with time zone".into(),
                     is_nullable: false,
                     default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
+        // ==================== tapp_runtime_registry 表 ====================
+        TableDef {
+            name: "tapp_runtime_registry".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "namespace".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "record_id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "subject_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "owner_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "tapp_id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "runtime_id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "payload".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "expires_at".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("now()".into()),
+                },
+            ],
+        },
+        // ==================== tapp_runtime_mailbox 表 ====================
+        TableDef {
+            name: "tapp_runtime_mailbox".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "message_id".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "channel".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "runtime_id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "payload".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "expires_at".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("now()".into()),
                 },
             ],
         },
@@ -1975,6 +2178,12 @@ fn get_expected_schema() -> Vec<TableDef> {
                 ColumnDef {
                     name: "execution_context".into(),
                     data_type: "json".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "recipe".into(),
+                    data_type: "jsonb".into(),
                     is_nullable: true,
                     default_value: None,
                 },
@@ -3471,6 +3680,24 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             is_unique: false,
         },
         IndexDef {
+            name: "activity_events_metadata_history_id_key".into(),
+            table: "activity_events".into(),
+            columns: vec!["metadata_history_id".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_activity_events_user_date".into(),
+            table: "activity_events".into(),
+            columns: vec!["user_id".into(), "occurred_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_activity_events_platform_date".into(),
+            table: "activity_events".into(),
+            columns: vec!["platform_name".into(), "occurred_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
             name: "idx_platform_reports_user_id".into(),
             table: "platform_reports".into(),
             columns: vec!["user_id".into()],
@@ -3532,6 +3759,37 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             name: "idx_tapp_storage_user_tapp".into(),
             table: "tapp_storage".into(),
             columns: vec!["user_id".into(), "tapp_id".into()],
+            is_unique: false,
+        },
+        // shared runtime state 索引
+        IndexDef {
+            name: "idx_tapp_runtime_registry_subject".into(),
+            table: "tapp_runtime_registry".into(),
+            columns: vec!["namespace".into(), "subject_id".into(), "expires_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_tapp_runtime_registry_tapp".into(),
+            table: "tapp_runtime_registry".into(),
+            columns: vec!["namespace".into(), "tapp_id".into(), "expires_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_tapp_runtime_registry_runtime".into(),
+            table: "tapp_runtime_registry".into(),
+            columns: vec!["namespace".into(), "runtime_id".into(), "expires_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_tapp_runtime_mailbox_recipient".into(),
+            table: "tapp_runtime_mailbox".into(),
+            columns: vec!["channel".into(), "runtime_id".into(), "message_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_tapp_runtime_mailbox_expiry".into(),
+            table: "tapp_runtime_mailbox".into(),
+            columns: vec!["expires_at".into()],
             is_unique: false,
         },
         // tapp_quota_usage 索引
@@ -3917,6 +4175,59 @@ fn get_expected_indexes() -> Vec<IndexDef> {
 /// 获取创建缺失表的 DDL 语句
 fn get_create_table_ddl() -> Vec<(&'static str, &'static str)> {
     vec![
+        (
+            "tapp_runtime_registry",
+            r#"
+            CREATE TABLE IF NOT EXISTS tapp_runtime_registry (
+                namespace VARCHAR(64) NOT NULL,
+                record_id VARCHAR(160) NOT NULL,
+                subject_id INTEGER,
+                owner_id INTEGER,
+                tapp_id VARCHAR(255),
+                runtime_id VARCHAR(160),
+                payload JSONB NOT NULL,
+                expires_at BIGINT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (namespace, record_id)
+            )
+            "#,
+        ),
+        (
+            "tapp_runtime_mailbox",
+            r#"
+            CREATE TABLE IF NOT EXISTS tapp_runtime_mailbox (
+                message_id BIGSERIAL PRIMARY KEY,
+                channel VARCHAR(64) NOT NULL,
+                runtime_id VARCHAR(160) NOT NULL,
+                payload JSONB NOT NULL,
+                expires_at BIGINT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+        ),
+        (
+            "activity_events",
+            r#"
+            CREATE TABLE IF NOT EXISTS activity_events (
+                id SERIAL PRIMARY KEY,
+                metadata_history_id INTEGER NOT NULL UNIQUE,
+                metadata_id INTEGER,
+                user_id INTEGER NOT NULL,
+                platform_name VARCHAR(64) NOT NULL,
+                event_type VARCHAR(32) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                changes JSONB NOT NULL DEFAULT '[]'::jsonb,
+                change_count INTEGER NOT NULL DEFAULT 0,
+                importance SMALLINT NOT NULL DEFAULT 0,
+                occurred_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_activity_events_history
+                    FOREIGN KEY (metadata_history_id)
+                    REFERENCES metadata_history(id)
+                    ON DELETE CASCADE
+            )
+            "#,
+        ),
         // brew_annotations 表
         (
             "brew_annotations",
@@ -4492,8 +4803,11 @@ async fn ensure_tables_exist(db: &DatabaseConnection) -> Result<u32, DbErr> {
     let table_ddls = get_create_table_ddl();
     let mut created = 0u32;
 
-    // 按依赖顺序创建表: brew_sources -> brew_items -> brew_user_states/brew_annotations/brew_categories/brew_podcasts/brew_comments
+    // 按依赖顺序创建缺失表。
     let creation_order = [
+        "tapp_runtime_registry",
+        "tapp_runtime_mailbox",
+        "activity_events",
         "brew_sources",
         "brew_items",
         "brew_user_states",
@@ -4541,6 +4855,69 @@ async fn ensure_tables_exist(db: &DatabaseConnection) -> Result<u32, DbErr> {
     }
 
     Ok(created)
+}
+
+/// 确保存储配额函数和触发器存在。
+///
+/// 函数使用 `CREATE OR REPLACE` 保持逻辑最新；触发器仅在缺失时创建，
+/// 避免每次启动都重建对象。
+async fn ensure_tapp_storage_quota(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE OR REPLACE FUNCTION enforce_tapp_storage_quota()
+RETURNS TRIGGER AS $$
+DECLARE
+    current_bytes BIGINT;
+    projected_bytes BIGINT;
+BEGIN
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended('tapp-storage:' || NEW.user_id::text || ':' || NEW.tapp_id, 0)
+    );
+
+    IF TG_OP = 'UPDATE' THEN
+        SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT
+          INTO current_bytes
+          FROM tapp_storage
+         WHERE user_id = NEW.user_id
+           AND tapp_id = NEW.tapp_id
+           AND id <> OLD.id;
+    ELSE
+        SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT
+          INTO current_bytes
+          FROM tapp_storage
+         WHERE user_id = NEW.user_id
+           AND tapp_id = NEW.tapp_id;
+    END IF;
+
+    projected_bytes := current_bytes
+        + octet_length(NEW.key)
+        + octet_length(NEW.value::text);
+    IF projected_bytes > 5242880 THEN
+        RAISE EXCEPTION 'Tapp storage quota exceeded: % bytes', projected_bytes
+            USING ERRCODE = '54000';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_trigger
+         WHERE tgname = 'trg_tapp_storage_quota'
+           AND NOT tgisinternal
+    ) THEN
+        CREATE TRIGGER trg_tapp_storage_quota
+        BEFORE INSERT OR UPDATE OF key, value, user_id, tapp_id ON tapp_storage
+        FOR EACH ROW EXECUTE FUNCTION enforce_tapp_storage_quota();
+    END IF;
+END $$;
+"#,
+    )
+    .await?;
+
+    Ok(())
 }
 
 /// 从数据库获取表的实际列
@@ -4867,6 +5244,9 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
         tracing::info!("✅ Database schema is up to date (no changes needed)");
     }
 
+    // 008 已并入基础迁移；等缺失字段补齐后再创建配额函数和触发器。
+    ensure_tapp_storage_quota(db).await?;
+
     // 6. 记录版本已应用
     mark_schema_version_applied(db, SCHEMA_VERSION).await?;
     tracing::info!("📌 Schema version {} marked as applied", SCHEMA_VERSION);
@@ -4922,6 +5302,8 @@ async fn do_force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
             }
         }
     }
+
+    ensure_tapp_storage_quota(db).await?;
 
     Ok(())
 }

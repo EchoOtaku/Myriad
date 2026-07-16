@@ -6,7 +6,6 @@
 import type { SettingOption } from '../settings/types'
 import {
   FaFreeCodeCamp,
-  FaMagic,
   FaMicrophone,
   FaVolumeUp,
   LuPalette,
@@ -30,6 +29,25 @@ import {
   SettingSection,
   SwitchItem,
 } from '../settings'
+
+/** PixAI 官方 logo（来源: https://pixai.art/favicon.svg） */
+const PixAIIcon: React.FC = () => (
+  <svg
+    viewBox="0 0 447 446"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    width="1em"
+    height="1em"
+    style={{ borderRadius: '0.2em' }}
+    aria-hidden
+  >
+    <rect width="446.252" height="446" rx="61.552" fill="#000" />
+    <path
+      d="M149.417 116.513V146.027C149.417 148.788 147.178 151.027 144.417 151.027H116.295H88C85.2386 151.027 83 153.265 83 156.027V188.195V220.363C83 223.124 85.2386 225.363 88 225.363H116.295H144.417C147.178 225.363 149.417 227.601 149.417 230.363V293.504V356.695C149.417 359.437 151.625 361.668 154.367 361.695L185.126 362H214.801C217.562 362 219.801 359.761 219.801 357V327.487V299.389C219.801 296.628 222.039 294.389 224.801 294.389H247.23C263.791 294.389 278.972 293.327 285.7 291.911C319.684 284.478 347.803 258.283 358.154 224.301C363.329 207.487 364.537 180.761 360.914 163.416C352.979 124.655 325.032 94.2124 288.287 84.6548C280.007 82.5309 265.689 82 213.763 82H154.417C151.655 82 149.417 84.2386 149.417 87V116.513ZM285.355 187.487L284.913 216.015C284.871 218.746 282.645 220.938 279.914 220.938H218.938H157.867C155.105 220.938 152.867 218.699 152.867 215.938V187.664V159.566C152.867 156.805 155.105 154.566 157.867 154.566H219.283H280.647C283.429 154.566 285.676 156.837 285.647 159.619L285.355 187.487Z"
+      fill="#fff"
+    />
+  </svg>
+)
 
 interface ConfigField {
   key: string
@@ -175,7 +193,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         icon: <FaFreeCodeCamp />,
         badge: t.config.pollinationsFree,
       },
-      { value: 'pixai', label: 'PixAI', icon: <FaMagic />, badge: 'SD/DiT' },
+      {
+        value: 'pixai',
+        label: 'PixAI',
+        icon: <PixAIIcon />,
+        badge: 'SD/DiT',
+      },
     ],
     [t.config.pollinationsFree],
   )

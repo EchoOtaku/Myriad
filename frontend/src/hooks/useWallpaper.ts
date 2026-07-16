@@ -5,7 +5,6 @@
  * 确保壁纸URL和颜色提取的一致性
  *
  * @module useWallpaper
- * @version 2.0
  */
 
 import { useCallback, useEffect, useState } from 'react'

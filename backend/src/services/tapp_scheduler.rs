@@ -27,6 +27,9 @@ use crate::models::entities::tapp_scheduled_tasks::{
 };
 use crate::models::entities::tapp_task_executions::{self, ExecutionStatus};
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
+use crate::services::platform_auto_refresh::{
+    core_platform_from_task, is_core_platform_sync_task, CORE_PLATFORM_SYNC_TAPP_ID,
+};
 use crate::services::tapp_api_service::TappApiService;
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
@@ -586,18 +589,7 @@ impl TappSchedulerEngine {
 
         if status == ExecutionStatus::Failed {
             let failure = error.unwrap_or_else(|| "Scheduled task failed".to_string());
-            if let Some(manager) = crate::services::agent::notifications::get_notification_manager()
-            {
-                manager
-                    .notify_tapp(
-                        task.user_id,
-                        &task.tapp_id,
-                        Some(&format!("定时任务失败: {}", task.name)),
-                        &failure,
-                        "error",
-                    )
-                    .await;
-            }
+            Self::notify_task_failure(task, &failure).await;
             return Err(failure);
         }
 
@@ -777,20 +769,31 @@ impl TappSchedulerEngine {
         Self::update_task_after_frontend_completion(db, &task, &status, result, error.clone())
             .await?;
         if matches!(status, ExecutionStatus::Failed | ExecutionStatus::Timeout) {
-            if let Some(manager) = crate::services::agent::notifications::get_notification_manager()
-            {
-                manager
-                    .notify_tapp(
-                        task.user_id,
-                        &task.tapp_id,
-                        Some(&format!("定时任务失败: {}", task.name)),
-                        error.as_deref().unwrap_or("前端任务执行失败"),
-                        "error",
-                    )
-                    .await;
-            }
+            Self::notify_task_failure(&task, error.as_deref().unwrap_or("前端任务执行失败")).await;
         }
         Ok(())
+    }
+
+    async fn notify_task_failure(task: &tapp_scheduled_tasks::Model, error: &str) {
+        let Some(manager) = crate::services::agent::notifications::get_notification_manager()
+        else {
+            return;
+        };
+        if let Some(platform) = core_platform_from_task(task) {
+            manager
+                .notify_platform_sync_error(task.user_id, platform, error)
+                .await;
+        } else {
+            manager
+                .notify_tapp(
+                    task.user_id,
+                    &task.tapp_id,
+                    Some(&format!("定时任务失败: {}", task.name)),
+                    error,
+                    "error",
+                )
+                .await;
+        }
     }
 
     /// 每次真正执行前重新读取当前角色和动态权限。
@@ -816,6 +819,17 @@ impl TappSchedulerEngine {
         } else {
             UserRole::User
         };
+
+        // Core platform refresh is configured only through the administrator
+        // settings surface. It must not inherit an installed Tapp's ownership
+        // or delegated permission lifecycle.
+        if is_core_platform_sync_task(task) {
+            return if is_admin {
+                Ok(())
+            } else {
+                Err("Core platform refresh requires current administrator access".to_string())
+            };
+        }
 
         if matches!(task.scope, TaskScope::Global) && !is_admin {
             return Err("Global scheduler task requires current administrator access".to_string());
@@ -1625,7 +1639,8 @@ impl TappSchedulerEngine {
         tapp_id: Option<&str>,
     ) -> Result<Vec<tapp_scheduled_tasks::Model>, String> {
         let mut query = tapp_scheduled_tasks::Entity::find()
-            .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id));
+            .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id))
+            .filter(tapp_scheduled_tasks::Column::TappId.ne(CORE_PLATFORM_SYNC_TAPP_ID));
 
         if let Some(tid) = tapp_id {
             query = query.filter(tapp_scheduled_tasks::Column::TappId.eq(tid));
@@ -1647,6 +1662,7 @@ impl TappSchedulerEngine {
     ) -> Result<Option<tapp_scheduled_tasks::Model>, String> {
         tapp_scheduled_tasks::Entity::find()
             .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id))
+            .filter(tapp_scheduled_tasks::Column::TappId.ne(CORE_PLATFORM_SYNC_TAPP_ID))
             .filter(tapp_scheduled_tasks::Column::TappId.eq(tapp_id))
             .filter(tapp_scheduled_tasks::Column::TaskId.eq(task_id))
             .one(&self.db)

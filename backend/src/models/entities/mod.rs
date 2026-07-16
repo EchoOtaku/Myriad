@@ -3,6 +3,7 @@
 
 #![allow(clippy::empty_docs)]
 
+pub mod activity_events;
 pub mod metadata_history;
 pub mod platform_metadata;
 pub mod platform_reports;

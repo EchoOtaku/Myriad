@@ -22,9 +22,9 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `settings`               | object[] | ❌   | 用户可配置的设置项                 |
 | `apis`                   | object   | ❌   | 命名 API 声明（代理+权限校验）     |
 | `dataExchange`           | object   | ❌   | 跨 Tapp 具名 import/export 契约    |
-| `ai`                     | object   | ❌   | 服务端治理的 AI Task V2 声明       |
-| `events`                 | object   | ❌   | Event V2 发布/订阅 topic 声明      |
-| `agent`                  | object   | ❌   | Agent Interaction V2 声明          |
+| `ai`                     | object   | ❌   | 服务端治理的 AI Task 声明       |
+| `events`                 | object   | ❌   | Event Broker 发布/订阅 topic 声明      |
+| `agent`                  | object   | ❌   | Agent Interaction 声明          |
 | `minSystemVersion`       | string   | ❌   | 最低兼容 Myriad 语义版本           |
 | `homepage`               | string   | ❌   | 应用主页 URL                       |
 | `repository`             | string   | ❌   | 代码仓库 URL                       |
@@ -483,7 +483,7 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 
 ---
 
-## AI、Event 与 Agent V2 声明
+## AI、Event 与 Agent Interaction 声明
 
 ```json
 {

@@ -81,7 +81,7 @@ pub async fn ai_generate(
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({
-                "error": "V1 generate context/options are not implemented; use AI Task V2",
+                "error": "Legacy generate context/options are not implemented; use the AI Task API",
                 "code": "UNSUPPORTED_V1_OPTION",
                 "fields": ["context", "options"]
             })),
@@ -408,7 +408,7 @@ pub async fn ai_chat(
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({
-                "error": "V1 chat options are not implemented; use AI Task V2",
+                "error": "Legacy chat options are not implemented; use the AI Task API",
                 "code": "UNSUPPORTED_V1_OPTION",
                 "fields": ["options.maxTokens", "options.temperature", "options.stream"]
             })),

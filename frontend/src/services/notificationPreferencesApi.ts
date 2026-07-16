@@ -113,6 +113,30 @@ export const DEFAULT_NOTIFICATION_CATALOG = {
 export const NOTIFICATION_PREFERENCES_UPDATED_EVENT =
   'notification-preferences-updated'
 
+export function cloneNotificationPreferences(
+  preferences: NotificationPreferences,
+): NotificationPreferences {
+  return {
+    ...preferences,
+    sources: { ...preferences.sources },
+    events: { ...preferences.events },
+    delivery: { ...preferences.delivery },
+    locations: Object.fromEntries(
+      Object.entries(preferences.locations).map(([source, locations]) => [
+        source,
+        { ...locations },
+      ]),
+    ) as NotificationPreferences['locations'],
+  }
+}
+
+export function areNotificationPreferencesEqual(
+  left: NotificationPreferences,
+  right: NotificationPreferences,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
 const BASE = '/agent/notifications/preferences'
 
 export const notificationPreferencesApi = {

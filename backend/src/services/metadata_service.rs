@@ -1,4 +1,5 @@
-use crate::models::entities::{metadata_history, platform_metadata};
+use crate::models::entities::{activity_events, metadata_history, platform_metadata};
+use crate::services::activity_event_service::build_activity_payload;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
@@ -17,10 +18,11 @@ impl MetadataService {
         Self { db }
     }
 
-    /// 保存或更新平台元数据，并记录变化
-    /// 🚀 终极方案：分批异步保存
-    /// - 对于小数据(<500KB)：直接同步保存
-    /// - 对于超大数据(>=500KB)：使用BatchSaver分批异步保存
+    /// 保存或更新平台元数据，并记录内部差异和用户可读活动。
+    ///
+    /// 所有平台共用同一条 upsert 路径。PostgreSQL JSONB 可以直接保存当前规模的
+    /// 平台快照；旧 BatchSaver 只识别 `liked_songs`，会让其他大平台绕过
+    /// 变化检测并重复插入 `platform_metadata`。
     pub async fn save_platform_metadata(
         &self,
         user_id: i32,
@@ -33,36 +35,9 @@ impl MetadataService {
             user_id
         );
 
-        // 🚀 策略选择：
-        // 1. 估算数据大小
         let estimated_size = Self::estimate_json_size(&raw_data);
-        const BATCH_SAVE_THRESHOLD: usize = 500_000; // 500KB
-        const CHUNK_SIZE: usize = 100; // 每批100首歌曲
-
-        // 2. 根据大小选择策略
-        if estimated_size >= BATCH_SAVE_THRESHOLD {
-            tracing::info!(
-                "🚀 Large metadata detected ({} bytes), using batched async save",
-                estimated_size
-            );
-
-            // 使用批量保存服务
-            let batch_saver = crate::services::batch_saver::BatchSaver::new(self.db.clone());
-            let (metadata_id, task_id) = batch_saver
-                .save_large_metadata_batched(user_id, platform_name, raw_data.clone(), CHUNK_SIZE)
-                .await?;
-
-            tracing::info!(
-                "✅ Batched save started: metadata_id={}, task_id={}",
-                metadata_id,
-                task_id
-            );
-
-            return Ok(metadata_id);
-        }
-
         tracing::info!(
-            "✓ Small metadata ({} bytes), saving synchronously",
+            "✓ Metadata snapshot ({} bytes), saving through unified history path",
             estimated_size
         );
         let data_to_save = raw_data.clone();
@@ -127,8 +102,11 @@ impl MetadataService {
                 let inserted = new_metadata.insert(&self.db).await?;
                 let metadata_id = inserted.id;
 
-                // 记录初始状态（使用原始数据生成字段路径，但不保存完整数据）
-                let all_fields: Vec<String> = self.extract_field_paths(&raw_data);
+                // 初次导入是基线，不是数百个子字段各自“发生变化”。
+                let all_fields: Vec<String> = raw_data
+                    .as_object()
+                    .map(|object| object.keys().cloned().collect())
+                    .unwrap_or_default();
                 self.record_metadata_change(
                     metadata_id,
                     user_id,
@@ -326,7 +304,8 @@ impl MetadataService {
                 (Value::Array(old_arr), Value::Array(new_arr)) => {
                     const MAX_ARRAY_COMPARE: usize = 50; // 数组最多比较前50个元素
 
-                    // 🚀 优化：对超大数组（>200元素）只检测长度变化
+                    // 大数组不展开字段路径，但内容变化仍必须触发语义事件。
+                    // 上层 Object 比较已经确认数组不同，这里只记一个轻量标记。
                     if old_arr.len() > 200 || new_arr.len() > 200 {
                         if old_arr.len() != new_arr.len() {
                             changed_fields.push(format!(
@@ -335,13 +314,9 @@ impl MetadataService {
                                 old_arr.len(),
                                 new_arr.len()
                             ));
-                        } else {
-                            // 对于超大数组，只标记为"可能有变化"，不深入比较
-                            tracing::debug!(
-                                "⚡ Skipping deep comparison for large array: {} ({} items)",
-                                prefix,
-                                old_arr.len()
-                            );
+                        } else if old_arr != new_arr {
+                            changed_fields
+                                .push(format!("{} (large array content changed)", prefix));
                         }
                     } else {
                         // 中小型数组：检查长度和内容变化
@@ -465,38 +440,6 @@ impl MetadataService {
         }
     }
 
-    /// 提取JSON对象中所有字段的路径
-    fn extract_field_paths(&self, data: &Value) -> Vec<String> {
-        let mut paths = Vec::new();
-        Self::collect_paths("", data, &mut paths);
-        paths
-    }
-
-    /// 递归收集JSON路径
-    fn collect_paths(prefix: &str, value: &Value, paths: &mut Vec<String>) {
-        match value {
-            Value::Object(map) => {
-                for (key, val) in map {
-                    let path = if prefix.is_empty() {
-                        key.clone()
-                    } else {
-                        format!("{}.{}", prefix, key)
-                    };
-                    paths.push(path.clone());
-                    Self::collect_paths(&path, val, paths);
-                }
-            }
-            Value::Array(arr) => {
-                for (i, item) in arr.iter().enumerate() {
-                    let path = format!("{}[{}]", prefix, i);
-                    paths.push(path.clone());
-                    Self::collect_paths(&path, item, paths);
-                }
-            }
-            _ => {}
-        }
-    }
-
     /// 记录元数据变化历史
     /// 🚀 彻底优化：历史记录只保存变化字段列表和摘要，不保存完整数据
     ///
@@ -517,6 +460,12 @@ impl MetadataService {
         const MAX_SUMMARY_SIZE: usize = 50_000; // 50KB 摘要限制(远小于原来的256KB)
 
         let now = Utc::now().naive_utc();
+        let activity = build_activity_payload(
+            platform_name,
+            old_data.as_ref(),
+            &new_data,
+            changed_fields.len(),
+        );
 
         // 🚀 智能摘要策略：
         // 1. 对于小数据(<50KB)：保存完整数据
@@ -553,7 +502,30 @@ impl MetadataService {
             ..Default::default()
         };
 
-        history.insert(&self.db).await?;
+        let inserted_history = history.insert(&self.db).await?;
+
+        let activity_event = activity_events::ActiveModel {
+            metadata_history_id: Set(inserted_history.id),
+            metadata_id: Set(Some(metadata_id)),
+            user_id: Set(user_id),
+            platform_name: Set(platform_name.to_string()),
+            event_type: Set(activity.event_type),
+            title: Set(activity.title),
+            changes: Set(serde_json::to_value(activity.changes)?),
+            change_count: Set(i32::try_from(activity.change_count).unwrap_or(i32::MAX)),
+            importance: Set(activity.importance),
+            occurred_at: Set(now),
+            created_at: Set(now),
+            ..Default::default()
+        };
+        if let Err(error) = activity_event.insert(&self.db).await {
+            // 原始快照和审计历史已成功；让旧历史兼容层可以继续提供降级摘要。
+            tracing::warn!(
+                "Failed to persist normalized activity event for history {}: {}",
+                inserted_history.id,
+                error
+            );
+        }
         tracing::info!(
             "✅ Metadata change history recorded (summary mode: {})",
             new_data_size >= MAX_SUMMARY_SIZE
@@ -791,8 +763,7 @@ impl MetadataService {
     }
 
     /// 获取所有平台的最新元数据
-    /// 🚀 自动合并分片数据（如网易云音乐的 liked_songs）
-    #[allow(dead_code)]
+    /// 自动合并旧版遗留的分片数据（如网易云音乐的 liked_songs）。
     pub async fn get_all_latest_metadata(
         &self,
         user_id: i32,

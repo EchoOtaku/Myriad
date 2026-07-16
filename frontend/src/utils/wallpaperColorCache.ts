@@ -8,7 +8,6 @@
  * - 与当前活跃壁纸的一致性验证
  *
  * @module wallpaperColorCache
- * @version 2.0
  */
 
 import type { ColorPalette } from './colorExtractor'

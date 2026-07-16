@@ -131,13 +131,13 @@ export interface TappManifest {
   /** 跨 Tapp 数据契约；实际读取仍需每次通过宿主授权弹窗。 */
   dataExchange?: TappDataExchangeManifest
 
-  /** 服务端治理的 AI Task V2 能力声明。 */
+  /** 服务端治理的 AI Task 能力声明。 */
   ai?: TappAIManifest
 
-  /** 在线、at-most-once 的 Event V2 topic 声明。 */
+  /** 在线、at-most-once 的 Event Broker topic 声明。 */
   events?: TappEventsManifest
 
-  /** Agent Interaction V2 声明。 */
+  /** Agent Interaction 声明。 */
   agent?: TappAgentManifest
 }
 

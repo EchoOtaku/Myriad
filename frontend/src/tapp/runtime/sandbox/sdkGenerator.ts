@@ -508,7 +508,7 @@ export function generateFullSDK(
           callback(interaction);
         });
       },
-      // One-version adapter; Tapp must declare legacy.fill in Agent V2 manifest.
+      // One-version adapter; Tapp must declare the legacy.fill interaction.
       onFill: (callback) => Tapp.agent.onInteraction('legacy.fill', (interaction) => callback(interaction.input?.data, interaction)),
       reportData: () => Promise.reject(new Error('UNSUPPORTED_LEGACY_AGENT_ACTION: use interaction.submitResult')),
       requestAction: () => Promise.reject(new Error('UNSUPPORTED_LEGACY_AGENT_ACTION: use interaction.requestIntent')),

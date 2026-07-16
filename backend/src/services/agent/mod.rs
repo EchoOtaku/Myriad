@@ -774,7 +774,7 @@ impl Agent {
         result
     }
 
-    /// 执行配方（带进度回调和升级）— v2 使用 Planner
+    /// 执行配方（带进度回调和升级）— 使用 Planner
     async fn execute_recipe_with_progress_v2(
         &self,
         recipe: &Recipe,
@@ -1073,7 +1073,7 @@ impl Agent {
         })
     }
 
-    /// 快速路径：执行简单的单步查询（v2 — Planner 版）
+    /// 快速路径：执行简单的单步查询（Planner 版）
     async fn execute_simple_query_v2(
         &self,
         recipe: &Recipe,
@@ -1626,7 +1626,7 @@ impl Agent {
         impact
     }
 
-    /// 请求用户确认（v2 — 使用 PlannerOutput）
+    /// 请求用户确认（使用 PlannerOutput）
     async fn request_confirmation_v2(
         &self,
         recipe: &Recipe,
@@ -1769,7 +1769,7 @@ impl Agent {
         }
     }
 
-    /// 生成响应消息（v2 — Planner 版）— 委托给 response_agent
+    /// 生成响应消息（Planner 版）— 委托给 response_agent
     async fn generate_response_message_v2(
         &self,
         _planner_output: &PlannerOutput,
@@ -1850,7 +1850,7 @@ impl Agent {
         response_agent::completion_message()
     }
 
-    /// 智能推断数据展示类型（v2 — Planner 版）
+    /// 智能推断数据展示类型（Planner 版）
     fn infer_data_display_v2(
         &self,
         data: &Value,

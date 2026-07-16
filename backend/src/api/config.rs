@@ -3,15 +3,34 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, T
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ConfigResponse {
     pub platforms: Vec<PlatformConfig>,
+    pub auto_fetch: Option<PlatformAutoFetchConfig>,
     pub ai_config: AiConfig,
     pub report_config: ReportConfig,
     pub ui_config: UiConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PlatformAutoFetchConfig {
+    pub enabled: bool,
+    pub interval_hours: i32,
+}
+
+impl Default for PlatformAutoFetchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_hours: 24,
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[serde(default)]
 pub struct PlatformConfig {
     pub name: String,
     pub enabled: bool,
@@ -21,7 +40,8 @@ pub struct PlatformConfig {
     pub icon: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[serde(default)]
 pub struct ConfigField {
     pub key: String,
     pub label: String,
@@ -31,7 +51,8 @@ pub struct ConfigField {
     pub required: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AiConfig {
     pub provider: String,
     pub model: String,
@@ -41,13 +62,15 @@ pub struct AiConfig {
     pub image_provider: String,
     pub config_fields: Vec<ConfigField>,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ReportConfig {
     pub topic_style: String,
     pub config_fields: Vec<ConfigField>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct UiConfig {
     pub wallpaper_url: String,
     pub wallpaper_blur: u32,
@@ -575,6 +598,17 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                 ],
             },
         ],
+        auto_fetch: Some(PlatformAutoFetchConfig {
+            enabled: db_config
+                .as_ref()
+                .is_some_and(|config| config.enable_auto_fetch),
+            interval_hours: crate::services::platform_auto_refresh::clamp_interval_hours(
+                db_config
+                    .as_ref()
+                    .map(|config| config.fetch_interval_hours)
+                    .unwrap_or(24),
+            ),
+        }),
         ai_config: AiConfig {
             provider: db_config
                 .as_ref()
@@ -1374,21 +1408,223 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
     (StatusCode::OK, Json(json!(config)))
 }
 
+async fn reconcile_platform_auto_refresh_with_config(
+    db: &DatabaseConnection,
+    config: &ConfigResponse,
+) -> Result<crate::services::platform_auto_refresh::PlatformAutoRefreshSummary, String> {
+    let auto_fetch = config.auto_fetch.clone().unwrap_or_default();
+    let user_id = crate::api::profile::site_owner_user_id(db).await?;
+    let platforms: Vec<String> = config
+        .platforms
+        .iter()
+        .filter(|platform| platform.enabled)
+        .map(|platform| platform.name.clone())
+        .collect();
+    crate::services::platform_auto_refresh::reconcile_platform_auto_refresh(
+        db,
+        user_id,
+        auto_fetch.enabled,
+        auto_fetch.interval_hours,
+        &platforms,
+    )
+    .await
+}
+
+/// Rebuild core platform refresh tasks from persisted configuration.
+/// Called on backend startup so the database configuration remains the source
+/// of truth even after a restart or interrupted settings save.
+pub(crate) async fn reconcile_platform_auto_refresh(
+    db: &DatabaseConnection,
+) -> Result<crate::services::platform_auto_refresh::PlatformAutoRefreshSummary, String> {
+    let config = build_config(db, false).await;
+    reconcile_platform_auto_refresh_with_config(db, &config).await
+}
+
 const SETTINGS_BACKUP_FORMAT: &str = "myriad-settings-backup";
-const SETTINGS_BACKUP_VERSION: u32 = 1;
+const SETTINGS_BACKUP_VERSION: u32 = 2;
+const MIN_SETTINGS_BACKUP_VERSION: u32 = 1;
 const MAX_SETTINGS_BACKUP_ENTRIES: usize = 10_000;
 
-#[derive(Debug, Serialize, Deserialize)]
+fn default_setting_schema_version() -> u32 {
+    1
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SettingDescriptor {
+    schema_version: u32,
+    introduced_in_backup_version: u32,
+}
+
+// 这是配置备份唯一的后端注册表。新增或删除非 ConfigResponse 设置时只需要改这里；
+// 恢复、预检和导出过滤全部从该注册表派生。
+const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
+    "ai_image_height",
+    "ai_image_model",
+    "ai_image_provider",
+    "ai_image_width",
+    "ai_provider",
+    "allow_local_registration",
+    "bangumi_access_token",
+    "bangumi_enabled",
+    "bangumi_user_agent",
+    "bangumi_username",
+    "base_url",
+    "bilibili_enabled",
+    "bilibili_uid",
+    "cloud_sponsors",
+    "control_panel_layout",
+    "control_panel_rows",
+    "custom_platforms",
+    "dashboard_layout",
+    "dashboard_title",
+    "discord_access_token",
+    "discord_enabled",
+    "discord_refresh_token",
+    "discord_token_expires_at",
+    "discord_user_id",
+    "enable_auto_fetch",
+    "fetch_interval_hours",
+    "gemini_api_key",
+    "gemini_base_url",
+    "gemini_model",
+    "github_api_base_url",
+    "github_client_id",
+    "github_client_secret",
+    "github_enabled",
+    "github_redirect_url",
+    "github_token",
+    "github_username",
+    "guest_ai_cooldown_seconds",
+    "guest_ai_daily_calls",
+    "guest_ai_daily_tokens",
+    "guest_perm_ai_analyze",
+    "guest_perm_ai_chat",
+    "guest_perm_ai_generate",
+    "guest_perm_ai_image",
+    "guest_perm_component_theme",
+    "guest_perm_event_publish",
+    "guest_perm_media_control",
+    "guest_perm_network_fetch",
+    "guest_perm_report_write",
+    "guest_perm_scheduler_register",
+    "guest_perm_shortcut_register",
+    "guest_perm_speech_asr",
+    "guest_perm_speech_tts",
+    "hitokoto_config",
+    "library_source_preferences",
+    "mal_client_id",
+    "mal_enabled",
+    "mal_username",
+    "module_visibility_preferences",
+    "music_enabled",
+    "music_playlist_id",
+    "music_source",
+    "netease_enabled",
+    "netease_user_id",
+    "oauth_providers",
+    "openai_api_key",
+    "openai_base_url",
+    "openai_max_tokens",
+    "openai_model",
+    "openxbl_api_key",
+    "pet_enabled",
+    "pet_image_url",
+    "pixai_api_key",
+    "platform_order",
+    "pro_ai_provider",
+    "pro_enabled",
+    "pro_gemini_api_key",
+    "pro_gemini_model",
+    "pro_openai_api_key",
+    "pro_openai_base_url",
+    "pro_openai_model",
+    "proxy_bypass",
+    "proxy_enabled",
+    "proxy_url",
+    "psn_enabled",
+    "psn_npsso",
+    "psn_online_id",
+    "report_settings",
+    "site_description",
+    "site_favicon",
+    "site_gongan",
+    "site_icp",
+    "site_title",
+    "steam_api_key",
+    "steam_enabled",
+    "steam_id",
+    "tapp_window_schemes",
+    "tencent_region",
+    "tencent_secret_id",
+    "tencent_secret_key",
+    "title_color",
+    "title_font",
+    "title_font_size",
+    "topic_style",
+    "ui_evocative_dynamic_blur",
+    "ui_evocative_fps",
+    "ui_evocative_parallax",
+    "ui_evocative_ripple",
+    "ui_evocative_ripple_quality",
+    "ui_primary_color",
+    "ui_secondary_color",
+    "ui_theme",
+    "ui_wallpaper_blur",
+    "ui_wallpaper_parallax",
+    "ui_wallpaper_url",
+    "user_ai_cooldown_seconds",
+    "user_ai_daily_calls",
+    "user_ai_daily_tokens",
+    "user_perm_ai_analyze",
+    "user_perm_ai_chat",
+    "user_perm_ai_generate",
+    "user_perm_ai_image",
+    "user_perm_component_theme",
+    "user_perm_event_publish",
+    "user_perm_media_control",
+    "user_perm_network_fetch",
+    "user_perm_report_write",
+    "user_perm_scheduler_register",
+    "user_perm_shortcut_register",
+    "user_perm_speech_asr",
+    "user_perm_speech_tts",
+    "widget_theme",
+    "x_bearer_token",
+    "x_enabled",
+    "x_username",
+    "xbox_enabled",
+    "xbox_gamertag",
+];
+
+fn settings_registry() -> std::collections::HashMap<&'static str, SettingDescriptor> {
+    REGISTERED_CONFIGURATION_KEYS_V1
+        .iter()
+        .map(|key| {
+            (
+                *key,
+                SettingDescriptor {
+                    schema_version: 1,
+                    introduced_in_backup_version: 1,
+                },
+            )
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsBackupEntry {
     pub key: String,
     pub value: Value,
+    #[serde(default = "default_setting_schema_version")]
+    pub schema_version: u32,
     pub description: Option<String>,
     pub category: Option<String>,
     pub is_encrypted: Option<bool>,
     pub is_public: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SettingsBackupUserPreferences {
     pub notification_preferences:
         crate::services::agent::notification_preferences::NotificationPreferences,
@@ -1405,11 +1641,29 @@ pub struct SettingsBackup {
     pub user_preferences: SettingsBackupUserPreferences,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SettingsRestorePreview {
+    pub backup_version: u32,
+    pub current_version: u32,
+    pub restore_count: usize,
+    pub preserve_count: usize,
+    pub ignored_count: usize,
+    pub migrated_count: usize,
+    pub invalid_count: usize,
+    pub ignored_keys: Vec<String>,
+    pub invalid_keys: Vec<String>,
+}
+
+struct SettingsRestorePlan {
+    entries: Vec<SettingsBackupEntry>,
+    preview: SettingsRestorePreview,
+}
+
 fn validate_settings_backup(backup: &SettingsBackup) -> Result<(), String> {
     if backup.format != SETTINGS_BACKUP_FORMAT {
         return Err("Unsupported settings backup format".to_string());
     }
-    if backup.version != SETTINGS_BACKUP_VERSION {
+    if !(MIN_SETTINGS_BACKUP_VERSION..=SETTINGS_BACKUP_VERSION).contains(&backup.version) {
         return Err(format!(
             "Unsupported settings backup version: {}",
             backup.version
@@ -1445,21 +1699,31 @@ fn is_sensitive_configuration_key(key: &str) -> bool {
 }
 
 fn merge_settings_backup_entries(
-    configurations: Vec<SettingsBackupEntry>,
-    effective_config: &ConfigResponse,
+    backup: &SettingsBackup,
 ) -> std::collections::HashMap<String, SettingsBackupEntry> {
-    let mut entries: std::collections::HashMap<String, SettingsBackupEntry> = configurations
-        .into_iter()
+    let registry = settings_registry();
+    let mut entries: std::collections::HashMap<String, SettingsBackupEntry> = backup
+        .configurations
+        .iter()
+        .cloned()
         .map(|entry| (entry.key.clone(), entry))
         .collect();
 
-    // Older deployments may still source settings from environment variables. The effective
-    // legacy snapshot fills only keys that were absent from the configuration table.
-    for (key, value) in collect_database_updates(effective_config) {
+    // v1 deployments may source values from environment variables. Only settings which already
+    // existed in that backup version may be filled from its effective legacy snapshot; settings
+    // introduced later must keep the current installation's value/default.
+    for (key, value) in collect_database_updates(&backup.effective_config) {
+        let Some(descriptor) = registry.get(key.as_str()) else {
+            continue;
+        };
+        if descriptor.introduced_in_backup_version > backup.version {
+            continue;
+        }
         let is_encrypted = is_sensitive_configuration_key(&key);
         entries.entry(key.clone()).or_insert(SettingsBackupEntry {
             key,
             value,
+            schema_version: 1,
             description: None,
             category: Some("general".to_string()),
             is_encrypted: Some(is_encrypted),
@@ -1470,10 +1734,107 @@ fn merge_settings_backup_entries(
     entries
 }
 
+fn migrate_setting_entry(
+    mut entry: SettingsBackupEntry,
+    descriptor: SettingDescriptor,
+) -> Result<(SettingsBackupEntry, bool), String> {
+    if entry.schema_version == 0 || entry.schema_version > descriptor.schema_version {
+        return Err(format!(
+            "unsupported schema version {} (current {})",
+            entry.schema_version, descriptor.schema_version
+        ));
+    }
+
+    let migrated = entry.schema_version < descriptor.schema_version;
+    if migrated {
+        // Per-setting migrations are intentionally centralized here. Add explicit transforms
+        // before increasing a descriptor's schema_version; silent shape guessing is forbidden.
+        return Err(format!(
+            "missing migration from schema version {} to {}",
+            entry.schema_version, descriptor.schema_version
+        ));
+    }
+
+    entry.value = normalize_registered_setting_value(&entry.key, entry.value)?;
+    entry.schema_version = descriptor.schema_version;
+    Ok((entry, migrated))
+}
+
+fn normalize_registered_setting_value(key: &str, value: Value) -> Result<Value, String> {
+    fn normalize<T: serde::de::DeserializeOwned + Serialize>(
+        value: Value,
+        transform: impl FnOnce(T) -> T,
+    ) -> Result<Value, String> {
+        let parsed = serde_json::from_value::<T>(value).map_err(|error| error.to_string())?;
+        serde_json::to_value(transform(parsed)).map_err(|error| error.to_string())
+    }
+
+    match key {
+        MODULE_VISIBILITY_PREFERENCES_KEY => {
+            normalize::<ModuleVisibilityPreferences>(value, ModuleVisibilityPreferences::normalized)
+        }
+        HITOKOTO_CONFIG_KEY => normalize::<HitokotoConfig>(value, HitokotoConfig::normalized),
+        REPORT_SETTINGS_KEY => normalize::<ReportSettings>(value, ReportSettings::normalized),
+        "library_source_preferences" => normalize::<crate::api::profile::LibrarySourcePreferences>(
+            value,
+            crate::api::profile::LibrarySourcePreferences::normalized,
+        ),
+        "oauth_providers" => {
+            normalize::<Vec<crate::config::OAuthProviderEntry>>(value, |providers| providers)
+        }
+        _ => Ok(value),
+    }
+}
+
+fn build_settings_restore_plan(backup: &SettingsBackup) -> SettingsRestorePlan {
+    let registry = settings_registry();
+    let merged = merge_settings_backup_entries(backup);
+    let mut entries = Vec::new();
+    let mut ignored_keys = Vec::new();
+    let mut invalid_keys = Vec::new();
+    let mut migrated_count = 0;
+
+    for (_, entry) in merged {
+        let Some(descriptor) = registry.get(entry.key.as_str()).copied() else {
+            ignored_keys.push(entry.key);
+            continue;
+        };
+        let entry_key = entry.key.clone();
+        match migrate_setting_entry(entry, descriptor) {
+            Ok((entry, migrated)) => {
+                migrated_count += usize::from(migrated);
+                entries.push(entry);
+            }
+            Err(_) => invalid_keys.push(entry_key),
+        }
+    }
+
+    entries.sort_by(|left, right| left.key.cmp(&right.key));
+    ignored_keys.sort();
+    invalid_keys.sort();
+    let preserve_count = registry.len().saturating_sub(entries.len());
+    let preview = SettingsRestorePreview {
+        backup_version: backup.version,
+        current_version: SETTINGS_BACKUP_VERSION,
+        // Notification preferences are normalized and restored as one registered user setting.
+        restore_count: entries.len() + 1,
+        preserve_count,
+        ignored_count: ignored_keys.len(),
+        migrated_count,
+        invalid_count: invalid_keys.len(),
+        ignored_keys,
+        invalid_keys,
+    };
+
+    SettingsRestorePlan { entries, preview }
+}
+
 pub async fn export_settings(
     State(db): State<DatabaseConnection>,
     user_id: i32,
 ) -> (StatusCode, Json<Value>) {
+    let registry = settings_registry();
+    let effective_config = build_config(&db, true).await;
     let rows = match db
         .query_all(Statement::from_string(
             DatabaseBackend::Postgres,
@@ -1494,17 +1855,22 @@ pub async fn export_settings(
 
     let mut configurations = Vec::with_capacity(rows.len());
     for row in rows {
+        let key: String = match row.try_get("", "key") {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::error!("Failed to decode configuration key: {}", error);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Failed to decode settings"})),
+                );
+            }
+        };
+        let Some(descriptor) = registry.get(key.as_str()) else {
+            // Stale rows from removed settings are intentionally not re-exported.
+            continue;
+        };
         let entry = SettingsBackupEntry {
-            key: match row.try_get("", "key") {
-                Ok(value) => value,
-                Err(error) => {
-                    tracing::error!("Failed to decode configuration key: {}", error);
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({"error": "Failed to decode settings"})),
-                    );
-                }
-            },
+            key,
             value: match row.try_get("", "value") {
                 Ok(value) => value,
                 Err(error) => {
@@ -1515,6 +1881,7 @@ pub async fn export_settings(
                     );
                 }
             },
+            schema_version: descriptor.schema_version,
             description: row.try_get("", "description").ok().flatten(),
             category: row.try_get("", "category").ok().flatten(),
             is_encrypted: row.try_get("", "is_encrypted").ok().flatten(),
@@ -1522,6 +1889,29 @@ pub async fn export_settings(
         };
         configurations.push(entry);
     }
+
+    let mut exported_keys: std::collections::HashSet<String> = configurations
+        .iter()
+        .map(|entry| entry.key.clone())
+        .collect();
+    for (key, value) in collect_database_updates(&effective_config) {
+        let Some(descriptor) = registry.get(key.as_str()) else {
+            continue;
+        };
+        if !exported_keys.insert(key.clone()) {
+            continue;
+        }
+        configurations.push(SettingsBackupEntry {
+            schema_version: descriptor.schema_version,
+            description: None,
+            category: Some("general".to_string()),
+            is_encrypted: Some(is_sensitive_configuration_key(&key)),
+            is_public: Some(false),
+            key,
+            value,
+        });
+    }
+    configurations.sort_by(|left, right| left.key.cmp(&right.key));
 
     let notification_preferences =
         crate::services::agent::notification_preferences::load(Some(&db), user_id).await;
@@ -1531,13 +1921,30 @@ pub async fn export_settings(
         exported_at: chrono::Utc::now().to_rfc3339(),
         contains_secrets: true,
         configurations,
-        effective_config: build_config(&db, true).await,
+        effective_config,
         user_preferences: SettingsBackupUserPreferences {
             notification_preferences,
         },
     };
 
     (StatusCode::OK, Json(json!(backup)))
+}
+
+pub async fn preview_settings_restore(
+    Json(backup): Json<SettingsBackup>,
+) -> (StatusCode, Json<Value>) {
+    if let Err(message) = validate_settings_backup(&backup) {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": message})));
+    }
+
+    let plan = build_settings_restore_plan(&backup);
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "preview": plan.preview,
+        })),
+    )
 }
 
 pub async fn restore_settings(
@@ -1549,7 +1956,9 @@ pub async fn restore_settings(
         return (StatusCode::BAD_REQUEST, Json(json!({"error": message})));
     }
 
-    let entries = merge_settings_backup_entries(backup.configurations, &backup.effective_config);
+    let plan = build_settings_restore_plan(&backup);
+    let preview = plan.preview.clone();
+    let entries = plan.entries;
     let notification_preferences = backup
         .user_preferences
         .notification_preferences
@@ -1567,14 +1976,7 @@ pub async fn restore_settings(
     };
 
     let restore_result: Result<(), sea_orm::DbErr> = async {
-        transaction
-            .execute(Statement::from_string(
-                DatabaseBackend::Postgres,
-                "DELETE FROM configurations".to_string(),
-            ))
-            .await?;
-
-        for (_, entry) in entries {
+        for entry in entries {
             transaction
                 .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
@@ -1582,6 +1984,13 @@ pub async fn restore_settings(
                         INSERT INTO configurations
                             (key, value, description, category, is_encrypted, is_public, created_at, updated_at)
                         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        ON CONFLICT (key) DO UPDATE SET
+                            value = EXCLUDED.value,
+                            description = COALESCE(EXCLUDED.description, configurations.description),
+                            category = COALESCE(EXCLUDED.category, configurations.category),
+                            is_encrypted = COALESCE(EXCLUDED.is_encrypted, configurations.is_encrypted),
+                            is_public = COALESCE(EXCLUDED.is_public, configurations.is_public),
+                            updated_at = CURRENT_TIMESTAMP
                     "#,
                     vec![
                         entry.key.into(),
@@ -1629,7 +2038,7 @@ pub async fn restore_settings(
     )
     .await;
 
-    let config_service = crate::services::config_service::ConfigService::new(db);
+    let config_service = crate::services::config_service::ConfigService::new(db.clone());
     match config_service.load_config().await {
         Ok(dynamic_config) => {
             *crate::GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
@@ -1645,6 +2054,19 @@ pub async fn restore_settings(
         }
     }
 
+    if let Err(error) = reconcile_platform_auto_refresh(&db).await {
+        tracing::error!(
+            "Settings restored but platform auto-refresh reconciliation failed: {}",
+            error
+        );
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "Settings restored, but platform auto-refresh could not be updated"
+            })),
+        );
+    }
+
     crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
 
     (
@@ -1652,7 +2074,8 @@ pub async fn restore_settings(
         Json(json!({
             "success": true,
             "message": "Settings restored successfully",
-            "requires_reload": true
+            "requires_reload": true,
+            "preview": preview
         })),
     )
 }
@@ -1662,42 +2085,7 @@ mod settings_backup_tests {
     use super::*;
 
     fn empty_config() -> ConfigResponse {
-        ConfigResponse {
-            platforms: Vec::new(),
-            ai_config: AiConfig {
-                provider: String::new(),
-                model: String::new(),
-                api_key: String::new(),
-                enabled: false,
-                image_provider: String::new(),
-                config_fields: Vec::new(),
-            },
-            report_config: ReportConfig {
-                topic_style: String::new(),
-                config_fields: Vec::new(),
-            },
-            ui_config: UiConfig {
-                wallpaper_url: String::new(),
-                wallpaper_blur: 0,
-                wallpaper_parallax: false,
-                evocative_parallax: false,
-                evocative_dynamic_blur: false,
-                evocative_ripple: false,
-                evocative_fps: 30,
-                evocative_ripple_quality: 1.0,
-                theme: String::new(),
-                primary_color: String::new(),
-                secondary_color: String::new(),
-                pet_enabled: false,
-                pet_image_url: String::new(),
-                proxy_enabled: false,
-                proxy_url: String::new(),
-                proxy_bypass: String::new(),
-                gemini_base_url: String::new(),
-                github_api_base_url: String::new(),
-                config_fields: Vec::new(),
-            },
-        }
+        ConfigResponse::default()
     }
 
     fn backup_with_entries(configurations: Vec<SettingsBackupEntry>) -> SettingsBackup {
@@ -1718,6 +2106,7 @@ mod settings_backup_tests {
         SettingsBackupEntry {
             key: key.to_string(),
             value: json!(true),
+            schema_version: 1,
             description: None,
             category: None,
             is_encrypted: None,
@@ -1744,8 +2133,27 @@ mod settings_backup_tests {
         assert!(validate_settings_backup(&backup).is_err());
 
         backup.format = SETTINGS_BACKUP_FORMAT.to_string();
+        backup.version = MIN_SETTINGS_BACKUP_VERSION;
+        assert!(validate_settings_backup(&backup).is_ok());
+
         backup.version = SETTINGS_BACKUP_VERSION + 1;
         assert!(validate_settings_backup(&backup).is_err());
+    }
+
+    #[test]
+    fn deserializes_v1_entries_without_per_setting_schema_version() {
+        let mut value = serde_json::to_value(backup_with_entries(vec![entry("github_enabled")]))
+            .expect("backup should serialize");
+        value["version"] = json!(MIN_SETTINGS_BACKUP_VERSION);
+        value["configurations"][0]
+            .as_object_mut()
+            .expect("entry should be an object")
+            .remove("schema_version");
+
+        let backup: SettingsBackup =
+            serde_json::from_value(value).expect("v1 backup should deserialize");
+        assert_eq!(backup.configurations[0].schema_version, 1);
+        assert!(validate_settings_backup(&backup).is_ok());
     }
 
     #[test]
@@ -1774,12 +2182,16 @@ mod settings_backup_tests {
         let raw_entry = SettingsBackupEntry {
             key: "github_token".to_string(),
             value: json!("database-token"),
+            schema_version: 1,
             description: Some("credential".to_string()),
             category: Some("platform".to_string()),
             is_encrypted: Some(true),
             is_public: Some(false),
         };
-        let merged = merge_settings_backup_entries(vec![raw_entry], &config);
+        let mut backup = backup_with_entries(vec![raw_entry]);
+        backup.version = MIN_SETTINGS_BACKUP_VERSION;
+        backup.effective_config = config;
+        let merged = merge_settings_backup_entries(&backup);
         assert_eq!(
             merged.get("github_token").map(|entry| &entry.value),
             Some(&json!("database-token"))
@@ -1790,6 +2202,70 @@ mod settings_backup_tests {
                 .and_then(|entry| entry.is_encrypted),
             Some(false)
         );
+    }
+
+    #[test]
+    fn restore_plan_ignores_removed_keys_and_preserves_missing_current_keys() {
+        let backup = backup_with_entries(vec![entry("github_enabled"), entry("removed_setting")]);
+        let plan = build_settings_restore_plan(&backup);
+
+        assert_eq!(plan.entries.len(), 1);
+        assert_eq!(plan.entries[0].key, "github_enabled");
+        assert_eq!(plan.preview.ignored_keys, vec!["removed_setting"]);
+        assert!(plan.preview.preserve_count > 0);
+    }
+
+    #[test]
+    fn restore_plan_rejects_future_per_setting_schema_without_failing_file() {
+        let mut future = entry("report_settings");
+        future.schema_version = 99;
+        let plan = build_settings_restore_plan(&backup_with_entries(vec![future]));
+
+        assert!(plan.entries.is_empty());
+        assert_eq!(plan.preview.invalid_keys, vec!["report_settings"]);
+    }
+
+    #[test]
+    fn restore_plan_normalizes_structured_options_against_current_schema() {
+        let mut module_entry = entry(MODULE_VISIBILITY_PREFERENCES_KEY);
+        module_entry.value = json!({
+            "modules": {
+                "library": "admin",
+                "removed_module": "all"
+            }
+        });
+
+        let plan = build_settings_restore_plan(&backup_with_entries(vec![module_entry]));
+        let modules = plan.entries[0]
+            .value
+            .get("modules")
+            .and_then(Value::as_object)
+            .unwrap();
+        assert_eq!(modules.get("library"), Some(&json!("admin")));
+        assert!(modules.contains_key("brew"));
+        assert!(!modules.contains_key("removed_module"));
+    }
+
+    #[test]
+    fn auto_fetch_settings_are_persisted_and_interval_is_clamped() {
+        let mut config = empty_config();
+        config.auto_fetch = Some(PlatformAutoFetchConfig {
+            enabled: true,
+            interval_hours: 0,
+        });
+
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("enable_auto_fetch"), Some(&json!(true)));
+        assert_eq!(updates.get("fetch_interval_hours"), Some(&json!(1)));
+    }
+
+    #[test]
+    fn missing_auto_fetch_settings_preserve_existing_values() {
+        let config = empty_config();
+        let updates = collect_database_updates(&config);
+
+        assert!(!updates.contains_key("enable_auto_fetch"));
+        assert!(!updates.contains_key("fetch_interval_hours"));
     }
 }
 
@@ -1857,7 +2333,24 @@ pub async fn update_config(
         }
     }
 
-    // 4. 触发配置重载标志(虽然数据库连接可能不变,但确保其他服务知道配置已更新)
+    // 4. The platform settings are the source of truth for Core scheduler
+    // tasks. Reconcile immediately so the saved switch/frequency takes effect
+    // without waiting for a backend restart.
+    if let Err(error) = reconcile_platform_auto_refresh(&db).await {
+        tracing::error!("Failed to reconcile platform auto-refresh tasks: {}", error);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "message": format!(
+                    "Configuration was saved, but platform auto-refresh could not be updated: {}",
+                    error
+                )
+            })),
+        );
+    }
+
+    // 5. 触发配置重载标志(虽然数据库连接可能不变,但确保其他服务知道配置已更新)
     crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
 
     tracing::info!(
@@ -1883,6 +2376,22 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
     use std::collections::HashMap;
 
     let mut updates: HashMap<String, JsonValue> = HashMap::new();
+
+    if let Some(auto_fetch) = &config.auto_fetch {
+        updates.insert(
+            "enable_auto_fetch".to_string(),
+            JsonValue::Bool(auto_fetch.enabled),
+        );
+        updates.insert(
+            "fetch_interval_hours".to_string(),
+            JsonValue::Number(
+                crate::services::platform_auto_refresh::clamp_interval_hours(
+                    auto_fetch.interval_hours,
+                )
+                .into(),
+            ),
+        );
+    }
 
     // Helper to check if a value is masked
     let is_masked = |value: &str| -> bool {

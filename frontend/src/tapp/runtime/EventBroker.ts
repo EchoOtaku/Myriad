@@ -7,7 +7,7 @@ import { subscribeToTheme } from '../../utils/themeSubscriber'
 const RECONNECT_DELAY_MS = 500
 
 /**
- * Connect one Page/Widget/headless runtime to the online Event V2 broker.
+ * Connect one Page/Widget/headless runtime to the online event broker.
  * Runtime Grants remain host-only; the sandbox receives validated envelopes.
  */
 export function registerEventHandlers(

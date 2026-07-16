@@ -146,7 +146,7 @@ import {
 
 - 包含多个 provider 选择
 - 包含图片生成、语音服务等子配置
-- 建议创建 `AiConfigSectionV2` 组件
+- 建议直接扩展 `AiConfigSection` 组件
 
 ## 组件接口规范
 

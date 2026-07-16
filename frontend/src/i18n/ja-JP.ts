@@ -259,6 +259,20 @@ export const jaJP: TranslationKeys = {
     platformsDesc:
       '各データソースプラットフォームのアクセス認証情報を設定。並び順がレポートのカード順になります',
     dragToReorder: '長押しでドラッグ並べ替え',
+    autoRefreshTitle: 'プラットフォームの自動更新',
+    autoRefreshDescription:
+      'ブラウザを開いていなくても、バックエンドの Core スケジューラが有効なプラットフォームを更新します。',
+    autoRefreshFrequency: '更新頻度',
+    autoRefreshFrequencyDesc:
+      '外部サービスへの同時アクセスを避けるため、各タスクは時間をずらして実行されます。',
+    autoRefreshOff: 'オフ',
+    autoRefreshEveryHours: '{hours}時間ごと',
+    autoRefreshSummary:
+      '保存後、有効な {count} プラットフォームを {hours} 時間ごとに更新します。',
+    autoRefreshNoPlatforms:
+      '有効なデータプラットフォームがないため、更新タスクは作成されません。',
+    autoRefreshDisabledHint:
+      '自動更新はオフです。手動更新時のみプラットフォームデータが変わります。',
     ai: 'AI設定',
     aiDesc: 'AIモデルとAPIキーを設定',
     basic: '基本設定',
@@ -453,7 +467,7 @@ export const jaJP: TranslationKeys = {
       'すべての設定、現在の管理者の通知設定、ブラウザー設定をエクスポートします。APIキーやトークンなどの機密情報が含まれるため、安全に保管してください。',
     importConfig: '設定をインポート',
     importConfigDesc:
-      'JSONファイルから設定をインポートします。現在のすべての設定が上書きされます。',
+      'JSONから設定を適応的にインポートします。新しい項目は現在値を維持し、廃止項目は無視します。',
     exportConfigSuccess: '設定を正常にエクスポートしました！',
     exportConfigFailed: '設定のエクスポートに失敗しました',
     importConfigSuccess:
@@ -461,7 +475,7 @@ export const jaJP: TranslationKeys = {
     importConfigFailed: '設定のインポートに失敗しました',
     importConfigInvalid: '無効な設定ファイルです。JSON形式を確認してください。',
     importConfirmMessage:
-      'インポートすると、現在のすべての設定、現在の管理者の通知設定、ブラウザー設定が完全に置き換えられます。続行しますか？',
+      '現在のバージョンに合わせて設定を統合し、現在の管理者の通知設定を復元します。新しい項目は維持し、廃止項目は無視します。以下のプレビューを確認してください。',
     dangerZone: '危険エリア',
     searchConfig: '設定項目を検索...',
     searchResults: '検索結果',
@@ -1540,6 +1554,31 @@ export const jaJP: TranslationKeys = {
     fetchActivitiesFailed: 'アクティビティの取得に失敗しました',
     myMusicCollection: 'マイミュージックコレクション',
     techShareCollection: '技術シェアコレクション',
+    initialImport: '初回インポート',
+    itemAdded: '{subject} を追加',
+    itemRemoved: '{subject} を削除',
+    moreActivities: '他 {count} 件',
+    minutes: '{minutes} 分',
+    hoursMinutes: '{hours} 時間 {minutes} 分',
+    episodesProgress: '視聴進捗',
+    volumesProgress: '巻数進捗',
+    followers: 'フォロワー',
+    following: 'フォロー',
+    repositories: 'リポジトリ',
+    contributions: 'コントリビューション',
+    mediaItems: 'アイテム数',
+    level: 'レベル',
+    posts: 'ポスト',
+    likes: 'いいね',
+    gamerscore: 'ゲーマースコア',
+    servers: 'サーバー',
+    connections: '連携アカウント',
+    trophyLevel: 'トロフィーレベル',
+    collections: 'コレクション',
+    subscriptions: '追加済み作品',
+    anime: 'アニメ',
+    manga: 'マンガ',
+    dataChanges: 'データ変更',
   },
 
   // 天気ウィジェット

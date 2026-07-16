@@ -367,7 +367,7 @@ const canGen = await Tapp.ai.canGenerate();
 calls/tokens/cooldown 账本。管理员无限制以 `null` limit/remaining 传输，不在 JSON 中使用
 `Infinity`。
 
-AI V2 将调用统一为任务：
+AI Task 将调用统一为任务：
 
 ```javascript
 const task = await Tapp.ai.tasks.create({
@@ -822,7 +822,7 @@ await Tapp.event.v2.publish({
 unsubscribe();
 ```
 
-Event V2 是在线 at-most-once Broker：`instance` 只发给当前 runtime，`owner` 发给同一
+Event Broker 是在线 at-most-once Broker：`instance` 只发给当前 runtime，`owner` 发给同一
 subject 数据空间内、Manifest 明确订阅 topic 的在线 Page/Widget/headless。无 ACK、重试或
 离线积压；慢消费者队列满时事件会丢弃。`owner` payload 最大 8 KiB 且仅允许浅层状态元数据，
 `data/content/items/records/body/blob/bytes` 等正文键会被拒绝；跨 Tapp 数据必须走一次性授权。
@@ -1048,13 +1048,13 @@ const text = await Tapp.speech.asr({ audio }); // speech:asr
 | `dataExchange`                             | 逐次授权的跨 Tapp 具名数据交换                      | Manifest + one-shot consent        |
 | `ui`, `animation`, `dynamicContent`, `dom` | 宿主 UI、主题、动画和安全 DOM helper                | `ui:*` 或 public                   |
 | `platform`, `data`                         | 平台数据读取、写入、转换和注册                      | `platform:*`                       |
-| `ai`, `report`                             | AI V1/V2 任务、图片与报告读写                       | `ai:*`, `report:*`                 |
+| `ai`, `report`                             | 旧版与任务式 AI、图片与报告读写                    | `ai:*`, `report:*`                 |
 | `widget`                                   | 动态 Widget 注册与配置                              | `widget:register`                  |
 | `media`                                    | 播放器读取和控制                                    | `media:*`                          |
 | `context`, `user`                          | 应用、用户、导航、系统和地理上下文                  | public                             |
 | `component`, `shortcut`                    | 主题/Agent 组件和快捷键注册                         | `component:*`, `shortcut:register` |
-| `event`, `background`, `scheduler`         | 在线 Event V2、常驻需求和持久化任务                 | `event:*`, `scheduler:register`    |
-| `agent`                                    | schema 约束的 Agent Interaction V2                  | Manifest + Runtime Grant           |
+| `event`, `background`, `scheduler`         | 在线 Event Broker、常驻需求和持久化任务           | `event:*`, `scheduler:register`    |
+| `agent`                                    | schema 约束的 Agent Interaction                  | Manifest + Runtime Grant           |
 | `api`                                      | Manifest 声明的 HTTP/builtin 能力                   | 按 API access                      |
 | `file`, `speech`                           | 文件下载、TTS 和 ASR                                | public, `speech:*`                 |
 | `tappList`                                 | Tapp 查询、安装、启停、卸载与导出                   | `tappList:*`                       |

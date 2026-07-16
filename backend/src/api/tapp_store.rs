@@ -2,7 +2,7 @@
 //!
 //! 提供 Tapp 应用的安装、卸载、启动、停止等功能
 //!
-//! ## 权限模型 (v2.0)
+//! ## 权限模型
 //!
 //! - **管理员**: 完全控制自己的 Tapp，内容对所有用户可见
 //! - **普通用户**: 查看并运行管理员的 Tapp，可临时安装自己的 Tapp（退出登录后移除）
@@ -1112,15 +1112,15 @@ pub struct TappManifest {
     /// 每次调用仍必须经过宿主的一次性授权流程。
     #[serde(default)]
     pub data_exchange: Option<TappDataExchangeManifest>,
-    /// Server-governed AI Task V2 declaration. Provider/model parameters are
+    /// Server-governed AI Task declaration. Provider/model parameters are
     /// deliberately absent: the host resolves those from its own policy.
     #[serde(default)]
     pub ai: Option<TappAiManifest>,
-    /// Declared Event V2 topics. Subscription state is derived from this
+    /// Declared Event Broker topics. Subscription state is derived from this
     /// manifest and the online runtime registry, never persisted separately.
     #[serde(default)]
     pub events: Option<TappEventsManifest>,
-    /// Stateful Agent Interaction V2 declaration.
+    /// Stateful Agent Interaction declaration.
     #[serde(default)]
     pub agent: Option<TappAgentManifest>,
 }

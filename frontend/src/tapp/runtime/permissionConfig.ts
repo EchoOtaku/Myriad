@@ -170,7 +170,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['ai.canGenerate', 'public'],
     ['ai.chat', 'ai:chat'],
     ['ai.image', 'ai:image'],
-    // AI V2 operation/context permissions are resolved dynamically by backend.
+    // AI Task operation/context permissions are resolved dynamically by backend.
     ['ai.tasks.create', 'public'],
     ['ai.tasks.get', 'public'],
     ['ai.tasks.cancel', 'public'],
@@ -233,7 +233,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['event.subscribe', 'event:subscribe'],
     ['event.unsubscribe', 'event:subscribe'],
 
-    // Agent V2 is governed by Manifest declaration, interaction state, schema,
+    // Agent Interaction is governed by Manifest declaration, interaction state, schema,
     // accepting runtime identity, and host intent confirmation on the backend.
     ['agent.v2.accept', 'public'],
     ['agent.v2.result', 'public'],

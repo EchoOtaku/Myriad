@@ -247,6 +247,15 @@ export interface TranslationKeys {
     platforms: string
     platformsDesc: string
     dragToReorder: string
+    autoRefreshTitle: string
+    autoRefreshDescription: string
+    autoRefreshFrequency: string
+    autoRefreshFrequencyDesc: string
+    autoRefreshOff: string
+    autoRefreshEveryHours: string
+    autoRefreshSummary: string
+    autoRefreshNoPlatforms: string
+    autoRefreshDisabledHint: string
     ai: string
     aiDesc: string
     basic: string
@@ -1408,6 +1417,31 @@ export interface TranslationKeys {
     fetchActivitiesFailed: string
     myMusicCollection: string
     techShareCollection: string
+    initialImport: string
+    itemAdded: string
+    itemRemoved: string
+    moreActivities: string
+    minutes: string
+    hoursMinutes: string
+    episodesProgress: string
+    volumesProgress: string
+    followers: string
+    following: string
+    repositories: string
+    contributions: string
+    mediaItems: string
+    level: string
+    posts: string
+    likes: string
+    gamerscore: string
+    servers: string
+    connections: string
+    trophyLevel: string
+    collections: string
+    subscriptions: string
+    anime: string
+    manga: string
+    dataChanges: string
   }
 
   // 天气小组件

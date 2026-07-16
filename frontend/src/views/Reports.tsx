@@ -47,6 +47,7 @@ import {
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useTitleFont } from '../hooks/useTitleFont'
 import { getCSRFToken } from '../utils/csrf'
+import { notifyRecentActivityUpdated } from '../utils/recentActivity'
 import { hasSessionHint } from '../utils/sessionDetection'
 import { ComprehensiveReportCard } from './reports/ComprehensiveReportCard'
 import { EmptyComprehensiveReport } from './reports/EmptyComprehensiveReport'
@@ -67,7 +68,6 @@ function useDebounce<T>(value: T, delay: number): T {
 
   return debouncedValue
 }
-
 interface PlatformReport {
   platform: string
   metadata: any
@@ -760,15 +760,22 @@ export default function Reports() {
 
       // 1. 刷新该平台的数据
       try {
-        await fetch(`${API_URL}/api/profile/fetch-platform`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken,
+        const fetchResponse = await fetch(
+          `${API_URL}/api/profile/fetch-platform`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+            },
+            credentials: 'include',
+            body: JSON.stringify({ platform: platformId }),
           },
-          credentials: 'include',
-          body: JSON.stringify({ platform: platformId }),
-        })
+        )
+        const fetchBody = await fetchResponse.json().catch(() => null)
+        if (fetchResponse.ok && fetchBody?.success !== false) {
+          notifyRecentActivityUpdated()
+        }
       } catch (fetchErr) {
         console.warn(`Refresh ${platformId} data request error:`, fetchErr)
       }
@@ -1016,6 +1023,8 @@ export default function Reports() {
               fetchBody?.message ||
               `刷新 ${platformId} 数据失败，尝试使用现有数据生成报告`
             console.warn(fetchWarning)
+          } else {
+            notifyRecentActivityUpdated()
           }
         } catch (fetchErr) {
           console.warn(`刷新 ${platformId} 数据请求出错:`, fetchErr)

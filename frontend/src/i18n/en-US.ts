@@ -265,6 +265,20 @@ export const enUS: TranslationKeys = {
     platformsDesc:
       'Configure access credentials for data source platforms; the order here sets the report card order',
     dragToReorder: 'Hold to drag & reorder',
+    autoRefreshTitle: 'Automatic platform refresh',
+    autoRefreshDescription:
+      'The backend Core scheduler refreshes enabled platforms without requiring an open browser.',
+    autoRefreshFrequency: 'Refresh frequency',
+    autoRefreshFrequencyDesc:
+      'Platform jobs are staggered to avoid contacting every external service at once.',
+    autoRefreshOff: 'Off',
+    autoRefreshEveryHours: 'Every {hours} hours',
+    autoRefreshSummary:
+      'Saving will create jobs for {count} enabled platforms and refresh them every {hours} hours.',
+    autoRefreshNoPlatforms:
+      'No data platform is enabled, so no refresh job will be created.',
+    autoRefreshDisabledHint:
+      'Automatic refresh is off. Platform data changes only after a manual refresh.',
     ai: 'AI Config',
     aiDesc: 'Configure AI model and API key',
     basic: 'Basic Config',
@@ -459,7 +473,7 @@ export const enUS: TranslationKeys = {
       'Export all settings, current administrator notification preferences, and browser preferences. The file contains sensitive API keys and tokens; store it securely.',
     importConfig: 'Import Settings',
     importConfigDesc:
-      'Import configurations from a JSON file. This will overwrite all current settings.',
+      'Adaptively import settings from JSON; new options keep their current values and removed options are ignored.',
     exportConfigSuccess: 'Configuration exported successfully!',
     exportConfigFailed: 'Failed to export settings',
     importConfigSuccess:
@@ -468,7 +482,7 @@ export const enUS: TranslationKeys = {
     importConfigInvalid:
       'Invalid configuration file. Please check the JSON format.',
     importConfirmMessage:
-      'Importing will fully replace current settings, current administrator notification preferences, and browser preferences. Continue?',
+      'Settings will be merged against the current version and the current administrator notification preferences restored. New options are preserved and removed options ignored. Review the preview below.',
     dangerZone: 'Danger Zone',
     searchConfig: 'Search configurations...',
     searchResults: 'Search Results',
@@ -1555,6 +1569,31 @@ export const enUS: TranslationKeys = {
     fetchActivitiesFailed: 'Failed to fetch activities',
     myMusicCollection: 'My Music Collection',
     techShareCollection: 'Tech Shares',
+    initialImport: 'Initial import',
+    itemAdded: 'Added {subject}',
+    itemRemoved: 'Removed {subject}',
+    moreActivities: '{count} more',
+    minutes: '{minutes} min',
+    hoursMinutes: '{hours} hr {minutes} min',
+    episodesProgress: 'Episode progress',
+    volumesProgress: 'Volume progress',
+    followers: 'Followers',
+    following: 'Following',
+    repositories: 'Repositories',
+    contributions: 'Contributions',
+    mediaItems: 'Items',
+    level: 'Level',
+    posts: 'Posts',
+    likes: 'Likes',
+    gamerscore: 'Gamerscore',
+    servers: 'Servers',
+    connections: 'Connections',
+    trophyLevel: 'Trophy level',
+    collections: 'Collections',
+    subscriptions: 'Subscriptions',
+    anime: 'Anime',
+    manga: 'Manga',
+    dataChanges: 'Data changes',
   },
 
   // Weather Widget
