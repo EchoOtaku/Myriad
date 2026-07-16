@@ -1925,6 +1925,7 @@ export const enUS: TranslationKeys = {
     installedAt: 'Installed at',
     lastRunAt: 'Last run',
     homepage: 'Homepage',
+    repository: 'Source repository',
     visit: 'Visit',
     loading: 'Loading...',
     settingSaved: 'Settings saved',

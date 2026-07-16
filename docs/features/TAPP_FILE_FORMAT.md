@@ -178,11 +178,9 @@ Tapp ID 和 Manifest 资源路径用于构造安装目录，必须遵守严格�
 这些字段有后端 round-trip 测试保护，不能只在前端 TypeScript 类型中添加。刷新策略由
 宿主按事件优先、可见 interval 的规则执行；后台周期工作仍由 scheduler/headless core
 负责。顶层 `settings` 是 Tapp 全局设置，`widgets[].settings` 是 Dashboard 实例设置。
-当前模板内容传输以尺寸为 key；同一 Tapp 中多个 Widget 若把
-相同尺寸映射到不同文件会被拒绝，避免运行时静默覆盖。
-
-历史商店包中的 `minRefreshInterval` 从未接入刷新调度。安装器暂时只为旧包接受该字段，
-随后会在规范化 Manifest 时移除；新 Tapp 不应再声明它。
+模板内容按 `Widget ID + 尺寸` 传输，同一 Tapp 的多个 Widget 可以为相同尺寸使用不同
+文件。旧 `minRefreshInterval` 从未接入刷新调度，现已作为无效字段拒绝；需要轮询时使用
+`refreshPolicy`。
 
 ## Page 模块
 

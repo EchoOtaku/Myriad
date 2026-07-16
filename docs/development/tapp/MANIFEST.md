@@ -22,9 +22,9 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `settings`               | object[] | ❌   | 用户可配置的设置项                 |
 | `apis`                   | object   | ❌   | 命名 API 声明（代理+权限校验）     |
 | `dataExchange`           | object   | ❌   | 跨 Tapp 具名 import/export 契约    |
-| `ai`                     | object   | ❌   | 服务端治理的 AI Task 声明       |
-| `events`                 | object   | ❌   | Event Broker 发布/订阅 topic 声明      |
-| `agent`                  | object   | ❌   | Agent Interaction 声明          |
+| `ai`                     | object   | ❌   | 服务端治理的 AI Task 声明          |
+| `events`                 | object   | ❌   | Event Broker 发布/订阅 topic 声明  |
+| `agent`                  | object   | ❌   | Agent Interaction 声明             |
 | `minSystemVersion`       | string   | ❌   | 最低兼容 Myriad 语义版本           |
 | `homepage`               | string   | ❌   | 应用主页 URL                       |
 | `repository`             | string   | ❌   | 代码仓库 URL                       |
@@ -48,9 +48,14 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
 不会再被静默忽略。所有运行能力都必须直接写入 `permissions`；宿主只会在真正调用时
 按权限和运行时策略决定是否授权。
 
+`version` 必须是语义版本；`themeColor` 使用 `#RRGGBB`；`homepage`、`repository` 和
+作者主页只接受 HTTP(S)。声明 Widget 必须同时声明 `widget:register`；受保护 HTTP API
+必须声明 `network:fetch`，内置 AI API 必须声明对应的 `ai:*` 权限。`pageModules` 只接受
+不重复的 `.js` 文件名。无效声明会在安装或更新时直接拒绝，不留到运行时静默失败。
+
 `minSystemVersion` 使用语义版本。直接安装、商店安装和更新都会由后端与当前 Myriad
 包版本比较；当前版本过低或字段格式无效时会拒绝写入，避免出现“安装成功但运行时才
-发现 API 不兼容”。商店索引的旧字段 `min_myriad_version` 会在安装时归一化为该字段。
+发现 API 不兼容”。最低版本只写在包内 Manifest；商店 index 不重复维护第二份版本来源。
 
 ## 完整示例
 
@@ -180,6 +185,10 @@ Widget 实例，因此同一种 Widget 添加两次时可以采用不同配置�
 `intervalSeconds`（15–86400 秒）；计时器仅在页面和 Widget 可见且 Tapp 运行时工作。
 `refreshOnVisible` 默认为 `true`。后台同步应使用 scheduler/headless core，而不是依赖
 Widget 的可见计时器。
+
+模板按 `Widget ID + 尺寸` 隔离。同一个 Tapp 的多个 Widget 可以各自声明不同的 `2x2`
+模板，不会互相覆盖。商店索引中的 `download.widget_templates` 也必须使用
+`{ "widgetId": { "2x2": "path/to/template.html" } }` 结构。
 
 ### templates 配置说明
 
@@ -383,8 +392,6 @@ const value = await Tapp.storage.get("_settings.refreshInterval");
 | `type`        | string | ❌   | `http`（默认）或 `builtin`                        |
 | `access`      | string | ❌   | `protected`（默认）或 `public`                    |
 | `endpoint`    | string | HTTP | HTTP URL，可使用 `{{params.*}}` 等模板            |
-| `url`         | string | 兼容 | `endpoint` 的旧别名，不能与其同时声明             |
-| `params`      | object | 兼容 | 旧版查询参数模板，会编码后追加到 URL              |
 | `method`      | string | ❌   | HTTP 方法，默认 `GET`                             |
 | `headers`     | object | ❌   | 请求头模板                                        |
 | `body`        | object | ❌   | JSON 请求体模板                                   |
@@ -397,8 +404,8 @@ const value = await Tapp.storage.get("_settings.refreshInterval");
 `inject` 的键是新别名，值是宿主上下文模板。例如
 `{"city":"{{geo.city}}"}` 会创建 `{{city}}`，供 `endpoint`、`headers` 或 `body`
 复用；精确引用会保留数字、布尔值等 JSON 类型。别名不能覆盖 `user.*`、`geo.*`、
-`secrets.*` 或 `params.*`。HTTP API 必须且只能声明 `endpoint` 或兼容字段 `url`
-其中之一；内置 API 只接受 `geo`、`ai:chat`、`ai:generate`，不能混入 HTTP 字段。
+`secrets.*` 或 `params.*`。HTTP API 必须声明 `endpoint`，查询参数直接写在 URL 中；
+内置 API 只接受 `geo`、`ai:chat`、`ai:generate`，不能混入 HTTP 字段。
 单个 Manifest 最多声明 64 个 API，每个 API 最多声明 32 个注入别名，`cacheTtl` 上限
 为 86400 秒。
 
@@ -524,7 +531,7 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 - Event `owner` 作用域只允许有界状态元数据，跨 Tapp 正文必须使用 `dataExchange`；
 - Agent interaction type 最多 32 个。schema 是安装根目录内的 JSON 资源，安装时校验存在，
   运行时限制为 64 KiB、禁止 `$ref`，输入和结果都由后端验证；
-- 兼容交互必须显式声明 `legacy.fill`、`legacy.interact` 或 `legacy.read`，不会自动获得任意
+- Interaction type 由应用自行命名，但必须与 Agent 能选择的任务类型一致；Tapp 不会获得任意
   DOM 操作权限。
 
 ---

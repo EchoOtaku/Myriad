@@ -2,169 +2,15 @@
  * AI 与报告处理器
  */
 
-import type {
-  AIQuotaStatus,
-  AITaskRequest,
-  AIUsageSnapshot,
-  TappInstance,
-} from '../../../types'
+import type { AITaskRequest, TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
 import * as TappApiService from '../../../services/TappApiService'
-
-function toCompatibleQuotaStatus(usage: AIUsageSnapshot): AIQuotaStatus {
-  return {
-    daily: {
-      limit: usage.calls.limit ?? Infinity,
-      used: usage.calls.used,
-      resetsAt: usage.calls.resetsAt,
-    },
-    tokens: {
-      limit: usage.tokens.limit ?? Infinity,
-      used: usage.tokens.used,
-      resetsAt: usage.tokens.resetsAt,
-    },
-    cooldown: {
-      required: usage.cooldown.requiredSeconds,
-      remaining: usage.cooldown.remainingSeconds,
-    },
-    restricted: usage.restricted,
-    restrictionReason: usage.restrictionReason,
-    unlimited: usage.unlimited,
-    userRole: usage.role,
-  }
-}
 
 /**
  * 注册 AI 处理器
  */
-export function registerAIHandlers(
-  bridge: TappBridge,
-  tappInstance: TappInstance,
-): () => void {
+export function registerAIHandlers(bridge: TappBridge): () => void {
   const taskStreams = new Map<string, AbortController>()
-
-  bridge.registerHandler('ai.getQuota', async () => {
-    try {
-      const usage = await TappApiService.getAIUsage(
-        await bridge.getRuntimeGrant(),
-      )
-      return { success: true, data: toCompatibleQuotaStatus(usage) }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'AI usage failed',
-      }
-    }
-  })
-
-  bridge.registerHandler('ai.canGenerate', async () => {
-    try {
-      const usage = await TappApiService.getAIUsage(
-        await bridge.getRuntimeGrant(),
-      )
-      return {
-        success: true,
-        data: {
-          allowed: !usage.restricted,
-          reason: usage.restrictionReason,
-        },
-      }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'AI usage failed',
-      }
-    }
-  })
-
-  bridge.registerHandler('ai.generate', async (message) => {
-    const [request] = (message.payload as { args: unknown[] }).args || []
-    if (!request) return { success: false, error: 'Request required' }
-
-    try {
-      const response = await TappApiService.aiGenerate(
-        tappInstance.id,
-        request as Parameters<typeof TappApiService.aiGenerate>[1],
-        await bridge.getRuntimeGrant(),
-      )
-      return { success: true, data: response }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'AI generation failed',
-      }
-    }
-  })
-
-  bridge.registerHandler('ai.analyze', async (message) => {
-    const [request] = (message.payload as { args: unknown[] }).args || []
-    if (!request) return { success: false, error: 'Request required' }
-
-    try {
-      const response = await TappApiService.aiAnalyze(
-        tappInstance.id,
-        request as Parameters<typeof TappApiService.aiAnalyze>[1],
-        await bridge.getRuntimeGrant(),
-      )
-      return { success: true, data: response }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'AI analysis failed',
-      }
-    }
-  })
-
-  bridge.registerHandler('ai.image', async (message) => {
-    const [request] = (message.payload as { args: unknown[] }).args || []
-    const req = request as { prompt?: string } | undefined
-    if (!req?.prompt) return { success: false, error: 'Prompt required' }
-
-    try {
-      const response = await TappApiService.aiImageGenerate(
-        tappInstance.id,
-        request as Parameters<typeof TappApiService.aiImageGenerate>[1],
-        await bridge.getRuntimeGrant(),
-      )
-      return { success: true, data: response }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'AI image failed',
-      }
-    }
-  })
-
-  bridge.registerHandler('ai.chat', async (message) => {
-    const [params] = (message.payload as { args: unknown[] }).args || []
-    const { messages, context, options, preferPro } = (params || {}) as {
-      messages?: Array<{
-        role: 'user' | 'assistant' | 'system'
-        content: string
-      }>
-      context?: Record<string, unknown>
-      options?: Record<string, unknown>
-      preferPro?: boolean
-    }
-    try {
-      const result = await TappApiService.aiChat(
-        {
-          tappId: tappInstance.id,
-          messages: messages || [],
-          context,
-          options,
-          preferPro,
-        },
-        await bridge.getRuntimeGrant(),
-      )
-      return { success: true, data: result }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'AI chat failed',
-      }
-    }
-  })
 
   bridge.registerHandler('ai.tasks.create', async (message) => {
     const [request] = (message.payload as { args: unknown[] }).args || []
@@ -227,7 +73,7 @@ export function registerAIHandlers(
 
   bridge.registerHandler('ai.tasks.usage', async () => {
     try {
-      const usage = await TappApiService.getAIV2Usage(
+      const usage = await TappApiService.getAIUsage(
         await bridge.getRuntimeGrant(),
       )
       return { success: true, data: usage }
@@ -266,7 +112,12 @@ export function registerAIHandlers(
           })
         }
       })
-      .finally(() => taskStreams.delete(taskId))
+      .finally(() => {
+        // 取消后可能已为同 taskId 建立新 stream；旧请求不能删除新 controller。
+        if (taskStreams.get(taskId) === controller) {
+          taskStreams.delete(taskId)
+        }
+      })
     return { success: true, data: true }
   })
 

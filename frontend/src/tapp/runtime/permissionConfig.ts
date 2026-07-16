@@ -63,7 +63,6 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     // 公开 API（无需权限）
     ['lifecycle.ready', 'public'],
     ['lifecycle.error', 'public'],
-    ['lifecycle.getInfo', 'public'],
     ['ui.getTheme', 'public'],
     ['ui.getPrimaryColor', 'public'],
     ['ui.getLocale', 'public'],
@@ -163,13 +162,6 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['data.transform', 'platform:read'],
 
     // AI 权限
-    ['ai.generate', 'ai:generate'],
-    ['ai.analyze', 'ai:analyze'],
-    // 后端要求 Runtime Grant 至少拥有一个 AI capability。
-    ['ai.getQuota', 'public'],
-    ['ai.canGenerate', 'public'],
-    ['ai.chat', 'ai:chat'],
-    ['ai.image', 'ai:image'],
     // AI Task operation/context permissions are resolved dynamically by backend.
     ['ai.tasks.create', 'public'],
     ['ai.tasks.get', 'public'],
@@ -193,6 +185,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['storage.set', 'storage'],
     ['storage.remove', 'storage'],
     ['storage.keys', 'storage'],
+    ['storage.getAll', 'storage'],
     ['storage.clear', 'storage'],
     ['storage.usage', 'storage'],
 
@@ -229,9 +222,6 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
 
     // 事件权限
     ['event.publish', 'event:publish'],
-    ['event.v2.publish', 'event:publish'],
-    ['event.subscribe', 'event:subscribe'],
-    ['event.unsubscribe', 'event:subscribe'],
 
     // Agent Interaction is governed by Manifest declaration, interaction state, schema,
     // accepting runtime identity, and host intent confirmation on the backend.
@@ -254,14 +244,12 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
 
     // 定时任务权限
     ['scheduler.register', 'scheduler:register'],
-    ['scheduler.cancel', 'scheduler:register'],
     ['scheduler.unregister', 'scheduler:register'],
     ['scheduler.list', 'scheduler:register'],
     ['scheduler.get', 'scheduler:register'],
     ['scheduler.enable', 'scheduler:register'],
     ['scheduler.disable', 'scheduler:register'],
     ['scheduler.trigger', 'scheduler:register'],
-    ['scheduler.onTask', 'scheduler:register'],
     ['scheduler.subscribe', 'scheduler:register'],
     ['scheduler.unsubscribe', 'scheduler:register'],
     ['scheduler.complete', 'scheduler:register'],

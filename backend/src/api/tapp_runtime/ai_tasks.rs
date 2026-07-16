@@ -1375,7 +1375,7 @@ pub async fn create_ai_task(
         PreparedModel::Text(get_ai_config_for_tier(tier).await?)
     };
 
-    check_rate_limit(user_id, runtime.tapp_id(), "ai.v2.task").await?;
+    check_rate_limit(user_id, runtime.tapp_id(), "ai.task").await?;
     let role = current_tapp_user_role(&claims).await;
     let estimated_tokens = if request.operation == TappAiOperation::Image {
         0
@@ -1610,7 +1610,7 @@ pub async fn stream_ai_task_events(
 }
 
 /// GET /api/tapp/ai/v2/usage
-pub async fn ai_v2_usage(
+pub async fn ai_usage(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     runtime: RuntimeGrantContext,

@@ -3,7 +3,7 @@
 //! 模块结构：
 //! - common:      共享基础（缓存、安全、权限、指标）
 //! - platform:    平台数据读写 API
-//! - ai:          AI 生成/分析/对话/图片 API
+//! - ai_tasks:    服务端治理的 AI 任务 API
 //! - reports:     报告 CRUD API
 //! - data:        数据转换处理 API
 //! - context:     运行上下文 API
@@ -15,7 +15,6 @@
 //! - declared_api: Tapp API 声明系统
 
 mod agent_interactions;
-mod ai;
 mod ai_quota;
 mod ai_tasks;
 pub mod common;
@@ -49,10 +48,7 @@ pub use agent_interactions::{
     accept_agent_interaction, get_agent_interaction, reject_agent_interaction,
     request_agent_intent, stream_agent_interactions, submit_agent_interaction_result,
 };
-pub use ai::{ai_analyze, ai_chat, ai_generate, ai_image_generate, ai_image_task_status, ai_usage};
-pub use ai_tasks::{
-    ai_v2_usage, cancel_ai_task, create_ai_task, get_ai_task, stream_ai_task_events,
-};
+pub use ai_tasks::{ai_usage, cancel_ai_task, create_ai_task, get_ai_task, stream_ai_task_events};
 
 // Reports API
 pub use reports::{
@@ -90,16 +86,13 @@ pub use components::{
 pub use shortcuts::{list_shortcuts, register_shortcut, unregister_shortcut};
 
 // Events API
-pub use events::{
-    get_event_subscriptions, publish_event, publish_event_v2, stream_events_v2,
-    update_event_subscriptions,
-};
+pub use events::{publish_event, stream_events};
 
 // Federation API
 pub use federation::get_federation_feed;
 
 // Metrics API
-pub use metrics::{get_rate_limit_status, get_tapp_metrics, reset_tapp_metrics};
+pub use metrics::{get_rate_limit_status, get_tapp_metrics};
 
 // Notifications API
 pub use notifications::create_tapp_notification;

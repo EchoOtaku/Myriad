@@ -5,7 +5,7 @@
  */
 
 import type { DynamicContentItem } from '../../../../services/DynamicContentProvider'
-import type { TappInstance } from '../../../types'
+import type { BackgroundRequirement, TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
 import type { AnimationConfigRef } from '../types'
 import { getDynamicContentProvider } from '../../../../services/DynamicContentProvider'
@@ -687,20 +687,23 @@ export function registerBackgroundHandlers(
   tappInstance: TappInstance,
 ): void {
   const validRequirements = [
-    'widget',
     'media',
     'sync',
     'notification',
     'scheduler',
     'event-listener',
     'realtime',
-  ]
+  ] satisfies BackgroundRequirement[]
+
+  const isValidRequirement = (value: unknown): value is BackgroundRequirement =>
+    typeof value === 'string' &&
+    validRequirements.includes(value as BackgroundRequirement)
 
   bridge.registerHandler('background.require', async (message) => {
     const [requirement, reason] =
       (message.payload as { args: unknown[] }).args || []
     if (!requirement) return { success: false, error: 'Requirement required' }
-    if (!validRequirements.includes(requirement as string)) {
+    if (!isValidRequirement(requirement)) {
       return {
         success: false,
         error: `Invalid requirement. Valid: ${validRequirements.join(', ')}`,
@@ -708,17 +711,7 @@ export function registerBackgroundHandlers(
     }
     try {
       const runtime = getTappRuntime()
-      runtime.registerBackgroundRequirement(
-        tappInstance.id,
-        requirement as
-          | 'widget'
-          | 'notification'
-          | 'sync'
-          | 'media'
-          | 'scheduler'
-          | 'event-listener'
-          | 'realtime',
-      )
+      runtime.registerBackgroundRequirement(tappInstance.id, requirement)
       console.log(
         `[Sandbox] ${tappInstance.id} background: ${requirement}${reason ? ` (${reason})` : ''}`,
       )
@@ -734,19 +727,15 @@ export function registerBackgroundHandlers(
   bridge.registerHandler('background.release', async (message) => {
     const [requirement] = (message.payload as { args: unknown[] }).args || []
     if (!requirement) return { success: false, error: 'Requirement required' }
+    if (!isValidRequirement(requirement)) {
+      return {
+        success: false,
+        error: `Invalid requirement. Valid: ${validRequirements.join(', ')}`,
+      }
+    }
     try {
       const runtime = getTappRuntime()
-      runtime.unregisterBackgroundRequirement(
-        tappInstance.id,
-        requirement as
-          | 'widget'
-          | 'notification'
-          | 'sync'
-          | 'media'
-          | 'scheduler'
-          | 'event-listener'
-          | 'realtime',
-      )
+      runtime.unregisterBackgroundRequirement(tappInstance.id, requirement)
       return { success: true, data: { requirement, released: true } }
     } catch (error) {
       return {
@@ -777,16 +766,9 @@ export function registerBackgroundHandlers(
       const requirements = runtime.getBackgroundRequirements(tappInstance.id)
       return {
         success: true,
-        data: requirements.includes(
-          requirement as
-            | 'widget'
-            | 'notification'
-            | 'sync'
-            | 'media'
-            | 'scheduler'
-            | 'event-listener'
-            | 'realtime',
-        ),
+        data: isValidRequirement(requirement)
+          ? requirements.includes(requirement)
+          : false,
       }
     } catch (error) {
       return {
@@ -1305,19 +1287,6 @@ export function registerContextHandlers(
         await bridge.getRuntimeGrant(),
       )
       return { success: true, data: geo }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed',
-      }
-    }
-  })
-
-  // 检测用户是否在中国大陆（用于判断是否需要代理）
-  bridge.registerHandler('context.isInChinaMainland', async () => {
-    try {
-      const isInChina = await TappApiService.isUserInChinaMainland()
-      return { success: true, data: isInChina }
     } catch (error) {
       return {
         success: false,

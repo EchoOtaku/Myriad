@@ -73,6 +73,7 @@ Open `http://localhost` or the port configured by `HTTP_PORT`.
 | `CHANNEL` | no | Release channel, default `stable` |
 | `MYRIAD_GITHUB_REPO` | no | Release source repo, default `Myriad-You/Myriad` |
 | `MYRIAD_DOCKER_NETWORK` | no | Docker network override, default `myriad-net` |
+| `PROXY_TRUSTED_UPSTREAMS` | no | Comma-separated IP/CIDR allowlist for outer proxies allowed to pass the real client IP |
 | `PROXY_ALLOW_DIRECT_UPDATER` | no | Enables `/_updater/*` rescue path, default `false` |
 | `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or explicit-risk `off` |
 

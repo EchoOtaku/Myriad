@@ -1558,7 +1558,7 @@ export function generateThemeCSS(
   if (cached) return cached
 
   // 限制缓存大小（最多保留 20 个主题组合）
-  if (themeCSSCache.size > 20) {
+  if (themeCSSCache.size >= 20) {
     const firstKey = themeCSSCache.keys().next().value
     if (firstKey) themeCSSCache.delete(firstKey)
   }
@@ -1690,18 +1690,3 @@ export const WIDGET_STATIC_CSS = `${BASE_CSS}${WIDGET_CSS}` as const
  * Page 模式的完整静态 CSS（不含主题变量）
  */
 export const PAGE_STATIC_CSS = `${BASE_CSS}${PAGE_CSS}` as const
-
-/**
- * 清理主题 CSS 缓存
- * 用于内存敏感场景或主题大量变化时
- */
-export function clearThemeCSSCache(): void {
-  themeCSSCache.clear()
-}
-
-/**
- * 获取主题 CSS 缓存大小
- */
-export function getThemeCSSCacheSize(): number {
-  return themeCSSCache.size
-}

@@ -55,8 +55,6 @@ pub async fn execute(
         "tapp.window.open" => execute_tapp_window_open(params, ctx).await,
         "tapp.window.close" => execute_tapp_window_close(params, ctx).await,
         "tapp.window.focus" => execute_tapp_window_focus(params).await,
-        "tapp.fill" => execute_tapp_fill(params, ctx).await,
-        "tapp.read" => execute_tapp_read(params, ctx).await,
         "router.navigate" => execute_router_navigate(params).await,
         "router.state" => execute_router_state(params).await,
         "page.interact" => execute_page_interact(params).await,
@@ -276,15 +274,11 @@ async fn execute_tapp_interact(
     let interaction_type = params
         .get("interactionType")
         .and_then(Value::as_str)
-        .unwrap_or("legacy.interact");
-    let input = params.get("input").cloned().unwrap_or_else(|| {
-        json!({
-            "action": params.get("action"),
-            "target": params.get("target"),
-            "value": params.get("value"),
-            "sequence": params.get("sequence"),
-        })
-    });
+        .ok_or("Missing interactionType")?;
+    let input = params
+        .get("input")
+        .cloned()
+        .ok_or("Missing input parameter")?;
     let task_id = ctx.task_id.clone();
     let interaction = crate::api::tapp_runtime::create_agent_interaction_internal(
         ctx.db,
@@ -1014,104 +1008,6 @@ async fn execute_tapp_window_focus(params: &HashMap<String, Value>) -> Result<Va
     }))
 }
 
-/// 填充数据到 Tapp 窗口
-async fn execute_tapp_fill(
-    params: &HashMap<String, Value>,
-    ctx: &HandlerContext<'_>,
-) -> Result<Value, String> {
-    let target_window = params
-        .get("targetWindow")
-        .ok_or("Missing targetWindow parameter")?;
-    let data = params
-        .get("data")
-        .cloned()
-        .ok_or("Missing data parameter")?;
-    let auto_submit = params
-        .get("autoSubmit")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let window_target = resolve_window_target(target_window, ctx).await?;
-
-    let tapp_id = window_target
-        .get("tappId")
-        .and_then(Value::as_str)
-        .or_else(|| params.get("tappId").and_then(Value::as_str))
-        .ok_or("targetWindow must resolve to a tappId")?;
-    let interaction = crate::api::tapp_runtime::create_agent_interaction_internal(
-        ctx.db,
-        ctx.user_id,
-        tapp_id,
-        "legacy.fill",
-        json!({ "data": data, "autoSubmit": auto_submit }),
-        params
-            .get("taskId")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-    )
-    .await?;
-    let interaction_id = interaction.interaction_id().to_string();
-
-    Ok(json!({
-        "success": true,
-        "targetWindow": window_target,
-        "interaction": interaction,
-        "frontendAction": {
-            "type": "agent_interaction",
-            "tappId": tapp_id,
-            "interactionId": interaction_id,
-            "timestamp": chrono::Utc::now().timestamp_millis()
-        }
-    }))
-}
-
-/// 从 Tapp 窗口读取数据
-async fn execute_tapp_read(
-    params: &HashMap<String, Value>,
-    ctx: &HandlerContext<'_>,
-) -> Result<Value, String> {
-    let source_window = params
-        .get("sourceWindow")
-        .ok_or("Missing sourceWindow parameter")?;
-    let read_type = params
-        .get("readType")
-        .and_then(|v| v.as_str())
-        .unwrap_or("all");
-    let selector = params.get("selector").and_then(|v| v.as_str());
-
-    let window_target = resolve_window_target(source_window, ctx).await?;
-
-    let tapp_id = window_target
-        .get("tappId")
-        .and_then(Value::as_str)
-        .ok_or("sourceWindow must resolve to a tappId")?;
-    let interaction = crate::api::tapp_runtime::create_agent_interaction_internal(
-        ctx.db,
-        ctx.user_id,
-        tapp_id,
-        "legacy.read",
-        json!({ "readType": read_type, "selector": selector }),
-        params
-            .get("taskId")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-    )
-    .await?;
-    let interaction_id = interaction.interaction_id().to_string();
-
-    Ok(json!({
-        "success": true,
-        "targetWindow": window_target,
-        "interaction": interaction,
-        "frontendAction": {
-            "type": "agent_interaction",
-            "tappId": tapp_id,
-            "interactionId": interaction_id,
-            "timestamp": chrono::Utc::now().timestamp_millis()
-        }
-    }))
-}
-
 // ============================================================================
 // 路由和页面交互
 // ============================================================================
@@ -1562,35 +1458,6 @@ fn generate_suggested_actions(elements: &Value, _functions: &[Value]) -> Vec<Val
     }
 
     actions
-}
-
-/// 解析窗口目标参数
-async fn resolve_window_target(target: &Value, ctx: &HandlerContext<'_>) -> Result<Value, String> {
-    let window_id = target.get("windowId").and_then(|v| v.as_str());
-    let tapp_id = target.get("tappId").and_then(|v| v.as_str());
-    let tapp_name = target.get("tappName").and_then(|v| v.as_str());
-    let position = target.get("position").and_then(|v| v.as_str());
-
-    let resolved_tapp_id = if let Some(name) = tapp_name {
-        let tapp = tapps::Entity::find()
-            .filter(tapps::Column::UserId.eq(ctx.user_id))
-            .filter(tapps::Column::Name.contains(name))
-            .one(ctx.db)
-            .await
-            .map_err(|e| format!("Database error: {}", e))?;
-
-        tapp.map(|t| t.tapp_id)
-    } else {
-        tapp_id.map(|s| s.to_string())
-    };
-
-    Ok(json!({
-        "windowId": window_id,
-        "tappId": resolved_tapp_id,
-        "tappName": tapp_name,
-        "position": position,
-        "resolved": true
-    }))
 }
 
 /// 从 AI 响应中提取 JSON

@@ -91,13 +91,20 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [retryGeneration, setRetryGeneration] = useState(0)
   const runtime = getTappRuntime()
 
   // 加载 Tapp
   useEffect(() => {
+    let cancelled = false
     const loadTapp = async () => {
+      setLoading(true)
+      setError(null)
+      setTapp(null)
+      setCode(null)
       try {
         await runtime.waitForSync()
+        if (cancelled) return
 
         const instance = runtime.getTapp(tappId)
         if (!instance) {
@@ -107,6 +114,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
         }
 
         const resources = await loadPageResources(instance)
+        if (cancelled) return
 
         const tappCode: TappCodeStructure = {
           core: resources.core,
@@ -122,25 +130,33 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
         if (!runtime.isRunning(tappId)) {
           await runtime.startTapp(tappId)
         }
+        if (cancelled) return
 
         setTapp(instance)
         setCode(tappCode)
         setLoading(false)
       } catch (err) {
+        if (cancelled) return
         setError(err instanceof Error ? err.message : t.tapp.loadAppFailed)
         setLoading(false)
       }
     }
 
-    loadTapp()
-  }, [tappId, runtime, t.tapp.appNotExist, t.tapp.loadAppFailed])
+    void loadTapp()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    tappId,
+    runtime,
+    retryGeneration,
+    t.tapp.appNotExist,
+    t.tapp.loadAppFailed,
+  ])
 
   // 重试加载
   const handleRetry = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    setTapp(null)
-    setCode(null)
+    setRetryGeneration((generation) => generation + 1)
   }, [])
 
   // 返回

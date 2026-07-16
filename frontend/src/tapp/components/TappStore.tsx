@@ -929,11 +929,8 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
     id: tapp.manifest.id,
     name: tapp.manifest.name,
     version: tapp.manifest.version,
-    description: tapp.manifest.description,
-    author:
-      typeof tapp.manifest.author === 'string'
-        ? { name: tapp.manifest.author }
-        : tapp.manifest.author || { name: 'Unknown' },
+    description: tapp.manifest.description || '',
+    author: tapp.manifest.author || { name: 'Unknown' },
     icon: tapp.manifest.icon,
     iconSvg: tapp.manifest.iconSvg,
     themeColor: tapp.manifest.themeColor,
@@ -1086,7 +1083,9 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
               const widgetSources = [
                 resources.code || '',
                 resources.styles || '',
-                ...Object.values(resources.widgetTemplates || {}),
+                ...Object.values(resources.widgetTemplates || {}).flatMap(
+                  (templates) => Object.values(templates),
+                ),
               ].join('\n')
               const widgetCss = generateOnDemandTailwindCSS(widgetSources)
 
@@ -1183,7 +1182,9 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
               const widgetSources = [
                 resources.code || '',
                 resources.styles || '',
-                ...Object.values(resources.widgetTemplates || {}),
+                ...Object.values(resources.widgetTemplates || {}).flatMap(
+                  (templates) => Object.values(templates),
+                ),
               ].join('\n')
               const widgetCss = generateOnDemandTailwindCSS(widgetSources)
 

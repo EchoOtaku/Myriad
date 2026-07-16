@@ -13,9 +13,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { getIsDarkMode } from '../../utils/themeSubscriber'
-import { getCodeForMode } from './codeStructure'
+import {
+  getCodeForMode,
+  getCodeStructureFingerprint,
+  getTappRuntimeFingerprint,
+} from './codeStructure'
 import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 import {
+  escapeSandboxHtmlText,
+  escapeSandboxScriptSource,
   generateCSP,
   generateFullSDK,
   generateNonce,
@@ -24,6 +30,7 @@ import {
   generateThemeCSS,
   IFRAME_SANDBOX_ATTRS,
   PAGE_STATIC_CSS,
+  serializeSandboxScriptValue,
 } from './sandbox'
 import {
   registerAdvancedHandlers,
@@ -122,14 +129,18 @@ function generateHeadlessCoreHTML(
   const { manifest } = tappInstance
   const nonce = generateNonce()
   const csp = generateCSP(nonce)
-  const securityWrapper = generateSecurityWrapper(sessionToken)
-  const sdkCode = generateFullSDK(tappInstance, sessionToken)
+  const securityWrapper = escapeSandboxScriptSource(
+    generateSecurityWrapper(sessionToken),
+  )
+  const sdkCode = escapeSandboxScriptSource(
+    generateFullSDK(tappInstance, sessionToken),
+  )
   // 'background' 模式即返回纯 code.core（无 page/widget UI 代码）
-  const coreCode = getCodeForMode(code, 'background')
+  const coreCode = escapeSandboxScriptSource(getCodeForMode(code, 'background'))
 
   const i18nScript =
     code.i18n && Object.keys(code.i18n).length > 0
-      ? `window._TAPP_I18N = ${JSON.stringify(code.i18n)};`
+      ? `window._TAPP_I18N = ${serializeSandboxScriptValue(code.i18n)};`
       : ''
 
   return `<!DOCTYPE html>
@@ -137,7 +148,7 @@ function generateHeadlessCoreHTML(
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
-  <title>${manifest.name} (core)</title>
+  <title>${escapeSandboxHtmlText(manifest.name)} (core)</title>
 </head>
 <body>
   <script nonce="${nonce}">
@@ -199,8 +210,12 @@ function generatePageHTML(
   // 🔒 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
   const csp = generateCSP(nonce)
-  const securityWrapper = generateSecurityWrapper(sessionToken)
-  const sdkCode = generateFullSDK(tappInstance, sessionToken)
+  const securityWrapper = escapeSandboxScriptSource(
+    generateSecurityWrapper(sessionToken),
+  )
+  const sdkCode = escapeSandboxScriptSource(
+    generateFullSDK(tappInstance, sessionToken),
+  )
   const themeCSS = generateThemeCSS(isDark, primaryColor)
 
   // 自定义 CSS
@@ -250,13 +265,13 @@ function generatePageHTML(
   // 🎯 加载模式标识（用于调试和验证）
   const loadingModeScript =
     loadedModules.length > 0
-      ? `window._TAPP_LOADING_MODE = '${loadingMode}';\n    window._TAPP_LOADED_MODULES = ${JSON.stringify(loadedModules)};`
+      ? `window._TAPP_LOADING_MODE = '${loadingMode}';\n    window._TAPP_LOADED_MODULES = ${serializeSandboxScriptValue(loadedModules)};`
       : `window._TAPP_LOADING_MODE = '${loadingMode}';`
 
   // 🎯 i18n 注入脚本
   const i18nScript =
     code.i18n && Object.keys(code.i18n).length > 0
-      ? `window._TAPP_I18N = ${JSON.stringify(code.i18n)};`
+      ? `window._TAPP_I18N = ${serializeSandboxScriptValue(code.i18n)};`
       : ''
 
   // 🎯 使用安装时预编译的 CSS
@@ -285,7 +300,7 @@ function generatePageHTML(
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>${manifest.name}</title>
+  <title>${escapeSandboxHtmlText(manifest.name)}</title>
   <style>
     ${PAGE_STATIC_CSS}
     ${tailwindCSS}
@@ -300,7 +315,7 @@ function generatePageHTML(
 
   <script nonce="${nonce}">
     window._TAPP_MODE = 'page';
-    window._TAPP_LAUNCH_PARAMS = ${JSON.stringify(launchParams || {})};
+    window._TAPP_LAUNCH_PARAMS = ${serializeSandboxScriptValue(launchParams || {})};
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
     ${loadingModeScript}
     ${i18nScript}
@@ -341,7 +356,7 @@ function generatePageHTML(
       console.log('[Tapp] Loading mode: ' + window._TAPP_LOADING_MODE
         + (window._TAPP_LOADED_MODULES ? ' (' + window._TAPP_LOADED_MODULES.length + ' modules: ' + window._TAPP_LOADED_MODULES.join(', ') + ')' : ''));
       try {
-        ${pageCode}
+        ${escapeSandboxScriptSource(pageCode)}
       } catch (error) {
         console.error('[Page] Code error:', error);
         Tapp.lifecycle._notifyError(error);
@@ -437,14 +452,11 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   )
 
   // 🎯 生成稳定的代码指纹，只有代码实际变化时才重建 iframe
-  const codeFingerprint = useMemo(() => {
-    const ph = code.pageHtml || ''
-    const st = code.styles || ''
-    const js = getCodeForMode(code, 'page') || ''
-    const pm = code.pageModules ? Object.keys(code.pageModules).join(',') : ''
-    const il = code.i18n ? Object.keys(code.i18n).join(',') : ''
-    return `${ph.length}:${st.length}:${js.length}:${pm}:${il}`
-  }, [code])
+  const codeFingerprint = useMemo(
+    () => getCodeStructureFingerprint(code, headless ? 'background' : 'page'),
+    [code, headless],
+  )
+  const runtimeFingerprint = getTappRuntimeFingerprint(tappInstance)
 
   const localeRef = useRef(locale)
   useEffect(() => {
@@ -585,7 +597,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     }
   }, [isReady])
 
-  // 媒体进度实时推送 - 同时发送 mediaProgress（新API）和 mediaStateChange（向后兼容）
+  // 媒体进度使用轻量事件单独推送，避免每个 tick 重发完整状态。
   useEffect(() => {
     if (!isReady) return
 
@@ -603,20 +615,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
       }
 
-      // 新 API：轻量进度事件
       bridge.emit('mediaProgress', progress)
-
-      // 向后兼容：合并进度到完整状态并 emit mediaStateChange
-      // 已有 tapp（如音乐播放器）依赖 onStateChange 接收进度更新
-      const globalState = (window as any).__musicPlayerState
-      if (globalState) {
-        const lastState = buildMediaState({
-          ...globalState,
-          currentTime,
-          audioDuration,
-        })
-        bridge.emit('mediaStateChange', lastState)
-      }
     }
 
     window.addEventListener('music-player-progress', handleProgress)
@@ -694,7 +693,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerPlatformHandlers(bridge, currentTappInstance)
     registerTappListHandlers(bridge, currentTappInstance)
     registerBrewListHandlers(bridge, currentTappInstance)
-    const closeAITaskStreams = registerAIHandlers(bridge, currentTappInstance)
+    const closeAITaskStreams = registerAIHandlers(bridge)
     registerReportHandlers(bridge, currentTappInstance)
     registerMediaHandlers(bridge, currentTappInstance)
     registerSpeechHandlers(bridge, currentTappInstance)
@@ -825,7 +824,13 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     // - tappInstance.id: Tapp 实例 ID
     // - codeFingerprint: 代码指纹（内容变化才会变）
     // ⚠️ 注意：safeInsets 通过 ref 获取，不作为依赖（通过 postMessage 动态更新）
-  }, [tappInstance.id, codeFingerprint, handleReady, headless])
+  }, [
+    tappInstance.id,
+    runtimeFingerprint,
+    codeFingerprint,
+    handleReady,
+    headless,
+  ])
 
   return (
     <div

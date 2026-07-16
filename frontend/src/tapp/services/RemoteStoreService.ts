@@ -78,8 +78,6 @@ export interface RemoteApp {
   tags?: string[]
   /** 所需权限 */
   permissions: string[]
-  /** 最低 Myriad 版本 */
-  min_myriad_version?: string
   /** 下载链接 */
   download: {
     /** manifest.json URL（相对于 base_url） */
@@ -96,8 +94,8 @@ export interface RemoteApp {
     page_styles?: string
     /** Page 模板 HTML */
     page_template?: string
-    /** Widget 模板（按尺寸） */
-    widget_templates?: Record<string, string>
+    /** Widget 模板（Widget ID → 尺寸） */
+    widget_templates?: Record<string, Record<string, string>>
     /** i18n 翻译文件（lang → 相对路径） */
     i18n?: Record<string, string>
     /** Page 模块（filename → 相对路径） */
@@ -162,6 +160,11 @@ class RemoteStoreServiceImpl {
   private sources: RemoteStoreSource[] = []
   /** 商店索引缓存（仅内存） */
   private cache: Map<string, CacheEntry> = new Map()
+  /** 同一商店只保留一个在途索引请求；删除源时可中止。 */
+  private pendingIndexRequests = new Map<
+    string,
+    { promise: Promise<RemoteStoreIndex>; controller: AbortController }
+  >()
   /** 是否已从 API 加载 */
   private sourcesLoaded = false
   /** 加载 Promise（防止并发加载） */
@@ -206,6 +209,7 @@ class RemoteStoreServiceImpl {
         this.sources = [OFFICIAL_STORE]
         this.sourcesLoaded = true
       } finally {
+        this.pruneCacheToSources()
         this.loadingPromise = null
       }
     })()
@@ -288,10 +292,7 @@ class RemoteStoreServiceImpl {
       // 删除成功，更新本地缓存
       this.sources = this.sources.filter((s) => s.id !== sourceId)
       // 同时清除该商店的索引缓存
-      const cachedSource = this.sources.find((s) => s.id === sourceId)
-      if (cachedSource) {
-        this.cache.delete(cachedSource.url)
-      }
+      if (source) this.clearCachedSource(source.url)
     } catch (error: any) {
       if (error.response?.status === 403) {
         throw new Error('需要管理员权限或无法删除官方商店')
@@ -354,6 +355,45 @@ class RemoteStoreServiceImpl {
       }
     }
 
+    const pending = this.pendingIndexRequests.get(cacheKey)
+    if (pending) return pending.promise
+
+    const controller = new AbortController()
+    const promise = this.fetchStoreIndexFromNetwork(
+      source,
+      cacheKey,
+      controller.signal,
+    ).finally(() => {
+      if (this.pendingIndexRequests.get(cacheKey)?.promise === promise) {
+        this.pendingIndexRequests.delete(cacheKey)
+      }
+    })
+    this.pendingIndexRequests.set(cacheKey, { promise, controller })
+    return promise
+  }
+
+  private clearCachedSource(url: string): void {
+    this.cache.delete(url)
+    this.pendingIndexRequests.get(url)?.controller.abort()
+    this.pendingIndexRequests.delete(url)
+  }
+
+  private pruneCacheToSources(): void {
+    const activeUrls = new Set(this.sources.map((source) => source.url))
+    const knownUrls = new Set([
+      ...this.cache.keys(),
+      ...this.pendingIndexRequests.keys(),
+    ])
+    for (const url of knownUrls) {
+      if (!activeUrls.has(url)) this.clearCachedSource(url)
+    }
+  }
+
+  private async fetchStoreIndexFromNetwork(
+    source: RemoteStoreSource,
+    cacheKey: string,
+    signal: AbortSignal,
+  ): Promise<RemoteStoreIndex> {
     // 从远程获取
     try {
       const response = await fetch(source.url, {
@@ -361,6 +401,7 @@ class RemoteStoreServiceImpl {
           Accept: 'application/json',
         },
         cache: 'no-cache',
+        signal,
       })
 
       if (!response.ok) {
@@ -368,6 +409,8 @@ class RemoteStoreServiceImpl {
       }
 
       const data = (await response.json()) as RemoteStoreIndex
+      if (signal.aborted)
+        throw new DOMException('Request aborted', 'AbortError')
 
       // 验证数据
       if (!data.name || !data.apps || !Array.isArray(data.apps)) {
@@ -377,7 +420,7 @@ class RemoteStoreServiceImpl {
       // 更新内存缓存
       this.cache.set(cacheKey, {
         data,
-        timestamp: now,
+        timestamp: Date.now(),
         url: source.url,
       })
 
@@ -500,7 +543,7 @@ class RemoteStoreServiceImpl {
     widgetCss?: string
     pageCss?: string
     pageTemplate?: string
-    widgetTemplates?: Record<string, string>
+    widgetTemplates?: Record<string, Record<string, string>>
     i18n?: Record<string, unknown>
     pageModules?: Record<string, string>
   }> {
@@ -544,20 +587,24 @@ class RemoteStoreServiceImpl {
         downloadText(app.download.page_styles),
         downloadText(app.download.page_template),
       ])
-    const manifest: TappManifest = {
-      ...downloadedManifest,
-      minSystemVersion:
-        downloadedManifest.minSystemVersion || app.min_myriad_version,
-    }
+    const manifest: TappManifest = downloadedManifest
 
-    let widgetTemplates: Record<string, string> | undefined
+    let widgetTemplates: Record<string, Record<string, string>> | undefined
     if (app.download.widget_templates) {
-      const templates: Record<string, string> = {}
+      const templates: Record<string, Record<string, string>> = {}
       await Promise.all(
         Object.entries(app.download.widget_templates).map(
-          async ([size, path]) => {
-            const content = await downloadText(path)
-            if (content) templates[size] = content
+          async ([widgetId, paths]) => {
+            const downloaded: Record<string, string> = {}
+            await Promise.all(
+              Object.entries(paths).map(async ([size, path]) => {
+                const content = await downloadText(path)
+                if (content) downloaded[size] = content
+              }),
+            )
+            if (Object.keys(downloaded).length > 0) {
+              templates[widgetId] = downloaded
+            }
           },
         ),
       )

@@ -5,9 +5,8 @@
  * 安全特性：
  * - 严格的消息来源验证
  * - 细粒度权限检查（含用户角色验证）
- * - 输入参数验证
- * - 请求频率限制
- * - 敏感操作审计日志
+ * - 输入、大小和时间戳验证
+ * - 会话内请求 ID 防重放
  */
 
 import type {
@@ -59,23 +58,12 @@ export class TappBridge {
   private iframe: HTMLIFrameElement | null = null
   private tappInstance: TappInstance | null = null
   private messageHandlers: Map<string, MessageHandler> = new Map()
-  private pendingRequests: Map<
-    string,
-    {
-      resolve: (value: TappAPIResponse) => void
-      reject: (reason: Error) => void
-      timeout: ReturnType<typeof setTimeout>
-    }
-  > = new Map()
-
   private eventListeners: Map<string, Set<(data: unknown) => void>> = new Map()
-
-  /** 允许的 origin（用于验证接收消息的来源） */
-  private allowedOrigin: string = ''
+  private seenRequestIds = new Set<string>()
 
   /**
    * postMessage 目标 origin（发送消息用）
-   * srcdoc iframe 在配合 allow-same-origin 时 origin 为父页面，否则为 null
+   * srcdoc iframe 未启用 allow-same-origin，origin 为 null
    * 浏览器不接受字符串 'null' 作为 postMessage 目标，使用 '*' 代替
    * 安全性由 event.source === iframe.contentWindow 检查保证
    */
@@ -86,12 +74,6 @@ export class TappBridge {
 
   /** Host-only backend identity for this concrete Page/Widget/headless runtime. */
   private runtimeGrant: TappRuntimeGrant | null = null
-
-  /** 最近请求时间戳（用于频率限制） */
-  private lastRequestTime: number = 0
-
-  /** 最小请求间隔（毫秒） */
-  private readonly MIN_REQUEST_INTERVAL = 10
 
   constructor() {
     // 绑定消息处理器
@@ -126,10 +108,6 @@ export class TappBridge {
         b.toString(16).padStart(2, '0'),
       ).join('')
     }
-
-    // 设置允许的 origin
-    // 在沙箱模式下，使用 blob: 或 srcdoc，origin 为 'null'
-    this.allowedOrigin = 'null'
 
     // 监听消息
     window.addEventListener('message', this.handleMessage)
@@ -169,15 +147,9 @@ export class TappBridge {
   destroy(): void {
     window.removeEventListener('message', this.handleMessage)
 
-    // 清理所有待处理的请求
-    for (const [_id, pending] of this.pendingRequests) {
-      clearTimeout(pending.timeout)
-      pending.reject(new Error('Bridge destroyed'))
-    }
-    this.pendingRequests.clear()
-
-    // 清理事件监听器
+    this.messageHandlers.clear()
     this.eventListeners.clear()
+    this.seenRequestIds.clear()
 
     this.iframe = null
     this.tappInstance = null
@@ -244,15 +216,13 @@ export class TappBridge {
     }
 
     // 类型验证
-    if (!['request', 'response', 'event'].includes(msg.type)) {
+    // iframe -> host 方向只接受 API request 和轻量 event；response 仅由 host 发给 SDK。
+    if (!['request', 'event'].includes(msg.type)) {
       return { valid: false, error: 'Unknown message type' }
     }
 
     // action 字段验证
-    if (
-      msg.type !== 'response' &&
-      (!msg.action || typeof msg.action !== 'string')
-    ) {
+    if (!msg.action || typeof msg.action !== 'string') {
       return { valid: false, error: 'Missing or invalid action field' }
     }
 
@@ -263,12 +233,54 @@ export class TappBridge {
       }
     }
 
+    if (
+      typeof msg.timestamp !== 'number' ||
+      !Number.isFinite(msg.timestamp) ||
+      Math.abs(Date.now() - msg.timestamp) > 5 * 60 * 1000
+    ) {
+      return { valid: false, error: 'Invalid or stale timestamp' }
+    }
+
+    if (msg.type === 'request') {
+      const payload = msg.payload as Record<string, unknown> | undefined
+      if (
+        !payload ||
+        typeof payload.api !== 'string' ||
+        typeof payload.method !== 'string' ||
+        msg.action !== `${payload.api}.${payload.method}`
+      ) {
+        return { valid: false, error: 'Request action does not match payload' }
+      }
+    }
+
     // payload 大小检查（防止内存攻击）
     if (msg.payload !== undefined) {
-      const payloadStr = JSON.stringify(msg.payload)
-      if (payloadStr.length > 1024 * 1024) {
-        // 1MB 限制
-        return { valid: false, error: 'Payload too large' }
+      if (msg.action === 'file.download') {
+        const args = (msg.payload as { args?: unknown[] }).args
+        const options = args?.[0] as Record<string, unknown> | undefined
+        if (
+          !options ||
+          typeof options.content !== 'string' ||
+          new Blob([options.content]).size > 10 * 1024 * 1024 ||
+          typeof options.filename !== 'string' ||
+          options.filename.length > 1024 ||
+          (options.mimeType !== undefined &&
+            (typeof options.mimeType !== 'string' ||
+              options.mimeType.length > 256))
+        ) {
+          return { valid: false, error: 'Invalid or oversized file payload' }
+        }
+      } else {
+        let payloadStr: string
+        try {
+          payloadStr = JSON.stringify(msg.payload)
+        } catch {
+          return { valid: false, error: 'Payload must be JSON-serializable' }
+        }
+        // 1 MiB 业务值额外保留 JSON envelope 余量。
+        if (payloadStr.length > 1024 * 1024 + 64 * 1024) {
+          return { valid: false, error: 'Payload too large' }
+        }
       }
     }
 
@@ -291,19 +303,7 @@ export class TappBridge {
    * 处理来自 Tapp 的消息（增强安全版本）
    */
   private async handleMessage(event: MessageEvent): Promise<void> {
-    // 安全检查：验证消息来源
-    // 注意：blob: URL 的 origin 是 'null'
-    if (
-      event.origin !== this.allowedOrigin &&
-      event.origin !== window.location.origin
-    ) {
-      // 允许来自同源的消息（开发模式）
-      if (event.source !== this.iframe?.contentWindow) {
-        return
-      }
-    }
-
-    // 验证消息来自我们的 iframe
+    // srcdoc 沙箱的 origin 为 null；真实安全边界是具体 iframe WindowProxy。
     if (event.source !== this.iframe?.contentWindow) {
       return
     }
@@ -312,27 +312,37 @@ export class TappBridge {
     const validation = this.validateMessage(event.data)
     if (!validation.valid) {
       console.warn(`[TappBridge] Invalid message: ${validation.error}`)
+      const candidate = event.data as Record<string, unknown> | undefined
+      if (
+        candidate?.type === 'request' &&
+        typeof candidate.id === 'string' &&
+        /^[\w-]+$/.test(candidate.id) &&
+        candidate.id.length <= 100
+      ) {
+        this.sendResponse(candidate.id, {
+          success: false,
+          error: validation.error || 'Invalid request',
+          code: 'INVALID_REQUEST',
+        })
+      }
       return
     }
 
     const message = event.data as TappMessage
 
-    // 频率限制检查（仅限事件类型消息，request 类必须始终处理以避免 SDK 挂起）
-    const now = Date.now()
-    if (
-      message.type !== 'request' &&
-      now - this.lastRequestTime < this.MIN_REQUEST_INTERVAL
-    ) {
-      return
+    if (message.type === 'request') {
+      if (this.seenRequestIds.has(message.id)) return
+      this.seenRequestIds.add(message.id)
+      while (this.seenRequestIds.size > 2048) {
+        const oldest = this.seenRequestIds.values().next().value
+        if (oldest === undefined) break
+        this.seenRequestIds.delete(oldest)
+      }
     }
-    this.lastRequestTime = now
 
     switch (message.type) {
       case 'request':
         await this.handleRequest(message as TappMessage<TappAPIRequest>)
-        break
-      case 'response':
-        this.handleResponse(message as TappMessage<TappAPIResponse<unknown>>)
         break
       case 'event':
         this.handleEvent(message)
@@ -357,8 +367,13 @@ export class TappBridge {
       return
     }
 
-    // 验证 API 和 method 名称格式
-    if (!/^[a-z]+$/i.test(payload.api) || !/^[a-z]+$/i.test(payload.method)) {
+    // method 允许命名空间（例如 agent.v2.create、widget.instanceSettings.update）。
+    const identifier = /^[a-z][a-z0-9]*$/i
+    const namespacedMethod = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*$/i
+    if (
+      !identifier.test(payload.api) ||
+      !namespacedMethod.test(payload.method)
+    ) {
       this.sendResponse(id, {
         success: false,
         error: 'Invalid API or method name format',
@@ -422,26 +437,6 @@ export class TappBridge {
         error: error instanceof Error ? error.message : 'Internal error',
         code: 'HANDLER_ERROR',
       })
-    }
-  }
-
-  /**
-   * 处理响应
-   */
-  private handleResponse(message: TappMessage<TappAPIResponse>): void {
-    const pending = this.pendingRequests.get(message.id)
-    if (!pending) {
-      console.warn(`[TappBridge] No pending request for ID: ${message.id}`)
-      return
-    }
-
-    clearTimeout(pending.timeout)
-    this.pendingRequests.delete(message.id)
-
-    if (message.error) {
-      pending.reject(new Error(message.error))
-    } else {
-      pending.resolve(message.payload)
     }
   }
 
@@ -537,6 +532,7 @@ export class TappBridge {
     // 返回取消监听的函数
     return () => {
       listeners?.delete(callback)
+      if (listeners?.size === 0) this.eventListeners.delete(event)
     }
   }
 }

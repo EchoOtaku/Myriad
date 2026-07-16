@@ -3,13 +3,12 @@
  * 按需在后台运行已启动的 Tapp
  *
  * 架构说明：
- * - 只运行有后台需求声明的 Tapp（如有 widget 在主页显示）
+ * - 只运行有后台需求声明的 Tapp
  * - 默认情况下，Tapp 离开页面后会被冻结
  * - Tapp 需要通过 Tapp.background.require() 声明后台需求
  * - Widget 渲染由 TappWidget 组件单独处理（widget 模式）
  *
  * 后台需求类型：
- * - widget: 有小组件在主页显示
  * - media: 媒体控制（如音乐播放器扩展）
  * - sync: 后台数据同步
  * - notification: 定时通知
@@ -27,7 +26,7 @@ import { TappPageSandbox } from '../runtime/TappPageSandbox'
 
 /**
  * 后台 Tapp 运行器
- * 只为有后台需求的 running 状态 Tapp 创建隐藏的沙箱（page 模式）
+ * 只为有后台需求的 running 状态 Tapp 创建隐藏的 headless 沙箱
  */
 export const TappBackgroundRunner: React.FC = () => {
   const [backgroundTapps, setBackgroundTapps] = useState<TappInstance[]>([])
@@ -125,7 +124,6 @@ export const TappBackgroundRunner: React.FC = () => {
   // 不渲染任何可见 UI，只在 DOM 中创建隐藏的 iframe。
   // 🎯 headless=true：只运行 core（大脑）代码，不渲染整页 DOM——
   //    后台实例从「隐形整页」降到「无头 JS」，大幅减少内存占用。
-  //    （getBackgroundTapps 已排除仅-widget 需求，这里只剩真实后台需求的 Tapp。）
   return (
     <div
       className="fixed top-0 left-0 w-0 h-0 overflow-hidden invisible pointer-events-none"

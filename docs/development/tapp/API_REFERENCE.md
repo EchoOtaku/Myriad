@@ -50,6 +50,10 @@ await Tapp.storage.remove("key");
 // 获取所有键
 const keys = await Tapp.storage.keys();
 
+// 一次获取所有键值（不要自行 keys() 后逐项 get）
+const entries = await Tapp.storage.getAll();
+// 返回: { key: value, ... }
+
 // 清空存储
 await Tapp.storage.clear();
 
@@ -91,15 +95,12 @@ removeProvider(); // 不再提供时调用
 
 调用方必须在 Manifest 的 `imports` 中声明目标与 export：
 
-```javascript
+````javascript
 const playlist = await Tapp.dataExchange.request({
   targetTappId: "com.example.player",
   exportId: "playlist.current",
   params: { fields: ["title", "artist"] },
   purpose: "把当前播放列表加入周报",
-});
-```
-
 每次 `request()` 都会显示一次宿主授权弹窗，列出调用方、提供方、数据名称、用途和上限。
 首版不提供“始终允许”。用户拒绝、弹窗关闭、提供方离线、30 秒未响应、响应超限或 schema
 不匹配都会拒绝调用；不会返回部分结果。Runtime Grant 与一次性 token 都只存在于宿主，
@@ -122,7 +123,10 @@ await Tapp.settings.set("refreshInterval", 60);
 // 获取所有设置
 const allSettings = await Tapp.settings.getAll();
 // 返回: { refreshInterval: 60, showDetails: true, ... }
-```
+````
+
+`getAll()` 由宿主一次读取全部存储项后筛选 `_settings.` 前缀，不会产生逐 key 的 Bridge/HTTP
+请求。
 
 ---
 
@@ -305,72 +309,11 @@ await Tapp.platform.addItems([
 
 **权限**: `ai:generate`, `ai:analyze`, `ai:chat`, `ai:image`
 
-```javascript
-// AI 生成
-const response = await Tapp.ai.generate({
-  prompt: "请帮我写一段介绍",
-  preferPro: true, // 可选；Pro 未配置时回退标准模型
-});
-// 返回: { success: true, result: '...', usage: {...} }
-
-// AI 分析
-const analysis = await Tapp.ai.analyze({
-  data: [{ title: "Game 1" }, { title: "Game 2" }],
-  type: "summarize", // summarize | categorize | sentiment | custom
-  instruction: "自定义指令", // type 为 custom 时必填
-});
-
-// AI 对话
-const chat = await Tapp.ai.chat(
-  [{ role: "user", content: "你好" }], // messages
-  { includePlatformStats: true }, // context (可选)
-);
-// 返回: {
-//   message: { role: 'assistant', content: 'AI 回复内容' },
-//   usage: { promptTokens: 50, completionTokens: 100, totalTokens: 150 },
-//   sessionId: null  // 会话 ID（可选）
-// }
-// 注意：SDK 会自动解包，直接返回上述对象，不包含外层 success 字段
-
-// V1 对未实现的 generate context/options 和 chat options 返回
-// UNSUPPORTED_V1_OPTION，不再接受后静默忽略。
-
-// AI 图片生成
-const image = await Tapp.ai.image({
-  prompt: "一只可爱的猫咪，动漫风格",
-  width: 512,
-  height: 768,
-  model: "flux-anime", // flux | flux-anime | flux-realism | flux-3d
-  enhance: true,
-  seed: 12345,
-});
-// 返回: { success: true, provider: 'pollinations', url: '...' }
-
-// 获取 AI 配额
-const quota = await Tapp.ai.getQuota();
-// 返回:
-// {
-//   daily: { limit: 10, used: 1, resetsAt: "..." },
-//   tokens: { limit: 5000, used: 150, resetsAt: "..." },
-//   cooldown: { required: 10, remaining: 0 },
-//   restricted: false,
-//   unlimited: false,
-//   userRole: "guest"
-// }
-
-// 检查是否可以生成
-const canGen = await Tapp.ai.canGenerate();
-// 返回: { allowed: true } 或 { allowed: false, reason: "..." }
-```
-
-`getQuota()` 现在读取 PostgreSQL 中按 subject、安装 owner、Tapp 和 UTC day 隔离的权威
-calls/tokens/cooldown 账本。管理员无限制以 `null` limit/remaining 传输，不在 JSON 中使用
-`Infinity`。
-
-AI Task 将调用统一为任务：
+AI 只提供服务端治理的 Task API。Manifest 必须通过 `ai` 声明 operation、model tier、context
+source 与 output format，并同时申请 operation 对应的 `ai:*` 权限。
 
 ```javascript
-const task = await Tapp.ai.tasks.create({
+let task = await Tapp.ai.tasks.create({
   version: 2,
   operation: "generate",
   input: { prompt: "生成一段摘要" },
@@ -385,7 +328,7 @@ const stop = await Tapp.ai.tasks.subscribe(task.taskId, ({ event, data }) => {
   if (event === "result") renderResult(data.result);
 });
 
-await Tapp.ai.tasks.get(task.taskId);
+task = await Tapp.ai.tasks.get(task.taskId);
 await Tapp.ai.tasks.cancel(task.taskId); // 仅非终态任务
 const usage = await Tapp.ai.tasks.usage();
 stop();
@@ -410,9 +353,7 @@ const off = Tapp.agent.onInteraction("report.compose", async (interaction) => {
 只有 `accept()` 成功的 runtime 能提交结果；输入/结果按 Manifest schema 校验，5 分钟到期，
 结果提交默认使用基于 interactionId 的幂等键，提交后恢复原 Agent task。`requestIntent()`
 经后端授权后由 `ui.open`、`report.create` 或 `dataExchange.request` 宿主 adapter 执行；跨
-Tapp 数据读取只显示 Data Exchange 自己的一张明细化一次性授权弹窗。旧 `onFill()` 仅映射
-声明过的 `legacy.fill`；`reportData()` 与 `requestAction()` 返回
-`UNSUPPORTED_LEGACY_AGENT_ACTION`。
+Tapp 数据读取只显示 Data Exchange 自己的一张明细化一次性授权弹窗。
 
 ---
 
@@ -612,6 +553,11 @@ const unsubscribe = Tapp.media.onStateChange((state) => {
   console.log("播放状态:", state.isPlaying);
 });
 
+// 监听轻量播放进度；进度 tick 不重复发送完整状态
+const stopProgress = Tapp.media.onProgress((progress) => {
+  console.log(progress.current, progress.duration, progress.percentage);
+});
+
 // 实时频谱分析（需要 media:read）
 // 返回归一化 0-1 的频段数据，播放任意音乐时均可用（无需首页频谱组件在场）
 const s = await Tapp.media.getSpectrum();
@@ -749,10 +695,8 @@ const feed = await Tapp.federation.getFeed();
 await Tapp.component.registerTheme({
   id: "my-theme",
   name: "我的主题",
-  colors: {
-    primary: "#6366f1",
-    background: "#1a1a2e",
-  },
+  surface: "glass", // glass | solid | flat | outline
+  glow: "primary", // identity | primary | none
 });
 
 // 注册 AI Agent
@@ -808,12 +752,12 @@ const shortcuts = await Tapp.shortcut.list();
 
 ```javascript
 // 订阅范围来自 Manifest events.subscribe，运行期只注册回调。
-const unsubscribe = Tapp.event.v2.on(
+const unsubscribe = Tapp.event.on(
   "tapp.com.example.player.track.changed",
   (event) => console.log(event.payload),
 );
 
-await Tapp.event.v2.publish({
+await Tapp.event.publish({
   topic: "tapp.com.example.my-tapp.status.changed",
   scope: "owner",
   payload: { status: "changed", revision: 3 },
@@ -826,7 +770,6 @@ Event Broker 是在线 at-most-once Broker：`instance` 只发给当前 runtime�
 subject 数据空间内、Manifest 明确订阅 topic 的在线 Page/Widget/headless。无 ACK、重试或
 离线积压；慢消费者队列满时事件会丢弃。`owner` payload 最大 8 KiB 且仅允许浅层状态元数据，
 `data/content/items/records/body/blob/bytes` 等正文键会被拒绝；跨 Tapp 数据必须走一次性授权。
-旧 `subscribe/unsubscribe` 持久化入口返回 410；旧 `publish` 只兼容显式 `target="self"`。
 `system.*` 只能由宿主发布。当前可订阅 `system.theme.changed`、`system.network.changed`、
 `system.locale.changed`、`system.visibility.changed` 与 `system.navigation.changed`。
 
@@ -848,7 +791,7 @@ await Tapp.background.release("sync");
 
 // 获取当前所有后台需求
 const requirements = await Tapp.background.list();
-// 返回: ['widget', 'sync']
+// 返回: ['scheduler', 'sync']
 
 // 检查是否有特定后台需求
 const hasSync = await Tapp.background.has("sync");
@@ -858,7 +801,6 @@ const hasSync = await Tapp.background.has("sync");
 
 | 类型             | 说明               |
 | ---------------- | ------------------ |
-| `widget`         | 有小组件在主页显示 |
 | `media`          | 媒体控制功能       |
 | `sync`           | 后台数据同步       |
 | `notification`   | 定时通知功能       |
@@ -997,6 +939,9 @@ const result = await Tapp.api("profile", {
   id: "42",
   query: { include: "summary" },
 });
+
+// 查看 Manifest 当前声明且宿主可识别的 API
+const declaredApis = await Tapp.api.list();
 ```
 
 ```json
@@ -1039,7 +984,7 @@ const text = await Tapp.speech.asr({ audio }); // speech:asr
 
 ## 能力边界与完整命名空间
 
-`generateFullSDK()` 用于 Page；`generateWidgetSDK()` 是缩小能力面的 Widget/headless 版本。
+`generateFullSDK()` 用于 Page 和 headless core；`generateWidgetSDK()` 是缩小能力面的 Widget 版本。
 完整版当前包含以下命名空间：
 
 | 命名空间                                   | 主要能力                                            | 权限族                             |
@@ -1048,20 +993,20 @@ const text = await Tapp.speech.asr({ audio }); // speech:asr
 | `dataExchange`                             | 逐次授权的跨 Tapp 具名数据交换                      | Manifest + one-shot consent        |
 | `ui`, `animation`, `dynamicContent`, `dom` | 宿主 UI、主题、动画和安全 DOM helper                | `ui:*` 或 public                   |
 | `platform`, `data`                         | 平台数据读取、写入、转换和注册                      | `platform:*`                       |
-| `ai`, `report`                             | 旧版与任务式 AI、图片与报告读写                    | `ai:*`, `report:*`                 |
+| `ai`, `report`                             | 服务端治理的 AI Task 与报告读写                     | `ai:*`, `report:*`                 |
 | `widget`                                   | 动态 Widget 注册与配置                              | `widget:register`                  |
 | `media`                                    | 播放器读取和控制                                    | `media:*`                          |
 | `context`, `user`                          | 应用、用户、导航、系统和地理上下文                  | public                             |
 | `component`, `shortcut`                    | 主题/Agent 组件和快捷键注册                         | `component:*`, `shortcut:register` |
-| `event`, `background`, `scheduler`         | 在线 Event Broker、常驻需求和持久化任务           | `event:*`, `scheduler:register`    |
-| `agent`                                    | schema 约束的 Agent Interaction                  | Manifest + Runtime Grant           |
+| `event`, `background`, `scheduler`         | 在线 Event Broker、常驻需求和持久化任务             | `event:*`, `scheduler:register`    |
+| `agent`                                    | schema 约束的 Agent Interaction                     | Manifest + Runtime Grant           |
 | `api`                                      | Manifest 声明的 HTTP/builtin 能力                   | 按 API access                      |
-| `file`, `speech`                           | 文件下载、TTS 和 ASR                                | public, `speech:*`                 |
+| `file`, `speech`                           | 文件下载、TTS 和 ASR                                | `storage`, `speech:*`              |
 | `tappList`                                 | Tapp 查询、安装、启停、卸载与导出                   | `tappList:*`                       |
 | `brewList`                                 | Brew 列表、订阅源、分类、评论和 OPML                | `brew:*`                           |
 | `federation`                               | 身份、时间线、关注、Channel、Room、Ring、信任和传输 | `federation:*`                     |
 
-Widget SDK 只保留 Widget 渲染需要的生命周期、UI/主题、存储、AI chat、平台读取、报告
+Widget SDK 只保留 Widget 渲染需要的生命周期、UI/主题、用户角色、存储、AI Task、平台读取、报告
 读取、媒体、背景需求、调度、声明式 API、上下文、DOM 和文件等子集。它不会自动拥有
 完整版的写入/管理能力。新增或调用 API 时必须核对：
 

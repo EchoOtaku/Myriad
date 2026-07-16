@@ -35,6 +35,7 @@ interface ProviderResponse {
 interface PendingInvocation {
   requester: RuntimeRegistration
   provider: RuntimeRegistration
+  requesterRuntimeGrant: string
   access: OneShotDataAccessGrant
   resolve: (value: unknown) => void
   reject: (error: Error) => void
@@ -162,6 +163,10 @@ class DataExchangeBroker {
           clearTimeout(invocation.timeout)
           invocation.reject(new Error('Data Exchange runtime stopped'))
           this.pending.delete(requestId)
+          void cancelDataExchange(
+            requestId,
+            invocation.requesterRuntimeGrant,
+          ).catch(() => {})
         }
       }
       bridge.unregisterHandler('dataExchange.registerProvider')
@@ -255,11 +260,15 @@ class DataExchangeBroker {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(prepared.requestId)
+        void cancelDataExchange(prepared.requestId, runtimeGrant).catch(
+          () => {},
+        )
         reject(new Error('Data provider response timed out'))
       }, PROVIDER_TIMEOUT_MS)
       this.pending.set(prepared.requestId, {
         requester,
         provider,
+        requesterRuntimeGrant: runtimeGrant,
         access,
         resolve,
         reject,

@@ -6,7 +6,7 @@
 use std::{collections::HashSet, convert::Infallible, time::Duration};
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
     Extension, Json,
@@ -40,7 +40,7 @@ const DEDUPE_TTL_SECONDS: i64 = 30;
 const EVENT_CHANNEL_CAPACITY: usize = 64;
 const EVENT_PRESENCE_NAMESPACE: &str = "event_presence";
 const EVENT_DEDUPE_NAMESPACE: &str = "event_dedupe";
-const EVENT_MAILBOX_CHANNEL: &str = "event_v2";
+const EVENT_MAILBOX_CHANNEL: &str = "event";
 
 fn api_error(status: StatusCode, code: &str, message: impl Into<String>) -> ApiError {
     (
@@ -109,21 +109,13 @@ pub struct TappEventEnvelope {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PublishEventV2Request {
+pub struct PublishEventRequest {
     topic: String,
     scope: EventScope,
     #[serde(default)]
     payload: Value,
     #[serde(default)]
     dedupe_key: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PublishEventRequest {
-    pub tapp_id: String,
-    pub event_type: String,
-    pub payload: Value,
-    pub target: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -249,7 +241,7 @@ fn subject_can_publish_scope(subject_id: i32, scope: EventScope) -> bool {
     subject_id >= 0 || scope == EventScope::Instance
 }
 
-fn request_hash(request: &PublishEventV2Request) -> Result<[u8; 32], ApiError> {
+fn request_hash(request: &PublishEventRequest) -> Result<[u8; 32], ApiError> {
     serde_json::to_vec(request)
         .map(|encoded| Sha256::digest(encoded).into())
         .map_err(|_| {
@@ -323,11 +315,11 @@ async fn deliver_event(
     Ok(delivered)
 }
 
-async fn publish_v2(
+async fn publish_event_internal(
     db: &DatabaseConnection,
     claims: &Claims,
     runtime: &RuntimeGrantContext,
-    request: PublishEventV2Request,
+    request: PublishEventRequest,
 ) -> Result<Json<Value>, ApiError> {
     runtime.require(TappPermission::EventPublish)?;
     let user_id =
@@ -369,7 +361,7 @@ async fn publish_v2(
             "Event publish topic is not declared by this Tapp",
         ));
     }
-    check_rate_limit(user_id, runtime.tapp_id(), "event.v2.publish").await?;
+    check_rate_limit(user_id, runtime.tapp_id(), "event.publish").await?;
 
     let hash = request_hash(&request)?;
     let dedupe_scope = request
@@ -490,18 +482,18 @@ async fn publish_v2(
     })))
 }
 
-/// POST /api/tapp/events/v2/publish
-pub async fn publish_event_v2(
+/// POST /api/tapp/events/publish
+pub async fn publish_event(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     runtime: RuntimeGrantContext,
-    Json(request): Json<PublishEventV2Request>,
+    Json(request): Json<PublishEventRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    publish_v2(&db, &claims, &runtime, request).await
+    publish_event_internal(&db, &claims, &runtime, request).await
 }
 
-/// GET /api/tapp/events/v2/stream
-pub async fn stream_events_v2(
+/// GET /api/tapp/events/stream
+pub async fn stream_events(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     runtime: RuntimeGrantContext,
@@ -582,68 +574,6 @@ pub async fn stream_events_v2(
         }
     };
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
-}
-
-/// Legacy migration adapter. Only explicit `target = self` is retained and maps
-/// to Event Broker instance scope; free-form targets and the old implicit `all`
-/// behavior are rejected.
-pub async fn publish_event(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-    runtime: RuntimeGrantContext,
-    Json(request): Json<PublishEventRequest>,
-) -> Result<Json<Value>, ApiError> {
-    runtime.require_tapp_id(&request.tapp_id)?;
-    if request.target.as_deref() != Some("self") {
-        return Err(api_error(
-            StatusCode::BAD_REQUEST,
-            "UNSUPPORTED_LEGACY_EVENT_TARGET",
-            "Legacy event publish only supports target=self; use Event Broker scope",
-        ));
-    }
-    publish_v2(
-        &db,
-        &claims,
-        &runtime,
-        PublishEventV2Request {
-            topic: request.event_type,
-            scope: EventScope::Instance,
-            payload: request.payload,
-            dedupe_key: None,
-        },
-    )
-    .await
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateSubscriptionsRequest {
-    pub subscriptions: Vec<String>,
-}
-
-/// Legacy subscription persistence is deliberately removed: Manifest is
-/// the only subscription declaration and online streams are runtime state.
-pub async fn get_event_subscriptions(
-    _runtime: RuntimeGrantContext,
-    Path(_tapp_id): Path<String>,
-) -> Result<Json<Value>, ApiError> {
-    Err(api_error(
-        StatusCode::GONE,
-        "LEGACY_EVENT_SUBSCRIPTIONS_REMOVED",
-        "Persistent event subscriptions were removed; declare events.subscribe in the manifest",
-    ))
-}
-
-pub async fn update_event_subscriptions(
-    _runtime: RuntimeGrantContext,
-    Path(_tapp_id): Path<String>,
-    Json(request): Json<UpdateSubscriptionsRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = request.subscriptions;
-    Err(api_error(
-        StatusCode::GONE,
-        "LEGACY_EVENT_SUBSCRIPTIONS_REMOVED",
-        "Persistent event subscriptions were removed; declare events.subscribe in the manifest",
-    ))
 }
 
 pub(super) async fn disconnect_runtime_events(runtime_id: &str) -> bool {

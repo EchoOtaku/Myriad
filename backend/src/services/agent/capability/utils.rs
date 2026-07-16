@@ -396,13 +396,11 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "tapp.install" => "安装 Tapp。安装新的 Tapp 应用",
         "tapp.ui" => "Tapp UI 结构。解析 Tapp 应用的 HTML 结构和可交互元素",
         "tapp.understand" => "Tapp UI 智能理解。AI 分析 Tapp UI 并生成操作指令",
-        "tapp.interact" => "Tapp UI 交互。点击按钮、输入文本、提交表单等操作",
+        "tapp.interact" => "Tapp 声明式交互。按 Manifest 声明的类型和 schema 请求 Tapp 处理数据",
         "tapp.windows" => "窗口状态查询。查询当前打开的 Tapp 窗口状态",
         "tapp.window.open" => "打开窗口。在多窗口模式下打开新的 Tapp 窗口",
         "tapp.window.close" => "关闭窗口。关闭指定的 Tapp 窗口",
         "tapp.window.focus" => "聚焦窗口。将指定窗口置为活跃状态",
-        "tapp.fill" => "Tapp 表单填充。自动填充 Tapp 内的表单",
-        "tapp.read" => "Tapp 数据读取。读取 Tapp 的存储数据",
 
         // ============ 报告系统 ============
         "report.create" => "生成报告。用户说'生成报告'、'做个总结报告'时使用",

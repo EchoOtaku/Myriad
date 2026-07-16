@@ -15,8 +15,6 @@ export {
   loadPageResources,
   loadWidgetResources,
   type PageResources,
-  type RenderMode,
-  type SeparatedCSS,
   TappResourceLoader,
   type WidgetResources,
 } from './resourceLoader'
@@ -26,23 +24,23 @@ export { generateFullSDK, generateWidgetSDK } from './sdkGenerator'
 
 // 安全策略
 export {
+  escapeSandboxScriptSource,
+  escapeSandboxHtmlText,
   generateCSP,
   generateNonce,
   generateSecurityWrapper,
   generateSessionToken,
   IFRAME_SANDBOX_ATTRS,
   sanitizeStorageValue,
+  serializeSandboxScriptValue,
   validateStorageKey,
 } from './security'
 
 // 样式（含性能优化的预计算 CSS）
 export {
   BASE_CSS,
-  // 🎯 缓存管理
-  clearThemeCSSCache,
   generateOnDemandTailwindCSS,
   generateThemeCSS,
-  getThemeCSSCacheSize,
   PAGE_CSS,
   PAGE_STATIC_CSS,
   WIDGET_CSS,

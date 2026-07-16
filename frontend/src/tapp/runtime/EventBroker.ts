@@ -1,4 +1,4 @@
-import type { PublishEventV2Request, TappEventV2, TappInstance } from '../types'
+import type { PublishEventRequest, TappEvent, TappInstance } from '../types'
 import * as TappApiService from '../services/TappApiService'
 import type { TappBridge } from './TappBridge'
 import { getDefaultLocale } from '../../i18n'
@@ -34,7 +34,7 @@ export function registerEventHandlers(
     .catch(() => undefined)
   const emitSystem = (topic: string, payload: unknown) => {
     if (!subscriptions.has(topic) || stopped) return
-    bridge.emit('tappEventV2', {
+    bridge.emit('tappEvent', {
       version: 2,
       eventId: `sys_${crypto.randomUUID().replaceAll('-', '')}`,
       topic,
@@ -42,7 +42,7 @@ export function registerEventHandlers(
       source: { tappId: 'system.host', runtimeId: hostRuntimeId },
       payload,
       occurredAt: new Date().toISOString(),
-    } satisfies TappEventV2)
+    } satisfies TappEvent)
   }
 
   if (subscriptions.has('system.theme.changed')) {
@@ -66,8 +66,15 @@ export function registerEventHandlers(
     })
   }
   if (subscriptions.has('system.locale.changed')) {
-    const onLocale = () =>
-      emitSystem('system.locale.changed', { locale: getDefaultLocale() })
+    let lastLocale: string | null = null
+    const onLocale = (event?: Event) => {
+      // storage 是全局事件；只响应其他标签页真正改写 locale 的情况。
+      if (event instanceof StorageEvent && event.key !== 'locale') return
+      const locale = getDefaultLocale()
+      if (locale === lastLocale) return
+      lastLocale = locale
+      emitSystem('system.locale.changed', { locale })
+    }
     window.addEventListener('languagechange', onLocale)
     window.addEventListener('storage', onLocale)
     onLocale()
@@ -105,12 +112,12 @@ export function registerEventHandlers(
     })
   }
 
-  bridge.registerHandler('event.v2.publish', async (message) => {
+  bridge.registerHandler('event.publish', async (message) => {
     const [request] = (message.payload as { args: unknown[] }).args || []
     if (!request) return { success: false, error: 'Event request required' }
     try {
-      const result = await TappApiService.publishEventV2(
-        request as PublishEventV2Request,
+      const result = await TappApiService.publishEvent(
+        request as PublishEventRequest,
         await bridge.getRuntimeGrant(),
       )
       return { success: true, data: result }
@@ -121,60 +128,17 @@ export function registerEventHandlers(
       }
     }
   })
-
-  // One-version migration adapter. No free-form target or implicit broadcast.
-  bridge.registerHandler('event.publish', async (message) => {
-    const [topic, payload, target] =
-      (message.payload as { args: unknown[] }).args || []
-    if (target !== 'self') {
-      return {
-        success: false,
-        error:
-          'Legacy event.publish only supports target="self"; use event.v2.publish',
-      }
-    }
-    try {
-      const result = await TappApiService.publishEventV2(
-        {
-          topic: String(topic || ''),
-          scope: 'instance',
-          payload,
-        },
-        await bridge.getRuntimeGrant(),
-      )
-      return { success: true, data: result }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Event publish failed',
-      }
-    }
-  })
-
-  const removedSubscriptionError = {
-    success: false,
-    error:
-      'Persistent event subscriptions were removed; declare events.subscribe in manifest',
-  }
-  bridge.registerHandler(
-    'event.subscribe',
-    async () => removedSubscriptionError,
-  )
-  bridge.registerHandler(
-    'event.unsubscribe',
-    async () => removedSubscriptionError,
-  )
 
   if (hasServerSubscriptions) {
     void (async () => {
       while (!stopped) {
         streamController = new AbortController()
         try {
-          await TappApiService.streamEventsV2(
+          await TappApiService.streamEvents(
             await bridge.getRuntimeGrant(),
             (event, data) => {
               if (event === 'event' && data && typeof data === 'object') {
-                bridge.emit('tappEventV2', data as TappEventV2)
+                bridge.emit('tappEvent', data as TappEvent)
               }
             },
             streamController.signal,

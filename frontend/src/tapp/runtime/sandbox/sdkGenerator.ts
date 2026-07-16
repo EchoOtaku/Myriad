@@ -16,6 +16,7 @@
  */
 
 import type { TappInstance } from '../../types'
+import { serializeSandboxScriptValue } from './security'
 
 // ========================
 // 🎯 预缓存的静态代码片段
@@ -45,6 +46,51 @@ const STORAGE_KEY_VALIDATOR_CODE = `
   };
 `
 
+/** Page 与 Widget 共用的安全 DOM helper，避免两套 SDK 能力漂移。 */
+const DOM_HELPERS_CODE = `{
+      escapeHtml: function(text) {
+        if (text == null) return '';
+        var htmlEscapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' };
+        return String(text).replace(/[&<>"']/g, function(c) { return htmlEscapes[c]; });
+      },
+      setText: function(el, text) {
+        if (el && el.textContent !== undefined) el.textContent = text;
+      },
+      setSafeHtml: function(el, text) {
+        if (el && el.textContent !== undefined) el.textContent = text == null ? '' : String(text);
+      },
+      createTextNode: function(text) { return document.createTextNode(text); },
+      setAttribute: function(el, name, value) {
+        if (!el || !el.setAttribute) return;
+        var normalizedName = String(name).toLowerCase();
+        var dangerous = ['onclick', 'onerror', 'onload', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit', 'onkeydown', 'onkeyup'];
+        if (dangerous.indexOf(normalizedName) >= 0) return;
+        var normalizedValue = String(value).toLowerCase().trim();
+        if (['href', 'src', 'action'].indexOf(normalizedName) >= 0 &&
+            (normalizedValue.indexOf('javascript:') === 0 || normalizedValue.indexOf('data:text/html') === 0 || normalizedValue.indexOf('vbscript:') === 0)) return;
+        el.setAttribute(name, value);
+      },
+      createElement: function(tag, options) {
+        var el = document.createElement(tag);
+        if (options) {
+          if (Object.prototype.hasOwnProperty.call(options, 'text')) el.textContent = options.text;
+          if (options.className) el.className = options.className;
+          if (options.attributes) Object.keys(options.attributes).forEach(function(key) {
+            Tapp.dom.setAttribute(el, key, options.attributes[key]);
+          });
+        }
+        return el;
+      },
+      renderList: function(container, items, renderItem) {
+        if (!container) return;
+        container.textContent = '';
+        (items || []).forEach(function(item, index) {
+          var el = renderItem(item, index);
+          if (el) container.appendChild(el);
+        });
+      }
+    }`
+
 /**
  * 生成存储 key 验证代码（使用缓存）
  */
@@ -64,19 +110,38 @@ export function generateFullSDK(
 ): string {
   const { id, manifest, grantedPermissions } = tappInstance
   const token = sessionToken || ''
+  const idLiteral = serializeSandboxScriptValue(id)
+  const nameLiteral = serializeSandboxScriptValue(manifest.name)
+  const versionLiteral = serializeSandboxScriptValue(manifest.version)
+  const tokenLiteral = serializeSandboxScriptValue(token)
+  const permissionsLiteral = serializeSandboxScriptValue(grantedPermissions)
 
   return `
 (() => {
   'use strict';
 
   // 会话 token（用于消息验证）
-  const _SESSION_TOKEN = '${token}';
+  const _SESSION_TOKEN = ${tokenLiteral};
 
   let messageIdCounter = 0;
   const pendingRequests = new Map();
   const eventListeners = new Map();
   const dataExchangeProviders = new Map();
   const lifecycleCallbacks = { ready: [], destroy: [], pause: [], resume: [] };
+  let lifecycleReady = false;
+  let lifecycleDestroyed = false;
+  const runLifecycleCallbacks = (name) => {
+    lifecycleCallbacks[name].slice().forEach((callback) => {
+      try { callback(); } catch (error) { console.error('[Tapp] Lifecycle callback failed:', error); }
+    });
+  };
+  const notifyLifecycleDestroy = () => {
+    if (lifecycleDestroyed) return;
+    lifecycleDestroyed = true;
+    runLifecycleCallbacks('destroy');
+  };
+  window.addEventListener('pagehide', notifyLifecycleDestroy);
+  window.addEventListener('beforeunload', notifyLifecycleDestroy);
 
   // security wrapper 会收窄 window.parent。这里接收包装前保存的真实
   // WindowProxy，用于发送消息和验证宿主响应来源，随后立即清除 handoff。
@@ -127,15 +192,21 @@ export function generateFullSDK(
       pendingRequests.set(id, { resolve, reject, timeout });
 
       // 消息中包含 session token 用于验证
-      _HOST_WINDOW.postMessage({
-        type: 'request',
-        id,
-        action: \`\${api}.\${method}\`,
-        payload: { api, method, args },
-        source: '${id}',
-        timestamp: Date.now(),
-        _sessionToken: _SESSION_TOKEN,
-      }, '*');
+      try {
+        _HOST_WINDOW.postMessage({
+          type: 'request',
+          id,
+          action: \`\${api}.\${method}\`,
+          payload: { api, method, args },
+          source: '${id}',
+          timestamp: Date.now(),
+          _sessionToken: _SESSION_TOKEN,
+        }, '*');
+      } catch (error) {
+        clearTimeout(timeout);
+        pendingRequests.delete(id);
+        reject(error);
+      }
     });
   };
 
@@ -190,9 +261,9 @@ export function generateFullSDK(
       const listeners = eventListeners.get(message.action);
       listeners?.forEach((cb) => { try { cb(message.payload); } catch (e) {} });
 
-      if (message.action === 'lifecycle:destroy') lifecycleCallbacks.destroy.forEach((cb) => cb());
-      else if (message.action === 'lifecycle:pause') lifecycleCallbacks.pause.forEach((cb) => cb());
-      else if (message.action === 'lifecycle:resume') lifecycleCallbacks.resume.forEach((cb) => cb());
+      if (message.action === 'lifecycle:destroy') notifyLifecycleDestroy();
+      else if (message.action === 'lifecycle:pause') runLifecycleCallbacks('pause');
+      else if (message.action === 'lifecycle:resume') runLifecycleCallbacks('resume');
       else if (message.action === 'theme:change') {
         const isDark = message.payload === 'dark';
         eventListeners.get('themeChange')?.forEach((cb) => cb(message.payload));
@@ -245,22 +316,26 @@ export function generateFullSDK(
   };
 
   const Tapp = {
-    id: '${id}',
-    version: '${manifest.version}',
-    name: '${manifest.name}',
-    permissions: ${JSON.stringify(grantedPermissions)},
+    id: ${idLiteral},
+    version: ${versionLiteral},
+    name: ${nameLiteral},
+    permissions: ${permissionsLiteral},
 
     lifecycle: {
-      onReady: (cb) => lifecycleCallbacks.ready.push(cb),
+      onReady: (cb) => {
+        if (lifecycleReady) Promise.resolve().then(() => cb());
+        else lifecycleCallbacks.ready.push(cb);
+      },
       onDestroy: (cb) => lifecycleCallbacks.destroy.push(cb),
       onPause: (cb) => lifecycleCallbacks.pause.push(cb),
       onResume: (cb) => lifecycleCallbacks.resume.push(cb),
-      getInfo: () => ({ id: '${id}', version: '${manifest.version}', name: '${manifest.name}', permissions: ${JSON.stringify(grantedPermissions)}, sandboxed: true }),
+      getInfo: () => ({ id: ${idLiteral}, version: ${versionLiteral}, name: ${nameLiteral}, permissions: ${permissionsLiteral}, sandboxed: true }),
       _notifyError: (err) => sendRequest('lifecycle', 'error', [err.message || String(err)]),
       _notifyReady: () => {
-        if (window._TAPP_SKIP_READY) { sendRequest('lifecycle', 'ready', []); return; }
+        if (lifecycleReady) return;
+        lifecycleReady = true;
         sendRequest('lifecycle', 'ready', []);
-        lifecycleCallbacks.ready.forEach((cb) => cb());
+        runLifecycleCallbacks('ready');
       },
     },
 
@@ -325,12 +400,6 @@ export function generateFullSDK(
     },
 
     ai: {
-      generate: (r) => sendRequest('ai', 'generate', [r]),
-      analyze: (r) => sendRequest('ai', 'analyze', [r]),
-      getQuota: () => sendRequest('ai', 'getQuota', []),
-      canGenerate: () => sendRequest('ai', 'canGenerate', []),
-      chat: (m, c, o) => sendRequest('ai', 'chat', [{ messages: m, context: c, options: o }]),
-      image: (r) => sendRequest('ai', 'image', [r]),
       tasks: {
         create: (request) => sendRequest('ai', 'tasks.create', [request]),
         get: (taskId) => sendRequest('ai', 'tasks.get', [taskId]),
@@ -373,6 +442,7 @@ export function generateFullSDK(
       set: (k, v) => { validateStorageKey(k); return sendRequest('storage', 'set', [k, v]); },
       remove: (k) => { validateStorageKey(k); return sendRequest('storage', 'remove', [k]); },
       keys: () => sendRequest('storage', 'keys', []),
+      getAll: () => sendRequest('storage', 'getAll', []),
       clear: () => sendRequest('storage', 'clear', []),
       usage: () => sendRequest('storage', 'usage', []),
       onChanged: (cb) => addEventListener('storageChanged', cb),
@@ -402,11 +472,12 @@ export function generateFullSDK(
       get: (k) => { validateStorageKey(k); return sendRequest('storage', 'get', [\`_settings.\${k}\`]); },
       set: (k, v) => { validateStorageKey(k); return sendRequest('storage', 'set', [\`_settings.\${k}\`, v]); },
       async getAll() {
-        const keys = await sendRequest('storage', 'keys', []);
-        const sKeys = (keys || []).filter((k) => k.startsWith('_settings.'));
+        const entries = await sendRequest('storage', 'getAll', []);
         const result = {};
-        for (const k of sKeys) {
-          result[k.replace('_settings.', '')] = await sendRequest('storage', 'get', [k]);
+        for (const [key, value] of Object.entries(entries || {})) {
+          if (key.startsWith('_settings.')) {
+            result[key.slice('_settings.'.length)] = value;
+          }
         }
         return result;
       },
@@ -438,7 +509,10 @@ export function generateFullSDK(
     // 支持两种访问级别：
     // - public: 所有用户（包括游客）可调用
     // - protected: 需要 network:fetch 权限
-    api: (name, params) => sendRequest('api', 'execute', [name, params]),
+    api: Object.assign(
+      (name, params) => sendRequest('api', 'execute', [name, params]),
+      { list: () => sendRequest('api', 'list', []) },
+    ),
 
     context: {
       getApp: () => sendRequest('context', 'getApp', []),
@@ -508,65 +582,21 @@ export function generateFullSDK(
           callback(interaction);
         });
       },
-      // One-version adapter; Tapp must declare the legacy.fill interaction.
-      onFill: (callback) => Tapp.agent.onInteraction('legacy.fill', (interaction) => callback(interaction.input?.data, interaction)),
-      reportData: () => Promise.reject(new Error('UNSUPPORTED_LEGACY_AGENT_ACTION: use interaction.submitResult')),
-      requestAction: () => Promise.reject(new Error('UNSUPPORTED_LEGACY_AGENT_ACTION: use interaction.requestIntent')),
     },
 
     event: {
-      publish: (t, p, tgt) => sendRequest('event', 'publish', [t, p, tgt]),
-      subscribe: (ts) => sendRequest('event', 'subscribe', [ts]),
-      unsubscribe: (ts) => sendRequest('event', 'unsubscribe', [ts]),
-      on: (topic, callback) => addEventListener('tappEventV2', (event) => {
-        if (event?.topic === topic) callback({ source: event.source?.tappId, payload: event.payload });
-      }),
-      v2: {
-        publish: (request) => sendRequest('event', 'v2.publish', [request]),
-        on: (topic, callback) => {
-          if (typeof topic !== 'string' || typeof callback !== 'function') {
-            throw new Error('topic and callback are required');
-          }
-          return addEventListener('tappEventV2', (event) => {
-            if (event?.topic === topic) callback(event);
-          });
-        },
+      publish: (request) => sendRequest('event', 'publish', [request]),
+      on: (topic, callback) => {
+        if (typeof topic !== 'string' || typeof callback !== 'function') {
+          throw new Error('topic and callback are required');
+        }
+        return addEventListener('tappEvent', (event) => {
+          if (event?.topic === topic) callback(event);
+        });
       },
     },
 
-    dom: {
-      escapeHtml(text) {
-        if (text == null) return '';
-        const htmlEscapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;', '/': '&#x2F;', '\`': '&#x60;', '=': '&#x3D;' };
-        return String(text).replace(/[&<>"'\`=\\/]/g, (c) => htmlEscapes[c]);
-      },
-      setText: (el, t) => { if (el?.textContent !== undefined) el.textContent = t; },
-      setSafeHtml: (el, h) => { if (el?.innerHTML !== undefined) el.innerHTML = Tapp.dom.escapeHtml(h); },
-      createTextNode: (t) => document.createTextNode(t),
-      setAttribute(el, n, v) {
-        if (!el?.setAttribute) return;
-        const ln = n.toLowerCase();
-        const danger = ['onclick', 'onerror', 'onload', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit', 'onkeydown', 'onkeyup'];
-        if (danger.includes(ln)) return;
-        const sv = String(v).toLowerCase().trim();
-        if (['href', 'src', 'action'].includes(ln) && (sv.startsWith('javascript:') || sv.startsWith('data:text/html') || sv.startsWith('vbscript:'))) return;
-        el.setAttribute(n, v);
-      },
-      createElement(tag, opts) {
-        const el = document.createElement(tag);
-        if (opts) {
-          if (opts.text) el.textContent = opts.text;
-          if (opts.className) el.className = opts.className;
-          if (opts.attributes) Object.entries(opts.attributes).forEach(([k, v]) => Tapp.dom.setAttribute(el, k, v));
-        }
-        return el;
-      },
-      renderList(container, items, renderItem) {
-        if (!container) return;
-        container.innerHTML = '';
-        items.forEach((item, i) => { const el = renderItem(item, i); if (el) container.appendChild(el); });
-      },
-    },
+    dom: ${DOM_HELPERS_CODE},
 
     file: {
       download: (content, filename, mimeType) => sendRequest('file', 'download', [{ content, filename, mimeType }]),
@@ -590,8 +620,7 @@ export function generateFullSDK(
 
     scheduler: {
       register: (options) => sendRequest('scheduler', 'register', [options]),
-      cancel: (taskId) => sendRequest('scheduler', 'cancel', [taskId]),
-      unregister: (taskId) => sendRequest('scheduler', 'cancel', [taskId]),
+      unregister: (taskId) => sendRequest('scheduler', 'unregister', [taskId]),
       list: () => sendRequest('scheduler', 'list', []),
       get: (taskId) => sendRequest('scheduler', 'get', [taskId]),
       enable: (taskId) => sendRequest('scheduler', 'enable', [taskId]),
@@ -723,6 +752,7 @@ export function generateFullSDK(
   Object.freeze(Tapp.tappList);
   Object.freeze(Tapp.brewList);
   Object.freeze(Tapp.platform);
+  Object.freeze(Tapp.ai.tasks);
   Object.freeze(Tapp.ai);
   Object.freeze(Tapp.report);
   Object.freeze(Tapp.storage);
@@ -731,6 +761,7 @@ export function generateFullSDK(
   Object.freeze(Tapp.ui);
   Object.freeze(Tapp.ui.fullscreen);
   Object.freeze(Tapp.data);
+  Object.freeze(Tapp.api);
   Object.freeze(Tapp.context);
   Object.freeze(Tapp.media);
   Object.freeze(Tapp.component);
@@ -780,20 +811,40 @@ export function generateWidgetSDK(
 ): string {
   const { id, manifest, grantedPermissions } = tappInstance
   const token = sessionToken || ''
+  const idLiteral = serializeSandboxScriptValue(id)
+  const nameLiteral = serializeSandboxScriptValue(manifest.name)
+  const versionLiteral = serializeSandboxScriptValue(manifest.version)
+  const tokenLiteral = serializeSandboxScriptValue(token)
+  const permissionsLiteral = serializeSandboxScriptValue(
+    grantedPermissions || [],
+  )
 
   return `
 (function() {
   'use strict';
 
   // 会话 token（用于消息验证）
-  var _SESSION_TOKEN = '${token}';
+  var _SESSION_TOKEN = ${tokenLiteral};
 
   var messageIdCounter = 0;
   var pendingRequests = new Map();
   var eventListeners = new Map();
   var dataExchangeProviders = new Map();
   // 🎯 添加生命周期回调支持
-  var lifecycleCallbacks = { pause: [], resume: [] };
+  var lifecycleCallbacks = { destroy: [], pause: [], resume: [] };
+  var lifecycleDestroyed = false;
+  var notifyLifecycleDestroy = function() {
+    if (lifecycleDestroyed) return;
+    lifecycleDestroyed = true;
+    lifecycleCallbacks.destroy.slice().forEach(function(cb) {
+      try { cb(); } catch (e) { console.error('[Tapp Widget] Destroy callback failed:', e); }
+    });
+  };
+  window.addEventListener('pagehide', notifyLifecycleDestroy);
+  window.addEventListener('beforeunload', notifyLifecycleDestroy);
+
+  // 发送与接收都绑定到创建当前沙箱的真实父窗口。
+  var _HOST_WINDOW = window.parent;
 
   // 🎯 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
   var _eventBuffer = new Map();
@@ -802,25 +853,7 @@ export function generateWidgetSDK(
 
   var generateId = function() { return 'widget-' + (++messageIdCounter) + '-' + Date.now(); };
 
-  // 存储 key 验证
-  var validateStorageKey = function(key) {
-    if (!key || typeof key !== 'string') {
-      throw new Error('Storage key must be a non-empty string');
-    }
-    if (key.length > 256) {
-      throw new Error('Storage key too long (max 256 chars)');
-    }
-    if (key.indexOf('..') >= 0 || key.indexOf('/') >= 0 || key.indexOf('\\\\') >= 0) {
-      throw new Error('Storage key contains invalid path characters');
-    }
-    if (key.charAt(0) === '.' || key.charAt(key.length - 1) === '.') {
-      throw new Error('Storage key cannot start or end with a dot');
-    }
-    if (!/^[\\w.\\-:]+$/.test(key)) {
-      throw new Error('Storage key contains invalid characters');
-    }
-    return key;
-  };
+  ${generateStorageKeyValidator()}
 
   var sendRequest = function(api, method, args) {
     args = args || [];
@@ -829,7 +862,7 @@ export function generateWidgetSDK(
       var timeout = setTimeout(function() { pendingRequests.delete(id); reject(new Error('Request timeout')); }, 30000);
       pendingRequests.set(id, { resolve: resolve, reject: reject, timeout: timeout });
       try {
-        window.parent.postMessage({
+        _HOST_WINDOW.postMessage({
           type: 'request',
           id: id,
           action: api + '.' + method,
@@ -857,6 +890,7 @@ export function generateWidgetSDK(
   };
 
   window.addEventListener('message', function(event) {
+    if (event.source !== _HOST_WINDOW) return;
     var msg = event.data;
     if (!msg) return;
 
@@ -994,15 +1028,17 @@ export function generateWidgetSDK(
   });
 
   window.Tapp = {
-    id: '${id}',
-    name: '${manifest.name}',
-    version: '${manifest.version}',
-    permissions: ${JSON.stringify(grantedPermissions || [])},
+    id: ${idLiteral},
+    name: ${nameLiteral},
+    version: ${versionLiteral},
+    permissions: ${permissionsLiteral},
     widgets: {},
     pages: {},
 
-    // 🎯 生命周期 API（用于响应冻结/恢复）
+    // 生命周期 API
     lifecycle: {
+      onReady: function(cb) { if (document.readyState === 'complete') setTimeout(cb, 0); else window.addEventListener('load', cb); },
+      onDestroy: function(cb) { lifecycleCallbacks.destroy.push(cb); },
       onPause: function(cb) { lifecycleCallbacks.pause.push(cb); },
       onResume: function(cb) { lifecycleCallbacks.resume.push(cb); }
     },
@@ -1024,7 +1060,9 @@ export function generateWidgetSDK(
       set: function(k, v) { validateStorageKey(k); return sendRequest('storage', 'set', [k, v]); },
       remove: function(k) { validateStorageKey(k); return sendRequest('storage', 'remove', [k]); },
       keys: function() { return sendRequest('storage', 'keys', []); },
+      getAll: function() { return sendRequest('storage', 'getAll', []); },
       clear: function() { return sendRequest('storage', 'clear', []); },
+      usage: function() { return sendRequest('storage', 'usage', []); },
       onChanged: function(cb) { return addEventListener('storageChanged', cb); }
     },
 
@@ -1051,21 +1089,19 @@ export function generateWidgetSDK(
       get: function(k) { validateStorageKey(k); return sendRequest('storage', 'get', ['_settings.' + k]); },
       set: function(k, v) { validateStorageKey(k); return sendRequest('storage', 'set', ['_settings.' + k, v]); },
       getAll: function() {
-        return sendRequest('storage', 'keys', []).then(function(keys) {
-          var sKeys = (keys || []).filter(function(k) { return k.startsWith('_settings.'); });
+        return sendRequest('storage', 'getAll', []).then(function(entries) {
           var result = {};
-          var promises = sKeys.map(function(k) {
-            return sendRequest('storage', 'get', [k]).then(function(v) {
-              result[k.replace('_settings.', '')] = v;
-            });
+          Object.keys(entries || {}).forEach(function(k) {
+            if (k.startsWith('_settings.')) {
+              result[k.slice('_settings.'.length)] = entries[k];
+            }
           });
-          return Promise.all(promises).then(function() { return result; });
+          return result;
         });
       }
     },
 
     ai: {
-      chat: function(m, c, o) { return sendRequest('ai', 'chat', [{ messages: m, context: c, options: o }]); },
       tasks: {
         create: function(request) { return sendRequest('ai', 'tasks.create', [request]); },
         get: function(taskId) { return sendRequest('ai', 'tasks.get', [taskId]); },
@@ -1092,16 +1128,14 @@ export function generateWidgetSDK(
     },
 
     event: {
-      v2: {
-        publish: function(request) { return sendRequest('event', 'v2.publish', [request]); },
-        on: function(topic, callback) {
-          if (typeof topic !== 'string' || typeof callback !== 'function') {
-            throw new Error('topic and callback are required');
-          }
-          return addEventListener('tappEventV2', function(event) {
-            if (event && event.topic === topic) callback(event);
-          });
+      publish: function(request) { return sendRequest('event', 'publish', [request]); },
+      on: function(topic, callback) {
+        if (typeof topic !== 'string' || typeof callback !== 'function') {
+          throw new Error('topic and callback are required');
         }
+        return addEventListener('tappEvent', function(event) {
+          if (event && event.topic === topic) callback(event);
+        });
       }
     },
 
@@ -1175,8 +1209,7 @@ export function generateWidgetSDK(
 
     scheduler: {
       register: function(options) { return sendRequest('scheduler', 'register', [options]); },
-      cancel: function(taskId) { return sendRequest('scheduler', 'cancel', [taskId]); },
-      unregister: function(taskId) { return sendRequest('scheduler', 'cancel', [taskId]); },
+      unregister: function(taskId) { return sendRequest('scheduler', 'unregister', [taskId]); },
       list: function() { return sendRequest('scheduler', 'list', []); },
       get: function(taskId) { return sendRequest('scheduler', 'get', [taskId]); },
       enable: function(taskId) { return sendRequest('scheduler', 'enable', [taskId]); },
@@ -1238,7 +1271,10 @@ export function generateWidgetSDK(
     // 支持两种访问级别：
     // - public: 所有用户（包括游客）可调用
     // - protected: 需要 network:fetch 权限
-    api: function(name, params) { return sendRequest('api', 'execute', [name, params]); },
+    api: Object.assign(
+      function(name, params) { return sendRequest('api', 'execute', [name, params]); },
+      { list: function() { return sendRequest('api', 'list', []); } }
+    ),
 
     // 获取上下文信息
     context: {
@@ -1250,21 +1286,19 @@ export function generateWidgetSDK(
       getGeo: function() { return sendRequest('context', 'getGeo', []); }
     },
 
-    dom: {
-      setText: function(el, text) { if (el) el.textContent = text; },
-      setHtml: function(el, html) { if (el) el.innerHTML = html; },
-      addClass: function(el, cls) { if (el) el.classList.add(cls); },
-      removeClass: function(el, cls) { if (el) el.classList.remove(cls); },
-      toggleClass: function(el, cls) { if (el) el.classList.toggle(cls); }
+    user: {
+      getRole: function() { return sendRequest('user', 'getRole', []); },
+      isAdmin: function() { return sendRequest('user', 'isAdmin', []); },
+      isGuest: function() { return sendRequest('user', 'isGuest', []); },
+      isLoggedIn: function() { return sendRequest('user', 'isLoggedIn', []); },
+      getAllowedPermissionLevels: function() { return sendRequest('user', 'getAllowedPermissionLevels', []); },
+      canUsePermissionLevel: function(level) { return sendRequest('user', 'canUsePermissionLevel', [level]); }
     },
+
+    dom: ${DOM_HELPERS_CODE},
 
     file: {
       download: function(content, filename, mimeType) { return sendRequest('file', 'download', [{ content: content, filename: filename, mimeType: mimeType }]); }
-    },
-
-    lifecycle: {
-      onReady: function(cb) { if (document.readyState === 'complete') setTimeout(cb, 0); else window.addEventListener('load', cb); },
-      onDestroy: function(cb) { window.addEventListener('beforeunload', cb); }
     }
   };
 
@@ -1274,6 +1308,7 @@ export function generateWidgetSDK(
   Object.freeze(Tapp.storage);
   Object.freeze(Tapp.dataExchange);
   Object.freeze(Tapp.settings);
+  Object.freeze(Tapp.ai.tasks);
   Object.freeze(Tapp.ai);
   Object.freeze(Tapp.platform);
   Object.freeze(Tapp.report);
@@ -1282,8 +1317,10 @@ export function generateWidgetSDK(
   Object.freeze(Tapp.animation);
   Object.freeze(Tapp.speech);
   Object.freeze(Tapp.ui);
+  Object.freeze(Tapp.api);
   Object.freeze(Tapp.media);
   Object.freeze(Tapp.context);
+  Object.freeze(Tapp.user);
   Object.freeze(Tapp.dom);
   Object.freeze(Tapp.file);
 
@@ -1298,7 +1335,7 @@ export function generateWidgetSDK(
     configurable: false
   });
 
-  console.log('[TappWidgetSDK] Initialized:', '${id}');
+  console.log('[TappWidgetSDK] Initialized:', ${idLiteral});
 })();
 `
 }

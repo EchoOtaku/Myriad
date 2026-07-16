@@ -445,15 +445,10 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "type": "object",
             "properties": {
                 "tappId": { "type": "string", "description": "Tapp 应用 ID" },
-                "interactionType": { "type": "string", "description": "Manifest agent.interactions 中声明的类型；省略时使用显式声明的 legacy.interact" },
-                "input": { "description": "按该 interaction inputSchema 校验的输入" },
-                "taskId": { "type": "string", "description": "可选 Agent 任务关联 ID" },
-                "action": { "type": "string", "description": "legacy.interact 兼容输入" },
-                "target": { "type": "string", "description": "legacy.interact 兼容输入" },
-                "value": { "description": "legacy.interact 兼容输入" },
-                "sequence": { "type": "array", "description": "legacy.interact 兼容输入" }
+                "interactionType": { "type": "string", "description": "Manifest agent.interactions 中声明的类型" },
+                "input": { "description": "按该 interaction inputSchema 校验的输入" }
             },
-            "required": ["tappId"]
+            "required": ["tappId", "interactionType", "input"]
         }),
         output_schema: json!({
             "type": "object",
@@ -644,120 +639,6 @@ pub fn register(registry: &mut CapabilityRegistry) {
         required_permissions: vec!["tapp:write".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(20),
-        ..Default::default()
-    });
-
-    // 填充数据
-    registry.register(Capability {
-        id: "tapp.fill".to_string(),
-        name: "填充数据".to_string(),
-        description: "通过目标 Tapp 声明的 legacy.fill interaction 请求其处理数据；宿主不直接写 DOM".to_string(),
-        category: CapabilityCategory::UiControl,
-        supported_actions: vec![IntentAction::Update, IntentAction::Create],
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "targetWindow": {
-                    "type": "object",
-                    "description": "目标窗口（多选一）",
-                    "properties": {
-                        "windowId": { "type": "string" },
-                        "tappId": { "type": "string" },
-                        "tappName": { "type": "string" },
-                        "position": { "type": "string", "enum": ["active", "left", "right"] }
-                    }
-                },
-                "data": {
-                    "type": "object",
-                    "description": "要填充的数据",
-                    "properties": {
-                        "fields": {
-                            "type": "array",
-                            "description": "字段填充列表",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "target": { "type": "string", "description": "目标元素 ID 或选择器" },
-                                    "value": { "type": "string", "description": "要填充的值" },
-                                    "type": { 
-                                        "type": "string", 
-                                        "enum": ["input", "select", "checkbox", "radio"],
-                                        "default": "input"
-                                    }
-                                }
-                            }
-                        },
-                        "content": { "type": "string", "description": "单一内容（填充到主输入框）" },
-                        "fromStep": { "type": "string", "description": "从指定步骤的输出获取数据" },
-                        "fromWindow": { "type": "string", "description": "从指定窗口读取数据" }
-                    }
-                },
-                "autoSubmit": { 
-                    "type": "boolean", 
-                    "default": false,
-                    "description": "填充后是否自动提交"
-                }
-            },
-            "required": ["targetWindow", "data"]
-        }),
-        output_schema: json!({
-            "type": "object",
-            "properties": {
-                "success": { "type": "boolean" },
-                "interaction": { "type": "object", "description": "legacy.fill interaction 快照" },
-                "frontendAction": {
-                    "type": "object",
-                    "description": "打开目标 Tapp 的 agent_interaction 动作"
-                }
-            }
-        }),
-        required_permissions: vec!["tapp:write".to_string(), "tapp:interact".to_string()],
-        requires_ai: false,
-        estimated_duration_ms: Some(100),
-        requires_confirmation: false,
-        ..Default::default()
-    });
-
-    // 读取窗口数据
-    registry.register(Capability {
-        id: "tapp.read".to_string(),
-        name: "读取窗口数据".to_string(),
-        description: "通过目标 Tapp 声明的 legacy.read interaction 请求结构化结果；宿主不抓取 iframe DOM".to_string(),
-        category: CapabilityCategory::UiControl,
-        supported_actions: vec![IntentAction::Query],
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "sourceWindow": {
-                    "type": "object",
-                    "properties": {
-                        "windowId": { "type": "string" },
-                        "tappId": { "type": "string" },
-                        "tappName": { "type": "string" },
-                        "position": { "type": "string", "enum": ["active", "left", "right"] }
-                    }
-                },
-                "readType": {
-                    "type": "string",
-                    "enum": ["inputs", "content", "storage", "all"],
-                    "default": "all",
-                    "description": "读取类型：inputs=输入框值, content=页面内容, storage=存储数据"
-                },
-                "selector": { "type": "string", "description": "CSS 选择器（可选，用于精确读取）" }
-            },
-            "required": ["sourceWindow"]
-        }),
-        output_schema: json!({
-            "type": "object",
-            "properties": {
-                "success": { "type": "boolean" },
-                "interaction": { "type": "object", "description": "legacy.read interaction 快照" },
-                "frontendAction": { "type": "object", "description": "打开目标 Tapp 的 agent_interaction 动作" }
-            }
-        }),
-        required_permissions: vec!["tapp:read".to_string()],
-        requires_ai: false,
-        estimated_duration_ms: Some(100),
         ..Default::default()
     });
 }

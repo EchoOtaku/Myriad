@@ -562,6 +562,10 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
 
   const { manifest } = tapp
   const authorUrl = manifest.author?.url ? sanitizeUrl(manifest.author.url) : ''
+  const homepageUrl = manifest.homepage ? sanitizeUrl(manifest.homepage) : ''
+  const repositoryUrl = manifest.repository
+    ? sanitizeUrl(manifest.repository)
+    : ''
 
   return (
     <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
@@ -998,13 +1002,28 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                   </span>
                 </div>
               )}
-              {manifest.homepage && (
+              {homepageUrl && (
                 <div className="flex items-center justify-between py-2">
                   <span className="text-sm text-gray-500 dark:text-gray-400">
                     {t.tapp.homepage}
                   </span>
                   <a
-                    href={manifest.homepage}
+                    href={homepageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    {t.tapp.visit}
+                  </a>
+                </div>
+              )}
+              {repositoryUrl && (
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {t.tapp.repository}
+                  </span>
+                  <a
+                    href={repositoryUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"

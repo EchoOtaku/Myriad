@@ -76,10 +76,11 @@ impl TierRouter {
             "brew.discover" => TaskComplexity::Medium,
             id if id.starts_with("brew.") => TaskComplexity::Simple,
             // 所有 tapp 查询类
-            "tapp.list" | "tapp.page" | "tapp.widget" | "tapp.windows" | "tapp.read"
-            | "tapp.pageContent" => TaskComplexity::Simple,
+            "tapp.list" | "tapp.page" | "tapp.widget" | "tapp.windows" | "tapp.pageContent" => {
+                TaskComplexity::Simple
+            }
             // tapp 交互和理解需要 AI
-            "tapp.ui" | "tapp.understand" | "tapp.interact" | "tapp.fill" => TaskComplexity::Medium,
+            "tapp.ui" | "tapp.understand" | "tapp.interact" => TaskComplexity::Medium,
             // 音乐控制和状态
             id if id.starts_with("music.") => TaskComplexity::Simple,
             // 网易云音乐查询

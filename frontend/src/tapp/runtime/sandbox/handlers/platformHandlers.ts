@@ -28,7 +28,6 @@ export function registerWidgetHandlers(
         tappInstance.id,
         config as WidgetRegistration,
       )
-      runtime.registerBackgroundRequirement(tappInstance.id, 'widget')
       return { success: true, data: widget }
     } catch (error) {
       return {
@@ -44,10 +43,6 @@ export function registerWidgetHandlers(
     try {
       const runtime = getTappRuntime()
       await runtime.unregisterWidget(tappInstance.id, widgetId as string)
-      const remaining = runtime.getWidgetsByTapp(tappInstance.id)
-      if (remaining.length === 0) {
-        runtime.unregisterBackgroundRequirement(tappInstance.id, 'widget')
-      }
       return { success: true, data: null }
     } catch (error) {
       return {

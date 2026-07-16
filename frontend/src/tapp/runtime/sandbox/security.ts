@@ -36,6 +36,30 @@ export function generateSessionToken(): string {
   return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+/** Escape untrusted text inserted into generated srcdoc markup. */
+export function escapeSandboxHtmlText(value: string): string {
+  return value.replace(/[&<>]/g, (character) => {
+    if (character === '&') return '&amp;'
+    if (character === '<') return '&lt;'
+    return '&gt;'
+  })
+}
+
+/** Serialize data embedded in an inline script without allowing script-tag termination. */
+export function serializeSandboxScriptValue(value: unknown): string {
+  const serialized = JSON.stringify(value)
+  if (serialized === undefined) return 'undefined'
+  return serialized
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+}
+
+/** Keep JavaScript source intact when it is embedded inside an HTML script element. */
+export function escapeSandboxScriptSource(source: string): string {
+  return source.replace(/<\/script/gi, '<\\/script')
+}
+
 // ========================
 // 🎯 CSP 安全策略
 // ========================
@@ -475,7 +499,7 @@ export const IFRAME_SANDBOX_ATTRS = 'allow-scripts allow-pointer-lock'
  * 验证存储 key 格式（防止路径遍历攻击）
  *
  * 规则：
- * - 只允许字母、数字、下划线、连字符、点
+ * - 只允许字母、数字、下划线、连字符、点、冒号
  * - 不允许连续的点（..）
  * - 不允许以点开头或结尾
  * - 长度限制 1-256 字符

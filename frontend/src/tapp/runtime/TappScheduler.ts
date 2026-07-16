@@ -182,8 +182,9 @@ export class TappScheduler {
   /** 心跳间隔（毫秒） */
   private heartbeatInterval: number = 30000
 
-  /** 任务回调注册表（tappId:taskId -> callback） */
-  private taskCallbacks: Map<string, TaskCallback> = new Map()
+  /** 任务回调注册栈；同任务只执行最后挂载且仍存活的 runtime。 */
+  private taskCallbacks: Map<string, Array<{ callback: TaskCallback }>> =
+    new Map()
 
   /** 全局任务回调（接收所有任务） */
   private globalCallbacks: Set<TaskCallback> = new Set()
@@ -410,7 +411,8 @@ export class TappScheduler {
     }
 
     const callbackKey = `${message.task.tappId}:${message.task.taskId}`
-    const callback = this.taskCallbacks.get(callbackKey)
+    const registrations = this.taskCallbacks.get(callbackKey)
+    const callback = registrations?.[registrations.length - 1]?.callback
 
     // 执行特定任务回调
     if (callback) {
@@ -425,6 +427,12 @@ export class TappScheduler {
           error instanceof Error ? error.message : 'Unknown error',
         )
       }
+    } else {
+      this.reportTaskComplete(
+        event.executionId,
+        false,
+        'No active Tapp runtime callback',
+      )
     }
 
     // 执行全局回调
@@ -633,11 +641,16 @@ export class TappScheduler {
    */
   onTask(tappId: string, taskId: string, callback: TaskCallback): () => void {
     const key = `${tappId}:${taskId}`
-    this.taskCallbacks.set(key, callback)
+    const registration = { callback }
+    const registrations = this.taskCallbacks.get(key) || []
+    registrations.push(registration)
+    this.taskCallbacks.set(key, registrations)
     return () => {
-      // 后挂载的 headless core 可能已接管同一个任务；旧 Page/Widget 卸载时
-      // 不能把新回调一起删掉。
-      if (this.taskCallbacks.get(key) === callback) {
+      const current = this.taskCallbacks.get(key)
+      if (!current) return
+      const index = current.indexOf(registration)
+      if (index >= 0) current.splice(index, 1)
+      if (current.length === 0) {
         this.taskCallbacks.delete(key)
       }
     }

@@ -854,6 +854,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
           pageCSS: resources.css,
           i18n: resources.i18n,
           pageModules: resources.pageModules,
+          pageModuleOrder: resources.pageModuleOrder,
         }
 
         if (!runtime.isRunning(tappId)) {
@@ -1097,6 +1098,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             pageCSS: resources.css,
             i18n: resources.i18n,
             pageModules: resources.pageModules,
+            pageModuleOrder: resources.pageModuleOrder,
           }
 
           if (!runtime.isRunning(tappId)) {

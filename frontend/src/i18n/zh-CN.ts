@@ -1835,6 +1835,7 @@ export const zhCN: TranslationKeys = {
     installedAt: '安装时间',
     lastRunAt: '最后运行',
     homepage: '主页',
+    repository: '源码仓库',
     visit: '访问',
     loading: '正在加载...',
     settingSaved: '设置已保存',

@@ -51,6 +51,7 @@ export function registerFederationHandlers(
 
   const attachChannelWs = (channelId: string, ws: WebSocket): void => {
     ws.addEventListener('message', (ev) => {
+      if (channelSockets.get(channelId) !== ws) return
       try {
         const data = JSON.parse(typeof ev.data === 'string' ? ev.data : '')
         bridge.emit('federation:message', {
@@ -73,6 +74,7 @@ export function registerFederationHandlers(
       }
     })
     ws.addEventListener('close', () => {
+      if (channelSockets.get(channelId) !== ws) return
       channelSockets.delete(channelId)
       bridge.emit('federation:channelUpdate', {
         channelId,
@@ -83,6 +85,7 @@ export function registerFederationHandlers(
 
   const attachRoomWs = (roomId: string, ws: WebSocket): void => {
     ws.addEventListener('message', (ev) => {
+      if (roomSockets.get(roomId) !== ws) return
       try {
         const data = JSON.parse(typeof ev.data === 'string' ? ev.data : '')
         bridge.emit('federation:message', { scope: 'room', roomId, data })
@@ -102,6 +105,7 @@ export function registerFederationHandlers(
       }
     })
     ws.addEventListener('close', () => {
+      if (roomSockets.get(roomId) !== ws) return
       roomSockets.delete(roomId)
       bridge.emit('federation:roomUpdate', { roomId, event: 'disconnected' })
     })
@@ -980,8 +984,18 @@ export function registerFederationHandlers(
       const [channelId] = (message.payload as { args: unknown[] }).args || []
       if (!channelId || typeof channelId !== 'string')
         return { success: false, error: 'Channel ID is required' }
-      if (channelSockets.has(channelId))
+      const current = channelSockets.get(channelId)
+      if (
+        current &&
+        (current.readyState === WebSocket.CONNECTING ||
+          current.readyState === WebSocket.OPEN)
+      ) {
         return { success: true, data: { subscribed: true, alreadyOpen: true } }
+      }
+      if (current) {
+        channelSockets.delete(channelId)
+        safeClose(current)
+      }
       try {
         const ws = federationApi.connectChannelWs(channelId)
         channelSockets.set(channelId, ws)
@@ -1017,8 +1031,18 @@ export function registerFederationHandlers(
       const [roomId] = (message.payload as { args: unknown[] }).args || []
       if (!roomId || typeof roomId !== 'string')
         return { success: false, error: 'Room ID is required' }
-      if (roomSockets.has(roomId))
+      const current = roomSockets.get(roomId)
+      if (
+        current &&
+        (current.readyState === WebSocket.CONNECTING ||
+          current.readyState === WebSocket.OPEN)
+      ) {
         return { success: true, data: { subscribed: true, alreadyOpen: true } }
+      }
+      if (current) {
+        roomSockets.delete(roomId)
+        safeClose(current)
+      }
       try {
         const ws = federationApi.connectRoomWs(roomId)
         roomSockets.set(roomId, ws)

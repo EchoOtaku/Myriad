@@ -30,6 +30,95 @@ pub struct RegisterComponentRequest {
     pub config: Value,
 }
 
+fn invalid_component(message: impl Into<String>) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({
+            "error": message.into(),
+            "code": "INVALID_COMPONENT_CONFIG"
+        })),
+    )
+}
+
+fn validate_component_config<'a>(
+    component_type: &ComponentType,
+    config: &'a Value,
+) -> Result<&'a str, (StatusCode, Json<Value>)> {
+    let object = config
+        .as_object()
+        .ok_or_else(|| invalid_component("Component config must be an object"))?;
+    let id = object
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| {
+            !id.is_empty()
+                && id.len() <= 64
+                && id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+        })
+        .ok_or_else(|| invalid_component("Component id is invalid"))?;
+    object
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty() && name.len() <= 100)
+        .ok_or_else(|| {
+            invalid_component("Component name is required and must not exceed 100 bytes")
+        })?;
+
+    match component_type {
+        ComponentType::Theme => {
+            if object
+                .keys()
+                .any(|key| !matches!(key.as_str(), "id" | "name" | "surface" | "glow"))
+            {
+                return Err(invalid_component(
+                    "Theme config only supports id, name, surface and glow",
+                ));
+            }
+            if object.get("surface").is_some_and(|value| {
+                !matches!(value.as_str(), Some("glass" | "solid" | "flat" | "outline"))
+            }) {
+                return Err(invalid_component("Theme surface is invalid"));
+            }
+            if object.get("glow").is_some_and(|value| {
+                !matches!(value.as_str(), Some("identity" | "primary" | "none"))
+            }) {
+                return Err(invalid_component("Theme glow is invalid"));
+            }
+        }
+        ComponentType::Agent => {
+            if object
+                .keys()
+                .any(|key| !matches!(key.as_str(), "id" | "name" | "description" | "capabilities"))
+            {
+                return Err(invalid_component(
+                    "Agent config only supports id, name, description and capabilities",
+                ));
+            }
+            if object
+                .get("description")
+                .is_some_and(|value| value.as_str().is_none_or(|text| text.len() > 500))
+            {
+                return Err(invalid_component("Agent description is invalid"));
+            }
+            let capabilities = object
+                .get("capabilities")
+                .and_then(Value::as_array)
+                .filter(|items| !items.is_empty() && items.len() <= 64)
+                .ok_or_else(|| invalid_component("Agent capabilities must contain 1-64 items"))?;
+            if capabilities.iter().any(|value| {
+                value
+                    .as_str()
+                    .is_none_or(|capability| capability.is_empty() || capability.len() > 64)
+            }) {
+                return Err(invalid_component("Agent capability is invalid"));
+            }
+        }
+    }
+    Ok(id)
+}
+
 /// POST /api/tapp/components/register
 pub async fn register_component(
     State(db): State<DatabaseConnection>,
@@ -55,16 +144,7 @@ pub async fn register_component(
     use crate::models::entities::tapp_storage;
     use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, Set};
 
-    let component_id = req
-        .config
-        .get("id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Component config must include 'id'" })),
-            )
-        })?;
+    let component_id = validate_component_config(&req.component_type, &req.config)?;
 
     let now = chrono::Utc::now().fixed_offset();
     let storage_key = format!("_component:{}:{}", type_str, component_id);
@@ -309,4 +389,43 @@ pub async fn list_all_components_by_type(
     Ok(Json(
         json!({ "success": true, "type": component_type, "components": components }),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_component_config, ComponentType};
+    use serde_json::json;
+
+    #[test]
+    fn theme_config_accepts_only_effective_fields() {
+        assert!(validate_component_config(
+            &ComponentType::Theme,
+            &json!({
+                "id": "glass.primary",
+                "name": "Glass Primary",
+                "surface": "glass",
+                "glow": "primary"
+            })
+        )
+        .is_ok());
+        assert!(validate_component_config(
+            &ComponentType::Theme,
+            &json!({ "id": "legacy", "name": "Legacy", "styles": "*{}" })
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn agent_config_requires_declared_capabilities() {
+        assert!(validate_component_config(
+            &ComponentType::Agent,
+            &json!({ "id": "helper", "name": "Helper", "capabilities": ["chat"] })
+        )
+        .is_ok());
+        assert!(validate_component_config(
+            &ComponentType::Agent,
+            &json!({ "id": "helper", "name": "Helper", "capabilities": [] })
+        )
+        .is_err());
+    }
 }

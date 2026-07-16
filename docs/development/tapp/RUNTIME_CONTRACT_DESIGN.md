@@ -15,7 +15,7 @@ SDK；共享 registry/mailbox、Agent 任务暂停/恢复和 intent 执行 adapt
 4. AI 的上下文、流式响应、成本上限和配额全部由服务端执行。
 5. 跨 Tapp 数据读取必须经过可见、一次性的用户授权，不能借 Event 或共享存储绕过。
 
-不在本次设计中改变 Widget 模板按尺寸寻址的现有约束。
+Widget 模板资源使用 `widgetId + 尺寸` 寻址，不与其他 Widget 的同尺寸模板共享 key。
 
 ## 共同基础：Runtime Grant
 
@@ -224,19 +224,13 @@ await interaction.requestIntent({
 
 ### 边界与处理规则
 
-- `submitResult` 取代语义不明的 `reportData()`；结果必须通过 Manifest 声明的 schema。
-- `requestIntent` 取代 `requestAction()`；宿主按 allowlist、Manifest、当前任务状态与确认策略
+- `submitResult` 的结果必须通过 Manifest 声明的 schema。
+- `requestIntent` 由宿主按 allowlist、Manifest、当前任务状态与确认策略
   授权后，立即调用受信宿主 adapter 执行 `ui.open`、`report.create` 或
   `dataExchange.request`，不会把任意动作执行权交还给 Tapp。
 - 每个消息都携带 `interactionId`，重复提交以幂等键去重；超时或取消后拒绝迟到结果。
 - Interaction 记录只保存结构化元数据和最终结果引用，敏感大对象进入受权限保护的存储。
 - Agent 只能选择 Tapp 已声明且已安装的 interaction type；Tapp 不能伪造 Agent task。
-
-### 迁移
-
-`onFill()` 在一个版本周期内由适配器映射为 `type = "legacy.fill"`。现有无消费者的
-`reportData()`、`requestAction()` 标记 deprecated，并在当前模式下明确返回
-`UNSUPPORTED_LEGACY_AGENT_ACTION`，不再静默成功。
 
 ## 方案二：Scoped Event Broker
 
@@ -309,12 +303,6 @@ sequenceDiagram
 - 发布成功只表示 Broker 接受，不表示每个订阅者已处理。当前契约不提供 ACK、重试或离线积压。
 - `dedupeKey` 只在短窗口内防止发布方重试造成重复，不提升投递保证。
 
-### 迁移
-
-旧 `subscribe/unsubscribe` 存储数据不自动迁移为声明式订阅；安装更新时从新 Manifest 生成
-声明。旧 `publish(type, payload, target)` 仅允许 `target = "self"` 并映射为 `instance`，
-其他 target 返回明确错误，直到旧接口移除。
-
 ## 方案三：Server-governed AI Task API
 
 ### 新模型
@@ -377,13 +365,6 @@ Manifest 只声明能力与预算层级，不暴露供应商参数：
 - SSE 状态端点可用于两种 delivery；只有 `delivery = stream` 产生 token delta，普通 result
   请求只产生进度、状态和最终结果事件。
 
-### 迁移
-
-旧接口适配器只映射已实际支持的字段：prompt/messages、chat context、`preferPro`。当前被忽略
-的 `generate.context/options` 与 `chat.maxTokens/temperature/stream` 在迁移期返回带字段名的
-`UNSUPPORTED_V1_OPTION`，促使调用方显式迁移。旧接口响应中的硬编码 `quotaRemaining` 改为
-真实 usage 快照；一个版本周期后移除旧端点。
-
 ## 推荐实施顺序
 
 1. Runtime Grant：先覆盖所有 `/api/tapp` 路由，并增加停止/卸载撤销测试；
@@ -391,15 +372,15 @@ Manifest 只声明能力与预算层级，不暴露供应商参数：
 3. AI Task：成本与权限风险最高，把真实配额、任务状态和流式契约收口；
 4. Event Broker：复用 Runtime 注册表/连接层，实现在线 at-most-once Broker；
 5. Agent Interaction：在 Runtime Grant 与事件/任务基础上实现 Interaction 状态机；
-6. 保留一个版本周期的窄适配器，记录旧接口使用量，再删除无消费者入口与兼容字段。
+6. 删除无消费者的旧 SDK、Bridge handler 与后端端点，只保留当前协议。
 
 当前进度：1 已完成核心路由迁移和共享 Grant；2 已完成 Manifest round-trip、宿主授权弹窗、在线
 Provider broker、一次性 Grant、同 subject 隔离及响应边界；3 已完成持久化用量账本、任务
-状态机、上下文/输出校验和 SSE；4 已完成在线 at-most-once 路由、Manifest allowlist 与窄
-legacy adapter；5 已完成 interaction schema、CAS 接受/提交/拒绝状态机、Executor 恢复以及
+状态机、上下文/输出校验和 SSE；4 已完成在线 at-most-once 路由与 Manifest allowlist；5 已完成
+interaction schema、CAS 接受/提交/拒绝状态机、Executor 恢复以及
 `ui.open`、`report.create`、`dataExchange.request` 宿主 adapter。在线状态使用 PostgreSQL
-TTL registry、durable mailbox 与 `pg_notify` 提示。尚未完成的是第 6 步兼容接口观测期后的
-最终删除；它需要依据实际旧接口使用量单独安排。
+TTL registry、durable mailbox 与 `pg_notify` 提示。第 6 步已完成：Agent 旧方法、Event V1
+适配与 AI V1 端点均已删除。
 
 每一阶段都应同时交付 Rust/TypeScript 类型、Manifest round-trip、权限矩阵、端到端测试和
 迁移说明。任何阶段都不应通过继续扩大前端 Bridge 信任面来替代后端验证。

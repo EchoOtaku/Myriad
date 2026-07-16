@@ -69,7 +69,6 @@ Tapp 管理接口大多返回：
 | GET  | `/api/tapps/{tappId}/code`      | 主代码文本                                   |
 | GET  | `/api/tapps/{tappId}/resources` | 代码、CSS、HTML、i18n、Page 模块等资源对象   |
 | GET  | `/api/tapps/{tappId}/export`    | 导出 `.tapp` ZIP                             |
-| GET  | `/api/tapps/{tappId}/widgets`   | 指定 Tapp 的 Widget                          |
 
 读取与运行时授权先查管理员 owner；若未找到且用户已登录，再查当前用户 owner。同 ID 时
 管理员公开版本优先，详情、资源、最终授权和 Manifest 声明 API 必须保持同一选择结果。
@@ -172,6 +171,7 @@ Grant 才返回 `INVALID_RUNTIME_GRANT`。
 | DELETE | `/api/tapps/{tappId}/widgets/{widgetId}` | 注销 Widget      |
 | GET    | `/api/tapps/{tappId}/storage`            | 列出 key         |
 | DELETE | `/api/tapps/{tappId}/storage`            | 清空存储         |
+| GET    | `/api/tapps/{tappId}/storage/entries`    | 一次返回全部键值 |
 | GET    | `/api/tapps/{tappId}/storage/usage`      | 一次统计使用字节 |
 | GET    | `/api/tapps/{tappId}/storage/{key}`      | 读取值           |
 | POST   | `/api/tapps/{tappId}/storage/{key}`      | 写入值           |
@@ -207,12 +207,6 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 | GET    | `/api/tapp/platform/{platform}/distribution/{dimension}` | 登录     | `Tapp.platform.getDistribution` |
 | POST   | `/api/tapp/platform/items`                               | 登录     | `Tapp.platform.addItem`         |
 | POST   | `/api/tapp/platform/items/batch`                         | 登录     | `Tapp.platform.addItems`        |
-| POST   | `/api/tapp/ai/generate`                                  | 可选认证 | `Tapp.ai.generate`              |
-| POST   | `/api/tapp/ai/analyze`                                   | 可选认证 | `Tapp.ai.analyze`               |
-| POST   | `/api/tapp/ai/chat`                                      | 可选认证 | `Tapp.ai.chat`                  |
-| POST   | `/api/tapp/ai/image`                                     | 可选认证 | 图片生成                        |
-| POST   | `/api/tapp/ai/image/status`                              | 可选认证 | 图片任务状态                    |
-| GET    | `/api/tapp/ai/usage`                                     | 可选认证 | 旧接口兼容权威用量              |
 | POST   | `/api/tapp/ai/v2/tasks`                                  | 可选认证 | 创建 AI 任务                    |
 | GET    | `/api/tapp/ai/v2/tasks/{taskId}`                         | 可选认证 | 读取任务快照                    |
 | DELETE | `/api/tapp/ai/v2/tasks/{taskId}`                         | 可选认证 | 取消非终态任务                  |
@@ -246,8 +240,8 @@ runtime 调用；返回的一次性 token 60 秒过期且留在宿主。consume 
 
 | 方法 | 路径                                           | 说明                       |
 | ---- | ---------------------------------------------- | -------------------------- |
-| POST | `/api/tapp/events/v2/publish`                  | 发布 Manifest 声明 topic   |
-| GET  | `/api/tapp/events/v2/stream`                   | 当前 runtime 在线 SSE      |
+| POST | `/api/tapp/events/publish`                     | 发布 Manifest 声明 topic   |
+| GET  | `/api/tapp/events/stream`                      | 当前 runtime 在线 SSE      |
 | GET  | `/api/tapp/agent/v2/interactions/stream`       | 接收待处理 Interaction     |
 | GET  | `/api/tapp/agent/v2/interactions/{id}`         | 读取状态快照               |
 | POST | `/api/tapp/agent/v2/interactions/{id}/accept`  | 当前 runtime 接受          |
@@ -294,18 +288,14 @@ Tapp 通知进入 Myriad 的统一通知流，不存在独立的 Tapp-only toast
 | POST           | `/api/tapp/shortcuts/register`                                |
 | DELETE         | `/api/tapp/shortcuts/{tappId}/{shortcutId}`                   |
 | GET            | `/api/tapp/shortcuts`                                         |
-| POST           | `/api/tapp/events/publish`                                    |
-| GET/PUT        | `/api/tapp/events/subscriptions/{tappId}`                     |
 
-这些路由都需要登录；具体能力还受 `report:*`、`component:*`、`shortcut:register`、
-`event:*` 等最终授权约束。
+这些路由都需要登录；具体能力还受 `report:*`、`component:*` 与 `shortcut:register` 等最终授权约束。
 
 ### 指标与限流
 
 | 方法 | 路径                            |
 | ---- | ------------------------------- |
 | GET  | `/api/tapp/metrics`             |
-| POST | `/api/tapp/metrics/reset`       |
 | GET  | `/api/tapp/rate-limit/{tappId}` |
 
 不要依赖旧文档中的固定“每分钟 N 次”和 `X-RateLimit-*` 表格；实际限制由当前后端配置、

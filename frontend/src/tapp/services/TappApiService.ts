@@ -4,10 +4,6 @@
  */
 
 import type {
-  AIAnalyzeRequest,
-  AIAnalyzeResponse,
-  AIGenerateRequest,
-  AIGenerateResponse,
   AITaskEvent,
   AITaskRequest,
   AITaskSnapshot,
@@ -17,10 +13,10 @@ import type {
   PermissionLevel,
   PlatformInfo,
   PlatformItemResult,
-  PublishEventV2Request,
+  PublishEventRequest,
   RegisteredWidget,
   TappManifest,
-  TappEventV2,
+  TappEvent,
   TappCodeStructure,
   WidgetRegistration,
 } from '../types'
@@ -413,7 +409,7 @@ interface InstallTappRequest {
   code?: string
   styles?: string
   pageTemplate?: string
-  widgetTemplates?: Record<string, string>
+  widgetTemplates?: Record<string, Record<string, string>>
   /** Widget 专用 CSS */
   widgetCss?: string
   /** Page 专用 CSS */
@@ -492,12 +488,15 @@ function buildDirectTappRequest(
     requestBody.pageTemplate = code.pageHtml
   }
   if (code.widgetHtml && manifest.widgets && manifest.widgets.length > 0) {
-    // 为每个 widget 尺寸创建模板
-    const templates: Record<string, string> = {}
+    const templates: Record<string, Record<string, string>> = {}
     for (const widget of manifest.widgets) {
-      if (widget.sizes) {
-        for (const size of widget.sizes) {
-          templates[size] = code.widgetHtml
+      if (widget.templates) {
+        const widgetTemplates: Record<string, string> = {}
+        for (const size of Object.keys(widget.templates)) {
+          widgetTemplates[size] = code.widgetHtml
+        }
+        if (Object.keys(widgetTemplates).length > 0) {
+          templates[widget.id] = widgetTemplates
         }
       }
     }
@@ -806,8 +805,8 @@ export interface TappResources {
   widgetCSS?: string
   /** Page 专用编译后的 Tailwind CSS */
   pageCSS?: string
-  /** Widget HTML 模板（按尺寸） */
-  widgetTemplates?: Record<string, string>
+  /** Widget HTML 模板（Widget ID → 尺寸） */
+  widgetTemplates?: Record<string, Record<string, string>>
   /** Page HTML 模板 */
   pageTemplate?: string
   /** CSS 架构模式 */
@@ -828,7 +827,7 @@ interface TappResourcesRaw {
   page_styles?: string
   widget_css?: string
   page_css?: string
-  widget_templates?: Record<string, string>
+  widget_templates?: Record<string, Record<string, string>>
   page_template?: string
   css_mode?: 'unified' | 'separated'
   i18n?: Record<string, unknown>
@@ -1031,42 +1030,11 @@ export async function cleanupTemporaryTapps(): Promise<number> {
 }
 
 /**
- * 获取 Tapp 注册的小组件列表
- */
-export async function listTappWidgets(
-  tappId: string,
-): Promise<RegisteredWidget[]> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/widgets`)
-}
-
-/**
  * 获取所有已注册的小组件
- * 通过新的 /api/tapps/widgets 接口一次性获取所有小组件
+ * 通过 /api/tapps/widgets 一次性获取所有小组件
  */
 export async function getAllWidgets(): Promise<RegisteredWidget[]> {
-  try {
-    // 使用新的单一接口获取所有小组件
-    const widgets = await apiRequest<RegisteredWidget[]>('/api/tapps/widgets')
-    return widgets
-  } catch {
-    // 回退到旧方式（遍历每个 Tapp）
-    const tapps = await listTapps()
-    const widgets: RegisteredWidget[] = []
-
-    for (const tapp of tapps) {
-      // 只要 Tapp 已安装（不是 disabled 状态），就获取其小组件
-      if (tapp.status !== 'disabled') {
-        try {
-          const tappWidgets = await listTappWidgets(tapp.id)
-          widgets.push(...tappWidgets)
-        } catch {
-          // 静默失败
-        }
-      }
-    }
-
-    return widgets
-  }
+  return apiRequest<RegisteredWidget[]>('/api/tapps/widgets')
 }
 
 /**
@@ -1175,6 +1143,19 @@ export async function listStorageKeys(
   return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/storage`, {
     runtimeGrant,
   })
+}
+
+/**
+ * 一次获取全部存储项。
+ */
+export async function listStorageEntries(
+  tappId: string,
+  runtimeGrant?: string,
+): Promise<Record<string, unknown>> {
+  return apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/storage/entries`,
+    { runtimeGrant },
+  )
 }
 
 /**
@@ -1310,85 +1291,6 @@ export async function addPlatformItems(
   })
 }
 
-// ============ AI API ============
-
-/**
- * AI 生成
- */
-export async function aiGenerate(
-  tappId: string,
-  request: AIGenerateRequest,
-  runtimeGrant?: string,
-): Promise<AIGenerateResponse> {
-  return apiRequest('/api/tapp/ai/generate', {
-    method: 'POST',
-    body: JSON.stringify({
-      tapp_id: tappId,
-      ...request,
-      prefer_pro: request.preferPro,
-    }),
-    runtimeGrant,
-  })
-}
-
-/**
- * AI 分析
- */
-export async function aiAnalyze(
-  tappId: string,
-  request: AIAnalyzeRequest,
-  runtimeGrant?: string,
-): Promise<AIAnalyzeResponse> {
-  return apiRequest('/api/tapp/ai/analyze', {
-    method: 'POST',
-    body: JSON.stringify({
-      tapp_id: tappId,
-      ...request,
-      prefer_pro: request.preferPro,
-    }),
-    runtimeGrant,
-  })
-}
-
-/**
- * AI 图片生成请求
- */
-export interface AIImageGenerateRequest {
-  prompt: string
-  width?: number
-  height?: number
-  model?: string
-  enhance?: boolean
-  seed?: number
-}
-
-/**
- * AI 图片生成响应
- */
-export interface AIImageGenerateResponse {
-  success: boolean
-  provider: 'pollinations' | 'pixai'
-  url?: string // Pollinations 直接返回 URL
-  task_id?: string // PixAI 返回任务 ID
-  status?: string // PixAI 任务状态
-  result?: unknown // PixAI 完整结果
-  width: number
-  height: number
-  model: string
-  prompt: string
-  usageSnapshot: AIUsageSnapshot
-}
-
-export async function getAIUsage(
-  runtimeGrant: string,
-): Promise<AIUsageSnapshot> {
-  const response = await apiRequest<{ usage: AIUsageSnapshot }>(
-    '/api/tapp/ai/usage',
-    { runtimeGrant },
-  )
-  return response.usage
-}
-
 /** 创建由服务端治理的 AI 任务。 */
 export async function createAITask(
   request: AITaskRequest,
@@ -1422,7 +1324,7 @@ export async function cancelAITask(
   })
 }
 
-export async function getAIV2Usage(
+export async function getAIUsage(
   runtimeGrant: string,
 ): Promise<AIUsageSnapshot> {
   const response = await apiRequest<{ usage: AIUsageSnapshot }>(
@@ -1448,52 +1350,6 @@ export async function streamAITaskEvents(
     (event, data) => onEvent({ event: event as AITaskEvent['event'], data }),
     signal,
   )
-}
-
-/**
- * AI 图片生成
- */
-export async function aiImageGenerate(
-  tappId: string,
-  request: AIImageGenerateRequest,
-  runtimeGrant?: string,
-): Promise<AIImageGenerateResponse> {
-  return apiRequest('/api/tapp/ai/image', {
-    method: 'POST',
-    body: JSON.stringify({
-      tapp_id: tappId,
-      ...request,
-    }),
-    runtimeGrant,
-  })
-}
-
-/**
- * PixAI 任务状态查询
- */
-export interface AIImageTaskStatusResponse {
-  success: boolean
-  task_id: string
-  status: string
-  outputs?: {
-    mediaIds?: string[]
-    mediaUrls?: string[]
-  }
-}
-
-export async function aiImageTaskStatus(
-  tappId: string,
-  taskId: string,
-  runtimeGrant?: string,
-): Promise<AIImageTaskStatusResponse> {
-  return apiRequest('/api/tapp/ai/image/status', {
-    method: 'POST',
-    body: JSON.stringify({
-      tapp_id: tappId,
-      task_id: taskId,
-    }),
-    runtimeGrant,
-  })
 }
 
 // ============ 报告 API ============
@@ -1576,7 +1432,6 @@ export default {
   uninstallTapp,
   exportTapp,
   // Widget 管理
-  listTappWidgets,
   getAllWidgets,
   registerTappWidget,
   unregisterTappWidget,
@@ -1585,6 +1440,7 @@ export default {
   setStorage,
   removeStorage,
   listStorageKeys,
+  listStorageEntries,
   clearStorage,
   // Platform
   listEnabledPlatforms,
@@ -1593,9 +1449,12 @@ export default {
   getPlatformDistribution,
   addPlatformItem,
   addPlatformItems,
-  // AI
-  aiGenerate,
-  aiAnalyze,
+  // AI Task
+  createAITask,
+  getAITask,
+  cancelAITask,
+  getAIUsage,
+  streamAITaskEvents,
   // Reports
   listReports,
   getReport,
@@ -1612,8 +1471,6 @@ export default {
   // Tapp API 声明系统
   executeTappApi,
   listTappApis,
-  // P1: AI Chat
-  aiChat,
   // P1: Report CRUD
   createTappReport,
   listTappReports,
@@ -1853,14 +1710,6 @@ export async function getContextGeo(
   throw new Error('Failed to get geo info')
 }
 
-// 从统一的地理位置工具重新导出，避免重复实现
-export {
-  type GeoLocationData,
-  getClientGeoLocation,
-  isUserInChinaMainland,
-  resetGeoCache,
-} from '../../utils/geoLocation'
-
 // ============ Tapp API 声明系统 ============
 
 /** Tapp API 执行请求 */
@@ -1945,71 +1794,6 @@ export async function listTappApis(
     { runtimeGrant },
   )
   return result.apis || []
-}
-
-// ============ P1: AI Chat API ============
-
-/** 聊天消息 */
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-}
-
-/** AI Chat 请求 */
-export interface AIChatRequest {
-  tappId: string
-  messages: ChatMessage[]
-  context?: {
-    includePlatformStats?: boolean
-    includeUserProfile?: boolean
-    customData?: unknown
-  }
-  options?: {
-    maxTokens?: number
-    temperature?: number
-    stream?: boolean
-  }
-  /** 是否偏好使用 Pro 模型（可选，Pro 未配置时自动回退标准模型） */
-  preferPro?: boolean
-}
-
-/** AI Chat 响应 */
-export interface AIChatResponse {
-  success: boolean
-  message: ChatMessage
-  usage: {
-    promptTokens: number
-    completionTokens: number
-    totalTokens: number
-  }
-  usageSnapshot: AIUsageSnapshot
-  sessionId?: string
-}
-
-/**
- * AI 对话
- */
-export async function aiChat(
-  request: AIChatRequest,
-  runtimeGrant?: string,
-): Promise<AIChatResponse> {
-  return apiRequest('/api/tapp/ai/chat', {
-    method: 'POST',
-    body: JSON.stringify({
-      tapp_id: request.tappId,
-      messages: request.messages,
-      context: request.context
-        ? {
-            include_platform_stats: request.context.includePlatformStats,
-            include_user_profile: request.context.includeUserProfile,
-            custom_data: request.context.customData,
-          }
-        : undefined,
-      options: request.options,
-      prefer_pro: request.preferPro,
-    }),
-    runtimeGrant,
-  })
 }
 
 // ============ P1: Report CRUD API ============
@@ -2238,14 +2022,6 @@ export interface ThemeComponentConfig extends ComponentConfig {
    * 小组件光晕模式（受约束枚举）：'identity' | 'primary' | 'none'
    */
   glow?: string
-  /**
-   * @deprecated 安全原因：宿主不消费自由 CSS 字符串，此字段被忽略。
-   */
-  styles?: string
-  /**
-   * 颜色映射。当前宿主不消费（避免与壁纸取色系统冲突），保留供未来扩展。
-   */
-  colors?: Record<string, string>
 }
 
 /** Agent 组件配置 */
@@ -2411,31 +2187,31 @@ export async function listShortcuts(
   return apiRequest(url, { runtimeGrant })
 }
 
-// ============ P2: Event Bus API ============
+// ============ Event Broker API ============
 
-export async function publishEventV2(
-  request: PublishEventV2Request,
+export async function publishEvent(
+  request: PublishEventRequest,
   runtimeGrant: string,
 ): Promise<{
   accepted: boolean
   deduplicated: boolean
   delivered: number
-  event: TappEventV2
+  event: TappEvent
 }> {
-  return apiRequest('/api/tapp/events/v2/publish', {
+  return apiRequest('/api/tapp/events/publish', {
     method: 'POST',
     body: JSON.stringify(request),
     runtimeGrant,
   })
 }
 
-export async function streamEventsV2(
+export async function streamEvents(
   runtimeGrant: string,
   onEvent: (event: string, data: unknown) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   return streamRuntimeEvents(
-    '/api/tapp/events/v2/stream',
+    '/api/tapp/events/stream',
     runtimeGrant,
     onEvent,
     signal,

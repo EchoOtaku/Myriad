@@ -1764,6 +1764,7 @@ export interface TranslationKeys {
     installedAt: string
     lastRunAt: string
     homepage: string
+    repository: string
     visit: string
     loading: string
     settingSaved: string

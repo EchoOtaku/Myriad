@@ -31,6 +31,9 @@ client -> optional TLS entrypoint -> Myriad proxy:${HTTP_PORT:-80}
 
 外层 Nginx/Caddy/负载均衡器如果存在，应代理到 Myriad `proxy` 的宿主端口，
 不要直接代理到 backend `1103`，否则会绕过维护页和 updater 救援路径。
+同时在 `.env` 的 `PROXY_TRUSTED_UPSTREAMS` 中填写外层代理连接 Myriad 时使用的
+IP 或 CIDR；否则 Myriad 会有意忽略转发头，天气等按 IP 定位的功能只能看到代理地址。
+只应信任实际代理节点，并在防火墙中限制 `HTTP_PORT` 不能被客户端绕过代理直连。
 
 ## Nginx TLS 入口示例
 
@@ -56,6 +59,15 @@ server {
 
 如果 `.env` 中设置了 `HTTP_PORT=8080`，把 `proxy_pass` 改为
 `http://127.0.0.1:8080`。
+
+例如外层代理连接 Myriad 时的源地址是 `192.0.2.10`：
+
+```env
+PROXY_TRUSTED_UPSTREAMS=192.0.2.10/32
+```
+
+存在多层可信代理时，把各层地址或网段都列出。Myriad 会从
+`X-Forwarded-For` 右侧依次剥离这些可信代理，得到最靠近用户的非代理地址。
 
 ## 验证
 
@@ -86,6 +98,7 @@ curl -I http://localhost:1103/health
 - `ENVIRONMENT=production`：启用生产 CSP 和 HSTS。
 - `CSP_CONNECT_SRC`：覆盖生产 CSP 的 `connect-src`，默认为 `'self' https:`。
 - `ENABLE_CSP_DEV=true`：开发环境也启用 CSP。
+- `PROXY_TRUSTED_UPSTREAMS`：允许传递真实客户端 IP 的外层代理 IP/CIDR 列表。
 
 更多部署细节见 [Docker 部署](../deployment/DOCKER_DEPLOYMENT.md) 和
 [端口清单](../deployment/PORTS.md)。

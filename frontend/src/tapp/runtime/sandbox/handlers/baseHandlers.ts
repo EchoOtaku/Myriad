@@ -37,19 +37,6 @@ export function registerLifecycleHandlers(
     onError?.(new Error(String(errorMsg)))
     return { success: true, data: null }
   })
-
-  bridge.registerHandler('lifecycle.getInfo', async () => {
-    return {
-      success: true,
-      data: {
-        id: tappInstance.id,
-        version: tappInstance.manifest.version,
-        name: tappInstance.manifest.name,
-        permissions: tappInstance.grantedPermissions,
-        sandboxed: true,
-      },
-    }
-  })
 }
 
 /**
@@ -325,6 +312,21 @@ export function registerStorageHandlers(
     }
   })
 
+  bridge.registerHandler('storage.getAll', async () => {
+    try {
+      const entries = await TappApiService.listStorageEntries(
+        tappId,
+        await bridge.getRuntimeGrant(),
+      )
+      return { success: true, data: entries }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
+    }
+  })
+
   bridge.registerHandler('storage.clear', async () => {
     try {
       await TappApiService.clearStorage(tappId, await bridge.getRuntimeGrant())
@@ -436,8 +438,12 @@ export function registerFileHandlers(bridge: TappBridge): void {
       mimeType?: string
     }
 
-    if (!content) return { success: false, error: 'Content is required' }
-    if (!filename) return { success: false, error: 'Filename is required' }
+    if (typeof content !== 'string' || content.length === 0) {
+      return { success: false, error: 'Content must be a non-empty string' }
+    }
+    if (typeof filename !== 'string' || filename.length === 0) {
+      return { success: false, error: 'Filename is required' }
+    }
 
     // 验证文件名（防止路径遍历）
     if (
@@ -450,18 +456,18 @@ export function registerFileHandlers(bridge: TappBridge): void {
 
     // 限制文件大小（最大 10MB）
     const MAX_SIZE = 10 * 1024 * 1024
-    if (content.length > MAX_SIZE) {
+    const blob = new Blob([content], {
+      type: mimeType || 'text/plain;charset=utf-8',
+    })
+    if (blob.size > MAX_SIZE) {
       return {
         success: false,
-        error: `Content too large (max ${MAX_SIZE} bytes)`,
+        error: `Content too large: ${blob.size} bytes (max ${MAX_SIZE})`,
       }
     }
 
     try {
       // 在主应用上下文中创建下载（绕过 iframe 沙箱限制）
-      const blob = new Blob([content], {
-        type: mimeType || 'text/plain;charset=utf-8',
-      })
       const url = URL.createObjectURL(blob)
 
       const a = document.createElement('a')

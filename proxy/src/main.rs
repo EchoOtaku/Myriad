@@ -12,7 +12,7 @@
 //! is the user's only rescue path, so it MUST NOT trap traffic by accident.
 
 use std::convert::Infallible;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -26,6 +26,7 @@ use axum::Router;
 use chrono::{DateTime, Utc};
 use hyper_util::client::legacy::{connect::HttpConnector, Client};
 use hyper_util::rt::TokioExecutor;
+use ipnet::IpNet;
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::RwLock;
@@ -46,6 +47,9 @@ struct AppState {
     /// (`/api/admin/updater/*`) which uses admin session auth + holds UPDATE_TOKEN.
     /// Set `PROXY_ALLOW_DIRECT_UPDATER=true` to open the direct channel for rescue scenarios.
     allow_direct_updater: bool,
+    /// Addresses allowed to supply forwarding headers. Requests from every other peer
+    /// have their forwarding headers discarded to prevent client-IP spoofing.
+    trusted_upstreams: Vec<IpNet>,
     client: Client<HttpConnector, Body>,
     maint_cache: Arc<RwLock<MaintCache>>,
 }
@@ -100,6 +104,8 @@ async fn main() -> anyhow::Result<()> {
     let allow_direct_updater = std::env::var("PROXY_ALLOW_DIRECT_UPDATER")
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(false);
+    let trusted_upstreams =
+        parse_trusted_upstreams(std::env::var("PROXY_TRUSTED_UPSTREAMS").ok().as_deref())?;
     let listen: SocketAddr = std::env::var("PROXY_LISTEN")
         .unwrap_or_else(|_| "0.0.0.0:80".into())
         .parse()?;
@@ -110,6 +116,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!(
         allow_direct_updater,
+        trusted_upstream_count = trusted_upstreams.len(),
         "proxy startup: streaming forward; direct /_updater/* {}",
         if allow_direct_updater {
             "ENABLED"
@@ -124,6 +131,7 @@ async fn main() -> anyhow::Result<()> {
         frontend_upstream,
         updater_upstream,
         allow_direct_updater,
+        trusted_upstreams,
         client,
         maint_cache: Arc::new(RwLock::new(MaintCache::default())),
     };
@@ -237,10 +245,11 @@ async fn forward(
         }
         builder = builder.header(k, v);
     }
-    let client_ip = client_addr.ip().to_string();
+    let client_ip =
+        resolve_client_ip(&parts.headers, client_addr.ip(), &state.trusted_upstreams).to_string();
     builder = builder
-        .header("x-forwarded-for", forwarded_for(&parts.headers, &client_ip))
-        .header("x-real-ip", client_ip)
+        .header("x-forwarded-for", &client_ip)
+        .header("x-real-ip", &client_ip)
         .header(
             "x-forwarded-proto",
             forwarded_proto(&parts.headers).unwrap_or_else(|| HeaderValue::from_static("http")),
@@ -283,11 +292,65 @@ fn is_proxy_managed_forwarded_header(name: &str) -> bool {
     )
 }
 
-fn forwarded_for(headers: &HeaderMap, client_ip: &str) -> String {
-    let _ = headers;
-    // This proxy is the trust boundary. Never preserve a client-supplied XFF
-    // chain; the backend should receive only the peer address we observed.
-    client_ip.to_string()
+fn parse_trusted_upstreams(value: Option<&str>) -> anyhow::Result<Vec<IpNet>> {
+    value
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value
+                .parse::<IpNet>()
+                .or_else(|_| value.parse::<IpAddr>().map(IpNet::from))
+                .map_err(|_| anyhow::anyhow!("invalid PROXY_TRUSTED_UPSTREAMS entry: {value}"))
+        })
+        .collect()
+}
+
+fn is_trusted_upstream(ip: IpAddr, trusted_upstreams: &[IpNet]) -> bool {
+    trusted_upstreams
+        .iter()
+        .any(|network| network.contains(&ip))
+}
+
+fn resolve_client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_upstreams: &[IpNet]) -> IpAddr {
+    if !is_trusted_upstream(peer_ip, trusted_upstreams) {
+        return peer_ip;
+    }
+
+    let forwarded_ips: Vec<IpAddr> = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value
+                .split(',')
+                .map(|entry| entry.trim().parse::<IpAddr>().ok())
+                .collect::<Option<Vec<_>>>()
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+
+    // Walk from the trusted edge towards the client. This handles chains made by
+    // multiple explicitly trusted proxies without accepting a client-supplied
+    // address placed on the left of the real client address.
+    if let Some(client_ip) = forwarded_ips
+        .iter()
+        .rev()
+        .copied()
+        .find(|ip| !is_trusted_upstream(*ip, trusted_upstreams))
+    {
+        return client_ip;
+    }
+
+    if let Some(real_ip) = headers
+        .get("x-real-ip")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<IpAddr>().ok())
+    {
+        return real_ip;
+    }
+
+    forwarded_ips.first().copied().unwrap_or(peer_ip)
 }
 
 fn forwarded_proto(headers: &HeaderMap) -> Option<HeaderValue> {
@@ -414,18 +477,86 @@ mod tests {
     }
 
     #[test]
-    fn forwarded_for_sets_client_ip_when_missing() {
+    fn direct_client_ignores_forwarded_headers() {
+        let trusted = parse_trusted_upstreams(Some("10.0.0.0/8")).unwrap();
         let headers = HeaderMap::new();
 
-        assert_eq!(forwarded_for(&headers, "192.0.2.10"), "192.0.2.10");
+        assert_eq!(
+            resolve_client_ip(&headers, "192.0.2.10".parse().unwrap(), &trusted),
+            "192.0.2.10".parse::<IpAddr>().unwrap()
+        );
     }
 
     #[test]
-    fn forwarded_for_replaces_client_supplied_chain() {
+    fn untrusted_client_cannot_spoof_forwarded_headers() {
+        let trusted = parse_trusted_upstreams(Some("10.0.0.0/8")).unwrap();
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.9"));
 
-        assert_eq!(forwarded_for(&headers, "192.0.2.10"), "192.0.2.10");
+        assert_eq!(
+            resolve_client_ip(&headers, "192.0.2.10".parse().unwrap(), &trusted),
+            "192.0.2.10".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn trusted_upstream_forwards_real_client_ip() {
+        let trusted = parse_trusted_upstreams(Some("10.0.0.0/8")).unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.9"));
+
+        assert_eq!(
+            resolve_client_ip(&headers, "10.0.0.5".parse().unwrap(), &trusted),
+            "203.0.113.9".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn trusted_proxy_chain_is_removed_from_the_right() {
+        let trusted = parse_trusted_upstreams(Some("10.0.0.0/8, 2001:db8:1::/48")).unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("198.51.100.8, 2001:db8:1::20, 10.1.2.3"),
+        );
+
+        assert_eq!(
+            resolve_client_ip(&headers, "10.0.0.5".parse().unwrap(), &trusted),
+            "198.51.100.8".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn trusted_upstream_can_use_x_real_ip() {
+        let trusted = parse_trusted_upstreams(Some("10.0.0.5")).unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", HeaderValue::from_static("203.0.113.9"));
+
+        assert_eq!(
+            resolve_client_ip(&headers, "10.0.0.5".parse().unwrap(), &trusted),
+            "203.0.113.9".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn malformed_forwarded_chain_falls_back_to_x_real_ip() {
+        let trusted = parse_trusted_upstreams(Some("10.0.0.5")).unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("spoofed, 198.51.100.8"),
+        );
+        headers.insert("x-real-ip", HeaderValue::from_static("198.51.100.8"));
+
+        assert_eq!(
+            resolve_client_ip(&headers, "10.0.0.5".parse().unwrap(), &trusted),
+            "198.51.100.8".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn invalid_trusted_upstream_fails_configuration() {
+        assert!(parse_trusted_upstreams(Some("not-an-address")).is_err());
     }
 
     #[test]

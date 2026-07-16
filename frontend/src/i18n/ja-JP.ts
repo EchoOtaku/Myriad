@@ -1909,6 +1909,7 @@ export const jaJP: TranslationKeys = {
     installedAt: 'インストール日時',
     lastRunAt: '最終実行日時',
     homepage: 'ホームページ',
+    repository: 'ソースリポジトリ',
     visit: 'アクセス',
     loading: '読み込み中...',
     settingSaved: '設定を保存しました',

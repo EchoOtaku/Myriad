@@ -47,7 +47,7 @@ export interface TappManifest {
   version: string
 
   /** 描述 */
-  description: string
+  description?: string
 
   /** 作者信息 */
   author?: {
@@ -88,8 +88,8 @@ export interface TappManifest {
 
   /**
    * 声明式后台运行需求（启动时自动注册，用于引导 headless core）。
-   * 声明了真实需求（非仅 'widget'）的 Tapp 会在运行期由 TappBackgroundRunner
-   * 拉起一个无头 core 沙箱，即使没有可见窗口/widget 也持续运行 core 逻辑。
+   * 声明需求的 Tapp 会在运行期由 TappBackgroundRunner 拉起无头 core 沙箱，
+   * 即使没有可见窗口/widget 也持续运行 core 逻辑。
    */
   backgroundRequirements?: BackgroundRequirement[]
 
@@ -188,7 +188,7 @@ export interface AgentInteractionV2<TInput = unknown> {
   rejectionReason?: string
 }
 
-export interface TappEventV2<T = unknown> {
+export interface TappEvent<T = unknown> {
   version: 2
   eventId: string
   topic: string
@@ -199,7 +199,7 @@ export interface TappEventV2<T = unknown> {
   dedupeKey?: string
 }
 
-export interface PublishEventV2Request {
+export interface PublishEventRequest {
   topic: string
   scope: 'instance' | 'owner'
   payload?: unknown
@@ -233,10 +233,6 @@ export interface TappApiDefinition {
   type?: 'http' | 'builtin'
   /** HTTP 端点；支持后端模板变量 */
   endpoint?: string
-  /** endpoint 的兼容别名 */
-  url?: string
-  /** 兼容旧格式的查询参数模板 */
-  params?: Record<string, string>
   /** HTTP 方法，默认 GET */
   method?: string
   headers?: Record<string, string>
@@ -398,23 +394,12 @@ export type UserRole = 'guest' | 'user' | 'admin'
 
 /** 后台运行需求类型 */
 export type BackgroundRequirement =
-  | 'widget' // 有小组件在主页显示
   | 'media' // 媒体控制（如音乐播放器扩展）
   | 'sync' // 后台数据同步
   | 'notification' // 定时通知
   | 'scheduler' // 定时任务
   | 'event-listener' // 事件监听（跨 Tapp 通信）
   | 'realtime' // 实时数据更新
-
-/** 后台运行需求声明 */
-export interface BackgroundRequirementDeclaration {
-  /** 需求类型 */
-  type: BackgroundRequirement
-  /** 需求描述（用于显示给用户） */
-  reason?: string
-  /** 是否为必需（false 表示可选，用户可关闭） */
-  required?: boolean
-}
 
 // ============ Tapp 实例 ============
 
@@ -609,64 +594,6 @@ export interface CustomPlatformConfig {
 
 // ============ AI 相关 ============
 
-/** AI 生成请求 */
-export interface AIGenerateRequest {
-  /** 提示词（最大 2000 字符） */
-  prompt: string
-
-  /** 上下文配置 */
-  context?: {
-    includePlatformStats?: boolean
-    includeReportSummary?: boolean
-    customData?: Record<string, unknown>
-  }
-
-  /** 生成选项 */
-  options?: {
-    maxTokens?: number
-    temperature?: number
-    format?: 'text' | 'json'
-  }
-
-  /** 是否偏好使用 Pro 模型（可选，Pro 未配置时自动回退标准模型） */
-  preferPro?: boolean
-}
-
-/** AI 生成响应 */
-export interface AIGenerateResponse {
-  success: boolean
-  result: string
-  usage: {
-    promptTokens: number
-    completionTokens: number
-    totalTokens: number
-  }
-  usageSnapshot: AIUsageSnapshot
-}
-
-/** AI 分析请求 */
-export interface AIAnalyzeRequest {
-  /** 要分析的数据 */
-  data: unknown
-
-  /** 分析类型 */
-  type: 'summarize' | 'categorize' | 'sentiment' | 'custom'
-
-  /** 自定义指令 */
-  instruction?: string
-
-  /** 是否偏好使用 Pro 模型（可选，Pro 未配置时自动回退标准模型） */
-  preferPro?: boolean
-}
-
-/** AI 分析响应 */
-export interface AIAnalyzeResponse {
-  success: boolean
-  analysis: unknown
-  confidence?: number
-  usageSnapshot: AIUsageSnapshot
-}
-
 /** 服务端权威 AI 用量；null limit/remaining 表示管理员无限制。 */
 export interface AIUsageSnapshot {
   calls: {
@@ -742,35 +669,6 @@ export interface AITaskEvent {
   data: unknown
 }
 
-/** AI 配额状态（基于用户角色的限额） */
-export interface AIQuotaStatus {
-  /** 每日调用次数限制 */
-  daily: {
-    limit: number
-    used: number
-    resetsAt: string
-  }
-  /** Token 限制 */
-  tokens: {
-    limit: number
-    used: number
-    resetsAt: string
-  }
-  /** 冷却时间 */
-  cooldown: {
-    required: number
-    remaining: number
-  }
-  /** 是否被限制 */
-  restricted: boolean
-  /** 限制原因 */
-  restrictionReason?: string
-  /** 是否无限制（管理员） */
-  unlimited?: boolean
-  /** 当前用户角色 */
-  userRole?: UserRole
-}
-
 // ============ 消息通信 ============
 
 /** Bridge 消息类型 */
@@ -795,9 +693,6 @@ export interface TappMessage<T = unknown> {
 
   /** 时间戳 */
   timestamp: number
-
-  /** 错误信息 */
-  error?: string
 }
 
 /** API 调用请求 */

@@ -340,7 +340,7 @@ mod tests {
 
         // Tapp API 不在豁免列表（通过 session 检查决定是否需要 CSRF）
         assert!(!is_csrf_exempt("/api/auth/oauth/github/callback"));
-        assert!(!is_csrf_exempt("/api/tapp/ai/chat"));
+        assert!(!is_csrf_exempt("/api/tapp/ai/v2/tasks"));
         assert!(!is_csrf_exempt("/api/tapps/install"));
         assert!(!is_csrf_exempt("/api/tapps/my-app/start"));
 

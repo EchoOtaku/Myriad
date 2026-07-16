@@ -4214,32 +4214,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::tapp_runtime::add_platform_items_batch)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
-            // AI API - 支持权限下放（使用 optional_auth）
-            .route(
-                "/api/tapp/ai/generate",
-                post(api::tapp_runtime::ai_generate)
-                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
-            )
-            .route(
-                "/api/tapp/ai/analyze",
-                post(api::tapp_runtime::ai_analyze)
-                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
-            )
-            .route(
-                "/api/tapp/ai/image",
-                post(api::tapp_runtime::ai_image_generate)
-                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
-            )
-            .route(
-                "/api/tapp/ai/image/status",
-                post(api::tapp_runtime::ai_image_task_status)
-                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
-            )
-            .route(
-                "/api/tapp/ai/usage",
-                get(api::tapp_runtime::ai_usage)
-                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
-            )
+            // AI Task API - 支持权限下放（使用 optional_auth）
             .route(
                 "/api/tapp/ai/v2/tasks",
                 post(api::tapp_runtime::create_ai_task)
@@ -4258,7 +4233,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             )
             .route(
                 "/api/tapp/ai/v2/usage",
-                get(api::tapp_runtime::ai_v2_usage)
+                get(api::tapp_runtime::ai_usage)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // ============ Tapp P0 扩展 API ============
@@ -4323,12 +4298,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // ============ Tapp P1 扩展 API ============
-            // AI Chat - 🔓 支持权限下放
-            .route(
-                "/api/tapp/ai/chat",
-                post(api::tapp_runtime::ai_chat)
-                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
-            )
             // Report CRUD - 🔒 REQUIRE AUTHENTICATION
             .route(
                 "/api/tapp/reports",
@@ -4416,20 +4385,15 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 get(api::tapp_runtime::list_shortcuts)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
-            // P2: Event Bus
+            // Manifest-scoped Event Broker
             .route(
                 "/api/tapp/events/publish",
                 post(api::tapp_runtime::publish_event)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route(
-                "/api/tapp/events/v2/publish",
-                post(api::tapp_runtime::publish_event_v2)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
-                "/api/tapp/events/v2/stream",
-                get(api::tapp_runtime::stream_events_v2)
+                "/api/tapp/events/stream",
+                get(api::tapp_runtime::stream_events)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             .route(
@@ -4462,21 +4426,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::tapp_runtime::request_agent_intent)
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
-            .route(
-                "/api/tapp/events/subscriptions/{tapp_id}",
-                get(api::tapp_runtime::get_event_subscriptions)
-                    .put(api::tapp_runtime::update_event_subscriptions)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
             // Metrics & Rate Limit
             .route(
                 "/api/tapp/metrics",
                 get(api::tapp_runtime::get_tapp_metrics)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route(
-                "/api/tapp/metrics/reset",
-                post(api::tapp_runtime::reset_tapp_metrics)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(

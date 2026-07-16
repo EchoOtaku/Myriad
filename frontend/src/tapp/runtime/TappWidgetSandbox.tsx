@@ -14,7 +14,11 @@
 import type { TappCodeStructure, TappInstance } from '../types'
 import type { WidgetRenderProps } from './sandbox'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getCodeForMode } from './codeStructure'
+import {
+  getCodeForMode,
+  getCodeStructureFingerprint,
+  getTappRuntimeFingerprint,
+} from './codeStructure'
 
 import {
   calculateWidgetDimensions,
@@ -23,12 +27,15 @@ import {
 } from '../utils/iframeResize'
 // 核心模块
 import {
+  escapeSandboxHtmlText,
+  escapeSandboxScriptSource,
   generateCSP,
   generateNonce,
   generateSessionToken,
   generateThemeCSS,
   generateWidgetSDK,
   IFRAME_SANDBOX_ATTRS,
+  serializeSandboxScriptValue,
   WIDGET_STATIC_CSS,
 } from './sandbox'
 // 处理器
@@ -49,6 +56,7 @@ import {
   registerSpeechHandlers,
   registerStorageHandlers,
   registerUIHandlers,
+  registerUserHandlers,
 } from './sandbox/handlers'
 import { TappBridge } from './TappBridge'
 import { TappRuntimeGrant } from './TappRuntimeGrant'
@@ -113,7 +121,9 @@ function generateWidgetHTML(
   // 🔒 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
   const csp = generateCSP(nonce)
-  const sdkCode = generateWidgetSDK(tappInstance, sessionToken)
+  const sdkCode = escapeSandboxScriptSource(
+    generateWidgetSDK(tappInstance, sessionToken),
+  )
   const themeCSS = generateThemeCSS(isDark, primaryColor)
 
   // 自定义 CSS
@@ -139,7 +149,7 @@ function generateWidgetHTML(
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>${manifest.name} Widget</title>
+  <title>${escapeSandboxHtmlText(manifest.name)} Widget</title>
   <style>
     ${WIDGET_STATIC_CSS}
     ${tailwindCSS}
@@ -152,8 +162,8 @@ function generateWidgetHTML(
 
   <script nonce="${nonce}">
     window._TAPP_MODE = 'widget';
-    window._TAPP_WIDGET_ID = ${JSON.stringify(widgetId)};
-    window._TAPP_WIDGET_PROPS = ${JSON.stringify(widgetProps)};
+    window._TAPP_WIDGET_ID = ${serializeSandboxScriptValue(widgetId)};
+    window._TAPP_WIDGET_PROPS = ${serializeSandboxScriptValue(widgetProps)};
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1, isCompact: false, isMini: false };
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
 
@@ -185,7 +195,7 @@ function generateWidgetHTML(
     (function() {
       'use strict';
       try {
-        ${widgetCode}
+        ${escapeSandboxScriptSource(widgetCode)}
       } catch (error) {
         console.error('[Widget] Code error:', error);
       }
@@ -201,7 +211,7 @@ function generateWidgetHTML(
       'use strict';
       setTimeout(function() {
         try {
-          var widgetId = ${JSON.stringify(widgetId)};
+          var widgetId = ${serializeSandboxScriptValue(widgetId)};
           var widgetDef = Tapp.widgets[widgetId];
           var container = document.getElementById('widget-root');
 
@@ -263,33 +273,34 @@ export const TappWidgetSandbox = memo(
     instanceSettingsChangeRef.current = onInstanceSettingsChange
     invalidateRef.current = onInvalidate
 
-    // 稳定化核心 widgetProps（不包含 theme 和 primaryColor，因为它们通过事件更新）
-    // 这样主题/颜色变化不会触发整个沙箱重建
+    // 稳定化核心 widgetProps；theme/primaryColor/locale 通过事件更新，
+    // 不应仅因宿主外观或语言变化重建整个 iframe。
     const configString = JSON.stringify(widgetProps.config || {})
+    const latestThemeRef = useRef(widgetProps.theme)
+    const latestColorRef = useRef(widgetProps.primaryColor)
+    const latestLocaleRef = useRef(widgetProps.locale)
+    latestThemeRef.current = widgetProps.theme
+    latestColorRef.current = widgetProps.primaryColor
+    latestLocaleRef.current = widgetProps.locale
     const stableWidgetProps = useMemo(
       () => ({
         size: widgetProps.size,
         config: widgetProps.config,
         isEditMode: widgetProps.isEditMode,
         isPreview: widgetProps.isPreview,
-        locale: widgetProps.locale,
+        locale: latestLocaleRef.current,
         // 初始主题和颜色仅用于首次渲染
-        theme: widgetProps.theme,
-        primaryColor: widgetProps.primaryColor,
+        theme: latestThemeRef.current,
+        primaryColor: latestColorRef.current,
       }),
       [
         widgetProps.size,
         widgetProps.isEditMode,
         widgetProps.isPreview,
-        widgetProps.locale,
         // 使用字符串比较稳定 config 依赖
         configString,
       ],
     )
-
-    // 保存初始渲染用的主题/颜色
-    const initialThemeRef = useRef(widgetProps.theme)
-    const initialColorRef = useRef(widgetProps.primaryColor)
 
     const handleReady = useCallback(() => {
       setIsReady(true)
@@ -431,7 +442,7 @@ export const TappWidgetSandbox = memo(
       }
     }, [isReady])
 
-    // 媒体进度实时推送 - 同时发送 mediaProgress（新API）和 mediaStateChange（向后兼容）
+    // 媒体进度使用轻量事件单独推送，避免每个 tick 重发完整状态。
     useEffect(() => {
       if (!isReady) return
 
@@ -450,17 +461,7 @@ export const TappWidgetSandbox = memo(
             audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
         }
 
-        // 新 API：轻量进度事件
         bridge.emit('mediaProgress', progress)
-
-        // 向后兼容：合并进度到完整状态并 emit mediaStateChange
-        const globalState = (window as any).__musicPlayerState
-        if (globalState) {
-          bridge.emit(
-            'mediaStateChange',
-            buildMediaState({ ...globalState, currentTime, audioDuration }),
-          )
-        }
       }
 
       window.addEventListener('music-player-progress', handleProgress)
@@ -469,15 +470,12 @@ export const TappWidgetSandbox = memo(
       }
     }, [isReady])
 
-    // 🎯 生成稳定的代码指纹，只有代码实际变化时才重建 iframe
-    // 使用 widgetHtml 长度 + styles 长度 + widgetCSS 长度作为简单指纹，避免大字符串比较
-    const codeFingerprint = useMemo(() => {
-      const wh = code.widgetHtml || ''
-      const st = code.styles || ''
-      const js = getCodeForMode(code, 'widget') || ''
-      const css = code.widgetCSS || ''
-      return `${wh.length}:${st.length}:${js.length}:${css.length}`
-    }, [code])
+    // 内容哈希避免等长代码/CSS 更新继续复用旧 iframe。
+    const codeFingerprint = useMemo(
+      () => getCodeStructureFingerprint(code, 'widget'),
+      [code],
+    )
+    const runtimeFingerprint = getTappRuntimeFingerprint(tappInstance)
 
     // 初始化（不依赖 theme/primaryColor 变化）
     // 🎯 依赖优化：只使用稳定的 ID 和指纹，不使用对象引用
@@ -493,8 +491,8 @@ export const TappWidgetSandbox = memo(
       // 使用 ref 中的初始值，避免闪烁
       const propsForHtml = {
         ...stableWidgetProps,
-        theme: initialThemeRef.current,
-        primaryColor: initialColorRef.current,
+        theme: latestThemeRef.current,
+        primaryColor: latestColorRef.current,
       }
 
       // 生成 session token（独立于 Bridge）
@@ -528,6 +526,7 @@ export const TappWidgetSandbox = memo(
       registerLifecycleHandlers(bridge, currentTappInstance, handleReady)
       registerUIHandlers(bridge, currentTappInstance)
       registerStorageHandlers(bridge, currentTappInstance.id)
+      registerUserHandlers(bridge, currentTappInstance)
       bridge.registerHandler(
         'widget.instanceSettings.update',
         async (message) => {
@@ -566,7 +565,7 @@ export const TappWidgetSandbox = memo(
         return { success: true, data: null }
       })
       registerFileHandlers(bridge)
-      const closeAITaskStreams = registerAIHandlers(bridge, currentTappInstance)
+      const closeAITaskStreams = registerAIHandlers(bridge)
       // Widget SDK 只暴露平台/报告读取能力，避免注册未暴露的写入 handler。
       registerPlatformHandlers(bridge, currentTappInstance, { readOnly: true })
       registerReportHandlers(bridge, currentTappInstance, { readOnly: true })
@@ -637,6 +636,7 @@ export const TappWidgetSandbox = memo(
       // - stableWidgetProps: 已稳定化的 props
     }, [
       tappInstance.id,
+      runtimeFingerprint,
       widgetId,
       codeFingerprint,
       handleReady,

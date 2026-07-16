@@ -58,9 +58,11 @@ export class TappRuntimeGrant {
     const previous = this.current
     this.current = grant
     TappRuntimeGrant.tokenOwners.set(grant.token, this)
-    if (previous && previous.runtimeId !== grant.runtimeId) {
+    if (previous && previous.token !== grant.token) {
       TappRuntimeGrant.tokenOwners.delete(previous.token)
-      void revokeTappRuntimeGrant(this.tappId, previous.runtimeId)
+      if (previous.runtimeId !== grant.runtimeId) {
+        void revokeTappRuntimeGrant(this.tappId, previous.runtimeId)
+      }
     }
     return grant.token
   }

@@ -280,13 +280,8 @@ container.addEventListener("click", function (e) {
 
 **原因**：这是正常行为，Widget 只在 Tapp 运行时渲染。
 
-**解决方案**：点击提示启动 Tapp，或配置后台运行需求：
-
-```javascript
-Tapp.lifecycle.onReady(async function () {
-  await Tapp.background.require("widget", "Widget 需要实时更新");
-});
-```
+**解决方案**：点击提示启动 Tapp。Widget 可见期间由自己的沙箱运行，不需要声明后台
+需求；只有离开页面后仍需同步、媒体控制等任务时，才声明对应的 `sync`、`media` 等需求。
 
 ---
 

@@ -113,7 +113,7 @@ export function registerSchedulerHandlers(
     }
   })
 
-  bridge.registerHandler('scheduler.cancel', async (message) => {
+  bridge.registerHandler('scheduler.unregister', async (message) => {
     const [taskId] = (message.payload as { args: unknown[] }).args || []
     if (!taskId) return { success: false, error: 'taskId required' }
     try {

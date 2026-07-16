@@ -224,8 +224,8 @@ impl TappApiService {
         inject_context.insert("user.isAdmin".to_string(), json!(context.is_admin));
 
         // Every templated HTTP surface can consume host context. Inspect them
-        // all so direct references in headers/body/legacy params do not resolve
-        // to empty strings merely because endpoint itself has no placeholder.
+        // all so direct references in headers/body do not resolve to empty
+        // strings merely because endpoint itself has no placeholder.
         let needs_geo = Self::api_uses_template_prefix(api_def, "{{geo.");
 
         if needs_geo {
@@ -247,15 +247,10 @@ impl TappApiService {
     }
 
     fn api_uses_template_prefix(api_def: &TappApiDef, prefix: &str) -> bool {
-        api_def
-            .endpoint
-            .iter()
-            .chain(api_def.url.iter())
-            .any(|value| value.contains(prefix))
+        api_def.endpoint.iter().any(|value| value.contains(prefix))
             || api_def
-                .params
+                .headers
                 .iter()
-                .chain(api_def.headers.iter())
                 .flat_map(|values| values.values())
                 .any(|value| value.contains(prefix))
             || api_def
@@ -417,33 +412,13 @@ impl TappApiService {
         api_def: &TappApiDef,
         context: &HashMap<String, Value>,
     ) -> Result<Value, String> {
-        // 支持 endpoint 或 url 字段（url 是 endpoint 的别名，向后兼容）
         let base_url = api_def
             .endpoint
             .as_ref()
-            .or(api_def.url.as_ref())
-            .ok_or("HTTP API requires endpoint or url")?;
+            .ok_or("HTTP API requires endpoint")?;
 
         // 解析模板变量
-        let mut url = Self::resolve_template(base_url, context);
-
-        // 处理 params 字段（向后兼容旧格式）
-        // 如果有 params，将其转换为 URL 查询参数
-        if let Some(params) = &api_def.params {
-            let mut query_parts: Vec<String> = Vec::new();
-            for (key, value) in params {
-                let resolved_value = Self::resolve_template(value, context);
-                query_parts.push(format!(
-                    "{}={}",
-                    urlencoding::encode(key),
-                    urlencoding::encode(&resolved_value)
-                ));
-            }
-            if !query_parts.is_empty() {
-                let separator = if url.contains('?') { "&" } else { "?" };
-                url = format!("{}{}{}", url, separator, query_parts.join("&"));
-            }
-        }
+        let url = Self::resolve_template(base_url, context);
 
         // 验证 URL 安全性
         Self::validate_url_security(&url)?;
@@ -824,8 +799,6 @@ mod tests {
             access: TappApiAccess::Protected,
             api_type: "http".to_string(),
             endpoint: Some("https://example.com".to_string()),
-            url: None,
-            params: None,
             method: "GET".to_string(),
             headers: None,
             body: None,

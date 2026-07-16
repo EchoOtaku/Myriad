@@ -20,6 +20,10 @@ Tapp 不是把第三方脚本直接加载到 Myriad 页面中，而是：
 4. Tapp 只能通过 `postMessage` Bridge 调用宿主 SDK；
 5. Bridge 做前端权限预检，后端再次做身份、所有权、权限、速率、输入和出站安全校验。
 
+宿主写入 `srcdoc` 的 Manifest 元数据、Widget props、i18n 和启动参数必须使用 inline-script
+序列化器；Tapp JavaScript 源码必须转义 HTML 的 `</script` 终止序列。直接把字符串插入
+`<script>` 会让合法名称、设置值或代码静默截断整个沙箱。
+
 ```mermaid
 flowchart LR
   Store["远程商店 / .tapp / 直接安装"] --> Install["/api/tapps 安装与更新"]
@@ -126,8 +130,17 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
 4. 页面、Widget 或后台 Runner 按需要创建独立 iframe；
 5. iframe 销毁时清理 Bridge、事件、调度回调和 WebSocket 订阅。
 
+SDK 的 `lifecycle.onDestroy` 同时监听 `pagehide` 与 `beforeunload`，并以 once 语义执行；
+单个生命周期回调抛错不能阻断其他回调。宿主资源释放仍由 iframe 外部 cleanup 负责，不能把
+授权撤销或服务端取消只寄托在浏览器卸载回调上。
+
+存储批量读取使用 `storage.getAll` 对应的单次数据库查询；设置批量读取在宿主返回后只筛选
+`_settings.` 前缀，不能退回 `keys + N 次 get` 的跨 Bridge/HTTP 路径。
+
 停止会清除动态与 Manifest 后台需求并卸载 headless 实例。卸载还会清理资源缓存、
 Widget/平台内存注册和安装资源；是否保留用户数据由 `keep_data` 选项决定。
+同一 Tapp 的 start/stop 进入按 ID 串行的 transition 队列；多窗口并发打开、关闭或卸载时，
+不能重复启动，也不能因迟到的 start 覆盖用户随后发出的 stop。
 
 ## 后台 core
 
@@ -138,10 +151,10 @@ Widget/平台内存注册和安装资源；是否保留用户数据由 `keep_dat
 
 两类来源分别记录、读取时合并。`release` 只释放动态来源，不会误删 Manifest 声明。
 
-`widget` 需求不算“真实后台需求”，因为可见 Widget 已有自己的沙箱；只有同时存在
-`media`、`sync`、`notification`、`scheduler`、`event-listener` 或 `realtime` 等需求时，
-`TappBackgroundRunner` 才额外启动 headless core。这避免每个 Widget Tapp 多跑一份
-隐藏 iframe。
+可见 Widget 已有自己的沙箱，不属于后台需求。只有声明 `media`、`sync`、
+`notification`、`scheduler`、`event-listener` 或 `realtime` 时，
+`TappBackgroundRunner` 才额外启动 headless core；这避免每个 Widget Tapp 多跑一份
+隐藏 iframe，也避免记录永远不会触发运行器的无效 `widget` 状态。
 
 ## 沙箱与 Bridge
 
@@ -161,6 +174,12 @@ Widget/平台内存注册和安装资源；是否保留用户数据由 `keep_dat
 
 未知 action 默认拒绝。前端检查只用于快速失败和缩小攻击面，不能代替后端校验。
 
+Bridge 只接受 iframe 发往宿主的 `request`/`event`，宿主响应不走反向待办表。请求中的
+`action` 必须与 `payload.api + payload.method` 完全一致，method 允许
+`agent.v2.create`、`widget.instanceSettings.update` 这类命名空间；请求 ID 在单个 iframe
+会话内有界防重放。Full/Widget SDK 都把响应来源绑定到创建自己的父窗口，无法结构化克隆的
+参数会立即拒绝，不能挂到 30 秒超时。
+
 ### Runtime Grant
 
 Page、Widget 和 headless 每个实例启动时由宿主申请 5 分钟 Runtime Grant。令牌只保存在
@@ -176,10 +195,11 @@ Bridge 权限与 `connect-src 'none'` 隔离，后续会继续补服务端 Tapp 
 
 ### Page 与 Widget 的 handler 不对称
 
-Page 注册完整 handler 集合。Widget 为减少能力面和启动成本，只注册生命周期、UI、
-存储、文件、AI chat、平台/报告读取、上下文/声明 API、媒体、语音、动画、后台需求和
-调度等必要集合；平台与报告写 handler 不会进入 Widget。新增 SDK 方法时必须同时核对：
-SDK 生成器、权限映射、目标沙箱的 handler、后端路由/服务和文档。
+Page 注册完整 handler 集合。Widget 为减少能力面和启动成本，只注册生命周期、UI、用户
+角色、存储、文件、AI Task、平台/报告读取、上下文/声明 API、媒体、语音、动画、事件、
+一次性数据交换、Agent Interaction、后台需求和调度等必要集合；平台与报告写 handler
+不会进入 Widget。新增 SDK 方法时必须同时核对：SDK 生成器、权限映射、目标沙箱的
+handler、后端路由/服务和文档。
 
 ## 权限模型
 
@@ -226,6 +246,9 @@ sequenceDiagram
 
 - `frontend/src/tapp/runtime/TappScheduler.ts` 是共享的 HTTP/WS 客户端。
 - handler 首次使用 scheduler 时才初始化连接；不用调度的 Tapp 不会空开 WebSocket。
+- 同一 `tappId + taskId` 同时出现在 Page、Widget、headless 时只由最后挂载且仍存活的 runtime
+  执行；回调注册保存为栈，接管者卸载后恢复前一个实例，而不是把任务回调永久删除。
+- 收到执行推送但没有存活回调时立即向后端报告失败，不能让执行记录一直停在运行中。
 - `executionTarget=frontend` 依赖运行中的 Page/Widget/headless core 注册回调。
 - `executionTarget=backend|both` 必须声明并通过后端校验 `backendActions`。
 - global scope 仅管理员可注册；所有注册仍检查 Tapp 所有权和
@@ -251,8 +274,16 @@ sequenceDiagram
 
 - 商店弹窗及内置示例按需加载，不进入 Tapp 列表首屏包。
 - ResourceLoader 对 raw/Widget/Page/CSS 分层缓存，并对同 key 请求去重；安装、更新、
-  卸载后必须清理对应 Tapp 缓存。
+  卸载后必须清理对应 Tapp 缓存。普通 Widget 挂载、尺寸变化、storage 刷新不得清空资源
+  缓存；尺寸本身已经进入缓存键。
+- Widget HTML 与生成 CSS 都按 `tappId + widgetId + size` 缓存，不能只按尺寸复用；分离模式
+  的原生 styles 与生成/预编译 CSS 分开注入，不能把原生 styles 合并后再重复注入一次。
+  后端只要返回了分离 CSS（包括合法空文件）就视为权威产物；仅字段缺失时才在浏览器分析
+  源码生成 Tailwind CSS，不能用任意长度阈值否定已有产物。
+- 远程商店索引也按 URL 合并在途请求；商店源删除或刷新移除时同步清缓存并中止请求，
+  不能让已删除源的迟到响应重新写回内存。
 - TappRuntime 列表缓存 TTL 为 30 秒；启动同步使用批量详情接口，Widget 也按集合读取。
+  `waitForSync` 直接等待首次同步并明确抛出失败/超时，不得把失败标记成成功空状态。
 - 前端权限等级以 `permissionConfig.ts` 为单一注册表；Manifest 校验复用该表，不再维护第二份
   描述/等级副本。
 - `QuotaManager` 只保存平台读写与声明 API 的短期滑动窗口，未跟踪 action 不创建记录，
@@ -261,7 +292,15 @@ sequenceDiagram
 - 只有真实后台需求才创建 headless iframe；只有首次 scheduler 调用才连接 WS。
 - 仅订阅浏览器本地 `system.*` topic 的 runtime 不建立后端 Event SSE；混合或 Tapp topic
   订阅才连接共享 mailbox。
+- AI/Event/Federation 等长连接以具体 controller/socket 实例判定 cleanup；旧连接结束不能删除
+  同 ID 的新连接，closing/closed WS 也不能伪装成仍已订阅。
 - Widget 和 Page 使用不同资源与 handler 集，避免无关代码在每个实例重复执行。
+- iframe 重建使用代码、模板、CSS、Page 模块内容、顺序和 i18n 值的内容指纹，不能用字符串
+  长度或模块名代替；headless 指纹只包含 core/i18n，避免 Page UI 更新重启后台任务。
+- 标准页与多窗口入口必须传递同一份 `pageModuleOrder`；重试通过显式 generation 重新执行
+  加载，并取消旧路由的迟到状态写回。
+- Manifest、最终权限和用户角色使用独立运行契约指纹；同 ID 更新声明或授权后必须重建 SDK、
+  Bridge 与订阅 handler，不能因代码内容未变而继续运行旧权限面。
 - Widget 默认由 storage 变更或显式 `invalidate` 事件驱动刷新；可选 interval 仅在页面与
   Widget 可见时计时。Page、Widget、headless core 间的同 Tapp storage 变更由宿主广播。
 - Manifest 顶层 `settings` 是 Tapp 全局设置；`widgets[].settings` 保存到 Dashboard
@@ -271,24 +310,21 @@ sequenceDiagram
 查询管理员 Tapp 与当前用户 Tapp，并复用单项接口的角色权限过滤；同 ID 时管理员版本优先。
 前端不再执行列表后逐项详情读取的 N+1 请求。
 
-另一个现有契约限制是 Widget 模板内容在安装请求和资源响应中以“尺寸”为 key，而不是
-`widgetId + 尺寸`。因此同一 Tapp 的多个 Widget 不能把相同尺寸映射到不同模板；安装器
-会拒绝这种会在运行时覆盖的 Manifest。若要支持它，需要同步升级商店索引、安装请求、
-资源响应和 Widget 宿主选择逻辑，属于需要单独设计的版本化契约变更。
+Widget 模板在商店索引、安装请求和资源响应中统一按 `widgetId + 尺寸` 寻址，Widget
+宿主也使用当前 Widget ID 选择模板。因此同一 Tapp 的多个 Widget 可以为相同尺寸声明
+不同模板，不会在安装或运行时互相覆盖。
 
 Agent Interaction 由可信 Agent 后端创建具名 interaction，Tapp 通过在线 SSE 接收并由单一
 runtime 接受；输入与结果都按 Manifest schema 校验，生命周期、幂等和 intent 的宿主确认由
-后端状态机约束。旧 `onFill()` 只映射显式声明的 `legacy.fill`；无消费者的 `reportData()` 与
-`requestAction()` 已改为明确返回 `UNSUPPORTED_LEGACY_AGENT_ACTION`。当前结果会安全存储并可
-由 Tapp 查询。Executor 遇到 interaction 会持久化为 `waiting_for_input`；结果或拒绝由任意
+后端状态机约束。结果会安全存储并可由 Tapp 查询。Executor 遇到 interaction 会持久化为
+`waiting_for_input`；结果或拒绝由任意
 副本从 `agent_tasks` 恢复原任务。`ui.open`、`report.create` 与 `dataExchange.request` 有可信
 宿主 adapter，其中跨 Tapp 数据仍只显示 Data Exchange 的一张明细化一次性授权弹窗。
 
 Scoped Event Broker 使用 Manifest publish/subscribe allowlist 与 Runtime Grant 路由在线实例。
 `instance` 只协调当前 Tapp runtime，`owner` 可通知同一 subject 下明确订阅的其他在线 Tapp；
 交付语义固定为 at-most-once，无 ACK、重试或离线积压。跨 Tapp 的 owner payload 只允许 8 KiB
-浅层元数据并拒绝常见正文键，数据正文必须走 One-shot Data Exchange。旧订阅持久化端点返回
-410；旧 publish 仅保留 `target=self` 到 instance scope 的窄适配。guest subject 来自浏览器
+浅层元数据并拒绝常见正文键，数据正文必须走 One-shot Data Exchange。guest subject 来自浏览器
 持有的 HttpOnly HMAC 签名 session，不再由 IP 推导；游客仍按策略禁止 owner publish。
 带 dedupeKey 的投递通过 PostgreSQL advisory lock 将 mailbox 写入与去重记录放在同一事务，
 跨副本并发重试不会产生重复事件。
@@ -298,8 +334,8 @@ Scoped Event Broker 使用 Manifest publish/subscribe allowlist 与 Runtime Gran
 AI Task 将 generate/analyze/chat/image 统一为服务端任务，校验 Manifest operation、model tier、
 context source 与 output format，限制并发和执行/保留时间，并通过 SSE 返回 delta/progress/state。
 calls、tokens 与 cooldown 以 `(subject, owner, tapp, UTC day)` 持久化，调用前预留、完成时结算、
-失败或取消释放未消耗 token。旧接口仍保留已真实支持字段；过去被忽略的 options 现在返回
-`UNSUPPORTED_V1_OPTION`，不再接受后静默忽略。
+失败或取消释放未消耗 token。SDK 只公开 Task API，旧的 generate/analyze/chat/image 与配额
+适配入口已删除。
 
 当前 Tapp storage 按 `user_id + tapp_id` 隔离，单值上限 1 MiB，总量上限 5 MiB；写入在同一
 事务内加 subject/Tapp advisory lock、计算替换后的 JSONB 字节并 upsert，并发副本不能越过

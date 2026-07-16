@@ -375,8 +375,7 @@ struct RateLimitEntry {
 /// 获取操作的速率限制配置
 pub fn get_rate_limit_config(operation: &str) -> (u32, u64) {
     match operation {
-        "ai.generate" | "ai.analyze" | "ai.chat" => (20, 60),
-        "ai.image" => (20, 60),
+        "ai.task" => (20, 60),
         "platform.write" => (30, 60),
         "storage.set" | "storage.clear" => (100, 60),
         _ => (200, 60),
@@ -509,78 +508,6 @@ pub async fn get_rate_limit_status_for(
 pub async fn get_rate_limiter_active_count() -> usize {
     let limiter = TAPP_RATE_LIMITER.read().await;
     limiter.active_count()
-}
-
-// ============ 性能指标 ============
-
-/// API 调用指标
-pub struct ApiMetrics {
-    operations: HashMap<String, (u64, u64, u64)>,
-    last_reset: Instant,
-}
-
-impl ApiMetrics {
-    fn new() -> Self {
-        Self {
-            operations: HashMap::new(),
-            last_reset: Instant::now(),
-        }
-    }
-
-    pub fn record(&mut self, operation: &str, duration_ms: u64, is_error: bool) {
-        let entry = self
-            .operations
-            .entry(operation.to_string())
-            .or_insert((0, 0, 0));
-        entry.0 += 1;
-        entry.1 += duration_ms;
-        if is_error {
-            entry.2 += 1;
-        }
-    }
-
-    pub fn get_summary(&self) -> Value {
-        let uptime = self.last_reset.elapsed().as_secs();
-        let mut ops: Vec<Value> = self
-            .operations
-            .iter()
-            .map(|(op, (count, total_ms, errors))| {
-                json!({
-                    "operation": op,
-                    "count": count,
-                    "avgMs": if *count > 0 { total_ms / count } else { 0 },
-                    "errors": errors,
-                    "errorRate": if *count > 0 {
-                        format!("{:.2}%", (*errors as f64 / *count as f64) * 100.0)
-                    } else {
-                        "0%".to_string()
-                    }
-                })
-            })
-            .collect();
-        ops.sort_by(|a, b| {
-            b.get("count")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0)
-                .cmp(&a.get("count").and_then(|v| v.as_u64()).unwrap_or(0))
-        });
-        json!({ "uptimeSeconds": uptime, "operations": ops })
-    }
-
-    pub fn reset(&mut self) {
-        self.operations.clear();
-        self.last_reset = Instant::now();
-    }
-}
-
-/// 全局指标收集器
-pub static API_METRICS: Lazy<Arc<RwLock<ApiMetrics>>> =
-    Lazy::new(|| Arc::new(RwLock::new(ApiMetrics::new())));
-
-/// 记录 API 调用指标
-pub async fn record_metric(operation: &str, duration_ms: u64, is_error: bool) {
-    let mut metrics = API_METRICS.write().await;
-    metrics.record(operation, duration_ms, is_error);
 }
 
 // ============ 安全验证 ============

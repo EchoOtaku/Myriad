@@ -509,6 +509,7 @@ export const helloWorldTapp: ExampleTapp = {
     id: 'com.myriad.hello-world',
     name: 'Hello World',
     version: '1.0.0',
+    minSystemVersion: '0.2.1',
     description: '官方入门示例，展示 Tapp 核心功能。',
     main: 'index.js',
     author: {

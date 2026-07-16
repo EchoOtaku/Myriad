@@ -5164,6 +5164,7 @@ const manifest: TappManifest = {
   id: 'com.myriad.aro',
   name: 'Aro',
   version: '1.0.0',
+  minSystemVersion: '0.2.1',
   description: 'Aro — 社交中心，统一管理消息、时间线、环网和个人资料。',
   category: 'social',
   main: 'index.js',
