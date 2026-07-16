@@ -757,42 +757,96 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       // 🎯 Safari/WebKit Portal 模式
       // WebKit 存在合成层 bug：当 iframe 嵌套在含 opacity 动画、overflow:hidden 的祖先链中时，
       // iframe 内容无法被绘制到屏幕上。
-      // 解决方案：将 iframe 挂载到 body，使用 position:fixed + ResizeObserver 同步位置和尺寸。
-      // z-index 60：需高于全局 NavigationIsland（fixed z-50，移动端横在底部），
-      // 否则岛浮在 iframe 上、挡住 tapp 底部控制区的点击（按钮可见但点不到）
+      // 解决方案：将 iframe 挂载到 body，使用 position:fixed + 持续几何同步。
+      //
+      // z-index 70：
+      // - 高于 TappRunPage 壳层（z-60）与 NavigationIsland（z-50）
+      // - 低于控制面板/同意弹窗（998+/10050）
+      // 若与运行页同为 60，同层绘制顺序不稳定：壳层空 div 会抢走触摸，
+      // 表现为「偶尔能点、过一会儿完全无法操作」。
+      //
+      // 几何同步不能只靠 ResizeObserver + 2s 轮询：
+      // - RO 只对尺寸变化敏感，对 transform/地址栏伸缩/visualViewport 位移不触发
+      // - 动画结束后停止轮询 → iframe 与占位框错位 → 看得见点不中
       iframe.style.cssText =
-        'position:fixed;border:none;display:block;z-index:60;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;'
+        'position:fixed;border:none;display:block;z-index:70;overflow:hidden;border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;pointer-events:auto;'
+
+      // 占位容器本身不接收事件，避免与 portal iframe 叠层抢点击
+      container.style.pointerEvents = 'none'
 
       let lastRect = ''
-      const syncPosition = () => {
+      let rafId = 0
+      let syncScheduled = false
+
+      const applyRect = () => {
         if (!document.body.contains(iframe)) return
         const rect = container.getBoundingClientRect()
-        const key = `${rect.top},${rect.left},${rect.width},${rect.height}`
+        const width = Math.max(0, rect.width)
+        const height = Math.max(0, rect.height)
+        const key = `${rect.top.toFixed(2)},${rect.left.toFixed(2)},${width.toFixed(2)},${height.toFixed(2)}`
         if (key === lastRect) return
         lastRect = key
+
         iframe.style.top = `${rect.top}px`
         iframe.style.left = `${rect.left}px`
-        iframe.style.width = `${rect.width}px`
-        iframe.style.height = `${rect.height}px`
+        iframe.style.width = `${width}px`
+        iframe.style.height = `${height}px`
+
+        // 零尺寸时禁用命中，防止错位幽灵层吞掉全屏触摸
+        const interactive = width >= 1 && height >= 1
+        iframe.style.pointerEvents = interactive ? 'auto' : 'none'
+        iframe.style.visibility = interactive ? 'visible' : 'hidden'
       }
 
-      const resizeObserver = new ResizeObserver(syncPosition)
+      const syncPosition = () => {
+        syncScheduled = false
+        applyRect()
+      }
+
+      const scheduleSync = () => {
+        if (syncScheduled) return
+        syncScheduled = true
+        rafId = requestAnimationFrame(syncPosition)
+      }
+
+      const resizeObserver = new ResizeObserver(scheduleSync)
       resizeObserver.observe(container)
       if (container.parentElement) {
         resizeObserver.observe(container.parentElement)
       }
 
-      requestAnimationFrame(syncPosition)
-      const syncInterval = setInterval(syncPosition, 200)
-      const stopPolling = setTimeout(clearInterval, 2000, syncInterval)
+      // 地址栏显隐 / 软键盘 / 双指缩放：改的是 visualViewport，不是元素 offset
+      const vv = window.visualViewport
+      vv?.addEventListener('resize', scheduleSync)
+      vv?.addEventListener('scroll', scheduleSync)
+      window.addEventListener('resize', scheduleSync)
+      // capture：页面内任意滚动祖先变化时也能收到
+      window.addEventListener('scroll', scheduleSync, true)
+      window.addEventListener('orientationchange', scheduleSync)
+      document.addEventListener('visibilitychange', scheduleSync)
+
+      // 可见期间低频兜底：补 RO/viewport 事件漏掉的 transform 动画帧
+      const syncInterval = window.setInterval(() => {
+        if (typeof document !== 'undefined' && document.hidden) return
+        scheduleSync()
+      }, 500)
+
+      scheduleSync()
 
       document.body.appendChild(iframe)
       iframe.srcdoc = html
 
       cleanups.push(() => {
         resizeObserver.disconnect()
+        cancelAnimationFrame(rafId)
         clearInterval(syncInterval)
-        clearTimeout(stopPolling)
+        vv?.removeEventListener('resize', scheduleSync)
+        vv?.removeEventListener('scroll', scheduleSync)
+        window.removeEventListener('resize', scheduleSync)
+        window.removeEventListener('scroll', scheduleSync, true)
+        window.removeEventListener('orientationchange', scheduleSync)
+        document.removeEventListener('visibilitychange', scheduleSync)
+        container.style.pointerEvents = ''
         if (document.body.contains(iframe)) {
           document.body.removeChild(iframe)
         }

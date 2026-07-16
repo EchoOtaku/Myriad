@@ -68,14 +68,18 @@ html.dark .dynamic-island:hover {
   padding: 10px;
 }
 
+/* 折叠态过渡（历史 API，当前组件未使用 collapsed class）
+ * 注意：默认态不要写 transform，否则会与移动端内层横向滚动叠在同一
+ * 合成层上，加重滑动残影。transform 仅在真正折叠时施加。 */
+.dynamic-island > .nav-island-scroll,
 .dynamic-island > div:first-child {
   transition:
     opacity 0.3s ease,
     transform 0.3s ease;
   opacity: 1;
-  transform: scale(1);
 }
 
+.dynamic-island.collapsed > .nav-island-scroll,
 .dynamic-island.collapsed > div:first-child {
   opacity: 0;
   transform: scale(0.8);
@@ -286,6 +290,8 @@ html.dark [aria-current='page'].nav-item {
     max-width: calc(100vw - 2rem);
     display: flex;
     flex-direction: row;
+    /* 圆角裁剪与毛玻璃同层；滚动见 .nav-island-scroll（AppLayout.css） */
+    overflow: hidden;
   }
 
   .nav-separator {

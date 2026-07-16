@@ -976,7 +976,12 @@ export function NavigationIsland() {
       {...(immersiveMode && { 'aria-hidden': 'true' })}
     >
       <div className="dynamic-island">
-        <div className="flex flex-row md:flex-col items-center gap-1 relative">
+        {/*
+          nav-island-scroll：移动端横向滚动放在内层，外层 dynamic-island 只做
+          毛玻璃 + overflow:hidden。若把 overflow-x:auto 直接加在带
+          backdrop-filter 的岛上，二级菜单项较多时滑动会产生残影。
+        */}
+        <div className="nav-island-scroll flex flex-row md:flex-col items-center gap-1 relative">
           {currentRenderMode === 'secondary' && secondaryNav ? (
             /* 二级导航模式 */
             <div

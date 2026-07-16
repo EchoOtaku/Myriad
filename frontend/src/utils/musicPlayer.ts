@@ -1079,6 +1079,80 @@ export function highlightText(text: string, query: string): string {
 }
 
 /**
+ * 移动端是否应走原生 HTMLAudio 输出（不经 Web Audio 图）。
+ *
+ * createMediaElementSource 会把 <audio> 输出永久劫持到 AudioContext；
+ * 页面进后台时系统会 suspend AudioContext → 音乐静音/停止。
+ * iOS/Android 后台播放必须保留原生媒体通路 + Media Session。
+ */
+export function shouldPreserveNativeAudioOutput(): boolean {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') {
+    return false
+  }
+  const ua = navigator.userAgent || ''
+  // iPhone / iPod / 旧 iPad
+  if (/iPad|iPhone|iPod/.test(ua)) return true
+  // iPadOS 13+ 桌面 UA
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
+    return true
+  }
+  // 粗指针移动设备（多数 Android 手机）
+  try {
+    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
+      return true
+    }
+  } catch {
+    // matchMedia 不可用时按 UA 兜底
+  }
+  if (/Android/i.test(ua)) return true
+  return false
+}
+
+/**
+ * 创建适合移动端后台播放的 Audio 元素。
+ * - 挂入 DOM（部分 WebKit 对 detached Audio 后台限流更狠）
+ * - playsinline，避免被当成需全屏的媒体
+ */
+export function createPlaybackAudioElement(
+  volume: number = 1,
+): HTMLAudioElement {
+  const audio = new Audio()
+  audio.volume = volume
+  audio.preload = 'auto'
+  audio.setAttribute('playsinline', 'true')
+  audio.setAttribute('webkit-playsinline', 'true')
+  audio.setAttribute('data-myriad-audio', 'playback')
+  // 不可见但保留在文档树中，便于系统识别为页面媒体会话
+  Object.assign(audio.style, {
+    position: 'fixed',
+    width: '0',
+    height: '0',
+    opacity: '0',
+    pointerEvents: 'none',
+    zIndex: '-1',
+  })
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.appendChild(audio)
+  }
+  return audio
+}
+
+/** 销毁由 createPlaybackAudioElement 创建的音频元素 */
+export function destroyPlaybackAudioElement(
+  audio: HTMLAudioElement | null | undefined,
+): void {
+  if (!audio) return
+  try {
+    audio.pause()
+    audio.removeAttribute('src')
+    audio.load()
+    audio.remove()
+  } catch {
+    // 清理失败可忽略
+  }
+}
+
+/**
  * 全局音频管理器 - 确保同一时间只有一个音频在播放
  * 支持实时音频频谱分析
  */
@@ -1093,6 +1167,8 @@ class GlobalAudioManager {
   private sourceNode: MediaElementAudioSourceNode | null = null
   private connectedAudio: HTMLAudioElement | null = null // 追踪已连接的音频元素
   private frequencyData: Uint8Array | null = null
+  /** 一旦为 true，本会话内不再尝试把媒体元素接入 AudioContext */
+  private nativeOutputLocked = false
 
   private constructor() {}
 
@@ -1365,9 +1441,18 @@ class GlobalAudioManager {
   }
 
   /**
-   * 连接音频元素到分析器
+   * 连接音频元素到分析器。
+   *
+   * ⚠️ 移动端默认拒绝接入：MediaElementAudioSourceNode 会劫持原生输出，
+   * AudioContext 在页面后台被 suspend 后音乐无法继续，表现为「不能后台播放」。
+   * 桌面端可安全使用实时频谱；移动端 media.getSpectrum 返回静默（0）。
    */
   connectAudioToAnalyser(audio: HTMLAudioElement): boolean {
+    if (this.nativeOutputLocked || shouldPreserveNativeAudioOutput()) {
+      this.nativeOutputLocked = true
+      return false
+    }
+
     if (!this.initAudioContext() || !this.audioContext || !this.analyser) {
       return false
     }

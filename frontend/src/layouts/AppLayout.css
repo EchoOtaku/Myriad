@@ -26,33 +26,49 @@
   transition: none !important;
 }
 
-/* 移动端横向布局时调整宽度 */
+/* 移动端横向布局时调整宽度
+ *
+ * 残影修复：backdrop-filter 与 overflow 滚动不能落在同一元素上。
+ * 外层 .dynamic-island 只负责毛玻璃 + 圆角裁剪（overflow: hidden），
+ * 内层 .nav-island-scroll 承担横向滚动。资料库等二级菜单项较多时
+ * 再滑动就不会拖出毛玻璃残影。
+ */
 @media (width <= 767px) {
   .dynamic-island {
     width: auto;
     height: auto;
     min-height: 65px;
-
-    /* 移动端适配：允许横向滚动 */
     max-width: calc(100vw - 2rem);
-    overflow: auto hidden;
+
+    /* 仅裁剪，不滚动 — 避免 backdrop-filter 随 scroll 重采样 */
+    overflow: hidden;
+    display: flex;
+    justify-content: flex-start;
+
+    /* 独立合成层：毛玻璃静态贴在岛上，不与内部滚动层纠缠 */
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    isolation: isolate;
+  }
+
+  /* 内层滚动轨道：无 backdrop-filter，可安全横向滑动 */
+  .nav-island-scroll {
+    flex: 1 1 auto;
+    min-width: 0; /* flex 子项允许收缩，才能形成 scrollport */
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE 10+ */
-
-    /* 确保滚动容器有弹性 */
-    display: flex;
-    justify-content: flex-start; /* 内容靠左（开始）对齐，允许滚动 */
+    padding: 0 4px; /* 防止图标贴边 */
   }
 
-  .dynamic-island::-webkit-scrollbar {
+  .nav-island-scroll::-webkit-scrollbar {
     display: none; /* Chrome/Safari */
-  }
-
-  /* 确保内部容器宽度自适应内容 */
-  .dynamic-island > div {
-    width: max-content;
-    min-width: 100%;
-    padding: 0 4px; /* 增加一点内边距防止贴边 */
   }
 
   .nav-island-content {
@@ -117,7 +133,9 @@
   }
 }
 
-/* 导航项组 - 统一动画，快速流畅的回弹效果 */
+/* 导航项组 - 统一动画，快速流畅的回弹效果
+ * 桌面端保留 translateZ 以平滑进出场；移动端空闲态在下方 media 中取消，
+ * 避免横向滚动时每个图标各占合成层造成残影。 */
 .nav-group {
   opacity: 1;
   transform: scale(1) translateY(0) translateZ(0);
@@ -198,9 +216,13 @@
 
 /* --- 移动端覆盖：敏捷紧凑的节奏，水平方向 --- */
 @media (width <= 767px) {
-  /* 基础态改为 translateX，与移动端动画方向一致，确保插值路径正确 */
+  /*
+   * 空闲态不写 translateZ：常驻合成层会在横向滚动时留下图层残影。
+   * 仅在 data-animation 进出场期间使用 transform。
+   */
   .nav-group {
-    transform: scale(1) translateX(0) translateZ(0);
+    transform: none;
+    backface-visibility: visible;
   }
 
   .nav-group:not([data-animation]) {
@@ -210,14 +232,16 @@
   }
 
   .nav-group[data-animation='enter-initial'] {
-    transform: scale(0.92) translateX(6px) translateZ(0);
+    transform: scale(0.92) translateX(6px);
+    backface-visibility: hidden;
     transition:
       opacity 0.2s cubic-bezier(0.25, 1.2, 0.5, 1),
       transform 0.28s cubic-bezier(0.25, 1.2, 0.5, 1);
   }
 
   .nav-group[data-animation='exit'] {
-    transform: scale(0.92) translateX(-6px) translateZ(0);
+    transform: scale(0.92) translateX(-6px);
+    backface-visibility: hidden;
     transition:
       opacity 0.15s cubic-bezier(0.4, 0, 1, 1),
       transform 0.2s cubic-bezier(0.4, 0, 1, 1);

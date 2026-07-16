@@ -16,11 +16,14 @@ import { API_URL } from '../config'
 import { extractColorsFromImage } from '../utils/colorExtractor'
 import {
   audioManager,
+  createPlaybackAudioElement,
+  destroyPlaybackAudioElement,
   filterPlaylist,
   getCurrentLyricIndex,
   getLyricsWithVerbatim,
   getNeteasePlaylist,
   getQQPlaylist,
+  shouldPreserveNativeAudioOutput,
   throttle,
 } from '../utils/musicPlayer'
 import { loadResource } from '../utils/resourceLoader'
@@ -249,6 +252,17 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     originalSource: 'netease',
     originalPlaylistId: '',
   })
+
+  /**
+   * 用户播放意图（与 audio.paused 解耦）。
+   * 系统因切后台 pause 时不应清掉意图；用户点暂停 / 锁屏媒体键暂停时清掉。
+   * 用于页面回到前台时决定是否自动 resume。
+   */
+  const userWantsPlayingRef = useRef(false)
+  const isPlayingRef = useRef(false)
+  const currentSongRef = useRef<Song | null>(null)
+  isPlayingRef.current = isPlaying
+  currentSongRef.current = currentSong
 
   // 过滤后的播放列表
   const filteredPlaylist = useMemo(() => {
@@ -810,7 +824,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         audioManager.setCurrentAudio(audioRef.current, song)
 
         if (autoPlay) {
-          // 🔧 简化：延迟后尝试播放，状态由 audio 事件处理器同步
+          userWantsPlayingRef.current = true
+          // 延迟后尝试播放，状态由 audio 事件处理器同步
           setTimeout(async () => {
             try {
               await audioRef.current?.play()
@@ -819,11 +834,13 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
               audioManager.setPlaybackState('playing')
             } catch (_error) {
               // 播放失败
+              userWantsPlayingRef.current = false
               setIsPlaying(false)
               audioManager.setPlaybackState('paused')
             }
           }, 100)
         } else {
+          userWantsPlayingRef.current = false
           setIsPlaying(false)
           audioManager.setPlaybackState('paused')
         }
@@ -879,8 +896,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     (song: Song) => {
       // 确保音频元素已初始化
       if (!audioRef.current) {
-        audioRef.current = new Audio()
-        audioRef.current.volume = volume
+        audioRef.current = createPlaybackAudioElement(volume)
         audioManager.setCurrentAudio(audioRef.current, song)
       }
 
@@ -1024,10 +1040,12 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     if (!audioRef.current || !currentSong) return
 
     if (isPlaying) {
+      userWantsPlayingRef.current = false
       audioRef.current.pause()
       setIsPlaying(false)
       audioManager.setPlaybackState('paused')
     } else {
+      userWantsPlayingRef.current = true
       const maxRetries = 3
       let retries = 0
 
@@ -1046,6 +1064,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
             setMusicErrorKey('playFailed')
             setTimeout(setMusicErrorKey, 3000, '')
             setIsPlaying(false)
+            userWantsPlayingRef.current = false
           } else {
             await new Promise((resolve) => setTimeout(resolve, 1000 * retries))
           }
@@ -1228,8 +1247,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   // 初始化音频元素和事件监听
   useEffect(() => {
     if (!audioRef.current) {
-      audioRef.current = new Audio()
-      audioRef.current.volume = volume
+      // 使用挂入 DOM 的 Audio，提升移动端后台播放稳定性
+      audioRef.current = createPlaybackAudioElement(volume)
       audioManager.setCurrentAudio(audioRef.current, currentSong)
     }
 
@@ -1434,12 +1453,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
             audioRef.current.src = preloadAudioRef.current.src
             audioRef.current.volume = volume
             audioRef.current.load()
-            // 🔧 使用 async/await 确保播放成功后才更新状态
+            // 使用 async/await 确保播放成功后才更新状态
             try {
+              userWantsPlayingRef.current = true
               await audioRef.current.play()
               setIsPlaying(true)
               audioManager.setCurrentAudio(audioRef.current, nextSong)
             } catch {
+              userWantsPlayingRef.current = false
               setIsPlaying(false)
             }
           }
@@ -1495,26 +1516,38 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       }
     }
 
-    // 处理系统级暂停事件（移动端浏览器切后台时可能触发）
+    // 处理暂停事件（用户暂停 或 系统切后台强制 pause）
     const handlePause = () => {
       setIsPlaying(false)
       // 立即同步 globalState，避免进度 tick 读到旧 isPlaying 导致 tapp 状态闪烁
       const g = (window as any).__musicPlayerState
       if (g) g.isPlaying = false
-      audioManager.setPlaybackState('paused')
+
+      // 仅前台暂停视为用户意图；后台被系统掐断时保留 userWantsPlaying 以便回前台恢复
+      if (!document.hidden) {
+        userWantsPlayingRef.current = false
+        audioManager.setPlaybackState('paused')
+      } else if (userWantsPlayingRef.current) {
+        // 后台仍希望播放：媒体会话保持 playing，避免锁屏控件被打成暂停态
+        audioManager.setPlaybackState('playing')
+      } else {
+        audioManager.setPlaybackState('paused')
+      }
     }
 
-    // 处理系统级播放事件（从系统媒体控制恢复播放）
+    // 处理播放事件（UI / 系统媒体控制 / 自动恢复）
     const handlePlay = () => {
       setIsPlaying(true)
+      userWantsPlayingRef.current = true
       const g = (window as any).__musicPlayerState
       if (g) g.isPlaying = true
       audioManager.setPlaybackState('playing')
-      // 频谱分析中央接入点：play 事件必然发生在用户手势之后，此处 resume 安全。
-      // 之前仅首页频谱组件挂载时才接入 analyser，导致 Tapp 全屏（组件未挂载）时
-      // media.getSpectrum 恒返回 0。在此统一接入，使频谱对所有消费方（首页组件 / Tapp）可用。
-      audioManager.connectAudioToAnalyser(audio)
-      void audioManager.resumeAudioContext()
+      // 频谱：仅桌面接入 Web Audio。移动端 createMediaElementSource 会劫持输出，
+      // 进后台 AudioContext suspend 后无法后台播放（见 shouldPreserveNativeAudioOutput）。
+      if (!shouldPreserveNativeAudioOutput()) {
+        audioManager.connectAudioToAnalyser(audio)
+        void audioManager.resumeAudioContext()
+      }
     }
 
     audio.addEventListener('timeupdate', handleTimeUpdate)
@@ -1555,23 +1588,69 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     setPreloadedSongIndex(-1)
   }, [playlist])
 
-  // 移动端后台播放恢复 - 页面可见性变化时检查音频状态
-  // 🔧 简化逻辑：只处理 AudioContext 恢复，不自动恢复播放
-  // 用户通过系统媒体控制暂停后，不应该在页面恢复时自动播放
+  // 移动端后台播放：可见性变化时维持 Media Session，并在回前台时按用户意图恢复
   useEffect(() => {
     const handleVisibilityChange = async () => {
       const audio = audioRef.current
       if (!audio) return
 
-      if (!document.hidden) {
-        // 页面恢复到前台：只恢复 AudioContext（用于频谱分析）
+      if (document.hidden) {
+        // 进入后台：记下意图，刷新系统媒体会话位置
+        // 注意：此时浏览器可能尚未把 audio.paused 置 true
+        if (isPlayingRef.current || !audio.paused) {
+          userWantsPlayingRef.current = true
+        }
+
+        if (userWantsPlayingRef.current) {
+          audioManager.setPlaybackState('playing')
+          if (audio.duration && Number.isFinite(audio.duration)) {
+            audioManager.updatePositionState(
+              audio.duration,
+              audio.currentTime,
+              audio.playbackRate,
+            )
+          }
+          // 部分 Android 会在 hidden 时 pause：若仍有意图，尝试在后台立刻续播
+          // （需此前已有用户手势启动的播放会话；失败则静默，等回前台再试）
+          if (audio.paused) {
+            try {
+              await audio.play()
+            } catch {
+              // 后台 play 可能被拒，回前台时再恢复
+            }
+          }
+        }
+      } else {
+        // 回到前台：恢复 AudioContext（桌面频谱），按意图 resume
         await audioManager.resumeAudioContext()
 
-        // 🔧 同步播放状态到 React 状态（以音频元素实际状态为准）
-        // 不主动恢复播放，尊重用户的暂停操作
-        const actuallyPlaying = !audio.paused
-        setIsPlaying(actuallyPlaying)
-        audioManager.setPlaybackState(actuallyPlaying ? 'playing' : 'paused')
+        if (
+          userWantsPlayingRef.current &&
+          audio.paused &&
+          currentSongRef.current
+        ) {
+          try {
+            await audio.play()
+            setIsPlaying(true)
+            audioManager.setPlaybackState('playing')
+          } catch (error) {
+            console.warn(
+              'Failed to resume playback after visibility change:',
+              error,
+            )
+            setIsPlaying(false)
+            audioManager.setPlaybackState('paused')
+          }
+        } else {
+          const actuallyPlaying = !audio.paused
+          setIsPlaying(actuallyPlaying)
+          if (!actuallyPlaying) {
+            userWantsPlayingRef.current = false
+          }
+          audioManager.setPlaybackState(
+            actuallyPlaying ? 'playing' : 'paused',
+          )
+        }
       }
     }
 
@@ -1591,18 +1670,20 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     audioManager.setMediaSessionHandlers({
       play: async () => {
         if (audioRef.current) {
+          userWantsPlayingRef.current = true
           try {
             await audioRef.current.play()
-            // 状态由 handlePlay 事件同步，这里不需要额外设置
+            // 状态由 handlePlay 事件同步
           } catch {
-            // 播放失败，静默处理
+            userWantsPlayingRef.current = false
           }
         }
       },
       pause: () => {
+        // 锁屏/控制中心明确暂停 → 清除用户意图（勿被回前台逻辑误恢复）
+        userWantsPlayingRef.current = false
         if (audioRef.current) {
           audioRef.current.pause()
-          // 状态由 handlePause 事件同步，这里不需要额外设置
         }
       },
       previoustrack: () => playPreviousRef.current(),
@@ -1897,11 +1978,11 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       timeoutIdsRef.current.forEach(clearTimeout)
       timeoutIdsRef.current = []
 
+      userWantsPlayingRef.current = false
       audioManager.stopCurrentAudio()
 
       if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.src = ''
+        destroyPlaybackAudioElement(audioRef.current)
         audioRef.current = null
       }
 
