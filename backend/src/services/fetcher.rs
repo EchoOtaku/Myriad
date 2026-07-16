@@ -607,7 +607,6 @@ impl PlatformFetcher {
         Ok(all_repos)
     }
 
-
     /// 获取 GitHub 贡献日历数据（通过爬取用户页面）
     pub async fn fetch_github_contributions(
         &self,

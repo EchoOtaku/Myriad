@@ -554,12 +554,7 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
         for requirement in requirements {
             if !matches!(
                 requirement.as_str(),
-                "media"
-                    | "sync"
-                    | "notification"
-                    | "scheduler"
-                    | "event-listener"
-                    | "realtime"
+                "media" | "sync" | "notification" | "scheduler" | "event-listener" | "realtime"
             ) || !seen.insert(requirement.as_str())
             {
                 return Err(format!(

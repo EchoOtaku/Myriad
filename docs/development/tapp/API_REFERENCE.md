@@ -95,12 +95,15 @@ removeProvider(); // 不再提供时调用
 
 调用方必须在 Manifest 的 `imports` 中声明目标与 export：
 
-````javascript
+```javascript
 const playlist = await Tapp.dataExchange.request({
   targetTappId: "com.example.player",
   exportId: "playlist.current",
   params: { fields: ["title", "artist"] },
   purpose: "把当前播放列表加入周报",
+});
+```
+
 每次 `request()` 都会进入宿主授权队列，并显示一张结构化弹窗，列出调用方、提供方、数据
 名称、请求参数/字段范围、用途、返回上限和自动过期倒计时。弹窗默认聚焦“拒绝”，Escape、
 遮罩和关闭按钮都视为拒绝；多个请求按顺序逐项确认。首版不提供“始终允许”。用户拒绝、
@@ -125,7 +128,7 @@ await Tapp.settings.set("refreshInterval", 60);
 // 获取所有设置
 const allSettings = await Tapp.settings.getAll();
 // 返回: { refreshInterval: 60, showDetails: true, ... }
-````
+```
 
 `getAll()` 由宿主一次读取全部存储项后筛选 `_settings.` 前缀，不会产生逐 key 的 Bridge/HTTP
 请求。
@@ -337,6 +340,8 @@ stop();
 ```
 
 任务绑定当前 Tapp/subject/owner，最多并发 4 个，125 秒执行上限，终态保留 15 分钟。
+并发/保留上限和 `idempotencyKey` 在跨副本事务中原子判定；同一身份重复提交相同请求只返回
+原任务，不会重复调用模型或重复计费。
 `platform`、`report` 上下文还需对应读取权限；跨 Tapp 上下文不能由 AI 接口静默获取，必须
 先走 One-shot Data Exchange。结构化 JSON 输出会在后端解析并验证 inline schema。
 
@@ -356,6 +361,8 @@ const off = Tapp.agent.onInteraction("report.compose", async (interaction) => {
 结果提交默认使用基于 interactionId 的幂等键，提交后恢复原 Agent task。`requestIntent()`
 经后端授权后由 `ui.open`、`report.create` 或 `dataExchange.request` 宿主 adapter 执行；跨
 Tapp 数据读取只显示 Data Exchange 自己的一张明细化一次性授权弹窗。
+到期不是简单删除：共享过期 worker 会以 CAS 转为 `expired`，并让原 Executor 从持久化任务
+恢复，避免任务永久停在等待状态。
 
 ---
 

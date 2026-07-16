@@ -208,7 +208,6 @@ impl IconService {
 
         Ok(())
     }
-
 }
 
 impl Default for IconService {

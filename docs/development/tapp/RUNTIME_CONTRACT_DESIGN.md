@@ -235,6 +235,12 @@ await interaction.requestIntent({
   授权后，立即调用受信宿主 adapter 执行 `ui.open`、`report.create` 或
   `dataExchange.request`，不会把任意动作执行权交还给 Tapp。
 - 每个消息都携带 `interactionId`，重复提交以幂等键去重；超时或取消后拒绝迟到结果。
+- 5 分钟 deadline 到达后由共享 CAS worker 转为 `expired` 并恢复原 Executor；registry 记录继续
+  保留终态观察窗口，不能通过直接 TTL 删除让 Agent task 卡在 `waiting_for_input`。
+- Executor continuation 通过 `agent_tasks` 的 `waiting_for_input -> running` CAS 取得唯一执行权；
+  原 run hub 周期刷新权威数据库，使跨副本 result 在数秒内收敛且按真实终态上报。
+- Agent task 取消写入同一权威状态，并在步骤边界与最终提交前复核；接收取消请求的副本不必是
+  实际执行副本，已取消任务不能被迟到完成覆盖。
 - Interaction 记录只保存结构化元数据和最终结果引用，敏感大对象进入受权限保护的存储。
 - Agent 只能选择 Tapp 已声明且已安装的 interaction type；Tapp 不能伪造 Agent task。
 
@@ -363,6 +369,10 @@ Manifest 只声明能力与预算层级，不暴露供应商参数：
 - 每分钟速率、每日 calls、每日 tokens、并发数和 cooldown 全部服务端执行；图片任务计入
   calls，但首版尚未维护独立货币成本账本。
   前端只显示服务端状态和快速提示，不再维护另一套计费事实。
+- 通用每分钟速率窗口保存在 PostgreSQL TTL registry，并按 subject、Tapp、operation 使用事务
+  advisory lock 原子递增；所有副本与指标端点读取同一计数，数据库故障时受限操作 fail closed。
+- AI task 的并发/保留计数与 idempotency claim 在 subject advisory-lock 事务内完成；只有注册
+  成功的请求才保留 quota 预留并启动 provider，注册竞态或故障完整回滚 calls/tokens。
 - `temperature/maxTokens` 不由 Tapp 任意指定。若产品需要可调，只提供服务器定义的
   `quality = fast | balanced | high`，并映射到受限参数。
 - 上下文按引用解析并记录 provenance，每类来源有独立字节预算；Tapp 不能把“读取所有
@@ -385,7 +395,8 @@ Manifest 只声明能力与预算层级，不暴露供应商参数：
 状态机、上下文/输出校验和 SSE；4 已完成在线 at-most-once 路由与 Manifest allowlist；5 已完成
 interaction schema、CAS 接受/提交/拒绝状态机、Executor 恢复以及
 `ui.open`、`report.create`、`dataExchange.request` 宿主 adapter。在线状态使用 PostgreSQL
-TTL registry、durable mailbox 与 `pg_notify` 提示。第 6 步已完成：Agent 旧方法、Event V1
+TTL registry、durable mailbox 与 `pg_notify` 提示；Agent run 的最近 256 个 SSE 事件同样写入
+共享 TTL registry，可跨副本重新订阅并补读。第 6 步已完成：Agent 旧方法、Event V1
 适配与 AI V1 端点均已删除。
 
 每一阶段都应同时交付 Rust/TypeScript 类型、Manifest round-trip、权限矩阵、端到端测试和

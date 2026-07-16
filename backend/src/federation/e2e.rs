@@ -437,8 +437,7 @@ pub fn encrypt_for_recipients(
     // 3) 为每个收件人 ECDH-wrap content_key
     let mut key_wraps = Vec::with_capacity(recipients.len());
     for (hint, rpk_b64) in recipients {
-        validate_public_key_b64(rpk_b64)
-            .map_err(|e| format!("recipient {hint}: {e}"))?;
+        validate_public_key_b64(rpk_b64).map_err(|e| format!("recipient {hint}: {e}"))?;
 
         // 每次 wrap 用独立临时密钥
         let eph = generate_keypair();
@@ -546,12 +545,7 @@ pub fn decrypt_json_for_recipient(
 ) -> Result<serde_json::Value, String> {
     let envelope: MultiRecipientEnvelope = serde_json::from_value(encrypted_payload.clone())
         .map_err(|e| format!("multi envelope parse: {e}"))?;
-    let plain = decrypt_for_recipient(
-        &envelope,
-        local_private_key_b64,
-        local_public_key_b64,
-        aad,
-    )?;
+    let plain = decrypt_for_recipient(&envelope, local_private_key_b64, local_public_key_b64, aad)?;
     serde_json::from_slice(&plain).map_err(|e| format!("plaintext json parse: {e}"))
 }
 
@@ -668,11 +662,7 @@ mod tests {
         let plain = serde_json::json!({"text": "room secret", "n": 7});
         let env = encrypt_json_for_recipients(&plain, aad, &recipients).unwrap();
 
-        for (name, kp) in [
-            ("alice", &alice),
-            ("bob", &bob),
-            ("carol", &carol),
-        ] {
+        for (name, kp) in [("alice", &alice), ("bob", &bob), ("carol", &carol)] {
             let got = decrypt_json_for_recipient(&env, &kp.private_key, &kp.public_key, aad)
                 .unwrap_or_else(|e| panic!("{name} decrypt failed: {e}"));
             assert_eq!(got, plain, "{name} should recover plaintext");
@@ -680,8 +670,6 @@ mod tests {
 
         // outsider cannot decrypt
         let eve = generate_keypair();
-        assert!(
-            decrypt_json_for_recipient(&env, &eve.private_key, &eve.public_key, aad).is_err()
-        );
+        assert!(decrypt_json_for_recipient(&env, &eve.private_key, &eve.public_key, aad).is_err());
     }
 }

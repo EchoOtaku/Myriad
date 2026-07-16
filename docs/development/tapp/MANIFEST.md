@@ -83,7 +83,7 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
   "backgroundRequirements": ["scheduler", "sync"],
   "homepage": "https://example.com",
   "repository": "https://github.com/example/my-tapp",
-  "minSystemVersion": "0.2.0",
+  "minSystemVersion": "0.2.1",
   "apis": {
     "weather": {
       "type": "http",

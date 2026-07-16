@@ -10,7 +10,7 @@ use axum::{
 };
 use chrono::Utc;
 use futures::Stream;
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -114,6 +114,7 @@ struct StoredInteraction {
     result_schema: Option<Value>,
     intents: Vec<String>,
     result_idempotency_key: Option<String>,
+    deadline_at: i64,
     retain_until: i64,
 }
 
@@ -165,7 +166,7 @@ fn parse_agent_manifest(manifest: &Value) -> Result<TappAgentManifest, ApiError>
         })
 }
 
-async fn load_interaction(
+async fn load_interaction_raw(
     db: &DatabaseConnection,
     interaction_id: &str,
 ) -> Result<StoredInteraction, ApiError> {
@@ -187,23 +188,90 @@ async fn load_interaction(
         })
 }
 
-async fn save_interaction(
+async fn expire_interaction_if_due(
     db: &DatabaseConnection,
     interaction: &StoredInteraction,
-) -> Result<(), ApiError> {
-    shared_registry::put(
-        db,
-        INTERACTION_NAMESPACE,
-        &interaction.snapshot.interaction_id,
-        RegistryIdentity {
-            subject_id: Some(interaction.subject_id),
-            owner_id: Some(interaction.owner_id),
-            tapp_id: Some(&interaction.snapshot.tapp_id),
-            runtime_id: interaction.accepted_runtime_id.as_deref(),
-        },
-        interaction,
-        interaction.retain_until,
-    )
+) -> Result<Option<StoredInteraction>, ApiError> {
+    if interaction.snapshot.state.terminal() || interaction.deadline_at > Utc::now().timestamp() {
+        return Ok(None);
+    }
+
+    let mut expired = interaction.clone();
+    expired.snapshot.state = InteractionState::Expired;
+    expired.snapshot.rejection_reason = Some("Agent interaction expired".to_string());
+    expired.snapshot.updated_at = Utc::now().to_rfc3339();
+    expired.retain_until = Utc::now().timestamp() + TERMINAL_RETENTION_SECONDS;
+    let payload = serde_json::to_value(&expired).map_err(|_| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "AGENT_INTERACTION_SERIALIZATION_FAILED",
+            "Agent interaction could not be serialized",
+        )
+    })?;
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE tapp_runtime_registry
+SET payload = $1, expires_at = $2, updated_at = NOW()
+WHERE namespace = $3 AND record_id = $4
+  AND payload #>> '{snapshot,state}' IN ('pending', 'accepted')
+  AND (payload ->> 'deadline_at')::BIGINT <= EXTRACT(EPOCH FROM NOW())::BIGINT
+"#,
+            vec![
+                payload.into(),
+                expired.retain_until.into(),
+                INTERACTION_NAMESPACE.into(),
+                expired.snapshot.interaction_id.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(|_| {
+            api_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "AGENT_REGISTRY_UNAVAILABLE",
+                "Agent interaction registry is unavailable",
+            )
+        })?;
+    if result.rows_affected() == 0 {
+        return Ok(None);
+    }
+    resume_agent_task(db, &expired).await;
+    Ok(Some(expired))
+}
+
+async fn load_interaction(
+    db: &DatabaseConnection,
+    interaction_id: &str,
+) -> Result<StoredInteraction, ApiError> {
+    let interaction = load_interaction_raw(db, interaction_id).await?;
+    if let Some(expired) = expire_interaction_if_due(db, &interaction).await? {
+        return Ok(expired);
+    }
+    // A different replica may have won the expiry CAS. Reload so this request
+    // never acts on the stale pending/accepted snapshot.
+    if !interaction.snapshot.state.terminal() && interaction.deadline_at <= Utc::now().timestamp() {
+        return load_interaction_raw(db, interaction_id).await;
+    }
+    Ok(interaction)
+}
+
+async fn expire_due_interactions(db: &DatabaseConnection) -> Result<usize, ApiError> {
+    let rows = shared_registry::RegistryRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+SELECT record_id, runtime_id, payload
+FROM tapp_runtime_registry
+WHERE namespace = $1
+  AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT
+  AND payload #>> '{snapshot,state}' IN ('pending', 'accepted')
+  AND (payload ->> 'deadline_at')::BIGINT <= EXTRACT(EPOCH FROM NOW())::BIGINT
+ORDER BY updated_at ASC
+LIMIT 128
+"#,
+        vec![INTERACTION_NAMESPACE.into()],
+    ))
+    .all(db)
     .await
     .map_err(|_| {
         api_error(
@@ -211,7 +279,43 @@ async fn save_interaction(
             "AGENT_REGISTRY_UNAVAILABLE",
             "Agent interaction registry is unavailable",
         )
-    })
+    })?;
+    let mut expired = 0usize;
+    for row in rows {
+        let Ok(interaction) = serde_json::from_value::<StoredInteraction>(row.payload) else {
+            tracing::warn!(
+                interaction_id = %row.record_id,
+                "[TAPP] Ignoring invalid Agent interaction registry payload"
+            );
+            continue;
+        };
+        if expire_interaction_if_due(db, &interaction).await?.is_some() {
+            expired += 1;
+        }
+    }
+    Ok(expired)
+}
+
+/// Start one local sweeper. PostgreSQL CAS makes it safe for every backend
+/// replica to run the worker; only the winner resumes a given Agent task.
+pub fn spawn_agent_interaction_expiry_worker(db: DatabaseConnection) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            match expire_due_interactions(&db).await {
+                Ok(count) if count > 0 => {
+                    tracing::info!(count, "[TAPP] Expired Agent interactions resumed")
+                }
+                Ok(_) => {}
+                Err((_, body)) => tracing::warn!(
+                    error = %body.0["error"].as_str().unwrap_or("registry unavailable"),
+                    "[TAPP] Agent interaction expiry sweep failed"
+                ),
+            }
+        }
+    });
 }
 
 async fn conditional_save_interaction(
@@ -235,6 +339,7 @@ UPDATE tapp_runtime_registry
 SET payload = $1, runtime_id = $2, expires_at = $3, updated_at = NOW()
 WHERE namespace = $4 AND record_id = $5
   AND subject_id = $6 AND owner_id = $7 AND tapp_id = $8
+  AND (payload ->> 'deadline_at')::BIGINT > EXTRACT(EPOCH FROM NOW())::BIGINT
   AND (
     ($10::BOOLEAN AND payload #>> '{snapshot,state}' = 'pending')
     OR (
@@ -500,6 +605,7 @@ pub async fn create_agent_interaction_internal(
         })?;
 
     let now = Utc::now();
+    let deadline_at = now.timestamp() + INTERACTION_TTL_SECONDS;
     let snapshot = AgentInteractionSnapshot {
         version: 2,
         interaction_id: format!("agi_{}", Uuid::new_v4().simple()),
@@ -519,12 +625,6 @@ pub async fn create_agent_interaction_internal(
         result: None,
         rejection_reason: None,
     };
-    let active = shared_registry::list(db, INTERACTION_NAMESPACE, Some(subject_id), None)
-        .await
-        .map_err(|error| format!("Agent interaction registry unavailable: {error}"))?;
-    if active.len() >= MAX_INTERACTIONS_PER_SUBJECT {
-        return Err("Too many retained Agent interactions".to_string());
-    }
     let stored = StoredInteraction {
         subject_id,
         owner_id: tapp.user_id,
@@ -533,14 +633,30 @@ pub async fn create_agent_interaction_internal(
         result_schema,
         intents: manifest.intents,
         result_idempotency_key: None,
-        retain_until: now.timestamp() + INTERACTION_TTL_SECONDS,
+        deadline_at,
+        // Keep non-terminal rows beyond their action deadline so the expiry
+        // worker can transition them and resume the waiting Agent task.
+        retain_until: deadline_at + TERMINAL_RETENTION_SECONDS,
     };
-    save_interaction(db, &stored).await.map_err(|(_, body)| {
-        body.0["error"]
-            .as_str()
-            .unwrap_or("registry error")
-            .to_string()
-    })?;
+    let inserted = shared_registry::put_with_subject_limit(
+        db,
+        INTERACTION_NAMESPACE,
+        &stored.snapshot.interaction_id,
+        RegistryIdentity {
+            subject_id: Some(stored.subject_id),
+            owner_id: Some(stored.owner_id),
+            tapp_id: Some(&stored.snapshot.tapp_id),
+            runtime_id: None,
+        },
+        &stored,
+        stored.retain_until,
+        MAX_INTERACTIONS_PER_SUBJECT,
+    )
+    .await
+    .map_err(|error| format!("Agent interaction registry unavailable: {error}"))?;
+    if !inserted {
+        return Err("Too many retained Agent interactions".to_string());
+    }
     notify_pending(db, &snapshot, subject_id, tapp.user_id)
         .await
         .map_err(|(_, body)| {
@@ -705,29 +821,49 @@ pub async fn submit_agent_interaction_result(
             "Agent interaction result was already finalized",
         ));
     }
-    resume_agent_task(&db, &interaction, false).await;
+    resume_agent_task(&db, &interaction).await;
     Ok(Json(interaction.snapshot))
 }
 
-async fn resume_agent_task(
-    db: &DatabaseConnection,
-    interaction: &StoredInteraction,
-    rejected: bool,
-) {
+async fn resume_agent_task(db: &DatabaseConnection, interaction: &StoredInteraction) {
     let Some(task_id) = interaction.snapshot.source.task_id.clone() else {
         return;
     };
     let question_id = format!("tapp_interaction:{}", interaction.snapshot.interaction_id);
-    let answer_value = if rejected {
-        json!({
-            "state": "rejected",
-            "reason": interaction.snapshot.rejection_reason,
-        })
-    } else {
-        json!({
-            "state": "completed",
-            "result": interaction.snapshot.result,
-        })
+    let (state, skipped, answer_value) = match interaction.snapshot.state {
+        InteractionState::Completed => (
+            "completed",
+            false,
+            json!({
+                "state": "completed",
+                "result": interaction.snapshot.result,
+            }),
+        ),
+        InteractionState::Rejected => (
+            "rejected",
+            true,
+            json!({
+                "state": "rejected",
+                "reason": interaction.snapshot.rejection_reason,
+            }),
+        ),
+        InteractionState::Expired => (
+            "expired",
+            true,
+            json!({
+                "state": "expired",
+                "reason": interaction.snapshot.rejection_reason,
+            }),
+        ),
+        InteractionState::Cancelled => (
+            "cancelled",
+            true,
+            json!({
+                "state": "cancelled",
+                "reason": interaction.snapshot.rejection_reason,
+            }),
+        ),
+        _ => return,
     };
     let user_id = interaction.subject_id;
     let db = db.clone();
@@ -737,10 +873,10 @@ async fn resume_agent_task(
             question_id,
             task_id: task_id.clone(),
             answer: answer_value.to_string(),
-            skipped: rejected,
+            skipped,
         };
         if let Err(error) = agent.resume_task(&task_id, answer, user_id).await {
-            tracing::error!(%task_id, %error, "[TAPP] Failed to resume Agent task from interaction");
+            tracing::error!(%task_id, interaction_state = state, %error, "[TAPP] Failed to resume Agent task from interaction");
         }
     });
 }
@@ -788,7 +924,7 @@ pub async fn reject_agent_interaction(
             "Agent interaction was already finalized",
         ));
     }
-    resume_agent_task(&db, &interaction, true).await;
+    resume_agent_task(&db, &interaction).await;
     Ok(Json(interaction.snapshot))
 }
 
@@ -999,7 +1135,7 @@ pub(super) async fn disconnect_runtime_interactions(runtime_id: &str) -> bool {
             .await
             .unwrap_or(false)
         {
-            resume_agent_task(&db, &interaction, true).await;
+            resume_agent_task(&db, &interaction).await;
         }
     }
     disconnected

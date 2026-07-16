@@ -15,7 +15,10 @@ use axum::{
 use chrono::Utc;
 use futures::Stream;
 use once_cell::sync::Lazy;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, EntityTrait,
+    FromQueryResult, QueryFilter, Statement, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -37,8 +40,8 @@ use crate::{
 
 use super::{
     ai_quota::{
-        get_ai_usage, release_ai_token_reservation, reserve_ai_quota, settle_ai_quota,
-        AiQuotaReservation, AiUsageSnapshot,
+        get_ai_usage, release_ai_token_reservation, reserve_ai_quota,
+        rollback_ai_quota_reservation, settle_ai_quota, AiQuotaReservation, AiUsageSnapshot,
     },
     common::{
         authorize_tapp_permission, check_rate_limit, current_tapp_user_role,
@@ -213,6 +216,127 @@ impl PersistedAiTask {
             retain_until: task.retain_until,
         }
     }
+}
+
+enum AiTaskRegistration {
+    Inserted,
+    Existing(Box<AiTaskSnapshot>),
+    IdempotencyConflict,
+    LimitReached,
+}
+
+fn task_id_for_request(
+    subject_id: i32,
+    owner_id: i32,
+    tapp_id: &str,
+    idempotency_key: Option<&str>,
+) -> String {
+    let Some(idempotency_key) = idempotency_key else {
+        return format!("ait_{}", Uuid::new_v4().simple());
+    };
+    let mut digest = Sha256::new();
+    digest.update(subject_id.to_be_bytes());
+    digest.update(owner_id.to_be_bytes());
+    digest.update(tapp_id.as_bytes());
+    digest.update([0]);
+    digest.update(idempotency_key.as_bytes());
+    format!("ait_{}", hex::encode(digest.finalize()))
+}
+
+/// Final cross-replica registration gate. Fast preflight checks may reject
+/// obvious overload earlier, but only this transaction is authoritative.
+async fn register_ai_task_atomically(
+    db: &DatabaseConnection,
+    task: &PersistedAiTask,
+) -> Result<AiTaskRegistration, DbErr> {
+    #[derive(FromQueryResult)]
+    struct PayloadRow {
+        payload: Value,
+    }
+
+    let transaction = db.begin().await?;
+    let lock_key = format!("tapp_ai_task:{}", task.subject_id);
+    transaction
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            vec![lock_key.into()],
+        ))
+        .await?;
+    transaction
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM tapp_runtime_registry WHERE namespace = $1 AND subject_id = $2 AND expires_at <= EXTRACT(EPOCH FROM NOW())::BIGINT",
+            vec![AI_TASK_NAMESPACE.into(), task.subject_id.into()],
+        ))
+        .await?;
+    let tasks = PayloadRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT payload FROM tapp_runtime_registry WHERE namespace = $1 AND subject_id = $2 AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT ORDER BY updated_at ASC",
+        vec![AI_TASK_NAMESPACE.into(), task.subject_id.into()],
+    ))
+    .all(&transaction)
+    .await?
+    .into_iter()
+    .filter_map(|row| serde_json::from_value::<PersistedAiTask>(row.payload).ok())
+    .collect::<Vec<_>>();
+
+    if let Some(key) = task.idempotency_key.as_deref() {
+        if let Some(existing) = tasks.iter().find(|existing| {
+            existing.owner_id == task.owner_id
+                && existing.tapp_id == task.tapp_id
+                && existing.idempotency_key.as_deref() == Some(key)
+        }) {
+            let outcome = if existing.request_hash == task.request_hash {
+                AiTaskRegistration::Existing(Box::new(existing.snapshot.clone()))
+            } else {
+                AiTaskRegistration::IdempotencyConflict
+            };
+            transaction.rollback().await?;
+            return Ok(outcome);
+        }
+    }
+
+    let active = tasks
+        .iter()
+        .filter(|existing| !existing.snapshot.status.terminal())
+        .count();
+    if active >= MAX_ACTIVE_TASKS_PER_SUBJECT || tasks.len() >= MAX_RETAINED_TASKS_PER_SUBJECT {
+        transaction.rollback().await?;
+        return Ok(AiTaskRegistration::LimitReached);
+    }
+
+    let payload = serde_json::to_value(task).map_err(|error| DbErr::Json(error.to_string()))?;
+    let inserted = transaction
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO tapp_runtime_registry
+    (namespace, record_id, subject_id, owner_id, tapp_id, runtime_id, payload, expires_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+ON CONFLICT (namespace, record_id) DO NOTHING
+"#,
+            vec![
+                AI_TASK_NAMESPACE.into(),
+                task.snapshot.task_id.clone().into(),
+                task.subject_id.into(),
+                task.owner_id.into(),
+                task.tapp_id.clone().into(),
+                task.runtime_id.clone().into(),
+                payload.into(),
+                task.retain_until.into(),
+            ],
+        ))
+        .await?
+        .rows_affected();
+    if inserted != 1 {
+        transaction.rollback().await?;
+        return Err(DbErr::Custom(
+            "AI task registry ID collision without matching idempotency record".to_string(),
+        ));
+    }
+    transaction.commit().await?;
+    Ok(AiTaskRegistration::Inserted)
 }
 
 async fn persist_ai_task(
@@ -1400,7 +1524,12 @@ pub async fn create_ai_task(
     )
     .await?;
 
-    let task_id = format!("ait_{}", Uuid::new_v4().simple());
+    let task_id = task_id_for_request(
+        runtime.subject_id(),
+        runtime.owner_id(),
+        runtime.tapp_id(),
+        request.idempotency_key.as_deref(),
+    );
     let now = Utc::now().to_rfc3339();
     let snapshot = AiTaskSnapshot {
         task_id: task_id.clone(),
@@ -1426,14 +1555,46 @@ pub async fn create_ai_task(
         retain_until: Utc::now().timestamp() + TASK_RETENTION_SECONDS,
     };
     let persisted = PersistedAiTask::from_local(&stored);
-    if let Err(error) = persist_ai_task(&db, &persisted).await {
-        let _ = release_ai_token_reservation(&db, &reservation).await;
-        tracing::error!(%error, task_id = %task_id, "[TAPP] Failed to register AI task");
-        return Err(api_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "AI_TASK_REGISTRY_UNAVAILABLE",
-            "AI task registry is unavailable",
-        ));
+    let registration = register_ai_task_atomically(&db, &persisted).await;
+    match registration {
+        Ok(AiTaskRegistration::Inserted) => {}
+        Ok(AiTaskRegistration::Existing(existing)) => {
+            if let Err(error) = rollback_ai_quota_reservation(&db, &reservation).await {
+                tracing::error!(?error, task_id = %task_id, "[TAPP] Failed to roll back duplicate AI task quota");
+            }
+            return Ok((StatusCode::OK, Json(*existing)));
+        }
+        Ok(AiTaskRegistration::IdempotencyConflict) => {
+            if let Err(error) = rollback_ai_quota_reservation(&db, &reservation).await {
+                tracing::error!(?error, task_id = %task_id, "[TAPP] Failed to roll back conflicting AI task quota");
+            }
+            return Err(api_error(
+                StatusCode::CONFLICT,
+                "IDEMPOTENCY_KEY_REUSED",
+                "idempotencyKey was already used for a different AI task",
+            ));
+        }
+        Ok(AiTaskRegistration::LimitReached) => {
+            if let Err(error) = rollback_ai_quota_reservation(&db, &reservation).await {
+                tracing::error!(?error, task_id = %task_id, "[TAPP] Failed to roll back limited AI task quota");
+            }
+            return Err(api_error(
+                StatusCode::TOO_MANY_REQUESTS,
+                "AI_TASK_CONCURRENCY_LIMIT",
+                "Too many active or retained AI tasks",
+            ));
+        }
+        Err(error) => {
+            if let Err(rollback_error) = rollback_ai_quota_reservation(&db, &reservation).await {
+                tracing::error!(?rollback_error, task_id = %task_id, "[TAPP] Failed to roll back unregistered AI task quota");
+            }
+            tracing::error!(%error, task_id = %task_id, "[TAPP] Failed to register AI task");
+            return Err(api_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "AI_TASK_REGISTRY_UNAVAILABLE",
+                "AI task registry is unavailable",
+            ));
+        }
     }
     AI_TASKS.write().await.insert(task_id.clone(), stored);
 
@@ -1644,7 +1805,7 @@ pub async fn ai_usage(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_operation_prompt, validate_idempotency_key};
+    use super::{build_operation_prompt, task_id_for_request, validate_idempotency_key};
     use crate::api::tapp_store::TappAiOperation;
     use serde_json::json;
 
@@ -1662,5 +1823,26 @@ mod tests {
             &json!({ "messages": [{ "role": "tool", "content": "secret" }] }),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn idempotent_task_ids_are_stable_and_identity_scoped() {
+        let first = task_id_for_request(7, 1, "com.example.app", Some("daily"));
+        assert_eq!(
+            first,
+            task_id_for_request(7, 1, "com.example.app", Some("daily"))
+        );
+        assert_ne!(
+            first,
+            task_id_for_request(8, 1, "com.example.app", Some("daily"))
+        );
+        assert_ne!(
+            first,
+            task_id_for_request(7, 2, "com.example.app", Some("daily"))
+        );
+        assert_ne!(
+            task_id_for_request(7, 1, "com.example.app", None),
+            task_id_for_request(7, 1, "com.example.app", None)
+        );
     }
 }

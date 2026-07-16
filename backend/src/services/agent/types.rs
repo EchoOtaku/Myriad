@@ -1485,7 +1485,7 @@ impl QuestionOption {
 ///
 /// 定义在 service 层，由 executor 和 agent mod 发送，
 /// api 层负责序列化为 SSE 数据。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentProgressEvent {
     /// 后端已接管本次运行。run_id 在执行任务 ID 产生前就可用，
@@ -1665,7 +1665,7 @@ pub enum AgentProgressEvent {
 }
 
 /// SSE 事件中的精简选项（仅 value + label）
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuestionOptionCompact {
     pub value: String,
     pub label: String,

@@ -15,7 +15,7 @@ pub async fn get_tapp_metrics(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     ensure_current_admin(&claims).await?;
 
-    let active_limits = get_rate_limiter_active_count().await;
+    let active_limits = get_rate_limiter_active_count().await?;
 
     let platform_cache = PLATFORM_CACHE.read().await;
     let cached_platforms = platform_cache.len();
@@ -44,7 +44,7 @@ pub async fn get_rate_limit_status(
 
     for op in operations {
         let (limit, _window_secs) = get_rate_limit_config(op);
-        let (used, remaining, reset_in) = get_rate_limit_status_for(user_id, &tapp_id, op).await;
+        let (used, remaining, reset_in) = get_rate_limit_status_for(user_id, &tapp_id, op).await?;
 
         limits.push(json!({
             "operation": op,

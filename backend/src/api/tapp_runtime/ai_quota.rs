@@ -382,6 +382,53 @@ pub async fn release_ai_token_reservation(
     .await
 }
 
+/// Roll back a reservation when the task itself was never registered. Provider
+/// failures still consume one call, but a cross-replica registration race or
+/// registry outage must not charge for work that never started.
+pub async fn rollback_ai_quota_reservation(
+    db: &DatabaseConnection,
+    reservation: &AiQuotaReservation,
+) -> Result<(), ApiError> {
+    if reservation.unlimited {
+        return Ok(());
+    }
+    let transaction = db.begin().await.map_err(|_| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "AI_QUOTA_LEDGER_ERROR",
+            "Failed to start AI quota rollback",
+        )
+    })?;
+    increment_row(
+        &transaction,
+        reservation.subject_id,
+        &reservation.tapp_id,
+        &quota_type("calls", reservation.owner_id),
+        -1,
+        false,
+    )
+    .await?;
+    if reservation.reserved_tokens > 0 {
+        increment_row(
+            &transaction,
+            reservation.subject_id,
+            &reservation.tapp_id,
+            &quota_type("tokens", reservation.owner_id),
+            -reservation.reserved_tokens,
+            false,
+        )
+        .await?;
+    }
+    transaction.commit().await.map_err(|_| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "AI_QUOTA_LEDGER_ERROR",
+            "Failed to commit AI quota rollback",
+        )
+    })?;
+    Ok(())
+}
+
 async fn read_usage_value(
     db: &DatabaseConnection,
     subject_id: i32,

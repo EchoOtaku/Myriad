@@ -13,10 +13,11 @@
 use axum::{http::StatusCode, Json};
 use once_cell::sync::Lazy;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
-    Statement,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult,
+    QueryFilter, Statement, TransactionTrait,
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -365,11 +366,17 @@ pub async fn get_ai_image_config() -> Result<AiImageConfig, (StatusCode, Json<Va
 
 // ============ 速率限制器 ============
 
-/// 速率限制记录
-#[derive(Clone)]
-struct RateLimitEntry {
-    count: u32,
-    window_start: Instant,
+const RATE_LIMIT_NAMESPACE: &str = "rate_limit";
+
+#[derive(FromQueryResult)]
+struct RateLimitRow {
+    count: i64,
+    expires_at: i64,
+}
+
+#[derive(FromQueryResult)]
+struct CountRow {
+    count: i64,
 }
 
 /// 获取操作的速率限制配置
@@ -382,82 +389,43 @@ pub fn get_rate_limit_config(operation: &str) -> (u32, u64) {
     }
 }
 
-/// Tapp 速率限制器
-pub(crate) struct TappRateLimiter {
-    limits: HashMap<String, RateLimitEntry>,
-    last_cleanup: Instant,
+fn rate_limit_key(user_id: i32, tapp_id: &str, operation: &str) -> String {
+    format!("{user_id}:{tapp_id}:{operation}")
 }
 
-impl TappRateLimiter {
-    fn new() -> Self {
-        Self {
-            limits: HashMap::new(),
-            last_cleanup: Instant::now(),
-        }
-    }
-
-    fn check_and_record(&mut self, key: &str, limit: u32, window_secs: u64) -> (bool, u32, u64) {
-        let window = Duration::from_secs(window_secs);
-        let now = Instant::now();
-
-        // 定期清理过期记录（每5分钟）
-        if now.duration_since(self.last_cleanup) > Duration::from_secs(300) {
-            self.limits
-                .retain(|_, entry| now.duration_since(entry.window_start) <= window);
-            self.last_cleanup = now;
-        }
-
-        let entry = self
-            .limits
-            .entry(key.to_string())
-            .or_insert_with(|| RateLimitEntry {
-                count: 0,
-                window_start: now,
-            });
-
-        if now.duration_since(entry.window_start) > window {
-            entry.count = 0;
-            entry.window_start = now;
-        }
-
-        let reset_in = window
-            .checked_sub(now.duration_since(entry.window_start))
-            .unwrap_or_default()
-            .as_secs();
-
-        if entry.count >= limit {
-            return (false, 0, reset_in);
-        }
-
-        entry.count += 1;
-        (true, limit - entry.count, reset_in)
-    }
-
-    fn active_count(&self) -> usize {
-        self.limits.len()
-    }
-
-    fn get_status(&self, key: &str, limit: u32, window_secs: u64) -> (u32, u32, u64) {
-        let window = Duration::from_secs(window_secs);
-        match self.limits.get(key) {
-            Some(entry) => {
-                let elapsed = entry.window_start.elapsed();
-                if elapsed < window {
-                    let reset_in = (window - elapsed).as_secs();
-                    let remaining = limit.saturating_sub(entry.count);
-                    (entry.count, remaining, reset_in)
-                } else {
-                    (0, limit, 0)
-                }
-            }
-            None => (0, limit, window_secs),
-        }
-    }
+fn rate_limit_record_id(key: &str) -> String {
+    format!("{:x}", Sha256::digest(key.as_bytes()))
 }
 
-/// 全局速率限制器
-pub static TAPP_RATE_LIMITER: Lazy<Arc<RwLock<TappRateLimiter>>> =
-    Lazy::new(|| Arc::new(RwLock::new(TappRateLimiter::new())));
+fn rate_limit_unavailable(error: impl std::fmt::Display) -> (StatusCode, Json<Value>) {
+    tracing::error!(%error, "[TAPP] Shared rate limiter unavailable");
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({
+            "error": "Rate limiter unavailable",
+            "code": "RATE_LIMITER_UNAVAILABLE"
+        })),
+    )
+}
+
+async fn load_rate_limit_row(
+    db: &impl ConnectionTrait,
+    record_id: &str,
+) -> Result<Option<RateLimitRow>, sea_orm::DbErr> {
+    RateLimitRow::find_by_statement(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        r#"
+SELECT
+    COALESCE((payload ->> 'count')::BIGINT, 0) AS count,
+    expires_at
+FROM tapp_runtime_registry
+WHERE namespace = $1 AND record_id = $2
+"#,
+        vec![RATE_LIMIT_NAMESPACE.into(), record_id.into()],
+    ))
+    .one(db)
+    .await
+}
 
 /// 检查速率限制
 pub async fn check_rate_limit(
@@ -466,10 +434,67 @@ pub async fn check_rate_limit(
     operation: &str,
 ) -> Result<(), (StatusCode, Json<Value>)> {
     let (limit, window_secs) = get_rate_limit_config(operation);
-    let key = format!("{}:{}:{}", user_id, tapp_id, operation);
+    let key = rate_limit_key(user_id, tapp_id, operation);
+    let record_id = rate_limit_record_id(&key);
+    let db = super::shared_registry::database()
+        .await
+        .map_err(rate_limit_unavailable)?;
+    let transaction = db.begin().await.map_err(rate_limit_unavailable)?;
+    transaction
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            vec![format!("tapp_rate_limit:{key}").into()],
+        ))
+        .await
+        .map_err(rate_limit_unavailable)?;
 
-    let mut limiter = TAPP_RATE_LIMITER.write().await;
-    let (allowed, remaining, reset_in) = limiter.check_and_record(&key, limit, window_secs);
+    let now = chrono::Utc::now().timestamp();
+    let current = load_rate_limit_row(&transaction, &record_id)
+        .await
+        .map_err(rate_limit_unavailable)?;
+    let (count, expires_at) = match current {
+        Some(row) if row.expires_at > now => (row.count.max(0) as u32, row.expires_at),
+        _ => (0, now.saturating_add(window_secs as i64)),
+    };
+    let allowed = count < limit;
+    let remaining = limit.saturating_sub(count.saturating_add(u32::from(allowed)));
+    let reset_in = expires_at.saturating_sub(now) as u64;
+
+    if allowed {
+        transaction
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                r#"
+INSERT INTO tapp_runtime_registry
+    (namespace, record_id, subject_id, tapp_id, payload, expires_at, updated_at)
+VALUES ($1, $2, $3, $4, jsonb_build_object('count', $5::BIGINT), $6, NOW())
+ON CONFLICT (namespace, record_id) DO UPDATE SET
+    subject_id = EXCLUDED.subject_id,
+    tapp_id = EXCLUDED.tapp_id,
+    payload = EXCLUDED.payload,
+    expires_at = EXCLUDED.expires_at,
+    updated_at = NOW()
+"#,
+                vec![
+                    RATE_LIMIT_NAMESPACE.into(),
+                    record_id.into(),
+                    user_id.into(),
+                    tapp_id.to_string().into(),
+                    i64::from(count.saturating_add(1)).into(),
+                    expires_at.into(),
+                ],
+            ))
+            .await
+            .map_err(rate_limit_unavailable)?;
+        transaction.commit().await.map_err(rate_limit_unavailable)?;
+        super::shared_registry::maybe_cleanup(&db).await;
+    } else {
+        transaction
+            .rollback()
+            .await
+            .map_err(rate_limit_unavailable)?;
+    }
 
     if !allowed {
         tracing::warn!(
@@ -498,16 +523,44 @@ pub async fn get_rate_limit_status_for(
     user_id: i32,
     tapp_id: &str,
     operation: &str,
-) -> (u32, u32, u64) {
+) -> Result<(u32, u32, u64), (StatusCode, Json<Value>)> {
     let (limit, window_secs) = get_rate_limit_config(operation);
-    let key = format!("{}:{}:{}", user_id, tapp_id, operation);
-    let limiter = TAPP_RATE_LIMITER.read().await;
-    limiter.get_status(&key, limit, window_secs)
+    let key = rate_limit_key(user_id, tapp_id, operation);
+    let record_id = rate_limit_record_id(&key);
+    let db = super::shared_registry::database()
+        .await
+        .map_err(rate_limit_unavailable)?;
+    let now = chrono::Utc::now().timestamp();
+    let Some(row) = load_rate_limit_row(&db, &record_id)
+        .await
+        .map_err(rate_limit_unavailable)?
+    else {
+        return Ok((0, limit, window_secs));
+    };
+    if row.expires_at <= now {
+        return Ok((0, limit, 0));
+    }
+    let used = row.count.clamp(0, i64::from(u32::MAX)) as u32;
+    Ok((
+        used,
+        limit.saturating_sub(used),
+        row.expires_at.saturating_sub(now) as u64,
+    ))
 }
 
-pub async fn get_rate_limiter_active_count() -> usize {
-    let limiter = TAPP_RATE_LIMITER.read().await;
-    limiter.active_count()
+pub async fn get_rate_limiter_active_count() -> Result<usize, (StatusCode, Json<Value>)> {
+    let db = super::shared_registry::database()
+        .await
+        .map_err(rate_limit_unavailable)?;
+    let row = CountRow::find_by_statement(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT COUNT(*)::BIGINT AS count FROM tapp_runtime_registry WHERE namespace = $1 AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT",
+        vec![RATE_LIMIT_NAMESPACE.into()],
+    ))
+    .one(&db)
+    .await
+    .map_err(rate_limit_unavailable)?;
+    Ok(row.map_or(0, |row| row.count.max(0) as usize))
 }
 
 // ============ 安全验证 ============
@@ -910,12 +963,22 @@ pub fn validate_image_prompt_security(prompt: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::tapp_owner_priority;
+    use super::{rate_limit_key, rate_limit_record_id, tapp_owner_priority};
 
     #[test]
     fn shared_admin_tapp_precedes_same_id_user_tapp() {
         assert_eq!(tapp_owner_priority(1, 42, 1), 0);
         assert_eq!(tapp_owner_priority(42, 42, 1), 1);
         assert_eq!(tapp_owner_priority(99, 42, 1), 2);
+    }
+
+    #[test]
+    fn rate_limit_keys_are_identity_and_operation_scoped() {
+        let base = rate_limit_key(42, "com.example.notes", "storage.set");
+        assert_ne!(base, rate_limit_key(43, "com.example.notes", "storage.set"));
+        assert_ne!(base, rate_limit_key(42, "com.example.tasks", "storage.set"));
+        assert_ne!(base, rate_limit_key(42, "com.example.notes", "ai.task"));
+        assert_eq!(rate_limit_record_id(&base).len(), 64);
+        assert_eq!(rate_limit_record_id(&base), rate_limit_record_id(&base));
     }
 }

@@ -26,5 +26,3 @@ pub async fn create_ai_analyzer_for_tier(tier: ModelTier) -> Option<AiAnalyzer> 
 
     Some(AiAnalyzer::new(provider, api_key, resolved.model, base_url).await)
 }
-
-

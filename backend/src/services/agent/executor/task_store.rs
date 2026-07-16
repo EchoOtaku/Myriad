@@ -7,8 +7,8 @@ use crate::services::agent::types::*;
 use chrono::Utc;
 use once_cell::sync::Lazy;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Statement,
 };
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
@@ -29,8 +29,19 @@ pub static CANCELLATION_TOKENS: Lazy<Arc<RwLock<HashSet<String>>>> =
 
 /// 检查任务是否被请求取消
 pub async fn is_cancelled(task_id: &str) -> bool {
-    let tokens = CANCELLATION_TOKENS.read().await;
-    tokens.contains(task_id)
+    if CANCELLATION_TOKENS.read().await.contains(task_id) {
+        return true;
+    }
+    let Some(db) = DB_FOR_TASKS.read().await.clone() else {
+        return false;
+    };
+    agent_tasks::Entity::find_by_id(task_id)
+        .filter(agent_tasks::Column::Status.eq("cancelled"))
+        .one(&db)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
 }
 
 /// 清除取消标记（任务完成或已处理取消后）
@@ -103,6 +114,7 @@ impl TaskStore {
     pub async fn cleanup_expired(&mut self) {
         let now = Utc::now();
         let mut expired_ids: Vec<String> = Vec::new();
+        let mut timed_out: Vec<(i32, TaskState)> = Vec::new();
 
         for (id, task) in &mut self.tasks {
             // 已完成的任务：24小时后清理
@@ -123,8 +135,24 @@ impl TaskStore {
                     task.status = TaskStatus::Failed;
                     task.error = Some("任务等待用户输入超时（2小时），已自动取消".to_string());
                     task.completed_at = Some(now);
-                    expired_ids.push(id.clone());
+                    if let Some(user_id) = self.user_tasks.iter().find_map(|(user_id, ids)| {
+                        ids.iter().any(|task_id| task_id == id).then_some(*user_id)
+                    }) {
+                        timed_out.push((user_id, task.clone()));
+                    }
                 }
+            }
+        }
+
+        // 超时是一个可查询的失败终态，不应在同一轮清理中立即删除。
+        // 先持久化，后续按上面的统一 24 小时终态保留策略删除。
+        for (user_id, task) in timed_out {
+            if let Err(error) = save_task_to_db(user_id, &task).await {
+                tracing::warn!(
+                    task_id = %task.task_id,
+                    %error,
+                    "持久化等待输入超时状态失败"
+                );
             }
         }
 
@@ -154,8 +182,10 @@ impl Default for TaskStore {
 
 /// 初始化任务存储的数据库连接
 pub async fn init_task_store_db(db: DatabaseConnection) {
-    let mut db_guard = DB_FOR_TASKS.write().await;
-    *db_guard = Some(db.clone());
+    {
+        let mut db_guard = DB_FOR_TASKS.write().await;
+        *db_guard = Some(db.clone());
+    }
 
     // 从数据库加载未完成的任务
     if let Err(e) = load_pending_tasks_from_db(&db).await {
@@ -165,35 +195,37 @@ pub async fn init_task_store_db(db: DatabaseConnection) {
 
 /// 从数据库加载未完成的任务
 async fn load_pending_tasks_from_db(db: &DatabaseConnection) -> Result<(), String> {
+    // pending/running 没有可安全恢复的执行 continuation。先在权威数据库中
+    // 原子终结，避免每次重启都把同一任务再次识别为“被中断”。
+    let interrupted = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE agent_tasks
+SET status = 'cancelled',
+    error = $1,
+    completed_at = COALESCE(completed_at, NOW()),
+    updated_at = NOW()
+WHERE status IN ('pending', 'running')
+"#,
+            vec![crate::services::agent::response_agent::task_interrupted().into()],
+        ))
+        .await
+        .map_err(|error| format!("终结重启中断任务失败: {error}"))?
+        .rows_affected();
+
     let pending_tasks = agent_tasks::Entity::find()
-        .filter(
-            agent_tasks::Column::Status
-                .eq("pending")
-                .or(agent_tasks::Column::Status.eq("running"))
-                .or(agent_tasks::Column::Status.eq("waiting_for_input")),
-        )
+        .filter(agent_tasks::Column::Status.eq("waiting_for_input"))
         .order_by_desc(agent_tasks::Column::StartedAt)
         .all(db)
         .await
         .map_err(|e| format!("查询待处理任务失败: {}", e))?;
 
     let mut store = TASK_STORE.write().await;
-    let mut recovered = 0u32;
     for task_model in pending_tasks {
-        if let Ok(mut task_state) = task_model_to_state(&task_model) {
-            // A running call has no safe continuation point after restart.
-            // WaitingForInput does: recipe/context/question are persisted and
-            // can be resumed by any replica when its interaction completes.
-            if task_state.status == TaskStatus::Running {
-                tracing::warn!(
-                    task_id = %task_state.task_id,
-                    old_status = ?task_state.status,
-                    "[TaskStore] Task interrupted by server restart, marking as Cancelled"
-                );
-                task_state.status = TaskStatus::Cancelled;
-                task_state.error = Some(crate::services::agent::response_agent::task_interrupted());
-                recovered += 1;
-            }
+        if let Ok(task_state) = task_model_to_state(&task_model) {
+            // WaitingForInput has a persisted recipe/context/question and can
+            // be resumed by any replica when its interaction completes.
             let user_id = task_model.user_id;
             let task_id = task_state.task_id.clone();
             store.tasks.insert(task_id.clone(), task_state);
@@ -201,8 +233,8 @@ async fn load_pending_tasks_from_db(db: &DatabaseConnection) -> Result<(), Strin
         }
     }
 
-    if recovered > 0 {
-        tracing::info!("标记了 {} 个中断任务为 Cancelled", recovered);
+    if interrupted > 0 {
+        tracing::info!("标记了 {} 个重启中断任务为 Cancelled", interrupted);
     }
     tracing::info!("从数据库加载了 {} 个待处理任务", store.tasks.len());
     Ok(())
@@ -364,20 +396,35 @@ pub fn persist_task_async(user_id: i32, task: TaskState) {
 ///
 /// 仅当任务属于指定用户时才返回，防止 IDOR
 pub async fn get_task_for_user(task_id: &str, user_id: i32) -> Option<TaskState> {
-    {
+    let local = {
         let store = TASK_STORE.read().await;
         let user_owns_task = store
             .user_tasks
             .get(&user_id)
             .is_some_and(|ids| ids.iter().any(|id| id == task_id));
         if user_owns_task {
-            return store.get(task_id).cloned();
+            store.get(task_id).cloned()
+        } else {
+            None
         }
+    };
+    if local.as_ref().is_some_and(|task| {
+        matches!(
+            task.status,
+            TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled
+        )
+    }) {
+        return local;
     }
+    // Non-terminal local entries may have been resumed or cancelled by a
+    // different replica. Prefer the database, falling back only if it is
+    // temporarily unavailable.
+    refresh_task_for_user(task_id, user_id).await.or(local)
+}
 
-    // Requests and Tapp result callbacks may land on a different replica from
-    // the original executor. Hydrate the persisted task on demand instead of
-    // treating a local cache miss as "not found".
+/// Force a database refresh even when this replica has an older local copy.
+/// Used by long-lived run hubs that must observe completion on another replica.
+pub async fn refresh_task_for_user(task_id: &str, user_id: i32) -> Option<TaskState> {
     let db = DB_FOR_TASKS.read().await.clone()?;
     let model = agent_tasks::Entity::find_by_id(task_id)
         .filter(agent_tasks::Column::UserId.eq(user_id))
@@ -394,20 +441,59 @@ pub async fn get_task_for_user(task_id: &str, user_id: i32) -> Option<TaskState>
     Some(task)
 }
 
+/// Claim one persisted waiting task for resume. The database transition is the
+/// cross-replica mutex; local TASK_STORE locks alone cannot prevent two
+/// backends from executing the same continuation.
+pub async fn claim_task_for_resume(task_id: &str, user_id: i32) -> Result<bool, String> {
+    let db = DB_FOR_TASKS
+        .read()
+        .await
+        .clone()
+        .ok_or("数据库连接未初始化")?;
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE agent_tasks
+SET status = 'running', updated_at = NOW()
+WHERE id = $1 AND user_id = $2 AND status = 'waiting_for_input'
+"#,
+            vec![task_id.to_string().into(), user_id.into()],
+        ))
+        .await
+        .map_err(|error| format!("获取任务恢复执行权失败: {error}"))?;
+    Ok(result.rows_affected() == 1)
+}
+
 /// 取消任务（带所有权校验）
 ///
 /// 仅当任务属于指定用户时才取消，返回 true 表示已请求取消
 pub async fn cancel_task_for_user(task_id: &str, user_id: i32) -> bool {
-    let owned = {
-        let store = TASK_STORE.read().await;
-        store
-            .user_tasks
-            .get(&user_id)
-            .map(|ids| ids.iter().any(|id| id == task_id))
-            .unwrap_or(false)
+    let Some(db) = DB_FOR_TASKS.read().await.clone() else {
+        return false;
     };
-
-    if !owned {
+    let cancellation_error = crate::services::agent::response_agent::task_cancelled_by_user();
+    let cancelled = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE agent_tasks
+SET status = 'cancelled',
+    error = $3,
+    completed_at = COALESCE(completed_at, NOW()),
+    updated_at = NOW()
+WHERE id = $1 AND user_id = $2
+  AND status IN ('pending', 'running', 'waiting_for_input', 'paused')
+"#,
+            vec![
+                task_id.to_string().into(),
+                user_id.into(),
+                cancellation_error.clone().into(),
+            ],
+        ))
+        .await
+        .is_ok_and(|result| result.rows_affected() == 1);
+    if !cancelled {
         return false;
     }
 
@@ -422,7 +508,8 @@ pub async fn cancel_task_for_user(task_id: &str, user_id: i32) -> bool {
         let mut store = TASK_STORE.write().await;
         if let Some(task) = store.get_mut(task_id) {
             task.status = TaskStatus::Cancelled;
-            task.error = Some(crate::services::agent::response_agent::task_cancelled_by_user());
+            task.error = Some(cancellation_error);
+            task.completed_at = Some(Utc::now());
         }
     }
 
@@ -522,5 +609,43 @@ mod tests {
         assert_eq!(restored.status, TaskStatus::WaitingForInput);
         assert_eq!(restored_recipe.id, model.recipe_id);
         assert_eq!(restored_recipe.execution_type, ExecutionType::Instant);
+    }
+
+    #[tokio::test]
+    async fn waiting_timeout_is_retained_as_a_failed_terminal_task() {
+        let mut store = TaskStore::new();
+        let task = TaskState {
+            task_id: "timed-out-wait".to_string(),
+            recipe_id: "recipe".to_string(),
+            status: TaskStatus::WaitingForInput,
+            current_step: 0,
+            step_results: HashMap::new(),
+            started_at: Utc::now() - chrono::Duration::hours(3),
+            completed_at: None,
+            error: None,
+            progress: 25,
+            pending_question: None,
+            execution_context: None,
+            lane_id: None,
+            execution_trace: None,
+            recipe: None,
+        };
+        store.tasks.insert(task.task_id.clone(), task);
+        store
+            .user_tasks
+            .insert(7, vec!["timed-out-wait".to_string()]);
+
+        store.cleanup_expired().await;
+
+        let retained = store
+            .get("timed-out-wait")
+            .expect("timeout should remain queryable during terminal retention");
+        assert_eq!(retained.status, TaskStatus::Failed);
+        assert!(retained.completed_at.is_some());
+        assert!(retained
+            .error
+            .as_deref()
+            .is_some_and(|value| value.contains("超时")));
+        assert_eq!(store.get_user_tasks(7).len(), 1);
     }
 }

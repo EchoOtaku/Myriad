@@ -18,7 +18,7 @@ pub struct RegistryRow {
 
 static CLEANUP_COUNTER: AtomicU32 = AtomicU32::new(0);
 
-async fn maybe_cleanup(db: &impl ConnectionTrait) {
+pub(crate) async fn maybe_cleanup(db: &impl ConnectionTrait) {
     if CLEANUP_COUNTER
         .fetch_add(1, Ordering::Relaxed)
         .is_multiple_of(256)

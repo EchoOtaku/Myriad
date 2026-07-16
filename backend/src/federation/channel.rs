@@ -1357,10 +1357,7 @@ pub async fn handle_key_exchange(
         .unwrap_or_else(|| json!({}));
 
     // 合并 e2e 状态：写入 remote_public_key；若已有本地密钥则 established=true
-    let mut e2e_obj = properties
-        .get("e2e")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
+    let mut e2e_obj = properties.get("e2e").cloned().unwrap_or_else(|| json!({}));
     e2e_obj["remote_public_key"] = json!(public_key);
     e2e_obj["algorithm"] = json!(algorithm);
     let has_local = e2e_obj

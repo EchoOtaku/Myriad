@@ -326,6 +326,17 @@ runtime 接受；输入与结果都按 Manifest schema 校验，生命周期、�
 `waiting_for_input`；结果或拒绝由任意
 副本从 `agent_tasks` 恢复原任务。`ui.open`、`report.create` 与 `dataExchange.request` 有可信
 宿主 adapter，其中跨 Tapp 数据仍只显示 Data Exchange 的一张明细化一次性授权弹窗。
+交互的 5 分钟操作截止时间与 registry 终态保留时间分离；每个副本运行过期扫描，使用数据库
+CAS 只允许一个副本把未完成交互转为 `expired` 并恢复等待中的 Executor。Agent 服务重启时，
+无法续跑的 `pending/running` 任务在数据库中一次性转为 `cancelled`；具备持久化
+recipe/context/question 的 `waiting_for_input` 才进入内存恢复索引。等待输入两小时超时只转为
+可查询的失败终态，统一保留 24 小时后删除。恢复前先用 `agent_tasks` 状态 CAS 从
+`waiting_for_input` 抢占为 `running`，避免两个副本执行同一 continuation；原始 run hub 每 2 秒
+强制刷新数据库，因此结果落到其他副本时不会被本地旧缓存遮蔽或等待十分钟才完成。任务取消
+同样先原子写入 `agent_tasks`；执行副本在步骤边界及最终成功提交前读取权威状态，跨副本取消
+不会失效，也不会被最后一个迟到步骤重新覆盖为 `completed`。Agent run 的最近 256 个 SSE
+事件快照也保存在共享 TTL registry；重新订阅落到其他副本时可恢复历史，并每 2 秒补读更新，
+终态或失活 run 统一保留 24 小时。
 
 Scoped Event Broker 使用 Manifest publish/subscribe allowlist 与 Runtime Grant 路由在线实例。
 `instance` 只协调当前 Tapp runtime，`owner` 可通知同一 subject 下明确订阅的其他在线 Tapp；
@@ -340,8 +351,15 @@ Scoped Event Broker 使用 Manifest publish/subscribe allowlist 与 Runtime Gran
 AI Task 将 generate/analyze/chat/image 统一为服务端任务，校验 Manifest operation、model tier、
 context source 与 output format，限制并发和执行/保留时间，并通过 SSE 返回 delta/progress/state。
 calls、tokens 与 cooldown 以 `(subject, owner, tapp, UTC day)` 持久化，调用前预留、完成时结算、
-失败或取消释放未消耗 token。SDK 只公开 Task API，旧的 generate/analyze/chat/image 与配额
+失败或取消释放未消耗 token。subject 级 advisory-lock 事务原子检查并发/保留上限和幂等键；
+相同身份与幂等键使用稳定 task ID，只有注册赢家启动模型调用，注册竞态或 registry 故障会完整
+回滚 calls 与 token 预留。SDK 只公开 Task API，旧的 generate/analyze/chat/image 与配额
 适配入口已删除。
+
+通用 Tapp 请求限流同样写入 PostgreSQL TTL registry。计数键包含 subject、Tapp 与 operation，
+每次递增由 advisory transaction lock 串行化，因此增加后端副本不会放大可用额度；指标与状态
+端点读取同一份权威计数。数据库不可用时受限操作返回 `503 RATE_LIMITER_UNAVAILABLE`，不会
+退回到进程内计数或静默放行。
 
 当前 Tapp storage 按 `user_id + tapp_id` 隔离，单值上限 1 MiB，总量上限 5 MiB；写入在同一
 事务内加 subject/Tapp advisory lock、计算替换后的 JSONB 字节并 upsert，并发副本不能越过

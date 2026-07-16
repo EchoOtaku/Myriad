@@ -254,6 +254,12 @@ async fn run_server() -> anyhow::Result<()> {
                 services::agent::init_task_store(db.clone()).await;
                 tracing::info!("✅ Agent task store initialized");
 
+                // Expire persisted Tapp Agent interactions and resume their
+                // waiting Executor tasks. Every replica runs this; DB CAS
+                // ensures a single terminal transition.
+                api::tapp_runtime::spawn_agent_interaction_expiry_worker(db.clone());
+                tracing::info!("✅ Tapp Agent interaction expiry worker started");
+
                 // Initialize Agent heartbeat system
                 services::agent::heartbeat::init_heartbeat(agent_data_dir.join("HEARTBEAT.md"))
                     .await;

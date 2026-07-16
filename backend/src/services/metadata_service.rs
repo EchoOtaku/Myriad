@@ -500,8 +500,6 @@ impl MetadataService {
         }
     }
 
-
-
     /// 获取所有平台的最新元数据
     /// 自动合并旧版遗留的分片数据（如网易云音乐的 liked_songs）。
     pub async fn get_all_latest_metadata(
@@ -593,7 +591,4 @@ impl MetadataService {
 
         Ok(result)
     }
-
-
-
 }

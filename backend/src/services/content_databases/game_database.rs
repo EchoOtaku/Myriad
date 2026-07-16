@@ -4,7 +4,6 @@
 
 #![allow(dead_code)]
 
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -153,7 +152,6 @@ impl GameDatabase {
             } else {
                 // 未知游戏 - 保留原样并记录
                 unknown_games.push((name.clone(), playtime));
-
             }
         }
 

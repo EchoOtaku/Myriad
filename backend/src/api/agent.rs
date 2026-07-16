@@ -65,6 +65,16 @@ async fn take_waiting_task(task_id: &str, user_id: i32) -> Option<WaitingTaskCtx
     }
 }
 
+fn agent_run_event_is_terminal(event: &AgentProgressEvent) -> bool {
+    match event {
+        AgentProgressEvent::TaskCompleted { response, .. } => {
+            response.pointer("/task/status").and_then(Value::as_str) != Some("waiting_for_input")
+        }
+        AgentProgressEvent::Error { .. } => true,
+        _ => false,
+    }
+}
+
 fn agent_run_event_stream(run: Arc<AgentRun>) -> impl Stream<Item = Result<Event, Infallible>> {
     async_stream::stream! {
         // 先订阅再读取快照；sequence 去重消除两者之间的竞态。
@@ -91,31 +101,43 @@ fn agent_run_event_stream(run: Arc<AgentRun>) -> impl Stream<Item = Result<Event
             return;
         }
 
+        let mut registry_poll = tokio::time::interval(Duration::from_secs(2));
+        registry_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
-            match receiver.recv().await {
-                Ok(envelope) if envelope.sequence > last_sequence => {
-                    last_sequence = envelope.sequence;
-                    let terminal = match &envelope.event {
-                        AgentProgressEvent::TaskCompleted { response, .. } => {
-                            response.pointer("/task/status").and_then(Value::as_str)
-                                != Some("waiting_for_input")
+            tokio::select! {
+                received = receiver.recv() => match received {
+                    Ok(envelope) if envelope.sequence > last_sequence => {
+                        last_sequence = envelope.sequence;
+                        let terminal = agent_run_event_is_terminal(&envelope.event);
+                        let data = serde_json::to_string(&envelope.event)
+                            .unwrap_or_else(|_| "{}".to_string());
+                        yield Ok(Event::default().id(envelope.sequence.to_string()).data(data));
+                        if terminal {
+                            return;
                         }
-                        AgentProgressEvent::Error { .. } => true,
-                        _ => false,
-                    };
-                    let data = serde_json::to_string(&envelope.event)
-                        .unwrap_or_else(|_| "{}".to_string());
-                    yield Ok(Event::default().id(envelope.sequence.to_string()).data(data));
-                    if terminal {
+                    }
+                    Ok(_) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        // 客户端随后可重新 GET，同一 run 的共享历史会补齐最近事件。
                         return;
                     }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+                },
+                _ = registry_poll.tick() => {
+                    for envelope in run.refresh_from_registry().await {
+                        if envelope.sequence <= last_sequence {
+                            continue;
+                        }
+                        last_sequence = envelope.sequence;
+                        let terminal = agent_run_event_is_terminal(&envelope.event);
+                        let data = serde_json::to_string(&envelope.event)
+                            .unwrap_or_else(|_| "{}".to_string());
+                        yield Ok(Event::default().id(envelope.sequence.to_string()).data(data));
+                        if terminal {
+                            return;
+                        }
+                    }
                 }
-                Ok(_) => {}
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                    // 客户端随后可重新 GET，同一 run 的历史会补齐最近事件。
-                    return;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
             }
         }
     }
@@ -1192,8 +1214,9 @@ pub async fn process_stream(
                         }
                         tracing::info!(task_id = %task_id, "[Agent API] Task waiting for user input, keeping run alive");
 
-                        // 等待 answer_task_question_stream 回传结果（最长 10 分钟/轮）
-                        match tokio::time::timeout(tokio::time::Duration::from_secs(600), done_rx)
+                        // 本副本回答通过 oneshot 即时返回；跨副本回答没有本地
+                        // WaitingTaskCtx，因此每 2 秒从权威数据库刷新一次。
+                        match tokio::time::timeout(tokio::time::Duration::from_secs(2), done_rx)
                             .await
                         {
                             Ok(Ok(response_value)) => {
@@ -1274,22 +1297,25 @@ pub async fn process_stream(
                                 break;
                             }
                             Err(_) => {
-                                tracing::warn!(
-                                    task_id = %task_id,
-                                    "[Agent API] Timeout waiting for answer (600s)"
-                                );
+                                tracing::debug!(task_id = %task_id, "[Agent API] Polling persisted waiting task state");
                                 let _ = take_waiting_task(&task_id, user_id).await;
 
-                                // 检查任务的真实状态（可能在 timeout 前已被其他路径完成）
-                                let current_task = {
-                                    let store =
-                                        crate::services::agent::executor::TASK_STORE.read().await;
-                                    store.get(&task_id).cloned()
-                                };
+                                // 强制查数据库，不能让本副本的 waiting 缓存遮蔽
+                                // 另一副本已写入的完成/失败状态。
+                                let current_task =
+                                    crate::services::agent::executor::refresh_task_for_user(
+                                        &task_id, user_id,
+                                    )
+                                    .await;
 
                                 if current_task.as_ref().is_some_and(|task| {
-                                    task.status
-                                        == crate::services::agent::types::TaskStatus::WaitingForInput
+                                    matches!(
+                                        task.status,
+                                        crate::services::agent::types::TaskStatus::Pending
+                                            | crate::services::agent::types::TaskStatus::Running
+                                            | crate::services::agent::types::TaskStatus::WaitingForInput
+                                            | crate::services::agent::types::TaskStatus::Paused
+                                    )
                                 }) {
                                     // 等待输入不是失败或完成。继续保持后端 run 与回答入口，
                                     // 下一轮重新注册 oneshot；前端是否在线不影响任务状态。
@@ -1300,18 +1326,39 @@ pub async fn process_stream(
                                     continue;
                                 }
 
-                                let response_value = if let Some(task) = current_task {
-                                    // 任务已在其他路径完成，发送实际结果
-                                    serde_json::to_value(&task).unwrap_or_else(
-                                        |_| json!({"error": "serialization failed"}),
-                                    )
-                                } else {
-                                    serde_json::to_value(&api_response).unwrap_or_else(
-                                        |_| json!({"error": "serialization failed"}),
-                                    )
-                                };
+                                let (response_value, task_success) =
+                                    if let Some(task) = current_task {
+                                        let task_success = task.status
+                                            == crate::services::agent::types::TaskStatus::Completed;
+                                        let message = task.error.clone().unwrap_or_else(|| {
+                                            if task_success {
+                                                "任务已完成".to_string()
+                                            } else {
+                                                "任务未完成".to_string()
+                                            }
+                                        });
+                                        (
+                                            json!({
+                                                "success": task_success,
+                                                "message": message,
+                                                "task": task,
+                                            }),
+                                            task_success,
+                                        )
+                                    } else {
+                                        (
+                                            json!({
+                                                "success": false,
+                                                "message": "任务状态已不可用",
+                                                "task": {
+                                                    "taskId": task_id.clone(),
+                                                    "status": "failed"
+                                                }
+                                            }),
+                                            false,
+                                        )
+                                    };
 
-                                let task_success = success;
                                 if let Err(e) = tx
                                     .send(AgentProgressEvent::TaskCompleted {
                                         task_id: task_id.clone(),

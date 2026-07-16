@@ -528,7 +528,6 @@ impl TencentSpeechService {
             .await
     }
 
-
     // ==================== ASR 语音转文本 ====================
 
     /// 一句话语音识别
@@ -573,8 +572,6 @@ impl TencentSpeechService {
         self.send_request::<AsrResponse>("asr", "SentenceRecognition", "2019-06-14", &payload)
             .await
     }
-
-
 }
 
 // ==================== 音色ID定义 ====================

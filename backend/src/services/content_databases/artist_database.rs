@@ -4,7 +4,6 @@
 
 #![allow(dead_code)]
 
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -205,7 +204,6 @@ impl ArtistDatabase {
 
                 // 保留原样并记录
                 unknown_songs.push((title, artist.clone()));
-
             }
         }
 

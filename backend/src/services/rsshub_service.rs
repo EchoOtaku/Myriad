@@ -61,7 +61,6 @@ impl RsshubService {
         }
     }
 
-
     /// 获取用户的所有实例（包括全局默认实例）
     pub async fn get_instances(&self, user_id: Option<i32>) -> Result<Vec<InstanceModel>, String> {
         let mut instances = rsshub_instances::Entity::find()
@@ -155,7 +154,6 @@ impl RsshubService {
             .filter(|i| i.enabled && i.health_status != HealthStatus::Unhealthy)
             .collect())
     }
-
 
     /// 构建完整的 RSSHub URL
     pub fn build_url(&self, instance: &InstanceModel, route: &str) -> String {
@@ -553,5 +551,3 @@ impl RsshubService {
         Ok(())
     }
 }
-
-

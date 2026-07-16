@@ -217,6 +217,8 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 AI 权限、每分钟速率、每日 calls/tokens 与 cooldown 全由后端执行。配额在模型调用前事务预留、
 完成后按实际估算结算、失败/取消释放未消耗 token；calls 仍记录一次尝试。AI Task 还校验
 Manifest operation/model tier/context/output 声明，并将任务绑定 subject、安装 owner 和 Tapp。
+最终任务注册在 subject advisory-lock 事务中原子检查并发数、保留数和幂等键；未成功注册的
+请求完整回滚 calls/token 预留，不会留下只计费但未执行的任务。
 
 ### One-shot Data Exchange
 
@@ -256,6 +258,8 @@ Event Broker 仅在线 at-most-once，不做积压；SSE 在 Runtime Grant 到�
 accept 的 runtime 可提交结果，结果会恢复持久化的原 Agent 任务；intent 经授权后由受支持的
 宿主 adapter 执行。Runtime Grant、Data Exchange、Event、Agent interaction 和 AI task 使用
 PostgreSQL TTL registry/mailbox；`pg_notify` 只作唤醒提示，消费者可从 mailbox 补读。
+Interaction 的动作截止时间独立于终态保留时间；所有副本都可运行过期扫描，但数据库 CAS 只
+允许一个副本写入 `expired` 并恢复原任务。
 
 ### 上下文与媒体
 
@@ -301,7 +305,9 @@ Tapp 通知进入 Myriad 的统一通知流，不存在独立的 Tapp-only toast
 | GET  | `/api/tapp/rate-limit/{tappId}` |
 
 不要依赖旧文档中的固定“每分钟 N 次”和 `X-RateLimit-*` 表格；实际限制由当前后端配置、
-用户角色和具体 handler 决定。
+用户角色和具体 handler 决定。窗口计数位于 PostgreSQL 共享 registry，以
+`subject + Tapp + operation` 隔离并原子递增；所有后端副本共用同一额度。registry 不可用时
+受限操作返回 `503 RATE_LIMITER_UNAVAILABLE`，不会绕过限制。
 
 ## 调度器
 

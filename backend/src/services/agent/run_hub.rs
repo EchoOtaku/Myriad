@@ -8,15 +8,20 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{broadcast, Mutex, RwLock};
+
+use crate::api::tapp_runtime::shared_registry::{self, RegistryIdentity};
 
 use super::notifications::get_notification_manager;
 use super::AgentProgressEvent;
 
 const EVENT_HISTORY_LIMIT: usize = 256;
+const RUN_REGISTRY_NAMESPACE: &str = "agent_run";
+const RUN_RETENTION_HOURS: i64 = 24;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AgentRunEnvelope {
     pub sequence: u64,
     pub event: AgentProgressEvent,
@@ -30,6 +35,23 @@ struct AgentRunState {
     progress: u8,
     message: String,
     completed: bool,
+    updated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct PersistedAgentRun {
+    run_id: String,
+    user_id: i32,
+    session_id: Option<String>,
+    created_at: chrono::DateTime<Utc>,
+    next_sequence: u64,
+    events: VecDeque<AgentRunEnvelope>,
+    task_id: Option<String>,
+    status: String,
+    progress: u8,
+    message: String,
+    completed: bool,
+    updated_at: chrono::DateTime<Utc>,
 }
 
 pub struct AgentRun {
@@ -60,6 +82,28 @@ impl AgentRun {
                 progress: 0,
                 message: "任务已提交，等待执行".to_string(),
                 completed: false,
+                updated_at: Utc::now(),
+            }),
+            events_tx,
+        })
+    }
+
+    fn from_persisted(persisted: PersistedAgentRun) -> Arc<Self> {
+        let (events_tx, _) = broadcast::channel(EVENT_HISTORY_LIMIT);
+        Arc::new(Self {
+            run_id: persisted.run_id,
+            user_id: persisted.user_id,
+            session_id: persisted.session_id,
+            created_at: persisted.created_at,
+            state: Mutex::new(AgentRunState {
+                next_sequence: persisted.next_sequence,
+                events: persisted.events,
+                task_id: persisted.task_id,
+                status: persisted.status,
+                progress: persisted.progress,
+                message: persisted.message,
+                completed: persisted.completed,
+                updated_at: persisted.updated_at,
             }),
             events_tx,
         })
@@ -86,8 +130,95 @@ impl AgentRun {
         )
     }
 
-    async fn is_completed(&self) -> bool {
-        self.state.lock().await.completed
+    async fn updated_at(&self) -> chrono::DateTime<Utc> {
+        self.state.lock().await.updated_at
+    }
+
+    async fn persisted_snapshot(&self) -> PersistedAgentRun {
+        let state = self.state.lock().await;
+        PersistedAgentRun {
+            run_id: self.run_id.clone(),
+            user_id: self.user_id,
+            session_id: self.session_id.clone(),
+            created_at: self.created_at,
+            next_sequence: state.next_sequence,
+            events: state.events.clone(),
+            task_id: state.task_id.clone(),
+            status: state.status.clone(),
+            progress: state.progress,
+            message: state.message.clone(),
+            completed: state.completed,
+            updated_at: state.updated_at,
+        }
+    }
+
+    async fn persist(&self) {
+        let Ok(db) = shared_registry::database().await else {
+            tracing::warn!(run_id = %self.run_id, "[Agent Run] Database unavailable; run snapshot remains local");
+            return;
+        };
+        let snapshot = self.persisted_snapshot().await;
+        let expires_at =
+            (snapshot.updated_at + chrono::Duration::hours(RUN_RETENTION_HOURS)).timestamp();
+        if let Err(error) = shared_registry::put(
+            &db,
+            RUN_REGISTRY_NAMESPACE,
+            &self.run_id,
+            RegistryIdentity {
+                subject_id: Some(self.user_id),
+                owner_id: Some(self.user_id),
+                tapp_id: None,
+                runtime_id: None,
+            },
+            &snapshot,
+            expires_at,
+        )
+        .await
+        {
+            tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to persist shared run snapshot");
+        }
+    }
+
+    /// Merge a newer shared snapshot and return events not present locally.
+    pub async fn refresh_from_registry(&self) -> Vec<AgentRunEnvelope> {
+        let Ok(db) = shared_registry::database().await else {
+            return Vec::new();
+        };
+        let persisted = match shared_registry::get::<PersistedAgentRun>(
+            &db,
+            RUN_REGISTRY_NAMESPACE,
+            &self.run_id,
+        )
+        .await
+        {
+            Ok(Some(run)) if run.user_id == self.user_id => run,
+            Ok(_) => return Vec::new(),
+            Err(error) => {
+                tracing::warn!(run_id = %self.run_id, %error, "[Agent Run] Failed to refresh shared run snapshot");
+                return Vec::new();
+            }
+        };
+
+        let mut state = self.state.lock().await;
+        if persisted.next_sequence <= state.next_sequence {
+            return Vec::new();
+        }
+        let last_local_sequence = state.next_sequence.saturating_sub(1);
+        let new_events = persisted
+            .events
+            .iter()
+            .filter(|event| event.sequence > last_local_sequence)
+            .cloned()
+            .collect::<Vec<_>>();
+        state.next_sequence = persisted.next_sequence;
+        state.events = persisted.events;
+        state.task_id = persisted.task_id;
+        state.status = persisted.status;
+        state.progress = persisted.progress;
+        state.message = persisted.message;
+        state.completed = persisted.completed;
+        state.updated_at = persisted.updated_at;
+        new_events
     }
 
     pub async fn publish(&self, event: AgentProgressEvent) {
@@ -204,6 +335,7 @@ impl AgentRun {
                 state.events.pop_front();
             }
             state.events.push_back(envelope.clone());
+            state.updated_at = Utc::now();
             (
                 envelope,
                 state.task_id.clone(),
@@ -215,6 +347,7 @@ impl AgentRun {
         };
 
         let _ = self.events_tx.send(envelope);
+        self.persist().await;
 
         if notify {
             if let Some(manager) = get_notification_manager() {
@@ -248,13 +381,12 @@ pub async fn create_run(user_id: i32, session_id: Option<String>) -> Arc<AgentRu
     let candidates = {
         let runs = AGENT_RUNS.read().await;
         runs.iter()
-            .filter(|(_, run)| run.created_at < cutoff)
             .map(|(id, run)| (id.clone(), run.clone()))
             .collect::<Vec<_>>()
     };
     let mut stale_ids = Vec::new();
     for (id, run) in candidates {
-        if run.is_completed().await {
+        if run.updated_at().await < cutoff {
             stale_ids.push(id);
         }
     }
@@ -274,12 +406,30 @@ pub async fn create_run(user_id: i32, session_id: Option<String>) -> Arc<AgentRu
 }
 
 pub async fn get_run_for_user(run_id: &str, user_id: i32) -> Option<Arc<AgentRun>> {
-    AGENT_RUNS
+    if let Some(run) = AGENT_RUNS
         .read()
         .await
         .get(run_id)
         .filter(|run| run.user_id == user_id)
         .cloned()
+    {
+        return Some(run);
+    }
+
+    let db = shared_registry::database().await.ok()?;
+    let persisted = shared_registry::get::<PersistedAgentRun>(&db, RUN_REGISTRY_NAMESPACE, run_id)
+        .await
+        .ok()??;
+    if persisted.user_id != user_id || persisted.run_id != run_id {
+        return None;
+    }
+    let run = AgentRun::from_persisted(persisted);
+    let mut runs = AGENT_RUNS.write().await;
+    Some(
+        runs.entry(run_id.to_string())
+            .or_insert_with(|| run.clone())
+            .clone(),
+    )
 }
 
 #[cfg(test)]
@@ -324,5 +474,13 @@ mod tests {
             history.last().map(|event| &event.event),
             Some(AgentProgressEvent::TaskCompleted { .. })
         ));
+
+        let encoded = serde_json::to_value(run.persisted_snapshot().await).unwrap();
+        let persisted: PersistedAgentRun = serde_json::from_value(encoded).unwrap();
+        let restored = AgentRun::from_persisted(persisted);
+        let (restored_history, restored_sequence, restored_completed) = restored.snapshot().await;
+        assert_eq!(restored_history.len(), 3);
+        assert_eq!(restored_sequence, 3);
+        assert!(restored_completed);
     }
 }

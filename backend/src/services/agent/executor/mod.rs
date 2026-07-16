@@ -26,8 +26,9 @@ pub mod utils;
 
 // 重新导出常用类型
 pub use task_store::{
-    cancel_task_for_user, clear_cancellation, get_task_for_user, get_user_tasks,
-    init_task_store_db, is_cancelled, maybe_cleanup_tasks, persist_task_async, TASK_STORE,
+    cancel_task_for_user, claim_task_for_resume, clear_cancellation, get_task_for_user,
+    get_user_tasks, init_task_store_db, is_cancelled, maybe_cleanup_tasks, persist_task_async,
+    refresh_task_for_user, TASK_STORE,
 };
 pub use utils::{extract_image_url, summarize_output, truncate_str};
 
@@ -1347,6 +1348,14 @@ impl Executor {
             }
         }
 
+        // A cancellation can arrive while the final long-running step is in
+        // flight. Recheck before committing a terminal success so a remote
+        // replica's cancelled DB state cannot be overwritten as completed.
+        let cancelled = is_cancelled(&task_state.task_id).await;
+        if cancelled {
+            clear_cancellation(&task_state.task_id).await;
+        }
+
         // 附加执行追踪
         task_state.execution_trace = Some(types::ExecutionTrace {
             trace_id,
@@ -1363,7 +1372,11 @@ impl Executor {
             .values()
             .filter(|r| !r.success)
             .count();
-        if failed_steps > 0 && failed_steps == total_steps {
+        if cancelled {
+            task_state.status = TaskStatus::Cancelled;
+            task_state.error =
+                Some(crate::services::agent::response_agent::task_cancelled_by_user());
+        } else if failed_steps > 0 && failed_steps == total_steps {
             task_state.status = TaskStatus::Failed;
             let errors: Vec<String> = task_state
                 .step_results
@@ -2363,14 +2376,14 @@ impl Executor {
         user_id: i32,
         progress_tx: Option<tokio::sync::mpsc::Sender<types::AgentProgressEvent>>,
     ) -> Result<TaskState, String> {
-        // 原子获取任务状态并标记为 Running（防止并发 resume 竞态）
+        // 先复制持久化恢复态；答案校验和 context 变换都只作用于这份副本。
+        // 真正开始执行前再通过数据库 CAS 争抢跨副本 resume 权。
         let mut task_state = {
-            let mut store = TASK_STORE.write().await;
-            let task = store.get_mut(task_id).ok_or("Task not found")?;
+            let store = TASK_STORE.read().await;
+            let task = store.get(task_id).ok_or("Task not found")?;
             if task.status != TaskStatus::WaitingForInput {
                 return Err("Task is not waiting for input".to_string());
             }
-            task.status = TaskStatus::Running;
             task.clone()
         };
 
@@ -2500,6 +2513,17 @@ impl Executor {
             }
             // 清理临时变量
             context.variables.remove("_error_step_id");
+        }
+
+        if !claim_task_for_resume(task_id, user_id).await? {
+            return Err("Task answer was already claimed by another executor".to_string());
+        }
+        task_state.status = TaskStatus::Running;
+        {
+            let mut store = TASK_STORE.write().await;
+            if let Some(task) = store.get_mut(task_id) {
+                *task = task_state.clone();
+            }
         }
 
         // 清除待回答问题
@@ -2943,6 +2967,13 @@ impl Executor {
             return Ok(task_state);
         }
 
+        // The answer/resume path has the same last-step cancellation window as
+        // initial execution, including cancellations issued on another replica.
+        let cancelled = is_cancelled(&task_state.task_id).await;
+        if cancelled {
+            clear_cancellation(&task_state.task_id).await;
+        }
+
         // 附加执行追踪
         task_state.execution_trace = Some(types::ExecutionTrace {
             trace_id,
@@ -2959,7 +2990,11 @@ impl Executor {
             .values()
             .filter(|r| !r.success)
             .count();
-        if failed_steps > 0 && failed_steps == total_steps {
+        if cancelled {
+            task_state.status = TaskStatus::Cancelled;
+            task_state.error =
+                Some(crate::services::agent::response_agent::task_cancelled_by_user());
+        } else if failed_steps > 0 && failed_steps == total_steps {
             task_state.status = TaskStatus::Failed;
             let errors: Vec<String> = task_state
                 .step_results
