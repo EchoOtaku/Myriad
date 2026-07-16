@@ -1,9 +1,3 @@
-export const SITE = {
-  title: 'Myriad',
-  description: 'A myriad of lights, in one place.',
-  defaultLanguage: 'en-us',
-} as const
-
 // API URL 配置：
 // - 开发环境：默认使用相对路径 /api/*，由 Astro dev proxy 转发到后端
 // - 生产环境（.env.production）：PUBLIC_API_URL="" (使用相对路径 /api/*)

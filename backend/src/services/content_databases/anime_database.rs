@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 
-use super::record_unknown;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -222,9 +222,8 @@ impl AnimeDatabase {
                     *genre_map.entry(genre.clone()).or_insert(0) += 1;
                 }
             } else {
-                // 未知内容 - 保留原样并记录
+                // 未知内容 - 保留原样（不进入外部自学习链路）
                 unknown_items.push(title.clone());
-                record_unknown("Anime", &title);
             }
         }
 

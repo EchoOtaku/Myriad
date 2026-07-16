@@ -590,9 +590,6 @@ impl SmartFilter {
             }
         }
 
-        // Flush unknown content stats to disk
-        super::content_databases::learning::flush_unknown_stats();
-
         tracing::info!(
             "✓ Smart filtered data saved to {} platform files in cache/platforms/",
             processed_count

@@ -565,7 +565,6 @@ impl PlatformFetcher {
     }
 
     /// 获取 GitHub 用户的所有公开仓库
-    #[allow(dead_code)]
     pub async fn fetch_github_repos(
         &self,
         username: &str,
@@ -608,64 +607,6 @@ impl PlatformFetcher {
         Ok(all_repos)
     }
 
-    /// 计算 GitHub 用户的总 star 数
-    #[allow(dead_code)]
-    pub async fn fetch_github_stats(
-        &self,
-        username: &str,
-        token: Option<&str>,
-    ) -> Result<serde_json::Value> {
-        // 获取用户信息
-        let user_info = self.fetch_github_user(username, token).await?;
-
-        // 获取所有仓库
-        let repos = self.fetch_github_repos(username, token).await?;
-
-        // 计算总 star 数
-        let total_stars: i64 = repos
-            .iter()
-            .filter_map(|repo| repo["stargazers_count"].as_i64())
-            .sum();
-
-        // 计算总 fork 数
-        let total_forks: i64 = repos
-            .iter()
-            .filter_map(|repo| repo["forks_count"].as_i64())
-            .sum();
-
-        // 统计编程语言
-        let mut languages: std::collections::HashMap<String, i32> =
-            std::collections::HashMap::new();
-        for repo in &repos {
-            if let Some(lang) = repo["language"].as_str() {
-                *languages.entry(lang.to_string()).or_insert(0) += 1;
-            }
-        }
-
-        Ok(serde_json::json!({
-            "username": user_info["login"],
-            "name": user_info["name"],
-            "bio": user_info["bio"],
-            "avatar_url": user_info["avatar_url"],
-            "followers": user_info["followers"],
-            "following": user_info["following"],
-            "public_repos": user_info["public_repos"],
-            "total_stars": total_stars,
-            "total_forks": total_forks,
-            "top_languages": languages,
-            "repos": repos,
-            "contribution_calendar": match self.fetch_github_contributions(username, token).await {
-                Ok(calendar) => {
-                    tracing::info!("✓ GitHub contributions fetched: {} days", calendar.len());
-                    Some(calendar)
-                },
-                Err(e) => {
-                    tracing::warn!("⚠ Failed to fetch GitHub contributions: {}", e);
-                    None
-                }
-            },
-        }))
-    }
 
     /// 获取 GitHub 贡献日历数据（通过爬取用户页面）
     pub async fn fetch_github_contributions(

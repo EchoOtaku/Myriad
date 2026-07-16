@@ -2,7 +2,6 @@
  * Brew 模块共享类型定义
  */
 
-import type { ReactNode } from 'react'
 import type {
   AddSourceInput,
   BrewItem,
@@ -87,25 +86,6 @@ export interface BrewItemTranslations {
   unstarArticle: string
   starArticle: string
   openInNewTab: string
-}
-
-/** 空状态 Props */
-export interface EmptyStateProps {
-  icon?: ReactNode
-  title: string
-  description?: string
-  action?: {
-    label: string
-    onClick: () => void
-  }
-  className?: string
-}
-
-/** 骨架屏 Props */
-export interface CardSkeletonProps {
-  type: 'source' | 'item'
-  count?: number
-  size?: CardSize
 }
 
 // ==================== 管理组件类型 ====================

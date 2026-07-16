@@ -44,14 +44,17 @@ import { useTappScheduler, useTappStagger } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
-import { useTitleFont } from '../../hooks/useTitleFont'
+import {
+  useResolvedTitleColor,
+  useTitleFont,
+} from '../../hooks/useTitleFont'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { TappIcon } from '../components/TappIcon'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { getTappRuntime } from '../runtime'
-import { isWebKit } from '../runtime/TappPageSandbox'
 import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
+import { isWebKit } from '../runtime/TappPageSandbox'
 import * as TappApiService from '../services/TappApiService'
 import { getTappIconStyle as getTappIconStyleFromManifest } from '../utils/tappColors'
 
@@ -645,39 +648,9 @@ export function TappListPage() {
   const { isMobile } = useBreakpoints()
   const { isAdmin, hasChecked, checkAuth } = useAuth()
   // 🆕 标题字体 Hook
-  const { currentFont, titleFontSize, titleColor } = useTitleFont()
-
-  // 检测深色模式
-  const [isDark, setIsDark] = useState(false)
-  useEffect(() => {
-    const checkDarkMode = () => {
-      setIsDark(document.documentElement.classList.contains('dark'))
-    }
-    checkDarkMode()
-    const observer = new MutationObserver(checkDarkMode)
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
-    return () => observer.disconnect()
-  }, [])
-
-  // 计算标题颜色
-  const getTitleColor = () => {
-    if (titleColor === 'adaptive') {
-      return isDark
-        ? 'color-mix(in srgb, var(--color-primary) 50%, #ffffff)'
-        : 'color-mix(in srgb, var(--color-primary) 50%, #000000)'
-    }
-    const colorMap: Record<string, string> = {
-      primary: 'var(--color-primary)',
-      secondary: 'var(--color-secondary)',
-      accent: 'var(--color-accent)',
-      light: 'var(--color-light)',
-      dark: 'var(--color-dark)',
-    }
-    return `color-mix(in srgb, ${colorMap[titleColor] || 'var(--color-primary)'} 70%, transparent)`
-  }
+  const { currentFont, titleFontSize } = useTitleFont()
+  // 自适应色对齐 Tapp 音乐播放器歌词：对比度推导
+  const titleColorCss = useResolvedTitleColor()
 
   const [tapps, setTapps] = useState<TappInstance[]>([])
   const [runningTapps, setRunningTapps] = useState<Set<string>>(new Set())
@@ -844,8 +817,8 @@ export function TappListPage() {
               style={{
                 top: `calc(24px - ${7.5 * titleFontSize}rem)`,
                 fontSize: `${6 * titleFontSize}rem`,
-                color: getTitleColor(),
-                WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor()} 30%, transparent)`,
+                color: titleColorCss,
+                WebkitTextStroke: `0.5px color-mix(in srgb, ${titleColorCss} 30%, transparent)`,
                 fontFamily: currentFont.family,
                 fontWeight: 700,
               }}

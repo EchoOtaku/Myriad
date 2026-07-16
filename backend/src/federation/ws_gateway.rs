@@ -434,6 +434,7 @@ async fn handle_ws_room_client_message(
                     payload,
                     thread_id: thread_id.map(|s| s.to_string()),
                     reply_to: reply_to.map(|s| s.to_string()),
+                    encrypt: msg.get("encrypt").and_then(|v| v.as_bool()),
                 };
                 if let Err((status, json_err)) =
                     crate::federation::room::send_room_message(user_id, username, room_id, db, &req)
@@ -503,6 +504,7 @@ async fn handle_ws_client_message(
                         .map(|s| s.to_string()),
                     payload,
                     reply_to: reply_to.map(|s| s.to_string()),
+                    encrypt: msg.get("encrypt").and_then(|v| v.as_bool()),
                 };
                 match crate::federation::channel::send_message(
                     user_id, username, channel_id, db, &req,

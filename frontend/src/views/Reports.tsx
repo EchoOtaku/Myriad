@@ -45,7 +45,10 @@ import {
   useReportsScheduler,
 } from '../hooks/animation'
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
-import { useTitleFont } from '../hooks/useTitleFont'
+import {
+  useResolvedTitleColor,
+  useTitleFont,
+} from '../hooks/useTitleFont'
 import { getCSRFToken } from '../utils/csrf'
 import { notifyRecentActivityUpdated } from '../utils/recentActivity'
 import { hasSessionHint } from '../utils/sessionDetection'
@@ -334,7 +337,10 @@ export default function Reports() {
   const { t } = useI18n()
   const isPageReady = usePageReady()
   // 🆕 标题字体 Hook
-  const { currentFont, titleFontSize, titleColor } = useTitleFont()
+  const { currentFont, titleFontSize } = useTitleFont()
+  // 自适应色对齐 Tapp 音乐播放器歌词：对比度推导
+  const titleColorPrimary = useResolvedTitleColor('primary')
+  const titleColorAccent = useResolvedTitleColor('accent')
 
   // 二级导航项配置
   const navItems: SecondaryNavItem[] = useMemo(
@@ -416,44 +422,6 @@ export default function Reports() {
       )
     }
   }, [setExpanded])
-
-  // 检测深色模式
-  const [isDark, setIsDark] = useState(false)
-  useEffect(() => {
-    const checkDarkMode = () => {
-      setIsDark(document.documentElement.classList.contains('dark'))
-    }
-    checkDarkMode()
-    const observer = new MutationObserver(checkDarkMode)
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
-    return () => observer.disconnect()
-  }, [])
-
-  // 计算标题颜色
-  const getTitleColor = (colorType: 'primary' | 'accent' = 'primary') => {
-    // 如果设置了自定义颜色，使用自定义颜色
-    if (titleColor !== 'primary') {
-      if (titleColor === 'adaptive') {
-        return isDark
-          ? 'color-mix(in srgb, var(--color-primary) 50%, #ffffff)'
-          : 'color-mix(in srgb, var(--color-primary) 50%, #000000)'
-      }
-      const colorMap: Record<string, string> = {
-        secondary: 'var(--color-secondary)',
-        accent: 'var(--color-accent)',
-        light: 'var(--color-light)',
-        dark: 'var(--color-dark)',
-      }
-      return `color-mix(in srgb, ${colorMap[titleColor] || 'var(--color-primary)'} 70%, transparent)`
-    }
-    // 否则使用默认颜色（primary 或 accent）
-    return colorType === 'accent'
-      ? 'color-mix(in srgb, var(--color-accent) 70%, transparent)'
-      : 'color-mix(in srgb, var(--color-primary) 70%, transparent)'
-  }
 
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null)
   const [report, setReport] = useState<CrossPlatformReport | null>(null)
@@ -1202,8 +1170,8 @@ export default function Reports() {
                     fontFamily: currentFont.family,
                     fontWeight: 700,
                     fontSize: `${6 * titleFontSize}rem`,
-                    color: getTitleColor('primary'),
-                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor('primary')} 30%, transparent)`,
+                    color: titleColorPrimary,
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${titleColorPrimary} 30%, transparent)`,
                   }}
                 >
                   Character
@@ -1220,8 +1188,8 @@ export default function Reports() {
                     fontFamily: currentFont.family,
                     fontWeight: 700,
                     fontSize: `${6 * titleFontSize}rem`,
-                    color: getTitleColor('accent'),
-                    WebkitTextStroke: `0.5px color-mix(in srgb, ${getTitleColor('accent')} 30%, transparent)`,
+                    color: titleColorAccent,
+                    WebkitTextStroke: `0.5px color-mix(in srgb, ${titleColorAccent} 30%, transparent)`,
                   }}
                 >
                   Stage

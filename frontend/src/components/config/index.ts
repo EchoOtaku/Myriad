@@ -5,7 +5,6 @@
 export { default as AboutConfigSection } from './AboutConfigSection'
 export { AdvancedConfigSection } from './AdvancedConfigSection'
 export { default as AiConfigSection } from './AiConfigSection'
-export { default as GenericConfigSection } from './GenericConfigSection'
 export {
   areLibrarySourcePreferencesEqual,
   DEFAULT_LIBRARY_SOURCE_PREFERENCES,
@@ -20,6 +19,5 @@ export { default as OAuthConfigSection } from './OAuthConfigSection'
 export { default as PermissionsConfigSection } from './PermissionsConfigSection'
 export { default as PlatformAutoRefreshSettings } from './PlatformAutoRefreshSettings'
 export type { PlatformAutoFetchConfig } from './PlatformAutoRefreshSettings'
-export { default as PlatformConfigSection } from './PlatformConfigSection'
 export { default as UiConfigSection } from './UiConfigSection'
 export { UpdaterInlinePanel } from './UpdaterConfigSection'

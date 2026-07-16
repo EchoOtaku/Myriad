@@ -34,6 +34,9 @@ pub struct SendMessageRequest {
     pub payload: serde_json::Value,
     /// 回复的消息 ID
     pub reply_to: Option<String>,
+    /// 是否使用 Channel E2E 加密载荷（需先完成密钥交换）
+    #[serde(default)]
+    pub encrypt: Option<bool>,
 }
 
 /// Channel 概要
@@ -87,6 +90,19 @@ pub struct SendMessageResponse {
     pub success: bool,
     pub message_id: String,
     pub channel_id: String,
+    /// 是否已对 payload 做 E2E 加密
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_encrypted: bool,
+}
+
+/// 发起 E2E 密钥交换响应
+#[derive(Debug, Serialize)]
+pub struct E2eKeyExchangeResponse {
+    pub success: bool,
+    pub channel_id: String,
+    pub public_key: String,
+    pub algorithm: String,
+    pub established: bool,
 }
 
 // ==================== Channel CRUD 功能 ====================
@@ -538,12 +554,13 @@ pub async fn send_message(
 
     let base_url = get_base_url().await;
     let message_type = req.message_type.as_deref().unwrap_or("text");
+    let want_encrypt = req.encrypt.unwrap_or(false);
 
     // 验证通道存在且为 active 或 accepted
     let ch_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT c.status, ra.actor_url, ra.inbox_url
+            r#"SELECT c.status, c.properties, ra.actor_url, ra.inbox_url
                FROM federation_channels c
                JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE c.user_id = $1 AND c.channel_id = $2"#,
@@ -572,6 +589,37 @@ pub async fn send_message(
         .try_get::<Option<String>>("", "inbox_url")
         .unwrap_or(None);
     let remote_actor_url: String = ch_row.try_get("", "actor_url").unwrap_or_default();
+    let properties: Option<serde_json::Value> = ch_row
+        .try_get::<Option<serde_json::Value>>("", "properties")
+        .unwrap_or(None);
+
+    // 可选：E2E 加密载荷
+    let (stored_payload, is_encrypted) = if want_encrypt {
+        let session = load_e2e_session(channel_id, properties.as_ref()).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("E2E session unavailable: {e}")})),
+            )
+        })?;
+        if !session.established {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "E2E session not established; call POST .../e2e/key-exchange first and wait for peer key"
+                })),
+            ));
+        }
+        let encrypted = crate::federation::e2e::encrypt_json_payload(&session, &req.payload)
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("E2E encrypt failed: {e}")})),
+                )
+            })?;
+        (encrypted, true)
+    } else {
+        (req.payload.clone(), false)
+    };
 
     // 存入消息
     let message_id = generate_message_id();
@@ -581,14 +629,15 @@ pub async fn send_message(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_channel_messages
            (channel_id, message_id, sender_actor, message_type, payload, reply_to, is_encrypted, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, false, NOW())"#,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"#,
         [
             channel_id.into(),
             message_id.clone().into(),
             local_actor.clone().into(),
             message_type.into(),
-            req.payload.clone().into(),
+            stored_payload.clone().into(),
             req.reply_to.clone().into(),
+            is_encrypted.into(),
         ],
     ))
     .await
@@ -622,7 +671,8 @@ pub async fn send_message(
             "messageId": &message_id,
             "messageType": message_type,
             "from": &local_actor,
-            "payload": &req.payload,
+            "payload": &stored_payload,
+            "isEncrypted": is_encrypted,
             "replyTo": &req.reply_to,
             "timestamp": now_iso8601()
         }
@@ -669,7 +719,8 @@ pub async fn send_message(
                 "message_id": &message_id,
                 "sender_actor": &local_actor,
                 "message_type": message_type,
-                "payload": &req.payload,
+                "payload": &stored_payload,
+                "is_encrypted": is_encrypted,
                 "reply_to": &req.reply_to,
                 "created_at": now_iso8601()
             }
@@ -681,6 +732,7 @@ pub async fn send_message(
         success: true,
         message_id,
         channel_id: channel_id.to_string(),
+        is_encrypted,
     })
 }
 
@@ -692,22 +744,31 @@ pub async fn get_messages(
     before: Option<&str>,
     limit: Option<i64>,
 ) -> Result<Vec<MessageItem>, (StatusCode, Json<serde_json::Value>)> {
-    // 验证通道归属
-    let exists = db
+    // 验证通道归属，并读取 E2E 状态以便本地解密
+    let ch_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT 1 FROM federation_channels WHERE user_id = $1 AND channel_id = $2",
+            "SELECT properties FROM federation_channels WHERE user_id = $1 AND channel_id = $2",
             [user_id.into(), channel_id.into()],
         ))
         .await
         .map_err(db_err)?;
 
-    if exists.is_none() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Channel not found"})),
-        ));
-    }
+    let ch_row = match ch_row {
+        Some(r) => r,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Channel not found"})),
+            ))
+        }
+    };
+
+    let properties = ch_row
+        .try_get::<Option<serde_json::Value>>("", "properties")
+        .ok()
+        .flatten();
+    let e2e_session = load_e2e_session(channel_id, properties.as_ref()).ok();
 
     let limit = limit.unwrap_or(50).min(200);
 
@@ -740,15 +801,29 @@ pub async fn get_messages(
 
     let mut messages = Vec::new();
     for row in rows {
+        let is_encrypted: bool = row.try_get("", "is_encrypted").unwrap_or(false);
+        let mut payload: serde_json::Value = row.try_get("", "payload").unwrap_or(json!(null));
+        // 本地持有会话时，把加密信封还原为明文 JSON（DB 仍保留密文）
+        if is_encrypted {
+            if let Some(session) = e2e_session.as_ref() {
+                if session.established {
+                    if let Ok(plain) =
+                        crate::federation::e2e::decrypt_json_payload(session, &payload)
+                    {
+                        payload = plain;
+                    }
+                }
+            }
+        }
         messages.push(MessageItem {
             message_id: row.try_get("", "message_id").unwrap_or_default(),
             sender_actor: row.try_get("", "sender_actor").unwrap_or_default(),
             message_type: row.try_get("", "message_type").unwrap_or_default(),
-            payload: row.try_get("", "payload").unwrap_or(json!(null)),
+            payload,
             reply_to: row
                 .try_get::<Option<String>>("", "reply_to")
                 .unwrap_or(None),
-            is_encrypted: row.try_get("", "is_encrypted").unwrap_or(false),
+            is_encrypted,
             created_at: row
                 .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
                 .map(|t| t.to_rfc3339())
@@ -929,6 +1004,10 @@ pub async fn handle_channel_message(
         .unwrap_or("text");
     let payload = object.get("payload").cloned().unwrap_or(json!(null));
     let reply_to = object.get("replyTo").and_then(|v| v.as_str());
+    let is_encrypted = object
+        .get("isEncrypted")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // 存入消息
     let inserted = db
@@ -936,7 +1015,7 @@ pub async fn handle_channel_message(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_channel_messages
            (channel_id, message_id, sender_actor, message_type, payload, reply_to, is_encrypted, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, false, NOW())
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
            ON CONFLICT (message_id) DO NOTHING"#,
             [
                 channel_id.into(),
@@ -945,6 +1024,7 @@ pub async fn handle_channel_message(
                 message_type.into(),
                 payload.clone().into(),
                 reply_to.into(),
+                is_encrypted.into(),
             ],
         ))
         .await
@@ -970,6 +1050,7 @@ pub async fn handle_channel_message(
                 "sender_actor": sender,
                 "message_type": message_type,
                 "payload": payload,
+                "is_encrypted": is_encrypted,
                 "reply_to": reply_to,
                 "created_at": now_iso8601()
             }
@@ -1226,8 +1307,9 @@ pub async fn handle_channel_accept(
 
 /// 处理 myriad:KeyExchange Activity
 ///
-/// 把对端 X25519 公钥作为一条特殊 message 存入 channel 历史，
-/// 同时通过 WebSocket 广播给本地客户端用于建立 E2E 会话。
+/// 1. 校验公钥材料（`e2e` 模块）
+/// 2. 写入 channel.properties.e2e.remote_public_key，标记会话 established
+/// 3. 作为特殊 message 存入历史，并 WebSocket 广播
 pub async fn handle_key_exchange(
     db: &DatabaseConnection,
     actor_url_str: &str,
@@ -1245,26 +1327,57 @@ pub async fn handle_key_exchange(
     let algorithm = object
         .get("algorithm")
         .and_then(|v| v.as_str())
-        .unwrap_or("x25519-chacha20-poly1305");
+        .unwrap_or(crate::federation::e2e::E2E_ALGORITHM);
 
-    // 验证发送方是该 Channel 的远程方
-    let ch_check = db
+    crate::federation::e2e::validate_public_key_b64(public_key)
+        .map_err(|e| format!("Invalid remote E2E public key: {e}"))?;
+
+    // 验证发送方是该 Channel 的远程方，并读取 properties
+    let ch_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT 1 FROM federation_channels c
+            r#"SELECT c.properties FROM federation_channels c
                JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE c.channel_id = $1 AND ra.actor_url = $2"#,
             [channel_id.into(), actor_url_str.into()],
         ))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "Channel {} not found or actor {} is not the remote party",
+                channel_id, actor_url_str
+            )
+        })?;
 
-    if ch_check.is_none() {
-        return Err(format!(
-            "Channel {} not found or actor {} is not the remote party",
-            channel_id, actor_url_str
-        ));
-    }
+    let mut properties = ch_row
+        .try_get::<Option<serde_json::Value>>("", "properties")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({}));
+
+    // 合并 e2e 状态：写入 remote_public_key；若已有本地密钥则 established=true
+    let mut e2e_obj = properties
+        .get("e2e")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    e2e_obj["remote_public_key"] = json!(public_key);
+    e2e_obj["algorithm"] = json!(algorithm);
+    let has_local = e2e_obj
+        .get("local_private_key")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    e2e_obj["established"] = json!(has_local);
+    properties["e2e"] = e2e_obj;
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_channels SET properties = $2, last_activity_at = NOW() WHERE channel_id = $1",
+        [channel_id.into(), properties.into()],
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
 
     let message_id = activity
         .get("id")
@@ -1300,15 +1413,216 @@ pub async fn handle_key_exchange(
             "channel_id": channel_id,
             "from": actor_url_str,
             "publicKey": public_key,
-            "algorithm": algorithm
+            "algorithm": algorithm,
+            "established": has_local
         }),
     )
     .await;
 
     tracing::info!(
-        "[Channel] KeyExchange received in channel {} from {}",
+        "[Channel] KeyExchange received in channel {} from {} (local_keys={})",
         channel_id,
-        actor_url_str
+        actor_url_str,
+        has_local
     );
     Ok(())
+}
+
+// ==================== E2E 会话辅助 ====================
+
+/// 从 channel.properties.e2e 加载会话
+fn load_e2e_session(
+    channel_id: &str,
+    properties: Option<&serde_json::Value>,
+) -> Result<crate::federation::e2e::EncryptionSession, String> {
+    let e2e = properties
+        .and_then(|p| p.get("e2e"))
+        .ok_or("No e2e state on channel; call key-exchange first")?;
+    let local_pk = e2e
+        .get("local_public_key")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing local_public_key in e2e state")?;
+    let local_sk = e2e
+        .get("local_private_key")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing local_private_key in e2e state")?;
+    let remote_pk = e2e.get("remote_public_key").and_then(|v| v.as_str());
+    crate::federation::e2e::session_from_stored(channel_id, local_pk, local_sk, remote_pk)
+}
+
+/// 发起 Channel E2E 密钥交换：生成 X25519 密钥对、写入 properties、投递 myriad:KeyExchange
+pub async fn initiate_e2e_key_exchange(
+    user_id: i32,
+    username: &str,
+    channel_id: &str,
+    db: &DatabaseConnection,
+) -> Result<E2eKeyExchangeResponse, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+
+    let ch_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT c.status, c.properties, ra.actor_url, ra.inbox_url
+               FROM federation_channels c
+               JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+               WHERE c.user_id = $1 AND c.channel_id = $2"#,
+            [user_id.into(), channel_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Channel not found"})),
+            )
+        })?;
+
+    let status: String = ch_row.try_get("", "status").unwrap_or_default();
+    if !["active", "accepted", "pending"].contains(&status.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("Channel is {status}, cannot start E2E")})),
+        ));
+    }
+
+    let remote_inbox: Option<String> = ch_row
+        .try_get::<Option<String>>("", "inbox_url")
+        .unwrap_or(None);
+    let remote_actor_url: String = ch_row.try_get("", "actor_url").unwrap_or_default();
+    let mut properties = ch_row
+        .try_get::<Option<serde_json::Value>>("", "properties")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({}));
+
+    // 保留已有 remote key（若对端先发起）
+    let existing_remote = properties
+        .get("e2e")
+        .and_then(|e| e.get("remote_public_key"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let mut session = crate::federation::e2e::create_session(channel_id);
+    let kx = crate::federation::e2e::build_key_exchange_payload(&session);
+    let mut established = false;
+    if let Some(ref remote_pk) = existing_remote {
+        if let Ok(_) = crate::federation::e2e::accept_key_exchange(&mut session, remote_pk) {
+            established = true;
+        }
+    }
+
+    let e2e_state = json!({
+        "local_public_key": session.local_keypair.public_key,
+        "local_private_key": session.local_keypair.private_key,
+        "remote_public_key": existing_remote,
+        "established": established,
+        "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+    });
+    properties["e2e"] = e2e_state;
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_channels SET properties = $2, last_activity_at = NOW() WHERE channel_id = $1 AND user_id = $3",
+        [channel_id.into(), properties.into(), user_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    let local_actor = actor_url(&base_url, username);
+    let activity_id = generate_activity_id(&base_url);
+    let kx_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:KeyExchange",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "to": [&remote_actor_url],
+        "object": {
+            "type": "myriad:KeyExchange",
+            "channel": channel_id,
+            "publicKey": &kx.public_key,
+            "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+            "timestamp": now_iso8601()
+        }
+    });
+
+    // 本地历史：记录我们发出的公钥（不含私钥）
+    let message_id = generate_message_id();
+    let _ = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_channel_messages
+               (channel_id, message_id, sender_actor, message_type, payload, is_encrypted, created_at)
+               VALUES ($1, $2, $3, 'myriad:KeyExchange', $4, false, NOW())"#,
+            [
+                channel_id.into(),
+                message_id.into(),
+                local_actor.clone().into(),
+                json!({
+                    "publicKey": &kx.public_key,
+                    "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+                    "direction": "outbound"
+                })
+                .into(),
+            ],
+        ))
+        .await;
+
+    if let Some(inbox) = remote_inbox {
+        let domain = extract_domain(&inbox).unwrap_or_default();
+        let act_row = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"INSERT INTO federation_activities
+                   (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
+                   VALUES ($1, $2, 'KeyExchange', 'KeyExchange', $3, true, NOW())
+                   RETURNING id"#,
+                [
+                    activity_id.clone().into(),
+                    user_id.into(),
+                    kx_activity.clone().into(),
+                ],
+            ))
+            .await
+            .map_err(db_err)?;
+
+        if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
+            let _ = db
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"INSERT INTO federation_delivery_queue
+                       (activity_id, target_inbox, target_domain, status, created_at)
+                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                    [act_id.into(), inbox.into(), domain.into()],
+                ))
+                .await;
+        }
+    }
+
+    crate::federation::ws_gateway::broadcast_to_channel(
+        channel_id,
+        &json!({
+            "type": "key_exchange",
+            "channel_id": channel_id,
+            "from": local_actor,
+            "publicKey": &kx.public_key,
+            "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+            "established": established,
+            "direction": "outbound"
+        }),
+    )
+    .await;
+
+    tracing::info!(
+        "[Channel] E2E key exchange initiated for {} (established={})",
+        channel_id,
+        established
+    );
+
+    Ok(E2eKeyExchangeResponse {
+        success: true,
+        channel_id: channel_id.to_string(),
+        public_key: kx.public_key,
+        algorithm: crate::federation::e2e::E2E_ALGORITHM.to_string(),
+        established,
+    })
 }

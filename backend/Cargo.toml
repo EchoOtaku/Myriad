@@ -57,8 +57,9 @@ flate2 = "1"         # zlib inflate for KuGou KRC (逐字歌词) decode
 
 # Federation (MFP - Myriad Federation Protocol)
 rsa = { version = "0.9", features = ["pem", "sha2"] }  # RSA key generation & signing
-aes-gcm = "0.10"     # AES-256-GCM for private key encryption
+aes-gcm = "0.10"     # AES-256-GCM for private key encryption + E2E message AEAD
 rand_core = { version = "0.6", features = ["getrandom"] }  # RNG compatible with rsa 0.9
+x25519-dalek = { version = "2", features = ["static_secrets"] }  # Channel/Room E2E ECDH
 subtle = "2.6"       # Constant-time comparison for digest/signature verification
 
 # Configuration

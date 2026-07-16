@@ -12,7 +12,6 @@ pub mod enka_assets; // 🎮 Enka 角色元数据（名字/图标/稀有度，�
 pub mod fetcher;
 pub mod http_client; // ✅ 统一 HTTP 客户端（代理支持）
 pub mod kugou_service; // ✅ 酷狗音乐服务（逐字歌词 KRC 补充源）
-pub mod metadata_filter; // ✅ 5W元数据过滤器（旧版）
 pub mod metadata_service;
 pub mod netease_service; // ✅ 网易云音乐统一服务层
 pub mod netease_utils; // ✅ 网易云音乐工具函数

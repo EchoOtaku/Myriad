@@ -23,6 +23,7 @@ import {
   AVAILABLE_COLORS,
   AVAILABLE_FONTS,
   FONT_SIZE_OPTIONS,
+  getTitleColorCss,
   useTitleFont,
 } from '../hooks/useTitleFont'
 import {
@@ -30,6 +31,8 @@ import {
   SURFACE_OPTIONS,
   useWidgetTheme,
 } from '../hooks/useWidgetTheme'
+import { usePrimaryColor } from '../utils/colorSubscriber'
+import { useThemeMode } from '../utils/themeSubscriber'
 
 interface TitleFontSelectorProps {
   csrfToken: string
@@ -76,26 +79,18 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(
     )
     const [activeTab, setActiveTab] = useState<TabType>('font')
     const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0 })
-    const [isDark, setIsDark] = useState(false)
+    const isDark = useThemeMode()
+    // 壁纸主色变化时刷新自适应色块预览
+    const primaryColor = usePrimaryColor()
 
     const buttonRef = useRef<HTMLButtonElement>(null)
     const panelRef = useRef<HTMLDivElement>(null)
 
-    // 检测深色模式
-    useEffect(() => {
-      const checkDarkMode = () => {
-        setIsDark(document.documentElement.classList.contains('dark'))
-      }
-      checkDarkMode()
-
-      const observer = new MutationObserver(checkDarkMode)
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['class'],
-      })
-
-      return () => observer.disconnect()
-    }, [])
+    // 自适应色预览（对比度推导，与 Hero 实际着色一致）
+    const adaptivePreviewColor = useMemo(() => {
+      void primaryColor // 壁纸色指纹，触发色块刷新
+      return getTitleColorCss('adaptive', isDark)
+    }, [isDark, primaryColor])
 
     // 计算面板位置
     useEffect(() => {
@@ -307,7 +302,7 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(
                   style={{
                     background:
                       color.id === 'adaptive'
-                        ? `linear-gradient(135deg, ${isDark ? '#fff' : '#000'} 0%, var(--color-primary) 100%)`
+                        ? adaptivePreviewColor
                         : color.value,
                   }}
                 />
@@ -325,7 +320,7 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(
           ))}
         </div>
       ),
-      [titleColor, isDark, handleSelectColor, t],
+      [titleColor, adaptivePreviewColor, handleSelectColor, t],
     )
 
     // 渲染小组件表面列表（附带一小块该表面的实时预览）

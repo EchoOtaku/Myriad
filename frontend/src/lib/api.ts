@@ -127,83 +127,8 @@ api.interceptors.response.use(
   },
 )
 
-// Health check
-export async function checkHealth() {
-  const response = await api.get('/health')
-  return response.data
-}
-
-// Setup APIs
-export async function checkSetupStatus() {
-  const response = await api.get('/api/setup/status')
-  return response.data
-}
-
-export async function saveDatabaseConfig(config: {
-  host: string
-  port: number
-  username: string
-  password: string
-  database: string
-}) {
-  // 输入验证
-  if (!config.host || config.host.length > 255) {
-    throw new Error('Invalid host')
-  }
-  if (config.port < 1 || config.port > 65535) {
-    throw new Error('Invalid port')
-  }
-  if (!config.username || config.username.length > 100) {
-    throw new Error('Invalid username')
-  }
-  if (!config.password || config.password.length > 255) {
-    throw new Error('Invalid password')
-  }
-  if (!config.database || config.database.length > 100) {
-    throw new Error('Invalid database name')
-  }
-
-  const response = await api.post('/api/setup/database-config', config)
-  return response.data
-}
-
-export async function initDatabase() {
-  const response = await api.post('/api/setup/init-database')
-  return response.data
-}
-
-export async function createAdmin(credentials: {
-  username: string
-  password: string
-}) {
-  // 验证用户名
-  if (
-    !credentials.username ||
-    credentials.username.length < 3 ||
-    credentials.username.length > 50
-  ) {
-    throw new Error('Username must be 3-50 characters')
-  }
-  if (!/^\w+$/.test(credentials.username)) {
-    throw new Error(
-      'Username can only contain letters, numbers and underscores',
-    )
-  }
-
-  // 验证密码
-  if (
-    !credentials.password ||
-    credentials.password.length < 8 ||
-    credentials.password.length > 128
-  ) {
-    throw new Error('Password must be 8-128 characters')
-  }
-
-  const response = await api.post('/api/setup/create-admin', credentials)
-  return response.data
-}
-
 // Configuration
+// Setup 流程由 SetupWizard 直接 fetch，不经本模块。
 export async function fetchConfig() {
   const response = await api.get('/api/config')
   return response.data
@@ -247,33 +172,6 @@ export async function restoreSettingsBackup(backup: unknown) {
   return response.data
 }
 
-// Platforms
-export async function fetchPlatforms() {
-  const response = await api.get('/api/platforms')
-  return response.data
-}
-
-export async function fetchProfiles() {
-  const response = await api.get('/api/profiles')
-  return response.data
-}
-
-export async function triggerFetch() {
-  const response = await api.post('/api/fetch')
-  return response.data
-}
-
-// Analysis
-export async function fetchAnalysis() {
-  const response = await api.get('/api/analysis')
-  return response.data
-}
-
-export async function triggerAnalysis() {
-  const response = await api.post('/api/analysis')
-  return response.data
-}
-
 // Config Permissions
 export async function fetchPermissionsConfig() {
   const response = await api.get('/api/config/permissions')
@@ -290,11 +188,6 @@ export async function updatePermissionsConfig(
 // System
 export async function reloadSystemConfig() {
   const response = await api.post('/api/system/reload-config')
-  return response.data
-}
-
-export async function testPlatformConfig(platform: string, config: any) {
-  const response = await api.post('/api/config/test', { platform, config })
   return response.data
 }
 

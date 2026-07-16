@@ -2,8 +2,7 @@ use crate::models::entities::{activity_events, metadata_history, platform_metada
 use crate::services::activity_event_service::build_activity_payload;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -121,116 +120,6 @@ impl MetadataService {
                 Ok(metadata_id)
             }
         }
-    }
-
-    /// 🚀 截断超大数据，避免数据库OOM
-    ///
-    /// 策略：
-    /// - 网易云音乐：只保留前100首歌曲作为样本
-    /// - Steam：只保留前200个游戏
-    /// - Bilibili：只保留前50个视频和追番
-    /// - GitHub：只保留前100个仓库
-    #[allow(dead_code)]
-    fn truncate_large_data(mut data: Value, platform_name: &str) -> Value {
-        match platform_name {
-            "netease" => {
-                if let Some(liked_songs) =
-                    data.get_mut("liked_songs").and_then(|s| s.as_array_mut())
-                {
-                    let original_count = liked_songs.len();
-                    if original_count > 100 {
-                        liked_songs.truncate(100);
-                        tracing::warn!(
-                            "🎵 Netease songs truncated: {} -> 100 (saved {} bytes)",
-                            original_count,
-                            (original_count - 100) * 5000 // 估算每首歌5KB
-                        );
-                    }
-                }
-                // 添加元数据说明截断
-                if let Some(obj) = data.as_object_mut() {
-                    obj.insert("_truncated".to_string(), json!(true));
-                    obj.insert(
-                        "_note".to_string(),
-                        json!("Large arrays truncated for database storage"),
-                    );
-                }
-            }
-            "steam" => {
-                if let Some(games) = data.get_mut("games").and_then(|g| g.as_array_mut()) {
-                    let original_count = games.len();
-                    if original_count > 200 {
-                        games.truncate(200);
-                        tracing::warn!("🎮 Steam games truncated: {} -> 200", original_count);
-                    }
-                }
-                if let Some(obj) = data.as_object_mut() {
-                    obj.insert("_truncated".to_string(), json!(true));
-                }
-            }
-            "bilibili" => {
-                if let Some(videos) = data.get_mut("videos").and_then(|v| v.as_array_mut()) {
-                    let original_count = videos.len();
-                    if original_count > 50 {
-                        videos.truncate(50);
-                        tracing::warn!("📺 Bilibili videos truncated: {} -> 50", original_count);
-                    }
-                }
-                if let Some(bangumi) = data.get_mut("bangumi").and_then(|b| b.as_array_mut()) {
-                    let original_count = bangumi.len();
-                    if original_count > 50 {
-                        bangumi.truncate(50);
-                        tracing::warn!("📺 Bilibili bangumi truncated: {} -> 50", original_count);
-                    }
-                }
-                if let Some(obj) = data.as_object_mut() {
-                    obj.insert("_truncated".to_string(), json!(true));
-                }
-            }
-            "github" => {
-                if let Some(repos) = data.get_mut("repos").and_then(|r| r.as_array_mut()) {
-                    let original_count = repos.len();
-                    if original_count > 100 {
-                        repos.truncate(100);
-                        tracing::warn!("💻 GitHub repos truncated: {} -> 100", original_count);
-                    }
-                }
-                if let Some(obj) = data.as_object_mut() {
-                    obj.insert("_truncated".to_string(), json!(true));
-                }
-            }
-            "x" => {
-                if let Some(tweets) = data.get_mut("tweets").and_then(|t| t.as_array_mut()) {
-                    let original_count = tweets.len();
-                    if original_count > 100 {
-                        tweets.truncate(100);
-                        tracing::warn!("𝕏 X tweets truncated: {} -> 100", original_count);
-                    }
-                }
-                // 丢弃历史 likes 字段（已不再同步）
-                if let Some(obj) = data.as_object_mut() {
-                    obj.remove("liked_tweets");
-                    obj.insert("_truncated".to_string(), json!(true));
-                }
-            }
-            "mal" => {
-                for key in ["anime_list", "manga_list"] {
-                    if let Some(list) = data.get_mut(key).and_then(|t| t.as_array_mut()) {
-                        let original_count = list.len();
-                        if original_count > 500 {
-                            list.truncate(500);
-                            tracing::warn!("📺 MAL {} truncated: {} -> 500", key, original_count);
-                        }
-                    }
-                }
-                if let Some(obj) = data.as_object_mut() {
-                    obj.insert("_truncated".to_string(), json!(true));
-                }
-            }
-            _ => {}
-        }
-
-        data
     }
 
     /// 检测两个JSON对象之间的变化
@@ -366,78 +255,6 @@ impl MetadataService {
         }
 
         changed_fields
-    }
-
-    /// 递归比较JSON对象并记录变化的字段路径（已弃用，保留用于向后兼容）
-    #[allow(dead_code)]
-    fn compare_json_recursive(prefix: &str, old: &Value, new: &Value, changes: &mut Vec<String>) {
-        Self::compare_json(prefix, old, new, changes, 0);
-    }
-
-    /// 递归比较JSON对象（带深度限制）
-    #[allow(dead_code)]
-    fn compare_json(
-        prefix: &str,
-        old: &Value,
-        new: &Value,
-        changes: &mut Vec<String>,
-        depth: usize,
-    ) {
-        const MAX_DEPTH: usize = 30;
-        if depth > MAX_DEPTH {
-            changes.push(format!("{} (deep change, depth > {})", prefix, MAX_DEPTH));
-            return;
-        }
-
-        match (old, new) {
-            (Value::Object(old_map), Value::Object(new_map)) => {
-                for (key, new_val) in new_map {
-                    let field_path = if prefix.is_empty() {
-                        key.clone()
-                    } else {
-                        format!("{}.{}", prefix, key)
-                    };
-                    match old_map.get(key) {
-                        Some(old_val) if old_val != new_val => {
-                            Self::compare_json(&field_path, old_val, new_val, changes, depth + 1);
-                        }
-                        None => changes.push(field_path),
-                        _ => {}
-                    }
-                }
-                for key in old_map.keys() {
-                    if !new_map.contains_key(key) {
-                        let field_path = if prefix.is_empty() {
-                            key.clone()
-                        } else {
-                            format!("{}.{}", prefix, key)
-                        };
-                        changes.push(format!("{} (deleted)", field_path));
-                    }
-                }
-            }
-            (Value::Array(old_arr), Value::Array(new_arr)) => {
-                if old_arr.len() != new_arr.len() {
-                    changes.push(format!("{} (array length changed)", prefix));
-                } else {
-                    for (i, (old_item, new_item)) in
-                        old_arr.iter().zip(new_arr.iter()).enumerate().take(50)
-                    {
-                        if old_item != new_item {
-                            Self::compare_json(
-                                &format!("{}[{}]", prefix, i),
-                                old_item,
-                                new_item,
-                                changes,
-                                depth + 1,
-                            );
-                        }
-                    }
-                }
-            }
-            _ if old != new => changes.push(prefix.to_string()),
-            _ => {}
-        }
     }
 
     /// 记录元数据变化历史
@@ -683,84 +500,7 @@ impl MetadataService {
         }
     }
 
-    /// 创建数据摘要（用于超大数据集）
-    /// 注意：这个函数已被 create_change_summary 取代，保留用于向后兼容
-    #[allow(dead_code)]
-    fn create_data_summary(data: &Value, platform_name: &str) -> Value {
-        match platform_name {
-            "netease" => {
-                // 网易云音乐：只保留用户信息和歌曲数量统计
-                let mut summary = json!({
-                    "_summary": true,
-                    "_note": "Data truncated due to large size"
-                });
 
-                if let Some(profile) = data.get("profile") {
-                    summary["profile"] = profile.clone();
-                }
-
-                if let Some(liked_songs) = data.get("liked_songs").and_then(|s| s.as_array()) {
-                    let total_count = liked_songs.len();
-                    // 🚀 优化：只保存前5首作为样本,减少克隆开销
-                    let sample_songs: Vec<_> = liked_songs.iter().take(5).cloned().collect();
-
-                    summary["liked_songs_summary"] = json!({
-                        "total_count": total_count,
-                        "sample_songs": sample_songs,
-                        "_truncated": total_count > 5,
-                        "_note": "Only showing first 5 songs for memory efficiency"
-                    });
-                }
-
-                summary
-            }
-            "steam" => {
-                // Steam：保留用户信息和游戏统计
-                let mut summary = json!({
-                    "_summary": true,
-                    "_note": "Data truncated due to large size"
-                });
-
-                if let Some(user) = data.get("user") {
-                    summary["user"] = user.clone();
-                }
-
-                if let Some(games) = data.get("games").and_then(|g| g.as_array()) {
-                    summary["games_summary"] = json!({
-                        "total_count": games.len(),
-                        "top_10_by_playtime": games.iter().take(10).cloned().collect::<Vec<_>>()
-                    });
-                }
-
-                summary
-            }
-            _ => {
-                // 其他平台：通用截断策略
-                json!({
-                    "_summary": true,
-                    "_note": "Data truncated due to large size",
-                    "_original_size_estimate": serde_json::to_string(data).unwrap_or_default().len()
-                })
-            }
-        }
-    }
-
-    /// 获取最新的平台元数据
-    #[allow(dead_code)]
-    pub async fn get_latest_metadata(
-        &self,
-        user_id: i32,
-        platform_name: &str,
-    ) -> Result<Option<platform_metadata::Model>, Box<dyn std::error::Error>> {
-        let metadata = platform_metadata::Entity::find()
-            .filter(platform_metadata::Column::UserId.eq(user_id))
-            .filter(platform_metadata::Column::PlatformName.eq(platform_name))
-            .order_by_desc(platform_metadata::Column::FetchedAt)
-            .one(&self.db)
-            .await?;
-
-        Ok(metadata)
-    }
 
     /// 获取所有平台的最新元数据
     /// 自动合并旧版遗留的分片数据（如网易云音乐的 liked_songs）。
@@ -854,62 +594,6 @@ impl MetadataService {
         Ok(result)
     }
 
-    /// 获取元数据变化历史
-    #[allow(dead_code)]
-    pub async fn get_metadata_history(
-        &self,
-        user_id: i32,
-        platform_name: Option<&str>,
-        limit: Option<u64>,
-    ) -> Result<Vec<metadata_history::Model>, Box<dyn std::error::Error>> {
-        use sea_orm::QuerySelect;
 
-        let mut query = metadata_history::Entity::find()
-            .filter(metadata_history::Column::UserId.eq(user_id))
-            .order_by_desc(metadata_history::Column::ChangeDate);
 
-        if let Some(platform) = platform_name {
-            query = query.filter(metadata_history::Column::PlatformName.eq(platform));
-        }
-
-        if let Some(limit_val) = limit {
-            query = query.limit(limit_val);
-        }
-
-        let history = query.all(&self.db).await?;
-        Ok(history)
-    }
-
-    /// 获取特定元数据ID的所有变化历史
-    #[allow(dead_code)]
-    pub async fn get_metadata_changes_by_id(
-        &self,
-        metadata_id: i32,
-    ) -> Result<Vec<metadata_history::Model>, Box<dyn std::error::Error>> {
-        let history = metadata_history::Entity::find()
-            .filter(metadata_history::Column::MetadataId.eq(metadata_id))
-            .order_by_desc(metadata_history::Column::ChangeDate)
-            .all(&self.db)
-            .await?;
-
-        Ok(history)
-    }
-
-    /// 统计变化次数
-    #[allow(dead_code)]
-    pub async fn count_changes(
-        &self,
-        user_id: i32,
-        platform_name: Option<&str>,
-    ) -> Result<u64, Box<dyn std::error::Error>> {
-        let mut query =
-            metadata_history::Entity::find().filter(metadata_history::Column::UserId.eq(user_id));
-
-        if let Some(platform) = platform_name {
-            query = query.filter(metadata_history::Column::PlatformName.eq(platform));
-        }
-
-        let count = query.count(&self.db).await?;
-        Ok(count)
-    }
 }
