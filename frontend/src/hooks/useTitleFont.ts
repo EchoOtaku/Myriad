@@ -44,7 +44,15 @@ type TitleStyleListener = (style: TitleStyle) => void
 // ==================== 常量配置 ====================
 
 // 颜色选项（基于全局壁纸色变量）
+// 自适应为默认，放在首位便于发现
 export const AVAILABLE_COLORS: readonly ColorOption[] = Object.freeze([
+  {
+    id: 'adaptive',
+    nameKey: 'colorAdaptive',
+    value: 'adaptive',
+    // 静态兜底：运行时由 getTitleColorCss / deriveAdaptiveTitleColor 按对比度重算
+    cssValue: 'var(--color-primary)',
+  },
   {
     id: 'primary',
     nameKey: 'colorPrimary',
@@ -74,13 +82,6 @@ export const AVAILABLE_COLORS: readonly ColorOption[] = Object.freeze([
     nameKey: 'colorDark',
     value: 'var(--color-dark)',
     cssValue: 'color-mix(in srgb, var(--color-dark) 70%, transparent)',
-  },
-  {
-    id: 'adaptive',
-    nameKey: 'colorAdaptive',
-    value: 'adaptive',
-    // 静态兜底：运行时由 getTitleColorCss / deriveAdaptiveTitleColor 按对比度重算
-    cssValue: 'var(--color-primary)',
   },
 ])
 
