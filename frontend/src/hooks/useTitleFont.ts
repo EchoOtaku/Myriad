@@ -227,7 +227,8 @@ function loadFont(font: FontOption): Promise<void> {
 let globalState: TitleStyle = {
   font: 'qwitcher-grypen',
   fontSize: 1.0,
-  color: 'primary',
+  // 默认自适应：随主题/壁纸色对比度推导可读标题色
+  color: 'adaptive',
 }
 
 const listeners = new Set<TitleStyleListener>()

@@ -231,8 +231,8 @@ function firstUsableRgb(
 }
 
 /**
- * 从 primary 轻微压暗，直到对比够用或触及明度下限
- * 不走 --color-dark，也不大幅拉向低明度目标
+ * 从 base 色适度压暗，直到对比够用 + 标题略加重
+ * 不走 --color-dark；比「几乎原色」略深一档，仍远浅于 dark token
  */
 function softDarkenFromPrimary(
   primaryHex: string,
@@ -240,31 +240,42 @@ function softDarkenFromPrimary(
   minContrast: number,
 ): string {
   const rgb = hexToRgb(primaryHex) || hexToRgb(DEFAULT_FALLBACK)!
-  // 已经够读：直接用壁纸主色
-  if (contrastRatio(rgb, backdrop) >= minContrast) {
-    return normalizeHexColor(primaryHex) || rgbToHex(rgb)
-  }
-
   const hsl = rgbToHsl(rgb)
-  // 饱和略抬一点，避免压暗后发灰
-  const s = clampNumber(hsl.s * 1.05, 0.28, 0.82)
-  // 每次只减一点明度，下限较高 → 保留浅色观感
-  let l = hsl.l
-  const floor = 0.42
-  let candidate = rgb
+  // 饱和略抬，避免压暗后发灰
+  const s = clampNumber(hsl.s * 1.06, 0.3, 0.84)
+  const floor = 0.36
+  // 标题字重：亮色先下压一截（约 0.08），再按对比度微调
+  let l = hsl.l > 0.5 ? Math.max(floor, hsl.l - 0.08) : hsl.l
+  let candidate = hslToRgb({ h: hsl.h, s, l })
   let guard = 0
 
-  while (guard < 40 && l > floor) {
-    l -= 0.012
+  // 对比不够继续加深
+  while (
+    guard < 40 &&
+    l > floor &&
+    contrastRatio(candidate, backdrop) < minContrast
+  ) {
+    l -= 0.014
     candidate = hslToRgb({ h: hsl.h, s, l })
-    if (contrastRatio(candidate, backdrop) >= minContrast) {
-      return rgbToHex(candidate)
-    }
     guard += 1
   }
 
-  // 触底仍不够：在下限处返回（宁可对比略松，也不再加深）
-  return rgbToHex(hslToRgb({ h: hsl.h, s, l: floor }))
+  // 对比已够时再略加重 2 步（字重），不突破 floor
+  let weightSteps = 0
+  while (
+    weightSteps < 2 &&
+    l - 0.014 >= floor &&
+    contrastRatio(
+      hslToRgb({ h: hsl.h, s, l: l - 0.014 }),
+      backdrop,
+    ) >= minContrast
+  ) {
+    l -= 0.014
+    candidate = hslToRgb({ h: hsl.h, s, l })
+    weightSteps += 1
+  }
+
+  return rgbToHex(candidate)
 }
 
 /**
@@ -277,22 +288,38 @@ export function deriveReadableColor(
   const {
     candidates,
     isDark,
-    targetLightness = isDark ? 0.78 : 0.56,
-    minContrast = isDark ? 3.7 : 2.2,
+    targetLightness = isDark ? 0.78 : 0.48,
+    minContrast = isDark ? 3.7 : 2.7,
     fallback = DEFAULT_FALLBACK,
     backdrop,
   } = options
 
   const bg = backdrop ?? getThemeBackdropRgb(isDark)
 
-  // 浅色：优先最亮达标色，绝不 first-hit 深色 token
+  // 浅色：以 primary（fallback）为主做适度压暗；不用 dark token
+  // 若 primary 不可解析，再退到最亮达标候选
   if (!isDark) {
-    const brightest = pickBrightestReadableCandidate(candidates, minContrast, bg)
-    if (brightest) return brightest
-    const base = normalizeHexColor(fallback) || normalizeHexColor(
-      toColorCandidates(candidates).find((c) => normalizeHexColor(c)) ?? null,
-    ) || DEFAULT_FALLBACK
-    return softDarkenFromPrimary(base, bg, minContrast)
+    const base =
+      normalizeHexColor(fallback) ||
+      normalizeHexColor(
+        toColorCandidates(candidates).find((c) => normalizeHexColor(c)) ?? null,
+      ) ||
+      DEFAULT_FALLBACK
+    const weighted = softDarkenFromPrimary(base, bg, minContrast)
+    // soft 结果仍过亮且对比不足时，再从其它候选里取最亮达标色
+    const weightedRgb = hexToRgb(weighted)
+    if (
+      weightedRgb &&
+      contrastRatio(weightedRgb, bg) >= minContrast * 0.92
+    ) {
+      return weighted
+    }
+    const brightest = pickBrightestReadableCandidate(
+      candidates,
+      minContrast,
+      bg,
+    )
+    return brightest ?? weighted
   }
 
   const readable = pickReadableCandidate(candidates, isDark, minContrast, bg)
@@ -358,12 +385,12 @@ export function deriveAdaptiveTitleColor(isDark: boolean): string {
   }
 
   // 浅色：只用 primary/secondary/accent/light，禁止 --color-dark 进候选
-  // minContrast 用 2.2（大号装饰字，优先保色）
+  // minContrast 2.7：比纯保色略严，标题略加重但仍远浅于 dark token
   return deriveReadableColor({
     candidates: [primary, secondary, accent, light],
     isDark: false,
-    targetLightness: 0.56,
-    minContrast: 2.2,
+    targetLightness: 0.48,
+    minContrast: 2.7,
     fallback: primary,
     backdrop,
   })
