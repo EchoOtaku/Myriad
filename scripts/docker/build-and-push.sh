@@ -5,7 +5,7 @@
 # 用于在本地构建并推送 backend / frontend / proxy / updater 镜像。
 #
 # ⚠️  生产发版优先使用 GitHub Actions release.yml：
-#     git tag v0.2.1 && git push origin v0.2.1
+#     git tag v0.2.2 && git push origin v0.2.2
 #   会自动 build 4 个镜像 + 生成 release.json + cosign 签名 + 发 GitHub Release。
 #
 # 本脚本主要用途：
@@ -92,7 +92,7 @@ show_help() {
 
 选项:
   -u, --username USER    Registry 用户名（必需用于推送）
-  -t, --tag TAG          镜像标签（默认: 当前 Cargo 版本，如 v0.2.1）
+  -t, --tag TAG          镜像标签（默认: 当前 Cargo 版本，如 v0.2.2）
   -r, --registry URL     镜像仓库地址（默认: docker.io）
   -p, --push             构建后推送
   --backend              构建 backend（默认 ON）
