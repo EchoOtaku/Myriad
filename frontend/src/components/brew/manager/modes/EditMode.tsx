@@ -29,6 +29,7 @@ export interface EditModeProps {
   variant: 'mobile' | 'desktop'
   selectedIds: Set<number>
   totalCount: number
+  refreshableCount: number
   isDeleting: boolean
   isRefreshing: boolean
   isAuthenticated: boolean
@@ -62,6 +63,7 @@ export function EditMode({
   variant,
   selectedIds,
   totalCount,
+  refreshableCount,
   isDeleting,
   isRefreshing,
   isAuthenticated,
@@ -114,17 +116,19 @@ export function EditMode({
         >
           <Trash2 className="w-4.5 h-4.5" />
         </button>
-        <button
-          onClick={onBatchRefresh}
-          disabled={isRefreshing || totalCount === 0}
-          className={`${ISLAND_BTN} disabled:opacity-30 disabled:cursor-not-allowed`}
-          title={t.refreshAllSources}
-          aria-label={t.refreshAllSources}
-        >
-          <RefreshCw
-            className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`}
-          />
-        </button>
+        {refreshableCount > 0 && (
+          <button
+            onClick={onBatchRefresh}
+            disabled={isRefreshing}
+            className={`${ISLAND_BTN} disabled:opacity-30 disabled:cursor-not-allowed`}
+            title={t.refreshAllSources}
+            aria-label={t.refreshAllSources}
+          >
+            <RefreshCw
+              className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`}
+            />
+          </button>
+        )}
         {isAuthenticated && onMarkAllSourcesRead && (
           <button
             onClick={onMarkAllSourcesRead}
@@ -185,17 +189,19 @@ export function EditMode({
       </button>
 
       {/* 全部刷新按钮 */}
-      <button
-        onClick={onBatchRefresh}
-        disabled={isRefreshing || totalCount === 0}
-        className={`${ISLAND_BTN} disabled:opacity-30 disabled:cursor-not-allowed`}
-        title={t.refreshAllSources}
-        aria-label={t.refreshAllSources}
-      >
-        <RefreshCw
-          className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`}
-        />
-      </button>
+      {refreshableCount > 0 && (
+        <button
+          onClick={onBatchRefresh}
+          disabled={isRefreshing}
+          className={`${ISLAND_BTN} disabled:opacity-30 disabled:cursor-not-allowed`}
+          title={t.refreshAllSources}
+          aria-label={t.refreshAllSources}
+        >
+          <RefreshCw
+            className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`}
+          />
+        </button>
+      )}
 
       {/* 全部已读按钮 */}
       {isAuthenticated && onMarkAllSourcesRead && (

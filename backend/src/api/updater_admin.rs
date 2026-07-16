@@ -275,6 +275,28 @@ pub async fn commits(Query(q): Query<CommitsQuery>) -> Response {
 }
 
 #[derive(Deserialize)]
+pub struct BuildsQuery {
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// List immutable commit builds that exist in both Docker Hub image repositories.
+pub async fn builds(Query(q): Query<BuildsQuery>) -> Response {
+    let c = match require() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    let path = q
+        .limit
+        .map(|limit| format!("/builds?limit={limit}"))
+        .unwrap_or_else(|| "/builds".to_string());
+    match c.get_json(&path).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+#[derive(Deserialize)]
 pub struct ReleasesQuery {
     #[serde(default)]
     pub channel: Option<String>,

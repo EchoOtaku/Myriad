@@ -16,6 +16,9 @@ pub enum UpdaterError {
     #[error("github: {0}")]
     Github(String),
 
+    #[error("docker hub: {0}")]
+    DockerHub(String),
+
     #[error("config: {0}")]
     Config(String),
 

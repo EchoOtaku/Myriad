@@ -143,6 +143,7 @@ impl BrewSchedulerEngine {
         // 查找需要更新的订阅源，限制本轮最大数量防止堆积
         let all_due = brew_sources::Entity::find()
             .filter(brew_sources::Column::Enabled.eq(true))
+            .filter(brew_sources::Column::SourceType.ne(brew_sources::SourceType::Link))
             .filter(
                 Condition::any()
                     .add(brew_sources::Column::LastFetchedAt.is_null())
@@ -206,6 +207,16 @@ impl BrewSchedulerEngine {
         source: brew_sources::Model,
         now: chrono::DateTime<Utc>,
     ) -> Result<(), String> {
+        // 纯链接只是快捷入口，不应该进入任何抓取路径。
+        if source.source_type == brew_sources::SourceType::Link {
+            tracing::debug!(
+                "[BrewScheduler] Skipping pure link source: {} ({})",
+                source.name,
+                source.url
+            );
+            return Ok(());
+        }
+
         tracing::info!(
             "[BrewScheduler] Updating source: {} ({}) [type: {:?}]",
             source.name,
@@ -540,6 +551,11 @@ impl BrewSchedulerEngine {
             .await
             .map_err(|e| format!("Failed to find source: {}", e))?
             .ok_or_else(|| "Source not found".to_string())?;
+
+        // 手动刷新也保持为无操作，且不写入 last_fetched_at/last_error。
+        if source.source_type == brew_sources::SourceType::Link {
+            return Ok(0);
+        }
 
         let now = Utc::now();
 

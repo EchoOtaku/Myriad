@@ -4,6 +4,7 @@
 
 import type { ReactNode } from 'react'
 import type {
+  AddSourceInput,
   BrewItem,
   BrewSource,
   CardSize,
@@ -182,13 +183,7 @@ export interface ControlIslandProps {
   isDeleting?: boolean
   isRefreshing?: boolean
   // 添加
-  onAddSource?: (
-    url: string,
-    name?: string,
-    category?: string,
-    icon?: string,
-    sourceType?: SourceType,
-  ) => Promise<void>
+  onAddSource?: (input: AddSourceInput) => Promise<void>
   onSourcesChange?: () => void
   // 排序
   sortMode?: SortMode

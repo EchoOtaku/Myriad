@@ -214,6 +214,16 @@ export async function updateConfig(config: any) {
   return response.data
 }
 
+export async function fetchSettingsBackup() {
+  const response = await api.get('/api/config/settings-backup')
+  return response.data
+}
+
+export async function restoreSettingsBackup(backup: unknown) {
+  const response = await api.post('/api/config/settings-backup', backup)
+  return response.data
+}
+
 // Platforms
 export async function fetchPlatforms() {
   const response = await api.get('/api/platforms')

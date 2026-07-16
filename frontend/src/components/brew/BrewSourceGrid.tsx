@@ -15,7 +15,7 @@
  * - 图片懒加载
  */
 
-import type { BrewSource, CardSize, SourceType } from '../../types/brew'
+import type { AddSourceInput, BrewSource, CardSize } from '../../types/brew'
 
 import type { SortMode } from './manager/ControlIsland'
 import { LuRss as Rss, LuSearch as Search } from '@lib/icons'
@@ -38,13 +38,7 @@ interface BrewSourceGridProps {
   onRefreshSource: (sourceId: number) => void
   onSourceUpdate?: (source: BrewSource) => void
   onSourcesChange?: () => void
-  onAddSource?: (
-    url: string,
-    name?: string,
-    category?: string,
-    icon?: string,
-    sourceType?: SourceType,
-  ) => Promise<void>
+  onAddSource?: (input: AddSourceInput) => Promise<void>
   isAuthenticated?: boolean // 是否已登录（用于已读状态等普通用户功能）
   isAdmin?: boolean // 是否是管理员（用于添加、编辑、删除等管理功能）
 }
@@ -550,14 +544,17 @@ export default function BrewSourceGrid({
 
   // 批量刷新全部订阅
   const handleBatchRefresh = useCallback(async () => {
-    if (filteredSources.length === 0) return
+    const refreshableSources = filteredSources.filter(
+      (source) => source.source_type !== 'link',
+    )
+    if (refreshableSources.length === 0) return
 
     setIsRefreshing(true)
 
     try {
       // 并行刷新所有订阅源
       await Promise.all(
-        filteredSources.map((source) => onRefreshSource(source.id)),
+        refreshableSources.map((source) => onRefreshSource(source.id)),
       )
     } catch (err) {
       console.error('Failed to refresh sources:', err)

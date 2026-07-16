@@ -96,7 +96,7 @@ export function DefaultMode({
                 <img
                   src={getIconUrl(tip.iconUrl) || ''}
                   alt=""
-                  className="w-5 h-5 rounded shrink-0 object-cover"
+                  className="w-6 h-6 shrink-0 object-contain drop-shadow-sm"
                   loading="lazy"
                   onError={(e) => {
                     ;(e.target as HTMLImageElement).style.display = 'none'
@@ -193,7 +193,7 @@ export function DefaultMode({
               <img
                 src={getIconUrl(tip.iconUrl) || ''}
                 alt=""
-                className="w-5 h-5 rounded shrink-0 object-cover"
+                className="w-6 h-6 shrink-0 object-contain drop-shadow-sm"
                 loading="lazy"
                 onError={(e) => {
                   ;(e.target as HTMLImageElement).style.display = 'none'

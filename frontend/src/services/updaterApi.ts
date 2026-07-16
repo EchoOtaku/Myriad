@@ -29,6 +29,7 @@ export interface LatestAvailable {
   channel: string
   seen_at: string
   mode?: UpdateMode
+  source?: 'github' | 'dockerhub'
   commit_sha?: string | null
   /** Running deploy resolved to git sha (commit mode). */
   current_commit_sha?: string | null
@@ -52,6 +53,16 @@ export interface CommitListItem {
   html_url: string
   committed_at: string | null
   tag: string
+}
+
+export interface DockerBuildListItem {
+  tag: string
+  short_sha: string
+  pushed_at: string | null
+  backend_digest: string | null
+  frontend_digest: string | null
+  backend_url: string
+  frontend_url: string
 }
 
 export interface ReleaseListItem {
@@ -114,6 +125,8 @@ export interface ReleaseManifest {
   min_from_version?: string
   /** Present when mode=commit (synthetic available payload). */
   mode?: UpdateMode
+  /** Metadata provider used for commit-mode availability. */
+  source?: 'github' | 'dockerhub'
   commit_sha?: string
   current_commit_sha?: string | null
   relation?: CommitRelation | string | null
@@ -351,6 +364,16 @@ export function makeUpdaterApi(
         branch: string
         items: CommitListItem[]
       }>('GET', `/commits${qs ? `?${qs}` : ''}`)
+    },
+    builds: (opts?: { limit?: number }) => {
+      const q = new URLSearchParams()
+      if (opts?.limit) q.set('limit', String(opts.limit))
+      const qs = q.toString()
+      return wrap<{
+        schema_version: number
+        source: 'dockerhub'
+        items: DockerBuildListItem[]
+      }>('GET', `/builds${qs ? `?${qs}` : ''}`)
     },
     releases: (opts?: { channel?: string; limit?: number }) => {
       const q = new URLSearchParams()

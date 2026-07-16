@@ -23,7 +23,7 @@ use tracing::{error, info, warn};
 use crate::config::{Channel, Config};
 use crate::docker::DockerClient;
 use crate::error::{Result, UpdaterError};
-use crate::release::{GithubClient, Manifest};
+use crate::release::{DockerBuild, DockerHubClient, GithubClient, Manifest};
 use crate::state::{Job, JobKind, JobStatus, LatestAvailable, MaintenanceFile, Phase, StateDir};
 use crate::version::{
     commit_branch_for_channel, DeployTag, DeployTagKind, MyriadVersion, UpdateMode,
@@ -58,6 +58,10 @@ pub enum Command {
         branch: String,
         limit: u32,
         reply: tokio::sync::oneshot::Sender<Result<Vec<crate::release::CommitInfo>>>,
+    },
+    ListBuilds {
+        limit: u32,
+        reply: tokio::sync::oneshot::Sender<Result<Vec<DockerBuild>>>,
     },
     ListReleases {
         channel: Option<String>,
@@ -101,6 +105,7 @@ pub enum AvailableInfo {
         message: String,
         branch: String,
         notes_url: String,
+        source: String,
         /// Ancestry of branch tip vs currently running deploy (if resolvable).
         freshness: Option<crate::release::Freshness>,
     },
@@ -176,6 +181,41 @@ impl Worker {
             self.state.cache_dir(),
             policy,
         )
+    }
+
+    pub fn dockerhub_client(&self) -> Result<DockerHubClient> {
+        DockerHubClient::new()
+    }
+
+    /// Image repositories are explicit deployment inputs. They are shared by commit-mode
+    /// preflight and Docker Hub fallback discovery so both paths inspect the same images.
+    pub fn image_repos_required(&self) -> Result<(String, String)> {
+        let env = crate::env_file::EnvFile::load(&self.cli.env_file)?;
+        let backend = env.get("BACKEND_IMAGE").map(str::to_owned).ok_or_else(|| {
+            UpdaterError::Precondition(
+                "BACKEND_IMAGE missing in .env; required for commit-mode image pulls. \
+                     Add e.g. BACKEND_IMAGE=docker.io/<org>/myriad-backend (no tag) or re-run \
+                     scripts/docker/deploy.sh to bootstrap defaults."
+                    .into(),
+            )
+        })?;
+        let frontend = env
+            .get("FRONTEND_IMAGE")
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                UpdaterError::Precondition(
+                    "FRONTEND_IMAGE missing in .env; required for commit-mode image pulls. \
+                     Add e.g. FRONTEND_IMAGE=docker.io/<org>/myriad-frontend (no tag) or re-run \
+                     scripts/docker/deploy.sh to bootstrap defaults."
+                        .into(),
+                )
+            })?;
+        if backend.trim().is_empty() || frontend.trim().is_empty() {
+            return Err(UpdaterError::Precondition(
+                "BACKEND_IMAGE / FRONTEND_IMAGE must be non-empty (image repo without tag)".into(),
+            ));
+        }
+        Ok((backend, frontend))
     }
 
     pub fn docker(&self) -> &Arc<DockerClient> {
@@ -493,6 +533,10 @@ impl Worker {
                     let res = self.clone().handle_list_commits(branch, limit).await;
                     let _ = reply.send(res);
                 }
+                Command::ListBuilds { limit, reply } => {
+                    let res = self.clone().handle_list_builds(limit).await;
+                    let _ = reply.send(res);
+                }
                 Command::ListReleases {
                     channel,
                     limit,
@@ -631,6 +675,13 @@ impl Worker {
         };
         let gh = self.github_client()?;
         gh.list_commits(&branch, limit).await
+    }
+
+    async fn handle_list_builds(self: Arc<Self>, limit: u32) -> Result<Vec<DockerBuild>> {
+        let (backend, frontend) = self.image_repos_required()?;
+        self.dockerhub_client()?
+            .list_common_builds(&backend, &frontend, limit)
+            .await
     }
 
     async fn handle_list_releases(
@@ -826,6 +877,7 @@ impl Worker {
             version: target_tag,
             channel: manifest.channel.clone(),
             mode: UpdateMode::Release,
+            source: Some("github".to_string()),
             seen_at: Utc::now(),
             commit_sha: target_commit_sha,
             current_commit_sha: current_state.and_then(|s| s.current_commit_sha),
@@ -859,13 +911,9 @@ impl Worker {
             Ok(i) => i,
             Err(e) => {
                 warn!(err = %e, %branch, "commit lookup failed");
-                if persist_cache {
-                    let mut st = self.state.read_updater()?;
-                    st.last_checked_at = Some(Utc::now());
-                    st.latest_available = None;
-                    self.state.write_updater(&st)?;
-                }
-                return Err(e);
+                return self
+                    .check_dockerhub_commit_available(branch, persist_cache, e)
+                    .await;
             }
         };
         let tag = DeployTag::parse(&format!("dev-{}", info.short_sha))?;
@@ -898,6 +946,7 @@ impl Worker {
             version: tag.clone(),
             channel: branch.to_string(),
             mode: UpdateMode::Commit,
+            source: Some("github".to_string()),
             seen_at: Utc::now(),
             commit_sha: Some(info.sha.clone()),
             current_commit_sha: freshness
@@ -925,7 +974,83 @@ impl Worker {
             message: info.message,
             branch: branch.to_string(),
             notes_url,
+            source: "github".to_string(),
             freshness,
+        }))
+    }
+
+    async fn check_dockerhub_commit_available(
+        self: Arc<Self>,
+        branch: &str,
+        persist_cache: bool,
+        github_error: UpdaterError,
+    ) -> Result<Option<AvailableInfo>> {
+        let builds = self.clone().handle_list_builds(1).await.map_err(|docker_error| {
+            UpdaterError::DockerHub(format!(
+                "GitHub commit lookup failed ({github_error}); fallback lookup failed ({docker_error})"
+            ))
+        })?;
+        let Some(build) = builds.into_iter().next() else {
+            if persist_cache {
+                let mut state = self.state.read_updater()?;
+                state.last_checked_at = Some(Utc::now());
+                state.latest_available = None;
+                self.state.write_updater(&state)?;
+            }
+            return Err(UpdaterError::DockerHub(format!(
+                "GitHub commit lookup failed ({github_error}); Docker Hub has no common immutable frontend/backend build"
+            )));
+        };
+
+        let tag = DeployTag::parse(&build.tag)?;
+        let state_now = self.state.read_updater()?;
+        if state_now.current_version.as_ref() == Some(&tag) {
+            if persist_cache {
+                let mut state = state_now;
+                state.last_checked_at = Some(Utc::now());
+                state.latest_available = None;
+                self.state.write_updater(&state)?;
+            }
+            return Ok(None);
+        }
+
+        warn!(
+            target = %tag,
+            %branch,
+            "using Docker Hub common image build as commit update fallback"
+        );
+        let cached = LatestAvailable {
+            version: tag.clone(),
+            channel: branch.to_string(),
+            mode: UpdateMode::Commit,
+            source: Some("dockerhub".to_string()),
+            seen_at: Utc::now(),
+            commit_sha: Some(build.short_sha.clone()),
+            current_commit_sha: state_now.current_commit_sha.clone(),
+            relation: Some("unknown".to_string()),
+            ahead_by: None,
+            behind_by: None,
+            is_upgrade: Some(true),
+            is_downgrade: Some(false),
+            requires_self_update: false,
+            min_updater_version: None,
+            notes_url: build.backend_url.clone(),
+        };
+        if persist_cache {
+            let mut state = state_now;
+            state.last_checked_at = Some(Utc::now());
+            state.latest_available = Some(cached);
+            self.state.write_updater(&state)?;
+        }
+
+        Ok(Some(AvailableInfo::Commit {
+            tag,
+            full_sha: build.short_sha,
+            message: "Docker Hub common frontend/backend build".to_string(),
+            branch: branch.to_string(),
+            notes_url: build.backend_url,
+            source: "dockerhub".to_string(),
+            freshness: None,
         }))
     }
 }

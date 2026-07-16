@@ -1,7 +1,11 @@
 import { FaTimes, LuDownload, LuUpload } from '@lib/icons'
 import React, { useCallback, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { fetchConfig, updateConfig } from '../../lib/api'
+import {
+  fetchSettingsBackup,
+  restoreSettingsBackup,
+  updateConfig,
+} from '../../lib/api'
 
 import { getCSRFToken } from '../../utils/csrf'
 import { ButtonItem, SettingGroup, SettingSection } from '../settings'
@@ -18,6 +22,64 @@ interface AdvancedConfigSectionProps {
   ) => void
 }
 
+const SETTINGS_BACKUP_FORMAT = 'myriad-settings-backup'
+const SETTINGS_BACKUP_VERSION = 1
+const CLIENT_PREFERENCE_KEYS = [
+  'theme',
+  'locale',
+  'animation-preference',
+  'config_favorites',
+  'brewlia_tts_settings',
+  'brew-reader-settings',
+] as const
+
+function collectClientPreferences(): Record<string, string> {
+  return Object.fromEntries(
+    CLIENT_PREFERENCE_KEYS.flatMap((key) => {
+      const value = localStorage.getItem(key)
+      return value === null ? [] : [[key, value]]
+    }),
+  )
+}
+
+function restoreClientPreferences(data: unknown) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return
+  const preferences = data as Record<string, unknown>
+  for (const key of CLIENT_PREFERENCE_KEYS) {
+    const value = preferences[key]
+    if (typeof value === 'string') {
+      localStorage.setItem(key, value)
+    } else {
+      localStorage.removeItem(key)
+    }
+  }
+}
+
+function isVersionedSettingsBackup(
+  data: unknown,
+): data is Record<string, unknown> {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false
+  const backup = data as Record<string, unknown>
+  return (
+    backup.format === SETTINGS_BACKUP_FORMAT &&
+    backup.version === SETTINGS_BACKUP_VERSION &&
+    Array.isArray(backup.configurations) &&
+    Boolean(backup.effective_config) &&
+    Boolean(backup.user_preferences)
+  )
+}
+
+function isLegacyConfig(data: unknown): data is Record<string, unknown> {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false
+  const config = data as Record<string, unknown>
+  return Boolean(
+    config.platforms &&
+    config.ai_config &&
+    config.report_config &&
+    config.ui_config,
+  )
+}
+
 export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
   onReset,
   title,
@@ -29,18 +91,25 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
   const { t } = useI18n()
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [importConfirmOpen, setImportConfirmOpen] = useState(false)
-  const [pendingImportData, setPendingImportData] = useState<any>(null)
+  const [pendingImportData, setPendingImportData] = useState<unknown>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleExport = useCallback(async () => {
     try {
-      const config = await fetchConfig()
-      const json = JSON.stringify(config, null, 2)
+      const backup = await fetchSettingsBackup()
+      const json = JSON.stringify(
+        {
+          ...backup,
+          client_preferences: collectClientPreferences(),
+        },
+        null,
+        2,
+      )
       const blob = new Blob([json], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `myriad-config-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `myriad-settings-backup-${new Date().toISOString().slice(0, 10)}.json`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -48,6 +117,10 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
       onMessage?.(t.config.exportConfigSuccess, 'success')
     } catch (error) {
       console.error('Export failed:', error)
+      onMessage?.(
+        `${t.config.exportConfigFailed}: ${error instanceof Error ? error.message : ''}`,
+        'error',
+      )
     }
   }, [t, onMessage])
 
@@ -64,14 +137,7 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
       reader.onload = (event) => {
         try {
           const data = JSON.parse(event.target?.result as string)
-          // 基本结构校验
-          if (
-            !data ||
-            typeof data !== 'object' ||
-            !data.platforms ||
-            !data.ai_config ||
-            !data.ui_config
-          ) {
+          if (!isVersionedSettingsBackup(data) && !isLegacyConfig(data)) {
             onMessage?.(t.config.importConfigInvalid, 'error')
             return
           }
@@ -94,7 +160,12 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
 
     try {
       await getCSRFToken(true)
-      await updateConfig(pendingImportData)
+      if (isVersionedSettingsBackup(pendingImportData)) {
+        await restoreSettingsBackup(pendingImportData)
+        restoreClientPreferences(pendingImportData.client_preferences)
+      } else {
+        await updateConfig(pendingImportData)
+      }
       onMessage?.(t.config.importConfigSuccess, 'success')
       setTimeout(() => {
         window.location.reload()

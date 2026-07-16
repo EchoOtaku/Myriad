@@ -11,6 +11,7 @@ use axum::{
     Extension, Json, Router,
 };
 use chrono::Utc;
+use futures::StreamExt;
 use reqwest::Url;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
@@ -31,7 +32,7 @@ use crate::models::entities::{
     brew_annotations, brew_categories, brew_comments, brew_items, brew_podcasts, brew_sources,
     brew_user_states, rsshub_instances,
 };
-use crate::services::brew_parser::FeedParser;
+use crate::services::brew_parser::{FeedParser, ParsedFeed};
 use crate::services::brew_scheduler::get_brew_scheduler;
 use crate::services::data_paths::paths;
 use crate::services::icon_service::IconService;
@@ -355,122 +356,112 @@ async fn add_source(
 
     // 检查是否是 Notion 类型
     let is_notion = req.feed_type.as_deref() == Some("notion")
-        || url.starts_with("notion://")
-        || url.contains("notion.so")
-        || url.contains("notion.site");
+        || crate::services::notion_service::NotionService::parse_notion_url(url).is_ok();
 
     // 获取源信息
-    let (name, description, icon, site_url, feed_type, extra_config) = if source_type
-        == brew_sources::SourceType::Link
-    {
-        // 纯链接类型不需要解析，直接添加
-        (
-            req.name.unwrap_or_else(|| url.to_string()),
-            None,
-            None,
-            Some(url.to_string()),
-            brew_sources::FeedType::Rss,
-            None,
-        )
-    } else if is_notion {
-        // Notion 类型需要 token
-        let extra_config = req.extra_config.clone();
-        if extra_config.is_none() || extra_config.as_ref().and_then(|c| c.get("token")).is_none() {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "success": false,
-                    "error": "Notion source requires extra_config with token"
-                })),
+    let (name, description, icon, site_url, feed_type, extra_config) =
+        if source_type == brew_sources::SourceType::Link {
+            // 纯链接类型不需要解析，直接添加
+            (
+                req.name.unwrap_or_else(|| url.to_string()),
+                None,
+                None,
+                Some(url.to_string()),
+                brew_sources::FeedType::Rss,
+                None,
             )
-                .into_response();
-        }
-
-        // 尝试验证 Notion 源
-        let notion_service = crate::services::notion_service::NotionService::new();
-        let token = extra_config.as_ref().unwrap()["token"].as_str().unwrap();
-
-        // 解析 Notion URL
-        let (resource_type, resource_id) =
-            match crate::services::notion_service::NotionService::parse_notion_url(url) {
-                Ok(r) => r,
-                Err(e) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({ "success": false, "error": e.to_string() })),
-                    )
-                        .into_response();
-                }
+        } else if is_notion {
+            // Notion 类型需要 token
+            let extra_config = req.extra_config.clone();
+            let token = extra_config
+                .as_ref()
+                .and_then(|config| config.get("token"))
+                .and_then(|token| token.as_str())
+                .map(str::trim)
+                .filter(|token| !token.is_empty());
+            let Some(token) = token else {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "error": "Notion source requires extra_config with token"
+                    })),
+                )
+                    .into_response();
             };
 
-        let config = crate::services::notion_service::NotionConfig {
-            token: token.to_string(),
-            resource_id,
-            resource_type,
-            filter: extra_config.as_ref().and_then(|c| c.get("filter").cloned()),
-            sort: extra_config.as_ref().and_then(|c| c.get("sort").cloned()),
-        };
+            // 尝试验证 Notion 源
+            let notion_service = crate::services::notion_service::NotionService::new();
 
-        // 尝试获取 Notion 信息
-        match notion_service.fetch(&config).await {
-            Ok(feed) => (
-                req.name.unwrap_or(feed.title),
-                feed.description,
-                feed.icon,
-                feed.site_url,
-                brew_sources::FeedType::Notion,
-                extra_config,
-            ),
-            Err(e) => {
-                // 如果有名称，允许添加失败的源
-                if let Some(name) = req.name {
-                    (
-                        name,
-                        None,
-                        None,
-                        Some("https://notion.so".to_string()),
-                        brew_sources::FeedType::Notion,
-                        extra_config,
-                    )
-                } else {
+            // 解析 Notion URL
+            let (resource_type, resource_id) =
+                match crate::services::notion_service::NotionService::parse_notion_url(url) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({ "success": false, "error": e.to_string() })),
+                        )
+                            .into_response();
+                    }
+                };
+
+            let config = crate::services::notion_service::NotionConfig {
+                token: token.to_string(),
+                resource_id,
+                resource_type,
+                filter: extra_config.as_ref().and_then(|c| c.get("filter").cloned()),
+                sort: extra_config.as_ref().and_then(|c| c.get("sort").cloned()),
+            };
+
+            // 尝试获取 Notion 信息
+            match notion_service.fetch(&config).await {
+                Ok(feed) => (
+                    req.name.unwrap_or(feed.title),
+                    feed.description,
+                    feed.icon,
+                    feed.site_url,
+                    brew_sources::FeedType::Notion,
+                    extra_config,
+                ),
+                Err(e) => {
                     return (
                         StatusCode::BAD_REQUEST,
                         Json(json!({
                             "success": false,
-                            "error": format!("Failed to fetch Notion: {}. Please provide a name.", e)
+                            "error": format!("Failed to fetch Notion: {}", e)
                         })),
                     )
                         .into_response();
                 }
             }
-        }
-    } else {
-        // 标准 RSS/Atom/JSON Feed 或 RSSHub
-        // 检查是否是 RSSHub 类型（由前端传入）
-        let is_rsshub = req.feed_type.as_deref() == Some("rsshub");
+        } else {
+            // 标准 RSS/Atom/JSON Feed 或 RSSHub
+            // 检查是否是 RSSHub 类型（由前端传入）
+            let is_rsshub = req.feed_type.as_deref() == Some("rsshub");
 
-        let parser = FeedParser::new();
-        match parser.fetch_and_parse(url).await {
-            Ok(feed) => {
-                // 如果前端指定了 rsshub，使用 rsshub 类型，否则使用解析器返回的类型
-                let final_feed_type = if is_rsshub {
-                    brew_sources::FeedType::RssHub
-                } else {
-                    feed.feed_type
-                };
-                (
-                    req.name.unwrap_or(feed.title),
-                    feed.description,
-                    feed.icon,
-                    feed.site_url,
-                    final_feed_type,
-                    None,
-                )
-            }
-            Err(e) => {
-                // 即使解析失败也允许添加，使用用户提供的名称
-                if req.name.is_none() {
-                    return (
+            let parser = FeedParser::new();
+            match parser.fetch_and_parse(url).await {
+                Ok(feed) => {
+                    // 如果前端指定了 rsshub，使用 rsshub 类型，否则使用解析器返回的类型
+                    let final_feed_type = if is_rsshub {
+                        brew_sources::FeedType::RssHub
+                    } else {
+                        feed.feed_type
+                    };
+                    (
+                        req.name.unwrap_or(feed.title),
+                        feed.description,
+                        feed.icon,
+                        feed.site_url,
+                        final_feed_type,
+                        None,
+                    )
+                }
+                Err(e) => {
+                    // 即使解析失败也允许添加，使用用户提供的名称
+                    if req.name.is_none() {
+                        return (
                         StatusCode::BAD_REQUEST,
                         Json(json!({
                             "success": false,
@@ -478,17 +469,17 @@ async fn add_source(
                         })),
                     )
                         .into_response();
+                    }
+                    // 如果前端指定了 rsshub，使用 rsshub 类型
+                    let final_feed_type = if is_rsshub {
+                        brew_sources::FeedType::RssHub
+                    } else {
+                        brew_sources::FeedType::Rss
+                    };
+                    (req.name.unwrap(), None, None, None, final_feed_type, None)
                 }
-                // 如果前端指定了 rsshub，使用 rsshub 类型
-                let final_feed_type = if is_rsshub {
-                    brew_sources::FeedType::RssHub
-                } else {
-                    brew_sources::FeedType::Rss
-                };
-                (req.name.unwrap(), None, None, None, final_feed_type, None)
             }
-        }
-    };
+        };
 
     let now = Utc::now();
 
@@ -843,6 +834,99 @@ struct DiscoverRequest {
     url: String,
 }
 
+const RSS_DISCOVERY_SUFFIXES: &[&str] = &[
+    "feed",
+    "feed/",
+    "feed.xml",
+    "rss",
+    "rss/",
+    "rss.xml",
+    "atom.xml",
+    "index.xml",
+];
+
+/// 生成 RSS 自动发现候选：原地址优先，再尝试当前路径和站点根路径。
+fn build_feed_discovery_candidates(raw_url: &str) -> Result<Vec<String>, String> {
+    let trimmed = raw_url.trim();
+    if trimmed.is_empty() {
+        return Err("URL is required".to_string());
+    }
+
+    let normalized = if Url::parse(trimmed).is_ok() {
+        trimmed.to_string()
+    } else if !trimmed.contains("://") {
+        format!("https://{}", trimmed)
+    } else {
+        return Err("Invalid URL".to_string());
+    };
+
+    let parsed = Url::parse(&normalized).map_err(|_| "Invalid URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Only HTTP and HTTPS URLs are supported".to_string());
+    }
+
+    let mut candidates = vec![parsed.to_string()];
+    let mut bases = Vec::new();
+
+    let mut path_base = parsed.clone();
+    path_base.set_query(None);
+    path_base.set_fragment(None);
+    if !path_base.path().ends_with('/') {
+        path_base.set_path(&format!("{}/", path_base.path()));
+    }
+    bases.push(path_base);
+
+    let mut root_base = parsed;
+    root_base.set_path("/");
+    root_base.set_query(None);
+    root_base.set_fragment(None);
+    bases.push(root_base);
+
+    for base in bases {
+        for suffix in RSS_DISCOVERY_SUFFIXES {
+            if let Ok(candidate) = base.join(suffix) {
+                let candidate = candidate.to_string();
+                if !candidates.contains(&candidate) {
+                    candidates.push(candidate);
+                }
+            }
+        }
+    }
+
+    Ok(candidates)
+}
+
+fn discover_success_response(
+    requested_url: &str,
+    discovered_url: String,
+    feed: ParsedFeed,
+) -> axum::response::Response {
+    let autocompleted = requested_url != discovered_url;
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "feed": {
+                "url": discovered_url,
+                "autocompleted": autocompleted,
+                "title": feed.title,
+                "description": feed.description,
+                "site_url": feed.site_url,
+                "icon": feed.icon,
+                "feed_type": match feed.feed_type {
+                    brew_sources::FeedType::Rss => "rss",
+                    brew_sources::FeedType::Atom => "atom",
+                    brew_sources::FeedType::JsonFeed => "json_feed",
+                    brew_sources::FeedType::Notion => "notion",
+                    brew_sources::FeedType::RssHub => "rsshub",
+                },
+                "item_count": feed.items.len(),
+            }
+        })),
+    )
+        .into_response()
+}
+
 /// 探测订阅源信息（需管理员；出站经 FeedParser SSRF 防护）
 async fn discover_source(
     State(db): State<DatabaseConnection>,
@@ -853,36 +937,49 @@ async fn discover_source(
         return resp;
     }
 
+    let mut candidates = match build_feed_discovery_candidates(&req.url) {
+        Ok(candidates) => candidates,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "success": false, "error": error })),
+            )
+                .into_response()
+        }
+    };
+    let requested_url = candidates.remove(0);
     let parser = FeedParser::new();
 
-    match parser.fetch_and_parse(&req.url).await {
-        Ok(feed) => (
-            StatusCode::OK,
-            Json(json!({
-                "success": true,
-                "feed": {
-                    "title": feed.title,
-                    "description": feed.description,
-                    "site_url": feed.site_url,
-                    "icon": feed.icon,
-                    "feed_type": match feed.feed_type {
-                        brew_sources::FeedType::Rss => "rss",
-                        brew_sources::FeedType::Atom => "atom",
-                        brew_sources::FeedType::JsonFeed => "json_feed",
-                        brew_sources::FeedType::Notion => "notion",
-                        brew_sources::FeedType::RssHub => "rsshub",
-                    },
-                    "item_count": feed.items.len(),
-                }
-            })),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": e.to_string() })),
-        )
-            .into_response(),
+    // 用户输入本身已经是 Feed 时立即返回，不额外请求候选地址。
+    let direct_error = match parser.fetch_and_parse(&requested_url).await {
+        Ok(feed) => return discover_success_response(&requested_url, requested_url.clone(), feed),
+        Err(error) => error.to_string(),
+    };
+
+    // 常见后缀最多 4 个并发探测；每个请求仍经过 FeedParser 的 SSRF 防护。
+    let mut attempts = futures::stream::iter(candidates.into_iter().map(|candidate| {
+        let parser = &parser;
+        async move {
+            let result = parser.fetch_and_parse(&candidate).await;
+            (candidate, result)
+        }
+    }))
+    .buffer_unordered(4);
+
+    while let Some((candidate, result)) = attempts.next().await {
+        if let Ok(feed) = result {
+            return discover_success_response(&requested_url, candidate, feed);
+        }
     }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({
+            "success": false,
+            "error": format!("Unable to discover RSS/Atom feed: {}", direct_error)
+        })),
+    )
+        .into_response()
 }
 
 // ==================== OPML 导入导出 ====================
@@ -3120,5 +3217,27 @@ async fn health_check_all_rsshub_instances(
             Json(json!({ "success": false, "error": e })),
         )
             .into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_feed_discovery_candidates;
+
+    #[test]
+    fn feed_discovery_candidates_cover_root_and_nested_paths() {
+        let candidates = build_feed_discovery_candidates("example.com/blog").unwrap();
+
+        assert_eq!(candidates.first().unwrap(), "https://example.com/blog");
+        assert!(candidates.contains(&"https://example.com/blog/feed".to_string()));
+        assert!(candidates.contains(&"https://example.com/rss.xml".to_string()));
+    }
+
+    #[test]
+    fn feed_discovery_keeps_direct_feed_first_and_rejects_other_schemes() {
+        let candidates = build_feed_discovery_candidates("https://example.com/feed.xml").unwrap();
+        assert_eq!(candidates.first().unwrap(), "https://example.com/feed.xml");
+
+        assert!(build_feed_discovery_candidates("ftp://example.com/feed.xml").is_err());
     }
 }

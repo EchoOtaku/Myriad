@@ -18,7 +18,7 @@ use tracing::{info, warn};
 use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::release::{CommitRelation, Manifest};
-use crate::version::{DeployTag, MyriadVersion, UpdateMode};
+use crate::version::{DeployTag, DeployTagKind, MyriadVersion, UpdateMode};
 use crate::worker::Worker;
 use crate::SUPPORTED_RELEASE_SCHEMA;
 
@@ -307,91 +307,124 @@ async fn run_commit(
     let gh = worker.github_client()?;
     let from_version = worker.state().read_updater()?.current_version.clone();
 
-    // Always resolve to a concrete commit; persist as dev-<shortsha> never branch tip.
+    // Prefer GitHub for full-SHA normalization and ancestry checks. If GitHub is unavailable,
+    // an already-immutable dev tag may still proceed: pulling both images below is the final
+    // existence check, and unknown-direction confirmation remains mandatory.
     let git_ref = crate::release::deploy_tag_to_git_ref(target);
-    let tip = gh.resolve_commit(&git_ref).await.map_err(|e| {
-        UpdaterError::Precondition(format!(
-            "cannot resolve git ref {git_ref} for target {}: {e}",
-            target.as_str()
-        ))
-    })?;
-    let effective = DeployTag::parse(&format!("dev-{}", tip.short_sha))?;
-    info!(
-        requested = %target,
-        effective = %effective,
-        full_sha = %tip.sha,
-        "preflight(commit): normalized target to immutable dev-sha tag"
-    );
+    let (effective, target_commit_sha, compare_ref) = match gh.resolve_commit(&git_ref).await {
+        Ok(tip) => {
+            let effective = DeployTag::parse(&format!("dev-{}", tip.short_sha))?;
+            info!(
+                requested = %target,
+                effective = %effective,
+                full_sha = %tip.sha,
+                "preflight(commit): normalized target to immutable dev-sha tag"
+            );
+            (effective, Some(tip.sha.clone()), Some(tip.sha))
+        }
+        Err(error) if target.kind() == DeployTagKind::Commit => {
+            require_flag(
+                risk.allow_unknown,
+                &format!(
+                    "cannot verify {} through GitHub ({error}); Docker Hub fallback requires \
+                     allow_unknown=true (or allow_risk=true)",
+                    target.as_str()
+                ),
+            )?;
+            warn!(
+                target = %target,
+                err = %error,
+                "preflight(commit): GitHub unavailable; verifying immutable tag by pulling both images"
+            );
+            (target.clone(), target.commit_sha().map(str::to_owned), None)
+        }
+        Err(error) => {
+            return Err(UpdaterError::Precondition(format!(
+                "cannot resolve mutable git ref {git_ref} for target {}: {error}; select an \
+                 immutable dev-<sha> build from Docker Hub instead",
+                target.as_str()
+            )));
+        }
+    };
+
+    if from_version.as_ref() == Some(&effective) {
+        return Err(UpdaterError::Precondition(format!(
+            "target {} is already running",
+            effective.as_str()
+        )));
+    }
 
     let mut is_downgrade = false;
     let mut is_diverged = false;
 
-    match gh
-        .compare_deploy_to_ref(from_version.as_ref(), &tip.sha)
-        .await
-    {
-        Ok(Some(f)) => {
-            is_downgrade = f.is_downgrade();
-            is_diverged = matches!(f.relation, CommitRelation::Diverged);
-            info!(
-                relation = f.relation.as_str(),
-                ahead = f.ahead_by,
-                behind = f.behind_by,
-                "preflight(commit): freshness"
-            );
-            match f.relation {
-                CommitRelation::Identical => {
-                    return Err(UpdaterError::Precondition(format!(
-                        "target {} is already the running commit",
-                        effective.as_str()
-                    )));
-                }
-                CommitRelation::Behind => {
-                    require_downgrade(risk.allow_downgrade, effective.as_str())?;
-                }
-                CommitRelation::Diverged => {
-                    require_flag(
-                        risk.allow_diverged,
-                        &format!(
-                            "target {} diverged from current (ahead {}, behind {}). \
-                             Re-submit with allow_diverged=true (or allow_risk=true)",
-                            effective.as_str(),
-                            f.ahead_by,
-                            f.behind_by
-                        ),
-                    )?;
-                }
-                CommitRelation::Unknown => {
-                    require_flag(
-                        risk.allow_unknown,
-                        &format!(
-                            "unknown git relation for {}; re-submit with allow_unknown=true \
-                             (or allow_risk=true)",
+    if let Some(compare_ref) = compare_ref.as_deref() {
+        match gh
+            .compare_deploy_to_ref(from_version.as_ref(), compare_ref)
+            .await
+        {
+            Ok(Some(f)) => {
+                is_downgrade = f.is_downgrade();
+                is_diverged = matches!(f.relation, CommitRelation::Diverged);
+                info!(
+                    relation = f.relation.as_str(),
+                    ahead = f.ahead_by,
+                    behind = f.behind_by,
+                    "preflight(commit): freshness"
+                );
+                match f.relation {
+                    CommitRelation::Identical => {
+                        return Err(UpdaterError::Precondition(format!(
+                            "target {} is already the running commit",
                             effective.as_str()
-                        ),
-                    )?;
+                        )));
+                    }
+                    CommitRelation::Behind => {
+                        require_downgrade(risk.allow_downgrade, effective.as_str())?;
+                    }
+                    CommitRelation::Diverged => {
+                        require_flag(
+                            risk.allow_diverged,
+                            &format!(
+                                "target {} diverged from current (ahead {}, behind {}). \
+                             Re-submit with allow_diverged=true (or allow_risk=true)",
+                                effective.as_str(),
+                                f.ahead_by,
+                                f.behind_by
+                            ),
+                        )?;
+                    }
+                    CommitRelation::Unknown => {
+                        require_flag(
+                            risk.allow_unknown,
+                            &format!(
+                                "unknown git relation for {}; re-submit with allow_unknown=true \
+                             (or allow_risk=true)",
+                                effective.as_str()
+                            ),
+                        )?;
+                    }
+                    CommitRelation::Ahead => {}
                 }
-                CommitRelation::Ahead => {}
             }
-        }
-        Ok(None) => {
-            require_flag(
-                risk.allow_unknown,
-                &format!(
-                    "cannot resolve current deploy to a git commit; refusing to move to {} \
-                     without allow_unknown=true (or allow_risk=true)",
-                    effective.as_str()
-                ),
-            )?;
-        }
-        Err(e) => {
-            require_flag(
-                risk.allow_unknown,
-                &format!(
-                    "git compare failed ({e}); refusing update. Fix GitHub access or pass \
-                     allow_unknown=true (or allow_risk=true)"
-                ),
-            )?;
+            Ok(None) => {
+                require_flag(
+                    risk.allow_unknown,
+                    &format!(
+                        "cannot resolve current deploy to a git commit; refusing to move to {} \
+                         without allow_unknown=true (or allow_risk=true)",
+                        effective.as_str()
+                    ),
+                )?;
+            }
+            Err(e) => {
+                require_flag(
+                    risk.allow_unknown,
+                    &format!(
+                        "git compare failed ({e}); refusing update. Fix GitHub access or pass \
+                         allow_unknown=true (or allow_risk=true)"
+                    ),
+                )?;
+            }
         }
     }
 
@@ -402,7 +435,7 @@ async fn run_commit(
     check_env_keys(worker.as_ref(), None)?;
     check_disk(worker.as_ref())?;
 
-    let (backend_repo, frontend_repo) = image_repos_required(worker.as_ref())?;
+    let (backend_repo, frontend_repo) = worker.image_repos_required()?;
     let tag = effective.as_str();
     let backend_ref = format!("{backend_repo}:{tag}");
     let frontend_ref = format!("{frontend_repo}:{tag}");
@@ -436,7 +469,7 @@ async fn run_commit(
         manifest: None,
         from_version,
         target: effective,
-        target_commit_sha: Some(tip.sha),
+        target_commit_sha,
         backend_digest: backend_pulled,
         frontend_digest: frontend_pulled,
         estimated_seconds: 60,
@@ -461,39 +494,6 @@ fn require_flag(allowed: bool, msg: &str) -> Result<()> {
         return Ok(());
     }
     Err(UpdaterError::Precondition(msg.into()))
-}
-
-/// Image repos must be explicit in .env — never silently use a wrong default registry.
-fn image_repos_required(worker: &Worker) -> Result<(String, String)> {
-    let env = EnvFile::load(&worker.cli().env_file)?;
-    let backend = env
-        .get("BACKEND_IMAGE")
-        .map(|s| s.to_string())
-        .ok_or_else(|| {
-            UpdaterError::Precondition(
-                "BACKEND_IMAGE missing in .env; required for commit-mode image pulls. \
-             Add e.g. BACKEND_IMAGE=docker.io/<org>/myriad-backend (no tag) or re-run \
-             scripts/docker/deploy.sh to bootstrap defaults."
-                    .into(),
-            )
-        })?;
-    let frontend = env
-        .get("FRONTEND_IMAGE")
-        .map(|s| s.to_string())
-        .ok_or_else(|| {
-            UpdaterError::Precondition(
-                "FRONTEND_IMAGE missing in .env; required for commit-mode image pulls. \
-                 Add e.g. FRONTEND_IMAGE=docker.io/<org>/myriad-frontend (no tag) or re-run \
-                 scripts/docker/deploy.sh to bootstrap defaults."
-                    .into(),
-            )
-        })?;
-    if backend.trim().is_empty() || frontend.trim().is_empty() {
-        return Err(UpdaterError::Precondition(
-            "BACKEND_IMAGE / FRONTEND_IMAGE must be non-empty (image repo without tag)".into(),
-        ));
-    }
-    Ok((backend, frontend))
 }
 
 fn check_env_keys(worker: &Worker, manifest: Option<&Manifest>) -> Result<()> {

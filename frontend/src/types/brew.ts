@@ -17,6 +17,17 @@ export type FeedType = 'rss' | 'atom' | 'json_feed' | 'notion' | 'rsshub'
 // - rsshub: RSSHub 订阅（支持多实例切换，独立于传统订阅）
 export type SourceType = 'link' | 'rss' | 'brewlia' | 'rsshub'
 
+/** 从 Brew 添加界面提交的订阅源参数。 */
+export interface AddSourceInput {
+  url: string
+  name?: string
+  category?: string
+  icon?: string
+  sourceType?: SourceType
+  feedType?: FeedType
+  notionToken?: string
+}
+
 // RSSHub 实例配置
 export interface RSSHubInstance {
   /** 实例名称 */

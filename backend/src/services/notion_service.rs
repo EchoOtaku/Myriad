@@ -12,7 +12,7 @@
 //! - notion://page/{page_id} - 订阅单个页面
 
 use chrono::{DateTime, Utc};
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
@@ -124,8 +124,20 @@ impl NotionService {
             }
         }
 
-        // Notion 网页 URL 格式
-        if url.contains("notion.so") || url.contains("notion.site") {
+        // Notion 网页 URL 格式。新版客户端复制出的链接使用
+        // https://app.notion.com/p/{id}，旧链接使用 notion.so/notion.site。
+        let is_notion_web_url = Url::parse(url)
+            .ok()
+            .and_then(|parsed| parsed.host_str().map(str::to_ascii_lowercase))
+            .is_some_and(|host| {
+                host == "notion.so"
+                    || host.ends_with(".notion.so")
+                    || host == "notion.site"
+                    || host.ends_with(".notion.site")
+                    || host == "app.notion.com"
+            });
+
+        if is_notion_web_url {
             // 提取最后一个路径段中的 ID（32字符的 hex）
             if let Some(id) = extract_notion_id_from_url(url) {
                 // 默认假设是数据库，可以后续通过 API 验证
@@ -1832,6 +1844,18 @@ mod tests {
         let (resource_type, id) = NotionService::parse_notion_url("notion://page/xyz789").unwrap();
         assert_eq!(resource_type, NotionResourceType::Page);
         assert_eq!(id, "xyz789");
+
+        let (resource_type, id) = NotionService::parse_notion_url(
+            "https://app.notion.com/p/2d19015ffdc880dea8d3c523ab64bf1d?v=2d19015ffdc88070936f000c7b2fa774",
+        )
+        .unwrap();
+        assert_eq!(resource_type, NotionResourceType::Database);
+        assert_eq!(id, "2d19015f-fdc8-80de-a8d3-c523ab64bf1d");
+
+        assert!(NotionService::parse_notion_url(
+            "https://app.notion.com.example.com/p/2d19015ffdc880dea8d3c523ab64bf1d"
+        )
+        .is_err());
     }
 
     #[test]

@@ -548,17 +548,19 @@ export const SourceCard = React.memo(
                       className={`${size === 'tiny' ? 'w-3.5 h-3.5' : 'w-4 h-4'}`}
                     />
                   </button>
-                  <button
-                    onClick={handleRefresh}
-                    className={`${size === 'tiny' ? 'p-1' : 'p-1.5'} rounded-lg transition-all duration-200 ease-out text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-500/10`}
-                    title={t.brew.refreshSubscription}
-                    aria-label={t.brew.refreshSubscription}
-                    disabled={refreshing}
-                  >
-                    <RefreshCw
-                      className={`${size === 'tiny' ? 'w-3.5 h-3.5' : 'w-4 h-4'} ${refreshing ? 'animate-spin' : ''}`}
-                    />
-                  </button>
+                  {source.source_type !== 'link' && (
+                    <button
+                      onClick={handleRefresh}
+                      className={`${size === 'tiny' ? 'p-1' : 'p-1.5'} rounded-lg transition-all duration-200 ease-out text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-500/10`}
+                      title={t.brew.refreshSubscription}
+                      aria-label={t.brew.refreshSubscription}
+                      disabled={refreshing}
+                    >
+                      <RefreshCw
+                        className={`${size === 'tiny' ? 'w-3.5 h-3.5' : 'w-4 h-4'} ${refreshing ? 'animate-spin' : ''}`}
+                      />
+                    </button>
+                  )}
                   {size === 'full' && source.site_url && (
                     <a
                       href={source.site_url}

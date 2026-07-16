@@ -1,5 +1,5 @@
 use axum::{extract::State, http::StatusCode, Json};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -90,7 +90,8 @@ fn sort_platforms_by_order(platforms: &mut [PlatformConfig], order: Option<&Vec<
     platforms.sort_by_key(|p| rank(&p.name));
 }
 
-pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> ConfigResponse {
+    let db = db.clone();
     // 优先从数据库读取配置
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();
@@ -106,7 +107,7 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
     // Helper to mask sensitive values (passwords, API keys, tokens)
     // SECURITY: Do not expose any real characters to prevent key type detection
     let mask_sensitive = |value: String| -> String {
-        if value.is_empty() {
+        if value.is_empty() || reveal_sensitive {
             value
         } else {
             // Show only fixed-length mask without exposing real characters
@@ -1365,7 +1366,431 @@ pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Js
         db_config.as_ref().and_then(|c| c.platform_order.as_ref()),
     );
 
+    config
+}
+
+pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+    let config = build_config(&db, false).await;
     (StatusCode::OK, Json(json!(config)))
+}
+
+const SETTINGS_BACKUP_FORMAT: &str = "myriad-settings-backup";
+const SETTINGS_BACKUP_VERSION: u32 = 1;
+const MAX_SETTINGS_BACKUP_ENTRIES: usize = 10_000;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SettingsBackupEntry {
+    pub key: String,
+    pub value: Value,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub is_public: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SettingsBackupUserPreferences {
+    pub notification_preferences:
+        crate::services::agent::notification_preferences::NotificationPreferences,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SettingsBackup {
+    pub format: String,
+    pub version: u32,
+    pub exported_at: String,
+    pub contains_secrets: bool,
+    pub configurations: Vec<SettingsBackupEntry>,
+    pub effective_config: ConfigResponse,
+    pub user_preferences: SettingsBackupUserPreferences,
+}
+
+fn validate_settings_backup(backup: &SettingsBackup) -> Result<(), String> {
+    if backup.format != SETTINGS_BACKUP_FORMAT {
+        return Err("Unsupported settings backup format".to_string());
+    }
+    if backup.version != SETTINGS_BACKUP_VERSION {
+        return Err(format!(
+            "Unsupported settings backup version: {}",
+            backup.version
+        ));
+    }
+    if backup.configurations.len() > MAX_SETTINGS_BACKUP_ENTRIES {
+        return Err("Settings backup contains too many configuration entries".to_string());
+    }
+
+    let mut keys = std::collections::HashSet::new();
+    for entry in &backup.configurations {
+        if entry.key.is_empty() || entry.key.len() > 255 {
+            return Err("Settings backup contains an invalid configuration key".to_string());
+        }
+        if !keys.insert(entry.key.as_str()) {
+            return Err(format!(
+                "Settings backup contains duplicate key: {}",
+                entry.key
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn is_sensitive_configuration_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    key.contains("api_key")
+        || key.contains("token")
+        || key.contains("secret")
+        || key.contains("password")
+        || key.contains("npsso")
+}
+
+fn merge_settings_backup_entries(
+    configurations: Vec<SettingsBackupEntry>,
+    effective_config: &ConfigResponse,
+) -> std::collections::HashMap<String, SettingsBackupEntry> {
+    let mut entries: std::collections::HashMap<String, SettingsBackupEntry> = configurations
+        .into_iter()
+        .map(|entry| (entry.key.clone(), entry))
+        .collect();
+
+    // Older deployments may still source settings from environment variables. The effective
+    // legacy snapshot fills only keys that were absent from the configuration table.
+    for (key, value) in collect_database_updates(effective_config) {
+        let is_encrypted = is_sensitive_configuration_key(&key);
+        entries.entry(key.clone()).or_insert(SettingsBackupEntry {
+            key,
+            value,
+            description: None,
+            category: Some("general".to_string()),
+            is_encrypted: Some(is_encrypted),
+            is_public: Some(false),
+        });
+    }
+
+    entries
+}
+
+pub async fn export_settings(
+    State(db): State<DatabaseConnection>,
+    user_id: i32,
+) -> (StatusCode, Json<Value>) {
+    let rows = match db
+        .query_all(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT key, value, description, category, is_encrypted, is_public FROM configurations ORDER BY key"
+                .to_string(),
+        ))
+        .await
+    {
+        Ok(rows) => rows,
+        Err(error) => {
+            tracing::error!("Failed to export settings: {}", error);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to read settings"})),
+            );
+        }
+    };
+
+    let mut configurations = Vec::with_capacity(rows.len());
+    for row in rows {
+        let entry = SettingsBackupEntry {
+            key: match row.try_get("", "key") {
+                Ok(value) => value,
+                Err(error) => {
+                    tracing::error!("Failed to decode configuration key: {}", error);
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": "Failed to decode settings"})),
+                    );
+                }
+            },
+            value: match row.try_get("", "value") {
+                Ok(value) => value,
+                Err(error) => {
+                    tracing::error!("Failed to decode configuration value: {}", error);
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": "Failed to decode settings"})),
+                    );
+                }
+            },
+            description: row.try_get("", "description").ok().flatten(),
+            category: row.try_get("", "category").ok().flatten(),
+            is_encrypted: row.try_get("", "is_encrypted").ok().flatten(),
+            is_public: row.try_get("", "is_public").ok().flatten(),
+        };
+        configurations.push(entry);
+    }
+
+    let notification_preferences =
+        crate::services::agent::notification_preferences::load(Some(&db), user_id).await;
+    let backup = SettingsBackup {
+        format: SETTINGS_BACKUP_FORMAT.to_string(),
+        version: SETTINGS_BACKUP_VERSION,
+        exported_at: chrono::Utc::now().to_rfc3339(),
+        contains_secrets: true,
+        configurations,
+        effective_config: build_config(&db, true).await,
+        user_preferences: SettingsBackupUserPreferences {
+            notification_preferences,
+        },
+    };
+
+    (StatusCode::OK, Json(json!(backup)))
+}
+
+pub async fn restore_settings(
+    State(db): State<DatabaseConnection>,
+    user_id: i32,
+    Json(backup): Json<SettingsBackup>,
+) -> (StatusCode, Json<Value>) {
+    if let Err(message) = validate_settings_backup(&backup) {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": message})));
+    }
+
+    let entries = merge_settings_backup_entries(backup.configurations, &backup.effective_config);
+    let notification_preferences = backup
+        .user_preferences
+        .notification_preferences
+        .normalized();
+
+    let transaction = match db.begin().await {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            tracing::error!("Failed to start settings restore transaction: {}", error);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to start settings restore"})),
+            );
+        }
+    };
+
+    let restore_result: Result<(), sea_orm::DbErr> = async {
+        transaction
+            .execute(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "DELETE FROM configurations".to_string(),
+            ))
+            .await?;
+
+        for (_, entry) in entries {
+            transaction
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"
+                        INSERT INTO configurations
+                            (key, value, description, category, is_encrypted, is_public, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    "#,
+                    vec![
+                        entry.key.into(),
+                        entry.value.into(),
+                        entry.description.into(),
+                        entry.category.into(),
+                        entry.is_encrypted.into(),
+                        entry.is_public.into(),
+                    ],
+                ))
+                .await?;
+        }
+
+        let notification_value = serde_json::to_value(&notification_preferences)
+            .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?;
+        let update_result = transaction
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE users SET notification_preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+                vec![notification_value.into(), user_id.into()],
+            ))
+            .await?;
+        if update_result.rows_affected() == 0 {
+            return Err(sea_orm::DbErr::Custom(
+                "Authenticated user no longer exists".to_string(),
+            ));
+        }
+
+        transaction.commit().await?;
+        Ok(())
+    }
+    .await;
+
+    if let Err(error) = restore_result {
+        tracing::error!("Failed to restore settings: {}", error);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Failed to restore settings: {}", error)})),
+        );
+    }
+
+    crate::services::agent::notification_preferences::cache_restored(
+        user_id,
+        notification_preferences,
+    )
+    .await;
+
+    let config_service = crate::services::config_service::ConfigService::new(db);
+    match config_service.load_config().await {
+        Ok(dynamic_config) => {
+            *crate::GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
+            crate::services::http_client::reload_global_client().await;
+            crate::services::oauth::registry::REGISTRY.reload().await;
+        }
+        Err(error) => {
+            tracing::error!("Settings restored but runtime reload failed: {}", error);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Settings restored, but runtime reload failed"})),
+            );
+        }
+    }
+
+    crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "message": "Settings restored successfully",
+            "requires_reload": true
+        })),
+    )
+}
+
+#[cfg(test)]
+mod settings_backup_tests {
+    use super::*;
+
+    fn empty_config() -> ConfigResponse {
+        ConfigResponse {
+            platforms: Vec::new(),
+            ai_config: AiConfig {
+                provider: String::new(),
+                model: String::new(),
+                api_key: String::new(),
+                enabled: false,
+                image_provider: String::new(),
+                config_fields: Vec::new(),
+            },
+            report_config: ReportConfig {
+                topic_style: String::new(),
+                config_fields: Vec::new(),
+            },
+            ui_config: UiConfig {
+                wallpaper_url: String::new(),
+                wallpaper_blur: 0,
+                wallpaper_parallax: false,
+                evocative_parallax: false,
+                evocative_dynamic_blur: false,
+                evocative_ripple: false,
+                evocative_fps: 30,
+                evocative_ripple_quality: 1.0,
+                theme: String::new(),
+                primary_color: String::new(),
+                secondary_color: String::new(),
+                pet_enabled: false,
+                pet_image_url: String::new(),
+                proxy_enabled: false,
+                proxy_url: String::new(),
+                proxy_bypass: String::new(),
+                gemini_base_url: String::new(),
+                github_api_base_url: String::new(),
+                config_fields: Vec::new(),
+            },
+        }
+    }
+
+    fn backup_with_entries(configurations: Vec<SettingsBackupEntry>) -> SettingsBackup {
+        SettingsBackup {
+            format: SETTINGS_BACKUP_FORMAT.to_string(),
+            version: SETTINGS_BACKUP_VERSION,
+            exported_at: "2026-01-01T00:00:00Z".to_string(),
+            contains_secrets: true,
+            configurations,
+            effective_config: empty_config(),
+            user_preferences: SettingsBackupUserPreferences {
+                notification_preferences: Default::default(),
+            },
+        }
+    }
+
+    fn entry(key: &str) -> SettingsBackupEntry {
+        SettingsBackupEntry {
+            key: key.to_string(),
+            value: json!(true),
+            description: None,
+            category: None,
+            is_encrypted: None,
+            is_public: None,
+        }
+    }
+
+    #[test]
+    fn validates_versioned_backup_and_rejects_duplicate_keys() {
+        let valid = backup_with_entries(vec![entry("oauth_providers"), entry("report_settings")]);
+        assert!(validate_settings_backup(&valid).is_ok());
+
+        let duplicate =
+            backup_with_entries(vec![entry("report_settings"), entry("report_settings")]);
+        assert!(validate_settings_backup(&duplicate)
+            .unwrap_err()
+            .contains("duplicate key"));
+    }
+
+    #[test]
+    fn rejects_unknown_format_and_version() {
+        let mut backup = backup_with_entries(Vec::new());
+        backup.format = "legacy".to_string();
+        assert!(validate_settings_backup(&backup).is_err());
+
+        backup.format = SETTINGS_BACKUP_FORMAT.to_string();
+        backup.version = SETTINGS_BACKUP_VERSION + 1;
+        assert!(validate_settings_backup(&backup).is_err());
+    }
+
+    #[test]
+    fn effective_config_collects_unmasked_credentials_for_migration() {
+        let mut config = empty_config();
+        config.platforms.push(PlatformConfig {
+            name: "GitHub".to_string(),
+            enabled: true,
+            has_token: true,
+            config_fields: vec![ConfigField {
+                key: "token".to_string(),
+                label: String::new(),
+                field_type: "password".to_string(),
+                value: "secret-token".to_string(),
+                placeholder: String::new(),
+                required: false,
+            }],
+            description: String::new(),
+            icon: String::new(),
+        });
+
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("github_token"), Some(&json!("secret-token")));
+        assert_eq!(updates.get("github_enabled"), Some(&json!(true)));
+
+        let raw_entry = SettingsBackupEntry {
+            key: "github_token".to_string(),
+            value: json!("database-token"),
+            description: Some("credential".to_string()),
+            category: Some("platform".to_string()),
+            is_encrypted: Some(true),
+            is_public: Some(false),
+        };
+        let merged = merge_settings_backup_entries(vec![raw_entry], &config);
+        assert_eq!(
+            merged.get("github_token").map(|entry| &entry.value),
+            Some(&json!("database-token"))
+        );
+        assert_eq!(
+            merged
+                .get("github_enabled")
+                .and_then(|entry| entry.is_encrypted),
+            Some(false)
+        );
+    }
 }
 
 pub async fn update_config(
@@ -1447,6 +1872,13 @@ async fn save_to_database(
     config_service: &crate::services::config_service::ConfigService,
     config: &ConfigResponse,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    config_service
+        .update_configs(collect_database_updates(config))
+        .await?;
+    Ok(())
+}
+
+fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMap<String, Value> {
     use serde_json::Value as JsonValue;
     use std::collections::HashMap;
 
@@ -1770,9 +2202,7 @@ async fn save_to_database(
         }
     }
 
-    // 批量更新到数据库
-    config_service.update_configs(updates).await?;
-    Ok(())
+    updates
 }
 
 /// 保存所有配置到 .env 文件

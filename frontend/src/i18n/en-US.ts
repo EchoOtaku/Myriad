@@ -394,6 +394,10 @@ export const enUS: TranslationKeys = {
       'Install a past release or a specific commit. Not needed for normal updates.',
     updaterTargetReleaseHead: 'Available versions (click to select)',
     updaterTargetCommitHead: 'Recent commits (click to select)',
+    updaterTargetDockerHubHead: 'Docker Hub builds (click to select)',
+    updaterDockerHubFallback:
+      'GitHub commits are unavailable. Showing builds present in both Docker Hub image repositories.',
+    updaterDockerHubBuild: 'Built on Docker Hub',
     updaterCommitTarget: 'Enter manually',
     updaterCommitPlaceholder: 'commit sha or dev-xxx tag',
     updaterInstallTarget: 'Install {version}',
@@ -452,18 +456,19 @@ export const enUS: TranslationKeys = {
       'Are you sure you want to reset all configurations? This action cannot be undone and will restore all settings to their default values.',
     exportConfig: 'Export Settings',
     exportConfigDesc:
-      'Export all current configurations as a JSON file for backup or migration.',
+      'Export all settings, current administrator notification preferences, and browser preferences. The file contains sensitive API keys and tokens; store it securely.',
     importConfig: 'Import Settings',
     importConfigDesc:
       'Import configurations from a JSON file. This will overwrite all current settings.',
     exportConfigSuccess: 'Configuration exported successfully!',
+    exportConfigFailed: 'Failed to export settings',
     importConfigSuccess:
       'Configuration imported and saved! Page will refresh...',
     importConfigFailed: 'Failed to import configuration',
     importConfigInvalid:
       'Invalid configuration file. Please check the JSON format.',
     importConfirmMessage:
-      'Importing will overwrite all current settings. Are you sure you want to continue?',
+      'Importing will fully replace current settings, current administrator notification preferences, and browser preferences. Continue?',
     dangerZone: 'Danger Zone',
     searchConfig: 'Search configurations...',
     searchResults: 'Search Results',
@@ -876,7 +881,8 @@ export const enUS: TranslationKeys = {
     moduleVisibilitySaved: 'Page visibility settings saved',
     moduleVisibilityLoadFailed: 'Failed to load page visibility settings',
     agentUsageTitle: 'AI Assistant Usage',
-    agentUsageDesc: 'Moved into Tapp Permission Management as Assistant presets',
+    agentUsageDesc:
+      'Moved into Tapp Permission Management as Assistant presets',
     agentUsageGuest: 'Guests',
     agentUsageGuestHint: 'See Assistant presets under Tapp permissions',
     agentUsageGuestHidden: 'Hidden',

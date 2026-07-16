@@ -795,6 +795,86 @@ async fn update_config_wrapper(
     }
 }
 
+/// Export every persisted setting plus the current administrator's user preferences.
+async fn export_settings_wrapper(headers: axum::http::HeaderMap) -> Response {
+    let claims = match middleware::auth::verify_current_admin_from_headers(&headers).await {
+        Ok(claims) => claims,
+        Err((status, json)) => return (status, json).into_response(),
+    };
+    let user_id = match claims.sub.parse::<i32>() {
+        Ok(user_id) => user_id,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid authenticated user"})),
+            )
+                .into_response();
+        }
+    };
+
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) =
+                api::config::export_settings(axum::extract::State(db.clone()), user_id).await;
+            let mut response = (status, json).into_response();
+            response.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store, private"),
+            );
+            response.headers_mut().insert(
+                axum::http::header::PRAGMA,
+                axum::http::HeaderValue::from_static("no-cache"),
+            );
+            response
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+/// Atomically restore a versioned settings backup.
+async fn restore_settings_wrapper(
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<api::config::SettingsBackup>,
+) -> Response {
+    let claims = match middleware::auth::verify_current_admin_from_headers(&headers).await {
+        Ok(claims) => claims,
+        Err((status, json)) => return (status, json).into_response(),
+    };
+    let user_id = match claims.sub.parse::<i32>() {
+        Ok(user_id) => user_id,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid authenticated user"})),
+            )
+                .into_response();
+        }
+    };
+
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let (status, json) = api::config::restore_settings(
+                axum::extract::State(db.clone()),
+                user_id,
+                Json(payload),
+            )
+            .await;
+            (status, json).into_response()
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
 /// Wrapper for update_dashboard_config that gets DB from global state
 async fn update_dashboard_config_wrapper(
     Json(payload): Json<api::config::DashboardConfigPayload>,
@@ -3579,6 +3659,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             post(update_config_wrapper).route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
+            "/api/config/settings-backup",
+            get(export_settings_wrapper)
+                .post(restore_settings_wrapper)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
+        .route(
             "/api/config/dashboard",
             post(update_dashboard_config_wrapper)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
@@ -4614,6 +4700,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/admin/updater/commits",
                 get(api::updater_admin::commits).route_layer(from_fn(admin_middleware)),
+            )
+            .route(
+                "/api/admin/updater/builds",
+                get(api::updater_admin::builds).route_layer(from_fn(admin_middleware)),
             )
             .route(
                 "/api/admin/updater/releases",

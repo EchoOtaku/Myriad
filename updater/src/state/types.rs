@@ -62,6 +62,9 @@ pub struct LatestAvailable {
     pub channel: String,
     #[serde(default)]
     pub mode: UpdateMode,
+    /// Metadata provider used to discover this target (`github` or `dockerhub`).
+    #[serde(default)]
+    pub source: Option<String>,
     pub seen_at: DateTime<Utc>,
     /// Full git sha when mode=commit (optional; short tag is in `version`).
     #[serde(default)]

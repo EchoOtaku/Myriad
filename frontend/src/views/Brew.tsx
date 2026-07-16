@@ -16,7 +16,12 @@
 
 import type { SecondaryNavItem } from '../contexts/NavigationContext'
 
-import type { BrewItem, BrewSource, BrewStats } from '../types/brew'
+import type {
+  AddSourceInput,
+  BrewItem,
+  BrewSource,
+  BrewStats,
+} from '../types/brew'
 import { AnimatePresenceShim as AnimatePresence } from '@lib/motionShim'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -885,18 +890,22 @@ export default function Brew() {
   }
 
   // 处理添加订阅源
-  const handleAddSource = async (
-    url: string,
-    name?: string,
-    category?: string,
-    icon?: string,
-    sourceType?: 'link' | 'rss' | 'brewlia' | 'rsshub',
-  ) => {
+  const handleAddSource = async ({
+    url,
+    name,
+    category,
+    icon,
+    sourceType,
+    feedType,
+    notionToken,
+  }: AddSourceInput) => {
     const source = await brewApi.addSource({
       url,
       name,
       category,
       source_type: sourceType,
+      feed_type: feedType,
+      extra_config: notionToken ? { token: notionToken } : undefined,
     })
     // 如果有自定义图标，添加后立即更新
     if (icon && source.id) {

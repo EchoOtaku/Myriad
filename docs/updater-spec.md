@@ -461,6 +461,10 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 |---|---|---|---|
 | GET | `/status` | 公开 | 当前版本/状态 |
 | GET | `/available?channel=stable` | 公开 | 可升级版本 |
+| GET | `/commits?branch=preview&limit=25` | 公开 | GitHub 提交目标列表 |
+| GET | `/builds?limit=25` | 公开 | Docker Hub 中前后端共有的不可变 `dev-<sha>` 构建 |
+| GET | `/releases?channel=stable&limit=25` | 公开 | GitHub Release 目标列表 |
+| GET | `/compare?to=<ref>` | 公开 | 当前版本与目标提交的祖先关系 |
 | GET | `/jobs` | 公开 | 历史任务 |
 | GET | `/jobs/{id}` | 公开 | 任务详细 log |
 | POST | `/update` | token | `{target_version, allow_skip_versions: false}` |
@@ -484,6 +488,17 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 ### 13.4 schema_version
 
 所有响应包含 `schema_version`，前端按版本兼容。
+
+### 13.5 Docker Hub 提交构建回退
+
+提交模式默认使用 GitHub 提交列表和 compare API。GitHub 请求失败或没有返回提交时，UI
+改用 `/builds`，查询 `.env` 中 `BACKEND_IMAGE` 与 `FRONTEND_IMAGE` 对应的 Docker Hub
+仓库，只返回两边同时存在的不可变 `dev-<sha>` 标签；`preview` 等可变标签不会成为候选。
+
+自动检查同样在 GitHub 失败时选择最新的共有构建。因为 Docker Hub 标签无法证明 Git
+祖先关系，安装前必须显式允许 unknown risk；预检随后实际拉取前端和后端两个镜像，任一
+不存在都会在进入维护模式前失败。release 模式不使用此回退，仍要求 release manifest、
+迁移元数据和镜像摘要校验。
 
 ## 14. 自更新
 
@@ -614,7 +629,7 @@ M1 release 前必须跑通。状态：
 | 14 | pgdata 是 named volume | 启动时拒绝 | unit + smoke |
 | 15 | compose 不引用 MYRIAD_TAG | 启动时拒绝 | **e2e ✓** + smoke |
 | 16 | token 错误 | 401，5 次后限流 | **e2e ✓** (401 验证); 限流 unit |
-| 17 | GitHub rate limit | 退避重试，最终标 unknown | manual |
+| 17 | GitHub rate limit（commit 模式） | 回退 Docker Hub 共有构建并标 unknown | unit + manual |
 | 18 | release.json 未知字段 | 忽略继续 | unit (serde flatten + skip_unknown) |
 | 19 | frontend cache 旧版本 | health meta 失败 → 回滚 | manual |
 | 20 | proxy 重启 | 维护状态从磁盘恢复 | **e2e ✓** (fail-open + maintenance.json 切换) |

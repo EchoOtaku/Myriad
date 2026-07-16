@@ -23,6 +23,7 @@ pub fn build(state: ApiState) -> Router {
         .route("/status", get(status))
         .route("/available", get(available))
         .route("/commits", get(list_commits))
+        .route("/builds", get(list_builds))
         .route("/releases", get(list_releases))
         .route("/compare", get(compare_refs))
         .route("/jobs", get(list_jobs))
@@ -229,6 +230,7 @@ fn available_to_json(info: Option<AvailableInfo>) -> Value {
             message,
             branch,
             notes_url,
+            source,
             freshness,
         }) => {
             let (relation, ahead_by, behind_by, current_sha, is_upgrade, is_downgrade) =
@@ -241,11 +243,15 @@ fn available_to_json(info: Option<AvailableInfo>) -> Value {
                         Some(f.is_upgrade()),
                         Some(f.is_downgrade()),
                     ),
+                    None if source == "dockerhub" => {
+                        (Some("unknown"), None, None, None, Some(true), Some(false))
+                    }
                     None => (None, None, None, None, None, None),
                 };
             json!({
                 "schema_version": 1,
                 "mode": "commit",
+                "source": source,
                 "version": tag.as_str(),
                 "channel": branch,
                 "commit_sha": full_sha,
@@ -436,6 +442,35 @@ async fn list_commits(
             "committed_at": c.committed_at,
             "tag": format!("dev-{}", c.short_sha),
         })).collect::<Vec<_>>(),
+    })))
+}
+
+#[derive(Deserialize)]
+struct BuildsQuery {
+    #[serde(default = "default_commit_limit")]
+    limit: u32,
+}
+
+async fn list_builds(
+    State(st): State<ApiState>,
+    Query(q): Query<BuildsQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    st.worker
+        .sender()
+        .send(WorkerCmd::ListBuilds {
+            limit: q.limit,
+            reply: tx,
+        })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
+    let items = rx
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
+    Ok(Json(json!({
+        "schema_version": 1,
+        "source": "dockerhub",
+        "items": items,
     })))
 }
 
@@ -730,5 +765,28 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         let body = Json(json!({"error": self.1}));
         (self.0, body).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dockerhub_available_payload_marks_relation_unknown() {
+        let payload = available_to_json(Some(AvailableInfo::Commit {
+            tag: DeployTag::parse("dev-5a4527a").unwrap(),
+            full_sha: "5a4527a".to_string(),
+            message: "Docker Hub common frontend/backend build".to_string(),
+            branch: "preview".to_string(),
+            notes_url: "https://hub.docker.com/r/example/backend/tags?name=dev-5a4527a".to_string(),
+            source: "dockerhub".to_string(),
+            freshness: None,
+        }));
+
+        assert_eq!(payload["source"], "dockerhub");
+        assert_eq!(payload["relation"], "unknown");
+        assert_eq!(payload["is_upgrade"], true);
+        assert_eq!(payload["is_downgrade"], false);
     }
 }

@@ -367,6 +367,10 @@ export const zhCN: TranslationKeys = {
       '安装某个历史版本或指定提交。日常更新不需要用到这里。',
     updaterTargetReleaseHead: '可选版本（点击选择）',
     updaterTargetCommitHead: '最近提交（点击选择）',
+    updaterTargetDockerHubHead: 'Docker Hub 构建（点击选择）',
+    updaterDockerHubFallback:
+      'GitHub 提交列表不可用，已回退到前后端镜像均存在的 Docker Hub 构建。',
+    updaterDockerHubBuild: 'Docker Hub 已构建',
     updaterCommitTarget: '手动输入',
     updaterCommitPlaceholder: '提交 sha 或 dev-xxx 标签',
     updaterInstallTarget: '安装 {version}',
@@ -418,14 +422,17 @@ export const zhCN: TranslationKeys = {
     resetConfirmMessage:
       '您确定要重置所有配置吗？此操作不可撤销，所有设置将恢复为默认值。',
     exportConfig: '导出设置',
-    exportConfigDesc: '将当前所有配置导出为 JSON 文件，可用于备份或迁移。',
+    exportConfigDesc:
+      '导出完整设置、当前管理员通知偏好和浏览器偏好。文件包含 API 密钥与令牌等敏感信息，请妥善保管。',
     importConfig: '导入设置',
     importConfigDesc: '从 JSON 文件导入配置，将覆盖当前所有设置。',
     exportConfigSuccess: '配置已成功导出！',
+    exportConfigFailed: '导出设置失败',
     importConfigSuccess: '配置已成功导入并保存！页面即将刷新...',
     importConfigFailed: '导入配置失败',
     importConfigInvalid: '无效的配置文件，请检查 JSON 格式是否正确。',
-    importConfirmMessage: '导入将覆盖当前所有配置，确定要继续吗？',
+    importConfirmMessage:
+      '导入将完整替换当前设置、当前管理员通知偏好和浏览器偏好，确定要继续吗？',
     dangerZone: '危险区域',
     searchConfig: '搜索配置项...',
     searchResults: '搜索结果',

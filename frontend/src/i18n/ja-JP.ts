@@ -388,6 +388,10 @@ export const jaJP: TranslationKeys = {
       '過去のリリースや特定のコミットをインストールします。通常の更新では不要です。',
     updaterTargetReleaseHead: '選択可能なバージョン（クリックで選択）',
     updaterTargetCommitHead: '最近のコミット（クリックで選択）',
+    updaterTargetDockerHubHead: 'Docker Hub ビルド（クリックで選択）',
+    updaterDockerHubFallback:
+      'GitHub のコミット一覧を取得できないため、前後両方のイメージが存在する Docker Hub ビルドを表示しています。',
+    updaterDockerHubBuild: 'Docker Hub でビルド済み',
     updaterCommitTarget: '手動入力',
     updaterCommitPlaceholder: 'コミット sha または dev-xxx タグ',
     updaterInstallTarget: '{version} をインストール',
@@ -446,17 +450,18 @@ export const jaJP: TranslationKeys = {
       'すべての設定をリセットしてもよろしいですか？この操作は元に戻せません。すべての設定がデフォルト値に戻ります。',
     exportConfig: '設定をエクスポート',
     exportConfigDesc:
-      '現在のすべての設定をJSONファイルとしてエクスポートします。バックアップや移行に使用できます。',
+      'すべての設定、現在の管理者の通知設定、ブラウザー設定をエクスポートします。APIキーやトークンなどの機密情報が含まれるため、安全に保管してください。',
     importConfig: '設定をインポート',
     importConfigDesc:
       'JSONファイルから設定をインポートします。現在のすべての設定が上書きされます。',
     exportConfigSuccess: '設定を正常にエクスポートしました！',
+    exportConfigFailed: '設定のエクスポートに失敗しました',
     importConfigSuccess:
       '設定をインポートして保存しました！ページを更新します...',
     importConfigFailed: '設定のインポートに失敗しました',
     importConfigInvalid: '無効な設定ファイルです。JSON形式を確認してください。',
     importConfirmMessage:
-      'インポートすると現在のすべての設定が上書きされます。続行しますか？',
+      'インポートすると、現在のすべての設定、現在の管理者の通知設定、ブラウザー設定が完全に置き換えられます。続行しますか？',
     dangerZone: '危険エリア',
     searchConfig: '設定項目を検索...',
     searchResults: '検索結果',

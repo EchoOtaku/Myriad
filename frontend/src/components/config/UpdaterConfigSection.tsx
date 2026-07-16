@@ -1051,6 +1051,9 @@ function AvailableCard({
         </span>
       </div>
       {freshness && <p className="updater-available-freshness">{freshness}</p>}
+      {(available?.source ?? la?.source) === 'dockerhub' && (
+        <p className="updater-available-warn">{u.updaterDockerHubFallback}</p>
+      )}
       {requiresSelfUpdate && (
         <p className="updater-available-warn">
           {format(u.updaterSelfUpdateNeeded, {
@@ -1172,6 +1175,9 @@ function TargetPicker({
   const [input, setInput] = useState('')
   const [compare, setCompare] = useState<CompareResult | null>(null)
   const [listLoading, setListLoading] = useState(true)
+  const [targetSource, setTargetSource] = useState<'github' | 'dockerhub'>(
+    'github',
+  )
   const compareTimerRef = useRef<number | null>(null)
 
   const isCommit = option.mode === 'commit'
@@ -1182,14 +1188,50 @@ function TargetPicker({
     setListLoading(true)
     setSelected('')
     setInput('')
-    const load = isCommit
-      ? api.commits({ branch: option.channel, limit: 25 }).then((r) => {
-          if (!cancelled) setCommits(r.items ?? [])
+    setCommits([])
+    setReleases([])
+    setTargetSource('github')
+
+    const load = async () => {
+      if (!isCommit) {
+        const response = await api.releases({
+          channel: option.channel,
+          limit: 25,
         })
-      : api.releases({ channel: option.channel, limit: 25 }).then((r) => {
-          if (!cancelled) setReleases(r.items ?? [])
+        if (!cancelled) setReleases(response.items ?? [])
+        return
+      }
+
+      try {
+        const response = await api.commits({
+          branch: option.channel,
+          limit: 25,
         })
-    load
+        if ((response.items ?? []).length > 0) {
+          if (!cancelled) setCommits(response.items)
+          return
+        }
+      } catch {
+        // Docker Hub below is the deliberate fallback for GitHub API failures.
+      }
+
+      const response = await api.builds({ limit: 25 })
+      if (!cancelled) {
+        setTargetSource('dockerhub')
+        setCommits(
+          (response.items ?? []).map((build) => ({
+            sha: build.short_sha,
+            short_sha: build.short_sha,
+            message: u.updaterDockerHubBuild,
+            html_url: build.backend_url,
+            committed_at: build.pushed_at,
+            tag: build.tag,
+          })),
+        )
+      }
+    }
+
+    load()
       .catch(() => {
         if (!cancelled) {
           setCommits([])
@@ -1202,7 +1244,7 @@ function TargetPicker({
     return () => {
       cancelled = true
     }
-  }, [api, option, isCommit])
+  }, [api, option, isCommit, u.updaterDockerHubBuild])
 
   // 输入/选中目标后，防抖对比新旧关系。
   useEffect(() => {
@@ -1257,10 +1299,17 @@ function TargetPicker({
     <div className="updater-target">
       <div className="updater-commit-list">
         <div className="updater-commit-list-head">
-          {isCommit ? u.updaterTargetCommitHead : u.updaterTargetReleaseHead}
+          {isCommit
+            ? targetSource === 'dockerhub'
+              ? u.updaterTargetDockerHubHead
+              : u.updaterTargetCommitHead
+            : u.updaterTargetReleaseHead}
           {' · '}
           <code>{option.channel}</code>
         </div>
+        {isCommit && targetSource === 'dockerhub' && (
+          <p className="updater-empty">{u.updaterDockerHubFallback}</p>
+        )}
         {listLoading ? (
           <p className="updater-empty">{u.updaterLoading}</p>
         ) : items.length === 0 ? (

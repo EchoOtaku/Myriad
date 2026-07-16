@@ -15,6 +15,7 @@
  */
 
 import type {
+  AddSourceInput,
   BrewSource,
   CardSize,
   FeedType,
@@ -24,18 +25,10 @@ import type {
 import type { ControlMode, DynamicTip, SortMode, SortOption } from './modes'
 import {
   LuClock as Clock,
-  LuCloudSun as CloudSun,
-  LuFolder as Folder,
   LuFolderOpen as FolderOpen,
   LuGripVertical as GripVertical,
-  LuInbox as Inbox,
-  LuMoon as Moon,
-  LuNewspaper as Newspaper,
-  LuRefreshCw as RefreshCw,
-  LuRss as Rss,
   LuShuffle as Shuffle,
   LuSortAsc as SortAsc,
-  LuSun as Sun,
 } from '@lib/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
@@ -56,6 +49,14 @@ import {
 } from './modes'
 import RSSHubConfigComponent from './RSSHubConfig'
 
+const BREW_TIP_ICON_ASSETS = {
+  unreadInbox: '/icons/brew/inbox.png',
+  subscriptions: '/icons/notifications/brew.png',
+  morning: '/icons/greeting/sunrise.png',
+  afternoon: '/icons/weather/partly-cloudy.png',
+  evening: '/icons/greeting/night.png',
+} as const
+
 // 根据订阅源数据生成动态提示
 function generateDynamicTips(
   sources: BrewSource[],
@@ -71,7 +72,7 @@ function generateDynamicTips(
 
   if (mostUnread && mostUnread.unread_count > 0) {
     tips.push({
-      icon: <Folder size={16} />,
+      icon: '📚',
       iconUrl: mostUnread.icon || undefined,
       main: `${mostUnread.name}`,
       sub: (brewTranslations.tipUnreadCount || '{count} 条未读').replace(
@@ -84,14 +85,17 @@ function generateDynamicTips(
   // 找出最近更新的源（1小时内）
   const recentlyUpdated = sources
     .filter(
-      (s) => s.last_fetched_at && now - s.last_fetched_at * 1000 < 3600000,
+      (s) =>
+        s.source_type !== 'link' &&
+        s.last_fetched_at &&
+        now - s.last_fetched_at * 1000 < 3600000,
     )
     .sort((a, b) => (b.last_fetched_at || 0) - (a.last_fetched_at || 0))
 
   if (recentlyUpdated.length > 0) {
     const source = recentlyUpdated[0]
     tips.push({
-      icon: <RefreshCw size={16} />,
+      icon: '↻',
       iconUrl: source.icon || undefined,
       main: `${source.name}`,
       sub: brewTranslations.tipJustUpdated || '刚刚更新',
@@ -112,7 +116,7 @@ function generateDynamicTips(
           ? `${newItem.title.slice(0, 16)}...`
           : newItem.title
       tips.push({
-        icon: <Newspaper size={16} />,
+        icon: '📰',
         iconUrl: randomSource.icon || undefined,
         main: title,
         sub: (brewTranslations.tipFromSource || '来自 {source}').replace(
@@ -127,7 +131,8 @@ function generateDynamicTips(
   const totalUnread = sources.reduce((acc, s) => acc + (s.unread_count || 0), 0)
   if (totalUnread > 0) {
     tips.push({
-      icon: <Inbox size={16} />,
+      icon: '📥',
+      iconUrl: BREW_TIP_ICON_ASSETS.unreadInbox,
       main: (brewTranslations.tipUnreadCount || '{count} 条未读').replace(
         '{count}',
         String(totalUnread),
@@ -138,7 +143,8 @@ function generateDynamicTips(
 
   // 基础统计
   tips.push({
-    icon: <Rss size={16} />,
+    icon: '☕',
+    iconUrl: BREW_TIP_ICON_ASSETS.subscriptions,
     main: (brewTranslations.tipSubscriptionCount || '{count} 个订阅').replace(
       '{count}',
       String(sources.length),
@@ -150,19 +156,22 @@ function generateDynamicTips(
   const hour = new Date().getHours()
   if (hour >= 5 && hour < 12) {
     tips.push({
-      icon: <Sun size={16} />,
+      icon: '🌅',
+      iconUrl: BREW_TIP_ICON_ASSETS.morning,
       main: brewTranslations.tipMorning || '早安',
       sub: brewTranslations.tipStartReading || '开启今日阅读',
     })
   } else if (hour >= 12 && hour < 18) {
     tips.push({
-      icon: <CloudSun size={16} />,
+      icon: '🌤️',
+      iconUrl: BREW_TIP_ICON_ASSETS.afternoon,
       main: brewTranslations.tipAfternoon || '午后时光',
       sub: brewTranslations.tipRelaxReading || '适合轻松阅读',
     })
   } else {
     tips.push({
-      icon: <Moon size={16} />,
+      icon: '🌙',
+      iconUrl: BREW_TIP_ICON_ASSETS.evening,
       main: brewTranslations.tipEvening || '晚间阅读',
       sub: brewTranslations.tipQuietTime || '享受安静时刻',
     })
@@ -254,13 +263,7 @@ interface ControlIslandProps {
   isEditMode?: boolean
   isDeleting?: boolean
   isRefreshing?: boolean
-  onAddSource?: (
-    url: string,
-    name?: string,
-    category?: string,
-    icon?: string,
-    sourceType?: SourceType,
-  ) => Promise<void>
+  onAddSource?: (input: AddSourceInput) => Promise<void>
   onSourcesChange?: () => void
   sortMode?: SortMode
   onSortModeChange?: (mode: SortMode) => void
@@ -757,6 +760,10 @@ export default function ControlIsland({
             variant={variant}
             selectedIds={selectedIds}
             totalCount={filteredSources.length}
+            refreshableCount={
+              filteredSources.filter((source) => source.source_type !== 'link')
+                .length
+            }
             isDeleting={isDeleting}
             isRefreshing={isRefreshing}
             isAuthenticated={isAuthenticated}
@@ -877,21 +884,17 @@ export default function ControlIsland({
             sourcesCount={sources.length}
             onSubmit={
               onAddSource
-                ? async (data: {
-                    sourceType: 'rss' | 'brewlia' | 'link' | 'rsshub'
-                    url: string
-                    name: string
-                    category: string
-                    customIcon: string | null
-                  }) => {
+                ? async (data) => {
                     try {
-                      await onAddSource(
-                        data.url,
-                        data.name,
-                        data.category,
-                        data.customIcon || undefined,
-                        data.sourceType,
-                      )
+                      await onAddSource({
+                        url: data.url,
+                        name: data.name.trim() || undefined,
+                        category: data.category.trim() || undefined,
+                        icon: data.customIcon || undefined,
+                        sourceType: data.sourceType,
+                        feedType: data.feedType,
+                        notionToken: data.notionToken?.trim() || undefined,
+                      })
                       return { success: true }
                     } catch (err) {
                       return {

@@ -288,6 +288,13 @@ impl NotificationPreferences {
 static PREFERENCES_CACHE: LazyLock<RwLock<HashMap<i32, NotificationPreferences>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
+pub async fn cache_restored(user_id: i32, preferences: NotificationPreferences) {
+    PREFERENCES_CACHE
+        .write()
+        .await
+        .insert(user_id, preferences.normalized());
+}
+
 #[cfg(test)]
 pub async fn set_cached_for_test(user_id: i32, preferences: NotificationPreferences) {
     PREFERENCES_CACHE

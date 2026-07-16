@@ -173,6 +173,8 @@ export async function refreshSource(id: number): Promise<number> {
  * 探测订阅源信息
  */
 export async function discoverSource(url: string): Promise<{
+  url: string
+  autocompleted: boolean
   title: string
   description: string | null
   site_url: string | null

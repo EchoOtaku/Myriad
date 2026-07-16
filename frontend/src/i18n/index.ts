@@ -357,6 +357,9 @@ export interface TranslationKeys {
     updaterTargetGroupDesc: string
     updaterTargetReleaseHead: string
     updaterTargetCommitHead: string
+    updaterTargetDockerHubHead: string
+    updaterDockerHubFallback: string
+    updaterDockerHubBuild: string
     updaterCommitTarget: string
     updaterCommitPlaceholder: string
     updaterInstallTarget: string
@@ -412,6 +415,7 @@ export interface TranslationKeys {
     importConfig: string
     importConfigDesc: string
     exportConfigSuccess: string
+    exportConfigFailed: string
     importConfigSuccess: string
     importConfigFailed: string
     importConfigInvalid: string

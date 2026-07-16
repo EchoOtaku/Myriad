@@ -4,6 +4,7 @@
  */
 
 import type { ChangeEvent, SubmitEvent } from 'react'
+import type { FeedType } from '../../../../types/brew'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -30,6 +31,8 @@ import { useRef, useState } from 'react'
 import { ISLAND_GLASS, SPRING_SMOOTH, TRANSITION_QUICK } from './constants'
 
 interface DiscoveredFeed {
+  url: string
+  autocompleted: boolean
   title: string
   feed_type: string
 }
@@ -44,7 +47,7 @@ export interface AddModeProps {
   // 回调
   onSubmit?: (data: {
     sourceType: 'rss' | 'brewlia' | 'link' | 'rsshub'
-    feedType: string
+    feedType: FeedType
     url: string
     name: string
     category: string
@@ -176,6 +179,7 @@ export function AddMode({
       const result = await onDiscover(url)
       setDiscovered(result)
       if (result) {
+        setUrl(result.url)
         setName(result.title)
       }
     } catch (err) {
@@ -207,14 +211,36 @@ export function AddMode({
     setSuccess(null)
 
     try {
+      let resolvedUrl = sourceType === 'rsshub' ? rsshubFullUrl : url
+      let resolvedName = name
+      const shouldAutoDiscover =
+        sourceType !== 'link' &&
+        sourceType !== 'rsshub' &&
+        feedType !== 'notion' &&
+        !!onDiscover
+
+      if (shouldAutoDiscover) {
+        setDiscovering(true)
+        const feed =
+          discovered?.url === url ? discovered : await onDiscover(url.trim())
+        if (!feed) throw new Error('Unable to discover RSS/Atom feed')
+
+        resolvedUrl = feed.url
+        resolvedName = name.trim() || feed.title
+        setUrl(feed.url)
+        setName(resolvedName)
+        setDiscovered(feed)
+        setDiscovering(false)
+      }
+
       const result = await onSubmit({
         sourceType:
           sourceType === 'rsshub' && enableBrewliaForRsshub
             ? 'brewlia'
             : sourceType,
         feedType,
-        url: sourceType === 'rsshub' ? rsshubFullUrl : url,
-        name,
+        url: resolvedUrl,
+        name: resolvedName,
         category,
         customIcon,
         notionToken: feedType === 'notion' ? notionToken : undefined,
@@ -237,6 +263,7 @@ export function AddMode({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add')
     } finally {
+      setDiscovering(false)
       setLoading(false)
     }
   }
@@ -542,7 +569,10 @@ export function AddMode({
                     <input
                       type="url"
                       value={url}
-                      onChange={(e) => setUrl(e.target.value)}
+                      onChange={(e) => {
+                        setUrl(e.target.value)
+                        setDiscovered(null)
+                      }}
                       placeholder={
                         feedType === 'notion'
                           ? 'notion://database/xxx'
