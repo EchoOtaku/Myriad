@@ -210,7 +210,11 @@ function firstUsableRgb(
 
 /**
  * 推导在当前主题背景下可读的着色
- * （与音乐播放器 `deriveReadableLyricColor` 同策略）
+ * （与音乐播放器 `deriveReadableLyricColor` 同策略，浅色压暗更克制）
+ *
+ * 浅色主题参数刻意比歌词场景更「留色」：
+ * - 目标明度更高、向目标拉拢更弱 → 少把浅色压成深色块
+ * - 明度下限抬高 → 对比够了就停，避免一路压到接近黑
  */
 export function deriveReadableColor(
   options: DeriveReadableColorOptions,
@@ -218,8 +222,10 @@ export function deriveReadableColor(
   const {
     candidates,
     isDark,
-    targetLightness = isDark ? 0.78 : 0.34,
-    minContrast = 3.7,
+    // 浅色：0.34→0.46，少压暗；深色仍偏亮以保证暗底可读
+    targetLightness = isDark ? 0.78 : 0.46,
+    // 大号装饰字 3:1 即够；浅色略松一点以减少加深步数
+    minContrast = isDark ? 3.7 : 3.2,
     fallback = DEFAULT_FALLBACK,
     backdrop,
   } = options
@@ -230,10 +236,13 @@ export function deriveReadableColor(
 
   const rgb = firstUsableRgb(candidates, fallback)
   const hsl = rgbToHsl(rgb)
-  let l = hsl.l + (targetLightness - hsl.l) * 0.72
+  // 浅色压暗只拉 50%（原 72%），深色提亮仍用 72%
+  const pull = isDark ? 0.72 : 0.5
+  let l = hsl.l + (targetLightness - hsl.l) * pull
   const s = clampNumber(hsl.s, isDark ? 0.34 : 0.3, isDark ? 0.86 : 0.78)
   const step = isDark ? 0.02 : -0.02
-  const limit = isDark ? 0.94 : 0.16
+  // 浅色明度下限 0.16→0.28，避免浅色被一路压到过深
+  const limit = isDark ? 0.94 : 0.28
 
   let candidate = hslToRgb({ h: hsl.h, s, l })
   let guard = 0
@@ -276,8 +285,9 @@ export function deriveAdaptiveTitleColor(isDark: boolean): string {
   return deriveReadableColor({
     candidates: [primary, themeAlt, secondary, accent],
     isDark,
-    targetLightness: isDark ? 0.78 : 0.34,
-    minContrast: 3.7,
+    // 标题比歌词更「留色」：浅色少压暗
+    targetLightness: isDark ? 0.78 : 0.46,
+    minContrast: isDark ? 3.7 : 3.2,
     fallback: primary,
     backdrop,
   })
