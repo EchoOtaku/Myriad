@@ -22,6 +22,7 @@ pub async fn run(
     target: DeployTag,
     mode: UpdateMode,
     risk: preflight::RiskFlags,
+    actor: Option<String>,
 ) -> Result<()> {
     info!(
         job = %job_id,
@@ -31,6 +32,7 @@ pub async fn run(
         allow_diverged = risk.allow_diverged,
         allow_unknown = risk.allow_unknown,
         allow_irreversible = risk.allow_irreversible,
+        actor = actor.as_deref().unwrap_or("-"),
         "update flow starting"
     );
 
@@ -45,17 +47,24 @@ pub async fn run(
     // Pre-swap phase: any failure cleans up without touching prod.
     // ============================================================
     // Structured audit line before any side effects (operator risk acknowledgements).
-    worker.state().append_history(&format!(
+    let actor_suffix = actor
+        .as_deref()
+        .map(|a| format!(" actor={a}"))
+        .unwrap_or_default();
+    let audit = format!(
         "audit: update_request job={} target={} mode={} \
-         allow_downgrade={} allow_diverged={} allow_unknown={} allow_irreversible={}",
+         allow_downgrade={} allow_diverged={} allow_unknown={} allow_irreversible={}{}",
         job_id,
         target.as_str(),
         mode.as_str(),
         risk.allow_downgrade,
         risk.allow_diverged,
         risk.allow_unknown,
-        risk.allow_irreversible
-    ))?;
+        risk.allow_irreversible,
+        actor_suffix,
+    );
+    worker.state().append_history(&audit)?;
+    let _ = worker.state().append_audit(&audit);
 
     rec.enter(Phase::Preflight, "updater.phase.preflight")?;
     let pre = match preflight::run(worker.clone(), &target, mode, risk).await {
@@ -254,6 +263,11 @@ pub async fn run(
     worker
         .state()
         .append_history(&format!("job {job_id}: SUCCESS {target} ({mode})"))?;
+    let _ = worker.state().append_audit(&format!(
+        "audit: update_succeeded job={job_id} target={} mode={}",
+        target.as_str(),
+        mode.as_str()
+    ));
     info!(job = %job_id, %target, ?mode, "update succeeded");
     Ok(())
 }
@@ -375,9 +389,12 @@ async fn finish_with_rollback(
             });
             worker.state().write_updater(&st)?;
             crate::worker::machine::clear_maintenance(worker.state())?;
-            worker
-                .state()
-                .append_history(&format!("job {}: ROLLBACK_OK ({original_err})", rec.job_id))?;
+            let rb_ok = format!("job {}: ROLLBACK_OK ({original_err})", rec.job_id);
+            worker.state().append_history(&rb_ok)?;
+            let _ = worker.state().append_audit(&format!(
+                "audit: auto_rollback_ok job={} err={original_err}",
+                rec.job_id
+            ));
             Err(original_err)
         }
         Err(rb_err) => {

@@ -24,6 +24,7 @@ mod middleware;
 mod models;
 mod oauth_url_builder;
 mod services;
+mod util;
 
 use config::{AppConfig, DynamicConfig};
 use sea_orm::ConnectionTrait;
@@ -32,6 +33,24 @@ use std::sync::atomic::{AtomicBool, Ordering}; // P1: 用于数据库健康检�
 
 // Global flag to indicate if server is running in configuration mode
 pub static CONFIG_MODE: AtomicBool = AtomicBool::new(false);
+
+/// Fail-soft: production images run as uid 1000 (`myriad`); root is a hygiene warning only.
+fn warn_if_running_as_root() {
+    #[cfg(unix)]
+    {
+        // Avoid a libc crate dep: libc geteuid is ubiquitous on Unix.
+        extern "C" {
+            fn geteuid() -> u32;
+        }
+        // SAFETY: geteuid is a pure syscall with no arguments.
+        let uid = unsafe { geteuid() };
+        if uid == 0 {
+            tracing::warn!(
+                "backend is running as root (uid 0); production compose should use non-root USER myriad (de-root)"
+            );
+        }
+    }
+}
 
 // Global database connection (None in config mode, Some in full mode)
 pub static DB_CONNECTION: once_cell::sync::Lazy<Arc<RwLock<Option<sea_orm::DatabaseConnection>>>> =
@@ -64,6 +83,9 @@ async fn main() -> anyhow::Result<()> {
         commit_sha = ?api::build_commit_sha(),
         "🚀 Starting Myriad Backend"
     );
+
+    // Production compose de-roots backend (USER myriad). Warn once if still root.
+    warn_if_running_as_root();
 
     // Record process start time for /health.uptime_seconds.
     api::mark_startup();

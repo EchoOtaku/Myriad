@@ -45,6 +45,13 @@ updater (内网) ─► docker-guard ─► docker.sock
 只挂载给 `docker-guard`；updater 通过内部网络访问经项目/镜像/请求体白名单限制的 API。
 updater 只挂载宿主部署根目录一次，宿主上的 `./pgdata`、`./state` 路径和救援命令不变。
 
+从「updater 直接挂 sock」旧布局迁到当前拓扑：见
+[deployment/MIGRATION_DOCKER_GUARD.md](./deployment/MIGRATION_DOCKER_GUARD.md)
+（同目录 `compose pull && up -d`，保留 pgdata/.env；**仅 UI 无法切换拓扑**）。
+
+自更新会同时重建 `docker-guard` 与 `updater`（共用 `UPDATER_TAG`）。该次 compose 走
+宿主 unix socket 的固定 argv 路径，日常 Docker API 仍经 guard 策略代理。
+
 ## 3. 打开 updater UI
 
 浏览器访问你的 Myriad 站点，登录管理员账户后进入：
@@ -133,11 +140,14 @@ curl -s -b "$COOKIE_JAR" -X POST http://localhost/api/admin/updater/update \
   -d '{"target_version":"v0.1.0","mode":"release","allow_downgrade":true,"allow_irreversible":true}'
 ```
 
-触发更新时 `history.log` 会写结构化审计行：
+触发更新时 `history.log` 与 `state/audit.log` 都会写结构化审计行：
 
 ```text
 audit: update_request job=… target=… mode=… allow_downgrade=… allow_diverged=… …
 ```
+
+`audit.log` 还会记录 rollback / self-update / rescue / job 终态（见
+[updater-spec.md §16.1](./updater-spec.md)）。
 
 Commit 模式成功后 **只写入 `dev-<shortsha>`** 到 `MYRIAD_TAG`。  
 业务更新只换 **backend/frontend**；proxy / updater 本体仍按独立节奏（updater 自更新走 release channel：main→stable，preview→nightly，beta→beta）。
@@ -299,6 +309,15 @@ bash scripts/docker/deploy.sh restart
 
 `COSIGN_VERIFY=soft` 是过渡选项：失败仅 warning，不阻止升级。推荐先 soft 跑几个版本观察
 日志，确认无误后切 strict。
+
+要完全关闭验签（不推荐）必须双钥匙：
+
+```bash
+COSIGN_VERIFY=off
+UPDATER_ALLOW_INSECURE_COSIGN=true   # 或 COSIGN_INSECURE_OK=true
+```
+
+仅设置 `COSIGN_VERIFY=off` 时 updater 会拒绝启动。
 
 ## 8. 关键约束（再次强调）
 

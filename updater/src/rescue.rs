@@ -39,8 +39,9 @@ pub async fn exit_maintenance(ctx: &Context, force: bool) -> Result<()> {
     }
     ctx.state.clear_maintenance()?;
     ctx.state.set_current_job(None)?;
-    ctx.state
-        .append_history("rescue: exit_maintenance via CLI")?;
+    let line = "audit: rescue_exit_maintenance via=CLI";
+    ctx.state.append_history(line)?;
+    let _ = ctx.state.append_audit(line);
     info!("maintenance cleared");
     Ok(())
 }
@@ -102,10 +103,16 @@ pub async fn rollback(ctx: &Context, snapshot_id: &str) -> Result<()> {
 
     ctx.state.clear_maintenance()?;
     ctx.state.set_current_job(None)?;
-    ctx.state.append_history(&format!(
+    let hist = format!(
         "rescue rollback to snapshot {snapshot_id} (tag={})",
         prev_tag.as_deref().unwrap_or("unchanged")
-    ))?;
+    );
+    let audit = format!(
+        "audit: rescue_rollback snapshot={snapshot_id} tag={}",
+        prev_tag.as_deref().unwrap_or("unchanged")
+    );
+    ctx.state.append_history(&hist)?;
+    let _ = ctx.state.append_audit(&audit);
     info!("rescue rollback complete");
     Ok(())
 }
@@ -164,7 +171,9 @@ pub async fn diagnose(ctx: &Context, output: &PathBuf) -> Result<()> {
 
 pub async fn forget_job(ctx: &Context) -> Result<()> {
     ctx.state.set_current_job(None)?;
-    ctx.state.append_history("rescue: forget_job via CLI")?;
+    let line = "audit: rescue_forget_job via=CLI";
+    ctx.state.append_history(line)?;
+    let _ = ctx.state.append_audit(line);
     info!("current_job cleared");
     Ok(())
 }

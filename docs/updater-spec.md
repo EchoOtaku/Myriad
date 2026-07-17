@@ -532,10 +532,21 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 3. 没有进行中任务时：
    a. 经 docker-guard pull <new-updater> 并校验 digest
    b. 改 .env 的 UPDATER_TAG
-   c. 调用 docker-guard 的鉴权 self-update 端点
-   d. docker-guard 延迟执行 docker compose up -d --no-deps updater；该 Compose
-      产生的 Docker API 仍回到 guard 做请求体校验
+   c. 调用 docker-guard 的鉴权 self-update 端点（X-Update-Token）
+   d. docker-guard 延迟后执行 **固定 argv** 的 TCB 自替换：
+        docker compose up -d --no-deps docker-guard updater
+      该次 compose 走 **unix:///var/run/docker.sock**（直连宿主 daemon），
+      不经过 guard 的 policy proxy。原因：create 白名单只有
+      backend|frontend|postgres|updater，无法经 API 创建 `docker-guard`
+      服务本身；自替换是固定 compose 服务列表，不是任意 Docker API。
+      为避免「在 guard 容器内 recreate 自己」中途被杀，compose 由短生命周期
+      helper 容器（同一 updater 镜像、entrypoint=docker）执行。
 ```
+
+**必须同时重建 `docker-guard` 与 `updater`**：二者共用 `UPDATER_TAG` 镜像；
+只重建 updater 会使 guard 二进制落后于 tag，TCB 策略与业务脱节。
+
+其余 updater 日常流量仍经 `DOCKER_HOST=tcp://docker-guard:2375` 受请求体策略约束。
 
 guard 调度失败时恢复旧 `UPDATER_TAG`，旧 updater 继续运行。
 
@@ -544,7 +555,7 @@ guard 调度失败时恢复旧 `UPDATER_TAG`，旧 updater 继续运行。
 用户可在部署目录手动执行（宿主机管理员路径）：
 
 ```
-# 先修改 .env 中的 UPDATER_TAG，再由宿主 Docker CLI 重建 updater 和 guard
+# 先修改 .env 中的 UPDATER_TAG，再由宿主 Docker CLI 重建 guard + updater
 docker compose up -d docker-guard updater
 ```
 
@@ -600,15 +611,35 @@ M2：cosign 签名（已实现）
    - `--certificate-identity-regexp ^https://github\.com/<repo>/\.github/workflows/.+@refs/tags/v[0-9].+$`
    - `--certificate-oidc-issuer https://token.actions.githubusercontent.com`
 3. 用户通过 `COSIGN_VERIFY` 环境变量切换策略：`strict`（默认，验签失败即拒绝）/ `soft`
-   （失败仅 warning）/ `off`（明确关闭验证，仅用于兼容旧 release）。
+   （失败仅 warning）/ `off`（关闭验证）。`off` 必须再设 `UPDATER_ALLOW_INSECURE_COSIGN=true`
+   （或别名 `COSIGN_INSECURE_OK=true`），否则 updater 拒绝启动。
 4. updater 镜像里预装 cosign CLI（`sigstore/cosign` v2.4.1 单文件二进制）。
 
 ## 16. 观测与诊断
 
 ### 16.1 日志
 
-- `state/history.log`：人类可读，append-only
+- `state/history.log`：人类可读，append-only（含 phase / job 进度）
+- `state/audit.log`：安全与运维审计，append-only + fsync；行格式与 history 中
+  `audit: …` 前缀一致，便于 `grep '^\[.*\] audit:'`
 - `state/job.<id>.json`：结构化，每步 stdout/stderr 末尾 64KB
+
+#### 16.1.1 audit.log 事件
+
+由 `StateDir::append_audit` 写入（实现见 `updater/src/state/audit.rs`）。超过约 8 MiB
+时轮转到 `audit.log.1`（单文件、best-effort）。
+
+| 事件前缀 | 触发点 |
+|---|---|
+| `audit: update_request job=…` | 业务更新开始（含 risk flags） |
+| `audit: update_succeeded job=…` | 业务更新成功 finalize 前 |
+| `audit: auto_rollback_ok job=…` | 更新失败后自动回滚成功 |
+| `audit: rollback_start job=… snapshot=…` | 独立回滚任务开始 |
+| `audit: self_update_scheduled …` | 自更新已调度（docker-guard 执行双服务重建） |
+| `audit: job_terminal job=… status=…` | 任意 job finalize（Succeeded/Failed/NeedsManual 等） |
+| `audit: rescue_*` | rescue CLI / API（exit maintenance、continue、forget、rollback） |
+
+`history.log` 仍会保留同名或相近行，便于现有 UI/诊断；`audit.log` 是更干净的保留副本。
 
 ### 16.2 诊断包
 
@@ -620,6 +651,7 @@ M2：cosign 签名（已实现）
 - 最近 10 个 job 摘要
 - 当前 maintenance.json
 - 最近 100 行 history.log
+- `state/audit.log`（若存在）
 - `docker images | grep myriad`
 - `docker compose ps` 输出
 

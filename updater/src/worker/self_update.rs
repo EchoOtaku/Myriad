@@ -1,13 +1,20 @@
 //! Updater 自我更新流程。Spec §14。
 //!
-//! 难点：updater 不能在自己的容器里重建自己。由独立 docker guard 在返回响应后执行
-//! `docker compose up -d updater`，所有 Docker API 请求仍经过 guard 的请求体策略。
+//! 难点：updater 不能在自己的容器里重建自己。由独立 docker-guard 在返回响应后执行
+//! 固定的 TCB 自替换：`docker compose up -d --no-deps docker-guard updater`。
+//!
+//! **双服务**：`docker-guard` 与 `updater` 共用 `UPDATER_TAG` 镜像，必须一起重建，
+//! 否则 guard 二进制会落后于 tag。
+//!
+//! **直连 unix socket**：该次 compose 走 `unix:///var/run/docker.sock`（非 policy
+//! proxy），因为 create 白名单不含 `docker-guard` 服务本身；这是固定 argv 的 TCB
+//! 自替换，不是任意 Docker API。其余 updater 流量仍经 `DOCKER_HOST=tcp://docker-guard:2375`。
 //!
 //! 流程：
 //!   1. 拉 release manifest，校验目标 updater 镜像 digest
 //!   2. docker pull 目标 updater 镜像
 //!   3. 改 .env 把 UPDATER_TAG 替换成新 tag
-//!   4. 请求 docker guard 延迟重建 updater
+//!   4. 请求 docker-guard 鉴权端点，延迟调度双服务重建
 //!
 //! 失败时不修改 .env，旧 updater 继续跑。
 
@@ -19,7 +26,7 @@ use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::worker::Worker;
 
-pub async fn run(worker: Arc<Worker>) -> Result<SelfUpdateReport> {
+pub async fn run(worker: Arc<Worker>, actor: Option<String>) -> Result<SelfUpdateReport> {
     let cfg = worker.config();
     let gh = worker.github_client()?;
 
@@ -65,10 +72,16 @@ pub async fn run(worker: Arc<Worker>) -> Result<SelfUpdateReport> {
         env.save()?;
         return Err(error);
     }
-    worker.state().append_history(&format!(
-        "self-update scheduled: new_tag={target_tag} executor=docker-guard"
-    ))?;
-    info!("self-update: docker guard scheduled updater replacement");
+    let actor_suffix = actor
+        .as_deref()
+        .map(|a| format!(" actor={a}"))
+        .unwrap_or_default();
+    let audit = format!(
+        "audit: self_update_scheduled new_tag={target_tag} executor=docker-guard services=docker-guard,updater{actor_suffix}"
+    );
+    worker.state().append_history(&audit)?;
+    let _ = worker.state().append_audit(&audit);
+    info!("self-update: docker guard scheduled docker-guard+updater replacement");
 
     Ok(SelfUpdateReport {
         helper_container_id: "docker-guard".into(),

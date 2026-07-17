@@ -153,6 +153,28 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
             record.count
         };
         (record_count <= 5, 300)
+    } else if is_admin_updater_mutate(&path) {
+        // Mutating updater admin routes: 10 / 5 min per IP (GET status/jobs stay default 100/min).
+        // Prevents runaway update/rollback/rescue spam without slowing status polling UX.
+        let record_count = {
+            let mut records = RATE_LIMITER.records.write().await;
+            let now = std::time::Instant::now();
+            let ip_records = records.entry(ip).or_insert_with(HashMap::new);
+            // Bucket all mutative updater actions together under one key.
+            let key = "admin_updater_mutate".to_string();
+            let record = ip_records.entry(key).or_insert(RequestRecord {
+                count: 0,
+                window_start: now,
+            });
+            if now.duration_since(record.window_start) > Duration::from_secs(300) {
+                record.count = 1;
+                record.window_start = now;
+            } else {
+                record.count += 1;
+            }
+            record.count
+        };
+        (record_count <= 10, 300)
     } else if is_compute_intensive(&path) {
         // 计算密集型端点：10次请求/分钟
         let record_count = {
@@ -207,6 +229,16 @@ fn is_sensitive_endpoint(path: &str) -> bool {
         || path.contains("/setup/init-database")
 }
 
+/// Mutating `/api/admin/updater/*` paths only (not status/jobs polling).
+fn is_admin_updater_mutate(path: &str) -> bool {
+    let p = path.trim_end_matches('/');
+    p.ends_with("/api/admin/updater/update")
+        || p.ends_with("/api/admin/updater/rollback")
+        || p.ends_with("/api/admin/updater/self-update")
+        || p.ends_with("/api/admin/updater/prefs")
+        || p.contains("/api/admin/updater/rescue/")
+}
+
 /// Check if endpoint is compute-intensive or abuse-prone
 fn is_compute_intensive(path: &str) -> bool {
     path.contains("/fetch")
@@ -224,6 +256,18 @@ fn is_compute_intensive(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admin_updater_mutate_paths() {
+        assert!(is_admin_updater_mutate("/api/admin/updater/update"));
+        assert!(is_admin_updater_mutate("/api/admin/updater/rollback"));
+        assert!(is_admin_updater_mutate("/api/admin/updater/self-update"));
+        assert!(is_admin_updater_mutate("/api/admin/updater/rescue/continue"));
+        assert!(is_admin_updater_mutate("/api/admin/updater/prefs"));
+        assert!(!is_admin_updater_mutate("/api/admin/updater/status"));
+        assert!(!is_admin_updater_mutate("/api/admin/updater/jobs"));
+        assert!(!is_admin_updater_mutate("/api/admin/updater/available"));
+    }
 
     #[tokio::test]
     async fn test_rate_limit_basic() {

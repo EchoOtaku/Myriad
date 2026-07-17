@@ -90,6 +90,8 @@ struct StatusResp {
     available_channels: Vec<&'static str>,
 }
 
+/// Public liveness probe. Intentionally minimal: no versions, token status, or secrets.
+/// Compose / orchestrator healthchecks only need HTTP 200 + `{"ok":true}`.
 async fn healthz() -> Json<Value> {
     Json(json!({"ok": true}))
 }
@@ -331,6 +333,15 @@ struct UpdateBody {
     allow_skip_versions: bool,
 }
 
+/// Optional `X-Update-Actor` from the backend hop (after UPDATE_TOKEN auth).
+/// Direct callers with a stolen token can forge this — still better than no actor.
+fn extract_actor(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get("X-Update-Actor")
+        .and_then(|v| v.to_str().ok())
+        .and_then(crate::redact::sanitize_actor)
+}
+
 async fn update(
     State(st): State<ApiState>,
     headers: axum::http::HeaderMap,
@@ -372,6 +383,7 @@ async fn update(
         .get("Idempotency-Key")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
+    let actor = extract_actor(&headers);
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     st.worker
@@ -385,6 +397,7 @@ async fn update(
             allow_unknown: body.allow_unknown,
             allow_irreversible: body.allow_irreversible,
             idempotency_key: idem,
+            actor,
             reply: tx,
         })
         .await
@@ -609,11 +622,18 @@ struct RollbackBody {
     snapshot_id: String,
 }
 
-async fn self_update(State(st): State<ApiState>) -> Result<Json<Value>, ApiError> {
+async fn self_update(
+    State(st): State<ApiState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let actor = extract_actor(&headers);
     let (tx, rx) = tokio::sync::oneshot::channel();
     st.worker
         .sender()
-        .send(WorkerCmd::SelfUpdate { reply: tx })
+        .send(WorkerCmd::SelfUpdate {
+            actor,
+            reply: tx,
+        })
         .await
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
     let report = rx
@@ -628,13 +648,16 @@ async fn self_update(State(st): State<ApiState>) -> Result<Json<Value>, ApiError
 
 async fn rollback(
     State(st): State<ApiState>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<RollbackBody>,
 ) -> Result<Json<Value>, ApiError> {
+    let actor = extract_actor(&headers);
     let (tx, rx) = tokio::sync::oneshot::channel();
     st.worker
         .sender()
         .send(WorkerCmd::Rollback {
             snapshot_id: body.snapshot_id,
+            actor,
             reply: tx,
         })
         .await
@@ -672,11 +695,19 @@ async fn diagnostics(State(st): State<ApiState>) -> Result<Json<Value>, ApiError
     })))
 }
 
-async fn rescue_exit(State(st): State<ApiState>) -> Result<Json<Value>, ApiError> {
+async fn rescue_exit(
+    State(st): State<ApiState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Value>, ApiError> {
     st.state.clear_maintenance()?;
     st.state.set_current_job(None)?;
-    st.state
-        .append_history("rescue: exit_maintenance via API")?;
+    let actor = extract_actor(&headers);
+    let line = match actor.as_deref() {
+        Some(a) => format!("audit: rescue_exit_maintenance via=API actor={a}"),
+        None => "audit: rescue_exit_maintenance via=API".to_string(),
+    };
+    st.state.append_history(&line)?;
+    let _ = st.state.append_audit(&line);
     Ok(Json(json!({"ok": true})))
 }
 
@@ -684,7 +715,10 @@ async fn rescue_exit(State(st): State<ApiState>) -> Result<Json<Value>, ApiError
 ///
 /// Clears a stuck `job.current` / needs_manual marker enough for a new rollback job
 /// to start, then enqueues the same path as `POST /rollback`.
-async fn rescue_continue(State(st): State<ApiState>) -> Result<Json<Value>, ApiError> {
+async fn rescue_continue(
+    State(st): State<ApiState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Value>, ApiError> {
     let m = st.state.read_maintenance()?;
     let current = st.state.read_current_job()?;
     let (snapshot_id, source_version) = resolve_rescue_hint(&st, &m, current.as_deref())?;
@@ -709,19 +743,34 @@ async fn rescue_continue(State(st): State<ApiState>) -> Result<Json<Value>, ApiE
     if current.is_some() {
         st.state.set_current_job(None)?;
     }
-    st.state.append_history(&format!(
-        "rescue/continue: rolling back to {snapshot_id} (source={})",
+    let actor = extract_actor(&headers);
+    let actor_suffix = actor
+        .as_deref()
+        .map(|a| format!(" actor={a}"))
+        .unwrap_or_default();
+    let hist = format!(
+        "rescue/continue: rolling back to {snapshot_id} (source={}){actor_suffix}",
         source_version
             .as_ref()
             .map(|v| v.to_string())
             .unwrap_or_else(|| "?".into())
-    ))?;
+    );
+    let audit = format!(
+        "audit: rescue_continue snapshot={snapshot_id} source={}{actor_suffix}",
+        source_version
+            .as_ref()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "?".into())
+    );
+    st.state.append_history(&hist)?;
+    let _ = st.state.append_audit(&audit);
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     st.worker
         .sender()
         .send(WorkerCmd::Rollback {
             snapshot_id: snapshot_id.clone(),
+            actor,
             reply: tx,
         })
         .await
@@ -738,9 +787,18 @@ async fn rescue_continue(State(st): State<ApiState>) -> Result<Json<Value>, ApiE
     })))
 }
 
-async fn rescue_forget(State(st): State<ApiState>) -> Result<Json<Value>, ApiError> {
+async fn rescue_forget(
+    State(st): State<ApiState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Value>, ApiError> {
     st.state.set_current_job(None)?;
-    st.state.append_history("rescue: forget-current via API")?;
+    let actor = extract_actor(&headers);
+    let line = match actor.as_deref() {
+        Some(a) => format!("audit: rescue_forget_job via=API actor={a}"),
+        None => "audit: rescue_forget_job via=API".to_string(),
+    };
+    st.state.append_history(&line)?;
+    let _ = st.state.append_audit(&line);
     Ok(Json(json!({"ok": true})))
 }
 
@@ -765,7 +823,9 @@ impl<E: Into<UpdaterError>> From<E> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        let body = Json(json!({"error": self.1}));
+        // Redact known secrets if an error string ever echoed env/header values.
+        let msg = crate::redact::redact_secrets(&self.1);
+        let body = Json(json!({"error": msg}));
         (self.0, body).into_response()
     }
 }
@@ -773,6 +833,14 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn healthz_is_minimal() {
+        let Json(v) = healthz().await;
+        assert_eq!(v, json!({"ok": true}));
+        // No version / token / config leakage on the public probe.
+        assert!(v.as_object().map(|o| o.len() == 1).unwrap_or(false));
+    }
 
     #[test]
     fn dockerhub_available_payload_marks_relation_unknown() {

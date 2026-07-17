@@ -7,6 +7,7 @@ pub mod env_file;
 pub mod error;
 pub mod log;
 pub mod probe;
+pub mod redact;
 pub mod release;
 pub mod rescue;
 pub mod snapshot;

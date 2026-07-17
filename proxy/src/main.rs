@@ -124,6 +124,13 @@ async fn main() -> anyhow::Result<()> {
             "disabled"
         }
     );
+    if allow_direct_updater {
+        // Rescue path only — keep off for normal admin→backend→updater flow.
+        warn!(
+            "SECURITY: PROXY_ALLOW_DIRECT_UPDATER=true — /_updater/* is reachable via the proxy. \
+             Leave this false except when rescuing a down backend; prefer /api/admin/updater/*."
+        );
+    }
 
     let state = AppState {
         state_path,

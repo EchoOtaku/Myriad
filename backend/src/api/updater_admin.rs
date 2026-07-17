@@ -26,6 +26,32 @@ fn authenticated_user_id(headers: &HeaderMap) -> Option<i32> {
         .and_then(|claims| claims.sub.parse::<i32>().ok())
 }
 
+/// Build `admin:<id>:<username>` for updater audit (`X-Update-Actor`).
+/// Only derived from verified JWT on the backend; never trusted from the browser as a substitute for UPDATE_TOKEN.
+fn actor_from_headers(headers: &HeaderMap) -> Option<String> {
+    let claims = crate::middleware::auth::verify_jwt_token(headers).ok()?;
+    let id = claims.sub.parse::<i32>().ok()?;
+    let user = claims
+        .username
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '@'))
+        .take(64)
+        .collect::<String>();
+    if user.is_empty() {
+        Some(format!("admin:{id}"))
+    } else {
+        Some(format!("admin:{id}:{user}"))
+    }
+}
+
+/// Backend-side audit line (independent of updater audit.log).
+fn log_admin_actor(action: &str, headers: &HeaderMap) {
+    match actor_from_headers(headers) {
+        Some(actor) => tracing::info!(%actor, %action, "admin updater action"),
+        None => tracing::info!(%action, actor = "unknown", "admin updater action"),
+    }
+}
+
 async fn track_updater_job(
     updater: UpdaterClient,
     response: &Value,
@@ -140,7 +166,9 @@ fn client() -> Option<&'static UpdaterClient> {
 
 fn err_to_response(e: UpdaterClientError) -> Response {
     let status = e.status();
-    let body = Json(json!({ "error": e.to_string() }));
+    // Display already redacts secrets; double-check for JSON bodies.
+    let msg = crate::util::redact::redact_secrets(&e.to_string());
+    let body = Json(json!({ "error": msg }));
     (status, body).into_response()
 }
 
@@ -393,10 +421,12 @@ pub async fn trigger_update(headers: HeaderMap, Json(body): Json<UpdateBody>) ->
     if !c.has_token() {
         return token_missing();
     }
+    log_admin_actor("update", &headers);
     let idem = headers
         .get("Idempotency-Key")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
+    let actor = actor_from_headers(&headers);
     let mut payload = json!({
         "allow_skip_versions": body.allow_skip_versions,
         "allow_downgrade": body.allow_downgrade,
@@ -421,7 +451,12 @@ pub async fn trigger_update(headers: HeaderMap, Json(body): Json<UpdateBody>) ->
         payload["allow_irreversible"] = json!(v);
     }
     match c
-        .post_json("/update", Some(&payload), idem.as_deref())
+        .post_json_with_actor(
+            "/update",
+            Some(&payload),
+            idem.as_deref(),
+            actor.as_deref(),
+        )
         .await
     {
         Ok(v) => {
@@ -471,8 +506,13 @@ pub async fn rollback(headers: HeaderMap, Json(body): Json<RollbackBody>) -> Res
     if !c.has_token() {
         return token_missing();
     }
+    log_admin_actor("rollback", &headers);
+    let actor = actor_from_headers(&headers);
     let payload = json!({ "snapshot_id": body.snapshot_id });
-    match c.post_json("/rollback", Some(&payload), None).await {
+    match c
+        .post_json_with_actor("/rollback", Some(&payload), None, actor.as_deref())
+        .await
+    {
         Ok(v) => {
             track_updater_job(c.clone(), &v, &headers, "rollback").await;
             Json(v).into_response()
@@ -495,7 +535,7 @@ pub async fn diagnostics() -> Response {
     }
 }
 
-pub async fn exit_maintenance() -> Response {
+pub async fn exit_maintenance(headers: HeaderMap) -> Response {
     let c = match require() {
         Ok(c) => c,
         Err(r) => return *r,
@@ -503,8 +543,10 @@ pub async fn exit_maintenance() -> Response {
     if !c.has_token() {
         return token_missing();
     }
+    log_admin_actor("rescue/exit-maintenance", &headers);
+    let actor = actor_from_headers(&headers);
     match c
-        .post_json::<Value>("/rescue/exit-maintenance", None, None)
+        .post_json_with_actor::<Value>("/rescue/exit-maintenance", None, None, actor.as_deref())
         .await
     {
         Ok(v) => Json(v).into_response(),
@@ -512,7 +554,7 @@ pub async fn exit_maintenance() -> Response {
     }
 }
 
-pub async fn forget_current() -> Response {
+pub async fn forget_current(headers: HeaderMap) -> Response {
     let c = match require() {
         Ok(c) => c,
         Err(r) => return *r,
@@ -520,8 +562,10 @@ pub async fn forget_current() -> Response {
     if !c.has_token() {
         return token_missing();
     }
+    log_admin_actor("rescue/forget-current", &headers);
+    let actor = actor_from_headers(&headers);
     match c
-        .post_json::<Value>("/rescue/forget-current", None, None)
+        .post_json_with_actor::<Value>("/rescue/forget-current", None, None, actor.as_deref())
         .await
     {
         Ok(v) => Json(v).into_response(),
@@ -538,7 +582,12 @@ pub async fn rescue_continue(headers: HeaderMap) -> Response {
     if !c.has_token() {
         return token_missing();
     }
-    match c.post_json::<Value>("/rescue/continue", None, None).await {
+    log_admin_actor("rescue/continue", &headers);
+    let actor = actor_from_headers(&headers);
+    match c
+        .post_json_with_actor::<Value>("/rescue/continue", None, None, actor.as_deref())
+        .await
+    {
         Ok(v) => {
             track_updater_job(c.clone(), &v, &headers, "rollback").await;
             Json(v).into_response()
@@ -549,7 +598,7 @@ pub async fn rescue_continue(headers: HeaderMap) -> Response {
 
 /// Trigger the updater's self-update flow. Spawns a helper container that replaces
 /// the running updater after a short delay. See docs/updater-spec.md §14.
-pub async fn self_update() -> Response {
+pub async fn self_update(headers: HeaderMap) -> Response {
     let c = match require() {
         Ok(c) => c,
         Err(r) => return *r,
@@ -557,7 +606,12 @@ pub async fn self_update() -> Response {
     if !c.has_token() {
         return token_missing();
     }
-    match c.post_json::<Value>("/admin/self-update", None, None).await {
+    log_admin_actor("self-update", &headers);
+    let actor = actor_from_headers(&headers);
+    match c
+        .post_json_with_actor::<Value>("/admin/self-update", None, None, actor.as_deref())
+        .await
+    {
         Ok(v) => Json(v).into_response(),
         Err(e) => err_to_response(e),
     }

@@ -25,7 +25,8 @@ docs/
 ├── updater-spec.md           # Updater protocol and failure-mode design
 │
 ├── deployment/               # Current deployment documentation
-│   ├── DOCKER_DEPLOYMENT.md # proxy + updater production stack
+│   ├── DOCKER_DEPLOYMENT.md # proxy + updater + docker-guard production stack
+│   ├── MIGRATION_DOCKER_GUARD.md # sock → docker-guard topology migration
 │   └── PORTS.md             # dev/prod port map
 │
 ├── development/              # Development Documentation

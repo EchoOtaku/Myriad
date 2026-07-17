@@ -24,8 +24,14 @@ proxy ──┬── frontend:1102
 - Only `docker-guard` mounts the raw Docker socket. The updater reaches it over an
   internal-only network; the guard restricts methods, Compose project labels, image
   repositories, container-create privileges, and host bind mounts.
+- **Backend runs as non-root** (image `USER myriad`, uid 1000). Deploy scripts chown
+  named volumes `backend_cache` / `backend_data` so `/app/cache` and `/app/data`
+  remain writable. Healthcheck stays on `localhost:1103/health` (no privileged ports).
 - Browser update requests go through backend admin routes:
   `/api/admin/updater/*`. The browser never receives `UPDATE_TOKEN`.
+- Migrating from the old updater-with-sock layout: see
+  [MIGRATION_DOCKER_GUARD.md](./MIGRATION_DOCKER_GUARD.md) (host `compose pull && up -d`;
+  UI alone cannot switch topology).
 
 ## Files
 
@@ -36,6 +42,7 @@ proxy ──┬── frontend:1102
 | `scripts/docker/deploy.sh` | Linux/macOS bootstrap and stack management |
 | `scripts/docker/deploy.ps1` | Windows bootstrap and stack management |
 | `docs/deployment/PORTS.md` | Development and production port map |
+| `docs/deployment/MIGRATION_DOCKER_GUARD.md` | Migrate from updater+sock to docker-guard dual-net |
 | `docs/UPDATER_QUICKSTART.md` | Operator guide for update, rollback, rescue |
 | `docs/updater-spec.md` | Updater protocol and failure-mode design |
 
@@ -80,17 +87,46 @@ Open `http://localhost` or the port configured by `HTTP_PORT`.
 | `MYRIAD_DOCKER_GUARD_NETWORK` | no | Internal updater/guard network override, default `myriad-docker-guard-net` |
 | `PROXY_TRUSTED_UPSTREAMS` | no | Comma-separated IP/CIDR allowlist for outer proxies allowed to pass the real client IP |
 | `PROXY_ALLOW_DIRECT_UPDATER` | no | Enables `/_updater/*` rescue path, default `false` |
-| `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or explicit-risk `off` |
+| `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or `off` |
+| `UPDATER_ALLOW_INSECURE_COSIGN` | no | Required dual key when `COSIGN_VERIFY=off` (`true` / alias `COSIGN_INSECURE_OK`) |
 
 Do not set `BACKEND_PORT` or `FRONTEND_PORT` for production. Those are internal
 container ports.
 
 For the full port map, see [PORTS.md](./PORTS.md).
 
+## Security defaults (short)
+
+- Keep **`COSIGN_VERIFY=strict`**, **`PROXY_ALLOW_DIRECT_UPDATER=false`**, and do **not**
+  publish updater `1101` or docker-guard `2375` on the host.
+- `COSIGN_VERIFY=off` alone is refused: set `UPDATER_ALLOW_INSECURE_COSIGN=true`
+  (or `COSIGN_INSECURE_OK=true`) only when you intentionally accept that risk.
+- Topology check (read-only; no auto-migrate):
+
+```bash
+bash scripts/docker/deploy.sh doctor
+```
+
+- Optional host scan for unexpected privileged containers / `docker.sock` binds
+  (not run on every upgrade): `bash scripts/security/docker-audit-example.sh scan`.
+
+### Hygiene (low-friction)
+
+- **Secrets**: `UPDATE_TOKEN` / `JWT_SECRET` / `POSTGRES_PASSWORD` / `GITHUB_TOKEN` are
+  redacted from updater/backend error bodies and log paths that might echo them.
+- **Admin mutative updater** routes (`POST …/update|rollback|self-update|rescue/*`) use a
+  stricter per-IP rate limit; status/jobs polling stays on the normal limit.
+- **Audit actor**: backend proxies pass `X-Update-Actor: admin:<id>:<user>` after admin
+  JWT + server-side `UPDATE_TOKEN` (included in updater `audit.log` when present).
+- **Root**: backend warns once at boot if running as uid 0 (compose should stay non-root).
+- **Deploy soft-check**: `deploy.sh|ps1 up|upgrade` runs topology doctor in warn-only mode.
+- **Updater `/healthz`**: public and minimal (`{"ok":true}` only — no versions/token status).
+
 ## Operations
 
 ```bash
 bash scripts/docker/deploy.sh status
+bash scripts/docker/deploy.sh doctor
 bash scripts/docker/deploy.sh logs
 bash scripts/docker/deploy.sh restart
 bash scripts/docker/deploy.sh down

@@ -43,12 +43,21 @@ pub enum UpdaterClientError {
 
 impl std::fmt::Display for UpdaterClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Never echo UPDATE_TOKEN / JWT_SECRET / etc. into logs or JSON error bodies.
         match self {
             Self::NotConfigured => {
                 f.write_str("updater not configured (set MYRIAD_UPDATER_URL and UPDATE_TOKEN)")
             }
-            Self::Upstream(s, body) => write!(f, "upstream {s}: {body}"),
-            Self::Transport(e) => write!(f, "transport: {e}"),
+            Self::Upstream(s, body) => {
+                write!(
+                    f,
+                    "upstream {s}: {}",
+                    crate::util::redact::redact_secrets(body)
+                )
+            }
+            Self::Transport(e) => {
+                write!(f, "transport: {}", crate::util::redact::redact_secrets(e))
+            }
         }
     }
 }
@@ -106,19 +115,37 @@ impl UpdaterClient {
 
     /// Forward a GET request. Token is attached if available.
     pub async fn get_json(&self, path: &str) -> Result<serde_json::Value, UpdaterClientError> {
-        self.call(Method::GET, path, Option::<&()>::None, None)
+        self.call(Method::GET, path, Option::<&()>::None, None, None)
             .await
     }
 
     /// Forward a POST request with a JSON body. `idempotency_key` becomes the
     /// `Idempotency-Key` header when supplied.
+    ///
+    /// `actor` (e.g. `admin:1:alice`) is sent as `X-Update-Actor` for updater
+    /// audit lines. Only set on the server-side hop after admin JWT auth;
+    /// browsers never hold `UPDATE_TOKEN` so they cannot forge this via the
+    /// normal backend path.
     pub async fn post_json<B: Serialize + ?Sized>(
         &self,
         path: &str,
         body: Option<&B>,
         idempotency_key: Option<&str>,
     ) -> Result<serde_json::Value, UpdaterClientError> {
-        self.call(Method::POST, path, body, idempotency_key).await
+        self.call(Method::POST, path, body, idempotency_key, None)
+            .await
+    }
+
+    /// Like [`post_json`] but attaches `X-Update-Actor` when `actor` is present.
+    pub async fn post_json_with_actor<B: Serialize + ?Sized>(
+        &self,
+        path: &str,
+        body: Option<&B>,
+        idempotency_key: Option<&str>,
+        actor: Option<&str>,
+    ) -> Result<serde_json::Value, UpdaterClientError> {
+        self.call(Method::POST, path, body, idempotency_key, actor)
+            .await
     }
 
     async fn call<B: Serialize + ?Sized>(
@@ -127,6 +154,7 @@ impl UpdaterClient {
         path: &str,
         body: Option<&B>,
         idempotency_key: Option<&str>,
+        actor: Option<&str>,
     ) -> Result<serde_json::Value, UpdaterClientError> {
         // Path must start with `/` to avoid base-URL slip.
         let path = if path.starts_with('/') {
@@ -149,6 +177,12 @@ impl UpdaterClient {
                 headers.insert("Idempotency-Key", v);
             }
         }
+        // Server-only actor note for audit; trusted only after UPDATE_TOKEN auth on updater.
+        if let Some(a) = actor.map(str::trim).filter(|s| !s.is_empty()) {
+            if let Ok(v) = HeaderValue::from_str(a) {
+                headers.insert("X-Update-Actor", v);
+            }
+        }
 
         let url = format!("{}{}", self.inner.base_url, path);
         let mut req = self.inner.http.request(method, &url).headers(headers);
@@ -159,23 +193,32 @@ impl UpdaterClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| UpdaterClientError::Transport(e.to_string()))?;
+            .map_err(|e| {
+                UpdaterClientError::Transport(crate::util::redact::redact_secrets(&e.to_string()))
+            })?;
         let status = resp.status();
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| UpdaterClientError::Transport(e.to_string()))?;
+            .map_err(|e| {
+                UpdaterClientError::Transport(crate::util::redact::redact_secrets(&e.to_string()))
+            })?;
 
         if !status.is_success() {
-            let detail = String::from_utf8_lossy(&bytes).into_owned();
+            let detail = crate::util::redact::redact_secrets(
+                &String::from_utf8_lossy(&bytes),
+            );
             return Err(UpdaterClientError::Upstream(status, detail));
         }
 
         if bytes.is_empty() {
             return Ok(serde_json::Value::Null);
         }
-        serde_json::from_slice(&bytes)
-            .map_err(|e| UpdaterClientError::Transport(format!("decode json: {e}")))
+        serde_json::from_slice(&bytes).map_err(|e| {
+            UpdaterClientError::Transport(crate::util::redact::redact_secrets(&format!(
+                "decode json: {e}"
+            )))
+        })
     }
 
     /// Convenience for the `/healthz` probe used by backend startup logs.
