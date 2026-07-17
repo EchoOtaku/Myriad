@@ -1,7 +1,9 @@
 name: Build and Push Development Images
 
-# Builds dev/preview images for branch pushes. Production releases are owned by
-# release.yml on tag push.
+# Dev/commit image packaging:
+# - push to main/preview/beta: only builds when the commit title contains `-p`
+# - workflow_dispatch: always builds (optional tag / components inputs)
+# Production releases are owned by release.yml on tag push.
 #
 # NOTE: This workflow MUST NOT push the `latest` tag — the updater relies on
 # immutable version tags to roll back reliably.
@@ -18,25 +20,56 @@ on:
         description: "Override docker image tag (optional)"
         required: false
       components:
-        description: "Comma-separated components: backend,frontend,proxy,updater (default: all)"
+        description: "Comma-separated components (default: backend,frontend,proxy; pass updater to include it)"
         required: false
-        default: "backend,frontend,proxy,updater"
+        default: "backend,frontend,proxy"
 
 env:
   REGISTRY: docker.io
-  DEFAULT_COMPONENTS: backend,frontend,proxy,updater
+  # Updater is release-only by default (release.yml on tag push). Include via
+  # `components` input when a dev updater image is needed.
+  DEFAULT_COMPONENTS: backend,frontend,proxy
 
 jobs:
+  should-build:
+    name: Check package trigger
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - id: check
+        env:
+          # Full commit message (title + body); title is the first line.
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_build=true" >>"$GITHUB_OUTPUT"
+            echo "Manual dispatch — will package"
+            exit 0
+          fi
+          # Match rule: commit title (first line) contains substring `-p`.
+          TITLE=$(printf '%s\n' "$COMMIT_MSG" | head -n1)
+          echo "Commit title: $TITLE"
+          if printf '%s\n' "$TITLE" | grep -qF -- '-p'; then
+            echo "should_build=true" >>"$GITHUB_OUTPUT"
+            echo "Title contains -p — will package"
+          else
+            echo "should_build=false" >>"$GITHUB_OUTPUT"
+            echo "Title has no -p — skip package"
+          fi
+
   resolve:
     name: Resolve components
+    needs: should-build
+    if: needs.should-build.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
     steps:
       - id: gen
         run: |
-          # Branch pushes and manual runs default to the same four-component
-          # DockerHub set as release.yml. workflow_dispatch can narrow it.
+          # Push defaults to backend/frontend/proxy. Updater is packaged on
+          # release tags (release.yml); workflow_dispatch may pass updater.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             INPUT="${{ inputs.components }}"
             INPUT="${INPUT:-$DEFAULT_COMPONENTS}"
@@ -51,7 +84,8 @@ jobs:
 
   build-and-push:
     name: Build ${{ matrix.component }}
-    needs: resolve
+    needs: [should-build, resolve]
+    if: needs.should-build.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
