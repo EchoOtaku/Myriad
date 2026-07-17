@@ -34,7 +34,7 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `pageStyles`             | string   | ❌   | Page 专用 CSS 路径                 |
 | `pageTemplate`           | string   | ❌   | 页面 HTML 模板路径                 |
 | `pageModules`            | string[] | ❌   | `page/` 模块执行顺序               |
-| `category`               | string   | ❌   | 应用分类                           |
+| `category`               | string   | ✅   | 应用用途分类（稳定 ID）            |
 
 `author.name` 必填；`author.email` 与 `author.url` 可选。作者名称会显示在商店卡片和 Tapp
 详情页，详情页还会显示邮箱，并为通过 HTTP(S) 校验的作者主页生成外部链接。
@@ -42,11 +42,35 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 所有资源路径都是相对安装根目录的安全路径。`.tapp` 文件安装会保留经过校验的嵌套
 目录，例如 `templates/widget-2x2.html`；direct/store 安装也会把内容写到 Manifest
 声明的位置。绝对路径、隐藏组件和 `..` 会被拒绝。`pageModules` 的每项是 `page/`
-目录内的文件名，不能再次包含目录前缀。
+目录内的文件名，不能再次包含目录前缀。`main` 必须是 `.js`，样式路径必须是 `.css`，
+Page/Widget 模板必须是 `.html`；所有声明的运行资源必须是安装目录内的普通 UTF-8 文本
+文件。资源读取不会跟随安装后插入的符号链接。
 
 Manifest 采用严格字段校验：未声明字段、拼写错误以及已经移除的字段都会让安装失败，
 不会再被静默忽略。所有运行能力都必须直接写入 `permissions`；宿主只会在真正调用时
 按权限和运行时策略决定是否授权。
+
+### 应用分类
+
+`category` 只表示应用用途，值必须是下列稳定 ID 之一：
+
+| ID             | 用途                       |
+| -------------- | -------------------------- |
+| `ai`           | AI 应用                    |
+| `data`         | 数据处理、管理与展示       |
+| `developer`    | 开发、调试与部署工具       |
+| `game`         | 游戏                       |
+| `media`        | 音频、视频与其他媒体体验   |
+| `productivity` | 笔记、任务与效率工具       |
+| `social`       | 社交、消息与协作           |
+| `utility`      | 无法归入上述用途的通用工具 |
+
+Page、Widget 和 headless core 是运行形态，由 `hasPage`、`widgets` 和
+`backgroundRequirements` 表达，不得填入 `category`。`demo` 和 `test`
+属于发布阶段，应使用商店标签表达。宿主会把旧值 `tools`、`games`、
+`development`、`music`、`visualization` 等规范为上述 ID；新包应直接使用规范值。
+界面仅翻译显示名称，Manifest 和商店索引不存储本地化分类文本。
+从商店安装时，后端会在规范化旧别名后比对索引和 Manifest；两者分类不一致会拒绝安装。
 
 `version` 必须是语义版本；`themeColor` 使用 `#RRGGBB`；`homepage`、`repository` 和
 作者主页只接受 HTTP(S)。声明 Widget 必须同时声明 `widget:register`；受保护 HTTP API
@@ -57,9 +81,11 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
 包版本比较；当前版本过低或字段格式无效时会拒绝写入，避免出现“安装成功但运行时才
 发现 API 不兼容”。最低版本只写在包内 Manifest；商店 index 不重复维护第二份版本来源。
 
-`id` 还属于管理员公开命名空间：普通用户不能安装与管理员公开 Tapp 同 ID 的包，管理员也
-不能发布会遮蔽已有用户安装的 ID。安装/更新采用 staging 校验和原子目录切换，失败不会把
-半份 Manifest 或资源留在在线目录。
+`id` 还属于管理员公开命名空间：普通用户不能安装与管理员公开 Tapp 同 ID 的包；管理员可
+发布与某个用户临时副本同 ID 的公共版本，公共版本会优先显示，但不会覆盖该用户的私有安装
+文件和 Manifest。用户 storage/settings 按“用户 + 稳定 Tapp ID”连续保留，因此同 ID 公共
+版本会沿用该用户已有数据；管理员不会直接取得这些值，代码仍在该用户会话与授权下运行。
+安装/更新采用 staging 校验和原子目录切换，失败不会把半份 Manifest 或资源留在在线目录。
 
 ## 完整示例
 
@@ -69,6 +95,7 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
   "name": "我的应用",
   "version": "1.0.0",
   "description": "一个功能丰富的 Tapp 示例",
+  "category": "utility",
   "main": "index.js",
   "author": {
     "name": "开发者名称",
@@ -107,7 +134,7 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
       "icon": "📊",
       "defaultSize": "2x2",
       "sizes": ["1x1", "1x2", "2x1", "2x2", "4x2", "4x4"],
-      "category": "tool"
+      "category": "utility"
     }
   ],
   "settings": [
@@ -132,7 +159,9 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
 
 Manifest 是这些注册元数据的权威来源。安装和每次更新都会 upsert 当前声明，并删除上一版
 Manifest 已移除的 Widget。运行时 `Tapp.widget.register()` 创建的是独立动态注册，必须有
-`widget:register` 与 Runtime Grant；动态代码不能覆盖或注销 Manifest 声明项。
+`widget:register` 与 Runtime Grant；动态代码不能覆盖或注销 Manifest 声明项。公共安装的
+Manifest Widget 对所有可见主体共享；动态 Widget 同时绑定注册主体和 Runtime Grant 中的
+安装 owner，只返回给该主体，并在对应安装卸载时清理。
 
 ```json
 {
@@ -144,7 +173,7 @@ Manifest 已移除的 Widget。运行时 `Tapp.widget.register()` 创建的是�
       "icon": "🧊",
       "defaultSize": "2x2",
       "sizes": ["1x1", "1x2", "2x1", "2x2", "3x2", "4x2", "4x4"],
-      "category": "tool",
+      "category": "utility",
       "templates": {
         "2x2": "templates/widget-2x2.html",
         "4x2": "templates/widget-4x2.html"
@@ -168,21 +197,24 @@ Manifest 已移除的 Widget。运行时 `Tapp.widget.register()` 创建的是�
 
 ### Widget 字段说明
 
-| 字段            | 类型     | 必填 | 说明                              |
-| --------------- | -------- | ---- | --------------------------------- |
-| `id`            | string   | ✅   | Widget 唯一标识符                 |
-| `name`          | string   | ✅   | Widget 显示名称                   |
-| `description`   | string   | ❌   | Widget 描述                       |
-| `icon`          | string   | ❌   | Widget 图标（emoji 或 URL）       |
-| `defaultSize`   | string   | ✅   | 默认尺寸（如 "2x2"）              |
-| `sizes`         | string[] | ✅   | 支持的尺寸列表                    |
-| `category`      | string   | ❌   | 分类（tool, data, media, custom)  |
-| `templates`     | object   | ❌   | HTML 模板（按尺寸覆盖）           |
-| `settings`      | object[] | ❌   | 每个 Dashboard 实例独立的设置声明 |
-| `refreshPolicy` | object   | ❌   | 宿主管理的刷新策略                |
+| 字段            | 类型     | 必填 | 说明                                                           |
+| --------------- | -------- | ---- | -------------------------------------------------------------- |
+| `id`            | string   | ✅   | Widget 唯一标识符                                              |
+| `name`          | string   | ✅   | Widget 显示名称                                                |
+| `description`   | string   | ❌   | Widget 描述                                                    |
+| `icon`          | string   | ❌   | Widget 图标（emoji 或 URL）                                    |
+| `defaultSize`   | string   | ✅   | 默认尺寸（如 "2x2"）                                           |
+| `sizes`         | string[] | ✅   | 支持的尺寸列表                                                 |
+| `category`      | string   | ❌   | Widget 分类（stats, activity, visualization, utility, custom） |
+| `templates`     | object   | ❌   | HTML 模板（按尺寸覆盖）                                        |
+| `settings`      | object[] | ❌   | 每个 Dashboard 实例独立的设置声明                              |
+| `refreshPolicy` | object   | ❌   | 宿主管理的刷新策略                                             |
 
 单个 Tapp 最多声明或动态注册 64 个 Widget；每个 Widget 最多声明 10 个尺寸，且
 `defaultSize` 必须包含在 `sizes` 中。超出限制会在安装或注册时被后端拒绝。
+Widget `category` 只接受表中列出的五个稳定 ID；旧值 `tool` 会规范为 `utility`，
+其他未知值会在 Manifest 解析或动态注册时被拒绝。旧数据库记录仍可读取，但不会再写入
+新的非规范分类。
 顶层 `settings` 是整个 Tapp 共用的全局设置；`widgets[].settings` 则属于单个 Dashboard
 Widget 实例，因此同一种 Widget 添加两次时可以采用不同配置。实例设置会由 Dashboard
 设置面板保存并通过 `props.config`、`Tapp.widget.getInstanceSettings()` 提供给沙箱。
@@ -560,7 +592,7 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 权限等级与运行时边界见 [架构文档的权限模型](./ARCHITECTURE.md#权限模型)。Manifest
 中的权限仍需经过安装授权；“基础”不表示 Tapp 可以省略申请。
 
-### 基础权限（所有用户可用）
+### 基础权限
 
 | 权限                 | 说明             |
 | -------------------- | ---------------- |
@@ -602,6 +634,14 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 
 `brew:write` 与 `brew:comment` 描述的是 Tapp 能力，不按宿主用户角色下放。Tapp 仍必须在
 Manifest 中声明并在安装时获授；实际读写始终落在当前会话可访问的 Brew 数据范围内。
+
+“基础”表示不需要管理员额外下放 elevated 权限，不等于匿名访客一定可用。访客没有持久
+用户主体，因此不会获得 `storage`、`widget:register`、`platform:read`、`brew:write`、
+`brew:comment`、`report:read` 或 `ui:notification`；这些能力的真实后端路由均要求登录。
+
+`component:theme`、`shortcut:register`、`scheduler:register`、`speech:tts` 与 `speech:asr`
+也要求持久登录主体，不会下放给匿名访客；管理配置中的旧字段仅为兼容历史配置而保留，
+并始终按关闭处理。
 
 ### 特权权限
 

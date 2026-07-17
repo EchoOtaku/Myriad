@@ -8,9 +8,10 @@ import type {
   RemoteApp,
   RemoteStoreSource,
 } from '../services/RemoteStoreService'
+import type { TappCategory, TappPermission } from '../types'
 import {
+  FaArrowLeft,
   FaArrowUp,
-  FaChartBar,
   FaCheck,
   FaCheckCircle,
   FaCog,
@@ -21,7 +22,7 @@ import {
   FaGamepad,
   FaGlobe,
   FaLink,
-  FaMusic,
+  FaLock,
   FaPlus,
   FaRobot,
   FaSearch,
@@ -38,16 +39,31 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import { forwardRef, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { sanitizeUrl } from '../../utils/inputSanitizer'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
-import { EXAMPLE_TAPPS, getCategoryName } from '../examples'
+import { PERMISSION_CONFIG } from '../constants/permissions'
+import { EXAMPLE_TAPPS } from '../examples'
 import { getTappRuntime } from '../runtime'
+import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import { RemoteStoreService } from '../services/RemoteStoreService'
+import {
+  normalizeTappCategory,
+  TAPP_CATEGORIES,
+  TAPP_CATEGORY_I18N_KEYS,
+} from '../utils/tappCategories'
 import { getCategoryGradient } from '../utils/tappColors'
 import { TappIcon } from './TappIcon'
 import { UninstallConfirmDialog } from './UninstallConfirmDialog'
@@ -75,7 +91,7 @@ interface UnifiedAppItem {
   iconSvg?: string
   /** 主题色（优先于分类渐变色） */
   themeColor?: string
-  category: string
+  category: TappCategory
   tags: string[]
   permissions: string[]
   /** 许可证 */
@@ -100,25 +116,55 @@ interface UnifiedAppItem {
 }
 
 /** 分类图标映射 */
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  widget: <FaCog className="w-4 h-4" />,
-  tool: <FaTools className="w-4 h-4" />,
-  tools: <FaTools className="w-4 h-4" />,
-  platform: <FaGlobe className="w-4 h-4" />,
-  demo: <FaRobot className="w-4 h-4" />,
-  test: <FaWrench className="w-4 h-4" />,
-  game: <FaGamepad className="w-4 h-4" />,
-  games: <FaGamepad className="w-4 h-4" />,
-  ai: <FaRobot className="w-4 h-4" />,
-  productivity: <FaCog className="w-4 h-4" />,
-  entertainment: <FaStar className="w-4 h-4" />,
-  development: <FaWrench className="w-4 h-4" />,
-  social: <FaLink className="w-4 h-4" />,
-  media: <FaStar className="w-4 h-4" />,
-  utilities: <FaTools className="w-4 h-4" />,
-  music: <FaMusic className="w-4 h-4" />,
-  visualization: <FaChartBar className="w-4 h-4" />,
-  data: <FaDatabase className="w-4 h-4" />,
+const CATEGORY_ICONS: Record<TappCategory, React.ReactNode> = {
+  game: <FaGamepad className="w-3.5 h-3.5" />,
+  ai: <FaRobot className="w-3.5 h-3.5" />,
+  productivity: <FaCog className="w-3.5 h-3.5" />,
+  developer: <FaWrench className="w-3.5 h-3.5" />,
+  social: <FaLink className="w-3.5 h-3.5" />,
+  media: <FaStar className="w-3.5 h-3.5" />,
+  utility: <FaTools className="w-3.5 h-3.5" />,
+  data: <FaDatabase className="w-3.5 h-3.5" />,
+}
+
+/** 分类筛选胶囊按钮，选中态跟随主题色 */
+function CategoryPill({
+  active,
+  icon,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean
+  icon?: React.ReactNode
+  label: string
+  count?: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium transition-colors ${
+        active
+          ? 'text-white shadow-sm'
+          : 'bg-black/5 text-gray-600 hover:bg-black/10 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15'
+      }`}
+      style={active ? { background: 'var(--color-primary)' } : undefined}
+    >
+      {icon}
+      {label}
+      {count !== undefined && (
+        <span
+          className={
+            active ? 'text-white/70' : 'text-gray-400 dark:text-gray-500'
+          }
+        >
+          {count}
+        </span>
+      )}
+    </button>
+  )
 }
 
 /** 获取应用图标背景样式（优先使用主题色） */
@@ -138,35 +184,45 @@ function getAppIconStyle(app: UnifiedAppItem): {
   return { className: getCategoryGradient(app.category) }
 }
 
+/** 权限级别（与后端一致，未知权限按基础处理） */
+function getPermissionLevel(
+  permission: string,
+): 'basic' | 'elevated' | 'privileged' {
+  return PERMISSION_LEVELS[permission as TappPermission] ?? 'basic'
+}
+
+/** 权限级别排序权重 */
+const LEVEL_ORDER = { basic: 0, elevated: 1, privileged: 2 } as const
+
+/** 权限级别配色 */
+const LEVEL_STYLES = {
+  basic: 'bg-green-500/10 text-green-600 dark:text-green-400',
+  elevated: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  privileged: 'bg-red-500/10 text-red-500 dark:text-red-400',
+} as const
+
+/** 权限级别标签的 i18n 键 */
+const LEVEL_LABEL_KEYS = {
+  basic: 'basicPermission',
+  elevated: 'elevatedPermission',
+  privileged: 'privilegedPermission',
+} as const
+
 /** 获取各权限等级的数量统计 */
 function getPermissionCounts(permissions: string[]): {
   basic: number
   elevated: number
   admin: number
 } {
-  const adminPermissions = [
-    'component:theme',
-    'component:agent',
-    'platform:write',
-    'platform:register',
-  ]
-  const elevatedPermissions = [
-    'ai:generate',
-    'ai:analyze',
-    'ai:chat',
-    'network:fetch',
-    'report:write',
-    'media:control',
-  ]
-
   let basic = 0
   let elevated = 0
   let admin = 0
 
   for (const p of permissions) {
-    if (adminPermissions.includes(p)) {
+    const level = getPermissionLevel(p)
+    if (level === 'privileged') {
       admin++
-    } else if (elevatedPermissions.includes(p)) {
+    } else if (level === 'elevated') {
       elevated++
     } else {
       basic++
@@ -191,6 +247,19 @@ function compareVersions(v1: string, v2: string): number {
   return 0
 }
 
+/** 字节数格式化为可读大小 */
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB'] as const
+  let value = bytes
+  let unit = -1
+  do {
+    value /= 1024
+    unit++
+  } while (value >= 1024 && unit < units.length - 1)
+  return `${value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
+}
+
 /** 统一的应用卡片 - 支持更新功能 */
 const UnifiedAppCard = forwardRef<
   HTMLDivElement,
@@ -203,6 +272,8 @@ const UnifiedAppCard = forwardRef<
     onInstall: () => void
     onUpdate?: () => void
     onUninstall?: () => void
+    /** 点击卡片打开详情视图 */
+    onOpen: () => void
     installing: boolean
     updating?: boolean
     animConfig?: ReturnType<typeof useAnimationLevel>
@@ -218,6 +289,7 @@ const UnifiedAppCard = forwardRef<
       onInstall,
       onUpdate,
       onUninstall,
+      onOpen,
       installing,
       updating,
       animConfig,
@@ -268,9 +340,11 @@ const UnifiedAppCard = forwardRef<
         transition={animProps.transition}
         whileHover={animConfig?.level !== 'none' ? { y: -4 } : {}}
         whileTap={{ scale: 0.98 }}
+        onClick={onOpen}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className="group relative aspect-2/1 rounded-2xl overflow-hidden glass-surface glass-70"
+        className="group relative aspect-2/1 rounded-2xl overflow-hidden glass-surface glass-70 cursor-pointer"
+        title={t.tapp.viewDetails}
       >
         {/* 动态渐变背�? */}
         <div
@@ -441,7 +515,7 @@ const UnifiedAppCard = forwardRef<
             <div className="flex items-center justify-between gap-2">
               {/* 类别标签 */}
               <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-400 font-medium shrink-0">
-                {getCategoryName(app.category)}
+                {t.tapp[TAPP_CATEGORY_I18N_KEYS[app.category]]}
               </span>
 
               {/* 权限详情 - 统计 + 具体权限 */}
@@ -470,60 +544,24 @@ const UnifiedAppCard = forwardRef<
                     {/* 分隔�? */}
                     <span className="text-gray-300 dark:text-gray-600">·</span>
 
-                    {/* 具体权限 - 优先显示高等级，最�?�? */}
+                    {/* 具体权限 - 优先显示高等级，最多两个 */}
                     <div className="flex items-center gap-1 text-[9px] overflow-hidden">
-                      {(() => {
-                        const adminPerms = [
-                          'component:theme',
-                          'component:agent',
-                          'platform:write',
-                          'platform:register',
-                        ]
-                        const elevatedPerms = [
-                          'ai:generate',
-                          'ai:analyze',
-                          'ai:chat',
-                          'network:fetch',
-                          'report:write',
-                          'media:control',
-                        ]
-
-                        // 按优先级排序：管�?> 提升 > 基础
-                        const sorted = app.permissions.toSorted((a, b) => {
-                          const aLevel = adminPerms.includes(a)
-                            ? 2
-                            : elevatedPerms.includes(a)
-                              ? 1
-                              : 0
-                          const bLevel = adminPerms.includes(b)
-                            ? 2
-                            : elevatedPerms.includes(b)
-                              ? 1
-                              : 0
-                          return bLevel - aLevel
-                        })
-
-                        return sorted.slice(0, 2).map((perm, i) => {
-                          const isAdmin = adminPerms.includes(perm)
-                          const isElevated = elevatedPerms.includes(perm)
-
-                          return (
-                            <span
-                              key={i}
-                              className={`px-1.5 py-0.5 rounded font-medium truncate max-w-15 ${
-                                isAdmin
-                                  ? 'bg-red-500/10 text-red-500 dark:text-red-400'
-                                  : isElevated
-                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                                    : 'bg-green-500/10 text-green-600 dark:text-green-400'
-                              }`}
-                              title={perm}
-                            >
-                              {perm.split(':')[1] || perm}
-                            </span>
-                          )
-                        })
-                      })()}
+                      {app.permissions
+                        .toSorted(
+                          (a, b) =>
+                            LEVEL_ORDER[getPermissionLevel(b)] -
+                            LEVEL_ORDER[getPermissionLevel(a)],
+                        )
+                        .slice(0, 2)
+                        .map((perm, i) => (
+                          <span
+                            key={i}
+                            className={`px-1.5 py-0.5 rounded font-medium truncate max-w-15 ${LEVEL_STYLES[getPermissionLevel(perm)]}`}
+                            title={perm}
+                          >
+                            {perm.split(':')[1] || perm}
+                          </span>
+                        ))}
                     </div>
                   </>
                 ) : (
@@ -555,6 +593,300 @@ const UnifiedAppCard = forwardRef<
 )
 
 UnifiedAppCard.displayName = 'UnifiedAppCard'
+
+/** 商店应用详情视图（模态框内的二级页面） */
+function AppDetailView({
+  app,
+  isInstalled,
+  installedVersion,
+  canUninstall,
+  installing,
+  updating,
+  onInstall,
+  onUpdate,
+  onUninstall,
+}: {
+  app: UnifiedAppItem
+  isInstalled: boolean
+  installedVersion?: string
+  canUninstall: boolean
+  installing: boolean
+  updating: boolean
+  onInstall: () => void
+  onUpdate: () => void
+  onUninstall: () => void
+}) {
+  const { t } = useI18n()
+  const tappStrings = t.tapp as unknown as Record<string, string>
+  const iconStyle = getAppIconStyle(app)
+  const hasUpdate =
+    isInstalled &&
+    !!installedVersion &&
+    compareVersions(app.version, installedVersion) > 0
+
+  const homepageUrl = app.homepage ? sanitizeUrl(app.homepage) : ''
+  const repositoryUrl = app.repository ? sanitizeUrl(app.repository) : ''
+  const description = app.longDescription || app.description
+
+  const sortedPermissions = app.permissions.toSorted(
+    (a, b) =>
+      LEVEL_ORDER[getPermissionLevel(b)] - LEVEL_ORDER[getPermissionLevel(a)],
+  )
+
+  const metaItems = [
+    { label: t.tapp.version, value: `v${app.version}` },
+    { label: t.tapp.author, value: app.author.name },
+    {
+      label: t.tapp.categoryFilter,
+      value: t.tapp[TAPP_CATEGORY_I18N_KEYS[app.category]],
+    },
+    ...(app.size
+      ? [{ label: t.tapp.sizeLabel, value: formatSize(app.size) }]
+      : []),
+    ...(app.license
+      ? [{ label: t.tapp.licenseLabel, value: app.license }]
+      : []),
+    ...(app.updatedAt
+      ? [
+          {
+            label: t.tapp.updatedAtLabel,
+            value: new Date(app.updatedAt).toLocaleDateString(),
+          },
+        ]
+      : []),
+    {
+      label: t.tapp.sourceLabel,
+      value:
+        app.source === 'remote'
+          ? (app.remoteApp?.sourceName ?? t.tapp.remoteStore)
+          : t.tapp.builtinExample,
+    },
+  ]
+
+  const linkClass =
+    'flex h-9 items-center gap-1.5 rounded-full bg-black/5 px-4 text-sm font-medium text-gray-600 transition-colors hover:bg-black/10 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15'
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      {/* 应用头部：图标 + 名称 + 操作 */}
+      <div className="flex items-start gap-4 sm:gap-5">
+        <div
+          className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl ${iconStyle.className} relative flex shrink-0 items-center justify-center overflow-hidden text-white shadow-lg`}
+          style={iconStyle.style}
+        >
+          <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
+          <TappIcon
+            icon={app.icon}
+            iconSvg={app.iconSvg}
+            name={app.name}
+            sizeClass="w-12 h-12"
+            textSizeClass="text-4xl"
+            className="relative z-10"
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 sm:text-2xl">
+            {app.name}
+          </h3>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+            <span className="truncate">{app.author.name}</span>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
+            <span>v{app.version}</span>
+            {hasUpdate && installedVersion && (
+              <span className="text-amber-500">
+                ({t.tapp.currentVersion.replace('{version}', installedVersion)})
+              </span>
+            )}
+            {app.source === 'remote' && (
+              <MyriadStoreIcon
+                className="w-3.5 h-3.5 text-indigo-400"
+                title={t.tapp.remoteStore}
+              />
+            )}
+            {app.verified && (
+              <FaCheckCircle
+                className="w-3.5 h-3.5 text-blue-500"
+                title={t.tapp.verified}
+              />
+            )}
+          </div>
+
+          {/* 操作按钮 + 外部链接 */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {hasUpdate ? (
+              <button
+                onClick={onUpdate}
+                disabled={updating}
+                className="flex h-9 items-center gap-2 rounded-full bg-amber-500 px-5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                {updating ? (
+                  <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin block" />
+                ) : (
+                  <FaArrowUp className="w-3.5 h-3.5" />
+                )}
+                {t.tapp.update}
+              </button>
+            ) : isInstalled ? (
+              <span className="flex h-9 items-center gap-2 rounded-full bg-green-500/15 px-5 text-sm font-semibold text-green-600 dark:text-green-400">
+                <FaCheckCircle className="w-3.5 h-3.5" />
+                {t.tapp.installed}
+              </span>
+            ) : (
+              <button
+                onClick={onInstall}
+                disabled={installing}
+                className="flex h-9 items-center gap-2 rounded-full px-5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
+                style={{ background: 'var(--color-primary)' }}
+              >
+                {installing ? (
+                  <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin block" />
+                ) : (
+                  <FaDownload className="w-3.5 h-3.5" />
+                )}
+                {installing ? t.tapp.installing : t.tapp.install}
+              </button>
+            )}
+            {isInstalled && canUninstall && (
+              <button
+                onClick={onUninstall}
+                className="flex h-9 items-center gap-1.5 rounded-full bg-red-500/10 px-4 text-sm font-medium text-red-500 transition-colors hover:bg-red-500/20 dark:text-red-400"
+              >
+                <FaTrash className="w-3.5 h-3.5" />
+                {t.tapp.uninstall}
+              </button>
+            )}
+            {homepageUrl && (
+              <a
+                href={homepageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={linkClass}
+              >
+                <FaGlobe className="w-3.5 h-3.5" />
+                {t.tapp.homepage}
+              </a>
+            )}
+            {repositoryUrl && (
+              <a
+                href={repositoryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={linkClass}
+              >
+                <FaLink className="w-3.5 h-3.5" />
+                {t.tapp.repository}
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 标签 */}
+      {app.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {app.tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full bg-black/5 px-2.5 py-1 text-xs text-gray-500 dark:bg-white/10 dark:text-gray-400"
+            >
+              #{tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* 详细信息 */}
+      <section>
+        <h4 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
+          {t.tapp.detailInfo}
+        </h4>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-black/[0.03] p-4 dark:bg-white/5 sm:grid-cols-3">
+          {metaItems.map((item) => (
+            <div key={item.label} className="min-w-0">
+              <div className="text-[11px] text-gray-400 dark:text-gray-500">
+                {item.label}
+              </div>
+              <div
+                className="truncate text-sm font-medium text-gray-700 dark:text-gray-200"
+                title={item.value}
+              >
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 应用介绍 */}
+      {description && (
+        <section>
+          <h4 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
+            {t.tapp.appDescription}
+          </h4>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+            {description}
+          </p>
+        </section>
+      )}
+
+      {/* 权限列表 */}
+      <section>
+        <h4 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
+          {t.tapp.permissions}
+          {sortedPermissions.length > 0 && (
+            <span className="ml-1.5 font-normal text-gray-400 dark:text-gray-500">
+              {sortedPermissions.length}
+            </span>
+          )}
+        </h4>
+        {sortedPermissions.length > 0 ? (
+          <div className="divide-y divide-black/5 overflow-hidden rounded-2xl bg-black/[0.03] dark:divide-white/5 dark:bg-white/5">
+            {sortedPermissions.map((perm) => {
+              const config = PERMISSION_CONFIG[perm as TappPermission]
+              const level = getPermissionLevel(perm)
+              const Icon = config?.icon ?? FaLock
+              const label = config
+                ? (tappStrings[config.labelKey] ?? perm)
+                : perm
+              const desc = config
+                ? tappStrings[config.descriptionKey]
+                : undefined
+              return (
+                <div key={perm} className="flex items-center gap-3 px-4 py-3">
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${LEVEL_STYLES[level]}`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                      {label}
+                    </div>
+                    {desc && (
+                      <div className="truncate text-xs text-gray-400 dark:text-gray-500">
+                        {desc}
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${LEVEL_STYLES[level]}`}
+                  >
+                    {tappStrings[LEVEL_LABEL_KEYS[level]]}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 dark:text-gray-500">
+            {t.tapp.noPermissions}
+          </p>
+        )}
+      </section>
+    </div>
+  )
+}
 
 /** 商店源设置弹�? */
 function SourcesSettingsModal({
@@ -803,7 +1135,11 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
   const { t, format } = useI18n()
   const { isAuthenticated, isAdmin, hasChecked, checkAuth } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<
+    TappCategory | '__installed__' | null
+  >(null)
+  // 详情视图当前展示的应用（null 表示列表视图）
+  const [detailApp, setDetailApp] = useState<UnifiedAppItem | null>(null)
   const [showSourcesSettings, setShowSourcesSettings] = useState(false)
   // 存储已安装应用的信息：id -> { userRole, isTemporary, version }
   const [installedTapps, setInstalledTapps] = useState<
@@ -934,7 +1270,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
     icon: tapp.manifest.icon,
     iconSvg: tapp.manifest.iconSvg,
     themeColor: tapp.manifest.themeColor,
-    category: tapp.category,
+    category: tapp.manifest.category,
     tags: tapp.tags,
     permissions: tapp.manifest.permissions,
     source: 'local' as const,
@@ -952,7 +1288,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
     icon: app.icon,
     iconSvg: app.icon_svg,
     themeColor: app.theme_color,
-    category: app.category,
+    category: normalizeTappCategory(app.category),
     tags: app.tags || [],
     permissions: app.permissions,
     license: app.license,
@@ -1059,71 +1395,38 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
           }
 
           // 通过后端 API 从远程商店安装（后端直接下载所有资源）
-          const { installFromStore, getTappResources, updateSeparatedCSS } =
-            await import('../services/TappApiService')
+          const { installFromStore } = await import(
+            '../services/TappApiService'
+          )
           await installFromStore({
             source: source.id ? String(source.id) : source.url,
             tappId: app.id,
             permissions: app.permissions,
           })
 
-          // 仅统一模式需要回写前端生成的 Tailwind CSS。
-          // separated 模式的 page.css/widget.css 来自商店资源，不能在这里覆盖。
-          try {
-            const resources = await getTappResources(app.id)
-            if (
-              resources.cssMode !== 'separated' &&
-              !resources.widgetCSS &&
-              !resources.pageCSS
-            ) {
-              const { generateOnDemandTailwindCSS } =
-                await import('../runtime/sandbox/styles')
-
-              // 🎯 生成 Widget 专用 CSS（只包含 Widget 相关源码）
-              const widgetSources = [
-                resources.code || '',
-                resources.styles || '',
-                ...Object.values(resources.widgetTemplates || {}).flatMap(
-                  (templates) => Object.values(templates),
-                ),
-              ].join('\n')
-              const widgetCss = generateOnDemandTailwindCSS(widgetSources)
-
-              // 🎯 生成 Page 专用 CSS（只包含 Page 相关源码）
-              const pageSources = [
-                resources.code || '',
-                resources.styles || '',
-                resources.pageTemplate || '',
-              ].join('\n')
-              const pageCss = generateOnDemandTailwindCSS(pageSources)
-
-              // 保存分离的 CSS
-              if (widgetCss || pageCss) {
-                await updateSeparatedCSS(app.id, { widgetCss, pageCss })
-                // 🎯 清除该 Tapp 的代码缓存，确保下次获取时能获得新的 CSS
-                runtime.clearCodeCache(app.id)
-              }
-            }
-          } catch (cssError) {
-            // CSS 生成失败不影响安装，只记录日志
-            console.warn('Failed to generate separated CSS:', cssError)
-          }
-
           // 刷新 runtime 缓存
           await runtime.syncFromBackend(true)
         }
 
-        // 用户安装的都是临时应用
-        setInstalledTapps(
-          (prev) =>
-            new Map([
-              ...prev,
-              [
-                app.id,
-                { userRole: 'user', isTemporary: true, version: app.version },
-              ],
-            ]),
-        )
+        // 安装 owner 与临时性必须使用后端同步结果；管理员安装属于规范公共
+        // owner，不能在这里硬编码成普通用户临时副本。
+        const installed = runtime.getTapp(app.id)
+        if (installed) {
+          setInstalledTapps(
+            (prev) =>
+              new Map([
+                ...prev,
+                [
+                  app.id,
+                  {
+                    userRole: installed.userRole,
+                    isTemporary: installed.isTemporary,
+                    version: installed.manifest.version,
+                  },
+                ],
+              ]),
+          )
+        }
         onInstalled()
       } catch (error) {
         console.error('Failed to install Tapp:', error)
@@ -1160,49 +1463,14 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
           }
 
           // 调用更新 API
-          const { updateTappFromStore, getTappResources, updateSeparatedCSS } =
-            await import('../services/TappApiService')
+          const { updateTappFromStore } = await import(
+            '../services/TappApiService'
+          )
           await updateTappFromStore(app.id, {
             source: source.id ? String(source.id) : source.url,
           })
           runtime.clearCodeCache(app.id)
 
-          // 仅统一模式需要回写前端生成的 Tailwind CSS。
-          // separated 模式的 page.css/widget.css 来自商店资源，不能在这里覆盖。
-          try {
-            const resources = await getTappResources(app.id)
-            if (
-              resources.cssMode !== 'separated' &&
-              !resources.widgetCSS &&
-              !resources.pageCSS
-            ) {
-              const { generateOnDemandTailwindCSS } =
-                await import('../runtime/sandbox/styles')
-
-              const widgetSources = [
-                resources.code || '',
-                resources.styles || '',
-                ...Object.values(resources.widgetTemplates || {}).flatMap(
-                  (templates) => Object.values(templates),
-                ),
-              ].join('\n')
-              const widgetCss = generateOnDemandTailwindCSS(widgetSources)
-
-              const pageSources = [
-                resources.code || '',
-                resources.styles || '',
-                resources.pageTemplate || '',
-              ].join('\n')
-              const pageCss = generateOnDemandTailwindCSS(pageSources)
-
-              if (widgetCss || pageCss) {
-                await updateSeparatedCSS(app.id, { widgetCss, pageCss })
-                runtime.clearCodeCache(app.id)
-              }
-            }
-          } catch (cssError) {
-            console.warn('Failed to generate separated CSS:', cssError)
-          }
         } else {
           throw new Error('Unsupported update source')
         }
@@ -1279,28 +1547,61 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
   }
 
   // 获取所有分�?
-  const allCategories = new Map<string, { count: number; name: string }>()
+  const categoryCounts = new Map<TappCategory, number>()
 
   // 统计所有应用的分类
   for (const app of allApps) {
-    const existing = allCategories.get(app.category)
-    if (existing) {
-      allCategories.set(app.category, {
-        ...existing,
-        count: existing.count + 1,
-      })
-    } else {
-      // 使用 getCategoryName 获取分类名称
-      const catName = getCategoryName(app.category)
-      allCategories.set(app.category, { count: 1, name: catName })
-    }
+    categoryCounts.set(
+      app.category,
+      (categoryCounts.get(app.category) ?? 0) + 1,
+    )
   }
 
-  const categories = Array.from(allCategories.entries(), ([id, data]) => ({
-    id,
-    name: data.name,
-    count: data.count,
-  }))
+  const categories = TAPP_CATEGORIES.flatMap((id) => {
+    const count = categoryCounts.get(id)
+    return count
+      ? [{ id, name: t.tapp[TAPP_CATEGORY_I18N_KEYS[id]], count }]
+      : []
+  })
+
+  // 详情视图的安装状态派生
+  const detailTappInfo = detailApp
+    ? installedTapps.get(detailApp.id)
+    : undefined
+  const detailCanUninstall = detailTappInfo
+    ? detailTappInfo.userRole === 'admin' ||
+      (detailTappInfo.userRole === 'user' &&
+        detailTappInfo.isTemporary === true)
+    : false
+
+  // 列表 ↔ 详情切换：记忆列表滚动位置，返回时恢复
+  const listViewRef = useRef<HTMLDivElement | null>(null)
+  const listScrollPosRef = useRef(0)
+  const attachListView = useCallback((el: HTMLDivElement | null) => {
+    listViewRef.current = el
+    if (el) el.scrollTop = listScrollPosRef.current
+  }, [])
+  const openDetail = useCallback((app: UnifiedAppItem) => {
+    listScrollPosRef.current = listViewRef.current?.scrollTop ?? 0
+    setDetailApp(app)
+  }, [])
+
+  // 切换动效：进入详情向左滑（详情从右侧进入），返回反向
+  const viewMotionProps = useCallback(
+    (dir: 1 | -1) =>
+      animConfig.level === 'none'
+        ? {}
+        : {
+            initial: { opacity: 0, x: 24 * dir },
+            animate: { opacity: 1, x: 0 },
+            exit: { opacity: 0, x: 24 * dir },
+            transition: {
+              duration: 0.18 * animConfig.durationScale,
+              ease: 'easeOut' as const,
+            },
+          },
+    [animConfig],
+  )
 
   // 计算模态框动画属�?
   const modalAnimProps = useMemo(() => {
@@ -1349,186 +1650,293 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
         className="glass-surface rounded-2xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200/50 dark:border-neutral-700/50"
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       >
-        {/* 头部 */}
-        <div className="px-6 py-4 border-b border-gray-200/50 dark:border-neutral-700/50">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-              <TappIcon
-                icon={TAPP_ICON_TOKENS.store}
-                name={t.tapp.storeTitle}
-                sizeClass="w-7 h-7"
-              />
-              {t.tapp.storeTitle}
-            </h2>
-            <div className="flex items-center gap-2">
-              {isAdmin && (
-                <>
-                  <button
-                    onClick={() => setShowSourcesSettings(true)}
-                    className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
-                    title={t.tapp.sourceManagement}
-                  >
-                    <FaCog className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => loadRemoteApps(true)}
-                    disabled={loading}
-                    className={`p-1.5 rounded-lg transition-colors ${
-                      loading
-                        ? 'text-gray-400 cursor-wait'
-                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700'
-                    }`}
-                    title={t.tapp.refreshStore}
-                  >
-                    <FaSync
-                      className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
-                    />
-                  </button>
-                </>
-              )}
-              <button
-                onClick={onClose}
-                title={t.tapp.storeClose}
-                aria-label={t.tapp.storeClose}
-                className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+        {/* 头部：列表态为 标题/搜索/操作 + 分类行；详情态为 返回/应用名/关闭 */}
+        <div className="px-4 sm:px-6 pt-4 pb-3 border-b border-gray-200/50 dark:border-neutral-700/50">
+          <AnimatePresence mode="wait" initial={false}>
+            {detailApp ? (
+              <motion.div
+                key="detail-header"
+                {...viewMotionProps(1)}
+                className="flex items-center gap-3"
               >
-                <FaTimes className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* 搜索和分类过�? */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t.tapp.searchApps}
-                className="w-full pl-10 pr-4 py-2 bg-white/50 dark:bg-neutral-900/50 border border-gray-200/50 dark:border-neutral-700/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              <button
-                onClick={() => setSelectedCategory(null)}
-                className={`px-3 py-1.5 text-sm rounded-lg whitespace-nowrap transition-colors ${
-                  selectedCategory === null
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
-                }`}
-              >
-                {t.tapp.allApps}
-              </button>
-              <button
-                onClick={() => setSelectedCategory('__installed__')}
-                className={`px-3 py-1.5 text-sm rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                  selectedCategory === '__installed__'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
-                }`}
-              >
-                <FaCheckCircle className="w-4 h-4" />
-                {t.tapp.installed}
-                <span className="opacity-60">({installedIds.size})</span>
-              </button>
-              {categories.map((cat) => (
                 <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3 py-1.5 text-sm rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                    selectedCategory === cat.id
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
-                  }`}
+                  onClick={() => setDetailApp(null)}
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-black/5 px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-black/10 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/15"
                 >
-                  {CATEGORY_ICONS[cat.id] || <FaCog className="w-4 h-4" />}
-                  {cat.name}
-                  <span className="opacity-60">({cat.count})</span>
+                  <FaArrowLeft className="w-3.5 h-3.5" />
+                  {t.tapp.back}
                 </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* 内容区域 */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {loading && remoteApps.length === 0 ? (
-            <div className="text-center py-12">
-              <span
-                className="w-12 h-12 mx-auto border-4 rounded-full animate-spin block mb-4"
-                style={{
-                  borderColor:
-                    'color-mix(in srgb, var(--color-primary) 20%, transparent)',
-                  borderTopColor: 'var(--color-primary)',
-                }}
-              />
-              <p className="text-gray-500 dark:text-gray-400">
-                {t.tapp.loadingRemoteApps}
-              </p>
-            </div>
-          ) : error && remoteApps.length === 0 ? (
-            <div className="text-center py-12">
-              <FaExclamationTriangle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
-              <p className="text-gray-600 dark:text-gray-300 mb-2">{error}</p>
-              <button
-                onClick={() => loadRemoteApps(true)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                {t.tapp.retry}
-              </button>
-            </div>
-          ) : filteredApps.length === 0 ? (
-            <div className="text-center py-12">
-              <FaFilter className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">
-                {t.tapp.noMatchingApps}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <AnimatePresence mode="popLayout">
-                {filteredApps.map((app, index) => {
-                  const tappInfo = installedTapps.get(app.id)
-                  const canUninstall = tappInfo
-                    ? tappInfo.userRole === 'admin' ||
-                      (tappInfo.userRole === 'user' &&
-                        tappInfo.isTemporary === true)
-                    : false
-                  const canUpdate =
-                    !!tappInfo &&
-                    ((app.source === 'remote' && !!app.remoteApp) ||
-                      (app.source === 'local' && !!app.localTapp))
-                  return (
-                    <UnifiedAppCard
-                      key={app.id}
-                      app={app}
-                      isInstalled={installedIds.has(app.id)}
-                      installedVersion={tappInfo?.version}
-                      canUninstall={canUninstall}
-                      onInstall={() => handleInstall(app)}
-                      onUpdate={canUpdate ? () => handleUpdate(app) : undefined}
-                      onUninstall={
-                        canUninstall ? () => handleUninstall(app.id) : undefined
-                      }
-                      installing={installing === app.id}
-                      updating={updating === app.id}
-                      animConfig={animConfig}
-                      index={index}
+                <span className="min-w-0 flex-1 truncate text-center text-base font-semibold text-gray-800 dark:text-gray-100">
+                  {detailApp.name}
+                </span>
+                <button
+                  onClick={onClose}
+                  title={t.tapp.storeClose}
+                  aria-label={t.tapp.storeClose}
+                  className="shrink-0 p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                >
+                  <FaTimes className="w-4 h-4" />
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div key="list-header" {...viewMotionProps(-1)}>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="flex shrink-0 items-center gap-2 text-lg font-semibold text-gray-800 dark:text-gray-100">
+                    <TappIcon
+                      icon={TAPP_ICON_TOKENS.store}
+                      name={t.tapp.storeTitle}
+                      sizeClass="w-7 h-7"
                     />
-                  )
-                })}
-              </AnimatePresence>
-            </div>
-          )}
+                    {t.tapp.storeTitle}
+                  </h2>
+
+                  <div className="relative order-last w-full min-w-0 sm:order-none sm:ml-auto sm:w-auto sm:max-w-md sm:flex-1">
+                    <FaSearch className="pointer-events-none absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder={t.tapp.searchApps}
+                      className="h-9 w-full rounded-full border border-gray-200/50 bg-white/50 pl-9 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-neutral-700/50 dark:bg-neutral-900/50"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        title={t.tapp.clearSearch}
+                        aria-label={t.tapp.clearSearch}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                      >
+                        <FaTimesCircle className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0">
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => setShowSourcesSettings(true)}
+                          className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                          title={t.tapp.sourceManagement}
+                        >
+                          <FaCog className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => loadRemoteApps(true)}
+                          disabled={loading}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            loading
+                              ? 'text-gray-400 cursor-wait'
+                              : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700'
+                          }`}
+                          title={t.tapp.refreshStore}
+                        >
+                          <FaSync
+                            className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+                          />
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={onClose}
+                      title={t.tapp.storeClose}
+                      aria-label={t.tapp.storeClose}
+                      className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                    >
+                      <FaTimes className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Full category sets stay visible on desktop instead of
+                    disappearing behind a horizontal scroller. */}
+                <div className="mt-3 hidden items-start gap-3 sm:flex">
+                  <div
+                    role="group"
+                    aria-label={t.tapp.categoryFilter}
+                    className="flex min-w-0 flex-1 flex-wrap gap-1.5"
+                  >
+                    <CategoryPill
+                      active={selectedCategory === null}
+                      label={t.tapp.allApps}
+                      count={allApps.length}
+                      onClick={() => setSelectedCategory(null)}
+                    />
+                    <CategoryPill
+                      active={selectedCategory === '__installed__'}
+                      icon={<FaCheckCircle className="w-3.5 h-3.5" />}
+                      label={t.tapp.installed}
+                      count={installedIds.size}
+                      onClick={() => setSelectedCategory('__installed__')}
+                    />
+                    {categories.map((cat) => (
+                      <CategoryPill
+                        key={cat.id}
+                        active={selectedCategory === cat.id}
+                        icon={CATEGORY_ICONS[cat.id]}
+                        label={cat.name}
+                        count={cat.count}
+                        onClick={() => setSelectedCategory(cat.id)}
+                      />
+                    ))}
+                  </div>
+                  <span className="shrink-0 whitespace-nowrap pt-2 text-xs text-gray-400 dark:text-gray-500">
+                    {format(t.tapp.totalApps, { total: allApps.length })} ·{' '}
+                    {format(t.tapp.installedCount, {
+                      count: installedIds.size,
+                    })}
+                  </span>
+                </div>
+
+                {/* On narrow screens a native select scales to every category
+                    without consuming multiple rows of the modal header. */}
+                <div className="mt-3 flex items-center gap-2 sm:hidden">
+                  <div className="relative min-w-0 flex-1">
+                    <FaFilter className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                    <select
+                      aria-label={t.tapp.categoryFilter}
+                      value={selectedCategory ?? '__all__'}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        setSelectedCategory(
+                          value === '__all__'
+                            ? null
+                            : (value as TappCategory | '__installed__'),
+                        )
+                      }}
+                      className="h-9 w-full appearance-none rounded-full border border-gray-200/50 bg-white/60 pl-9 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-neutral-700/50 dark:bg-neutral-900/60 dark:text-gray-200"
+                    >
+                      <option value="__all__">
+                        {t.tapp.allApps} ({allApps.length})
+                      </option>
+                      <option value="__installed__">
+                        {t.tapp.installed} ({installedIds.size})
+                      </option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name} ({cat.count})
+                        </option>
+                      ))}
+                    </select>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">
+                      ▾
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-xs tabular-nums text-gray-400 dark:text-gray-500">
+                    {filteredApps.length}/{allApps.length}
+                  </span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* 底部 */}
-        <div className="px-6 py-3 border-t border-gray-200/50 dark:border-neutral-700/50 bg-gray-50/50 dark:bg-neutral-800/50">
-          <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-            {format(t.tapp.totalApps, { total: allApps.length })} ·
-            {format(t.tapp.installedCount, { count: installedIds.size })}
-          </p>
+        {/* 内容区域：列表与详情各自持有滚动容器，切换时方向性滑动 */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <AnimatePresence mode="wait" initial={false}>
+            {detailApp ? (
+              <motion.div
+                key={`detail-${detailApp.id}`}
+                {...viewMotionProps(1)}
+                className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6"
+              >
+                <AppDetailView
+                  app={detailApp}
+                  isInstalled={installedIds.has(detailApp.id)}
+                  installedVersion={detailTappInfo?.version}
+                  canUninstall={detailCanUninstall}
+                  installing={installing === detailApp.id}
+                  updating={updating === detailApp.id}
+                  onInstall={() => handleInstall(detailApp)}
+                  onUpdate={() => handleUpdate(detailApp)}
+                  onUninstall={() => handleUninstall(detailApp.id)}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="list"
+                ref={attachListView}
+                {...viewMotionProps(-1)}
+                className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6"
+              >
+                {loading && remoteApps.length === 0 ? (
+                  <div className="text-center py-12">
+                    <span
+                      className="w-12 h-12 mx-auto border-4 rounded-full animate-spin block mb-4"
+                      style={{
+                        borderColor:
+                          'color-mix(in srgb, var(--color-primary) 20%, transparent)',
+                        borderTopColor: 'var(--color-primary)',
+                      }}
+                    />
+                    <p className="text-gray-500 dark:text-gray-400">
+                      {t.tapp.loadingRemoteApps}
+                    </p>
+                  </div>
+                ) : error && remoteApps.length === 0 ? (
+                  <div className="text-center py-12">
+                    <FaExclamationTriangle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
+                    <p className="text-gray-600 dark:text-gray-300 mb-2">
+                      {error}
+                    </p>
+                    <button
+                      onClick={() => loadRemoteApps(true)}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      {t.tapp.retry}
+                    </button>
+                  </div>
+                ) : filteredApps.length === 0 ? (
+                  <div className="text-center py-12">
+                    <FaFilter className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                    <p className="text-gray-500 dark:text-gray-400">
+                      {t.tapp.noMatchingApps}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <AnimatePresence mode="popLayout">
+                      {filteredApps.map((app, index) => {
+                        const tappInfo = installedTapps.get(app.id)
+                        const canUninstall = tappInfo
+                          ? tappInfo.userRole === 'admin' ||
+                            (tappInfo.userRole === 'user' &&
+                              tappInfo.isTemporary === true)
+                          : false
+                        const canUpdate =
+                          !!tappInfo &&
+                          ((app.source === 'remote' && !!app.remoteApp) ||
+                            (app.source === 'local' && !!app.localTapp))
+                        return (
+                          <UnifiedAppCard
+                            key={app.id}
+                            app={app}
+                            isInstalled={installedIds.has(app.id)}
+                            installedVersion={tappInfo?.version}
+                            canUninstall={canUninstall}
+                            onInstall={() => handleInstall(app)}
+                            onUpdate={
+                              canUpdate ? () => handleUpdate(app) : undefined
+                            }
+                            onUninstall={
+                              canUninstall
+                                ? () => handleUninstall(app.id)
+                                : undefined
+                            }
+                            onOpen={() => openDetail(app)}
+                            installing={installing === app.id}
+                            updating={updating === app.id}
+                            animConfig={animConfig}
+                            index={index}
+                          />
+                        )
+                      })}
+                    </AnimatePresence>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* 卸载确认对话框 */}

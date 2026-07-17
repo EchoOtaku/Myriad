@@ -6,7 +6,12 @@ import type { PermissionItem, QuotaItem } from '../settings'
 import React, { useCallback, useMemo } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
-import { PermissionGroup, QuotaGroup, SettingGroup, SettingSection } from '../settings'
+import {
+  PermissionGroup,
+  QuotaGroup,
+  SettingGroup,
+  SettingSection,
+} from '../settings'
 
 /** Agent 相关 elevated 键（预设只改这些，不碰媒体/主题等） */
 const AGENT_PRESET_PERM_KEYS = [
@@ -19,6 +24,16 @@ const AGENT_PRESET_PERM_KEYS = [
 ] as const
 
 type AgentPresetKey = (typeof AGENT_PRESET_PERM_KEYS)[number]
+const GUEST_AGENT_PRESET_PERM_KEYS = AGENT_PRESET_PERM_KEYS.filter(
+  (key) => key !== 'scheduler_register',
+)
+const GUEST_AUTHENTICATED_PERMISSION_KEYS = new Set([
+  'component_theme',
+  'shortcut_register',
+  'scheduler_register',
+  'speech_tts',
+  'speech_asr',
+])
 export type AgentPermissionPreset = 'none' | 'chat' | 'standard' | 'elevated'
 
 const AGENT_PRESET_FLAGS: Record<
@@ -68,10 +83,11 @@ const AGENT_PRESET_LEVELS: AgentPermissionPreset[] = [
 
 function detectAgentPreset(
   values: Record<string, boolean>,
+  keys: readonly AgentPresetKey[] = AGENT_PRESET_PERM_KEYS,
 ): AgentPermissionPreset | 'custom' {
   for (const level of AGENT_PRESET_LEVELS) {
     const flags = AGENT_PRESET_FLAGS[level]
-    if (AGENT_PRESET_PERM_KEYS.every((k) => values[k] === flags[k])) {
+    if (keys.every((k) => values[k] === flags[k])) {
       return level
     }
   }
@@ -81,42 +97,44 @@ function detectAgentPreset(
 const PRESET_CARD_CLASS =
   'rounded-lg border border-gray-100 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/[0.03]'
 
-export interface PermissionConfigValues
-  extends Record<string, boolean | number> {
-    user_perm_ai_generate: boolean
-    user_perm_ai_analyze: boolean
-    user_perm_ai_chat: boolean
-    user_perm_report_write: boolean
-    user_perm_network_fetch: boolean
-    user_perm_media_control: boolean
-    user_perm_component_theme: boolean
-    user_perm_shortcut_register: boolean
-    user_perm_event_publish: boolean
-    user_perm_ai_image: boolean
-    user_perm_scheduler_register: boolean
-    user_perm_speech_tts: boolean
-    user_perm_speech_asr: boolean
-    // 游客权限
-    guest_perm_ai_generate: boolean
-    guest_perm_ai_analyze: boolean
-    guest_perm_ai_chat: boolean
-    guest_perm_report_write: boolean
-    guest_perm_network_fetch: boolean
-    guest_perm_media_control: boolean
-    guest_perm_component_theme: boolean
-    guest_perm_shortcut_register: boolean
-    guest_perm_event_publish: boolean
-    guest_perm_ai_image: boolean
-    guest_perm_scheduler_register: boolean
-    guest_perm_speech_tts: boolean
-    guest_perm_speech_asr: boolean
-    // AI 配额
-    user_ai_daily_calls: number
-    user_ai_daily_tokens: number
-    user_ai_cooldown_seconds: number
-    guest_ai_daily_calls: number
-    guest_ai_daily_tokens: number
-    guest_ai_cooldown_seconds: number
+export interface PermissionConfigValues extends Record<
+  string,
+  boolean | number
+> {
+  user_perm_ai_generate: boolean
+  user_perm_ai_analyze: boolean
+  user_perm_ai_chat: boolean
+  user_perm_report_write: boolean
+  user_perm_network_fetch: boolean
+  user_perm_media_control: boolean
+  user_perm_component_theme: boolean
+  user_perm_shortcut_register: boolean
+  user_perm_event_publish: boolean
+  user_perm_ai_image: boolean
+  user_perm_scheduler_register: boolean
+  user_perm_speech_tts: boolean
+  user_perm_speech_asr: boolean
+  // 游客权限
+  guest_perm_ai_generate: boolean
+  guest_perm_ai_analyze: boolean
+  guest_perm_ai_chat: boolean
+  guest_perm_report_write: boolean
+  guest_perm_network_fetch: boolean
+  guest_perm_media_control: boolean
+  guest_perm_component_theme: boolean
+  guest_perm_shortcut_register: boolean
+  guest_perm_event_publish: boolean
+  guest_perm_ai_image: boolean
+  guest_perm_scheduler_register: boolean
+  guest_perm_speech_tts: boolean
+  guest_perm_speech_asr: boolean
+  // AI 配额
+  user_ai_daily_calls: number
+  user_ai_daily_tokens: number
+  user_ai_cooldown_seconds: number
+  guest_ai_daily_calls: number
+  guest_ai_daily_tokens: number
+  guest_ai_cooldown_seconds: number
 }
 
 interface PermissionsConfigSectionProps {
@@ -145,7 +163,7 @@ export const PermissionsConfigSection: React.FC<
 }) => {
   const { t } = useI18n()
 
-  // 定义权限项列表（复用于用户和游客）
+  // 定义权限项列表。要求持久登录主体的注册类能力不向游客展示。
   const permissionItems: PermissionItem[] = [
     // AI 相关
     {
@@ -225,6 +243,9 @@ export const PermissionsConfigSection: React.FC<
       hint: t.config.permSchedulerRegisterHint,
     },
   ]
+  const guestPermissionItems = permissionItems.filter(
+    (item) => !GUEST_AUTHENTICATED_PERMISSION_KEYS.has(item.key),
+  )
 
   // 定义配额项列表
   const quotaItems: QuotaItem[] = [
@@ -265,7 +286,7 @@ export const PermissionsConfigSection: React.FC<
 
   const getGuestPermValues = () => {
     const values: Record<string, boolean> = {}
-    permissionItems.forEach((item) => {
+    guestPermissionItems.forEach((item) => {
       values[item.key] = permissionConfig[
         `guest_perm_${item.key}` as keyof typeof permissionConfig
       ] as boolean
@@ -297,7 +318,7 @@ export const PermissionsConfigSection: React.FC<
 
   const guestAgentValues = useMemo(() => {
     const values: Record<string, boolean> = {}
-    for (const k of AGENT_PRESET_PERM_KEYS) {
+    for (const k of GUEST_AGENT_PRESET_PERM_KEYS) {
       values[k] = permissionConfig[
         `guest_perm_${k}` as keyof typeof permissionConfig
       ] as boolean
@@ -306,7 +327,10 @@ export const PermissionsConfigSection: React.FC<
   }, [permissionConfig])
 
   const userPreset = detectAgentPreset(userAgentValues)
-  const guestPreset = detectAgentPreset(guestAgentValues)
+  const guestPreset = detectAgentPreset(
+    guestAgentValues,
+    GUEST_AGENT_PRESET_PERM_KEYS,
+  )
 
   const presetLabels = useMemo(
     () => ({
@@ -324,7 +348,9 @@ export const PermissionsConfigSection: React.FC<
       if (loading) return
       const flags = AGENT_PRESET_FLAGS[level]
       const patch: Record<string, boolean> = {}
-      for (const k of AGENT_PRESET_PERM_KEYS) {
+      const keys =
+        role === 'guest' ? GUEST_AGENT_PRESET_PERM_KEYS : AGENT_PRESET_PERM_KEYS
+      for (const k of keys) {
         patch[`${role}_perm_${k}`] = flags[k]
       }
       updatePermissionConfig(patch)
@@ -429,7 +455,7 @@ export const PermissionsConfigSection: React.FC<
       <PermissionGroup
         title={t.config.guestElevatedPermissions}
         description={t.config.guestElevatedPermissionsDesc}
-        permissions={permissionItems}
+        permissions={guestPermissionItems}
         values={getGuestPermValues()}
         onChange={(key, value) =>
           updatePermissionConfig(`guest_perm_${key}`, value)

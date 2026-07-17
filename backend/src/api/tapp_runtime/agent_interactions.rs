@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::{
     api::tapp_store::{
         installed_tapp_dir, resource_path, validate_inline_data_schema, TappAgentInteractionDef,
-        TappAgentManifest,
+        TappAgentManifest, MAX_AGENT_SCHEMA_RESOURCE_BYTES,
     },
     middleware::auth::Claims,
 };
@@ -466,11 +466,11 @@ async fn read_schema(
             "Declared Agent schema could not be read",
         )
     })?;
-    if bytes.len() > 64 * 1024 {
+    if bytes.len() > MAX_AGENT_SCHEMA_RESOURCE_BYTES {
         return Err(api_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "INVALID_AGENT_SCHEMA",
-            "Agent schema exceeds 64 KiB",
+            format!("Agent schema exceeds {MAX_AGENT_SCHEMA_RESOURCE_BYTES} bytes"),
         ));
     }
     let schema: Value = serde_json::from_slice(&bytes).map_err(|_| {

@@ -73,15 +73,19 @@ flowchart LR
 | 商店安装 | `POST /api/tapps/install`, `source=store`  | 后端从已配置商店下载；网络失败时前端可下载后回退到 direct |
 | 文件安装 | `POST /api/tapps/install-file`             | 上传 ZIP 格式 `.tapp`，安全解包后安装                     |
 
-安装和更新时必须先校验 Tapp ID、Manifest 资源路径和命名资源键。安全的嵌套相对
-路径会原样保留；绝对路径、隐藏路径、反斜杠和 `..` 会被拒绝。
+安装和更新时必须先校验 Tapp ID、Manifest 资源路径、资源类型和命名资源键。安全的嵌套
+相对路径会原样保留；绝对路径、隐藏路径、反斜杠和 `..` 会被拒绝。入口、CSS、HTML 模板
+和 Page 模块必须使用对应扩展名，声明资源必须是普通 UTF-8 文本文件；公开读取不会跟随
+安装后插入的文件或中间目录符号链接。
 
 资源不会直接写入在线目录。安装和更新先写入同一文件系统下的 staging 目录，完整校验后
 通过 rename 原子切换；数据库写入失败会恢复旧目录。卸载先把在线目录原子移入隔离位置，
 再在一个数据库事务中删除 Widget、调度任务/执行记录、可选 storage 和安装记录；事务失败
 会把目录移回。最终冲突复核、目录切换和数据库写入由按公开 `tappId` 获取的 PostgreSQL
 advisory transaction lock 串行化；管理员命名空间和普通用户命名空间也使用同一把锁，避免
-多个后端副本同时通过查重后互相覆盖。这样故障只会留下旧版本或新版本之一，不会暴露半写入资源。
+多个后端副本同时通过查重后互相覆盖。每个激活目录还写入与数据库 `updated_at` 对应的安装
+代际标记；若进程在目录 rename 与数据库 commit 之间退出，启动恢复会用数据库代际选择匹配
+的 backup/uninstall 目录并清理遗留 staging。这样恢复后只会暴露完整旧版或完整新版资源。
 
 ### 两类持久化
 
@@ -150,6 +154,9 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
 3. 注册 Manifest 的 `backgroundRequirements`；
 4. 页面、Widget 或后台 Runner 按需要创建独立 iframe；
 5. iframe 销毁时清理 Bridge、事件、调度回调和 WebSocket 订阅。
+
+最近使用记录通过 PostgreSQL `ON CONFLICT` 原子累加；同一用户从多个标签页或多个后端副本
+同时启动同一 Tapp，不会因先查后插竞态产生重复键错误或丢失运行次数。
 
 SDK 的 `lifecycle.onDestroy` 同时监听 `pagehide` 与 `beforeunload`，并以 once 语义执行；
 单个生命周期回调抛错不能阻断其他回调。宿主资源释放仍由 iframe 外部 cleanup 负责，不能把
@@ -237,7 +244,7 @@ handler、后端路由/服务和文档。
 
 | 等级       | 默认含义                                                                |
 | ---------- | ----------------------------------------------------------------------- |
-| basic      | 基础能力；仍需在 Manifest 申请并被授予；持久 `storage` 不向访客签发       |
+| basic      | 基础能力；仍需申请并被授予；要求持久登录主体的能力不向访客签发            |
 | elevated   | 管理员可配置向普通用户/游客下放                                         |
 | privileged | 仅管理员，例如 `platform:write`、`platform:register`、`component:agent` |
 
@@ -251,6 +258,10 @@ handler、后端路由/服务和文档。
 Runtime Grant 是签发时能力的上限而不是冻结授权。服务端每次验证都重新解析当前可见安装，
 核对 owner，并将令牌权限与当前角色、动态下放配置和安装授权取交集；角色/配置收紧后旧
 Grant 不能继续保留已撤销能力，安装 owner 改变则令牌失效并由宿主重新签发。
+
+访客 Grant 只包含真实使用可选认证路由或纯宿主本地处理的能力。`storage`、动态 Widget、
+平台数据、报告读取、统一通知、组件/快捷键注册、scheduler、语音服务，以及 Brew 写入/评论
+都要求持久登录主体，不会仅因 broad permission level 为 basic/elevated 就出现在访客 Grant 中。
 
 ## 调度器
 
@@ -349,7 +360,9 @@ sequenceDiagram
   布局中的实例 `config`，同类 Widget 的多个实例互不覆盖。
 - Manifest Widget 是安装控制面注册：安装/更新时后端按 Manifest 完整 upsert，并删除旧
   Manifest 已移除的项。运行时 `Tapp.widget.register/unregister` 必须携带 Runtime Grant，
-  只能管理 `source=runtime` 项，不能覆盖或删除 Manifest Widget。
+  只能管理 `source=runtime` 项，不能覆盖或删除 Manifest Widget。Manifest Widget 绑定安装
+  owner 并随公共安装共享；动态 Widget 同时记录 subject 与 `installationOwnerId`，只对注册
+  主体可见，公共/私有同 ID 切换时不会误取另一安装的动态注册。
 
 `syncFromBackend` 通过 `GET /api/tapps/details` 一次读取当前会话可见的完整详情。后端固定
 查询管理员 Tapp 与当前用户 Tapp，并复用单项接口的角色权限过滤；同 ID 时优先用户私有安装。

@@ -4653,7 +4653,7 @@ pub struct UpdatePermissionsPayload {
     pub user_perm_scheduler_register: Option<bool>,
     pub user_perm_speech_tts: Option<bool>,
     pub user_perm_speech_asr: Option<bool>,
-    // 游客可下放的 elevated 权限（13 项）
+    // 游客 elevated 配置；认证绑定字段仅为兼容旧请求，实际强制关闭
     pub guest_perm_ai_generate: Option<bool>,
     pub guest_perm_ai_analyze: Option<bool>,
     pub guest_perm_ai_chat: Option<bool>,
@@ -4662,11 +4662,16 @@ pub struct UpdatePermissionsPayload {
     pub guest_perm_report_write: Option<bool>, // 忽略：强制 false
     pub guest_perm_network_fetch: Option<bool>,
     pub guest_perm_media_control: Option<bool>,
+    #[allow(dead_code)] // accepted for compatibility; update endpoint forces false
     pub guest_perm_component_theme: Option<bool>,
+    #[allow(dead_code)] // accepted for compatibility; update endpoint forces false
     pub guest_perm_shortcut_register: Option<bool>,
     pub guest_perm_event_publish: Option<bool>,
+    #[allow(dead_code)] // accepted for compatibility; update endpoint forces false
     pub guest_perm_scheduler_register: Option<bool>,
+    #[allow(dead_code)] // accepted for compatibility; update endpoint forces false
     pub guest_perm_speech_tts: Option<bool>,
+    #[allow(dead_code)] // accepted for compatibility; update endpoint forces false
     pub guest_perm_speech_asr: Option<bool>,
     // AI 使用限额配置
     pub user_ai_daily_calls: Option<i32>,
@@ -4746,7 +4751,7 @@ pub async fn update_permissions(
         updates.insert("user_perm_speech_asr".to_string(), json!(v));
     }
 
-    // 游客权限（13 项 elevated）
+    // 游客权限。需要持久登录主体的能力保留兼容字段，但强制关闭。
     if let Some(v) = payload.guest_perm_ai_generate {
         updates.insert("guest_perm_ai_generate".to_string(), json!(v));
     }
@@ -4767,24 +4772,14 @@ pub async fn update_permissions(
     if let Some(v) = payload.guest_perm_media_control {
         updates.insert("guest_perm_media_control".to_string(), json!(v));
     }
-    if let Some(v) = payload.guest_perm_component_theme {
-        updates.insert("guest_perm_component_theme".to_string(), json!(v));
-    }
-    if let Some(v) = payload.guest_perm_shortcut_register {
-        updates.insert("guest_perm_shortcut_register".to_string(), json!(v));
-    }
+    updates.insert("guest_perm_component_theme".to_string(), json!(false));
+    updates.insert("guest_perm_shortcut_register".to_string(), json!(false));
     if let Some(v) = payload.guest_perm_event_publish {
         updates.insert("guest_perm_event_publish".to_string(), json!(v));
     }
-    if let Some(v) = payload.guest_perm_scheduler_register {
-        updates.insert("guest_perm_scheduler_register".to_string(), json!(v));
-    }
-    if let Some(v) = payload.guest_perm_speech_tts {
-        updates.insert("guest_perm_speech_tts".to_string(), json!(v));
-    }
-    if let Some(v) = payload.guest_perm_speech_asr {
-        updates.insert("guest_perm_speech_asr".to_string(), json!(v));
-    }
+    updates.insert("guest_perm_scheduler_register".to_string(), json!(false));
+    updates.insert("guest_perm_speech_tts".to_string(), json!(false));
+    updates.insert("guest_perm_speech_asr".to_string(), json!(false));
 
     // AI 使用限额配置
     if let Some(v) = payload.user_ai_daily_calls {

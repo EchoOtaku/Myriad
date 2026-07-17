@@ -1611,23 +1611,13 @@ export interface TranslationKeys {
 
     // 分类
     categoryAI: string
-    categoryDataExtension: string
-    categoryWidget: string
-    categoryPageApp: string
-    categoryTool: string
-    categoryGame: string
-    categoryDemo: string
-    categoryTest: string
-    categoryPlatform: string
-    categoryProductivity: string
-    categoryEntertainment: string
-    categoryDevelopment: string
-    categorySocial: string
-    categoryMedia: string
-    categoryUtilities: string
-    categoryMusic: string
-    categoryVisualization: string
     categoryData: string
+    categoryDeveloper: string
+    categoryGame: string
+    categoryMedia: string
+    categoryProductivity: string
+    categorySocial: string
+    categoryUtility: string
 
     // 权限
     permissions: string
@@ -1798,6 +1788,15 @@ export interface TranslationKeys {
     storeClose: string
     refreshStore: string
     searchApps: string
+    clearSearch: string
+    viewDetails: string
+    appDescription: string
+    sizeLabel: string
+    licenseLabel: string
+    updatedAtLabel: string
+    sourceLabel: string
+    builtinExample: string
+    categoryFilter: string
     allApps: string
     installedApps: string
     loadingRemoteApps: string

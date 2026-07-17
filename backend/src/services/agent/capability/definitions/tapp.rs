@@ -46,7 +46,10 @@ pub fn register(registry: &mut CapabilityRegistry) {
         input_schema: json!({
             "type": "object",
             "properties": {
-                "category": { "type": "string" },
+                "category": {
+                    "type": "string",
+                    "enum": ["ai", "data", "developer", "game", "media", "productivity", "social", "utility"]
+                },
                 "enabled": { "type": "boolean" }
             }
         }),

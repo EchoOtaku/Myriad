@@ -5236,7 +5236,6 @@ const codeStructure: TappCodeStructure = {
 export const aroTapp: ExampleTapp = {
   manifest,
   code: codeStructure,
-  category: 'social',
   tags: [
     'official',
     'federation',

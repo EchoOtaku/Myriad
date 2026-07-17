@@ -279,6 +279,8 @@ async function animateListItems(items) {
 
 **权限**: `platform:read`, `platform:write`
 
+平台数据端点要求持久登录主体，匿名访客不会获得 `platform:read` Runtime Grant。
+
 ```javascript
 // 获取已启用平台列表
 const platforms = await Tapp.platform.listEnabled();
@@ -382,7 +384,7 @@ await Tapp.widget.register({
   name: "我的小组件",
   defaultSize: "2x2",
   sizes: ["1x1", "2x2", "4x2"],
-  category: "tool",
+  category: "utility",
 });
 
 // 注销小组件
@@ -398,7 +400,7 @@ await Tapp.widget.updateConfig("my-widget", {
   icon: "🧊",
   defaultSize: "2x2",
   sizes: ["1x1", "2x2", "4x2"],
-  category: "tool",
+  category: "utility",
 });
 ```
 
@@ -495,6 +497,8 @@ Tapp.dom.renderList(container, items, (item, index) => {
 
 权限按数据流动态计算：inline 输入且无输出不需要静态权限；platform 输入需要
 `platform:read`，platform 输出需要 `platform:write`，storage 输入/输出需要 `storage`。
+纯 inline 输入与返回值不需要额外权限，访客也可使用；一旦请求 platform 或 storage，
+服务端仍按当前 Runtime Grant 拒绝未获授权的访问。
 后端同时校验 Runtime Grant 与安装授权。
 
 ```javascript
@@ -683,6 +687,8 @@ const canUse = await Tapp.user.canUsePermissionLevel("elevated");
 这两个等级 API 读取后端当前的权限下放配置，表示该角色在系统层面是否可以使用此
 等级，并不表示当前 Tapp 已取得该等级下的每项权限。实际调用前仍应以
 `Tapp.permissions.includes("具体权限")` 为准，后端也会再次校验。
+尤其对游客，`basic` 只表示该等级存在；要求持久登录主体的 basic 能力不会出现在
+Runtime Grant 中。
 
 ---
 
@@ -1012,6 +1018,8 @@ const status = await Tapp.speech.getStatus();
 const audio = await Tapp.speech.tts({ text: "你好" }); // speech:tts
 const text = await Tapp.speech.asr({ audio }); // speech:asr
 ```
+
+语音服务统一要求登录（涉及付费供应商调用），因此不会向匿名访客下放 `speech:*`。
 
 ## 能力边界与完整命名空间
 

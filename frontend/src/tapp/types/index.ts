@@ -33,6 +33,17 @@ export type WidgetCategory =
 export type PlatformDataType =
   'game' | 'video' | 'music' | 'anime' | 'article' | 'custom'
 
+/** Tapp 用途分类；Page / Widget 等运行形态不属于此字段。 */
+export type TappCategory =
+  | 'ai'
+  | 'data'
+  | 'developer'
+  | 'game'
+  | 'media'
+  | 'productivity'
+  | 'social'
+  | 'utility'
+
 // ============ Tapp Manifest ============
 
 /** Tapp 清单文件 */
@@ -119,8 +130,8 @@ export interface TappManifest {
    */
   pageModules?: string[]
 
-  /** 应用分类（如 social, tool, game 等） */
-  category?: string
+  /** 应用用途分类（稳定 ID，由宿主翻译显示） */
+  category: TappCategory
 
   /** 设置项定义 */
   settings?: TappSettingItem[]
@@ -452,10 +463,10 @@ export interface WidgetRegistration {
   name: string
 
   /** 描述 */
-  description: string
+  description?: string
 
   /** 图标 */
-  icon: string
+  icon?: string
 
   /** 支持的尺寸 */
   sizes: WidgetSize[]
@@ -464,7 +475,7 @@ export interface WidgetRegistration {
   defaultSize: WidgetSize
 
   /** 组件分类 */
-  category: WidgetCategory
+  category?: WidgetCategory
 
   /** 每实例设置声明 */
   settings?: TappSettingItem[]

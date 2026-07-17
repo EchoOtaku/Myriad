@@ -155,6 +155,8 @@ interface TappResources {
 移入隔离目录后，在一个事务中清理安装记录、Manifest/动态 Widget、调度任务及执行历史；
 `keep_data=true` 只保留 storage，不保留任务或 Widget。相同公开 `tappId` 的最终冲突复核、
 文件切换和数据库变更由 PostgreSQL advisory transaction lock 串行化，跨后端副本也不能并发覆盖。
+激活目录包含与数据库 `updated_at` 对应的内部代际标记；启动时会恢复被进程退出打断的
+rename/commit 窗口，该标记不会进入导出的 `.tapp` 包。
 所有当前管理员都操作首次站点管理员对应的规范公开 owner；普通用户仍写入自己的临时 owner。
 管理员身份不会让 Runtime 自动读取其他普通用户的私有安装。
 
@@ -196,8 +198,12 @@ settings 路由是详情页宿主控制面，只接受已登录会话与当前 M
 type、select options 与 number min/max；游客只使用 Manifest 默认值。
 `storage` 路由同样要求登录身份和 Runtime Grant；访客 Grant 不包含 `storage`，因此沙箱内
 的 `Tapp.storage`/`Tapp.settings` 也不能为访客创建持久数据。
+同理，动态 Widget、平台数据、报告读取、统一通知、组件/快捷键注册、scheduler、语音服务和
+Brew 写入/评论都要求持久登录主体，不会被签入访客 Grant。
 Manifest Widget 由安装/更新自动对账；动态 Widget 路由要求 `widget:register` 同时存在于
-Runtime Grant、安装授权和当前角色，并拒绝覆盖/删除 Manifest 来源的注册。
+Runtime Grant、安装授权和当前角色，并拒绝覆盖/删除 Manifest 来源的注册。动态行记录
+Runtime Grant 的安装 owner，只返回给注册主体；公共安装卸载时会清理绑定该 owner 的动态
+Widget 和所有主体为该公共安装创建的 scheduler 任务。
 
 注意写入方法是 `POST`，不是旧文档中的 `PUT`。
 Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外，还可包含

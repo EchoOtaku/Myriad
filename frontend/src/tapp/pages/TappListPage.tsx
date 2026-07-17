@@ -5,7 +5,7 @@
 
 import type { ToastType } from '../../components/Toast'
 
-import type { TappInstance, TappManifest, TappPermission } from '../types'
+import type { TappInstance, TappPermission } from '../types'
 import type { IconStyle } from '../utils/tappColors'
 import {
   FaCog,
@@ -53,6 +53,10 @@ import { getTappRuntime } from '../runtime'
 import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import { isWebKit } from '../runtime/TappPageSandbox'
 import * as TappApiService from '../services/TappApiService'
+import {
+  resolveTappCategory,
+  TAPP_CATEGORY_I18N_KEYS,
+} from '../utils/tappCategories'
 import { getTappIconStyle as getTappIconStyleFromManifest } from '../utils/tappColors'
 
 // 使用 TappIcon 组件统一处理图标渲染
@@ -86,47 +90,6 @@ function getPermissionCounts(permissions: TappPermission[]): {
   }
 
   return { basic, elevated, admin }
-}
-
-/** category 值 → i18n 键映射 */
-const categoryKeyMap: Record<string, string> = {
-  social: 'categorySocial',
-  ai: 'categoryAI',
-  data: 'categoryData',
-  'data-extension': 'categoryDataExtension',
-  widget: 'categoryWidget',
-  tool: 'categoryTool',
-  game: 'categoryGame',
-  demo: 'categoryDemo',
-  test: 'categoryTest',
-  platform: 'categoryPlatform',
-  productivity: 'categoryProductivity',
-  entertainment: 'categoryEntertainment',
-  development: 'categoryDevelopment',
-  media: 'categoryMedia',
-  utilities: 'categoryUtilities',
-  music: 'categoryMusic',
-  visualization: 'categoryVisualization',
-  page: 'categoryPageApp',
-}
-
-/** 获取应用类别键 */
-function getTappCategoryKey(manifest: TappManifest): string {
-  // 优先使用 manifest 显式声明的分类
-  if (manifest.category && categoryKeyMap[manifest.category])
-    return categoryKeyMap[manifest.category]
-
-  // 回退：根据权限和功能推断类别
-  const hasWidget = manifest.widgets && manifest.widgets.length > 0
-  const hasAI = manifest.permissions?.some((p) => p.startsWith('ai:'))
-  const hasPlatform = manifest.permissions?.some((p) =>
-    p.startsWith('platform:'),
-  )
-
-  if (hasAI) return 'categoryAI'
-  if (hasPlatform) return 'categoryDataExtension'
-  if (hasWidget) return 'categoryWidget'
-  return 'categoryTool'
 }
 
 interface TappCardProps {
@@ -169,7 +132,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
 
     // 鑾峰彇鏉冮檺缁熻鍜屽簲鐢ㄧ被鍒?
     const permissionCounts = getPermissionCounts(tapp.grantedPermissions)
-    const categoryKey = getTappCategoryKey(manifest)
+    const categoryId = resolveTappCategory(manifest)
     // 权限检查：判断当前用户是否可以执行操作
     // - admin: 可以操作所有 Tapp
     // - user: 只能操作自己临时安装的 Tapp（isTemporary=true），不能操作管理员的 Tapp
@@ -178,28 +141,8 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     const canUninstall =
       tapp.userRole === 'admin' ||
       (tapp.userRole === 'user' && tapp.isTemporary === true)
-    const canConfigure = tapp.userRole !== 'guest' // 使用类型安全的方式获取分类翻译
-    const categoryTranslations: Record<string, string> = {
-      categoryAI: t.tapp.categoryAI,
-      categoryDataExtension: t.tapp.categoryDataExtension,
-      categoryWidget: t.tapp.categoryWidget,
-      categoryPageApp: t.tapp.categoryPageApp,
-      categoryTool: t.tapp.categoryTool,
-      categoryGame: t.tapp.categoryGame,
-      categoryDemo: t.tapp.categoryDemo,
-      categoryTest: t.tapp.categoryTest,
-      categoryPlatform: t.tapp.categoryPlatform,
-      categoryProductivity: t.tapp.categoryProductivity,
-      categoryEntertainment: t.tapp.categoryEntertainment,
-      categoryDevelopment: t.tapp.categoryDevelopment,
-      categorySocial: t.tapp.categorySocial,
-      categoryMedia: t.tapp.categoryMedia,
-      categoryUtilities: t.tapp.categoryUtilities,
-      categoryMusic: t.tapp.categoryMusic,
-      categoryVisualization: t.tapp.categoryVisualization,
-      categoryData: t.tapp.categoryData,
-    }
-    const category = categoryTranslations[categoryKey] || categoryKey
+    const canConfigure = tapp.userRole !== 'guest'
+    const category = t.tapp[TAPP_CATEGORY_I18N_KEYS[categoryId]]
     const totalPermissions =
       permissionCounts.basic +
       permissionCounts.elevated +

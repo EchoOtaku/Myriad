@@ -5,243 +5,40 @@
 
 import type { ToastType } from '../../components/Toast'
 
-import type { TappInstance, TappPermission, TappSettingItem } from '../types'
+import type { TappInstance, TappSettingItem } from '../types'
 import {
   FaArrowLeft,
-  FaBell,
-  FaChartBar,
   FaCheck,
-  FaChevronUp,
   FaCog,
-  FaDatabase,
   FaDownload,
   FaExclamationTriangle,
-  FaGamepad,
-  FaHdd,
   FaInfoCircle,
   FaLock,
-  FaMicrophone,
   FaPause,
   FaPlay,
-  FaRobot,
   FaSpinner,
   FaTrash,
 } from '@lib/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../contexts/AuthContext'
 import AnimatedView from '../../components/AnimatedView'
 import Toast from '../../components/Toast'
+import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { sanitizeUrl } from '../../utils/inputSanitizer'
 import { TappIcon } from '../components/TappIcon'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
+import { PERMISSION_CONFIG } from '../constants/permissions'
 import { getTappRuntime } from '../runtime'
 import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import * as TappApiService from '../services/TappApiService'
 import { getTappIconStyle } from '../utils/tappColors'
-import { sanitizeUrl } from '../../utils/inputSanitizer'
 
 // 使用 TappIcon 组件统一处理图标渲染
 
 interface TappDetailPageProps {
   tappId: string
-}
-
-// 权限配置 - 使用 i18n 键名（对应 t.tapp 中的扁平键）
-const PERMISSION_CONFIG: Record<
-  TappPermission,
-  {
-    icon: typeof FaGamepad
-    labelKey: string
-    descriptionKey: string
-  }
-> = {
-  'widget:register': {
-    icon: FaGamepad,
-    labelKey: 'permRegisterWidget',
-    descriptionKey: 'permRegisterWidgetDesc',
-  },
-  'platform:read': {
-    icon: FaDatabase,
-    labelKey: 'permReadPlatform',
-    descriptionKey: 'permReadPlatformDesc',
-  },
-  'platform:write': {
-    icon: FaDatabase,
-    labelKey: 'permWritePlatform',
-    descriptionKey: 'permWritePlatformDesc',
-  },
-  'platform:register': {
-    icon: FaDatabase,
-    labelKey: 'permRegisterPlatform',
-    descriptionKey: 'permRegisterPlatformDesc',
-  },
-  'ai:generate': {
-    icon: FaRobot,
-    labelKey: 'permAiGenerate',
-    descriptionKey: 'permAiGenerateDesc',
-  },
-  'ai:analyze': {
-    icon: FaRobot,
-    labelKey: 'permAiAnalyze',
-    descriptionKey: 'permAiAnalyzeDesc',
-  },
-  'ai:chat': {
-    icon: FaRobot,
-    labelKey: 'permAiChat',
-    descriptionKey: 'permAiChatDesc',
-  },
-  'ai:image': {
-    icon: FaRobot,
-    labelKey: 'permAiImage',
-    descriptionKey: 'permAiImageDesc',
-  },
-  'report:read': {
-    icon: FaChartBar,
-    labelKey: 'permReadReport',
-    descriptionKey: 'permReadReportDesc',
-  },
-  'report:write': {
-    icon: FaChartBar,
-    labelKey: 'permWriteReport',
-    descriptionKey: 'permWriteReportDesc',
-  },
-  storage: {
-    icon: FaHdd,
-    labelKey: 'permStorage',
-    descriptionKey: 'permStorageDesc',
-  },
-  'ui:notification': {
-    icon: FaBell,
-    labelKey: 'permNotification',
-    descriptionKey: 'permNotificationDesc',
-  },
-  'ui:fullscreen': {
-    icon: FaChevronUp,
-    labelKey: 'permFullscreen',
-    descriptionKey: 'permFullscreenDesc',
-  },
-  'ui:theme': {
-    icon: FaChevronUp,
-    labelKey: 'permReadTheme',
-    descriptionKey: 'permReadThemeDesc',
-  },
-  'ui:confirm': {
-    icon: FaChevronUp,
-    labelKey: 'permConfirm',
-    descriptionKey: 'permConfirmDesc',
-  },
-  'network:fetch': {
-    icon: FaDatabase,
-    labelKey: 'permNetworkFetch',
-    descriptionKey: 'permNetworkFetchDesc',
-  },
-  'media:control': {
-    icon: FaGamepad,
-    labelKey: 'permMediaControl',
-    descriptionKey: 'permMediaControlDesc',
-  },
-  'media:read': {
-    icon: FaGamepad,
-    labelKey: 'permMediaRead',
-    descriptionKey: 'permMediaReadDesc',
-  },
-  'component:theme': {
-    icon: FaChevronUp,
-    labelKey: 'permRegisterTheme',
-    descriptionKey: 'permRegisterThemeDesc',
-  },
-  'component:agent': {
-    icon: FaRobot,
-    labelKey: 'permRegisterAgent',
-    descriptionKey: 'permRegisterAgentDesc',
-  },
-  'shortcut:register': {
-    icon: FaGamepad,
-    labelKey: 'permRegisterShortcut',
-    descriptionKey: 'permRegisterShortcutDesc',
-  },
-  'event:publish': {
-    icon: FaBell,
-    labelKey: 'permPublishEvent',
-    descriptionKey: 'permPublishEventDesc',
-  },
-  'event:subscribe': {
-    icon: FaBell,
-    labelKey: 'permSubscribeEvent',
-    descriptionKey: 'permSubscribeEventDesc',
-  },
-  'scheduler:register': {
-    icon: FaCog,
-    labelKey: 'permSchedulerRegister',
-    descriptionKey: 'permSchedulerRegisterDesc',
-  },
-  'speech:tts': {
-    icon: FaMicrophone,
-    labelKey: 'permSpeechTts',
-    descriptionKey: 'permSpeechTtsDesc',
-  },
-  'speech:asr': {
-    icon: FaMicrophone,
-    labelKey: 'permSpeechAsr',
-    descriptionKey: 'permSpeechAsrDesc',
-  },
-  'tappList:read': {
-    icon: FaDatabase,
-    labelKey: 'permReadTappList',
-    descriptionKey: 'permReadTappListDesc',
-  },
-  'tappList:manage': {
-    icon: FaDatabase,
-    labelKey: 'permManageTappList',
-    descriptionKey: 'permManageTappListDesc',
-  },
-  'brew:read': {
-    icon: FaDatabase,
-    labelKey: 'permReadBrew',
-    descriptionKey: 'permReadBrewDesc',
-  },
-  'brew:write': {
-    icon: FaDatabase,
-    labelKey: 'permWriteBrew',
-    descriptionKey: 'permWriteBrewDesc',
-  },
-  'brew:comment': {
-    icon: FaBell,
-    labelKey: 'permCommentBrew',
-    descriptionKey: 'permCommentBrewDesc',
-  },
-  'brew:manage': {
-    icon: FaCog,
-    labelKey: 'permManageBrew',
-    descriptionKey: 'permManageBrewDesc',
-  },
-  'federation:read': {
-    icon: FaDatabase,
-    labelKey: 'permReadFederation',
-    descriptionKey: 'permReadFederationDesc',
-  },
-  'federation:write': {
-    icon: FaDatabase,
-    labelKey: 'permWriteFederation',
-    descriptionKey: 'permWriteFederationDesc',
-  },
-  'federation:message': {
-    icon: FaBell,
-    labelKey: 'permMessageFederation',
-    descriptionKey: 'permMessageFederationDesc',
-  },
-  'federation:trust': {
-    icon: FaLock,
-    labelKey: 'permTrustFederation',
-    descriptionKey: 'permTrustFederationDesc',
-  },
-  'federation:files': {
-    icon: FaDownload,
-    labelKey: 'permFederationFiles',
-    descriptionKey: 'permFederationFilesDesc',
-  },
 }
 
 /**

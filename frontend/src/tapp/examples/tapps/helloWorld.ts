@@ -511,6 +511,7 @@ export const helloWorldTapp: ExampleTapp = {
     version: '1.0.0',
     minSystemVersion: '0.2.1',
     description: '官方入门示例，展示 Tapp 核心功能。',
+    category: 'utility',
     main: 'index.js',
     author: {
       name: 'Myriad Team',
@@ -524,6 +525,5 @@ export const helloWorldTapp: ExampleTapp = {
     hasPage: true,
   },
   code: codeStructure,
-  category: 'demo',
   tags: ['official', 'beginner', 'lifecycle', 'storage', 'i18n'],
 }

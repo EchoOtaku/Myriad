@@ -167,6 +167,17 @@ async fn run_server() -> anyhow::Result<()> {
                     tracing::info!("Continuing with existing schema...");
                 }
 
+                match api::tapp_store::recover_tapp_filesystem_state(&db).await {
+                    Ok(0) => {}
+                    Ok(count) => {
+                        tracing::warn!(count, "Recovered interrupted Tapp filesystem transactions")
+                    }
+                    Err(error) => tracing::error!(
+                        %error,
+                        "Failed to inspect Tapp filesystem transaction state"
+                    ),
+                }
+
                 // Load dynamic configuration from database
                 let config_service = ConfigService::new(db.clone());
 
@@ -4341,11 +4352,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // ============ Tapp P0 扩展 API ============
-            // Data Processing - 🔒 REQUIRE AUTHENTICATION
+            // Data Processing: inline transforms support guests; platform/storage
+            // inputs and outputs are still denied without their Runtime Grant permissions.
             .route(
                 "/api/tapp/data/transform",
                 post(api::tapp_runtime::data_transform)
-                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+                    .route_layer(from_fn(middleware::auth::optional_auth_middleware)),
             )
             // Cross-Tapp data remains private until a visible one-shot host
             // authorization has produced a consumable Data Access Grant.
@@ -4943,6 +4955,19 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                             {
                                 Ok(db) => {
                                     tracing::info!("✅ Database connection established!");
+
+                                    match api::tapp_store::recover_tapp_filesystem_state(&db).await
+                                    {
+                                        Ok(0) => {}
+                                        Ok(count) => tracing::warn!(
+                                            count,
+                                            "Recovered interrupted Tapp filesystem transactions"
+                                        ),
+                                        Err(error) => tracing::error!(
+                                            %error,
+                                            "Failed to inspect Tapp filesystem transaction state"
+                                        ),
+                                    }
 
                                     // Update global database connection
                                     *DB_CONNECTION.write().await = Some(db.clone());

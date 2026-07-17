@@ -9,25 +9,25 @@
 //! - **privileged**: 特权权限，始终仅管理员可用
 //!
 //! ## 设计原则
-//! - basic 级别权限默认对所有角色开放；`storage` 需要登录用户的持久身份
+//! - basic 级别权限默认开放，但真实路由要求持久登录主体的能力不向游客签发
 //! - elevated 级别权限可由管理员选择性下放给普通用户或游客
 //! - privileged 级别权限始终仅限管理员
 //!
 //! ## Tapp 权限完整列表
 //!
-//! ### Basic - 默认开放
-//! - widget:register, platform:read, tappList:read, brew:read, brew:write, brew:comment
-//! - report:read, storage
-//! - ui:notification, ui:fullscreen, ui:theme, ui:confirm
+//! ### Basic - 默认开放（标注 authenticated 的能力不向游客签发）
+//! - widget:register (authenticated), platform:read (authenticated), tappList:read, brew:read
+//! - brew:write (authenticated), brew:comment (authenticated)
+//! - report:read (authenticated), storage (authenticated)
+//! - ui:notification (authenticated), ui:fullscreen, ui:theme, ui:confirm
 //! - media:read, event:subscribe
 //! - federation:read, federation:write, federation:message, federation:files
 //!
 //! ### Elevated - 可配置下放
 //! - ai:generate, ai:analyze, ai:chat, ai:image
-//! - network:fetch, media:control, component:theme
-//! - shortcut:register, event:publish
-//! - scheduler:register, speech:tts, speech:asr
-//! - （brew:write / brew:comment 等级为 elevated，但不开放下放，见 check）
+//! - network:fetch, media:control, component:theme (authenticated)
+//! - shortcut:register (authenticated), event:publish
+//! - scheduler:register, speech:tts, speech:asr (all authenticated)
 //!
 //! ### Privileged - 仅管理员
 //! - platform:write, platform:register, component:agent
@@ -151,6 +151,27 @@ pub enum TappPermission {
 }
 
 impl TappPermission {
+    /// Capabilities whose real backend routes require an authenticated,
+    /// durable application user. Guest Runtime Grants must not advertise these
+    /// even when their broad level is basic/elevated.
+    fn requires_authenticated_subject(&self) -> bool {
+        matches!(
+            self,
+            TappPermission::WidgetRegister
+                | TappPermission::PlatformRead
+                | TappPermission::BrewWrite
+                | TappPermission::BrewComment
+                | TappPermission::ReportRead
+                | TappPermission::Storage
+                | TappPermission::UiNotification
+                | TappPermission::ComponentTheme
+                | TappPermission::ShortcutRegister
+                | TappPermission::SchedulerRegister
+                | TappPermission::SpeechTts
+                | TappPermission::SpeechAsr
+        )
+    }
+
     /// 获取权限等级
     pub fn level(&self) -> PermissionLevel {
         match self {
@@ -385,9 +406,9 @@ impl TappPermissionService {
         }
 
         // Guests do not have a durable application user row. Never issue a
-        // persistence capability that the authenticated storage routes cannot
-        // honor; Tapp settings therefore stay at manifest defaults for guests.
-        if role == UserRole::Guest && permission == TappPermission::Storage {
+        // capability whose real route is behind mandatory authentication;
+        // Runtime Grant metadata must match the executable HTTP boundary.
+        if role == UserRole::Guest && permission.requires_authenticated_subject() {
             return false;
         }
 
@@ -450,12 +471,12 @@ impl TappPermissionService {
             TappPermission::AiImage => config.guest_perm_ai_image,
             TappPermission::NetworkFetch => config.guest_perm_network_fetch,
             TappPermission::MediaControl => config.guest_perm_media_control,
-            TappPermission::ComponentTheme => config.guest_perm_component_theme,
-            TappPermission::ShortcutRegister => config.guest_perm_shortcut_register,
+            TappPermission::ComponentTheme => false,
+            TappPermission::ShortcutRegister => false,
             TappPermission::EventPublish => config.guest_perm_event_publish,
-            TappPermission::SchedulerRegister => config.guest_perm_scheduler_register,
-            TappPermission::SpeechTts => config.guest_perm_speech_tts,
-            TappPermission::SpeechAsr => config.guest_perm_speech_asr,
+            TappPermission::SchedulerRegister => false,
+            TappPermission::SpeechTts => false,
+            TappPermission::SpeechAsr => false,
             _ => false,
         }
     }
@@ -509,12 +530,15 @@ impl TappPermissionService {
                 report_write: false, // 不再下放
                 network_fetch: config.guest_perm_network_fetch,
                 media_control: config.guest_perm_media_control,
-                component_theme: config.guest_perm_component_theme,
-                shortcut_register: config.guest_perm_shortcut_register,
+                // These routes require a durable authenticated subject. Keep
+                // legacy config fields for schema compatibility, but never
+                // advertise them as effective guest delegation settings.
+                component_theme: false,
+                shortcut_register: false,
                 event_publish: config.guest_perm_event_publish,
-                scheduler_register: config.guest_perm_scheduler_register,
-                speech_tts: config.guest_perm_speech_tts,
-                speech_asr: config.guest_perm_speech_asr,
+                scheduler_register: false,
+                speech_tts: false,
+                speech_asr: false,
             },
             user_ai_quota: AiQuotaConfig {
                 daily_calls: config.user_ai_daily_calls,
@@ -607,9 +631,34 @@ mod tests {
     }
 
     #[test]
-    fn test_guest_runtime_grant_excludes_persistent_storage() {
-        let config = DynamicConfig::default();
-        let requested = vec!["platform:read".to_string(), "storage".to_string()];
+    fn test_guest_runtime_grant_excludes_authenticated_subject_capabilities() {
+        let config = DynamicConfig {
+            guest_perm_component_theme: true,
+            guest_perm_shortcut_register: true,
+            guest_perm_scheduler_register: true,
+            guest_perm_speech_tts: true,
+            guest_perm_speech_asr: true,
+            ..DynamicConfig::default()
+        };
+        let requested = vec![
+            "platform:read".to_string(),
+            "media:read".to_string(),
+            "event:subscribe".to_string(),
+            "widget:register".to_string(),
+            "brew:write".to_string(),
+            "brew:comment".to_string(),
+            "report:read".to_string(),
+            "storage".to_string(),
+            "ui:notification".to_string(),
+            "component:theme".to_string(),
+            "shortcut:register".to_string(),
+            "scheduler:register".to_string(),
+            "speech:tts".to_string(),
+            "speech:asr".to_string(),
+            "tappList:read".to_string(),
+            "brew:read".to_string(),
+            "federation:read".to_string(),
+        ];
 
         let granted = TappPermissionService::filter_permissions_for_role(
             &config,
@@ -617,12 +666,28 @@ mod tests {
             &requested,
         );
 
-        assert_eq!(granted, vec!["platform:read"]);
+        assert_eq!(
+            granted,
+            vec![
+                "media:read",
+                "event:subscribe",
+                "tappList:read",
+                "brew:read",
+                "federation:read"
+            ]
+        );
         assert!(!TappPermissionService::check(
             &config,
             UserRole::Guest,
             TappPermission::Storage
         ));
+
+        let effective = TappPermissionService::get_permission_config(&config);
+        assert!(!effective.guest.component_theme);
+        assert!(!effective.guest.shortcut_register);
+        assert!(!effective.guest.scheduler_register);
+        assert!(!effective.guest.speech_tts);
+        assert!(!effective.guest.speech_asr);
     }
 
     #[test]
@@ -683,21 +748,29 @@ mod tests {
     }
 
     #[test]
-    fn test_brew_mutation_permissions_are_tapp_capabilities_for_all_roles() {
+    fn test_brew_mutation_permissions_require_authenticated_subject() {
         let config = DynamicConfig::default();
 
-        for role in [UserRole::User, UserRole::Guest] {
-            assert!(TappPermissionService::check(
-                &config,
-                role,
-                TappPermission::BrewWrite
-            ));
-            assert!(TappPermissionService::check(
-                &config,
-                role,
-                TappPermission::BrewComment
-            ));
-        }
+        assert!(TappPermissionService::check(
+            &config,
+            UserRole::User,
+            TappPermission::BrewWrite
+        ));
+        assert!(TappPermissionService::check(
+            &config,
+            UserRole::User,
+            TappPermission::BrewComment
+        ));
+        assert!(!TappPermissionService::check(
+            &config,
+            UserRole::Guest,
+            TappPermission::BrewWrite
+        ));
+        assert!(!TappPermissionService::check(
+            &config,
+            UserRole::Guest,
+            TappPermission::BrewComment
+        ));
     }
 
     #[test]

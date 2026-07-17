@@ -4,8 +4,8 @@
 
 import type { TappCodeStructure, TappManifest } from '../../types'
 
-export type { TappCodeStructure } from '../../types'
 export { getCodeForMode } from '../../runtime/codeStructure'
+export type { TappCodeStructure } from '../../types'
 
 /**
  * Tapp 代码结构（分离架构）
@@ -24,6 +24,5 @@ export interface ExampleTapp {
   manifest: TappManifest
   /** 代码结构（分离架构） */
   code: TappCodeStructure
-  category: 'widget' | 'tool' | 'platform' | 'demo' | 'test' | 'social'
   tags: string[]
 }

@@ -21,8 +21,8 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DbErr, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter, Set,
-    Statement, TransactionTrait,
+    DatabaseConnection, DbErr, EntityTrait, FromQueryResult, QueryFilter, Set, Statement,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path as FsPath, PathBuf};
@@ -354,6 +354,9 @@ const MAX_DATA_EXCHANGE_DECLARATIONS: usize = 32;
 const MAX_DATA_EXCHANGE_ID_LEN: usize = 128;
 const MAX_DATA_EXCHANGE_SCHEMA_BYTES: usize = 64 * 1024;
 const MAX_DATA_EXCHANGE_RESPONSE_BYTES: usize = 512 * 1024;
+pub(crate) const MAX_AGENT_SCHEMA_RESOURCE_BYTES: usize = 64 * 1024;
+const MAX_TAPP_I18N_FILES: usize = 32;
+const MAX_TAPP_I18N_RESOURCE_BYTES: usize = 1024 * 1024;
 
 fn valid_data_exchange_id(value: &str) -> bool {
     !value.is_empty()
@@ -613,6 +616,13 @@ fn validate_http_url(value: &str, field: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_resource_extension(path: &str, extension: &str, field: &str) -> Result<(), String> {
+    if !path.ends_with(extension) {
+        return Err(format!("Tapp {field} must reference a {extension} file"));
+    }
+    Ok(())
+}
+
 fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
     validate_tapp_id(&manifest.id)?;
     if manifest.name.trim().is_empty() || manifest.name.len() > 255 {
@@ -620,6 +630,9 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
     }
     semver::Version::parse(&manifest.version)
         .map_err(|_| "Tapp version must be valid semantic version".to_string())?;
+    if manifest.category.is_none() {
+        return Err("Tapp category is required".to_string());
+    }
     if manifest
         .description
         .as_ref()
@@ -657,6 +670,7 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
         }
     }
     validate_resource_path(&manifest.main)?;
+    validate_resource_extension(&manifest.main, ".js", "main")?;
     if let Some(required) = manifest.min_system_version.as_deref() {
         let required = parse_system_version(required)?;
         let current = semver::Version::parse(env!("CARGO_PKG_VERSION"))
@@ -701,16 +715,15 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
         return Err("Tapp cssMode must be unified or separated".to_string());
     }
 
-    for path in [
-        manifest.styles.as_deref(),
-        manifest.widget_styles.as_deref(),
-        manifest.page_styles.as_deref(),
-        manifest.page_template.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    {
+    for (field, path, extension) in [
+        ("styles", manifest.styles.as_deref(), ".css"),
+        ("widgetStyles", manifest.widget_styles.as_deref(), ".css"),
+        ("pageStyles", manifest.page_styles.as_deref(), ".css"),
+        ("pageTemplate", manifest.page_template.as_deref(), ".html"),
+    ] {
+        let Some(path) = path else { continue };
         validate_resource_path(path)?;
+        validate_resource_extension(path, extension, field)?;
     }
 
     if let Some(modules) = &manifest.page_modules {
@@ -792,6 +805,7 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
                         ));
                     }
                     validate_resource_path(path)?;
+                    validate_resource_extension(path, ".html", "Widget template")?;
                 }
             }
         }
@@ -1211,6 +1225,8 @@ struct ActivatedTappDir {
     backup_path: Option<PathBuf>,
 }
 
+const TAPP_INSTALL_STATE_FILE: &str = ".myriad-install-state.json";
+
 impl ActivatedTappDir {
     async fn commit(mut self) {
         if let Some(backup) = self.backup_path.take() {
@@ -1228,6 +1244,294 @@ impl ActivatedTappDir {
     }
 }
 
+fn directory_manifest_matches(directory: &FsPath, expected: &serde_json::Value) -> bool {
+    let Ok(content) = std::fs::read_to_string(directory.join("manifest.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content).is_ok_and(|value| value == *expected)
+}
+
+fn write_install_generation(
+    directory: &FsPath,
+    updated_at: chrono::DateTime<chrono::FixedOffset>,
+) -> Result<(), std::io::Error> {
+    let value = serde_json::json!({ "updatedAtMicros": updated_at.timestamp_micros() });
+    let encoded = serde_json::to_vec(&value)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    std::fs::write(directory.join(TAPP_INSTALL_STATE_FILE), encoded)
+}
+
+fn directory_generation_matches(
+    directory: &FsPath,
+    expected_manifest: &serde_json::Value,
+    expected_updated_at: chrono::DateTime<chrono::FixedOffset>,
+) -> bool {
+    let state_path = directory.join(TAPP_INSTALL_STATE_FILE);
+    if state_path.exists() {
+        return std::fs::read(state_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|value| {
+                value
+                    .get("updatedAtMicros")
+                    .and_then(serde_json::Value::as_i64)
+            })
+            == Some(expected_updated_at.timestamp_micros());
+    }
+    // Compatibility for installations created before generation markers.
+    directory_manifest_matches(directory, expected_manifest)
+}
+
+fn lifecycle_artifact_directories(final_path: &FsPath) -> Result<Vec<PathBuf>, std::io::Error> {
+    let Some(parent) = final_path.parent() else {
+        return Ok(Vec::new());
+    };
+    let Some(name) = final_path.file_name().and_then(|value| value.to_str()) else {
+        return Ok(Vec::new());
+    };
+    let prefixes = [
+        format!(".{name}.staging-"),
+        format!(".{name}.backup-"),
+        format!(".{name}.uninstall-"),
+        format!(".{name}.recovery-discard-"),
+    ];
+    let mut artifacts = Vec::new();
+    if !parent.is_dir() {
+        return Ok(artifacts);
+    }
+    for entry in std::fs::read_dir(parent)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if !file_type.is_dir() || file_type.is_symlink() {
+            continue;
+        }
+        let filename = entry.file_name();
+        let Some(filename) = filename.to_str() else {
+            continue;
+        };
+        if prefixes.iter().any(|prefix| filename.starts_with(prefix)) {
+            artifacts.push(entry.path());
+        }
+    }
+    Ok(artifacts)
+}
+
+/// Reconcile one live resource directory with the database Manifest after an
+/// interrupted install/update/uninstall lifecycle transaction.
+fn recover_tapp_directory(
+    final_path: &FsPath,
+    expected_manifest: &serde_json::Value,
+    expected_updated_at: chrono::DateTime<chrono::FixedOffset>,
+) -> Result<bool, std::io::Error> {
+    let mut artifacts = lifecycle_artifact_directories(final_path)?;
+    // A backup/uninstall quarantine is the authoritative pre-transaction
+    // generation. Consider staging only after those recovery sources.
+    artifacts.sort_by_key(|path| {
+        path.file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| name.contains(".staging-"))
+    });
+    if directory_generation_matches(final_path, expected_manifest, expected_updated_at) {
+        for artifact in artifacts {
+            std::fs::remove_dir_all(artifact)?;
+        }
+        return Ok(false);
+    }
+
+    let Some(recovery_source) = artifacts
+        .iter()
+        .find(|path| directory_generation_matches(path, expected_manifest, expected_updated_at))
+        .cloned()
+    else {
+        return Ok(false);
+    };
+
+    let discard_path = final_path.with_file_name(format!(
+        ".{}.recovery-discard-{}",
+        final_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("tapp"),
+        uuid::Uuid::new_v4().simple()
+    ));
+    let had_live_path = final_path.exists();
+    if had_live_path {
+        std::fs::rename(final_path, &discard_path)?;
+    }
+    if let Err(error) = std::fs::rename(&recovery_source, final_path) {
+        if had_live_path {
+            let _ = std::fs::rename(&discard_path, final_path);
+        }
+        return Err(error);
+    }
+    if had_live_path {
+        let _ = std::fs::remove_dir_all(&discard_path);
+    }
+    for artifact in artifacts {
+        if artifact != recovery_source {
+            let _ = std::fs::remove_dir_all(artifact);
+        }
+    }
+    Ok(true)
+}
+
+fn lifecycle_artifact_tapp_id(filename: &str) -> Option<&str> {
+    let stem = filename.strip_prefix('.')?;
+    let (prefix, nonce) = stem.rsplit_once('-')?;
+    if nonce.len() != 32 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    [".staging", ".backup", ".uninstall", ".recovery-discard"]
+        .into_iter()
+        .find_map(|kind| prefix.strip_suffix(kind))
+        .filter(|tapp_id| validate_tapp_id(tapp_id).is_ok())
+}
+
+fn looks_like_tapp_installation(directory: &FsPath) -> bool {
+    ["manifest.json", TAPP_INSTALL_STATE_FILE]
+        .into_iter()
+        .any(|name| std::fs::symlink_metadata(directory.join(name)).is_ok())
+}
+
+/// Remove filesystem generations that cannot belong to any database row.
+/// Artifacts for an installed key are deliberately retained when normal
+/// recovery cannot identify the expected generation, avoiding destructive
+/// guesses in the presence of partial/manual damage.
+fn orphaned_tapp_directories(
+    root: &FsPath,
+    installed: &std::collections::HashSet<(i32, String)>,
+) -> Result<Vec<(i32, String, PathBuf)>, std::io::Error> {
+    if !root.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut candidates = Vec::new();
+    for owner_entry in std::fs::read_dir(root)? {
+        let owner_entry = owner_entry?;
+        let owner_type = owner_entry.file_type()?;
+        if !owner_type.is_dir() || owner_type.is_symlink() {
+            continue;
+        }
+        let Some(owner_name) = owner_entry.file_name().to_str().map(String::from) else {
+            continue;
+        };
+        let Ok(owner_id) = owner_name.parse::<i32>() else {
+            continue;
+        };
+        if owner_id < 0 || owner_id.to_string() != owner_name {
+            continue;
+        }
+        for entry in std::fs::read_dir(owner_entry.path())? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            if !file_type.is_dir() || file_type.is_symlink() {
+                continue;
+            }
+            let Some(filename) = entry.file_name().to_str().map(String::from) else {
+                continue;
+            };
+            let tapp_id = lifecycle_artifact_tapp_id(&filename).map(String::from);
+            let live_tapp_id = if tapp_id.is_none()
+                && validate_tapp_id(&filename).is_ok()
+                && looks_like_tapp_installation(&entry.path())
+            {
+                Some(filename.clone())
+            } else {
+                None
+            };
+            let Some(tapp_id) = tapp_id.or(live_tapp_id) else {
+                continue;
+            };
+            if installed.contains(&(owner_id, tapp_id.clone())) {
+                continue;
+            }
+            candidates.push((owner_id, tapp_id, entry.path()));
+        }
+    }
+    Ok(candidates)
+}
+
+async fn cleanup_orphaned_tapp_directories(
+    db: &DatabaseConnection,
+    installed: &std::collections::HashSet<(i32, String)>,
+) -> Result<usize, DbErr> {
+    let candidates = orphaned_tapp_directories(&paths().tapps, installed)
+        .map_err(|error| DbErr::Custom(format!("Failed to inspect Tapp resources: {error}")))?;
+    let mut removed = 0;
+    for (owner_id, tapp_id, directory) in candidates {
+        // Recovery also runs after a live database reconfiguration. Serialize
+        // with install/update/uninstall and re-check under the lock so a newly
+        // activated, not-yet-committed generation is never mistaken for an
+        // orphan.
+        let txn = db.begin().await?;
+        lock_tapp_lifecycle(&txn, &tapp_id).await?;
+        let exists = tapps::Entity::find()
+            .filter(tapps::Column::UserId.eq(owner_id))
+            .filter(tapps::Column::TappId.eq(&tapp_id))
+            .one(&txn)
+            .await?
+            .is_some();
+        if !exists {
+            match fs::symlink_metadata(&directory).await {
+                Ok(metadata) if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() => {
+                    fs::remove_dir_all(&directory).await.map_err(|error| {
+                        DbErr::Custom(format!(
+                            "Failed to remove orphaned Tapp directory {}: {error}",
+                            directory.display()
+                        ))
+                    })?;
+                    removed += 1;
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(DbErr::Custom(format!(
+                        "Failed to inspect orphaned Tapp directory {}: {error}",
+                        directory.display()
+                    )))
+                }
+            }
+        }
+        txn.commit().await?;
+    }
+    Ok(removed)
+}
+
+/// Startup recovery for filesystem/DB transactions interrupted between the
+/// atomic directory rename and the PostgreSQL commit.
+pub(crate) async fn recover_tapp_filesystem_state(db: &DatabaseConnection) -> Result<usize, DbErr> {
+    let installed = tapps::Entity::find().all(db).await?;
+    let installed_keys = installed
+        .iter()
+        .map(|tapp| (tapp.user_id, tapp.tapp_id.clone()))
+        .collect::<std::collections::HashSet<_>>();
+    let mut recovered = 0;
+    for tapp in installed {
+        let Ok(final_path) = installed_tapp_dir(&tapp) else {
+            tracing::error!(tapp_id = %tapp.tapp_id, "Invalid installed Tapp path during recovery");
+            continue;
+        };
+        match recover_tapp_directory(&final_path, &tapp.manifest, tapp.updated_at) {
+            Ok(true) => {
+                recovered += 1;
+                tracing::warn!(tapp_id = %tapp.tapp_id, owner_id = tapp.user_id, "Recovered interrupted Tapp filesystem transaction");
+            }
+            Ok(false) => {}
+            Err(error) => tracing::error!(
+                tapp_id = %tapp.tapp_id,
+                owner_id = tapp.user_id,
+                %error,
+                "Failed to recover interrupted Tapp filesystem transaction"
+            ),
+        }
+    }
+    let removed = cleanup_orphaned_tapp_directories(db, &installed_keys).await?;
+    if removed > 0 {
+        tracing::warn!(removed, "Removed orphaned Tapp filesystem generations");
+    }
+    recovered += removed;
+    Ok(recovered)
+}
+
 pub(crate) fn installed_tapp_dir(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
     tapp_dir_for(tapp.user_id, &tapp.tapp_id).map_err(|_| StatusCode::BAD_REQUEST)
 }
@@ -1236,10 +1540,8 @@ fn installed_code_path(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
     // 新安装遵循 Manifest 的 main。旧安装可能曾把任意入口统一写为根目录
     // main.js/index.js，因此仅在 Manifest 路径不存在时回退持久化元数据。
     if let Some(main) = tapp.manifest.get("main").and_then(|value| value.as_str()) {
-        if let Some(path) = resource_path(&installed_tapp_dir(tapp)?, main) {
-            if path.is_file() {
-                return Ok(path);
-            }
+        if let Some(path) = regular_resource_path(&installed_tapp_dir(tapp)?, main) {
+            return Ok(path);
         }
     }
 
@@ -1249,7 +1551,8 @@ fn installed_code_path(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
         .and_then(|value| value.to_str())
         .filter(|value| matches!(*value, "main.js" | "index.js"))
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(installed_tapp_dir(tapp)?.join(filename))
+    regular_resource_path(&installed_tapp_dir(tapp)?, filename)
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 pub(crate) fn resource_path(tapp_dir: &FsPath, relative: &str) -> Option<PathBuf> {
@@ -1257,12 +1560,55 @@ pub(crate) fn resource_path(tapp_dir: &FsPath, relative: &str) -> Option<PathBuf
     Some(tapp_dir.join(relative))
 }
 
+/// Resolve an installed resource only when every path component remains under
+/// the canonical Tapp directory and the target is a regular file. This rejects
+/// both final and intermediate symlinks inserted after installation.
+fn regular_resource_path(tapp_dir: &FsPath, relative: &str) -> Option<PathBuf> {
+    let joined = resource_path(tapp_dir, relative)?;
+    let canonical_root = std::fs::canonicalize(tapp_dir).ok()?;
+    let canonical_path = std::fs::canonicalize(joined).ok()?;
+    if canonical_path != canonical_root.join(relative) {
+        return None;
+    }
+    let metadata = std::fs::symlink_metadata(&canonical_path).ok()?;
+    metadata.file_type().is_file().then_some(canonical_path)
+}
+
+fn regular_resource_directory(tapp_dir: &FsPath, relative: &str) -> Option<PathBuf> {
+    let joined = resource_path(tapp_dir, relative)?;
+    let canonical_root = std::fs::canonicalize(tapp_dir).ok()?;
+    let canonical_path = std::fs::canonicalize(joined).ok()?;
+    if canonical_path != canonical_root.join(relative) {
+        return None;
+    }
+    let metadata = std::fs::symlink_metadata(&canonical_path).ok()?;
+    metadata.file_type().is_dir().then_some(canonical_path)
+}
+
+async fn read_tapp_text_resource(
+    tapp_dir: &FsPath,
+    relative: &str,
+) -> Result<String, std::io::Error> {
+    let path = regular_resource_path(tapp_dir, relative).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Tapp resource is not a regular in-sandbox file",
+        )
+    })?;
+    fs::read_to_string(path).await
+}
+
 async fn write_tapp_resource(
     tapp_dir: &FsPath,
     relative: &str,
     content: impl AsRef<[u8]>,
 ) -> Result<PathBuf, std::io::Error> {
-    let path = tapp_dir.join(relative);
+    let path = resource_path(tapp_dir, relative).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Invalid Tapp resource path",
+        )
+    })?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await?;
     }
@@ -1331,35 +1677,112 @@ fn validate_installed_resources(manifest: &TappManifest, tapp_dir: &FsPath) -> R
             }
         }
     }
-    if let Some(agent) = &manifest.agent {
-        for interaction in &agent.interactions {
-            resources.extend(
-                [
-                    interaction.input_schema.as_deref(),
-                    interaction.result_schema.as_deref(),
-                ]
-                .into_iter()
-                .flatten(),
-            );
-        }
-    }
-
     for relative in resources {
-        let path = resource_path(tapp_dir, relative)
-            .ok_or_else(|| format!("Invalid Tapp resource path: {relative}"))?;
-        if !path.is_file() {
-            return Err(format!("Declared Tapp resource not found: {relative}"));
-        }
+        let path = regular_resource_path(tapp_dir, relative)
+            .ok_or_else(|| format!("Declared Tapp resource is not a regular file: {relative}"))?;
+        let bytes = std::fs::read(path)
+            .map_err(|_| format!("Declared Tapp resource not found: {relative}"))?;
+        std::str::from_utf8(&bytes)
+            .map_err(|_| format!("Declared Tapp resource is not UTF-8 text: {relative}"))?;
     }
 
     if let Some(modules) = &manifest.page_modules {
         for module in modules {
             let relative = format!("page/{module}");
-            let path = resource_path(tapp_dir, &relative)
-                .ok_or_else(|| format!("Invalid Tapp resource path: {relative}"))?;
-            if !path.is_file() {
-                return Err(format!("Declared Tapp resource not found: {relative}"));
+            let path = regular_resource_path(tapp_dir, &relative).ok_or_else(|| {
+                format!("Declared Tapp resource is not a regular file: {relative}")
+            })?;
+            let bytes = std::fs::read(path)
+                .map_err(|_| format!("Declared Tapp resource not found: {relative}"))?;
+            std::str::from_utf8(&bytes)
+                .map_err(|_| format!("Declared Tapp resource is not UTF-8 text: {relative}"))?;
+        }
+    }
+    if let Some(agent) = &manifest.agent {
+        for interaction in &agent.interactions {
+            for relative in [
+                interaction.input_schema.as_deref(),
+                interaction.result_schema.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let path = regular_resource_path(tapp_dir, relative).ok_or_else(|| {
+                    format!("Declared Agent schema is not a regular file: {relative}")
+                })?;
+                let bytes = std::fs::read(path)
+                    .map_err(|_| format!("Declared Agent schema not found: {relative}"))?;
+                if bytes.len() > MAX_AGENT_SCHEMA_RESOURCE_BYTES {
+                    return Err(format!(
+                        "Agent schema exceeds {MAX_AGENT_SCHEMA_RESOURCE_BYTES} bytes: {relative}"
+                    ));
+                }
+                let schema = serde_json::from_slice::<serde_json::Value>(&bytes)
+                    .map_err(|_| format!("Agent schema is not valid JSON: {relative}"))?;
+                validate_inline_data_schema(&schema)
+                    .map_err(|error| format!("Invalid Agent schema {relative}: {error}"))?;
             }
+        }
+    }
+    validate_installed_i18n_resources(tapp_dir)?;
+    Ok(())
+}
+
+fn validate_installed_i18n_resources(tapp_dir: &FsPath) -> Result<(), String> {
+    let joined = tapp_dir.join("i18n");
+    let metadata = match std::fs::symlink_metadata(&joined) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err("Failed to inspect Tapp i18n directory".to_string()),
+    };
+    if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+        return Err("Tapp i18n must be an in-sandbox directory".to_string());
+    }
+    let directory = regular_resource_directory(tapp_dir, "i18n")
+        .ok_or_else(|| "Tapp i18n must be an in-sandbox directory".to_string())?;
+    let entries = std::fs::read_dir(directory)
+        .map_err(|_| "Failed to read Tapp i18n directory".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Failed to read Tapp i18n directory".to_string())?;
+    if entries.len() > MAX_TAPP_I18N_FILES {
+        return Err(format!(
+            "Tapp i18n accepts at most {MAX_TAPP_I18N_FILES} locale files"
+        ));
+    }
+    for entry in entries {
+        let file_type = entry
+            .file_type()
+            .map_err(|_| "Failed to inspect Tapp i18n resource".to_string())?;
+        let filename = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| "Tapp i18n filename must be UTF-8".to_string())?;
+        let Some(locale) = filename.strip_suffix(".json") else {
+            return Err(format!("Tapp i18n resource must be a JSON file: {filename}"));
+        };
+        if !file_type.is_file()
+            || file_type.is_symlink()
+            || !is_safe_path_component(&filename)
+            || !is_safe_path_component(locale)
+        {
+            return Err(format!("Invalid Tapp i18n resource: {filename}"));
+        }
+        let relative = format!("i18n/{filename}");
+        let path = regular_resource_path(tapp_dir, &relative)
+            .ok_or_else(|| format!("Invalid Tapp i18n resource: {filename}"))?;
+        let bytes = std::fs::read(path)
+            .map_err(|_| format!("Failed to read Tapp i18n resource: {filename}"))?;
+        if bytes.len() > MAX_TAPP_I18N_RESOURCE_BYTES {
+            return Err(format!(
+                "Tapp i18n resource exceeds {MAX_TAPP_I18N_RESOURCE_BYTES} bytes: {filename}"
+            ));
+        }
+        let value = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .map_err(|_| format!("Tapp i18n resource is not valid JSON: {filename}"))?;
+        if !value.is_object() {
+            return Err(format!(
+                "Tapp i18n locale must contain a JSON object: {filename}"
+            ));
         }
     }
     Ok(())
@@ -1444,6 +1867,9 @@ fn append_directory_to_zip<W: std::io::Write + std::io::Seek>(
                 "Tapp export path escaped root",
             )
         })?;
+        if relative == FsPath::new(TAPP_INSTALL_STATE_FILE) {
+            continue;
+        }
         let filename = relative.to_string_lossy().replace('\\', "/");
         let mut file = std::fs::File::open(&path)?;
         let mut content = Vec::new();
@@ -1456,6 +1882,40 @@ fn append_directory_to_zip<W: std::io::Write + std::io::Seek>(
 }
 
 /// Tapp 清单
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TappCategory {
+    #[serde(rename = "ai")]
+    Ai,
+    #[serde(
+        rename = "data",
+        alias = "data-extension",
+        alias = "platform",
+        alias = "visualization"
+    )]
+    Data,
+    #[serde(rename = "developer", alias = "development", alias = "dev")]
+    Developer,
+    #[serde(rename = "game", alias = "games")]
+    Game,
+    #[serde(rename = "media", alias = "entertainment", alias = "music")]
+    Media,
+    #[serde(rename = "productivity")]
+    Productivity,
+    #[serde(rename = "social", alias = "communication")]
+    Social,
+    #[serde(
+        rename = "utility",
+        alias = "demo",
+        alias = "page",
+        alias = "test",
+        alias = "tool",
+        alias = "tools",
+        alias = "utilities",
+        alias = "widget"
+    )]
+    Utility,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TappManifest {
@@ -1489,8 +1949,9 @@ pub struct TappManifest {
     #[serde(default)]
     pub background_requirements: Option<Vec<String>>,
     pub settings: Option<Vec<TappSettingDef>>,
-    /// 应用分类（如 social, tool, game 等）
-    pub category: Option<String>,
+    /// 应用用途分类。旧安装可继续读取缺失字段；新安装和更新必须显式提供。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<TappCategory>,
     /// Page 模块加载顺序（文件名数组）
     /// 当使用 page/ 文件夹模块化开发时，指定加载顺序
     #[serde(default)]
@@ -1748,12 +2209,38 @@ pub struct TappWidgetDef {
     pub icon: Option<String>,
     pub default_size: String,
     pub sizes: Vec<String>,
-    pub category: Option<String>,
+    pub category: Option<TappWidgetCategory>,
     pub templates: Option<std::collections::HashMap<String, String>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub settings: Vec<TappSettingDef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refresh_policy: Option<TappWidgetRefreshPolicy>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TappWidgetCategory {
+    #[serde(rename = "stats")]
+    Stats,
+    #[serde(rename = "activity")]
+    Activity,
+    #[serde(rename = "visualization")]
+    Visualization,
+    #[serde(rename = "utility", alias = "tool")]
+    Utility,
+    #[serde(rename = "custom")]
+    Custom,
+}
+
+impl TappWidgetCategory {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Stats => "stats",
+            Self::Activity => "activity",
+            Self::Visualization => "visualization",
+            Self::Utility => "utility",
+            Self::Custom => "custom",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -1861,7 +2348,6 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/install", post(install_tapp))
         .route("/install-file", post(install_tapp_file))
         .route("/cleanup-temporary", post(cleanup_temporary_tapps))
-        .route("/recent", get(get_recent_tapps))
         .route("/{tapp_id}", delete(uninstall_tapp))
         .route("/{tapp_id}/update", post(update_tapp))
         .route("/{tapp_id}/start", post(start_tapp))
@@ -1898,9 +2384,10 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/{tapp_id}/resources", get(get_tapp_resources))
         .route("/{tapp_id}/export", get(export_tapp));
 
-    // Runtime Grant issuance also supports guests running an administrator-shared Tapp.
-    // The optional auth layer always injects a real or stable guest Claims value.
-    let runtime_grant_routes = Router::new()
+    // These routes need a stable subject but also support guests. The optional
+    // auth layer always injects a real or stable guest Claims value.
+    let optional_subject_routes = Router::new()
+        .route("/recent", get(get_recent_tapps))
         .route(
             "/{tapp_id}/runtime-grants",
             post(crate::api::tapp_runtime::issue_runtime_grant),
@@ -1916,7 +2403,7 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
     // 合并路由
     public_routes
         .merge(authenticated_routes)
-        .merge(runtime_grant_routes)
+        .merge(optional_subject_routes)
 }
 
 /// 获取 Tapp 列表
@@ -2088,6 +2575,25 @@ async fn fetch_public_store_url(url: &str) -> Result<reqwest::Response, String> 
         .map_err(|error| error.to_string())
 }
 
+fn validate_store_manifest_category(
+    app_info: &serde_json::Value,
+    manifest: &TappManifest,
+) -> Result<(), String> {
+    let index_category = app_info
+        .get("category")
+        .cloned()
+        .ok_or_else(|| "Store index app is missing category".to_string())?;
+    let index_category: TappCategory = serde_json::from_value(index_category)
+        .map_err(|_| "Store index app has an invalid category".to_string())?;
+    if Some(index_category) != manifest.category {
+        return Err(format!(
+            "Store index category does not match manifest category for {}",
+            manifest.id
+        ));
+    }
+    Ok(())
+}
+
 async fn fetch_from_store(
     db: &DatabaseConnection,
     store_source: &str,
@@ -2239,6 +2745,8 @@ async fn fetch_from_store(
             api_error(format!("Invalid manifest: {}", e)),
         )
     })?;
+    validate_store_manifest_category(app_info, &manifest)
+        .map_err(|error| (StatusCode::BAD_GATEWAY, api_error(error)))?;
 
     // 下载主代码
     let code_path = download
@@ -2659,24 +3167,30 @@ async fn install_tapp(
         })?;
     }
 
-    // 🎯 保存分离式 CSS（从请求直接传的）
-    if let Some(widget_css) = &req.widget_css {
-        let widget_css_path = tapp_dir.join("widget.css");
-        fs::write(&widget_css_path, widget_css).await.map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                api_error("Failed to save generated widget CSS"),
-            )
-        })?;
-    }
-    if let Some(page_css) = &req.page_css {
-        let page_css_path = tapp_dir.join("page.css");
-        fs::write(&page_css_path, page_css).await.map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                api_error("Failed to save generated page CSS"),
-            )
-        })?;
+    // Direct unified-mode installs may include frontend-compiled Tailwind CSS.
+    // It belongs to this staged generation and must never overwrite resources
+    // declared by a separated-mode/store package.
+    if req.source == "direct" && manifest.css_mode.as_deref() != Some("separated") {
+        if let Some(widget_css) = &req.widget_css {
+            write_tapp_resource(tapp_dir, "widget.css", widget_css)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save generated widget CSS"),
+                    )
+                })?;
+        }
+        if let Some(page_css) = &req.page_css {
+            write_tapp_resource(tapp_dir, "page.css", page_css)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save generated page CSS"),
+                    )
+                })?;
+        }
     }
 
     if let Some(page) = &page_template {
@@ -2744,7 +3258,9 @@ async fn install_tapp(
         }
     }
 
-    // 保存 manifest.json
+    let now = Utc::now().fixed_offset();
+
+    // 保存 manifest.json 和与数据库 updated_at 对应的安装代际标记。
     let manifest_json = serde_json::to_string_pretty(&manifest).unwrap_or_default();
     let staged_manifest_path = tapp_dir.join("manifest.json");
     fs::write(&staged_manifest_path, &manifest_json)
@@ -2755,6 +3271,12 @@ async fn install_tapp(
                 api_error("Failed to save manifest"),
             )
         })?;
+    write_install_generation(tapp_dir, now).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            api_error("Failed to save install state"),
+        )
+    })?;
 
     validate_installed_resources(&manifest, tapp_dir)
         .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
@@ -2820,7 +3342,6 @@ async fn install_tapp(
     let code_path = final_tapp_dir.join(&manifest.main);
 
     // 保存到数据库
-    let now = Utc::now().fixed_offset();
     let tapp = tapps::ActiveModel {
         id: NotSet,
         tapp_id: Set(manifest.id.clone()),
@@ -2871,6 +3392,11 @@ async fn install_tapp(
         ));
     }
     activated.commit().await;
+    // A newly published installation can immediately shadow an existing
+    // private copy with the same ID. No grant or declared-API cache produced
+    // from the formerly visible installation may survive that ownership swap.
+    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(&manifest.id).await;
+    crate::api::tapp_runtime::invalidate_tapp_apis_cache(&manifest.id).await;
 
     // Only the deterministic site-owner namespace is public and persistent.
     let is_temporary = !is_current_admin;
@@ -3083,6 +3609,14 @@ async fn install_tapp_file(
         )
     })?;
 
+    let now = Utc::now().fixed_offset();
+    write_install_generation(tapp_dir, now).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            api_error("Failed to save install state"),
+        )
+    })?;
+
     // Manifest 声明的入口和资源必须真实存在；避免安装成功后第一次运行才报错。
     validate_installed_resources(&manifest, tapp_dir)
         .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
@@ -3146,7 +3680,6 @@ async fn install_tapp_file(
     };
     let manifest_path = final_tapp_dir.join("manifest.json");
     let code_path = final_tapp_dir.join(&manifest.main);
-    let now = Utc::now().fixed_offset();
     let tapp = tapps::ActiveModel {
         id: NotSet,
         tapp_id: Set(manifest.id.clone()),
@@ -3197,6 +3730,10 @@ async fn install_tapp_file(
         ));
     }
     activated.commit().await;
+    // See the direct-install path above: publishing the same Tapp ID changes
+    // which installation is executable for every subject.
+    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(&manifest.id).await;
+    crate::api::tapp_runtime::invalidate_tapp_apis_cache(&manifest.id).await;
 
     // Only the deterministic site-owner namespace is public and persistent.
     let is_temporary = !is_current_admin;
@@ -3364,14 +3901,10 @@ async fn get_tapp_resources(
 
     // 读取自定义 CSS（统一模式或共享样式）
     let styles = if let Some(styles_file) = manifest.get("styles").and_then(|v| v.as_str()) {
-        match resource_path(&tapp_dir, styles_file) {
-            Some(styles_path) => fs::read_to_string(styles_path).await.ok(),
-            None => None,
-        }
+        read_tapp_text_resource(&tapp_dir, styles_file).await.ok()
     } else if !is_separated {
         // 尝试默认位置（仅在非分离模式下）
-        let default_path = tapp_dir.join("styles.css");
-        fs::read_to_string(&default_path).await.ok()
+        read_tapp_text_resource(&tapp_dir, "styles.css").await.ok()
     } else {
         None
     };
@@ -3379,14 +3912,12 @@ async fn get_tapp_resources(
     // 读取 Widget 专用 CSS（分离模式）
     let widget_styles = if is_separated {
         if let Some(widget_styles_file) = manifest.get("widgetStyles").and_then(|v| v.as_str()) {
-            match resource_path(&tapp_dir, widget_styles_file) {
-                Some(widget_styles_path) => fs::read_to_string(widget_styles_path).await.ok(),
-                None => None,
-            }
+            read_tapp_text_resource(&tapp_dir, widget_styles_file)
+                .await
+                .ok()
         } else {
             // 尝试默认位置
-            let default_path = tapp_dir.join("widget.css");
-            fs::read_to_string(&default_path).await.ok()
+            read_tapp_text_resource(&tapp_dir, "widget.css").await.ok()
         }
     } else {
         None
@@ -3395,14 +3926,12 @@ async fn get_tapp_resources(
     // 读取 Page 专用 CSS（分离模式）
     let page_styles = if is_separated {
         if let Some(page_styles_file) = manifest.get("pageStyles").and_then(|v| v.as_str()) {
-            match resource_path(&tapp_dir, page_styles_file) {
-                Some(page_styles_path) => fs::read_to_string(page_styles_path).await.ok(),
-                None => None,
-            }
+            read_tapp_text_resource(&tapp_dir, page_styles_file)
+                .await
+                .ok()
         } else {
             // 尝试默认位置
-            let default_path = tapp_dir.join("page.css");
-            fs::read_to_string(&default_path).await.ok()
+            read_tapp_text_resource(&tapp_dir, "page.css").await.ok()
         }
     } else {
         None
@@ -3411,14 +3940,10 @@ async fn get_tapp_resources(
     // 读取 Page HTML 模板
     let page_template =
         if let Some(page_file) = manifest.get("pageTemplate").and_then(|v| v.as_str()) {
-            match resource_path(&tapp_dir, page_file) {
-                Some(page_path) => fs::read_to_string(page_path).await.ok(),
-                None => None,
-            }
+            read_tapp_text_resource(&tapp_dir, page_file).await.ok()
         } else {
             // 尝试默认位置
-            let default_path = tapp_dir.join("page.html");
-            fs::read_to_string(&default_path).await.ok()
+            read_tapp_text_resource(&tapp_dir, "page.html").await.ok()
         };
 
     // 读取 Widget HTML 模板
@@ -3433,10 +3958,8 @@ async fn get_tapp_resources(
             if let Some(templates) = widget.get("templates").and_then(|v| v.as_object()) {
                 for (size, template_file) in templates {
                     if let Some(file_path) = template_file.as_str() {
-                        if let Some(full_path) = resource_path(&tapp_dir, file_path) {
-                            if let Ok(content) = fs::read_to_string(full_path).await {
-                                templates_for_widget.insert(size.clone(), content);
-                            }
+                        if let Ok(content) = read_tapp_text_resource(&tapp_dir, file_path).await {
+                            templates_for_widget.insert(size.clone(), content);
                         }
                     }
                 }
@@ -3452,8 +3975,7 @@ async fn get_tapp_resources(
     // 这里的 widget_css/page_css 是额外的预编译 Tailwind CSS
     let widget_css = if !is_separated {
         // 统一模式：尝试读取预编译的 widget.css
-        let widget_css_path = tapp_dir.join("widget.css");
-        fs::read_to_string(&widget_css_path).await.ok()
+        read_tapp_text_resource(&tapp_dir, "widget.css").await.ok()
     } else {
         // 分离模式：widget_styles 已经包含完整样式，不需要额外的 Tailwind CSS
         None
@@ -3461,8 +3983,7 @@ async fn get_tapp_resources(
 
     let page_css = if !is_separated {
         // 统一模式：尝试读取预编译的 page.css
-        let page_css_path = tapp_dir.join("page.css");
-        fs::read_to_string(&page_css_path).await.ok()
+        read_tapp_text_resource(&tapp_dir, "page.css").await.ok()
     } else {
         // 分离模式：page_styles 已经包含完整样式，不需要额外的 Tailwind CSS
         None
@@ -3470,16 +3991,28 @@ async fn get_tapp_resources(
 
     // 读取 i18n 翻译文件（可选）
     let i18n = {
-        let i18n_dir = tapp_dir.join("i18n");
-        if i18n_dir.is_dir() {
+        if let Some(i18n_dir) = regular_resource_directory(&tapp_dir, "i18n") {
             let mut translations: std::collections::HashMap<String, serde_json::Value> =
                 std::collections::HashMap::new();
             if let Ok(mut entries) = tokio::fs::read_dir(&i18n_dir).await {
                 while let Ok(Some(entry)) = entries.next_entry().await {
                     let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) == Some("json") {
-                        if let Some(lang) = path.file_stem().and_then(|s| s.to_str()) {
-                            if let Ok(content) = fs::read_to_string(&path).await {
+                    if entry
+                        .file_type()
+                        .await
+                        .is_ok_and(|file_type| file_type.is_file())
+                        && path.extension().and_then(|e| e.to_str()) == Some("json")
+                    {
+                        if let Some(filename) = entry.file_name().to_str().map(String::from) {
+                            if !is_safe_path_component(&filename) {
+                                continue;
+                            }
+                            let Some(lang) = filename.strip_suffix(".json") else {
+                                continue;
+                            };
+                            let relative = format!("i18n/{filename}");
+                            if let Ok(content) = read_tapp_text_resource(&tapp_dir, &relative).await
+                            {
                                 if let Ok(value) =
                                     serde_json::from_str::<serde_json::Value>(&content)
                                 {
@@ -3500,32 +4033,30 @@ async fn get_tapp_resources(
         }
     };
 
-    // 读取 page 模块文件（可选）
-    let page_modules = {
-        let page_dir = tapp_dir.join("page");
-        if page_dir.is_dir() {
-            let mut modules: std::collections::HashMap<String, String> =
-                std::collections::HashMap::new();
-            if let Ok(mut entries) = tokio::fs::read_dir(&page_dir).await {
-                while let Ok(Some(entry)) = entries.next_entry().await {
-                    let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) == Some("js") {
-                        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                            if let Ok(content) = fs::read_to_string(&path).await {
-                                modules.insert(name.to_string(), content);
-                            }
-                        }
-                    }
-                }
-            }
-            if modules.is_empty() {
-                None
-            } else {
-                Some(modules)
-            }
-        } else {
-            None
+    // Only DB-Manifest-declared modules are executable. Directory discovery
+    // would let undeclared files injected after installation enter the runtime
+    // resource response and would make module membership depend on disk order.
+    let page_module_order = manifest
+        .get("pageModules")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str().map(String::from))
+                .collect::<Vec<_>>()
+        });
+    let page_modules = if let Some(order) = &page_module_order {
+        let mut modules = std::collections::HashMap::new();
+        for name in order {
+            let relative = format!("page/{name}");
+            let content = read_tapp_text_resource(&tapp_dir, &relative)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            modules.insert(name.clone(), content);
         }
+        (!modules.is_empty()).then_some(modules)
+    } else {
+        None
     };
 
     Ok(Json(TappResourcesResponse {
@@ -3543,37 +4074,10 @@ async fn get_tapp_resources(
         page_template,
         css_mode,
         i18n,
-        page_module_order: page_modules.as_ref().and_then(|_| {
-            // 从磁盘 manifest.json 读取 pageModules 加载顺序
-            // 优先使用磁盘版本（始终最新），DB manifest 可能缺少此字段
-            let manifest_path = tapp_dir.join("manifest.json");
-            std::fs::read_to_string(&manifest_path)
-                .ok()
-                .and_then(|content| {
-                    serde_json::from_str::<serde_json::Value>(&content)
-                        .ok()
-                        .and_then(|v| {
-                            v.get("pageModules")
-                                .and_then(|arr| arr.as_array())
-                                .map(|arr| {
-                                    arr.iter()
-                                        .filter_map(|v| v.as_str().map(String::from))
-                                        .collect()
-                                })
-                        })
-                })
-                .or_else(|| {
-                    // 回退到 DB manifest
-                    manifest
-                        .get("pageModules")
-                        .and_then(|arr| arr.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(String::from))
-                                .collect()
-                        })
-                })
-        }),
+        // DB manifest and the activated resource directory are committed as one
+        // lifecycle operation; do not let a later on-disk manifest mutation
+        // change executable module order.
+        page_module_order: page_modules.as_ref().and(page_module_order),
         page_modules,
     }))
 }
@@ -3713,38 +4217,20 @@ async fn record_user_activity(
     tapp_id: &str,
     now: chrono::DateTime<chrono::FixedOffset>,
 ) -> Result<(), StatusCode> {
-    // 尝试查找现有记录
-    let existing = tapp_user_activities::Entity::find()
-        .filter(tapp_user_activities::Column::UserId.eq(user_id))
-        .filter(tapp_user_activities::Column::TappId.eq(tapp_id))
-        .one(db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    if let Some(record) = existing {
-        // 更新现有记录
-        let mut active: tapp_user_activities::ActiveModel = record.clone().into();
-        active.last_run_at = Set(now);
-        active.run_count = Set(record.run_count + 1);
-        active
-            .update(db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    } else {
-        // 插入新记录
-        let new_record = tapp_user_activities::ActiveModel {
-            id: NotSet,
-            user_id: Set(user_id),
-            tapp_id: Set(tapp_id.to_string()),
-            last_run_at: Set(now),
-            run_count: Set(1),
-        };
-        new_record
-            .insert(db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    }
-
+    // One atomic upsert avoids duplicate-key failures when the same Tapp is
+    // started concurrently from multiple tabs or backend replicas.
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"INSERT INTO tapp_user_activities
+               (user_id, tapp_id, last_run_at, run_count)
+           VALUES ($1, $2, $3, 1)
+           ON CONFLICT (user_id, tapp_id) DO UPDATE SET
+               last_run_at = EXCLUDED.last_run_at,
+               run_count = tapp_user_activities.run_count + 1"#,
+        vec![user_id.into(), tapp_id.into(), now.into()],
+    ))
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(())
 }
 
@@ -3852,7 +4338,6 @@ async fn get_recent_tapps(
     use sea_orm::QueryOrder;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-    let admin_id = get_admin_user_id(&db).await?;
     let limit = query.limit.clamp(1, 50) as u64; // 限制在 1-50 之间
 
     // 获取用户活动记录
@@ -3862,6 +4347,14 @@ async fn get_recent_tapps(
         .all(&db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Guests cannot start a Tapp and therefore have no activity rows. Return
+    // an honest empty result without requiring a configured site owner.
+    if activities.is_empty() {
+        return Ok(Json(ApiResponse::success(Vec::new())));
+    }
+
+    let admin_id = get_admin_user_id(&db).await?;
 
     // 获取管理员的所有 Tapp（用于查找 Tapp 详情）
     let admin_tapps = tapps::Entity::find()
@@ -3987,6 +4480,7 @@ async fn do_uninstall_tapp(
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
     let user_id = tapp.user_id;
     let tapp_id = &tapp.tapp_id;
+    let is_public_install = find_admin_user_id(db).await? == Some(user_id);
 
     let txn = db
         .begin()
@@ -4029,12 +4523,41 @@ async fn do_uninstall_tapp(
     };
 
     let cleanup_result: Result<(), StatusCode> = async {
-        tapp_widgets::Entity::delete_many()
-            .filter(tapp_widgets::Column::UserId.eq(user_id))
-            .filter(tapp_widgets::Column::TappId.eq(tapp_id))
-            .exec(&txn)
+        if is_public_install {
+            txn.execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"DELETE FROM tapp_widgets AS widget
+                   WHERE widget.tapp_id = $1
+                     AND (
+                       widget.user_id = $2
+                       OR widget.config->>'installationOwnerId' = $3
+                       OR (
+                         widget.config->>'source' = 'runtime'
+                         AND NOT EXISTS (
+                           SELECT 1 FROM tapps AS private_tapp
+                           WHERE private_tapp.user_id = widget.user_id
+                             AND private_tapp.tapp_id = widget.tapp_id
+                             AND private_tapp.id <> $4
+                         )
+                       )
+                     )"#,
+                vec![
+                    tapp_id.clone().into(),
+                    user_id.into(),
+                    user_id.to_string().into(),
+                    tapp.id.into(),
+                ],
+            ))
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        } else {
+            tapp_widgets::Entity::delete_many()
+                .filter(tapp_widgets::Column::UserId.eq(user_id))
+                .filter(tapp_widgets::Column::TappId.eq(tapp_id))
+                .exec(&txn)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
 
         if !keep_data {
             tapp_storage::Entity::delete_many()
@@ -4045,21 +4568,27 @@ async fn do_uninstall_tapp(
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         }
 
+        let (task_scope, task_values) = if is_public_install {
+            ("tapp_id = $1", vec![tapp_id.clone().into()])
+        } else {
+            (
+                "user_id = $1 AND tapp_id = $2",
+                vec![user_id.into(), tapp_id.clone().into()],
+            )
+        };
         txn.execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"DELETE FROM tapp_task_executions
-           WHERE scheduled_task_id IN (
-               SELECT id FROM tapp_scheduled_tasks
-               WHERE user_id = $1 AND tapp_id = $2
-           )"#,
-            vec![user_id.into(), tapp_id.clone().into()],
+            format!(
+                "DELETE FROM tapp_task_executions WHERE scheduled_task_id IN (SELECT id FROM tapp_scheduled_tasks WHERE {task_scope})"
+            ),
+            task_values.clone(),
         ))
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         txn.execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "DELETE FROM tapp_scheduled_tasks WHERE user_id = $1 AND tapp_id = $2",
-            vec![user_id.into(), tapp_id.clone().into()],
+            format!("DELETE FROM tapp_scheduled_tasks WHERE {task_scope}"),
+            task_values,
         ))
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -4067,6 +4596,19 @@ async fn do_uninstall_tapp(
             .exec(&txn)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        txn.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"DELETE FROM tapp_user_activities AS activity
+               WHERE activity.tapp_id = $1
+                 AND NOT EXISTS (
+                   SELECT 1 FROM tapps AS installed
+                   WHERE installed.user_id = activity.user_id
+                     AND installed.tapp_id = activity.tapp_id
+                 )"#,
+            vec![tapp_id.clone().into()],
+        ))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         Ok(())
     }
     .await;
@@ -4214,8 +4756,8 @@ async fn update_tapp(
                 manifest,
                 code,
                 req_styles,
-                req_widget_css,
-                req_page_css,
+                None,
+                None,
                 req_page_template,
                 req_widget_templates,
                 req_i18n,
@@ -4321,6 +4863,31 @@ async fn update_tapp(
         })?;
     }
 
+    // Keep generated unified-mode CSS separate from Manifest-declared raw
+    // widgetStyles/pageStyles, matching the install and resource-read paths.
+    if source == "direct" && manifest.css_mode.as_deref() != Some("separated") {
+        if let Some(widget_css) = &req_widget_css {
+            write_tapp_resource(tapp_dir, "widget.css", widget_css)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save generated widget CSS"),
+                    )
+                })?;
+        }
+        if let Some(page_css) = &req_page_css {
+            write_tapp_resource(tapp_dir, "page.css", page_css)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Failed to save generated page CSS"),
+                    )
+                })?;
+        }
+    }
+
     if let Some(page) = &page_template {
         let path = manifest.page_template.as_deref().unwrap_or("page.html");
         write_tapp_resource(tapp_dir, path, page)
@@ -4384,7 +4951,9 @@ async fn update_tapp(
         }
     }
 
-    // 更新 manifest.json
+    let now = Utc::now().fixed_offset();
+
+    // 更新 manifest.json 和与数据库 updated_at 对应的安装代际标记。
     let manifest_json = serde_json::to_string_pretty(&manifest).unwrap_or_default();
     let staged_manifest_path = tapp_dir.join("manifest.json");
     fs::write(&staged_manifest_path, &manifest_json)
@@ -4395,6 +4964,12 @@ async fn update_tapp(
                 api_error("Failed to save manifest"),
             )
         })?;
+    write_install_generation(tapp_dir, now).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            api_error("Failed to save install state"),
+        )
+    })?;
 
     validate_installed_resources(&manifest, tapp_dir)
         .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
@@ -4462,7 +5037,6 @@ async fn update_tapp(
     let code_path = final_tapp_dir.join(&manifest.main);
 
     // 更新数据库记录
-    let now = Utc::now().fixed_offset();
     let mut active: tapps::ActiveModel = existing_tapp.clone().into();
     active.name = Set(manifest.name.clone());
     active.version = Set(manifest.version.clone());
@@ -4571,21 +5145,66 @@ async fn cleanup_temporary_tapps(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let count = user_tapps.len() as i32;
-
     // 删除每个 Tapp（临时 Tapp 不保留数据）
+    let mut deleted = 0;
     for tapp in &user_tapps {
-        let _ = do_uninstall_tapp(&db, tapp, false).await;
+        let _ = do_uninstall_tapp(&db, tapp, false).await?;
+        deleted += 1;
     }
 
-    Ok(Json(ApiResponse::success(count)))
+    Ok(Json(ApiResponse::success(deleted)))
 }
 
 /// 列出用户所有已注册的小组件（跨所有 Tapp）
 ///
 /// 权限模型：
-/// - 游客：只返回管理员的小组件
-/// - 普通用户：返回管理员的小组件 + 用户临时安装的 Tapp 的小组件
+/// - 游客：只返回公共安装的 Manifest Widget
+/// - 已登录用户：再返回当前主体、当前可见安装下的动态 Widget
+fn widget_source(config: &serde_json::Value) -> Option<&str> {
+    config.get("source").and_then(serde_json::Value::as_str)
+}
+
+fn widget_installation_owner(config: &serde_json::Value) -> Option<i32> {
+    config
+        .get("installationOwnerId")
+        .and_then(serde_json::Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok())
+}
+
+fn runtime_widget_belongs_to_installation(
+    widget: &tapp_widgets::Model,
+    subject_id: i32,
+    installation_owner_id: i32,
+) -> bool {
+    widget_source(&widget.config) == Some("runtime")
+        && (widget_installation_owner(&widget.config) == Some(installation_owner_id)
+            // Compatibility for runtime Widgets created before owner binding:
+            // they are safe only when subject and installation owner coincide.
+            || (widget_installation_owner(&widget.config).is_none()
+                && subject_id == installation_owner_id))
+}
+
+fn tapp_widget_response(widget: &tapp_widgets::Model, is_admin_widget: bool) -> serde_json::Value {
+    serde_json::json!({
+        "id": widget.widget_id,
+        "tappId": widget.tapp_id,
+        "config": {
+            "id": widget.widget_id.strip_prefix(&format!("tapp.{}.", widget.tapp_id)).unwrap_or(&widget.widget_id),
+            "name": widget.name,
+            "description": widget.description,
+            "icon": widget.icon,
+            "defaultSize": widget.default_size,
+            "sizes": widget.sizes,
+            "category": widget.category,
+            "settings": widget.config.get("settings").cloned().unwrap_or_else(|| serde_json::json!([])),
+            "refreshPolicy": widget.config.get("refreshPolicy").cloned().unwrap_or(serde_json::Value::Null),
+        },
+        "instanceCount": 0,
+        "registeredAt": widget.registered_at.to_rfc3339(),
+        "isAdminWidget": is_admin_widget,
+    })
+}
+
 async fn list_all_widgets(
     State(db): State<DatabaseConnection>,
     headers: HeaderMap,
@@ -4608,7 +5227,9 @@ async fn list_all_widgets(
     };
 
     let mut items: Vec<serde_json::Value> = Vec::new();
-    // 1. 获取管理员的小组件
+    let mut public_manifest_widget_ids = std::collections::HashSet::new();
+    // 1. Public owner Manifest Widgets are shared. Runtime Widgets owned by
+    // the site-owner subject remain private to that subject.
     let admin_widgets = if let Some(admin_id) = admin_id {
         tapp_widgets::Entity::find()
             .filter(tapp_widgets::Column::UserId.eq(admin_id))
@@ -4619,58 +5240,53 @@ async fn list_all_widgets(
         Vec::new()
     };
 
-    for w in admin_widgets {
-        items.push(serde_json::json!({
-            "id": w.widget_id,
-            "tappId": w.tapp_id,
-            "config": {
-                "id": w.widget_id.strip_prefix(&format!("tapp.{}.", w.tapp_id)).unwrap_or(&w.widget_id),
-                "name": w.name,
-                "description": w.description,
-                "icon": w.icon,
-                "defaultSize": w.default_size,
-                "sizes": w.sizes,
-                "category": w.category,
-                "settings": w.config.get("settings").cloned().unwrap_or_else(|| serde_json::json!([])),
-                "refreshPolicy": w.config.get("refreshPolicy").cloned().unwrap_or(serde_json::Value::Null),
-            },
-            "instanceCount": 0,
-            "registeredAt": w.registered_at.to_rfc3339(),
-            "isAdminWidget": true,
-        }));
+    for widget in admin_widgets {
+        if widget_source(&widget.config) == Some("runtime") {
+            if user_id == admin_id
+                && admin_id.is_some_and(|owner_id| {
+                    runtime_widget_belongs_to_installation(&widget, owner_id, owner_id)
+                })
+            {
+                items.push(tapp_widget_response(&widget, false));
+            }
+            continue;
+        }
+        public_manifest_widget_ids.insert(widget.widget_id.clone());
+        items.push(tapp_widget_response(&widget, true));
     }
 
-    // 2. 如果是已登录的普通用户，还要获取自己临时安装的 Tapp 的小组件
+    // 2. Subject-owned Widgets are visible only when they belong to the
+    // installation that currently wins resolution for this subject.
     if let Some(uid) = user_id {
         if Some(uid) != admin_id {
+            let user_tapp_ids: std::collections::HashSet<String> = tapps::Entity::find()
+                .filter(tapps::Column::UserId.eq(uid))
+                .all(&db)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                .into_iter()
+                .map(|tapp| tapp.tapp_id)
+                .collect();
             let user_widgets = tapp_widgets::Entity::find()
                 .filter(tapp_widgets::Column::UserId.eq(uid))
                 .all(&db)
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-            for w in user_widgets {
-                if admin_tapp_ids.contains(&w.tapp_id) {
-                    continue;
+            for widget in user_widgets {
+                let visible = if admin_tapp_ids.contains(&widget.tapp_id) {
+                    admin_id.is_some_and(|owner_id| {
+                        runtime_widget_belongs_to_installation(&widget, uid, owner_id)
+                            && !public_manifest_widget_ids.contains(&widget.widget_id)
+                    })
+                } else {
+                    user_tapp_ids.contains(&widget.tapp_id)
+                        && (widget_source(&widget.config) != Some("runtime")
+                            || runtime_widget_belongs_to_installation(&widget, uid, uid))
+                };
+                if visible {
+                    items.push(tapp_widget_response(&widget, false));
                 }
-                items.push(serde_json::json!({
-                    "id": w.widget_id,
-                    "tappId": w.tapp_id,
-                    "config": {
-                        "id": w.widget_id.strip_prefix(&format!("tapp.{}.", w.tapp_id)).unwrap_or(&w.widget_id),
-                        "name": w.name,
-                        "description": w.description,
-                        "icon": w.icon,
-                        "defaultSize": w.default_size,
-                        "sizes": w.sizes,
-                        "category": w.category,
-                        "settings": w.config.get("settings").cloned().unwrap_or_else(|| serde_json::json!([])),
-                        "refreshPolicy": w.config.get("refreshPolicy").cloned().unwrap_or(serde_json::Value::Null),
-                    },
-                    "instanceCount": 0,
-                    "registeredAt": w.registered_at.to_rfc3339(),
-                    "isAdminWidget": false,
-                }));
             }
         }
     }
@@ -4687,7 +5303,7 @@ pub struct RegisterWidgetRequest {
     pub icon: Option<String>,
     pub default_size: String,
     pub sizes: Vec<String>,
-    pub category: Option<String>,
+    pub category: Option<TappWidgetCategory>,
     #[serde(default)]
     pub settings: Vec<TappSettingDef>,
     #[serde(default)]
@@ -4738,10 +5354,31 @@ async fn reconcile_manifest_widgets(
 
     for widget in desired_widgets {
         let widget_id = format!("tapp.{tapp_id}.{}", widget.id);
+        // A runtime Widget belongs to one concrete installation even when its
+        // subject differs from the installation owner (the public-install
+        // case). Once that installation declares the same ID in its manifest,
+        // remove only runtime rows bound to this owner; private same-ID rows
+        // belonging to another installation must survive.
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"DELETE FROM tapp_widgets
+               WHERE widget_id = $1
+                 AND user_id <> $2
+                 AND config->>'source' = 'runtime'
+                 AND config->>'installationOwnerId' = $3"#,
+            vec![
+                widget_id.clone().into(),
+                user_id.into(),
+                user_id.to_string().into(),
+            ],
+        ))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         let runtime_config = serde_json::json!({
             "settings": &widget.settings,
             "refreshPolicy": &widget.refresh_policy,
             "source": "manifest",
+            "installationOwnerId": user_id,
         });
         let existing = tapp_widgets::Entity::find()
             .filter(tapp_widgets::Column::UserId.eq(user_id))
@@ -4756,7 +5393,9 @@ async fn reconcile_manifest_widgets(
             active.icon = Set(widget.icon.clone());
             active.default_size = Set(widget.default_size.clone());
             active.sizes = Set(serde_json::to_value(&widget.sizes).unwrap_or_default());
-            active.category = Set(widget.category.clone());
+            active.category = Set(widget
+                .category
+                .map(|category| category.as_str().to_string()));
             active.config = Set(runtime_config);
             active
                 .update(db)
@@ -4773,7 +5412,9 @@ async fn reconcile_manifest_widgets(
                 icon: Set(widget.icon.clone()),
                 default_size: Set(widget.default_size.clone()),
                 sizes: Set(serde_json::to_value(&widget.sizes).unwrap_or_default()),
-                category: Set(widget.category.clone()),
+                category: Set(widget
+                    .category
+                    .map(|category| category.as_str().to_string())),
                 config: Set(runtime_config),
                 registered_at: Set(Utc::now().fixed_offset()),
             }
@@ -4799,6 +5440,7 @@ async fn register_widget(
         .map_err(|(status, _)| status)?;
     let user_id =
         authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::WidgetRegister).await?;
+    let installation_owner_id = runtime_grant.owner_id();
     if !is_safe_path_component(&req.id)
         || req.name.is_empty()
         || req.name.len() > 255
@@ -4814,19 +5456,71 @@ async fn register_widget(
     if let Some(policy) = &req.refresh_policy {
         validate_widget_refresh_policy(policy, &req.id).map_err(|_| StatusCode::BAD_REQUEST)?;
     }
+    let widget_id = format!("tapp.{}.{}", tapp_id, req.id);
+    let site_owner_id = find_admin_user_id(&db).await?;
+    let txn = db
+        .begin()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Serialize the visibility check, per-installation count and insert with
+    // install/update/uninstall across all backend replicas.
+    lock_tapp_lifecycle(&txn, &tapp_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let public_install_exists = if let Some(site_owner_id) = site_owner_id {
+        tapps::Entity::find()
+            .filter(tapps::Column::UserId.eq(site_owner_id))
+            .filter(tapps::Column::TappId.eq(&tapp_id))
+            .one(&txn)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .is_some()
+    } else {
+        false
+    };
+    let visible_owner_id = if public_install_exists {
+        site_owner_id.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?
+    } else {
+        user_id
+    };
+    if visible_owner_id != installation_owner_id {
+        txn.rollback().await.ok();
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let installed_tapp = tapps::Entity::find()
+        .filter(tapps::Column::UserId.eq(installation_owner_id))
+        .filter(tapps::Column::TappId.eq(&tapp_id))
+        .one(&txn)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::FORBIDDEN)?;
+    if installed_tapp
+        .manifest
+        .get("widgets")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|widgets| {
+            widgets.iter().any(|widget| {
+                widget.get("id").and_then(serde_json::Value::as_str) == Some(req.id.as_str())
+            })
+        })
+    {
+        return Err(StatusCode::CONFLICT);
+    }
     let runtime_config = serde_json::json!({
         "settings": &req.settings,
         "refreshPolicy": &req.refresh_policy,
         "source": "runtime",
+        "installationOwnerId": installation_owner_id,
     });
-    let widget_id = format!("tapp.{}.{}", tapp_id, req.id);
     let now = Utc::now().fixed_offset();
 
     // 检查是否已存在
     let existing = tapp_widgets::Entity::find()
         .filter(tapp_widgets::Column::UserId.eq(user_id))
         .filter(tapp_widgets::Column::WidgetId.eq(&widget_id))
-        .one(&db)
+        .one(&txn)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -4839,6 +5533,9 @@ async fn register_widget(
         {
             return Err(StatusCode::CONFLICT);
         }
+        if !runtime_widget_belongs_to_installation(&item, user_id, installation_owner_id) {
+            return Err(StatusCode::CONFLICT);
+        }
         // 更新现有
         let mut active: tapp_widgets::ActiveModel = item.into();
         active.name = Set(req.name.clone());
@@ -4846,20 +5543,31 @@ async fn register_widget(
         active.icon = Set(req.icon.clone());
         active.default_size = Set(req.default_size.clone());
         active.sizes = Set(serde_json::to_value(&req.sizes).unwrap());
-        active.category = Set(req.category.clone());
+        active.category = Set(req.category.map(|category| category.as_str().to_string()));
         active.config = Set(runtime_config.clone());
         active
-            .update(&db)
+            .update(&txn)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     } else {
-        let widget_count = tapp_widgets::Entity::find()
+        let manifest_widget_count = installed_tapp
+            .manifest
+            .get("widgets")
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, Vec::len);
+        let subject_widgets = tapp_widgets::Entity::find()
             .filter(tapp_widgets::Column::UserId.eq(user_id))
             .filter(tapp_widgets::Column::TappId.eq(&tapp_id))
-            .count(&db)
+            .all(&txn)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        if widget_count >= MAX_WIDGETS_PER_TAPP as u64 {
+        let runtime_widget_count = subject_widgets
+            .iter()
+            .filter(|widget| {
+                runtime_widget_belongs_to_installation(widget, user_id, installation_owner_id)
+            })
+            .count();
+        if manifest_widget_count + runtime_widget_count >= MAX_WIDGETS_PER_TAPP {
             return Err(StatusCode::BAD_REQUEST);
         }
         // 创建新的
@@ -4873,15 +5581,18 @@ async fn register_widget(
             icon: Set(req.icon.clone()),
             default_size: Set(req.default_size.clone()),
             sizes: Set(serde_json::to_value(&req.sizes).unwrap()),
-            category: Set(req.category.clone()),
+            category: Set(req.category.map(|category| category.as_str().to_string())),
             config: Set(runtime_config),
             registered_at: Set(now),
         };
         widget
-            .insert(&db)
+            .insert(&txn)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
+    txn.commit()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(ApiResponse::success(serde_json::json!({
         "id": widget_id,
@@ -4903,6 +5614,7 @@ async fn unregister_widget(
         .map_err(|(status, _)| status)?;
     let user_id =
         authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::WidgetRegister).await?;
+    let installation_owner_id = runtime_grant.owner_id();
     let full_widget_id = if widget_id.starts_with("tapp.") {
         let expected_prefix = format!("tapp.{}.", tapp_id);
         if !widget_id.starts_with(&expected_prefix) {
@@ -4919,14 +5631,13 @@ async fn unregister_widget(
         .one(&db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if widget.as_ref().is_some_and(|widget| {
-        widget
-            .config
-            .get("source")
-            .and_then(serde_json::Value::as_str)
-            == Some("manifest")
-    }) {
-        return Err(StatusCode::CONFLICT);
+    if let Some(widget) = &widget {
+        if widget_source(&widget.config) == Some("manifest") {
+            return Err(StatusCode::CONFLICT);
+        }
+        if !runtime_widget_belongs_to_installation(widget, user_id, installation_owner_id) {
+            return Err(StatusCode::NOT_FOUND);
+        }
     }
     tapp_widgets::Entity::delete_many()
         .filter(tapp_widgets::Column::UserId.eq(user_id))
@@ -5580,13 +6291,15 @@ async fn update_separated_css(
 mod manifest_tests {
     use super::{
         append_directory_to_zip, archive_entry_path, canonical_installation_owner_id,
-        installation_conflict_owner_ids, tapp_dir_for, tapp_setting_value_is_valid,
-        validate_installed_resources, validate_resource_path, validate_tapp_archive,
-        validate_tapp_id, validate_tapp_manifest, validate_widget_template_contents,
-        widget_template_path, TappDirStage, TappManifest, TappSettingDef, TappStorageAccess,
-        TappWidgetDef, WidgetTemplateContents,
+        installation_conflict_owner_ids, recover_tapp_directory, tapp_dir_for,
+        tapp_setting_value_is_valid, validate_installed_resources, validate_resource_path,
+        validate_store_manifest_category, validate_tapp_archive, validate_tapp_id,
+        validate_tapp_manifest, validate_widget_template_contents, widget_template_path,
+        write_install_generation, RegisterWidgetRequest, TappCategory, TappDirStage, TappManifest,
+        TappSettingDef, TappStorageAccess, TappWidgetCategory, TappWidgetDef,
+        WidgetTemplateContents,
     };
-    use crate::models::entities::tapps;
+    use crate::models::entities::{tapp_widgets, tapps};
     use crate::services::permission_service::UserRole;
     use serde_json::json;
 
@@ -5714,6 +6427,69 @@ mod manifest_tests {
         tokio::fs::remove_dir_all(root).await.unwrap();
     }
 
+    #[tokio::test]
+    async fn startup_recovery_restores_database_generation_after_interrupted_update() {
+        let root = std::env::temp_dir().join(format!(
+            "myriad-tapp-stage-recovery-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let live = root.join("com.example.app");
+        let old_manifest = json!({
+            "id": "com.example.app",
+            "version": "1.0.0",
+            "main": "main.js"
+        });
+        let new_manifest = json!({
+            "id": "com.example.app",
+            "version": "1.0.0",
+            "main": "main.js"
+        });
+        let old_generation = chrono::Utc::now().fixed_offset();
+        let new_generation = old_generation + chrono::Duration::seconds(1);
+
+        tokio::fs::create_dir_all(&live).await.unwrap();
+        tokio::fs::write(live.join("main.js"), "old").await.unwrap();
+        tokio::fs::write(
+            live.join("manifest.json"),
+            serde_json::to_vec(&old_manifest).unwrap(),
+        )
+        .await
+        .unwrap();
+        write_install_generation(&live, old_generation).unwrap();
+
+        let stage = TappDirStage::create(&live).await.unwrap();
+        tokio::fs::write(stage.path().join("main.js"), "new")
+            .await
+            .unwrap();
+        tokio::fs::write(
+            stage.path().join("manifest.json"),
+            serde_json::to_vec(&new_manifest).unwrap(),
+        )
+        .await
+        .unwrap();
+        write_install_generation(stage.path(), new_generation).unwrap();
+        let _interrupted = stage.activate(&live).await.unwrap();
+
+        assert_eq!(
+            tokio::fs::read_to_string(live.join("main.js"))
+                .await
+                .unwrap(),
+            "new"
+        );
+        assert!(recover_tapp_directory(&live, &old_manifest, old_generation).unwrap());
+        assert_eq!(
+            tokio::fs::read_to_string(live.join("main.js"))
+                .await
+                .unwrap(),
+            "old"
+        );
+        assert!(super::lifecycle_artifact_directories(&live)
+            .unwrap()
+            .is_empty());
+
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
     #[test]
     fn preserves_and_validates_data_exchange_during_manifest_round_trip() {
         let manifest: TappManifest = serde_json::from_value(json!({
@@ -5721,6 +6497,7 @@ mod manifest_tests {
             "name": "Exchange app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "utility",
             "permissions": ["storage"],
             "dataExchange": {
                 "exports": [{
@@ -5760,6 +6537,7 @@ mod manifest_tests {
             "name": "AI app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "ai",
             "permissions": ["ai:generate", "platform:read"],
             "ai": {
                 "protocolVersion": 2,
@@ -5784,6 +6562,7 @@ mod manifest_tests {
             "name": "AI builtin app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "ai",
             "permissions": ["ai:generate"],
             "apis": {
                 "summary": {
@@ -5814,6 +6593,7 @@ mod manifest_tests {
             "name": "AI app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "ai",
             "permissions": [],
             "ai": {
                 "protocolVersion": 2,
@@ -5835,6 +6615,7 @@ mod manifest_tests {
             "name": "Event app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "media",
             "permissions": ["event:publish", "event:subscribe"],
             "events": {
                 "publish": ["tapp.com.example.player.track.changed"],
@@ -5858,6 +6639,7 @@ mod manifest_tests {
             "name": "Event app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "media",
             "permissions": ["event:publish"],
             "events": {
                 "publish": ["tapp.com.example.other.track.changed"]
@@ -5875,6 +6657,7 @@ mod manifest_tests {
             "name": "Agent app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "productivity",
             "permissions": [],
             "agent": {
                 "protocolVersion": 2,
@@ -5901,6 +6684,7 @@ mod manifest_tests {
             "name": "Exchange app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "data",
             "permissions": [],
             "dataExchange": {
                 "exports": [{
@@ -5922,6 +6706,7 @@ mod manifest_tests {
             "name": "Widget app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "utility",
             "permissions": ["widget:register"],
             "widgets": [{
                 "id": "summary",
@@ -5978,6 +6763,7 @@ mod manifest_tests {
                 "name": "Invalid widget",
                 "version": "1.0.0",
                 "main": "main.js",
+                "category": "utility",
                 "permissions": ["widget:register"],
                 "widgets": [widget]
             }))
@@ -6040,6 +6826,7 @@ mod manifest_tests {
             "name": "Compatibility gate",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "utility",
             "permissions": [],
             "minSystemVersion": env!("CARGO_PKG_VERSION")
         }))
@@ -6067,6 +6854,7 @@ mod manifest_tests {
                 "name": "Author metadata",
                 "version": "1.0.0",
                 "main": "main.js",
+                "category": "utility",
                 "permissions": [],
                 "author": author
             }))
@@ -6102,6 +6890,7 @@ mod manifest_tests {
                 "version": "1.0.0-beta.1",
                 "description": "Valid metadata",
                 "main": "main.js",
+                "category": "utility",
                 "permissions": [],
                 "themeColor": "#12ABef",
                 "homepage": "https://example.com/app",
@@ -6136,6 +6925,7 @@ mod manifest_tests {
             "name": "Widget permission",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "utility",
             "permissions": [],
             "widgets": [{
                 "id": "summary",
@@ -6161,6 +6951,174 @@ mod manifest_tests {
         }))
         .unwrap();
         assert!(validate_tapp_manifest(&protected_api_without_permission).is_err());
+    }
+
+    #[test]
+    fn normalizes_legacy_tapp_categories_and_rejects_unknown_values() {
+        let parse = |category: Option<&str>| {
+            let mut value = json!({
+                "id": "com.example.category",
+                "name": "Category contract",
+                "version": "1.0.0",
+                "main": "main.js",
+                "permissions": []
+            });
+            if let Some(category) = category {
+                value["category"] = json!(category);
+            }
+            serde_json::from_value::<TappManifest>(value)
+        };
+
+        let legacy_game = parse(Some("games")).unwrap();
+        assert_eq!(legacy_game.category, Some(TappCategory::Game));
+        assert_eq!(
+            serde_json::to_value(legacy_game).unwrap()["category"],
+            json!("game")
+        );
+
+        let legacy_tool = parse(Some("tool")).unwrap();
+        assert_eq!(legacy_tool.category, Some(TappCategory::Utility));
+        assert_eq!(
+            serde_json::to_value(legacy_tool).unwrap()["category"],
+            json!("utility")
+        );
+
+        let missing = parse(None).unwrap();
+        assert_eq!(missing.category, None);
+        assert!(validate_tapp_manifest(&missing).is_err());
+        assert!(serde_json::to_value(missing)
+            .unwrap()
+            .get("category")
+            .is_none());
+
+        assert!(parse(Some("uncategorized")).is_err());
+    }
+
+    #[test]
+    fn normalizes_and_restricts_widget_categories_across_manifest_and_runtime() {
+        let legacy_manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.widget-category",
+            "name": "Widget category",
+            "version": "1.0.0",
+            "main": "main.js",
+            "category": "utility",
+            "permissions": ["widget:register"],
+            "category": "utility",
+            "widgets": [{
+                "id": "summary",
+                "name": "Summary",
+                "defaultSize": "2x2",
+                "sizes": ["2x2"],
+                "category": "tool"
+            }]
+        }))
+        .unwrap();
+        assert_eq!(
+            legacy_manifest.widgets.as_ref().unwrap()[0].category,
+            Some(TappWidgetCategory::Utility)
+        );
+        assert_eq!(
+            serde_json::to_value(legacy_manifest).unwrap()["widgets"][0]["category"],
+            json!("utility")
+        );
+
+        let runtime_payload = json!({
+            "id": "summary",
+            "name": "Summary",
+            "default_size": "2x2",
+            "sizes": ["2x2"],
+            "category": "activity"
+        });
+        let runtime: RegisterWidgetRequest =
+            serde_json::from_value(runtime_payload.clone()).unwrap();
+        assert_eq!(runtime.category, Some(TappWidgetCategory::Activity));
+
+        let mut invalid_runtime = runtime_payload;
+        invalid_runtime["category"] = json!("media");
+        assert!(serde_json::from_value::<RegisterWidgetRequest>(invalid_runtime).is_err());
+
+        let invalid_manifest = json!({
+            "id": "com.example.invalid-widget-category",
+            "name": "Invalid Widget category",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": ["widget:register"],
+            "category": "utility",
+            "widgets": [{
+                "id": "summary",
+                "name": "Summary",
+                "defaultSize": "2x2",
+                "sizes": ["2x2"],
+                "category": "media"
+            }]
+        });
+        assert!(serde_json::from_value::<TappManifest>(invalid_manifest).is_err());
+    }
+
+    #[test]
+    fn runtime_widget_owner_binding_prevents_cross_installation_reuse() {
+        let now = chrono::Utc::now().fixed_offset();
+        let widget = |subject_id: i32, config: serde_json::Value| tapp_widgets::Model {
+            id: 1,
+            widget_id: "tapp.com.example.shared.dynamic".to_string(),
+            tapp_id: "com.example.shared".to_string(),
+            user_id: subject_id,
+            name: "Dynamic".to_string(),
+            description: None,
+            icon: None,
+            default_size: "2x2".to_string(),
+            sizes: json!(["2x2"]),
+            category: None,
+            config,
+            registered_at: now,
+        };
+
+        let public_widget = widget(9, json!({ "source": "runtime", "installationOwnerId": 1 }));
+        assert!(super::runtime_widget_belongs_to_installation(
+            &public_widget,
+            9,
+            1
+        ));
+        assert!(!super::runtime_widget_belongs_to_installation(
+            &public_widget,
+            9,
+            9
+        ));
+
+        let legacy_private = widget(9, json!({ "source": "runtime" }));
+        assert!(super::runtime_widget_belongs_to_installation(
+            &legacy_private,
+            9,
+            9
+        ));
+        assert!(!super::runtime_widget_belongs_to_installation(
+            &legacy_private,
+            9,
+            1
+        ));
+    }
+
+    #[test]
+    fn requires_store_index_and_manifest_categories_to_match() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.store-category",
+            "name": "Store category",
+            "version": "1.0.0",
+            "main": "main.js",
+            "permissions": [],
+            "category": "media"
+        }))
+        .unwrap();
+
+        assert!(
+            validate_store_manifest_category(&json!({ "category": "music" }), &manifest).is_ok()
+        );
+        assert!(validate_store_manifest_category(
+            &json!({ "category": "productivity" }),
+            &manifest
+        )
+        .is_err());
+        assert!(validate_store_manifest_category(&json!({}), &manifest).is_err());
     }
 
     #[test]
@@ -6215,6 +7173,7 @@ mod manifest_tests {
             "name": "API app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "developer",
             "permissions": ["network:fetch"],
             "apis": {
                 "weather.current": {
@@ -6275,6 +7234,7 @@ mod manifest_tests {
             "name": "Too many widgets",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "utility",
             "permissions": ["widget:register"]
         }))
         .unwrap();
@@ -6349,6 +7309,7 @@ mod manifest_tests {
             "name": "Resources",
             "version": "1.0.0",
             "main": "src/main.js",
+            "category": "utility",
             "permissions": [],
             "styles": "css/shared.css",
             "pageModules": ["index.js"],
@@ -6383,8 +7344,83 @@ mod manifest_tests {
         }
 
         assert!(validate_installed_resources(&manifest, &root).is_ok());
+
+        std::fs::write(root.join("src/main.js"), [0xff, 0xfe]).unwrap();
+        assert!(validate_installed_resources(&manifest, &root).is_err());
+        std::fs::write(root.join("src/main.js"), "test").unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+
+            let template = root.join("templates/summary.html");
+            std::fs::remove_file(&template).unwrap();
+            std::fs::write(root.join("outside.html"), "outside").unwrap();
+            symlink(root.join("outside.html"), &template).unwrap();
+            assert!(validate_installed_resources(&manifest, &root).is_err());
+            std::fs::remove_file(&template).unwrap();
+            std::fs::write(&template, "test").unwrap();
+        }
+
         std::fs::remove_file(root.join("templates/summary.html")).unwrap();
         assert!(validate_installed_resources(&manifest, &root).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn validates_agent_schema_and_i18n_contents_at_install_time() {
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.validated-content",
+            "name": "Validated content",
+            "version": "1.0.0",
+            "main": "main.js",
+            "category": "productivity",
+            "permissions": [],
+            "agent": {
+                "protocolVersion": 2,
+                "interactions": [{
+                    "type": "report.compose",
+                    "inputSchema": "schemas/input.json"
+                }]
+            }
+        }))
+        .unwrap();
+        let unique = format!(
+            "myriad-tapp-content-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(root.join("schemas")).unwrap();
+        std::fs::create_dir_all(root.join("i18n")).unwrap();
+        std::fs::write(root.join("main.js"), "export {};").unwrap();
+        std::fs::write(
+            root.join("schemas/input.json"),
+            r#"{"type":"object","properties":{"title":{"type":"string"}}}"#,
+        )
+        .unwrap();
+        std::fs::write(root.join("i18n/en-US.json"), r#"{"title":"Title"}"#).unwrap();
+        assert!(validate_installed_resources(&manifest, &root).is_ok());
+
+        std::fs::write(root.join("schemas/input.json"), "not-json").unwrap();
+        assert!(validate_installed_resources(&manifest, &root)
+            .unwrap_err()
+            .contains("not valid JSON"));
+
+        std::fs::write(root.join("schemas/input.json"), r#"{"$ref":"remote.json"}"#).unwrap();
+        assert!(validate_installed_resources(&manifest, &root)
+            .unwrap_err()
+            .contains("does not support $ref"));
+
+        std::fs::write(root.join("schemas/input.json"), r#"{"type":"object"}"#).unwrap();
+        std::fs::write(root.join("i18n/en-US.json"), r#"["not","an","object"]"#).unwrap();
+        assert!(validate_installed_resources(&manifest, &root)
+            .unwrap_err()
+            .contains("must contain a JSON object"));
+
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -6402,6 +7438,7 @@ mod manifest_tests {
         let nested = root.join("templates/dashboard/widget.html");
         std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
         std::fs::write(root.join("manifest.json"), "{}").unwrap();
+        std::fs::write(root.join(super::TAPP_INSTALL_STATE_FILE), "internal").unwrap();
         std::fs::write(&nested, "<main>nested</main>").unwrap();
 
         let cursor = std::io::Cursor::new(Vec::new());
@@ -6471,11 +7508,23 @@ mod manifest_tests {
             "name": "Safe app",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "utility",
             "permissions": [],
             "pageModules": ["state.js"]
         }))
         .unwrap();
         assert!(validate_tapp_manifest(&manifest).is_ok());
+
+        manifest.main = "main.txt".to_string();
+        assert!(validate_tapp_manifest(&manifest).is_err());
+        manifest.main = "main.js".to_string();
+
+        manifest.styles = Some("styles.txt".to_string());
+        assert!(validate_tapp_manifest(&manifest).is_err());
+        manifest.styles = None;
+
+        manifest.page_template = Some("page.txt".to_string());
+        assert!(validate_tapp_manifest(&manifest).is_err());
 
         manifest.page_template = Some("../../outside.html".to_string());
         assert!(validate_tapp_manifest(&manifest).is_err());
@@ -6489,6 +7538,7 @@ mod manifest_tests {
             "name": "Unsafe widget",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "utility",
             "permissions": [],
             "widgets": [{
                 "id": "unsafe",
@@ -6506,6 +7556,7 @@ mod manifest_tests {
             "name": "Conflicting widgets",
             "version": "1.0.0",
             "main": "main.js",
+            "category": "utility",
             "permissions": ["widget:register"],
             "widgets": [
                 {

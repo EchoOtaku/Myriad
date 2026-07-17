@@ -458,8 +458,14 @@ export async function installTapp(
   manifest: TappManifest,
   code: TappCodeStructure,
   permissions?: string[],
+  compiledCss?: SeparatedCSSRequest,
 ): Promise<TappListItem> {
-  const requestBody = buildDirectTappRequest(manifest, code, permissions)
+  const requestBody = buildDirectTappRequest(
+    manifest,
+    code,
+    permissions,
+    compiledCss,
+  )
 
   return apiRequest('/api/tapps/install', {
     method: 'POST',
@@ -471,6 +477,7 @@ function buildDirectTappRequest(
   manifest: TappManifest,
   code: TappCodeStructure,
   permissions?: string[],
+  compiledCss?: SeparatedCSSRequest,
 ): InstallTappRequest {
   // 有 pageModules 时，main.js 只存 widget 相关代码（模块化的页面代码已在 pageModules 中）
   // 无 pageModules 时，main.js 存完整合并代码（core + widget + page 单体回退）
@@ -534,6 +541,14 @@ function buildDirectTappRequest(
   if (code.pageModules && Object.keys(code.pageModules).length > 0) {
     requestBody.pageModules = code.pageModules
   }
+  // Generated Tailwind CSS is part of the installation generation. Include
+  // empty strings as well so an update can remove previously generated CSS.
+  if (compiledCss?.widgetCss !== undefined) {
+    requestBody.widgetCss = compiledCss.widgetCss
+  }
+  if (compiledCss?.pageCss !== undefined) {
+    requestBody.pageCss = compiledCss.pageCss
+  }
 
   return requestBody
 }
@@ -567,19 +582,11 @@ export async function installFromCode(
   ].join('\n')
   const pageCss = generateOnDemandTailwindCSS(pageSources)
 
-  // 🎯 安装 Tapp
-  const result = await installTapp(manifest, code, manifest.permissions)
-
-  // 安装成功后更新分离式 CSS
-  if (result && result.id) {
-    try {
-      await updateSeparatedCSS(result.id, { widgetCss, pageCss })
-    } catch (cssError) {
-      console.warn('Failed to update separated CSS:', cssError)
-    }
-  }
-
-  return result
+  // CSS and source resources enter the same backend staging generation.
+  return installTapp(manifest, code, manifest.permissions, {
+    widgetCss,
+    pageCss,
+  })
 }
 
 /**
@@ -612,24 +619,15 @@ export async function updateTappFromCode(
     manifest,
     code,
     manifest.permissions,
+    { widgetCss, pageCss },
   )
-  const result = await apiRequest<TappListItem>(
+  return apiRequest<TappListItem>(
     `/api/tapps/${encodeURIComponent(manifest.id)}/update`,
     {
       method: 'POST',
       body: JSON.stringify(requestBody),
     },
   )
-
-  if (result && result.id) {
-    try {
-      await updateSeparatedCSS(result.id, { widgetCss, pageCss })
-    } catch (cssError) {
-      console.warn('Failed to update separated CSS:', cssError)
-    }
-  }
-
-  return result
 }
 
 /**

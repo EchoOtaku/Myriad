@@ -124,7 +124,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['brewList.sources', 'brew:read'],
     ['brewList.categories', 'brew:read'],
     ['brewList.stats', 'brew:read'],
-    ['brewList.discover', 'brew:read'],
+    ['brewList.discover', 'brew:manage'],
     ['brewList.exportOpml', 'brew:read'],
 
     // 内容列表权限 — Brew 写入
