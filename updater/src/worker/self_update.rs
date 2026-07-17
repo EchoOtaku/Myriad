@@ -26,7 +26,7 @@ use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::worker::Worker;
 
-pub async fn run(worker: Arc<Worker>) -> Result<SelfUpdateReport> {
+pub async fn run(worker: Arc<Worker>, actor: Option<String>) -> Result<SelfUpdateReport> {
     let cfg = worker.config();
     let gh = worker.github_client()?;
 
@@ -72,8 +72,12 @@ pub async fn run(worker: Arc<Worker>) -> Result<SelfUpdateReport> {
         env.save()?;
         return Err(error);
     }
+    let actor_suffix = actor
+        .as_deref()
+        .map(|a| format!(" actor={a}"))
+        .unwrap_or_default();
     let audit = format!(
-        "audit: self_update_scheduled new_tag={target_tag} executor=docker-guard services=docker-guard,updater"
+        "audit: self_update_scheduled new_tag={target_tag} executor=docker-guard services=docker-guard,updater{actor_suffix}"
     );
     worker.state().append_history(&audit)?;
     let _ = worker.state().append_audit(&audit);

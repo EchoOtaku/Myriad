@@ -52,6 +52,8 @@ pub enum Command {
         allow_unknown: Option<bool>,
         allow_irreversible: Option<bool>,
         idempotency_key: Option<String>,
+        /// Optional admin actor from backend (`X-Update-Actor`), for audit only.
+        actor: Option<String>,
         reply: tokio::sync::oneshot::Sender<Result<String>>,
     },
     ListCommits {
@@ -75,6 +77,7 @@ pub enum Command {
     },
     Rollback {
         snapshot_id: String,
+        actor: Option<String>,
         reply: tokio::sync::oneshot::Sender<Result<String>>,
     },
     CheckUpdates {
@@ -89,6 +92,7 @@ pub enum Command {
         reply: tokio::sync::oneshot::Sender<Result<Prefs>>,
     },
     SelfUpdate {
+        actor: Option<String>,
         reply: tokio::sync::oneshot::Sender<Result<self_update::SelfUpdateReport>>,
     },
     Shutdown,
@@ -525,6 +529,7 @@ impl Worker {
                     allow_unknown,
                     allow_irreversible,
                     idempotency_key,
+                    actor,
                     reply,
                 } => {
                     let res = self
@@ -538,6 +543,7 @@ impl Worker {
                             allow_unknown,
                             allow_irreversible,
                             idempotency_key,
+                            actor,
                         )
                         .await;
                     let _ = reply.send(res);
@@ -566,8 +572,12 @@ impl Worker {
                     let res = self.clone().handle_compare(from, to).await;
                     let _ = reply.send(res);
                 }
-                Command::Rollback { snapshot_id, reply } => {
-                    let res = self.clone().handle_rollback(snapshot_id).await;
+                Command::Rollback {
+                    snapshot_id,
+                    actor,
+                    reply,
+                } => {
+                    let res = self.clone().handle_rollback(snapshot_id, actor).await;
                     let _ = reply.send(res);
                 }
                 Command::CheckUpdates {
@@ -586,8 +596,8 @@ impl Worker {
                     let res = self.clone().handle_set_prefs(channel, mode).await;
                     let _ = reply.send(res);
                 }
-                Command::SelfUpdate { reply } => {
-                    let res = self_update::run(self.clone()).await;
+                Command::SelfUpdate { actor, reply } => {
+                    let res = self_update::run(self.clone(), actor).await;
                     let _ = reply.send(res);
                 }
             }
@@ -623,6 +633,7 @@ impl Worker {
         allow_unknown: Option<bool>,
         allow_irreversible: Option<bool>,
         idempotency_key: Option<String>,
+        actor: Option<String>,
     ) -> Result<String> {
         if let Some(k) = &idempotency_key {
             let cache = self.idempotency.lock().await;
@@ -670,7 +681,15 @@ impl Worker {
             allow_irreversible,
         );
         tokio::spawn(async move {
-            if let Err(e) = update::run(me.clone(), job_id_clone.clone(), target, mode, risk).await
+            if let Err(e) = update::run(
+                me.clone(),
+                job_id_clone.clone(),
+                target,
+                mode,
+                risk,
+                actor,
+            )
+            .await
             {
                 error!(job = %job_id_clone, err = %e, "update flow exited with error");
             }
@@ -793,7 +812,11 @@ impl Worker {
         Ok(prefs)
     }
 
-    async fn handle_rollback(self: Arc<Self>, snapshot_id: String) -> Result<String> {
+    async fn handle_rollback(
+        self: Arc<Self>,
+        snapshot_id: String,
+        actor: Option<String>,
+    ) -> Result<String> {
         if let Some(_existing) = self.state.read_current_job()? {
             return Err(UpdaterError::Conflict);
         }
@@ -816,7 +839,7 @@ impl Worker {
         let me = self.clone();
         let id = job_id.clone();
         tokio::spawn(async move {
-            if let Err(e) = rollback::run(me.clone(), id.clone(), snapshot_id).await {
+            if let Err(e) = rollback::run(me.clone(), id.clone(), snapshot_id, actor).await {
                 error!(job = %id, err = %e, "rollback flow exited with error");
             }
             let _ = me.state.set_current_job(None);

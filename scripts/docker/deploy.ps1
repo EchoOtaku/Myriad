@@ -167,6 +167,35 @@ function Ensure-BackendVolumePerms {
     }
 }
 
+# Soft (warn-only) topology check after successful up/upgrade. Never fails deploy.
+function Cmd-SoftDoctor {
+    Write-Info "==> Post-deploy topology soft-check (warn-only)"
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        # Run doctor logic without exiting the process on FAIL.
+        $fail = 0
+        $skip = 0
+        if (Test-ContainerExists "myriad-docker-guard") {
+            if (-not (Test-ContainerMountsSock "myriad-docker-guard")) { $fail++ }
+        } else {
+            $fail++
+        }
+        if (Test-ContainerExists "myriad-updater") {
+            if (Test-ContainerMountsSock "myriad-updater") { $fail++ }
+        } else {
+            $skip++
+        }
+        if ($fail -gt 0) {
+            Write-Warn "Topology soft-check reported issues; run: .\deploy.ps1 doctor  for details"
+        } else {
+            Write-Ok "Topology soft-check passed (skip=$skip)."
+        }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
 function Cmd-Up {
     Ensure-Env
     Ensure-CurrentLayout
@@ -175,6 +204,7 @@ function Cmd-Up {
     Invoke-Compose up -d
     Write-Host ""
     Write-Ok "Stack started. Admin UI: http://localhost/ -> Settings -> About -> Update Management"
+    Cmd-SoftDoctor
 }
 
 function Cmd-Down     { Write-Info "==> docker compose down"; Invoke-Compose down }
@@ -309,6 +339,7 @@ function Cmd-Upgrade {
     Write-Info "==> docker compose up -d (recreate with new tags)"
     Invoke-Compose up -d
     Write-Ok "Upgrade complete."
+    Cmd-SoftDoctor
 }
 
 switch ($Command.ToLower()) {

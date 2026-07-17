@@ -30,8 +30,17 @@ use crate::state::{JobStatus, Phase, StateDir};
 use crate::version::DeployTag;
 use crate::worker::{machine::PhaseRecorder, Worker};
 
-pub async fn run(worker: Arc<Worker>, job_id: String, snapshot_id: String) -> Result<()> {
-    let audit = format!("audit: rollback_start job={job_id} snapshot={snapshot_id}");
+pub async fn run(
+    worker: Arc<Worker>,
+    job_id: String,
+    snapshot_id: String,
+    actor: Option<String>,
+) -> Result<()> {
+    let actor_suffix = actor
+        .as_deref()
+        .map(|a| format!(" actor={a}"))
+        .unwrap_or_default();
+    let audit = format!("audit: rollback_start job={job_id} snapshot={snapshot_id}{actor_suffix}");
     worker.state().append_history(&audit)?;
     let _ = worker.state().append_audit(&audit);
 

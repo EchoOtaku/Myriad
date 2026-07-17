@@ -182,6 +182,17 @@ ensure_backend_volume_perms() {
     fi
 }
 
+# Soft (warn-only) topology check after successful up/upgrade. Never fails deploy.
+cmd_soft_doctor() {
+    info "==> Post-deploy topology soft-check (warn-only)"
+    if cmd_doctor; then
+        :
+    else
+        warn "Topology soft-check reported issues; run: $0 doctor  for details"
+    fi
+    return 0
+}
+
 cmd_up() {
     ensure_env
     ensure_current_layout
@@ -191,6 +202,7 @@ cmd_up() {
     echo ""
     ok "Stack started. Access via http://localhost:${HTTP_PORT:-80}/"
     ok "Admin UI: http://localhost:${HTTP_PORT:-80}/  → 设置 → 关于 → 更新管理"
+    cmd_soft_doctor
 }
 
 cmd_down() {
@@ -339,6 +351,7 @@ cmd_upgrade() {
     info "==> docker compose up -d (recreate with new tags)"
     $COMPOSE up -d
     ok "Upgrade complete. Verify with: $0 status"
+    cmd_soft_doctor
 }
 
 COMPOSE=$(detect_compose)

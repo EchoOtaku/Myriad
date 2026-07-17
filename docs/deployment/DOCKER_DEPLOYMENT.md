@@ -110,6 +110,18 @@ bash scripts/docker/deploy.sh doctor
 - Optional host scan for unexpected privileged containers / `docker.sock` binds
   (not run on every upgrade): `bash scripts/security/docker-audit-example.sh scan`.
 
+### Hygiene (low-friction)
+
+- **Secrets**: `UPDATE_TOKEN` / `JWT_SECRET` / `POSTGRES_PASSWORD` / `GITHUB_TOKEN` are
+  redacted from updater/backend error bodies and log paths that might echo them.
+- **Admin mutative updater** routes (`POST …/update|rollback|self-update|rescue/*`) use a
+  stricter per-IP rate limit; status/jobs polling stays on the normal limit.
+- **Audit actor**: backend proxies pass `X-Update-Actor: admin:<id>:<user>` after admin
+  JWT + server-side `UPDATE_TOKEN` (included in updater `audit.log` when present).
+- **Root**: backend warns once at boot if running as uid 0 (compose should stay non-root).
+- **Deploy soft-check**: `deploy.sh|ps1 up|upgrade` runs topology doctor in warn-only mode.
+- **Updater `/healthz`**: public and minimal (`{"ok":true}` only — no versions/token status).
+
 ## Operations
 
 ```bash

@@ -22,6 +22,7 @@ pub async fn run(
     target: DeployTag,
     mode: UpdateMode,
     risk: preflight::RiskFlags,
+    actor: Option<String>,
 ) -> Result<()> {
     info!(
         job = %job_id,
@@ -31,6 +32,7 @@ pub async fn run(
         allow_diverged = risk.allow_diverged,
         allow_unknown = risk.allow_unknown,
         allow_irreversible = risk.allow_irreversible,
+        actor = actor.as_deref().unwrap_or("-"),
         "update flow starting"
     );
 
@@ -45,16 +47,21 @@ pub async fn run(
     // Pre-swap phase: any failure cleans up without touching prod.
     // ============================================================
     // Structured audit line before any side effects (operator risk acknowledgements).
+    let actor_suffix = actor
+        .as_deref()
+        .map(|a| format!(" actor={a}"))
+        .unwrap_or_default();
     let audit = format!(
         "audit: update_request job={} target={} mode={} \
-         allow_downgrade={} allow_diverged={} allow_unknown={} allow_irreversible={}",
+         allow_downgrade={} allow_diverged={} allow_unknown={} allow_irreversible={}{}",
         job_id,
         target.as_str(),
         mode.as_str(),
         risk.allow_downgrade,
         risk.allow_diverged,
         risk.allow_unknown,
-        risk.allow_irreversible
+        risk.allow_irreversible,
+        actor_suffix,
     );
     worker.state().append_history(&audit)?;
     let _ = worker.state().append_audit(&audit);
