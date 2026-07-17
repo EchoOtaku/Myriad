@@ -165,6 +165,7 @@ class RemoteStoreServiceImpl {
     string,
     { promise: Promise<RemoteStoreIndex>; controller: AbortController }
   >()
+
   /** 是否已从 API 加载 */
   private sourcesLoaded = false
   /** 加载 Promise（防止并发加载） */

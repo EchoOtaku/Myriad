@@ -5110,12 +5110,12 @@ const PAGE_MODULES: Record<string, string> = {
 function buildCoreCode(): string {
   const inlineLang = [
     '  // ==================== i18n ====================',
-    '  var LANG = ' +
+    `  var LANG = ${
       JSON.stringify(ARO_I18N, null, 2)
         .split('\n')
-        .map((l, i) => (i === 0 ? l : '  ' + l))
-        .join('\n') +
-      ';',
+        .map((l, i) => (i === 0 ? l : `  ${l}`))
+        .join('\n')
+      };`,
     '',
     '  var lang = LANG.zh;',
     "  var currentLocale = 'zh';",
@@ -5141,7 +5141,7 @@ function buildCoreCode(): string {
     .map((m) =>
       m
         .split('\n')
-        .map((l) => (l ? '  ' + l : l))
+        .map((l) => (l ? `  ${l}` : l))
         .join('\n'),
     )
     .join('\n\n')

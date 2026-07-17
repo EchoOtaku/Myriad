@@ -2,10 +2,10 @@
  * 处理器模块索引
  */
 
-export { registerFederationHandlers } from '../../FederationBridge'
 export { registerAgentInteractionHandlers } from '../../AgentInteractionBroker'
 export { registerDataExchangeHandlers } from '../../DataExchangeBroker'
 export { registerEventHandlers } from '../../EventBroker'
+export { registerFederationHandlers } from '../../FederationBridge'
 
 export {
   registerAdvancedHandlers,

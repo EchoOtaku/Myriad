@@ -307,7 +307,7 @@ function removeDangerousAttrs(html: string): string {
 function removeJavascriptLinks(html: string): string {
   // 含实体编码变体的 javascript:（如 javascrip&#116;:）
   const dangerousProtocol =
-    /(?:javascript|vbscript|data\s*:\s*text\s*\/\s*html)/i
+    /javascript|vbscript|data\s*:\s*text\s*\/\s*html/i
 
   const scrubAttr = (attr: string, value: string, quote: string) => {
     const decoded = value
@@ -369,7 +369,7 @@ export function stripUntrustedIframes(html: string): string {
 
   return html
     .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, (m) => keepIfTrusted(m))
-    .replace(/<iframe\b[^>]*\/?>/gi, (m) => keepIfTrusted(m))
+    .replace(/<iframe\b[^>]*>/gi, (m) => keepIfTrusted(m))
 }
 
 /**

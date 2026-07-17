@@ -234,7 +234,10 @@ async fn rollback_health_wait(worker: &Worker, deadline: Duration) -> Result<()>
                     serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
                 let db = json.get("db_connected").and_then(|v| v.as_bool()) == Some(true);
                 if db {
-                    info!(elapsed_s = elapsed.as_secs(), "rollback health: db_connected ok");
+                    info!(
+                        elapsed_s = elapsed.as_secs(),
+                        "rollback health: db_connected ok"
+                    );
                     return Ok(());
                 }
                 // Soft: after 60s, HTTP 200 health is enough (config mode may clear slowly).
@@ -253,10 +256,16 @@ async fn rollback_health_wait(worker: &Worker, deadline: Duration) -> Result<()>
                         return Ok(());
                     }
                 }
-                last = format!("backend 200 but db_connected=false body={}", &body[..body.len().min(80)]);
+                last = format!(
+                    "backend 200 but db_connected=false body={}",
+                    &body[..body.len().min(80)]
+                );
             }
             Ok((code, body)) => {
-                last = format!("backend HTTP {code}: {}", body.chars().take(80).collect::<String>());
+                last = format!(
+                    "backend HTTP {code}: {}",
+                    body.chars().take(80).collect::<String>()
+                );
             }
             Err(e) => {
                 last = format!("backend probe: {e}");

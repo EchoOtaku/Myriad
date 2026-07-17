@@ -15,8 +15,7 @@
  * - 添加光晕背景效果，与普通小组件保持一致
  */
 
-import type { TappCodeStructure } from '../../tapp/types'
-import type { RegisteredWidget, TappInstance } from '../../tapp/types'
+import type { RegisteredWidget, TappCodeStructure, TappInstance } from '../../tapp/types'
 import type { WidgetComponentProps } from '../WidgetGrid'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -357,14 +356,14 @@ interface TappWidgetRuntimeProps extends TappWidgetProps {
   anim: ReturnType<typeof useAnimationLevel>
 }
 
-const TappWidgetRuntime = ({
+function TappWidgetRuntime({
   config,
   isEditMode,
   isPreview,
   tappWidgetId,
   onConfigChange,
   anim,
-}: TappWidgetRuntimeProps) => {
+}: TappWidgetRuntimeProps) {
   const runtime = getTappRuntime()
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()

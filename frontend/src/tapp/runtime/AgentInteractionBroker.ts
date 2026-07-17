@@ -1,7 +1,7 @@
 import type { AgentInteractionV2, TappInstance } from '../types'
-import * as TappApiService from '../services/TappApiService'
 import type { TappBridge } from './TappBridge'
 import { executeFrontendAction } from '../../services/agent'
+import * as TappApiService from '../services/TappApiService'
 import { requestDataExchangeFromHost } from './DataExchangeBroker'
 
 const RECONNECT_DELAY_MS = 500
@@ -23,7 +23,7 @@ async function executeHostIntent(
   switch (type) {
     case 'ui.open': {
       const tappId = params.tappId
-      if (typeof tappId !== 'string' || !/^[A-Za-z0-9_.-]{1,128}$/.test(tappId)) {
+      if (typeof tappId !== 'string' || !/^[\w.-]{1,128}$/.test(tappId)) {
         throw new Error('ui.open requires a valid tappId')
       }
       const result = await executeFrontendAction({
@@ -67,7 +67,7 @@ async function executeHostIntent(
         typeof exportId !== 'string' ||
         typeof purpose !== 'string'
       ) {
-        throw new Error(
+        throw new TypeError(
           'dataExchange.request requires targetTappId, exportId and purpose',
         )
       }
@@ -188,7 +188,8 @@ export function registerAgentInteractionHandlers(
 
   if (tappInstance.manifest.agent?.protocolVersion === 2) {
     void (async () => {
-      while (!stopped) {
+      for (;;) {
+        if (stopped) break
         streamController = new AbortController()
         try {
           await TappApiService.streamAgentInteractions(

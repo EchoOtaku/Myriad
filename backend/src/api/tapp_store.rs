@@ -827,7 +827,9 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
 
     if let Some(assets) = &manifest.assets {
         if assets.len() > MAX_TAPP_ASSETS {
-            return Err(format!("Tapp assets accepts at most {MAX_TAPP_ASSETS} entries"));
+            return Err(format!(
+                "Tapp assets accepts at most {MAX_TAPP_ASSETS} entries"
+            ));
         }
         let mut seen = std::collections::HashSet::new();
         for path in assets {
@@ -1700,9 +1702,7 @@ async fn write_install_assets(
         .map(|list| list.iter().map(String::as_str).collect())
         .unwrap_or_default();
     if declared.is_empty() && !assets.is_empty() {
-        return Err(
-            "assets payload requires manifest.assets declarations".to_string(),
-        );
+        return Err("assets payload requires manifest.assets declarations".to_string());
     }
     let mut total: u64 = 0;
     for (relative, encoded) in assets {
@@ -1878,9 +1878,8 @@ fn validate_installed_resources(manifest: &TappManifest, tapp_dir: &FsPath) -> R
         let mut total: u64 = 0;
         for relative in assets {
             validate_asset_path(relative)?;
-            let path = regular_resource_path(tapp_dir, relative).ok_or_else(|| {
-                format!("Declared Tapp asset is not a regular file: {relative}")
-            })?;
+            let path = regular_resource_path(tapp_dir, relative)
+                .ok_or_else(|| format!("Declared Tapp asset is not a regular file: {relative}"))?;
             let bytes = std::fs::read(&path)
                 .map_err(|_| format!("Declared Tapp asset not found: {relative}"))?;
             let size = bytes.len() as u64;
@@ -4306,8 +4305,8 @@ async fn get_tapp_asset(
 
     validate_asset_path(&query.path).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let manifest: TappManifest =
-        serde_json::from_value(tapp.manifest.clone()).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let manifest: TappManifest = serde_json::from_value(tapp.manifest.clone())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let declared = manifest.assets.as_ref().ok_or(StatusCode::NOT_FOUND)?;
     if !declared.iter().any(|path| path == &query.path) {
         return Err(StatusCode::NOT_FOUND);

@@ -1503,7 +1503,7 @@ pub async fn initiate_e2e_key_exchange(
     let kx = crate::federation::e2e::build_key_exchange_payload(&session);
     let mut established = false;
     if let Some(ref remote_pk) = existing_remote {
-        if let Ok(_) = crate::federation::e2e::accept_key_exchange(&mut session, remote_pk) {
+        if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk).is_ok() {
             established = true;
         }
     }

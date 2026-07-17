@@ -4,8 +4,7 @@
  * 用于渲染 Tapp 的页面模式（全屏应用）
  */
 
-import type { TappCodeStructure } from '../types'
-import type { TappInstance } from '../types'
+import type { TappCodeStructure, TappInstance } from '../types'
 import type { AnimationConfigRef, SafeInsets } from './sandbox'
 import type { TappBridge } from './TappBridge'
 
@@ -13,12 +12,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { getIsDarkMode } from '../../utils/themeSubscriber'
+import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 import {
   getCodeForMode,
   getCodeStructureFingerprint,
   getTappRuntimeFingerprint,
 } from './codeStructure'
-import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 import {
   cspOptionsFromPermissions,
   escapeSandboxHtmlText,
@@ -38,6 +37,7 @@ import {
   registerAgentInteractionHandlers,
   registerAIHandlers,
   registerAnimationHandlers,
+  registerAssetHandlers,
   registerBackgroundHandlers,
   registerBrewListHandlers,
   registerContextHandlers,
@@ -45,7 +45,6 @@ import {
   registerDynamicContentHandlers,
   registerEventHandlers,
   registerFederationHandlers,
-  registerAssetHandlers,
   registerFileHandlers,
   registerLifecycleHandlers,
   registerMediaHandlers,

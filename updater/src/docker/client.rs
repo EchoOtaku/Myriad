@@ -99,7 +99,10 @@ impl DockerClient {
         match direct_http_probe(target, timeout).await {
             Ok(result) if result.0 > 0 => return Ok(result),
             Ok((code, body)) => {
-                errors.push(format!("direct HTTP returned code {code} body_len={}", body.len()));
+                errors.push(format!(
+                    "direct HTTP returned code {code} body_len={}",
+                    body.len()
+                ));
             }
             Err(e) => errors.push(format!("direct: {e}")),
         }
@@ -108,10 +111,7 @@ impl DockerClient {
             match self.http_probe_via_exec(hint, timeout).await {
                 Ok(result) if result.0 > 0 => return Ok(result),
                 Ok((code, body)) => {
-                    errors.push(format!(
-                        "exec/{hint} code {code} body_len={}",
-                        body.len()
-                    ));
+                    errors.push(format!("exec/{hint} code {code} body_len={}", body.len()));
                 }
                 Err(e) => errors.push(format!("exec/{hint}: {e}")),
             }
@@ -120,7 +120,10 @@ impl DockerClient {
         match self.http_probe_via_curl_container(target, timeout).await {
             Ok(result) if result.0 > 0 => Ok(result),
             Ok((code, body)) => {
-                errors.push(format!("curl-container code {code} body_len={}", body.len()));
+                errors.push(format!(
+                    "curl-container code {code} body_len={}",
+                    body.len()
+                ));
                 // Prefer returning a structured failure over Ok(0) so callers log usefully.
                 if code == 0 {
                     Err(UpdaterError::Docker(format!(
@@ -142,20 +145,13 @@ impl DockerClient {
     }
 
     /// Probe backend/frontend by exec'ing wget/curl against localhost inside that container.
-    async fn http_probe_via_exec(
-        &self,
-        service: &str,
-        timeout: Duration,
-    ) -> Result<(u16, String)> {
+    async fn http_probe_via_exec(&self, service: &str, timeout: Duration) -> Result<(u16, String)> {
         let (names, url) = match service {
             "backend" => (
                 ["myriad-backend", "backend"],
                 "http://127.0.0.1:1103/health",
             ),
-            "frontend" => (
-                ["myriad-frontend", "frontend"],
-                "http://127.0.0.1:1102/",
-            ),
+            "frontend" => (["myriad-frontend", "frontend"], "http://127.0.0.1:1102/"),
             other => {
                 return Err(UpdaterError::Docker(format!(
                     "exec probe: unknown service hint {other}"
@@ -195,13 +191,15 @@ impl DockerClient {
                 }
             }
         }
-        Err(UpdaterError::Docker(format!("exec probe {service}: {last_err}")))
+        Err(UpdaterError::Docker(format!(
+            "exec probe {service}: {last_err}"
+        )))
     }
 
     /// Run a command in a container and capture combined stdout (truncated).
     pub async fn exec_capture(&self, container: &str, cmd: &[&str]) -> Result<String> {
-        use bollard::exec::{CreateExecOptions, StartExecOptions, StartExecResults};
         use bollard::container::LogOutput;
+        use bollard::exec::{CreateExecOptions, StartExecOptions, StartExecResults};
 
         let exec = self
             .inner
@@ -235,8 +233,7 @@ impl DockerClient {
             StartExecResults::Attached { mut output, .. } => {
                 while let Some(item) = output.next().await {
                     match item {
-                        Ok(LogOutput::StdOut { message })
-                        | Ok(LogOutput::StdErr { message }) => {
+                        Ok(LogOutput::StdOut { message }) | Ok(LogOutput::StdErr { message }) => {
                             out.push_str(&String::from_utf8_lossy(&message));
                         }
                         Ok(_) => {}
@@ -406,9 +403,7 @@ impl DockerClient {
     /// Stop a container by name; escalate to kill if still running.
     /// Used before pgdata restore so bind mounts are fully released.
     pub async fn force_stop_container(&self, name: &str) -> Result<()> {
-        use bollard::query_parameters::{
-            KillContainerOptionsBuilder, StopContainerOptionsBuilder,
-        };
+        use bollard::query_parameters::{KillContainerOptionsBuilder, StopContainerOptionsBuilder};
         if !self.is_running(name).await.unwrap_or(false) {
             return Ok(());
         }
@@ -423,7 +418,9 @@ impl DockerClient {
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
-        let kill_opts = KillContainerOptionsBuilder::default().signal("SIGKILL").build();
+        let kill_opts = KillContainerOptionsBuilder::default()
+            .signal("SIGKILL")
+            .build();
         self.inner
             .kill_container(name, Some(kill_opts))
             .await

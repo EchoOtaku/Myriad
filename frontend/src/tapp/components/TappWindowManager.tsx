@@ -9,8 +9,7 @@
  * - 窗口层级管理（点击置顶）
  */
 
-import type { TappCodeStructure } from '../types'
-import type { TappInstance } from '../types'
+import type { TappCodeStructure, TappInstance } from '../types'
 import {
   FaExclamationTriangle,
   FaGripVertical,

@@ -953,8 +953,7 @@ impl Worker {
                     branch,
                     persist_cache,
                     UpdaterError::Github(
-                        "GITHUB_TOKEN not set; private-repo commit metadata uses Docker Hub"
-                            .into(),
+                        "GITHUB_TOKEN not set; private-repo commit metadata uses Docker Hub".into(),
                     ),
                 )
                 .await;

@@ -10,8 +10,7 @@
  * - 支持多窗口模式，可同时运行最多3个应用
  */
 
-import type { TappCodeStructure } from '../types'
-import type { TappInstance } from '../types'
+import type { TappCodeStructure, TappInstance } from '../types'
 
 import {
   FaArrowLeft,

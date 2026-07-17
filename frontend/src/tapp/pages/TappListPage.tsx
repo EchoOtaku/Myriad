@@ -151,9 +151,10 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     // 是否有页面模块可打开
     const hasPage = manifest.hasPage === true
 
-    // 点击卡片处理：运行中且有页面模块时打开
+    // Page Tapp 始终可以打开。运行页会按需启动当前查看者的会话；
+    // 游客和公共安装的普通用户不会因此改写安装记录的持久运行状态。
     const handleCardClick = () => {
-      if (isRunning && hasPage) {
+      if (hasPage) {
         onOpen()
       }
     }
@@ -205,7 +206,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={`group relative aspect-2/1 rounded-2xl overflow-hidden glass-surface glass-70 ${
-          isRunning && hasPage ? 'cursor-pointer' : ''
+          hasPage ? 'cursor-pointer' : ''
         }`}
       >
         {/* 动态渐变背景 - 基于图标颜色 */}
@@ -388,7 +389,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
               </div>
 
               {/* 可点击提示 */}
-              {isRunning && hasPage && (
+              {hasPage && (
                 <motion.span
                   className="text-[9px] text-gray-400 dark:text-gray-500 flex items-center gap-1"
                   initial={{ opacity: 0 }}

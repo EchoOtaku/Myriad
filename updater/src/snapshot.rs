@@ -165,12 +165,7 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// In-place restore when `pgdata` cannot be renamed (mount point / EBUSY).
-    async fn restore_in_place(
-        &self,
-        snap_path: &Path,
-        snapshot_id: &str,
-        ts: &str,
-    ) -> Result<()> {
+    async fn restore_in_place(&self, snap_path: &Path, snapshot_id: &str, ts: &str) -> Result<()> {
         std::fs::create_dir_all(&self.pgdata)?;
 
         // Safety copy of current (possibly half-upgraded) contents so operators can recover.
@@ -393,7 +388,10 @@ mod tests {
         write_file(&pgdata.join("base/1"), "mutated\n");
 
         mgr.restore("snap-a").await.unwrap();
-        assert_eq!(std::fs::read_to_string(pgdata.join("base/1")).unwrap(), "live\n");
+        assert_eq!(
+            std::fs::read_to_string(pgdata.join("base/1")).unwrap(),
+            "live\n"
+        );
     }
 
     #[tokio::test]
@@ -414,9 +412,14 @@ mod tests {
         write_file(&pgdata.join("extra"), "should-go\n");
 
         let snap = state.snapshots_dir().join("snap-b");
-        mgr.restore_in_place(&snap, "snap-b", "testts").await.unwrap();
+        mgr.restore_in_place(&snap, "snap-b", "testts")
+            .await
+            .unwrap();
 
-        assert_eq!(std::fs::read_to_string(pgdata.join("base/1")).unwrap(), "live\n");
+        assert_eq!(
+            std::fs::read_to_string(pgdata.join("base/1")).unwrap(),
+            "live\n"
+        );
         assert!(!pgdata.join("extra").exists());
         // Safety copy retained.
         let safety = state.snapshots_dir().join("broken-inplace-testts");
@@ -427,7 +430,7 @@ mod tests {
     fn is_busy_detects_ebusy() {
         let e = std::io::Error::from_raw_os_error(16);
         assert!(is_busy(&e));
-        let e2 = std::io::Error::new(ErrorKind::Other, "Device or resource busy");
+        let e2 = std::io::Error::other("Device or resource busy");
         assert!(is_busy(&e2));
         let e3 = std::io::Error::new(ErrorKind::NotFound, "no such file");
         assert!(!is_busy(&e3));

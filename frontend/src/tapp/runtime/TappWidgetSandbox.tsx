@@ -15,16 +15,16 @@ import type { TappCodeStructure, TappInstance } from '../types'
 import type { WidgetRenderProps } from './sandbox'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  getCodeForMode,
-  getCodeStructureFingerprint,
-  getTappRuntimeFingerprint,
-} from './codeStructure'
-
-import {
   calculateWidgetDimensions,
   sendResizeMessage,
   useIframeResize,
 } from '../utils/iframeResize'
+
+import {
+  getCodeForMode,
+  getCodeStructureFingerprint,
+  getTappRuntimeFingerprint,
+} from './codeStructure'
 // 核心模块
 import {
   cspOptionsFromPermissions,
@@ -41,9 +41,9 @@ import {
 } from './sandbox'
 // 处理器
 import {
-  registerAnimationHandlers,
-  registerAIHandlers,
   registerAgentInteractionHandlers,
+  registerAIHandlers,
+  registerAnimationHandlers,
   registerAssetHandlers,
   registerBackgroundHandlers,
   registerContextHandlers,

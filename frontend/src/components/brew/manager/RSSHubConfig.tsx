@@ -1919,5 +1919,4 @@ export default function RSSHubConfigComponent({
   )
 }
 
-
 export type { RSSHubConfigProps }

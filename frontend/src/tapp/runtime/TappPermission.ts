@@ -1,6 +1,8 @@
-/** Manifest permission validation. Runtime authorization lives in TappBridge
+/**
+ * Manifest permission validation. Runtime authorization lives in TappBridge
  * and the backend Runtime Grant; this module intentionally keeps no usage or
- * role-derived authorization state. */
+ * role-derived authorization state.
+ */
 
 import type { TappManifest } from '../types'
 import { PERMISSION_LEVELS } from './permissionConfig'

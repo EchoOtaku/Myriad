@@ -3,16 +3,17 @@
  * 16x4 网格布局，支持拖拽编辑
  */
 
-import { FaChevronRight, FaCog, FaTimes } from '@lib/icons'
+import type { TappSettingItem } from '../tapp/types'
 
+import { FaChevronRight, FaCog, FaTimes } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useI18n } from '../contexts/I18nContext'
 
+import { useI18n } from '../contexts/I18nContext'
 import { useHomeResizeObserver, useStaggerAnimation } from '../hooks/animation'
 import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import {
@@ -20,7 +21,6 @@ import {
   usePerformanceProfile,
 } from '../hooks/usePerformanceProfile'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
-import type { TappSettingItem } from '../tapp/types'
 import './WidgetGrid.css'
 
 // ⚗️ 移动端检测 - 使用统一的性能检测系统

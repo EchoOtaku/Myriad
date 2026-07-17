@@ -17,8 +17,7 @@
  * - realtime: 实时数据更新
  */
 
-import type { TappCodeStructure } from '../types'
-import type { TappInstance } from '../types'
+import type { TappCodeStructure, TappInstance } from '../types'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { getTappRuntime } from '../runtime'
 import { loadCoreResources } from '../runtime/sandbox/resourceLoader'

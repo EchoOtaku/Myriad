@@ -535,11 +535,7 @@ enum ProbeTick {
     NotReady { detail: String },
 }
 
-async fn probe_one_tick(
-    worker: &Arc<Worker>,
-    target: &DeployTag,
-    elapsed: Duration,
-) -> ProbeTick {
+async fn probe_one_tick(worker: &Arc<Worker>, target: &DeployTag, elapsed: Duration) -> ProbeTick {
     const LOOSE_FRONTEND_AFTER: Duration = Duration::from_secs(45);
 
     let docker = worker.docker();
@@ -586,13 +582,16 @@ async fn probe_one_tick(
         return ProbeTick::NotReady {
             detail: format!(
                 "backend HTTP {be_code}: {} | running={backend_running} image={backend_image}",
-                be_body.chars().take(120).collect::<String>().replace('\n', " ")
+                be_body
+                    .chars()
+                    .take(120)
+                    .collect::<String>()
+                    .replace('\n', " ")
             ),
         };
     }
 
-    let json: serde_json::Value =
-        serde_json::from_str(&be_body).unwrap_or(serde_json::Value::Null);
+    let json: serde_json::Value = serde_json::from_str(&be_body).unwrap_or(serde_json::Value::Null);
     let version = json.get("version").and_then(|v| v.as_str()).unwrap_or("");
     let commit_sha = json.get("commit_sha").and_then(|c| c.as_str());
     let db = json
@@ -636,7 +635,9 @@ async fn probe_one_tick(
                 };
             }
             return ProbeTick::NotReady {
-                detail: format!("frontend unreachable ({e}); backend identity ok={backend_identity_ok}"),
+                detail: format!(
+                    "frontend unreachable ({e}); backend identity ok={backend_identity_ok}"
+                ),
             };
         }
     };
@@ -654,8 +655,8 @@ async fn probe_one_tick(
             || frontend_img_ok);
 
     // Hard pass: backend identity + db + (frontend meta or image, or loose HTML after grace).
-    let frontend_hard_ok = fe_meta_ok
-        || (elapsed >= LOOSE_FRONTEND_AFTER && fe_html_ok && backend_identity_ok);
+    let frontend_hard_ok =
+        fe_meta_ok || (elapsed >= LOOSE_FRONTEND_AFTER && fe_html_ok && backend_identity_ok);
 
     if backend_identity_ok && frontend_hard_ok {
         return ProbeTick::HardOk {
@@ -744,8 +745,12 @@ fn commit_matches_target(target: &DeployTag, commit_sha: Option<&str>) -> bool {
     };
     // Full or prefix either way (short tag vs full stamp).
     got.eq_ignore_ascii_case(want)
-        || got.to_ascii_lowercase().starts_with(&want.to_ascii_lowercase())
-        || want.to_ascii_lowercase().starts_with(&got.to_ascii_lowercase())
+        || got
+            .to_ascii_lowercase()
+            .starts_with(&want.to_ascii_lowercase())
+        || want
+            .to_ascii_lowercase()
+            .starts_with(&got.to_ascii_lowercase())
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ export function getCodeForMode(
 }
 
 function hashParts(parts: string[]): string {
-  let fnv = 0x811c9dc5
+  let fnv = 0x811C9DC5
   let djb = 5381
   let totalLength = 0
   for (const part of parts) {

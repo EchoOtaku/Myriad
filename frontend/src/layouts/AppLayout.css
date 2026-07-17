@@ -40,6 +40,7 @@
   .dynamic-island {
     width: auto;
     height: auto;
+
     /* 44px 图标 + 上下内边距 + 底部指示点/阴影余量 */
     min-height: 72px;
     max-width: calc(100vw - 2rem);
@@ -53,7 +54,6 @@
 
     /* 独立合成层：毛玻璃静态贴在岛上，不与内部滚动层纠缠 */
     transform: translateZ(0);
-    -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
     isolation: isolate;
   }
@@ -63,8 +63,7 @@
     flex: 1 1 auto;
     min-width: 0; /* flex 子项允许收缩，才能形成 scrollport */
     max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: auto hidden;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
@@ -73,6 +72,7 @@
     box-sizing: border-box;
     display: flex;
     align-items: center;
+
     /*
      * 上下/左右内边距把 active 指示点、box-shadow、:active scale
      * 收进 clip 区，避免被 overflow 裁成半截按钮。
@@ -88,6 +88,7 @@
     flex-direction: row;
     width: max-content;
     align-items: center;
+
     /* 首尾项再留一点，避免贴圆角边缘被裁 */
     padding-inline: 2px;
   }

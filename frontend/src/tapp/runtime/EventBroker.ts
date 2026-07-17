@@ -1,8 +1,8 @@
 import type { PublishEventRequest, TappEvent, TappInstance } from '../types'
-import * as TappApiService from '../services/TappApiService'
 import type { TappBridge } from './TappBridge'
 import { getDefaultLocale } from '../../i18n'
 import { subscribeToTheme } from '../../utils/themeSubscriber'
+import * as TappApiService from '../services/TappApiService'
 
 const RECONNECT_DELAY_MS = 500
 
@@ -131,7 +131,8 @@ export function registerEventHandlers(
 
   if (hasServerSubscriptions) {
     void (async () => {
-      while (!stopped) {
+      for (;;) {
+        if (stopped) break
         streamController = new AbortController()
         try {
           await TappApiService.streamEvents(

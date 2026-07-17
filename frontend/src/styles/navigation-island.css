@@ -292,6 +292,7 @@ html.dark [aria-current='page'].nav-item {
     display: flex;
     flex-direction: row;
     align-items: center;
+
     /* 圆角裁剪与毛玻璃同层；滚动见 .nav-island-scroll（AppLayout.css） */
     overflow: hidden;
   }

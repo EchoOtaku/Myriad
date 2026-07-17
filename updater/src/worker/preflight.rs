@@ -323,11 +323,7 @@ async fn run_commit(
             target = %target,
             "preflight(commit): GITHUB_TOKEN unset; verifying dev tag via Docker Hub image pulls"
         );
-        (
-            target.clone(),
-            target.commit_sha().map(str::to_owned),
-            None,
-        )
+        (target.clone(), target.commit_sha().map(str::to_owned), None)
     } else {
         let gh = worker.github_client()?;
         match gh.resolve_commit(&git_ref).await {
@@ -356,11 +352,7 @@ async fn run_commit(
                         "preflight(commit): GitHub resolve failed; verifying tag by pulling images"
                     );
                 }
-                (
-                    target.clone(),
-                    target.commit_sha().map(str::to_owned),
-                    None,
-                )
+                (target.clone(), target.commit_sha().map(str::to_owned), None)
             }
             Err(error) => {
                 return Err(UpdaterError::Precondition(format!(
