@@ -20,10 +20,8 @@ import {
   FaDownload,
   FaGripVertical,
   FaLock,
-  FaMagic,
   FaRedo,
   FaUndo,
-  LuSparkles,
 } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -36,6 +34,10 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useNavigation } from '../../contexts/NavigationContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
+import {
+  PlaygroundTraceIcon,
+  TappPlaygroundIcon,
+} from '../components/PlaygroundIcons'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
 import { installFromCode } from '../services/TappApiService'
 import { generatePlaygroundProject } from '../services/TappPlaygroundService'
@@ -899,8 +901,17 @@ export function TappPlaygroundPage() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={springTransition}
           >
-            <div className="w-16 h-16 mx-auto rounded-[22px] grid place-items-center bg-violet-500/10 text-violet-500 ring-1 ring-inset ring-violet-500/10">
-              <FaMagic className="w-7 h-7" />
+            <div
+              className="w-16 h-16 mx-auto rounded-[22px] grid place-items-center border"
+              style={{
+                color: 'var(--color-primary)',
+                background:
+                  'color-mix(in srgb, var(--color-primary) 10%, transparent)',
+                borderColor:
+                  'color-mix(in srgb, var(--color-primary) 15%, transparent)',
+              }}
+            >
+              <TappPlaygroundIcon className="w-8 h-8" />
             </div>
             <h2 className="mt-4 font-bold text-gray-800 dark:text-gray-100">
               {t.tapp.playgroundEmptyTitle}
@@ -923,7 +934,14 @@ export function TappPlaygroundPage() {
             className="absolute inset-0 z-30 grid place-items-center bg-white/40 dark:bg-black/40 backdrop-blur-sm"
           >
             <div className="flex items-center gap-2.5 rounded-full px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white/85 dark:bg-black/70 backdrop-blur-xl shadow-lg ring-1 ring-inset ring-black/5 dark:ring-white/10">
-              <span className="w-4 h-4 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+              <span
+                className="w-4 h-4 border-2 rounded-full animate-spin"
+                style={{
+                  borderColor:
+                    'color-mix(in srgb, var(--color-primary) 30%, transparent)',
+                  borderTopColor: 'var(--color-primary)',
+                }}
+              />
               {busyMode === 'runtime-repair'
                 ? t.tapp.playgroundRepairingRuntime
                 : t.tapp.playgroundGenerating}
@@ -942,7 +960,10 @@ export function TappPlaygroundPage() {
           style={{ color: 'var(--text-muted)' }}
         />
       )}
-      <FaCode className="w-3 h-3 shrink-0 text-violet-400" />
+      <FaCode
+        className="w-3 h-3 shrink-0"
+        style={{ color: 'var(--color-primary)' }}
+      />
       <span
         className="text-xs font-medium truncate"
         style={{ color: 'var(--text-primary)' }}
@@ -1044,8 +1065,14 @@ export function TappPlaygroundPage() {
             className="w-px h-5 mx-0.5"
             style={{ backgroundColor: 'var(--border-color)' }}
           />
-          <div className="w-7 h-7 rounded-lg grid place-items-center text-white shadow-sm bg-linear-to-br from-violet-500 to-fuchsia-500">
-            <LuSparkles className="w-4 h-4" />
+          <div
+            className="w-7 h-7 rounded-lg grid place-items-center text-white shadow-sm"
+            style={{
+              background:
+                'linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 80%, black))',
+            }}
+          >
+            <TappPlaygroundIcon className="w-4 h-4" />
           </div>
           <span
             className="text-sm font-semibold whitespace-nowrap"
@@ -1165,11 +1192,25 @@ export function TappPlaygroundPage() {
 
               {/* Agent 工作轨迹 + 会话操作 */}
               {revision?.agentTrace?.length ? (
-                <details className="mb-1.5 rounded-xl bg-violet-500/[0.06] ring-1 ring-inset ring-violet-500/15 px-3 py-2 group">
+                <details
+                  className="mb-1.5 rounded-xl border px-3 py-2 group"
+                  style={{
+                    background:
+                      'color-mix(in srgb, var(--color-primary) 6%, transparent)',
+                    borderColor:
+                      'color-mix(in srgb, var(--color-primary) 15%, transparent)',
+                  }}
+                >
                   <summary className="cursor-pointer list-none flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
-                    <LuSparkles className="w-3.5 h-3.5 text-violet-500" />
+                    <PlaygroundTraceIcon
+                      className="w-3.5 h-3.5"
+                      style={{ color: 'var(--color-primary)' }}
+                    />
                     {t.tapp.playgroundAgentTrace}
-                    <span className="ml-auto text-[10px] font-mono text-violet-500">
+                    <span
+                      className="ml-auto text-[10px] font-mono"
+                      style={{ color: 'var(--color-primary)' }}
+                    >
                       {revision.validation?.passed
                         ? `${t.tapp.playgroundValidated} · ${revision.validation.attempts}`
                         : revision.agentTrace.length}
@@ -1191,7 +1232,10 @@ export function TappPlaygroundPage() {
                           }`}
                         />
                         <div className="min-w-0">
-                          <span className="font-mono font-bold text-violet-600 dark:text-violet-300">
+                          <span
+                            className="font-mono font-bold"
+                            style={{ color: 'var(--color-primary)' }}
+                          >
                             {step.tool}
                           </span>
                           <span className="text-gray-500 dark:text-gray-400">
@@ -1203,7 +1247,13 @@ export function TappPlaygroundPage() {
                     ))}
                   </div>
                   {revision.knowledgeSources?.length ? (
-                    <div className="mt-2 pt-2 border-t border-violet-500/10">
+                    <div
+                      className="mt-2 pt-2 border-t"
+                      style={{
+                        borderColor:
+                          'color-mix(in srgb, var(--color-primary) 10%, transparent)',
+                      }}
+                    >
                       <div className="text-[10px] font-semibold text-gray-500 dark:text-gray-400">
                         {t.tapp.playgroundKnowledgeSources}
                       </div>
@@ -1227,8 +1277,15 @@ export function TappPlaygroundPage() {
 
           {/* 输入行 */}
           <div className="flex items-end gap-1.5 p-2">
-            <div className="w-9 h-9 shrink-0 rounded-full grid place-items-center text-violet-500 bg-violet-500/10">
-              <LuSparkles className="w-4 h-4" />
+            <div
+              className="w-9 h-9 shrink-0 rounded-full grid place-items-center"
+              style={{
+                color: 'var(--color-primary)',
+                background:
+                  'color-mix(in srgb, var(--color-primary) 12%, transparent)',
+              }}
+            >
+              <TappPlaygroundIcon className="w-4 h-4" />
             </div>
             <textarea
               ref={textareaRef}
@@ -1327,7 +1384,11 @@ export function TappPlaygroundPage() {
                   ? { scale: 0.92 }
                   : {}
               }
-              className="w-9 h-9 shrink-0 rounded-full grid place-items-center text-white bg-linear-to-br from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-500/25 disabled:opacity-40 disabled:shadow-none transition-[opacity,box-shadow]"
+              className="w-9 h-9 shrink-0 rounded-full grid place-items-center text-white shadow-md disabled:opacity-40 transition-opacity"
+              style={{
+                background:
+                  'linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 80%, black))',
+              }}
               title={
                 project ? t.tapp.playgroundApplyChange : t.tapp.playgroundGenerate
               }

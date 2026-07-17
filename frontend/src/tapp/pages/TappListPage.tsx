@@ -19,7 +19,6 @@ import {
   FaTimes,
   FaTrash,
   FaUpload,
-  LuSparkles,
   MyriadStoreIcon,
 } from '@lib/icons'
 import {
@@ -47,6 +46,7 @@ import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { useResolvedTitleColor, useTitleFont } from '../../hooks/useTitleFont'
 import { hasSessionHint } from '../../utils/sessionDetection'
+import { TappPlaygroundIcon } from '../components/PlaygroundIcons'
 import { TappIcon } from '../components/TappIcon'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
@@ -789,10 +789,11 @@ export function TappListPage() {
                   {isAdmin && (
                     <button
                       onClick={() => navigate('/tapp/playground')}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-violet-500/10 hover:bg-violet-500/15 text-violet-600 dark:text-violet-300"
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
+                      style={{ color: 'var(--color-primary)' }}
                       title={t.tapp.playgroundTitle}
                     >
-                      <LuSparkles className="w-3.5 h-3.5" />
+                      <TappPlaygroundIcon className="w-3.5 h-3.5" />
                       {t.tapp.playground}
                     </button>
                   )}
@@ -838,7 +839,10 @@ export function TappListPage() {
                     className="p-2 rounded-lg glass shadow-sm"
                     title={t.tapp.playgroundTitle}
                   >
-                    <LuSparkles className="w-5 h-5 text-violet-500" />
+                    <TappPlaygroundIcon
+                      className="w-5 h-5"
+                      style={{ color: 'var(--color-primary)' }}
+                    />
                   </button>
                 )}
                 <button
@@ -913,11 +917,12 @@ export function TappListPage() {
                   {isAdmin && (
                     <motion.button
                       onClick={() => navigate('/tapp/playground')}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-violet-500/10 text-violet-600 dark:text-violet-300"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15"
+                      style={{ color: 'var(--color-primary)' }}
                       whileHover={{ scale: 1.02, y: -1 }}
                       whileTap={{ scale: 0.98 }}
                     >
-                      <LuSparkles className="w-4 h-4" />
+                      <TappPlaygroundIcon className="w-4 h-4" />
                       {t.tapp.playground}
                     </motion.button>
                   )}
