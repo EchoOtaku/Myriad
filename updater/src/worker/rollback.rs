@@ -14,7 +14,7 @@
 //! ## Resilience (coupled with health-probe false negatives)
 //!
 //! Order matters: we **restore MYRIAD_TAG first**, then snapshot, so a mid-rollback crash
-//! still leaves `.env` pointing at last-good. If snapshot restore fails we still attempt
+//! still leaves `.env` pointing at the rollback version. If snapshot restore fails we still attempt
 //! to start services so operators are not stuck with everything stopped.
 
 use std::sync::Arc;
@@ -40,13 +40,13 @@ pub async fn run(worker: Arc<Worker>, job_id: String, snapshot_id: String) -> Re
     rec.enter(Phase::RollbackInProgress, "updater.phase.rollback")?;
     rec.finish_step_ok()?;
 
-    let compose = super::update::build_compose_runner_pub(&worker)?;
+    let compose = super::update::build_compose_runner_pub(&worker).await?;
     let snap = SnapshotManager {
         state: worker.state(),
         pgdata: worker.cli().pgdata.clone(),
     };
 
-    // Resolve from snapshot / last-good — never skip tag restore on standalone rollback
+    // Resolve from snapshot / rollback version — never skip tag restore on standalone rollback
     // when metadata is available.
     match execute_inline(worker.clone(), &rec, &compose, &snap, &snapshot_id, None).await {
         Ok(restored) => {
@@ -97,7 +97,7 @@ pub async fn execute_inline(
     rec.finish_step_ok()?;
 
     // --- Resolve + restore MYRIAD_TAG BEFORE snapshot work ---
-    // So any later failure (EBUSY restore, etc.) still leaves env at last-good.
+    // So any later failure (EBUSY restore, etc.) still leaves env at the rollback version.
     let prev_tag = resolve_previous_tag(worker.state(), snapshot_id, swap_back_tag)?;
     let restored_version = match &prev_tag {
         Some(tag) => {
@@ -147,7 +147,7 @@ pub async fn execute_inline(
         warn!(
             err = %e,
             snapshot = snapshot_id,
-            "rollback: snapshot restore failed; continuing to start last-good images \
+            "rollback: snapshot restore failed; continuing to start rollback images \
              (pgdata may still be post-upgrade)"
         );
         restore_failed = Some(e.to_string());
@@ -195,7 +195,7 @@ pub async fn execute_inline(
             if let Some(ref e) = restore_failed {
                 // Services up but data not restored — still NeedsManual signal via error.
                 return Err(UpdaterError::Precondition(format!(
-                    "rollback brought services up on last-good tag, but pgdata restore failed: {e}"
+                    "rollback brought services up on the rollback tag, but pgdata restore failed: {e}"
                 )));
             }
             Ok(restored_version)
@@ -212,7 +212,7 @@ pub async fn execute_inline(
     }
 }
 
-/// Wait until backend answers /health with db_connected, using multi-path probe.
+/// Wait until backend answers /health with db_connected over the compose network.
 /// Soft-pass after 60s if container is running and returns any 200 health JSON.
 async fn rollback_health_wait(worker: &Worker, deadline: Duration) -> Result<()> {
     let start = std::time::Instant::now();
@@ -222,11 +222,7 @@ async fn rollback_health_wait(worker: &Worker, deadline: Duration) -> Result<()>
         let elapsed = start.elapsed();
         match worker
             .docker()
-            .http_probe_with_hint(
-                "http://backend:1103/health",
-                Duration::from_secs(5),
-                Some("backend"),
-            )
+            .http_probe("http://backend:1103/health", Duration::from_secs(5))
             .await
         {
             Ok((200, body)) => {

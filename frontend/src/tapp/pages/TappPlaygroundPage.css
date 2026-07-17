@@ -1,0 +1,113 @@
+/* Tapp Playground 代码编辑器
+   高亮层(pre) + 透明输入层(textarea) 叠加：两层字体度量必须完全一致 */
+
+.playground-code-editor {
+  position: relative;
+  min-height: 100%;
+}
+
+.playground-code-editor pre,
+.playground-code-editor textarea {
+  margin: 0;
+  padding: 1rem;
+  font-family:
+    ui-monospace, sfmono-regular, menlo, monaco, consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 2;
+}
+
+.playground-code-editor pre {
+  color: #abb2bf;
+}
+
+.playground-code-editor textarea {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: #61afef;
+}
+
+/* 覆盖 overrides.css 的全局 textarea 聚焦样式 */
+.playground-code-editor textarea:focus {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.playground-code-editor textarea::selection {
+  background: rgb(97 175 239 / 30%);
+}
+
+/* Prism 配色（One Dark 系），全部限定在编辑器作用域内 */
+.playground-code-editor .token.comment,
+.playground-code-editor .token.prolog,
+.playground-code-editor .token.cdata {
+  color: #5c6370;
+  font-style: italic;
+}
+
+.playground-code-editor .token.doctype,
+.playground-code-editor .token.punctuation {
+  color: #abb2bf;
+}
+
+.playground-code-editor .token.property,
+.playground-code-editor .token.boolean,
+.playground-code-editor .token.number,
+.playground-code-editor .token.constant,
+.playground-code-editor .token.symbol {
+  color: #d19a66;
+}
+
+.playground-code-editor .token.tag,
+.playground-code-editor .token.regex,
+.playground-code-editor .token.important,
+.playground-code-editor .token.variable,
+.playground-code-editor .token.deleted {
+  color: #e06c75;
+}
+
+.playground-code-editor .token.selector,
+.playground-code-editor .token.attr-name,
+.playground-code-editor .token.string,
+.playground-code-editor .token.char,
+.playground-code-editor .token.builtin,
+.playground-code-editor .token.inserted {
+  color: #98c379;
+}
+
+.playground-code-editor .token.operator,
+.playground-code-editor .token.entity,
+.playground-code-editor .token.url {
+  color: #56b6c2;
+}
+
+.playground-code-editor .token.atrule,
+.playground-code-editor .token.attr-value,
+.playground-code-editor .token.keyword {
+  color: #c678dd;
+}
+
+.playground-code-editor .token.function,
+.playground-code-editor .token.class-name {
+  color: #61afef;
+}
+
+.playground-code-editor .token.bold {
+  font-weight: 700;
+}
+
+.playground-code-editor .token.italic {
+  font-style: italic;
+}

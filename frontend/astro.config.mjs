@@ -82,7 +82,7 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function proxyBackendRequest(targetUrl, method, headers, body) {
+function proxyBackendRequest(targetUrl, method, headers, body, timeoutMs) {
   return new Promise((resolve, reject) => {
     const requestHeaders = Object.fromEntries(headers.entries())
     requestHeaders.connection = 'close'
@@ -96,7 +96,7 @@ function proxyBackendRequest(targetUrl, method, headers, body) {
         method,
         headers: requestHeaders,
         agent: false,
-        timeout: 30000,
+        timeout: timeoutMs,
       },
       (backendRes) => {
         const chunks = []
@@ -167,6 +167,9 @@ function backendDevProxyPlugin() {
           const hasBody = method !== 'GET' && method !== 'HEAD'
           const body = hasBody ? await readRequestBody(req) : undefined
           const retryable = method === 'GET' || method === 'HEAD'
+          const timeoutMs = originalUrl.startsWith('/api/tapp-playground/')
+            ? 360000
+            : 30000
 
           let response
           let lastError
@@ -177,6 +180,7 @@ function backendDevProxyPlugin() {
                 method,
                 headers,
                 body,
+                timeoutMs,
               )
               break
             } catch (error) {

@@ -1,4 +1,4 @@
-//! Persistent state on the bind-mounted /state directory.
+//! Persistent state below the bind-mounted deployment root (production: /host/compose/state).
 //!
 //! Layout (see docs/updater-spec.md §6):
 //!   state/

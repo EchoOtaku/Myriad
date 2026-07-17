@@ -1721,6 +1721,35 @@ export interface TranslationKeys {
     loginRequiredToInstall: string
     export: string
     exportFailed: string
+    playground: string
+    playgroundTitle: string
+    playgroundSubtitle: string
+    playgroundCreatePrompt: string
+    playgroundModifyPrompt: string
+    playgroundCreatePlaceholder: string
+    playgroundModifyPlaceholder: string
+    playgroundGenerating: string
+    playgroundRepairingRuntime: string
+    playgroundGenerate: string
+    playgroundApplyChange: string
+    playgroundShortcut: string
+    playgroundInstall: string
+    playgroundInstallSuccess: string
+    playgroundUndo: string
+    playgroundRedo: string
+    playgroundIsolationTitle: string
+    playgroundIsolationDesc: string
+    playgroundClear: string
+    playgroundPreview: string
+    playgroundEmptyTitle: string
+    playgroundEmptyDesc: string
+    playgroundCodeEmpty: string
+    playgroundCodeTitle: string
+    playgroundInvalidJson: string
+    playgroundGenerateFailed: string
+    playgroundAgentTrace: string
+    playgroundKnowledgeSources: string
+    playgroundValidated: string
 
     // 安装弹窗
     installTappTitle: string

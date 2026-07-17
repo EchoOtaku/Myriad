@@ -58,6 +58,7 @@ import {
   registerUserHandlers,
   registerWidgetHandlers,
 } from './sandbox/handlers'
+import { registerPlaygroundPreviewHandlers } from './sandbox/handlers/playgroundPreviewHandlers'
 import { createTappBridge } from './TappBridge'
 import { TappRuntimeGrant } from './TappRuntimeGrant'
 import { useSandboxSubscriptions } from './useSandboxSubscriptions'
@@ -103,6 +104,11 @@ export interface TappPageSandboxProps {
    * 用于 background.require 声明的后台运行，取代过去在后台隐形挂一整页的做法。
    */
   headless?: boolean
+  /**
+   * Session-local Playground preview. It uses the production iframe/CSP shell,
+   * but never issues a backend Runtime Grant or registers host-mutating APIs.
+   */
+  previewMode?: boolean
 }
 
 /**
@@ -122,6 +128,7 @@ function generateHeadlessCoreHTML(
   tappInstance: TappInstance,
   code: TappCodeStructure,
   sessionToken: string,
+  locale: string,
 ): string {
   const { manifest } = tappInstance
   const nonce = generateNonce()
@@ -141,7 +148,7 @@ function generateHeadlessCoreHTML(
   const i18nScript =
     code.i18n && Object.keys(code.i18n).length > 0
       ? `window._TAPP_I18N = ${serializeSandboxScriptValue(code.i18n)};`
-      : ''
+      : 'window._TAPP_I18N = {};'
 
   return `<!DOCTYPE html>
 <html class="tapp-mode-core">
@@ -155,6 +162,7 @@ function generateHeadlessCoreHTML(
     window._TAPP_MODE = 'core';
     window._TAPP_HAS_HTML = false;
     window._TAPP_HEADLESS = true;
+    window._TAPP_LOCALE = ${serializeSandboxScriptValue(locale)};
     ${i18nScript}
   </script>
   <script nonce="${nonce}">${securityWrapper}</script>
@@ -197,6 +205,7 @@ function generatePageHTML(
   tappInstance: TappInstance,
   code: TappCodeStructure,
   sessionToken: string,
+  locale: string,
   safeInsets?: SafeInsets,
   launchParams?: Record<string, string>,
 ): string {
@@ -275,7 +284,7 @@ function generatePageHTML(
   const i18nScript =
     code.i18n && Object.keys(code.i18n).length > 0
       ? `window._TAPP_I18N = ${serializeSandboxScriptValue(code.i18n)};`
-      : ''
+      : 'window._TAPP_I18N = {};'
 
   // 🎯 使用安装时预编译的 CSS
   const tailwindCSS = code.pageCSS || ''
@@ -321,6 +330,7 @@ function generatePageHTML(
     window._TAPP_LAUNCH_PARAMS = ${serializeSandboxScriptValue(launchParams || {})};
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
     ${loadingModeScript}
+    window._TAPP_LOCALE = ${serializeSandboxScriptValue(locale)};
     ${i18nScript}
     window._TAPP_INITIAL_SAFE_INSETS = {
       top: ${safeInsets?.top ?? 0},
@@ -388,6 +398,7 @@ function generatePageHTML(
           }
         } catch (error) {
           console.error('[Page] Render error:', error);
+          Tapp.lifecycle._notifyError(error);
           document.getElementById('tapp-content').innerHTML =
             '<div class="tapp-empty tapp-text-error">Page Error: ' + error.message + '</div>';
         }
@@ -414,10 +425,13 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   style,
   safeInsets,
   headless = false,
+  previewMode = false,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const bridgeRef = useRef<TappBridge | null>(null)
   const [isReady, setIsReady] = useState(false)
+  const previewStorageRef = useRef(new Map<string, unknown>())
+  const previewSettingsRef = useRef(new Map<string, unknown>())
 
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale } = useI18n()
@@ -717,11 +731,13 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     const bridge = createTappBridge()
     bridgeRef.current = bridge
 
-    const runtimeGrant = new TappRuntimeGrant(
-      currentTappInstance.id,
-      `${headless ? 'headless' : 'page'}_${sessionToken.slice(0, 32)}`,
-      headless ? 'headless' : 'page',
-    )
+    const runtimeGrant = previewMode
+      ? undefined
+      : new TappRuntimeGrant(
+          currentTappInstance.id,
+          `${headless ? 'headless' : 'page'}_${sessionToken.slice(0, 32)}`,
+          headless ? 'headless' : 'page',
+        )
 
     bridge.initialize(iframe, currentTappInstance, sessionToken, runtimeGrant)
 
@@ -733,40 +749,71 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       handleError,
     )
     registerUIHandlers(bridge, currentTappInstance, () => localeRef.current)
-    registerStorageHandlers(bridge, currentTappInstance.id)
     registerUserHandlers(bridge, currentTappInstance)
     registerFileHandlers(bridge)
-    registerAssetHandlers(bridge, currentTappInstance)
-    registerWidgetHandlers(bridge, currentTappInstance)
-    registerPlatformHandlers(bridge, currentTappInstance)
-    registerTappListHandlers(bridge, currentTappInstance)
-    registerBrewListHandlers(bridge, currentTappInstance)
-    const closeAITaskStreams = registerAIHandlers(bridge)
-    registerReportHandlers(bridge, currentTappInstance)
-    registerMediaHandlers(bridge, currentTappInstance)
-    registerSpeechHandlers(bridge, currentTappInstance)
-    registerBackgroundHandlers(bridge, currentTappInstance)
-    const closeScheduler = registerSchedulerHandlers(
-      bridge,
-      currentTappInstance,
-    )
     registerAnimationHandlers(bridge, animationConfigRef)
-    registerDynamicContentHandlers(bridge, currentTappInstance)
-    registerAdvancedHandlers(bridge, currentTappInstance)
-    const closeFederationSockets = registerFederationHandlers(
-      bridge,
-      currentTappInstance,
-    )
-    registerContextHandlers(bridge, currentTappInstance)
-    const closeDataExchange = registerDataExchangeHandlers(
-      bridge,
-      currentTappInstance,
-    )
-    const closeEventStream = registerEventHandlers(bridge, currentTappInstance)
-    const closeAgentInteractions = registerAgentInteractionHandlers(
-      bridge,
-      currentTappInstance,
-    )
+
+    const cleanups: (() => void)[] = []
+    if (previewMode) {
+      const defaults = currentTappInstance.manifest.settings || []
+      for (const setting of defaults) {
+        if (
+          !previewSettingsRef.current.has(setting.key) &&
+          setting.defaultValue !== undefined
+        ) {
+          previewSettingsRef.current.set(setting.key, setting.defaultValue)
+        }
+      }
+      registerPlaygroundPreviewHandlers(
+        bridge,
+        currentTappInstance,
+        previewStorageRef.current,
+        previewSettingsRef.current,
+      )
+    } else {
+      registerStorageHandlers(bridge, currentTappInstance.id)
+      registerAssetHandlers(bridge, currentTappInstance)
+      registerWidgetHandlers(bridge, currentTappInstance)
+      registerPlatformHandlers(bridge, currentTappInstance)
+      registerTappListHandlers(bridge, currentTappInstance)
+      registerBrewListHandlers(bridge, currentTappInstance)
+      const closeAITaskStreams = registerAIHandlers(bridge)
+      registerReportHandlers(bridge, currentTappInstance)
+      registerMediaHandlers(bridge, currentTappInstance)
+      registerSpeechHandlers(bridge, currentTappInstance)
+      registerBackgroundHandlers(bridge, currentTappInstance)
+      const closeScheduler = registerSchedulerHandlers(
+        bridge,
+        currentTappInstance,
+      )
+      registerDynamicContentHandlers(bridge, currentTappInstance)
+      registerAdvancedHandlers(bridge, currentTappInstance)
+      const closeFederationSockets = registerFederationHandlers(
+        bridge,
+        currentTappInstance,
+      )
+      registerContextHandlers(bridge, currentTappInstance)
+      const closeDataExchange = registerDataExchangeHandlers(
+        bridge,
+        currentTappInstance,
+      )
+      const closeEventStream = registerEventHandlers(
+        bridge,
+        currentTappInstance,
+      )
+      const closeAgentInteractions = registerAgentInteractionHandlers(
+        bridge,
+        currentTappInstance,
+      )
+      cleanups.push(
+        closeFederationSockets,
+        closeScheduler,
+        closeDataExchange,
+        closeAITaskStreams,
+        closeEventStream,
+        closeAgentInteractions,
+      )
+    }
 
     // 收集 URL 启动参数传递给沙箱
     const launchParams: Record<string, string> = {}
@@ -782,24 +829,20 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     // 生成 HTML（使用预生成的 session token）
     // headless: 只跑 core 大脑代码、无 UI；否则渲染完整 page
     const html = headless
-      ? generateHeadlessCoreHTML(currentTappInstance, currentCode, sessionToken)
+      ? generateHeadlessCoreHTML(
+          currentTappInstance,
+          currentCode,
+          sessionToken,
+          localeRef.current,
+        )
       : generatePageHTML(
           currentTappInstance,
           currentCode,
           sessionToken,
+          localeRef.current,
           safeInsetsRef.current,
           launchParams,
         )
-
-    // 清理函数列表
-    const cleanups: (() => void)[] = [
-      closeFederationSockets,
-      closeScheduler,
-      closeDataExchange,
-      closeAITaskStreams,
-      closeEventStream,
-      closeAgentInteractions,
-    ]
 
     // 内联挂载（含 WebKit）
     //
@@ -840,6 +883,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     codeFingerprint,
     handleReady,
     headless,
+    previewMode,
   ])
 
   return (

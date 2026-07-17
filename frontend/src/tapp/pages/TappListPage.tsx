@@ -19,6 +19,7 @@ import {
   FaTimes,
   FaTrash,
   FaUpload,
+  LuSparkles,
   MyriadStoreIcon,
 } from '@lib/icons'
 import {
@@ -785,6 +786,16 @@ export function TappListPage() {
 
                 {/* 鎿嶄綔鎸夐挳 */}
                 <div className="hidden sm:flex items-center gap-2">
+                  {isAdmin && (
+                    <button
+                      onClick={() => navigate('/tapp/playground')}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-violet-500/10 hover:bg-violet-500/15 text-violet-600 dark:text-violet-300"
+                      title={t.tapp.playgroundTitle}
+                    >
+                      <LuSparkles className="w-3.5 h-3.5" />
+                      {t.tapp.playground}
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowStore(true)}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
@@ -821,6 +832,15 @@ export function TappListPage() {
 
               {/* 鍙充晶绉诲姩绔寜閽? */}
               <div className="flex sm:hidden items-center gap-2">
+                {isAdmin && (
+                  <button
+                    onClick={() => navigate('/tapp/playground')}
+                    className="p-2 rounded-lg glass shadow-sm"
+                    title={t.tapp.playgroundTitle}
+                  >
+                    <LuSparkles className="w-5 h-5 text-violet-500" />
+                  </button>
+                )}
                 <button
                   onClick={() => setShowStore(true)}
                   className="p-2 rounded-lg glass shadow-sm"
@@ -890,6 +910,17 @@ export function TappListPage() {
                     <MyriadStoreIcon className="w-4 h-4" />
                     {t.tapp.browseStore}
                   </motion.button>
+                  {isAdmin && (
+                    <motion.button
+                      onClick={() => navigate('/tapp/playground')}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-violet-500/10 text-violet-600 dark:text-violet-300"
+                      whileHover={{ scale: 1.02, y: -1 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <LuSparkles className="w-4 h-4" />
+                      {t.tapp.playground}
+                    </motion.button>
+                  )}
                   {isAdmin && (
                     <motion.button
                       onClick={() => setShowInstallModal(true)}

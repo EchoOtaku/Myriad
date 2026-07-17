@@ -27,6 +27,7 @@ pub mod setup;
 pub mod speech; // 🎙️ 腾讯云语音服务 API (TTS/ASR)
 pub mod steam;
 pub mod system;
+pub mod tapp_playground; // 🧪 Pro AI 驱动的临时 Tapp 开发环境
 pub mod tapp_runtime; // ✅ Tapp 运行时 API（平台数据、AI、上下文、事件…）
 pub mod tapp_scheduler; // ✅ Tapp 定时任务调度 API
 pub mod tapp_store; // ✅ Tapp 应用商店/管理 API（安装、卸载、配置…）

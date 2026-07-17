@@ -7,6 +7,7 @@
 ## 目录
 
 - [存储 API](#存储-api)
+- [国际化 API](#国际化-api)
 - [跨 Tapp Data Exchange API](#跨-tapp-data-exchange-api)
 - [设置 API](#设置-api)
 - [UI API](#ui-api)
@@ -31,6 +32,28 @@
 - [文件与语音 API](#文件与语音-api)
 - [包内资源 Assets API](#包内资源-assets-api)
 - [能力边界与完整命名空间](#能力边界与完整命名空间)
+
+---
+
+## 国际化 API
+
+**权限**：无（Basic 读取能力）
+
+安装资源中的 `i18n/<locale>.json` 会以只读数据注入沙箱。Page、Widget 和 headless core
+统一通过 `Tapp.i18n` 读取，不要自行猜测 `Tapp.i18n` 以外的接口，也不要直接依赖
+`window._TAPP_I18N` 内部变量。
+
+```javascript
+const title = Tapp.i18n.t("title");
+const progress = Tapp.i18n.t("progress", { done: 3, total: 5 });
+const locale = Tapp.i18n.getLocale();
+const allTranslations = Tapp.i18n.getAll(); // 返回只读数据的深拷贝
+```
+
+`t()` 先匹配语言表中的完整 key，因此 `{"app.title": "..."}` 可直接使用；未命中时再把
+点号作为嵌套路径读取。locale 按当前完整 locale、语言前缀、`en-US`、`zh-CN` 的顺序
+回退；缺失时返回 key，避免把 `undefined` 写进 DOM。语言切换后 `getLocale()` 和 `t()`
+立即使用新 locale，已有 DOM 文本仍应在 `Tapp.ui.onLocaleChange()` 回调中重新渲染。
 
 ---
 

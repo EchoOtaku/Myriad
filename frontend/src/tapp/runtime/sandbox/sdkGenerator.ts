@@ -147,7 +147,18 @@ export function generateFullSDK(
   };
   const runLifecycleCallbacks = (name) => {
     lifecycleCallbacks[name].slice().forEach((callback) => {
-      try { callback(); } catch (error) { console.error('[Tapp] Lifecycle callback failed:', error); }
+      try {
+        const result = callback();
+        if (result && typeof result.then === 'function') {
+          result.catch((error) => {
+            console.error('[Tapp] Async lifecycle callback failed:', error);
+            window.Tapp?.lifecycle?._notifyError(error).catch(() => {});
+          });
+        }
+      } catch (error) {
+        console.error('[Tapp] Lifecycle callback failed:', error);
+        Promise.resolve().then(() => window.Tapp?.lifecycle?._notifyError(error).catch(() => {}));
+      }
     });
   };
   const notifyLifecycleDestroy = () => {
@@ -303,7 +314,10 @@ export function generateFullSDK(
         // 🎯 强制触发重绘（WebKit 走保守路径）
         _forceRepaint();
       }
-      else if (message.action === 'locale:change') eventListeners.get('localeChange')?.forEach((cb) => cb(message.payload));
+      else if (message.action === 'locale:change') {
+        currentLocale = typeof message.payload === 'string' ? message.payload : currentLocale;
+        eventListeners.get('localeChange')?.forEach((cb) => cb(message.payload));
+      }
       else if (message.action === 'primaryColor:change') {
         eventListeners.get('primaryColorChange')?.forEach((cb) => cb(message.payload));
         // 更新 CSS 变量
@@ -331,6 +345,28 @@ export function generateFullSDK(
     return () => listeners.delete(callback);
   };
 
+  let currentLocale = typeof window._TAPP_LOCALE === 'string'
+    ? window._TAPP_LOCALE
+    : 'zh-CN';
+  const translate = (key, variables = {}) => {
+    const all = window._TAPP_I18N && typeof window._TAPP_I18N === 'object'
+      ? window._TAPP_I18N
+      : {};
+    const language = currentLocale.split('-')[0];
+    const table = all[currentLocale] || all[language] || all['en-US'] || all['zh-CN'] || {};
+    const directValue = table && typeof table === 'object' ? table[String(key)] : undefined;
+    const value = typeof directValue === 'string'
+      ? directValue
+      : String(key).split('.').reduce(
+          (current, part) => current && typeof current === 'object' ? current[part] : undefined,
+          table,
+        );
+    const text = typeof value === 'string' ? value : String(key);
+    return text.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, name) =>
+      Object.prototype.hasOwnProperty.call(variables, name) ? String(variables[name]) : match
+    );
+  };
+
   const Tapp = {
     id: ${idLiteral},
     version: ${versionLiteral},
@@ -352,6 +388,15 @@ export function generateFullSDK(
         lifecycleReady = true;
         sendRequest('lifecycle', 'ready', []);
         runLifecycleCallbacks('ready');
+      },
+    },
+
+    i18n: {
+      t: translate,
+      getLocale: () => currentLocale,
+      getAll: () => {
+        const all = window._TAPP_I18N;
+        return all && typeof all === 'object' ? JSON.parse(JSON.stringify(all)) : {};
       },
     },
 
@@ -792,6 +837,7 @@ export function generateFullSDK(
   // 冻结所有 API 对象（防止篡改）
   Object.freeze(Tapp);
   Object.freeze(Tapp.lifecycle);
+  Object.freeze(Tapp.i18n);
   Object.freeze(Tapp.widget);
   Object.freeze(Tapp.tappList);
   Object.freeze(Tapp.brewList);
@@ -837,6 +883,16 @@ export function generateFullSDK(
     value: Tapp,
     writable: false,
     configurable: false
+  });
+
+  window.addEventListener('error', (event) => {
+    const error = event.error || new Error(event.message || 'Unknown window error');
+    Tapp.lifecycle._notifyError(error).catch(() => {});
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    Tapp.lifecycle._notifyError(error).catch(() => {});
   });
 
   setTimeout(() => Tapp.lifecycle._notifyReady(), 0);
@@ -1054,6 +1110,7 @@ export function generateWidgetSDK(
       }
       // 语言变化事件
       else if (msg.action === 'locale:change') {
+        currentLocale = typeof msg.payload === 'string' ? msg.payload : currentLocale;
         eventListeners.get('localeChange')?.forEach(function(cb) { try { cb(msg.payload); } catch(e) {} });
       }
       // 容器尺寸变化事件（已在 HTML 中处理，这里作为备份）
@@ -1088,6 +1145,28 @@ export function generateWidgetSDK(
     }
   });
 
+  var currentLocale = typeof window._TAPP_LOCALE === 'string'
+    ? window._TAPP_LOCALE
+    : 'zh-CN';
+  function translate(key, variables) {
+    variables = variables || {};
+    var all = window._TAPP_I18N && typeof window._TAPP_I18N === 'object'
+      ? window._TAPP_I18N
+      : {};
+    var language = currentLocale.split('-')[0];
+    var table = all[currentLocale] || all[language] || all['en-US'] || all['zh-CN'] || {};
+    var directValue = table && typeof table === 'object' ? table[String(key)] : undefined;
+    var value = typeof directValue === 'string'
+      ? directValue
+      : String(key).split('.').reduce(function(current, part) {
+          return current && typeof current === 'object' ? current[part] : undefined;
+        }, table);
+    var text = typeof value === 'string' ? value : String(key);
+    return text.replace(/\{([a-zA-Z0-9_]+)\}/g, function(match, name) {
+      return Object.prototype.hasOwnProperty.call(variables, name) ? String(variables[name]) : match;
+    });
+  }
+
   window.Tapp = {
     id: ${idLiteral},
     name: ${nameLiteral},
@@ -1102,6 +1181,15 @@ export function generateWidgetSDK(
       onDestroy: function(cb) { lifecycleCallbacks.destroy.push(cb); },
       onPause: function(cb) { lifecycleCallbacks.pause.push(cb); },
       onResume: function(cb) { lifecycleCallbacks.resume.push(cb); }
+    },
+
+    i18n: {
+      t: translate,
+      getLocale: function() { return currentLocale; },
+      getAll: function() {
+        var all = window._TAPP_I18N;
+        return all && typeof all === 'object' ? JSON.parse(JSON.stringify(all)) : {};
+      }
     },
 
     widget: {
@@ -1399,6 +1487,7 @@ export function generateWidgetSDK(
   // 冻结所有 API 对象（防止篡改）
   Object.freeze(Tapp);
   Object.freeze(Tapp.lifecycle);
+  Object.freeze(Tapp.i18n);
   Object.freeze(Tapp.storage);
   Object.freeze(Tapp.dataExchange);
   Object.freeze(Tapp.settings);

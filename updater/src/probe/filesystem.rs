@@ -20,7 +20,7 @@ pub struct PgdataProbe {
     pub error: Option<String>,
 }
 
-pub async fn probe_pgdata(path: &Path) -> PgdataProbe {
+pub async fn probe_pgdata(path: &Path, state_dir: &Path) -> PgdataProbe {
     let mut out = PgdataProbe {
         exists: false,
         is_named_volume: false,
@@ -63,7 +63,7 @@ pub async fn probe_pgdata(path: &Path) -> PgdataProbe {
 
     // Device id for cross-device detection.
     let dev_pgdata = device_id(path).ok();
-    let dev_snapshots = device_id(Path::new("/state/snapshots")).ok();
+    let dev_snapshots = device_id(&state_dir.join("snapshots")).ok();
     out.device_id = dev_pgdata;
     if let (Some(a), Some(b)) = (dev_pgdata, dev_snapshots) {
         out.cross_device = a != b;

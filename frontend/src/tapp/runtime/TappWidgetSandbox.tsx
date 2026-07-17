@@ -169,6 +169,8 @@ function generateWidgetHTML(
     window._TAPP_MODE = 'widget';
     window._TAPP_WIDGET_ID = ${serializeSandboxScriptValue(widgetId)};
     window._TAPP_WIDGET_PROPS = ${serializeSandboxScriptValue(widgetProps)};
+    window._TAPP_LOCALE = ${serializeSandboxScriptValue(widgetProps.locale)};
+    window._TAPP_I18N = ${serializeSandboxScriptValue(code.i18n || {})};
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1, isCompact: false, isMini: false };
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
 

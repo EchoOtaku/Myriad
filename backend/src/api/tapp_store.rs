@@ -683,7 +683,7 @@ fn decode_asset_base64(value: &str) -> Result<Vec<u8>, String> {
         .map_err(|_| "Invalid asset base64 encoding".to_string())
 }
 
-fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
+pub(crate) fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
     validate_tapp_id(&manifest.id)?;
     if manifest.name.trim().is_empty() || manifest.name.len() > 255 {
         return Err("Tapp name must contain 1-255 characters".to_string());

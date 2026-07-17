@@ -107,6 +107,31 @@ pub struct AiAnalyzer {
     base_url: Option<String>, // For OpenAI-compatible APIs
 }
 
+fn openai_chat_completions_url(base_url: Option<&str>) -> String {
+    let base_url = base_url
+        .unwrap_or("https://api.openai.com/v1")
+        .trim()
+        .trim_end_matches('/');
+
+    if base_url.ends_with("/chat/completions") {
+        return base_url.to_string();
+    }
+
+    // OpenRouter documents its OpenAI-compatible API under /api/v1. Accepting
+    // the site root here makes a common settings mistake safe without changing
+    // the semantics of custom OpenAI-compatible endpoints.
+    if matches!(base_url, "https://openrouter.ai" | "http://openrouter.ai") {
+        return format!("{base_url}/api/v1/chat/completions");
+    }
+
+    // The official OpenAI host is the other common root-only value.
+    if matches!(base_url, "https://api.openai.com" | "http://api.openai.com") {
+        return format!("{base_url}/v1/chat/completions");
+    }
+
+    format!("{base_url}/chat/completions")
+}
+
 impl AiAnalyzer {
     pub async fn new(
         provider: AiProvider,
@@ -261,22 +286,7 @@ impl AiAnalyzer {
             ],
         };
 
-        let base_url = self
-            .base_url
-            .as_deref()
-            .unwrap_or("https://api.openai.com/v1");
-
-        // 智能处理 base_url：如果已经包含 /chat/completions，直接使用；否则拼接
-        let url = if base_url.ends_with("/chat/completions") {
-            tracing::debug!("Base URL already contains /chat/completions, using as-is");
-            base_url.to_string()
-        } else if base_url.ends_with('/') {
-            tracing::debug!("Base URL ends with /, appending chat/completions");
-            format!("{}chat/completions", base_url)
-        } else {
-            tracing::debug!("Base URL needs path separator, appending /chat/completions");
-            format!("{}/chat/completions", base_url)
-        };
+        let url = openai_chat_completions_url(self.base_url.as_deref());
 
         tracing::info!(
             "🔗 Calling OpenAI-compatible API: {} (model: {})",
@@ -350,8 +360,7 @@ impl AiAnalyzer {
                     ],
                 };
 
-                let base_url = self.base_url.as_deref().unwrap_or("https://api.openai.com");
-                let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+                let url = openai_chat_completions_url(self.base_url.as_deref());
 
                 let response = self
                     .client
@@ -490,17 +499,7 @@ impl AiAnalyzer {
                     stream: true,
                 };
 
-                let base_url = self
-                    .base_url
-                    .as_deref()
-                    .unwrap_or("https://api.openai.com/v1");
-                let url = if base_url.ends_with("/chat/completions") {
-                    base_url.to_string()
-                } else if base_url.ends_with('/') {
-                    format!("{}chat/completions", base_url)
-                } else {
-                    format!("{}/chat/completions", base_url)
-                };
+                let url = openai_chat_completions_url(self.base_url.as_deref());
 
                 let mut response = self
                     .client
@@ -560,5 +559,34 @@ impl AiAnalyzer {
         }
 
         Ok(full_text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::openai_chat_completions_url;
+
+    #[test]
+    fn normalizes_openai_compatible_chat_urls() {
+        assert_eq!(
+            openai_chat_completions_url(None),
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(
+            openai_chat_completions_url(Some("https://api.openai.com")),
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(
+            openai_chat_completions_url(Some("https://openrouter.ai/")),
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
+        assert_eq!(
+            openai_chat_completions_url(Some("https://openrouter.ai/api/v1")),
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
+        assert_eq!(
+            openai_chat_completions_url(Some("https://gateway.example.com/v1/chat/completions")),
+            "https://gateway.example.com/v1/chat/completions"
+        );
     }
 }

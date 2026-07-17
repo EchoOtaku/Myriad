@@ -22,6 +22,8 @@ pub struct ComposeRunner {
     env_file: PathBuf,
     /// Working directory for compose, so relative bind mounts resolve correctly.
     workdir: PathBuf,
+    /// Host-side project directory used to resolve relative bind sources for the daemon.
+    project_directory: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +52,7 @@ impl ComposeRunner {
         files: Vec<PathBuf>,
         env_file: PathBuf,
         workdir: PathBuf,
+        project_directory: PathBuf,
     ) -> Self {
         Self {
             binary,
@@ -57,12 +60,16 @@ impl ComposeRunner {
             files,
             env_file,
             workdir,
+            project_directory,
         }
     }
 
     fn base_cmd(&self) -> Command {
         let mut c = self.binary.command(&self.project, &self.files);
-        c.arg("--env-file").arg(&self.env_file);
+        c.arg("--project-directory")
+            .arg(&self.project_directory)
+            .arg("--env-file")
+            .arg(&self.env_file);
         c.current_dir(&self.workdir);
         c.stdout(Stdio::piped());
         c.stderr(Stdio::piped());

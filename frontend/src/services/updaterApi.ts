@@ -107,8 +107,8 @@ export interface UpdaterStatus {
   /** Snapshot for one-click continue when stuck in needs_manual. */
   rescue_snapshot_id?: string | null
   rescue_source_version?: string | null
-  /** Version pinned as local `*:myriad-last-good` images. */
-  last_good_version?: string | null
+  /** Version pinned locally for rollback as `*:myriad-rollback`. */
+  rollback_version?: string | null
   available_channels?: string[]
 }
 

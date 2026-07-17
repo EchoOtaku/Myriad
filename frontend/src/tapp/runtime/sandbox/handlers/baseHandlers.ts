@@ -28,10 +28,17 @@ export function registerLifecycleHandlers(
 
   bridge.registerHandler('lifecycle.error', async (message) => {
     const payload = message.payload
+    const payloadRecord =
+      payload && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)
+        : undefined
+    const args = Array.isArray(payloadRecord?.args)
+      ? (payloadRecord.args as unknown[])
+      : []
     const errorMsg =
       typeof payload === 'string'
         ? payload
-        : (payload as Record<string, unknown>)?.message || 'Unknown error'
+        : payloadRecord?.message || args[0] || 'Unknown error'
     console.error(`[Sandbox] Tapp ${tappInstance.id} error:`, payload)
     onError?.(new Error(String(errorMsg)))
     return { success: true, data: null }

@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
     // Phase 2: env-probe (compose binary, docker, pgdata fs type, etc.).
     // Any unsupported environment must fail loudly *before* we serve any API.
     let env_probe = probe::run_all(&probe::ProbeInputs {
+        state_dir: cli.state_dir.clone(),
         compose_dir: cli.compose_dir.clone(),
         env_file: cli.env_file.clone(),
         pgdata: cli.pgdata.clone(),

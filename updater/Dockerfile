@@ -8,6 +8,7 @@ FROM rust:1.90-bookworm AS builder
 WORKDIR /work
 
 COPY updater/Cargo.toml updater/Cargo.toml
+COPY updater/Cargo.lock updater/Cargo.lock
 COPY updater/src updater/src
 
 ARG MYRIAD_VERSION=v0.0.0-dev
@@ -45,6 +46,7 @@ RUN set -eux; \
 
 COPY --from=builder /work/updater/target/release/myriad-updater /usr/local/bin/myriad-updater
 COPY --from=builder /work/updater/target/release/myriad-rescue  /usr/local/bin/myriad-rescue
+COPY --from=builder /work/updater/target/release/myriad-docker-guard /usr/local/bin/myriad-docker-guard
 
 # cosign CLI for release.json signature verification (M2). Single static binary, ~50 MB.
 ARG COSIGN_VERSION=v2.4.1
@@ -60,18 +62,12 @@ RUN set -eux; \
     chmod +x /usr/local/bin/cosign; \
     cosign version
 
-# Required bind mounts in compose:
-#   /state                  state directory (host: ./state)
-#   /host/compose           compose project dir (host: .)
-#   /host/.env              env file (host: ./.env)
-#   /host/pgdata            postgres data (host: ./pgdata)
-#   /var/run/docker.sock    host docker socket
-VOLUME ["/state"]
-
-ENV UPDATER_STATE_DIR=/state \
+# Updater receives one deployment-root bind at /host/compose. The separate docker-guard
+# entrypoint is the sole consumer of /var/run/docker.sock.
+ENV UPDATER_STATE_DIR=/host/compose/state \
     UPDATER_COMPOSE_DIR=/host/compose \
-    UPDATER_ENV_FILE=/host/.env \
-    UPDATER_PGDATA=/host/pgdata \
+    UPDATER_ENV_FILE=/host/compose/.env \
+    UPDATER_PGDATA=/host/compose/pgdata \
     UPDATER_LISTEN=0.0.0.0:1101
 
 EXPOSE 1101

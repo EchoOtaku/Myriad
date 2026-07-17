@@ -4290,6 +4290,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // ============ Tapp 应用管理 API ============
             // 部分公开访问（游客可查看管理员的 Tapp），部分需要认证（在路由内部处理）
             .nest("/api/tapps", api::tapp_store::create_tapp_routes())
+            // ============ Tapp Playground（管理员 + Pro 模型）============
+            .nest(
+                "/api/tapp-playground",
+                api::tapp_playground::create_playground_routes(),
+            )
             // ============ Agent AI 任务编排 API ============
             // 自然语言任务分解、执行和监控
             .nest("/api/agent", api::agent::create_agent_routes())

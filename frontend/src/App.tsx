@@ -70,6 +70,9 @@ const Setup = lazy(() => import('./views/Setup.tsx'))
 const TappList = lazy(() => import('./tapp/pages/TappListPage.tsx'))
 const TappRun = lazy(() => import('./views/TappRunView.tsx'))
 const TappDetail = lazy(() => import('./views/TappDetailView.tsx'))
+const TappPlayground = lazy(
+  () => import('./tapp/pages/TappPlaygroundPage.tsx'),
+)
 
 // Arael AI 助手浮动面板
 const AraelPanel = lazy(() => import('./components/agent/AraelPanel'))
@@ -480,6 +483,16 @@ function AppRoutes() {
                 <TappDetail />
               </SuspensePage>
             </ModuleVisibilityGuard>
+          }
+        />
+        <Route
+          path="/tapp/playground"
+          element={
+            <RequireAuth requiresAdmin>
+              <SuspensePage>
+                <TappPlayground />
+              </SuspensePage>
+            </RequireAuth>
           }
         />
 

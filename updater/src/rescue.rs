@@ -1,5 +1,5 @@
 //! Rescue CLI implementations. These do NOT require the updater HTTP API to be alive —
-//! they operate on `/state` and the docker daemon directly. Spec §16.3.
+//! they operate on the configured state directory and Docker connection directly. Spec §16.3.
 
 use std::path::PathBuf;
 use std::process::Stdio;

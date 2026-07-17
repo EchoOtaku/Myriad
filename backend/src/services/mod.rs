@@ -22,6 +22,7 @@ pub mod platform_auto_refresh; // Core 平台自动刷新任务（复用 Tapp �
 pub mod smart_filter; // ✅ 智能内容过滤器（新版，使用数据库）
 pub mod spoof_utils; // ✅ 请求伪装工具（区域IP/UA伪装，绕过地区限制）
 pub mod tapp_api_service; // ✅ Tapp API 声明执行服务（public/protected 两级权限）
+pub mod tapp_playground_knowledge; // Playground Agent 只读 Tapp 契约检索
 pub mod tapp_scheduler; // ✅ Tapp 定时任务调度引擎
 pub mod tencent_speech_service;
 pub mod updater_client; // 🚀 Updater HTTP client (admin proxy) // 🎙️ 腾讯云语音服务（TTS/ASR）

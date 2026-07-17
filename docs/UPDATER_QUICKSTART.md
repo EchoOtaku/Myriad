@@ -37,10 +37,13 @@ bash scripts/docker/deploy.sh up
 ```
 proxy (80) ─┬─► frontend
             └─► backend ─► postgres
-updater (内网) — docker.sock + pgdata + state
+updater (内网) ─► docker-guard ─► docker.sock
+       └──────── 单一部署根挂载（pgdata + state + .env）
 ```
 
-只有 `proxy` 暴露宿主端口。`HTTP_PORT` 可以在 `.env` 调（默认 80）。
+只有 `proxy` 暴露宿主端口。`HTTP_PORT` 可以在 `.env` 调（默认 80）。原始 Docker socket
+只挂载给 `docker-guard`；updater 通过内部网络访问经项目/镜像/请求体白名单限制的 API。
+updater 只挂载宿主部署根目录一次，宿主上的 `./pgdata`、`./state` 路径和救援命令不变。
 
 ## 3. 打开 updater UI
 
@@ -169,8 +172,11 @@ curl -s -b "$COOKIE_JAR" -X POST http://localhost/api/admin/updater/update \
 需要 proxy 启用了 `PROXY_ALLOW_DIRECT_UPDATER=true`：
 
 ```bash
+UPDATE_TOKEN='从部署目录 .env 读取的 UPDATE_TOKEN'
+
 # 1. 查 status
-curl -s http://localhost/_updater/status | jq
+curl -s http://localhost/_updater/status \
+  -H "X-Update-Token: $UPDATE_TOKEN" | jq
 
 # 2. 触发更新
 curl -s -X POST http://localhost/_updater/update \
@@ -181,7 +187,7 @@ curl -s -X POST http://localhost/_updater/update \
 
 # 3. 跟踪 job
 JID=...
-watch -n2 "curl -s http://localhost/_updater/jobs/$JID | jq '.status, .steps[-1]'"
+watch -n2 "curl -s -H 'X-Update-Token: $UPDATE_TOKEN' http://localhost/_updater/jobs/$JID | jq '.status, .steps[-1]'"
 ```
 
 升级流程（spec §7）：
@@ -201,6 +207,9 @@ UI / API 手动回滚到某个快照时，同样会按快照的 `source_version`
 ## 5. 出问题怎么办
 
 ### 5.1 proxy 维护页一直挂着
+
+下面的 `docker exec` 是宿主机管理员的救援操作；updater 经 guard 调 Docker API 时不能使用
+container exec。
 
 ```bash
 # 看 updater 状态
@@ -228,7 +237,7 @@ docker exec myriad-updater myriad-rescue status | jq '.snapshots.items'
 docker exec myriad-updater myriad-rescue rollback --snapshot snap-<job-id>
 ```
 
-成功升级后，updater 会把当前业务镜像额外钉上本地 tag `*:myriad-last-good`，
+成功升级后，updater 会把当前业务镜像额外钉上本地回退 tag `*:myriad-rollback`，
 降低「只 prune 掉旧 tag、回退时本地没镜像」的风险。
 
 ### 5.3 把诊断包给开发者

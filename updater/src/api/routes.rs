@@ -18,8 +18,12 @@ use crate::version::{DeployTag, UpdateMode};
 use crate::worker::{AvailableInfo, Command as WorkerCmd};
 
 pub fn build(state: ApiState) -> Router {
-    let public = Router::new()
-        .route("/healthz", get(healthz))
+    // Keep only the liveness probe unauthenticated. Even read-only updater endpoints expose
+    // deployment metadata or trigger outbound release/build discovery, and this service can ask
+    // docker-guard to mutate the stack. The backend attaches UPDATE_TOKEN to every upstream call.
+    let public = Router::new().route("/healthz", get(healthz));
+
+    let token_only = Router::new()
         .route("/status", get(status))
         .route("/available", get(available))
         .route("/commits", get(list_commits))
@@ -28,9 +32,7 @@ pub fn build(state: ApiState) -> Router {
         .route("/compare", get(compare_refs))
         .route("/jobs", get(list_jobs))
         .route("/jobs/{id}", get(get_job))
-        .route("/snapshots", get(list_snapshots));
-
-    let token_only = Router::new()
+        .route("/snapshots", get(list_snapshots))
         .route("/update", post(update))
         .route("/prefs", post(set_prefs))
         .route("/rollback", post(rollback))
@@ -83,7 +85,7 @@ struct StatusResp {
     #[serde(skip_serializing_if = "Option::is_none")]
     rescue_source_version: Option<DeployTag>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    last_good_version: Option<DeployTag>,
+    rollback_version: Option<DeployTag>,
     /// Channels valid for the current mode (for UI selectors).
     available_channels: Vec<&'static str>,
 }
@@ -136,7 +138,7 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
         last_checked_at: u.last_checked_at,
         rescue_snapshot_id,
         rescue_source_version,
-        last_good_version: u.last_good_version,
+        rollback_version: u.rollback_version,
         available_channels,
     }))
 }
