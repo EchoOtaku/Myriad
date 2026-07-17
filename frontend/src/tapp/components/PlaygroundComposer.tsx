@@ -30,7 +30,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { PlaygroundTraceIcon, TappPlaygroundIcon } from './PlaygroundIcons'
+import { PlaygroundTraceIcon } from './PlaygroundIcons'
 
 /** Persisted generate failure for status-band + Retry (sessionStorage) */
 export interface PlaygroundLastFailedAttempt {
@@ -692,17 +692,6 @@ export function PlaygroundComposer({
 
           {/* ---------- 工具栏 ---------- */}
           <div className="flex items-center gap-1.5 px-2.5 pb-2.5 pt-1">
-            <div
-              className="w-8 h-8 shrink-0 rounded-full grid place-items-center"
-              style={{
-                color: 'var(--color-primary)',
-                background:
-                  'color-mix(in srgb, var(--color-primary) 12%, transparent)',
-              }}
-            >
-              <TappPlaygroundIcon className="w-4 h-4" />
-            </div>
-
             {revisionCount > 0 && (
               <div className="flex items-center rounded-full bg-black/5 dark:bg-white/10 p-0.5 shrink-0">
                 <motion.button
@@ -738,7 +727,7 @@ export function PlaygroundComposer({
               <button
                 onClick={onClear}
                 disabled={busy}
-                className="shrink-0 px-2 h-7 rounded-full text-[10px] font-semibold text-red-500/80 hover:text-red-500 hover:bg-red-500/8 transition-colors disabled:opacity-30"
+                className="shrink-0 px-2.5 h-7 rounded-full text-[10px] font-semibold text-red-500/90 bg-red-500/10 hover:bg-red-500/15 hover:text-red-500 transition-colors disabled:opacity-30"
               >
                 {t.tapp.playgroundClear}
               </button>
