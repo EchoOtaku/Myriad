@@ -148,9 +148,40 @@ ensure_current_layout() {
     ensure_update_token
 }
 
+# Backend runs as uid 1000 (USER myriad). Named volumes are root-owned on first
+# create; chown so /app/cache and /app/data stay writable without forcing root.
+ensure_backend_volume_perms() {
+    local project
+    project="$(grep -E '^COMPOSE_PROJECT_NAME=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
+    project="${project:-myriad}"
+    # Strip optional quotes
+    project="${project%\"}"
+    project="${project#\"}"
+    project="${project%\'}"
+    project="${project#\'}"
+
+    local cache_vol="${project}_backend_cache"
+    local data_vol="${project}_backend_data"
+
+    info "==> Ensuring backend named volumes writable by uid 1000 (myriad)"
+    docker volume create "$cache_vol" >/dev/null
+    docker volume create "$data_vol" >/dev/null
+    if ! docker run --rm \
+        -v "${cache_vol}:/app/cache" \
+        -v "${data_vol}:/app/data" \
+        alpine:3.20 \
+        chown -R 1000:1000 /app/cache /app/data
+    then
+        warn "Could not chown backend volumes (docker run alpine failed)."
+        warn "If backend cannot write /app/cache or /app/data, run as host admin:"
+        warn "  docker run --rm -v ${cache_vol}:/app/cache -v ${data_vol}:/app/data alpine:3.20 chown -R 1000:1000 /app/cache /app/data"
+    fi
+}
+
 cmd_up() {
     ensure_env
     ensure_current_layout
+    ensure_backend_volume_perms
     info "==> docker compose up -d"
     $COMPOSE up -d
     echo ""
@@ -186,6 +217,7 @@ cmd_status() {
 
 cmd_upgrade() {
     ensure_env
+    ensure_backend_volume_perms
     info "==> docker compose pull"
     $COMPOSE pull
     info "==> docker compose up -d (recreate with new tags)"

@@ -6,9 +6,11 @@
 # Verifies:
 #   1. proxy /healthz, /_proxy/status
 #   2. maintenance.json switch -> proxy serves the maintenance HTML
-#   3. updater /healthz, /status
-#   4. /admin/self-update (direct mode) returns 401 without token
-#   5. updater rescue CLI status
+#   3. docker guard permits a real project-scoped Compose lifecycle, but rejects exec
+#      and hostile host binds
+#   4. updater /healthz; /status requires token and returns the expected schema
+#   5. /admin/self-update (direct mode) returns 401 without token
+#   6. updater rescue CLI status
 #
 # Does NOT verify the full update flow (would require a working release.json on
 # GitHub + a real docker stack). For that, run a real `docker compose up -d` and
@@ -22,8 +24,13 @@ TESTBED="${TESTBED:-/tmp/myriad-e2e}"
 UPDATER_BIN="${UPDATER_BIN:-$ROOT/updater/target/release/myriad-updater}"
 RESCUE_BIN="${RESCUE_BIN:-$ROOT/updater/target/release/myriad-rescue}"
 PROXY_BIN="${PROXY_BIN:-$ROOT/proxy/target/release/myriad-proxy}"
+DOCKER_GUARD_BIN="${DOCKER_GUARD_BIN:-$ROOT/updater/target/release/myriad-docker-guard}"
 UPDATER_PORT="${UPDATER_PORT:-19090}"
 PROXY_PORT="${PROXY_PORT:-18080}"
+DOCKER_GUARD_PORT="${DOCKER_GUARD_PORT:-19375}"
+E2E_DOCKER_NETWORK="myriad-e2e-guard-${DOCKER_GUARD_PORT}"
+ORIGINAL_DOCKER_HOST="${DOCKER_HOST:-}"
+export E2E_DOCKER_NETWORK
 # 32+ chars, no dictionary words (avoids weak-token check)
 TOKEN="9xQ3vN8mP2rT5wY7zA1bC4dF6hJ8kL0n"
 
@@ -35,10 +42,26 @@ warn() { echo -e "${YELLOW}! $1${NC}"; }
 
 UPDATER_PID=""
 PROXY_PID=""
+DOCKER_GUARD_PID=""
+E2E_NETWORK_CREATED=""
+host_docker() {
+    if [ -n "$ORIGINAL_DOCKER_HOST" ]; then
+        DOCKER_HOST="$ORIGINAL_DOCKER_HOST" docker "$@"
+    else
+        env -u DOCKER_HOST docker "$@"
+    fi
+}
 cleanup() {
     set +e
+    if [ -n "${DOCKER_HOST:-}" ] && [ -f "$TESTBED/compose.yaml" ]; then
+        docker compose -p myriad-e2e -f "$TESTBED/compose.yaml" \
+            --project-directory "$TESTBED" --env-file "$TESTBED/.env" \
+            rm -sf backend updater >/dev/null 2>&1
+    fi
     [ -n "$UPDATER_PID" ] && kill "$UPDATER_PID" 2>/dev/null
     [ -n "$PROXY_PID" ] && kill "$PROXY_PID" 2>/dev/null
+    [ -n "$DOCKER_GUARD_PID" ] && kill "$DOCKER_GUARD_PID" 2>/dev/null
+    [ -n "$E2E_NETWORK_CREATED" ] && host_docker network rm "$E2E_DOCKER_NETWORK" >/dev/null 2>&1
     # Wait briefly for processes to exit
     wait 2>/dev/null
 }
@@ -48,6 +71,7 @@ trap cleanup EXIT
 [ -x "$UPDATER_BIN" ] || fail "updater binary missing: $UPDATER_BIN (run: cd updater && cargo build --release --bins)"
 [ -x "$RESCUE_BIN" ]  || fail "rescue binary missing: $RESCUE_BIN"
 [ -x "$PROXY_BIN" ]   || fail "proxy binary missing: $PROXY_BIN (run: cd proxy && cargo build --release)"
+[ -x "$DOCKER_GUARD_BIN" ] || fail "docker guard binary missing: $DOCKER_GUARD_BIN"
 
 info "Preparing testbed at $TESTBED"
 rm -rf "$TESTBED"
@@ -59,13 +83,19 @@ services:
   postgres:
     image: postgres:18-alpine
   backend:
-    image: example/myriad-backend:${MYRIAD_TAG}
+    image: postgres:18-alpine
   frontend:
     image: example/myriad-frontend:${MYRIAD_TAG}
   proxy:
     image: example/myriad-proxy:${PROXY_TAG}
   updater:
-    image: example/myriad-updater:${UPDATER_TAG}
+    image: postgres:18-alpine
+    volumes:
+      - ./:/host/compose
+networks:
+  default:
+    name: ${E2E_DOCKER_NETWORK}
+    external: true
 YML
 
 cat > "$TESTBED/.env" <<EOF
@@ -84,6 +114,25 @@ export CHANNEL="stable"
 export MYRIAD_GITHUB_REPO="Myriad-You/Myriad"
 export CHECK_INTERVAL_SECS=0   # disable periodic ticker for the test
 export COMPOSE_PROJECT_NAME="myriad-e2e"
+
+# ============================================================================
+# Start Docker guard. The updater below talks only to this TCP endpoint.
+# ============================================================================
+if ! host_docker network inspect "$E2E_DOCKER_NETWORK" >/dev/null 2>&1; then
+    host_docker network create "$E2E_DOCKER_NETWORK" >/dev/null
+    E2E_NETWORK_CREATED=1
+fi
+info "Starting docker guard on :$DOCKER_GUARD_PORT"
+DOCKER_GUARD_LISTEN="127.0.0.1:$DOCKER_GUARD_PORT" \
+DOCKER_GUARD_HOST_COMPOSE_ROOT="$TESTBED" \
+DOCKER_GUARD_COMPOSE_DIR="$TESTBED" \
+DOCKER_GUARD_ENV_FILE="$TESTBED/.env" \
+MYRIAD_DOCKER_NETWORK="$E2E_DOCKER_NETWORK" \
+MYRIAD_DOCKER_GUARD_NETWORK="myriad-e2e-guard" \
+DOCKER_GUARD_ALLOWED_IMAGES="example/myriad-backend,example/myriad-frontend,example/myriad-updater,postgres" \
+  "$DOCKER_GUARD_BIN" >"$TESTBED/docker-guard.log" 2>&1 &
+DOCKER_GUARD_PID=$!
+export DOCKER_HOST="tcp://127.0.0.1:$DOCKER_GUARD_PORT"
 
 # pgdata: stub a layout that satisfies the probe (it just needs a directory)
 mkdir -p "$TESTBED/pgdata/PG_VERSION_STUB"
@@ -119,12 +168,14 @@ UPDATER_PID=$!
 info "Waiting for services to be ready"
 for i in $(seq 1 30); do
     if curl -fsS -o /dev/null "http://127.0.0.1:$PROXY_PORT/healthz" 2>/dev/null \
+       && curl -fsS -o /dev/null "http://127.0.0.1:$DOCKER_GUARD_PORT/_ping" 2>/dev/null \
        && curl -fsS -o /dev/null "http://127.0.0.1:$UPDATER_PORT/healthz" 2>/dev/null; then
         break
     fi
     if [ "$i" = "30" ]; then
         echo "--- proxy.log ---"; tail -30 "$TESTBED/proxy.log"
         echo "--- updater.log ---"; tail -30 "$TESTBED/updater.log"
+        echo "--- docker-guard.log ---"; tail -30 "$TESTBED/docker-guard.log"
         fail "services did not become ready in 30s"
     fi
     sleep 0.3
@@ -162,7 +213,53 @@ check_proxy_status_inactive() {
 }
 run_check "proxy /_proxy/status reports inactive maintenance" check_proxy_status_inactive
 
-# 3. updater /healthz
+# 3. Docker guard policy: a real Compose lifecycle works, while exec and a hostile bind do not.
+check_docker_guard_policy() {
+    local ping exec_code bind_code symlink_code propagation_code compose_rc
+    ping=$(curl -fsS "http://127.0.0.1:$DOCKER_GUARD_PORT/_ping")
+    [ "$ping" = "OK" ] || return 1
+    exec_code=$(curl -s -o /dev/null -w '%{http_code}' \
+        -X POST "http://127.0.0.1:$DOCKER_GUARD_PORT/v1.51/containers/myriad-backend/exec" \
+        -H 'Content-Type: application/json' -d '{"Cmd":["id"]}')
+    [ "$exec_code" = "403" ] || return 1
+    bind_code=$(curl -s -o /dev/null -w '%{http_code}' \
+        -X POST "http://127.0.0.1:$DOCKER_GUARD_PORT/v1.51/containers/create?name=host-breakout" \
+        -H 'Content-Type: application/json' \
+        -d '{"Image":"example/myriad-backend:v1","Labels":{"com.docker.compose.project":"myriad-e2e","com.docker.compose.service":"backend"},"HostConfig":{"Binds":["/:/host:rw"]}}')
+    [ "$bind_code" = "403" ] || return 1
+
+    mv "$TESTBED/pgdata" "$TESTBED/pgdata.real"
+    ln -s / "$TESTBED/pgdata"
+    symlink_code=$(curl -s -o /dev/null -w '%{http_code}' \
+        -X POST "http://127.0.0.1:$DOCKER_GUARD_PORT/v1.51/containers/create?name=symlink-breakout" \
+        -H 'Content-Type: application/json' \
+        -d "{\"Image\":\"postgres:18-alpine\",\"Labels\":{\"com.docker.compose.project\":\"myriad-e2e\",\"com.docker.compose.service\":\"postgres\"},\"HostConfig\":{\"Binds\":[\"$TESTBED/pgdata:/var/lib/postgresql:rw\"]}}")
+    unlink "$TESTBED/pgdata"
+    mv "$TESTBED/pgdata.real" "$TESTBED/pgdata"
+    [ "$symlink_code" = "403" ] || return 1
+
+    propagation_code=$(curl -s -o /dev/null -w '%{http_code}' \
+        -X POST "http://127.0.0.1:$DOCKER_GUARD_PORT/v1.51/containers/create?name=propagation-breakout" \
+        -H 'Content-Type: application/json' \
+        -d "{\"Image\":\"example/myriad-updater:v1\",\"Labels\":{\"com.docker.compose.project\":\"myriad-e2e\",\"com.docker.compose.service\":\"updater\"},\"HostConfig\":{\"Binds\":[\"$TESTBED:/host/compose:rw,rshared\"]}}")
+    [ "$propagation_code" = "403" ] || return 1
+
+    set +e
+    docker compose -p myriad-e2e -f "$TESTBED/compose.yaml" \
+        --project-directory "$TESTBED" --env-file "$TESTBED/.env" \
+        up -d --no-deps backend updater \
+        >"$TESTBED/guard-compose.log" 2>&1
+    compose_rc=$?
+    docker compose -p myriad-e2e -f "$TESTBED/compose.yaml" \
+        --project-directory "$TESTBED" --env-file "$TESTBED/.env" \
+        rm -sf backend updater \
+        >>"$TESTBED/guard-compose.log" 2>&1
+    set -e
+    [ "$compose_rc" -eq 0 ]
+}
+run_check "docker guard allows project lifecycle and denies exec/bind/symlink/propagation" check_docker_guard_policy
+
+# 4. updater /healthz
 check_updater_health() {
     local code body
     body=$(curl -fsS "http://127.0.0.1:$UPDATER_PORT/healthz")
@@ -170,10 +267,15 @@ check_updater_health() {
 }
 run_check "updater /healthz returns ok" check_updater_health
 
-# 4. updater /status schema
+# 5. updater /status schema
 check_updater_status() {
-    local body
-    body=$(curl -fsS "http://127.0.0.1:$UPDATER_PORT/status")
+    local code body
+    code=$(curl -s -o /dev/null -w '%{http_code}' \
+        "http://127.0.0.1:$UPDATER_PORT/status")
+    [ "$code" = "401" ] || return 1
+    body=$(curl -fsS \
+        -H "X-Update-Token: $TOKEN" \
+        "http://127.0.0.1:$UPDATER_PORT/status")
     # Must contain required fields per spec §13
     echo "$body" | jq -e '
         .schema_version == 1
@@ -185,9 +287,9 @@ check_updater_status() {
         and (.requires_self_update | type) == "boolean"
     ' >/dev/null
 }
-run_check "updater /status returns spec-conformant shape" check_updater_status
+run_check "updater /status requires token and returns spec-conformant shape" check_updater_status
 
-# 5. updater /update without token returns 401
+# 6. updater /update without token returns 401
 check_update_no_token() {
     local code
     code=$(curl -s -o /dev/null -w '%{http_code}' \
@@ -198,7 +300,7 @@ check_update_no_token() {
 }
 run_check "POST /update without token returns 401" check_update_no_token
 
-# 6. updater /update with token but invalid version → 400
+# 7. updater /update with token but invalid version → 400
 check_update_bad_version() {
     local code
     code=$(curl -s -o /dev/null -w '%{http_code}' \
@@ -210,7 +312,7 @@ check_update_bad_version() {
 }
 run_check "POST /update with bad version returns 400" check_update_bad_version
 
-# 7. proxy /_updater/* forwards when ALLOW_DIRECT_UPDATER=true
+# 8. proxy /_updater/* forwards when ALLOW_DIRECT_UPDATER=true
 check_proxy_forwards_updater() {
     local body
     body=$(curl -fsS "http://127.0.0.1:$PROXY_PORT/_updater/healthz")
@@ -218,7 +320,7 @@ check_proxy_forwards_updater() {
 }
 run_check "proxy /_updater/healthz forwards to updater" check_proxy_forwards_updater
 
-# 8. Maintenance mode switch: write maintenance.json, proxy must serve maintenance page
+# 9. Maintenance mode switch: write maintenance.json, proxy must serve maintenance page
 check_maintenance_engages() {
     cat > "$TESTBED/state/maintenance.json" <<JSON
 {
@@ -241,7 +343,7 @@ JSON
 }
 run_check "maintenance mode serves 503 + maintenance HTML" check_maintenance_engages
 
-# 9. maintenance OFF: clear file, proxy should fail open (forward, then get connection refused
+# 10. maintenance OFF: clear file, proxy should fail open (forward, then get connection refused
 #    because there is no real backend on 65500 — expecting 502)
 check_maintenance_clears() {
     rm -f "$TESTBED/state/maintenance.json"
@@ -253,7 +355,7 @@ check_maintenance_clears() {
 }
 run_check "maintenance OFF: proxy forwards (502 from missing upstream)" check_maintenance_clears
 
-# 10. rescue CLI status
+# 11. rescue CLI status
 check_rescue_status() {
     "$RESCUE_BIN" --state-dir "$TESTBED/state" --pgdata "$TESTBED/pgdata" \
         --env-file "$TESTBED/.env" --compose-dir "$TESTBED" \
@@ -272,6 +374,7 @@ if [ "$FAIL" -eq 0 ]; then
     info "Logs:"
     info "  $TESTBED/proxy.log"
     info "  $TESTBED/updater.log"
+    info "  $TESTBED/docker-guard.log"
     exit 0
 else
     fail "$FAIL/$((PASS+FAIL)) checks failed (see logs in $TESTBED/*.log)"

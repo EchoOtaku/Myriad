@@ -45,7 +45,7 @@ pub async fn run(
     // Pre-swap phase: any failure cleans up without touching prod.
     // ============================================================
     // Structured audit line before any side effects (operator risk acknowledgements).
-    worker.state().append_history(&format!(
+    let audit = format!(
         "audit: update_request job={} target={} mode={} \
          allow_downgrade={} allow_diverged={} allow_unknown={} allow_irreversible={}",
         job_id,
@@ -55,7 +55,9 @@ pub async fn run(
         risk.allow_diverged,
         risk.allow_unknown,
         risk.allow_irreversible
-    ))?;
+    );
+    worker.state().append_history(&audit)?;
+    let _ = worker.state().append_audit(&audit);
 
     rec.enter(Phase::Preflight, "updater.phase.preflight")?;
     let pre = match preflight::run(worker.clone(), &target, mode, risk).await {
@@ -92,7 +94,7 @@ pub async fn run(
     rec.enter(Phase::MaintenanceOn, "updater.phase.maintenance_on")?;
     rec.finish_step_ok()?;
 
-    let compose = build_compose_runner(&worker)?;
+    let compose = build_compose_runner(&worker).await?;
 
     // Stop business containers.
     rec.enter(Phase::Stopping, "updater.phase.stopping")?;
@@ -185,11 +187,11 @@ pub async fn run(
     };
     rec.finish_step_ok()?;
 
-    if let Err(e) = pin_last_good_images(&worker, &from_tag_backup).await {
-        tracing::warn!(err = %e, prev = %from_tag_backup, "pre-start pin of last-good images failed");
+    if let Err(e) = pin_rollback_images(&worker, &from_tag_backup).await {
+        tracing::warn!(err = %e, prev = %from_tag_backup, "pre-start rollback image pin failed");
     } else if let Ok(v) = DeployTag::parse(&from_tag_backup) {
         let mut st = worker.state().read_updater()?;
-        st.last_good_version = Some(v);
+        st.rollback_version = Some(v);
         let _ = worker.state().write_updater(&st);
     }
 
@@ -238,11 +240,11 @@ pub async fn run(
     rec.finish_step_ok()?;
 
     rec.enter(Phase::Finalize, "updater.phase.finalize")?;
-    if let Err(e) = pin_last_good_images(&worker, target.as_str()).await {
-        tracing::warn!(err = %e, version = %target, "failed to pin last-good images");
+    if let Err(e) = pin_rollback_images(&worker, target.as_str()).await {
+        tracing::warn!(err = %e, version = %target, "failed to pin rollback images");
     } else {
         let mut st = worker.state().read_updater()?;
-        st.last_good_version = Some(target.clone());
+        st.rollback_version = Some(target.clone());
         let _ = worker.state().write_updater(&st);
     }
     rec.finish_step_ok()?;
@@ -254,39 +256,44 @@ pub async fn run(
     worker
         .state()
         .append_history(&format!("job {job_id}: SUCCESS {target} ({mode})"))?;
+    let _ = worker.state().append_audit(&format!(
+        "audit: update_succeeded job={job_id} target={} mode={}",
+        target.as_str(),
+        mode.as_str()
+    ));
     info!(job = %job_id, %target, ?mode, "update succeeded");
     Ok(())
 }
 
-async fn pin_last_good_images(worker: &Arc<Worker>, previous_tag: &str) -> Result<()> {
-    const PIN_TAG: &str = "myriad-last-good";
+async fn pin_rollback_images(worker: &Arc<Worker>, previous_tag: &str) -> Result<()> {
+    const PIN_TAG: &str = "myriad-rollback";
     let env = EnvFile::load(&worker.cli().env_file)?;
     let backend = env
         .get("BACKEND_IMAGE")
         .map(|s| s.to_string())
         .ok_or_else(|| {
-            UpdaterError::Precondition("BACKEND_IMAGE missing; cannot pin last-good".into())
+            UpdaterError::Precondition("BACKEND_IMAGE missing; cannot pin rollback image".into())
         })?;
     let frontend = env
         .get("FRONTEND_IMAGE")
         .map(|s| s.to_string())
         .ok_or_else(|| {
-            UpdaterError::Precondition("FRONTEND_IMAGE missing; cannot pin last-good".into())
+            UpdaterError::Precondition("FRONTEND_IMAGE missing; cannot pin rollback image".into())
         })?;
     let pairs = [("backend", backend), ("frontend", frontend)];
 
     for (comp, repo) in pairs {
         let source = format!("{repo}:{previous_tag}");
         if !worker.docker().image_exists_local(&source).await {
-            tracing::warn!(%comp, %source, "last-good pin skipped: image not local");
+            tracing::warn!(%comp, %source, "rollback pin skipped: image not local");
             continue;
         }
         worker
             .docker()
             .tag_image(&source, &repo, PIN_TAG)
             .await
-            .map_err(|e| UpdaterError::Docker(format!("pin last-good {comp} ({source}): {e}")))?;
-        info!(%comp, %source, pin = %format!("{repo}:{PIN_TAG}"), "pinned last-good image");
+            .map_err(|e| UpdaterError::Docker(format!("pin rollback {comp} ({source}): {e}")))?;
+        info!(%comp, %source, pin = %format!("{repo}:{PIN_TAG}"), "pinned rollback image");
     }
     Ok(())
 }
@@ -328,8 +335,8 @@ async fn finish_with_rollback(
                     worker.state().write_updater(&st)?;
                     rec.finish_step_ok()?;
                     rec.enter(Phase::Finalize, "updater.phase.finalize")?;
-                    if let Err(e) = pin_last_good_images(worker, target.as_str()).await {
-                        warn!(err = %e, "pin last-good after false-negative recovery failed");
+                    if let Err(e) = pin_rollback_images(worker, target.as_str()).await {
+                        warn!(err = %e, "pin rollback image after false-negative recovery failed");
                     }
                     rec.finish_step_ok()?;
                     let _ = snap.prune(3);
@@ -375,9 +382,12 @@ async fn finish_with_rollback(
             });
             worker.state().write_updater(&st)?;
             crate::worker::machine::clear_maintenance(worker.state())?;
-            worker
-                .state()
-                .append_history(&format!("job {}: ROLLBACK_OK ({original_err})", rec.job_id))?;
+            let rb_ok = format!("job {}: ROLLBACK_OK ({original_err})", rec.job_id);
+            worker.state().append_history(&rb_ok)?;
+            let _ = worker.state().append_audit(&format!(
+                "audit: auto_rollback_ok job={} err={original_err}",
+                rec.job_id
+            ));
             Err(original_err)
         }
         Err(rb_err) => {
@@ -406,11 +416,11 @@ fn is_health_probe_failure(err: &UpdaterError) -> bool {
     s.contains("health probe") || s.contains("health:")
 }
 
-pub(crate) fn build_compose_runner_pub(worker: &Arc<Worker>) -> Result<ComposeRunner> {
-    build_compose_runner(worker)
+pub(crate) async fn build_compose_runner_pub(worker: &Arc<Worker>) -> Result<ComposeRunner> {
+    build_compose_runner(worker).await
 }
 
-fn build_compose_runner(worker: &Arc<Worker>) -> Result<ComposeRunner> {
+async fn build_compose_runner(worker: &Arc<Worker>) -> Result<ComposeRunner> {
     let probe_path = worker.state().root().join("env-probe.json");
     let probe: crate::probe::EnvProbe = serde_json::from_slice(&std::fs::read(&probe_path)?)?;
     let binary: ComposeBinary = probe
@@ -418,12 +428,23 @@ fn build_compose_runner(worker: &Arc<Worker>) -> Result<ComposeRunner> {
         .binary
         .ok_or_else(|| UpdaterError::Internal(anyhow::anyhow!("compose binary unavailable")))?;
     let project = std::env::var("COMPOSE_PROJECT_NAME").unwrap_or_else(|_| "myriad".into());
+    let compose_base = probe
+        .compose
+        .compose_files
+        .first()
+        .and_then(|file| file.parent())
+        .unwrap_or(&worker.cli().compose_dir);
+    let host_project_directory = worker
+        .docker()
+        .resolve_host_bind_source(compose_base)
+        .await?;
     Ok(ComposeRunner::new(
         binary,
         project,
         probe.compose.compose_files,
         worker.cli().env_file.clone(),
         worker.cli().compose_dir.clone(),
+        host_project_directory,
     ))
 }
 
@@ -441,7 +462,7 @@ fn swap_tag(worker: &Arc<Worker>, new_tag: &str) -> Result<String> {
 /// Health probe after starting new backend/frontend.
 ///
 /// Hardened against "business is up but probe lies":
-/// - Multiple transport paths (direct HTTP, docker exec localhost, curl container)
+/// - Direct HTTP on the compose network; no Docker exec/container-create fallback
 /// - Identity: version string **or** commit_sha **or** container image tag
 /// - Frontend meta preferred; after 45s HTML 200 + backend identity is enough
 /// - After 90s soft-pass if containers running + DB + image tag match
@@ -562,11 +583,7 @@ async fn probe_one_tick(worker: &Arc<Worker>, target: &DeployTag, elapsed: Durat
     let frontend_img_ok = image_ref_matches_target(&frontend_image, target);
 
     let be = docker
-        .http_probe_with_hint(
-            "http://backend:1103/health",
-            Duration::from_secs(10),
-            Some("backend"),
-        )
+        .http_probe("http://backend:1103/health", Duration::from_secs(10))
         .await;
     let (be_code, be_body) = match be {
         Ok(v) => v,
@@ -616,11 +633,7 @@ async fn probe_one_tick(worker: &Arc<Worker>, target: &DeployTag, elapsed: Durat
     }
 
     let fe = docker
-        .http_probe_with_hint(
-            "http://frontend:1102/",
-            Duration::from_secs(10),
-            Some("frontend"),
-        )
+        .http_probe("http://frontend:1102/", Duration::from_secs(10))
         .await;
     let (fe_code, fe_body) = match fe {
         Ok(v) => v,

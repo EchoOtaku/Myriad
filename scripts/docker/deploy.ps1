@@ -134,9 +134,37 @@ function Ensure-CurrentLayout {
     Ensure-UpdateToken
 }
 
+# Backend runs as uid 1000 (USER myriad). Named volumes are root-owned on first
+# create; chown so /app/cache and /app/data stay writable without forcing root.
+function Ensure-BackendVolumePerms {
+    $project = "myriad"
+    $match = Select-String -Path .env -Pattern "^COMPOSE_PROJECT_NAME=(.+)$" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($match) {
+        $project = $match.Matches[0].Groups[1].Value.Trim().Trim('"').Trim("'")
+    }
+    if ([string]::IsNullOrWhiteSpace($project)) { $project = "myriad" }
+
+    $cacheVol = "${project}_backend_cache"
+    $dataVol = "${project}_backend_data"
+
+    Write-Info "==> Ensuring backend named volumes writable by uid 1000 (myriad)"
+    docker volume create $cacheVol | Out-Null
+    docker volume create $dataVol | Out-Null
+    docker run --rm `
+        -v "${cacheVol}:/app/cache" `
+        -v "${dataVol}:/app/data" `
+        alpine:3.20 `
+        chown -R 1000:1000 /app/cache /app/data
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Could not chown backend volumes. If backend cannot write cache/data, run:"
+        Write-Warn "  docker run --rm -v ${cacheVol}:/app/cache -v ${dataVol}:/app/data alpine:3.20 chown -R 1000:1000 /app/cache /app/data"
+    }
+}
+
 function Cmd-Up {
     Ensure-Env
     Ensure-CurrentLayout
+    Ensure-BackendVolumePerms
     Write-Info "==> docker compose up -d"
     Invoke-Compose up -d
     Write-Host ""
@@ -156,6 +184,7 @@ function Cmd-Status {
 }
 function Cmd-Upgrade {
     Ensure-Env
+    Ensure-BackendVolumePerms
     Write-Info "==> docker compose pull"
     Invoke-Compose pull
     Write-Info "==> docker compose up -d (recreate with new tags)"

@@ -755,33 +755,107 @@ async fn handle_self_update(state: GuardState, req: Request<Body>) -> Response {
         .into_response()
 }
 
+/// Recreate both TCB services so `docker-guard` tracks `UPDATER_TAG` alongside
+/// `updater`.
+///
+/// **Why the raw unix socket?** Container-create policy only allows Compose
+/// services `backend|frontend|postgres|updater`. Recreating `docker-guard`
+/// through the policy proxy on `:2375` would be denied. Self-update is a fixed
+/// argv TCB self-replace (not arbitrary Docker API), so compose talks to
+/// `unix:///var/run/docker.sock` directly. All other updater traffic still uses
+/// the policy proxy via `DOCKER_HOST=tcp://docker-guard:2375`.
+///
+/// **Why a one-shot helper?** Running `compose up docker-guard` from inside the
+/// live guard container races with killing that container mid-compose. A short
+/// helper (same updater image, fixed entrypoint override to `docker`) performs
+/// the dual recreate and exits.
 async fn run_guarded_self_update(state: &GuardState) -> Result<()> {
     let compose_files = find_compose_files(&state.config.compose_dir)?;
+    let helper_image = self_update_helper_image(&state.config.env_file)?;
+    let host_root = state.host_compose_root.to_string_lossy().into_owned();
+    let sock = state.config.socket_path.to_string_lossy().into_owned();
+    let docker_host = format!("unix://{sock}");
+
     let mut command = Command::new("docker");
-    command.arg("compose").arg("-p").arg(&state.config.project);
     command
-        .arg("--project-directory")
-        .arg(state.host_compose_root.as_path());
+        .env("DOCKER_HOST", &docker_host)
+        .args([
+            "run",
+            "--rm",
+            "--name",
+            &format!(
+                "myriad-tcb-self-update-{}",
+                std::process::id()
+            ),
+            "-v",
+            &format!("{sock}:/var/run/docker.sock"),
+            "-v",
+            &format!("{host_root}:/host/compose:ro"),
+            "--network",
+            "none",
+            "--security-opt",
+            "no-new-privileges:true",
+            "--entrypoint",
+            "docker",
+            &helper_image,
+            "compose",
+            "-p",
+            &state.config.project,
+            "--project-directory",
+            &host_root,
+        ]);
     for file in compose_files {
         command.arg("-f").arg(file);
     }
     command
         .arg("--env-file")
         .arg(&state.config.env_file)
-        .args(["up", "-d", "--no-deps", "updater"])
-        .current_dir(&state.config.compose_dir)
-        .env("DOCKER_HOST", "tcp://127.0.0.1:2375");
+        // Both services: guard first so depends_on health is satisfied when updater starts.
+        .args(["up", "-d", "--no-deps", "docker-guard", "updater"]);
+
     let output = command
         .output()
         .await
-        .context("spawn guarded docker compose")?;
+        .context("spawn TCB self-update helper (direct docker.sock)")?;
     if !output.status.success() {
         return Err(anyhow!(
-            "docker compose updater failed: {}",
+            "docker compose self-update (docker-guard + updater) failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
+    info!(
+        image = %helper_image,
+        "TCB self-update recreated docker-guard and updater via direct unix socket"
+    );
     Ok(())
+}
+
+/// Image used by the self-update helper. Prefers the post-rewrite `UPDATER_TAG`
+/// from the deployment `.env` so the helper binary matches the target release.
+fn self_update_helper_image(env_file: &Path) -> Result<String> {
+    let text = std::fs::read_to_string(env_file)
+        .with_context(|| format!("read env file for self-update image: {}", env_file.display()))?;
+    let mut image = "docker.io/somekawahitomi/myriad-updater".to_string();
+    let mut tag = None::<String>;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("UPDATER_IMAGE=") {
+            let v = rest.trim().trim_matches('"').trim_matches('\'');
+            if !v.is_empty() {
+                image = v.to_string();
+            }
+        } else if let Some(rest) = line.strip_prefix("UPDATER_TAG=") {
+            let v = rest.trim().trim_matches('"').trim_matches('\'');
+            if !v.is_empty() {
+                tag = Some(v.to_string());
+            }
+        }
+    }
+    let tag = tag.ok_or_else(|| anyhow!("UPDATER_TAG missing from {}", env_file.display()))?;
+    Ok(format!("{image}:{tag}"))
 }
 
 async fn discover_host_compose_root(socket: &Path, container_id: &str) -> Result<PathBuf> {

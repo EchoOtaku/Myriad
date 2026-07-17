@@ -1,4 +1,4 @@
-//! Persistent state on the bind-mounted /state directory.
+//! Persistent state below the bind-mounted deployment root (production: /host/compose/state).
 //!
 //! Layout (see docs/updater-spec.md §6):
 //!   state/
@@ -11,6 +11,7 @@
 //!     snapshots/            (pgdata snapshots)
 //!     snapshots.json
 //!     history.log           (append-only)
+//!     audit.log             (append-only security/ops audit trail)
 //!     env-probe.json
 //!     cache/                (release.json ETag/cache)
 //!
@@ -18,6 +19,7 @@
 //! same directory, fsyncs, renames, then fsyncs the directory.
 
 pub mod atomic;
+pub mod audit;
 pub mod history;
 pub mod lock;
 pub mod types;
@@ -188,5 +190,11 @@ impl StateDir {
 
     pub fn append_history(&self, line: &str) -> Result<()> {
         history::append(&self.root.join("history.log"), line)
+    }
+
+    /// Append a security/ops audit line to `state/audit.log` (fsync'd).
+    /// Prefer the `audit: …` line style used in history for machine grepping.
+    pub fn append_audit(&self, line: &str) -> Result<()> {
+        audit::append(&self.root.join("audit.log"), line)
     }
 }

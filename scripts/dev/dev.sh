@@ -579,7 +579,7 @@ start_updater() {
 
     if ! wait_for_updater 120; then
         print_warning "Updater did not become ready within 120s"
-        print_info "Check logs with: docker compose -f docker-compose.dev.yml --profile updater logs -f updater"
+        print_info "Check logs with: docker compose -f docker-compose.dev.yml --profile updater logs -f docker-guard updater"
         return 1
     fi
 
@@ -590,8 +590,8 @@ start_updater() {
 stop_updater() {
     print_step "Stopping updater dev harness..."
     cd "$PROJECT_ROOT"
-    docker compose -f docker-compose.dev.yml --profile updater stop updater 2>/dev/null || true
-    docker compose -f docker-compose.dev.yml --profile updater rm -f updater 2>/dev/null || true
+    docker compose -f docker-compose.dev.yml --profile updater stop updater docker-guard 2>/dev/null || true
+    docker compose -f docker-compose.dev.yml --profile updater rm -f updater docker-guard 2>/dev/null || true
     print_success "Updater harness stopped"
 }
 

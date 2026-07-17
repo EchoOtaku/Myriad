@@ -13,6 +13,7 @@ host HTTP_PORT
 proxy ──┬── frontend:1102
         ├── backend:1103 ── postgres:5432
         └── updater:1101 (internal only)
+               └── docker-guard:2375 ── host docker.sock
 ```
 
 - Only `proxy` publishes a host port.
@@ -20,18 +21,28 @@ proxy ──┬── frontend:1102
   network.
 - The updater is not an A/B dual-live system. It uses one running business slot,
   maintenance mode, `pgdata` snapshots, and immutable image tags.
+- Only `docker-guard` mounts the raw Docker socket. The updater reaches it over an
+  internal-only network; the guard restricts methods, Compose project labels, image
+  repositories, container-create privileges, and host bind mounts.
+- **Backend runs as non-root** (image `USER myriad`, uid 1000). Deploy scripts chown
+  named volumes `backend_cache` / `backend_data` so `/app/cache` and `/app/data`
+  remain writable. Healthcheck stays on `localhost:1103/health` (no privileged ports).
 - Browser update requests go through backend admin routes:
   `/api/admin/updater/*`. The browser never receives `UPDATE_TOKEN`.
+- Migrating from the old updater-with-sock layout: see
+  [MIGRATION_DOCKER_GUARD.md](./MIGRATION_DOCKER_GUARD.md) (host `compose pull && up -d`;
+  UI alone cannot switch topology).
 
 ## Files
 
 | File | Role |
 | --- | --- |
-| `docker-compose.yml` | Production stack: postgres, backend, frontend, proxy, updater |
+| `docker-compose.yml` | Production stack: postgres, backend, frontend, proxy, updater, docker-guard |
 | `.env.production.example` | Template for host `.env` |
 | `scripts/docker/deploy.sh` | Linux/macOS bootstrap and stack management |
 | `scripts/docker/deploy.ps1` | Windows bootstrap and stack management |
 | `docs/deployment/PORTS.md` | Development and production port map |
+| `docs/deployment/MIGRATION_DOCKER_GUARD.md` | Migrate from updater+sock to docker-guard dual-net |
 | `docs/UPDATER_QUICKSTART.md` | Operator guide for update, rollback, rescue |
 | `docs/updater-spec.md` | Updater protocol and failure-mode design |
 
@@ -73,6 +84,7 @@ Open `http://localhost` or the port configured by `HTTP_PORT`.
 | `CHANNEL` | no | Release channel, default `stable` |
 | `MYRIAD_GITHUB_REPO` | no | Release source repo, default `Myriad-You/Myriad` |
 | `MYRIAD_DOCKER_NETWORK` | no | Docker network override, default `myriad-net` |
+| `MYRIAD_DOCKER_GUARD_NETWORK` | no | Internal updater/guard network override, default `myriad-docker-guard-net` |
 | `PROXY_TRUSTED_UPSTREAMS` | no | Comma-separated IP/CIDR allowlist for outer proxies allowed to pass the real client IP |
 | `PROXY_ALLOW_DIRECT_UPDATER` | no | Enables `/_updater/*` rescue path, default `false` |
 | `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or explicit-risk `off` |
@@ -106,6 +118,8 @@ Day-to-day updates should be started from the admin UI:
 
 The updater then handles maintenance mode, container stop/start, `pgdata`
 snapshotting, tag switching, health probes, rollback, and rescue state.
+Health probes use direct HTTP on the Compose network; they do not use Docker exec
+or create temporary probe containers.
 
 ## Data Layout
 
@@ -113,12 +127,14 @@ snapshotting, tag switching, health probes, rollback, and rescue state.
 | --- | --- | --- |
 | `./pgdata` | ignored | PostgreSQL bind mount used for updater snapshots |
 | `./state` | ignored | Proxy maintenance state and updater lock/history |
-| `./backups` | ignored | Updater snapshots and diagnostics |
+| `./backups` | ignored | Operator-managed backups and diagnostics |
 | `backend_cache` volume | Docker volume | Backend cache |
 | `backend_data` volume | Docker volume | Backend app data |
 
 `pgdata` must be a bind mount, not a named Docker volume, because updater
 rollback needs file-level snapshots.
+The updater mounts the deployment root once at `/host/compose`; `pgdata`, state,
+snapshots, and `.env` are accessed below that root without additional host binds.
 
 ## Development
 

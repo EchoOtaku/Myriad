@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 
 pub struct ProbeInputs {
+    pub state_dir: PathBuf,
     pub compose_dir: PathBuf,
     pub env_file: PathBuf,
     pub pgdata: PathBuf,
@@ -67,7 +68,7 @@ pub async fn run_all(inputs: &ProbeInputs) -> Result<EnvProbe> {
         fatal.push("podman is not supported in M1".into());
     }
 
-    let pgdata = filesystem::probe_pgdata(&inputs.pgdata).await;
+    let pgdata = filesystem::probe_pgdata(&inputs.pgdata, &inputs.state_dir).await;
     if let Some(e) = &pgdata.error {
         fatal.push(format!("pgdata: {e}"));
     }
@@ -100,7 +101,10 @@ pub async fn run_all(inputs: &ProbeInputs) -> Result<EnvProbe> {
     }
 
     if pgdata.cross_device {
-        warnings.push("pgdata is on a different filesystem from /state/snapshots; rename rollback unavailable, falling back to copy".into());
+        warnings.push(format!(
+            "pgdata is on a different filesystem from {}/snapshots; rename rollback unavailable, falling back to copy",
+            inputs.state_dir.display()
+        ));
     }
     if let Some(skew) = docker_probe.daemon_time_skew_seconds {
         if skew.abs() > 300 {

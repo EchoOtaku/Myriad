@@ -11,11 +11,9 @@
 //!
 //! Restore is the reverse: stop postgres, then put the snapshot back into `pgdata`.
 //!
-//! **Bind-mount caveat**: production compose mounts `./pgdata` at `/host/pgdata`. That path
-//! is a *mount point* inside the updater container, so `rename(pgdata, pgdata.broken…)` returns
-//! `EBUSY (os error 16)`. When rename fails that way we fall back to in-place content replace
-//! (clear children of the mount, copy snapshot contents in), and keep a safety copy under
-//! `state/snapshots/`.
+//! Production reaches pgdata below the single `/host/compose` deployment-root bind, so directory
+//! rename rollback remains available. The in-place replacement path is retained as a filesystem
+//! compatibility fallback.
 
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};

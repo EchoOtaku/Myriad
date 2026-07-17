@@ -7,7 +7,8 @@
 #
 #   proxy (80) ──┬──► frontend
 #                └──► backend ──► postgres
-#   updater (内网) — 负责拉取镜像/快照 pgdata/切换版本
+#   updater (内网) ──► docker-guard ──► docker.sock
+#      负责拉取镜像/快照 pgdata/切换版本；guard 限制 Docker API 和创建参数
 #
 # 升级流程见 docs/updater-spec.md。
 # 直连 backend/frontend 端口和 :latest 镜像的旧布局已移除。
@@ -31,6 +32,7 @@
 # REGISTRY_MIRROR        可选：镜像 mirror 前缀
 # MYRIAD_GITHUB_REPO     默认 Myriad-You/Myriad
 # MYRIAD_DOCKER_NETWORK  可选：实际 Docker 网络名，默认 myriad-net
+# MYRIAD_DOCKER_GUARD_NETWORK 可选：updater/guard 专用内部网络名
 # ============================================================================
 
 services:
@@ -127,7 +129,9 @@ services:
     security_opt: [no-new-privileges:true]
     read_only: false
     tmpfs: [/tmp]
-    user: "0:0"
+    # Runs as Dockerfile USER myriad (uid 1000). Named volumes are chowned by
+    # scripts/docker/deploy.sh|deploy.ps1 so /app/cache and /app/data are writable.
+    # Listens on 1103 (no privileged ports); do not force user 0:0.
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "3" }
@@ -190,6 +194,39 @@ services:
       driver: "json-file"
       options: { max-size: "10m", max-file: "3" }
 
+  docker-guard:
+    # The only service that receives the raw host Docker socket. It validates Docker API
+    # methods, Compose labels and containers/create bodies before forwarding to the daemon.
+    image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG}
+    container_name: myriad-docker-guard
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/myriad-docker-guard"]
+    environment:
+      UPDATE_TOKEN: ${UPDATE_TOKEN}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
+      MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
+      MYRIAD_DOCKER_GUARD_NETWORK: ${MYRIAD_DOCKER_GUARD_NETWORK:-myriad-docker-guard-net}
+      DOCKER_GUARD_COMPOSE_DIR: /host/compose
+      DOCKER_GUARD_ENV_FILE: /host/compose/.env
+      DOCKER_GUARD_ALLOWED_IMAGES: ${BACKEND_IMAGE:-docker.io/somekawahitomi/myriad-backend},${FRONTEND_IMAGE:-docker.io/somekawahitomi/myriad-frontend},${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater},postgres
+      RUST_LOG: ${DOCKER_GUARD_LOG:-info}
+      TZ: Asia/Shanghai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/host/compose:ro
+    networks: [myriad-docker-guard-net]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp, /run]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:2375/_ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+
   updater:
     image: ${UPDATER_IMAGE:-docker.io/somekawahitomi/myriad-updater}:${UPDATER_TAG}
     container_name: myriad-updater
@@ -200,12 +237,15 @@ services:
       REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
       MYRIAD_GITHUB_REPO: ${MYRIAD_GITHUB_REPO:-Myriad-You/Myriad}
       CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-3600}
+      UPDATER_STATE_DIR: /host/compose/state
       UPDATER_ENV_FILE: /host/compose/.env
       # Prefer the path *inside* the compose-dir bind mount. Renaming a dedicated
       # mount point (./pgdata:/host/pgdata) returns EBUSY on Linux and used to break
       # snapshot restore / automatic rollback.
       UPDATER_PGDATA: /host/compose/pgdata
       UPDATER_COMPOSE_DIR: /host/compose
+      DOCKER_HOST: tcp://docker-guard:2375
+      DOCKER_GUARD_SELF_UPDATE_URL: http://docker-guard:2375/_myriad/self-update
       # cosign signature policy: strict (default) | soft | off
       # Strict requires release.json.sig + release.json.pem assets to be present and
       # the OIDC subject to match the configured repo's workflows.
@@ -215,15 +255,14 @@ services:
       MYRIAD_VERSION: ${UPDATER_TAG}
       TZ: Asia/Shanghai
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      # pgdata is reached via ./:/host/compose → /host/compose/pgdata (see UPDATER_PGDATA).
-      # Keep the legacy mount for older rescue tooling that still defaults to /host/pgdata.
-      - ./pgdata:/host/pgdata
-      - ./state:/state
-      - ./backups:/backups
+      # Single deployment-root bind. State, snapshots, pgdata and .env are all accessed below
+      # /host/compose so docker-guard never needs to authorize replaceable subdirectory binds.
       - ./:/host/compose
-    networks: [myriad-net]
+    networks: [myriad-net, myriad-docker-guard-net]
+    depends_on:
+      docker-guard: { condition: service_healthy }
     restart: unless-stopped
+    security_opt: [no-new-privileges:true]
     # NOTE: deliberately no `read_only`: updater needs to write state/snapshots/.env.
     logging:
       driver: "json-file"
@@ -240,3 +279,7 @@ networks:
     ipam:
       config:
         - subnet: 172.28.0.0/16
+  myriad-docker-guard-net:
+    name: ${MYRIAD_DOCKER_GUARD_NETWORK:-myriad-docker-guard-net}
+    driver: bridge
+    internal: true

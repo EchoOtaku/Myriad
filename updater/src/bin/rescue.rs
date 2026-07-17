@@ -1,5 +1,5 @@
 //! `myriad-rescue` CLI. Does *not* depend on the updater HTTP API being alive — operates on the
-//! state directory and docker daemon directly. See docs/updater-spec.md §16.3.
+//! configured state directory and Docker connection directly. See docs/updater-spec.md §16.3.
 
 use std::path::PathBuf;
 

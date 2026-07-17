@@ -1,34 +1,30 @@
 //! Updater 自我更新流程。Spec §14。
 //!
-//! 难点：updater 不能在自己运行的进程里 `docker compose up -d updater`，因为执行到一半
-//! 自己就被 stop 掉了。解决：launch 一个 helper container（复用新版本 updater 镜像，自带
-//! docker-ce-cli + docker-compose-plugin），让它在 updater 容器死亡之后继续执行 compose up。
+//! 难点：updater 不能在自己的容器里重建自己。由独立 docker-guard 在返回响应后执行
+//! 固定的 TCB 自替换：`docker compose up -d --no-deps docker-guard updater`。
+//!
+//! **双服务**：`docker-guard` 与 `updater` 共用 `UPDATER_TAG` 镜像，必须一起重建，
+//! 否则 guard 二进制会落后于 tag。
+//!
+//! **直连 unix socket**：该次 compose 走 `unix:///var/run/docker.sock`（非 policy
+//! proxy），因为 create 白名单不含 `docker-guard` 服务本身；这是固定 argv 的 TCB
+//! 自替换，不是任意 Docker API。其余 updater 流量仍经 `DOCKER_HOST=tcp://docker-guard:2375`。
 //!
 //! 流程：
 //!   1. 拉 release manifest，校验目标 updater 镜像 digest
 //!   2. docker pull 目标 updater 镜像
 //!   3. 改 .env 把 UPDATER_TAG 替换成新 tag
-//!   4. 启动 helper container（image = 新版 updater，entrypoint = sleep + compose up）
-//!      - auto_remove = true
-//!      - mounts: docker.sock + compose dir + env file
-//!   5. 立即返回 helper container id；helper sleep 几秒后 compose up 自己（旧 updater）被替换
+//!   4. 请求 docker-guard 鉴权端点，延迟调度双服务重建
 //!
 //! 失败时不修改 .env，旧 updater 继续跑。
 
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use bollard::models::{ContainerCreateBody, HostConfig};
-use bollard::query_parameters::{CreateContainerOptions, StartContainerOptions};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::worker::Worker;
-
-const HELPER_NAME_PREFIX: &str = "myriad-updater-self-update-";
-/// 给当前 updater HTTP 响应一点时间再让 helper 接管。
-const HELPER_STARTUP_DELAY_SECS: u32 = 5;
 
 pub async fn run(worker: Arc<Worker>) -> Result<SelfUpdateReport> {
     let cfg = worker.config();
@@ -60,155 +56,56 @@ pub async fn run(worker: Arc<Worker>) -> Result<SelfUpdateReport> {
         )));
     }
 
-    // 修改 .env 的 UPDATER_TAG。失败时 helper 不会启动，旧 updater 继续运行。
+    // 修改 .env 的 UPDATER_TAG。若 guard 调度失败则恢复旧值，旧 updater 继续运行。
     info!(new_tag = %target_tag, "self-update: rewriting UPDATER_TAG in .env");
-    {
+    let previous_tag = {
         let mut env = EnvFile::load(&worker.cli().env_file)?;
+        let previous = env.get("UPDATER_TAG").unwrap_or_default().to_string();
         env.set("UPDATER_TAG", &target_tag)?;
         env.save()?;
-    }
+        previous
+    };
 
-    let helper_id = launch_helper(worker.clone(), &updater_img.r#ref).await?;
-    worker.state().append_history(&format!(
-        "self-update launched: new_tag={target_tag} helper={helper_id}"
-    ))?;
-    info!(helper_id = %helper_id, "self-update: helper container started — this updater will be replaced");
+    if let Err(error) = schedule_guarded_recreate(&worker).await {
+        let mut env = EnvFile::load(&worker.cli().env_file)?;
+        env.set("UPDATER_TAG", &previous_tag)?;
+        env.save()?;
+        return Err(error);
+    }
+    let audit = format!(
+        "audit: self_update_scheduled new_tag={target_tag} executor=docker-guard services=docker-guard,updater"
+    );
+    worker.state().append_history(&audit)?;
+    let _ = worker.state().append_audit(&audit);
+    info!("self-update: docker guard scheduled docker-guard+updater replacement");
 
     Ok(SelfUpdateReport {
-        helper_container_id: helper_id,
+        helper_container_id: "docker-guard".into(),
         new_updater_tag: target_tag,
     })
 }
 
-async fn launch_helper(worker: Arc<Worker>, helper_image: &str) -> Result<String> {
-    let project = std::env::var("COMPOSE_PROJECT_NAME").unwrap_or_else(|_| "myriad".into());
-    let name = format!("{HELPER_NAME_PREFIX}{}", uuid::Uuid::new_v4().simple());
-    let compose_source = resolve_host_bind_source(&worker, &worker.cli().compose_dir).await?;
-    let env_source = resolve_host_bind_source(&worker, &worker.cli().env_file).await?;
-
-    // 用 host 网络省去网络配置（helper 只跟 docker.sock 交互，不需要业务网络）。
-    let host_cfg = HostConfig {
-        auto_remove: Some(true),
-        network_mode: Some("host".into()),
-        binds: Some(vec![
-            "/var/run/docker.sock:/var/run/docker.sock".into(),
-            format!("{}:/host/compose", compose_source.to_string_lossy()),
-            format!("{}:/host/.env", env_source.to_string_lossy()),
-        ]),
-        ..Default::default()
-    };
-
-    let script = format!(
-        // 1) 等待主 updater 把 HTTP 响应返回客户端
-        // 2) docker compose up -d --no-deps updater（recreate 容器）
-        //    --env-file 显式指向 .env 避免 compose 找不到
-        "sleep {delay} && \
-         cd /host/compose && \
-         docker compose -p {project} --env-file /host/.env up -d --no-deps updater",
-        delay = HELPER_STARTUP_DELAY_SECS,
-        project = project,
-    );
-
-    let container_cfg = ContainerCreateBody {
-        image: Some(helper_image.to_string()),
-        entrypoint: Some(vec!["sh".into(), "-c".into()]),
-        cmd: Some(vec![script]),
-        host_config: Some(host_cfg),
-        labels: Some(
-            [
-                ("myriad.role".to_string(), "self-update-helper".to_string()),
-                ("myriad.project".to_string(), project.clone()),
-            ]
-            .into_iter()
-            .collect(),
-        ),
-        ..Default::default()
-    };
-
-    let created = worker
-        .docker()
-        .raw()
-        .create_container(
-            Some(CreateContainerOptions {
-                name: Some(name.clone()),
-                ..Default::default()
-            }),
-            container_cfg,
-        )
+async fn schedule_guarded_recreate(worker: &Worker) -> Result<()> {
+    let endpoint = std::env::var("DOCKER_GUARD_SELF_UPDATE_URL")
+        .unwrap_or_else(|_| "http://docker-guard:2375/_myriad/self-update".into());
+    let response = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| UpdaterError::Docker(format!("build docker guard client: {e}")))?
+        .post(endpoint)
+        .header("X-Update-Token", worker.config().update_token.expose())
+        .send()
         .await
-        .map_err(|e| UpdaterError::Docker(format!("create self-update helper: {e}")))?;
-
-    if !created.warnings.is_empty() {
-        for w in &created.warnings {
-            warn!(warning = %w, "self-update helper create warning");
-        }
+        .map_err(|e| UpdaterError::Docker(format!("schedule guarded self-update: {e}")))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let detail = response.text().await.unwrap_or_default();
+        return Err(UpdaterError::Docker(format!(
+            "docker guard rejected self-update ({status}): {detail}"
+        )));
     }
-
-    worker
-        .docker()
-        .raw()
-        .start_container(&created.id, None::<StartContainerOptions>)
-        .await
-        .map_err(|e| UpdaterError::Docker(format!("start self-update helper: {e}")))?;
-
-    Ok(created.id)
-}
-
-async fn resolve_host_bind_source(worker: &Arc<Worker>, container_path: &Path) -> Result<PathBuf> {
-    let container_id = current_container_id()?;
-    let info = worker
-        .docker()
-        .raw()
-        .inspect_container(&container_id, None)
-        .await
-        .map_err(|e| UpdaterError::Docker(format!("inspect current updater container: {e}")))?;
-
-    let mut best: Option<(usize, PathBuf)> = None;
-    for mount in info.mounts.unwrap_or_default() {
-        let (Some(source), Some(destination)) = (mount.source, mount.destination) else {
-            continue;
-        };
-        let destination = PathBuf::from(destination);
-        if !container_path.starts_with(&destination) {
-            continue;
-        }
-        let rel = container_path
-            .strip_prefix(&destination)
-            .unwrap_or_else(|_| Path::new(""));
-        let score = destination.as_os_str().len();
-        if best
-            .as_ref()
-            .is_none_or(|(best_score, _)| score > *best_score)
-        {
-            best = Some((score, PathBuf::from(source).join(rel)));
-        }
-    }
-
-    best.map(|(_, source)| source).ok_or_else(|| {
-        UpdaterError::Precondition(format!(
-            "could not map container path {} to a host bind mount source; \
-             self-update requires the updater compose/env paths to come from bind mounts",
-            container_path.display()
-        ))
-    })
-}
-
-fn current_container_id() -> Result<String> {
-    if let Ok(hostname) = std::env::var("HOSTNAME") {
-        let hostname = hostname.trim();
-        if !hostname.is_empty() {
-            return Ok(hostname.to_string());
-        }
-    }
-
-    let hostname = std::fs::read_to_string("/etc/hostname")?;
-    let hostname = hostname.trim();
-    if hostname.is_empty() {
-        return Err(UpdaterError::Precondition(
-            "could not determine current updater container id".into(),
-        ));
-    }
-    Ok(hostname.to_string())
+    Ok(())
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

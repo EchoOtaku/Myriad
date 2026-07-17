@@ -73,6 +73,10 @@ impl<'a> PhaseRecorder<'a> {
         self.state.write_job(&job)?;
         self.state
             .append_history(&format!("job {}: finalize {:?}", self.job_id, status))?;
+        let _ = self.state.append_audit(&format!(
+            "audit: job_terminal job={} status={:?}",
+            self.job_id, status
+        ));
         Ok(())
     }
 }
