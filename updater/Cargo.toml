@@ -26,6 +26,10 @@ futures = "0.3"
 axum = { version = "0.8", features = ["macros"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }
+bytes = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 
 # HTTP client (GitHub API). rustls to keep the binary musl-static-friendly.
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "gzip", "stream"] }
