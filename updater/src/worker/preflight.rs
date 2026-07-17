@@ -304,46 +304,71 @@ async fn run_commit(
     }
     info!(target = %target, kind = ?target.kind(), "preflight(commit): resolving + pulling");
 
-    let gh = worker.github_client()?;
     let from_version = worker.state().read_updater()?.current_version.clone();
 
-    // Prefer GitHub for full-SHA normalization and ancestry checks. If GitHub is unavailable,
-    // an already-immutable dev tag may still proceed: pulling both images below is the final
-    // existence check, and unknown-direction confirmation remains mandatory.
+    // Prefer GitHub for full-SHA normalization and ancestry when a token is present.
+    // Private source repos without GITHUB_TOKEN are the normal self-host case: treat
+    // immutable `dev-<sha>` tags as Docker Hub–verified (pull both images) and skip
+    // ancestry — do NOT require allow_unknown just because GitHub is private.
     let git_ref = crate::release::deploy_tag_to_git_ref(target);
-    let (effective, target_commit_sha, compare_ref) = match gh.resolve_commit(&git_ref).await {
-        Ok(tip) => {
-            let effective = DeployTag::parse(&format!("dev-{}", tip.short_sha))?;
-            info!(
-                requested = %target,
-                effective = %effective,
-                full_sha = %tip.sha,
-                "preflight(commit): normalized target to immutable dev-sha tag"
-            );
-            (effective, Some(tip.sha.clone()), Some(tip.sha))
-        }
-        Err(error) if target.kind() == DeployTagKind::Commit => {
-            require_flag(
-                risk.allow_unknown,
-                &format!(
-                    "cannot verify {} through GitHub ({error}); Docker Hub fallback requires \
-                     allow_unknown=true (or allow_risk=true)",
-                    target.as_str()
-                ),
-            )?;
-            warn!(
-                target = %target,
-                err = %error,
-                "preflight(commit): GitHub unavailable; verifying immutable tag by pulling both images"
-            );
-            (target.clone(), target.commit_sha().map(str::to_owned), None)
-        }
-        Err(error) => {
+    let (effective, target_commit_sha, compare_ref) = if !worker.github_commit_metadata_enabled() {
+        if target.kind() != DeployTagKind::Commit {
             return Err(UpdaterError::Precondition(format!(
-                "cannot resolve mutable git ref {git_ref} for target {}: {error}; select an \
-                 immutable dev-<sha> build from Docker Hub instead",
+                "GITHUB_TOKEN is not set and target {} is a mutable branch tip; select an \
+                 immutable dev-<sha> build from Docker Hub (commit mode without GitHub)",
                 target.as_str()
             )));
+        }
+        info!(
+            target = %target,
+            "preflight(commit): GITHUB_TOKEN unset; verifying dev tag via Docker Hub image pulls"
+        );
+        (
+            target.clone(),
+            target.commit_sha().map(str::to_owned),
+            None,
+        )
+    } else {
+        let gh = worker.github_client()?;
+        match gh.resolve_commit(&git_ref).await {
+            Ok(tip) => {
+                let effective = DeployTag::parse(&format!("dev-{}", tip.short_sha))?;
+                info!(
+                    requested = %target,
+                    effective = %effective,
+                    full_sha = %tip.sha,
+                    "preflight(commit): normalized target to immutable dev-sha tag"
+                );
+                (effective, Some(tip.sha.clone()), Some(tip.sha))
+            }
+            Err(error) if target.kind() == DeployTagKind::Commit => {
+                // Access failures on private repos are expected; other errors still warn.
+                if crate::release::GithubClient::is_expected_unauthenticated_failure(&error) {
+                    info!(
+                        target = %target,
+                        err = %error,
+                        "preflight(commit): GitHub unavailable; verifying tag by pulling images"
+                    );
+                } else {
+                    warn!(
+                        target = %target,
+                        err = %error,
+                        "preflight(commit): GitHub resolve failed; verifying tag by pulling images"
+                    );
+                }
+                (
+                    target.clone(),
+                    target.commit_sha().map(str::to_owned),
+                    None,
+                )
+            }
+            Err(error) => {
+                return Err(UpdaterError::Precondition(format!(
+                    "cannot resolve mutable git ref {git_ref} for target {}: {error}; select an \
+                     immutable dev-<sha> build from Docker Hub instead",
+                    target.as_str()
+                )));
+            }
         }
     };
 
@@ -358,6 +383,8 @@ async fn run_commit(
     let mut is_diverged = false;
 
     if let Some(compare_ref) = compare_ref.as_deref() {
+        // Only runs when GitHub resolved the target; otherwise we skip ancestry entirely.
+        let gh = worker.github_client()?;
         match gh
             .compare_deploy_to_ref(from_version.as_ref(), compare_ref)
             .await

@@ -404,7 +404,7 @@ export const jaJP: TranslationKeys = {
     updaterTargetCommitHead: '最近のコミット（クリックで選択）',
     updaterTargetDockerHubHead: 'Docker Hub ビルド（クリックで選択）',
     updaterDockerHubFallback:
-      'GitHub のコミット一覧を取得できないため、前後両方のイメージが存在する Docker Hub ビルドを表示しています。',
+      'Docker Hub 経由で開発版を検出しています（ソースリポジトリが private または GITHUB_TOKEN 未設定のときは正常な経路です）。',
     updaterDockerHubBuild: 'Docker Hub でビルド済み',
     updaterCommitTarget: '手動入力',
     updaterCommitPlaceholder: 'コミット sha または dev-xxx タグ',

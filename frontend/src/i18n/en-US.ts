@@ -410,7 +410,7 @@ export const enUS: TranslationKeys = {
     updaterTargetCommitHead: 'Recent commits (click to select)',
     updaterTargetDockerHubHead: 'Docker Hub builds (click to select)',
     updaterDockerHubFallback:
-      'GitHub commits are unavailable. Showing builds present in both Docker Hub image repositories.',
+      'Discovering dev updates via Docker Hub (normal when the source repo is private or GITHUB_TOKEN is unset — not an error).',
     updaterDockerHubBuild: 'Built on Docker Hub',
     updaterCommitTarget: 'Enter manually',
     updaterCommitPlaceholder: 'commit sha or dev-xxx tag',

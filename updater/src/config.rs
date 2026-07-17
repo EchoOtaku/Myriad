@@ -15,7 +15,12 @@ pub struct Config {
     /// Owner/repo on GitHub used to fetch release.json.
     pub github_repo: String,
 
-    /// Optional bearer token for GitHub API (raises rate limit; required for private repos).
+    /// Optional bearer token for GitHub API.
+    ///
+    /// - **Release mode** needs GitHub for `release.json` (private repos require this token).
+    /// - **Commit mode** works without it: discovery uses Docker Hub common frontend/backend
+    ///   tags when the token is absent (typical for private source repos that only publish
+    ///   images publicly).
     pub github_token: Option<SecretString>,
 
     /// Optional image mirror prefix (e.g. `mirror.local`). Applied as a rewrite.
@@ -78,6 +83,16 @@ impl std::fmt::Debug for SecretString {
 }
 
 impl Config {
+    /// True when a non-empty `GITHUB_TOKEN` is configured.
+    ///
+    /// Without a token, private repos return 404/401; commit-mode metadata should use
+    /// Docker Hub instead of spamming GitHub API failures every check interval.
+    pub fn github_token_present(&self) -> bool {
+        self.github_token
+            .as_ref()
+            .is_some_and(|t| !t.expose().trim().is_empty())
+    }
+
     pub fn load_from_env() -> Result<Self, UpdaterError> {
         let token = std::env::var("UPDATE_TOKEN")
             .map_err(|_| UpdaterError::Config("UPDATE_TOKEN is required".into()))?;
@@ -174,5 +189,23 @@ mod tests {
                 .expose(),
             "token-value"
         );
+    }
+
+    #[test]
+    fn github_token_present_requires_nonempty() {
+        let mut cfg = Config {
+            update_token: SecretString::new("9xQ3vN8mP2rT5wY7zA1bC4dF6hJ8kL0n"),
+            channel: Channel::Stable,
+            github_repo: "Myriad-You/Myriad".into(),
+            github_token: None,
+            registry_mirror: None,
+            check_interval_secs: 3600,
+            cosign_verify: "off".into(),
+        };
+        assert!(!cfg.github_token_present());
+        cfg.github_token = Some(SecretString::new("   "));
+        assert!(!cfg.github_token_present());
+        cfg.github_token = Some(SecretString::new("ghp_example"));
+        assert!(cfg.github_token_present());
     }
 }

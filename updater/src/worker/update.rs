@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::docker::ComposeRunner;
 use crate::env_file::EnvFile;
@@ -300,6 +300,58 @@ async fn finish_with_rollback(
     from_tag: Option<&str>,
     original_err: UpdaterError,
 ) -> Result<()> {
+    // Health-probe false negatives used to destroy a working stack via rollback.
+    // Before any destructive step, re-check with the hardened multi-path probe under
+    // soft-pass timing (treat elapsed as already past soft threshold).
+    if is_health_probe_failure(&original_err) {
+        if let Some(target) = rec.to_version.clone() {
+            info!(
+                err = %original_err,
+                target = %target,
+                "health failure: re-checking before destructive rollback"
+            );
+            // Force soft-pass window open (90s+) for this recheck.
+            let recheck = probe_one_tick(worker, &target, Duration::from_secs(120)).await;
+            match recheck {
+                ProbeTick::HardOk { detail } | ProbeTick::SoftOk { detail } => {
+                    warn!(
+                        %detail,
+                        target = %target,
+                        "health re-check succeeded after timeout — treating update as SUCCESS \
+                         (skipping rollback). Original probe was a false negative."
+                    );
+                    rec.enter(Phase::SwappingProxy, "updater.phase.swapping_proxy")?;
+                    let mut st = worker.state().read_updater()?;
+                    st.current_version = Some(target.clone());
+                    st.current_commit_sha = None;
+                    st.updater_version = MyriadVersion::parse(crate::self_version()).ok();
+                    worker.state().write_updater(&st)?;
+                    rec.finish_step_ok()?;
+                    rec.enter(Phase::Finalize, "updater.phase.finalize")?;
+                    if let Err(e) = pin_last_good_images(worker, target.as_str()).await {
+                        warn!(err = %e, "pin last-good after false-negative recovery failed");
+                    }
+                    rec.finish_step_ok()?;
+                    let _ = snap.prune(3);
+                    rec.finalize(JobStatus::Succeeded)?;
+                    crate::worker::machine::clear_maintenance(worker.state())?;
+                    worker.state().append_history(&format!(
+                        "job {}: SUCCESS after health false-negative recheck ({target}); \
+                         original_probe_err={original_err}",
+                        rec.job_id
+                    ))?;
+                    return Ok(());
+                }
+                ProbeTick::NotReady { detail } => {
+                    warn!(
+                        %detail,
+                        "health re-check still not ready; proceeding with rollback"
+                    );
+                }
+            }
+        }
+    }
+
     error!(err = %original_err, "rollback triggered");
     let rb_result =
         rollback::execute_inline(worker.clone(), rec, compose, snap, snapshot_id, from_tag).await;
@@ -340,9 +392,18 @@ async fn finish_with_rollback(
                 "job {}: NEEDS_MANUAL — original={original_err}; rollback={rb_err}",
                 rec.job_id
             ))?;
-            Err(rb_err)
+            // Prefer returning the original health/update error when rollback also failed,
+            // but keep rollback detail in the message for operators.
+            Err(UpdaterError::Precondition(format!(
+                "update failed ({original_err}); rollback also failed ({rb_err})"
+            )))
         }
     }
+}
+
+fn is_health_probe_failure(err: &UpdaterError) -> bool {
+    let s = err.to_string();
+    s.contains("health probe") || s.contains("health:")
 }
 
 pub(crate) fn build_compose_runner_pub(worker: &Arc<Worker>) -> Result<ComposeRunner> {
@@ -377,69 +438,362 @@ fn swap_tag(worker: &Arc<Worker>, new_tag: &str) -> Result<String> {
     Ok(prev)
 }
 
+/// Health probe after starting new backend/frontend.
+///
+/// Hardened against "business is up but probe lies":
+/// - Multiple transport paths (direct HTTP, docker exec localhost, curl container)
+/// - Identity: version string **or** commit_sha **or** container image tag
+/// - Frontend meta preferred; after 45s HTML 200 + backend identity is enough
+/// - After 90s soft-pass if containers running + DB + image tag match
+/// - Needs only **2** consecutive OK ticks (not 3) to reduce flakiness
 async fn health_probe(worker: &Arc<Worker>, target: &DeployTag, deadline: Duration) -> Result<()> {
+    const OK_STREAK_NEED: u32 = 2;
+    const SOFT_PASS_AFTER: Duration = Duration::from_secs(90);
+
     let start = std::time::Instant::now();
-    let mut ok_streak = 0;
+    // Spec §11.3 initial wait before first probe.
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let mut ok_streak = 0u32;
+    let mut soft_streak = 0u32;
+    let mut last_diag = String::new();
+    let mut attempts: u32 = 0;
+
     while start.elapsed() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        let backend_url = "http://backend:1103/health";
-        let frontend_url = "http://frontend:1102/";
-        if let Ok((200, body)) = worker
-            .docker()
-            .http_probe(backend_url, Duration::from_secs(10))
-            .await
-        {
-            let json: serde_json::Value =
-                serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
-            let v = json.get("version").and_then(|v| v.as_str()).unwrap_or("");
-            let db = json
-                .get("db_connected")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let mig = json
-                .get("migrations_applied")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            if target.matches_runtime_version(v) && db && mig {
-                if let Ok((200, html)) = worker
-                    .docker()
-                    .http_probe(frontend_url, Duration::from_secs(10))
-                    .await
-                {
-                    // Frontend embeds full MYRIAD_VERSION; accept exact or commit-prefix match.
-                    let meta_ok = html.contains(&format!(
-                        r#"name="myriad-version" content="{}""#,
-                        target.as_str()
-                    )) || frontend_meta_matches(&html, target);
-                    if meta_ok {
-                        ok_streak += 1;
-                        if ok_streak >= 3 {
-                            return Ok(());
-                        }
-                        continue;
-                    }
+        attempts += 1;
+        let elapsed = start.elapsed();
+
+        let tick = probe_one_tick(worker, target, elapsed).await;
+        let diag = match &tick {
+            ProbeTick::HardOk { detail } => {
+                ok_streak += 1;
+                soft_streak = 0;
+                if ok_streak >= OK_STREAK_NEED {
+                    info!(
+                        target = %target,
+                        attempts,
+                        elapsed_s = elapsed.as_secs(),
+                        detail = %detail,
+                        "health probe passed (hard)"
+                    );
+                    return Ok(());
                 }
+                format!("hard ok streak={ok_streak}/{OK_STREAK_NEED} {detail}")
             }
+            ProbeTick::SoftOk { detail } if elapsed >= SOFT_PASS_AFTER => {
+                soft_streak += 1;
+                ok_streak = 0;
+                if soft_streak >= OK_STREAK_NEED {
+                    warn!(
+                        target = %target,
+                        attempts,
+                        elapsed_s = elapsed.as_secs(),
+                        detail = %detail,
+                        "health probe passed via soft criteria (image/db/running)"
+                    );
+                    return Ok(());
+                }
+                format!("soft ok streak={soft_streak}/{OK_STREAK_NEED} {detail}")
+            }
+            ProbeTick::SoftOk { detail } => {
+                ok_streak = 0;
+                soft_streak = 0;
+                format!(
+                    "soft-eligible (wait {}s for soft pass): {detail}",
+                    SOFT_PASS_AFTER.as_secs()
+                )
+            }
+            ProbeTick::NotReady { detail } => {
+                ok_streak = 0;
+                soft_streak = 0;
+                detail.clone()
+            }
+        };
+
+        if diag != last_diag {
+            warn!(
+                target = %target,
+                attempt = attempts,
+                elapsed_s = elapsed.as_secs(),
+                %diag,
+                "health probe not ready"
+            );
+            last_diag = diag;
         }
-        ok_streak = 0;
         let _ = crate::worker::machine::heartbeat(worker.state());
     }
     Err(UpdaterError::Precondition(format!(
-        "health probe deadline ({}s) exceeded",
+        "health probe deadline ({}s) exceeded; last={last_diag}",
         deadline.as_secs()
     )))
+}
+
+enum ProbeTick {
+    HardOk { detail: String },
+    SoftOk { detail: String },
+    NotReady { detail: String },
+}
+
+async fn probe_one_tick(
+    worker: &Arc<Worker>,
+    target: &DeployTag,
+    elapsed: Duration,
+) -> ProbeTick {
+    const LOOSE_FRONTEND_AFTER: Duration = Duration::from_secs(45);
+
+    let docker = worker.docker();
+    let backend_running = docker.is_running("myriad-backend").await.unwrap_or(false)
+        || docker.is_running("backend").await.unwrap_or(false);
+    let frontend_running = docker.is_running("myriad-frontend").await.unwrap_or(false)
+        || docker.is_running("frontend").await.unwrap_or(false);
+
+    let backend_image = match docker.container_image_ref("myriad-backend").await {
+        Ok(s) if !s.is_empty() => s,
+        _ => docker
+            .container_image_ref("backend")
+            .await
+            .unwrap_or_default(),
+    };
+    let frontend_image = match docker.container_image_ref("myriad-frontend").await {
+        Ok(s) if !s.is_empty() => s,
+        _ => docker
+            .container_image_ref("frontend")
+            .await
+            .unwrap_or_default(),
+    };
+    let backend_img_ok = image_ref_matches_target(&backend_image, target);
+    let frontend_img_ok = image_ref_matches_target(&frontend_image, target);
+
+    let be = docker
+        .http_probe_with_hint(
+            "http://backend:1103/health",
+            Duration::from_secs(10),
+            Some("backend"),
+        )
+        .await;
+    let (be_code, be_body) = match be {
+        Ok(v) => v,
+        Err(e) => {
+            return ProbeTick::NotReady {
+                detail: format!(
+                    "backend unreachable ({e}); running={backend_running} image={backend_image}"
+                ),
+            };
+        }
+    };
+    if be_code != 200 {
+        return ProbeTick::NotReady {
+            detail: format!(
+                "backend HTTP {be_code}: {} | running={backend_running} image={backend_image}",
+                be_body.chars().take(120).collect::<String>().replace('\n', " ")
+            ),
+        };
+    }
+
+    let json: serde_json::Value =
+        serde_json::from_str(&be_body).unwrap_or(serde_json::Value::Null);
+    let version = json.get("version").and_then(|v| v.as_str()).unwrap_or("");
+    let commit_sha = json.get("commit_sha").and_then(|c| c.as_str());
+    let db = json
+        .get("db_connected")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let mig = json
+        .get("migrations_applied")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let version_ok =
+        target.matches_runtime_version(version) || commit_matches_target(target, commit_sha);
+    let backend_identity_ok = version_ok || backend_img_ok;
+
+    if !db || !mig {
+        return ProbeTick::NotReady {
+            detail: format!(
+                "backend up but db_connected={db} migrations_applied={mig} \
+                 version={version:?} commit={commit_sha:?} image={backend_image}"
+            ),
+        };
+    }
+
+    let fe = docker
+        .http_probe_with_hint(
+            "http://frontend:1102/",
+            Duration::from_secs(10),
+            Some("frontend"),
+        )
+        .await;
+    let (fe_code, fe_body) = match fe {
+        Ok(v) => v,
+        Err(e) => {
+            // Backend healthy — soft path may still apply later.
+            if backend_identity_ok && backend_running {
+                return ProbeTick::SoftOk {
+                    detail: format!(
+                        "backend OK identity but frontend unreachable ({e}); \
+                         fe_running={frontend_running} image={frontend_image}"
+                    ),
+                };
+            }
+            return ProbeTick::NotReady {
+                detail: format!("frontend unreachable ({e}); backend identity ok={backend_identity_ok}"),
+            };
+        }
+    };
+
+    let fe_html_ok = fe_code == 200
+        && (fe_body.contains("<html")
+            || fe_body.contains("<!DOCTYPE")
+            || fe_body.contains("myriad")
+            || !fe_body.is_empty());
+    let fe_meta_ok = fe_code == 200
+        && (fe_body.contains(&format!(
+            r#"name="myriad-version" content="{}""#,
+            target.as_str()
+        )) || frontend_meta_matches(&fe_body, target)
+            || frontend_img_ok);
+
+    // Hard pass: backend identity + db + (frontend meta or image, or loose HTML after grace).
+    let frontend_hard_ok = fe_meta_ok
+        || (elapsed >= LOOSE_FRONTEND_AFTER && fe_html_ok && backend_identity_ok);
+
+    if backend_identity_ok && frontend_hard_ok {
+        return ProbeTick::HardOk {
+            detail: format!(
+                "version={version:?} commit={commit_sha:?} \
+                 be_img_ok={backend_img_ok} fe_meta_ok={fe_meta_ok} fe_img_ok={frontend_img_ok}"
+            ),
+        };
+    }
+
+    // Soft: everything alive with DB and image tag proves the new deploy even if stamps lag.
+    if db && mig && backend_running && frontend_running && fe_html_ok && backend_img_ok {
+        return ProbeTick::SoftOk {
+            detail: format!(
+                "running+db+image tag match; version stamp weak \
+                 version={version:?} want={} fe_meta_ok={fe_meta_ok}",
+                target.as_str()
+            ),
+        };
+    }
+
+    ProbeTick::NotReady {
+        detail: format!(
+            "identity incomplete: version={version:?} commit={commit_sha:?} \
+             ver_ok={version_ok} be_img_ok={backend_img_ok} fe_code={fe_code} \
+             fe_meta_ok={fe_meta_ok} fe_img_ok={frontend_img_ok} want={}",
+            target.as_str()
+        ),
+    }
+}
+
+/// True when container image ref is clearly the target deploy tag
+/// (`…:dev-abc1234` or `…:v1.2.3`).
+fn image_ref_matches_target(image_ref: &str, target: &DeployTag) -> bool {
+    if image_ref.is_empty() {
+        return false;
+    }
+    let tag = target.as_str();
+    // Exact tag suffix: repo:tag or registry/repo:tag
+    if image_ref.ends_with(&format!(":{tag}")) || image_ref.ends_with(&format!("/{tag}")) {
+        return true;
+    }
+    // Digest-only refs cannot prove tag; still allow short sha substring for commit tags.
+    if let Some(sha) = target.commit_sha() {
+        if image_ref.contains(sha) {
+            return true;
+        }
+    }
+    image_ref.contains(tag)
 }
 
 fn frontend_meta_matches(html: &str, target: &DeployTag) -> bool {
     // Parse content="..." of myriad-version meta loosely.
     let marker = r#"name="myriad-version" content=""#;
-    let Some(idx) = html.find(marker) else {
+    if let Some(idx) = html.find(marker) {
+        let rest = &html[idx + marker.len()..];
+        if let Some(end) = rest.find('"') {
+            let reported = &rest[..end];
+            if target.matches_runtime_version(reported) {
+                return true;
+            }
+        }
+    }
+    // Also accept myriad-commit meta matching the target sha (commit-mode stamps).
+    if let Some(sha) = target.commit_sha() {
+        let marker = r#"name="myriad-commit" content=""#;
+        if let Some(idx) = html.find(marker) {
+            let rest = &html[idx + marker.len()..];
+            if let Some(end) = rest.find('"') {
+                let reported = &rest[..end];
+                if reported.starts_with(sha) || sha.starts_with(reported) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn commit_matches_target(target: &DeployTag, commit_sha: Option<&str>) -> bool {
+    let Some(want) = target.commit_sha() else {
         return false;
     };
-    let rest = &html[idx + marker.len()..];
-    let Some(end) = rest.find('"') else {
+    let Some(got) = commit_sha.map(str::trim).filter(|s| !s.is_empty()) else {
         return false;
     };
-    let reported = &rest[..end];
-    target.matches_runtime_version(reported)
+    // Full or prefix either way (short tag vs full stamp).
+    got.eq_ignore_ascii_case(want)
+        || got.to_ascii_lowercase().starts_with(&want.to_ascii_lowercase())
+        || want.to_ascii_lowercase().starts_with(&got.to_ascii_lowercase())
+}
+
+#[cfg(test)]
+mod health_match_tests {
+    use super::*;
+    use crate::version::DeployTag;
+
+    #[test]
+    fn commit_sha_matches_short_target() {
+        let t = DeployTag::parse("dev-133d1bb").unwrap();
+        assert!(commit_matches_target(
+            &t,
+            Some("133d1bb0123456789abcdef0123456789abcdef0")
+        ));
+        assert!(commit_matches_target(&t, Some("133d1bb")));
+        assert!(!commit_matches_target(&t, Some("deadbeef")));
+        assert!(!commit_matches_target(&t, None));
+    }
+
+    #[test]
+    fn frontend_meta_matches_version_and_commit() {
+        let t = DeployTag::parse("dev-133d1bb").unwrap();
+        let html = r#"<meta name="myriad-version" content="dev-133d1bb0123456789abcdef0123456789abcdef0" />"#;
+        assert!(frontend_meta_matches(html, &t));
+        let html2 =
+            r#"<meta name="myriad-commit" content="133d1bb0123456789abcdef0123456789abcdef0" />"#;
+        assert!(frontend_meta_matches(html2, &t));
+    }
+
+    #[test]
+    fn image_ref_matches_tag_suffix_and_sha() {
+        let t = DeployTag::parse("dev-133d1bb").unwrap();
+        assert!(image_ref_matches_target(
+            "docker.io/somekawahitomi/myriad-backend:dev-133d1bb",
+            &t
+        ));
+        assert!(image_ref_matches_target(
+            "somekawahitomi/myriad-backend:dev-133d1bb",
+            &t
+        ));
+        assert!(!image_ref_matches_target(
+            "docker.io/somekawahitomi/myriad-backend:v0.2.2",
+            &t
+        ));
+        let r = DeployTag::parse("v0.2.2").unwrap();
+        assert!(image_ref_matches_target(
+            "docker.io/x/myriad-backend:v0.2.2",
+            &r
+        ));
+    }
 }

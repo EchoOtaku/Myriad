@@ -9,15 +9,22 @@
 //! 5. fsync snapshots dir
 //! 6. record SnapshotMeta in snapshots.json
 //!
-//! Restore is the reverse: stop postgres, move pgdata aside, copy/rename snapshot back.
+//! Restore is the reverse: stop postgres, then put the snapshot back into `pgdata`.
+//!
+//! **Bind-mount caveat**: production compose mounts `./pgdata` at `/host/pgdata`. That path
+//! is a *mount point* inside the updater container, so `rename(pgdata, pgdata.broken…)` returns
+//! `EBUSY (os error 16)`. When rename fails that way we fall back to in-place content replace
+//! (clear children of the mount, copy snapshot contents in), and keep a safety copy under
+//! `state/snapshots/`.
 
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use chrono::Utc;
 use sha2::{Digest, Sha256};
 use tokio::process::Command;
-use tracing::info;
+use tracing::{info, warn};
 use walkdir::WalkDir;
 
 use crate::error::{Result, UpdaterError};
@@ -61,22 +68,11 @@ impl<'a> SnapshotManager<'a> {
             .status()
             .await;
 
-        // 2. cp -a --reflink=auto
-        let status = Command::new("cp")
-            .arg("-a")
-            .arg("--reflink=auto")
-            .arg(&self.pgdata)
-            .arg(&tmp)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .status()
-            .await
-            .map_err(|e| UpdaterError::Internal(anyhow::anyhow!("spawn cp: {e}")))?;
-        if !status.success() {
+        // 2. cp -a (--reflink=auto on Linux; plain -a elsewhere / on fallback)
+        if let Err(e) = copy_tree(&self.pgdata, &tmp).await {
             let _ = std::fs::remove_dir_all(&tmp);
             return Err(UpdaterError::Internal(anyhow::anyhow!(
-                "cp pgdata → snapshot failed: {:?}",
-                status
+                "cp pgdata → snapshot failed: {e}"
             )));
         }
 
@@ -105,9 +101,14 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// Restore pgdata from snapshot. Caller must stop postgres first.
-    /// Strategy: rename the existing pgdata to pgdata.broken.<ts>, then copy snapshot into place.
-    /// We deliberately use copy (not rename) of the snapshot so subsequent rollback attempts
-    /// remain possible.
+    ///
+    /// Strategy:
+    /// 1. Prefer renaming the existing pgdata directory aside (fast, clean).
+    /// 2. If rename fails with EBUSY (typical for bind-mount points like `/host/pgdata`),
+    ///    fall back to in-place content replace: safety-copy current contents under
+    ///    `state/snapshots/`, wipe children of the mount, then copy snapshot contents in.
+    ///
+    /// The snapshot itself is always *copied* (never renamed away) so retry remains possible.
     pub async fn restore(&self, snapshot_id: &str) -> Result<()> {
         let snap_path = self.state.snapshots_dir().join(snapshot_id);
         if !snap_path.exists() {
@@ -116,36 +117,92 @@ impl<'a> SnapshotManager<'a> {
             )));
         }
 
-        // Move existing pgdata aside.
-        let broken = self
-            .pgdata
-            .with_extension(format!("broken.{}", Utc::now().format("%Y%m%dT%H%M%SZ")));
+        let ts = Utc::now().format("%Y%m%dT%H%M%SZ");
+        let broken_sibling = self.pgdata.with_extension(format!("broken.{ts}"));
+
         if self.pgdata.exists() {
-            std::fs::rename(&self.pgdata, &broken)?;
+            match std::fs::rename(&self.pgdata, &broken_sibling) {
+                Ok(()) => {
+                    info!(
+                        from = %self.pgdata.display(),
+                        to = %broken_sibling.display(),
+                        "pgdata moved aside via rename"
+                    );
+                    if let Err(e) = copy_tree(&snap_path, &self.pgdata).await {
+                        // Best-effort undo of the rename.
+                        if broken_sibling.exists() && !self.pgdata.exists() {
+                            let _ = std::fs::rename(&broken_sibling, &self.pgdata);
+                        }
+                        return Err(e);
+                    }
+                    fsync_dir(&self.pgdata)?;
+                    info!(snapshot = %snapshot_id, "pgdata restored from snapshot (rename path)");
+                    return Ok(());
+                }
+                Err(e) if is_busy(&e) => {
+                    warn!(
+                        err = %e,
+                        path = %self.pgdata.display(),
+                        "rename of pgdata failed (likely bind-mount point); using in-place restore"
+                    );
+                    return self
+                        .restore_in_place(&snap_path, snapshot_id, &ts.to_string())
+                        .await;
+                }
+                Err(e) => {
+                    return Err(UpdaterError::Internal(anyhow::anyhow!(
+                        "rename pgdata aside failed: {e}"
+                    )));
+                }
+            }
         }
 
-        let status = Command::new("cp")
-            .arg("-a")
-            .arg("--reflink=auto")
-            .arg(&snap_path)
-            .arg(&self.pgdata)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .status()
-            .await
-            .map_err(|e| UpdaterError::Internal(anyhow::anyhow!("spawn cp: {e}")))?;
-        if !status.success() {
-            // Try to roll back the rename.
-            if broken.exists() && !self.pgdata.exists() {
-                let _ = std::fs::rename(&broken, &self.pgdata);
-            }
-            return Err(UpdaterError::Internal(anyhow::anyhow!(
-                "cp snapshot → pgdata failed: {:?}",
-                status
-            )));
-        }
+        // No existing pgdata — just materialize the snapshot.
+        copy_tree(&snap_path, &self.pgdata).await?;
         fsync_dir(&self.pgdata)?;
-        info!(snapshot = %snapshot_id, "pgdata restored from snapshot");
+        info!(snapshot = %snapshot_id, "pgdata restored from snapshot (empty target)");
+        Ok(())
+    }
+
+    /// In-place restore when `pgdata` cannot be renamed (mount point / EBUSY).
+    async fn restore_in_place(
+        &self,
+        snap_path: &Path,
+        snapshot_id: &str,
+        ts: &str,
+    ) -> Result<()> {
+        std::fs::create_dir_all(&self.pgdata)?;
+
+        // Safety copy of current (possibly half-upgraded) contents so operators can recover.
+        let safety = self
+            .state
+            .snapshots_dir()
+            .join(format!("broken-inplace-{ts}"));
+        if safety.exists() {
+            std::fs::remove_dir_all(&safety)?;
+        }
+        if dir_has_entries(&self.pgdata)? {
+            info!(
+                safety = %safety.display(),
+                "copying current pgdata contents aside before in-place restore"
+            );
+            if let Err(e) = copy_tree(&self.pgdata, &safety).await {
+                warn!(err = %e, "safety copy of current pgdata failed; continuing with restore");
+                let _ = std::fs::remove_dir_all(&safety);
+            }
+        }
+
+        // Wipe children of the mount point (cannot remove the mount itself).
+        clear_dir_contents(&self.pgdata)?;
+
+        // `cp -a snap/. dest/` copies *contents* into the existing mount directory.
+        copy_tree_into(snap_path, &self.pgdata).await?;
+        fsync_dir(&self.pgdata)?;
+        info!(
+            snapshot = %snapshot_id,
+            safety = %safety.display(),
+            "pgdata restored from snapshot (in-place / mount-point path)"
+        );
         Ok(())
     }
 
@@ -185,6 +242,87 @@ impl<'a> SnapshotManager<'a> {
     }
 }
 
+fn is_busy(e: &std::io::Error) -> bool {
+    // Linux: EBUSY = 16. Also accept ErrorKind::ResourceBusy / Other with "busy" text
+    // for portability across libc wrappers.
+    e.raw_os_error() == Some(16)
+        || e.kind() == ErrorKind::ResourceBusy
+        || e.to_string().to_ascii_lowercase().contains("busy")
+}
+
+fn dir_has_entries(dir: &Path) -> Result<bool> {
+    let mut rd = std::fs::read_dir(dir)?;
+    Ok(rd.next().is_some())
+}
+
+fn clear_dir_contents(dir: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let ft = entry.file_type()?;
+        if ft.is_dir() {
+            std::fs::remove_dir_all(&path)?;
+        } else {
+            std::fs::remove_file(&path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Copy `src` directory to a new `dst` path (`cp -a src dst`).
+/// Tries `--reflink=auto` first (cheap on btrfs/xfs); falls back to plain `-a`
+/// for macOS / filesystems that reject the flag.
+async fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
+    cp_a(&[src.as_os_str()], dst).await
+}
+
+/// Copy *contents* of `src` into existing directory `dst` (`cp -a src/. dst/`).
+async fn copy_tree_into(src: &Path, dst: &Path) -> Result<()> {
+    let src_dot = src.join(".");
+    cp_a(&[src_dot.as_os_str()], dst).await
+}
+
+async fn cp_a(srcs: &[&std::ffi::OsStr], dst: &Path) -> Result<()> {
+    // Prefer reflink when available.
+    let mut args: Vec<std::ffi::OsString> = vec!["-a".into(), "--reflink=auto".into()];
+    for s in srcs {
+        args.push((*s).to_os_string());
+    }
+    args.push(dst.as_os_str().to_os_string());
+    let status = Command::new("cp")
+        .args(&args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .status()
+        .await
+        .map_err(|e| UpdaterError::Internal(anyhow::anyhow!("spawn cp: {e}")))?;
+    if status.success() {
+        return Ok(());
+    }
+
+    // Fallback without reflink (macOS BSD cp, older coreutils, etc.).
+    let mut args: Vec<std::ffi::OsString> = vec!["-a".into()];
+    for s in srcs {
+        args.push((*s).to_os_string());
+    }
+    args.push(dst.as_os_str().to_os_string());
+    let status = Command::new("cp")
+        .args(&args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .status()
+        .await
+        .map_err(|e| UpdaterError::Internal(anyhow::anyhow!("spawn cp: {e}")))?;
+    if !status.success() {
+        return Err(UpdaterError::Internal(anyhow::anyhow!(
+            "cp → {} failed: {:?}",
+            dst.display(),
+            status
+        )));
+    }
+    Ok(())
+}
+
 fn fsync_dir(p: &Path) -> Result<()> {
     let f = std::fs::File::open(p)?;
     f.sync_all()?;
@@ -222,4 +360,76 @@ fn measure_and_sample(root: &Path) -> Result<(u64, u64, String)> {
         }
     }
     Ok((size, count, hex::encode(hasher.finalize())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::StateDir;
+    use tempfile::tempdir;
+
+    fn write_file(path: &Path, body: &str) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, body).unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_via_rename_when_possible() {
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        let pgdata = dir.path().join("pgdata");
+        write_file(&pgdata.join("PG_VERSION"), "18\n");
+        write_file(&pgdata.join("base/1"), "live\n");
+
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: pgdata.clone(),
+        };
+        mgr.create("snap-a", None).await.unwrap();
+
+        // Mutate live data after snapshot.
+        write_file(&pgdata.join("base/1"), "mutated\n");
+
+        mgr.restore("snap-a").await.unwrap();
+        assert_eq!(std::fs::read_to_string(pgdata.join("base/1")).unwrap(), "live\n");
+    }
+
+    #[tokio::test]
+    async fn restore_in_place_when_rename_busy() {
+        // Call restore_in_place directly after planting a snapshot.
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        let pgdata = dir.path().join("pgdata");
+        write_file(&pgdata.join("PG_VERSION"), "18\n");
+        write_file(&pgdata.join("base/1"), "live\n");
+
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: pgdata.clone(),
+        };
+        mgr.create("snap-b", None).await.unwrap();
+        write_file(&pgdata.join("base/1"), "mutated\n");
+        write_file(&pgdata.join("extra"), "should-go\n");
+
+        let snap = state.snapshots_dir().join("snap-b");
+        mgr.restore_in_place(&snap, "snap-b", "testts").await.unwrap();
+
+        assert_eq!(std::fs::read_to_string(pgdata.join("base/1")).unwrap(), "live\n");
+        assert!(!pgdata.join("extra").exists());
+        // Safety copy retained.
+        let safety = state.snapshots_dir().join("broken-inplace-testts");
+        assert!(safety.join("extra").exists());
+    }
+
+    #[test]
+    fn is_busy_detects_ebusy() {
+        let e = std::io::Error::from_raw_os_error(16);
+        assert!(is_busy(&e));
+        let e2 = std::io::Error::new(ErrorKind::Other, "Device or resource busy");
+        assert!(is_busy(&e2));
+        let e3 = std::io::Error::new(ErrorKind::NotFound, "no such file");
+        assert!(!is_busy(&e3));
+    }
 }

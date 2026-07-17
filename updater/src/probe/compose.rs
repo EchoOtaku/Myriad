@@ -39,6 +39,28 @@ pub async fn probe(compose_dir: &Path) -> ComposeProbe {
             files.push(p);
         }
     }
+    // One-level nested scan for 1Panel-style layouts where the app compose lives
+    // under a subdirectory of the mounted compose root.
+    if files.is_empty() {
+        if let Ok(rd) = std::fs::read_dir(compose_dir) {
+            for entry in rd.flatten() {
+                if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    continue;
+                }
+                for name in [
+                    "compose.yaml",
+                    "compose.yml",
+                    "docker-compose.yaml",
+                    "docker-compose.yml",
+                ] {
+                    let p = entry.path().join(name);
+                    if p.exists() {
+                        files.push(p);
+                    }
+                }
+            }
+        }
+    }
 
     let mut refs_tag = false;
     for f in &files {
@@ -61,7 +83,9 @@ pub async fn probe(compose_dir: &Path) -> ComposeProbe {
         Some("neither `docker compose` (v2) nor `docker-compose` (v1) is available".into())
     } else if files.is_empty() {
         Some(format!(
-            "no compose file found in {}; expected compose.yaml or docker-compose.yml",
+            "no compose file found in {} (or one level below); expected compose.yaml / \
+             docker-compose.yml. For 1Panel, mount the app directory that contains the \
+             compose file as UPDATER_COMPOSE_DIR (/host/compose)",
             compose_dir.display()
         ))
     } else {

@@ -25,11 +25,13 @@ struct Cli {
     compose_dir: std::path::PathBuf,
 
     /// Path to the host's .env file inside the container.
-    #[arg(long, env = "UPDATER_ENV_FILE", default_value = "/host/.env")]
+    #[arg(long, env = "UPDATER_ENV_FILE", default_value = "/host/compose/.env")]
     env_file: std::path::PathBuf,
 
     /// Path to the host's pgdata directory inside the container.
-    #[arg(long, env = "UPDATER_PGDATA", default_value = "/host/pgdata")]
+    /// Prefer a path *inside* the compose-dir bind mount (default) so restore can
+    /// rename the directory; a dedicated mount point at `/host/pgdata` returns EBUSY.
+    #[arg(long, env = "UPDATER_PGDATA", default_value = "/host/compose/pgdata")]
     pgdata: std::path::PathBuf,
 
     /// Listen address.

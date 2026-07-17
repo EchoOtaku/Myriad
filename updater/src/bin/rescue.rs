@@ -17,10 +17,10 @@ struct Cli {
     #[arg(long, env = "UPDATER_COMPOSE_DIR", default_value = "/host/compose")]
     compose_dir: PathBuf,
 
-    #[arg(long, env = "UPDATER_ENV_FILE", default_value = "/host/.env")]
+    #[arg(long, env = "UPDATER_ENV_FILE", default_value = "/host/compose/.env")]
     env_file: PathBuf,
 
-    #[arg(long, env = "UPDATER_PGDATA", default_value = "/host/pgdata")]
+    #[arg(long, env = "UPDATER_PGDATA", default_value = "/host/compose/pgdata")]
     pgdata: PathBuf,
 
     #[command(subcommand)]

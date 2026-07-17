@@ -43,6 +43,20 @@ pub struct Asset {
 }
 
 impl GithubClient {
+    /// True when an error is the expected "no access / private / missing" class that
+    /// commit-mode should treat as "use Docker Hub" rather than a hard failure.
+    pub fn is_expected_unauthenticated_failure(err: &UpdaterError) -> bool {
+        let s = err.to_string();
+        // GitHub returns 404 for private repos without a token (repo "not found").
+        s.contains("404")
+            || s.contains("401")
+            || s.contains("403")
+            || s.contains("Not Found")
+            || s.contains("Bad credentials")
+            || s.contains("Requires authentication")
+            || s.contains("API rate limit")
+    }
+
     pub fn new(
         repo: impl Into<String>,
         token: Option<SecretString>,
@@ -300,11 +314,19 @@ impl GithubClient {
         let curr_info = match self.resolve_commit(&current_ref).await {
             Ok(i) => i,
             Err(e) => {
-                tracing::warn!(
-                    err = %e,
-                    tag = %curr,
-                    "could not resolve current deploy tag to a git commit"
-                );
+                if Self::is_expected_unauthenticated_failure(&e) {
+                    tracing::info!(
+                        err = %e,
+                        tag = %curr,
+                        "current deploy tag not resolvable on GitHub (private/no access); relation unknown"
+                    );
+                } else {
+                    tracing::warn!(
+                        err = %e,
+                        tag = %curr,
+                        "could not resolve current deploy tag to a git commit"
+                    );
+                }
                 return Ok(None);
             }
         };

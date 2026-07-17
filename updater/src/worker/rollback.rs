@@ -10,6 +10,12 @@
 //!  3. `updater.json.current_version` (only advanced after a successful health-checked update)
 //!
 //! If none of the above is available we leave `.env` unchanged (safe when swap never landed).
+//!
+//! ## Resilience (coupled with health-probe false negatives)
+//!
+//! Order matters: we **restore MYRIAD_TAG first**, then snapshot, so a mid-rollback crash
+//! still leaves `.env` pointing at last-good. If snapshot restore fails we still attempt
+//! to start services so operators are not stuck with everything stopped.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -78,20 +84,20 @@ pub async fn execute_inline(
 ) -> Result<Option<DeployTag>> {
     info!(snapshot = snapshot_id, "rollback: stopping new containers");
     rec.enter(Phase::StopNew, "updater.phase.stop_new")?;
-    let _ = compose.stop(&["frontend", "backend"], 30).await?;
-    rec.finish_step_ok()?;
-
-    rec.enter(Phase::RestoreSnapshot, "updater.phase.restore_snapshot")?;
-    let _ = compose.stop(&["postgres"], 60).await?;
-    snap.restore(snapshot_id).await?;
-    let start_pg = compose.start(&["postgres"]).await?;
-    if !start_pg.ok() {
-        let err = format!("post-restore start postgres: {}", start_pg.error_summary());
-        rec.finish_step_err(&err)?;
-        return Err(UpdaterError::Internal(anyhow::anyhow!(err)));
+    let stop_app = compose.stop(&["frontend", "backend"], 30).await?;
+    if !stop_app.ok() {
+        warn!(
+            summary = %stop_app.error_summary(),
+            "compose stop frontend/backend non-zero; forcing container stop"
+        );
+        for name in ["myriad-frontend", "frontend", "myriad-backend", "backend"] {
+            let _ = worker.docker().force_stop_container(name).await;
+        }
     }
     rec.finish_step_ok()?;
 
+    // --- Resolve + restore MYRIAD_TAG BEFORE snapshot work ---
+    // So any later failure (EBUSY restore, etc.) still leaves env at last-good.
     let prev_tag = resolve_previous_tag(worker.state(), snapshot_id, swap_back_tag)?;
     let restored_version = match &prev_tag {
         Some(tag) => {
@@ -103,14 +109,12 @@ pub async fn execute_inline(
             info!(
                 from = %before,
                 to = %tag,
-                "rollback: restored MYRIAD_TAG to last known good"
+                "rollback: restored MYRIAD_TAG to last known good (before snapshot restore)"
             );
             rec.finish_step_ok()?;
             DeployTag::parse(tag).ok()
         }
         None => {
-            // `.env` write is atomic, so a pure pre-swap / failed-before-swap path can
-            // legitimately have nothing to restore. Log and continue with whatever is in .env.
             warn!(
                 snapshot = snapshot_id,
                 "rollback: no previous MYRIAD_TAG resolved; leaving .env unchanged"
@@ -118,6 +122,54 @@ pub async fn execute_inline(
             None
         }
     };
+
+    rec.enter(Phase::RestoreSnapshot, "updater.phase.restore_snapshot")?;
+    let stop_pg = compose.stop(&["postgres"], 60).await?;
+    if !stop_pg.ok() {
+        warn!(
+            summary = %stop_pg.error_summary(),
+            "compose stop postgres non-zero; forcing stop"
+        );
+    }
+    // Hard guarantee: no process may hold open files under pgdata.
+    for name in ["myriad-postgres", "postgres"] {
+        if let Err(e) = worker.docker().force_stop_container(name).await {
+            warn!(%name, err = %e, "force_stop postgres attempt");
+        }
+    }
+    // Brief settle so the kernel releases bind-mount file handles.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let mut restore_failed: Option<String> = None;
+    if let Err(e) = snap.restore(snapshot_id).await {
+        // Do NOT abort the whole rollback here — tag is already restored; try to bring
+        // services back so the operator is not left with a fully stopped stack.
+        warn!(
+            err = %e,
+            snapshot = snapshot_id,
+            "rollback: snapshot restore failed; continuing to start last-good images \
+             (pgdata may still be post-upgrade)"
+        );
+        restore_failed = Some(e.to_string());
+        let _ = rec.finish_step_err(format!("restore snapshot (continuing): {e}"));
+    } else {
+        rec.finish_step_ok()?;
+    }
+
+    let start_pg = compose.start(&["postgres"]).await?;
+    if !start_pg.ok() {
+        // Try compose up for postgres if start failed (container removed).
+        let up_pg = compose.up_detached(&["postgres"]).await?;
+        if !up_pg.ok() {
+            let err = format!(
+                "post-restore start postgres failed: start={} up={}",
+                start_pg.error_summary(),
+                up_pg.error_summary()
+            );
+            rec.finish_step_err(&err)?;
+            return Err(UpdaterError::Internal(anyhow::anyhow!(err)));
+        }
+    }
 
     rec.enter(Phase::StartOld, "updater.phase.start_old")?;
     let up = compose.up_detached(&["backend", "frontend"]).await?;
@@ -128,37 +180,94 @@ pub async fn execute_inline(
     }
     rec.finish_step_ok()?;
 
-    // Quick liveness probe (do NOT enforce version match — restored image may still be pulling).
+    // Liveness only (no version stamp required — old image may still be pulling).
+    match rollback_health_wait(worker.as_ref(), Duration::from_secs(180)).await {
+        Ok(()) => {
+            if let Some(ref v) = restored_version {
+                let mut st = worker.state().read_updater()?;
+                st.current_version = Some(v.clone());
+                st.current_commit_sha = None;
+                worker.state().write_updater(&st)?;
+                if let Err(e) = worker.reconcile_current_deploy().await {
+                    warn!(err = %e, "rollback restored version but commit reconciliation failed");
+                }
+            }
+            if let Some(ref e) = restore_failed {
+                // Services up but data not restored — still NeedsManual signal via error.
+                return Err(UpdaterError::Precondition(format!(
+                    "rollback brought services up on last-good tag, but pgdata restore failed: {e}"
+                )));
+            }
+            Ok(restored_version)
+        }
+        Err(e) => {
+            if let Some(ref re) = restore_failed {
+                Err(UpdaterError::Precondition(format!(
+                    "rollback health failed ({e}); also pgdata restore failed: {re}"
+                )))
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Wait until backend answers /health with db_connected, using multi-path probe.
+/// Soft-pass after 60s if container is running and returns any 200 health JSON.
+async fn rollback_health_wait(worker: &Worker, deadline: Duration) -> Result<()> {
     let start = std::time::Instant::now();
-    let deadline = Duration::from_secs(300);
+    let mut last = String::new();
     while start.elapsed() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        if let Ok((200, body)) = worker
+        let elapsed = start.elapsed();
+        match worker
             .docker()
-            .http_probe("http://backend:1103/health", Duration::from_secs(5))
+            .http_probe_with_hint(
+                "http://backend:1103/health",
+                Duration::from_secs(5),
+                Some("backend"),
+            )
             .await
         {
-            let json: serde_json::Value =
-                serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
-            if json.get("db_connected").and_then(|v| v.as_bool()) == Some(true) {
-                // Persist last-known-good after a healthy rollback.
-                if let Some(ref v) = restored_version {
-                    let mut st = worker.state().read_updater()?;
-                    st.current_version = Some(v.clone());
-                    st.current_commit_sha = None;
-                    worker.state().write_updater(&st)?;
-                    if let Err(e) = worker.reconcile_current_deploy().await {
-                        warn!(err = %e, "rollback restored version but commit reconciliation failed");
+            Ok((200, body)) => {
+                let json: serde_json::Value =
+                    serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+                let db = json.get("db_connected").and_then(|v| v.as_bool()) == Some(true);
+                if db {
+                    info!(elapsed_s = elapsed.as_secs(), "rollback health: db_connected ok");
+                    return Ok(());
+                }
+                // Soft: after 60s, HTTP 200 health is enough (config mode may clear slowly).
+                if elapsed >= Duration::from_secs(60) {
+                    let running = worker
+                        .docker()
+                        .is_running("myriad-backend")
+                        .await
+                        .unwrap_or(false)
+                        || worker.docker().is_running("backend").await.unwrap_or(false);
+                    if running {
+                        warn!(
+                            elapsed_s = elapsed.as_secs(),
+                            "rollback health: soft-pass (HTTP 200, db_connected not yet true)"
+                        );
+                        return Ok(());
                     }
                 }
-                return Ok(restored_version);
+                last = format!("backend 200 but db_connected=false body={}", &body[..body.len().min(80)]);
+            }
+            Ok((code, body)) => {
+                last = format!("backend HTTP {code}: {}", body.chars().take(80).collect::<String>());
+            }
+            Err(e) => {
+                last = format!("backend probe: {e}");
             }
         }
         let _ = crate::worker::machine::heartbeat(worker.state());
     }
-    Err(UpdaterError::Precondition(
-        "rollback health probe exceeded 300s".into(),
-    ))
+    Err(UpdaterError::Precondition(format!(
+        "rollback health probe exceeded {}s; last={last}",
+        deadline.as_secs()
+    )))
 }
 
 /// Resolve the image tag that represented the last known good business version.

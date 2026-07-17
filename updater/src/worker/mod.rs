@@ -183,6 +183,12 @@ impl Worker {
         )
     }
 
+    /// Commit-mode GitHub metadata (branch tip, ancestry) needs a token for private repos.
+    /// Without it we deliberately use Docker Hub image tags only — not an error condition.
+    pub fn github_commit_metadata_enabled(&self) -> bool {
+        self.config.github_token_present()
+    }
+
     pub fn dockerhub_client(&self) -> Result<DockerHubClient> {
         DockerHubClient::new()
     }
@@ -282,16 +288,27 @@ impl Worker {
         });
 
         if commit_sha.is_none() && version.kind() != DeployTagKind::Branch {
-            let git_ref = crate::release::deploy_tag_to_git_ref(&version);
-            match self.github_client() {
-                Ok(gh) => match gh.resolve_commit(&git_ref).await {
-                    Ok(info) => commit_sha = Some(info.sha),
+            // Private repos without GITHUB_TOKEN always 404; backend /health already
+            // supplies commit_sha for stamped images — skip noisy GitHub calls.
+            if self.github_commit_metadata_enabled() {
+                let git_ref = crate::release::deploy_tag_to_git_ref(&version);
+                match self.github_client() {
+                    Ok(gh) => match gh.resolve_commit(&git_ref).await {
+                        Ok(info) => commit_sha = Some(info.sha),
+                        Err(e) => {
+                            if GithubClient::is_expected_unauthenticated_failure(&e) {
+                                info!(
+                                    tag = %version,
+                                    "GitHub commit resolve skipped/failed (private or no access); using runtime identity only"
+                                );
+                            } else {
+                                warn!(tag = %version, err = %e, "could not resolve current deploy commit during startup");
+                            }
+                        }
+                    },
                     Err(e) => {
-                        warn!(tag = %version, err = %e, "could not resolve current deploy commit during startup");
+                        warn!(tag = %version, err = %e, "GitHub client unavailable during startup reconciliation")
                     }
-                },
-                Err(e) => {
-                    warn!(tag = %version, err = %e, "GitHub client unavailable during startup reconciliation")
                 }
             }
             if commit_sha.is_none() && !version_changed {
@@ -673,8 +690,27 @@ impl Worker {
         } else {
             commit_branch_for_channel(branch.trim()).to_string()
         };
+        // Empty list → API/UI falls through to Docker Hub /builds (private repo, no token).
+        if !self.github_commit_metadata_enabled() {
+            info!(
+                %branch,
+                "commit list: GITHUB_TOKEN unset; returning empty (use Docker Hub builds)"
+            );
+            return Ok(Vec::new());
+        }
         let gh = self.github_client()?;
-        gh.list_commits(&branch, limit).await
+        match gh.list_commits(&branch, limit).await {
+            Ok(items) => Ok(items),
+            Err(e) if GithubClient::is_expected_unauthenticated_failure(&e) => {
+                info!(
+                    err = %e,
+                    %branch,
+                    "commit list: GitHub unavailable; returning empty for Docker Hub fallback"
+                );
+                Ok(Vec::new())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     async fn handle_list_builds(self: Arc<Self>, limit: u32) -> Result<Vec<DockerBuild>> {
@@ -906,11 +942,36 @@ impl Worker {
         persist_cache: bool,
     ) -> Result<Option<AvailableInfo>> {
         let branch = commit_branch_for_channel(channel);
+        // Private source repos without GITHUB_TOKEN: skip GitHub entirely (no hourly 404 spam).
+        if !self.github_commit_metadata_enabled() {
+            info!(
+                %branch,
+                "commit check: GITHUB_TOKEN unset; discovering tip via Docker Hub only"
+            );
+            return self
+                .check_dockerhub_commit_available(
+                    branch,
+                    persist_cache,
+                    UpdaterError::Github(
+                        "GITHUB_TOKEN not set; private-repo commit metadata uses Docker Hub"
+                            .into(),
+                    ),
+                )
+                .await;
+        }
         let gh = self.github_client()?;
         let info = match gh.latest_commit_on_branch(branch).await {
             Ok(i) => i,
             Err(e) => {
-                warn!(err = %e, %branch, "commit lookup failed");
+                if GithubClient::is_expected_unauthenticated_failure(&e) {
+                    info!(
+                        err = %e,
+                        %branch,
+                        "commit lookup: GitHub access denied/not found; using Docker Hub"
+                    );
+                } else {
+                    warn!(err = %e, %branch, "commit lookup failed");
+                }
                 return self
                     .check_dockerhub_commit_available(branch, persist_cache, e)
                     .await;
@@ -987,7 +1048,7 @@ impl Worker {
     ) -> Result<Option<AvailableInfo>> {
         let builds = self.clone().handle_list_builds(1).await.map_err(|docker_error| {
             UpdaterError::DockerHub(format!(
-                "GitHub commit lookup failed ({github_error}); fallback lookup failed ({docker_error})"
+                "Docker Hub commit discovery failed ({docker_error}); GitHub metadata note: {github_error}"
             ))
         })?;
         let Some(build) = builds.into_iter().next() else {
@@ -998,7 +1059,8 @@ impl Worker {
                 self.state.write_updater(&state)?;
             }
             return Err(UpdaterError::DockerHub(format!(
-                "GitHub commit lookup failed ({github_error}); Docker Hub has no common immutable frontend/backend build"
+                "Docker Hub has no common immutable frontend/backend build \
+                 (GitHub metadata note: {github_error})"
             )));
         };
 
@@ -1014,10 +1076,10 @@ impl Worker {
             return Ok(None);
         }
 
-        warn!(
+        info!(
             target = %tag,
             %branch,
-            "using Docker Hub common image build as commit update fallback"
+            "commit tip from Docker Hub common frontend/backend builds (GitHub metadata unavailable)"
         );
         let cached = LatestAvailable {
             version: tag.clone(),

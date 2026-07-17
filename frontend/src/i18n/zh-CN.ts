@@ -380,7 +380,7 @@ export const zhCN: TranslationKeys = {
     updaterTargetCommitHead: '最近提交（点击选择）',
     updaterTargetDockerHubHead: 'Docker Hub 构建（点击选择）',
     updaterDockerHubFallback:
-      'GitHub 提交列表不可用，已回退到前后端镜像均存在的 Docker Hub 构建。',
+      '当前通过 Docker Hub 发现开发版更新（源码仓私有或未配置 GITHUB_TOKEN 时这是正常路径，不是故障）。',
     updaterDockerHubBuild: 'Docker Hub 已构建',
     updaterCommitTarget: '手动输入',
     updaterCommitPlaceholder: '提交 sha 或 dev-xxx 标签',

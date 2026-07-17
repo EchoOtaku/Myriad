@@ -109,13 +109,27 @@ pub struct EnvFileProbe {
 
 pub async fn probe_env_file(path: &Path) -> EnvFileProbe {
     if !path.exists() {
+        // Hint common alternate locations used by compose / older defaults.
+        let alts = ["/host/compose/.env", "/host/.env"];
+        let found_alt = alts.iter().find(|p| Path::new(p).exists()).copied();
+        let hint = match found_alt {
+            Some(alt) => format!(
+                "{} not found; found {alt} — set UPDATER_ENV_FILE={alt} on the updater service",
+                path.display()
+            ),
+            None => format!(
+                "{} not found (also checked /host/compose/.env and /host/.env); \
+                 mount the host compose project and set UPDATER_ENV_FILE",
+                path.display()
+            ),
+        };
         return EnvFileProbe {
             exists: false,
             duplicate_keys: false,
             has_required_tag_vars: false,
             known_required_present: vec![],
             known_required_missing: vec![],
-            error: Some(format!("{} not found", path.display())),
+            error: Some(hint),
         };
     }
 
