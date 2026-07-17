@@ -20,6 +20,7 @@ import {
 } from './codeStructure'
 import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 import {
+  cspOptionsFromPermissions,
   escapeSandboxHtmlText,
   escapeSandboxScriptSource,
   generateCSP,
@@ -44,6 +45,7 @@ import {
   registerDynamicContentHandlers,
   registerEventHandlers,
   registerFederationHandlers,
+  registerAssetHandlers,
   registerFileHandlers,
   registerLifecycleHandlers,
   registerMediaHandlers,
@@ -124,7 +126,10 @@ function generateHeadlessCoreHTML(
 ): string {
   const { manifest } = tappInstance
   const nonce = generateNonce()
-  const csp = generateCSP(nonce)
+  const csp = generateCSP(
+    nonce,
+    cspOptionsFromPermissions(tappInstance.grantedPermissions),
+  )
   const securityWrapper = escapeSandboxScriptSource(
     generateSecurityWrapper(sessionToken),
   )
@@ -205,7 +210,10 @@ function generatePageHTML(
 
   // 🔒 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
-  const csp = generateCSP(nonce)
+  const csp = generateCSP(
+    nonce,
+    cspOptionsFromPermissions(tappInstance.grantedPermissions),
+  )
   const securityWrapper = escapeSandboxScriptSource(
     generateSecurityWrapper(sessionToken),
   )
@@ -729,6 +737,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     registerStorageHandlers(bridge, currentTappInstance.id)
     registerUserHandlers(bridge, currentTappInstance)
     registerFileHandlers(bridge)
+    registerAssetHandlers(bridge, currentTappInstance)
     registerWidgetHandlers(bridge, currentTappInstance)
     registerPlatformHandlers(bridge, currentTappInstance)
     registerTappListHandlers(bridge, currentTappInstance)

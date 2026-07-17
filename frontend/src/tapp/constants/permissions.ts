@@ -119,6 +119,11 @@ export const PERMISSION_CONFIG: Record<
     labelKey: 'permMediaRead',
     descriptionKey: 'permMediaReadDesc',
   },
+  'media:audio': {
+    icon: FaGamepad,
+    labelKey: 'permMediaAudio',
+    descriptionKey: 'permMediaAudioDesc',
+  },
   'component:theme': {
     icon: FaChevronUp,
     labelKey: 'permRegisterTheme',

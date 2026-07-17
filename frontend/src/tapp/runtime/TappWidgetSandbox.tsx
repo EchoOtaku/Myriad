@@ -27,6 +27,7 @@ import {
 } from '../utils/iframeResize'
 // 核心模块
 import {
+  cspOptionsFromPermissions,
   escapeSandboxHtmlText,
   escapeSandboxScriptSource,
   generateCSP,
@@ -43,6 +44,7 @@ import {
   registerAnimationHandlers,
   registerAIHandlers,
   registerAgentInteractionHandlers,
+  registerAssetHandlers,
   registerBackgroundHandlers,
   registerContextHandlers,
   registerDataExchangeHandlers,
@@ -120,7 +122,10 @@ function generateWidgetHTML(
 
   // 🔒 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
-  const csp = generateCSP(nonce)
+  const csp = generateCSP(
+    nonce,
+    cspOptionsFromPermissions(tappInstance.grantedPermissions),
+  )
   const sdkCode = escapeSandboxScriptSource(
     generateWidgetSDK(tappInstance, sessionToken),
   )
@@ -612,6 +617,7 @@ export const TappWidgetSandbox = memo(
         return { success: true, data: null }
       })
       registerFileHandlers(bridge)
+      registerAssetHandlers(bridge, currentTappInstance)
       const closeAITaskStreams = registerAIHandlers(bridge)
       // Widget SDK 只暴露平台/报告读取能力，避免注册未暴露的写入 handler。
       registerPlatformHandlers(bridge, currentTappInstance, { readOnly: true })

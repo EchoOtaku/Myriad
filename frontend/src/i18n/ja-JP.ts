@@ -1789,6 +1789,7 @@ export const jaJP: TranslationKeys = {
     permNetworkFetch: 'ネットワークリクエスト',
     permMediaControl: 'メディア制御',
     permMediaRead: 'メディア状態読取',
+    permMediaAudio: 'オーディオ再生',
     permRegisterTheme: 'テーマ登録',
     permRegisterAgent: 'Agent 登録',
     permRegisterShortcut: 'ショートカット登録',
@@ -1829,6 +1830,7 @@ export const jaJP: TranslationKeys = {
     permMediaControlDesc:
       'メディア再生の制御（再生、一時停止、切替など）を許可',
     permMediaReadDesc: '現在のメディア再生状態の読取を許可',
+    permMediaAudioDesc: 'サンドボックス内でパッケージ/blob/data オーディオの再生を許可',
     permRegisterThemeDesc: 'カスタムテーマスタイルの登録を許可',
     permRegisterAgentDesc: 'AI Agent 能力の登録を許可',
     permRegisterShortcutDesc: 'キーボードショートカットの登録を許可',

@@ -41,7 +41,7 @@ Tapp 代码不会进入 Myriad 主页面的 JavaScript 上下文，而是在 `sr
 每个沙箱生成独立随机 nonce。当前默认策略等价于：
 
 ```text
-script-src 'nonce-<random>' https://cdn.tailwindcss.com;
+script-src 'nonce-<random>' 'wasm-unsafe-eval' https://cdn.tailwindcss.com;
 default-src 'none';
 style-src 'unsafe-inline' https://fonts.googleapis.com;
 img-src data: blob: https: http:;
@@ -49,16 +49,21 @@ font-src data: https://fonts.gstatic.com;
 connect-src 'none';
 frame-src 'none';
 object-src 'none';
-media-src 'none';
+media-src 'none';   /* 授予 media:audio 时为 blob: data: */
 worker-src 'none';
 form-action 'none';
 base-uri 'none';
 manifest-src 'none'
 ```
 
-图片允许 HTTP(S) 是为了头像、封面等展示，不代表脚本能够直接联网。
-Manifest 不能覆盖这份 CSP；如果确实需要新的资源能力，应修改并审计宿主策略，而不是让
-单个 Tapp 放宽隔离。
+- 图片允许 HTTP(S) 是为了头像、封面等展示，不代表脚本能够直接联网。沙箱包装器对
+  `Image` / `img.src` 仍只放行 `data:` 与 `blob:`；游戏贴图请走 `Tapp.assets`。
+- `'wasm-unsafe-eval'` 仅用于 WebAssembly 编译，不等于开放 `eval`。
+- `media:audio` 仅把 `media-src` 放宽到 `blob: data:`，不开放任意远程媒体。
+- Manifest 不能覆盖这份 CSP；如果确实需要新的资源能力，应修改并审计宿主策略，而不是让
+  单个 Tapp 放宽隔离。
+
+轻量游戏 / Canvas / 包内资源约定见 [图形与轻量游戏](GRAPHICS.md)。
 
 ## 被禁用的浏览器能力
 

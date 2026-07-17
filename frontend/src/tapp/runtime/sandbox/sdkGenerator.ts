@@ -130,6 +130,21 @@ export function generateFullSDK(
   const lifecycleCallbacks = { ready: [], destroy: [], pause: [], resume: [] };
   let lifecycleReady = false;
   let lifecycleDestroyed = false;
+  const _assetUrlByPath = new Map();
+  const _assetUrls = new Set();
+  const decodeBase64ToBytes = (base64) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  };
+  const revokeAllAssetUrls = () => {
+    _assetUrls.forEach((url) => {
+      try { URL.revokeObjectURL(url); } catch (e) {}
+    });
+    _assetUrls.clear();
+    _assetUrlByPath.clear();
+  };
   const runLifecycleCallbacks = (name) => {
     lifecycleCallbacks[name].slice().forEach((callback) => {
       try { callback(); } catch (error) { console.error('[Tapp] Lifecycle callback failed:', error); }
@@ -138,6 +153,7 @@ export function generateFullSDK(
   const notifyLifecycleDestroy = () => {
     if (lifecycleDestroyed) return;
     lifecycleDestroyed = true;
+    revokeAllAssetUrls();
     runLifecycleCallbacks('destroy');
   };
   window.addEventListener('pagehide', notifyLifecycleDestroy);
@@ -606,6 +622,39 @@ export function generateFullSDK(
       download: (content, filename, mimeType) => sendRequest('file', 'download', [{ content, filename, mimeType }]),
     },
 
+    // Package-static assets declared in manifest.assets.
+    // Blob URLs are created inside the sandbox (opaque origin).
+    assets: {
+      list: () => sendRequest('assets', 'list', []),
+      get: (path) => sendRequest('assets', 'get', [path]),
+      getUrl: async (path) => {
+        if (typeof path !== 'string' || !path) throw new Error('Asset path is required');
+        const cached = _assetUrlByPath.get(path);
+        if (cached) return cached;
+        const asset = await sendRequest('assets', 'get', [path]);
+        const bytes = decodeBase64ToBytes(asset.base64);
+        const blob = new Blob([bytes], { type: asset.mimeType || 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        _assetUrlByPath.set(path, { url: url, mimeType: asset.mimeType, size: asset.size, path: path });
+        _assetUrls.add(url);
+        return _assetUrlByPath.get(path);
+      },
+      getArrayBuffer: async (path) => {
+        const asset = await sendRequest('assets', 'get', [path]);
+        const bytes = decodeBase64ToBytes(asset.base64);
+        return { path: asset.path, mimeType: asset.mimeType, size: asset.size, buffer: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+      },
+      revoke: (url) => {
+        if (typeof url !== 'string') return;
+        try { URL.revokeObjectURL(url); } catch (e) {}
+        _assetUrls.delete(url);
+        _assetUrlByPath.forEach((value, key) => {
+          if (value && value.url === url) _assetUrlByPath.delete(key);
+        });
+      },
+      revokeAll: () => revokeAllAssetUrls(),
+    },
+
     user: {
       getRole: () => sendRequest('user', 'getRole', []),
       isAdmin: () => sendRequest('user', 'isAdmin', []),
@@ -773,6 +822,7 @@ export function generateFullSDK(
   Object.freeze(Tapp.event);
   Object.freeze(Tapp.dom);
   Object.freeze(Tapp.file);
+  Object.freeze(Tapp.assets);
   Object.freeze(Tapp.user);
   Object.freeze(Tapp.background);
   Object.freeze(Tapp.scheduler);
@@ -837,9 +887,25 @@ export function generateWidgetSDK(
   // 🎯 添加生命周期回调支持
   var lifecycleCallbacks = { destroy: [], pause: [], resume: [] };
   var lifecycleDestroyed = false;
+  var _assetUrlByPath = new Map();
+  var _assetUrls = new Set();
+  var decodeBase64ToBytes = function(base64) {
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  };
+  var revokeAllAssetUrls = function() {
+    _assetUrls.forEach(function(url) {
+      try { URL.revokeObjectURL(url); } catch (e) {}
+    });
+    _assetUrls.clear();
+    _assetUrlByPath.clear();
+  };
   var notifyLifecycleDestroy = function() {
     if (lifecycleDestroyed) return;
     lifecycleDestroyed = true;
+    revokeAllAssetUrls();
     lifecycleCallbacks.destroy.slice().forEach(function(cb) {
       try { cb(); } catch (e) { console.error('[Tapp Widget] Destroy callback failed:', e); }
     });
@@ -1307,6 +1373,45 @@ export function generateWidgetSDK(
 
     file: {
       download: function(content, filename, mimeType) { return sendRequest('file', 'download', [{ content: content, filename: filename, mimeType: mimeType }]); }
+    },
+
+    assets: {
+      list: function() { return sendRequest('assets', 'list', []); },
+      get: function(path) { return sendRequest('assets', 'get', [path]); },
+      getUrl: function(path) {
+        if (typeof path !== 'string' || !path) return Promise.reject(new Error('Asset path is required'));
+        var cached = _assetUrlByPath.get(path);
+        if (cached) return Promise.resolve(cached);
+        return sendRequest('assets', 'get', [path]).then(function(asset) {
+          var bytes = decodeBase64ToBytes(asset.base64);
+          var blob = new Blob([bytes], { type: asset.mimeType || 'application/octet-stream' });
+          var url = URL.createObjectURL(blob);
+          var entry = { url: url, mimeType: asset.mimeType, size: asset.size, path: path };
+          _assetUrlByPath.set(path, entry);
+          _assetUrls.add(url);
+          return entry;
+        });
+      },
+      getArrayBuffer: function(path) {
+        return sendRequest('assets', 'get', [path]).then(function(asset) {
+          var bytes = decodeBase64ToBytes(asset.base64);
+          return {
+            path: asset.path,
+            mimeType: asset.mimeType,
+            size: asset.size,
+            buffer: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+          };
+        });
+      },
+      revoke: function(url) {
+        if (typeof url !== 'string') return;
+        try { URL.revokeObjectURL(url); } catch (e) {}
+        _assetUrls.delete(url);
+        _assetUrlByPath.forEach(function(value, key) {
+          if (value && value.url === url) _assetUrlByPath.delete(key);
+        });
+      },
+      revokeAll: function() { revokeAllAssetUrls(); }
     }
   };
 
@@ -1331,6 +1436,7 @@ export function generateWidgetSDK(
   Object.freeze(Tapp.user);
   Object.freeze(Tapp.dom);
   Object.freeze(Tapp.file);
+  Object.freeze(Tapp.assets);
 
   // 使用 seal 允许添加 widget/page 定义但禁止替换整个对象
   Object.seal(Tapp.widgets);

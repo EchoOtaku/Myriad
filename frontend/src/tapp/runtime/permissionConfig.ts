@@ -31,6 +31,7 @@ export const PERMISSION_LEVELS: Record<TappPermission, TappPermissionLevel> = {
   'network:fetch': 'elevated',
   'media:control': 'elevated',
   'media:read': 'basic',
+  'media:audio': 'basic',
   'component:theme': 'elevated',
   'component:agent': 'privileged',
   'shortcut:register': 'elevated',
@@ -243,6 +244,10 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
 
     // 文件操作权限
     ['file.download', 'storage'],
+
+    // 包内静态资源（安装包声明内容，可读即可运行的 Tapp 已可见）
+    ['assets.get', 'public'],
+    ['assets.list', 'public'],
 
     // 定时任务权限
     ['scheduler.register', 'scheduler:register'],

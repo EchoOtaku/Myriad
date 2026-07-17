@@ -96,6 +96,9 @@ pub enum TappPermission {
     UiConfirm,
     #[serde(rename = "media:read")]
     MediaRead,
+    /// Play package audio via blob/data URLs inside the sandbox.
+    #[serde(rename = "media:audio")]
+    MediaAudio,
     #[serde(rename = "event:subscribe")]
     EventSubscribe,
     #[serde(rename = "federation:read")]
@@ -189,6 +192,7 @@ impl TappPermission {
             | TappPermission::UiTheme
             | TappPermission::UiConfirm
             | TappPermission::MediaRead
+            | TappPermission::MediaAudio
             | TappPermission::EventSubscribe
             | TappPermission::FederationRead
             | TappPermission::FederationWrite
@@ -246,6 +250,7 @@ impl TappPermission {
             TappPermission::NetworkFetch => "网络请求",
             TappPermission::MediaControl => "媒体控制",
             TappPermission::MediaRead => "读取媒体",
+            TappPermission::MediaAudio => "播放音频",
             TappPermission::ComponentTheme => "注册主题",
             TappPermission::ComponentAgent => "注册 Agent",
             TappPermission::TappListManage => "管理 Tapp",
@@ -307,6 +312,7 @@ impl TappPermission {
             "network:fetch" => Some(TappPermission::NetworkFetch),
             "media:control" => Some(TappPermission::MediaControl),
             "media:read" => Some(TappPermission::MediaRead),
+            "media:audio" => Some(TappPermission::MediaAudio),
             "component:theme" => Some(TappPermission::ComponentTheme),
             "component:agent" => Some(TappPermission::ComponentAgent),
             "tappList:manage" => Some(TappPermission::TappListManage),
@@ -351,6 +357,7 @@ impl TappPermission {
             TappPermission::NetworkFetch => "network:fetch",
             TappPermission::MediaControl => "media:control",
             TappPermission::MediaRead => "media:read",
+            TappPermission::MediaAudio => "media:audio",
             TappPermission::ComponentTheme => "component:theme",
             TappPermission::ComponentAgent => "component:agent",
             TappPermission::TappListManage => "tappList:manage",

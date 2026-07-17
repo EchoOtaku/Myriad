@@ -1803,6 +1803,7 @@ export const enUS: TranslationKeys = {
     permNetworkFetch: 'Network Fetch',
     permMediaControl: 'Media Control',
     permMediaRead: 'Read Media Status',
+    permMediaAudio: 'Play Audio',
     permRegisterTheme: 'Register Theme',
     permRegisterAgent: 'Register Agent',
     permRegisterShortcut: 'Register Shortcut',
@@ -1843,6 +1844,7 @@ export const enUS: TranslationKeys = {
     permMediaControlDesc:
       'Allow controlling media playback (play, pause, switch, etc.)',
     permMediaReadDesc: 'Allow reading current media playback status',
+    permMediaAudioDesc: 'Allow playing package/blob/data audio inside the sandbox',
     permRegisterThemeDesc: 'Allow registering custom theme styles',
     permRegisterAgentDesc: 'Allow registering AI Agent capabilities',
     permRegisterShortcutDesc: 'Allow registering keyboard shortcuts',

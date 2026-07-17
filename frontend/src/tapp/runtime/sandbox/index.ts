@@ -24,6 +24,7 @@ export { generateFullSDK, generateWidgetSDK } from './sdkGenerator'
 
 // 安全策略
 export {
+  cspOptionsFromPermissions,
   escapeSandboxScriptSource,
   escapeSandboxHtmlText,
   generateCSP,
@@ -34,6 +35,7 @@ export {
   sanitizeStorageValue,
   serializeSandboxScriptValue,
   validateStorageKey,
+  type GenerateCSPOptions,
 } from './security'
 
 // 样式（含性能优化的预计算 CSS）

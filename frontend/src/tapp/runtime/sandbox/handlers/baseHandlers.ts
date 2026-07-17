@@ -423,6 +423,52 @@ export function registerUserHandlers(
 }
 
 /**
+ * 注册包内静态资源处理器
+ *
+ * 仅允许读取 Manifest `assets` 声明的路径；内容由宿主转 base64 交给沙箱
+ * 在 iframe 内创建 blob URL（无 allow-same-origin 时不能跨上下文共享 blob）。
+ */
+export function registerAssetHandlers(
+  bridge: TappBridge,
+  tappInstance: TappInstance,
+): void {
+  bridge.registerHandler('assets.list', async () => {
+    const assets = Array.isArray(tappInstance.manifest.assets)
+      ? tappInstance.manifest.assets.slice()
+      : []
+    return { success: true, data: assets }
+  })
+
+  bridge.registerHandler('assets.get', async (message) => {
+    const [pathArg] = (message.payload as { args?: unknown[] }).args || []
+    if (typeof pathArg !== 'string' || pathArg.length === 0) {
+      return { success: false, error: 'Asset path is required' }
+    }
+    if (
+      pathArg.includes('..') ||
+      pathArg.includes('\\') ||
+      !pathArg.startsWith('assets/') ||
+      pathArg.length > 512
+    ) {
+      return { success: false, error: 'Invalid asset path' }
+    }
+    const declared = tappInstance.manifest.assets
+    if (!Array.isArray(declared) || !declared.includes(pathArg)) {
+      return { success: false, error: `Asset not declared: ${pathArg}` }
+    }
+    try {
+      const asset = await TappApiService.getTappAsset(tappInstance.id, pathArg)
+      return { success: true, data: asset }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load asset',
+      }
+    }
+  })
+}
+
+/**
  * 注册文件处理器
  *
  * 提供文件下载功能，绕过 iframe 沙箱限制

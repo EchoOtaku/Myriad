@@ -1645,6 +1645,7 @@ export interface TranslationKeys {
     permNetworkFetch: string
     permMediaControl: string
     permMediaRead: string
+    permMediaAudio: string
     permRegisterTheme: string
     permRegisterAgent: string
     permRegisterShortcut: string
@@ -1684,6 +1685,7 @@ export interface TranslationKeys {
     permNetworkFetchDesc: string
     permMediaControlDesc: string
     permMediaReadDesc: string
+    permMediaAudioDesc: string
     permRegisterThemeDesc: string
     permRegisterAgentDesc: string
     permRegisterShortcutDesc: string

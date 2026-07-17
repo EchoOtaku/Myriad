@@ -29,6 +29,7 @@
 - [定时任务 API](#定时任务-api)
 - [声明式网络 API](#声明式网络-api)
 - [文件与语音 API](#文件与语音-api)
+- [包内资源 Assets API](#包内资源-assets-api)
 - [能力边界与完整命名空间](#能力边界与完整命名空间)
 
 ---
@@ -1021,6 +1022,30 @@ const text = await Tapp.speech.asr({ audio }); // speech:asr
 
 语音服务统一要求登录（涉及付费供应商调用），因此不会向匿名访客下放 `speech:*`。
 
+## 包内资源 Assets API
+
+**权限**: public（仅可读本安装 `manifest.assets` 声明路径）
+
+用于游戏贴图、音频、wasm、关卡 JSON 等包内静态文件。不走 `Tapp.storage`。
+
+```javascript
+const paths = await Tapp.assets.list();
+
+// 在沙箱内创建 blob URL（可赋给 Image / Audio）
+const { url, mimeType, size } = await Tapp.assets.getUrl("assets/sprite.png");
+
+// 需要二进制时
+const { buffer, mimeType: mt } = await Tapp.assets.getArrayBuffer("assets/level.json");
+
+Tapp.assets.revoke(url);
+Tapp.assets.revokeAll(); // 也会在 onDestroy 时自动调用
+```
+
+后端入口：`GET /api/tapps/{tappId}/asset?path=assets/...`（返回 base64）。
+约定与配额见 [图形与轻量游戏](GRAPHICS.md)。
+
+播放包内音频还需申请 `media:audio`，以便 CSP `media-src` 允许 `blob:` / `data:`。
+
 ## 能力边界与完整命名空间
 
 `generateFullSDK()` 用于 Page 和 headless core；`generateWidgetSDK()` 是缩小能力面的 Widget 版本。
@@ -1041,6 +1066,7 @@ const text = await Tapp.speech.asr({ audio }); // speech:asr
 | `agent`                                    | schema 约束的 Agent Interaction                     | Manifest + Runtime Grant           |
 | `api`                                      | Manifest 声明的 HTTP/builtin 能力                   | 按 API access                      |
 | `file`, `speech`                           | 文件下载、TTS 和 ASR                                | `storage`, `speech:*`              |
+| `assets`                                   | 包内静态资源 list/get/blob URL                      | public（限 manifest.assets）       |
 | `tappList`                                 | Tapp 查询、安装、启停、卸载与导出                   | `tappList:*`                       |
 | `brewList`                                 | Brew 列表、订阅源、分类、评论和 OPML                | `brew:*`                           |
 | `federation`                               | 身份、时间线、关注、Channel、Room、Ring、信任和传输 | `federation:*`                     |

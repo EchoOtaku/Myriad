@@ -12,6 +12,7 @@
 | [SDK API 参考](tapp/API_REFERENCE.md) | 所有 Tapp SDK API 详细文档                |
 | [小组件开发](tapp/WIDGET.md)          | Widget 开发指南、尺寸适配、样式规范       |
 | [安全沙箱](tapp/SANDBOX.md)           | CSP 策略、iframe 限制、权限系统           |
+| [图形与轻量游戏](tapp/GRAPHICS.md)    | Canvas/WebGL、assets、音频、pause 约定    |
 | [样式规范](tapp/STYLING.md)           | CSS 变量、Tailwind 集成、Glass 风格       |
 | [REST API](tapp/REST_API.md)          | 后端 REST API 端点参考                    |
 | [故障排除](tapp/TROUBLESHOOTING.md)   | 常见问题、调试技巧、发布检查清单          |

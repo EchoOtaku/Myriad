@@ -150,6 +150,12 @@ export interface TappManifest {
 
   /** Agent Interaction 声明。 */
   agent?: TappAgentManifest
+
+  /**
+   * 包内静态资源路径列表（相对安装根，必须位于 `assets/` 下）。
+   * 二进制文件允许；运行时通过 `Tapp.assets` 读取，不走 `Tapp.storage`。
+   */
+  assets?: string[]
 }
 
 export type TappAIOperation = 'generate' | 'analyze' | 'chat' | 'image'
@@ -277,6 +283,11 @@ export interface TappCodeStructure {
   widgetCSS?: string
   pageCSS?: string
   i18n?: Record<string, unknown>
+  /**
+   * 直接安装用包内资源：相对路径 → base64（可带 data-URL 前缀）。
+   * 路径必须出现在 `manifest.assets` 中。
+   */
+  assets?: Record<string, string>
   /** 已加载的 Page 模块内容（文件名到代码） */
   pageModules?: Record<string, string>
   /** Page 模块执行顺序，优先于 manifest.pageModules */
@@ -368,6 +379,8 @@ export type TappPermission =
   // P1: 媒体权限
   | 'media:control'
   | 'media:read'
+  /** 在沙箱内播放包内/blob/data 音频 */
+  | 'media:audio'
   // P2: 组件注册权限
   | 'component:theme'
   | 'component:agent'

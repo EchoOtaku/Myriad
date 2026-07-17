@@ -68,6 +68,7 @@ Tapp 管理接口大多返回：
 | GET  | `/api/tapps/{tappId}`           | Tapp 详情、Manifest、状态和最终授权          |
 | GET  | `/api/tapps/{tappId}/code`      | 主代码文本                                   |
 | GET  | `/api/tapps/{tappId}/resources` | 代码、CSS、HTML、i18n、Page 模块等资源对象   |
+| GET  | `/api/tapps/{tappId}/asset?path=` | Manifest 声明的包内资源（base64）          |
 | GET  | `/api/tapps/{tappId}/export`    | 导出 `.tapp` ZIP                             |
 
 读取与运行时授权优先当前用户的私有安装；未安装私有副本时再使用站点公开（管理员）安装。

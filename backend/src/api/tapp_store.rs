@@ -348,6 +348,10 @@ const MAX_TAPP_ARCHIVE_BYTES: usize = 25 * 1024 * 1024;
 const MAX_TAPP_ARCHIVE_FILES: usize = 512;
 const MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_TAPP_RESOURCE_BYTES: u64 = 25 * 1024 * 1024;
+/// Declared package assets (textures, audio, wasm, levels). Binary allowed.
+const MAX_TAPP_ASSETS: usize = 64;
+const MAX_TAPP_ASSET_BYTES: u64 = 5 * 1024 * 1024;
+const MAX_TAPP_ASSETS_TOTAL_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_TAPP_MANIFEST_BYTES: u64 = 256 * 1024;
 const MAX_WIDGETS_PER_TAPP: usize = 64;
 const MAX_DATA_EXCHANGE_DECLARATIONS: usize = 32;
@@ -623,6 +627,71 @@ fn validate_resource_extension(path: &str, extension: &str, field: &str) -> Resu
     Ok(())
 }
 
+fn validate_asset_path(path: &str) -> Result<(), String> {
+    validate_resource_path(path)?;
+    if !path.starts_with("assets/") || path == "assets" || path.ends_with('/') {
+        return Err(format!(
+            "Tapp asset path must be a file under assets/: {path}"
+        ));
+    }
+    // Reject nested path escape already handled by validate_resource_path.
+    // Disallow treating runtime entrypoints as assets.
+    if path.ends_with(".js") || path.ends_with(".html") {
+        return Err(format!(
+            "Tapp asset path must not be a script or HTML entry: {path}"
+        ));
+    }
+    Ok(())
+}
+
+fn guess_asset_mime_type(path: &str) -> &'static str {
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".svg") {
+        "image/svg+xml"
+    } else if lower.ends_with(".wav") {
+        "audio/wav"
+    } else if lower.ends_with(".mp3") {
+        "audio/mpeg"
+    } else if lower.ends_with(".ogg") {
+        "audio/ogg"
+    } else if lower.ends_with(".wasm") {
+        "application/wasm"
+    } else if lower.ends_with(".json") {
+        "application/json"
+    } else if lower.ends_with(".txt") || lower.ends_with(".csv") {
+        "text/plain"
+    } else if lower.ends_with(".bin") {
+        "application/octet-stream"
+    } else if lower.ends_with(".glb") {
+        "model/gltf-binary"
+    } else if lower.ends_with(".gltf") {
+        "model/gltf+json"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn decode_asset_base64(value: &str) -> Result<Vec<u8>, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let trimmed = value.trim();
+    // Allow optional data-URL prefix: data:<mime>;base64,<payload>
+    let payload = trimmed
+        .split_once("base64,")
+        .map(|(_, data)| data)
+        .unwrap_or(trimmed);
+    STANDARD
+        .decode(payload.trim())
+        .map_err(|_| "Invalid asset base64 encoding".to_string())
+}
+
 fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
     validate_tapp_id(&manifest.id)?;
     if manifest.name.trim().is_empty() || manifest.name.len() > 255 {
@@ -763,6 +832,19 @@ fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
 
     if let Some(settings) = &manifest.settings {
         validate_tapp_settings(settings, "Tapp")?;
+    }
+
+    if let Some(assets) = &manifest.assets {
+        if assets.len() > MAX_TAPP_ASSETS {
+            return Err(format!("Tapp assets accepts at most {MAX_TAPP_ASSETS} entries"));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for path in assets {
+            validate_asset_path(path)?;
+            if !seen.insert(path.as_str()) {
+                return Err(format!("Duplicate Tapp asset path: {path}"));
+            }
+        }
     }
 
     if let Some(widgets) = &manifest.widgets {
@@ -1616,6 +1698,52 @@ async fn write_tapp_resource(
     Ok(path)
 }
 
+/// Write base64-encoded package assets for direct install/update.
+async fn write_install_assets(
+    tapp_dir: &FsPath,
+    manifest: &TappManifest,
+    assets: &std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    let declared: std::collections::HashSet<&str> = manifest
+        .assets
+        .as_ref()
+        .map(|list| list.iter().map(String::as_str).collect())
+        .unwrap_or_default();
+    if declared.is_empty() && !assets.is_empty() {
+        return Err(
+            "assets payload requires manifest.assets declarations".to_string(),
+        );
+    }
+    let mut total: u64 = 0;
+    for (relative, encoded) in assets {
+        validate_asset_path(relative)?;
+        if !declared.contains(relative.as_str()) {
+            return Err(format!(
+                "Asset path is not declared in manifest.assets: {relative}"
+            ));
+        }
+        let bytes = decode_asset_base64(encoded)?;
+        let size = bytes.len() as u64;
+        if size > MAX_TAPP_ASSET_BYTES {
+            return Err(format!(
+                "Tapp asset exceeds {MAX_TAPP_ASSET_BYTES} bytes: {relative}"
+            ));
+        }
+        total = total
+            .checked_add(size)
+            .ok_or_else(|| "Tapp assets total size overflow".to_string())?;
+        if total > MAX_TAPP_ASSETS_TOTAL_BYTES {
+            return Err(format!(
+                "Tapp assets total size exceeds {MAX_TAPP_ASSETS_TOTAL_BYTES} bytes"
+            ));
+        }
+        write_tapp_resource(tapp_dir, relative, &bytes)
+            .await
+            .map_err(|_| format!("Failed to save asset: {relative}"))?;
+    }
+    Ok(())
+}
+
 type WidgetTemplateContents =
     std::collections::HashMap<String, std::collections::HashMap<String, String>>;
 
@@ -1721,6 +1849,31 @@ fn validate_installed_resources(manifest: &TappManifest, tapp_dir: &FsPath) -> R
                     .map_err(|_| format!("Agent schema is not valid JSON: {relative}"))?;
                 validate_inline_data_schema(&schema)
                     .map_err(|error| format!("Invalid Agent schema {relative}: {error}"))?;
+            }
+        }
+    }
+    if let Some(assets) = &manifest.assets {
+        let mut total: u64 = 0;
+        for relative in assets {
+            validate_asset_path(relative)?;
+            let path = regular_resource_path(tapp_dir, relative).ok_or_else(|| {
+                format!("Declared Tapp asset is not a regular file: {relative}")
+            })?;
+            let bytes = std::fs::read(&path)
+                .map_err(|_| format!("Declared Tapp asset not found: {relative}"))?;
+            let size = bytes.len() as u64;
+            if size > MAX_TAPP_ASSET_BYTES {
+                return Err(format!(
+                    "Tapp asset exceeds {MAX_TAPP_ASSET_BYTES} bytes: {relative}"
+                ));
+            }
+            total = total
+                .checked_add(size)
+                .ok_or_else(|| "Tapp assets total size overflow".to_string())?;
+            if total > MAX_TAPP_ASSETS_TOTAL_BYTES {
+                return Err(format!(
+                    "Tapp assets total size exceeds {MAX_TAPP_ASSETS_TOTAL_BYTES} bytes"
+                ));
             }
         }
     }
@@ -1975,6 +2128,10 @@ pub struct TappManifest {
     /// Stateful Agent Interaction declaration.
     #[serde(default)]
     pub agent: Option<TappAgentManifest>,
+    /// Package-static binary/text assets under `assets/…`, loaded via the
+    /// host assets API (not Tapp.storage). Paths are relative to the install root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assets: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -2382,6 +2539,7 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/{tapp_id}", get(get_tapp))
         .route("/{tapp_id}/code", get(get_tapp_code))
         .route("/{tapp_id}/resources", get(get_tapp_resources))
+        .route("/{tapp_id}/asset", get(get_tapp_asset))
         .route("/{tapp_id}/export", get(export_tapp));
 
     // These routes need a stable subject but also support guests. The optional
@@ -2947,6 +3105,8 @@ struct InstallTappRequest {
     i18n: Option<std::collections::HashMap<String, serde_json::Value>>,
     /// Page 模块文件（可选，filename → code）
     page_modules: Option<std::collections::HashMap<String, String>>,
+    /// Package assets (optional, relative path → base64 or data-URL base64)
+    assets: Option<std::collections::HashMap<String, String>>,
 
     // ===== store 模式需要的字段 =====
     /// 商店源 URL 或 ID（store 模式必需）
@@ -3256,6 +3416,13 @@ async fn install_tapp(
                     )
                 })?;
         }
+    }
+
+    // Direct install may embed package assets as base64 (binary allowed under assets/).
+    if let Some(assets) = &req.assets {
+        write_install_assets(tapp_dir, &manifest, assets)
+            .await
+            .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
     }
 
     let now = Utc::now().fixed_offset();
@@ -4082,6 +4249,64 @@ async fn get_tapp_resources(
     }))
 }
 
+#[derive(Debug, Deserialize)]
+struct GetTappAssetQuery {
+    path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TappAssetResponse {
+    path: String,
+    mime_type: String,
+    size: u64,
+    base64: String,
+}
+
+/// Read a Manifest-declared package asset as base64 for the sandbox assets API.
+///
+/// Only paths listed in `manifest.assets` are served. Visibility matches code/resources.
+async fn get_tapp_asset(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+    Path(tapp_id): Path<String>,
+    Query(query): Query<GetTappAssetQuery>,
+) -> Result<Json<TappAssetResponse>, StatusCode> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+
+    let claims = extract_optional_claims(&headers);
+    let user_id = optional_authenticated_user_id(claims.as_ref());
+    let tapp = find_visible_tapp(&db, user_id, &tapp_id)
+        .await?
+        .ok_or(StatusCode::NOT_FOUND)?
+        .tapp;
+
+    validate_asset_path(&query.path).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let manifest: TappManifest =
+        serde_json::from_value(tapp.manifest.clone()).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let declared = manifest.assets.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    if !declared.iter().any(|path| path == &query.path) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let tapp_dir = installed_tapp_dir(&tapp)?;
+    let file_path = regular_resource_path(&tapp_dir, &query.path).ok_or(StatusCode::NOT_FOUND)?;
+    let bytes = fs::read(&file_path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    if bytes.len() as u64 > MAX_TAPP_ASSET_BYTES {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    Ok(Json(TappAssetResponse {
+        path: query.path.clone(),
+        mime_type: guess_asset_mime_type(&query.path).to_string(),
+        size: bytes.len() as u64,
+        base64: STANDARD.encode(&bytes),
+    }))
+}
+
 /// 导出 Tapp 为 .tapp 文件（ZIP 格式）
 async fn export_tapp(
     State(db): State<DatabaseConnection>,
@@ -4662,6 +4887,8 @@ struct UpdateTappRequest {
     i18n: Option<std::collections::HashMap<String, serde_json::Value>>,
     /// Page 模块文件（可选，filename → code）
     page_modules: Option<std::collections::HashMap<String, String>>,
+    /// Package assets (optional, relative path → base64 or data-URL base64)
+    assets: Option<std::collections::HashMap<String, String>>,
 
     // ===== store 模式需要的字段 =====
     /// 商店源 URL 或 ID
@@ -4709,6 +4936,7 @@ async fn update_tapp(
         page_css: req_page_css,
         i18n: req_i18n,
         page_modules: req_page_modules,
+        assets: req_assets,
         store_source,
         permissions,
     } = req;
@@ -4949,6 +5177,12 @@ async fn update_tapp(
                     )
                 })?;
         }
+    }
+
+    if let Some(assets) = &req_assets {
+        write_install_assets(tapp_dir, &manifest, assets)
+            .await
+            .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
     }
 
     let now = Utc::now().fixed_offset();
@@ -6292,12 +6526,12 @@ mod manifest_tests {
     use super::{
         append_directory_to_zip, archive_entry_path, canonical_installation_owner_id,
         installation_conflict_owner_ids, recover_tapp_directory, tapp_dir_for,
-        tapp_setting_value_is_valid, validate_installed_resources, validate_resource_path,
-        validate_store_manifest_category, validate_tapp_archive, validate_tapp_id,
-        validate_tapp_manifest, validate_widget_template_contents, widget_template_path,
-        write_install_generation, RegisterWidgetRequest, TappCategory, TappDirStage, TappManifest,
-        TappSettingDef, TappStorageAccess, TappWidgetCategory, TappWidgetDef,
-        WidgetTemplateContents,
+        tapp_setting_value_is_valid, validate_asset_path, validate_installed_resources,
+        validate_resource_path, validate_store_manifest_category, validate_tapp_archive,
+        validate_tapp_id, validate_tapp_manifest, validate_widget_template_contents,
+        widget_template_path, write_install_generation, RegisterWidgetRequest, TappCategory,
+        TappDirStage, TappManifest, TappSettingDef, TappStorageAccess, TappWidgetCategory,
+        TappWidgetDef, WidgetTemplateContents,
     };
     use crate::models::entities::{tapp_widgets, tapps};
     use crate::services::permission_service::UserRole;
@@ -7363,6 +7597,45 @@ mod manifest_tests {
         }
 
         std::fs::remove_file(root.join("templates/summary.html")).unwrap();
+        assert!(validate_installed_resources(&manifest, &root).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn validates_declared_package_assets_allow_binary() {
+        assert!(validate_asset_path("assets/sprite.png").is_ok());
+        assert!(validate_asset_path("sprite.png").is_err());
+        assert!(validate_asset_path("assets/hack.js").is_err());
+        assert!(validate_asset_path("../assets/x.png").is_err());
+
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.assets",
+            "name": "Assets",
+            "version": "1.0.0",
+            "main": "main.js",
+            "category": "game",
+            "permissions": ["media:audio"],
+            "assets": ["assets/pixel.png", "assets/level.json"]
+        }))
+        .unwrap();
+        assert!(validate_tapp_manifest(&manifest).is_ok());
+
+        let unique = format!(
+            "myriad-tapp-assets-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        std::fs::write(root.join("main.js"), "export {};").unwrap();
+        std::fs::write(root.join("assets/pixel.png"), [0x89, 0x50, 0x4e, 0x47]).unwrap();
+        std::fs::write(root.join("assets/level.json"), r#"{"ok":true}"#).unwrap();
+        assert!(validate_installed_resources(&manifest, &root).is_ok());
+
+        std::fs::remove_file(root.join("assets/pixel.png")).unwrap();
         assert!(validate_installed_resources(&manifest, &root).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }

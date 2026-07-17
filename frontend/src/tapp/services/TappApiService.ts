@@ -440,6 +440,8 @@ interface InstallTappRequest {
   i18n?: Record<string, unknown>
   /** Page 模块文件 (filename → code) */
   pageModules?: Record<string, string>
+  /** Package assets (path → base64) */
+  assets?: Record<string, string>
   // store 模式
   storeSource?: string
   tappId?: string
@@ -540,6 +542,9 @@ function buildDirectTappRequest(
   }
   if (code.pageModules && Object.keys(code.pageModules).length > 0) {
     requestBody.pageModules = code.pageModules
+  }
+  if (code.assets && Object.keys(code.assets).length > 0) {
+    requestBody.assets = code.assets
   }
   // Generated Tailwind CSS is part of the installation generation. Include
   // empty strings as well so an update can remove previously generated CSS.
@@ -893,6 +898,27 @@ export async function getTappResources(tappId: string): Promise<TappResources> {
     pageModules: raw.page_modules,
     pageModuleOrder: raw.page_module_order,
   }
+}
+
+export interface TappAssetPayload {
+  path: string
+  mimeType: string
+  size: number
+  base64: string
+}
+
+/**
+ * 读取 Manifest 声明的包内静态资源（base64）。
+ * 沙箱内再转为 blob URL；宿主不跨 origin 共享 blob。
+ */
+export async function getTappAsset(
+  tappId: string,
+  path: string,
+): Promise<TappAssetPayload> {
+  const params = new URLSearchParams({ path })
+  return apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/asset?${params.toString()}`,
+  )
 }
 
 /**
@@ -1525,6 +1551,8 @@ export default {
   // P1: Media Control
   mediaControl,
   mediaStatus,
+  // Package assets
+  getTappAsset,
 }
 
 // ============ P0: Data Transform API ============

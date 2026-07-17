@@ -72,29 +72,24 @@ export function escapeSandboxScriptSource(source: string): string {
  * - 🔒 img-src 移除 https: 防止通过图片泄露数据
  * - 🔒 font-src 允许 data: URI 和 Google Fonts
  */
-const CSP_BASE_DIRECTIVES = [
-  "default-src 'none'",
-  // style-src 允许 unsafe-inline 和 Google Fonts CSS
-  "style-src 'unsafe-inline' https://fonts.googleapis.com",
-  // 🔒 安全加强：允许 data:、blob:、https:、http: 图片加载
-  // https/http 用于联邦头像与本地开发实例（BASE_URL 常为 http://localhost）
-  // iframe sandbox + credentialless 降低跨站 cookie 泄露风险
-  'img-src data: blob: https: http:',
-  // font-src 允许 data: URI 和 Google Fonts 字体文件
-  'font-src data: https://fonts.gstatic.com',
-  "connect-src 'none'",
-  "frame-src 'none'",
-  "object-src 'none'",
-  "media-src 'none'",
-  "worker-src 'none'",
-  "form-action 'none'",
-  "base-uri 'none'",
-  "manifest-src 'none'",
-  // 注意：prefetch-src 已在现代浏览器中废弃，不再需要
-]
-
 /** Tailwind CDN 域名（用于 CSP） */
 const TAILWIND_CDN = 'https://cdn.tailwindcss.com'
+
+/** Options that customize CSP for a sandbox instance. */
+export interface GenerateCSPOptions {
+  /** Allow Tailwind CDN script (default true for page styling demos). */
+  allowTailwindCDN?: boolean
+  /**
+   * Allow `<audio>` / media element loads from blob: and data: only.
+   * Granted when the installation has `media:audio`.
+   */
+  allowMediaBlob?: boolean
+  /**
+   * Allow WebAssembly compile/instantiate under strict script-src.
+   * Default true — engines and physics libs commonly need this.
+   */
+  allowWasm?: boolean
+}
 
 /**
  * 生成带 nonce 的 CSP 策略
@@ -105,16 +100,61 @@ const TAILWIND_CDN = 'https://cdn.tailwindcss.com'
  * - 防止注入的恶意脚本执行
  *
  * @param nonce - 唯一的 nonce 值（由 generateNonce() 生成）
+ * @param optionsOrAllowTailwind - 兼容旧签名的 boolean，或完整选项
  * @returns 完整的 CSP 策略字符串
  */
-export function generateCSP(nonce?: string, allowTailwindCDN = true): string {
-  // 🔒 script-src: 使用 nonce + 可选 Tailwind CDN
-  const cdnPart = allowTailwindCDN ? ` ${TAILWIND_CDN}` : ''
-  const scriptSrc = nonce
-    ? `script-src 'nonce-${nonce}'${cdnPart}` // 🔒 使用 nonce，更安全
-    : `script-src 'unsafe-inline'${cdnPart}` // 回退到 unsafe-inline
+export function generateCSP(
+  nonce?: string,
+  optionsOrAllowTailwind: boolean | GenerateCSPOptions = true,
+): string {
+  const options: GenerateCSPOptions =
+    typeof optionsOrAllowTailwind === 'boolean'
+      ? { allowTailwindCDN: optionsOrAllowTailwind }
+      : optionsOrAllowTailwind
 
-  return [scriptSrc, ...CSP_BASE_DIRECTIVES].join('; ')
+  const allowTailwindCDN = options.allowTailwindCDN !== false
+  const allowMediaBlob = options.allowMediaBlob === true
+  const allowWasm = options.allowWasm !== false
+
+  // 🔒 script-src: nonce + optional Tailwind CDN + wasm-unsafe-eval
+  const cdnPart = allowTailwindCDN ? ` ${TAILWIND_CDN}` : ''
+  const wasmPart = allowWasm ? " 'wasm-unsafe-eval'" : ''
+  const scriptSrc = nonce
+    ? `script-src 'nonce-${nonce}'${wasmPart}${cdnPart}`
+    : `script-src 'unsafe-inline'${wasmPart}${cdnPart}`
+
+  const mediaSrc = allowMediaBlob ? 'media-src blob: data:' : "media-src 'none'"
+
+  const directives = [
+    scriptSrc,
+    "default-src 'none'",
+    "style-src 'unsafe-inline' https://fonts.googleapis.com",
+    // 🔒 允许 data:、blob:、https:、http: 图片加载
+    'img-src data: blob: https: http:',
+    'font-src data: https://fonts.gstatic.com',
+    "connect-src 'none'",
+    "frame-src 'none'",
+    "object-src 'none'",
+    mediaSrc,
+    "worker-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+    "manifest-src 'none'",
+  ]
+
+  return directives.join('; ')
+}
+
+/** Build CSP options from granted permissions. */
+export function cspOptionsFromPermissions(
+  grantedPermissions: readonly string[] | undefined,
+  allowTailwindCDN = true,
+): GenerateCSPOptions {
+  return {
+    allowTailwindCDN,
+    allowMediaBlob: grantedPermissions?.includes('media:audio') === true,
+    allowWasm: true,
+  }
 }
 
 /**

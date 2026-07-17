@@ -20,6 +20,7 @@ export {
 export { registerAIHandlers, registerReportHandlers } from './aiHandlers'
 
 export {
+  registerAssetHandlers,
   registerFileHandlers,
   registerLifecycleHandlers,
   registerStorageHandlers,

@@ -35,6 +35,7 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `pageTemplate`           | string   | ❌   | 页面 HTML 模板路径                 |
 | `pageModules`            | string[] | ❌   | `page/` 模块执行顺序               |
 | `category`               | string   | ✅   | 应用用途分类（稳定 ID）            |
+| `assets`                 | string[] | ❌   | 包内静态资源路径（须在 `assets/` 下） |
 
 `author.name` 必填；`author.email` 与 `author.url` 可选。作者名称会显示在商店卡片和 Tapp
 详情页，详情页还会显示邮箱，并为通过 HTTP(S) 校验的作者主页生成外部链接。
@@ -43,8 +44,11 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 目录，例如 `templates/widget-2x2.html`；direct/store 安装也会把内容写到 Manifest
 声明的位置。绝对路径、隐藏组件和 `..` 会被拒绝。`pageModules` 的每项是 `page/`
 目录内的文件名，不能再次包含目录前缀。`main` 必须是 `.js`，样式路径必须是 `.css`，
-Page/Widget 模板必须是 `.html`；所有声明的运行资源必须是安装目录内的普通 UTF-8 文本
-文件。资源读取不会跟随安装后插入的符号链接。
+Page/Widget 模板必须是 `.html`；代码与模板类声明资源必须是安装目录内的普通 UTF-8 文本
+文件。`assets` 允许二进制（贴图、音频、wasm、JSON 关卡等），路径必须位于 `assets/`
+下，且不得使用 `.js` / `.html` 扩展名；单文件 ≤ 5 MiB，合计 ≤ 20 MiB，最多 64 项。
+资源读取不会跟随安装后插入的符号链接。运行时通过 `Tapp.assets` 读取，详见
+[图形与轻量游戏](GRAPHICS.md)。
 
 Manifest 采用严格字段校验：未声明字段、拼写错误以及已经移除的字段都会让安装失败，
 不会再被静默忽略。所有运行能力都必须直接写入 `permissions`；宿主只会在真正调用时
@@ -608,6 +612,7 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 | `brew:comment`       | 操作 Brew 评论   |
 | `report:read`        | 读取报告         |
 | `media:read`         | 读取媒体状态     |
+| `media:audio`        | 播放包内/blob/data 音频 |
 | `event:subscribe`    | 订阅声明的 topic |
 | `widget:register`    | 注册小组件       |
 | `federation:read`    | 读取联邦数据     |
