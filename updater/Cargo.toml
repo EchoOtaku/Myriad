@@ -14,6 +14,10 @@ path = "src/bin/updater.rs"
 name = "myriad-rescue"
 path = "src/bin/rescue.rs"
 
+[[bin]]
+name = "myriad-tcb-self-update"
+path = "src/bin/myriad-tcb-self-update.rs"
+
 [lib]
 path = "src/lib.rs"
 

@@ -643,6 +643,8 @@ async fn self_update(
         "ok": true,
         "helper_container_id": report.helper_container_id,
         "new_updater_tag": report.new_updater_tag,
+        "previous_updater_tag": report.previous_updater_tag,
+        "scheduled": report.scheduled,
     })))
 }
 

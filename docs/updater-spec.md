@@ -540,7 +540,8 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
       backend|frontend|postgres|updater，无法经 API 创建 `docker-guard`
       服务本身；自替换是固定 compose 服务列表，不是任意 Docker API。
       为避免「在 guard 容器内 recreate 自己」中途被杀，compose 由短生命周期
-      helper 容器（同一 updater 镜像、entrypoint=docker）执行。
+      helper 容器（同一 updater 镜像、entrypoint=`myriad-tcb-self-update`）执行。
+      请求体携带 `previous_tag` / `target_tag`（安全字符集校验）。
 ```
 
 **必须同时重建 `docker-guard` 与 `updater`**：二者共用 `UPDATER_TAG` 镜像；
@@ -548,7 +549,13 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 
 其余 updater 日常流量仍经 `DOCKER_HOST=tcp://docker-guard:2375` 受请求体策略约束。
 
-guard 调度失败时恢复旧 `UPDATER_TAG`，旧 updater 继续运行。
+调度仍是异步（HTTP 202）：updater 改写 `.env` 后请求 docker-guard，guard 延迟后启动
+短生命周期 helper（`myriad-tcb-self-update`，compose 目录 **rw** 挂载、`network=none`）。
+- **调度 HTTP 失败**：updater 进程立即把 `UPDATER_TAG` 恢复为旧值。
+- **helper 的 `compose up docker-guard updater` 失败**：helper 将 `UPDATER_TAG` 恢复为
+  请求体中的 `previous_tag`，并写入部署卷上的耐久状态
+  `state/self-update-last.json`（`status: succeeded|failed`、tags、`at`、可选 `error`）。
+- **成功路径**：仍重建 `docker-guard` + `updater`，并写 `status: succeeded`。
 
 ### 14.2 兜底
 

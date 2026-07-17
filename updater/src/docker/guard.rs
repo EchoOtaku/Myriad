@@ -716,6 +716,14 @@ async fn authorize_network_mutation(
     authorize_guard_network_attachment(&service, &network_name, &state.config)
 }
 
+const MAX_SELF_UPDATE_BODY: usize = 4 * 1024;
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct SelfUpdateRequestBody {
+    previous_tag: String,
+    target_tag: String,
+}
+
 async fn handle_self_update(state: GuardState, req: Request<Body>) -> Response {
     if req.method() != Method::POST {
         return denial(StatusCode::METHOD_NOT_ALLOWED, "POST required");
@@ -728,6 +736,29 @@ async fn handle_self_update(state: GuardState, req: Request<Body>) -> Response {
     if !constant_time_eq(provided.as_bytes(), state.config.update_token.as_bytes()) {
         return denial(StatusCode::UNAUTHORIZED, "invalid update token");
     }
+
+    let body = match to_bytes(req.into_body(), MAX_SELF_UPDATE_BODY).await {
+        Ok(body) => body,
+        Err(_) => {
+            return denial(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "self-update body exceeds 4 KiB",
+            )
+        }
+    };
+    let request: SelfUpdateRequestBody = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => {
+            return denial(
+                StatusCode::BAD_REQUEST,
+                "JSON body required: {\"previous_tag\":\"...\",\"target_tag\":\"...\"}",
+            )
+        }
+    };
+    if let Err(reason) = validate_self_update_tags(&request.previous_tag, &request.target_tag) {
+        return denial(StatusCode::BAD_REQUEST, &reason);
+    }
+
     if state
         .self_update_running
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -736,23 +767,53 @@ async fn handle_self_update(state: GuardState, req: Request<Body>) -> Response {
         return denial(StatusCode::CONFLICT, "self-update already scheduled");
     }
 
+    let previous_tag = request.previous_tag;
+    let target_tag = request.target_tag;
     let task_state = state.clone();
+    let task_previous = previous_tag.clone();
+    let task_target = target_tag.clone();
     tokio::spawn(async move {
         tokio::time::sleep(SELF_UPDATE_DELAY).await;
-        let result = run_guarded_self_update(&task_state).await;
+        let result =
+            run_guarded_self_update(&task_state, &task_previous, &task_target).await;
         task_state
             .self_update_running
             .store(false, Ordering::SeqCst);
         match result {
-            Ok(()) => info!("guarded updater self-update completed"),
-            Err(e) => error!(err = %e, "guarded updater self-update failed"),
+            Ok(()) => info!(
+                previous_tag = %task_previous,
+                target_tag = %task_target,
+                "guarded updater self-update completed"
+            ),
+            Err(e) => error!(
+                err = %e,
+                previous_tag = %task_previous,
+                target_tag = %task_target,
+                "guarded updater self-update failed (helper restores UPDATER_TAG on compose failure)"
+            ),
         }
     });
     (
         StatusCode::ACCEPTED,
-        axum::Json(json!({"scheduled": true, "executor": "docker-guard"})),
+        axum::Json(json!({
+            "scheduled": true,
+            "executor": "docker-guard",
+            "previous_tag": previous_tag,
+            "target_tag": target_tag,
+        })),
     )
         .into_response()
+}
+
+fn validate_self_update_tags(previous: &str, target: &str) -> std::result::Result<(), String> {
+    use super::self_update_helper::is_safe_self_update_tag;
+    if !is_safe_self_update_tag(previous) {
+        return Err(format!("invalid previous_tag: {previous}"));
+    }
+    if !is_safe_self_update_tag(target) {
+        return Err(format!("invalid target_tag: {target}"));
+    }
+    Ok(())
 }
 
 /// Recreate both TCB services so `docker-guard` tracks `UPDATER_TAG` alongside
@@ -767,14 +828,28 @@ async fn handle_self_update(state: GuardState, req: Request<Body>) -> Response {
 ///
 /// **Why a one-shot helper?** Running `compose up docker-guard` from inside the
 /// live guard container races with killing that container mid-compose. A short
-/// helper (same updater image, fixed entrypoint override to `docker`) performs
-/// the dual recreate and exits.
-async fn run_guarded_self_update(state: &GuardState) -> Result<()> {
-    let compose_files = find_compose_files(&state.config.compose_dir)?;
+/// helper (`myriad-tcb-self-update` on the target updater image) performs the
+/// dual recreate, restores `UPDATER_TAG` on failure, writes durable status, and
+/// exits. Compose dir is mounted **rw** only for this helper so it can rewrite
+/// `.env` and `state/self-update-last.json` after the old guard may be gone.
+async fn run_guarded_self_update(
+    state: &GuardState,
+    previous_tag: &str,
+    target_tag: &str,
+) -> Result<()> {
+    // Tags already validated in the HTTP handler; re-check before docker run env.
+    validate_self_update_tags(previous_tag, target_tag).map_err(anyhow::Error::msg)?;
+    validate_simple_name("COMPOSE_PROJECT_NAME", &state.config.project)?;
+
     let helper_image = self_update_helper_image(&state.config.env_file)?;
     let host_root = state.host_compose_root.to_string_lossy().into_owned();
     let sock = state.config.socket_path.to_string_lossy().into_owned();
     let docker_host = format!("unix://{sock}");
+
+    // Paths *inside* the helper container (host_root is bind-mounted at /host/compose).
+    let helper_compose_dir = "/host/compose";
+    let helper_env_file = "/host/compose/.env";
+    let helper_status_file = "/host/compose/state/self-update-last.json";
 
     let mut command = Command::new("docker");
     command
@@ -783,35 +858,53 @@ async fn run_guarded_self_update(state: &GuardState) -> Result<()> {
             "run",
             "--rm",
             "--name",
-            &format!(
-                "myriad-tcb-self-update-{}",
-                std::process::id()
-            ),
+            &format!("myriad-tcb-self-update-{}", std::process::id()),
             "-v",
             &format!("{sock}:/var/run/docker.sock"),
+            // rw: helper may restore UPDATER_TAG and write self-update-last.json
             "-v",
-            &format!("{host_root}:/host/compose:ro"),
+            &format!("{host_root}:/host/compose:rw"),
+            "-e",
+            &format!(
+                "{}={previous_tag}",
+                super::self_update_helper::ENV_PREVIOUS_TAG
+            ),
+            "-e",
+            &format!("{}={target_tag}", super::self_update_helper::ENV_TARGET_TAG),
+            "-e",
+            &format!(
+                "{}={}",
+                super::self_update_helper::ENV_PROJECT,
+                state.config.project
+            ),
+            "-e",
+            &format!(
+                "{}={host_root}",
+                super::self_update_helper::ENV_PROJECT_DIRECTORY
+            ),
+            "-e",
+            &format!(
+                "{}={helper_compose_dir}",
+                super::self_update_helper::ENV_COMPOSE_DIR
+            ),
+            "-e",
+            &format!(
+                "{}={helper_env_file}",
+                super::self_update_helper::ENV_ENV_FILE
+            ),
+            "-e",
+            &format!(
+                "{}={helper_status_file}",
+                super::self_update_helper::ENV_STATUS_FILE
+            ),
             "--network",
             "none",
             "--security-opt",
             "no-new-privileges:true",
             "--entrypoint",
-            "docker",
+            "/usr/local/bin/myriad-tcb-self-update",
             &helper_image,
-            "compose",
-            "-p",
-            &state.config.project,
-            "--project-directory",
-            &host_root,
         ]);
-    for file in compose_files {
-        command.arg("-f").arg(file);
-    }
-    command
-        .arg("--env-file")
-        .arg(&state.config.env_file)
-        // Both services: guard first so depends_on health is satisfied when updater starts.
-        .args(["up", "-d", "--no-deps", "docker-guard", "updater"]);
 
     let output = command
         .output()
@@ -819,12 +912,14 @@ async fn run_guarded_self_update(state: &GuardState) -> Result<()> {
         .context("spawn TCB self-update helper (direct docker.sock)")?;
     if !output.status.success() {
         return Err(anyhow!(
-            "docker compose self-update (docker-guard + updater) failed: {}",
+            "TCB self-update helper failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
     info!(
         image = %helper_image,
+        previous_tag,
+        target_tag,
         "TCB self-update recreated docker-guard and updater via direct unix socket"
     );
     Ok(())
@@ -1023,25 +1118,6 @@ fn current_container_id() -> Result<String> {
         return Err(anyhow!("cannot determine docker guard container id"));
     }
     Ok(hostname.to_string())
-}
-
-fn find_compose_files(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    for name in [
-        "compose.yaml",
-        "compose.yml",
-        "docker-compose.yaml",
-        "docker-compose.yml",
-    ] {
-        let path = root.join(name);
-        if path.exists() {
-            files.push(path);
-        }
-    }
-    if files.is_empty() {
-        return Err(anyhow!("no Compose file found in {}", root.display()));
-    }
-    Ok(files)
 }
 
 fn denial(status: StatusCode, message: &str) -> Response {
@@ -1269,6 +1345,14 @@ mod tests {
             "/containers/json"
         );
         assert_eq!(strip_api_version("/containers/json"), "/containers/json");
+    }
+
+    #[test]
+    fn self_update_tags_reject_shell_metacharacters() {
+        assert!(validate_self_update_tags("v0.1.0", "v0.2.0").is_ok());
+        assert!(validate_self_update_tags("v0.1.0", "v1;rm -rf /").is_err());
+        assert!(validate_self_update_tags("$(reboot)", "v0.2.0").is_err());
+        assert!(validate_self_update_tags("v0.1.0", "").is_err());
     }
 
     fn create_with_networking(

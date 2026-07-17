@@ -14,9 +14,10 @@
 //!   1. 拉 release manifest，校验目标 updater 镜像 digest
 //!   2. docker pull 目标 updater 镜像
 //!   3. 改 .env 把 UPDATER_TAG 替换成新 tag
-//!   4. 请求 docker-guard 鉴权端点，延迟调度双服务重建
+//!   4. 请求 docker-guard 鉴权端点，延迟调度双服务重建（body 带 previous/target tag）
 //!
-//! 失败时不修改 .env，旧 updater 继续跑。
+//! 调度 HTTP 失败时本进程恢复 `.env`。若 helper 的 compose 失败，helper 会恢复
+//! `UPDATER_TAG` 并写入 `state/self-update-last.json`。
 
 use std::sync::Arc;
 
@@ -66,7 +67,7 @@ pub async fn run(worker: Arc<Worker>, actor: Option<String>) -> Result<SelfUpdat
         previous
     };
 
-    if let Err(error) = schedule_guarded_recreate(&worker).await {
+    if let Err(error) = schedule_guarded_recreate(&worker, &previous_tag, &target_tag).await {
         let mut env = EnvFile::load(&worker.cli().env_file)?;
         env.set("UPDATER_TAG", &previous_tag)?;
         env.save()?;
@@ -77,7 +78,7 @@ pub async fn run(worker: Arc<Worker>, actor: Option<String>) -> Result<SelfUpdat
         .map(|a| format!(" actor={a}"))
         .unwrap_or_default();
     let audit = format!(
-        "audit: self_update_scheduled new_tag={target_tag} executor=docker-guard services=docker-guard,updater{actor_suffix}"
+        "audit: self_update_scheduled new_tag={target_tag} previous_tag={previous_tag} executor=docker-guard services=docker-guard,updater scheduled=true{actor_suffix}"
     );
     worker.state().append_history(&audit)?;
     let _ = worker.state().append_audit(&audit);
@@ -86,10 +87,16 @@ pub async fn run(worker: Arc<Worker>, actor: Option<String>) -> Result<SelfUpdat
     Ok(SelfUpdateReport {
         helper_container_id: "docker-guard".into(),
         new_updater_tag: target_tag,
+        previous_updater_tag: previous_tag,
+        scheduled: true,
     })
 }
 
-async fn schedule_guarded_recreate(worker: &Worker) -> Result<()> {
+async fn schedule_guarded_recreate(
+    worker: &Worker,
+    previous_tag: &str,
+    target_tag: &str,
+) -> Result<()> {
     let endpoint = std::env::var("DOCKER_GUARD_SELF_UPDATE_URL")
         .unwrap_or_else(|_| "http://docker-guard:2375/_myriad/self-update".into());
     let response = reqwest::Client::builder()
@@ -99,6 +106,10 @@ async fn schedule_guarded_recreate(worker: &Worker) -> Result<()> {
         .map_err(|e| UpdaterError::Docker(format!("build docker guard client: {e}")))?
         .post(endpoint)
         .header("X-Update-Token", worker.config().update_token.expose())
+        .json(&serde_json::json!({
+            "previous_tag": previous_tag,
+            "target_tag": target_tag,
+        }))
         .send()
         .await
         .map_err(|e| UpdaterError::Docker(format!("schedule guarded self-update: {e}")))?;
@@ -116,4 +127,6 @@ async fn schedule_guarded_recreate(worker: &Worker) -> Result<()> {
 pub struct SelfUpdateReport {
     pub helper_container_id: String,
     pub new_updater_tag: String,
+    pub previous_updater_tag: String,
+    pub scheduled: bool,
 }
