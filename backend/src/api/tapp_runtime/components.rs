@@ -15,7 +15,7 @@ use crate::services::permission_service::TappPermission;
 
 use super::common::{authorize_tapp_permission, parse_user_id, verify_tapp_ownership};
 use super::runtime_grant::RuntimeGrantContext;
-use crate::api::tapp_store::{storage_write_forbidden_error, TappStorageAccess};
+use crate::api::tapp_store::{installation_write_forbidden_error, TappStorageAccess};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
@@ -134,12 +134,17 @@ pub async fn register_component(
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(permission)?;
     authorize_tapp_permission(&db, &claims, &req.tapp_id, permission).await?;
-    let access = TappStorageAccess::from_runtime_grant(&runtime_grant, &claims)
-        .map_err(|status| (status, Json(json!({ "error": "Invalid runtime grant subject" }))))?;
+    let access =
+        TappStorageAccess::from_runtime_grant(&runtime_grant, &claims).map_err(|status| {
+            (
+                status,
+                Json(json!({ "error": "Invalid runtime grant subject" })),
+            )
+        })?;
     access
-        .require_write()
-        .map_err(|_| storage_write_forbidden_error())?;
-    let owner_id = access.storage_namespace();
+        .require_installation_write()
+        .map_err(|_| installation_write_forbidden_error())?;
+    let owner_id = access.installation_namespace();
 
     tracing::info!(
         "[TAPP] register_component - User: {}, Tapp: {}, Type: {}",
@@ -237,12 +242,17 @@ pub async fn unregister_component(
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(permission)?;
     authorize_tapp_permission(&db, &claims, &tapp_id, permission).await?;
-    let access = TappStorageAccess::from_runtime_grant(&runtime_grant, &claims)
-        .map_err(|status| (status, Json(json!({ "error": "Invalid runtime grant subject" }))))?;
+    let access =
+        TappStorageAccess::from_runtime_grant(&runtime_grant, &claims).map_err(|status| {
+            (
+                status,
+                Json(json!({ "error": "Invalid runtime grant subject" })),
+            )
+        })?;
     access
-        .require_write()
-        .map_err(|_| storage_write_forbidden_error())?;
-    let owner_id = access.storage_namespace();
+        .require_installation_write()
+        .map_err(|_| installation_write_forbidden_error())?;
+    let owner_id = access.installation_namespace();
     tracing::info!(
         "[TAPP] unregister_component - User: {}, Tapp: {}, Type: {}, ID: {}",
         claims.username,
@@ -292,9 +302,14 @@ pub async fn list_components(
     runtime_grant.require_tapp_id(&tapp_id)?;
     let user_id = parse_user_id(&claims)?;
     verify_tapp_ownership(&db, user_id, &tapp_id).await?;
-    let access = TappStorageAccess::from_runtime_grant(&runtime_grant, &claims)
-        .map_err(|status| (status, Json(json!({ "error": "Invalid runtime grant subject" }))))?;
-    let owner_id = access.storage_namespace();
+    let access =
+        TappStorageAccess::from_runtime_grant(&runtime_grant, &claims).map_err(|status| {
+            (
+                status,
+                Json(json!({ "error": "Invalid runtime grant subject" })),
+            )
+        })?;
+    let owner_id = access.installation_namespace();
     tracing::debug!(
         "[TAPP] list_components - User: {}, Tapp: {}",
         claims.username,

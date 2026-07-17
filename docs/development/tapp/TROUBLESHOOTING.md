@@ -371,7 +371,8 @@ const data = await Tapp.api("data", {});
 ```
 
 并在 `permissions` 中申请 `network:fetch`。如果 API 确实可匿名调用，可把 `access`
-明确设为 `public`；它仍会经过 Manifest 与后端出站安全校验。
+明确设为 `public`；这只改变调用者范围，不会免除 `network:fetch`，并且仍会经过共享限流、
+Manifest 与后端出站安全校验。
 
 ---
 

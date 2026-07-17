@@ -21,7 +21,7 @@ use crate::services::permission_service::{TappPermission, TappPermissionService,
 use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
-use super::common::{get_admin_user_id, verify_tapp_ownership};
+use super::common::{check_rate_limit, get_admin_user_id, verify_tapp_ownership};
 use super::runtime_grant::RuntimeGrantContext;
 
 // ============ Manifest API 解析缓存 ============
@@ -214,6 +214,13 @@ pub async fn execute_tapp_api(
             Json(json!({ "error": format!("API '{}' not defined in manifest", api_name) })),
         )
     })?;
+    if api_def.api_type == "http" {
+        // Public/protected controls the audience only. Every server-side
+        // outbound request remains a network capability and must be present in
+        // the live Runtime Grant after current role/config revalidation.
+        runtime_grant.require(TappPermission::NetworkFetch)?;
+        check_rate_limit(user_id, &tapp_id, &format!("network.fetch:{api_name}")).await?;
+    }
     if api_def.api_type == "builtin" {
         match api_def.builtin.as_deref() {
             Some("ai:chat") => runtime_grant.require(TappPermission::AiChat)?,
@@ -224,7 +231,7 @@ pub async fn execute_tapp_api(
 
     // 3. 读取安装时授权；下面还会按调用者当前角色动态过滤。
     let installed_permissions: Vec<String> = tapp
-        .granted_permissions
+        .approved_permissions
         .as_array()
         .map(|arr| {
             arr.iter()

@@ -64,9 +64,13 @@ pub struct Model {
     /// 当前状态
     pub status: TappStatus,
 
-    /// 已授权的权限 (JSON 数组)
+    /// 安装时的有效权限快照（兼容旧数据；运行时不以此字段作为最终授权事实）
     #[sea_orm(column_type = "Json")]
     pub granted_permissions: serde_json::Value,
+
+    /// 安装时由用户批准的权限；运行时再与当前角色和管理员策略求交集
+    #[sea_orm(column_type = "JsonBinary")]
+    pub approved_permissions: serde_json::Value,
 
     /// .tapp 文件路径
     #[sea_orm(column_type = "Text")]

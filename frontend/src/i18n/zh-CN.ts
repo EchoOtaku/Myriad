@@ -1741,7 +1741,7 @@ export const zhCN: TranslationKeys = {
     permFederationFiles: '联邦文件',
 
     // 权限描述
-    permRegisterWidgetDesc: '允许注册自定义小组件到主页',
+    permRegisterWidgetDesc: '仅允许管理员注册自定义小组件到主页',
     permReadPlatformDesc: '允许读取已有的平台数据',
     permWritePlatformDesc: '允许添加新的平台数据条目',
     permRegisterPlatformDesc: '允许注册自定义数据平台',
@@ -1836,6 +1836,7 @@ export const zhCN: TranslationKeys = {
     // 详情页面
     appSettings: '应用设置',
     customizeBehavior: '自定义应用行为',
+    settingsReadOnly: '公共应用的全局设置仅可由安装者或管理员修改',
     noSettingsAvailable: '此应用暂无可配置的设置项',
     noSettingsDesc: '此应用没有可配置的设置项',
     appInfo: '应用信息',

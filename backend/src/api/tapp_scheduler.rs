@@ -19,7 +19,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::api::tapp_runtime::common::{
-    check_tapp_permission, resolve_accessible_tapp, verify_tapp_granted_permissions,
+    check_tapp_permission, resolve_accessible_tapp, verify_tapp_approved_permissions,
     verify_tapp_ownership,
 };
 use crate::api::tapp_runtime::RuntimeGrantContext;
@@ -356,7 +356,7 @@ pub async fn register_task(
     }
     let mut installed_permissions = vec![TappPermission::SchedulerRegister];
     installed_permissions.extend(action_permissions);
-    verify_tapp_granted_permissions(&db, user_id, &req.tapp_id, &installed_permissions).await?;
+    verify_tapp_approved_permissions(&db, user_id, &req.tapp_id, &installed_permissions).await?;
     let tapp = resolve_accessible_tapp(&db, user_id, &req.tapp_id).await?;
     if tapp.user_id != runtime_grant.owner_id() {
         return Err((

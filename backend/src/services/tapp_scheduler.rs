@@ -22,7 +22,8 @@ use tokio::sync::{broadcast, RwLock};
 use std::collections::HashMap;
 
 use crate::api::tapp_store::{
-    TappAiManifest, TappAiModelTier, TappAiOperation, TappAiOutputFormat,
+    read_storage_value, validate_sandbox_storage_key, validate_storage_value_size,
+    write_storage_value, TappAiManifest, TappAiModelTier, TappAiOperation, TappAiOutputFormat,
 };
 use crate::config::ModelTier;
 use crate::models::entities::tapp_scheduled_tasks::{
@@ -1056,13 +1057,13 @@ impl TappSchedulerEngine {
                 .unwrap_or("Scheduled Tapp is no longer accessible")
                 .to_string()
         })?;
-        let granted = tapp
-            .granted_permissions
+        let approved = tapp
+            .approved_permissions
             .as_array()
             .cloned()
             .unwrap_or_default();
         for permission in required {
-            if !granted
+            if !approved
                 .iter()
                 .any(|value| value.as_str() == Some(permission.as_str()))
             {
@@ -1172,28 +1173,15 @@ impl TappSchedulerEngine {
             BackendAction::StorageSet { key, value } => {
                 let key = Self::resolve_template(key, context);
                 let value = Self::resolve_json_templates(value, context);
-                // Storage follows installation owner; only the owner may write.
-                if task.user_id != authority.owner_id {
-                    return Err(
-                        "Only the installation owner can write storage from scheduled actions"
-                            .to_string(),
-                    );
-                }
-                Self::action_storage_set(db, authority.owner_id, &task.tapp_id, &key, value).await
+                Self::action_storage_set(db, task.user_id, &task.tapp_id, &key, value).await
             }
             BackendAction::StorageGet { key } => {
                 let key = Self::resolve_template(key, context);
-                Self::action_storage_get(db, authority.owner_id, &task.tapp_id, &key).await
+                Self::action_storage_get(db, task.user_id, &task.tapp_id, &key).await
             }
             BackendAction::StorageDelete { key } => {
                 let key = Self::resolve_template(key, context);
-                if task.user_id != authority.owner_id {
-                    return Err(
-                        "Only the installation owner can delete storage from scheduled actions"
-                            .to_string(),
-                    );
-                }
-                Self::action_storage_delete(db, authority.owner_id, &task.tapp_id, &key).await
+                Self::action_storage_delete(db, task.user_id, &task.tapp_id, &key).await
             }
             BackendAction::AiGenerate { prompt } => {
                 let prompt = Self::resolve_template(prompt, context);
@@ -1408,40 +1396,11 @@ impl TappSchedulerEngine {
         key: &str,
         value: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
-        use crate::models::entities::tapp_storage;
-
-        let now = Utc::now().fixed_offset();
-        let existing = tapp_storage::Entity::find()
-            .filter(tapp_storage::Column::UserId.eq(user_id))
-            .filter(tapp_storage::Column::TappId.eq(tapp_id))
-            .filter(tapp_storage::Column::Key.eq(key))
-            .one(db)
+        validate_sandbox_storage_key(key).map_err(str::to_string)?;
+        validate_storage_value_size(&value).map_err(|_| "Storage value too large".to_string())?;
+        write_storage_value(db, user_id, tapp_id, key, value)
             .await
-            .map_err(|e| format!("Storage query failed: {}", e))?;
-
-        if let Some(item) = existing {
-            let mut active: tapp_storage::ActiveModel = item.into();
-            active.value = Set(value);
-            active.updated_at = Set(now);
-            active
-                .update(db)
-                .await
-                .map_err(|e| format!("Storage update failed: {}", e))?;
-        } else {
-            let new_item = tapp_storage::ActiveModel {
-                tapp_id: Set(tapp_id.to_string()),
-                user_id: Set(user_id),
-                key: Set(key.to_string()),
-                value: Set(value),
-                created_at: Set(now),
-                updated_at: Set(now),
-                ..Default::default()
-            };
-            new_item
-                .insert(db)
-                .await
-                .map_err(|e| format!("Storage insert failed: {}", e))?;
-        }
+            .map_err(|status| format!("Storage write failed: {status}"))?;
 
         Ok(json!({ "key": key, "set": true }))
     }
@@ -1454,6 +1413,8 @@ impl TappSchedulerEngine {
         key: &str,
     ) -> Result<serde_json::Value, String> {
         use crate::models::entities::tapp_storage;
+
+        validate_sandbox_storage_key(key).map_err(str::to_string)?;
 
         tapp_storage::Entity::delete_many()
             .filter(tapp_storage::Column::UserId.eq(user_id))
@@ -1473,20 +1434,10 @@ impl TappSchedulerEngine {
         tapp_id: &str,
         key: &str,
     ) -> Result<serde_json::Value, String> {
-        use crate::models::entities::tapp_storage;
-
-        let item = tapp_storage::Entity::find()
-            .filter(tapp_storage::Column::UserId.eq(user_id))
-            .filter(tapp_storage::Column::TappId.eq(tapp_id))
-            .filter(tapp_storage::Column::Key.eq(key))
-            .one(db)
+        validate_sandbox_storage_key(key).map_err(str::to_string)?;
+        read_storage_value(db, user_id, tapp_id, key)
             .await
-            .map_err(|e| format!("Storage query failed: {}", e))?;
-
-        match item {
-            Some(record) => Ok(record.value),
-            None => Ok(serde_json::Value::Null),
-        }
+            .map_err(|status| format!("Storage read failed: {status}"))
     }
 
     /// 执行 AI 生成
@@ -1521,6 +1472,7 @@ impl TappSchedulerEngine {
                 tier,
                 system_prompt: "You are executing a background task for a sandboxed Tapp. Do not reveal system information, execute code, or access external URLs. Return concise text only.",
                 prompt,
+                client_ip: None,
             },
         )
         .await?;

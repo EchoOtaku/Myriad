@@ -1,7 +1,7 @@
 //! 数据转换处理 API
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -15,8 +15,8 @@ use super::common::{
 };
 use super::runtime_grant::RuntimeGrantContext;
 use crate::api::tapp_store::{
-    storage_write_forbidden_error, validate_storage_key, validate_storage_value_size,
-    TappStorageAccess,
+    read_storage_value, validate_sandbox_storage_key, validate_storage_value_size,
+    write_storage_value, TappStorageAccess,
 };
 
 #[derive(Debug, Deserialize)]
@@ -139,7 +139,7 @@ pub async fn data_transform(
     match &req.input {
         DataInput::Platform { .. } => required_permissions.push(TappPermission::PlatformRead),
         DataInput::Storage { key } => {
-            validate_storage_key(key)
+            validate_sandbox_storage_key(key)
                 .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
             required_permissions.push(TappPermission::Storage);
         }
@@ -150,7 +150,7 @@ pub async fn data_transform(
             required_permissions.push(TappPermission::PlatformWrite)
         }
         Some(DataOutput::Storage { key }) => {
-            validate_storage_key(key)
+            validate_sandbox_storage_key(key)
                 .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
             if !required_permissions.contains(&TappPermission::Storage) {
                 required_permissions.push(TappPermission::Storage);
@@ -168,11 +168,16 @@ pub async fn data_transform(
     } else {
         authorize_tapp_permissions(&db, &claims, &req.tapp_id, &required_permissions).await?;
     }
-    let storage_access = TappStorageAccess::from_runtime_grant(&runtime_grant, &claims)
-        .map_err(|status| (status, Json(json!({ "error": "Invalid runtime grant subject" }))))?;
-    // Storage I/O is namespaced by installation owner even when the pipeline mixes
-    // other data sources. Non-owners may read but never write owner storage.
-    let storage_owner_id = storage_access.storage_namespace();
+    let storage_access =
+        TappStorageAccess::from_runtime_grant(&runtime_grant, &claims).map_err(|status| {
+            (
+                status,
+                Json(json!({ "error": "Invalid runtime grant subject" })),
+            )
+        })?;
+    // Storage I/O always follows the current runtime subject, including when a
+    // public installation is owned by the site administrator.
+    let storage_subject_id = storage_access.private_storage_namespace();
 
     tracing::debug!(
         "[TAPP] data_transform - User: {}, Tapp: {}, Steps: {}",
@@ -203,12 +208,7 @@ pub async fn data_transform(
                 .unwrap_or_default()
         }
         DataInput::Storage { key } => {
-            use crate::models::entities::tapp_storage;
-            let item = tapp_storage::Entity::find()
-                .filter(tapp_storage::Column::UserId.eq(storage_owner_id))
-                .filter(tapp_storage::Column::TappId.eq(&req.tapp_id))
-                .filter(tapp_storage::Column::Key.eq(&key))
-                .one(&db)
+            let value = read_storage_value(&db, storage_subject_id, &req.tapp_id, &key)
                 .await
                 .map_err(|_| {
                     (
@@ -216,10 +216,7 @@ pub async fn data_transform(
                         Json(json!({ "error": "Failed to read storage" })),
                     )
                 })?;
-            match item {
-                Some(i) => i.value.as_array().cloned().unwrap_or_default(),
-                None => Vec::new(),
-            }
+            value.as_array().cloned().unwrap_or_default()
         }
         DataInput::Inline { data } => data.as_array().cloned().unwrap_or_else(|| vec![data]),
     };
@@ -275,57 +272,15 @@ pub async fn data_transform(
                     })?;
             }
             DataOutput::Storage { key } => {
-                use crate::models::entities::tapp_storage;
-                use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, Set};
-
-                storage_access
-                    .require_write()
-                    .map_err(|_| storage_write_forbidden_error())?;
                 let storage_value = json!(items);
                 validate_storage_value_size(&storage_value).map_err(|status| {
                     (status, Json(json!({ "error": "Storage value too large" })))
                 })?;
-                let now = chrono::Utc::now().fixed_offset();
-                let existing = tapp_storage::Entity::find()
-                    .filter(tapp_storage::Column::UserId.eq(storage_owner_id))
-                    .filter(tapp_storage::Column::TappId.eq(&req.tapp_id))
-                    .filter(tapp_storage::Column::Key.eq(&key))
-                    .one(&db)
+                write_storage_value(&db, storage_subject_id, &req.tapp_id, &key, storage_value)
                     .await
-                    .map_err(|_| {
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(json!({ "error": "Failed to check storage" })),
-                        )
+                    .map_err(|status| {
+                        (status, Json(json!({ "error": "Failed to save storage" })))
                     })?;
-
-                if let Some(item) = existing {
-                    let mut active: tapp_storage::ActiveModel = item.into();
-                    active.value = Set(storage_value.clone());
-                    active.updated_at = Set(now);
-                    active.update(&db).await.map_err(|_| {
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(json!({ "error": "Failed to update storage" })),
-                        )
-                    })?;
-                } else {
-                    let new_item = tapp_storage::ActiveModel {
-                        id: NotSet,
-                        tapp_id: Set(req.tapp_id.clone()),
-                        user_id: Set(storage_owner_id),
-                        key: Set(key),
-                        value: Set(storage_value),
-                        created_at: Set(now),
-                        updated_at: Set(now),
-                    };
-                    new_item.insert(&db).await.map_err(|_| {
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(json!({ "error": "Failed to save storage" })),
-                        )
-                    })?;
-                }
             }
         }
     }

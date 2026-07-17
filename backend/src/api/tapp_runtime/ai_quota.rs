@@ -22,12 +22,31 @@ struct AiQuotaLimits {
 
 #[derive(Debug, Clone)]
 pub struct AiQuotaReservation {
-    subject_id: i32,
-    owner_id: i32,
-    tapp_id: String,
+    buckets: Vec<AiQuotaBucket>,
     reserved_tokens: i32,
     unlimited: bool,
 }
+
+#[derive(Debug, Clone)]
+struct AiQuotaBucket {
+    subject_id: i32,
+    ledger_tapp_id: String,
+    calls_type: String,
+    tokens_type: String,
+}
+
+#[derive(Debug, Clone)]
+struct AiQuotaBucketLimits {
+    bucket: AiQuotaBucket,
+    calls: i32,
+    tokens: i32,
+    enforce_cooldown: bool,
+    anonymous: bool,
+}
+
+const ANONYMOUS_LEDGER_USER_ID: i32 = 0;
+const GUEST_IP_BUDGET_MULTIPLIER: i32 = 3;
+const GUEST_SITE_BUDGET_MULTIPLIER: i32 = 100;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,6 +117,60 @@ async fn limits_for_role(role: UserRole) -> AiQuotaLimits {
 
 fn quota_type(kind: &str, owner_id: i32) -> String {
     format!("ai_{kind}:owner:{owner_id}")
+}
+
+fn anonymous_quota_type(kind: &str, owner_id: i32, scope: &str) -> String {
+    format!("ai_{kind}:owner:{owner_id}:{scope}")
+}
+
+fn guest_quota_buckets(
+    subject_id: i32,
+    owner_id: i32,
+    tapp_id: &str,
+    limits: AiQuotaLimits,
+    anonymous_scope: Option<&str>,
+) -> Vec<AiQuotaBucketLimits> {
+    let mut buckets = vec![AiQuotaBucketLimits {
+        bucket: AiQuotaBucket {
+            subject_id,
+            ledger_tapp_id: tapp_id.to_string(),
+            calls_type: quota_type("calls", owner_id),
+            tokens_type: quota_type("tokens", owner_id),
+        },
+        calls: limits.calls,
+        tokens: limits.tokens,
+        enforce_cooldown: true,
+        anonymous: false,
+    }];
+
+    let digest =
+        super::common::anonymous_subject_fingerprint(anonymous_scope.unwrap_or("unresolved"));
+    let ip_scope = format!("ip:{}", &digest[..12]);
+    buckets.push(AiQuotaBucketLimits {
+        bucket: AiQuotaBucket {
+            subject_id: ANONYMOUS_LEDGER_USER_ID,
+            ledger_tapp_id: tapp_id.to_string(),
+            calls_type: anonymous_quota_type("calls", owner_id, &ip_scope),
+            tokens_type: anonymous_quota_type("tokens", owner_id, &ip_scope),
+        },
+        calls: limits.calls.saturating_mul(GUEST_IP_BUDGET_MULTIPLIER),
+        tokens: limits.tokens.saturating_mul(GUEST_IP_BUDGET_MULTIPLIER),
+        enforce_cooldown: false,
+        anonymous: true,
+    });
+    buckets.push(AiQuotaBucketLimits {
+        bucket: AiQuotaBucket {
+            subject_id: ANONYMOUS_LEDGER_USER_ID,
+            ledger_tapp_id: "__anonymous_ai_site__".to_string(),
+            calls_type: anonymous_quota_type("calls", owner_id, "guest-site"),
+            tokens_type: anonymous_quota_type("tokens", owner_id, "guest-site"),
+        },
+        calls: limits.calls.saturating_mul(GUEST_SITE_BUDGET_MULTIPLIER),
+        tokens: limits.tokens.saturating_mul(GUEST_SITE_BUDGET_MULTIPLIER),
+        enforce_cooldown: false,
+        anonymous: true,
+    });
+    buckets
 }
 
 fn period_end() -> String {
@@ -259,21 +332,35 @@ pub async fn reserve_ai_quota(
     owner_id: i32,
     tapp_id: &str,
     estimated_tokens: usize,
+    anonymous_scope: Option<&str>,
 ) -> Result<AiQuotaReservation, ApiError> {
     let limits = limits_for_role(role).await;
     if limits.unlimited {
         return Ok(AiQuotaReservation {
-            subject_id,
-            owner_id,
-            tapp_id: tapp_id.to_string(),
+            buckets: Vec::new(),
             reserved_tokens: 0,
             unlimited: true,
         });
     }
 
     let estimated_tokens = i32::try_from(estimated_tokens).unwrap_or(i32::MAX).max(0);
-    let calls_type = quota_type("calls", owner_id);
-    let tokens_type = quota_type("tokens", owner_id);
+    let cooldown_seconds = limits.cooldown_seconds;
+    let bucket_limits = if role == UserRole::Guest {
+        guest_quota_buckets(subject_id, owner_id, tapp_id, limits, anonymous_scope)
+    } else {
+        vec![AiQuotaBucketLimits {
+            bucket: AiQuotaBucket {
+                subject_id,
+                ledger_tapp_id: tapp_id.to_string(),
+                calls_type: quota_type("calls", owner_id),
+                tokens_type: quota_type("tokens", owner_id),
+            },
+            calls: limits.calls,
+            tokens: limits.tokens,
+            enforce_cooldown: true,
+            anonymous: false,
+        }]
+    };
     let txn = db.begin().await.map_err(|_| {
         api_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -282,49 +369,96 @@ pub async fn reserve_ai_quota(
         )
     })?;
 
-    ensure_quota_row(&txn, subject_id, tapp_id, &calls_type, limits.calls).await?;
-    ensure_quota_row(&txn, subject_id, tapp_id, &tokens_type, limits.tokens).await?;
-    let (calls_used, last_call_at) =
-        read_row_for_update(&txn, subject_id, tapp_id, &calls_type).await?;
-    let (tokens_used, _) = read_row_for_update(&txn, subject_id, tapp_id, &tokens_type).await?;
+    for limits in &bucket_limits {
+        ensure_quota_row(
+            &txn,
+            limits.bucket.subject_id,
+            &limits.bucket.ledger_tapp_id,
+            &limits.bucket.calls_type,
+            limits.calls,
+        )
+        .await?;
+        ensure_quota_row(
+            &txn,
+            limits.bucket.subject_id,
+            &limits.bucket.ledger_tapp_id,
+            &limits.bucket.tokens_type,
+            limits.tokens,
+        )
+        .await?;
+        let (calls_used, last_call_at) = read_row_for_update(
+            &txn,
+            limits.bucket.subject_id,
+            &limits.bucket.ledger_tapp_id,
+            &limits.bucket.calls_type,
+        )
+        .await?;
+        let (tokens_used, _) = read_row_for_update(
+            &txn,
+            limits.bucket.subject_id,
+            &limits.bucket.ledger_tapp_id,
+            &limits.bucket.tokens_type,
+        )
+        .await?;
 
-    let cooldown_elapsed = Utc::now()
-        .signed_duration_since(last_call_at)
-        .num_seconds()
-        .max(0);
-    if calls_used > 0 && cooldown_elapsed < i64::from(limits.cooldown_seconds) {
-        let remaining = i64::from(limits.cooldown_seconds) - cooldown_elapsed;
-        return Err(api_error(
-            StatusCode::TOO_MANY_REQUESTS,
-            "AI_COOLDOWN_ACTIVE",
-            format!("AI cooldown active; retry after {remaining} seconds"),
-        ));
-    }
-    if calls_used >= limits.calls {
-        return Err(api_error(
-            StatusCode::TOO_MANY_REQUESTS,
-            "AI_DAILY_CALL_LIMIT",
-            "Daily AI call limit reached",
-        ));
-    }
-    if estimated_tokens > limits.tokens.saturating_sub(tokens_used) {
-        return Err(api_error(
-            StatusCode::TOO_MANY_REQUESTS,
-            "AI_DAILY_TOKEN_LIMIT",
-            "Daily AI token budget is insufficient for this request",
-        ));
+        if limits.enforce_cooldown {
+            let cooldown_elapsed = Utc::now()
+                .signed_duration_since(last_call_at)
+                .num_seconds()
+                .max(0);
+            if calls_used > 0 && cooldown_elapsed < i64::from(cooldown_seconds) {
+                let remaining = i64::from(cooldown_seconds) - cooldown_elapsed;
+                return Err(api_error(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "AI_COOLDOWN_ACTIVE",
+                    format!("AI cooldown active; retry after {remaining} seconds"),
+                ));
+            }
+        }
+        if calls_used >= limits.calls {
+            return Err(api_error(
+                StatusCode::TOO_MANY_REQUESTS,
+                if limits.anonymous {
+                    "AI_ANONYMOUS_DAILY_CALL_LIMIT"
+                } else {
+                    "AI_DAILY_CALL_LIMIT"
+                },
+                "Daily AI call limit reached",
+            ));
+        }
+        if estimated_tokens > limits.tokens.saturating_sub(tokens_used) {
+            return Err(api_error(
+                StatusCode::TOO_MANY_REQUESTS,
+                if limits.anonymous {
+                    "AI_ANONYMOUS_DAILY_TOKEN_LIMIT"
+                } else {
+                    "AI_DAILY_TOKEN_LIMIT"
+                },
+                "Daily AI token budget is insufficient for this request",
+            ));
+        }
     }
 
-    increment_row(&txn, subject_id, tapp_id, &calls_type, 1, true).await?;
-    increment_row(
-        &txn,
-        subject_id,
-        tapp_id,
-        &tokens_type,
-        estimated_tokens,
-        false,
-    )
-    .await?;
+    for limits in &bucket_limits {
+        increment_row(
+            &txn,
+            limits.bucket.subject_id,
+            &limits.bucket.ledger_tapp_id,
+            &limits.bucket.calls_type,
+            1,
+            limits.enforce_cooldown,
+        )
+        .await?;
+        increment_row(
+            &txn,
+            limits.bucket.subject_id,
+            &limits.bucket.ledger_tapp_id,
+            &limits.bucket.tokens_type,
+            estimated_tokens,
+            false,
+        )
+        .await?;
+    }
     txn.commit().await.map_err(|_| {
         api_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -334,9 +468,10 @@ pub async fn reserve_ai_quota(
     })?;
 
     Ok(AiQuotaReservation {
-        subject_id,
-        owner_id,
-        tapp_id: tapp_id.to_string(),
+        buckets: bucket_limits
+            .into_iter()
+            .map(|limits| limits.bucket)
+            .collect(),
         reserved_tokens: estimated_tokens,
         unlimited: false,
     })
@@ -353,15 +488,18 @@ pub async fn settle_ai_quota(
     let actual = i32::try_from(actual_tokens).unwrap_or(i32::MAX).max(0);
     let delta = (i64::from(actual) - i64::from(reservation.reserved_tokens))
         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
-    increment_row(
-        db,
-        reservation.subject_id,
-        &reservation.tapp_id,
-        &quota_type("tokens", reservation.owner_id),
-        delta,
-        false,
-    )
-    .await
+    for bucket in &reservation.buckets {
+        increment_row(
+            db,
+            bucket.subject_id,
+            &bucket.ledger_tapp_id,
+            &bucket.tokens_type,
+            delta,
+            false,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 pub async fn release_ai_token_reservation(
@@ -371,15 +509,18 @@ pub async fn release_ai_token_reservation(
     if reservation.unlimited || reservation.reserved_tokens == 0 {
         return Ok(());
     }
-    increment_row(
-        db,
-        reservation.subject_id,
-        &reservation.tapp_id,
-        &quota_type("tokens", reservation.owner_id),
-        -reservation.reserved_tokens,
-        false,
-    )
-    .await
+    for bucket in &reservation.buckets {
+        increment_row(
+            db,
+            bucket.subject_id,
+            &bucket.ledger_tapp_id,
+            &bucket.tokens_type,
+            -reservation.reserved_tokens,
+            false,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// Roll back a reservation when the task itself was never registered. Provider
@@ -399,25 +540,27 @@ pub async fn rollback_ai_quota_reservation(
             "Failed to start AI quota rollback",
         )
     })?;
-    increment_row(
-        &transaction,
-        reservation.subject_id,
-        &reservation.tapp_id,
-        &quota_type("calls", reservation.owner_id),
-        -1,
-        false,
-    )
-    .await?;
-    if reservation.reserved_tokens > 0 {
+    for bucket in &reservation.buckets {
         increment_row(
             &transaction,
-            reservation.subject_id,
-            &reservation.tapp_id,
-            &quota_type("tokens", reservation.owner_id),
-            -reservation.reserved_tokens,
+            bucket.subject_id,
+            &bucket.ledger_tapp_id,
+            &bucket.calls_type,
+            -1,
             false,
         )
         .await?;
+        if reservation.reserved_tokens > 0 {
+            increment_row(
+                &transaction,
+                bucket.subject_id,
+                &bucket.ledger_tapp_id,
+                &bucket.tokens_type,
+                -reservation.reserved_tokens,
+                false,
+            )
+            .await?;
+        }
     }
     transaction.commit().await.map_err(|_| {
         api_error(
@@ -564,11 +707,35 @@ pub async fn get_ai_usage(
 
 #[cfg(test)]
 mod tests {
-    use super::quota_type;
+    use super::{guest_quota_buckets, quota_type, AiQuotaLimits};
 
     #[test]
     fn quota_key_isolated_by_install_owner() {
         assert_ne!(quota_type("calls", 1), quota_type("calls", 2));
         assert_ne!(quota_type("calls", 1), quota_type("tokens", 1));
+    }
+
+    #[test]
+    fn guest_budgets_include_hashed_ip_and_global_site_caps() {
+        let limits = AiQuotaLimits {
+            calls: 10,
+            tokens: 5_000,
+            cooldown_seconds: 10,
+            unlimited: false,
+        };
+        let buckets = guest_quota_buckets(-42, 1, "com.example.app", limits, Some("203.0.113.8"));
+
+        assert_eq!(buckets.len(), 3);
+        assert_eq!(buckets[0].calls, 10);
+        assert_eq!(buckets[1].calls, 30);
+        assert_eq!(buckets[2].calls, 1_000);
+        assert_eq!(buckets[2].bucket.ledger_tapp_id, "__anonymous_ai_site__");
+        assert!(!buckets[1].bucket.calls_type.contains("203.0.113.8"));
+        assert_ne!(
+            buckets[1].bucket.calls_type,
+            guest_quota_buckets(-99, 1, "com.example.app", limits, Some("203.0.113.9"))[1]
+                .bucket
+                .calls_type
+        );
     }
 }

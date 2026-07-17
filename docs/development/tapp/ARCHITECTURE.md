@@ -109,15 +109,14 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
 - 游客只能运行管理员共享的 Tapp；Tapp 可通过 `Tapp.user.getRole()` 感知角色。对于
   Federation 内容，游客只获得公开 Feed，已登录用户获得公开内容与自己的个人内容；
   游客不能关注、发布、私聊、进入私有 Room 或传输文件。
-- 用户私有安装允许与站点公开安装并存（冲突检查只针对 actor 自己的 owner 命名空间）。
-  管理员公开安装仍拒绝与任何已有同 ID 安装冲突。详情、资源、Widget、最终授权和
+- 用户私有安装与站点公开安装可双向并存；冲突检查只针对操作者可修改的 owner 命名空间，
+  因而普通用户不能用私有副本抢占 ID、阻止管理员后续发布。详情、资源、Widget、最终授权和
   Manifest 声明 API 必须选择同一安装记录。storage/Widget 的 ORM 不提供仅按 `tappId`
   的关联，查询必须显式携带 `user_id + tapp_id`。
-- **Storage Option A（安装 owner 命名空间）**：`tapp_storage` 的 `user_id` 是安装
-  owner（`grant.owner_id` / `tapp.user_id`），不是 viewer subject。打开管理员公开安装时，
-  读写的是站点 owner 命名空间；viewer 只读，仅 owner 可写/删/清空。个人笔记等需要在
-  用户安装自己的私有副本后，才写入该用户命名空间。卸载安装（`keep_data=false`）会清除
-  该 owner 命名空间下的 storage。
+- **主体私有 Storage**：`Tapp.storage` 的 `user_id` 是 Runtime Grant subject。打开管理员
+  公开安装时，每个已登录用户仍读写自己的 `user_id + tapp_id` 空间，不会读取站点 owner
+  数据。Manifest 声明的安装级设置继续存放在安装 owner 命名空间；owner 或管理员可写，
+  其他已登录运行者只读。宿主内部键不会出现在通用 storage API 中。
 - 管理员控制面权限不等于普通用户私有安装的运行时访问权。代码、资源、Manifest、授权和
   Runtime Grant 只能解析到规范公开 owner 或当前主体自己的 owner，不能从其他用户同 ID
   记录中任意选择。
@@ -239,14 +238,15 @@ handler、后端路由/服务和文档。
 
 ## 权限模型
 
-安装请求中的权限只是“申请集合”。后端会用当前实时角色与动态下放配置过滤，最终
-`granted_permissions` 才是运行时事实。
+安装请求中的权限只是“申请集合”。用户批准的集合持久化为 `approved_permissions`，不会因
+安装当时的角色策略被破坏；后端再与当前实时角色和动态下放配置求交集，生成运行时
+`granted_permissions`。因此管理员后续开放能力时，旧安装无需重装即可恢复已批准权限。
 
-| 等级       | 默认含义                                                                |
-| ---------- | ----------------------------------------------------------------------- |
-| basic      | 基础能力；仍需申请并被授予；要求持久登录主体的能力不向访客签发            |
-| elevated   | 管理员可配置向普通用户/游客下放                                         |
-| privileged | 仅管理员，例如 `platform:write`、`platform:register`、`component:agent` |
+| 等级       | 默认含义                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| basic      | 基础能力；仍需申请并被授予；要求持久登录主体的能力不向访客签发                             |
+| elevated   | 管理员可配置向普通用户/游客下放                                                            |
+| privileged | 仅管理员，例如 `widget:register`、`platform:write`、`platform:register`、`component:agent` |
 
 权限等级、SDK action 映射和后端枚举目前分别存在于 TypeScript 与 Rust 中；修改时必须
 同步并运行权限/类型检查。后端永远是授权判定的最终边界。
@@ -258,10 +258,13 @@ handler、后端路由/服务和文档。
 Runtime Grant 是签发时能力的上限而不是冻结授权。服务端每次验证都重新解析当前可见安装，
 核对 owner，并将令牌权限与当前角色、动态下放配置和安装授权取交集；角色/配置收紧后旧
 Grant 不能继续保留已撤销能力，安装 owner 改变则令牌失效并由宿主重新签发。
+媒体控制与语音等宿主本地敏感动作在执行前还会调用 Runtime Grant authorize 路由实时复核；
+配置保存会同步有效权限并重建受影响的 Page、Widget 和 headless 沙箱。
 
-访客 Grant 只包含真实使用可选认证路由或纯宿主本地处理的能力。`storage`、动态 Widget、
-平台数据、报告读取、统一通知、组件/快捷键注册、scheduler、语音服务，以及 Brew 写入/评论
-都要求持久登录主体，不会仅因 broad permission level 为 basic/elevated 就出现在访客 Grant 中。
+访客 Grant 只包含真实使用可选认证路由或纯宿主本地处理的能力。`storage`、平台数据、报告读取、
+统一通知、组件/快捷键注册、scheduler、语音服务，以及 Brew 写入/评论都要求持久登录主体，
+不会仅因 broad permission level 为 basic/elevated 就出现在访客 Grant 中。动态 Widget 的
+注册与注销属于 `privileged` 控制面，只允许当前管理员调用。
 
 ## 调度器
 
@@ -359,7 +362,7 @@ sequenceDiagram
 - Manifest 顶层 `settings` 是 Tapp 全局设置；`widgets[].settings` 保存到 Dashboard
   布局中的实例 `config`，同类 Widget 的多个实例互不覆盖。
 - Manifest Widget 是安装控制面注册：安装/更新时后端按 Manifest 完整 upsert，并删除旧
-  Manifest 已移除的项。运行时 `Tapp.widget.register/unregister` 必须携带 Runtime Grant，
+  Manifest 已移除的项。运行时 `Tapp.widget.register/unregister` 只允许当前管理员调用，并必须携带 Runtime Grant，
   只能管理 `source=runtime` 项，不能覆盖或删除 Manifest Widget。Manifest Widget 绑定安装
   owner 并随公共安装共享；动态 Widget 同时记录 subject 与 `installationOwnerId`，只对注册
   主体可见，公共/私有同 ID 切换时不会误取另一安装的动态注册。
@@ -431,10 +434,11 @@ DNS 结果钉扎到本次客户端并禁止自动重定向；URL credentials、�
 若未来需要第三方凭据，应设计绑定 provider、目标域名与用途的专用 credential capability，不能
 恢复任意 endpoint 可引用的全局 secret map。
 
-当前 Tapp storage 按 **安装 owner** 的 `user_id + tapp_id` 隔离（不是 viewer subject），
-单值上限 1 MiB，总量上限 5 MiB；写入在同一事务内加 owner/Tapp advisory lock、计算替换后的
-JSONB 字节并 upsert，并发副本不能越过总量边界。非 owner 的已授权 viewer 可以读，写/删/清空
-返回只读 403。Tapp 不能直接指定另一个 Tapp 的 key。已实现的
+当前 Tapp storage 按 **当前 subject** 的 `user_id + tapp_id` 隔离，单值上限 1 MiB，总量
+上限 5 MiB；写入在同一事务内加 subject/Tapp advisory lock、计算替换后的 JSONB 字节并
+upsert，并发副本不能越过总量边界。公开 Tapp 的不同用户互相不可见且都能读写自己的空间。
+安装级设置仍按安装 owner 隔离，并只暴露 Manifest 声明的键。Tapp 不能直接指定另一个 Tapp
+的 key，也不能访问宿主保留键。已实现的
 One-shot Data Exchange 使用 Manifest 具名 export/import、同 subject 隔离、宿主“仅本次”
 授权队列和绑定 provider 安装 owner 的服务端原子消费一次性 Data Access Grant。弹窗结构化
 显示双方 Tapp、export、参数范围、用途、上限和过期倒计时；拒绝为默认焦点，并发请求逐项

@@ -120,13 +120,14 @@ Tapp SDK 把调用转换为请求消息。宿主只接受同时满足以下条�
 const profile = await Tapp.api("profile", { id: "42" });
 ```
 
-`protected` 默认要求 `network:fetch`；`public` 不要求该权限，但仍受 Manifest、输入模板、
-后端出站安全和频率限制约束。端点、请求头和模板参数会在后端解析，HTTP 请求经过 SSRF
+所有 HTTP API 都要求实时 `network:fetch`；`public`/`protected` 只决定调用者范围，并且都受 Manifest、输入模板、
+后端出站安全和共享频率限制约束。端点、请求头和模板参数会在后端解析，HTTP 请求经过 SSRF
 防护。系统不存在供 Tapp 使用的任意 URL 代理。
 
 ## 权限
 
-Manifest 的 `permissions` 是申请集合，运行时以安装记录中的 `granted_permissions` 为准：
+Manifest 的 `permissions` 是申请集合；安装批准后写入 `approved_permissions`，运行时的
+`granted_permissions` 则由批准集与当前角色/下放策略动态求交集：
 
 ```json
 {
@@ -161,13 +162,15 @@ container.textContent = userInput;
 转义，它不是 HTML sanitizer。
 
 存储 key 只允许字母、数字、下划线、连字符、点和冒号，长度上限为 256，并拒绝路径
-遍历形式。后端会拒绝超过 1 MiB 的单值，并在事务内对同一安装 owner 与 Tapp 串行计算
+遍历形式。后端会拒绝超过 1 MiB 的单值，并在事务内对同一当前用户与 Tapp 串行计算
 写入后的总量；超过 5 MiB 会返回 413。数据库触发器执行相同的 5 MiB 硬限制，覆盖其他
 内部写入路径；`Tapp.storage.usage()` 返回的 quota 因而也是实际安全边界。
 
-持久 storage 命名空间跟随**安装 owner**（Runtime Grant 的 `ownerId`），不是当前 viewer。
-打开站点公开安装时读写的是站点 owner 数据：已授权 viewer 可只读，仅 owner 可写/删/清空
-（否则 403）。个人数据需要用户安装自己的私有副本后才会进入该用户命名空间。
+持久 storage 命名空间跟随**当前登录用户**（Runtime Grant 的 subject），即使运行的是站点
+公开安装也不会读取安装 owner 的 storage。每个已登录用户都可以读写自己的 `user_id + tapp_id`
+空间。`_settings.`、`_component:`、`_shortcut:`、`_report:` 是宿主保留前缀，不能通过
+`Tapp.storage` 读取、写入、列举或清除。Manifest 设置由安装 owner 或管理员写入，其他已登录
+运行者只能通过 `Tapp.settings` 读取声明过的设置项。
 
 ## 开发检查清单
 

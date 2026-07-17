@@ -793,6 +793,12 @@ fn get_expected_schema() -> Vec<TableDef> {
                     default_value: Some("'[]'".into()),
                 },
                 ColumnDef {
+                    name: "approved_permissions".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: Some("'[]'".into()),
+                },
+                ColumnDef {
                     name: "file_path".into(),
                     data_type: "text".into(),
                     is_nullable: false,
@@ -4920,6 +4926,26 @@ END $$;
     Ok(())
 }
 
+/// Add the consent-preserving Tapp permission column without guessing from the
+/// manifest. Existing rows are backfilled only from the permissions that were
+/// actually stored before this split.
+async fn ensure_tapp_approved_permissions(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+ALTER TABLE tapps
+    ADD COLUMN IF NOT EXISTS approved_permissions JSONB;
+UPDATE tapps
+   SET approved_permissions = granted_permissions
+ WHERE approved_permissions IS NULL;
+ALTER TABLE tapps
+    ALTER COLUMN approved_permissions SET DEFAULT '[]'::jsonb,
+    ALTER COLUMN approved_permissions SET NOT NULL;
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
 /// 从数据库获取表的实际列
 async fn get_table_columns(
     db: &DatabaseConnection,
@@ -5179,6 +5205,8 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
         changes_made += tables_created as usize;
     }
 
+    ensure_tapp_approved_permissions(db).await?;
+
     // 1.6 同步默认平台种子行（结构齐全后再补业务目录数据）
     match ensure_default_platforms(db).await {
         Ok(n) if n > 0 => changes_made += n,
@@ -5281,6 +5309,7 @@ pub async fn force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
 async fn do_force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     // 先确保表存在，再同步种子行
     let _ = ensure_tables_exist(db).await?;
+    ensure_tapp_approved_permissions(db).await?;
     if let Err(e) = ensure_default_platforms(db).await {
         tracing::warn!("Force check: default platforms seed warning: {}", e);
     }
@@ -5349,6 +5378,46 @@ mod tests {
         sorted.sort();
         sorted.dedup();
         assert_eq!(sorted.len(), names.len());
+    }
+
+    #[tokio::test]
+    async fn approved_permissions_upgrade_backfills_legacy_grants_when_database_is_provided() {
+        let Ok(database_url) = std::env::var("TAPP_PERMISSION_MIGRATION_TEST_DATABASE_URL") else {
+            return;
+        };
+        use sea_orm::{Database, DatabaseBackend, Statement};
+        use sea_orm_migration::MigratorTrait;
+
+        let db = Database::connect(&database_url).await.unwrap();
+        migration::Migrator::up(&db, Some(7)).await.unwrap();
+        // Recreate the exact legacy state: migrations 1-7 are recorded, but
+        // tapps predates approved_permissions.
+        db.execute_unprepared("ALTER TABLE tapps DROP COLUMN approved_permissions")
+            .await
+            .unwrap();
+        db.execute_unprepared(
+            r#"
+INSERT INTO tapps
+    (tapp_id, user_id, name, version, manifest, granted_permissions, file_path, code_path)
+VALUES
+    ('com.example.legacy-consent', 1, 'Legacy', '1.0.0', '{}'::jsonb,
+     '["storage", "ai:generate"]'::jsonb, 'manifest.json', 'main.js')
+"#,
+        )
+        .await
+        .unwrap();
+
+        migration::Migrator::up(&db, None).await.unwrap();
+        let row = db
+            .query_one(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT approved_permissions::text AS value FROM tapps WHERE tapp_id = 'com.example.legacy-consent'".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let approved = row.try_get::<String>("", "value").unwrap();
+        assert_eq!(approved, "[\"storage\", \"ai:generate\"]");
     }
 
     #[test]

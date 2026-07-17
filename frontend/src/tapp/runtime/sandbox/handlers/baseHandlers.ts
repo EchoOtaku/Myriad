@@ -7,10 +7,9 @@
 import type { PermissionLevel, TappInstance } from '../../../types'
 
 import type { TappBridge } from '../../TappBridge'
-import { emitTappStorageChange } from '../../WidgetRuntimeSignals'
-
 import type { TappNotificationOptions } from '../types'
 import * as TappApiService from '../../../services/TappApiService'
+import { emitTappStorageChange } from '../../WidgetRuntimeSignals'
 import { sanitizeStorageValue, validateStorageKey } from '../security'
 
 /**
@@ -351,6 +350,58 @@ export function registerStorageHandlers(
         await bridge.getRuntimeGrant(),
       )
       return { success: true, data: usage }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
+    }
+  })
+
+  bridge.registerHandler('settings.get', async (message) => {
+    const [key] = (message.payload as { args: unknown[] }).args || []
+    if (!key) return { success: false, error: 'Key is required' }
+    const keyValidation = validateStorageKey(key as string)
+    if (!keyValidation.valid) {
+      return { success: false, error: `Invalid key: ${keyValidation.reason}` }
+    }
+    try {
+      const value = await TappApiService.getTappSetting(tappId, key as string)
+      return { success: true, data: value }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
+    }
+  })
+
+  bridge.registerHandler('settings.set', async (message) => {
+    const [key, value] = (message.payload as { args: unknown[] }).args || []
+    if (!key) return { success: false, error: 'Key is required' }
+    const keyValidation = validateStorageKey(key as string)
+    if (!keyValidation.valid) {
+      return { success: false, error: `Invalid key: ${keyValidation.reason}` }
+    }
+    try {
+      await TappApiService.setTappSetting(
+        tappId,
+        key as string,
+        sanitizeStorageValue(value),
+      )
+      return { success: true, data: null }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
+    }
+  })
+
+  bridge.registerHandler('settings.getAll', async () => {
+    try {
+      const values = await TappApiService.getTappSettings(tappId)
+      return { success: true, data: values }
     } catch (error) {
       return {
         success: false,

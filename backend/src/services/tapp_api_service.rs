@@ -191,31 +191,20 @@ impl TappApiService {
         api_def: &TappApiDef,
         context: &ApiExecutionContext,
     ) -> Result<(), String> {
-        match api_def.access {
-            TappApiAccess::Public => {
-                // 公开 API，所有人可访问
-                Ok(())
-            }
-            TappApiAccess::Protected => {
-                // 受保护 API，需要 network:fetch 权限
-                // 游客不能使用受保护 API
-                if context.user_id < 0 {
-                    return Err("Protected API requires login".to_string());
-                }
-
-                // 检查权限
-                let has_permission = context
-                    .granted_permissions
-                    .iter()
-                    .any(|p| p == "network:fetch");
-
-                if !has_permission {
-                    return Err("Permission 'network:fetch' required".to_string());
-                }
-
-                Ok(())
-            }
+        if api_def.api_type == "http"
+            && !context
+                .granted_permissions
+                .iter()
+                .any(|permission| permission == "network:fetch")
+        {
+            return Err("Permission 'network:fetch' required".to_string());
         }
+
+        if api_def.access == TappApiAccess::Protected && context.user_id < 0 {
+            return Err("Protected API requires login".to_string());
+        }
+
+        Ok(())
     }
 
     /// 构建注入上下文
@@ -610,6 +599,8 @@ impl TappApiService {
             .map_err(|error| format!("AI_TASK_REGISTRY_UNAVAILABLE: {error}"))?;
         let role = if context.is_admin {
             UserRole::Admin
+        } else if context.user_id < 0 {
+            UserRole::Guest
         } else {
             UserRole::User
         };
@@ -625,6 +616,7 @@ impl TappApiService {
                 tier: context.ai_model_tier.unwrap_or_default(),
                 system_prompt,
                 prompt,
+                client_ip: context.client_ip.as_deref(),
             },
         )
         .await
@@ -781,6 +773,24 @@ mod tests {
             granted_permissions: Vec::new(),
             ai_model_tier: None,
         }
+    }
+
+    #[tokio::test]
+    async fn public_http_api_still_requires_network_permission() {
+        let mut api = api_def();
+        api.access = TappApiAccess::Public;
+        let mut execution_context = context(1, "203.0.113.1");
+
+        assert!(TappApiService::check_permission(&api, &execution_context)
+            .await
+            .is_err());
+
+        execution_context
+            .granted_permissions
+            .push("network:fetch".to_string());
+        assert!(TappApiService::check_permission(&api, &execution_context)
+            .await
+            .is_ok());
     }
 
     #[test]

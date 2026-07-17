@@ -489,18 +489,9 @@ export function generateFullSDK(
     },
 
     settings: {
-      get: (k) => { validateStorageKey(k); return sendRequest('storage', 'get', [\`_settings.\${k}\`]); },
-      set: (k, v) => { validateStorageKey(k); return sendRequest('storage', 'set', [\`_settings.\${k}\`, v]); },
-      async getAll() {
-        const entries = await sendRequest('storage', 'getAll', []);
-        const result = {};
-        for (const [key, value] of Object.entries(entries || {})) {
-          if (key.startsWith('_settings.')) {
-            result[key.slice('_settings.'.length)] = value;
-          }
-        }
-        return result;
-      },
+      get: (k) => { validateStorageKey(k); return sendRequest('settings', 'get', [k]); },
+      set: (k, v) => { validateStorageKey(k); return sendRequest('settings', 'set', [k, v]); },
+      getAll: () => sendRequest('settings', 'getAll', []),
     },
 
     ui: {
@@ -1160,19 +1151,9 @@ export function generateWidgetSDK(
     },
 
     settings: {
-      get: function(k) { validateStorageKey(k); return sendRequest('storage', 'get', ['_settings.' + k]); },
-      set: function(k, v) { validateStorageKey(k); return sendRequest('storage', 'set', ['_settings.' + k, v]); },
-      getAll: function() {
-        return sendRequest('storage', 'getAll', []).then(function(entries) {
-          var result = {};
-          Object.keys(entries || {}).forEach(function(k) {
-            if (k.startsWith('_settings.')) {
-              result[k.slice('_settings.'.length)] = entries[k];
-            }
-          });
-          return result;
-        });
-      }
+      get: function(k) { validateStorageKey(k); return sendRequest('settings', 'get', [k]); },
+      set: function(k, v) { validateStorageKey(k); return sendRequest('settings', 'set', [k, v]); },
+      getAll: function() { return sendRequest('settings', 'getAll', []); }
     },
 
     ai: {

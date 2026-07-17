@@ -47,6 +47,12 @@ pub struct IssueRuntimeGrantRequest {
     pub kind: RuntimeKind,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorizeRuntimePermissionRequest {
+    pub permission: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeGrantResponse {
@@ -232,7 +238,7 @@ async fn validate_runtime_grant(
     };
     let role = current_tapp_user_role(claims).await;
     let installed_permissions: Vec<String> =
-        serde_json::from_value(tapp.granted_permissions).unwrap_or_default();
+        serde_json::from_value(tapp.approved_permissions).unwrap_or_default();
     let currently_allowed = {
         let config = GLOBAL_DYNAMIC_CONFIG.read().await;
         TappPermissionService::filter_permissions_for_role(&config, role, &installed_permissions)
@@ -313,7 +319,7 @@ pub async fn issue_runtime_grant(
     let tapp = resolve_accessible_tapp(&db, subject_id, &tapp_id).await?;
     let role = current_tapp_user_role(&claims).await;
     let installed_permissions: Vec<String> =
-        serde_json::from_value(tapp.granted_permissions.clone()).unwrap_or_default();
+        serde_json::from_value(tapp.approved_permissions.clone()).unwrap_or_default();
     let permissions = {
         let config = GLOBAL_DYNAMIC_CONFIG.read().await;
         TappPermissionService::filter_permissions_for_role(&config, role, &installed_permissions)
@@ -412,6 +418,30 @@ pub async fn issue_runtime_grant(
         permissions,
         expires_at: expires_at.to_rfc3339(),
     }))
+}
+
+/// POST /api/tapps/{tapp_id}/runtime-grants/authorize
+///
+/// Browser-hosted capabilities (for example media control and speech) use this
+/// endpoint immediately before acting. The Runtime Grant extractor rebinds the
+/// token to the current installation, role and delegation config on every call.
+pub async fn authorize_runtime_permission(
+    runtime_grant: RuntimeGrantContext,
+    Path(tapp_id): Path<String>,
+    Json(request): Json<AuthorizeRuntimePermissionRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    runtime_grant.require_tapp_id(&tapp_id)?;
+    let permission = TappPermission::from_str(&request.permission).ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Unknown Tapp permission",
+                "code": "UNKNOWN_TAPP_PERMISSION"
+            })),
+        )
+    })?;
+    runtime_grant.require(permission)?;
+    Ok(Json(json!({ "authorized": true })))
 }
 
 /// DELETE /api/tapps/{tapp_id}/runtime-grants/{runtime_id}

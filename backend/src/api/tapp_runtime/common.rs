@@ -11,6 +11,7 @@
 //! - 性能指标
 
 use axum::{http::StatusCode, Json};
+use hmac::{Hmac, Mac};
 use once_cell::sync::Lazy;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult,
@@ -383,6 +384,8 @@ struct CountRow {
 pub fn get_rate_limit_config(operation: &str) -> (u32, u64) {
     match operation {
         "ai.task" => (20, 60),
+        "ai.anonymous" => (10, 60),
+        operation if operation.starts_with("network.fetch:") => (60, 60),
         "platform.write" => (30, 60),
         "storage.set" | "storage.clear" => (100, 60),
         _ => (200, 60),
@@ -395,6 +398,16 @@ fn rate_limit_key(user_id: i32, tapp_id: &str, operation: &str) -> String {
 
 fn rate_limit_record_id(key: &str) -> String {
     format!("{:x}", Sha256::digest(key.as_bytes()))
+}
+
+pub(super) fn anonymous_subject_fingerprint(value: &str) -> String {
+    let secret = std::env::var("JWT_SECRET")
+        .unwrap_or_else(|_| "myriad-development-anonymous-quota-v1".to_string());
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
+        .expect("HMAC accepts arbitrary key lengths");
+    mac.update(b"myriad-tapp-anonymous-quota-v1\0");
+    mac.update(value.as_bytes());
+    hex::encode(mac.finalize().into_bytes())
 }
 
 fn rate_limit_unavailable(error: impl std::fmt::Display) -> (StatusCode, Json<Value>) {
@@ -433,8 +446,38 @@ pub async fn check_rate_limit(
     tapp_id: &str,
     operation: &str,
 ) -> Result<(), (StatusCode, Json<Value>)> {
+    check_rate_limit_key(
+        user_id,
+        rate_limit_key(user_id, tapp_id, operation),
+        tapp_id,
+        operation,
+    )
+    .await
+}
+
+/// Coarse anonymous limiter keyed by a one-way client-address fingerprint.
+/// The source address itself is never persisted in the runtime registry.
+pub async fn check_anonymous_rate_limit(
+    client_ip: Option<&str>,
+    tapp_id: &str,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    let fingerprint = anonymous_subject_fingerprint(client_ip.unwrap_or("unresolved"));
+    check_rate_limit_key(
+        0,
+        format!("anonymous:{fingerprint}:{tapp_id}:ai.anonymous"),
+        tapp_id,
+        "ai.anonymous",
+    )
+    .await
+}
+
+async fn check_rate_limit_key(
+    registry_subject_id: i32,
+    key: String,
+    tapp_id: &str,
+    operation: &str,
+) -> Result<(), (StatusCode, Json<Value>)> {
     let (limit, window_secs) = get_rate_limit_config(operation);
-    let key = rate_limit_key(user_id, tapp_id, operation);
     let record_id = rate_limit_record_id(&key);
     let db = super::shared_registry::database()
         .await
@@ -479,7 +522,7 @@ ON CONFLICT (namespace, record_id) DO UPDATE SET
                 vec![
                     RATE_LIMIT_NAMESPACE.into(),
                     record_id.into(),
-                    user_id.into(),
+                    registry_subject_id.into(),
                     tapp_id.to_string().into(),
                     i64::from(count.saturating_add(1)).into(),
                     expires_at.into(),
@@ -498,7 +541,7 @@ ON CONFLICT (namespace, record_id) DO UPDATE SET
 
     if !allowed {
         tracing::warn!(
-            user_id = user_id,
+            user_id = registry_subject_id,
             tapp_id = tapp_id,
             operation = operation,
             "[TAPP] Rate limit exceeded"
@@ -729,21 +772,21 @@ pub async fn resolve_accessible_tapp(
 /// 验证当前可访问的 Tapp 安装记录确实获得了指定权限。
 ///
 /// 角色级权限下放只能说明调用者角色可以使用该能力；这里再检查安装时授权，
-/// 防止客户端伪造 tapp_id 绕过 manifest/granted_permissions。
-pub async fn verify_tapp_granted_permissions(
+/// 防止客户端伪造 tapp_id 绕过 manifest/approved_permissions。
+pub async fn verify_tapp_approved_permissions(
     db: &DatabaseConnection,
     user_id: i32,
     tapp_id: &str,
     permissions: &[TappPermission],
 ) -> Result<(), (StatusCode, Json<Value>)> {
     let tapp = resolve_accessible_tapp(db, user_id, tapp_id).await?;
-    let granted_permissions = tapp
-        .granted_permissions
+    let approved_permissions = tapp
+        .approved_permissions
         .as_array()
         .cloned()
         .unwrap_or_default();
     let missing_permission = permissions.iter().find(|permission| {
-        !granted_permissions
+        !approved_permissions
             .iter()
             .any(|value| value.as_str() == Some(permission.as_str()))
     });
@@ -762,8 +805,8 @@ pub async fn verify_tapp_granted_permissions(
 
 fn tapp_owner_priority(owner_id: i32, user_id: i32, admin_id: i32) -> u8 {
     // Prefer the subject's private install when both private and public copies exist so
-    // runtime grants, code and storage stay on the same owner-scoped record. Guests only
-    // resolve the public admin install.
+    // runtime grants and code resolve deterministically. Sandbox storage is separately
+    // subject-scoped. Guests only resolve the public admin install.
     if user_id >= 0 && owner_id == user_id {
         0
     } else if owner_id == admin_id {
@@ -796,7 +839,7 @@ pub async fn authorize_tapp_permissions(
         check_tapp_permission(claims, *permission).await?;
     }
     let user_id = parse_user_id(claims)?;
-    verify_tapp_granted_permissions(db, user_id, tapp_id, permissions).await?;
+    verify_tapp_approved_permissions(db, user_id, tapp_id, permissions).await?;
     Ok(user_id)
 }
 

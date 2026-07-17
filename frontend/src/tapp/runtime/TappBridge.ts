@@ -16,9 +16,9 @@ import type {
   TappMessage,
   TappPermission,
 } from '../types'
+import type { TappRuntimeGrant } from './TappRuntimeGrant'
 import { getQuotaManager } from '../services/QuotaManager'
 import { PERMISSION_MAP } from './permissionConfig'
-import type { TappRuntimeGrant } from './TappRuntimeGrant'
 
 type MessageHandler = (message: TappMessage) => Promise<TappAPIResponse>
 
@@ -49,6 +49,12 @@ interface PermissionCheckResult {
   reason?: string
   requiredPermission?: TappPermission | 'public'
 }
+
+const SERVER_AUTHORITATIVE_HOST_PERMISSIONS = new Set<TappPermission>([
+  'media:control',
+  'speech:tts',
+  'speech:asr',
+])
 
 /**
  * Tapp Bridge 类
@@ -399,7 +405,7 @@ export class TappBridge {
     }
 
     // 权限检查（增强版）
-    const permissionCheck = this.checkPermissionDetailed(action)
+    const permissionCheck = await this.checkPermissionDetailed(action)
     if (!permissionCheck.allowed) {
       this.sendResponse(id, {
         success: false,
@@ -481,7 +487,9 @@ export class TappBridge {
    *
    * 性能优化：使用模块级别的静态 Map 避免每次调用都创建对象
    */
-  private checkPermissionDetailed(action: string): PermissionCheckResult {
+  private async checkPermissionDetailed(
+    action: string,
+  ): Promise<PermissionCheckResult> {
     if (!this.tappInstance) {
       return { allowed: false, reason: 'Tapp instance not initialized' }
     }
@@ -512,6 +520,25 @@ export class TappBridge {
         allowed: false,
         reason: `Missing permission: ${requiredPermission}`,
         requiredPermission,
+      }
+    }
+
+    if (SERVER_AUTHORITATIVE_HOST_PERMISSIONS.has(requiredPermission)) {
+      if (!this.runtimeGrant) {
+        return {
+          allowed: false,
+          reason: 'Runtime grant is not initialized',
+          requiredPermission,
+        }
+      }
+      try {
+        await this.runtimeGrant.authorize(requiredPermission)
+      } catch {
+        return {
+          allowed: false,
+          reason: `Permission was revoked: ${requiredPermission}`,
+          requiredPermission,
+        }
       }
     }
 

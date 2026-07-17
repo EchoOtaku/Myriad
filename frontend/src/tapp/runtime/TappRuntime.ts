@@ -17,8 +17,8 @@ import type {
   BackgroundRequirement,
   CustomPlatformConfig,
   RegisteredWidget,
-  TappInstance,
   TappCodeStructure,
+  TappInstance,
   TappManifest,
   TappPermission,
   TappStatus,
@@ -43,6 +43,15 @@ type RuntimeEvent =
   | 'background:changed' // 后台需求变化
 
 type RuntimeEventCallback = (data: unknown) => void
+
+function samePermissions(
+  left: TappPermission[],
+  right: TappPermission[],
+): boolean {
+  if (left.length !== right.length) return false
+  const expected = new Set(left)
+  return right.every((permission) => expected.has(permission))
+}
 
 /** 请求去重管理器 */
 class RequestDeduplicator {
@@ -168,6 +177,7 @@ export class TappRuntime {
       try {
         const details = await TappApiService.listTappDetails()
         const previousTapps = this.installedTapps
+        const permissionChanges: TappInstance[] = []
         this.installedTapps = new Map()
         this.runningTapps.clear()
 
@@ -203,6 +213,15 @@ export class TappRuntime {
             isAdminTapp,
           }
           this.installedTapps.set(detail.id, instance)
+          if (
+            previous &&
+            !samePermissions(
+              previous.grantedPermissions,
+              instance.grantedPermissions,
+            )
+          ) {
+            permissionChanges.push(instance)
+          }
           if (isRunning) {
             this.runningTapps.add(detail.id)
             // 恢复运行态的 Tapp 也要补注册 manifest 后台需求，
@@ -240,6 +259,13 @@ export class TappRuntime {
         this.synced = true
         this.syncError = null
         this.lastSyncTime = Date.now()
+        for (const instance of permissionChanges) {
+          this.emit('tapp:updated', {
+            id: instance.id,
+            instance,
+            reason: 'permissions-changed',
+          })
+        }
         this.emit('sync:complete', {
           tapps: details.length,
           widgets: this.registeredWidgets.size,
@@ -420,8 +446,7 @@ export class TappRuntime {
     operation: () => Promise<void>,
   ): Promise<void> {
     const previous = this.lifecycleTransitions.get(tappId) || Promise.resolve()
-    let transition: Promise<void>
-    transition = previous
+    const transition: Promise<void> = previous
       .catch(() => undefined)
       .then(operation)
       .finally(() => {
@@ -536,6 +561,11 @@ export class TappRuntime {
     if (instance) {
       this.emit('tapp:updated', { id: tappId, instance })
     }
+  }
+
+  /** Refresh effective grants and rebuild only runtimes whose permissions changed. */
+  async refreshPermissionGrants(): Promise<void> {
+    await this.syncFromBackend(true)
   }
 
   /**

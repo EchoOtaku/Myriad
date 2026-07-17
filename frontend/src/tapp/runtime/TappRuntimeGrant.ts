@@ -1,8 +1,11 @@
+import type {
+  RuntimeGrantKind,
+  TappRuntimeGrantResponse,
+} from '../services/TappApiService'
 import {
+  authorizeTappRuntimePermission,
   issueTappRuntimeGrant,
   revokeTappRuntimeGrant,
-  type RuntimeGrantKind,
-  type TappRuntimeGrantResponse,
 } from '../services/TappApiService'
 
 const REFRESH_SKEW_MS = 30_000
@@ -81,6 +84,11 @@ export class TappRuntimeGrant {
       throw new Error('Tapp runtime grant is not initialized')
     }
     return this.current.runtimeId
+  }
+
+  async authorize(permission: string): Promise<void> {
+    const token = await this.getToken()
+    await authorizeTappRuntimePermission(this.tappId, permission, token)
   }
 
   destroy(): void {

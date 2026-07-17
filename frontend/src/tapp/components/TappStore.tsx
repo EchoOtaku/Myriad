@@ -232,6 +232,83 @@ function getPermissionCounts(permissions: string[]): {
   return { basic, elevated, admin }
 }
 
+/**
+ * 列表 ↔ 详情切换时的容器高度过渡。
+ * 用 ResizeObserver 跟踪当前视图内容的自然高度，写入外层容器并以 CSS
+ * transition 平滑过渡；传入 modalRef 时把高度夹紧到模态框 90vh 内的可用空间
+ * （超出部分交给内部滚动）。动画级别为 none 时高度直接落位，不做过渡。
+ */
+function useHeightTransition({
+  animConfig,
+  modalRef,
+}: {
+  animConfig: ReturnType<typeof useAnimationLevel>
+  modalRef?: React.RefObject<HTMLDivElement | null>
+}) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLElement | null>(null)
+  const observerRef = useRef<ResizeObserver | null>(null)
+
+  const applyHeight = useCallback(() => {
+    const wrapper = wrapperRef.current
+    const content = contentRef.current
+    if (!wrapper || !content) return
+    let target = content.offsetHeight
+    const modal = modalRef?.current
+    if (modal) {
+      // 模态框内除本容器以外的固定部分（头部、边框）；同一时刻读取两者，
+      // 差值不受高度动画进行中的影响
+      const chrome = modal.offsetHeight - wrapper.offsetHeight
+      target = Math.min(target, Math.floor(window.innerHeight * 0.9) - chrome)
+    }
+    wrapper.style.height = `${Math.max(target, 0)}px`
+  }, [modalRef])
+
+  // React 提交时子元素 ref 先于父元素 ref 触发，attachContent 首次调用时
+  // wrapper 可能尚未就位，因此这里也要落位一次高度
+  const attachWrapper = useCallback(
+    (el: HTMLDivElement | null) => {
+      wrapperRef.current = el
+      if (el) applyHeight()
+    },
+    [applyHeight],
+  )
+
+  const attachContent = useCallback(
+    (el: HTMLElement | null) => {
+      observerRef.current?.disconnect()
+      observerRef.current = null
+      contentRef.current = el
+      if (!el) return
+      const observer = new ResizeObserver(applyHeight)
+      observer.observe(el)
+      observerRef.current = observer
+      applyHeight()
+    },
+    [applyHeight],
+  )
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    wrapper.style.transition =
+      animConfig.level === 'none'
+        ? ''
+        : `height ${(0.25 * animConfig.durationScale).toFixed(2)}s cubic-bezier(0.4, 0, 0.2, 1)`
+    applyHeight()
+  }, [animConfig, applyHeight])
+
+  // 视口尺寸变化时可用空间上限随之变化，需要重新计算
+  useEffect(() => {
+    if (!modalRef) return
+    const onResize = () => applyHeight()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [modalRef, applyHeight])
+
+  return { attachWrapper, attachContent }
+}
+
 /** 比较版本号，返回 1 表示 v1 > v2，-1 表示 v1 < v2，0 表示相等 */
 function compareVersions(v1: string, v2: string): number {
   const parts1 = v1.split('.').map((n) => Number.parseInt(n, 10) || 0)
@@ -518,52 +595,26 @@ const UnifiedAppCard = forwardRef<
                 {t.tapp[TAPP_CATEGORY_I18N_KEYS[app.category]]}
               </span>
 
-              {/* 权限详情 - 统计 + 具体权限 */}
+              {/* 权限详情 - 仅各等级数量统计 */}
               <div className="flex items-center gap-1.5 flex-1 justify-end overflow-hidden">
                 {totalPermissions > 0 ? (
-                  <>
-                    {/* 权限统计 */}
-                    <div className="flex items-center gap-0.5 text-[9px] shrink-0">
-                      {permissionCounts.admin > 0 && (
-                        <span className="px-1 py-0.5 rounded bg-red-500/15 text-red-500 dark:text-red-400 font-medium">
-                          {permissionCounts.admin}
-                        </span>
-                      )}
-                      {permissionCounts.elevated > 0 && (
-                        <span className="px-1 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium">
-                          {permissionCounts.elevated}
-                        </span>
-                      )}
-                      {permissionCounts.basic > 0 && (
-                        <span className="px-1 py-0.5 rounded bg-green-500/15 text-green-600 dark:text-green-400 font-medium">
-                          {permissionCounts.basic}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 分隔�? */}
-                    <span className="text-gray-300 dark:text-gray-600">·</span>
-
-                    {/* 具体权限 - 优先显示高等级，最多两个 */}
-                    <div className="flex items-center gap-1 text-[9px] overflow-hidden">
-                      {app.permissions
-                        .toSorted(
-                          (a, b) =>
-                            LEVEL_ORDER[getPermissionLevel(b)] -
-                            LEVEL_ORDER[getPermissionLevel(a)],
-                        )
-                        .slice(0, 2)
-                        .map((perm, i) => (
-                          <span
-                            key={i}
-                            className={`px-1.5 py-0.5 rounded font-medium truncate max-w-15 ${LEVEL_STYLES[getPermissionLevel(perm)]}`}
-                            title={perm}
-                          >
-                            {perm.split(':')[1] || perm}
-                          </span>
-                        ))}
-                    </div>
-                  </>
+                  <div className="flex items-center gap-0.5 text-[9px] shrink-0">
+                    {permissionCounts.admin > 0 && (
+                      <span className="px-1 py-0.5 rounded bg-red-500/15 text-red-500 dark:text-red-400 font-medium">
+                        {permissionCounts.admin}
+                      </span>
+                    )}
+                    {permissionCounts.elevated > 0 && (
+                      <span className="px-1 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium">
+                        {permissionCounts.elevated}
+                      </span>
+                    )}
+                    {permissionCounts.basic > 0 && (
+                      <span className="px-1 py-0.5 rounded bg-green-500/15 text-green-600 dark:text-green-400 font-medium">
+                        {permissionCounts.basic}
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-500/10 text-gray-500 dark:text-gray-400 font-medium">
                     {t.tapp.noPermissions}
@@ -633,9 +684,8 @@ function AppDetailView({
       LEVEL_ORDER[getPermissionLevel(b)] - LEVEL_ORDER[getPermissionLevel(a)],
   )
 
+  // 版本与作者已在顶部信息区展示，这里不再重复
   const metaItems = [
-    { label: t.tapp.version, value: `v${app.version}` },
-    { label: t.tapp.author, value: app.author.name },
     {
       label: t.tapp.categoryFilter,
       value: t.tapp[TAPP_CATEGORY_I18N_KEYS[app.category]],
@@ -1395,9 +1445,8 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
           }
 
           // 通过后端 API 从远程商店安装（后端直接下载所有资源）
-          const { installFromStore } = await import(
-            '../services/TappApiService'
-          )
+          const { installFromStore } =
+            await import('../services/TappApiService')
           await installFromStore({
             source: source.id ? String(source.id) : source.url,
             tappId: app.id,
@@ -1463,14 +1512,12 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
           }
 
           // 调用更新 API
-          const { updateTappFromStore } = await import(
-            '../services/TappApiService'
-          )
+          const { updateTappFromStore } =
+            await import('../services/TappApiService')
           await updateTappFromStore(app.id, {
             source: source.id ? String(source.id) : source.url,
           })
           runtime.clearCodeCache(app.id)
-
         } else {
           throw new Error('Unsupported update source')
         }
@@ -1586,6 +1633,11 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
     setDetailApp(app)
   }, [])
 
+  // 列表 ↔ 详情切换时头部与内容区的高度过渡
+  const modalRef = useRef<HTMLDivElement | null>(null)
+  const headerHeight = useHeightTransition({ animConfig })
+  const contentHeight = useHeightTransition({ animConfig, modalRef })
+
   // 切换动效：进入详情向左滑（详情从右侧进入），返回反向
   const viewMotionProps = useCallback(
     (dir: 1 | -1) =>
@@ -1647,17 +1699,23 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
               }
             : undefined
         }
+        ref={modalRef}
         className="glass-surface rounded-2xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200/50 dark:border-neutral-700/50"
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       >
         {/* 头部：列表态为 标题/搜索/操作 + 分类行；详情态为 返回/应用名/关闭 */}
-        <div className="px-4 sm:px-6 pt-4 pb-3 border-b border-gray-200/50 dark:border-neutral-700/50">
+        {/* box-content 让测量到的内容高度直接作为 height，内边距不参与过渡 */}
+        <div
+          ref={headerHeight.attachWrapper}
+          className="box-content overflow-hidden px-4 sm:px-6 pt-4 pb-3 border-b border-gray-200/50 dark:border-neutral-700/50"
+        >
           <AnimatePresence mode="wait" initial={false}>
             {detailApp ? (
               <motion.div
                 key="detail-header"
+                ref={headerHeight.attachContent}
                 {...viewMotionProps(1)}
-                className="flex items-center gap-3"
+                className="flex items-center justify-between gap-3"
               >
                 <button
                   onClick={() => setDetailApp(null)}
@@ -1666,9 +1724,6 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
                   <FaArrowLeft className="w-3.5 h-3.5" />
                   {t.tapp.back}
                 </button>
-                <span className="min-w-0 flex-1 truncate text-center text-base font-semibold text-gray-800 dark:text-gray-100">
-                  {detailApp.name}
-                </span>
                 <button
                   onClick={onClose}
                   title={t.tapp.storeClose}
@@ -1679,7 +1734,11 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
                 </button>
               </motion.div>
             ) : (
-              <motion.div key="list-header" {...viewMotionProps(-1)}>
+              <motion.div
+                key="list-header"
+                ref={headerHeight.attachContent}
+                {...viewMotionProps(-1)}
+              >
                 <div className="flex flex-wrap items-center gap-3">
                   <h2 className="flex shrink-0 items-center gap-2 text-lg font-semibold text-gray-800 dark:text-gray-100">
                     <TappIcon
@@ -1831,109 +1890,117 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
           </AnimatePresence>
         </div>
 
-        {/* 内容区域：列表与详情各自持有滚动容器，切换时方向性滑动 */}
-        <div className="flex min-h-0 flex-1 flex-col">
+        {/* 内容区域：列表与详情各自持有滚动容器，切换时方向性滑动，
+            外层容器高度跟随当前视图内容平滑过渡 */}
+        <div
+          ref={contentHeight.attachWrapper}
+          className="min-h-0 overflow-hidden"
+        >
           <AnimatePresence mode="wait" initial={false}>
             {detailApp ? (
               <motion.div
                 key={`detail-${detailApp.id}`}
                 {...viewMotionProps(1)}
-                className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6"
+                className="h-full overflow-y-auto"
               >
-                <AppDetailView
-                  app={detailApp}
-                  isInstalled={installedIds.has(detailApp.id)}
-                  installedVersion={detailTappInfo?.version}
-                  canUninstall={detailCanUninstall}
-                  installing={installing === detailApp.id}
-                  updating={updating === detailApp.id}
-                  onInstall={() => handleInstall(detailApp)}
-                  onUpdate={() => handleUpdate(detailApp)}
-                  onUninstall={() => handleUninstall(detailApp.id)}
-                />
+                <div ref={contentHeight.attachContent} className="p-4 sm:p-6">
+                  <AppDetailView
+                    app={detailApp}
+                    isInstalled={installedIds.has(detailApp.id)}
+                    installedVersion={detailTappInfo?.version}
+                    canUninstall={detailCanUninstall}
+                    installing={installing === detailApp.id}
+                    updating={updating === detailApp.id}
+                    onInstall={() => handleInstall(detailApp)}
+                    onUpdate={() => handleUpdate(detailApp)}
+                    onUninstall={() => handleUninstall(detailApp.id)}
+                  />
+                </div>
               </motion.div>
             ) : (
               <motion.div
                 key="list"
                 ref={attachListView}
                 {...viewMotionProps(-1)}
-                className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6"
+                className="h-full overflow-y-auto"
               >
-                {loading && remoteApps.length === 0 ? (
-                  <div className="text-center py-12">
-                    <span
-                      className="w-12 h-12 mx-auto border-4 rounded-full animate-spin block mb-4"
-                      style={{
-                        borderColor:
-                          'color-mix(in srgb, var(--color-primary) 20%, transparent)',
-                        borderTopColor: 'var(--color-primary)',
-                      }}
-                    />
-                    <p className="text-gray-500 dark:text-gray-400">
-                      {t.tapp.loadingRemoteApps}
-                    </p>
-                  </div>
-                ) : error && remoteApps.length === 0 ? (
-                  <div className="text-center py-12">
-                    <FaExclamationTriangle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
-                    <p className="text-gray-600 dark:text-gray-300 mb-2">
-                      {error}
-                    </p>
-                    <button
-                      onClick={() => loadRemoteApps(true)}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
-                    >
-                      {t.tapp.retry}
-                    </button>
-                  </div>
-                ) : filteredApps.length === 0 ? (
-                  <div className="text-center py-12">
-                    <FaFilter className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-                    <p className="text-gray-500 dark:text-gray-400">
-                      {t.tapp.noMatchingApps}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <AnimatePresence mode="popLayout">
-                      {filteredApps.map((app, index) => {
-                        const tappInfo = installedTapps.get(app.id)
-                        const canUninstall = tappInfo
-                          ? tappInfo.userRole === 'admin' ||
-                            (tappInfo.userRole === 'user' &&
-                              tappInfo.isTemporary === true)
-                          : false
-                        const canUpdate =
-                          !!tappInfo &&
-                          ((app.source === 'remote' && !!app.remoteApp) ||
-                            (app.source === 'local' && !!app.localTapp))
-                        return (
-                          <UnifiedAppCard
-                            key={app.id}
-                            app={app}
-                            isInstalled={installedIds.has(app.id)}
-                            installedVersion={tappInfo?.version}
-                            canUninstall={canUninstall}
-                            onInstall={() => handleInstall(app)}
-                            onUpdate={
-                              canUpdate ? () => handleUpdate(app) : undefined
-                            }
-                            onUninstall={
-                              canUninstall
-                                ? () => handleUninstall(app.id)
-                                : undefined
-                            }
-                            onOpen={() => openDetail(app)}
-                            installing={installing === app.id}
-                            updating={updating === app.id}
-                            animConfig={animConfig}
-                            index={index}
-                          />
-                        )
-                      })}
-                    </AnimatePresence>
-                  </div>
-                )}
+                <div ref={contentHeight.attachContent} className="p-4 sm:p-6">
+                  {loading && remoteApps.length === 0 ? (
+                    <div className="text-center py-12">
+                      <span
+                        className="w-12 h-12 mx-auto border-4 rounded-full animate-spin block mb-4"
+                        style={{
+                          borderColor:
+                            'color-mix(in srgb, var(--color-primary) 20%, transparent)',
+                          borderTopColor: 'var(--color-primary)',
+                        }}
+                      />
+                      <p className="text-gray-500 dark:text-gray-400">
+                        {t.tapp.loadingRemoteApps}
+                      </p>
+                    </div>
+                  ) : error && remoteApps.length === 0 ? (
+                    <div className="text-center py-12">
+                      <FaExclamationTriangle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
+                      <p className="text-gray-600 dark:text-gray-300 mb-2">
+                        {error}
+                      </p>
+                      <button
+                        onClick={() => loadRemoteApps(true)}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
+                      >
+                        {t.tapp.retry}
+                      </button>
+                    </div>
+                  ) : filteredApps.length === 0 ? (
+                    <div className="text-center py-12">
+                      <FaFilter className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                      <p className="text-gray-500 dark:text-gray-400">
+                        {t.tapp.noMatchingApps}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <AnimatePresence mode="popLayout">
+                        {filteredApps.map((app, index) => {
+                          const tappInfo = installedTapps.get(app.id)
+                          const canUninstall = tappInfo
+                            ? tappInfo.userRole === 'admin' ||
+                              (tappInfo.userRole === 'user' &&
+                                tappInfo.isTemporary === true)
+                            : false
+                          const canUpdate =
+                            !!tappInfo &&
+                            ((app.source === 'remote' && !!app.remoteApp) ||
+                              (app.source === 'local' && !!app.localTapp))
+                          return (
+                            <UnifiedAppCard
+                              key={app.id}
+                              app={app}
+                              isInstalled={installedIds.has(app.id)}
+                              installedVersion={tappInfo?.version}
+                              canUninstall={canUninstall}
+                              onInstall={() => handleInstall(app)}
+                              onUpdate={
+                                canUpdate ? () => handleUpdate(app) : undefined
+                              }
+                              onUninstall={
+                                canUninstall
+                                  ? () => handleUninstall(app.id)
+                                  : undefined
+                              }
+                              onOpen={() => openDetail(app)}
+                              installing={installing === app.id}
+                              updating={updating === app.id}
+                              animConfig={animConfig}
+                              index={index}
+                            />
+                          )
+                        })}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

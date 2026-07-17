@@ -88,22 +88,11 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
       if (!manifest.settings?.length) return
 
       try {
-        // 骞惰鍔犺浇鎵€鏈夎缃€硷紝鎻愬崌鍔犺浇鎬ц兘
-        const settingsPromises = manifest.settings.map(async (setting) => {
-          const stored = await TappApiService.getTappSetting(
-            tappId,
-            setting.key,
-          )
-          return {
-            key: setting.key,
-            value: stored !== null ? stored : setting.defaultValue,
-          }
-        })
-
-        const results = await Promise.all(settingsPromises)
+        const storedSettings = await TappApiService.getTappSettings(tappId)
         const values: Record<string, unknown> = {}
-        for (const { key, value } of results) {
-          values[key] = value
+        for (const setting of manifest.settings) {
+          values[setting.key] =
+            storedSettings[setting.key] ?? setting.defaultValue
         }
         setSettingsValues(values)
       } catch (err) {
@@ -367,6 +356,9 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
   const repositoryUrl = manifest.repository
     ? sanitizeUrl(manifest.repository)
     : ''
+  const canManageSettings =
+    tapp.userRole === 'admin' ||
+    (tapp.userRole === 'user' && tapp.isTemporary === true)
 
   return (
     <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
@@ -503,7 +495,9 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                   </h2>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     {manifest.settings && manifest.settings.length > 0
-                      ? t.tapp.customizeBehavior
+                      ? canManageSettings
+                        ? t.tapp.customizeBehavior
+                        : t.tapp.settingsReadOnly
                       : t.tapp.noSettingsDesc}
                   </p>
                 </div>
@@ -537,7 +531,10 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                                 onChange={(e) =>
                                   saveSetting(setting.key, e.target.checked)
                                 }
-                                disabled={settingsSaving === setting.key}
+                                disabled={
+                                  !canManageSettings ||
+                                  settingsSaving === setting.key
+                                }
                                 className="sr-only peer"
                                 aria-label={setting.label}
                               />
@@ -566,7 +563,10 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                               onChange={(e) =>
                                 saveSetting(setting.key, e.target.value)
                               }
-                              disabled={settingsSaving === setting.key}
+                              disabled={
+                                !canManageSettings ||
+                                settingsSaving === setting.key
+                              }
                               aria-label={setting.label}
                               className="px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
                             >
@@ -593,7 +593,10 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                                 handleInputBlur(setting.key, 'input')
                               }
                               placeholder={setting.placeholder}
-                              disabled={settingsSaving === setting.key}
+                              disabled={
+                                !canManageSettings ||
+                                settingsSaving === setting.key
+                              }
                               className="w-40 px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
                             />
                           )}
@@ -622,7 +625,10 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                               min={setting.min}
                               max={setting.max}
                               step={setting.step}
-                              disabled={settingsSaving === setting.key}
+                              disabled={
+                                !canManageSettings ||
+                                settingsSaving === setting.key
+                              }
                               aria-label={setting.label}
                               className="w-24 px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
                             />
@@ -638,7 +644,10 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                               onChange={(e) =>
                                 saveSetting(setting.key, e.target.value)
                               }
-                              disabled={settingsSaving === setting.key}
+                              disabled={
+                                !canManageSettings ||
+                                settingsSaving === setting.key
+                              }
                               aria-label={setting.label}
                               title={setting.label}
                               className="w-10 h-8 rounded cursor-pointer border-0"

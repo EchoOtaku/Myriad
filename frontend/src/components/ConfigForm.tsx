@@ -1146,6 +1146,8 @@ const ModernConfigForm: React.FC = () => {
           throw new Error(response.message || t.config.permissionsSaveFailed)
         }
         setSavedPermissionConfig({ ...permissionConfig })
+        const { TappRuntime } = await import('../tapp/runtime/TappRuntime')
+        await TappRuntime.getInstance().refreshPermissionGrants()
         resultMessage = hasConfigChanges
           ? resultMessage
           : t.config.permissionsSaved

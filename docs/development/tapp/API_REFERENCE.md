@@ -71,7 +71,8 @@ const unsubscribe = Tapp.storage.onChanged(({ key, operation }) => {
 ```
 
 存储 key 和单值由后端校验，单值最大 1 MiB，总量最大 5 MiB。替换投影与写入位于同一数据库
-事务并使用 subject/Tapp advisory lock，因此并发写入也不能越过配额。
+事务并使用 subject/Tapp advisory lock，因此并发写入也不能越过配额。公开 Tapp 仍按当前
+登录用户隔离存储；`_settings.`、`_component:`、`_shortcut:`、`_report:` 为宿主保留前缀。
 
 ---
 
@@ -119,7 +120,7 @@ const playlist = await Tapp.dataExchange.request({
 
 ## 设置 API
 
-**权限**: `storage`（使用 `_settings.` 前缀存储）
+**权限**: `storage`
 
 访客不会获得 `storage`，因此只使用 Manifest 中的默认设置；以下读写 API 仅在已登录
 用户的 Tapp runtime 中可用。
@@ -136,8 +137,9 @@ const allSettings = await Tapp.settings.getAll();
 // 返回: { refreshInterval: 60, showDetails: true, ... }
 ```
 
-`getAll()` 由宿主一次读取全部存储项后筛选 `_settings.` 前缀，不会产生逐 key 的 Bridge/HTTP
-请求。
+设置是 Manifest 声明的安装级配置。安装 owner 或管理员可修改；运行该安装的其他已登录用户
+只读。`getAll()` 使用独立 settings 端点一次读取全部已保存值，不会枚举当前用户的私有
+`Tapp.storage`。
 
 ---
 
@@ -376,7 +378,7 @@ Tapp 数据读取只显示 Data Exchange 自己的一张明细化一次性授权
 
 ## 小组件 API
 
-**权限**: `widget:register`
+**权限**: `widget:register`（privileged，仅当前管理员）
 
 ```javascript
 // 注册小组件
@@ -997,7 +999,7 @@ const declaredApis = await Tapp.api.list();
 }
 ```
 
-- `protected`（默认）要求 `network:fetch`；`public` 不要求该权限。
+- 所有 `type: "http"` API 都要求 `network:fetch`；`public`/`protected` 只控制调用者范围。
 - 后端按当前用户与 Tapp owner 重新加载 Manifest，并执行模板参数、频率和出站安全校验。
 - Tapp 不能传入任意 URL，也不能使用历史文档中的 `Tapp.http.request()`。
 - 详细 Manifest 字段和 REST 链路见 [Manifest](MANIFEST.md#api-声明-apis) 与
@@ -1058,7 +1060,7 @@ Tapp.assets.revokeAll(); // 也会在 onDestroy 时自动调用
 | `ui`, `animation`, `dynamicContent`, `dom` | 宿主 UI、主题、动画和安全 DOM helper                | `ui:*` 或 public                   |
 | `platform`, `data`                         | 平台数据读取、写入、转换和注册                      | `platform:*`                       |
 | `ai`, `report`                             | 服务端治理的 AI Task 与报告读写                     | `ai:*`, `report:*`                 |
-| `widget`                                   | 动态 Widget 注册与配置                              | `widget:register`                  |
+| `widget`                                   | 管理员动态注册与配置 Widget                         | `widget:register`                  |
 | `media`                                    | 播放器读取和控制                                    | `media:*`                          |
 | `context`, `user`                          | 应用、用户、导航、系统和地理上下文                  | public                             |
 | `component`, `shortcut`                    | 主题/Agent 组件和快捷键注册                         | `component:*`, `shortcut:register` |

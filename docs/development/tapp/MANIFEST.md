@@ -77,7 +77,7 @@ Page、Widget 和 headless core 是运行形态，由 `hasPage`、`widgets` 和
 从商店安装时，后端会在规范化旧别名后比对索引和 Manifest；两者分类不一致会拒绝安装。
 
 `version` 必须是语义版本；`themeColor` 使用 `#RRGGBB`；`homepage`、`repository` 和
-作者主页只接受 HTTP(S)。声明 Widget 必须同时声明 `widget:register`；受保护 HTTP API
+作者主页只接受 HTTP(S)。声明 Widget 必须同时声明 `widget:register`；所有 HTTP API
 必须声明 `network:fetch`，内置 AI API 必须声明对应的 `ai:*` 权限。`pageModules` 只接受
 不重复的 `.js` 文件名。无效声明会在安装或更新时直接拒绝，不留到运行时静默失败。
 
@@ -159,13 +159,17 @@ Page、Widget 和 headless core 是运行形态，由 `hasPage`、`widgets` 和
 
 ## widgets 配置
 
-小组件定义允许用户将应用添加到 Dashboard。
+小组件定义允许管理员将应用提供的 Widget 添加到 Dashboard。
 
 Manifest 是这些注册元数据的权威来源。安装和每次更新都会 upsert 当前声明，并删除上一版
-Manifest 已移除的 Widget。运行时 `Tapp.widget.register()` 创建的是独立动态注册，必须有
-`widget:register` 与 Runtime Grant；动态代码不能覆盖或注销 Manifest 声明项。公共安装的
+Manifest 已移除的 Widget。运行时 `Tapp.widget.register()` 创建的是独立动态注册，只允许
+当前管理员调用，并且必须有 `widget:register` 与 Runtime Grant；动态代码不能覆盖或注销 Manifest 声明项。公共安装的
 Manifest Widget 对所有可见主体共享；动态 Widget 同时绑定注册主体和 Runtime Grant 中的
 安装 owner，只返回给该主体，并在对应安装卸载时清理。
+
+普通用户仍可安装包含 `widgets` / `widget:register` 声明的 Tapp；安装时只会从该用户的最终
+Runtime Grant 中剔除管理员专属的动态注册能力，不会因应用带有 Widget 功能而拒绝安装，
+Page、Core 与其余获授能力仍可正常使用。
 
 ```json
 {
@@ -394,10 +398,10 @@ Tapp.lifecycle.onReady(async function () {
 // 使用 Tapp.settings API
 const refreshInterval = await Tapp.settings.get("refreshInterval");
 const allSettings = await Tapp.settings.getAll();
-
-// 或使用 Tapp.storage（设置以 _settings. 前缀存储）
-const value = await Tapp.storage.get("_settings.refreshInterval");
 ```
+
+Manifest 设置属于安装级配置：安装 owner 或管理员可修改，运行该安装的已登录用户可以读取。
+`Tapp.storage` 是当前用户的私有空间，不能使用 `_settings.` 等宿主保留前缀访问安装级设置。
 
 ---
 
@@ -614,7 +618,6 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 | `media:read`         | 读取媒体状态     |
 | `media:audio`        | 播放包内/blob/data 音频 |
 | `event:subscribe`    | 订阅声明的 topic |
-| `widget:register`    | 注册小组件       |
 | `federation:read`    | 读取联邦数据     |
 | `federation:write`   | 联邦个人操作     |
 | `federation:message` | 联邦消息         |
@@ -641,7 +644,7 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 Manifest 中声明并在安装时获授；实际读写始终落在当前会话可访问的 Brew 数据范围内。
 
 “基础”表示不需要管理员额外下放 elevated 权限，不等于匿名访客一定可用。访客没有持久
-用户主体，因此不会获得 `storage`、`widget:register`、`platform:read`、`brew:write`、
+用户主体，因此不会获得 `storage`、`platform:read`、`brew:write`、
 `brew:comment`、`report:read` 或 `ui:notification`；这些能力的真实后端路由均要求登录。
 
 `component:theme`、`shortcut:register`、`scheduler:register`、`speech:tts` 与 `speech:asr`
@@ -652,6 +655,7 @@ Manifest 中声明并在安装时获授；实际读写始终落在当前会话�
 
 | 权限                | 说明           |
 | ------------------- | -------------- |
+| `widget:register`   | 动态注册小组件 |
 | `platform:write`    | 写入平台数据   |
 | `platform:register` | 注册自定义平台 |
 | `component:agent`   | 注册 AI Agent  |

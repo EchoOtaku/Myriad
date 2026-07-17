@@ -60,8 +60,8 @@ pub use reports::{
 
 // Runtime identity grants
 pub use runtime_grant::{
-    issue_runtime_grant, revoke_all_tapp_runtime_grants, revoke_runtime_grant,
-    revoke_tapp_runtime_grants, RuntimeGrantContext,
+    authorize_runtime_permission, issue_runtime_grant, revoke_all_tapp_runtime_grants,
+    revoke_runtime_grant, revoke_tapp_runtime_grants, RuntimeGrantContext,
 };
 
 // Data API

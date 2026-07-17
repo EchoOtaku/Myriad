@@ -1826,7 +1826,8 @@ export const enUS: TranslationKeys = {
     permFederationFiles: 'Federation Files',
 
     // Permission descriptions
-    permRegisterWidgetDesc: 'Allow registering custom widgets to homepage',
+    permRegisterWidgetDesc:
+      'Allow administrators to register custom widgets to the homepage',
     permReadPlatformDesc: 'Allow reading existing platform data',
     permWritePlatformDesc: 'Allow adding new platform data entries',
     permRegisterPlatformDesc: 'Allow registering custom data platform',
@@ -1926,6 +1927,8 @@ export const enUS: TranslationKeys = {
     // Detail page
     appSettings: 'App Settings',
     customizeBehavior: 'Customize app behavior',
+    settingsReadOnly:
+      'Public app settings can only be changed by the installation owner or an administrator',
     noSettingsAvailable: 'No configurable settings available',
     noSettingsDesc: 'This app has no configurable settings',
     appInfo: 'App Info',

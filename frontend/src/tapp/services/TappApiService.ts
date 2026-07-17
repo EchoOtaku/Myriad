@@ -3,24 +3,24 @@
  * 提供 Tapp 与后端 API 的通信功能
  */
 
+import type { TimelineResponse } from '../../types/federation'
 import type {
+  AgentInteractionV2,
   AITaskEvent,
   AITaskRequest,
   AITaskSnapshot,
   AIUsageSnapshot,
-  AgentInteractionV2,
   NewPlatformItem,
   PermissionLevel,
   PlatformInfo,
   PlatformItemResult,
   PublishEventRequest,
   RegisteredWidget,
-  TappManifest,
-  TappEvent,
   TappCodeStructure,
+  TappEvent,
+  TappManifest,
   WidgetRegistration,
 } from '../types'
-import type { TimelineResponse } from '../../types/federation'
 import { API_URL } from '../../config'
 import { getCSRFToken } from '../../utils/csrf'
 import { generateOnDemandTailwindCSS } from '../runtime/sandbox/styles'
@@ -280,6 +280,21 @@ export async function revokeTappRuntimeGrant(
   await apiRequest(
     `/api/tapps/${encodeURIComponent(tappId)}/runtime-grants/${encodeURIComponent(runtimeId)}`,
     { method: 'DELETE' },
+  )
+}
+
+export async function authorizeTappRuntimePermission(
+  tappId: string,
+  permission: string,
+  runtimeGrant: string,
+): Promise<void> {
+  await apiRequest(
+    `/api/tapps/${encodeURIComponent(tappId)}/runtime-grants/authorize`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ permission }),
+      runtimeGrant,
+    },
   )
 }
 
@@ -1134,6 +1149,12 @@ export async function unregisterTappWidget(
 // ============ Tapp 存储 API ============
 
 /** Host settings editor. Only manifest-declared keys are accepted by backend. */
+export async function getTappSettings(
+  tappId: string,
+): Promise<Record<string, unknown>> {
+  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/settings`)
+}
+
 export async function getTappSetting(
   tappId: string,
   key: string,

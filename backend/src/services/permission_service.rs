@@ -16,7 +16,7 @@
 //! ## Tapp 权限完整列表
 //!
 //! ### Basic - 默认开放（标注 authenticated 的能力不向游客签发）
-//! - widget:register (authenticated), platform:read (authenticated), tappList:read, brew:read
+//! - platform:read (authenticated), tappList:read, brew:read
 //! - brew:write (authenticated), brew:comment (authenticated)
 //! - report:read (authenticated), storage (authenticated)
 //! - ui:notification (authenticated), ui:fullscreen, ui:theme, ui:confirm
@@ -30,7 +30,7 @@
 //! - scheduler:register, speech:tts, speech:asr (all authenticated)
 //!
 //! ### Privileged - 仅管理员
-//! - platform:write, platform:register, component:agent
+//! - widget:register, platform:write, platform:register, component:agent
 //! - tappList:manage, brew:manage, federation:trust
 //! - **report:write**（数据报告生成，不可下放）
 
@@ -70,8 +70,6 @@ impl From<&str> for UserRole {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TappPermission {
     // Basic 级别
-    #[serde(rename = "widget:register")]
-    WidgetRegister,
     #[serde(rename = "platform:read")]
     PlatformRead,
     #[serde(rename = "tappList:read")]
@@ -139,6 +137,8 @@ pub enum TappPermission {
     SpeechAsr,
 
     // Privileged 级别
+    #[serde(rename = "widget:register")]
+    WidgetRegister,
     #[serde(rename = "platform:write")]
     PlatformWrite,
     #[serde(rename = "platform:register")]
@@ -160,8 +160,7 @@ impl TappPermission {
     fn requires_authenticated_subject(&self) -> bool {
         matches!(
             self,
-            TappPermission::WidgetRegister
-                | TappPermission::PlatformRead
+            TappPermission::PlatformRead
                 | TappPermission::BrewWrite
                 | TappPermission::BrewComment
                 | TappPermission::ReportRead
@@ -179,8 +178,7 @@ impl TappPermission {
     pub fn level(&self) -> PermissionLevel {
         match self {
             // Basic
-            TappPermission::WidgetRegister
-            | TappPermission::PlatformRead
+            TappPermission::PlatformRead
             | TappPermission::TappListRead
             | TappPermission::BrewRead
             | TappPermission::BrewWrite
@@ -214,7 +212,8 @@ impl TappPermission {
             | TappPermission::SpeechAsr => PermissionLevel::Elevated,
 
             // Privileged
-            TappPermission::PlatformWrite
+            TappPermission::WidgetRegister
+            | TappPermission::PlatformWrite
             | TappPermission::PlatformRegister
             | TappPermission::ComponentAgent
             | TappPermission::TappListManage
@@ -752,6 +751,44 @@ mod tests {
             UserRole::Guest,
             TappPermission::ComponentAgent
         ));
+    }
+
+    #[test]
+    fn test_widget_registration_is_admin_only_without_blocking_other_user_permissions() {
+        let config = DynamicConfig::default();
+        let requested = vec![
+            "widget:register".to_string(),
+            "storage".to_string(),
+            "ui:theme".to_string(),
+        ];
+
+        assert!(TappPermissionService::check(
+            &config,
+            UserRole::Admin,
+            TappPermission::WidgetRegister
+        ));
+        assert!(!TappPermissionService::check(
+            &config,
+            UserRole::User,
+            TappPermission::WidgetRegister
+        ));
+        assert!(!TappPermissionService::check(
+            &config,
+            UserRole::Guest,
+            TappPermission::WidgetRegister
+        ));
+        assert_eq!(
+            TappPermissionService::filter_permissions_for_role(&config, UserRole::User, &requested,),
+            vec!["storage", "ui:theme"]
+        );
+        assert_eq!(
+            TappPermissionService::filter_permissions_for_role(
+                &config,
+                UserRole::Guest,
+                &requested,
+            ),
+            vec!["ui:theme"]
+        );
     }
 
     #[test]

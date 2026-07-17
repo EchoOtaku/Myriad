@@ -1763,6 +1763,7 @@ export interface TranslationKeys {
     // 详情页面
     appSettings: string
     customizeBehavior: string
+    settingsReadOnly: string
     noSettingsAvailable: string
     noSettingsDesc: string
     appInfo: string

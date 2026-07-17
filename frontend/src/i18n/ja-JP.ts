@@ -1812,7 +1812,8 @@ export const jaJP: TranslationKeys = {
     permFederationFiles: 'Federation ファイル',
 
     // 権限説明
-    permRegisterWidgetDesc: 'ホームページへのカスタムウィジェット登録を許可',
+    permRegisterWidgetDesc:
+      '管理者によるホームページへのカスタムウィジェット登録を許可',
     permReadPlatformDesc: '既存のプラットフォームデータ読取を許可',
     permWritePlatformDesc: '新しいプラットフォームデータエントリの追加を許可',
     permRegisterPlatformDesc: 'カスタムデータプラットフォームの登録を許可',
@@ -1910,6 +1911,8 @@ export const jaJP: TranslationKeys = {
     // 詳細ページ
     appSettings: 'アプリ設定',
     customizeBehavior: 'アプリの動作をカスタマイズ',
+    settingsReadOnly:
+      '公開アプリの設定は、インストール所有者または管理者のみ変更できます',
     noSettingsAvailable: '設定可能な項目がありません',
     noSettingsDesc: 'このアプリには設定可能な項目がありません',
     appInfo: 'アプリ情報',

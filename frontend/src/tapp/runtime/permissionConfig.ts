@@ -13,7 +13,7 @@ type TappPermissionLevel = Exclude<PermissionLevel, 'public'>
  * 权限级别映射（与 TappPermission.ts 保持同步）
  */
 export const PERMISSION_LEVELS: Record<TappPermission, TappPermissionLevel> = {
-  'widget:register': 'basic',
+  'widget:register': 'privileged',
   'platform:read': 'basic',
   'platform:write': 'privileged',
   'platform:register': 'privileged',
@@ -191,6 +191,9 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['storage.getAll', 'storage'],
     ['storage.clear', 'storage'],
     ['storage.usage', 'storage'],
+    ['settings.get', 'storage'],
+    ['settings.set', 'storage'],
+    ['settings.getAll', 'storage'],
 
     // UI 权限
     ['ui.showNotification', 'ui:notification'],

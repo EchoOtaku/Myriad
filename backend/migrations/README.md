@@ -24,6 +24,7 @@ sea-orm-cli migrate generate create_new_table
 5. `005_federation` - Federation identities and messages
 6. `006_oauth_identities` - OAuth/OIDC identity bindings
 7. `007_notification_preferences` - Per-user notification preferences
+8. `008_tapp_approved_permissions` - Separate install consent from effective Tapp permissions
 
 The former runtime/activity migrations are folded into the owning base migrations.
 Existing deployments receive missing tables, columns, indexes and quota enforcement

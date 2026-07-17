@@ -15,7 +15,7 @@ use crate::services::permission_service::TappPermission;
 
 use super::common::authorize_tapp_permission;
 use super::runtime_grant::RuntimeGrantContext;
-use crate::api::tapp_store::{storage_write_forbidden_error, TappStorageAccess};
+use crate::api::tapp_store::{installation_write_forbidden_error, TappStorageAccess};
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterShortcutRequest {
@@ -37,12 +37,17 @@ pub async fn register_shortcut(
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(TappPermission::ShortcutRegister)?;
     authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::ShortcutRegister).await?;
-    let access = TappStorageAccess::from_runtime_grant(&runtime_grant, &claims)
-        .map_err(|status| (status, Json(json!({ "error": "Invalid runtime grant subject" }))))?;
+    let access =
+        TappStorageAccess::from_runtime_grant(&runtime_grant, &claims).map_err(|status| {
+            (
+                status,
+                Json(json!({ "error": "Invalid runtime grant subject" })),
+            )
+        })?;
     access
-        .require_write()
-        .map_err(|_| storage_write_forbidden_error())?;
-    let owner_id = access.storage_namespace();
+        .require_installation_write()
+        .map_err(|_| installation_write_forbidden_error())?;
+    let owner_id = access.installation_namespace();
 
     tracing::info!(
         "[TAPP] register_shortcut - User: {}, Tapp: {}, Keys: {}",
@@ -160,12 +165,17 @@ pub async fn unregister_shortcut(
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::ShortcutRegister)?;
     authorize_tapp_permission(&db, &claims, &tapp_id, TappPermission::ShortcutRegister).await?;
-    let access = TappStorageAccess::from_runtime_grant(&runtime_grant, &claims)
-        .map_err(|status| (status, Json(json!({ "error": "Invalid runtime grant subject" }))))?;
+    let access =
+        TappStorageAccess::from_runtime_grant(&runtime_grant, &claims).map_err(|status| {
+            (
+                status,
+                Json(json!({ "error": "Invalid runtime grant subject" })),
+            )
+        })?;
     access
-        .require_write()
-        .map_err(|_| storage_write_forbidden_error())?;
-    let owner_id = access.storage_namespace();
+        .require_installation_write()
+        .map_err(|_| installation_write_forbidden_error())?;
+    let owner_id = access.installation_namespace();
     tracing::info!(
         "[TAPP] unregister_shortcut - User: {}, Tapp: {}, ID: {}",
         claims.username,
@@ -214,9 +224,14 @@ pub async fn list_shortcuts(
 
     use crate::models::entities::tapp_storage;
 
-    let access = TappStorageAccess::from_runtime_grant(&runtime_grant, &claims)
-        .map_err(|status| (status, Json(json!({ "error": "Invalid runtime grant subject" }))))?;
-    let owner_id = access.storage_namespace();
+    let access =
+        TappStorageAccess::from_runtime_grant(&runtime_grant, &claims).map_err(|status| {
+            (
+                status,
+                Json(json!({ "error": "Invalid runtime grant subject" })),
+            )
+        })?;
+    let owner_id = access.installation_namespace();
 
     let mut query = tapp_storage::Entity::find()
         .filter(tapp_storage::Column::UserId.eq(owner_id))

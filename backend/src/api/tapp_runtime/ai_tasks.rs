@@ -8,7 +8,7 @@ use std::{collections::HashMap, convert::Infallible, time::Duration};
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::sse::{Event, KeepAlive, Sse},
     Extension, Json,
 };
@@ -44,10 +44,10 @@ use super::{
         rollback_ai_quota_reservation, settle_ai_quota, AiQuotaReservation, AiUsageSnapshot,
     },
     common::{
-        authorize_tapp_permission, check_rate_limit, current_tapp_user_role,
-        get_ai_config_for_tier, get_ai_image_config, get_cached_platform_data,
-        resolve_accessible_tapp, validate_image_prompt_security, validate_platform_name,
-        validate_prompt_security, AiConfig, AiImageConfig, HTTP_CLIENT,
+        authorize_tapp_permission, check_anonymous_rate_limit, check_rate_limit,
+        current_tapp_user_role, get_ai_config_for_tier, get_ai_image_config,
+        get_cached_platform_data, resolve_accessible_tapp, validate_image_prompt_security,
+        validate_platform_name, validate_prompt_security, AiConfig, AiImageConfig, HTTP_CLIENT,
     },
     data_exchange::validate_inline_json_value,
     shared_registry::{self, RegistryIdentity},
@@ -1369,6 +1369,7 @@ pub(crate) struct GovernedTextRequest<'a> {
     pub tier: crate::config::ModelTier,
     pub system_prompt: &'a str,
     pub prompt: &'a str,
+    pub client_ip: Option<&'a str>,
 }
 
 pub(crate) async fn execute_governed_text(
@@ -1385,6 +1386,7 @@ pub(crate) async fn execute_governed_text(
         tier,
         system_prompt,
         prompt,
+        client_ip,
     } = request;
     if !matches!(
         operation,
@@ -1404,15 +1406,28 @@ pub(crate) async fn execute_governed_text(
     check_rate_limit(subject_id, tapp_id, "ai.task")
         .await
         .map_err(internal_ai_error)?;
+    if role == UserRole::Guest {
+        check_anonymous_rate_limit(client_ip, tapp_id)
+            .await
+            .map_err(internal_ai_error)?;
+    }
     let model = PreparedModel::Text(
         get_ai_config_for_tier(tier)
             .await
             .map_err(internal_ai_error)?,
     );
     let estimated_tokens = (system_prompt.len() + prompt.len()) / 4 + 1_000;
-    let reservation = reserve_ai_quota(db, role, subject_id, owner_id, tapp_id, estimated_tokens)
-        .await
-        .map_err(internal_ai_error)?;
+    let reservation = reserve_ai_quota(
+        db,
+        role,
+        subject_id,
+        owner_id,
+        tapp_id,
+        estimated_tokens,
+        client_ip,
+    )
+    .await
+    .map_err(internal_ai_error)?;
     let usage = match get_ai_usage(db, role, subject_id, owner_id, tapp_id).await {
         Ok(usage) => usage,
         Err(error) => {
@@ -1548,6 +1563,8 @@ pub async fn create_ai_task(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     runtime: RuntimeGrantContext,
+    headers: HeaderMap,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
     Json(request): Json<CreateAiTaskRequest>,
 ) -> Result<(StatusCode, Json<AiTaskSnapshot>), ApiError> {
     if request.version != 2 {
@@ -1706,6 +1723,15 @@ pub async fn create_ai_task(
 
     check_rate_limit(user_id, runtime.tapp_id(), "ai.task").await?;
     let role = current_tapp_user_role(&claims).await;
+    let client_ip = crate::middleware::client_ip::client_ip_from_parts(
+        &headers,
+        Some(addr.ip()),
+        crate::middleware::client_ip::trusted_proxy_headers_enabled(),
+    )
+    .map(|ip| ip.to_string());
+    if role == UserRole::Guest {
+        check_anonymous_rate_limit(client_ip.as_deref(), runtime.tapp_id()).await?;
+    }
     let estimated_tokens = if request.operation == TappAiOperation::Image {
         0
     } else {
@@ -1718,6 +1744,7 @@ pub async fn create_ai_task(
         runtime.owner_id(),
         runtime.tapp_id(),
         estimated_tokens,
+        client_ip.as_deref(),
     )
     .await?;
     let usage = match get_ai_usage(

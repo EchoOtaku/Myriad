@@ -516,7 +516,7 @@ pub(super) async fn execute_tapp_page_content(
                         "icon": app.icon.clone(),
                         "themeColor": app.theme_color.clone(),
                         "status": format!("{:?}", app.status),
-                        "grantedPermissions": app.granted_permissions.clone(),
+                        "grantedPermissions": app.approved_permissions.clone(),
                         "manifest": app.manifest.clone(),
                         "installedAt": app.installed_at.to_string(),
                         "lastRunAt": app.last_run_at.map(|t| t.to_string()),

@@ -72,10 +72,11 @@ Tapp 管理接口大多返回：
 | GET  | `/api/tapps/{tappId}/export`    | 导出 `.tapp` ZIP                             |
 
 读取与运行时授权优先当前用户的私有安装；未安装私有副本时再使用站点公开（管理员）安装。
-用户可与公开安装并存私有副本；管理员公开安装仍拒绝覆盖任何已有同 ID 安装。
+公开与私有副本可双向并存；安装冲突只检查操作者可修改的 owner 命名空间。
 
-Storage（Option A）按安装 owner 命名空间隔离：打开公开安装时读写站点 owner 数据，viewer
-只读；写/删/清空仅 owner。个人数据需用户安装自己的副本。
+Storage 按当前登录 subject 命名空间隔离：打开公开安装时，每个用户读写自己的
+`user_id + tapp_id` 数据，不会读取站点 owner 的 storage。安装级 Manifest 设置仍由安装
+owner 或管理员写入，其他已登录用户只读声明过的键。
 
 `/details` 是 `TappRuntime` 的启动同步接口。它固定执行管理员集合与当前用户集合查询，
 同 ID 时保留用户私有版本，并对每项应用与单项 `/api/tapps/{tappId}` 相同的动态角色权限过滤，
@@ -149,8 +150,8 @@ interface TappResources {
 }
 ```
 
-`permissions` 是用户同意的申请子集，不是可信授权；后端会按 Manifest、当前实时角色和
-动态权限配置再次过滤。
+`permissions` 是用户同意的申请子集，不是当前有效授权；后端先与 Manifest 求交集并保存为
+`approved_permissions`，再按当前实时角色和动态权限配置生成对调用者可见的有效权限。
 
 安装/更新资源先进入 staging，校验后原子替换在线目录；数据库失败恢复旧目录。卸载把文件
 移入隔离目录后，在一个事务中清理安装记录、Manifest/动态 Widget、调度任务及执行历史；
@@ -169,6 +170,7 @@ Grant；游客仍不能借此访问普通用户的临时安装。
 | 方法   | 路径                                             | 说明                         |
 | ------ | ------------------------------------------------ | ---------------------------- |
 | POST   | `/api/tapps/{tappId}/runtime-grants`             | 为 Page/Widget/headless 签发 |
+| POST   | `/api/tapps/{tappId}/runtime-grants/authorize`   | 宿主本地敏感能力实时复核     |
 | DELETE | `/api/tapps/{tappId}/runtime-grants/{runtimeId}` | 销毁实例时撤销               |
 
 签发 body 为 `{ "instanceId": "page_...", "kind": "page" }`；`kind` 还可以是
@@ -180,31 +182,36 @@ Grant 才返回 `INVALID_RUNTIME_GRANT`。
 
 ### 设置、Widget 与存储
 
-| 方法   | 路径                                     | 说明                               |
-| ------ | ---------------------------------------- | ---------------------------------- |
-| GET    | `/api/tapps/{tappId}/settings/{key}`     | 登录宿主读取 Manifest 声明的设置   |
-| POST   | `/api/tapps/{tappId}/settings/{key}`     | 登录宿主写入 Manifest 声明的设置   |
-| POST   | `/api/tapps/{tappId}/widgets`            | Runtime Grant 注册/更新动态 Widget |
-| DELETE | `/api/tapps/{tappId}/widgets/{widgetId}` | Runtime Grant 注销动态 Widget      |
-| GET    | `/api/tapps/{tappId}/storage`            | 列出 key                           |
-| DELETE | `/api/tapps/{tappId}/storage`            | 清空存储                           |
-| GET    | `/api/tapps/{tappId}/storage/entries`    | 一次返回全部键值                   |
-| GET    | `/api/tapps/{tappId}/storage/usage`      | 一次统计使用字节                   |
-| GET    | `/api/tapps/{tappId}/storage/{key}`      | 读取值                             |
-| POST   | `/api/tapps/{tappId}/storage/{key}`      | 写入值                             |
-| DELETE | `/api/tapps/{tappId}/storage/{key}`      | 删除值                             |
+| 方法   | 路径                                     | 说明                                        |
+| ------ | ---------------------------------------- | ------------------------------------------- |
+| GET    | `/api/tapps/{tappId}/settings/{key}`     | 登录宿主读取 Manifest 声明的设置            |
+| POST   | `/api/tapps/{tappId}/settings/{key}`     | 登录宿主写入 Manifest 声明的设置            |
+| GET    | `/api/tapps/{tappId}/settings`           | 一次读取全部已保存的 Manifest 声明设置       |
+| POST   | `/api/tapps/{tappId}/widgets`            | 管理员以 Runtime Grant 注册/更新动态 Widget |
+| DELETE | `/api/tapps/{tappId}/widgets/{widgetId}` | 管理员以 Runtime Grant 注销动态 Widget      |
+| GET    | `/api/tapps/{tappId}/storage`            | 列出 key                                    |
+| DELETE | `/api/tapps/{tappId}/storage`            | 清空存储                                    |
+| GET    | `/api/tapps/{tappId}/storage/entries`    | 一次返回全部键值                            |
+| GET    | `/api/tapps/{tappId}/storage/usage`      | 一次统计使用字节                            |
+| GET    | `/api/tapps/{tappId}/storage/{key}`      | 读取值                                      |
+| POST   | `/api/tapps/{tappId}/storage/{key}`      | 写入值                                      |
+| DELETE | `/api/tapps/{tappId}/storage/{key}`      | 删除值                                      |
 
-settings 路由是详情页宿主控制面，只接受已登录会话与当前 Manifest 的真实 key，不接受
-`X-Tapp-Runtime-Grant` 代替登录，也不能访问任意 storage key。写入值必须符合声明的
-type、select options 与 number min/max；游客只使用 Manifest 默认值。
+settings 路由是安装级配置控制面，只接受已登录会话与当前 Manifest 的真实 key，不接受
+`X-Tapp-Runtime-Grant` 代替登录，也不能访问任意 storage key。读取允许当前安装的已登录
+运行者；写入仅允许安装 owner 或当前管理员，且值必须符合声明的 type、select options 与
+number min/max；游客只使用 Manifest 默认值。
 `storage` 路由同样要求登录身份和 Runtime Grant；访客 Grant 不包含 `storage`，因此沙箱内
-的 `Tapp.storage`/`Tapp.settings` 也不能为访客创建持久数据。
-同理，动态 Widget、平台数据、报告读取、统一通知、组件/快捷键注册、scheduler、语音服务和
-Brew 写入/评论都要求持久登录主体，不会被签入访客 Grant。
+的 `Tapp.storage` 不能为访客创建持久数据。通用 storage 使用当前 subject 命名空间，并拒绝
+访问 `_settings.`、`_component:`、`_shortcut:`、`_report:` 等宿主保留键。
+同理，平台数据、报告读取、统一通知、组件/快捷键注册、scheduler、语音服务和 Brew 写入/评论
+都要求持久登录主体，不会被签入访客 Grant；动态 Widget 注册与注销进一步限制为当前管理员。
 Manifest Widget 由安装/更新自动对账；动态 Widget 路由要求 `widget:register` 同时存在于
-Runtime Grant、安装授权和当前角色，并拒绝覆盖/删除 Manifest 来源的注册。动态行记录
+Runtime Grant、安装授权和当前管理员角色，并拒绝覆盖/删除 Manifest 来源的注册。动态行记录
 Runtime Grant 的安装 owner，只返回给注册主体；公共安装卸载时会清理绑定该 owner 的动态
 Widget 和所有主体为该公共安装创建的 scheduler 任务。
+普通用户安装带 Widget 声明的 Tapp 时不会被拒绝；权限过滤只移除其管理员专属的
+`widget:register` 能力，应用其余部分继续安装并运行。
 
 注意写入方法是 `POST`，不是旧文档中的 `PUT`。
 Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外，还可包含
@@ -225,7 +232,7 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 ## 运行时 `/api/tapp`
 
 这些端点主要由 Bridge handler 经 `TappApiService` 调用。除了路由中间件，handler 还应
-校验 Tapp ID、owner 与 `granted_permissions`。
+校验 Tapp ID、owner、安装批准集与当前动态有效权限。
 
 ### 平台、AI 与数据
 
@@ -246,6 +253,8 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 AI 权限、每分钟速率、每日 calls/tokens 与 cooldown 全由后端执行。配额在模型调用前事务预留、
 完成后按实际估算结算、失败/取消释放未消耗 token；calls 仍记录一次尝试。AI Task 还校验
 Manifest operation/model tier/context/output 声明，并将任务绑定 subject、安装 owner 和 Tapp。
+访客除浏览器 session 配额外，还受匿名 IP 指纹日预算、匿名分钟限流和全站访客日预算约束；
+服务端只保存单向摘要，不保存原始 IP。
 最终任务注册在 subject advisory-lock 事务中原子检查并发数、保留数和幂等键；未成功注册的
 请求完整回滚 calls/token 预留，不会留下只计费但未执行的任务。
 
@@ -393,7 +402,7 @@ AI Task registry 与配额账本。
 ```
 
 这不是任意 URL 代理。API 名必须存在于 Manifest：`public` 可在允许的游客上下文使用，
-`protected` 默认需要 `network:fetch`。后端负责模板注入、出站安全、SSRF 防护、builtin
+`protected` 只允许登录主体；所有 HTTP API 都需要实时 `network:fetch`。后端负责共享限流、模板注入、出站安全、SSRF 防护、builtin
 路由和上下文隔离缓存。
 
 旧的 `POST /api/tapp/{tappId}/proxy` 不存在，也不应重新引入。
