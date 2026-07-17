@@ -611,7 +611,8 @@ M2：cosign 签名（已实现）
    - `--certificate-identity-regexp ^https://github\.com/<repo>/\.github/workflows/.+@refs/tags/v[0-9].+$`
    - `--certificate-oidc-issuer https://token.actions.githubusercontent.com`
 3. 用户通过 `COSIGN_VERIFY` 环境变量切换策略：`strict`（默认，验签失败即拒绝）/ `soft`
-   （失败仅 warning）/ `off`（明确关闭验证，仅用于兼容旧 release）。
+   （失败仅 warning）/ `off`（关闭验证）。`off` 必须再设 `UPDATER_ALLOW_INSECURE_COSIGN=true`
+   （或别名 `COSIGN_INSECURE_OK=true`），否则 updater 拒绝启动。
 4. updater 镜像里预装 cosign CLI（`sigstore/cosign` v2.4.1 单文件二进制）。
 
 ## 16. 观测与诊断

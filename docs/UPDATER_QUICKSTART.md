@@ -310,6 +310,15 @@ bash scripts/docker/deploy.sh restart
 `COSIGN_VERIFY=soft` 是过渡选项：失败仅 warning，不阻止升级。推荐先 soft 跑几个版本观察
 日志，确认无误后切 strict。
 
+要完全关闭验签（不推荐）必须双钥匙：
+
+```bash
+COSIGN_VERIFY=off
+UPDATER_ALLOW_INSECURE_COSIGN=true   # 或 COSIGN_INSECURE_OK=true
+```
+
+仅设置 `COSIGN_VERIFY=off` 时 updater 会拒绝启动。
+
 ## 8. 关键约束（再次强调）
 
 - **永远不要推 `:latest`**：updater 的回滚依赖旧版本 tag 仍在 registry。

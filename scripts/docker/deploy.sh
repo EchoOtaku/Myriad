@@ -38,6 +38,7 @@ Commands:
   pull      Pull images pinned by .env tags
   logs      docker compose logs -f
   status    docker compose ps + image versions
+  doctor    Read-only topology / security checks (docker-guard, sock mounts, cosign)
   upgrade   Pull images pinned by .env tags + recreate (manual upgrade path)
   help      Show this help
 
@@ -45,11 +46,14 @@ Notes:
   - This script only handles bootstrap. Normal updates run through the admin UI.
   - To switch versions, edit MYRIAD_TAG / UPDATER_TAG / PROXY_TAG in .env then
     run \`$0 upgrade\`.
+  - Optional host audit (privileged / docker.sock binds):
+      bash scripts/security/docker-audit-example.sh scan
 
 Examples:
   $0                 # Bootstrap + start
   $0 down            # Stop
   $0 status          # See running versions
+  $0 doctor          # Topology security checks
   $0 upgrade         # After editing .env, recreate with new tags
 EOF
 }
@@ -215,6 +219,118 @@ cmd_status() {
     $COMPOSE images 2>/dev/null || $COMPOSE ps --format "table {{.Service}}\t{{.Image}}"
 }
 
+# Read-only topology checks. Does not migrate or restart services.
+# Expected: docker-guard holds docker.sock; updater does not.
+cmd_doctor() {
+    local fail=0
+    local skip=0
+    info "==> Deploy topology doctor (read-only)"
+
+    container_exists() {
+        docker inspect "$1" >/dev/null 2>&1
+    }
+
+    container_mounts_sock() {
+        # Match Source or Destination containing docker.sock
+        docker inspect -f '{{range .Mounts}}{{.Source}}|{{.Destination}}{{"\n"}}{{end}}' "$1" 2>/dev/null \
+            | grep -q 'docker\.sock'
+    }
+
+    container_health() {
+        docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$1" 2>/dev/null \
+            || echo "unknown"
+    }
+
+    # --- docker-guard ---
+    if container_exists myriad-docker-guard; then
+        ok "PASS  myriad-docker-guard container exists"
+        local gh
+        gh="$(container_health myriad-docker-guard)"
+        case "$gh" in
+            healthy|running)
+                ok "PASS  docker-guard status=$gh"
+                ;;
+            *)
+                err "FAIL  docker-guard status=$gh (expected healthy or running)"
+                fail=$((fail + 1))
+                ;;
+        esac
+        if container_mounts_sock myriad-docker-guard; then
+            ok "PASS  docker-guard mounts docker.sock"
+        else
+            err "FAIL  docker-guard does not mount docker.sock"
+            fail=$((fail + 1))
+        fi
+    else
+        err "FAIL  myriad-docker-guard not found (stack down or legacy pre-guard topology)"
+        fail=$((fail + 1))
+    fi
+
+    # --- updater: must NOT mount docker.sock ---
+    if container_exists myriad-updater; then
+        ok "PASS  myriad-updater container exists"
+        if container_mounts_sock myriad-updater; then
+            err "FAIL  myriad-updater mounts docker.sock (legacy layout — sock should only be on docker-guard)"
+            fail=$((fail + 1))
+        else
+            ok "PASS  myriad-updater does not mount docker.sock"
+        fi
+    else
+        warn "SKIP  myriad-updater not running"
+        skip=$((skip + 1))
+    fi
+
+    # --- .env cosign dual-key (optional, when file present) ---
+    if [ -f .env ]; then
+        local cosign_raw cosign_lc direct direct_lc
+        cosign_raw="$(grep -E '^COSIGN_VERIFY=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" || true)"
+        cosign_raw="${cosign_raw:-strict}"
+        cosign_lc="$(printf '%s' "$cosign_raw" | tr '[:upper:]' '[:lower:]')"
+        case "$cosign_lc" in
+            off|false|0)
+                if grep -qiE '^(UPDATER_ALLOW_INSECURE_COSIGN|COSIGN_INSECURE_OK)=(true|1|yes|on)[[:space:]]*$' .env 2>/dev/null; then
+                    warn "WARN  COSIGN_VERIFY=$cosign_raw with insecure allow key set (supply-chain risk)"
+                else
+                    err "FAIL  COSIGN_VERIFY=$cosign_raw without UPDATER_ALLOW_INSECURE_COSIGN=true (updater refuses to start)"
+                    fail=$((fail + 1))
+                fi
+                ;;
+            soft|warn)
+                warn "WARN  COSIGN_VERIFY=$cosign_raw (prefer strict for production)"
+                ;;
+            *)
+                ok "PASS  COSIGN_VERIFY=$cosign_raw"
+                ;;
+        esac
+
+        direct="$(grep -E '^PROXY_ALLOW_DIRECT_UPDATER=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" || true)"
+        direct_lc="$(printf '%s' "${direct:-false}" | tr '[:upper:]' '[:lower:]')"
+        case "$direct_lc" in
+            true|1|yes|on)
+                warn "WARN  PROXY_ALLOW_DIRECT_UPDATER=$direct (rescue path; keep false for normal ops)"
+                ;;
+            *)
+                ok "PASS  PROXY_ALLOW_DIRECT_UPDATER=${direct:-false}"
+                ;;
+        esac
+    else
+        warn "SKIP  .env not found (cosign / direct-updater checks)"
+        skip=$((skip + 1))
+    fi
+
+    echo ""
+    info "Optional host audit (not run automatically):"
+    info "  bash scripts/security/docker-audit-example.sh scan"
+    info "  bash scripts/security/docker-audit-example.sh events"
+    echo ""
+    if [ "$fail" -gt 0 ]; then
+        err "Doctor: $fail check(s) failed (skip=$skip). Fix topology; this command does not auto-migrate."
+        return 1
+    fi
+    ok "Doctor: all checks passed (skip=$skip)."
+    return 0
+}
+
 cmd_upgrade() {
     ensure_env
     ensure_backend_volume_perms
@@ -234,6 +350,7 @@ case "$COMMAND" in
     pull)     cmd_pull ;;
     logs)     cmd_logs ;;
     status)   cmd_status ;;
+    doctor)   cmd_doctor ;;
     upgrade)  cmd_upgrade ;;
     help|-h|--help) show_usage ;;
     *) err "Unknown command: $COMMAND"; show_usage; exit 1 ;;

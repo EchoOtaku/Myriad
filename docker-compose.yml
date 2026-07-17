@@ -249,7 +249,11 @@ services:
       # cosign signature policy: strict (default) | soft | off
       # Strict requires release.json.sig + release.json.pem assets to be present and
       # the OIDC subject to match the configured repo's workflows.
+      # COSIGN_VERIFY=off alone fails closed: also set UPDATER_ALLOW_INSECURE_COSIGN=true
+      # (or COSIGN_INSECURE_OK=true).
       COSIGN_VERIFY: ${COSIGN_VERIFY:-strict}
+      UPDATER_ALLOW_INSECURE_COSIGN: ${UPDATER_ALLOW_INSECURE_COSIGN:-}
+      COSIGN_INSECURE_OK: ${COSIGN_INSECURE_OK:-}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
       MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
       MYRIAD_VERSION: ${UPDATER_TAG}

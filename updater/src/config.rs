@@ -4,6 +4,13 @@
 use crate::error::UpdaterError;
 use serde::{Deserialize, Serialize};
 
+/// Minimum accepted length for `UPDATE_TOKEN`.
+pub const UPDATE_TOKEN_MIN_LEN: usize = 32;
+
+/// Tokens at or below this length trigger a boot warning (barely minimum).
+/// Operators should use a longer random secret; hard minimum remains 32.
+pub const UPDATE_TOKEN_WARN_BELOW_LEN: usize = 40;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Required: shared secret for mutating API endpoints. Must be >= 32 chars.
@@ -31,6 +38,9 @@ pub struct Config {
 
     /// Cosign signature verification policy. See release::cosign::CosignPolicy.
     /// COSIGN_VERIFY env: off | soft | strict (default: strict).
+    ///
+    /// `off` alone is refused: also set `UPDATER_ALLOW_INSECURE_COSIGN=true`
+    /// (or alias `COSIGN_INSECURE_OK=true`) so disabling verification is intentional.
     pub cosign_verify: String,
 }
 
@@ -96,10 +106,10 @@ impl Config {
     pub fn load_from_env() -> Result<Self, UpdaterError> {
         let token = std::env::var("UPDATE_TOKEN")
             .map_err(|_| UpdaterError::Config("UPDATE_TOKEN is required".into()))?;
-        if token.trim().len() < 32 {
-            return Err(UpdaterError::Config(
-                "UPDATE_TOKEN must be at least 32 characters".into(),
-            ));
+        if token.trim().len() < UPDATE_TOKEN_MIN_LEN {
+            return Err(UpdaterError::Config(format!(
+                "UPDATE_TOKEN must be at least {UPDATE_TOKEN_MIN_LEN} characters"
+            )));
         }
         if is_weak_token(&token) {
             return Err(UpdaterError::Config(
@@ -126,6 +136,11 @@ impl Config {
             .unwrap_or(3600);
 
         let cosign_verify = std::env::var("COSIGN_VERIFY").unwrap_or_else(|_| "strict".into());
+        validate_cosign_off_dual_key(
+            &cosign_verify,
+            env_truthy("UPDATER_ALLOW_INSECURE_COSIGN"),
+            env_truthy("COSIGN_INSECURE_OK"),
+        )?;
 
         Ok(Self {
             update_token: SecretString::new(token),
@@ -137,6 +152,48 @@ impl Config {
             cosign_verify,
         })
     }
+}
+
+/// True when `COSIGN_VERIFY` disables verification (`off` / `false` / `0`).
+pub fn cosign_verify_is_off(raw: &str) -> bool {
+    matches!(
+        raw.trim().to_ascii_lowercase().as_str(),
+        "off" | "false" | "0"
+    )
+}
+
+/// Fail closed when cosign is disabled without an explicit second allow key.
+///
+/// Accepts either `UPDATER_ALLOW_INSECURE_COSIGN` or alias `COSIGN_INSECURE_OK`.
+pub fn validate_cosign_off_dual_key(
+    cosign_verify: &str,
+    allow_insecure: bool,
+    insecure_ok_alias: bool,
+) -> Result<(), UpdaterError> {
+    if cosign_verify_is_off(cosign_verify) && !(allow_insecure || insecure_ok_alias) {
+        return Err(UpdaterError::Config(
+            "COSIGN_VERIFY=off requires UPDATER_ALLOW_INSECURE_COSIGN=true \
+             (or COSIGN_INSECURE_OK=true) to acknowledge supply-chain risk. \
+             Prefer COSIGN_VERIFY=strict (default)."
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+fn env_truthy(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .as_deref()
+        .map(is_truthy)
+        .unwrap_or(false)
+}
+
+fn is_truthy(raw: &str) -> bool {
+    matches!(
+        raw.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 fn is_weak_token(s: &str) -> bool {
@@ -207,5 +264,32 @@ mod tests {
         assert!(!cfg.github_token_present());
         cfg.github_token = Some(SecretString::new("ghp_example"));
         assert!(cfg.github_token_present());
+    }
+
+    #[test]
+    fn cosign_off_requires_dual_key() {
+        assert!(cosign_verify_is_off("off"));
+        assert!(cosign_verify_is_off("OFF"));
+        assert!(cosign_verify_is_off("false"));
+        assert!(cosign_verify_is_off("0"));
+        assert!(!cosign_verify_is_off("strict"));
+        assert!(!cosign_verify_is_off("soft"));
+
+        assert!(validate_cosign_off_dual_key("off", false, false).is_err());
+        assert!(validate_cosign_off_dual_key("off", true, false).is_ok());
+        assert!(validate_cosign_off_dual_key("off", false, true).is_ok());
+        assert!(validate_cosign_off_dual_key("strict", false, false).is_ok());
+        assert!(validate_cosign_off_dual_key("soft", false, false).is_ok());
+    }
+
+    #[test]
+    fn is_truthy_values() {
+        assert!(is_truthy("true"));
+        assert!(is_truthy("YES"));
+        assert!(is_truthy("1"));
+        assert!(is_truthy("on"));
+        assert!(!is_truthy("false"));
+        assert!(!is_truthy(""));
+        assert!(!is_truthy("maybe"));
     }
 }

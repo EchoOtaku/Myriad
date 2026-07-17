@@ -36,13 +36,19 @@ Commands:
   pull      Pull images pinned by .env tags
   logs      docker compose logs -f
   status    docker compose ps + image versions
+  doctor    Read-only topology / security checks (docker-guard, sock mounts, cosign)
   upgrade   Pull images pinned by .env tags + recreate
   help      Show this help
+
+Notes:
+  - Optional host audit (privileged / docker.sock binds):
+      bash scripts/security/docker-audit-example.sh scan
 
 Examples:
   .\deploy.ps1                 # Bootstrap + start
   .\deploy.ps1 down            # Stop
   .\deploy.ps1 status          # See running versions
+  .\deploy.ps1 doctor          # Topology security checks
 "@ | Write-Host
 }
 
@@ -182,6 +188,119 @@ function Cmd-Status {
     Invoke-Compose images 2>$null
     if ($LASTEXITCODE -ne 0) { Invoke-Compose ps --format "table {{.Service}}`t{{.Image}}" }
 }
+
+function Test-ContainerExists([string]$Name) {
+    docker inspect $Name 2>$null | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Test-ContainerMountsSock([string]$Name) {
+    $mounts = docker inspect -f '{{range .Mounts}}{{.Source}}|{{.Destination}}{{"\n"}}{{end}}' $Name 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    return ($mounts -match 'docker\.sock')
+}
+
+function Get-ContainerHealth([string]$Name) {
+    $h = docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $Name 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($h)) { return "unknown" }
+    return $h.Trim()
+}
+
+function Get-EnvValue([string]$Key) {
+    if (-not (Test-Path ".env")) { return $null }
+    $line = Select-String -Path .env -Pattern "^$Key=(.*)$" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $line) { return $null }
+    return $line.Matches[0].Groups[1].Value.Trim().Trim('"').Trim("'")
+}
+
+function Test-EnvTruthy([string]$Key) {
+    $v = Get-EnvValue $Key
+    if ($null -eq $v) { return $false }
+    return @("true", "1", "yes", "on") -contains $v.ToLowerInvariant()
+}
+
+# Read-only topology checks. Does not migrate or restart services.
+function Cmd-Doctor {
+    $fail = 0
+    $skip = 0
+    Write-Info "==> Deploy topology doctor (read-only)"
+
+    if (Test-ContainerExists "myriad-docker-guard") {
+        Write-Ok "PASS  myriad-docker-guard container exists"
+        $gh = Get-ContainerHealth "myriad-docker-guard"
+        if ($gh -eq "healthy" -or $gh -eq "running") {
+            Write-Ok "PASS  docker-guard status=$gh"
+        } else {
+            Write-Err "FAIL  docker-guard status=$gh (expected healthy or running)"
+            $fail++
+        }
+        if (Test-ContainerMountsSock "myriad-docker-guard") {
+            Write-Ok "PASS  docker-guard mounts docker.sock"
+        } else {
+            Write-Err "FAIL  docker-guard does not mount docker.sock"
+            $fail++
+        }
+    } else {
+        Write-Err "FAIL  myriad-docker-guard not found (stack down or legacy pre-guard topology)"
+        $fail++
+    }
+
+    if (Test-ContainerExists "myriad-updater") {
+        Write-Ok "PASS  myriad-updater container exists"
+        if (Test-ContainerMountsSock "myriad-updater") {
+            Write-Err "FAIL  myriad-updater mounts docker.sock (legacy layout — sock should only be on docker-guard)"
+            $fail++
+        } else {
+            Write-Ok "PASS  myriad-updater does not mount docker.sock"
+        }
+    } else {
+        Write-Warn "SKIP  myriad-updater not running"
+        $skip++
+    }
+
+    if (Test-Path ".env") {
+        $cosign = Get-EnvValue "COSIGN_VERIFY"
+        if ([string]::IsNullOrWhiteSpace($cosign)) { $cosign = "strict" }
+        switch ($cosign.ToLowerInvariant()) {
+            { $_ -in @("off", "false", "0") } {
+                if ((Test-EnvTruthy "UPDATER_ALLOW_INSECURE_COSIGN") -or (Test-EnvTruthy "COSIGN_INSECURE_OK")) {
+                    Write-Warn "WARN  COSIGN_VERIFY=$cosign with insecure allow key set (supply-chain risk)"
+                } else {
+                    Write-Err "FAIL  COSIGN_VERIFY=$cosign without UPDATER_ALLOW_INSECURE_COSIGN=true (updater refuses to start)"
+                    $fail++
+                }
+            }
+            { $_ -in @("soft", "warn") } {
+                Write-Warn "WARN  COSIGN_VERIFY=$cosign (prefer strict for production)"
+            }
+            default {
+                Write-Ok "PASS  COSIGN_VERIFY=$cosign"
+            }
+        }
+
+        $direct = Get-EnvValue "PROXY_ALLOW_DIRECT_UPDATER"
+        if ([string]::IsNullOrWhiteSpace($direct)) { $direct = "false" }
+        if (@("true", "1", "yes", "on") -contains $direct.ToLowerInvariant()) {
+            Write-Warn "WARN  PROXY_ALLOW_DIRECT_UPDATER=$direct (rescue path; keep false for normal ops)"
+        } else {
+            Write-Ok "PASS  PROXY_ALLOW_DIRECT_UPDATER=$direct"
+        }
+    } else {
+        Write-Warn "SKIP  .env not found (cosign / direct-updater checks)"
+        $skip++
+    }
+
+    Write-Host ""
+    Write-Info "Optional host audit (not run automatically):"
+    Write-Info "  bash scripts/security/docker-audit-example.sh scan"
+    Write-Host ""
+    if ($fail -gt 0) {
+        Write-Err "Doctor: $fail check(s) failed (skip=$skip). Fix topology; this command does not auto-migrate."
+        exit 1
+    }
+    Write-Ok "Doctor: all checks passed (skip=$skip)."
+}
+
 function Cmd-Upgrade {
     Ensure-Env
     Ensure-BackendVolumePerms
@@ -199,6 +318,7 @@ switch ($Command.ToLower()) {
     "pull"    { Cmd-Pull }
     "logs"    { Cmd-Logs }
     "status"  { Cmd-Status }
+    "doctor"  { Cmd-Doctor }
     "upgrade" { Cmd-Upgrade }
     "help"    { Show-Usage }
     "-h"      { Show-Usage }

@@ -61,6 +61,60 @@ async fn main() -> Result<()> {
     })?;
     let state = Arc::new(StateDir::open(&cli.state_dir)?);
 
+    // Security posture (R5/R6): warn only on non-default / insecure choices.
+    // Secure defaults (cosign=strict, strong token) stay quiet beyond the boot audit line.
+    {
+        use myriad_updater::config::{
+            cosign_verify_is_off, UPDATE_TOKEN_WARN_BELOW_LEN,
+        };
+        use myriad_updater::release::CosignPolicy;
+
+        let policy = CosignPolicy::from_env(Some(&config.cosign_verify));
+        let policy_label = match policy {
+            CosignPolicy::Strict => "strict",
+            CosignPolicy::Soft => "soft",
+            CosignPolicy::Off => "off",
+        };
+
+        match policy {
+            CosignPolicy::Strict => {}
+            CosignPolicy::Soft => {
+                warn!(
+                    cosign = policy_label,
+                    "cosign verification is soft: signature failures only warn; prefer strict for production"
+                );
+            }
+            CosignPolicy::Off => {
+                // load_from_env already required the dual-key allow flag.
+                error!(
+                    cosign = policy_label,
+                    "cosign verification is OFF (UPDATER_ALLOW_INSECURE_COSIGN accepted) — supply-chain risk"
+                );
+            }
+        }
+
+        let token_len = config.update_token.expose().trim().len();
+        if token_len < UPDATE_TOKEN_WARN_BELOW_LEN {
+            warn!(
+                token_len,
+                min = myriad_updater::config::UPDATE_TOKEN_MIN_LEN,
+                "UPDATE_TOKEN length is barely above the minimum; prefer a longer random secret"
+            );
+        }
+
+        // One audit line at boot for dangerous-config decisions (R6). Best-effort.
+        let mut audit = format!(
+            "audit: boot cosign={policy_label} channel={}",
+            config.channel
+        );
+        if cosign_verify_is_off(&config.cosign_verify) {
+            audit.push_str(" insecure_cosign_allowed=true");
+        }
+        if let Err(e) = state.append_audit(&audit) {
+            warn!(err = %e, "failed to write boot audit line");
+        }
+    }
+
     // Phase 2: env-probe (compose binary, docker, pgdata fs type, etc.).
     // Any unsupported environment must fail loudly *before* we serve any API.
     let env_probe = probe::run_all(&probe::ProbeInputs {

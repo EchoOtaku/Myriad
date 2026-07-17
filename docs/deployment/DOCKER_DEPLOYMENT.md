@@ -87,17 +87,34 @@ Open `http://localhost` or the port configured by `HTTP_PORT`.
 | `MYRIAD_DOCKER_GUARD_NETWORK` | no | Internal updater/guard network override, default `myriad-docker-guard-net` |
 | `PROXY_TRUSTED_UPSTREAMS` | no | Comma-separated IP/CIDR allowlist for outer proxies allowed to pass the real client IP |
 | `PROXY_ALLOW_DIRECT_UPDATER` | no | Enables `/_updater/*` rescue path, default `false` |
-| `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or explicit-risk `off` |
+| `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or `off` |
+| `UPDATER_ALLOW_INSECURE_COSIGN` | no | Required dual key when `COSIGN_VERIFY=off` (`true` / alias `COSIGN_INSECURE_OK`) |
 
 Do not set `BACKEND_PORT` or `FRONTEND_PORT` for production. Those are internal
 container ports.
 
 For the full port map, see [PORTS.md](./PORTS.md).
 
+## Security defaults (short)
+
+- Keep **`COSIGN_VERIFY=strict`**, **`PROXY_ALLOW_DIRECT_UPDATER=false`**, and do **not**
+  publish updater `1101` or docker-guard `2375` on the host.
+- `COSIGN_VERIFY=off` alone is refused: set `UPDATER_ALLOW_INSECURE_COSIGN=true`
+  (or `COSIGN_INSECURE_OK=true`) only when you intentionally accept that risk.
+- Topology check (read-only; no auto-migrate):
+
+```bash
+bash scripts/docker/deploy.sh doctor
+```
+
+- Optional host scan for unexpected privileged containers / `docker.sock` binds
+  (not run on every upgrade): `bash scripts/security/docker-audit-example.sh scan`.
+
 ## Operations
 
 ```bash
 bash scripts/docker/deploy.sh status
+bash scripts/docker/deploy.sh doctor
 bash scripts/docker/deploy.sh logs
 bash scripts/docker/deploy.sh restart
 bash scripts/docker/deploy.sh down
