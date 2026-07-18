@@ -73,6 +73,13 @@ struct StatusResp {
     channel: String,
     /// release | commit
     update_mode: UpdateMode,
+    /// Effective check interval (prefs or CHECK_INTERVAL_SECS fallback). 0 = off.
+    check_interval_secs: u64,
+    /// Raw prefs value when set; omitted when using env fallback.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    check_interval_secs_pref: Option<u64>,
+    /// Auto-install clear upgrades on the current channel. Default false.
+    auto_install: bool,
     maintenance_active: bool,
     maintenance_phase: Phase,
     job_in_flight: Option<String>,
@@ -136,6 +143,9 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
         current_commit_sha: u.current_commit_sha,
         channel,
         update_mode,
+        check_interval_secs: st.worker.effective_check_interval_secs(),
+        check_interval_secs_pref: u.check_interval_secs,
+        auto_install: u.auto_install,
         maintenance_active: m.active,
         maintenance_phase: m.phase,
         job_in_flight: job,
@@ -259,10 +269,22 @@ fn available_to_json(info: Option<AvailableInfo>) -> Value {
             notes_url,
             source,
             freshness,
+            is_upgrade,
+            is_downgrade,
+            relation,
         }) => {
-            let (relation, ahead_by, behind_by, current_sha, is_upgrade, is_downgrade) =
-                match freshness.as_ref() {
-                    Some(f) => (
+            // Prefer precomputed direction (push-time / ancestry). Fall back to freshness.
+            let (rel, ahead_by, behind_by, current_sha, is_up, is_down) =
+                match (relation.as_deref(), is_upgrade, is_downgrade, freshness.as_ref()) {
+                    (Some(r), Some(up), Some(down), f) => (
+                        Some(r),
+                        f.map(|x| x.ahead_by),
+                        f.map(|x| x.behind_by),
+                        f.and_then(|x| x.current_sha.clone()),
+                        Some(up),
+                        Some(down),
+                    ),
+                    (_, _, _, Some(f)) => (
                         Some(f.relation.as_str()),
                         Some(f.ahead_by),
                         Some(f.behind_by),
@@ -270,10 +292,7 @@ fn available_to_json(info: Option<AvailableInfo>) -> Value {
                         Some(f.is_upgrade()),
                         Some(f.is_downgrade()),
                     ),
-                    None if source == "dockerhub" => {
-                        (Some("unknown"), None, None, None, Some(true), Some(false))
-                    }
-                    None => (None, None, None, None, None, None),
+                    _ => (Some("unknown"), None, None, None, Some(true), Some(false)),
                 };
             json!({
                 "schema_version": 1,
@@ -283,11 +302,11 @@ fn available_to_json(info: Option<AvailableInfo>) -> Value {
                 "channel": branch,
                 "commit_sha": full_sha,
                 "current_commit_sha": current_sha,
-                "relation": relation,
+                "relation": rel,
                 "ahead_by": ahead_by,
                 "behind_by": behind_by,
-                "is_upgrade": is_upgrade,
-                "is_downgrade": is_downgrade,
+                "is_upgrade": is_up,
+                "is_downgrade": is_down,
                 "message": message,
                 "notes_url": notes_url,
                 "released_at": chrono::Utc::now().to_rfc3339(),
@@ -413,8 +432,11 @@ async fn update(
         )
     })?;
     let target = DeployTag::parse(&raw).map_err(ApiError::from)?;
-    // Soft consistency: release mode needs release tags.
-    if mode == UpdateMode::Release && !target.is_release() {
+    // Resolve mode from the target when possible so dev-channel installs of formal
+    // releases (vX.Y.Z) use the release path, and commit tags never go through release.
+    let mode = if target.is_release() {
+        UpdateMode::Release
+    } else if mode == UpdateMode::Release {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             format!(
@@ -422,16 +444,9 @@ async fn update(
                 target.as_str()
             ),
         ));
-    }
-    if mode == UpdateMode::Commit && target.is_release() {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "commit mode expects dev-<sha> or branch tip, got {}",
-                target.as_str()
-            ),
-        ));
-    }
+    } else {
+        UpdateMode::Commit
+    };
 
     let idem = headers
         .get("Idempotency-Key")
@@ -634,16 +649,34 @@ struct PrefsBody {
     /// release | commit
     #[serde(default)]
     mode: Option<String>,
+    /// Check interval seconds: 0 | 3600 | 21600 | 43200 | 86400.
+    /// Send JSON `null` explicitly to clear the pref (fall back to CHECK_INTERVAL_SECS).
+    #[serde(default, deserialize_with = "deserialize_opt_opt_u64")]
+    check_interval_secs: Option<Option<u64>>,
+    #[serde(default)]
+    auto_install: Option<bool>,
+}
+
+/// Distinguishes "field omitted" (None) from "field set to null" (Some(None)).
+fn deserialize_opt_opt_u64<'de, D>(deserializer: D) -> std::result::Result<Option<Option<u64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<u64>::deserialize(deserializer)?))
 }
 
 async fn set_prefs(
     State(st): State<ApiState>,
     Json(body): Json<PrefsBody>,
 ) -> Result<Json<Value>, ApiError> {
-    if body.channel.is_none() && body.mode.is_none() {
+    if body.channel.is_none()
+        && body.mode.is_none()
+        && body.check_interval_secs.is_none()
+        && body.auto_install.is_none()
+    {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
-            "provide channel and/or mode".into(),
+            "provide channel, mode, check_interval_secs, and/or auto_install".into(),
         ));
     }
     let mode = body
@@ -658,6 +691,8 @@ async fn set_prefs(
         .send(WorkerCmd::SetPrefs {
             channel: body.channel,
             mode,
+            check_interval_secs: body.check_interval_secs,
+            auto_install: body.auto_install,
             reply: tx,
         })
         .await
@@ -669,6 +704,9 @@ async fn set_prefs(
         "ok": true,
         "channel": prefs.channel,
         "mode": prefs.mode.as_str(),
+        "check_interval_secs": prefs.check_interval_secs,
+        "check_interval_secs_pref": prefs.check_interval_secs_pref,
+        "auto_install": prefs.auto_install,
     })))
 }
 
@@ -900,7 +938,7 @@ mod tests {
     }
 
     #[test]
-    fn dockerhub_available_payload_marks_relation_unknown() {
+    fn dockerhub_available_payload_uses_precomputed_direction() {
         let payload = available_to_json(Some(AvailableInfo::Commit {
             tag: DeployTag::parse("dev-5a4527a").unwrap(),
             full_sha: "5a4527a".to_string(),
@@ -909,10 +947,14 @@ mod tests {
             notes_url: "https://hub.docker.com/r/example/backend/tags?name=dev-5a4527a".to_string(),
             source: "dockerhub".to_string(),
             freshness: None,
+            // Push-time newer → ahead, even without git ancestry.
+            is_upgrade: Some(true),
+            is_downgrade: Some(false),
+            relation: Some("ahead".to_string()),
         }));
 
         assert_eq!(payload["source"], "dockerhub");
-        assert_eq!(payload["relation"], "unknown");
+        assert_eq!(payload["relation"], "ahead");
         assert_eq!(payload["is_upgrade"], true);
         assert_eq!(payload["is_downgrade"], false);
     }

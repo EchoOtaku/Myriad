@@ -26,6 +26,18 @@ pub struct UpdaterStateFile {
     #[serde(default)]
     pub update_mode: UpdateMode,
 
+    /// Periodic update check interval in seconds.
+    /// `None` = fall back to `CHECK_INTERVAL_SECS` env; `Some(0)` = off;
+    /// otherwise one of the UI presets (3600 / 21600 / 43200 / 86400).
+    #[serde(default)]
+    pub check_interval_secs: Option<u64>,
+
+    /// When true, clear upgrades on the **current** channel/mode are installed
+    /// automatically. Default OFF. Applies to stable, preview, and commit/dev;
+    /// never auto-installs downgrade / diverged / unknown / irreversible targets.
+    #[serde(default)]
+    pub auto_install: bool,
+
     #[serde(default)]
     pub last_failed_update: Option<FailedUpdate>,
 
@@ -50,6 +62,8 @@ impl Default for UpdaterStateFile {
             last_checked_at: None,
             channel: "stable".into(),
             update_mode: UpdateMode::Release,
+            check_interval_secs: None,
+            auto_install: false,
             last_failed_update: None,
             latest_available: None,
             rollback_version: None,

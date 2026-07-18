@@ -1,16 +1,22 @@
 //! Docker Hub tag lookup used as a fallback when GitHub commit metadata is unavailable.
 //!
-//! A deployable development build exists only when the same immutable `dev-<sha>` tag is
-//! present in both the backend and frontend repositories. Branch-tip tags are deliberately
-//! ignored because they are mutable and therefore unsuitable for update/rollback history.
+//! A deployable build exists only when the same immutable tag is present in both the
+//! backend and frontend repositories:
+//! - `dev-<sha>` commit builds
+//! - formal release tags `vX.Y.Z`
+//!
+//! Branch-tip tags are deliberately ignored because they are mutable and therefore
+//! unsuitable for update/rollback history.
 
 use std::collections::HashMap;
 use std::time::Duration;
 
+use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, UpdaterError};
+use crate::release::github::Freshness;
 use crate::version::{DeployTag, DeployTagKind};
 
 const DEFAULT_BASE_URL: &str = "https://hub.docker.com";
@@ -95,7 +101,10 @@ impl DockerHubRepository {
 #[derive(Debug, Clone, Serialize)]
 pub struct DockerBuild {
     pub tag: String,
+    /// For commit builds: short sha fragment. For release builds: the version tag itself.
     pub short_sha: String,
+    /// `commit` (`dev-<sha>`) or `release` (`vX.Y.Z`).
+    pub kind: &'static str,
     pub pushed_at: Option<String>,
     pub backend_digest: Option<String>,
     pub frontend_digest: Option<String>,
@@ -245,17 +254,20 @@ fn common_builds(
         .into_iter()
         .filter_map(|backend| {
             let deploy_tag = DeployTag::parse(&backend.name).ok()?;
-            if deploy_tag.kind() != DeployTagKind::Commit {
-                return None;
-            }
+            let (kind, short_sha) = match deploy_tag.kind() {
+                DeployTagKind::Commit => ("commit", deploy_tag.commit_sha()?.to_string()),
+                DeployTagKind::Release => ("release", deploy_tag.as_str().to_string()),
+                DeployTagKind::Branch => return None,
+            };
             let frontend = frontend_by_tag.get(&backend.name)?;
             let pushed_at = match (backend.pushed_at(), frontend.pushed_at()) {
                 (Some(left), Some(right)) => Some(left.min(right)),
                 (left, right) => left.or(right),
             };
             Some(DockerBuild {
-                short_sha: deploy_tag.commit_sha()?.to_string(),
+                short_sha,
                 tag: backend.name.clone(),
+                kind,
                 pushed_at,
                 backend_digest: backend.preferred_digest(),
                 frontend_digest: frontend.preferred_digest(),
@@ -268,6 +280,148 @@ fn common_builds(
     builds.sort_by(|left, right| right.pushed_at.cmp(&left.pushed_at));
     builds.truncate(limit);
     builds
+}
+
+/// Result of comparing a commit/dev target to the currently running deploy.
+///
+/// Dev channel primarily uses **build publish time** (Docker Hub `pushed_at`).
+/// Clear git ancestry is used when available; `unknown` ancestry alone must not
+/// block upgrade / auto-install when the target build is newer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommitUpgradeDirection {
+    pub is_upgrade: bool,
+    pub is_downgrade: bool,
+    /// UI/cache relation string: ahead | behind | identical | diverged | unknown.
+    pub relation: &'static str,
+}
+
+impl CommitUpgradeDirection {
+    pub fn identical() -> Self {
+        Self {
+            is_upgrade: false,
+            is_downgrade: false,
+            relation: "identical",
+        }
+    }
+
+    pub fn none_actionable() -> Self {
+        Self {
+            is_upgrade: false,
+            is_downgrade: false,
+            relation: "identical",
+        }
+    }
+}
+
+fn parse_push_time(raw: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(raw.trim())
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+        .or_else(|| {
+            // Docker Hub sometimes omits subseconds / offset variants — try loose parse.
+            chrono::NaiveDateTime::parse_from_str(raw.trim(), "%Y-%m-%dT%H:%M:%S%.fZ")
+                .ok()
+                .map(|n| n.and_utc())
+                .or_else(|| {
+                    chrono::NaiveDateTime::parse_from_str(raw.trim(), "%Y-%m-%dT%H:%M:%SZ")
+                        .ok()
+                        .map(|n| n.and_utc())
+                })
+        })
+}
+
+/// Decide whether a commit/dev target is an upgrade relative to the running deploy.
+///
+/// Priority:
+/// 1. Same tag → identical (not an update).
+/// 2. Clear git ancestry (ahead / behind / identical) when provided.
+/// 3. Docker Hub push-time comparison (primary for private-repo / no-token cases).
+/// 4. Different tag with missing times → treat as upgrade (do not block on unknown).
+pub fn commit_upgrade_direction(
+    target_tag: &str,
+    current_tag: Option<&str>,
+    target_pushed_at: Option<&str>,
+    current_pushed_at: Option<&str>,
+    ancestry: Option<&Freshness>,
+) -> CommitUpgradeDirection {
+    let target_tag = target_tag.trim();
+    if current_tag.is_some_and(|c| c.trim() == target_tag) {
+        return CommitUpgradeDirection::identical();
+    }
+
+    if let Some(f) = ancestry {
+        match f.relation {
+            crate::release::CommitRelation::Ahead => {
+                return CommitUpgradeDirection {
+                    is_upgrade: true,
+                    is_downgrade: false,
+                    relation: "ahead",
+                };
+            }
+            crate::release::CommitRelation::Behind => {
+                return CommitUpgradeDirection {
+                    is_upgrade: false,
+                    is_downgrade: true,
+                    relation: "behind",
+                };
+            }
+            crate::release::CommitRelation::Identical => {
+                return CommitUpgradeDirection::identical();
+            }
+            crate::release::CommitRelation::Diverged => {
+                // Keep diverged for risk UI; still report direction from ancestry helpers.
+                return CommitUpgradeDirection {
+                    is_upgrade: f.is_upgrade(),
+                    is_downgrade: f.is_downgrade(),
+                    relation: "diverged",
+                };
+            }
+            crate::release::CommitRelation::Unknown => {
+                // Fall through to push-time comparison.
+            }
+        }
+    }
+
+    match (
+        target_pushed_at.and_then(parse_push_time),
+        current_pushed_at.and_then(parse_push_time),
+    ) {
+        (Some(target_t), Some(current_t)) if target_t > current_t => CommitUpgradeDirection {
+            is_upgrade: true,
+            is_downgrade: false,
+            // Time-based "newer build"; not commit-count ahead.
+            relation: "ahead",
+        },
+        (Some(target_t), Some(current_t)) if target_t < current_t => CommitUpgradeDirection {
+            is_upgrade: false,
+            is_downgrade: true,
+            relation: "behind",
+        },
+        (Some(_), Some(_)) => CommitUpgradeDirection::none_actionable(),
+        // Missing one or both timestamps, different tag: tip is list-head (newest-first)
+        // on Docker Hub discovery — treat as upgrade with relation=ahead so auto_install
+        // and UI are not blocked by relation=unknown.
+        _ if current_tag.is_some() => CommitUpgradeDirection {
+            is_upgrade: true,
+            is_downgrade: false,
+            relation: "ahead",
+        },
+        // No current version recorded — first run / bootstrap.
+        _ => CommitUpgradeDirection {
+            is_upgrade: true,
+            is_downgrade: false,
+            relation: "ahead",
+        },
+    }
+}
+
+/// Look up `pushed_at` for a deploy tag in a Docker Hub common-build list.
+pub fn pushed_at_for_tag<'a>(builds: &'a [DockerBuild], tag: &str) -> Option<&'a str> {
+    let tag = tag.trim();
+    builds
+        .iter()
+        .find(|b| b.tag == tag || b.short_sha == tag || b.tag == format!("dev-{tag}"))
+        .and_then(|b| b.pushed_at.as_deref())
 }
 
 #[cfg(test)]
@@ -299,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_only_common_immutable_dev_builds_newest_first() {
+    fn keeps_only_common_immutable_dev_and_release_builds_newest_first() {
         let backend = DockerHubRepository::parse("example/backend").unwrap();
         let frontend = DockerHubRepository::parse("example/frontend").unwrap();
         let builds = common_builds(
@@ -308,19 +462,116 @@ mod tests {
                 tag("preview", "2026-07-15T10:00:00Z", "sha256:branch"),
                 tag("dev-aaaaaaa", "2026-07-15T09:00:00Z", "sha256:ba"),
                 tag("dev-bbbbbbb", "2026-07-15T11:00:00Z", "sha256:bb"),
+                tag("v0.2.6", "2026-07-16T08:00:00Z", "sha256:r1"),
+                tag("v0.2.5", "2026-07-14T08:00:00Z", "sha256:r0"),
+                tag("stable", "2026-07-16T09:00:00Z", "sha256:mutable"),
             ],
             &frontend,
             vec![
                 tag("dev-aaaaaaa", "2026-07-15T09:30:00Z", "sha256:fa"),
                 tag("dev-bbbbbbb", "2026-07-15T10:30:00Z", "sha256:fb"),
                 tag("dev-ccccccc", "2026-07-15T12:00:00Z", "sha256:fc"),
+                tag("v0.2.6", "2026-07-16T07:30:00Z", "sha256:fr1"),
+                // v0.2.5 missing on frontend → excluded
             ],
             10,
         );
 
-        assert_eq!(builds.len(), 2);
-        assert_eq!(builds[0].tag, "dev-bbbbbbb");
-        assert_eq!(builds[0].pushed_at.as_deref(), Some("2026-07-15T10:30:00Z"));
-        assert_eq!(builds[1].tag, "dev-aaaaaaa");
+        assert_eq!(builds.len(), 3);
+        assert_eq!(builds[0].tag, "v0.2.6");
+        assert_eq!(builds[0].kind, "release");
+        assert_eq!(builds[0].pushed_at.as_deref(), Some("2026-07-16T07:30:00Z"));
+        assert_eq!(builds[1].tag, "dev-bbbbbbb");
+        assert_eq!(builds[1].kind, "commit");
+        assert_eq!(builds[1].pushed_at.as_deref(), Some("2026-07-15T10:30:00Z"));
+        assert_eq!(builds[2].tag, "dev-aaaaaaa");
+        assert_eq!(builds[2].kind, "commit");
+    }
+
+    #[test]
+    fn commit_upgrade_uses_push_time_when_ancestry_unknown() {
+        let dir = commit_upgrade_direction(
+            "dev-bbbbbbb",
+            Some("dev-aaaaaaa"),
+            Some("2026-07-16T12:00:00Z"),
+            Some("2026-07-15T12:00:00Z"),
+            None,
+        );
+        assert!(dir.is_upgrade);
+        assert!(!dir.is_downgrade);
+        assert_eq!(dir.relation, "ahead");
+
+        let older = commit_upgrade_direction(
+            "dev-aaaaaaa",
+            Some("dev-bbbbbbb"),
+            Some("2026-07-15T12:00:00Z"),
+            Some("2026-07-16T12:00:00Z"),
+            None,
+        );
+        assert!(!older.is_upgrade);
+        assert!(older.is_downgrade);
+        assert_eq!(older.relation, "behind");
+    }
+
+    #[test]
+    fn commit_upgrade_same_tag_is_identical() {
+        let dir = commit_upgrade_direction(
+            "dev-aaaaaaa",
+            Some("dev-aaaaaaa"),
+            Some("2026-07-16T12:00:00Z"),
+            Some("2026-07-15T12:00:00Z"),
+            None,
+        );
+        assert!(!dir.is_upgrade);
+        assert!(!dir.is_downgrade);
+        assert_eq!(dir.relation, "identical");
+    }
+
+    #[test]
+    fn commit_upgrade_missing_times_with_different_tag_is_upgrade() {
+        let dir = commit_upgrade_direction("dev-bbbbbbb", Some("dev-aaaaaaa"), None, None, None);
+        assert!(dir.is_upgrade);
+        assert!(!dir.is_downgrade);
+        // Prefer ahead (list-head / tip) over unknown so auto_install is not gated.
+        assert_eq!(dir.relation, "ahead");
+    }
+
+    #[test]
+    fn commit_upgrade_target_time_only_is_upgrade_ahead() {
+        // Current tag not found on Hub (no pushed_at); tip has a push time.
+        let dir = commit_upgrade_direction(
+            "dev-bbbbbbb",
+            Some("dev-aaaaaaa"),
+            Some("2026-07-16T12:00:00Z"),
+            None,
+            None,
+        );
+        assert!(dir.is_upgrade);
+        assert!(!dir.is_downgrade);
+        assert_eq!(dir.relation, "ahead");
+    }
+
+    #[test]
+    fn commit_upgrade_clear_ancestry_wins_over_times() {
+        let freshness = Freshness {
+            relation: crate::release::CommitRelation::Behind,
+            ahead_by: 0,
+            behind_by: 3,
+            current_sha: None,
+            target_sha: None,
+            current_ref: None,
+            target_ref: "preview".into(),
+        };
+        // Times would say upgrade, but clear ancestry says behind.
+        let dir = commit_upgrade_direction(
+            "dev-bbbbbbb",
+            Some("dev-aaaaaaa"),
+            Some("2026-07-16T12:00:00Z"),
+            Some("2026-07-15T12:00:00Z"),
+            Some(&freshness),
+        );
+        assert!(!dir.is_upgrade);
+        assert!(dir.is_downgrade);
+        assert_eq!(dir.relation, "behind");
     }
 }
