@@ -233,6 +233,119 @@ impl<'a> SnapshotManager<'a> {
         self.state.write_snapshots(&sf)?;
         Ok(removed)
     }
+
+    /// Delete a single snapshot by id.
+    ///
+    /// - Not in `snapshots.json` → `NotFound` (orphan dir under `state/snapshots/<id>` is
+    ///   still cleaned if present).
+    /// - In use by the current job, or required for rescue / needs_manual recovery →
+    ///   `Precondition`.
+    /// - `keep=true` → `Precondition` (no force path; operators must clear keep first).
+    /// - Last remaining snapshot in metadata → `Precondition`.
+    /// - Otherwise removes `state/snapshots/<id>` and updates `snapshots.json` atomically,
+    ///   then appends history + audit lines (timestamped; `actor` when provided).
+    pub fn delete(&self, id: &str, actor: Option<&str>) -> Result<()> {
+        if id.is_empty()
+            || !id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        {
+            return Err(UpdaterError::InvalidInput(format!(
+                "invalid snapshot id: {id:?}"
+            )));
+        }
+
+        let path = self.state.snapshots_dir().join(id);
+        let mut sf = self.state.read_snapshots()?;
+        let meta = sf.items.iter().find(|m| m.id == id).cloned();
+
+        let Some(meta) = meta else {
+            // Best-effort orphan cleanup when metadata already dropped the entry.
+            if path.exists() {
+                let _ = std::fs::remove_dir_all(&path);
+                info!(snapshot = %id, "removed orphan snapshot dir (not in snapshots.json)");
+            }
+            return Err(UpdaterError::NotFound(format!(
+                "snapshot {id} not found in snapshots.json"
+            )));
+        };
+
+        if let Some(reason) = self.in_use_reason(id)? {
+            return Err(UpdaterError::Precondition(reason));
+        }
+
+        if meta.keep {
+            return Err(UpdaterError::Precondition(format!(
+                "snapshot {id} is marked keep=true and cannot be deleted"
+            )));
+        }
+
+        if sf.items.len() <= 1 {
+            return Err(UpdaterError::Precondition(format!(
+                "refusing to delete the last remaining snapshot ({id})"
+            )));
+        }
+
+        if path.exists() {
+            std::fs::remove_dir_all(&path).map_err(|e| {
+                UpdaterError::Internal(anyhow::anyhow!(
+                    "remove snapshot dir {}: {e}",
+                    path.display()
+                ))
+            })?;
+        }
+
+        sf.items.retain(|m| m.id != id);
+        self.state.write_snapshots(&sf)?;
+
+        // history/audit prepend RFC3339 timestamps; include actor when known.
+        let line = match actor.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(a) => format!("audit: snapshot_delete id={id} actor={a}"),
+            None => format!("audit: snapshot_delete id={id}"),
+        };
+        self.state.append_history(&line)?;
+        let _ = self.state.append_audit(&line);
+        info!(snapshot = %id, actor = actor.unwrap_or("-"), "snapshot deleted");
+        Ok(())
+    }
+
+    /// Returns a human-readable refusal reason when `id` must not be deleted.
+    fn in_use_reason(&self, id: &str) -> Result<Option<String>> {
+        // Current in-flight job (job.current).
+        if let Some(job_id) = self.state.read_current_job()? {
+            if let Ok(job) = self.state.read_job(&job_id) {
+                if job.snapshot_id.as_deref() == Some(id) {
+                    return Ok(Some(format!(
+                        "snapshot {id} is in use by current job {job_id}"
+                    )));
+                }
+            }
+        }
+
+        // Rescue / needs_manual: protect the snapshot the operator would roll back to.
+        let maint = self.state.read_maintenance()?;
+        use crate::state::Phase;
+        let stuck = matches!(maint.phase, Phase::NeedsManual)
+            || (maint.active && (maint.phase.is_post_swap() || maint.phase.is_rollback()));
+        if stuck {
+            let job_id = maint
+                .job_id
+                .clone()
+                .or_else(|| self.state.read_current_job().ok().flatten());
+            if let Some(job_id) = job_id {
+                if let Ok(job) = self.state.read_job(&job_id) {
+                    if job.snapshot_id.as_deref() == Some(id) {
+                        return Ok(Some(format!(
+                            "snapshot {id} is required for rescue (job {job_id}, phase {:?})",
+                            maint.phase
+                        )));
+                    }
+                }
+            }
+        }
+
+        Ok(None)
+    }
 }
 
 fn is_busy(e: &std::io::Error) -> bool {
@@ -432,5 +545,144 @@ mod tests {
         assert!(is_busy(&e2));
         let e3 = std::io::Error::new(ErrorKind::NotFound, "no such file");
         assert!(!is_busy(&e3));
+    }
+
+    fn plant_snapshot_meta(state: &StateDir, id: &str) {
+        plant_snapshot_meta_keep(state, id, false);
+    }
+
+    fn plant_snapshot_meta_keep(state: &StateDir, id: &str, keep: bool) {
+        std::fs::create_dir_all(state.snapshots_dir().join(id)).unwrap();
+        std::fs::write(state.snapshots_dir().join(id).join("marker"), b"x").unwrap();
+        let mut sf = state.read_snapshots().unwrap();
+        sf.items.push(SnapshotMeta {
+            id: id.to_string(),
+            created_at: Utc::now(),
+            source_version: None,
+            size_bytes: 1,
+            file_count: 1,
+            keep,
+            sample_sha256: None,
+        });
+        state.write_snapshots(&sf).unwrap();
+    }
+
+    #[test]
+    fn delete_removes_meta_and_dir() {
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        // Need ≥2 items so last-snapshot protection does not fire.
+        plant_snapshot_meta(&state, "snap-keep-other");
+        plant_snapshot_meta(&state, "snap-del");
+
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: dir.path().join("pgdata"),
+        };
+        mgr.delete("snap-del", Some("admin:1:test")).unwrap();
+
+        assert!(!state.snapshots_dir().join("snap-del").exists());
+        let remaining = state.read_snapshots().unwrap().items;
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, "snap-keep-other");
+    }
+
+    #[test]
+    fn delete_missing_returns_not_found() {
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: dir.path().join("pgdata"),
+        };
+        let err = mgr.delete("no-such", None).unwrap_err();
+        assert!(matches!(err, UpdaterError::NotFound(_)));
+    }
+
+    #[test]
+    fn delete_missing_cleans_orphan_dir() {
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        let orphan = state.snapshots_dir().join("orphan-only");
+        std::fs::create_dir_all(&orphan).unwrap();
+        std::fs::write(orphan.join("x"), b"y").unwrap();
+
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: dir.path().join("pgdata"),
+        };
+        let err = mgr.delete("orphan-only", None).unwrap_err();
+        assert!(matches!(err, UpdaterError::NotFound(_)));
+        assert!(!orphan.exists());
+    }
+
+    #[test]
+    fn delete_refuses_in_use_by_current_job() {
+        use crate::state::{Job, JobKind, JobStatus};
+
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        plant_snapshot_meta(&state, "snap-other");
+        plant_snapshot_meta(&state, "snap-busy");
+
+        let job = Job {
+            id: "job-1".into(),
+            kind: JobKind::Update,
+            created_at: Utc::now(),
+            finished_at: None,
+            from_version: None,
+            to_version: None,
+            snapshot_id: Some("snap-busy".into()),
+            status: JobStatus::Running,
+            steps: vec![],
+            idempotency_key: None,
+        };
+        state.write_job(&job).unwrap();
+        state.set_current_job(Some("job-1")).unwrap();
+
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: dir.path().join("pgdata"),
+        };
+        let err = mgr.delete("snap-busy", None).unwrap_err();
+        assert!(matches!(err, UpdaterError::Precondition(_)), "{err:?}");
+        assert!(err.to_string().contains("in use"));
+        assert!(state.snapshots_dir().join("snap-busy").exists());
+        assert_eq!(state.read_snapshots().unwrap().items.len(), 2);
+    }
+
+    #[test]
+    fn delete_refuses_last_remaining_snapshot() {
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        plant_snapshot_meta(&state, "snap-only");
+
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: dir.path().join("pgdata"),
+        };
+        let err = mgr.delete("snap-only", None).unwrap_err();
+        assert!(matches!(err, UpdaterError::Precondition(_)), "{err:?}");
+        assert!(err.to_string().contains("last remaining"));
+        assert_eq!(state.read_snapshots().unwrap().items.len(), 1);
+        assert!(state.snapshots_dir().join("snap-only").exists());
+    }
+
+    #[test]
+    fn delete_refuses_keep_flag() {
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        plant_snapshot_meta(&state, "snap-other");
+        plant_snapshot_meta_keep(&state, "snap-kept", true);
+
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: dir.path().join("pgdata"),
+        };
+        let err = mgr.delete("snap-kept", None).unwrap_err();
+        assert!(matches!(err, UpdaterError::Precondition(_)), "{err:?}");
+        assert!(err.to_string().contains("keep=true"));
+        assert!(state.snapshots_dir().join("snap-kept").exists());
+        assert_eq!(state.read_snapshots().unwrap().items.len(), 2);
     }
 }

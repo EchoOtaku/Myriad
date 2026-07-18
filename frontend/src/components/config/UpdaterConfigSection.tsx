@@ -621,6 +621,52 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     [api, refresh, tokenRequired, explain, u],
   )
 
+  const deleteSnapshot = useCallback(
+    async (snap: SnapshotMeta) => {
+      if (tokenRequired) {
+        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        return
+      }
+      const blockReason = snapshotDeleteBlockReason(snap, {
+        rescueSnapshotId: status?.rescue_snapshot_id,
+        totalSnapshots: snapshots.length,
+        u,
+      })
+      if (blockReason) {
+        setToast({ kind: 'error', text: blockReason })
+        return
+      }
+      if (
+        !confirm(
+          format(u.updaterDeleteSnapshotConfirm, {
+            version: snap.source_version ?? snap.id,
+          }),
+        )
+      ) {
+        return
+      }
+      setBusy(`delete-${snap.id}`)
+      try {
+        await api.deleteSnapshot(snap.id)
+        setToast({ kind: 'ok', text: u.updaterDeleteSnapshotDispatched })
+        await refresh()
+      } catch (e) {
+        setToast({ kind: 'error', text: explain(e) })
+      } finally {
+        setBusy(null)
+      }
+    },
+    [
+      api,
+      refresh,
+      tokenRequired,
+      explain,
+      u,
+      status?.rescue_snapshot_id,
+      snapshots.length,
+    ],
+  )
+
   const exitMaintenance = useCallback(async () => {
     if (tokenRequired) {
       setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
@@ -911,16 +957,35 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           <p className="updater-empty">{u.updaterNoSnapshots}</p>
         ) : (
           <div className="updater-snapshot-list">
-            {snapshots.map((s) => (
-              <SnapshotRow
-                key={s.id}
-                snapshot={s}
-                u={u}
-                busy={busy === `rollback-${s.id}`}
-                disabled={tokenRequired}
-                onRollback={() => rollbackTo(s)}
-              />
-            ))}
+            {snapshots.map((s) => {
+              const deleteReason = snapshotDeleteBlockReason(s, {
+                rescueSnapshotId: status?.rescue_snapshot_id,
+                totalSnapshots: snapshots.length,
+                u,
+              })
+              return (
+                <SnapshotRow
+                  key={s.id}
+                  snapshot={s}
+                  u={u}
+                  busy={
+                    busy === `rollback-${s.id}` || busy === `delete-${s.id}`
+                  }
+                  busyKind={
+                    busy === `delete-${s.id}`
+                      ? 'delete'
+                      : busy === `rollback-${s.id}`
+                        ? 'rollback'
+                        : null
+                  }
+                  disabled={tokenRequired}
+                  deleteDisabled={!!deleteReason}
+                  deleteReason={deleteReason}
+                  onRollback={() => rollbackTo(s)}
+                  onDelete={() => deleteSnapshot(s)}
+                />
+              )
+            })}
           </div>
         )}
       </SettingGroup>
@@ -1713,18 +1778,48 @@ function TargetPicker({
 
 // ===== 快照行 =====
 
+/** Why delete is blocked (scheme-2 policy). Null when delete is allowed. */
+function snapshotDeleteBlockReason(
+  snap: SnapshotMeta,
+  opts: {
+    rescueSnapshotId?: string | null
+    totalSnapshots: number
+    u: U
+  },
+): string | null {
+  if (opts.rescueSnapshotId === snap.id) {
+    return opts.u.updaterDeleteSnapshotInUse
+  }
+  if (snap.keep) {
+    return opts.u.updaterDeleteSnapshotKept
+  }
+  if (opts.totalSnapshots <= 1) {
+    return opts.u.updaterDeleteSnapshotLast
+  }
+  return null
+}
+
 function SnapshotRow({
   snapshot,
   u,
   busy,
+  busyKind,
   disabled,
+  deleteDisabled,
+  deleteReason,
   onRollback,
+  onDelete,
 }: {
   snapshot: SnapshotMeta
   u: U
   busy: boolean
+  busyKind: 'rollback' | 'delete' | null
   disabled: boolean
+  /** Policy block: last remaining, keep=true, or rescue-in-use. */
+  deleteDisabled: boolean
+  deleteReason: string | null
   onRollback: () => void
+  onDelete: () => void
 }) {
   return (
     <div className="updater-snapshot-item">
@@ -1735,20 +1830,41 @@ function SnapshotRow({
           ) : (
             <span className="muted">—</span>
           )}
+          {snapshot.keep && (
+            <span className="updater-snapshot-keep-badge">
+              {u.updaterDeleteSnapshotKeptBadge}
+            </span>
+          )}
         </div>
         <div className="updater-snapshot-info">
           {new Date(snapshot.created_at).toLocaleString()} ·{' '}
           {formatBytes(snapshot.size_bytes)}
         </div>
+        {deleteDisabled && deleteReason && (
+          <div className="updater-snapshot-delete-reason">{deleteReason}</div>
+        )}
       </div>
-      <button
-        type="button"
-        className="btn-base btn-secondary"
-        onClick={onRollback}
-        disabled={busy || disabled}
-      >
-        {busy ? u.updaterProcessing : u.updaterRollback}
-      </button>
+      <div className="updater-snapshot-actions">
+        <button
+          type="button"
+          className="btn-base btn-secondary"
+          onClick={onRollback}
+          disabled={busy || disabled}
+        >
+          {busyKind === 'rollback' ? u.updaterProcessing : u.updaterRollback}
+        </button>
+        <button
+          type="button"
+          className="btn-base btn-danger"
+          onClick={onDelete}
+          disabled={busy || disabled || deleteDisabled}
+          title={deleteReason ?? u.updaterDeleteSnapshot}
+        >
+          {busyKind === 'delete'
+            ? u.updaterProcessing
+            : u.updaterDeleteSnapshot}
+        </button>
+      </div>
     </div>
   )
 }
