@@ -58,6 +58,10 @@ type PanelView = 'chat' | 'sessions' | 'manage' | 'debug'
 
 const ARAEL_PREFIX_RE = /^Arael\s*/
 
+/** 连点打开 debug 面板：窗口内点击次数 / 时间窗 */
+const DEBUG_MULTI_CLICK_COUNT = 5
+const DEBUG_MULTI_CLICK_WINDOW_MS = 2000
+
 // 智能提示词生成
 function getSmartGreeting(
   pathname: string,
@@ -190,7 +194,32 @@ export const AraelPanel: React.FC = () => {
     },
     [],
   )
-  const [lastError, setLastError] = useState<string | null>(null)
+  // 错误状态仍写入（供 debug 日志链路使用）；入口改为 logo 连点，不再常驻 badge
+  const [, setLastError] = useState<string | null>(null)
+
+  // 连点触发 debug：空态 hero logo / 非空态左上标题（5 次 / 2s）
+  const debugMultiClickRef = useRef<{ count: number; firstAt: number }>({
+    count: 0,
+    firstAt: 0,
+  })
+  const handleDebugMultiClick = useCallback(() => {
+    const now = Date.now()
+    const state = debugMultiClickRef.current
+    if (
+      state.count === 0 ||
+      now - state.firstAt > DEBUG_MULTI_CLICK_WINDOW_MS
+    ) {
+      state.count = 1
+      state.firstAt = now
+      return
+    }
+    state.count += 1
+    if (state.count >= DEBUG_MULTI_CLICK_COUNT) {
+      state.count = 0
+      state.firstAt = 0
+      setPanelView((prev) => (prev === 'debug' ? 'chat' : 'debug'))
+    }
+  }, [])
 
   // 最近一次执行（用于调试面板）
   const latestExecution = useMemo(() => {
@@ -1320,7 +1349,11 @@ export const AraelPanel: React.FC = () => {
               <div className="arael-tasks-inner">
                 {/* 标题栏 */}
                 <div className="arael-tasks-header">
-                  <span className="arael-tasks-title">
+                  {/* 非空态：连点左上标题切换 debug；空态主入口为 empty hero */}
+                  <span
+                    className="arael-tasks-title"
+                    onClick={handleDebugMultiClick}
+                  >
                     {hasActiveExecution ? (
                       <span className="arael-tasks-title-rest">
                         {sessionTitle || t.arael.processing}
@@ -1402,20 +1435,6 @@ export const AraelPanel: React.FC = () => {
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                       </svg>
                     </button>
-                    {/* Debug */}
-                    <button
-                      className={`arael-debug-badge${panelView === 'debug' ? ' arael-debug-active' : ''}${lastError ? ' arael-debug-error' : ''}`}
-                      onClick={() =>
-                        setPanelView(panelView === 'debug' ? 'chat' : 'debug')
-                      }
-                      title={t.arael.debugPanel}
-                    >
-                      {sessionId ? sessionId.slice(0, 4) : '--'}
-                      {' | '}
-                      {messages.length}
-                      msg
-                      {isLoading ? ' | ...' : ''}
-                    </button>
                   </div>
                 </div>
 
@@ -1442,9 +1461,14 @@ export const AraelPanel: React.FC = () => {
                       <div className="arael-empty-state">
                         {/* Hero */}
                         <div className="arael-empty-hero">
-                          <span className="arael-empty-hero-name qwitcher-grypen">
+                          <button
+                            type="button"
+                            className="arael-empty-hero-name qwitcher-grypen"
+                            onClick={handleDebugMultiClick}
+                            aria-label="Arael"
+                          >
                             Arael
-                          </span>
+                          </button>
                           <span className="arael-empty-hero-sub">
                             {t.arael.heroSub}
                           </span>
