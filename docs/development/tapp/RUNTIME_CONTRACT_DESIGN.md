@@ -379,7 +379,7 @@ Manifest 只声明能力与预算层级，不暴露供应商参数：
 - AI task 的并发/保留计数与 idempotency claim 在 subject advisory-lock 事务内完成；只有注册
   成功的请求才保留 quota 预留并启动 provider，注册竞态或故障完整回滚 calls/tokens。
 - Scheduler `ai.generate` 和 Declared API AI builtin 是同步等待结果的宿主 adapter，但内部必须
-  注册同一种 AI Task；注册与延迟执行都重验 Runtime Grant、安装授权及 Manifest V2 operation，
+  注册同一种 AI Task；注册与延迟执行都重验 Runtime Grant、安装授权及 Manifest AI operation，
   不允许形成第二套模型客户端或配额旁路。
 - `temperature/maxTokens` 不由 Tapp 任意指定。若产品需要可调，只提供服务器定义的
   `quality = fast | balanced | high`，并映射到受限参数。

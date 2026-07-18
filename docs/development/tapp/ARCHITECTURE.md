@@ -51,8 +51,15 @@ flowchart LR
 | 沙箱宿主   | `TappPageSandbox.tsx`、`TappWidgetSandbox.tsx`             | 创建 iframe、生成 HTML、注册对应 handler、清理实例 |
 | 后台宿主   | `frontend/src/tapp/components/TappBackgroundRunner.tsx`    | 为需要常驻的运行中 Tapp 拉起 headless core         |
 | SDK/Bridge | `runtime/sandbox/sdkGenerator.ts`、`runtime/TappBridge.ts` | 生成沙箱 SDK、验证消息、权限预检、分发 handler     |
-| 前端 API facade | `frontend/src/tapp/services/TappApiService.ts`        | 旧入口兼容重导出与默认对象装配                      |
-| 安装与商店 | `backend/src/api/tapp_store.rs`                            | 路由装配、安装、更新与卸载编排                      |
+| 前端 API facade | `frontend/src/tapp/services/TappApiService.ts`        | 领域 API 聚合导出与默认对象装配                    |
+| Tapp 路由装配 | `backend/src/api/tapp_store.rs`                         | 路由组合、子模块声明与公共重导出                    |
+| 访问上下文 | `backend/src/api/tapp_store/access.rs`                    | 可见安装选择、所有权、权限过滤与存储访问身份        |
+| API 响应类型 | `backend/src/api/tapp_store/types.rs`                   | 通用响应 envelope、列表项与详情 DTO                 |
+| 运行生命周期 | `backend/src/api/tapp_store/lifecycle.rs`               | 启停状态、Runtime Grant 吊销与最近使用记录          |
+| 安装与更新 | `backend/src/api/tapp_store/installation.rs`               | 直接/文件安装、staging 事务与更新回滚               |
+| 预处理安装包 | `backend/src/api/tapp_store/prepared_package.rs`          | 统一结构化/归档包校验、资源落盘与安装代际写入       |
+| 商店包获取 | `backend/src/api/tapp_store/store_package.rs`               | 可信出站访问、索引匹配、分类校验与远程资源下载      |
+| 卸载事务   | `backend/src/api/tapp_store/uninstall.rs`                  | private-first 鉴权、事务清理、目录隔离与失败恢复    |
 | 运行时 API | `backend/src/api/tapp_runtime/`                            | AI、数据、上下文、媒体、事件、报告、声明 API 等    |
 | 调度入口   | `backend/src/api/tapp_scheduler.rs`                        | HTTP/WS 协议、身份/所有权/权限检查                 |
 | 调度引擎   | `backend/src/services/tapp_scheduler.rs`                   | 任务持久化、触发、重试、前端回执、后端动作         |
@@ -60,21 +67,26 @@ flowchart LR
 | Tapp 目录查询 | `backend/src/api/tapp_store/catalog.rs`                  | 角色权限过滤、private-first 列表与详情查询          |
 | Manifest 校验 | `backend/src/api/tapp_store/validation.rs`              | 路径、权限、资源配额及声明能力的纯校验边界          |
 | 包文件生命周期 | `backend/src/api/tapp_store/package_files.rs`           | staging/activate/recovery、资源读写与归档安全边界   |
+| 包读取 API | `backend/src/api/tapp_store/package_api.rs`                 | 代码、资源、静态资产可见性与 `.tapp` 导出           |
 | 商店源管理 | `backend/src/api/tapp_store/store_sources.rs`               | 商店源查询及管理员 CRUD                             |
 | Tapp 存储 | `backend/src/api/tapp_store/storage.rs`                      | 设置鉴权、私有命名空间、事务配额与存储路由          |
 | Widget 注册表 | `backend/src/api/tapp_store/widgets.rs`                  | Manifest 同步、所有权可见性与动态注册事务           |
-| 旧客户端兼容 | `backend/src/api/tapp_store/compatibility.rs`             | 分离 CSS 的 staged 更新兼容事务                     |
 | 前端传输层 | `frontend/src/tapp/services/TappHttpClient.ts`              | CSRF、Runtime Grant 恢复、响应 envelope 与 SSE 解析 |
 | 前端运行时 API | `TappContextApi.ts` / `TappHostIntegrationApi.ts` / `TappInteractionApi.ts` | Context/Declared API、报告媒体、组件与事件交互 |
 | 前端数据 API | `TappStorageApi.ts` / `TappPlatformApi.ts` / `TappReportCatalogApi.ts` | 私有存储、平台数据与只读报告目录 |
 | 前端 Widget API | `TappWidgetApi.ts`                                     | Widget 注册、查询与注销                             |
-| 前端包资源 API | `TappPackageResourceApi.ts`                            | 已安装代码、资源、静态资产、兼容 CSS 与导出         |
+| 前端包资源 API | `TappPackageResourceApi.ts`                            | 已安装代码、资源、静态资产与导出                    |
 | 前端治理 API | `TappRuntimeAccessApi.ts` / `TappAiApi.ts`             | Runtime Grant、数据交换与服务端治理 AI 任务        |
-| 前端生命周期 API | `TappLifecycleApi.ts`                                | 列表、安装、更新、启动、停止、卸载与临时清理       |
+| 前端安装 API | `TappInstallationApi.ts`                                    | 安装、更新、卸载与临时安装清理                      |
+| 前端生命周期 API | `TappLifecycleApi.ts`                                | 列表、详情、最近使用、启动与停止                    |
 | 声明 API   | `backend/src/services/tapp_api_service.rs`                 | 模板注入、出站请求、builtin、上下文隔离缓存        |
 
 `frontend/src/tapp/types/index.ts` 是前端运行时类型入口。运行时类型不得依赖
 `examples/`；示例目录只是内置开发/演示应用的源代码。
+
+内部模块、类型和职责名称不使用 `v2`、`v3` 等代际后缀；应按稳定职责命名。只有已经发布的
+HTTP 路径、Bridge method、持久化 key/channel 或 Manifest `protocolVersion` 可以保留数字，
+因为它们属于需要兼容的 wire/storage 契约。
 
 ## Manifest、安装包与安装态
 
@@ -222,7 +234,7 @@ Widget/平台内存注册和安装资源；是否保留用户数据由 `keep_dat
 
 Bridge 只接受 iframe 发往宿主的 `request`/`event`，宿主响应不走反向待办表。请求中的
 `action` 必须与 `payload.api + payload.method` 完全一致，method 允许
-`agent.v2.create`、`widget.instanceSettings.update` 这类命名空间；请求 ID 在单个 iframe
+`widget.instanceSettings.update` 这类多级命名空间；请求 ID 在单个 iframe
 会话内有界防重放。Full/Widget SDK 都把响应来源绑定到创建自己的父窗口，无法结构化克隆的
 参数会立即拒绝，不能挂到 30 秒超时。
 
@@ -455,7 +467,7 @@ calls、tokens 与 cooldown 以 `(subject, owner, tapp, UTC day)` 持久化，�
 相同身份与幂等键使用稳定 task ID，只有注册赢家启动模型调用，注册竞态或 registry 故障会完整
 回滚 calls 与 token 预留。SDK 只公开 Task API，旧的 generate/analyze/chat/image 与配额
 适配入口已删除。保留的 Declared API `ai:generate` / `ai:chat` builtin 与 Scheduler
-`ai.generate` 只是同步宿主 adapter：它们必须具备匹配的 Manifest AI V2 operation，并在注册及
+`ai.generate` 只是同步宿主 adapter：它们必须具备 `protocolVersion: 2` 的匹配 Manifest AI operation，并在注册及
 执行时重验 Runtime Grant、安装授权和当前角色；实际调用仍注册为统一 AI Task，不能绕过共享
 并发、速率、calls、tokens 或 cooldown。
 

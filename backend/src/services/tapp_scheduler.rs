@@ -152,7 +152,7 @@ pub fn backend_action_permissions(
 
 /// Validate delayed backend actions against the installed Manifest contract.
 /// Permissions alone are insufficient: AI execution must also be declared in
-/// manifest.ai so every entry path uses the same V2 operation/model boundary.
+/// manifest.ai so every entry path uses the same declared operation/model boundary.
 pub fn validate_backend_action_declarations(
     manifest: &serde_json::Value,
     actions: &Option<serde_json::Value>,
@@ -184,7 +184,7 @@ pub fn validate_backend_action_declarations(
             .contains(&TappAiOutputFormat::Text)
     {
         return Err(
-            "ai.generate backend action requires AI V2 generate operation and text output"
+            "ai.generate backend action requires protocolVersion 2 with generate and text output"
                 .to_string(),
         );
     }
@@ -2226,7 +2226,7 @@ mod tests {
     }
 
     #[test]
-    fn scheduled_ai_requires_matching_manifest_v2_declaration() {
+    fn scheduled_ai_requires_matching_manifest_declaration() {
         let actions = normalize_backend_actions(Some(json!([{
             "type": "ai.generate",
             "prompt": "Summarize {{input}}"

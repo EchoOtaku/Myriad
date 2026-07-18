@@ -841,7 +841,53 @@ export const AraelPanel: React.FC = () => {
         return
       }
 
-      if (isLoading) return
+      if (isLoading) {
+        const activeTaskMessage = [...messages]
+          .reverse()
+          .find(
+            (message) =>
+              message.taskExecution?.status === 'processing' &&
+              !!message.taskExecution.taskId &&
+              !message.taskExecution.taskId.startsWith('confirmation:'),
+          )
+        if (!activeTaskMessage?.taskExecution?.taskId) return
+
+        const userMessage: ChatMessage = {
+          id: `msg_user_steer_${Date.now()}`,
+          sessionId: sessionId || '',
+          role: 'user',
+          content: messageText,
+          createdAt: new Date(),
+        }
+        setMessages((prev) => [...prev, userMessage])
+        setInput('')
+        try {
+          const result = await agentService.steerSession(
+            messageText,
+            activeTaskMessage.taskExecution.taskId,
+          )
+          updateMessageExecution(activeTaskMessage.id, {
+            statusMessage: result.message,
+          })
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : t.arael.unknownError
+          setLastError(errorMessage)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg_assistant_steer_error_${Date.now()}`,
+              sessionId: sessionId || '',
+              role: 'assistant',
+              content: format(t.arael.errorWithDetail, {
+                error: errorMessage,
+              }),
+              createdAt: new Date(),
+            },
+          ])
+        }
+        return
+      }
 
       // 切回对话视图
       setPanelView('chat')
@@ -951,6 +997,7 @@ export const AraelPanel: React.FC = () => {
     [
       input,
       isLoading,
+      messages,
       sessionId,
       location.pathname,
       pageContentContext,
@@ -970,13 +1017,40 @@ export const AraelPanel: React.FC = () => {
   const handleAgentResponse = useCallback(
     async (messageId: string, response: AgentResponse) => {
       const taskData = response.task as Record<string, unknown> | undefined
-      const pendingQuestion = taskData?.pendingQuestion as
+      let pendingQuestion = taskData?.pendingQuestion as
         PendingQuestion | undefined
+      if (
+        response.responseType === 'confirmation_required' &&
+        response.confirmation
+      ) {
+        const confirmation = response.confirmation
+        const details = confirmation.pendingSteps
+          .map((step) => {
+            const impact =
+              step.impact.length > 0 ? `\n${step.impact.join('\n')}` : ''
+            return `${step.capabilityName}: ${step.message}${impact}`
+          })
+          .join('\n\n')
+        pendingQuestion = {
+          questionId: `confirmation:${confirmation.confirmationId}`,
+          confirmationId: confirmation.confirmationId,
+          questionType: 'confirmation',
+          question: response.message,
+          context: details || undefined,
+          options: [
+            { value: 'confirm', label: t.common.confirm },
+            { value: 'cancel', label: t.common.cancel },
+          ],
+          required: true,
+        }
+      }
       const taskId = taskData?.taskId as string | undefined
       const taskStatus = taskData?.status as string | undefined
-      const responseKey = taskId
-        ? `${taskId}:${taskStatus ?? response.responseType}:${pendingQuestion?.questionId ?? ''}`
-        : null
+      const responseKey = response.confirmation?.confirmationId
+        ? `confirmation:${response.confirmation.confirmationId}`
+        : taskId
+          ? `${taskId}:${taskStatus ?? response.responseType}:${pendingQuestion?.questionId ?? ''}`
+          : null
       if (responseKey) {
         if (handledResponseKeysRef.current.has(responseKey)) return
         handledResponseKeysRef.current.add(responseKey)
@@ -989,7 +1063,11 @@ export const AraelPanel: React.FC = () => {
         })
         updateMessageExecution(messageId, {
           status: 'waiting',
-          taskId: (taskData?.taskId as string) || '',
+          taskId:
+            (taskData?.taskId as string) ||
+            (pendingQuestion.confirmationId
+              ? `confirmation:${pendingQuestion.confirmationId}`
+              : ''),
           progress: 100,
         })
         return
@@ -1157,9 +1235,9 @@ export const AraelPanel: React.FC = () => {
         status:
           isSuccess && !hasFailedSteps
             ? 'completed'
-            : hasFailedSteps
+            : response.success === false || response.responseType === 'error'
               ? 'error'
-              : response.task?.status === 'failed'
+              : hasFailedSteps || response.task?.status === 'failed'
                 ? 'error'
                 : 'completed',
         progress: 100,
@@ -1276,13 +1354,19 @@ export const AraelPanel: React.FC = () => {
       setIsLoading(true)
 
       try {
-        const progressHandler = createProgressHandler(messageId)
-        const response = await agentService.answerQuestionWithProgress(
-          msg.taskExecution.taskId,
-          msg.pendingQuestion.questionId,
-          answer,
-          progressHandler,
-        )
+        const response = msg.pendingQuestion.confirmationId
+          ? await agentService.confirmOperation(
+              msg.pendingQuestion.confirmationId,
+              answer === 'confirm',
+              undefined,
+              createProgressHandler(messageId),
+            )
+          : await agentService.answerQuestionWithProgress(
+              msg.taskExecution.taskId,
+              msg.pendingQuestion.questionId,
+              answer,
+              createProgressHandler(messageId),
+            )
         handleAgentResponseRef.current?.(messageId, response)
       } catch (error) {
         const errorMsg =
@@ -1550,6 +1634,16 @@ export const AraelPanel: React.FC = () => {
                 onSubmit={() => handleSend()}
                 onKeyDown={handleKeyDown}
                 isLoading={isLoading && !pendingAnswerMsg}
+                allowSubmitWhileLoading={
+                  isLoading &&
+                  !pendingAnswerMsg &&
+                  messages.some(
+                    (message) =>
+                      message.taskExecution?.status === 'processing' &&
+                      !!message.taskExecution.taskId &&
+                      !message.taskExecution.taskId.startsWith('confirmation:'),
+                  )
+                }
                 isRecording={isRecording}
                 isProcessingVoice={isProcessingVoice}
                 onToggleRecording={

@@ -7,12 +7,12 @@ use std::time::Duration;
 use chrono::Utc;
 use tracing::{error, info, warn};
 
-use crate::docker::ComposeRunner;
+use crate::docker::{ComposeRunner, ROLLBACK_IMAGE_TAG};
 use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::probe::compose::ComposeBinary;
 use crate::snapshot::SnapshotManager;
-use crate::state::{JobStatus, Phase};
+use crate::state::{JobStatus, Phase, UpdaterStateFile};
 use crate::version::{DeployTag, MyriadVersion, UpdateMode};
 use crate::worker::{machine::PhaseRecorder, preflight, rollback, Worker};
 
@@ -194,12 +194,23 @@ pub async fn run(
     };
     rec.finish_step_ok()?;
 
-    if let Err(e) = pin_rollback_images(&worker, &from_tag_backup).await {
-        tracing::warn!(err = %e, prev = %from_tag_backup, "pre-start rollback image pin failed");
-    } else if let Ok(v) = DeployTag::parse(&from_tag_backup) {
-        let mut st = worker.state().read_updater()?;
-        st.rollback_version = Some(v);
-        let _ = worker.state().write_updater(&st);
+    match pin_rollback_images(&worker, &from_tag_backup).await {
+        Ok(true) => {
+            if let Ok(v) = DeployTag::parse(&from_tag_backup) {
+                let mut st = worker.state().read_updater()?;
+                st.rollback_version = Some(v);
+                let _ = worker.state().write_updater(&st);
+            }
+        }
+        Ok(false) => {
+            tracing::warn!(
+                prev = %from_tag_backup,
+                "pre-start rollback image pin skipped because the complete image pair is not local"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(err = %e, prev = %from_tag_backup, "pre-start rollback image pin failed");
+        }
     }
 
     rec.enter(Phase::StartingNew, "updater.phase.starting_new")?;
@@ -279,20 +290,14 @@ pub async fn run(
 
     rec.enter(Phase::SwappingProxy, "updater.phase.swapping_proxy")?;
     let mut st = worker.state().read_updater()?;
-    st.current_version = Some(target.clone());
-    st.current_commit_sha = pre.target_commit_sha.clone();
-    st.updater_version = MyriadVersion::parse(crate::self_version()).ok();
+    record_successful_deploy(&mut st, target.clone(), pre.target_commit_sha.clone());
     worker.state().write_updater(&st)?;
     rec.finish_step_ok()?;
 
     rec.enter(Phase::Finalize, "updater.phase.finalize")?;
-    if let Err(e) = pin_rollback_images(&worker, target.as_str()).await {
-        tracing::warn!(err = %e, version = %target, "failed to pin rollback images");
-    } else {
-        let mut st = worker.state().read_updater()?;
-        st.rollback_version = Some(target.clone());
-        let _ = worker.state().write_updater(&st);
-    }
+    // Keep `*:myriad-rollback` and `rollback_version` on the build that was running
+    // before this update. The next update will advance the slot to this build before
+    // it starts its own target.
     rec.finish_step_ok()?;
 
     let _ = snap.prune(3);
@@ -312,8 +317,7 @@ pub async fn run(
     Ok(())
 }
 
-async fn pin_rollback_images(worker: &Arc<Worker>, previous_tag: &str) -> Result<()> {
-    const PIN_TAG: &str = "myriad-rollback";
+async fn pin_rollback_images(worker: &Arc<Worker>, previous_tag: &str) -> Result<bool> {
     let env = EnvFile::load(&worker.cli().env_file)?;
     let backend = env
         .get("BACKEND_IMAGE")
@@ -329,20 +333,38 @@ async fn pin_rollback_images(worker: &Arc<Worker>, previous_tag: &str) -> Result
         })?;
     let pairs = [("backend", backend), ("frontend", frontend)];
 
-    for (comp, repo) in pairs {
+    // Do not create a split rollback slot where backend and frontend point at
+    // different versions. Verify the complete pair before changing either alias.
+    for (comp, repo) in &pairs {
         let source = format!("{repo}:{previous_tag}");
         if !worker.docker().image_exists_local(&source).await {
             tracing::warn!(%comp, %source, "rollback pin skipped: image not local");
-            continue;
+            return Ok(false);
         }
+    }
+
+    for (comp, repo) in pairs {
+        let source = format!("{repo}:{previous_tag}");
         worker
             .docker()
-            .tag_image(&source, &repo, PIN_TAG)
+            .tag_image(&source, &repo, ROLLBACK_IMAGE_TAG)
             .await
             .map_err(|e| UpdaterError::Docker(format!("pin rollback {comp} ({source}): {e}")))?;
-        info!(%comp, %source, pin = %format!("{repo}:{PIN_TAG}"), "pinned rollback image");
+        info!(%comp, %source, pin = %format!("{repo}:{ROLLBACK_IMAGE_TAG}"), "pinned rollback image");
     }
-    Ok(())
+    Ok(true)
+}
+
+fn record_successful_deploy(
+    state: &mut UpdaterStateFile,
+    target: DeployTag,
+    target_commit_sha: Option<String>,
+) {
+    state.current_version = Some(target);
+    state.current_commit_sha = target_commit_sha;
+    state.updater_version = MyriadVersion::parse(crate::self_version()).ok();
+    // `rollback_version` deliberately remains unchanged: it identifies the
+    // previous known-good build pinned immediately before this deploy started.
 }
 
 async fn finish_with_rollback(
@@ -383,15 +405,10 @@ async fn finish_with_rollback(
                     );
                     rec.enter(Phase::SwappingProxy, "updater.phase.swapping_proxy")?;
                     let mut st = worker.state().read_updater()?;
-                    st.current_version = Some(target.clone());
-                    st.current_commit_sha = None;
-                    st.updater_version = MyriadVersion::parse(crate::self_version()).ok();
+                    record_successful_deploy(&mut st, target.clone(), None);
                     worker.state().write_updater(&st)?;
                     rec.finish_step_ok()?;
                     rec.enter(Phase::Finalize, "updater.phase.finalize")?;
-                    if let Err(e) = pin_rollback_images(worker, target.as_str()).await {
-                        warn!(err = %e, "pin rollback image after false-negative recovery failed");
-                    }
                     rec.finish_step_ok()?;
                     let _ = snap.prune(3);
                     rec.finalize(JobStatus::Succeeded)?;
@@ -1042,5 +1059,24 @@ mod health_match_tests {
         assert!(!backend_storage_writable(
             &serde_json::json!({ "storage_writable": "invalid-old-shape" })
         ));
+    }
+
+    #[test]
+    fn successful_deploy_preserves_previous_rollback_slot() {
+        let previous = DeployTag::parse("v0.2.2").unwrap();
+        let target = DeployTag::parse("v0.2.3").unwrap();
+        let mut state = UpdaterStateFile {
+            rollback_version: Some(previous.clone()),
+            ..UpdaterStateFile::default()
+        };
+
+        record_successful_deploy(&mut state, target.clone(), Some("0123456789abcdef".into()));
+
+        assert_eq!(state.current_version.as_ref(), Some(&target));
+        assert_eq!(state.rollback_version.as_ref(), Some(&previous));
+        assert_eq!(
+            state.current_commit_sha.as_deref(),
+            Some("0123456789abcdef")
+        );
     }
 }

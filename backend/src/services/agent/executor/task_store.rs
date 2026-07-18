@@ -27,6 +27,50 @@ static DB_FOR_TASKS: Lazy<Arc<RwLock<Option<DatabaseConnection>>>> =
 pub static CANCELLATION_TOKENS: Lazy<Arc<RwLock<HashSet<String>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashSet::new())));
 
+const STEERING_REGISTRY_NAMESPACE: &str = "agent_task_steering";
+
+pub async fn enqueue_steering(
+    db: &DatabaseConnection,
+    task_id: &str,
+    instruction: String,
+) -> Result<(), String> {
+    // One shared record per instruction prevents concurrent writers on
+    // different replicas from overwriting each other.
+    let record_id = format!("steer_{}", uuid::Uuid::new_v4().simple());
+    crate::api::tapp_runtime::shared_registry::put(
+        db,
+        STEERING_REGISTRY_NAMESPACE,
+        &record_id,
+        crate::api::tapp_runtime::shared_registry::RegistryIdentity {
+            subject_id: None,
+            owner_id: None,
+            tapp_id: None,
+            runtime_id: Some(task_id),
+        },
+        &instruction,
+        (Utc::now() + chrono::Duration::minutes(30)).timestamp(),
+    )
+    .await
+    .map_err(|error| format!("Failed to persist steering instruction: {error}"))?;
+    Ok(())
+}
+
+pub async fn take_steering(db: &DatabaseConnection, task_id: &str) -> Vec<String> {
+    match crate::api::tapp_runtime::shared_registry::take_all_for_runtime::<String>(
+        db,
+        STEERING_REGISTRY_NAMESPACE,
+        task_id,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(task_id = %task_id, %error, "[TaskStore] Failed to consume shared steering instruction");
+            Vec::new()
+        }
+    }
+}
+
 /// 检查任务是否被请求取消
 pub async fn is_cancelled(task_id: &str) -> bool {
     if CANCELLATION_TOKENS.read().await.contains(task_id) {

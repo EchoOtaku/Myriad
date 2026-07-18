@@ -120,7 +120,6 @@ interface TappResources {
 | POST   | `/api/tapps/{tappId}/start`          | 持久化 owner 自己的 running 状态        |
 | POST   | `/api/tapps/{tappId}/stop`           | 停止 owner 安装并撤销对应 Runtime Grant |
 | DELETE | `/api/tapps/{tappId}?keep_data=true` | 卸载；可选保留存储/设置                 |
-| POST   | `/api/tapps/{tappId}/separated-css`  | 写入生成后的 Widget/Page CSS            |
 
 直接安装请求：
 
@@ -383,7 +382,7 @@ Tapp 通知进入 Myriad 的统一通知流，不存在独立的 Tapp-only toast
 ## 调度器
 
 全部需要登录；注册还检查 `scheduler:register`、Tapp 所有权、scope 和 backendActions。
-AI backendAction 还要求 Manifest AI V2 `generate` 声明；每次执行前重验安装授权，并进入统一
+AI backendAction 还要求 Manifest AI `generate` 声明；每次执行前重验安装授权，并进入统一
 AI Task registry 与配额账本。
 `fetch` 使用公网 DNS 钉扎、禁止重定向和 2 MiB 流式响应上限。
 

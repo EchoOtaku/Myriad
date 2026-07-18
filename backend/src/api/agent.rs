@@ -68,7 +68,9 @@ async fn take_waiting_task(task_id: &str, user_id: i32) -> Option<WaitingTaskCtx
 fn agent_run_event_is_terminal(event: &AgentProgressEvent) -> bool {
     match event {
         AgentProgressEvent::TaskCompleted { response, .. } => {
-            response.pointer("/task/status").and_then(Value::as_str) != Some("waiting_for_input")
+            response.get("streamTerminal").and_then(Value::as_bool) == Some(true)
+                || response.pointer("/task/status").and_then(Value::as_str)
+                    != Some("waiting_for_input")
         }
         AgentProgressEvent::Error { .. } => true,
         _ => false,
@@ -654,6 +656,38 @@ mod api_contract_tests {
     }
 
     #[test]
+    fn agent_response_types_use_public_snake_case_contract() {
+        let cases = [
+            (AgentResponseType::Answer, "answer"),
+            (AgentResponseType::Clarification, "clarification"),
+            (
+                AgentResponseType::ConfirmationRequired,
+                "confirmation_required",
+            ),
+            (AgentResponseType::TaskCreated, "task_created"),
+            (AgentResponseType::TaskProgress, "task_progress"),
+            (AgentResponseType::TaskCompleted, "task_completed"),
+            (AgentResponseType::Error, "error"),
+        ];
+        for (response_type, expected) in cases {
+            assert_eq!(agent_response_type_name(&response_type), expected);
+        }
+    }
+
+    #[test]
+    fn confirmation_continuation_can_terminate_its_run_while_task_waits() {
+        let event = AgentProgressEvent::TaskCompleted {
+            task_id: "task_waiting".to_string(),
+            success: true,
+            response: Box::new(json!({
+                "streamTerminal": true,
+                "task": { "status": "waiting_for_input" }
+            })),
+        };
+        assert!(agent_run_event_is_terminal(&event));
+    }
+
+    #[test]
     fn frontend_action_payload_is_preserved_without_field_loss() {
         let action = json!({
             "type": "music_load_playlist",
@@ -785,7 +819,7 @@ impl From<AgentResponse> for ApiResponse {
 
         Self {
             success: !matches!(response.response_type, AgentResponseType::Error),
-            response_type: format!("{:?}", response.response_type).to_lowercase(),
+            response_type: agent_response_type_name(&response.response_type).to_string(),
             message: response.message,
             data: response.data,
             data_display,
@@ -795,6 +829,20 @@ impl From<AgentResponse> for ApiResponse {
             frontend_action,
             session_id: None,
         }
+    }
+}
+
+/// Keep the wire contract aligned with `AgentResponseType`'s serde representation.
+/// Debug formatting is not a stable API contract and collapses multi-word variants.
+fn agent_response_type_name(response_type: &AgentResponseType) -> &'static str {
+    match response_type {
+        AgentResponseType::Answer => "answer",
+        AgentResponseType::Clarification => "clarification",
+        AgentResponseType::ConfirmationRequired => "confirmation_required",
+        AgentResponseType::TaskCreated => "task_created",
+        AgentResponseType::TaskProgress => "task_progress",
+        AgentResponseType::TaskCompleted => "task_completed",
+        AgentResponseType::Error => "error",
     }
 }
 
@@ -896,6 +944,21 @@ async fn parse_user_id_with_agent_access(
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({ "error": msg, "code": "agent_access_denied" })),
+        ));
+    }
+    Ok(user_id)
+}
+
+/// Global Agent management surfaces are restricted to the current administrator.
+async fn require_current_admin(
+    claims: &Claims,
+    db: &DatabaseConnection,
+) -> Result<i32, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id(claims)?;
+    if !crate::services::agent::user_is_current_admin(db, user_id).await {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "Administrator access required", "code": "admin_required" })),
         ));
     }
     Ok(user_id)
@@ -1944,6 +2007,16 @@ pub async fn confirm_operation(
 ) -> Result<Json<ApiResponse>, (StatusCode, Json<Value>)> {
     let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
 
+    if req.confirmed {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Confirmed operations must use /api/agent/confirm/stream",
+                "code": "confirmation_stream_required"
+            })),
+        ));
+    }
+
     tracing::info!(
         confirmation_id = %req.confirmation_id,
         confirmed = req.confirmed,
@@ -1959,6 +2032,22 @@ pub async fn confirm_operation(
     };
 
     let agent = Agent::new(db).await;
+    let lane_key = agent
+        .confirmation_lane_key(&confirmation.confirmation_id, user_id)
+        .await
+        .map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error })),
+            )
+        })?
+        .unwrap_or_else(|| LaneQueue::make_lane_key(user_id, None));
+    let _guard = LANE_QUEUE.acquire(&lane_key).await.map_err(|error| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": error })),
+        )
+    })?;
     let response = agent
         .process_confirmation(confirmation)
         .await
@@ -1970,6 +2059,96 @@ pub async fn confirm_operation(
         })?;
 
     Ok(Json(response.into()))
+}
+
+/// 确认敏感操作并通过可重连 run stream 执行续跑。
+/// POST /api/agent/confirm/stream
+pub async fn confirm_operation_stream(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<ConfirmRequest>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
+    let confirmation = crate::services::agent::types::UserConfirmation {
+        confirmation_id: req.confirmation_id,
+        confirmed: req.confirmed,
+        user_note: req.note,
+        user_id,
+    };
+
+    let run = create_run(user_id, None).await;
+    let run_for_task = run.clone();
+    tokio::spawn(async move {
+        let agent = Agent::new(db).await;
+        let lane_key = match agent
+            .confirmation_lane_key(&confirmation.confirmation_id, user_id)
+            .await
+        {
+            Ok(lane_key) => lane_key.unwrap_or_else(|| LaneQueue::make_lane_key(user_id, None)),
+            Err(error) => {
+                run_for_task
+                    .publish(AgentProgressEvent::Error {
+                        task_id: None,
+                        message: error,
+                        code: "CONFIRMATION_LOOKUP_FAILED".to_string(),
+                    })
+                    .await;
+                return;
+            }
+        };
+        let _guard = match LANE_QUEUE.acquire(&lane_key).await {
+            Ok(guard) => guard,
+            Err(error) => {
+                run_for_task
+                    .publish(AgentProgressEvent::Error {
+                        task_id: None,
+                        message: error,
+                        code: "QUEUE_FULL".to_string(),
+                    })
+                    .await;
+                return;
+            }
+        };
+
+        match agent.process_confirmation(confirmation).await {
+            Ok(response) => {
+                let api_response: ApiResponse = response.into();
+                let task_id = api_response
+                    .task
+                    .as_ref()
+                    .map(|task| task.task_id.clone())
+                    .unwrap_or_default();
+                let success = api_response.success;
+                let mut response_value = serde_json::to_value(api_response).unwrap_or_else(
+                    |_| json!({ "success": false, "message": "Serialization failed" }),
+                );
+                if let Some(object) = response_value.as_object_mut() {
+                    // A confirmation run represents one continuation request.
+                    // A newly waiting task is resumed through the answer stream.
+                    object.insert("streamTerminal".to_string(), Value::Bool(true));
+                }
+                run_for_task
+                    .publish(AgentProgressEvent::TaskCompleted {
+                        task_id,
+                        success,
+                        response: Box::new(response_value),
+                    })
+                    .await;
+            }
+            Err(error) => {
+                run_for_task
+                    .publish(AgentProgressEvent::Error {
+                        task_id: None,
+                        message: error,
+                        code: "CONFIRMATION_EXECUTION_FAILED".to_string(),
+                    })
+                    .await;
+            }
+        }
+    });
+
+    Ok(Sse::new(agent_run_event_stream(run))
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
 }
 
 #[derive(Debug, Deserialize)]
@@ -2534,7 +2713,11 @@ async fn queue_status() -> Json<Value> {
 // ============ Heartbeat ============
 
 /// 获取所有 Heartbeat 任务状态
-async fn heartbeat_tasks() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+async fn heartbeat_tasks(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    require_current_admin(&claims, &db).await?;
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2548,8 +2731,11 @@ async fn heartbeat_tasks() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
 
 /// 切换 Heartbeat 任务启用状态
 async fn toggle_heartbeat(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
     Path(task_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    require_current_admin(&claims, &db).await?;
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2567,7 +2753,11 @@ async fn toggle_heartbeat(
 }
 
 /// 重新加载 Heartbeat 配置（HEARTBEAT.md 修改后调用）
-async fn reload_heartbeat() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+async fn reload_heartbeat(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    require_current_admin(&claims, &db).await?;
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2711,8 +2901,11 @@ async fn update_memory(
 
 /// 删除技能
 async fn delete_skill(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
     Path(skill_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    require_current_admin(&claims, &db).await?;
     let evo = crate::services::agent::skill_evolution::get_skill_evolution().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2728,7 +2921,11 @@ async fn delete_skill(
 }
 
 /// 获取能力缺口报告
-async fn list_capability_gaps() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+async fn list_capability_gaps(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    require_current_admin(&claims, &db).await?;
     let evo = crate::services::agent::skill_evolution::get_skill_evolution().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2830,10 +3027,11 @@ async fn interrupt_session(
 
 /// 向当前会话注入补充指令（转向）
 async fn steer_session(
+    State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let user_id = parse_user_id(&claims)?;
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
     let instruction = body
         .get("instruction")
         .and_then(|v| v.as_str())
@@ -2852,7 +3050,51 @@ async fn steer_session(
         ));
     }
 
-    // 记录转向指令到记忆系统（供后续步骤参考，按用户隔离）
+    let requested_task_id = body.get("taskId").and_then(Value::as_str);
+    let running_tasks: Vec<_> = crate::services::agent::executor::get_user_tasks(user_id)
+        .await
+        .into_iter()
+        .filter(|task| task.status == crate::services::agent::types::TaskStatus::Running)
+        .collect();
+    let task_id = if let Some(requested) = requested_task_id {
+        let task = crate::services::agent::executor::get_task_for_user(requested, user_id)
+            .await
+            .filter(|task| task.status == crate::services::agent::types::TaskStatus::Running)
+            .ok_or_else(|| {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({ "error": "Running task not found" })),
+                )
+            })?;
+        task.task_id
+    } else {
+        match running_tasks.as_slice() {
+            [task] => task.task_id.clone(),
+            [] => {
+                return Err((
+                    StatusCode::CONFLICT,
+                    Json(json!({ "error": "No running task to steer" })),
+                ));
+            }
+            _ => {
+                return Err((
+                    StatusCode::CONFLICT,
+                    Json(json!({ "error": "Multiple tasks are running; taskId is required" })),
+                ));
+            }
+        }
+    };
+
+    crate::services::agent::executor::enqueue_steering(&db, &task_id, instruction.to_string())
+        .await
+        .map_err(|error| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": error, "code": "steering_unavailable" })),
+            )
+        })?;
+
+    // Keep an audit/session trace after the instruction is accepted for execution.
     if let Some(mem) = crate::services::agent::memory::get_memory() {
         mem.remember(
             &format!("用户中途转向指令: {}", instruction),
@@ -2864,7 +3106,9 @@ async fn steer_session(
 
     Ok(Json(json!({
         "success": true,
-        "message": "Steering instruction recorded",
+        "message": "Steering instruction queued for the next step boundary",
+        "taskId": task_id,
+        "queued": true,
         "instruction": instruction,
     })))
 }
@@ -3630,6 +3874,10 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         .route(
             "/confirm",
             post(confirm_operation).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/confirm/stream",
+            post(confirm_operation_stream).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 执行追踪列表（需要认证）
         .route(

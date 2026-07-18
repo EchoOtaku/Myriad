@@ -79,6 +79,7 @@ pub use types::*;
 use chrono::{Duration, Utc};
 use once_cell::sync::Lazy;
 use sea_orm::DatabaseConnection;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -94,9 +95,10 @@ pub const SYSTEM_USER_ID: i32 = 0;
 /// 待确认配方存储
 static PENDING_CONFIRMATIONS: Lazy<Arc<RwLock<HashMap<String, PendingRecipeConfirmation>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+const CONFIRMATION_REGISTRY_NAMESPACE: &str = "agent_recipe_confirmation";
 
 /// 待确认的配方信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct PendingRecipeConfirmation {
     /// 确认请求
     pub request: ConfirmationRequest,
@@ -116,6 +118,8 @@ pub struct Agent {
     planner: planner::Planner,
     /// 执行引擎
     executor: executor::Executor,
+    /// Shared persistence used by confirmation hand-offs across backend replicas.
+    db: DatabaseConnection,
 }
 
 impl Agent {
@@ -123,7 +127,8 @@ impl Agent {
     pub async fn new(db: DatabaseConnection) -> Self {
         Self {
             planner: planner::Planner::new().await,
-            executor: executor::Executor::new(db).await,
+            executor: executor::Executor::new(db.clone()).await,
+            db,
         }
     }
 
@@ -1016,6 +1021,24 @@ impl Agent {
             "[Agent] Executing saved recipe directly"
         );
 
+        Self::validate_saved_recipe(recipe)?;
+
+        // Saved recipes are an execution shortcut, not a security shortcut.
+        // Re-run the same sensitive-operation gate used by newly planned work.
+        let sensitive_steps = self.check_sensitive_steps(recipe).await;
+        if !sensitive_steps.is_empty() {
+            match Self::system_sensitive_gate(user_id, &sensitive_steps) {
+                Some(Ok(())) => {}
+                Some(Err(response)) => return Ok(response),
+                None => {
+                    let planner_output = Self::planner_output_for_saved_recipe(recipe);
+                    return self
+                        .request_confirmation_v2(recipe, &planner_output, user_id, sensitive_steps)
+                        .await;
+                }
+            }
+        }
+
         // 直接执行 recipe
         let task_state = self
             .executor
@@ -1071,6 +1094,94 @@ impl Agent {
             confirmation: None,
             frontend_action,
         })
+    }
+
+    fn planner_output_for_saved_recipe(recipe: &Recipe) -> PlannerOutput {
+        PlannerOutput {
+            status: PlannerStatus::Plan,
+            confidence: 1.0,
+            reasoning: Some("Saved recipe execution".to_string()),
+            steps: recipe
+                .steps
+                .iter()
+                .map(|step| AiRecipeStep {
+                    id: step.id.clone(),
+                    capability_id: step.capability_id.clone(),
+                    action: step.action.clone(),
+                    params: step.params.clone(),
+                    depends_on: step.depends_on.clone(),
+                    on_failure: match step.on_failure {
+                        FailureStrategy::Skip => "skip".to_string(),
+                        _ => "abort".to_string(),
+                    },
+                    retry: step.retry.clone(),
+                    timeout_ms: step.timeout_ms,
+                })
+                .collect(),
+            clarification: None,
+            unsupported_reason: None,
+            chat_reply: None,
+        }
+    }
+
+    fn validate_saved_recipe(recipe: &Recipe) -> Result<(), String> {
+        use std::collections::{HashMap, HashSet, VecDeque};
+
+        if recipe.steps.is_empty() {
+            return Err("Saved recipe contains no steps".to_string());
+        }
+        if recipe.steps.len() > 32 {
+            return Err("Saved recipe exceeds the 32-step limit".to_string());
+        }
+
+        let ids: HashSet<&str> = recipe.steps.iter().map(|step| step.id.as_str()).collect();
+        if ids.len() != recipe.steps.len() || ids.contains("") {
+            return Err("Saved recipe contains empty or duplicate step IDs".to_string());
+        }
+
+        let mut indegree: HashMap<&str, usize> = ids.iter().map(|id| (*id, 0)).collect();
+        let mut dependants: HashMap<&str, Vec<&str>> = HashMap::new();
+        for step in &recipe.steps {
+            for dependency in &step.depends_on {
+                if !ids.contains(dependency.as_str()) {
+                    return Err(format!(
+                        "Saved recipe step '{}' references unknown dependency '{}'",
+                        step.id, dependency
+                    ));
+                }
+                if dependency == &step.id {
+                    return Err(format!("Saved recipe step '{}' depends on itself", step.id));
+                }
+                *indegree.entry(step.id.as_str()).or_default() += 1;
+                dependants
+                    .entry(dependency.as_str())
+                    .or_default()
+                    .push(step.id.as_str());
+            }
+        }
+
+        let mut queue: VecDeque<&str> = indegree
+            .iter()
+            .filter_map(|(id, degree)| (*degree == 0).then_some(*id))
+            .collect();
+        let mut visited = 0;
+        while let Some(id) = queue.pop_front() {
+            visited += 1;
+            for dependant in dependants.get(id).into_iter().flatten() {
+                let degree = indegree
+                    .get_mut(dependant)
+                    .expect("validated dependant must exist");
+                *degree -= 1;
+                if *degree == 0 {
+                    queue.push_back(dependant);
+                }
+            }
+        }
+        if visited != recipe.steps.len() {
+            return Err("Saved recipe contains a dependency cycle".to_string());
+        }
+
+        Ok(())
     }
 
     /// 快速路径：执行简单的单步查询（Planner 版）
@@ -1193,27 +1304,44 @@ impl Agent {
     }
 
     /// 处理用户确认
+    pub async fn confirmation_lane_key(
+        &self,
+        confirmation_id: &str,
+        user_id: i32,
+    ) -> Result<Option<String>, String> {
+        let pending = crate::api::tapp_runtime::shared_registry::get::<PendingRecipeConfirmation>(
+            &self.db,
+            CONFIRMATION_REGISTRY_NAMESPACE,
+            confirmation_id,
+        )
+        .await
+        .map_err(|error| format!("Failed to load confirmation: {error}"))?;
+        Ok(pending
+            .filter(|pending| pending.user_id == user_id)
+            .and_then(|pending| pending.recipe.lane_key))
+    }
+
+    /// 处理用户确认
     pub async fn process_confirmation(
         &self,
         confirmation: UserConfirmation,
     ) -> Result<AgentResponse, String> {
-        // 仅允许确认自己的 pending；错误用户不得 remove，以免抢确认权
-        let pending = {
-            let mut store = PENDING_CONFIRMATIONS.write().await;
-            match store.get(&confirmation.confirmation_id) {
-                Some(p) if p.user_id != confirmation.user_id => {
-                    tracing::warn!(
-                        confirmation_id = %confirmation.confirmation_id,
-                        caller = confirmation.user_id,
-                        owner = p.user_id,
-                        "[Agent] Confirmation ownership mismatch"
-                    );
-                    None
-                }
-                Some(_) => store.remove(&confirmation.confirmation_id),
-                None => None,
-            }
-        };
+        // PostgreSQL provides atomic, owner-scoped consumption across replicas.
+        // The local map is only a hot cache and is cleared after the shared take.
+        let pending = crate::api::tapp_runtime::shared_registry::take_for_subject::<
+            PendingRecipeConfirmation,
+        >(
+            &self.db,
+            CONFIRMATION_REGISTRY_NAMESPACE,
+            &confirmation.confirmation_id,
+            confirmation.user_id,
+        )
+        .await
+        .map_err(|error| format!("Failed to consume confirmation: {error}"))?;
+        PENDING_CONFIRMATIONS
+            .write()
+            .await
+            .remove(&confirmation.confirmation_id);
 
         match pending {
             Some(pending_confirmation) => {
@@ -1269,6 +1397,21 @@ impl Agent {
                     user_id = pending_confirmation.user_id,
                     "[Agent] User confirmed sensitive operation"
                 );
+
+                // Sensitive gating runs before required-parameter prompting in
+                // the initial request. After confirmation, ask for any missing
+                // values instead of executing a partially specified recipe.
+                if let Some(missing_response) = self
+                    .check_missing_required_parameters(
+                        &pending_confirmation.recipe,
+                        &pending_confirmation.planner_output,
+                        pending_confirmation.user_id,
+                        None,
+                    )
+                    .await?
+                {
+                    return Ok(missing_response);
+                }
 
                 // 始终以 pending 所有者身份执行（已与 caller 对齐）
                 let task_state = self
@@ -1565,21 +1708,20 @@ impl Agent {
 
     async fn check_sensitive_steps(&self, recipe: &Recipe) -> Vec<PendingConfirmation> {
         let mut sensitive = Vec::new();
-        let registry = capability::get_registry().await;
 
         for step in &recipe.steps {
             // 使用异步版本，可以从 Capability 结构体或静态配置获取
             if let Some((message, risk_level)) =
                 capability::capability_requires_confirmation_async(&step.capability_id).await
             {
-                let capability_name = registry
-                    .get(&step.capability_id)
-                    .map(|c| c.name.clone())
+                let definition = capability::get_capability_by_id(&step.capability_id).await;
+                let capability_name = definition
+                    .as_ref()
+                    .map(|capability| capability.name.clone())
                     .unwrap_or_else(|| step.capability_id.clone());
 
-                let description = registry
-                    .get(&step.capability_id)
-                    .map(|c| c.description.clone())
+                let description = definition
+                    .map(|capability| capability.description)
                     .unwrap_or_default();
 
                 // 生成影响说明
@@ -1663,19 +1805,31 @@ impl Agent {
             expires_at: Utc::now() + expires_in,
         };
 
-        // 存储待确认的配方
-        {
-            let mut store = PENDING_CONFIRMATIONS.write().await;
-            store.insert(
-                confirmation_id.clone(),
-                PendingRecipeConfirmation {
-                    request: confirmation_request.clone(),
-                    recipe: recipe.clone(),
-                    user_id,
-                    planner_output: planner_output.clone(),
-                },
-            );
-        }
+        let pending = PendingRecipeConfirmation {
+            request: confirmation_request.clone(),
+            recipe: recipe.clone(),
+            user_id,
+            planner_output: planner_output.clone(),
+        };
+        crate::api::tapp_runtime::shared_registry::put(
+            &self.db,
+            CONFIRMATION_REGISTRY_NAMESPACE,
+            &confirmation_id,
+            crate::api::tapp_runtime::shared_registry::RegistryIdentity {
+                subject_id: Some(user_id),
+                owner_id: Some(user_id),
+                tapp_id: None,
+                runtime_id: None,
+            },
+            &pending,
+            confirmation_request.expires_at.timestamp(),
+        )
+        .await
+        .map_err(|error| format!("Failed to persist confirmation: {error}"))?;
+        PENDING_CONFIRMATIONS
+            .write()
+            .await
+            .insert(confirmation_id.clone(), pending);
 
         // 生成确认消息
         let message = self.generate_confirmation_message(&confirmation_request, &max_risk);
@@ -2871,11 +3025,13 @@ pub async fn get_user_permissions(
     // 系统用户或管理员：全部权限
     if user_is_current_admin(db, user_id).await {
         let registry = capability::get_registry().await;
-        return registry
+        let mut permissions: HashSet<String> = registry
             .get_all()
             .iter()
             .flat_map(|cap| cap.required_permissions.iter().cloned())
             .collect();
+        permissions.insert("mcp:execute".to_string());
+        return permissions;
     }
 
     let prefs = crate::api::config::load_module_visibility_preferences_for_agent(db).await;
@@ -3150,5 +3306,98 @@ mod tests {
         );
         assert_eq!(agent_perm_to_tapp("system:read"), None); // 特例：不经 Tapp
         assert_eq!(agent_perm_to_tapp("unknown:perm"), None);
+    }
+
+    #[test]
+    fn saved_recipe_validation_rejects_dependency_cycles() {
+        let mut recipe = Recipe::new("cycle", "cycle", ExecutionType::Instant);
+        recipe.steps = vec![
+            AiRecipeStep {
+                id: "a".to_string(),
+                capability_id: "ai.summarize".to_string(),
+                action: "a".to_string(),
+                params: HashMap::new(),
+                depends_on: vec!["b".to_string()],
+                on_failure: "abort".to_string(),
+                retry: None,
+                timeout_ms: None,
+            }
+            .into_recipe_step(0, None),
+            AiRecipeStep {
+                id: "b".to_string(),
+                capability_id: "ai.summarize".to_string(),
+                action: "b".to_string(),
+                params: HashMap::new(),
+                depends_on: vec!["a".to_string()],
+                on_failure: "abort".to_string(),
+                retry: None,
+                timeout_ms: None,
+            }
+            .into_recipe_step(1, None),
+        ];
+
+        let error = Agent::validate_saved_recipe(&recipe).expect_err("cycle must be rejected");
+        assert!(error.contains("dependency cycle"));
+    }
+
+    #[test]
+    fn heartbeat_outcome_rejects_blocked_and_interactive_responses() {
+        let response = |response_type, data| AgentResponse {
+            response_type,
+            message: "result".to_string(),
+            data,
+            data_display: None,
+            suggestions: vec![],
+            task: None,
+            confirmation: None,
+            frontend_action: None,
+        };
+
+        assert!(response(AgentResponseType::Answer, None).is_successful_outcome());
+        assert!(
+            !response(AgentResponseType::Answer, Some(json!({"blocked": true})))
+                .is_successful_outcome()
+        );
+        assert!(!response(AgentResponseType::ConfirmationRequired, None).is_successful_outcome());
+        assert!(!response(AgentResponseType::Clarification, None).is_successful_outcome());
+
+        for status in [
+            TaskStatus::Pending,
+            TaskStatus::Running,
+            TaskStatus::WaitingForInput,
+            TaskStatus::Paused,
+            TaskStatus::Failed,
+            TaskStatus::Cancelled,
+        ] {
+            let recipe = Recipe::new("heartbeat", "heartbeat", ExecutionType::Instant);
+            let mut task = TaskState::new(&recipe);
+            task.status = status;
+            let mut non_terminal = response(AgentResponseType::TaskCompleted, None);
+            non_terminal.task = Some(task);
+            assert!(!non_terminal.is_successful_outcome());
+        }
+
+        let recipe = Recipe::new("heartbeat", "heartbeat", ExecutionType::Instant);
+        let mut task = TaskState::new(&recipe);
+        task.status = TaskStatus::Completed;
+        let mut completed = response(AgentResponseType::TaskCompleted, None);
+        completed.task = Some(task.clone());
+        assert!(completed.is_successful_outcome());
+
+        let mut completed_with_failed_step = response(AgentResponseType::TaskCompleted, None);
+        let mut failed_step_task = task;
+        failed_step_task.step_results.insert(
+            "blocked_dynamic_step".to_string(),
+            StepResult {
+                step_id: "blocked_dynamic_step".to_string(),
+                success: false,
+                output: None,
+                error: Some("blocked".to_string()),
+                duration_ms: 0,
+                retry_count: 0,
+            },
+        );
+        completed_with_failed_step.task = Some(failed_step_task);
+        assert!(!completed_with_failed_step.is_successful_outcome());
     }
 }

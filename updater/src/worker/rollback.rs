@@ -22,11 +22,11 @@ use std::time::Duration;
 
 use tracing::{error, info, warn};
 
-use crate::docker::ComposeRunner;
+use crate::docker::{ComposeRunner, ROLLBACK_IMAGE_TAG};
 use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::snapshot::SnapshotManager;
-use crate::state::{JobStatus, Phase, StateDir};
+use crate::state::{JobStatus, Phase, StateDir, UpdaterStateFile};
 use crate::version::DeployTag;
 use crate::worker::{machine::PhaseRecorder, Worker};
 
@@ -115,6 +115,18 @@ pub async fn execute_inline(
     let restored_version = match &prev_tag {
         Some(tag) => {
             rec.enter(Phase::SwapTagBack, "updater.phase.swap_tag_back")?;
+            let parsed = DeployTag::parse(tag).ok();
+            if let Some(ref version) = parsed {
+                if let Err(e) = materialize_pinned_rollback_images(worker.as_ref(), version).await {
+                    // The immutable version tag may still be local or pullable by Compose. Keep
+                    // the normal rollback path available, but make the lost local fallback loud.
+                    warn!(
+                        err = %e,
+                        version = %version,
+                        "failed to restore version refs from the local rollback slot"
+                    );
+                }
+            }
             let mut env = EnvFile::load(&worker.cli().env_file)?;
             let before = env.get("MYRIAD_TAG").unwrap_or("").to_string();
             env.set("MYRIAD_TAG", tag)?;
@@ -125,7 +137,7 @@ pub async fn execute_inline(
                 "rollback: restored MYRIAD_TAG to last known good (before snapshot restore)"
             );
             rec.finish_step_ok()?;
-            DeployTag::parse(tag).ok()
+            parsed
         }
         None => {
             warn!(
@@ -223,6 +235,68 @@ pub async fn execute_inline(
             }
         }
     }
+}
+
+/// Recreate the immutable Compose image refs from the local rollback aliases when
+/// they are the slot recorded for `version`. This turns `*:myriad-rollback` into a
+/// usable offline fallback instead of merely a dangling-image protection tag.
+async fn materialize_pinned_rollback_images(worker: &Worker, version: &DeployTag) -> Result<()> {
+    let state = worker.state().read_updater()?;
+    if !rollback_slot_matches(&state, version) {
+        return Ok(());
+    }
+
+    let env = EnvFile::load(&worker.cli().env_file)?;
+    let backend = env.get("BACKEND_IMAGE").ok_or_else(|| {
+        UpdaterError::Precondition(
+            "BACKEND_IMAGE missing; cannot restore pinned rollback image".into(),
+        )
+    })?;
+    let frontend = env.get("FRONTEND_IMAGE").ok_or_else(|| {
+        UpdaterError::Precondition(
+            "FRONTEND_IMAGE missing; cannot restore pinned rollback image".into(),
+        )
+    })?;
+
+    for (component, repo) in [("backend", backend), ("frontend", frontend)] {
+        let version_ref = format!("{repo}:{}", version.as_str());
+        if worker.docker().image_exists_local(&version_ref).await {
+            continue;
+        }
+
+        let rollback_ref = format!("{repo}:{ROLLBACK_IMAGE_TAG}");
+        if !worker.docker().image_exists_local(&rollback_ref).await {
+            warn!(
+                %component,
+                %version_ref,
+                %rollback_ref,
+                "recorded rollback image is not available locally; Compose may need to pull it"
+            );
+            continue;
+        }
+
+        worker
+            .docker()
+            .tag_image(&rollback_ref, repo, version.as_str())
+            .await
+            .map_err(|e| {
+                UpdaterError::Docker(format!(
+                    "restore rollback {component} ({rollback_ref} -> {version_ref}): {e}"
+                ))
+            })?;
+        info!(
+            %component,
+            source = %rollback_ref,
+            target = %version_ref,
+            "restored version ref from local rollback slot"
+        );
+    }
+
+    Ok(())
+}
+
+fn rollback_slot_matches(state: &UpdaterStateFile, version: &DeployTag) -> bool {
+    state.rollback_version.as_ref() == Some(version)
 }
 
 /// Wait until backend answers /health with db_connected over the compose network.
@@ -333,6 +407,23 @@ mod tests {
         let state = StateDir::open(dir.path()).unwrap();
         let got = resolve_previous_tag(&state, "snap-x", Some("v1.2.3")).unwrap();
         assert_eq!(got.as_deref(), Some("v1.2.3"));
+    }
+
+    #[test]
+    fn rollback_slot_only_matches_its_recorded_version() {
+        let updater = UpdaterStateFile {
+            rollback_version: Some(DeployTag::parse("v1.2.3").unwrap()),
+            ..UpdaterStateFile::default()
+        };
+
+        assert!(rollback_slot_matches(
+            &updater,
+            &DeployTag::parse("v1.2.3").unwrap()
+        ));
+        assert!(!rollback_slot_matches(
+            &updater,
+            &DeployTag::parse("v1.2.4").unwrap()
+        ));
     }
 
     #[test]

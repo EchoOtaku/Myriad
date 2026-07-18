@@ -45,7 +45,7 @@ pub struct UpdaterStateFile {
     #[serde(default)]
     pub latest_available: Option<LatestAvailable>,
 
-    /// Version whose images were pinned as `*:myriad-rollback` for a local rollback.
+    /// Previous known-good version whose images are pinned as `*:myriad-rollback`.
     /// The alias migrates state written by updater versions that used the internal
     /// `last_good_version` name.
     #[serde(default, alias = "last_good_version")]

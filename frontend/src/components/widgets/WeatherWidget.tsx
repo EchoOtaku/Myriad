@@ -644,7 +644,7 @@ export const WeatherWidget = memo(
           >
             <FitText
               as="div"
-              className="text-gray-500 dark:text-gray-500"
+              className="text-gray-500 dark:text-gray-400"
               max={10}
               min={9}
             >

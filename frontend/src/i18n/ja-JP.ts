@@ -1096,6 +1096,7 @@ export const jaJP: TranslationKeys = {
     welcome: 'ようこそ',
     quickStats: 'コンテンツ概要',
     recentActivity: '最近のアクティビティ',
+    friendLinks: '相互リンク',
     weather: '天気',
     quote: '一言',
     musicPlayer: '音楽プレイヤー',
@@ -1124,6 +1125,24 @@ export const jaJP: TranslationKeys = {
     tappApps: 'Tapp アプリ',
     tappDesc: '拡張アプリ',
     tappFeature: 'ウィジェット、ツール、拡張',
+  },
+
+  // Brew 相互リンクウィジェット
+  friendLinksWidget: {
+    siteCount: '{count} サイト',
+    emptyTitle: '相互リンクはまだありません',
+    emptyDescription: 'Brew リーディングで追加できます',
+    loadFailed: '相互リンクを一時的に利用できません',
+    openBrew: 'Brew リーディングで相互リンクを見る',
+    visitSite: '{name} を開く',
+    samplePersonalBlog: '友人のブログ',
+    sampleLifeAndNotes: '暮らしと随筆',
+    sampleTechNotes: '技術ノート',
+    sampleCodeAndIdeas: 'コードとアイデア',
+    sampleDesignJournal: 'デザイン日記',
+    sampleDesignAndInspiration: 'デザインと着想',
+    samplePhotoAlbum: '写真アルバム',
+    sampleLightAndJourneys: '光と旅の記録',
   },
 
   // タイトルスタイルセレクター

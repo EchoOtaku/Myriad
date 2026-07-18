@@ -13,6 +13,8 @@ export interface AraelInputProps {
   onSubmit: () => void
   onKeyDown: (e: React.KeyboardEvent) => void
   isLoading?: boolean
+  /** 任务执行中仍允许提交转向指令 */
+  allowSubmitWhileLoading?: boolean
   disabled?: boolean
   placeholder?: string
   autoFocus?: boolean
@@ -29,6 +31,7 @@ export const AraelInput: React.FC<AraelInputProps> = ({
   onSubmit,
   onKeyDown,
   isLoading = false,
+  allowSubmitWhileLoading = false,
   disabled = false,
   placeholder = '',
   autoFocus = false,
@@ -65,7 +68,12 @@ export const AraelInput: React.FC<AraelInputProps> = ({
           onKeyDown={onKeyDown}
           placeholder={dynamicPlaceholder}
           className="arael-input"
-          disabled={isLoading || isRecording || isProcessingVoice || disabled}
+          disabled={
+            (isLoading && !allowSubmitWhileLoading) ||
+            isRecording ||
+            isProcessingVoice ||
+            disabled
+          }
         />
       </div>
       <div className="arael-input-actions">
@@ -102,7 +110,7 @@ export const AraelInput: React.FC<AraelInputProps> = ({
             )}
           </button>
         )}
-        {isLoading && onInterrupt ? (
+        {isLoading && onInterrupt && (
           <button
             className="arael-send-btn arael-stop-btn"
             onClick={onInterrupt}
@@ -113,11 +121,12 @@ export const AraelInput: React.FC<AraelInputProps> = ({
             </svg>
             {t.arael.stop}
           </button>
-        ) : (
+        )}
+        {(!isLoading || allowSubmitWhileLoading) && (
           <button
             className="arael-send-btn"
             onClick={onSubmit}
-            disabled={!value.trim() || isLoading}
+            disabled={!value.trim() || (isLoading && !allowSubmitWhileLoading)}
           >
             <svg
               width="14"

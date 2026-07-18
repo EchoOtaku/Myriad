@@ -73,7 +73,7 @@ const DOCUMENTS: &[KnowledgeDocument] = &[
     },
     KnowledgeDocument {
         id: "RUNTIME_CONTRACT_DESIGN",
-        description: "AI tasks, events, agent interactions, data exchange, scheduler, and runtime v2 contracts",
+        description: "AI tasks, events, agent interactions, data exchange, scheduler, and runtime contracts",
         content: include_str!("../../../docs/development/tapp/RUNTIME_CONTRACT_DESIGN.md"),
     },
     KnowledgeDocument {

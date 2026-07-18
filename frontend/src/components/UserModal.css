@@ -1167,43 +1167,95 @@ html.dark .user-modal-login-only .text-red-800 {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 
+/* 每个平台一张卡片 */
 .user-modal-oauth-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.875rem;
+  background: rgb(255 255 255 / 55%);
+  border: 1px solid rgb(0 0 0 / 6%);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.user-modal-oauth-row:hover {
+  background: rgb(255 255 255 / 80%);
+  border-color: rgb(0 0 0 / 10%);
+}
+
+html.dark .user-modal-oauth-row {
+  background: rgb(255 255 255 / 4%);
+  border-color: rgb(255 255 255 / 8%);
+}
+
+html.dark .user-modal-oauth-row:hover {
+  background: rgb(255 255 255 / 7%);
+  border-color: rgb(255 255 255 / 14%);
 }
 
 .user-modal-oauth-row.orphan {
   opacity: 0.75;
 }
 
-.user-modal-oauth-provider {
-  display: inline-flex;
+/* Provider 图标：裸放 logo，不加底座，仅固定尺寸保证对齐 */
+.user-modal-oauth-icon {
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  color: #374151;
+}
+
+html.dark .user-modal-oauth-icon {
+  color: #e5e7eb;
+}
+
+/* 名称 + 状态两行 */
+.user-modal-oauth-info {
+  flex: 1;
   min-width: 0;
-  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 
 .user-modal-oauth-name {
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
-.user-modal-oauth-username {
+.user-modal-oauth-sub {
+  font-size: 0.72rem;
   color: var(--text-secondary, #888);
-  font-size: 0.78rem;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 9rem;
+}
+
+.user-modal-oauth-sub.bound {
+  color: #059669;
+}
+
+html.dark .user-modal-oauth-sub.bound {
+  color: #34d399;
 }
 
 .user-modal-oauth-disabled-tag {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
+  font-weight: 400;
   padding: 0.05rem 0.4rem;
   border-radius: 6px;
   background: rgb(255 159 10 / 15%);
@@ -1212,7 +1264,7 @@ html.dark .user-modal-login-only .text-red-800 {
 
 .user-modal-oauth-btn {
   flex-shrink: 0;
-  padding: 0.25rem 0.7rem;
+  padding: 0.3rem 0.8rem;
   border-radius: 8px;
   border: 1px solid rgb(128 128 128 / 25%);
   background: transparent;

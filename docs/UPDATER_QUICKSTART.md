@@ -248,8 +248,10 @@ docker exec myriad-updater myriad-rescue status | jq '.snapshots.items'
 docker exec myriad-updater myriad-rescue rollback --snapshot snap-<job-id>
 ```
 
-成功升级后，updater 会把当前业务镜像额外钉上本地回退 tag `*:myriad-rollback`，
-降低「只 prune 掉旧 tag、回退时本地没镜像」的风险。
+启动新构建前，updater 会把升级前的 backend/frontend 镜像额外钉上本地回退 tag
+`*:myriad-rollback`。成功升级后该 tag 仍指向上一个已验证构建；到下一次升级开始前，
+才会推进到届时正在运行的构建。回滚时如果原版本 tag 已不在本地，updater 会从这个
+本地槽位重新创建原版本 tag，再交给 Compose 启动。
 
 ### 5.3 把诊断包给开发者
 

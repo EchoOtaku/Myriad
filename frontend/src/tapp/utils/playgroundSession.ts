@@ -1,7 +1,7 @@
 /**
- * Tapp Playground multi-session persistence (localStorage v2).
+ * Tapp Playground multi-session persistence.
  *
- * - Migrates once from sessionStorage v1
+ * - Migrates once from the legacy sessionStorage record
  * - Caps sessions / revisions / rough JSON size to avoid quota blow-ups
  * - Pure helpers — page owns React state, calls save on change
  */
@@ -16,8 +16,8 @@ import type {
   TappPlaygroundProject,
 } from '../services/TappPlaygroundService'
 
-export const SESSION_V1_KEY = 'myriad:tapp-playground:session:v1'
-export const SESSIONS_V2_KEY = 'myriad:tapp-playground:sessions:v2'
+export const LEGACY_SESSION_STORAGE_KEY = 'myriad:tapp-playground:session:v1'
+export const SESSIONS_STORAGE_KEY = 'myriad:tapp-playground:sessions:v2'
 
 /** Soft cap on concurrent sessions (evict least-recently-updated). */
 export const MAX_SESSIONS = 10
@@ -199,7 +199,7 @@ function normalizeSession(raw: unknown): PlaygroundSession | null {
 function loadV1Session(): PlaygroundSession | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = sessionStorage.getItem(SESSION_V1_KEY)
+    const raw = sessionStorage.getItem(LEGACY_SESSION_STORAGE_KEY)
     if (!raw) return null
     const value = JSON.parse(raw)
     if (!value || !Array.isArray(value.revisions)) return null
@@ -611,9 +611,9 @@ export function pushManualEditRevision(
 export function loadSessionsStore(): PlaygroundSessionsStore {
   if (typeof window === 'undefined') return createEmptyStore()
 
-  // Prefer v2 localStorage
+  // Prefer the current multi-session localStorage record.
   try {
-    const raw = localStorage.getItem(SESSIONS_V2_KEY)
+    const raw = localStorage.getItem(SESSIONS_STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
       if (
@@ -649,7 +649,7 @@ export function loadSessionsStore(): PlaygroundSessionsStore {
     })
     saveSessionsStore(store)
     try {
-      sessionStorage.removeItem(SESSION_V1_KEY)
+      sessionStorage.removeItem(LEGACY_SESSION_STORAGE_KEY)
     } catch {
       // ignore
     }
@@ -670,7 +670,7 @@ export function saveSessionsStore(
   if (typeof window === 'undefined') return EMPTY_PRUNE_META
   const { store: pruned, meta } = pruneStoreWithMeta(store)
   try {
-    localStorage.setItem(SESSIONS_V2_KEY, JSON.stringify(pruned))
+    localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(pruned))
     return meta
   } catch {
     // Quota or private mode — try a more aggressive prune once
@@ -697,7 +697,7 @@ export function saveSessionsStore(
             ),
           })),
       })
-      localStorage.setItem(SESSIONS_V2_KEY, JSON.stringify(emergency))
+      localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(emergency))
       const afterRevCount = emergency.sessions.reduce(
         (n, s) => n + s.revisions.length,
         0,

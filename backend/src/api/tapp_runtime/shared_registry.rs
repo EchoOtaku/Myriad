@@ -339,6 +339,54 @@ pub async fn take<T: DeserializeOwned>(
     .transpose()
 }
 
+/// Atomically consume a live record only when it belongs to the expected subject.
+pub async fn take_for_subject<T: DeserializeOwned>(
+    db: &impl ConnectionTrait,
+    namespace: &str,
+    record_id: &str,
+    subject_id: i32,
+) -> Result<Option<T>, DbErr> {
+    #[derive(FromQueryResult)]
+    struct PayloadRow {
+        payload: Value,
+    }
+    let row = PayloadRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM tapp_runtime_registry WHERE namespace = $1 AND record_id = $2 AND subject_id = $3 AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT RETURNING payload",
+        vec![namespace.into(), record_id.into(), subject_id.into()],
+    ))
+    .one(db)
+    .await?;
+    row.map(|row| {
+        serde_json::from_value(row.payload).map_err(|error| DbErr::Json(error.to_string()))
+    })
+    .transpose()
+}
+
+/// Atomically consume every live record for one runtime identity.
+pub async fn take_all_for_runtime<T: DeserializeOwned>(
+    db: &impl ConnectionTrait,
+    namespace: &str,
+    runtime_id: &str,
+) -> Result<Vec<T>, DbErr> {
+    #[derive(FromQueryResult)]
+    struct PayloadRow {
+        payload: Value,
+    }
+    let rows = PayloadRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "WITH deleted AS (DELETE FROM tapp_runtime_registry WHERE namespace = $1 AND runtime_id = $2 AND expires_at > EXTRACT(EPOCH FROM NOW())::BIGINT RETURNING payload, updated_at) SELECT payload FROM deleted ORDER BY updated_at ASC",
+        vec![namespace.into(), runtime_id.into()],
+    ))
+    .all(db)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            serde_json::from_value(row.payload).map_err(|error| DbErr::Json(error.to_string()))
+        })
+        .collect()
+}
+
 pub async fn delete_matching(
     db: &impl ConnectionTrait,
     namespace: &str,

@@ -89,21 +89,6 @@ export async function getTappAsset(
   )
 }
 
-export interface SeparatedCSSRequest {
-  widgetCss?: string
-  pageCss?: string
-}
-
-export async function updateSeparatedCSS(
-  tappId: string,
-  css: SeparatedCSSRequest,
-): Promise<void> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/separated-css`, {
-    method: 'POST',
-    body: JSON.stringify(css),
-  })
-}
-
 export async function exportTapp(tappId: string): Promise<void> {
   const response = await fetch(
     `${API_URL}/api/tapps/${encodeURIComponent(tappId)}/export`,

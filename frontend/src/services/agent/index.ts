@@ -35,9 +35,10 @@ export type {
   // 澄清
   ClarificationType,
   ClarifyRequest,
-
   // 数据展示
   ColumnDef,
+  ConfirmationInfo,
+  ConfirmationStep,
   ConversationMessage,
   CreatePresetRequest,
   DataDisplayHint,

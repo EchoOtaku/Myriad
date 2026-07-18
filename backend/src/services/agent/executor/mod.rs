@@ -26,9 +26,9 @@ pub mod utils;
 
 // 重新导出常用类型
 pub use task_store::{
-    cancel_task_for_user, claim_task_for_resume, clear_cancellation, get_task_for_user,
-    get_user_tasks, init_task_store_db, is_cancelled, maybe_cleanup_tasks, persist_task_async,
-    refresh_task_for_user, TASK_STORE,
+    cancel_task_for_user, claim_task_for_resume, clear_cancellation, enqueue_steering,
+    get_task_for_user, get_user_tasks, init_task_store_db, is_cancelled, maybe_cleanup_tasks,
+    persist_task_async, refresh_task_for_user, take_steering, TASK_STORE,
 };
 pub use utils::{extract_image_url, summarize_output, truncate_str};
 
@@ -54,6 +54,11 @@ pub struct Executor {
 }
 
 impl Executor {
+    fn should_block_unconfirmed_dynamic_step(user_id: i32, risk: RiskLevel) -> bool {
+        risk == RiskLevel::Critical
+            || (user_id != crate::services::agent::SYSTEM_USER_ID && risk == RiskLevel::High)
+    }
+
     /// 创建新的执行引擎
     pub async fn new(db: DatabaseConnection) -> Self {
         let pro_analyzer = create_ai_analyzer_for_tier(ModelTier::Pro).await;
@@ -1408,6 +1413,27 @@ impl Executor {
         context: &mut ExecutionContext,
         handler_ctx: &HandlerContext<'_>,
     ) -> Result<Value, String> {
+        if let Some(task_id) = handler_ctx.task_id.as_deref() {
+            let steering = take_steering(handler_ctx.db, task_id).await;
+            if !steering.is_empty() {
+                let combined = steering.join("\n");
+                context.variables.insert(
+                    "_steering_instruction".to_string(),
+                    Value::String(combined.clone()),
+                );
+                context.user_intent = if context.user_intent.is_empty() {
+                    combined.clone()
+                } else {
+                    format!("{}\nSteering: {}", context.user_intent, combined)
+                };
+                tracing::info!(
+                    task_id = %task_id,
+                    step_id = %step.id,
+                    "[Executor] Applied steering instruction at step boundary"
+                );
+            }
+        }
+
         // Skill 执行：以 "skill:" 开头的 capability_id 由 Skill 系统处理
         if let Some(skill_id) = step.capability_id.strip_prefix("skill:") {
             return self
@@ -1416,10 +1442,10 @@ impl Executor {
         }
 
         // 获取能力定义
-        let registry = get_registry().await;
-        let capability = registry
-            .get(&step.capability_id)
-            .ok_or_else(|| format!("Unknown capability: {}", step.capability_id))?;
+        let capability =
+            crate::services::agent::capability::get_capability_by_id(&step.capability_id)
+                .await
+                .ok_or_else(|| format!("Unknown capability: {}", step.capability_id))?;
 
         // 权限校验：检查 capability 声明的 required_permissions
         if !capability.required_permissions.is_empty() {
@@ -1439,16 +1465,16 @@ impl Executor {
         // 敏感操作补检：动态子步骤（技能展开/动态分析生成）绕过了 Planner 层的
         // check_sensitive_steps 确认流程。高风险/不可逆操作不允许在无确认的情况下
         // 由动态步骤自动执行（系统任务除外，其确认策略在 Agent::process 统一处理）
-        if handler_ctx.user_id != crate::services::agent::SYSTEM_USER_ID
-            && context.is_dynamic_step(&step.id)
-        {
+        if context.is_dynamic_step(&step.id) {
             if let Some((_, risk)) =
                 crate::services::agent::capability::capability_requires_confirmation_async(
                     &step.capability_id,
                 )
                 .await
             {
-                if matches!(risk, RiskLevel::High | RiskLevel::Critical) {
+                let blocked =
+                    Self::should_block_unconfirmed_dynamic_step(handler_ctx.user_id, risk);
+                if blocked {
                     tracing::warn!(
                         step_id = %step.id,
                         capability = %step.capability_id,
@@ -1456,7 +1482,7 @@ impl Executor {
                         "[Executor] Blocked unconfirmed high-risk dynamic step"
                     );
                     return Err(format!(
-                        "步骤 '{}' 涉及需要确认的高风险操作（{}），动态生成的子步骤不允许自动执行",
+                        "步骤 '{}' 涉及未经确认的高风险操作（{}），动态生成的子步骤不允许自动执行",
                         step.id, step.capability_id
                     ));
                 }
@@ -1478,6 +1504,11 @@ impl Executor {
                 "__user_request".to_string(),
                 json!(context.original_request),
             );
+        }
+        if let Some(steering) = context.variables.get("_steering_instruction") {
+            resolved_params
+                .entry("__steering".to_string())
+                .or_insert_with(|| steering.clone());
         }
 
         if !unresolved.is_empty() {
@@ -1517,9 +1548,6 @@ impl Executor {
             timeout_secs
         };
         let capability_category = capability.category.clone();
-
-        // 释放注册表读锁，避免锁跨越长时间的 handler await
-        drop(registry);
 
         tracing::debug!(
             step_id = %step.id,
@@ -3909,6 +3937,22 @@ fn tapp_interaction_wait_question(output: &Value) -> Option<UserQuestion> {
 mod resolve_id_tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn dynamic_risk_gate_blocks_system_critical_but_allows_system_high() {
+        assert!(Executor::should_block_unconfirmed_dynamic_step(
+            crate::services::agent::SYSTEM_USER_ID,
+            RiskLevel::Critical
+        ));
+        assert!(!Executor::should_block_unconfirmed_dynamic_step(
+            crate::services::agent::SYSTEM_USER_ID,
+            RiskLevel::High
+        ));
+        assert!(Executor::should_block_unconfirmed_dynamic_step(
+            7,
+            RiskLevel::High
+        ));
+    }
 
     /// 复现歌单播放链路：搜索步骤输出被整对象引用为 playlistIdFrom 时，
     /// 必须取到 playlists[0].id，而不是 message 文案

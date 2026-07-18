@@ -63,8 +63,8 @@ events / agent / dataExchange 等 Manifest 扩展（见
 
 | 项 | 实现 |
 | --- | --- |
-| 存储 | `localStorage` 键 `myriad:tapp-playground:sessions:v2` |
-| 迁移 | 首次从 `sessionStorage` `…:session:v1` 迁入 v2 后使用多会话 |
+| 存储 | 当前多会话 `localStorage` 记录 |
+| 迁移 | 首次从旧版 `sessionStorage` 单会话记录迁入后使用多会话 |
 | 会话上限 | 约 **10** 个（按 `updatedAt` 淘汰；始终保留当前会话） |
 | Revision 上限 | 每会话约 **20** 个 |
 | 体积预算 | 约 **4.5MB** JSON；超出时裁剪并给用户 **prune notice** |

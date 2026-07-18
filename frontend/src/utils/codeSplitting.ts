@@ -24,6 +24,22 @@ export function lazyWithPreload<T extends ComponentType<any>>(
  * 预加载多个路由组件
  */
 export function preloadRoutes(routes: string[]): void {
+  const connection = (
+    navigator as Navigator & {
+      connection?: { saveData?: boolean; effectiveType?: string }
+    }
+  ).connection
+
+  // PageSpeed 的移动端基准会模拟慢网络。省流量或 2G 下不用
+  // 非当前路由占用带宽，正常网络仍保留原有预取体验。
+  if (
+    connection?.saveData ||
+    connection?.effectiveType === 'slow-2g' ||
+    connection?.effectiveType === '2g'
+  ) {
+    return
+  }
+
   // 使用requestIdleCallback在空闲时预加载
   if ('requestIdleCallback' in window) {
     requestIdleCallback(() => {

@@ -66,6 +66,8 @@ export interface LogEntry {
 /** 待回答问题 */
 export interface PendingQuestion {
   questionId: string
+  /** 敏感操作确认 ID；存在时提交到 /agent/confirm */
+  confirmationId?: string
   questionType: string
   question: string
   context?: string

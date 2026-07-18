@@ -423,10 +423,12 @@ WHERE namespace = $1 AND runtime_id = $2
                     if !task_id.is_empty() {
                         state.task_id = Some(task_id.clone());
                     }
+                    let force_terminal =
+                        response.get("streamTerminal").and_then(Value::as_bool) == Some(true);
                     let response_status = response.pointer("/task/status").and_then(Value::as_str);
                     state.status = match response_status {
                         Some("cancelled") => "cancelled",
-                        Some("waiting_for_input") => "waiting_for_input",
+                        Some("waiting_for_input") if !force_terminal => "waiting_for_input",
                         _ if *success => "completed",
                         _ => "failed",
                     }

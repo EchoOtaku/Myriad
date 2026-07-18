@@ -806,38 +806,6 @@ pub(crate) async fn write_install_assets(
     Ok(())
 }
 
-pub(crate) async fn copy_regular_tapp_directory(
-    source: &FsPath,
-    destination: &FsPath,
-) -> Result<(), std::io::Error> {
-    let mut pending = vec![(source.to_path_buf(), destination.to_path_buf())];
-    while let Some((source_dir, destination_dir)) = pending.pop() {
-        let mut entries = fs::read_dir(&source_dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let file_type = entry.file_type().await?;
-            if file_type.is_symlink() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "Tapp resource directory contains a symbolic link",
-                ));
-            }
-            let destination_path = destination_dir.join(entry.file_name());
-            if file_type.is_dir() {
-                fs::create_dir(&destination_path).await?;
-                pending.push((entry.path(), destination_path));
-            } else if file_type.is_file() {
-                fs::copy(entry.path(), destination_path).await?;
-            } else {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Tapp resource directory contains a non-regular entry",
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
 pub(crate) type WidgetTemplateContents =
     std::collections::HashMap<String, std::collections::HashMap<String, String>>;
 

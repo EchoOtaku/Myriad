@@ -409,23 +409,27 @@ export const UserModal: FC<UserModalProps> = ({
                           key={provider.slug}
                           className="user-modal-oauth-row"
                         >
-                          <span className="user-modal-oauth-provider">
+                          <span className="user-modal-oauth-icon">
                             {provider.slug === 'github' ? (
-                              <FaGithub size={16} aria-hidden />
+                              <FaGithub size={20} aria-hidden />
                             ) : iconSrc ? (
-                              <OAuthIconImage src={iconSrc} size={16} />
+                              <OAuthIconImage src={iconSrc} size={20} />
                             ) : (
-                              <LuUser size={16} aria-hidden />
+                              <LuUser size={20} aria-hidden />
                             )}
+                          </span>
+                          <span className="user-modal-oauth-info">
                             <span className="user-modal-oauth-name">
                               {provider.display_name}
                             </span>
-                            {bound && (
-                              <span className="user-modal-oauth-username">
-                                {bound.provider_username ||
-                                  t.userModal.githubLinked}
-                              </span>
-                            )}
+                            <span
+                              className={`user-modal-oauth-sub ${bound ? 'bound' : ''}`}
+                            >
+                              {bound
+                                ? bound.provider_username ||
+                                  t.userModal.githubLinked
+                                : t.userModal.githubNotLinked}
+                            </span>
                           </span>
                           {bound ? (
                             <button
@@ -462,20 +466,23 @@ export const UserModal: FC<UserModalProps> = ({
                           key={`orphan-${identity.id}`}
                           className="user-modal-oauth-row orphan"
                         >
-                          <span className="user-modal-oauth-provider">
+                          <span className="user-modal-oauth-icon">
                             {identity.provider === 'github' ? (
-                              <FaGithub size={16} aria-hidden />
+                              <FaGithub size={20} aria-hidden />
                             ) : (
-                              <LuUser size={16} aria-hidden />
+                              <LuUser size={20} aria-hidden />
                             )}
+                          </span>
+                          <span className="user-modal-oauth-info">
                             <span className="user-modal-oauth-name">
                               {identity.provider}
+                              <span className="user-modal-oauth-disabled-tag">
+                                {t.userModal.oauthNotConfigured}
+                              </span>
                             </span>
-                            <span className="user-modal-oauth-username">
-                              {identity.provider_username || ''}
-                            </span>
-                            <span className="user-modal-oauth-disabled-tag">
-                              {t.userModal.oauthNotConfigured}
+                            <span className="user-modal-oauth-sub">
+                              {identity.provider_username ||
+                                t.userModal.githubLinked}
                             </span>
                           </span>
                           <button

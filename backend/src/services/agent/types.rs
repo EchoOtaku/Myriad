@@ -718,6 +718,32 @@ pub struct AgentResponse {
     pub frontend_action: Option<Value>,
 }
 
+impl AgentResponse {
+    /// Whether this response represents a completed, unblocked operation.
+    /// Transport success alone is insufficient for unattended Heartbeat jobs.
+    pub fn is_successful_outcome(&self) -> bool {
+        if !matches!(
+            self.response_type,
+            AgentResponseType::Answer | AgentResponseType::TaskCompleted
+        ) {
+            return false;
+        }
+
+        if let Some(task) = &self.task {
+            if task.status != TaskStatus::Completed
+                || task.step_results.values().any(|result| !result.success)
+            {
+                return false;
+            }
+        }
+
+        !self.data.as_ref().is_some_and(|data| {
+            data.get("blocked").and_then(Value::as_bool) == Some(true)
+                || data.get("unsupported").and_then(Value::as_bool) == Some(true)
+        })
+    }
+}
+
 /// 数据展示类型提示
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

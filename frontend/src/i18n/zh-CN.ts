@@ -1038,6 +1038,7 @@ export const zhCN: TranslationKeys = {
     welcome: '欢迎',
     quickStats: '内容数据概览',
     recentActivity: '最近活动',
+    friendLinks: '友情链接',
     weather: '天气',
     quote: '一言',
     musicPlayer: '音乐播放器',
@@ -1066,6 +1067,24 @@ export const zhCN: TranslationKeys = {
     tappApps: 'Tapp 应用',
     tappDesc: '扩展应用',
     tappFeature: '小组件、工具、扩展',
+  },
+
+  // Brew 友情链接小组件
+  friendLinksWidget: {
+    siteCount: '{count} 个站点',
+    emptyTitle: '还没有友情链接',
+    emptyDescription: '前往 Brew 阅读添加',
+    loadFailed: '友情链接暂时不可用',
+    openBrew: '在 Brew 阅读中查看友情链接',
+    visitSite: '访问 {name}',
+    samplePersonalBlog: '朋友的博客',
+    sampleLifeAndNotes: '生活与随笔',
+    sampleTechNotes: '技术札记',
+    sampleCodeAndIdeas: '代码与想法',
+    sampleDesignJournal: '设计手记',
+    sampleDesignAndInspiration: '设计与灵感',
+    samplePhotoAlbum: '摄影集',
+    sampleLightAndJourneys: '光影与旅途',
   },
 
   // 标题样式选择器

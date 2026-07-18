@@ -383,7 +383,7 @@ export class TappBridge {
       return
     }
 
-    // method 允许命名空间（例如 agent.v2.create、widget.instanceSettings.update）。
+    // method 允许多级命名空间（例如 widget.instanceSettings.update）。
     const identifier = /^[a-z][a-z0-9]*$/i
     const namespacedMethod = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*$/i
     if (

@@ -308,7 +308,14 @@ idle
 3. `updater.json.current_version`（成功升级后推进；daemon 启动时也会用 backend build stamp / `.env` 自动恢复）
 
 手动 `POST /rollback` / rescue 与自动回滚共用同一解析逻辑；回滚健康通过后会把 `current_version` 写回恢复到的版本。`current_commit_sha` 在无法立即确认时清空，并在下次 daemon 启动时从 build stamp 或 GitHub tag 重新解析，避免保留错误 SHA。
+
 ```
+
+业务更新在启动目标构建前，会把当时正在运行且已验证的 backend/frontend 镜像钉到
+本地 `*:myriad-rollback`，并将该版本写入 `rollback_version`。目标构建健康通过后只推进
+`current_version`，不会用当前构建覆盖回退槽位；下一次更新开始前才将槽位推进到届时的
+当前构建。回滚时若快照解析出的原版本 tag 已不在本地，但它与 `rollback_version` 一致，
+updater 会先从 `*:myriad-rollback` 重新创建原版本 tag，再交给 Compose 启动。
 
 ### 7.1 崩溃恢复表
 

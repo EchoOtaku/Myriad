@@ -78,8 +78,7 @@ pub async fn get_registry() -> tokio::sync::RwLockReadGuard<'static, CapabilityR
 pub async fn capability_requires_confirmation_async(
     capability_id: &str,
 ) -> Option<(String, RiskLevel)> {
-    let registry = get_registry().await;
-    if let Some(cap) = registry.get(capability_id) {
+    if let Some(cap) = get_capability_by_id(capability_id).await {
         if cap.requires_confirmation || cap.risk_level != RiskLevel::None {
             let message = cap
                 .confirmation_message
@@ -196,10 +195,58 @@ pub async fn get_compact_index() -> Value {
 
 /// 根据 ID 列表获取完整能力定义（渐进式披露第二阶段）
 pub async fn get_capabilities_by_ids(ids: &[String]) -> Vec<Capability> {
-    let registry = get_registry().await;
-    ids.iter()
-        .filter_map(|id| registry.get(id).cloned())
-        .collect()
+    let mut capabilities = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(capability) = get_capability_by_id(id).await {
+            capabilities.push(capability);
+        }
+    }
+    capabilities
+}
+
+/// Resolve either a built-in capability or a currently advertised MCP tool.
+pub async fn get_capability_by_id(id: &str) -> Option<Capability> {
+    if let Some(capability) = {
+        let registry = get_registry().await;
+        registry.get(id).cloned()
+    } {
+        return Some(capability);
+    }
+
+    if !id.starts_with("mcp.") {
+        return None;
+    }
+
+    let manager = super::mcp::get_mcp_manager()?;
+    manager
+        .list_tools()
+        .await
+        .into_iter()
+        .find(|(server_id, tool)| id == format!("mcp.{}.{}", server_id, tool.name))
+        .map(|(server_id, tool)| mcp_capability(&server_id, &tool))
+}
+
+fn mcp_capability(server_id: &str, tool: &super::mcp::protocol::McpToolDef) -> Capability {
+    Capability {
+        id: format!("mcp.{}.{}", server_id, tool.name),
+        name: format!("MCP: {}", tool.name),
+        description: tool.description.clone(),
+        category: CapabilityCategory::ExternalIntegration,
+        supported_actions: vec![],
+        input_schema: tool.input_schema.clone(),
+        output_schema: json!({ "type": "string" }),
+        required_permissions: vec!["mcp:execute".to_string()],
+        requires_ai: false,
+        estimated_duration_ms: Some(30_000),
+        // MCP tools are arbitrary external integrations. Require an explicit
+        // confirmation unless the system-user policy blocks them earlier.
+        requires_confirmation: true,
+        confirmation_message: Some(format!(
+            "将调用外部 MCP 服务 '{}' 的工具 '{}'",
+            server_id, tool.name
+        )),
+        risk_level: RiskLevel::High,
+    }
 }
 
 /// 获取能力类别的友好名称
@@ -225,5 +272,19 @@ mod tests {
         assert!(!registry.capabilities.is_empty());
         assert!(registry.get("platform.read").is_some());
         assert!(registry.get("ai.summarize").is_some());
+    }
+
+    #[test]
+    fn mcp_capability_is_qualified_and_sensitive() {
+        let tool = super::super::mcp::protocol::McpToolDef {
+            name: "lookup".to_string(),
+            description: "Look up external data".to_string(),
+            input_schema: json!({"type": "object"}),
+        };
+        let capability = mcp_capability("docs", &tool);
+        assert_eq!(capability.id, "mcp.docs.lookup");
+        assert_eq!(capability.required_permissions, vec!["mcp:execute"]);
+        assert!(capability.requires_confirmation);
+        assert_eq!(capability.risk_level, RiskLevel::High);
     }
 }

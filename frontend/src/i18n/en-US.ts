@@ -1120,6 +1120,7 @@ export const enUS: TranslationKeys = {
     welcome: 'Welcome',
     quickStats: 'Quick Stats',
     recentActivity: 'Recent Activity',
+    friendLinks: 'Friend Links',
     weather: 'Weather',
     quote: 'Quote',
     musicPlayer: 'Music Player',
@@ -1148,6 +1149,24 @@ export const enUS: TranslationKeys = {
     tappApps: 'Tapp Apps',
     tappDesc: 'Extensions',
     tappFeature: 'Widgets, Tools, Extensions',
+  },
+
+  // Brew friend links widget
+  friendLinksWidget: {
+    siteCount: '{count} sites',
+    emptyTitle: 'No friend links yet',
+    emptyDescription: 'Add them in Brew Reading',
+    loadFailed: 'Friend links are temporarily unavailable',
+    openBrew: 'View friend links in Brew Reading',
+    visitSite: 'Visit {name}',
+    samplePersonalBlog: "A Friend's Blog",
+    sampleLifeAndNotes: 'Life and notes',
+    sampleTechNotes: 'Tech Notes',
+    sampleCodeAndIdeas: 'Code and ideas',
+    sampleDesignJournal: 'Design Journal',
+    sampleDesignAndInspiration: 'Design and inspiration',
+    samplePhotoAlbum: 'Photo Album',
+    sampleLightAndJourneys: 'Light and journeys',
   },
 
   // Title Style Selector

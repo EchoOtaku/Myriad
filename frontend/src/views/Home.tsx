@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import { TitleFontSelector } from '../components/TitleFontSelector'
 import WidgetGrid from '../components/WidgetGrid'
+import { FriendLinksWidget } from '../components/widgets/FriendLinksWidget'
 import { GamePresenceWidget } from '../components/widgets/GamePresenceWidget'
 import { MusicPlayerWidget } from '../components/widgets/MusicPlayerWidget'
 import { QuickStatsWidget } from '../components/widgets/QuickStatsWidget'
@@ -104,6 +105,13 @@ export default function Home() {
         defaultSize: '4x2',
         component: RecentActivityWidget,
         supportedSizes: ['2x2', '4x2', '4x4'],
+      },
+      {
+        id: 'friend-links',
+        name: t.widgets.friendLinks,
+        defaultSize: '4x2',
+        component: FriendLinksWidget,
+        supportedSizes: ['4x1', '2x2', '4x2'],
       },
       {
         id: 'weather',
@@ -429,6 +437,7 @@ export default function Home() {
           >
             {/* 顶部信息条 - 作为 children 传入 WidgetGrid */}
             <div className="relative h-15 shrink-0 z-10 mb-2 p-1">
+              <h1 className="sr-only">{dashboardTitle}</h1>
               {/* 背景标题 */}
               {isEditMode ? (
                 <input

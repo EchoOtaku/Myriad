@@ -989,7 +989,7 @@ const unsubscribe = Tapp.scheduler.onTask("refresh", async (payload) => {
 ```
 
 `ai.generate` 后端操作要求当前 Runtime Grant、安装授权和 `manifest.ai` 同时包含
-`ai:generate` / V2 `generate` / `text` output。注册时检查一次，每次延迟执行前再次检查；执行
+`ai:generate` / Manifest `generate` / `text` output。注册时检查一次，每次延迟执行前再次检查；执行
 进入与 `Tapp.ai.tasks` 相同的共享并发、速率、calls、tokens 和 cooldown 账本。Declared API 的
 `ai:generate`、`ai:chat` builtin 也遵守相同规则。
 

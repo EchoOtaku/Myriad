@@ -962,6 +962,7 @@ export interface TranslationKeys {
     welcome: string
     quickStats: string
     recentActivity: string
+    friendLinks: string
     weather: string
     quote: string
     musicPlayer: string
@@ -990,6 +991,24 @@ export interface TranslationKeys {
     tappApps: string
     tappDesc: string
     tappFeature: string
+  }
+
+  // Brew 友情链接小组件
+  friendLinksWidget: {
+    siteCount: string
+    emptyTitle: string
+    emptyDescription: string
+    loadFailed: string
+    openBrew: string
+    visitSite: string
+    samplePersonalBlog: string
+    sampleLifeAndNotes: string
+    sampleTechNotes: string
+    sampleCodeAndIdeas: string
+    sampleDesignJournal: string
+    sampleDesignAndInspiration: string
+    samplePhotoAlbum: string
+    sampleLightAndJourneys: string
   }
 
   // 标题样式选择器

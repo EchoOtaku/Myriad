@@ -340,21 +340,23 @@ async fn run_server() -> anyhow::Result<()> {
 
                             let due_tasks = hb.check_due_tasks().await;
                             for task in due_tasks {
-                                let permit = match semaphore.clone().try_acquire_owned() {
-                                    Ok(p) => p,
-                                    Err(_) => {
-                                        tracing::warn!(
-                                            "[Heartbeat] Concurrency limit reached, deferring task '{}'",
-                                            task.id
-                                        );
-                                        continue;
-                                    }
-                                };
-
                                 let task_db = heartbeat_db.clone();
                                 let hb_ref = hb.clone();
+                                let task_semaphore = semaphore.clone();
                                 tokio::spawn(async move {
-                                    let _permit = permit; // 持有到任务完成
+                                    // Due tasks have already been reserved by the scheduler. Queue
+                                    // them behind the semaphore instead of dropping them when busy.
+                                    let _permit = match task_semaphore.acquire_owned().await {
+                                        Ok(permit) => permit,
+                                        Err(error) => {
+                                            tracing::error!(
+                                                task_id = %task.id,
+                                                error = %error,
+                                                "[Heartbeat] Execution semaphore closed"
+                                            );
+                                            return;
+                                        }
+                                    };
                                     tracing::info!(
                                         task_id = %task.id,
                                         "[Heartbeat] Executing due task: {}",
@@ -372,12 +374,18 @@ async fn run_server() -> anyhow::Result<()> {
                                     let task_name = task.name.clone();
                                     match agent.process(request).await {
                                         Ok(response) => {
+                                            let succeeded = response.is_successful_outcome();
                                             // 任务卡片显示用的短摘要
-                                            let result_summary = response
+                                            let response_summary = response
                                                 .message
                                                 .chars()
                                                 .take(200)
                                                 .collect::<String>();
+                                            let result_summary = if succeeded {
+                                                response_summary
+                                            } else {
+                                                format!("ERROR: {}", response_summary)
+                                            };
                                             hb_ref.record_result(&task.id, &result_summary).await;
                                             // 通知携带完整内容（上限 4000 字符），
                                             // 简报类任务的产出通过通知中心完整送达
@@ -387,13 +395,21 @@ async fn run_server() -> anyhow::Result<()> {
                                                 .take(4000)
                                                 .collect::<String>();
                                             if let Some(nm) = services::agent::notifications::get_notification_manager() {
-                                                nm.notify_heartbeat_result(&task_name, &full_body, true).await;
+                                                nm.notify_heartbeat_result(&task_name, &full_body, succeeded).await;
                                             }
-                                            tracing::info!(
-                                                task_id = %task.id,
-                                                "[Heartbeat] Task completed: {}",
-                                                result_summary
-                                            );
+                                            if succeeded {
+                                                tracing::info!(
+                                                    task_id = %task.id,
+                                                    "[Heartbeat] Task completed: {}",
+                                                    result_summary
+                                                );
+                                            } else {
+                                                tracing::warn!(
+                                                    task_id = %task.id,
+                                                    "[Heartbeat] Task returned a non-success outcome: {}",
+                                                    result_summary
+                                                );
+                                            }
                                         }
                                         Err(e) => {
                                             let err_msg = format!("ERROR: {}", e);

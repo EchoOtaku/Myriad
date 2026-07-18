@@ -27,7 +27,7 @@ use std::sync::Arc;
 use chrono::{NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 /// 记忆容量上限
 const MAX_MEMORY_ENTRIES: usize = 500;
@@ -438,6 +438,8 @@ pub struct AgentMemory {
     index: RwLock<TfIdfIndex>,
     /// 有低优先级变更（访问计数等）尚未落盘，由后台维护任务批量 flush
     dirty: std::sync::atomic::AtomicBool,
+    /// 串行化全量快照，避免较旧的并发保存覆盖较新的状态
+    persist_lock: Mutex<()>,
 }
 
 /// 索引文件名
@@ -500,6 +502,7 @@ impl AgentMemory {
             entries: RwLock::new(entries),
             index: RwLock::new(idx),
             dirty: std::sync::atomic::AtomicBool::new(false),
+            persist_lock: Mutex::new(()),
         };
 
         if count > 0 {
@@ -1742,7 +1745,9 @@ impl AgentMemory {
 
     /// 保存全部状态（memory_index.json + memory.md）
     async fn save_all(&self) {
-        // 全量写盘会带上所有未落盘变更，脏位可以一并清除
+        let _persist_guard = self.persist_lock.lock().await;
+        // 清除的是即将进入本次快照的变更；快照期间的新变更会重新置脏，
+        // 成功后不能覆盖该状态。
         self.dirty
             .store(false, std::sync::atomic::Ordering::Relaxed);
         // 快照数据后立即释放读锁，避免持锁做 I/O
@@ -1783,17 +1788,37 @@ impl AgentMemory {
         }; // 读锁在此释放
 
         // 写文件（无锁状态）
-        if let Some(json) = json_opt {
-            let index_path = self.memory_dir.join(INDEX_FILE);
-            if let Err(e) = tokio::fs::write(&index_path, json).await {
-                tracing::error!(error = %e, "[Memory] Failed to persist memory_index.json");
-            }
-        }
+        let Some(json) = json_opt else {
+            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+            tracing::error!("[Memory] Failed to serialize memory_index.json");
+            return;
+        };
 
+        let index_path = self.memory_dir.join(INDEX_FILE);
         let memory_path = self.memory_dir.join("memory.md");
-        if let Err(e) = tokio::fs::write(&memory_path, md).await {
+        if let Err(e) = Self::atomic_write(&index_path, json.as_bytes()).await {
+            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+            tracing::error!(error = %e, "[Memory] Failed to persist memory_index.json");
+            return;
+        }
+        if let Err(e) = Self::atomic_write(&memory_path, md.as_bytes()).await {
+            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
             tracing::error!(error = %e, "[Memory] Failed to persist memory.md");
         }
+    }
+
+    async fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("agent-memory");
+        let temporary_path = path.with_file_name(format!(".{file_name}.tmp"));
+        tokio::fs::write(&temporary_path, contents).await?;
+        if let Err(error) = tokio::fs::rename(&temporary_path, path).await {
+            let _ = tokio::fs::remove_file(&temporary_path).await;
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// 解析旧版 memory.md 格式（迁移用）

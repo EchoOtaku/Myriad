@@ -1,6 +1,6 @@
 //! MCP Manager
 //!
-//! 拥有所有 MCP 服务器实例，维护 tool_name → server 的路由索引，
+//! 拥有所有 MCP 服务器实例，维护 server_id.tool_name → server 的路由索引，
 //! 提供统一的 call_tool 入口。
 
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ use super::server::{McpServer, SharedMcpServer};
 /// MCP 管理器 — 拥有所有 MCP 服务器实例
 pub struct McpManager {
     servers: Vec<SharedMcpServer>,
-    /// tool_name → server index（用于 call_tool 路由）
+    /// server_id.tool_name → server index（避免不同服务器的同名工具冲突）
     tool_index: Mutex<HashMap<String, usize>>,
 }
 
@@ -63,14 +63,7 @@ impl McpManager {
                     // 注册工具到索引
                     let mut index = self.tool_index.lock().await;
                     for tool in srv.tools() {
-                        let qualified_name = tool.name.clone();
-                        if index.contains_key(&qualified_name) {
-                            tracing::warn!(
-                                tool = %qualified_name,
-                                server = %server_id,
-                                "Duplicate MCP tool name, overwriting"
-                            );
-                        }
+                        let qualified_name = format!("{}.{}", server_id, tool.name);
                         index.insert(qualified_name, idx);
                     }
                     drop(index);
@@ -116,14 +109,16 @@ impl McpManager {
     /// 调用 MCP 工具（自动路由到正确的服务器）
     pub async fn call_tool(
         &self,
+        server_id: &str,
         tool_name: &str,
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
+        let qualified_name = format!("{}.{}", server_id, tool_name);
         let server_idx = {
             let index = self.tool_index.lock().await;
             *index
-                .get(tool_name)
-                .ok_or_else(|| format!("MCP tool '{}' not found", tool_name))?
+                .get(&qualified_name)
+                .ok_or_else(|| format!("MCP tool '{}' not found", qualified_name))?
         };
 
         let server = &self.servers[server_idx];
@@ -131,14 +126,14 @@ impl McpManager {
 
         // 健康检查 + 自动重启
         if !srv.is_healthy() && srv.config.auto_restart {
-            tracing::warn!(tool = %tool_name, "MCP server unhealthy, attempting restart");
-            let server_id = srv.config.id.clone();
+            tracing::warn!(tool = %qualified_name, "MCP server unhealthy, attempting restart");
+            let restarted_server_id = srv.config.id.clone();
             if let Err(error) = srv.try_restart().await {
                 if let Some(manager) =
                     crate::services::agent::notifications::get_notification_manager()
                 {
                     manager
-                        .notify_mcp_server_status(&server_id, false, &error)
+                        .notify_mcp_server_status(&restarted_server_id, false, &error)
                         .await;
                 }
                 return Err(error);
@@ -146,7 +141,7 @@ impl McpManager {
             if let Some(manager) = crate::services::agent::notifications::get_notification_manager()
             {
                 manager
-                    .notify_mcp_server_status(&server_id, true, "自动重启成功")
+                    .notify_mcp_server_status(&restarted_server_id, true, "自动重启成功")
                     .await;
             }
 
@@ -156,7 +151,7 @@ impl McpManager {
             index.retain(|_, &mut idx| idx != server_idx);
             // 添加新的
             for tool in srv.tools() {
-                index.insert(tool.name.clone(), server_idx);
+                index.insert(format!("{}.{}", restarted_server_id, tool.name), server_idx);
             }
         }
 

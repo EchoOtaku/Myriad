@@ -702,16 +702,44 @@ async fn execute_mcp_tool(
     params: &HashMap<String, Value>,
 ) -> Result<Value, String> {
     // capability_id 格式: "mcp.{server_id}.{tool_name}"
-    // tool_index 中的 key 是纯 tool_name，需要剥离 server_id 前缀
     let rest = capability_id
         .strip_prefix("mcp.")
         .ok_or("Invalid MCP capability ID")?;
-    // rest = "server_id.tool_name" — 找第一个 '.' 后的部分作为 tool_name
-    let tool_name = rest.split_once('.').map(|(_, name)| name).unwrap_or(rest);
+    let (server_id, tool_name) = rest
+        .split_once('.')
+        .ok_or("MCP capability ID must include server and tool names")?;
 
     let manager =
         crate::services::agent::mcp::get_mcp_manager().ok_or("MCP manager not initialized")?;
 
-    let args = serde_json::to_value(params).unwrap_or_default();
-    manager.call_tool(tool_name, args).await
+    // Executor-only context keys must never cross the MCP trust boundary or
+    // violate tools that declare `additionalProperties: false`.
+    let args = mcp_arguments(params);
+    manager.call_tool(server_id, tool_name, args).await
+}
+
+fn mcp_arguments(params: &HashMap<String, Value>) -> Value {
+    Value::Object(
+        params
+            .iter()
+            .filter(|(key, _)| !key.starts_with("__"))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+    )
+}
+
+#[cfg(test)]
+mod mcp_tests {
+    use super::*;
+
+    #[test]
+    fn internal_executor_context_is_not_sent_to_mcp() {
+        let params = HashMap::from([
+            ("query".to_string(), json!("myriad")),
+            ("__directive".to_string(), json!("internal")),
+            ("__user_request".to_string(), json!("private")),
+            ("__steering".to_string(), json!("new direction")),
+        ]);
+        assert_eq!(mcp_arguments(&params), json!({ "query": "myriad" }));
+    }
 }

@@ -1614,6 +1614,11 @@ mod tests {
         assert!(
             classify_request(&state(), &Method::POST, &unescaped_slashes, &Bytes::new()).is_ok()
         );
+
+        let restore_version_ref = Uri::from_static("/v1.51/images/docker.io%2Fexample%2Fbackend:myriad-rollback/tag?repo=docker.io%2Fexample%2Fbackend&tag=v1");
+        assert!(
+            classify_request(&state(), &Method::POST, &restore_version_ref, &Bytes::new()).is_ok()
+        );
     }
 
     #[test]

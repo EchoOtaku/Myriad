@@ -116,10 +116,16 @@ pub async fn execute(
     let user_request = params
         .remove("__user_request")
         .and_then(|v| v.as_str().map(String::from));
+    let steering = params
+        .remove("__steering")
+        .and_then(|v| v.as_str().map(String::from));
 
     // 将主 Agent 指令注入到对应的 handler 参数中
     if let Some(ref dir) = directive {
         inject_directive_to_params(capability_id, dir, user_request.as_deref(), &mut params);
+    }
+    if let Some(ref instruction) = steering {
+        inject_steering_to_params(capability_id, instruction, &mut params);
     }
 
     match capability_id {
@@ -144,6 +150,59 @@ pub async fn execute(
             "Unknown AI capability: {} (action: {})",
             capability_id, action
         )),
+    }
+}
+
+fn append_instruction(params: &mut HashMap<String, Value>, key: &str, instruction: &str) {
+    let existing = params.get(key).and_then(Value::as_str).unwrap_or_default();
+    let combined = if existing.is_empty() {
+        instruction.to_string()
+    } else {
+        format!(
+            "{}\n\n用户最新转向指令（优先遵循）：{}",
+            existing, instruction
+        )
+    };
+    params.insert(key.to_string(), Value::String(combined));
+}
+
+/// Steering is newer than the Planner output, so it must augment existing
+/// parameters rather than only filling empty fields.
+fn inject_steering_to_params(
+    capability_id: &str,
+    instruction: &str,
+    params: &mut HashMap<String, Value>,
+) {
+    match capability_id {
+        "ai.summarize" => append_instruction(params, "focus", instruction),
+        "ai.analyze" | "compare.content" => append_instruction(params, "instruction", instruction),
+        "ai.chat" => append_instruction(params, "message", instruction),
+        "ai.webSearch" | "ai.groundingSearch" => append_instruction(params, "query", instruction),
+        _ => append_instruction(params, "systemPrompt", instruction),
+    }
+}
+
+#[cfg(test)]
+mod steering_tests {
+    use super::*;
+
+    #[test]
+    fn steering_augments_existing_ai_instruction() {
+        let mut params = HashMap::from([(
+            "instruction".to_string(),
+            Value::String("旧计划".to_string()),
+        )]);
+        inject_steering_to_params("ai.analyze", "只看最近数据", &mut params);
+        let instruction = params["instruction"].as_str().unwrap();
+        assert!(instruction.contains("旧计划"));
+        assert!(instruction.contains("只看最近数据"));
+    }
+
+    #[test]
+    fn steering_updates_search_query() {
+        let mut params = HashMap::new();
+        inject_steering_to_params("ai.webSearch", "改查官方文档", &mut params);
+        assert_eq!(params["query"], json!("改查官方文档"));
     }
 }
 

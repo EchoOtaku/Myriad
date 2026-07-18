@@ -309,10 +309,10 @@ function useHeightTransition({
   return { attachWrapper, attachContent }
 }
 
-/** 比较版本号，返回 1 表示 v1 > v2，-1 表示 v1 < v2，0 表示相等 */
-function compareVersions(v1: string, v2: string): number {
-  const parts1 = v1.split('.').map((n) => Number.parseInt(n, 10) || 0)
-  const parts2 = v2.split('.').map((n) => Number.parseInt(n, 10) || 0)
+/** 比较版本号：返回 1 表示前者较新，-1 表示后者较新，0 表示相等。 */
+function compareVersions(left: string, right: string): number {
+  const parts1 = left.split('.').map((n) => Number.parseInt(n, 10) || 0)
+  const parts2 = right.split('.').map((n) => Number.parseInt(n, 10) || 0)
   const maxLen = Math.max(parts1.length, parts2.length)
 
   for (let i = 0; i < maxLen; i++) {

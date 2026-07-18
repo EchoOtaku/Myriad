@@ -90,6 +90,7 @@ export interface ClarificationPoint {
 export type AgentResponseType =
   | 'answer'
   | 'clarification'
+  | 'confirmation_required'
   | 'task_created'
   | 'task_progress'
   | 'task_completed'
@@ -105,9 +106,27 @@ export interface AgentResponse {
   dataDisplay?: DataDisplayHint
   suggestions: string[]
   task?: TaskInfo
+  /** 敏感操作确认信息 */
+  confirmation?: ConfirmationInfo
   /** 前端操作指令 */
   frontendAction?: FrontendAction
   sessionId?: string
+}
+
+/** 待确认的敏感步骤 */
+export interface ConfirmationStep {
+  stepId: string
+  capabilityName: string
+  message: string
+  impact: string[]
+}
+
+/** 敏感操作确认信息 */
+export interface ConfirmationInfo {
+  confirmationId: string
+  riskLevel: string
+  expiresInSeconds: number
+  pendingSteps: ConfirmationStep[]
 }
 
 // ============ SSE 进度事件 ============

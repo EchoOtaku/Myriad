@@ -7,6 +7,7 @@ use std::process::Stdio;
 use anyhow::{Context as _, Result};
 use tracing::info;
 
+use crate::docker::ROLLBACK_IMAGE_TAG;
 use crate::snapshot::SnapshotManager;
 use crate::state::StateDir;
 
@@ -71,6 +72,16 @@ pub async fn rollback(ctx: &Context, snapshot_id: &str) -> Result<()> {
                 .and_then(|u| u.current_version.map(|v| v.to_string()))
         });
 
+    if let Some(ref tag) = prev_tag {
+        if let Err(e) = materialize_pinned_rollback_images(ctx, tag).await {
+            tracing::warn!(
+                err = %e,
+                version = %tag,
+                "rescue could not restore version refs from the local rollback slot"
+            );
+        }
+    }
+
     info!(snapshot = snapshot_id, "rescue rollback: stopping services");
     compose_v2_or_v1(ctx, &["stop", "-t", "30", "frontend", "backend"]).await?;
     compose_v2_or_v1(ctx, &["stop", "-t", "60", "postgres"]).await?;
@@ -115,6 +126,68 @@ pub async fn rollback(ctx: &Context, snapshot_id: &str) -> Result<()> {
     let _ = ctx.state.append_audit(&audit);
     info!("rescue rollback complete");
     Ok(())
+}
+
+async fn materialize_pinned_rollback_images(ctx: &Context, version: &str) -> Result<()> {
+    let updater = ctx.state.read_updater()?;
+    if updater.rollback_version.as_ref().map(|v| v.as_str()) != Some(version) {
+        return Ok(());
+    }
+
+    let env = crate::env_file::EnvFile::load(&ctx.env_file)?;
+    let backend = env
+        .get("BACKEND_IMAGE")
+        .context("BACKEND_IMAGE missing; cannot restore pinned rollback image")?;
+    let frontend = env
+        .get("FRONTEND_IMAGE")
+        .context("FRONTEND_IMAGE missing; cannot restore pinned rollback image")?;
+
+    for (component, repo) in [("backend", backend), ("frontend", frontend)] {
+        let version_ref = format!("{repo}:{version}");
+        if docker_image_exists(&version_ref).await {
+            continue;
+        }
+
+        let rollback_ref = format!("{repo}:{ROLLBACK_IMAGE_TAG}");
+        if !docker_image_exists(&rollback_ref).await {
+            tracing::warn!(
+                %component,
+                %version_ref,
+                %rollback_ref,
+                "recorded rescue rollback image is not available locally"
+            );
+            continue;
+        }
+
+        let status = tokio::process::Command::new("docker")
+            .args(["image", "tag", &rollback_ref, &version_ref])
+            .status()
+            .await
+            .context("spawn docker image tag")?;
+        if !status.success() {
+            anyhow::bail!(
+                "docker image tag {rollback_ref} {version_ref} failed with status {status}"
+            );
+        }
+        info!(
+            %component,
+            source = %rollback_ref,
+            target = %version_ref,
+            "rescue restored version ref from local rollback slot"
+        );
+    }
+
+    Ok(())
+}
+
+async fn docker_image_exists(image_ref: &str) -> bool {
+    tokio::process::Command::new("docker")
+        .args(["image", "inspect", image_ref])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await
+        .is_ok_and(|status| status.success())
 }
 
 pub async fn diagnose(ctx: &Context, output: &PathBuf) -> Result<()> {

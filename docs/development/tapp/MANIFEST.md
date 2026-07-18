@@ -472,7 +472,7 @@ Manifest 设置属于安装级配置：安装 owner 或管理员可修改，运�
 `params.*`。Tapp 不提供 `secrets.*` 模板；Manifest 中出现宿主 secret 引用会在安装时被拒绝。
 HTTP API 必须声明 `endpoint`，查询参数直接写在 URL 中；
 内置 API 只接受 `geo`、`ai:chat`、`ai:generate`，不能混入 HTTP 字段。
-AI 内置 API 除对应 `ai:*` 权限外，还必须在 `manifest.ai` 中声明 V2 的相同 operation 和
+AI 内置 API 除对应 `ai:*` 权限外，还必须在 `manifest.ai` 中以 `protocolVersion: 2` 声明相同 operation 和
 `text` output；模型层级取自该 AI 声明。调用仍进入统一 AI Task registry、并发限制和持久配额
 账本，不是独立的模型直连入口。
 单个 Manifest 最多声明 64 个 API，每个 API 最多声明 32 个注入别名，`cacheTtl` 上限

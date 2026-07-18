@@ -163,7 +163,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
   {
     id: 'bilibili',
     name: 'Bilibili',
-    icon: <SiBilibili />,
+    icon: <SiBilibili aria-hidden="true" />,
     color: '#00A1D6',
     darkColor: '#00A1D6',
     getUserUrl: (uid: string) => `https://space.bilibili.com/${uid}`,
@@ -172,7 +172,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
   {
     id: 'steam',
     name: 'Steam',
-    icon: <FaSteam />,
+    icon: <FaSteam aria-hidden="true" />,
     color: '#1B2838',
     darkColor: '#c7d5e0',
     getUserUrl: (steamId: string) =>
@@ -182,7 +182,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
   {
     id: 'github',
     name: 'GitHub',
-    icon: <FaGithub />,
+    icon: <FaGithub aria-hidden="true" />,
     color: '#24292E',
     darkColor: '#e6edf3',
     getUserUrl: (username: string) => `https://github.com/${username}`,
@@ -191,7 +191,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
   {
     id: 'netease',
     name: 'NetEase Music', // Will be translated in component
-    icon: <SiNeteasecloudmusic />,
+    icon: <SiNeteasecloudmusic aria-hidden="true" />,
     color: '#E60026',
     darkColor: '#E60026',
     getUserUrl: (userId: string) =>
@@ -201,7 +201,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
   {
     id: 'bangumi',
     name: 'Bangumi',
-    icon: <SiBangumi />,
+    icon: <SiBangumi aria-hidden="true" />,
     color: '#F09199',
     darkColor: '#F09199',
     getUserUrl: (username: string) => `https://bgm.tv/user/${username}`,
@@ -210,7 +210,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
   {
     id: 'mal',
     name: 'MyAnimeList',
-    icon: <SiMyanimelist />,
+    icon: <SiMyanimelist aria-hidden="true" />,
     color: '#2E51A2',
     darkColor: '#2E51A2',
     getUserUrl: (username: string) =>
@@ -220,7 +220,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
   {
     id: 'x',
     name: 'X',
-    icon: <FaXTwitter />,
+    icon: <FaXTwitter aria-hidden="true" />,
     color: '#000000',
     darkColor: '#e7e9ea',
     getUserUrl: (username: string) =>
@@ -376,7 +376,12 @@ async function removeCustomPlatform(platformId: string) {
 
 // 默认图标 - 预先创建避免重复
 const DEFAULT_ICON = (
-  <svg className="w-full h-full" viewBox="0 0 24 24" fill="currentColor">
+  <svg
+    className="w-full h-full"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />
   </svg>
 )
@@ -399,7 +404,7 @@ function customPlatformToPlatformInfo(
   if (custom.iconName) {
     const IconComponent = getIconByName(custom.iconName)
     if (IconComponent) {
-      icon = <IconComponent className="w-full h-full" />
+      icon = <IconComponent className="w-full h-full" aria-hidden="true" />
     }
   }
 
@@ -1615,6 +1620,7 @@ export const SocialNetworkWidget = memo(
 
     // 是否为弹窗类型（直接从 popupPlatformData 派生）
     const isPopupType = popupPlatformData !== null
+    const hasInteraction = !isEditMode && !!userId
 
     // 点击处理（跳转到用户页面或复制信息）
     const handleClick = useCallback(async () => {
@@ -1653,6 +1659,19 @@ export const SocialNetworkWidget = memo(
         }
       }
     }, [isEditMode, userId, selectedPlatform, popupPlatformData])
+
+    const handleKeyDown = useCallback(
+      (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (
+          hasInteraction &&
+          (event.key === 'Enter' || event.key === ' ')
+        ) {
+          event.preventDefault()
+          void handleClick()
+        }
+      },
+      [handleClick, hasInteraction],
+    )
 
     // 清理定时器
     useEffect(() => {
@@ -1895,7 +1914,6 @@ export const SocialNetworkWidget = memo(
     ])
 
     // 缓存容器的 hover/tap 动画配置 - 条件判断移到外部避免创建空对象
-    const hasInteraction = !isEditMode && !!userId
     const containerHoverProps = useMemo(
       () =>
         hasInteraction
@@ -1992,7 +2010,13 @@ export const SocialNetworkWidget = memo(
           }
           rootProps={{
             ...containerHoverProps,
+            role: hasInteraction ? 'button' : undefined,
+            tabIndex: hasInteraction ? 0 : undefined,
+            'aria-label': hasInteraction
+              ? `${selectedPlatform.name}: ${t.socialNetwork.clickToVisit}`
+              : undefined,
             onClick: handleClick,
+            onKeyDown: handleKeyDown,
             onMouseDown: handlePressStart,
             onMouseUp: handlePressEnd,
             onMouseLeave: handleMouseLeave,

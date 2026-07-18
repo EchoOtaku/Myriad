@@ -5,6 +5,8 @@
  * 让 React Router 处理客户端路由
  */
 import { Font } from 'astro:assets'
+import MachineReadableMetadata from '@components/MachineReadableMetadata.astro'
+import NoScriptFallback from '@components/NoScriptFallback.astro'
 import PageLoader from '@components/PageLoader.astro'
 import App from '../App'
 import '../styles/tailwind.css'
@@ -46,7 +48,8 @@ export function getStaticPaths() {
 }
 
 const title = 'Myriad - A myriad of lights, in one place.'
-const description = 'A myriad of lights, in one place.'
+const description =
+  'Myriad 是一个自托管的个人数字生活展示入口，用于聚合、整理和展示来自多个平台的个人数据。'
 const myriadVersion = import.meta.env.PUBLIC_MYRIAD_VERSION || 'dev'
 const myriadCommit = import.meta.env.PUBLIC_MYRIAD_COMMIT_SHA || ''
 ---
@@ -66,12 +69,16 @@ const myriadCommit = import.meta.env.PUBLIC_MYRIAD_COMMIT_SHA || ''
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="myriad-version" content={myriadVersion} />
     <meta name="myriad-commit" content={myriadCommit} />
+    <MachineReadableMetadata description={description} version={myriadVersion} />
 
     <!-- Astro 6 内置 Fonts API: 全部字体自托管，消除 Google Fonts 外部请求 -->
     <!-- 主体字体（预加载） -->
     <Font cssVariable="--font-inter" preload />
     <!-- 标题装饰字体（@font-face 预声明，浏览器按需下载字体文件） -->
-    <Font cssVariable="--font-qwitcher-grypen" preload />
+    <Font
+      cssVariable="--font-qwitcher-grypen"
+      preload={[{ weight: 700, style: 'normal' }]}
+    />
     <Font cssVariable="--font-codystar" />
     <Font cssVariable="--font-henny-penny" />
     <Font cssVariable="--font-srisakdi" />
@@ -237,6 +244,7 @@ const myriadCommit = import.meta.env.PUBLIC_MYRIAD_COMMIT_SHA || ''
   <body class="antialiased">
     <!-- 页面加载器 -->
     <PageLoader />
+    <NoScriptFallback description={description} />
 
     <!-- React 应用容器 - 初始隐藏，等待完全加载后显示 -->
     <div id="app-root">

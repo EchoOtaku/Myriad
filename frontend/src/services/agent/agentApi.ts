@@ -120,6 +120,28 @@ class AgentService {
   }
 
   /**
+   * 确认或拒绝敏感操作
+   */
+  async confirmOperation(
+    confirmationId: string,
+    confirmed: boolean,
+    note?: string,
+    onProgress?: ProgressCallback,
+  ): Promise<AgentResponse> {
+    return this.executeSSERequest(
+      `/api${this.baseUrl}/confirm/stream`,
+      'POST',
+      {
+        confirmationId,
+        confirmed,
+        ...(note ? { note } : {}),
+      },
+      onProgress,
+      false,
+    )
+  }
+
+  /**
    * 获取任务状态
    */
   async getTask(taskId: string): Promise<TaskDetail> {
@@ -359,8 +381,17 @@ class AgentService {
    */
   async steerSession(
     instruction: string,
-  ): Promise<{ success: boolean; message: string }> {
-    return apiService.post(`${this.baseUrl}/session/steer`, { instruction })
+    taskId?: string,
+  ): Promise<{
+    success: boolean
+    message: string
+    taskId: string
+    queued: boolean
+  }> {
+    return apiService.post(`${this.baseUrl}/session/steer`, {
+      instruction,
+      ...(taskId ? { taskId } : {}),
+    })
   }
 
   // ============ Heartbeat (Phase 4) ============

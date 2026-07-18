@@ -1,4 +1,4 @@
-/** Backward-compatible facade for the domain-specific Tapp API modules. */
+/** Unified facade for the domain-specific Tapp API modules. */
 
 import {
   cancelAITask,
@@ -28,18 +28,20 @@ import {
   updateTappReport,
 } from './TappHostIntegrationApi'
 import {
-  getRecentTapps,
-  getTapp,
   installFromCode,
   installFromStore,
   installTapp,
   installTappFile,
-  listTapps,
-  startTapp,
-  stopTapp,
   uninstallTapp,
   updateTappFromCode,
   updateTappFromStore,
+} from './TappInstallationApi'
+import {
+  getRecentTapps,
+  getTapp,
+  listTapps,
+  startTapp,
+  stopTapp,
 } from './TappLifecycleApi'
 import {
   exportTapp,
@@ -77,6 +79,7 @@ import {
 export * from './TappAiApi'
 export * from './TappContextApi'
 export * from './TappHostIntegrationApi'
+export * from './TappInstallationApi'
 export * from './TappInteractionApi'
 export * from './TappLifecycleApi'
 export * from './TappPackageResourceApi'
