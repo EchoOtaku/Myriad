@@ -36,8 +36,9 @@ import { useLoopAnimation } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { extractColorsFromLoadedImage } from '../../utils/colorExtractor'
 import {
-  extractCardVisuals,
+  coerceReportVisuals,
   hasRenderableCardVisuals,
+  isKnownReportPlatformId,
   pickPlatformCardVisuals,
   resolveReportPlatformId,
 } from '../../utils/reportCardVisuals'
@@ -4056,7 +4057,8 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
 
   const memberReach = Number(stats.member_reach) || 0
 
-  if (showOverview) {
+  // No guilds for detail face → keep overview (stats/profile) instead of empty icon
+  if (showOverview || flipItems.length === 0) {
     const displayName =
       profile.display_name || profile.username || 'Discord'
     const statsParts = (
@@ -4234,6 +4236,7 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
   // 详情面：代表服务器轮播
   const item =
     flipItems.length > 0 ? flipItems[slideIndex % flipItems.length] : null
+  // No guilds → stay on overview path (handled above). Guard only.
   if (!item) {
     return (
       <div className="h-full w-full flex items-center justify-center text-gray-400 text-xl">
@@ -5370,14 +5373,9 @@ export const ReportCardWidget = memo(
 
       // 外部直接提供数据（报告页复用）：不再自行请求，跟随 prop 更新
       if (externalData !== undefined) {
-        // Accept raw card_visuals or a full platform report envelope
-        const visuals =
-          extractCardVisuals(externalData) ??
-          (externalData &&
-          typeof externalData === 'object' &&
-          !Array.isArray(externalData)
-            ? (externalData as Record<string, unknown>)
-            : null)
+        // Coerce full PlatformReport JSON → flat card_visuals the widgets read.
+        // Without this, nested card_visuals leaves reportData truthy but empty UI.
+        const visuals = coerceReportVisuals(externalData)
         setReportData(hasRenderableCardVisuals(visuals) ? visuals : null)
         setLoading(false)
         return
@@ -5387,14 +5385,21 @@ export const ReportCardWidget = memo(
       // card_visuals. Guard against unmount races so a cancelled fetch cannot
       // leave loading forever or wipe a newer successful result.
       let cancelled = false
-      const fetchReport = async () => {
+      const fetchReport = async (forceRefresh = false) => {
         try {
           // 使用去重机制避免多个 ReportCardWidget 同时请求
-          const data = await getLatestReportDeduped()
+          let data = await getLatestReportDeduped({ forceRefresh })
           if (cancelled) return
           // Fail closed on empty / mismatched mapping so home never mounts a
           // blank shell when card_visuals is missing or {}.
-          setReportData(pickPlatformCardVisuals(data, platformId))
+          let visuals = pickPlatformCardVisuals(data, platformId)
+          // One forced re-fetch if mapping missed (stale empty cache / race with generate).
+          if (!visuals && !forceRefresh) {
+            data = await getLatestReportDeduped({ forceRefresh: true })
+            if (cancelled) return
+            visuals = pickPlatformCardVisuals(data, platformId)
+          }
+          setReportData(visuals)
         } catch (err) {
           if (cancelled) return
           console.error(`${t.reportCardWidget.fetchReportFailed}:`, err)
@@ -5431,9 +5436,21 @@ export const ReportCardWidget = memo(
       }
     }, [platformId, isPreview, externalData])
 
+    // Detail faces need library_items (covers/guilds). Without them, auto-flip to
+    // detail paints an empty card even when report JSON/stats exist (owner home bug).
+    const hasDetailContent = useMemo(() => {
+      const items = reportData?.library_items
+      return Array.isArray(items) && items.length > 0
+    }, [reportData])
+
     useEffect(() => {
       // 预览态 / 外部控制概览态时不启用内部自动轮播
       if (isPreview || isOverviewControlled) return
+      // No detail material → stay on overview so stats stay visible
+      if (!hasDetailContent) {
+        setInternalShowOverview(true)
+        return
+      }
 
       // 10秒切换概览/详情 - timeout 链 + 可见性暂停
       let cancelled = false
@@ -5460,7 +5477,7 @@ export const ReportCardWidget = memo(
         if (timeoutId) clearTimeout(timeoutId)
         document.removeEventListener('visibilitychange', onVisibility)
       }
-    }, [isPreview, isOverviewControlled])
+    }, [isPreview, isOverviewControlled, hasDetailContent])
 
     const handleContentChange = useCallback((content: any) => {
       setCardContent(content)
@@ -5602,6 +5619,9 @@ export const ReportCardWidget = memo(
       <WidgetShell
         containerRef={localRef}
         padding={0}
+        // `contents` drops the inner padding wrapper box so absolute/full-height
+        // platform widgets size against the shell root (home empty-face fix).
+        contentClassName="contents"
         glass={!bare}
         className={interactive && !isEditMode ? 'cursor-pointer' : ''}
         rootProps={{
@@ -5626,8 +5646,8 @@ export const ReportCardWidget = memo(
           )
         }
       >
-        {/* 主内容区 */}
-        <div className="absolute inset-0 flex flex-col z-10">
+        {/* 主内容区：fill the shell root so h-full platform widgets paint */}
+        <div className="absolute inset-0 z-10 flex min-h-0 flex-col">
           {platformId === 'bilibili' && (
             <BilibiliWidget
               data={reportData}
@@ -5699,6 +5719,29 @@ export const ReportCardWidget = memo(
               showOverview={showOverview}
               onContentChange={handleContentChange}
             />
+          )}
+          {/* Data mapped but no platform branch: still show key stats (not a blank shell). */}
+          {!isKnownReportPlatformId(platformId) && (
+            <div className="flex h-full flex-col justify-center gap-1 p-3 text-xs text-gray-600 dark:text-gray-300">
+              <div className="font-bold text-gray-800 dark:text-gray-100">
+                {platformConfig.label}
+              </div>
+              {typeof reportData?.hardcore_score === 'number' && (
+                <div>Score {reportData.hardcore_score}</div>
+              )}
+              {typeof reportData?.games_count === 'number' && (
+                <div>Games {reportData.games_count}</div>
+              )}
+              {typeof reportData?.player_type === 'string' && (
+                <div>{reportData.player_type}</div>
+              )}
+              {typeof reportData?.vibe === 'string' && (
+                <div className="line-clamp-2">{reportData.vibe}</div>
+              )}
+              {typeof reportData?.contribution_level === 'string' && (
+                <div>{reportData.contribution_level}</div>
+              )}
+            </div>
           )}
         </div>
 
