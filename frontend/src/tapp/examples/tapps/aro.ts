@@ -272,6 +272,7 @@ const PAGE_HTML = `\
           <div class="aro-empty-mark feed-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a14 14 0 0114 14"/><path d="M5 11a8 8 0 018 8"/><circle cx="6" cy="18" r="1.6"/></svg></div>
           <div id="feed-empty-title" class="feed-empty-title">动态</div>
           <span id="feed-empty-text">暂无内容</span>
+          <button type="button" id="feed-empty-retry" class="feed-empty-retry">重试</button>
         </div>
       </main>
     </div>
@@ -406,15 +407,17 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 #tapp-content{display:flex!important;flex-direction:column!important;overflow:hidden!important}
 
 /* ===== Aro Nav ===== */
-.aro-nav{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0;background:rgba(255,255,255,.72);backdrop-filter:blur(16px)}
-.aro-nav-item{height:34px;display:flex;align-items:center;gap:7px;padding:0 12px;border:none;background:none;border-radius:12px;font-size:12px;font-weight:600;color:var(--text-secondary,#999);cursor:pointer;transition:background .15s,color .15s,box-shadow .15s;white-space:nowrap}
-.aro-nav-item:hover{background:rgba(128,128,128,.08);color:var(--text-primary,#333)}
-.aro-nav-active{background:rgba(var(--tapp-primary-rgb,100,100,255),.14)!important;color:var(--tapp-primary,#6366f1)!important;box-shadow:inset 0 0 0 1px rgba(var(--tapp-primary-rgb,100,100,255),.08)}
-.aro-nav-item svg{flex-shrink:0}
+.aro-nav{display:flex;align-items:center;gap:4px;padding:8px 12px;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0;background:rgba(255,255,255,.78);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.aro-nav-item{min-height:36px;display:flex;align-items:center;gap:8px;padding:0 14px;border:none;background:none;border-radius:11px;font-size:13px;font-weight:600;color:var(--text-secondary,#888);cursor:pointer;transition:background .14s,color .14s;white-space:nowrap}
+.aro-nav-item:hover{background:rgba(128,128,128,.07);color:var(--text-primary,#222)}
+.aro-nav-item:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.45);outline-offset:1px}
+.aro-nav-active{background:rgba(var(--tapp-primary-rgb,100,100,255),.12)!important;color:var(--tapp-primary,#6366f1)!important}
+.aro-nav-item svg{flex-shrink:0;opacity:.9}
+.aro-nav-active svg{opacity:1}
 /* Nav Feed Avatar */
-.nav-feed-avatar{width:22px;height:22px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.14);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;overflow:hidden}
+.nav-feed-avatar{width:24px;height:24px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.14);color:var(--tapp-primary,#6366f1);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;overflow:hidden}
 .nav-feed-avatar img{width:100%;height:100%;object-fit:cover}
-.nav-feed-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px}
+.nav-feed-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px}
 
 /* ===== Aro Views ===== */
 .aro-view{display:none;flex:1;min-height:0;overflow:hidden}
@@ -537,14 +540,19 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .feed-follow-btn:disabled{opacity:.5;cursor:not-allowed}
 /* Feed content / empty */
 .feed-content{flex:1;min-height:0}
-.feed-empty{min-height:260px;padding:48px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text-secondary,#536471);font-size:13px}
+.feed-empty{min-height:280px;padding:56px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-secondary,#536471);font-size:13px;line-height:1.5}
 .feed-main.feed-empty-visible .feed-content{display:none}
 .feed-main.feed-empty-visible .feed-empty{flex:1;min-height:0}
-.aro-empty-mark{width:44px;height:44px;border-radius:13px;background:rgba(128,128,128,.06);color:var(--text-secondary,#536471);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.aro-empty-mark svg{width:21px;height:21px}
-.feed-empty-title{font-size:14px;font-weight:700;color:var(--text-primary,#0f1419)}
+.aro-empty-mark{width:52px;height:52px;border-radius:16px;background:rgba(128,128,128,.06);color:var(--text-secondary,#536471);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.aro-empty-mark svg{width:24px;height:24px}
+.feed-empty-title{font-size:15px;font-weight:700;color:var(--text-primary,#0f1419);letter-spacing:-.01em}
+#feed-empty-text{max-width:280px}
 .feed-empty-error .aro-empty-mark{background:rgba(239,68,68,.08);color:#ef4444}
-.feed-empty-error #feed-empty-text{color:#ef4444}
+.feed-empty-error #feed-empty-text{color:#b91c1c}
+.feed-empty-retry{margin-top:6px;padding:8px 18px;border:none;border-radius:999px;background:var(--tapp-primary,#6366f1);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:none}
+.feed-empty-error .feed-empty-retry{display:inline-flex}
+.feed-empty-retry:hover{filter:brightness(1.05)}
+.feed-empty-retry:active{transform:scale(.97)}
 .feed-skeleton-item{display:flex;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(128,128,128,.06)}
 .feed-skeleton-avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;background:linear-gradient(90deg,rgba(128,128,128,.08),rgba(128,128,128,.16),rgba(128,128,128,.08));background-size:200% 100%;animation:aroSkeleton 1.1s ease-in-out infinite}
 .feed-skeleton-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;padding-top:3px}
@@ -554,23 +562,24 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 @keyframes aroSkeleton{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
 /* ===== Feed Items (tweet-like cards) ===== */
-.feed-item{display:flex;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(128,128,128,.06);transition:background .12s;cursor:default}
-.feed-item:hover{background:rgba(128,128,128,.03)}
-.feed-item-avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888)}
+.feed-item{display:flex;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(128,128,128,.06);transition:background .12s;cursor:default}
+.feed-item:hover{background:rgba(128,128,128,.028)}
+.feed-item-avatar{width:42px;height:42px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#6366f1)}
 .feed-item-avatar img{width:100%;height:100%;object-fit:cover}
-.feed-item-icon{width:40px;height:40px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06)}
+.feed-item-icon{width:42px;height:42px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;background:rgba(var(--tapp-primary-rgb,128,128,128),.07)}
 .feed-item-body{flex:1;min-width:0}
-.feed-item-header{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.feed-item-name{font-size:14px;font-weight:700;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.feed-item-handle{font-size:13px;color:var(--text-secondary,#999);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.feed-item-sep{font-size:13px;color:var(--text-secondary,#bbb)}
-.feed-item-time{font-size:13px;color:var(--text-secondary,#999);white-space:nowrap;flex-shrink:0}
-.feed-item-text{font-size:14px;line-height:1.55;color:var(--text-primary,#1a1a1a);margin-top:4px;white-space:pre-wrap;overflow-wrap:break-word}
-.feed-item-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
-.feed-item-actions{display:flex;gap:24px;margin-top:8px}
-.feed-item-action{display:flex;align-items:center;gap:4px;background:none;border:none;color:var(--text-secondary,#999);font-size:12px;cursor:pointer;padding:4px 0;border-radius:4px;transition:color .15s}
-.feed-item-action:hover{color:var(--tapp-primary,#6366f1)}
-.feed-item-action-danger:hover{color:#ef4444}
+.feed-item-header{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
+.feed-item-name{font-size:14px;font-weight:700;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(46%,220px)}
+.feed-item-handle{font-size:13px;color:var(--text-secondary,#8b98a5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.feed-item-sep{font-size:13px;color:var(--text-secondary,#c0c0c0)}
+.feed-item-time{font-size:12px;color:var(--text-secondary,#8b98a5);white-space:nowrap;flex-shrink:0;margin-left:auto}
+.feed-item-text{font-size:14.5px;line-height:1.55;color:var(--text-primary,#1a1a1a);margin-top:6px;white-space:pre-wrap;overflow-wrap:break-word}
+.feed-item-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.feed-item-actions{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.feed-item-action{display:inline-flex;align-items:center;gap:5px;background:none;border:1px solid transparent;color:var(--text-secondary,#8b98a5);font-size:12px;font-weight:500;cursor:pointer;padding:6px 10px;border-radius:8px;transition:color .12s,background .12s,border-color .12s}
+.feed-item-action:hover{color:var(--tapp-primary,#6366f1);background:rgba(var(--tapp-primary-rgb,99,102,241),.06)}
+.feed-item-action-danger{color:var(--text-secondary,#999)}
+.feed-item-action-danger:hover{color:#ef4444;background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.12)}
 
 /* ===== Aro Badges ===== */
 .aro-badge{font-size:10px;padding:2px 8px;border-radius:8px;font-weight:500;white-space:nowrap}
@@ -625,10 +634,12 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 /* ===== Layout ===== */
 .messenger-app{display:flex;flex:1;min-height:0;overflow:hidden}
 .sidebar{display:flex;flex-direction:column;width:280px;border-right:1px solid rgba(128,128,128,.08);flex-shrink:0;overflow:hidden}
-.sidebar-header{padding:14px 16px 10px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
-.sidebar-title{margin:0;font-size:15px;font-weight:600;color:var(--text-primary,#1a1a1a);letter-spacing:-.01em}
-.create-btn{width:28px;height:28px;border-radius:50%;border:none;background:var(--tapp-primary,#888);color:#fff;font-size:18px;font-weight:300;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s;flex-shrink:0;line-height:1}
-.create-btn:hover{opacity:.85}
+.sidebar-header{padding:14px 14px 12px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:52px}
+.sidebar-title{margin:0;font-size:16px;font-weight:700;color:var(--text-primary,#1a1a1a);letter-spacing:-.02em}
+.create-btn{width:32px;height:32px;border-radius:10px;border:none;background:var(--tapp-primary,#6366f1);color:#fff;font-size:20px;font-weight:400;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s,transform .12s;flex-shrink:0;line-height:1}
+.create-btn:hover{opacity:.9}
+.create-btn:active{transform:scale(.96)}
+.create-btn:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.5);outline-offset:2px}
 .conv-list{flex:1;min-height:0;overflow-y:auto;padding:6px 8px;display:flex;flex-direction:column;gap:2px}
 .chat-main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .member-panel{display:flex;flex-direction:column;width:220px;border-left:1px solid rgba(128,128,128,.08);flex-shrink:0;overflow:hidden;transition:width .2s}
@@ -711,14 +722,16 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 
 /* ===== Chat Container ===== */
 .chat-container{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
-.chat-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0}
-.back-btn{display:none;background:none;border:none;font-size:16px;padding:4px 8px;border-radius:8px;cursor:pointer;color:var(--text-secondary,#888)}
-.chat-hdr-avatar{width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888)}
+.chat-header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;min-height:56px;background:rgba(255,255,255,.4)}
+.dark .chat-header{background:rgba(10,10,10,.35)}
+.back-btn{display:none;background:none;border:none;font-size:18px;padding:6px 10px;border-radius:8px;cursor:pointer;color:var(--text-secondary,#888);line-height:1}
+.back-btn:hover{background:rgba(128,128,128,.08)}
+.chat-hdr-avatar{width:36px;height:36px;border-radius:50%;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#6366f1)}
 .chat-hdr-avatar img{width:100%;height:100%;object-fit:cover}
 .chat-header-info{min-width:0;flex:1}
-.chat-name{font-size:14px;font-weight:600;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chat-meta{display:flex;gap:6px;align-items:center;margin-top:2px;flex-wrap:wrap}
-.meta-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(var(--tapp-primary-rgb,128,128,128),.08);color:var(--tapp-primary,#888)}
+.chat-name{font-size:15px;font-weight:700;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.01em}
+.chat-meta{display:flex;gap:6px;align-items:center;margin-top:3px;flex-wrap:wrap}
+.meta-badge{font-size:10px;padding:2px 8px;border-radius:999px;background:rgba(var(--tapp-primary-rgb,128,128,128),.08);color:var(--tapp-primary,#6366f1);font-weight:600}
 .badge-channel{}
 .badge-room{}
 .badge-role{}
@@ -959,14 +972,14 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .bubble-remote .msg-share-icon{background:rgba(128,128,128,.08)}
 
 /* ===== Members ===== */
-.member-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;transition:background .15s}
+.member-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;transition:background .15s;min-height:44px}
 .member-item:hover{background:rgba(128,128,128,.05)}
-.member-avatar{width:24px;height:24px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;overflow:hidden}
+.member-avatar{width:32px;height:32px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#6366f1);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;overflow:hidden}
 .member-avatar img{width:100%;height:100%;object-fit:cover}
 .member-info{min-width:0;flex:1}
-.member-name{font-size:12px;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.member-role{font-size:10px;color:var(--text-secondary,#999)}
-.member-local{font-size:10px;color:var(--tapp-primary,#888);opacity:.7;flex-shrink:0}
+.member-name{font-size:13px;font-weight:500;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-role{font-size:11px;color:var(--text-secondary,#999);margin-top:1px}
+.member-local{font-size:10px;font-weight:600;color:var(--tapp-primary,#6366f1);background:rgba(var(--tapp-primary-rgb,99,102,241),.1);padding:2px 7px;border-radius:999px;flex-shrink:0}
 
 /* ===== Dark Mode ===== */
 .dark .aro-nav-item:hover{color:rgba(255,255,255,.9)}
@@ -1090,9 +1103,35 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .dark .create-tab-active{background:rgba(255,255,255,.08);color:rgba(255,255,255,.92)}
 .dark .create-input{background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
 .edit-label{font-size:11px;font-weight:600;color:var(--text-secondary,#888);text-transform:uppercase;letter-spacing:.04em}
-.member-kick{margin-left:auto;width:20px;height:20px;border:none;background:none;color:var(--text-secondary,#999);cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s}
-.member-item:hover .member-kick{opacity:1}
-.member-kick:hover{background:rgba(239,68,68,.1);color:#ef4444}
+.member-kick{margin-left:auto;width:28px;height:28px;border:none;background:none;color:var(--text-secondary,#999);cursor:pointer;border-radius:8px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s;flex-shrink:0}
+.member-item:hover .member-kick,.member-kick:focus-visible{opacity:1}
+.member-kick:hover,.member-kick:focus-visible{background:rgba(239,68,68,.1);color:#ef4444}
+
+/* Ring list reuses conv-item; type subtitle class */
+.conv-subtitle{font-size:12px;color:var(--text-secondary,#888);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dark .conv-subtitle{color:rgba(255,255,255,.5)}
+.panel-detail-header{min-height:56px;padding:12px 14px;background:rgba(255,255,255,.4)}
+.dark .panel-detail-header{background:rgba(10,10,10,.35)}
+.ring-action-sync{min-height:32px;padding:6px 12px;font-size:12px;font-weight:600}
+.invite-bar{padding:10px 12px;gap:8px;align-items:center}
+.invite-input{height:36px;border-radius:10px;padding:0 12px;font-size:13px}
+.invite-btn{height:36px;padding:0 14px;border-radius:10px;font-weight:600}
+
+/* Composer disabled locked look */
+.msg-input:disabled{opacity:.55;cursor:not-allowed}
+.attach-btn:disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
+.input-bar:focus-within{border-color:rgba(var(--tapp-primary-rgb,99,102,241),.35);box-shadow:0 2px 14px rgba(var(--tapp-primary-rgb,99,102,241),.08)}
+.dark .input-bar:focus-within{border-color:rgba(var(--tapp-primary-rgb,99,102,241),.4)}
+
+/* Manage menu destructive already; improve touch */
+.manage-item{min-height:36px;padding:8px 12px;font-size:13px}
+.msg-ctx-item{min-height:40px;padding:10px 14px}
+
+/* Share cards polish */
+.msg-share-card{border:1px solid rgba(128,128,128,.08)}
+.dark .msg-share-card{border-color:rgba(255,255,255,.06)}
+.msg-image{border-radius:12px;max-width:min(280px,100%)}
+.msg-file-card{border:1px solid rgba(128,128,128,.06)}
 
 /* ===== In-app Confirm Dialog (native confirm() is blocked in the sandboxed iframe) ===== */
 .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:300;animation:ctxFadeIn .12s ease}
@@ -1107,45 +1146,223 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .dark .confirm-dialog{background:var(--bg-primary,#1a1a1a)}
 .dark .confirm-message{color:rgba(255,255,255,.9)}
 .dark .confirm-btn-cancel{background:rgba(255,255,255,.08);color:rgba(255,255,255,.9)}
+
+/* ===== Motion layer (intentional, short, reduced-motion aware) ===== */
+:root{
+  --aro-ease:cubic-bezier(.2,.8,.2,1);
+  --aro-dur-fast:120ms;
+  --aro-dur:200ms;
+  --aro-dur-view:240ms;
+}
+@keyframes aroFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes aroFadeOut{from{opacity:1}to{opacity:0}}
+@keyframes aroViewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes aroSlideInRight{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
+@keyframes aroSlideInLeft{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+@keyframes aroSlideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes aroScaleIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes aroMsgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes aroPopIn{from{opacity:0;transform:scale(.94) translateY(4px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes aroSheetOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(12px)}}
+@keyframes aroScaleOut{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.97)}}
+
+/* View switch: messages / feed / rings */
+.aro-view.aro-view-active.aro-view-enter{
+  animation:aroViewIn var(--aro-dur-view) var(--aro-ease) both;
+}
+
+/* Chat open empty → thread; sidebar return */
+.chat-container.aro-panel-enter{animation:aroSlideInRight var(--aro-dur-view) var(--aro-ease) both}
+.empty-state.aro-panel-enter{animation:aroFadeIn var(--aro-dur) var(--aro-ease) both}
+.sidebar.aro-panel-enter{animation:aroSlideInLeft var(--aro-dur-view) var(--aro-ease) both}
+.panel-main.aro-panel-enter,
+.panel-detail.aro-panel-enter{animation:aroSlideInRight var(--aro-dur-view) var(--aro-ease) both}
+
+/* Mobile member sheet */
+@media(max-width:768px){
+  .member-panel.member-open-mobile{animation:aroSlideInRight 220ms var(--aro-ease) both}
+}
+
+/* Dialogs / sheets / confirm / menus */
+.create-overlay{animation:aroFadeIn var(--aro-dur) ease both}
+.create-dialog{animation:aroScaleIn var(--aro-dur) var(--aro-ease) both}
+.create-overlay.aro-leaving{animation:aroFadeOut 160ms ease both;pointer-events:none}
+.create-overlay.aro-leaving .create-dialog{animation:aroScaleOut 160ms ease both}
+
+.confirm-overlay{animation:aroFadeIn .16s ease both}
+.confirm-dialog{animation:aroScaleIn .16s var(--aro-ease) both}
+.confirm-overlay.aro-leaving{animation:aroFadeOut .14s ease both;pointer-events:none}
+.confirm-overlay.aro-leaving .confirm-dialog{animation:aroScaleOut .14s ease both}
+
+.picker-overlay.aro-leaving{animation:aroFadeOut .16s ease both;pointer-events:none}
+.picker-overlay.aro-leaving .picker-sheet{animation:aroSheetOut .16s ease both}
+
+.forward-sheet{animation:aroScaleIn .18s var(--aro-ease) both}
+.forward-overlay.aro-leaving{animation:aroFadeOut .14s ease both;pointer-events:none}
+.forward-overlay.aro-leaving .forward-sheet{animation:aroScaleOut .14s ease both}
+
+.msg-ctx-menu.aro-leaving{animation:aroFadeOut .1s ease both;pointer-events:none}
+.manage-dropdown.open{animation:aroPopIn .14s var(--aro-ease) both}
+.invite-popover{animation:aroPopIn .14s var(--aro-ease) both}
+
+/* Composer + attach */
+.feed-composer{
+  border-radius:0 0 14px 14px;
+  box-shadow:0 8px 24px rgba(0,0,0,.04);
+}
+.feed-composer.aro-compose-enter{animation:aroSlideUp .22s var(--aro-ease) both}
+.feed-compose-preview{animation:aroScaleIn .16s var(--aro-ease) both}
+.feed-compose-tool{transition:border-color .12s,color .12s,background .12s,transform .1s}
+.feed-compose-tool:active{transform:scale(.97)}
+.feed-compose-publish,.feed-compose-cancel{transition:opacity .15s,transform .1s,filter .12s}
+.feed-compose-publish:hover:not(:disabled){filter:brightness(1.05)}
+.feed-compose-publish:active:not(:disabled),.feed-compose-cancel:active:not(:disabled){transform:scale(.97)}
+.feed-compose-preview-remove{transition:background .12s,transform .1s}
+.feed-compose-preview-remove:active{transform:scale(.92)}
+
+.attach-preview.aro-attach-enter{animation:aroPopIn .18s var(--aro-ease) both}
+.send-btn{transition:background .15s,color .15s,opacity .15s,transform .12s,box-shadow .15s}
+.send-btn.send-ready{box-shadow:0 2px 10px rgba(var(--tapp-primary-rgb,99,102,241),.32)}
+
+/* Message appear (new only) */
+.msg-row.msg-appear{animation:aroMsgIn .2s var(--aro-ease) both}
+
+/* Unread badge + status chips */
+@keyframes aroBadgeIn{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
+.conv-badge{animation:aroBadgeIn .16s var(--aro-ease) both}
+.conv-pending,.conv-closed{animation:aroFadeIn .16s var(--aro-ease) both}
+
+/* Quote / pinned / attach chrome */
+.quote-preview{animation:aroSlideUp .18s var(--aro-ease) both}
+.pinned-bar{animation:aroSlideUp .2s var(--aro-ease) both}
+.attach-preview{transition:opacity .15s,transform .15s}
+.attach-btn{transition:background .15s,color .15s,transform .12s}
+.attach-btn:active{transform:scale(.94)}
+.attach-btn.attach-btn-active{transition:background .15s,color .15s,transform .18s}
+
+/* Day separator soft enter */
+.msg-day-sep{animation:aroFadeIn .18s var(--aro-ease) both}
+
+/* Feed media fade-in (avoid jank: opacity only) */
+.feed-item-media-single img,.feed-item-media-single video,
+.feed-media-cell img,.feed-media-cell video{
+  animation:aroFadeIn .22s var(--aro-ease) both;
+}
+
+/* Press feedback — lists & chrome (100–150ms) */
+.conv-item,.feed-nav-item,.aro-nav-item,.feed-item-action,.manage-item,.msg-ctx-item,
+.create-btn,.create-submit,.action-btn,.ring-action-sync,.feed-empty-retry,.confirm-btn,
+.picker-footer-btn,.picker-item,.attach-menu-item,.feed-follow-btn,.invite-pop-contact,
+.member-item,.forward-item{
+  transition:background .12s,color .12s,opacity .12s,transform .1s,border-color .12s,filter .12s;
+}
+.conv-item:active,.feed-nav-item:active,.aro-nav-item:active,.feed-item-action:active,
+.manage-item:active,.msg-ctx-item:active,.create-btn:active,.create-submit:active:not(:disabled),
+.action-btn:active,.ring-action-sync:active,.feed-empty-retry:active,.confirm-btn:active,
+.picker-footer-btn:active,.picker-item:active,.attach-menu-item:active,.feed-follow-btn:active,
+.invite-pop-contact:active,.forward-item:active{
+  transform:scale(.97);
+}
+.create-btn:active{transform:scale(.94)}
+
+/* Empty / error soft enter */
+.feed-empty,.messages-empty,.conv-empty{animation:aroFadeIn var(--aro-dur) var(--aro-ease) both}
+.feed-item{transition:background .12s,transform .1s}
+.feed-item:active{background:rgba(128,128,128,.04)}
+
+/* Profile card polish */
+.feed-profile-card{transition:border-color .15s,box-shadow .15s,background .15s}
+.feed-profile-card:hover{border-color:rgba(var(--tapp-primary-rgb,100,100,255),.22);box-shadow:0 2px 10px rgba(0,0,0,.04)}
+.dark .feed-profile-card:hover{box-shadow:0 2px 12px rgba(0,0,0,.25)}
+
+/* Reduced motion: dampen intentional motion; keep spinners usable but quiet */
+@media (prefers-reduced-motion:reduce){
+  :root{
+    --aro-dur-fast:1ms;
+    --aro-dur:1ms;
+    --aro-dur-view:1ms;
+  }
+  .aro-view-enter,
+  .aro-panel-enter,
+  .aro-compose-enter,
+  .aro-attach-enter,
+  .msg-appear,
+  .feed-empty,.messages-empty,.conv-empty,
+  .create-overlay,.create-dialog,
+  .confirm-overlay,.confirm-dialog,
+  .picker-overlay,.picker-sheet,
+  .forward-overlay,.forward-sheet,
+  .msg-ctx-menu,
+  .manage-dropdown.open,
+  .invite-popover,
+  .member-panel.member-open-mobile,
+  .feed-compose-preview,
+  .quote-preview,.pinned-bar,.conv-badge,.conv-pending,.conv-closed,.msg-day-sep,
+  .feed-item-media-single img,.feed-item-media-single video,
+  .feed-media-cell img,.feed-media-cell video{
+    animation:none!important;
+  }
+  .create-overlay.aro-leaving,
+  .confirm-overlay.aro-leaving,
+  .picker-overlay.aro-leaving,
+  .forward-overlay.aro-leaving,
+  .msg-ctx-menu.aro-leaving,
+  .create-overlay.aro-leaving .create-dialog,
+  .confirm-overlay.aro-leaving .confirm-dialog,
+  .picker-overlay.aro-leaving .picker-sheet,
+  .forward-overlay.aro-leaving .forward-sheet{
+    animation:none!important;
+  }
+  .conv-item:active,.feed-nav-item:active,.aro-nav-item:active,.feed-item-action:active,
+  .manage-item:active,.msg-ctx-item:active,.create-btn:active,.create-submit:active:not(:disabled),
+  .action-btn:active,.ring-action-sync:active,.feed-empty-retry:active,.confirm-btn:active,
+  .picker-footer-btn:active,.picker-item:active,.attach-menu-item:active,.feed-follow-btn:active,
+  .invite-pop-contact:active,.forward-item:active,
+  .feed-compose-btn:active,.feed-compose-publish:active:not(:disabled),.feed-compose-cancel:active:not(:disabled),
+  .feed-compose-tool:active,.send-btn.send-ready:active:not(:disabled){
+    transform:none!important;
+  }
+  .feed-skeleton-avatar,.feed-skeleton-line{animation:none!important;background:rgba(128,128,128,.1)}
+}
 `
 
 const ARO_I18N: Record<string, Record<string, string>> = {
   "en": {
     "accept": "Accept",
-    "acceptConfirmDesc": "Someone shared a Tapp with you",
+    "acceptConfirmDesc": "Someone shared a Tapp with you.",
     "acceptConfirmTitle": "Install this Tapp?",
     "acceptFail": "Couldn't accept",
     "acceptTapp": "Accept",
     "activityType": "Activity",
-    "addPeerBtn": "Add",
+    "addPeerBtn": "Add peer",
     "addPeerFail": "Couldn't add peer",
-    "addPeerPlaceholder": "Actor URL or @user@domain",
+    "addPeerPlaceholder": "@user@domain or profile link",
     "adminRequired": "Admin access required",
     "alreadyLatest": "You're up to date",
     "attach": "Attach",
     "attachBrew": "Brew",
-    "attachBrewPrompt": "Enter Brew article title",
+    "attachBrewPrompt": "Brew article title",
     "attachFile": "File",
     "attachImage": "Image",
     "attachLibrary": "Library",
-    "attachLibraryPrompt": "Enter library name",
+    "attachLibraryPrompt": "Library name",
     "attachReport": "Report",
-    "attachReportPrompt": "Enter report title",
+    "attachReportPrompt": "Report title",
     "attachSending": "Sending…",
     "attachTapp": "Tapp",
-    "attachTappPrompt": "Enter Tapp ID or name",
+    "attachTappPrompt": "Tapp ID or name",
     "back": "Back",
-    "channelPlaceholder": "Actor URL or @user@domain",
-    "close": "Close",
+    "channelPlaceholder": "@user@domain or profile link",
+    "close": "Close chat",
     "closeChannelConfirm": "Close this chat? You won't be able to send messages afterward.",
     "closed": "Closed",
-    "collapseDetails": "Collapse",
+    "collapseDetails": "Show less",
     "composeAddImage": "Image",
     "composeAddVideo": "Video",
     "composeCancel": "Cancel",
-    "composeEmpty": "Add text or an image/video",
+    "composeEmpty": "Write something or add media",
     "composeFail": "Couldn't publish",
-    "composePlaceholder": "Share something…",
+    "composePlaceholder": "What's on your mind?",
     "composePost": "Post",
     "composePublish": "Publish",
     "composePublishing": "Publishing…",
@@ -1160,39 +1377,41 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "create": "New",
     "createChannel": "Start chat",
     "createFail": "Couldn't create",
-    "createRingBtn": "Create",
+    "createRingBtn": "Create ring",
     "createRingFail": "Couldn't create ring",
-    "createRingTitle": "Create ring",
+    "createRingTitle": "Create a ring",
     "createRoom": "Create group",
     "creating": "Creating…",
     "dateToday": "Today",
     "dateYesterday": "Yesterday",
-    "disconnected": "Disconnected",
+    "disconnected": "Offline",
+    "dismiss": "Dismiss",
     "dissolve": "Dissolve group",
-    "dissolveConfirm": "Dissolve this group? This can't be undone.",
+    "dissolveConfirm": "Dissolve this group? Everyone will lose access. This can't be undone.",
     "dissolveFail": "Couldn't dissolve group",
     "dm": "Direct message",
     "editRoom": "Edit group",
-    "emptyChatHint": "Say hello — send the first message",
+    "emptyChatHint": "No messages yet — say hello",
     "emptyFollowers": "No followers yet",
-    "emptyFollowing": "Not following anyone yet",
-    "emptyPeers": "No peers yet",
-    "emptyPublished": "Nothing published yet",
+    "emptyFollowing": "You're not following anyone",
+    "emptyPeers": "No peers yet — add one below",
+    "emptyPublished": "You haven't published anything",
     "emptyRings": "No rings yet",
-    "emptyRoomHint": "Send the first message to start the group chat",
-    "emptyTimeline": "Nothing here yet",
-    "expandDetails": "Expand",
+    "emptyRoomHint": "No messages yet — start the conversation",
+    "emptyTimeline": "Your feed is empty",
+    "expandDetails": "Show more",
     "feedFollowers": "Followers",
     "feedFollowing": "Following",
-    "feedItems": "items",
+    "feedItems": "posts",
     "feedLoadFail": "Couldn't load feed",
     "feedPublished": "Published",
-    "feedTimeline": "Feed",
-    "fileTooLarge": "File too large (max 10MB)",
+    "feedRetry": "Try again",
+    "feedTimeline": "Home",
+    "fileTooLarge": "File too large (max 10 MB)",
     "followBtn": "Follow",
     "followFail": "Couldn't follow",
-    "followPlaceholder": "Actor URL or @user@domain",
-    "followQueued": "Follow request sent. Remote instances accept automatically.",
+    "followPlaceholder": "@user@domain or profile link",
+    "followQueued": "Follow request sent. Most instances accept automatically.",
     "forwardSuccess": "Forwarded",
     "forwardTo": "Forward to…",
     "installBtn": "Install",
@@ -1205,21 +1424,21 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "inviteFail": "Couldn't invite",
     "inviteFromContacts": "From contacts",
     "inviteManual": "Invite by address",
-    "invitePlaceholder": "Actor URL or @user@domain",
-    "inviteSuccess": "Invited",
+    "invitePlaceholder": "@user@domain or profile link",
+    "inviteSuccess": "Invite sent",
     "invited": "Invited",
     "inviting": "Inviting…",
     "kick": "Remove",
-    "kickConfirm": "Remove this member?",
+    "kickConfirm": "Remove this member from the group?",
     "kickFail": "Couldn't remove member",
-    "leave": "Leave",
+    "leave": "Leave group",
     "leaveBtn": "Leave ring",
-    "leaveRingConfirm": "Leave this ring?",
+    "leaveRingConfirm": "Leave this ring? You can rejoin later if invited.",
     "leaveRingFail": "Couldn't leave ring",
     "loadFail": "Couldn't load",
-    "local": "Local",
-    "localVer": "Local",
-    "manage": "Manage",
+    "local": "You",
+    "localVer": "Installed",
+    "manage": "More",
     "mediaTooLarge": "File too large",
     "mediaUnsupported": "Unsupported file type",
     "members": "Members",
@@ -1228,38 +1447,39 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "msgPin": "Pin",
     "msgQuote": "Reply",
     "msgUnpin": "Unpin",
-    "navFeed": "Feed",
+    "navFeed": "Home",
     "navMessages": "Messages",
     "navRings": "Rings",
     "newChannel": "New chat",
     "newMessage": "New message",
     "newRoom": "New group",
-    "noContacts": "No contacts to invite",
-    "noConv": "No conversations yet",
-    "noConvHint": "Tap + to start a chat",
+    "noContacts": "No contacts to invite yet",
+    "noConv": "No conversations",
+    "noConvHint": "Tap + to message someone or start a group",
     "openOriginal": "Open original",
     "openTappBtn": "Open Tapp",
     "peers": "peers",
     "pending": "Pending",
-    "pendingConfirm": "Awaiting confirmation",
+    "pendingConfirm": "Waiting for confirmation",
     "pickerCancel": "Cancel",
-    "pickerConfirm": "Confirm",
+    "pickerConfirm": "Add",
     "pickerDesc": "Description (optional)",
-    "pickerEmpty": "Nothing here",
+    "pickerEmpty": "Nothing to show",
     "pickerLoading": "Loading…",
     "pickerSearchPlaceholder": "Search…",
-    "pickerSelectPlatform": "Select platform",
+    "pickerSelectPlatform": "Choose a platform",
     "pickerTitle": "Title",
-    "pinFail": "Couldn't pin",
-    "pinnedMsg": "Pinned",
+    "pinFail": "Couldn't pin message",
+    "pinnedMsg": "Pinned message",
     "previewFile": "📎 File",
     "previewImage": "📷 Image",
-    "previewSystem": "System message",
+    "previewSystem": "System",
     "publicFeed": "Public feed",
-    "quoteLabel": "Reply",
+    "quoteLabel": "Replying to",
     "refresh": "Refresh",
     "rejectTapp": "Decline",
-    "remoteVer": "Shared",
+    "remoteVer": "Shared version",
+    "remove": "Remove",
     "removeBtn": "Unpublish",
     "removePeerFail": "Couldn't remove peer",
     "ringNamePlaceholder": "Ring name",
@@ -1278,17 +1498,17 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "save": "Save",
     "saveFail": "Couldn't save",
     "saving": "Saving…",
-    "selectBrew": "Select Brew article",
-    "selectHint": "Select a conversation to start chatting",
-    "selectLibrary": "Select from library",
-    "selectReport": "Select report",
-    "selectRing": "Select a ring to view details",
-    "selectTapp": "Select Tapp",
+    "selectBrew": "Choose a Brew article",
+    "selectHint": "Pick a conversation to start messaging",
+    "selectLibrary": "Choose from library",
+    "selectReport": "Choose a report",
+    "selectRing": "Select a ring to see peers and sync",
+    "selectTapp": "Choose a Tapp",
     "send": "Send",
     "sendFail": "Couldn't send",
     "syncBtn": "Sync",
     "syncFail": "Couldn't sync",
-    "syncSuccess": "Synced",
+    "syncSuccess": "Sync complete",
     "syncing": "Syncing…",
     "tappInstalled": "Installed",
     "tappNotInstalled": "Not installed",
@@ -1298,7 +1518,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "tappShareRejected": "Declined",
     "tappUpdateAvail": "Update available",
     "title": "Messages",
-    "typing": "Type a message…",
+    "typing": "Message…",
     "unfollowBtn": "Unfollow",
     "unfollowFail": "Couldn't unfollow",
     "unpublishFail": "Couldn't unpublish",
@@ -1306,33 +1526,33 @@ const ARO_I18N: Record<string, Record<string, string>> = {
   },
   "ja": {
     "accept": "承認",
-    "acceptConfirmDesc": "Tappが共有されました",
+    "acceptConfirmDesc": "Tappが共有されました。",
     "acceptConfirmTitle": "このTappをインストールしますか？",
     "acceptFail": "承認に失敗しました",
     "acceptTapp": "承認",
     "activityType": "アクティビティ",
-    "addPeerBtn": "追加",
-    "addPeerFail": "追加に失敗しました",
-    "addPeerPlaceholder": "Actor URL または @user@domain",
+    "addPeerBtn": "ピアを追加",
+    "addPeerFail": "ピアの追加に失敗しました",
+    "addPeerPlaceholder": "@user@domain またはプロフィールURL",
     "adminRequired": "管理者権限が必要です",
     "alreadyLatest": "最新版です",
     "attach": "添付",
     "attachBrew": "Brew",
-    "attachBrewPrompt": "Brew記事のタイトルを入力",
+    "attachBrewPrompt": "Brew記事のタイトル",
     "attachFile": "ファイル",
     "attachImage": "画像",
     "attachLibrary": "ライブラリ",
-    "attachLibraryPrompt": "ライブラリ名を入力",
+    "attachLibraryPrompt": "ライブラリ名",
     "attachReport": "レポート",
-    "attachReportPrompt": "レポートのタイトルを入力",
+    "attachReportPrompt": "レポートのタイトル",
     "attachSending": "送信中…",
     "attachTapp": "Tapp",
-    "attachTappPrompt": "Tapp IDまたは名前を入力",
+    "attachTappPrompt": "Tapp IDまたは名前",
     "back": "戻る",
-    "channelPlaceholder": "Actor URL または @user@domain",
-    "close": "閉じる",
+    "channelPlaceholder": "@user@domain またはプロフィールURL",
+    "close": "チャットを閉じる",
     "closeChannelConfirm": "このチャットを閉じますか？閉じると送信できなくなります。",
-    "closed": "終了",
+    "closed": "終了済み",
     "collapseDetails": "閉じる",
     "composeAddImage": "画像",
     "composeAddVideo": "動画",
@@ -1347,46 +1567,48 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composeUploading": "アップロード中…",
     "confirmCancel": "キャンセル",
     "confirmOk": "OK",
-    "connected": "接続済み",
+    "connected": "接続中",
     "copied": "コピーしました",
     "copy": "コピー",
     "copyFail": "コピーに失敗しました",
     "create": "新規",
     "createChannel": "チャットを開始",
     "createFail": "作成に失敗しました",
-    "createRingBtn": "作成",
+    "createRingBtn": "リングを作成",
     "createRingFail": "リングの作成に失敗しました",
     "createRingTitle": "リングを作成",
     "createRoom": "グループを作成",
     "creating": "作成中…",
     "dateToday": "今日",
     "dateYesterday": "昨日",
-    "disconnected": "未接続",
+    "disconnected": "オフライン",
+    "dismiss": "閉じる",
     "dissolve": "グループを解散",
-    "dissolveConfirm": "このグループを解散しますか？この操作は元に戻せません。",
+    "dissolveConfirm": "このグループを解散しますか？メンバーはアクセスできなくなり、元に戻せません。",
     "dissolveFail": "解散に失敗しました",
     "dm": "ダイレクトメッセージ",
     "editRoom": "グループを編集",
-    "emptyChatHint": "最初のメッセージを送ってみましょう",
+    "emptyChatHint": "まだメッセージがありません。あいさつしてみましょう",
     "emptyFollowers": "フォロワーはまだいません",
     "emptyFollowing": "まだ誰もフォローしていません",
-    "emptyPeers": "ピアはまだありません",
+    "emptyPeers": "ピアはまだありません。下から追加できます",
     "emptyPublished": "公開したコンテンツはまだありません",
     "emptyRings": "リングはまだありません",
-    "emptyRoomHint": "最初のメッセージを送ってグループチャットを始めましょう",
-    "emptyTimeline": "まだ投稿がありません",
-    "expandDetails": "展開",
+    "emptyRoomHint": "まだメッセージがありません。会話を始めましょう",
+    "emptyTimeline": "フィードはまだ空です",
+    "expandDetails": "もっと見る",
     "feedFollowers": "フォロワー",
     "feedFollowing": "フォロー中",
     "feedItems": "件",
     "feedLoadFail": "フィードを読み込めませんでした",
     "feedPublished": "公開済み",
-    "feedTimeline": "フィード",
+    "feedRetry": "再試行",
+    "feedTimeline": "ホーム",
     "fileTooLarge": "ファイルが大きすぎます（最大10MB）",
     "followBtn": "フォロー",
     "followFail": "フォローに失敗しました",
-    "followPlaceholder": "Actor URL または @user@domain",
-    "followQueued": "フォローリクエストを送信しました。相手側は自動承認します。",
+    "followPlaceholder": "@user@domain またはプロフィールURL",
+    "followQueued": "フォローリクエストを送信しました。多くのインスタンスは自動承認します。",
     "forwardSuccess": "転送しました",
     "forwardTo": "転送先…",
     "installBtn": "インストール",
@@ -1398,22 +1620,22 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "inviteBtn": "招待",
     "inviteFail": "招待に失敗しました",
     "inviteFromContacts": "連絡先から選ぶ",
-    "inviteManual": "手動で招待",
-    "invitePlaceholder": "Actor URL または @user@domain",
-    "inviteSuccess": "招待しました",
+    "inviteManual": "アドレスで招待",
+    "invitePlaceholder": "@user@domain またはプロフィールURL",
+    "inviteSuccess": "招待を送信しました",
     "invited": "招待済み",
     "inviting": "招待中…",
     "kick": "削除",
-    "kickConfirm": "このメンバーを削除しますか？",
+    "kickConfirm": "このメンバーをグループから削除しますか？",
     "kickFail": "削除に失敗しました",
-    "leave": "退出",
+    "leave": "グループを退出",
     "leaveBtn": "リングを退出",
-    "leaveRingConfirm": "このリングから退出しますか？",
+    "leaveRingConfirm": "このリングから退出しますか？招待があれば再参加できます。",
     "leaveRingFail": "退出に失敗しました",
     "loadFail": "読み込みに失敗しました",
-    "local": "ローカル",
-    "localVer": "ローカル",
-    "manage": "管理",
+    "local": "自分",
+    "localVer": "インストール済み",
+    "manage": "その他",
     "mediaTooLarge": "ファイルが大きすぎます",
     "mediaUnsupported": "未対応のファイル形式です",
     "members": "メンバー",
@@ -1422,7 +1644,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "msgPin": "ピン留め",
     "msgQuote": "返信",
     "msgUnpin": "ピン解除",
-    "navFeed": "フィード",
+    "navFeed": "ホーム",
     "navMessages": "メッセージ",
     "navRings": "リング",
     "newChannel": "新規チャット",
@@ -1430,32 +1652,33 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "newRoom": "新規グループ",
     "noContacts": "招待できる連絡先がありません",
     "noConv": "会話はまだありません",
-    "noConvHint": "+ をタップしてチャットを開始",
+    "noConvHint": "+ をタップしてチャットやグループを開始",
     "openOriginal": "元記事を開く",
     "openTappBtn": "Tappを開く",
     "peers": "ピア",
     "pending": "保留中",
     "pendingConfirm": "確認待ち",
     "pickerCancel": "キャンセル",
-    "pickerConfirm": "確認",
+    "pickerConfirm": "追加",
     "pickerDesc": "説明（任意）",
-    "pickerEmpty": "ここに項目はありません",
+    "pickerEmpty": "表示する項目がありません",
     "pickerLoading": "読み込み中…",
     "pickerSearchPlaceholder": "検索…",
     "pickerSelectPlatform": "プラットフォームを選択",
     "pickerTitle": "タイトル",
     "pinFail": "ピン留めに失敗しました",
-    "pinnedMsg": "ピン留め",
+    "pinnedMsg": "ピン留めメッセージ",
     "previewFile": "📎 ファイル",
     "previewImage": "📷 画像",
-    "previewSystem": "システムメッセージ",
+    "previewSystem": "システム",
     "publicFeed": "公開フィード",
-    "quoteLabel": "返信",
+    "quoteLabel": "返信先",
     "refresh": "更新",
     "rejectTapp": "拒否",
-    "remoteVer": "共有",
+    "remoteVer": "共有バージョン",
+    "remove": "削除",
     "removeBtn": "公開を取り消す",
-    "removePeerFail": "削除に失敗しました",
+    "removePeerFail": "ピアの削除に失敗しました",
     "ringNamePlaceholder": "リング名",
     "ringPeersTitle": "ピア",
     "ringType": "タイプ",
@@ -1473,10 +1696,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "saveFail": "保存に失敗しました",
     "saving": "保存中…",
     "selectBrew": "Brew記事を選択",
-    "selectHint": "会話を選んでチャットを始めましょう",
+    "selectHint": "会話を選んでメッセージを始めましょう",
     "selectLibrary": "ライブラリから選択",
     "selectReport": "レポートを選択",
-    "selectRing": "リングを選択して詳細を表示",
+    "selectRing": "リングを選択してピアと同期を表示",
     "selectTapp": "Tappを選択",
     "send": "送信",
     "sendFail": "送信に失敗しました",
@@ -1500,40 +1723,40 @@ const ARO_I18N: Record<string, Record<string, string>> = {
   },
   "zh": {
     "accept": "接受",
-    "acceptConfirmDesc": "有人向你分享了一个 Tapp",
+    "acceptConfirmDesc": "有人向你分享了一个 Tapp。",
     "acceptConfirmTitle": "安装此 Tapp？",
     "acceptFail": "接受失败",
     "acceptTapp": "接受",
     "activityType": "动态",
-    "addPeerBtn": "添加",
-    "addPeerFail": "添加失败",
-    "addPeerPlaceholder": "Actor URL 或 @user@domain",
+    "addPeerBtn": "添加节点",
+    "addPeerFail": "添加节点失败",
+    "addPeerPlaceholder": "@用户@域名 或个人主页链接",
     "adminRequired": "需要管理员权限",
     "alreadyLatest": "已是最新版本",
-    "attach": "附件",
+    "attach": "添加附件",
     "attachBrew": "Brew",
-    "attachBrewPrompt": "输入 Brew 文章标题",
+    "attachBrewPrompt": "Brew 文章标题",
     "attachFile": "文件",
     "attachImage": "图片",
     "attachLibrary": "资料库",
-    "attachLibraryPrompt": "输入资料库名称",
+    "attachLibraryPrompt": "资料库名称",
     "attachReport": "报告",
-    "attachReportPrompt": "输入报告标题",
+    "attachReportPrompt": "报告标题",
     "attachSending": "发送中…",
     "attachTapp": "Tapp",
-    "attachTappPrompt": "输入 Tapp ID 或名称",
+    "attachTappPrompt": "Tapp ID 或名称",
     "back": "返回",
-    "channelPlaceholder": "Actor URL 或 @user@domain",
-    "close": "关闭",
+    "channelPlaceholder": "@用户@域名 或个人主页链接",
+    "close": "关闭会话",
     "closeChannelConfirm": "确定关闭此私信？关闭后将无法继续发送消息。",
     "closed": "已关闭",
     "collapseDetails": "收起",
     "composeAddImage": "图片",
     "composeAddVideo": "视频",
     "composeCancel": "取消",
-    "composeEmpty": "请输入文字或添加图片/视频",
+    "composeEmpty": "写点文字或添加图片/视频",
     "composeFail": "发布失败",
-    "composePlaceholder": "分享点什么…",
+    "composePlaceholder": "分享此刻的想法…",
     "composePost": "发帖",
     "composePublish": "发布",
     "composePublishing": "发布中…",
@@ -1548,39 +1771,41 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "create": "新建",
     "createChannel": "开始私信",
     "createFail": "创建失败",
-    "createRingBtn": "创建",
-    "createRingFail": "创建失败",
+    "createRingBtn": "创建环网",
+    "createRingFail": "创建环网失败",
     "createRingTitle": "创建环网",
     "createRoom": "创建群聊",
     "creating": "创建中…",
     "dateToday": "今天",
     "dateYesterday": "昨天",
     "disconnected": "未连接",
+    "dismiss": "关闭",
     "dissolve": "解散群组",
-    "dissolveConfirm": "确定解散此群组？此操作不可撤销。",
+    "dissolveConfirm": "确定解散此群组？所有成员将失去访问权限，且无法撤销。",
     "dissolveFail": "解散失败",
     "dm": "私信",
     "editRoom": "编辑群聊",
-    "emptyChatHint": "打个招呼，发送第一条消息吧",
-    "emptyFollowers": "暂无粉丝",
+    "emptyChatHint": "还没有消息，打个招呼吧",
+    "emptyFollowers": "还没有粉丝",
     "emptyFollowing": "还没有关注任何人",
-    "emptyPeers": "暂无节点",
-    "emptyPublished": "暂无发布内容",
+    "emptyPeers": "暂无节点，可在下方添加",
+    "emptyPublished": "还没有发布过内容",
     "emptyRings": "暂无环网",
-    "emptyRoomHint": "发送第一条消息，开始群聊",
-    "emptyTimeline": "暂无动态",
+    "emptyRoomHint": "还没有消息，开始群聊吧",
+    "emptyTimeline": "动态还是空的",
     "expandDetails": "展开",
     "feedFollowers": "粉丝",
     "feedFollowing": "关注",
     "feedItems": "条",
     "feedLoadFail": "动态加载失败",
     "feedPublished": "已发布",
-    "feedTimeline": "动态",
-    "fileTooLarge": "文件过大（最大 10MB）",
+    "feedRetry": "重试",
+    "feedTimeline": "首页",
+    "fileTooLarge": "文件过大（最大 10 MB）",
     "followBtn": "关注",
     "followFail": "关注失败",
-    "followPlaceholder": "Actor URL 或 @user@domain",
-    "followQueued": "关注请求已发送，对方实例会自动接受",
+    "followPlaceholder": "@用户@域名 或个人主页链接",
+    "followQueued": "关注请求已发送，对方实例通常会自动接受。",
     "forwardSuccess": "已转发",
     "forwardTo": "转发到…",
     "installBtn": "安装",
@@ -1592,22 +1817,22 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "inviteBtn": "邀请",
     "inviteFail": "邀请失败",
     "inviteFromContacts": "从联系人选择",
-    "inviteManual": "手动邀请",
-    "invitePlaceholder": "Actor URL 或 @user@domain",
-    "inviteSuccess": "已邀请",
+    "inviteManual": "通过地址邀请",
+    "invitePlaceholder": "@用户@域名 或个人主页链接",
+    "inviteSuccess": "邀请已发送",
     "invited": "已邀请",
     "inviting": "邀请中…",
     "kick": "移除",
-    "kickConfirm": "确定移除此成员？",
+    "kickConfirm": "确定将此成员移出群聊？",
     "kickFail": "移除失败",
-    "leave": "离开",
+    "leave": "退出群聊",
     "leaveBtn": "退出环网",
-    "leaveRingConfirm": "确定退出此环网？",
+    "leaveRingConfirm": "确定退出此环网？之后若获邀可再加入。",
     "leaveRingFail": "退出失败",
     "loadFail": "加载失败",
-    "local": "本地",
-    "localVer": "本地版本",
-    "manage": "管理",
+    "local": "我",
+    "localVer": "已安装",
+    "manage": "更多",
     "mediaTooLarge": "文件过大",
     "mediaUnsupported": "不支持的文件类型",
     "members": "成员",
@@ -1616,7 +1841,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "msgPin": "置顶",
     "msgQuote": "回复",
     "msgUnpin": "取消置顶",
-    "navFeed": "动态",
+    "navFeed": "首页",
     "navMessages": "消息",
     "navRings": "环网",
     "newChannel": "新建私信",
@@ -1624,14 +1849,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "newRoom": "新建群聊",
     "noContacts": "暂无可邀请的联系人",
     "noConv": "暂无会话",
-    "noConvHint": "点击 + 开始新会话",
+    "noConvHint": "点击 + 发起私信或创建群聊",
     "openOriginal": "查看原文",
     "openTappBtn": "打开 Tapp",
     "peers": "节点",
-    "pending": "待接受",
+    "pending": "待处理",
     "pendingConfirm": "等待确认",
     "pickerCancel": "取消",
-    "pickerConfirm": "确认",
+    "pickerConfirm": "添加",
     "pickerDesc": "描述（可选）",
     "pickerEmpty": "暂无内容",
     "pickerLoading": "加载中…",
@@ -1639,17 +1864,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "pickerSelectPlatform": "选择平台",
     "pickerTitle": "标题",
     "pinFail": "置顶失败",
-    "pinnedMsg": "置顶",
+    "pinnedMsg": "置顶消息",
     "previewFile": "📎 文件",
     "previewImage": "📷 图片",
-    "previewSystem": "系统消息",
+    "previewSystem": "系统",
     "publicFeed": "公开动态",
     "quoteLabel": "回复",
     "refresh": "刷新",
     "rejectTapp": "拒绝",
     "remoteVer": "分享版本",
+    "remove": "移除",
     "removeBtn": "取消发布",
-    "removePeerFail": "移除失败",
+    "removePeerFail": "移除节点失败",
     "ringNamePlaceholder": "环网名称",
     "ringPeersTitle": "节点",
     "ringType": "类型",
@@ -1668,9 +1894,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "saving": "保存中…",
     "selectBrew": "选择 Brew 文章",
     "selectHint": "选择一个会话开始聊天",
-    "selectLibrary": "选择资料",
+    "selectLibrary": "从资料库选择",
     "selectReport": "选择报告",
-    "selectRing": "选择一个环网查看详情",
+    "selectRing": "选择一个环网查看节点与同步",
     "selectTapp": "选择 Tapp",
     "send": "发送",
     "sendFail": "发送失败",
@@ -1717,6 +1943,8 @@ var state = {
   activeId: null,
   messages: [],
   messagesFp: '',
+  /** Skip bubble appear animation on next renderMessages (e.g. open chat). */
+  skipMsgAppear: false,
   members: [],
   channelDetail: null,
   roomDetail: null,
@@ -1790,6 +2018,67 @@ var SVG_ICONS = {
 const PAGE_MOD_HELPERS = `\
 // ==================== Helpers ====================
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+/** True when the user prefers reduced motion (a11y). */
+function prefersReducedMotion() {
+  try {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  } catch (e) { return false; }
+}
+
+/**
+ * Play a one-shot enter animation class (restarts if already present).
+ * Class is removed after animationend (or immediately under reduced motion).
+ */
+function aroPlayEnter(el, className) {
+  if (!el || !className) return;
+  el.classList.remove(className);
+  if (prefersReducedMotion()) return;
+  try { void el.offsetWidth; } catch (e) { /* ignore */ }
+  el.classList.add(className);
+  var done = function () {
+    el.classList.remove(className);
+    el.removeEventListener('animationend', done);
+  };
+  el.addEventListener('animationend', done);
+  setTimeout(done, 400);
+}
+
+/**
+ * Hide or remove an element after a short exit animation (class \`aro-leaving\`).
+ * @param {HTMLElement} el
+ * @param {{ remove?: boolean, ms?: number, onDone?: function }} opts
+ */
+function aroDismiss(el, opts) {
+  opts = opts || {};
+  if (!el) { if (opts.onDone) opts.onDone(); return; }
+  var finished = false;
+  var finish = function () {
+    if (finished) return;
+    finished = true;
+    el.classList.remove('aro-leaving');
+    el.removeEventListener('animationend', onAnimEnd);
+    if (opts.remove) {
+      try { el.remove(); } catch (e) { /* ignore */ }
+    } else {
+      el.style.display = 'none';
+    }
+    if (opts.onDone) opts.onDone();
+  };
+  var onAnimEnd = function (e) {
+    // Ignore bubbled end events from child sheet/dialog animations.
+    if (e && e.target && e.target !== el) return;
+    finish();
+  };
+  if (prefersReducedMotion() || el.style.display === 'none') {
+    finish();
+    return;
+  }
+  el.classList.add('aro-leaving');
+  el.addEventListener('animationend', onAnimEnd);
+  setTimeout(finish, opts.ms || 180);
+}
+
 function timeStr(iso) { try { return new Date(iso).toLocaleTimeString(currentLocale, { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
 function fullTimeStr(iso) { try { return new Date(iso).toLocaleString(currentLocale); } catch (e) { return ''; } }
 /** Relative short time for conv list (e.g. 5m, 2h, 3d). */
@@ -1978,7 +2267,16 @@ function aroConfirm(message, danger) {
       + '<button class="confirm-btn confirm-btn-cancel">' + esc(lang.confirmCancel || 'Cancel') + '</button>'
       + '<button class="confirm-btn confirm-btn-ok' + (danger ? ' confirm-btn-danger' : '') + '">' + esc(lang.confirmOk || 'OK') + '</button>'
       + '</div></div>';
-    var done = function (result) { overlay.remove(); resolve(result); };
+    var settled = false;
+    var done = function (result) {
+      if (settled) return;
+      settled = true;
+      aroDismiss(overlay, {
+        remove: true,
+        ms: 150,
+        onDone: function () { resolve(result); },
+      });
+    };
     overlay.querySelector('.confirm-btn-cancel').addEventListener('click', function () { done(false); });
     overlay.querySelector('.confirm-btn-ok').addEventListener('click', function () { done(true); });
     overlay.addEventListener('click', function (e) { if (e.target === overlay) done(false); });
@@ -2399,10 +2697,12 @@ function applyLabels() {
   var el;
   el = $('nav-messages-label'); if (el) el.textContent = lang.navMessages;
   el = $('nav-rings-label'); if (el) el.textContent = lang.navRings;
+  el = $('nav-feed-label'); if (el && !el.textContent) el.textContent = lang.navFeed || lang.feedTimeline;
   // Messenger sidebar (not ring sidebar)
   el = document.querySelector('#view-messages .sidebar-title'); if (el) el.textContent = lang.title;
   el = document.querySelector('#view-messages .empty-text'); if (el) el.textContent = lang.selectHint;
   el = $('create-btn'); if (el) { el.setAttribute('title', lang.create); el.setAttribute('aria-label', lang.create); }
+  el = $('feed-empty-retry'); if (el) el.textContent = lang.feedRetry || 'Try again';
   el = $('msg-input'); if (el) el.placeholder = lang.typing;
   el = $('attach-btn'); if (el) { el.setAttribute('title', lang.attach || lang.attachFile); el.setAttribute('aria-label', lang.attach || lang.attachFile); }
   el = $('send-btn'); if (el) { el.setAttribute('title', lang.send); el.setAttribute('aria-label', lang.send); }
@@ -2427,8 +2727,8 @@ function applyLabels() {
   el = $('feed-follow-input'); if (el) el.placeholder = lang.followPlaceholder;
   el = $('feed-follow-btn'); if (el) el.textContent = lang.followBtn;
   el = $('feed-compose-btn-label'); if (el) el.textContent = lang.composePost || 'Post';
-  el = $('feed-compose-btn'); if (el) el.setAttribute('title', lang.composePost || 'Post');
-  el = $('feed-compose-mobile-btn'); if (el) el.setAttribute('title', lang.composePost || 'Post');
+  el = $('feed-compose-btn'); if (el) { el.setAttribute('title', lang.composePost || 'Post'); el.setAttribute('aria-label', lang.composePost || 'Post'); }
+  el = $('feed-compose-mobile-btn'); if (el) { el.setAttribute('title', lang.composePost || 'Post'); el.setAttribute('aria-label', lang.composePost || 'Post'); }
   el = $('feed-compose-text'); if (el) el.placeholder = lang.composePlaceholder || '';
   el = $('feed-compose-image-label'); if (el) el.textContent = lang.composeAddImage || 'Image';
   el = $('feed-compose-image-btn'); if (el) el.setAttribute('title', lang.composeAddImage || 'Image');
@@ -2436,8 +2736,12 @@ function applyLabels() {
   el = $('feed-compose-video-btn'); if (el) el.setAttribute('title', lang.composeAddVideo || 'Video');
   el = $('feed-compose-cancel'); if (el) el.textContent = lang.composeCancel || 'Cancel';
   el = $('feed-compose-publish'); if (el) el.textContent = lang.composePublish || 'Publish';
-  el = $('refresh-feed-btn'); if (el) el.setAttribute('title', lang.refresh);
-  el = $('refresh-feed-mobile-btn'); if (el) el.setAttribute('title', lang.refresh);
+  el = $('refresh-feed-btn'); if (el) { el.setAttribute('title', lang.refresh); el.setAttribute('aria-label', lang.refresh); }
+  el = $('refresh-feed-mobile-btn'); if (el) { el.setAttribute('title', lang.refresh); el.setAttribute('aria-label', lang.refresh); }
+  el = $('feed-section-title');
+  if (el && !state.feedLoading && typeof getFeedTitle === 'function') {
+    el.textContent = getFeedTitle(state.feedSubTab);
+  }
   if (typeof updateComposeButtonVisibility === 'function') updateComposeButtonVisibility();
   document.querySelectorAll('[data-copy-fed]').forEach(function (node) { node.setAttribute('title', lang.copy); });
   document.querySelectorAll('[data-fed-profile]').forEach(function (card) {
@@ -2582,9 +2886,10 @@ function createPickerOverlay(type, icons, titles, iconColors) {
     + '<button class="picker-footer-btn picker-btn-confirm" disabled>' + esc(lang.pickerConfirm) + '</button>'
     + '</div>'
     + '</div>';
-  overlay.querySelector('.picker-close-btn').addEventListener('click', function () { overlay.remove(); });
-  overlay.querySelector('.picker-btn-cancel').addEventListener('click', function () { overlay.remove(); });
-  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+  var dismissPicker = function () { aroDismiss(overlay, { remove: true, ms: 170 }); };
+  overlay.querySelector('.picker-close-btn').addEventListener('click', dismissPicker);
+  overlay.querySelector('.picker-btn-cancel').addEventListener('click', dismissPicker);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) dismissPicker(); });
   document.body.appendChild(overlay);
   return overlay;
 }
@@ -2872,9 +3177,10 @@ function renderAttachPreview() {
     + '<div class="attach-preview-name">' + esc(a.name || '') + '</div>'
     + '<div class="attach-preview-meta">' + (a.size ? formatFileSize(a.size) : (a.label || a.type)) + '</div>'
     + '</div>'
-    + '<button class="attach-preview-remove" id="attach-remove">&times;</button>';
+    + '<button class="attach-preview-remove" id="attach-remove" aria-label="' + esc(lang.remove || lang.dismiss || 'Remove') + '">&times;</button>';
   preview.innerHTML = html;
   preview.style.display = 'flex';
+  aroPlayEnter(preview, 'aro-attach-enter');
   var removeBtn = $('attach-remove');
   if (removeBtn) removeBtn.addEventListener('click', clearPendingAttach);
 }
@@ -2912,8 +3218,9 @@ function renderConvList() {
   items.sort(function (a, b) { return (b.sortTime || '').localeCompare(a.sortTime || ''); });
 
   if (items.length === 0) {
-    list.innerHTML = '<div class="conv-empty conv-empty-fill"><span>' + esc(lang.noConv)
-      + '<br><span style="font-size:11px;opacity:.75">' + esc(lang.noConvHint || '') + '</span></span></div>';
+    list.innerHTML = '<div class="conv-empty conv-empty-fill"><span style="display:flex;flex-direction:column;gap:6px;align-items:center;max-width:200px">'
+      + '<span style="font-weight:600;font-size:13px;color:var(--text-primary,#333)">' + esc(lang.noConv) + '</span>'
+      + '<span style="font-size:12px;line-height:1.45;opacity:.8">' + esc(lang.noConvHint || '') + '</span></span></div>';
     return;
   }
 
@@ -2994,7 +3301,10 @@ var _longPressTimer = null;
 var _msgMenuIgnoreUntil = 0;
 
 function closeMsgMenu() {
-  if (_msgMenu) { _msgMenu.remove(); _msgMenu = null; }
+  if (!_msgMenu) return;
+  var menu = _msgMenu;
+  _msgMenu = null;
+  aroDismiss(menu, { remove: true, ms: 120 });
 }
 
 function onMsgMenuOutside(e) {
@@ -3150,12 +3460,14 @@ function renderQuotePreview() {
   wrap.innerHTML =
     '<div class="quote-preview-bar"></div>'
     + '<div class="quote-preview-body">'
-    + '<div class="quote-preview-sender">' + esc(state.quoteMsg.sender) + '</div>'
+    + '<div class="quote-preview-sender">' + esc((lang.quoteLabel || 'Replying to') + ' ' + state.quoteMsg.sender) + '</div>'
     + '<div class="quote-preview-text">' + esc(state.quoteMsg.text) + '</div>'
     + '</div>'
-    + '<button class="quote-preview-close" id="quote-close">&times;</button>';
+    + '<button class="quote-preview-close" id="quote-close" aria-label="' + esc(lang.close || 'Close') + '">&times;</button>';
   var closeBtn = $('quote-close');
   if (closeBtn) closeBtn.addEventListener('click', clearQuote);
+  // Restart enter motion when quote target changes
+  aroPlayEnter(wrap, 'aro-attach-enter');
 }
 
 function doForward(msg) {
@@ -3211,13 +3523,16 @@ function doForward(msg) {
     });
     listEl.appendChild(btn);
   });
-  overlay.querySelector('.forward-close').addEventListener('click', function () { overlay.remove(); });
-  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('.forward-close').addEventListener('click', function () { aroDismiss(overlay, { remove: true, ms: 160 }); });
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) aroDismiss(overlay, { remove: true, ms: 160 });
+  });
   document.body.appendChild(overlay);
 }
 
 // ==================== Render: Messages ====================
-function renderMessages() {
+function renderMessages(opts) {
+  opts = opts || {};
   var container = $('messages');
   if (!container) return;
   state.pinnedBarDismissed = false;
@@ -3228,8 +3543,14 @@ function renderMessages() {
       + (state.activeKind === 'channel' ? SVG_ICONS.channel : SVG_ICONS.room)
       + '</div><p>' + esc(hint) + '</p></div>';
     var pb = $('pinned-bar'); if (pb) pb.style.display = 'none';
+    state.skipMsgAppear = false;
     return;
   }
+
+  var animateNew = !!opts.animateNew && !state.skipMsgAppear && !prefersReducedMotion();
+  var newCount = Math.max(0, opts.newCount || 0);
+  var appearFrom = animateNew ? Math.max(0, state.messages.length - newCount) : state.messages.length;
+  state.skipMsgAppear = false;
 
   var html = '';
   var lastDayKey = '';
@@ -3295,7 +3616,9 @@ function renderMessages() {
       } catch (e2) { compact = false; }
     }
 
-    html += '<div class="msg-row ' + (local ? 'msg-local' : 'msg-remote') + (compact ? ' msg-compact' : '') + '" data-msg-id="' + esc(msg.message_id || '') + '">';
+    html += '<div class="msg-row ' + (local ? 'msg-local' : 'msg-remote') + (compact ? ' msg-compact' : '')
+      + (idx >= appearFrom ? ' msg-appear' : '')
+      + '" data-msg-id="' + esc(msg.message_id || '') + '">';
     if (!local) {
       if (compact) {
         html += '<div class="msg-avatar-spacer"></div>';
@@ -3471,8 +3794,12 @@ function createDetailOverlay(title, iconHtml, bgColor) {
     + '</div>'
     + '<div class="picker-body"></div>'
     + '</div>';
-  overlay.querySelector('.picker-close-btn').addEventListener('click', function () { overlay.remove(); });
-  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('.picker-close-btn').addEventListener('click', function () {
+    aroDismiss(overlay, { remove: true, ms: 170 });
+  });
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) aroDismiss(overlay, { remove: true, ms: 170 });
+  });
   document.body.appendChild(overlay);
   return overlay;
 }
@@ -3727,7 +4054,7 @@ function renderChatHeader() {
         + esc(lang.dissolve) + '</button>';
     }
     // Member toggle button + manage menu
-    var memberToggleHtml = '<button class="member-toggle-btn" id="member-toggle-btn" title="' + esc(lang.members) + '">'
+    var memberToggleHtml = '<button class="member-toggle-btn" id="member-toggle-btn" title="' + esc(lang.members) + '" aria-label="' + esc(lang.members) + '">'
       + '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>'
       + '</button>';
     if (menuItems) {
@@ -3813,7 +4140,11 @@ const PAGE_MOD_API = `\
     renderConvList();
     if (errors.length > 0 && state.channels.length === 0 && state.rooms.length === 0) {
       var list = $('conv-list');
-      if (list) list.innerHTML = '<div class="conv-empty conv-empty-fill" style="color:#ef4444;font-size:12px;white-space:pre-wrap">' + esc(errors.join('\\n')) + '</div>';
+      if (list) {
+        list.innerHTML = '<div class="conv-empty conv-empty-fill" style="color:#b91c1c;font-size:12px;line-height:1.5;max-width:220px;text-align:center">'
+          + '<div style="font-weight:600;margin-bottom:4px">' + esc(lang.loadFail || 'Load failed') + '</div>'
+          + '<div style="opacity:.85;white-space:pre-wrap">' + esc(errors.join('\\n')) + '</div></div>';
+      }
     }
   } catch (e) {
     console.error('[Aro] loadConversations error:', e);
@@ -3828,12 +4159,17 @@ async function openConversation(kind, id) {
   state.activeId = id;
   state.messages = [];
   state.messagesFp = '';
+  state.skipMsgAppear = true;
   state.members = [];
   state.channelDetail = null;
   state.roomDetail = null;
 
   $('empty-state').style.display = 'none';
-  $('chat-container').style.display = '';
+  var chatEl = $('chat-container');
+  if (chatEl) {
+    chatEl.style.display = '';
+    aroPlayEnter(chatEl, 'aro-panel-enter');
+  }
   $('sidebar').classList.add('sidebar-hidden-mobile');
 
   renderMessages();
@@ -4007,7 +4343,7 @@ function mergeIncomingMessage(msg) {
   }
   state.messages.push(msg);
   state.messagesFp = messagesFingerprint(state.messages);
-  renderMessages();
+  renderMessages({ animateNew: true, newCount: 1 });
   return true;
 }
 
@@ -4024,9 +4360,17 @@ async function pollMessages(force) {
       var msgs = res.messages || [];
       var fp = messagesFingerprint(msgs);
       if (force || fp !== state.messagesFp) {
+        var prevLen = state.messages.length;
+        var prevLast = prevLen ? (state.messages[prevLen - 1].message_id || '') : '';
         state.messages = msgs;
         state.messagesFp = fp;
-        renderMessages();
+        var grew = msgs.length > prevLen;
+        var tailChanged = msgs.length && (msgs[msgs.length - 1].message_id || '') !== prevLast;
+        if (grew && tailChanged && !state.skipMsgAppear) {
+          renderMessages({ animateNew: true, newCount: Math.min(msgs.length - prevLen, 3) });
+        } else {
+          renderMessages();
+        }
       }
     }
   } catch (e) { /* ignore */ }
@@ -4342,12 +4686,14 @@ function showEditRoomDialog() {
   if (!overlay) return;
   $('edit-room-name').value = state.roomDetail.name || '';
   $('edit-room-desc').value = state.roomDetail.description || '';
+  overlay.classList.remove('aro-leaving');
   overlay.style.display = 'flex';
 }
 
 function hideEditRoomDialog() {
   var overlay = $('edit-room-dialog');
-  if (overlay) overlay.style.display = 'none';
+  if (!overlay || overlay.style.display === 'none') return;
+  aroDismiss(overlay, { ms: 170 });
 }
 
 async function doSaveRoom() {
@@ -4409,8 +4755,16 @@ async function doDissolveRoom() {
     $('chat-container').style.display = 'none';
     $('member-panel').style.display = 'none';
     $('member-panel').classList.remove('member-open-mobile');
-    $('empty-state').style.display = '';
-    $('sidebar').classList.remove('sidebar-hidden-mobile');
+    var emptyAfter = $('empty-state');
+    if (emptyAfter) {
+      emptyAfter.style.display = '';
+      aroPlayEnter(emptyAfter, 'aro-panel-enter');
+    }
+    var sideAfter = $('sidebar');
+    if (sideAfter) {
+      sideAfter.classList.remove('sidebar-hidden-mobile');
+      aroPlayEnter(sideAfter, 'aro-panel-enter');
+    }
     loadConversations();
   } catch (e) {
     notifyError(lang.dissolveFail, e);
@@ -4446,8 +4800,16 @@ async function doLeaveRoom() {
     $('chat-container').style.display = 'none';
     $('member-panel').style.display = 'none';
     $('member-panel').classList.remove('member-open-mobile');
-    $('empty-state').style.display = '';
-    $('sidebar').classList.remove('sidebar-hidden-mobile');
+    var emptyLeave = $('empty-state');
+    if (emptyLeave) {
+      emptyLeave.style.display = '';
+      aroPlayEnter(emptyLeave, 'aro-panel-enter');
+    }
+    var sideLeave = $('sidebar');
+    if (sideLeave) {
+      sideLeave.classList.remove('sidebar-hidden-mobile');
+      aroPlayEnter(sideLeave, 'aro-panel-enter');
+    }
     loadConversations();
   } catch (e) { /* ignore */ }
 }
@@ -4455,17 +4817,26 @@ async function doLeaveRoom() {
 // ==================== Create Dialog ====================
 function showCreateDialog() {
   var overlay = $('create-dialog');
-  if (overlay) overlay.style.display = 'flex';
+  if (overlay) {
+    overlay.classList.remove('aro-leaving');
+    overlay.style.display = 'flex';
+  }
   switchCreateTab('channel');
 }
 
 function hideCreateDialog() {
   var overlay = $('create-dialog');
-  if (overlay) overlay.style.display = 'none';
-  var channelInput = $('create-channel-input');
-  var roomInput = $('create-room-input');
-  if (channelInput) channelInput.value = '';
-  if (roomInput) roomInput.value = '';
+  var clearInputs = function () {
+    var channelInput = $('create-channel-input');
+    var roomInput = $('create-room-input');
+    if (channelInput) channelInput.value = '';
+    if (roomInput) roomInput.value = '';
+  };
+  if (!overlay || overlay.style.display === 'none') {
+    clearInputs();
+    return;
+  }
+  aroDismiss(overlay, { ms: 170, onDone: clearInputs });
 }
 
 function switchCreateTab(tab) {
@@ -4534,17 +4905,21 @@ async function doCreateRoom() {
 // ==================== View Switching ====================
 function switchView(view) {
   if (state.isGuest && view !== 'feed') view = 'feed';
+  var prev = state.currentView;
   state.currentView = view;
   var views = ['messages', 'feed', 'rings'];
   views.forEach(function (v) {
     var el = $('view-' + v);
     if (el) {
       el.classList.toggle('aro-view-active', v === view);
-      if (v !== view) el.style.display = 'none';
-      else { el.style.display = ''; el.classList.add('aro-view-active'); }
-`
-
-const PAGE_MOD_VIEWS = `\
+      if (v !== view) {
+        el.style.display = 'none';
+        el.classList.remove('aro-view-enter');
+      } else {
+        el.style.display = '';
+        el.classList.add('aro-view-active');
+        if (prev && prev !== view) aroPlayEnter(el, 'aro-view-enter');
+      }
     }
   });
   // Update nav buttons
@@ -4561,7 +4936,9 @@ const PAGE_MOD_VIEWS = `\
   if (view === 'feed') loadFeed();
   else if (view === 'rings') loadRings();
 }
+`
 
+const PAGE_MOD_VIEWS = `\
 // ==================== Feed View (merged Timeline + Profile) ====================
 async function loadFeed() {
   renderFederationIdentity();
@@ -4678,10 +5055,10 @@ function getFeedItems(sub) {
 }
 
 function getFeedEmptyText(sub) {
-  if (sub === 'following') return lang.emptyFollowing;
-  if (sub === 'followers') return lang.emptyFollowers;
-  if (sub === 'published') return lang.emptyPublished;
-  return lang.emptyTimeline;
+  if (sub === 'following') return lang.emptyFollowing || 'Not following anyone';
+  if (sub === 'followers') return lang.emptyFollowers || 'No followers yet';
+  if (sub === 'published') return lang.emptyPublished || 'Nothing published yet';
+  return lang.emptyTimeline || 'Your feed is empty';
 }
 
 function showFeedEmpty(message, kind) {
@@ -4697,7 +5074,7 @@ function showFeedEmpty(message, kind) {
   if (title) {
     if (kind === 'error') {
       title.style.display = '';
-      title.textContent = lang.feedLoadFail || lang.disconnected || '加载失败';
+      title.textContent = lang.feedLoadFail || lang.disconnected || 'Load failed';
     } else {
       title.style.display = 'none';
       title.textContent = '';
@@ -4705,6 +5082,15 @@ function showFeedEmpty(message, kind) {
   }
   var text = $('feed-empty-text');
   if (text) text.textContent = message;
+  var retry = $('feed-empty-retry');
+  if (retry) {
+    retry.textContent = lang.feedRetry || 'Try again';
+    retry.style.display = kind === 'error' ? '' : 'none';
+    if (!retry.dataset.bound) {
+      retry.dataset.bound = '1';
+      retry.addEventListener('click', function () { loadFeedSubTab(); });
+    }
+  }
 }
 
 function renderFeedSkeleton() {
@@ -5015,21 +5401,32 @@ function openComposer() {
   if (state.isGuest) return;
   var el = $('feed-composer');
   if (!el) return;
+  el.classList.remove('aro-leaving');
   el.style.display = '';
+  aroPlayEnter(el, 'aro-compose-enter');
   var ta = $('feed-compose-text');
   if (ta) { ta.focus(); }
 }
 
 function closeComposer() {
   var el = $('feed-composer');
-  if (el) el.style.display = 'none';
-  var ta = $('feed-compose-text');
-  if (ta) ta.value = '';
-  composeAttachments.forEach(function (a) {
-    if (a.previewUrl) try { URL.revokeObjectURL(a.previewUrl); } catch (e) {}
-  });
-  composeAttachments = [];
-  renderComposePreviews();
+  var clear = function () {
+    var ta = $('feed-compose-text');
+    if (ta) ta.value = '';
+    composeAttachments.forEach(function (a) {
+      if (a.previewUrl) try { URL.revokeObjectURL(a.previewUrl); } catch (e) {}
+    });
+    composeAttachments = [];
+    renderComposePreviews();
+  };
+  if (!el || el.style.display === 'none') {
+    clear();
+    return;
+  }
+  // Instant hide for composer (inline panel); enter already animates open.
+  el.style.display = 'none';
+  el.classList.remove('aro-compose-enter');
+  clear();
 }
 
 function renderComposePreviews() {
@@ -5047,7 +5444,7 @@ function renderComposePreviews() {
     } else {
       h += '<img src="' + esc(a.previewUrl) + '" alt="" />';
     }
-    h += '<button type="button" class="feed-compose-preview-remove" data-compose-remove="' + idx + '" aria-label="remove">&times;</button>';
+    h += '<button type="button" class="feed-compose-preview-remove" data-compose-remove="' + idx + '" aria-label="' + esc(lang.remove || 'Remove') + '">&times;</button>';
     h += '</div>';
   });
   box.innerHTML = h;
@@ -5216,7 +5613,9 @@ function renderRingsSidebar() {
   var list = $('ring-list');
   if (!list) return;
   if (state.rings.length === 0) {
-    list.innerHTML = '<div class="conv-empty conv-empty-fill"><span id="ring-empty-text">' + esc(lang.emptyRings) + '</span></div>';
+    list.innerHTML = '<div class="conv-empty conv-empty-fill"><span id="ring-empty-text">'
+      + esc(lang.emptyRings)
+      + '<br><span style="font-size:11px;opacity:.75">' + esc(lang.createRingTitle || '') + '</span></span></div>';
     return;
   }
   var typeIcons = { 'brew-recommend': SVG_ICONS.coffee, 'tapp-store': SVG_ICONS.puzzle, 'library-exchange': SVG_ICONS.library, 'instance-directory': SVG_ICONS.globe };
@@ -5227,10 +5626,11 @@ function renderRingsSidebar() {
     var peerText = (ring.peer_count || 0) + ' ' + lang.peers;
     var activeClass = state.activeRingId === ring.ring_id ? ' conv-active' : '';
     html += '<button class="conv-item' + activeClass + '" data-ring-id="' + esc(ring.ring_id) + '">'
-      + '<div class="conv-avatar avatar-room" style="border-radius:8px;font-size:16px">' + icon + '</div>'
+      + '<span class="conv-accent" aria-hidden="true"></span>'
+      + '<div class="conv-avatar avatar-room" style="border-radius:12px;font-size:16px">' + icon + '</div>'
       + '<div class="conv-info">'
-      + '<div class="conv-name">' + esc(name) + '</div>'
-      + '<div class="conv-subtitle">' + esc(ringTypeLabel(ring.ring_type)) + ' · ' + esc(peerText) + '</div>'
+      + '<div class="conv-top"><span class="conv-name">' + esc(name) + '</span></div>'
+      + '<div class="conv-bottom"><span class="conv-preview">' + esc(ringTypeLabel(ring.ring_type)) + ' · ' + esc(peerText) + '</span></div>'
       + '</div>'
       + '</button>';
   });
@@ -5254,7 +5654,8 @@ async function doCreateRing() {
   try {
     await Tapp.federation.createRing({ name: name, ring_type: type });
     input.value = '';
-    var d = $('ring-create-dialog'); if (d) d.style.display = 'none';
+    var d = $('ring-create-dialog');
+    if (d) aroDismiss(d, { ms: 170 });
     loadRings();
   } catch (e) {
     notifyError(lang.createRingFail, e);
@@ -5286,11 +5687,18 @@ function openRingDetail(ringId) {
   });
   // Show detail panel
   $('ring-empty-state').style.display = 'none';
-  $('ring-detail').style.display = '';
+  var detail = $('ring-detail');
+  if (detail) {
+    detail.style.display = '';
+    aroPlayEnter(detail, 'aro-panel-enter');
+  }
   // Mobile
   $('ring-sidebar').classList.add('sidebar-hidden-mobile');
-  var main = $('ring-detail').closest('.panel-main');
-  if (main) main.classList.add('panel-main-show-mobile');
+  var main = detail ? detail.closest('.panel-main') : null;
+  if (main) {
+    main.classList.add('panel-main-show-mobile');
+    aroPlayEnter(main, 'aro-panel-enter');
+  }
   loadRingDetail(ringId);
 }
 
@@ -5299,11 +5707,20 @@ function hideRingDetail() {
   state.ringDetail = null;
   state.ringPeers = [];
   var detail = $('ring-detail');
-  if (detail) detail.style.display = 'none';
+  if (detail) {
+    detail.style.display = 'none';
+    detail.classList.remove('aro-panel-enter');
+  }
   var empty = $('ring-empty-state');
-  if (empty) empty.style.display = '';
+  if (empty) {
+    empty.style.display = '';
+    aroPlayEnter(empty, 'aro-panel-enter');
+  }
   var sidebar = $('ring-sidebar');
-  if (sidebar) sidebar.classList.remove('sidebar-hidden-mobile');
+  if (sidebar) {
+    sidebar.classList.remove('sidebar-hidden-mobile');
+    aroPlayEnter(sidebar, 'aro-panel-enter');
+  }
   var main = detail ? detail.closest('.panel-main') : null;
   if (main) main.classList.remove('panel-main-show-mobile');
 }
@@ -5459,15 +5876,20 @@ function bindEvents() {
 `
 
 const PAGE_MOD_EVENTS = `\
-    var d = $('ring-create-dialog'); if (d) d.style.display = '';
+    var d = $('ring-create-dialog');
+    if (d) {
+      d.classList.remove('aro-leaving');
+      d.style.display = 'flex';
+    }
   });
   var ringCreateClose = $('ring-create-close');
   if (ringCreateClose) ringCreateClose.addEventListener('click', function () {
-    var d = $('ring-create-dialog'); if (d) d.style.display = 'none';
+    var d = $('ring-create-dialog');
+    if (d) aroDismiss(d, { ms: 170 });
   });
   var ringCreateOverlay = $('ring-create-dialog');
   if (ringCreateOverlay) ringCreateOverlay.addEventListener('click', function (e) {
-    if (e.target === ringCreateOverlay) ringCreateOverlay.style.display = 'none';
+    if (e.target === ringCreateOverlay) aroDismiss(ringCreateOverlay, { ms: 170 });
   });
 
   // Ring create submit
@@ -5624,14 +6046,23 @@ const PAGE_MOD_EVENTS = `\
       var chat = $('chat-container');
       var members = $('member-panel');
       var empty = $('empty-state');
-      if (sidebar) sidebar.classList.remove('sidebar-hidden-mobile');
-      if (chat) chat.style.display = 'none';
+      if (sidebar) {
+        sidebar.classList.remove('sidebar-hidden-mobile');
+        aroPlayEnter(sidebar, 'aro-panel-enter');
+      }
+      if (chat) {
+        chat.style.display = 'none';
+        chat.classList.remove('aro-panel-enter');
+      }
       if (members) {
         members.style.display = 'none';
         members.classList.remove('member-open-mobile');
         members.classList.remove('member-expanded-tablet');
       }
-      if (empty) empty.style.display = '';
+      if (empty) {
+        empty.style.display = '';
+        aroPlayEnter(empty, 'aro-panel-enter');
+      }
       clearPendingAttach();
       closeAttachMenu();
       if (typeof clearQuote === 'function') clearQuote();
@@ -5642,6 +6073,7 @@ const PAGE_MOD_EVENTS = `\
       state.activeId = null;
       state.messages = [];
       state.messagesFp = '';
+      state.skipMsgAppear = false;
       state.channelDetail = null;
       state.roomDetail = null;
       state.members = [];
