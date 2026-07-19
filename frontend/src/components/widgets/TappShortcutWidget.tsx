@@ -9,7 +9,7 @@
  * 交互与设置弹窗模式对齐 SocialNetworkWidget / GamePresenceWidget。
  */
 
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import type {
   RecentTappItem,
   TappListItem,
@@ -33,6 +33,7 @@ import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { TappIcon } from '../../tapp/components/TappIcon'
 import {
   getRecentTapps,
+  listTappDetails,
   listTapps,
 } from '../../tapp/services/TappLifecycleApi'
 import { GlowBackground } from './shared/GlowBackground'
@@ -52,9 +53,83 @@ interface ResolvedTapp {
   description?: string
   icon?: string
   iconSvg?: string
+  /** manifest 主题色（与 Tapp 页实际渲染一致） */
+  themeColor?: string
 }
 
 const DEFAULT_GLOW = '#6366f1'
+
+// ---------------------------------------------------------------------------
+// Per-Tapp accent color —— 与 Tapp 页实际渲染保持一致
+// ---------------------------------------------------------------------------
+
+/** 由 Tapp id 稳定散列出一个色相；仅用于 manifest 未提供主题色时的兜底 */
+function accentHue(seed: string): number {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) {
+    h = (Math.imul(h, 31) + seed.charCodeAt(i)) >>> 0
+  }
+  return h % 360
+}
+
+/** 给任意 CSS 颜色（hex / hsl）叠加透明度，用于渐变/描边/投影 */
+function withAlpha(color: string, alpha: number): string {
+  const c = color.trim()
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c)
+  if (hex) {
+    let h = hex[1]
+    if (h.length === 3) {
+      h = h
+        .split('')
+        .map((ch) => ch + ch)
+        .join('')
+    }
+    const r = Number.parseInt(h.slice(0, 2), 16)
+    const g = Number.parseInt(h.slice(2, 4), 16)
+    const b = Number.parseInt(h.slice(4, 6), 16)
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  }
+  const hsl = /^hsl\(([^)]+)\)$/i.exec(c)
+  if (hsl) return `hsl(${hsl[1]} / ${alpha})`
+  return c
+}
+
+/** App 图标风格的实底样式：主题色实底 + 顶部高光 + 柔和同色投影，衬托白色图标 */
+function appIconFill(color: string) {
+  return {
+    background: `linear-gradient(145deg, ${withAlpha(color, 1)} 0%, ${withAlpha(color, 0.78)} 100%)`,
+    boxShadow: `inset 0 1px 1px rgba(255, 255, 255, 0.3), inset 0 -1px 2px rgba(0, 0, 0, 0.12), 0 6px 14px -6px ${withAlpha(color, 0.65)}`,
+  }
+}
+
+/**
+ * App 图标风格的图标底座（2x1 / 2x2 用）。
+ * `color`（Tapp manifest 主题色）为空时退回中性玻璃底（占位/预览用）。
+ */
+const IconTile = memo(
+  ({
+    color,
+    tileClass,
+    children,
+  }: {
+    color: string | null
+    tileClass: string
+    children: ReactNode
+  }) => {
+    return (
+      <div
+        className={`${tileClass} rounded-2xl flex items-center justify-center overflow-hidden shrink-0 ${
+          color === null ? 'bg-black/5 dark:bg-white/10' : ''
+        }`}
+        style={color === null ? undefined : appIconFill(color)}
+      >
+        {children}
+      </div>
+    )
+  },
+)
+
+IconTile.displayName = 'TappShortcutIconTile'
 
 // ---------------------------------------------------------------------------
 // Global settings modal (singleton, same pattern as SocialNetworkWidget)
@@ -342,7 +417,7 @@ export const TappShortcutWidget = memo(
     const tw = t.tappShortcut
     const navigate = useNavigate()
     const anim = useAnimationLevel()
-    const { containerRef, fontScale } = useWidgetSize(
+    const { containerRef, fontScale, scale } = useWidgetSize(
       config.size,
       isPreview ? 1 : undefined,
     )
@@ -382,17 +457,23 @@ export const TappShortcutWidget = memo(
 
       let cancelled = false
       setLoading(true)
-      listTapps()
-        .then((list) => {
+      // list：拿 iconSvg（详情接口不含）；details：拿 manifest 主题色
+      Promise.all([
+        listTapps(),
+        listTappDetails().catch(() => []),
+      ])
+        .then(([list, details]) => {
           if (cancelled) return
           const found = list.find((item) => item.id === tappId)
           if (found) {
+            const detail = details.find((d) => d.id === tappId)
             setResolved({
               id: found.id,
               name: found.name,
               description: found.description,
               icon: found.icon,
               iconSvg: found.iconSvg,
+              themeColor: detail?.theme_color,
             })
             setMissing(false)
           } else {
@@ -467,6 +548,16 @@ export const TappShortcutWidget = memo(
 
     const canLaunch = !isEditMode && !!resolved?.id
 
+    // 强调色（光晕 + 图标底座）：优先用 Tapp manifest 主题色，与 Tapp 页
+    // 实际渲染一致；manifest 未提供时才退回按 id 散列的稳定色。
+    const tileColor = useMemo(() => {
+      if (!resolved?.id) return null
+      const theme = resolved.themeColor?.trim()
+      if (theme) return theme
+      return `hsl(${accentHue(resolved.id)} 72% 58%)`
+    }, [resolved?.id, resolved?.themeColor])
+    const glowColor = tileColor ?? DEFAULT_GLOW
+
     const handleClick = useCallback(() => {
       if (isLongPressRef.current) {
         isLongPressRef.current = false
@@ -512,36 +603,51 @@ export const TappShortcutWidget = memo(
     const content = useMemo(() => {
       // 占位：未配置 / 已卸载 / preview
       if (isPlaceholder) {
-        const iconSize =
-          config.size === '1x1' ? 'w-8 h-8' : config.size === '2x1' ? 'w-7 h-7' : 'w-10 h-10'
-        const textSize =
-          config.size === '1x1' ? 'text-2xl' : config.size === '2x1' ? 'text-xl' : 'text-3xl'
+        // 编辑模式下未配置：呈现「添加」态（虚线 + 加号），其余为中性玻璃底
+        const isAddState = isEditMode && !missing && !tappId && !isPreview
+        const tileClass =
+          config.size === '1x1'
+            ? 'w-12 h-12'
+            : config.size === '2x1'
+              ? 'w-10 h-10'
+              : 'w-14 h-14'
+        const glyph = (
+          <span
+            className="text-gray-400 dark:text-gray-500"
+            aria-hidden
+            style={{
+              fontSize: `${(config.size === '2x2' ? 26 : config.size === '1x1' ? 24 : 20) * fontScale}px`,
+              lineHeight: 1,
+            }}
+          >
+            {isAddState ? '+' : '⚡'}
+          </span>
+        )
+        const tile = (
+          <div
+            className={`${tileClass} rounded-2xl flex items-center justify-center shrink-0 ${
+              isAddState
+                ? 'border-2 border-dashed border-black/15 dark:border-white/20'
+                : 'bg-black/5 dark:bg-white/10'
+            }`}
+            title={placeholderLabel}
+          >
+            {glyph}
+          </div>
+        )
 
         if (config.size === '1x1') {
           return (
             <div className="h-full w-full flex items-center justify-center">
-              <div
-                className={`${iconSize} rounded-xl bg-black/5 dark:bg-white/10 flex items-center justify-center text-gray-400 dark:text-gray-500`}
-                title={placeholderLabel}
-              >
-                <span className={textSize} aria-hidden>
-                  ⚡
-                </span>
-              </div>
+              {tile}
             </div>
           )
         }
 
         if (config.size === '2x1') {
           return (
-            <div className="h-full w-full flex items-center justify-center gap-3 px-3">
-              <div
-                className={`${iconSize} rounded-xl bg-black/5 dark:bg-white/10 flex items-center justify-center text-gray-400 dark:text-gray-500 shrink-0`}
-              >
-                <span className={textSize} aria-hidden>
-                  ⚡
-                </span>
-              </div>
+            <div className="h-full w-full flex items-center justify-center gap-2.5">
+              {tile}
               <span
                 className="font-medium text-gray-500 dark:text-gray-400 truncate"
                 style={{ fontSize: `${14 * fontScale}px` }}
@@ -554,14 +660,8 @@ export const TappShortcutWidget = memo(
 
         // 2x2
         return (
-          <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-3 text-center">
-            <div
-              className={`${iconSize} rounded-xl bg-black/5 dark:bg-white/10 flex items-center justify-center text-gray-400 dark:text-gray-500`}
-            >
-              <span className={textSize} aria-hidden>
-                ⚡
-              </span>
-            </div>
+          <div className="h-full w-full flex flex-col items-center justify-center gap-2.5 text-center">
+            {tile}
             <span
               className="font-medium text-gray-500 dark:text-gray-400"
               style={{ fontSize: `${13 * fontScale}px` }}
@@ -575,20 +675,21 @@ export const TappShortcutWidget = memo(
       const name = resolved!.name
       const description = resolved!.description
 
-      // 1x1 — 仅图标
+      // 1x1 — 原生玻璃底 + 主题色图标（无底座），光晕同为主题色
       if (config.size === '1x1') {
         return (
-          <div className="h-full w-full flex items-center justify-center">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden bg-black/5 dark:bg-white/10">
-              <TappIcon
-                icon={resolved!.icon}
-                iconSvg={resolved!.iconSvg}
-                name={name}
-                sizeClass="w-7 h-7"
-                textSizeClass="text-2xl"
-                svgColor="currentColor"
-              />
-            </div>
+          <div
+            className="h-full w-full flex items-center justify-center"
+            style={{ color: tileColor ?? undefined }}
+          >
+            <TappIcon
+              icon={resolved!.icon}
+              iconSvg={resolved!.iconSvg}
+              name={name}
+              sizeClass="w-8 h-8"
+              textSizeClass="text-3xl"
+              svgColor={tileColor ?? DEFAULT_GLOW}
+            />
           </div>
         )
       }
@@ -596,17 +697,17 @@ export const TappShortcutWidget = memo(
       // 2x1 — 图标 + 名称
       if (config.size === '2x1') {
         return (
-          <div className="h-full w-full flex items-center justify-center gap-3 px-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden bg-black/5 dark:bg-white/10 shrink-0">
+          <div className="h-full w-full flex items-center justify-center gap-3">
+            <IconTile color={tileColor} tileClass="w-10 h-10">
               <TappIcon
                 icon={resolved!.icon}
                 iconSvg={resolved!.iconSvg}
                 name={name}
                 sizeClass="w-6 h-6"
                 textSizeClass="text-xl"
-                svgColor="currentColor"
+                svgColor="#fff"
               />
-            </div>
+            </IconTile>
             <span
               className="font-bold text-gray-800 dark:text-gray-100 truncate"
               style={{ fontSize: `${16 * fontScale}px` }}
@@ -619,17 +720,17 @@ export const TappShortcutWidget = memo(
 
       // 2x2 — 图标 + 名称 + 描述
       return (
-        <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-3 text-center">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden bg-black/5 dark:bg-white/10">
+        <div className="h-full w-full flex flex-col items-center justify-center gap-2.5 text-center">
+          <IconTile color={tileColor} tileClass="w-14 h-14">
             <TappIcon
               icon={resolved!.icon}
               iconSvg={resolved!.iconSvg}
               name={name}
               sizeClass="w-8 h-8"
               textSizeClass="text-3xl"
-              svgColor="currentColor"
+              svgColor="#fff"
             />
-          </div>
+          </IconTile>
           <div className="w-full min-w-0">
             <div
               className="font-bold text-gray-800 dark:text-gray-100 truncate"
@@ -646,10 +747,14 @@ export const TappShortcutWidget = memo(
               </div>
             ) : (
               <div
-                className="mt-0.5 text-gray-400 dark:text-gray-500"
-                style={{ fontSize: `${11 * fontScale}px` }}
+                className="mt-1 inline-flex items-center gap-0.5 font-medium"
+                style={{
+                  fontSize: `${10.5 * fontScale}px`,
+                  color: glowColor,
+                }}
               >
                 {tw.clickToOpen}
+                <span aria-hidden>›</span>
               </div>
             )}
           </div>
@@ -657,8 +762,14 @@ export const TappShortcutWidget = memo(
       )
     }, [
       isPlaceholder,
+      isEditMode,
+      isPreview,
+      missing,
+      tappId,
       config.size,
       resolved,
+      tileColor,
+      glowColor,
       fontScale,
       placeholderLabel,
       tw.clickToOpen,
@@ -672,13 +783,14 @@ export const TappShortcutWidget = memo(
       <WidgetShell
         as={motion.div}
         containerRef={mergedRef}
-        padding={0}
-        className={`${canLaunch ? 'cursor-pointer' : ''} ${
+        scale={scale}
+        padding={config.size === '1x1' ? 8 : 12}
+        className={`select-none ${canLaunch ? 'cursor-pointer' : ''} ${
           isEditMode ? 'cursor-grab' : ''
         }`}
         background={
           <GlowBackground
-            color={DEFAULT_GLOW}
+            color={glowColor}
             animLevel={anim.level}
             shouldAnimate={anim.loop}
           />
