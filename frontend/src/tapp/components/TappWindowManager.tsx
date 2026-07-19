@@ -40,6 +40,7 @@ import { useWindowAgentHandler } from '../hooks/useWindowAgentHandler'
 import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
+import { resolveManifestText } from '../utils/manifestLocale'
 import { getTappIconStyle } from '../utils/tappColors'
 import { TappIcon } from './TappIcon'
 import './TappWindowManager.css'
@@ -166,9 +167,12 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
     onResize,
     containerBounds,
   }) => {
-    const { t } = useI18n()
+    const { t, locale } = useI18n()
     const animConfig = useAnimationLevel()
     const noAnimation = animConfig.level === 'none'
+    const windowTappName = window.tapp
+      ? resolveManifestText(window.tapp.manifest, locale).name
+      : ''
 
     const windowRef = useRef<HTMLDivElement>(null)
     const [isDragging, setIsDragging] = useState(false)
@@ -548,7 +552,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
                   <TappIcon
                     icon={window.tapp.manifest.icon}
                     iconSvg={window.tapp.manifest.iconSvg}
-                    name={window.tapp.manifest.name}
+                    name={windowTappName}
                     sizeClass="w-3 h-3"
                     textSizeClass="text-xs"
                   />
@@ -557,7 +561,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
                   className="text-xs font-medium truncate"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  {window.tapp.manifest.name}
+                  {windowTappName}
                 </span>
                 <span
                   className="text-[10px] shrink-0"
@@ -672,7 +676,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   initialTappId,
   onBack,
 }) => {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const { isAuthenticated } = useAuth()
   const animConfig = useAnimationLevel()
   const noAnimation = animConfig.level === 'none'
@@ -1532,6 +1536,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                     <div className="grid grid-cols-4 gap-3">
                       {selectableTapps.map((tapp) => {
                         const style = getTappIconStyle(tapp.manifest)
+                        const text = resolveManifestText(tapp.manifest, locale)
                         return (
                           <motion.button
                             key={tapp.id}
@@ -1539,7 +1544,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                             className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
                             style={WINDOW_CONTROL_HOVER_STYLE}
                             whileTap={{ scale: 0.95 }}
-                            title={tapp.manifest.description}
+                            title={text.description}
                           >
                             {style && (
                               <div
@@ -1549,7 +1554,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                                 <TappIcon
                                   icon={tapp.manifest.icon}
                                   iconSvg={tapp.manifest.iconSvg}
-                                  name={tapp.manifest.name}
+                                  name={text.name}
                                   sizeClass="w-6 h-6"
                                   textSizeClass="text-lg"
                                 />
@@ -1559,7 +1564,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                               className="text-xs text-center w-full truncate"
                               style={{ color: 'var(--text-primary)' }}
                             >
-                              {tapp.manifest.name}
+                              {text.name}
                             </span>
                           </motion.button>
                         )

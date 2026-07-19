@@ -34,6 +34,9 @@ const VALID_WIDGET_SIZES = new Set<string>([
   '4x4',
 ])
 
+/** Loose BCP-47 tag matching backend `valid_locale_tag`: language 2-3 letters + alnum subtags. */
+const LOCALE_TAG_RE = /^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i
+
 /** Loose semver matching the backend `semver::Version::parse` happy path. */
 const SEMVER_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-z-][0-9a-z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-z-][0-9a-z-]*))*))?(?:\+([0-9a-z-]+(?:\.[0-9a-z-]+)*))?$/i
@@ -143,6 +146,31 @@ export function validatePlaygroundPackage(
 
   if (!manifest.name || !manifest.name.trim() || manifest.name.length > 255) {
     push('Tapp name must contain 1-255 characters')
+  }
+
+  if (manifest.locales) {
+    const entries = Object.entries(manifest.locales)
+    if (entries.length > 32) {
+      push('Tapp locales must not declare more than 32 languages')
+    }
+    for (const [tag, entry] of entries) {
+      if (!LOCALE_TAG_RE.test(tag)) {
+        push(
+          `Tapp locales key '${tag}' must be a BCP-47 language tag (e.g. zh-CN)`,
+        )
+      }
+      if (
+        entry.name !== undefined &&
+        (!entry.name.trim() || entry.name.length > 255)
+      ) {
+        push(`Tapp locales['${tag}'].name must contain 1-255 characters`)
+      }
+      if (entry.description !== undefined && entry.description.length > 2000) {
+        push(
+          `Tapp locales['${tag}'].description must not exceed 2000 characters`,
+        )
+      }
+    }
   }
 
   if (!manifest.version || !SEMVER_RE.test(manifest.version)) {

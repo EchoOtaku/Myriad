@@ -59,6 +59,7 @@ import { EXAMPLE_TAPPS } from '../examples'
 import { getTappRuntime } from '../runtime'
 import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import { RemoteStoreService } from '../services/RemoteStoreService'
+import { resolveManifestText } from '../utils/manifestLocale'
 import {
   normalizeTappCategory,
   TAPP_CATEGORIES,
@@ -1182,7 +1183,7 @@ function SourcesSettingsModal({
  * Tapp 商店模态框
  */
 export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
-  const { t, format } = useI18n()
+  const { t, format, locale } = useI18n()
   const { isAuthenticated, isAdmin, hasChecked, checkAuth } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<
@@ -1311,21 +1312,24 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
   }, [isOpen, loadRemoteApps, remoteApps.length])
 
   // 转换本地示例为统一格式
-  const localApps: UnifiedAppItem[] = EXAMPLE_TAPPS.map((tapp) => ({
-    id: tapp.manifest.id,
-    name: tapp.manifest.name,
-    version: tapp.manifest.version,
-    description: tapp.manifest.description || '',
-    author: tapp.manifest.author || { name: 'Unknown' },
-    icon: tapp.manifest.icon,
-    iconSvg: tapp.manifest.iconSvg,
-    themeColor: tapp.manifest.themeColor,
-    category: tapp.manifest.category,
-    tags: tapp.tags,
-    permissions: tapp.manifest.permissions,
-    source: 'local' as const,
-    localTapp: tapp,
-  }))
+  const localApps: UnifiedAppItem[] = EXAMPLE_TAPPS.map((tapp) => {
+    const text = resolveManifestText(tapp.manifest, locale)
+    return {
+      id: tapp.manifest.id,
+      name: text.name,
+      version: tapp.manifest.version,
+      description: text.description || '',
+      author: tapp.manifest.author || { name: 'Unknown' },
+      icon: tapp.manifest.icon,
+      iconSvg: tapp.manifest.iconSvg,
+      themeColor: tapp.manifest.themeColor,
+      category: tapp.manifest.category,
+      tags: tapp.tags,
+      permissions: tapp.manifest.permissions,
+      source: 'local' as const,
+      localTapp: tapp,
+    }
+  })
 
   // 转换远程应用为统一格式
   const remoteAppsUnified: UnifiedAppItem[] = remoteApps.map((app) => ({

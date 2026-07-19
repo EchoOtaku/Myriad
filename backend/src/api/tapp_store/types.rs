@@ -21,6 +21,11 @@ impl<T: Serialize> ApiResponse<T> {
     }
 }
 
+/// 从 manifest JSON 提取 locales 对象（非对象值视为缺失）
+pub(super) fn manifest_locales(manifest: &serde_json::Value) -> Option<serde_json::Value> {
+    manifest.get("locales").filter(|v| v.is_object()).cloned()
+}
+
 /// 错误响应便捷函数
 pub(super) fn api_error(message: impl Into<String>) -> Json<ApiResponse<()>> {
     Json(ApiResponse {
@@ -41,6 +46,9 @@ pub struct TappListItem {
     pub icon: Option<String>,
     /// 内联 SVG 图标代码（优先于 icon）
     pub icon_svg: Option<String>,
+    /// manifest.locales 透传：语言标签 → { name?, description? }，供前端按语言解析
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locales: Option<serde_json::Value>,
     pub status: String,
     pub installed_at: String,
     pub last_run_at: Option<String>,

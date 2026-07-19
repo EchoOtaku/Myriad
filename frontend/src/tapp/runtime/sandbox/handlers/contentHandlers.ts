@@ -4,7 +4,9 @@
 
 import type { TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
+import { getDefaultLocale } from '../../../../i18n'
 import * as TappApiService from '../../../services/TappApiService'
+import { resolveManifestText } from '../../../utils/manifestLocale'
 
 // 统一错误返回
 function fail(error: unknown) {
@@ -29,17 +31,21 @@ export function registerTappListHandlers(
   bridge.registerHandler('tappList.list', async () => {
     try {
       const tapps = await TappApiService.listTapps()
+      const locale = getDefaultLocale()
       return {
         success: true,
-        data: tapps.map((t) => ({
-          id: t.id,
-          name: t.name,
-          version: t.version,
-          description: t.description || '',
-          icon: t.icon || '',
-          iconSvg: t.iconSvg || '',
-          status: t.status,
-        })),
+        data: tapps.map((t) => {
+          const text = resolveManifestText(t, locale)
+          return {
+            id: t.id,
+            name: text.name,
+            version: t.version,
+            description: text.description || '',
+            icon: t.icon || '',
+            iconSvg: t.iconSvg || '',
+            status: t.status,
+          }
+        }),
       }
     } catch (error) {
       return fail(error)
@@ -51,13 +57,14 @@ export function registerTappListHandlers(
     const [tappId] = getArgs(message) as [string]
     try {
       const detail = await TappApiService.getTapp(tappId)
+      const text = resolveManifestText(detail.manifest, getDefaultLocale())
       return {
         success: true,
         data: {
           id: detail.id,
-          name: detail.manifest.name,
+          name: text.name,
           version: detail.manifest.version,
-          description: detail.manifest.description || '',
+          description: text.description || '',
           icon: detail.icon || '',
           status: detail.status,
           installed_at: detail.installed_at,

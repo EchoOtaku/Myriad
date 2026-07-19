@@ -288,6 +288,38 @@ describe('validatePlaygroundPackage', () => {
     }
   })
 
+  it('accepts valid locales and rejects malformed entries', () => {
+    const { manifest, code } = validPageProject()
+    const ok = validatePlaygroundPackage({
+      manifest: {
+        ...manifest,
+        locales: { 'en-US': { name: 'Page App', description: 'Demo' } },
+      },
+      code,
+    })
+    assert.equal(ok.ok, true)
+
+    const bad = validatePlaygroundPackage({
+      manifest: {
+        ...manifest,
+        locales: {
+          'not a tag': { name: 'X' },
+          'en-US': { name: '   ' },
+          'ja-JP': { description: 'x'.repeat(2001) },
+        },
+      },
+      code,
+    })
+    assert.equal(bad.ok, false)
+    if (!bad.ok) {
+      assert.ok(bad.errors.some((e) => e.includes("key 'not a tag'")))
+      assert.ok(bad.errors.some((e) => e.includes("locales['en-US'].name")))
+      assert.ok(
+        bad.errors.some((e) => e.includes("locales['ja-JP'].description")),
+      )
+    }
+  })
+
   it('formatPlaygroundPackageErrors numbers multi-error lists', () => {
     assert.equal(formatPlaygroundPackageErrors(['only']), 'only')
     assert.equal(

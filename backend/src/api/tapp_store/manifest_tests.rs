@@ -621,6 +621,60 @@ fn preserves_and_validates_data_exchange_during_manifest_round_trip() {
 }
 
 #[test]
+fn validates_manifest_locales_overrides() {
+    let manifest: TappManifest = serde_json::from_value(json!({
+        "id": "com.example.i18n",
+        "name": "我的应用",
+        "version": "1.0.0",
+        "main": "main.js",
+        "category": "utility",
+        "description": "中文描述",
+        "locales": {
+            "en-US": { "name": "My App", "description": "English description" },
+            "ja-JP": { "description": "日本語の説明" }
+        }
+    }))
+    .expect("manifest should deserialize");
+    validate_tapp_manifest(&manifest).expect("locales declaration should validate");
+    let value = serde_json::to_value(manifest).expect("manifest should serialize");
+    assert_eq!(value["locales"]["en-US"]["name"], "My App");
+
+    let bad_tag: TappManifest = serde_json::from_value(json!({
+        "id": "com.example.i18n",
+        "name": "App",
+        "version": "1.0.0",
+        "main": "main.js",
+        "category": "utility",
+        "locales": { "not a tag": { "name": "X" } }
+    }))
+    .expect("manifest should deserialize");
+    let error = validate_tapp_manifest(&bad_tag).expect_err("invalid tag should fail");
+    assert!(error.contains("BCP-47"));
+
+    let blank_name: TappManifest = serde_json::from_value(json!({
+        "id": "com.example.i18n",
+        "name": "App",
+        "version": "1.0.0",
+        "main": "main.js",
+        "category": "utility",
+        "locales": { "en-US": { "name": "   " } }
+    }))
+    .expect("manifest should deserialize");
+    let error = validate_tapp_manifest(&blank_name).expect_err("blank override should fail");
+    assert!(error.contains("locales['en-US'].name"));
+
+    assert!(serde_json::from_value::<TappManifest>(json!({
+        "id": "com.example.i18n",
+        "name": "App",
+        "version": "1.0.0",
+        "main": "main.js",
+        "category": "utility",
+        "locales": { "en-US": { "name": "X", "unknown": true } }
+    }))
+    .is_err());
+}
+
+#[test]
 fn preserves_and_validates_ai_contract_during_manifest_round_trip() {
     let manifest: TappManifest = serde_json::from_value(json!({
         "id": "com.example.ai",

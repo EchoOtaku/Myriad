@@ -367,6 +367,19 @@ pub(crate) fn decode_asset_base64(value: &str) -> Result<Vec<u8>, String> {
         .map_err(|_| "Invalid asset base64 encoding".to_string())
 }
 
+/// BCP-47 语言标签的宽松校验：language[-subtag]*，各段字母数字 1-8 位
+fn valid_locale_tag(tag: &str) -> bool {
+    !tag.is_empty()
+        && tag.len() <= 35
+        && tag.split('-').all(|part| {
+            !part.is_empty() && part.len() <= 8 && part.bytes().all(|b| b.is_ascii_alphanumeric())
+        })
+        && tag
+            .split('-')
+            .next()
+            .is_some_and(|lang| (2..=3).contains(&lang.len()) && lang.bytes().all(|b| b.is_ascii_alphabetic()))
+}
+
 pub(crate) fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
     validate_tapp_id(&manifest.id)?;
     if manifest.name.trim().is_empty() || manifest.name.len() > 255 {
@@ -383,6 +396,36 @@ pub(crate) fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), Stri
         .is_some_and(|description| description.len() > 2_000)
     {
         return Err("Tapp description must not exceed 2000 characters".to_string());
+    }
+    if let Some(locales) = &manifest.locales {
+        if locales.len() > 32 {
+            return Err("Tapp locales must not declare more than 32 languages".to_string());
+        }
+        for (tag, entry) in locales {
+            if !valid_locale_tag(tag) {
+                return Err(format!(
+                    "Tapp locales key '{tag}' must be a BCP-47 language tag (e.g. zh-CN)"
+                ));
+            }
+            if entry
+                .name
+                .as_ref()
+                .is_some_and(|name| name.trim().is_empty() || name.len() > 255)
+            {
+                return Err(format!(
+                    "Tapp locales['{tag}'].name must contain 1-255 characters"
+                ));
+            }
+            if entry
+                .description
+                .as_ref()
+                .is_some_and(|description| description.len() > 2_000)
+            {
+                return Err(format!(
+                    "Tapp locales['{tag}'].description must not exceed 2000 characters"
+                ));
+            }
+        }
     }
     if manifest
         .icon

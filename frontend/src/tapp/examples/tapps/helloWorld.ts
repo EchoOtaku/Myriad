@@ -511,6 +511,15 @@ export const helloWorldTapp: ExampleTapp = {
     version: '1.0.0',
     minSystemVersion: '0.2.1',
     description: '官方入门示例，演示 Tapp 生命周期与常用 API',
+    locales: {
+      'en-US': {
+        description:
+          'Official starter example demonstrating the Tapp lifecycle and common APIs',
+      },
+      'ja-JP': {
+        description: '公式入門サンプル。Tapp のライフサイクルと主要 API を紹介',
+      },
+    },
     category: 'utility',
     main: 'index.js',
     author: {

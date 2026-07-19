@@ -13,6 +13,7 @@ import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { TappIcon } from '../../tapp/components/TappIcon'
 import { getRecentTapps, listTapps } from '../../tapp/services/TappLifecycleApi'
+import { resolveManifestText } from '../../tapp/utils/manifestLocale'
 import { getCSRFToken } from '../../utils/csrf'
 import { normalizeOAuthIconUrl } from '../../utils/oauthIcons'
 import OAuthIconImage from '../OAuthIconImage'
@@ -76,7 +77,7 @@ export const UserModal: FC<UserModalProps> = ({
   const [oauthLoading, setOAuthLoading] = useState(false)
   const [oauthError, setOAuthError] = useState('')
   const [unbindingId, setUnbindingId] = useState<number | null>(null)
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const navigate = useNavigate()
   const contentRef = useRef<HTMLDivElement>(null)
   const [modalHeight, setModalHeight] = useState<number>()
@@ -791,7 +792,9 @@ export const UserModal: FC<UserModalProps> = ({
                       <div className="user-modal-tapp-item user-modal-tapp-skeleton" />
                     </>
                   ) : recentTapps.length > 0 ? (
-                    recentTapps.map((tapp) => (
+                    recentTapps.map((tapp) => {
+                      const tappName = resolveManifestText(tapp, locale).name
+                      return (
                       <button
                         key={tapp.id}
                         onClick={() => handleTappClick(tapp.id)}
@@ -810,17 +813,18 @@ export const UserModal: FC<UserModalProps> = ({
                           <TappIcon
                             icon={tapp.icon}
                             iconSvg={tapp.iconSvg}
-                            name={tapp.name}
+                            name={tappName}
                             sizeClass="w-4 h-4"
                             textSizeClass="text-base"
                             svgColor={tapp.themeColor || undefined}
                           />
                         </div>
                         <span className="user-modal-tapp-name">
-                          {tapp.name}
+                          {tappName}
                         </span>
                       </button>
-                    ))
+                      )
+                    })
                   ) : (
                     // 无最近使用时显示空状态
                     <span className="user-modal-recent-empty">

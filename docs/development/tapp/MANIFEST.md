@@ -10,6 +10,7 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `name`                   | string   | ✅   | 应用名称                           |
 | `version`                | string   | ✅   | 版本号（语义化版本）               |
 | `description`            | string   | ❌   | 应用描述                           |
+| `locales`                | object   | ❌   | 名称/描述的多语言覆盖（见下文）    |
 | `main`                   | string   | ✅   | 入口文件名                         |
 | `author`                 | object   | ❌   | 作者信息 `{name, email?, url?}`    |
 | `permissions`            | string[] | ❌   | 所需权限列表                       |
@@ -53,6 +54,29 @@ Page/Widget 模板必须是 `.html`；代码与模板类声明资源必须是安
 Manifest 采用严格字段校验：未声明字段、拼写错误以及已经移除的字段都会让安装失败，
 不会再被静默忽略。所有运行能力都必须直接写入 `permissions`；宿主只会在真正调用时
 按权限和运行时策略决定是否授权。
+
+### 多语言名称与描述（locales）
+
+`locales` 为顶层 `name` / `description` 提供按语言的展示文案覆盖，宿主会按当前界面
+语言解析（商店卡片、应用列表、详情页、运行页标题、Widget 回退文案等）：
+
+```json
+{
+  "name": "我的应用",
+  "description": "一个功能丰富的 Tapp 示例",
+  "locales": {
+    "en-US": { "name": "My App", "description": "A feature-rich Tapp example" },
+    "ja-JP": { "description": "機能豊富な Tapp サンプル" }
+  }
+}
+```
+
+- 键必须是 BCP-47 语言标签（如 `zh-CN`、`en-US`、`ja-JP`），最多 32 个语言；
+  值中 `name`（1-255 字符）与 `description`（≤ 2000 字符）均可选。
+- 解析回退链：精确匹配（忽略大小写）→ 语言前缀匹配（`zh-CN` ↔ `zh`）→ 顶层
+  `name` / `description`。顶层字段是所有语言未命中时的兜底，保持必填/可选语义不变。
+- `locales` 只覆盖清单展示文案；应用内部界面的多语言仍走 `i18n/{lang}.json` 与
+  `Tapp.i18n`（见 [PAGE.md](PAGE.md)）。
 
 ### 应用分类
 

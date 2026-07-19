@@ -54,6 +54,7 @@ import { getTappRuntime } from '../runtime'
 import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import { isWebKit } from '../runtime/TappPageSandbox'
 import * as TappApiService from '../services/TappApiService'
+import { resolveManifestText } from '../utils/manifestLocale'
 import {
   resolveTappCategory,
   TAPP_CATEGORY_I18N_KEYS,
@@ -120,7 +121,9 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     ref,
   ) => {
     const { manifest } = tapp
-    const { t } = useI18n()
+    const { t, locale } = useI18n()
+    const { name: displayName, description: displayDescription } =
+      resolveManifestText(manifest, locale)
     const perf = usePerformanceProfile()
     const animConfig = useAnimationLevel()
     const [isHovered, setIsHovered] = useState(false)
@@ -248,7 +251,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
               <TappIcon
                 icon={manifest.icon}
                 iconSvg={manifest.iconSvg}
-                name={manifest.name}
+                name={displayName}
                 sizeClass="w-8 h-8"
                 textSizeClass="text-2xl"
                 className="relative z-10"
@@ -263,7 +266,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
             <div className="flex-1 min-w-0 pt-1">
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate text-base leading-tight">
-                  {manifest.name}
+                  {displayName}
                 </h3>
                 {isRunning && (
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
@@ -345,10 +348,10 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
           {/* 底部区域：描述 + 权限信息 */}
           <div className="mt-auto">
             {/* 搴旂敤鎻忚堪 - 鏈€澶?琛屽彲婊氬姩 */}
-            {manifest.description && (
+            {displayDescription && (
               <div className="max-h-10 overflow-y-auto mb-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
                 <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed pr-1">
-                  {manifest.description}
+                  {displayDescription}
                 </p>
               </div>
             )}
@@ -582,7 +585,7 @@ function InstallTappModal({
  */
 export function TappListPage() {
   const navigate = useNavigate()
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const { isMobile } = useBreakpoints()
   const { isAdmin, hasChecked, checkAuth } = useAuth()
   // 🆕 标题字体 Hook
@@ -708,7 +711,9 @@ export function TappListPage() {
     // 找到对应的 Tapp 获取名称
     const tapp = tapps.find((t) => t.id === tappId)
     setUninstallTargetId(tappId)
-    setUninstallTargetName(tapp?.manifest.name || tappId)
+    setUninstallTargetName(
+      tapp ? resolveManifestText(tapp.manifest, locale).name : tappId,
+    )
     setShowUninstallDialog(true)
   }
 

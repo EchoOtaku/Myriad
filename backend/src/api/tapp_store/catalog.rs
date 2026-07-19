@@ -72,6 +72,7 @@ pub(super) async fn list_tapps(
                     .get("iconSvg")
                     .and_then(serde_json::Value::as_str)
                     .map(String::from);
+                let locales = super::types::manifest_locales(&tapp.manifest);
                 items.push(TappListItem {
                     id: tapp.tapp_id,
                     name: tapp.name,
@@ -79,6 +80,7 @@ pub(super) async fn list_tapps(
                     description: tapp.description,
                     icon: tapp.icon,
                     icon_svg,
+                    locales,
                     status: format!("{:?}", tapp.status).to_lowercase(),
                     installed_at: tapp.installed_at.to_rfc3339(),
                     last_run_at: tapp.last_run_at.map(|date| date.to_rfc3339()),
@@ -107,6 +109,7 @@ pub(super) async fn list_tapps(
             .get("iconSvg")
             .and_then(serde_json::Value::as_str)
             .map(String::from);
+        let locales = super::types::manifest_locales(&tapp.manifest);
         items.push(TappListItem {
             id: tapp.tapp_id,
             name: tapp.name,
@@ -114,6 +117,7 @@ pub(super) async fn list_tapps(
             description: tapp.description,
             icon: tapp.icon,
             icon_svg,
+            locales,
             status: format!("{:?}", tapp.status).to_lowercase(),
             installed_at: tapp.installed_at.to_rfc3339(),
             last_run_at: tapp.last_run_at.map(|date| date.to_rfc3339()),

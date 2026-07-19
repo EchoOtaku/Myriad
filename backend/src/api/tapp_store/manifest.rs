@@ -44,6 +44,9 @@ pub struct TappManifest {
     pub name: String,
     pub version: String,
     pub description: Option<String>,
+    /// 展示文案的多语言覆盖：语言标签 → { name?, description? }
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locales: Option<HashMap<String, TappManifestLocaleEntry>>,
     pub author: Option<TappAuthor>,
     pub main: String,
     pub styles: Option<String>,
@@ -81,6 +84,16 @@ pub struct TappManifest {
     pub agent: Option<TappAgentManifest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assets: Option<Vec<String>>,
+}
+
+/// 单个语言下的清单展示文案覆盖
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappManifestLocaleEntry {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]

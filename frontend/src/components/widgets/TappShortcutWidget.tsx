@@ -14,6 +14,7 @@ import type {
   RecentTappItem,
   TappListItem,
 } from '../../tapp/services/TappLifecycleApi'
+import type { TappManifestLocales } from '../../tapp/types'
 import type { WidgetComponentProps } from '../WidgetGrid'
 import { FaTimes } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
@@ -36,6 +37,7 @@ import {
   listTappDetails,
   listTapps,
 } from '../../tapp/services/TappLifecycleApi'
+import { resolveManifestText } from '../../tapp/utils/manifestLocale'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 
@@ -55,6 +57,8 @@ interface ResolvedTapp {
   iconSvg?: string
   /** manifest 主题色（与 Tapp 页实际渲染一致） */
   themeColor?: string
+  /** manifest.locales 透传，渲染时按当前语言解析 */
+  locales?: TappManifestLocales
 }
 
 const DEFAULT_GLOW = '#6366f1'
@@ -206,6 +210,9 @@ const TappButton = memo(
     isSelected: boolean
     onSelect: (tappId: string) => void
   }) => {
+    const { locale } = useI18n()
+    const { name: tappName, description: tappDescription } =
+      resolveManifestText(tapp, locale)
     const handleClick = useCallback(() => {
       onSelect(tapp.id)
     }, [onSelect, tapp.id])
@@ -224,7 +231,7 @@ const TappButton = memo(
           <TappIcon
             icon={tapp.icon}
             iconSvg={tapp.iconSvg}
-            name={tapp.name}
+            name={tappName}
             sizeClass="w-5 h-5"
             textSizeClass="text-base"
             svgColor="currentColor"
@@ -232,11 +239,11 @@ const TappButton = memo(
         </div>
         <div className="min-w-0 flex-1 text-left">
           <div className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-            {tapp.name}
+            {tappName}
           </div>
-          {tapp.description ? (
+          {tappDescription ? (
             <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-              {tapp.description}
+              {tappDescription}
             </div>
           ) : null}
         </div>
@@ -413,7 +420,7 @@ GlobalSettingsModal.displayName = 'TappShortcutSettingsModal'
 
 export const TappShortcutWidget = memo(
   ({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {
-    const { t } = useI18n()
+    const { t, locale } = useI18n()
     const tw = t.tappShortcut
     const navigate = useNavigate()
     const anim = useAnimationLevel()
@@ -474,6 +481,7 @@ export const TappShortcutWidget = memo(
               icon: found.icon,
               iconSvg: found.iconSvg,
               themeColor: detail?.theme_color,
+              locales: found.locales,
             })
             setMissing(false)
           } else {
@@ -672,8 +680,7 @@ export const TappShortcutWidget = memo(
         )
       }
 
-      const name = resolved!.name
-      const description = resolved!.description
+      const { name, description } = resolveManifestText(resolved!, locale)
 
       // 1x1 — 原生玻璃底 + 主题色图标（无底座），光晕同为主题色
       if (config.size === '1x1') {
@@ -768,6 +775,7 @@ export const TappShortcutWidget = memo(
       tappId,
       config.size,
       resolved,
+      locale,
       tileColor,
       glowColor,
       fontScale,
@@ -776,7 +784,7 @@ export const TappShortcutWidget = memo(
     ])
 
     const ariaLabel = resolved
-      ? `${resolved.name}: ${tw.clickToOpen}`
+      ? `${resolveManifestText(resolved, locale).name}: ${tw.clickToOpen}`
       : placeholderLabel
 
     return (

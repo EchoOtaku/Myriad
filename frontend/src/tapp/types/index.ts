@@ -46,6 +46,21 @@ export type TappCategory =
 
 // ============ Tapp Manifest ============
 
+/** 单个语言下的清单展示文案覆盖 */
+export interface TappManifestLocaleEntry {
+  /** 该语言下的显示名称 */
+  name?: string
+  /** 该语言下的描述 */
+  description?: string
+}
+
+/**
+ * 清单展示文案的多语言覆盖。
+ * 键为 BCP-47 语言标签（如 zh-CN、en-US、ja-JP）；
+ * 顶层 name/description 作为所有语言未命中时的回退值。
+ */
+export type TappManifestLocales = Record<string, TappManifestLocaleEntry>
+
 /** Tapp 清单文件 */
 export interface TappManifest {
   /** 唯一标识符 (如 com.example.my-tapp) */
@@ -59,6 +74,12 @@ export interface TappManifest {
 
   /** 描述 */
   description?: string
+
+  /**
+   * name/description 的多语言覆盖；按宿主当前语言解析，
+   * 未命中回退到顶层 name/description。
+   */
+  locales?: TappManifestLocales
 
   /** 作者信息 */
   author?: {

@@ -461,6 +461,7 @@ async fn install_prepared_package(
         .get("iconSvg")
         .and_then(|v| v.as_str())
         .map(String::from);
+    let locales = super::types::manifest_locales(&result.manifest);
 
     Ok(Json(ApiResponse::success(TappListItem {
         id: result.tapp_id,
@@ -469,6 +470,7 @@ async fn install_prepared_package(
         description: result.description,
         icon: result.icon,
         icon_svg,
+        locales,
         status: "installed".to_string(),
         installed_at: result.installed_at.to_rfc3339(),
         last_run_at: None,
@@ -869,6 +871,7 @@ pub(super) async fn update_tapp(
         .get("iconSvg")
         .and_then(|v| v.as_str())
         .map(String::from);
+    let locales = super::types::manifest_locales(&result.manifest);
 
     Ok(Json(ApiResponse::success(TappListItem {
         id: result.tapp_id,
@@ -877,6 +880,7 @@ pub(super) async fn update_tapp(
         description: result.description,
         icon: result.icon,
         icon_svg,
+        locales,
         status: format!("{:?}", result.status).to_lowercase(),
         installed_at: result.installed_at.to_rfc3339(),
         last_run_at: result.last_run_at.map(|dt| dt.to_rfc3339()),

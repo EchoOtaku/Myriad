@@ -1,5 +1,6 @@
 use super::{
-    current_is_admin, find_admin_user_id, get_admin_user_id, validate_tapp_id, ApiResponse,
+    current_is_admin, find_admin_user_id, get_admin_user_id, types::manifest_locales,
+    validate_tapp_id, ApiResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -188,6 +189,9 @@ pub(super) struct RecentTappItem {
     pub icon: Option<String>,
     pub icon_svg: Option<String>,
     pub theme_color: Option<String>,
+    /// manifest.locales 透传：语言标签 → { name?, description? }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locales: Option<serde_json::Value>,
     pub last_run_at: String,
     pub run_count: i32,
 }
@@ -281,6 +285,7 @@ pub(super) async fn get_recent_tapps(
                 icon: tapp.icon.clone(),
                 icon_svg,
                 theme_color: tapp.theme_color.clone(),
+                locales: manifest_locales(&tapp.manifest),
                 last_run_at: activity.last_run_at.to_rfc3339(),
                 run_count: activity.run_count,
             });

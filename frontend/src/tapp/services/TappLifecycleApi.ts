@@ -1,6 +1,6 @@
 /** Installed Tapp discovery and runtime state controls. */
 
-import type { TappManifest } from '../types'
+import type { TappManifest, TappManifestLocales } from '../types'
 import { apiRequest } from './TappHttpClient'
 
 export interface TappListItem {
@@ -10,6 +10,8 @@ export interface TappListItem {
   description?: string
   icon?: string
   iconSvg?: string
+  /** manifest.locales 透传，用 resolveManifestText 按当前语言解析 */
+  locales?: TappManifestLocales
   status: string
   installedAt: string
   lastRunAt?: string
@@ -45,6 +47,8 @@ export interface RecentTappItem {
   icon?: string
   iconSvg?: string
   themeColor?: string
+  /** manifest.locales 透传，用 resolveManifestText 按当前语言解析 */
+  locales?: TappManifestLocales
   lastRunAt: string
   runCount: number
 }

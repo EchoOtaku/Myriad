@@ -33,6 +33,7 @@ import { PERMISSION_CONFIG } from '../constants/permissions'
 import { getTappRuntime } from '../runtime'
 import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import * as TappApiService from '../services/TappApiService'
+import { resolveManifestText } from '../utils/manifestLocale'
 import { getTappIconStyle } from '../utils/tappColors'
 
 // 使用 TappIcon 组件统一处理图标渲染
@@ -46,7 +47,7 @@ interface TappDetailPageProps {
  */
 export function TappDetailPage({ tappId }: TappDetailPageProps) {
   const navigate = useNavigate()
-  const { t, format } = useI18n()
+  const { t, format, locale } = useI18n()
   const { isAuthenticated, hasChecked } = useAuth()
 
   const [tapp, setTapp] = useState<TappInstance | null>(null)
@@ -351,6 +352,8 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
   }
 
   const { manifest } = tapp
+  const { name: displayName, description: displayDescription } =
+    resolveManifestText(manifest, locale)
   const authorUrl = manifest.author?.url ? sanitizeUrl(manifest.author.url) : ''
   const homepageUrl = manifest.homepage ? sanitizeUrl(manifest.homepage) : ''
   const repositoryUrl = manifest.repository
@@ -383,7 +386,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                 <TappIcon
                   icon={manifest.icon}
                   iconSvg={manifest.iconSvg}
-                  name={manifest.name}
+                  name={displayName}
                   sizeClass="w-10 h-10 sm:w-12 sm:h-12"
                   textSizeClass="text-2xl sm:text-3xl"
                 />
@@ -393,7 +396,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100">
-                      {manifest.name}
+                      {displayName}
                     </h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                       v{manifest.version}
@@ -410,7 +413,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                   </div>
                 </div>
                 <p className="text-gray-600 dark:text-gray-300 mt-2 text-sm">
-                  {manifest.description}
+                  {displayDescription}
                 </p>
               </div>
             </div>
@@ -865,7 +868,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
       {/* 卸载确认对话框 */}
       <UninstallConfirmDialog
         isOpen={showUninstallDialog}
-        appName={tapp?.manifest.name || tappId}
+        appName={displayName || tappId}
         onCancel={() => setShowUninstallDialog(false)}
         onConfirm={handleConfirmUninstall}
       />

@@ -27,6 +27,7 @@ import { TappIcon } from '../../tapp/components/TappIcon'
 import { loadWidgetResources } from '../../tapp/runtime/sandbox/resourceLoader'
 import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
 import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
+import { resolveManifestText } from '../../tapp/utils/manifestLocale'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 
@@ -39,7 +40,10 @@ export interface TappWidgetProps extends WidgetComponentProps {
  * 获取 Tapp Widget 的预览信息
  * 同步方法，从 runtime 缓存中获取信息
  */
-function getTappWidgetPreviewInfo(tappWidgetId: string): {
+function getTappWidgetPreviewInfo(
+  tappWidgetId: string,
+  locale?: string,
+): {
   name: string
   icon?: string
   iconSvg?: string
@@ -72,7 +76,9 @@ function getTappWidgetPreviewInfo(tappWidgetId: string): {
       iconSvg: tapp?.manifest.iconSvg,
       themeColor: tapp?.manifest.themeColor,
       description: widget.config.description,
-      tappName: tapp?.manifest.name,
+      tappName: tapp
+        ? resolveManifestText(tapp.manifest, locale).name
+        : undefined,
     }
   } catch {
     // 返回默认值
@@ -119,8 +125,8 @@ const TappWidgetPreview = memo(
 
     // 获取预览信息（用于回退显示）
     const previewInfo = useMemo(
-      () => getTappWidgetPreviewInfo(tappWidgetId),
-      [tappWidgetId],
+      () => getTappWidgetPreviewInfo(tappWidgetId, locale),
+      [tappWidgetId, locale],
     )
 
     // ⚡ 优化：监听尺寸变化，重新加载资源
@@ -805,7 +811,10 @@ function TappWidgetRuntime({
           <TappIcon
             icon={widget.config.icon || tappInstance.manifest.icon}
             iconSvg={tappInstance.manifest.iconSvg}
-            name={widget.config.name || tappInstance.manifest.name}
+            name={
+              widget.config.name ||
+              resolveManifestText(tappInstance.manifest, locale).name
+            }
             sizeClass="w-7 h-7"
             textSizeClass="text-2xl"
             className="relative z-10"

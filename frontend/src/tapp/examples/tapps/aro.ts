@@ -1569,6 +1569,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardEmpty": "No other conversations to forward to",
     "forwardSuccess": "Forwarded",
     "forwardTo": "Forward to…",
+    "guest": "Guest",
     "installBtn": "Install",
     "installedAt": "Installed",
     "installFailed": "Install failed — tap to retry",
@@ -1596,6 +1597,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "local": "You",
     "localVer": "Installed",
     "manage": "More",
+    "me": "Me",
     "mediaTooLarge": "File too large",
     "mediaUnsupported": "Unsupported file type",
     "members": "Members",
@@ -1816,6 +1818,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardEmpty": "転送できる他の会話がありません",
     "forwardSuccess": "転送しました",
     "forwardTo": "転送先…",
+    "guest": "ゲスト",
     "installBtn": "インストール",
     "installedAt": "インストール日",
     "installFailed": "インストールに失敗しました。タップして再試行",
@@ -1843,6 +1846,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "local": "自分",
     "localVer": "インストール済み",
     "manage": "その他",
+    "me": "自分",
     "mediaTooLarge": "ファイルが大きすぎます",
     "mediaUnsupported": "未対応のファイル形式です",
     "members": "メンバー",
@@ -2063,6 +2067,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardEmpty": "没有可转发的其他会话",
     "forwardSuccess": "已转发",
     "forwardTo": "转发到…",
+    "guest": "访客",
     "installBtn": "安装",
     "installedAt": "安装时间",
     "installFailed": "安装失败，点击重试",
@@ -2090,6 +2095,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "local": "我",
     "localVer": "已安装",
     "manage": "更多",
+    "me": "我",
     "mediaTooLarge": "文件过大",
     "mediaUnsupported": "不支持的文件类型",
     "members": "成员",
@@ -7091,7 +7097,7 @@ function isValidFederationMediaUrl(url) {
     var u = new URL(trimmed);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
     if (u.pathname.indexOf('..') >= 0) return false;
-    var m = u.pathname.match(/^/media/federation/(d+)/([A-Za-z0-9._-]+)$/);
+    var m = u.pathname.match(/^\\/media\\/federation\\/(\\d+)\\/([A-Za-z0-9._-]+)$/);
     return !!(m && m[1] && m[2]);
   } catch (e) {
     return false;
@@ -8250,6 +8256,16 @@ const manifest: TappManifest = {
   version: '1.0.0',
   minSystemVersion: '0.2.1',
   description: '社交中心，统一管理消息、时间线、环网与个人资料',
+  locales: {
+    'en-US': {
+      description:
+        'Social hub for messages, timeline, ring network and profile in one place',
+    },
+    'ja-JP': {
+      description:
+        'メッセージ・タイムライン・リングネット・プロフィールをまとめるソーシャルハブ',
+    },
+  },
   category: 'social',
   main: 'index.js',
   author: {
@@ -8263,6 +8279,7 @@ const manifest: TappManifest = {
     'federation:read',
     'federation:write',
     'federation:message',
+    'federation:files',
     'platform:read',
     'report:read',
     'tappList:read',

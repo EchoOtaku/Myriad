@@ -39,6 +39,7 @@ import { TappWindowManager } from '../components/TappWindowManager'
 import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import { isWebKit, TappPageSandbox } from '../runtime/TappPageSandbox'
+import { resolveManifestText } from '../utils/manifestLocale'
 import { getTappIconStyle } from '../utils/tappColors'
 
 interface TappRunPageProps {
@@ -80,7 +81,7 @@ interface TappRunPageStandardProps extends TappRunPageProps {
  */
 function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const navigate = useNavigate()
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const { setImmersiveMode } = useNavigation()
 
   // 动画配置
@@ -250,6 +251,9 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const canStartStop = tapp?.userRole !== 'guest'
   const canConfigure = tapp?.userRole !== 'guest'
   const iconStyle = tapp ? getTappIconStyle(tapp.manifest) : null
+  const displayName = tapp
+    ? resolveManifestText(tapp.manifest, locale).name
+    : ''
 
   // 🎯 统一渲染：始终显示相同的页面结构，只是内容不同
   // 页面级动画由 App.tsx 的 FixedPageWrapper 提供（纯 opacity，不用 transform）
@@ -300,7 +304,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                         <TappIcon
                           icon={tapp.manifest.icon}
                           iconSvg={tapp.manifest.iconSvg}
-                          name={tapp.manifest.name}
+                          name={displayName}
                           sizeClass="w-4 h-4"
                           textSizeClass="text-sm"
                         />
@@ -308,7 +312,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                     )}
                     <div className="hidden sm:block">
                       <h1 className="font-semibold text-gray-800 dark:text-gray-100 text-xs leading-tight">
-                        {tapp.manifest.name}
+                        {displayName}
                       </h1>
                       <p className="text-[10px] text-gray-500 dark:text-gray-400">
                         v{tapp.manifest.version}
@@ -455,7 +459,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                         <TappIcon
                           icon={tapp.manifest.icon}
                           iconSvg={tapp.manifest.iconSvg}
-                          name={tapp.manifest.name}
+                          name={displayName}
                           sizeClass="w-4 h-4"
                           textSizeClass="text-sm"
                         />
@@ -466,7 +470,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.1 }}
                       >
-                        {tapp.manifest.name}
+                        {displayName}
                       </motion.span>
                       <motion.span
                         className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0"
