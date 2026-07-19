@@ -73,7 +73,7 @@ const PAGE_HTML = `\
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
               </button>
               <textarea id="msg-input" class="msg-input" rows="1" placeholder="输入消息..."></textarea>
-              <button id="send-btn" class="send-btn">
+              <button id="send-btn" class="send-btn" disabled aria-label="Send">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M12 20V4M5 11l7-7 7 7"/>
                 </svg>
@@ -180,10 +180,6 @@ const PAGE_HTML = `\
       <main class="feed-main">
         <div class="feed-main-header">
           <div class="feed-header-leading">
-            <button id="feed-compose-btn" class="feed-compose-btn" type="button" title="发帖" style="display:none">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-              <span id="feed-compose-btn-label">发帖</span>
-            </button>
             <div class="feed-main-heading">
               <div id="feed-section-title" class="feed-section-title">动态</div>
               <div id="feed-section-meta" class="feed-section-meta"></div>
@@ -192,6 +188,10 @@ const PAGE_HTML = `\
           <div class="feed-header-actions">
             <button id="refresh-feed-btn" class="feed-refresh-btn" title="刷新">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </button>
+            <button id="feed-compose-btn" class="feed-compose-btn" type="button" title="发帖" style="display:none">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span id="feed-compose-btn-label">发帖</span>
             </button>
           </div>
         </div>
@@ -328,7 +328,7 @@ const PAGE_HTML = `\
           <!-- 节点列表 -->
           <div id="ring-peers-list" class="member-list"></div>
           <div id="ring-peers-empty" class="conv-empty" style="display:none">
-            <span>暂无节点</span>
+            <span data-i18n-empty-peers>暂无节点</span>
           </div>
         </div>
       </main>
@@ -345,10 +345,10 @@ const PAGE_HTML = `\
       <div class="create-form">
         <input id="ring-name-input" class="create-input" type="text" placeholder="环网名称" />
         <select id="ring-type-select" class="create-input" style="height:40px;cursor:pointer">
-          <option value="brew-recommend">Brew 推荐</option>
-          <option value="tapp-store">Tapp 商店</option>
-          <option value="library-exchange">Library 交换</option>
-          <option value="instance-directory">实例目录</option>
+          <option id="ring-type-opt-brew" value="brew-recommend">Brew 推荐</option>
+          <option id="ring-type-opt-tapp" value="tapp-store">Tapp 商店</option>
+          <option id="ring-type-opt-library" value="library-exchange">资料交换</option>
+          <option id="ring-type-opt-instance" value="instance-directory">实例目录</option>
         </select>
         <button id="create-ring-btn" class="create-submit">创建</button>
       </div>
@@ -475,7 +475,8 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .feed-mobile-stats{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 16px 0;flex-shrink:0}
 .feed-mobile-stat{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;border-radius:10px;background:rgba(128,128,128,.04);color:var(--text-secondary,#536471);font-size:11px}
 /* Feed Main */
-.feed-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;position:relative}
+.feed-main{flex:1;min-width:0;max-width:760px;display:flex;flex-direction:column;overflow-y:auto;position:relative;border-right:1px solid rgba(128,128,128,.06)}
+.dark .feed-main{border-right-color:rgba(255,255,255,.05)}
 /* Feed header */
 .feed-main-header{min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;background:rgba(255,255,255,.45);backdrop-filter:blur(12px)}
 .feed-header-leading{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
@@ -499,9 +500,12 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .feed-compose-cancel{padding:7px 14px;border-radius:8px;border:1px solid rgba(128,128,128,.15);background:transparent;color:var(--text-secondary,#666);font-size:13px;cursor:pointer}
 .feed-compose-publish{padding:7px 16px;border-radius:8px;border:none;background:var(--tapp-primary,#6366f1);color:#fff;font-size:13px;font-weight:600;cursor:pointer}
 .feed-compose-publish:disabled,.feed-compose-cancel:disabled,.feed-compose-tool:disabled{opacity:.5;cursor:not-allowed}
-.feed-item-media{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.feed-item-media img,.feed-item-media video{max-width:100%;max-height:280px;border-radius:12px;object-fit:cover;background:rgba(128,128,128,.06)}
-.feed-item-media video{width:100%}
+.feed-item-media{margin-top:10px}
+.feed-item-media-single{display:block;border-radius:12px;overflow:hidden;background:rgba(128,128,128,.05)}
+.feed-item-media-single img,.feed-item-media-single video{display:block;width:100%;max-height:320px;object-fit:cover;vertical-align:middle}
+.feed-item-media-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;border-radius:12px;overflow:hidden;background:rgba(128,128,128,.05)}
+.feed-media-cell{position:relative;aspect-ratio:1;overflow:hidden;background:rgba(128,128,128,.06)}
+.feed-media-cell img,.feed-media-cell video{width:100%;height:100%;object-fit:cover;display:block}
 .feed-main-heading{min-width:0;display:flex;flex-direction:column;gap:2px}
 .feed-section-title{font-size:16px;font-weight:750;color:var(--text-primary,#0f1419);line-height:1.2}
 .feed-section-meta{min-height:15px;font-size:11px;font-weight:500;color:var(--text-secondary,#536471);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -625,7 +629,7 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .sidebar-title{margin:0;font-size:15px;font-weight:600;color:var(--text-primary,#1a1a1a);letter-spacing:-.01em}
 .create-btn{width:28px;height:28px;border-radius:50%;border:none;background:var(--tapp-primary,#888);color:#fff;font-size:18px;font-weight:300;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s;flex-shrink:0;line-height:1}
 .create-btn:hover{opacity:.85}
-.conv-list{flex:1;min-height:0;overflow-y:auto;padding:4px 0;display:flex;flex-direction:column}
+.conv-list{flex:1;min-height:0;overflow-y:auto;padding:6px 8px;display:flex;flex-direction:column;gap:2px}
 .chat-main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .member-panel{display:flex;flex-direction:column;width:220px;border-left:1px solid rgba(128,128,128,.08);flex-shrink:0;overflow:hidden;transition:width .2s}
 .member-panel.member-collapsed{width:0;border-left:none;overflow:hidden}
@@ -666,27 +670,44 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .invite-btn:disabled{opacity:.5;cursor:not-allowed}
 
 /* ===== Conversation Items ===== */
-.conv-item{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:none;background:none;cursor:pointer;text-align:left;transition:background .15s}
-.conv-item:hover{background:rgba(var(--tapp-primary-rgb,128,128,128),.06)}
-.conv-active{background:rgba(var(--tapp-primary-rgb,128,128,128),.1)!important}
-.conv-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;overflow:hidden}
+.conv-item{position:relative;display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:10px 12px 10px 14px;border:none;border-radius:12px;background:transparent;cursor:pointer;text-align:left;transition:background .12s;overflow:hidden}
+.conv-item:hover{background:rgba(128,128,128,.06)}
+.conv-item:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.45);outline-offset:1px}
+.conv-active{background:rgba(var(--tapp-primary-rgb,99,102,241),.1)!important}
+.conv-active:hover{background:rgba(var(--tapp-primary-rgb,99,102,241),.14)!important}
+.conv-accent{position:absolute;left:4px;top:14px;bottom:14px;width:3px;border-radius:2px;background:transparent}
+.conv-active .conv-accent{background:var(--tapp-primary,#6366f1)}
+.conv-unread:not(.conv-active) .conv-accent{background:var(--tapp-primary,#6366f1);opacity:.55}
+.conv-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;overflow:hidden}
 .conv-avatar img{width:100%;height:100%;object-fit:cover}
-.avatar-channel{background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888)}
-.avatar-room{background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888)}
-.conv-info{min-width:0;flex:1}
-.conv-name{font-size:13px;font-weight:500;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.conv-subtitle{font-size:11px;color:var(--text-secondary,#999);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.conv-badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--tapp-primary,#888);color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.avatar-channel{background:rgba(var(--tapp-primary-rgb,99,102,241),.12);color:var(--tapp-primary,#6366f1)}
+.avatar-room{background:rgba(var(--tapp-primary-rgb,99,102,241),.12);color:var(--tapp-primary,#6366f1)}
+.conv-info{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.conv-top{display:flex;align-items:baseline;gap:8px;min-width:0}
+.conv-name{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text-primary,#1a1a1a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv-unread .conv-name{font-weight:700}
+.conv-time{flex-shrink:0;font-size:11px;font-weight:400;color:var(--text-secondary,#999);white-space:nowrap}
+.conv-unread .conv-time{color:var(--tapp-primary,#6366f1);font-weight:500}
+.conv-bottom{display:flex;align-items:center;gap:6px;min-width:0}
+.conv-preview{flex:1;min-width:0;font-size:12px;line-height:1.35;color:var(--text-secondary,#888);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv-unread .conv-preview{color:var(--text-primary,#444);font-weight:500}
+.conv-badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--tapp-primary,#6366f1);color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .conv-closed{font-size:10px;color:var(--text-secondary,#999);background:rgba(128,128,128,.08);padding:2px 6px;border-radius:6px;flex-shrink:0}
 .conv-pending{font-size:10px;color:#f59e0b;background:rgba(245,158,11,.1);padding:2px 6px;border-radius:6px;flex-shrink:0}
-.conv-empty{padding:40px 16px;text-align:center;font-size:13px;color:var(--text-secondary,#999)}
+.conv-empty{padding:40px 16px;text-align:center;font-size:13px;line-height:1.55;color:var(--text-secondary,#999)}
 .conv-empty-fill{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 16px}
+.dark .conv-item:hover{background:rgba(255,255,255,.05)}
+.dark .conv-active{background:rgba(var(--tapp-primary-rgb,99,102,241),.16)!important}
+.dark .conv-active:hover{background:rgba(var(--tapp-primary-rgb,99,102,241),.2)!important}
+.dark .conv-name{color:rgba(255,255,255,.92)}
+.dark .conv-preview{color:rgba(255,255,255,.5)}
+.dark .conv-unread .conv-preview{color:rgba(255,255,255,.78)}
 
 /* ===== Empty State ===== */
-.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-secondary,#999)}
-.empty-icon{width:44px;height:44px;border-radius:13px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:0;margin-bottom:10px;color:var(--text-secondary,#999)}
-.empty-icon svg{width:21px;height:21px;stroke-width:1.8}
-.empty-text{font-size:13px;font-weight:400;color:var(--text-secondary,#999)}
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:32px 20px;color:var(--text-secondary,#999)}
+.empty-icon{width:48px;height:48px;border-radius:14px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:0;margin-bottom:6px;color:var(--text-secondary,#999)}
+.empty-icon svg{width:22px;height:22px;stroke-width:1.8}
+.empty-text{margin:0;font-size:13px;line-height:1.5;font-weight:400;color:var(--text-secondary,#999);text-align:center;max-width:260px}
 
 /* ===== Chat Container ===== */
 .chat-container{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
@@ -731,40 +752,58 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .pinned-bar-close:hover{background:rgba(128,128,128,.1)}
 
 /* ===== Messages ===== */
-.messages-area{flex:1;overflow-y:auto;padding:16px;padding-bottom:72px;display:flex;flex-direction:column;gap:4px}
-.messages-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-secondary,#999)}
-.messages-empty-icon{width:44px;height:44px;border-radius:13px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:0;margin-bottom:10px}
+.messages-area{flex:1;overflow-y:auto;padding:14px 14px 76px;display:flex;flex-direction:column;gap:6px}
+.messages-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--text-secondary,#999);padding:24px 16px;text-align:center}
+.messages-empty p{margin:0;font-size:13px;line-height:1.5;max-width:240px}
+.messages-empty-icon{width:44px;height:44px;border-radius:13px;background:rgba(var(--tapp-primary-rgb,128,128,128),.06);display:flex;align-items:center;justify-content:center;font-size:0;margin-bottom:4px}
 .messages-empty-icon svg{width:21px;height:21px;stroke-width:1.8}
-.msg-row{display:flex;gap:8px;align-items:flex-end}
-.msg-local{justify-content:flex-end;padding-left:48px}
-.msg-remote{justify-content:flex-start;padding-right:48px}
+.msg-day-sep{display:flex;align-items:center;justify-content:center;gap:10px;margin:12px 0 6px;user-select:none}
+.msg-day-sep::before,.msg-day-sep::after{content:'';flex:1;height:1px;background:rgba(128,128,128,.12);max-width:72px}
+.msg-day-label{font-size:11px;font-weight:500;color:var(--text-secondary,#888);padding:0 2px;letter-spacing:.01em}
+.msg-row{display:flex;gap:8px;align-items:flex-end;position:relative}
+.msg-row.msg-compact{margin-top:-2px}
+.msg-local{justify-content:flex-end;padding-left:40px}
+.msg-remote{justify-content:flex-start;padding-right:40px}
 .msg-avatar{width:28px;height:28px;border-radius:50%;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;background:rgba(var(--tapp-primary-rgb,128,128,128),.12);color:var(--tapp-primary,#888);margin-bottom:2px}
 .msg-avatar img{width:100%;height:100%;object-fit:cover}
 .msg-avatar-spacer{width:28px;flex-shrink:0}
-.msg-bubble{max-width:85%;padding:8px 12px;border-radius:16px;font-size:13px;line-height:1.5}
-.bubble-local{background:var(--tapp-primary,#888);color:#fff;border-bottom-right-radius:6px}
-.bubble-remote{background:rgba(128,128,128,.07);color:var(--text-primary,#1a1a1a);border-bottom-left-radius:6px}
-.msg-sender{font-size:11px;font-weight:500;color:var(--tapp-primary,#888);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-bubble{position:relative;max-width:72%;padding:8px 12px;border-radius:16px;font-size:13px;line-height:1.5}
+.bubble-local{background:var(--tapp-primary,#6366f1);color:#fff;border-bottom-right-radius:6px}
+.bubble-remote{background:rgba(128,128,128,.08);color:var(--text-primary,#1a1a1a);border-bottom-left-radius:6px}
+.msg-more-btn{position:absolute;top:2px;right:2px;width:22px;height:22px;border:none;border-radius:6px;background:transparent;color:inherit;opacity:0;pointer-events:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .12s,background .12s;z-index:2}
+.msg-row:hover .msg-more-btn,.msg-more-btn:focus-visible{opacity:.7;pointer-events:auto}
+.msg-more-btn:hover,.msg-more-btn:focus-visible{opacity:1;background:rgba(0,0,0,.08)}
+.bubble-local .msg-more-btn:hover,.bubble-local .msg-more-btn:focus-visible{background:rgba(255,255,255,.18)}
+.msg-sender{font-size:11px;font-weight:600;color:var(--tapp-primary,#6366f1);margin-bottom:2px;padding-right:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg-text{white-space:pre-wrap;overflow-wrap:break-word}
-.msg-footer{display:flex;align-items:center;gap:4px;margin-top:4px}
+.msg-footer{display:flex;align-items:center;gap:4px;margin-top:3px}
 .msg-local .msg-footer{justify-content:flex-end}
 .msg-remote .msg-footer{justify-content:flex-start}
-.msg-pin{font-size:10px}
-.msg-time{font-size:10px;opacity:.45}
+.msg-pin{font-size:10px;display:inline-flex;align-items:center}
+.msg-time{font-size:10px;opacity:.5;cursor:default}
+.msg-compact .msg-footer{margin-top:2px}
+.dark .msg-day-sep::before,.dark .msg-day-sep::after{background:rgba(255,255,255,.1)}
+.dark .msg-day-label{color:rgba(255,255,255,.55)}
+.dark .bubble-remote{background:rgba(255,255,255,.08)}
+.dark .msg-more-btn:hover,.dark .msg-more-btn:focus-visible{background:rgba(255,255,255,.1)}
 
 /* ===== Input ===== */
 .input-float-wrap{position:absolute;bottom:0;left:0;right:0;z-index:20;padding:8px 12px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));background:linear-gradient(to top,var(--bg-primary,#fff) 70%,transparent);pointer-events:none}
 .input-float-wrap>*{pointer-events:auto}
 .input-bar{display:flex;align-items:flex-end;gap:8px;padding:8px 10px;background:var(--bg-primary,#fff);border:1px solid rgba(128,128,128,.12);border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
-.attach-btn{width:32px;height:32px;border-radius:50%;border:none;background:rgba(128,128,128,.06);color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;margin-bottom:2px}
-.attach-btn:hover{background:rgba(var(--tapp-primary-rgb,100,100,255),.1);color:var(--tapp-primary,#6366f1)}
-.attach-btn.attach-btn-active{background:rgba(var(--tapp-primary-rgb,100,100,255),.12);color:var(--tapp-primary,#6366f1);transform:rotate(45deg)}
-.msg-input{flex:1;min-height:20px;padding:6px 0;border:none;background:transparent;color:var(--text-primary,#1a1a1a);font-size:13px;line-height:1.45;outline:none;resize:none;overflow-y:hidden;font-family:inherit}
+.attach-btn{width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,color .15s;margin-bottom:1px}
+.attach-btn:hover{background:rgba(128,128,128,.08);color:var(--text-primary,#555)}
+.attach-btn.attach-btn-active{background:rgba(var(--tapp-primary-rgb,100,100,255),.1);color:var(--tapp-primary,#6366f1);transform:rotate(45deg)}
+.msg-input{flex:1;min-height:22px;max-height:120px;padding:7px 0;border:none;background:transparent;color:var(--text-primary,#1a1a1a);font-size:14px;line-height:1.45;outline:none;resize:none;overflow-y:auto;font-family:inherit}
 .msg-input::placeholder{color:var(--text-secondary,#bbb)}
-.send-btn{width:32px;height:32px;border-radius:50%;border:none;background:none;color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;margin-bottom:2px}
-.send-btn:hover{color:var(--tapp-primary,#6366f1);background:rgba(var(--tapp-primary-rgb,100,100,255),.08)}
-.send-btn:active{transform:translateY(-1px);color:var(--tapp-primary,#6366f1)}
-.send-btn:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.send-btn{width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--text-secondary,#aaa);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,color .15s,opacity .15s;margin-bottom:1px}
+.send-btn:hover:not(:disabled){color:var(--tapp-primary,#6366f1);background:rgba(var(--tapp-primary-rgb,100,100,255),.1)}
+.send-btn:disabled{opacity:.4;cursor:not-allowed}
+.send-btn.send-ready{background:var(--tapp-primary,#6366f1);color:#fff}
+.send-btn.send-ready:hover:not(:disabled){background:var(--tapp-primary,#6366f1);color:#fff;filter:brightness(1.05)}
+.send-btn.send-ready:active:not(:disabled){transform:scale(.96)}
+.dark .attach-btn:hover{background:rgba(255,255,255,.08);color:rgba(255,255,255,.85)}
+.dark .send-btn.send-ready{background:var(--tapp-primary,#6366f1);color:#fff}
 .dark .input-float-wrap{background:linear-gradient(to top,var(--bg-primary,#1a1a1a) 70%,transparent)}
 .dark .input-bar{background:var(--bg-primary,#1a1a1a);border-color:rgba(255,255,255,.1);box-shadow:0 2px 12px rgba(0,0,0,.2)}
 
@@ -1054,21 +1093,36 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .member-kick{margin-left:auto;width:20px;height:20px;border:none;background:none;color:var(--text-secondary,#999);cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s}
 .member-item:hover .member-kick{opacity:1}
 .member-kick:hover{background:rgba(239,68,68,.1);color:#ef4444}
+
+/* ===== In-app Confirm Dialog (native confirm() is blocked in the sandboxed iframe) ===== */
+.confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:300;animation:ctxFadeIn .12s ease}
+.confirm-dialog{background:var(--bg-primary,#fff);border-radius:16px;width:min(320px,88vw);padding:20px;box-shadow:0 16px 48px rgba(0,0,0,.18)}
+.confirm-message{font-size:14px;line-height:1.6;color:var(--text-primary,#1a1a1a);margin-bottom:18px;overflow-wrap:break-word}
+.confirm-actions{display:flex;gap:8px;justify-content:flex-end}
+.confirm-btn{padding:8px 18px;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s;font-family:inherit}
+.confirm-btn:hover{opacity:.85}
+.confirm-btn-cancel{background:rgba(128,128,128,.08);color:var(--text-primary,#1a1a1a)}
+.confirm-btn-ok{background:var(--tapp-primary,#6366f1);color:#fff}
+.confirm-btn-danger{background:#ef4444}
+.dark .confirm-dialog{background:var(--bg-primary,#1a1a1a)}
+.dark .confirm-message{color:rgba(255,255,255,.9)}
+.dark .confirm-btn-cancel{background:rgba(255,255,255,.08);color:rgba(255,255,255,.9)}
 `
 
 const ARO_I18N: Record<string, Record<string, string>> = {
   "en": {
     "accept": "Accept",
-    "acceptConfirmDesc": "Someone shared a Tapp app with you",
+    "acceptConfirmDesc": "Someone shared a Tapp with you",
     "acceptConfirmTitle": "Install this Tapp?",
-    "acceptFail": "Accept failed",
+    "acceptFail": "Couldn't accept",
     "acceptTapp": "Accept",
     "activityType": "Activity",
     "addPeerBtn": "Add",
-    "addPeerFail": "Add failed",
+    "addPeerFail": "Couldn't add peer",
     "addPeerPlaceholder": "Actor URL or @user@domain",
-    "adminRequired": "Administrator access required",
-    "alreadyLatest": "Already up to date",
+    "adminRequired": "Admin access required",
+    "alreadyLatest": "You're up to date",
+    "attach": "Attach",
     "attachBrew": "Brew",
     "attachBrewPrompt": "Enter Brew article title",
     "attachFile": "File",
@@ -1077,105 +1131,112 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "attachLibraryPrompt": "Enter library name",
     "attachReport": "Report",
     "attachReportPrompt": "Enter report title",
-    "attachSending": "Sending...",
+    "attachSending": "Sending…",
     "attachTapp": "Tapp",
     "attachTappPrompt": "Enter Tapp ID or name",
-    "channelNotAccepted": "Accept the channel before sending files",
+    "back": "Back",
     "channelPlaceholder": "Actor URL or @user@domain",
     "close": "Close",
+    "closeChannelConfirm": "Close this chat? You won't be able to send messages afterward.",
     "closed": "Closed",
     "collapseDetails": "Collapse",
     "composeAddImage": "Image",
     "composeAddVideo": "Video",
     "composeCancel": "Cancel",
-    "composeEmpty": "Add text or attach an image/video",
-    "composeFail": "Publish failed",
+    "composeEmpty": "Add text or an image/video",
+    "composeFail": "Couldn't publish",
     "composePlaceholder": "Share something…",
     "composePost": "Post",
     "composePublish": "Publish",
     "composePublishing": "Publishing…",
     "composeSuccess": "Published",
     "composeUploading": "Uploading…",
+    "confirmCancel": "Cancel",
+    "confirmOk": "OK",
     "connected": "Connected",
     "copied": "Copied",
     "copy": "Copy",
-    "copyFail": "Copy failed",
+    "copyFail": "Couldn't copy",
     "create": "New",
-    "createChannel": "Create Channel",
-    "createFail": "Create failed",
+    "createChannel": "Start chat",
+    "createFail": "Couldn't create",
     "createRingBtn": "Create",
-    "createRingFail": "Create failed",
-    "createRingTitle": "Create Ring",
-    "createRoom": "Create Room",
-    "creating": "Creating...",
+    "createRingFail": "Couldn't create ring",
+    "createRingTitle": "Create ring",
+    "createRoom": "Create group",
+    "creating": "Creating…",
+    "dateToday": "Today",
+    "dateYesterday": "Yesterday",
     "disconnected": "Disconnected",
-    "dissolve": "Dissolve Group",
-    "dissolveConfirm": "Are you sure you want to dissolve this group? This cannot be undone.",
-    "dissolveFail": "Dissolve failed",
-    "dm": "DM",
-    "editRoom": "Edit Room",
-    "emptyChatHint": "Send the first message",
-    "emptyFollowers": "No followers",
-    "emptyFollowing": "Not following anyone",
-    "emptyPeers": "No peers",
-    "emptyPublished": "No published content",
-    "emptyRings": "No rings",
-    "emptyRoomHint": "Send the first message to start group chat",
-    "emptyTimeline": "No activity",
+    "dissolve": "Dissolve group",
+    "dissolveConfirm": "Dissolve this group? This can't be undone.",
+    "dissolveFail": "Couldn't dissolve group",
+    "dm": "Direct message",
+    "editRoom": "Edit group",
+    "emptyChatHint": "Say hello — send the first message",
+    "emptyFollowers": "No followers yet",
+    "emptyFollowing": "Not following anyone yet",
+    "emptyPeers": "No peers yet",
+    "emptyPublished": "Nothing published yet",
+    "emptyRings": "No rings yet",
+    "emptyRoomHint": "Send the first message to start the group chat",
+    "emptyTimeline": "Nothing here yet",
     "expandDetails": "Expand",
     "feedFollowers": "Followers",
     "feedFollowing": "Following",
     "feedItems": "items",
-    "feedLoadFail": "Failed to load feed",
+    "feedLoadFail": "Couldn't load feed",
     "feedPublished": "Published",
     "feedTimeline": "Feed",
-    "fileTooLarge": "File too large (max 100MB)",
-    "fileTooLargeRoom": "File too large for group chat — use a DM channel for larger files",
+    "fileTooLarge": "File too large (max 10MB)",
     "followBtn": "Follow",
-    "followFail": "Follow failed",
+    "followFail": "Couldn't follow",
     "followPlaceholder": "Actor URL or @user@domain",
-    "followQueued": "Follow request sent; the remote instance auto-accepts (no manual approval)",
+    "followQueued": "Follow request sent. Remote instances accept automatically.",
     "forwardSuccess": "Forwarded",
-    "forwardTo": "Forward to...",
+    "forwardTo": "Forward to…",
     "installBtn": "Install",
-    "installFailed": "Install failed, tap to retry",
-    "installSuccess": "✓ Installed",
+    "installFailed": "Install failed — tap to retry",
+    "installSuccess": "Installed",
     "installedAt": "Installed",
-    "installingBtn": "Installing...",
-    "invite": "Invite...",
+    "installingBtn": "Installing…",
+    "invite": "Invite",
     "inviteBtn": "Invite",
-    "inviteFail": "Invite failed",
+    "inviteFail": "Couldn't invite",
     "inviteFromContacts": "From contacts",
-    "inviteManual": "Manual invite",
+    "inviteManual": "Invite by address",
     "invitePlaceholder": "Actor URL or @user@domain",
     "inviteSuccess": "Invited",
     "invited": "Invited",
-    "inviting": "Inviting...",
+    "inviting": "Inviting…",
     "kick": "Remove",
-    "kickFail": "Remove failed",
+    "kickConfirm": "Remove this member?",
+    "kickFail": "Couldn't remove member",
     "leave": "Leave",
-    "leaveBtn": "Leave Ring",
+    "leaveBtn": "Leave ring",
     "leaveRingConfirm": "Leave this ring?",
-    "leaveRingFail": "Leave failed",
-    "loadFail": "Load failed",
+    "leaveRingFail": "Couldn't leave ring",
+    "loadFail": "Couldn't load",
     "local": "Local",
     "localVer": "Local",
     "manage": "Manage",
     "mediaTooLarge": "File too large",
     "mediaUnsupported": "Unsupported file type",
     "members": "Members",
+    "msgActions": "Message actions",
     "msgForward": "Forward",
     "msgPin": "Pin",
-    "msgQuote": "Quote",
+    "msgQuote": "Reply",
     "msgUnpin": "Unpin",
     "navFeed": "Feed",
     "navMessages": "Messages",
     "navRings": "Rings",
-    "newChannel": "New DM",
+    "newChannel": "New chat",
     "newMessage": "New message",
-    "newRoom": "New Room",
+    "newRoom": "New group",
     "noContacts": "No contacts to invite",
-    "noConv": "No conversations",
+    "noConv": "No conversations yet",
+    "noConvHint": "Tap + to start a chat",
     "openOriginal": "Open original",
     "openTappBtn": "Open Tapp",
     "peers": "peers",
@@ -1184,32 +1245,39 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "pickerCancel": "Cancel",
     "pickerConfirm": "Confirm",
     "pickerDesc": "Description (optional)",
-    "pickerEmpty": "No data",
-    "pickerLoading": "Loading...",
-    "pickerSearchPlaceholder": "Search...",
+    "pickerEmpty": "Nothing here",
+    "pickerLoading": "Loading…",
+    "pickerSearchPlaceholder": "Search…",
     "pickerSelectPlatform": "Select platform",
     "pickerTitle": "Title",
-    "pinFail": "Pin failed",
+    "pinFail": "Couldn't pin",
     "pinnedMsg": "Pinned",
     "previewFile": "📎 File",
     "previewImage": "📷 Image",
     "previewSystem": "System message",
     "publicFeed": "Public feed",
-    "quoteLabel": "Quote",
+    "quoteLabel": "Reply",
     "refresh": "Refresh",
     "rejectTapp": "Decline",
     "remoteVer": "Shared",
     "removeBtn": "Unpublish",
-    "removePeerFail": "Remove failed",
+    "removePeerFail": "Couldn't remove peer",
     "ringNamePlaceholder": "Ring name",
     "ringPeersTitle": "Peers",
     "ringType": "Type",
+    "ringTypeBrewRecommend": "Brew picks",
+    "ringTypeInstanceDirectory": "Instance directory",
+    "ringTypeLibraryExchange": "Library exchange",
+    "ringTypeTappStore": "Tapp store",
+    "roleAdmin": "Admin",
+    "roleMember": "Member",
+    "roleOwner": "Owner",
     "roomDesc": "Description",
-    "roomName": "Room name",
-    "roomPlaceholder": "Room name",
+    "roomName": "Group name",
+    "roomPlaceholder": "Group name",
     "save": "Save",
-    "saveFail": "Save failed",
-    "saving": "Saving...",
+    "saveFail": "Couldn't save",
+    "saving": "Saving…",
     "selectBrew": "Select Brew article",
     "selectHint": "Select a conversation to start chatting",
     "selectLibrary": "Select from library",
@@ -1217,56 +1285,54 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectRing": "Select a ring to view details",
     "selectTapp": "Select Tapp",
     "send": "Send",
-    "sendFail": "Send failed",
+    "sendFail": "Couldn't send",
     "syncBtn": "Sync",
-    "syncFail": "Sync failed",
-    "syncSuccess": "Sync complete",
-    "syncing": "Syncing...",
+    "syncFail": "Couldn't sync",
+    "syncSuccess": "Synced",
+    "syncing": "Syncing…",
     "tappInstalled": "Installed",
     "tappNotInstalled": "Not installed",
-    "tappReceived": "Tapp shared",
+    "tappReceived": "Tapp shared with you",
     "tappShareAccepted": "Accepted",
-    "tappSharePending": "Waiting for acceptance",
+    "tappSharePending": "Waiting for reply",
     "tappShareRejected": "Declined",
     "tappUpdateAvail": "Update available",
-    "title": "Messenger",
-    "transferComplete": "File sent",
-    "transferFail": "File upload failed",
-    "transferProgress": "Uploading… {pct}%",
-    "transferStarting": "Uploading file…",
-    "typing": "Type a message...",
+    "title": "Messages",
+    "typing": "Type a message…",
     "unfollowBtn": "Unfollow",
-    "unfollowFail": "Unfollow failed",
-    "unpublishFail": "Unpublish failed",
-    "updatingBtn": "Update"
+    "unfollowFail": "Couldn't unfollow",
+    "unpublishFail": "Couldn't unpublish",
+    "updatingBtn": "Update",
   },
   "ja": {
     "accept": "承認",
-    "acceptConfirmDesc": "Tappアプリが共有されました",
-    "acceptConfirmTitle": "このTappをインストール？",
-    "acceptFail": "承認失敗",
+    "acceptConfirmDesc": "Tappが共有されました",
+    "acceptConfirmTitle": "このTappをインストールしますか？",
+    "acceptFail": "承認に失敗しました",
     "acceptTapp": "承認",
     "activityType": "アクティビティ",
     "addPeerBtn": "追加",
-    "addPeerFail": "追加失敗",
+    "addPeerFail": "追加に失敗しました",
     "addPeerPlaceholder": "Actor URL または @user@domain",
     "adminRequired": "管理者権限が必要です",
     "alreadyLatest": "最新版です",
+    "attach": "添付",
     "attachBrew": "Brew",
-    "attachBrewPrompt": "Brew記事タイトルを入力",
+    "attachBrewPrompt": "Brew記事のタイトルを入力",
     "attachFile": "ファイル",
     "attachImage": "画像",
     "attachLibrary": "ライブラリ",
     "attachLibraryPrompt": "ライブラリ名を入力",
     "attachReport": "レポート",
-    "attachReportPrompt": "レポートタイトルを入力",
-    "attachSending": "送信中...",
+    "attachReportPrompt": "レポートのタイトルを入力",
+    "attachSending": "送信中…",
     "attachTapp": "Tapp",
     "attachTappPrompt": "Tapp IDまたは名前を入力",
-    "channelNotAccepted": "ファイル送信前にチャンネルを承認してください",
+    "back": "戻る",
     "channelPlaceholder": "Actor URL または @user@domain",
     "close": "閉じる",
-    "closed": "クローズ",
+    "closeChannelConfirm": "このチャットを閉じますか？閉じると送信できなくなります。",
+    "closed": "終了",
     "collapseDetails": "閉じる",
     "composeAddImage": "画像",
     "composeAddVideo": "動画",
@@ -1279,86 +1345,92 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composePublishing": "公開中…",
     "composeSuccess": "公開しました",
     "composeUploading": "アップロード中…",
+    "confirmCancel": "キャンセル",
+    "confirmOk": "OK",
     "connected": "接続済み",
     "copied": "コピーしました",
     "copy": "コピー",
-    "copyFail": "コピー失敗",
+    "copyFail": "コピーに失敗しました",
     "create": "新規",
-    "createChannel": "チャンネル作成",
-    "createFail": "作成失敗",
+    "createChannel": "チャットを開始",
+    "createFail": "作成に失敗しました",
     "createRingBtn": "作成",
-    "createRingFail": "作成失敗",
-    "createRingTitle": "リング作成",
-    "createRoom": "ルーム作成",
-    "creating": "作成中...",
-    "disconnected": "切断",
-    "dissolve": "グループ解散",
+    "createRingFail": "リングの作成に失敗しました",
+    "createRingTitle": "リングを作成",
+    "createRoom": "グループを作成",
+    "creating": "作成中…",
+    "dateToday": "今日",
+    "dateYesterday": "昨日",
+    "disconnected": "未接続",
+    "dissolve": "グループを解散",
     "dissolveConfirm": "このグループを解散しますか？この操作は元に戻せません。",
-    "dissolveFail": "解散失敗",
-    "dm": "DM",
-    "editRoom": "ルーム編集",
-    "emptyChatHint": "最初のメッセージを送信してください",
-    "emptyFollowers": "フォロワーなし",
-    "emptyFollowing": "フォローなし",
-    "emptyPeers": "ピアなし",
-    "emptyPublished": "公開コンテンツなし",
-    "emptyRings": "リングなし",
-    "emptyRoomHint": "最初のメッセージを送信してグループチャットを始めましょう",
-    "emptyTimeline": "アクティビティなし",
+    "dissolveFail": "解散に失敗しました",
+    "dm": "ダイレクトメッセージ",
+    "editRoom": "グループを編集",
+    "emptyChatHint": "最初のメッセージを送ってみましょう",
+    "emptyFollowers": "フォロワーはまだいません",
+    "emptyFollowing": "まだ誰もフォローしていません",
+    "emptyPeers": "ピアはまだありません",
+    "emptyPublished": "公開したコンテンツはまだありません",
+    "emptyRings": "リングはまだありません",
+    "emptyRoomHint": "最初のメッセージを送ってグループチャットを始めましょう",
+    "emptyTimeline": "まだ投稿がありません",
     "expandDetails": "展開",
     "feedFollowers": "フォロワー",
     "feedFollowing": "フォロー中",
     "feedItems": "件",
-    "feedLoadFail": "フィードの読み込みに失敗",
+    "feedLoadFail": "フィードを読み込めませんでした",
     "feedPublished": "公開済み",
     "feedTimeline": "フィード",
-    "fileTooLarge": "ファイルが大きすぎます（最大100MB）",
-    "fileTooLargeRoom": "グループチャットでは大きすぎます — 大きいファイルはDMチャンネルを使ってください",
+    "fileTooLarge": "ファイルが大きすぎます（最大10MB）",
     "followBtn": "フォロー",
-    "followFail": "フォロー失敗",
+    "followFail": "フォローに失敗しました",
     "followPlaceholder": "Actor URL または @user@domain",
-    "followQueued": "フォローリクエストを送信しました。相手側は自動承認します（手動承認は不要）",
-    "forwardSuccess": "転送済み",
-    "forwardTo": "転送先...",
+    "followQueued": "フォローリクエストを送信しました。相手側は自動承認します。",
+    "forwardSuccess": "転送しました",
+    "forwardTo": "転送先…",
     "installBtn": "インストール",
-    "installFailed": "インストール失敗、タップで再試行",
-    "installSuccess": "✓ インストール完了",
+    "installFailed": "インストールに失敗しました。タップして再試行",
+    "installSuccess": "インストール完了",
     "installedAt": "インストール日",
-    "installingBtn": "インストール中...",
-    "invite": "招待...",
+    "installingBtn": "インストール中…",
+    "invite": "招待",
     "inviteBtn": "招待",
-    "inviteFail": "招待失敗",
-    "inviteFromContacts": "連絡先から選択",
-    "inviteManual": "手動招待",
+    "inviteFail": "招待に失敗しました",
+    "inviteFromContacts": "連絡先から選ぶ",
+    "inviteManual": "手動で招待",
     "invitePlaceholder": "Actor URL または @user@domain",
-    "inviteSuccess": "招待済み",
+    "inviteSuccess": "招待しました",
     "invited": "招待済み",
-    "inviting": "招待中...",
-    "kick": "除外",
-    "kickFail": "除外失敗",
+    "inviting": "招待中…",
+    "kick": "削除",
+    "kickConfirm": "このメンバーを削除しますか？",
+    "kickFail": "削除に失敗しました",
     "leave": "退出",
-    "leaveBtn": "リング退出",
+    "leaveBtn": "リングを退出",
     "leaveRingConfirm": "このリングから退出しますか？",
-    "leaveRingFail": "退出失敗",
-    "loadFail": "読み込み失敗",
+    "leaveRingFail": "退出に失敗しました",
+    "loadFail": "読み込みに失敗しました",
     "local": "ローカル",
     "localVer": "ローカル",
     "manage": "管理",
     "mediaTooLarge": "ファイルが大きすぎます",
     "mediaUnsupported": "未対応のファイル形式です",
     "members": "メンバー",
+    "msgActions": "メッセージ操作",
     "msgForward": "転送",
     "msgPin": "ピン留め",
-    "msgQuote": "引用",
+    "msgQuote": "返信",
     "msgUnpin": "ピン解除",
     "navFeed": "フィード",
     "navMessages": "メッセージ",
     "navRings": "リング",
-    "newChannel": "新規DM",
+    "newChannel": "新規チャット",
     "newMessage": "新しいメッセージ",
-    "newRoom": "新規ルーム",
-    "noContacts": "招待可能な連絡先なし",
-    "noConv": "会話なし",
+    "newRoom": "新規グループ",
+    "noContacts": "招待できる連絡先がありません",
+    "noConv": "会話はまだありません",
+    "noConvHint": "+ をタップしてチャットを開始",
     "openOriginal": "元記事を開く",
     "openTappBtn": "Tappを開く",
     "peers": "ピア",
@@ -1367,32 +1439,39 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "pickerCancel": "キャンセル",
     "pickerConfirm": "確認",
     "pickerDesc": "説明（任意）",
-    "pickerEmpty": "データなし",
-    "pickerLoading": "読み込み中...",
-    "pickerSearchPlaceholder": "検索...",
-    "pickerSelectPlatform": "プラットフォーム選択",
+    "pickerEmpty": "ここに項目はありません",
+    "pickerLoading": "読み込み中…",
+    "pickerSearchPlaceholder": "検索…",
+    "pickerSelectPlatform": "プラットフォームを選択",
     "pickerTitle": "タイトル",
-    "pinFail": "ピン留めに失敗",
+    "pinFail": "ピン留めに失敗しました",
     "pinnedMsg": "ピン留め",
     "previewFile": "📎 ファイル",
     "previewImage": "📷 画像",
     "previewSystem": "システムメッセージ",
     "publicFeed": "公開フィード",
-    "quoteLabel": "引用",
-    "refresh": "リフレッシュ",
+    "quoteLabel": "返信",
+    "refresh": "更新",
     "rejectTapp": "拒否",
     "remoteVer": "共有",
-    "removeBtn": "公開取消",
-    "removePeerFail": "削除失敗",
+    "removeBtn": "公開を取り消す",
+    "removePeerFail": "削除に失敗しました",
     "ringNamePlaceholder": "リング名",
     "ringPeersTitle": "ピア",
     "ringType": "タイプ",
+    "ringTypeBrewRecommend": "Brewおすすめ",
+    "ringTypeInstanceDirectory": "インスタンス一覧",
+    "ringTypeLibraryExchange": "資料交換",
+    "ringTypeTappStore": "Tappストア",
+    "roleAdmin": "管理者",
+    "roleMember": "メンバー",
+    "roleOwner": "オーナー",
     "roomDesc": "説明",
-    "roomName": "ルーム名",
-    "roomPlaceholder": "ルーム名",
+    "roomName": "グループ名",
+    "roomPlaceholder": "グループ名",
     "save": "保存",
-    "saveFail": "保存失敗",
-    "saving": "保存中...",
+    "saveFail": "保存に失敗しました",
+    "saving": "保存中…",
     "selectBrew": "Brew記事を選択",
     "selectHint": "会話を選んでチャットを始めましょう",
     "selectLibrary": "ライブラリから選択",
@@ -1400,41 +1479,38 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectRing": "リングを選択して詳細を表示",
     "selectTapp": "Tappを選択",
     "send": "送信",
-    "sendFail": "送信失敗",
+    "sendFail": "送信に失敗しました",
     "syncBtn": "同期",
-    "syncFail": "同期失敗",
+    "syncFail": "同期に失敗しました",
     "syncSuccess": "同期完了",
-    "syncing": "同期中...",
+    "syncing": "同期中…",
     "tappInstalled": "インストール済み",
     "tappNotInstalled": "未インストール",
     "tappReceived": "Tappが共有されました",
     "tappShareAccepted": "承認済み",
-    "tappSharePending": "承認待ち",
+    "tappSharePending": "返信待ち",
     "tappShareRejected": "拒否済み",
     "tappUpdateAvail": "更新あり",
-    "title": "メッセンジャー",
-    "transferComplete": "ファイルを送信しました",
-    "transferFail": "ファイルのアップロードに失敗しました",
-    "transferProgress": "アップロード中… {pct}%",
-    "transferStarting": "ファイルをアップロード中…",
-    "typing": "メッセージを入力...",
+    "title": "メッセージ",
+    "typing": "メッセージを入力…",
     "unfollowBtn": "フォロー解除",
-    "unfollowFail": "フォロー解除失敗",
-    "unpublishFail": "公開取消失敗",
-    "updatingBtn": "更新"
+    "unfollowFail": "フォロー解除に失敗しました",
+    "unpublishFail": "公開の取り消しに失敗しました",
+    "updatingBtn": "更新",
   },
   "zh": {
     "accept": "接受",
-    "acceptConfirmDesc": "对方向你分享了一个 Tapp 应用",
+    "acceptConfirmDesc": "有人向你分享了一个 Tapp",
     "acceptConfirmTitle": "安装此 Tapp？",
     "acceptFail": "接受失败",
     "acceptTapp": "接受",
-    "activityType": "活动类型",
+    "activityType": "动态",
     "addPeerBtn": "添加",
     "addPeerFail": "添加失败",
     "addPeerPlaceholder": "Actor URL 或 @user@domain",
     "adminRequired": "需要管理员权限",
     "alreadyLatest": "已是最新版本",
+    "attach": "附件",
     "attachBrew": "Brew",
     "attachBrewPrompt": "输入 Brew 文章标题",
     "attachFile": "文件",
@@ -1443,12 +1519,13 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "attachLibraryPrompt": "输入资料库名称",
     "attachReport": "报告",
     "attachReportPrompt": "输入报告标题",
-    "attachSending": "发送中...",
+    "attachSending": "发送中…",
     "attachTapp": "Tapp",
     "attachTappPrompt": "输入 Tapp ID 或名称",
-    "channelNotAccepted": "请先接受通道再发送文件",
+    "back": "返回",
     "channelPlaceholder": "Actor URL 或 @user@domain",
     "close": "关闭",
+    "closeChannelConfirm": "确定关闭此私信？关闭后将无法继续发送消息。",
     "closed": "已关闭",
     "collapseDetails": "收起",
     "composeAddImage": "图片",
@@ -1462,62 +1539,66 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composePublishing": "发布中…",
     "composeSuccess": "已发布",
     "composeUploading": "上传中…",
+    "confirmCancel": "取消",
+    "confirmOk": "确定",
     "connected": "已连接",
     "copied": "已复制",
     "copy": "复制",
     "copyFail": "复制失败",
     "create": "新建",
-    "createChannel": "创建通道",
+    "createChannel": "开始私信",
     "createFail": "创建失败",
     "createRingBtn": "创建",
     "createRingFail": "创建失败",
     "createRingTitle": "创建环网",
-    "createRoom": "创建房间",
-    "creating": "创建中...",
+    "createRoom": "创建群聊",
+    "creating": "创建中…",
+    "dateToday": "今天",
+    "dateYesterday": "昨天",
     "disconnected": "未连接",
     "dissolve": "解散群组",
-    "dissolveConfirm": "确定要解散此群组吗？此操作不可撤销。",
+    "dissolveConfirm": "确定解散此群组？此操作不可撤销。",
     "dissolveFail": "解散失败",
     "dm": "私信",
-    "editRoom": "编辑房间",
-    "emptyChatHint": "发送第一条消息开始聊天",
+    "editRoom": "编辑群聊",
+    "emptyChatHint": "打个招呼，发送第一条消息吧",
     "emptyFollowers": "暂无粉丝",
-    "emptyFollowing": "暂无关注",
+    "emptyFollowing": "还没有关注任何人",
     "emptyPeers": "暂无节点",
     "emptyPublished": "暂无发布内容",
     "emptyRings": "暂无环网",
-    "emptyRoomHint": "发送第一条消息开始群聊",
+    "emptyRoomHint": "发送第一条消息，开始群聊",
     "emptyTimeline": "暂无动态",
     "expandDetails": "展开",
     "feedFollowers": "粉丝",
     "feedFollowing": "关注",
-    "feedItems": "项",
+    "feedItems": "条",
     "feedLoadFail": "动态加载失败",
     "feedPublished": "已发布",
     "feedTimeline": "动态",
-    "fileTooLarge": "文件过大（最大 100MB）",
-    "fileTooLargeRoom": "群聊不支持大文件 — 请通过私信通道发送",
+    "fileTooLarge": "文件过大（最大 10MB）",
     "followBtn": "关注",
     "followFail": "关注失败",
     "followPlaceholder": "Actor URL 或 @user@domain",
-    "followQueued": "关注请求已发送；对方实例将自动接受（无需手动批准）",
+    "followQueued": "关注请求已发送，对方实例会自动接受",
     "forwardSuccess": "已转发",
-    "forwardTo": "转发到...",
+    "forwardTo": "转发到…",
     "installBtn": "安装",
     "installFailed": "安装失败，点击重试",
-    "installSuccess": "✓ 安装成功",
+    "installSuccess": "安装成功",
     "installedAt": "安装时间",
-    "installingBtn": "安装中...",
-    "invite": "邀请...",
+    "installingBtn": "安装中…",
+    "invite": "邀请",
     "inviteBtn": "邀请",
     "inviteFail": "邀请失败",
-    "inviteFromContacts": "从联系人中选择",
+    "inviteFromContacts": "从联系人选择",
     "inviteManual": "手动邀请",
     "invitePlaceholder": "Actor URL 或 @user@domain",
     "inviteSuccess": "已邀请",
     "invited": "已邀请",
-    "inviting": "邀请中...",
+    "inviting": "邀请中…",
     "kick": "移除",
+    "kickConfirm": "确定移除此成员？",
     "kickFail": "移除失败",
     "leave": "离开",
     "leaveBtn": "退出环网",
@@ -1530,18 +1611,20 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "mediaTooLarge": "文件过大",
     "mediaUnsupported": "不支持的文件类型",
     "members": "成员",
+    "msgActions": "消息操作",
     "msgForward": "转发",
     "msgPin": "置顶",
-    "msgQuote": "引用",
+    "msgQuote": "回复",
     "msgUnpin": "取消置顶",
     "navFeed": "动态",
-    "navMessages": "信使",
+    "navMessages": "消息",
     "navRings": "环网",
     "newChannel": "新建私信",
     "newMessage": "新消息",
     "newRoom": "新建群聊",
     "noContacts": "暂无可邀请的联系人",
     "noConv": "暂无会话",
+    "noConvHint": "点击 + 开始新会话",
     "openOriginal": "查看原文",
     "openTappBtn": "打开 Tapp",
     "peers": "节点",
@@ -1550,18 +1633,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "pickerCancel": "取消",
     "pickerConfirm": "确认",
     "pickerDesc": "描述（可选）",
-    "pickerEmpty": "暂无数据",
-    "pickerLoading": "加载中...",
-    "pickerSearchPlaceholder": "搜索...",
+    "pickerEmpty": "暂无内容",
+    "pickerLoading": "加载中…",
+    "pickerSearchPlaceholder": "搜索…",
     "pickerSelectPlatform": "选择平台",
     "pickerTitle": "标题",
     "pinFail": "置顶失败",
-    "pinnedMsg": "置顶消息",
+    "pinnedMsg": "置顶",
     "previewFile": "📎 文件",
     "previewImage": "📷 图片",
     "previewSystem": "系统消息",
     "publicFeed": "公开动态",
-    "quoteLabel": "引用",
+    "quoteLabel": "回复",
     "refresh": "刷新",
     "rejectTapp": "拒绝",
     "remoteVer": "分享版本",
@@ -1570,12 +1653,19 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "ringNamePlaceholder": "环网名称",
     "ringPeersTitle": "节点",
     "ringType": "类型",
-    "roomDesc": "房间描述",
-    "roomName": "房间名称",
-    "roomPlaceholder": "房间名称",
+    "ringTypeBrewRecommend": "Brew 推荐",
+    "ringTypeInstanceDirectory": "实例目录",
+    "ringTypeLibraryExchange": "资料交换",
+    "ringTypeTappStore": "Tapp 商店",
+    "roleAdmin": "管理员",
+    "roleMember": "成员",
+    "roleOwner": "群主",
+    "roomDesc": "群聊描述",
+    "roomName": "群聊名称",
+    "roomPlaceholder": "群聊名称",
     "save": "保存",
     "saveFail": "保存失败",
-    "saving": "保存中...",
+    "saving": "保存中…",
     "selectBrew": "选择 Brew 文章",
     "selectHint": "选择一个会话开始聊天",
     "selectLibrary": "选择资料",
@@ -1587,25 +1677,21 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "syncBtn": "同步",
     "syncFail": "同步失败",
     "syncSuccess": "同步完成",
-    "syncing": "同步中...",
+    "syncing": "同步中…",
     "tappInstalled": "已安装",
     "tappNotInstalled": "未安装",
     "tappReceived": "收到 Tapp 分享",
     "tappShareAccepted": "已接受",
-    "tappSharePending": "等待对方接受",
+    "tappSharePending": "等待对方回复",
     "tappShareRejected": "已拒绝",
-    "tappUpdateAvail": "有更新可用",
-    "title": "信使",
-    "transferComplete": "文件已发送",
-    "transferFail": "文件上传失败",
-    "transferProgress": "上传中… {pct}%",
-    "transferStarting": "正在上传文件…",
-    "typing": "输入消息...",
+    "tappUpdateAvail": "有可用更新",
+    "title": "消息",
+    "typing": "输入消息…",
     "unfollowBtn": "取消关注",
     "unfollowFail": "取消关注失败",
     "unpublishFail": "取消发布失败",
-    "updatingBtn": "更新"
-  }
+    "updatingBtn": "更新",
+  },
 }
 
 // ==================== Page Modules ====================
@@ -1649,7 +1735,7 @@ var state = {
   isGuest: true,
   isAdmin: false,
   // Attachment
-  pendingAttach: null, // { type, file?, data?, name, size, mime, ... }
+  pendingAttach: null, // { type: 'image'|'file'|'tapp'|'brew'|'library'|'report', data, name, size, mime }
   // Aro views
   currentView: 'feed',
   // Feed (merged timeline + profile)
@@ -1705,6 +1791,62 @@ const PAGE_MOD_HELPERS = `\
 // ==================== Helpers ====================
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 function timeStr(iso) { try { return new Date(iso).toLocaleTimeString(currentLocale, { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function fullTimeStr(iso) { try { return new Date(iso).toLocaleString(currentLocale); } catch (e) { return ''; } }
+/** Relative short time for conv list (e.g. 5m, 2h, 3d). */
+function relTimeStr(iso) {
+  if (!iso) return '';
+  try {
+    if (typeof timeAgo === 'function') return timeAgo(iso);
+  } catch (e) { /* fall through */ }
+  try {
+    var d = new Date(iso);
+    var sec = Math.floor((Date.now() - d) / 1000);
+    if (sec < 60) return sec + 's';
+    var min = Math.floor(sec / 60);
+    if (min < 60) return min + 'm';
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr + 'h';
+    var day = Math.floor(hr / 24);
+    if (day < 30) return day + 'd';
+    return d.toLocaleDateString(currentLocale, { month: 'short', day: 'numeric' });
+  } catch (e2) { return ''; }
+}
+
+/** 消息日期分隔线标签：今天/昨天/日期 */
+function dayLabel(iso) {
+  var d = new Date(iso);
+  if (isNaN(d)) return '';
+  var now = new Date();
+  var startOfDay = function (x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()); };
+  var diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  if (diffDays === 0) return lang.dateToday || 'Today';
+  if (diffDays === 1) return lang.dateYesterday || 'Yesterday';
+  var opts = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+  try { return d.toLocaleDateString(currentLocale, opts); } catch (e) { return d.toLocaleDateString(); }
+}
+
+/** 发送按钮/composer 状态：关闭会话、发送中、无内容时不可发送 */
+function updateSendState() {
+  var btn = $('send-btn');
+  var input = $('msg-input');
+  var attach = $('attach-btn');
+  var closed = !!(state.activeKind === 'channel' && state.channelDetail && state.channelDetail.status === 'closed');
+  var blocked = !state.activeId || closed || !!state.sending;
+
+  if (input) {
+    input.disabled = closed || !state.activeId;
+    if (closed) input.placeholder = lang.closed || lang.typing || '';
+    else if (lang.typing) input.placeholder = lang.typing;
+  }
+  if (attach) attach.disabled = blocked;
+
+  if (!btn) return;
+  var hasContent = !!((input && !input.disabled && input.value.trim()) || state.pendingAttach);
+  var ready = !blocked && hasContent;
+  btn.disabled = !ready;
+  btn.classList.toggle('send-ready', ready);
+}
 function autoResizeInput(el) {
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';
@@ -1799,6 +1941,52 @@ function requireAdminAction() {
   return false;
 }
 
+/** 本地化环网类型标签；未知类型原样返回 */
+function ringTypeLabel(type) {
+  var map = {
+    'brew-recommend': lang.ringTypeBrewRecommend,
+    'tapp-store': lang.ringTypeTappStore,
+    'library-exchange': lang.ringTypeLibraryExchange,
+    'instance-directory': lang.ringTypeInstanceDirectory,
+  };
+  return map[type] || type || '';
+}
+
+/** 本地化成员角色标签 */
+function roleLabel(role) {
+  var map = { owner: lang.roleOwner, admin: lang.roleAdmin, member: lang.roleMember };
+  return map[role] || role || '';
+}
+
+/** 本地化分享卡片类型标签 */
+function shareTypeLabel(type) {
+  var map = { tapp: lang.attachTapp, brew: lang.attachBrew, library: lang.attachLibrary, report: lang.attachReport };
+  return map[type] || type || '';
+}
+
+/**
+ * 应用内确认对话框（沙箱 iframe 中原生 confirm() 会被浏览器拦截并静默返回 false）。
+ * 返回 Promise<boolean>。
+ */
+function aroConfirm(message, danger) {
+  return new Promise(function (resolve) {
+    var overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = '<div class="confirm-dialog">'
+      + '<div class="confirm-message">' + esc(message) + '</div>'
+      + '<div class="confirm-actions">'
+      + '<button class="confirm-btn confirm-btn-cancel">' + esc(lang.confirmCancel || 'Cancel') + '</button>'
+      + '<button class="confirm-btn confirm-btn-ok' + (danger ? ' confirm-btn-danger' : '') + '">' + esc(lang.confirmOk || 'OK') + '</button>'
+      + '</div></div>';
+    var done = function (result) { overlay.remove(); resolve(result); };
+    overlay.querySelector('.confirm-btn-cancel').addEventListener('click', function () { done(false); });
+    overlay.querySelector('.confirm-btn-ok').addEventListener('click', function () { done(true); });
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) done(false); });
+    document.body.appendChild(overlay);
+    overlay.querySelector('.confirm-btn-ok').focus();
+  });
+}
+
 function setAdminElementVisible(selector, visible) {
   document.querySelectorAll(selector).forEach(function (el) {
     el.style.display = visible ? '' : 'none';
@@ -1824,6 +2012,8 @@ function applyAdminControls() {
 
 function applyRoleControls() {
   var privateOnly = !state.isGuest;
+  // 访客只有「动态」一个视图，整条顶部导航都没有意义，直接隐藏
+  setAdminElementVisible('#aro-nav', privateOnly);
   setAdminElementVisible('#nav-messages', privateOnly);
   setAdminElementVisible('#nav-rings', privateOnly);
   setAdminElementVisible('.feed-nav-item[data-sub="following"]', privateOnly);
@@ -2209,9 +2399,17 @@ function applyLabels() {
   var el;
   el = $('nav-messages-label'); if (el) el.textContent = lang.navMessages;
   el = $('nav-rings-label'); if (el) el.textContent = lang.navRings;
-  el = document.querySelector('.sidebar-title'); if (el) el.textContent = lang.title;
-  el = document.querySelector('.empty-text'); if (el) el.textContent = lang.selectHint;
+  // Messenger sidebar (not ring sidebar)
+  el = document.querySelector('#view-messages .sidebar-title'); if (el) el.textContent = lang.title;
+  el = document.querySelector('#view-messages .empty-text'); if (el) el.textContent = lang.selectHint;
+  el = $('create-btn'); if (el) { el.setAttribute('title', lang.create); el.setAttribute('aria-label', lang.create); }
   el = $('msg-input'); if (el) el.placeholder = lang.typing;
+  el = $('attach-btn'); if (el) { el.setAttribute('title', lang.attach || lang.attachFile); el.setAttribute('aria-label', lang.attach || lang.attachFile); }
+  el = $('send-btn'); if (el) { el.setAttribute('title', lang.send); el.setAttribute('aria-label', lang.send); }
+  el = $('back-btn'); if (el) el.setAttribute('aria-label', lang.back || 'Back');
+  el = $('member-back-btn'); if (el) el.setAttribute('aria-label', lang.back || 'Back');
+  el = $('member-title'); if (el && state.activeKind !== 'room') el.textContent = lang.members;
+  el = $('invite-toggle'); if (el) { el.setAttribute('title', lang.invite); el.setAttribute('aria-label', lang.invite); }
   el = $('feed-nav-timeline'); if (el) el.textContent = lang.feedTimeline;
   el = $('feed-nav-following'); if (el) el.textContent = lang.feedFollowing;
   el = $('feed-nav-followers'); if (el) el.textContent = lang.feedFollowers;
@@ -2230,9 +2428,12 @@ function applyLabels() {
   el = $('feed-follow-btn'); if (el) el.textContent = lang.followBtn;
   el = $('feed-compose-btn-label'); if (el) el.textContent = lang.composePost || 'Post';
   el = $('feed-compose-btn'); if (el) el.setAttribute('title', lang.composePost || 'Post');
+  el = $('feed-compose-mobile-btn'); if (el) el.setAttribute('title', lang.composePost || 'Post');
   el = $('feed-compose-text'); if (el) el.placeholder = lang.composePlaceholder || '';
   el = $('feed-compose-image-label'); if (el) el.textContent = lang.composeAddImage || 'Image';
+  el = $('feed-compose-image-btn'); if (el) el.setAttribute('title', lang.composeAddImage || 'Image');
   el = $('feed-compose-video-label'); if (el) el.textContent = lang.composeAddVideo || 'Video';
+  el = $('feed-compose-video-btn'); if (el) el.setAttribute('title', lang.composeAddVideo || 'Video');
   el = $('feed-compose-cancel'); if (el) el.textContent = lang.composeCancel || 'Cancel';
   el = $('feed-compose-publish'); if (el) el.textContent = lang.composePublish || 'Publish';
   el = $('refresh-feed-btn'); if (el) el.setAttribute('title', lang.refresh);
@@ -2246,14 +2447,27 @@ function applyLabels() {
   el = $('ring-sidebar-title'); if (el) el.textContent = lang.navRings;
   el = $('ring-select-hint'); if (el) el.textContent = lang.selectRing;
   el = $('ring-create-title'); if (el) el.textContent = lang.createRingTitle;
+  el = $('ring-create-open-btn'); if (el) { el.setAttribute('title', lang.create); el.setAttribute('aria-label', lang.create); }
   el = $('ring-name-input'); if (el) el.placeholder = lang.ringNamePlaceholder;
   el = $('create-ring-btn'); if (el) el.textContent = lang.createRingBtn;
   el = $('ring-peer-input'); if (el) el.placeholder = lang.addPeerPlaceholder;
   el = $('ring-add-peer-btn'); if (el) el.textContent = lang.addPeerBtn;
+  el = $('ring-sync-label'); if (el) el.textContent = lang.syncBtn;
+  el = $('ring-sync-btn'); if (el) el.setAttribute('title', lang.syncBtn);
+  el = $('ring-leave-label'); if (el) el.textContent = lang.leaveBtn;
+  el = $('ring-type-opt-brew'); if (el) el.textContent = lang.ringTypeBrewRecommend;
+  el = $('ring-type-opt-tapp'); if (el) el.textContent = lang.ringTypeTappStore;
+  el = $('ring-type-opt-library'); if (el) el.textContent = lang.ringTypeLibraryExchange;
+  el = $('ring-type-opt-instance'); if (el) el.textContent = lang.ringTypeInstanceDirectory;
+  document.querySelectorAll('[data-i18n-empty-peers]').forEach(function (node) {
+    node.textContent = lang.emptyPeers;
+  });
+  updateSendState();
 }
 
 function applyDialogLabels() {
   var el;
+  el = $('create-dialog-title'); if (el) el.textContent = lang.create;
   el = $('create-channel-input'); if (el) el.placeholder = lang.channelPlaceholder;
   el = $('create-room-input'); if (el) el.placeholder = lang.roomPlaceholder;
   el = $('create-channel-btn'); if (el) el.textContent = lang.createChannel;
@@ -2273,11 +2487,7 @@ function applyDialogLabels() {
 const PAGE_MOD_ATTACHMENTS = `\
 // ==================== Attachment Menu ====================
 var _attachMenu = null;
-var MAX_ATTACH_SIZE = 100 * 1024 * 1024; // 100MB overall attach cap (large files use chunked transfer)
-// Inline base64 only under this raw size so JSON payload stays under 10 MiB backend cap.
-var INLINE_ATTACH_MAX = 2 * 1024 * 1024; // 2 MiB raw
-// Must match backend federation file_transfer DEFAULT_CHUNK_SIZE (1 MiB).
-var TRANSFER_CHUNK_SIZE = 1024 * 1024;
+var MAX_ATTACH_SIZE = 10 * 1024 * 1024; // 10MB
 
 function toggleAttachMenu() {
   if (_attachMenu) { closeAttachMenu(); return; }
@@ -2335,107 +2545,12 @@ function handleFileSelect(file, forceType) {
     try { Tapp.ui.showNotification({ title: lang.fileTooLarge, type: 'error' }); } catch (e) { /* ignore */ }
     return;
   }
-  var type = forceType || (file.type && file.type.indexOf('image/') === 0 ? 'image' : 'file');
-  // Keep the File for chunked upload; dataURL preview only for images.
-  if (type === 'image') {
-    var reader = new FileReader();
-    reader.onload = function () {
-      setPendingAttach({ type: type, file: file, data: reader.result, name: file.name, size: file.size, mime: file.type || 'image/*' });
-    };
-    reader.onerror = function () {
-      setPendingAttach({ type: type, file: file, name: file.name, size: file.size, mime: file.type || 'image/*' });
-    };
-    reader.readAsDataURL(file);
-  } else {
-    setPendingAttach({ type: type, file: file, name: file.name, size: file.size, mime: file.type || 'application/octet-stream' });
-  }
-}
-
-function readFileAsDataURL(file) {
-  return new Promise(function (resolve, reject) {
-    var reader = new FileReader();
-    reader.onload = function () { resolve(reader.result); };
-    reader.onerror = function () { reject(reader.error || new Error('read failed')); };
-    reader.readAsDataURL(file);
-  });
-}
-
-function arrayBufferToBase64(buffer) {
-  var bytes = new Uint8Array(buffer);
-  var binary = '';
-  var step = 0x8000;
-  for (var i = 0; i < bytes.length; i += step) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
-  }
-  return btoa(binary);
-}
-
-/** Chunked channel transfer for files above INLINE_ATTACH_MAX. */
-async function sendChannelFileTransfer(attach, text, replyTo) {
-  var file = attach.file;
-  if (!file) throw new Error('Missing file data');
-
-  var chStatus = state.channelDetail && state.channelDetail.status;
-  if (chStatus && chStatus !== 'active' && chStatus !== 'accepted') {
-    throw new Error(lang.channelNotAccepted || 'Channel must be accepted first');
-  }
-
-  try {
-    Tapp.ui.showNotification({ title: lang.transferStarting || 'Uploading…', type: 'info' });
-  } catch (e0) { /* ignore */ }
-
-  var transfer = await Tapp.federation.initiateTransfer(state.activeId, {
-    filename: attach.name,
-    file_size: attach.size,
-    mime_type: attach.mime || 'application/octet-stream',
-  });
-  var transferId = transfer && transfer.transfer_id;
-  if (!transferId) throw new Error('No transfer_id returned');
-
-  var buf = await file.arrayBuffer();
-  var bytes = new Uint8Array(buf);
-  var totalChunks = Math.max(1, Math.ceil(bytes.length / TRANSFER_CHUNK_SIZE));
-  var lastPct = -1;
-
-  for (var i = 0; i < totalChunks; i++) {
-    var start = i * TRANSFER_CHUNK_SIZE;
-    var end = Math.min(start + TRANSFER_CHUNK_SIZE, bytes.length);
-    var slice = bytes.subarray(start, end);
-    var chunkData = arrayBufferToBase64(slice);
-    await Tapp.federation.uploadChunk(transferId, {
-      chunk_index: i,
-      chunk_data: chunkData,
-      chunk_size: slice.length,
-    });
-    var pct = Math.round(((i + 1) / totalChunks) * 100);
-    if (pct >= lastPct + 20 || pct === 100) {
-      lastPct = pct;
-      try {
-        var prog = (lang.transferProgress || 'Uploading… {pct}%').replace('{pct}', String(pct));
-        Tapp.ui.showNotification({ title: prog, type: 'info' });
-      } catch (e1) { /* ignore */ }
-    }
-  }
-
-  var msgPayload = {
-    filename: attach.name,
-    size: attach.size,
-    mime_type: attach.mime || 'application/octet-stream',
-    transfer_id: transferId,
-    text: text || '',
+  var type = forceType || (file.type.startsWith('image/') ? 'image' : 'file');
+  var reader = new FileReader();
+  reader.onload = function () {
+    setPendingAttach({ type: type, data: reader.result, name: file.name, size: file.size, mime: file.type });
   };
-  if (state.quoteMsg) {
-    msgPayload.quote_sender = state.quoteMsg.sender;
-    msgPayload.quote_text = state.quoteMsg.text;
-    msgPayload.quote_id = state.quoteMsg.message_id;
-  }
-  var sendReq = { payload: msgPayload, message_type: 'file-meta' };
-  if (replyTo) sendReq.reply_to = replyTo;
-  await Tapp.federation.sendMessage(state.activeId, sendReq);
-
-  try {
-    Tapp.ui.showNotification({ title: lang.transferComplete || 'File sent', type: 'success' });
-  } catch (e2) { /* ignore */ }
+  reader.readAsDataURL(file);
 }
 
 function pickFedContent(type) {
@@ -2727,6 +2842,7 @@ function openReportPicker(icons, titles, iconColors) {
 function setPendingAttach(attach) {
   state.pendingAttach = attach;
   renderAttachPreview();
+  updateSendState();
 }
 
 function clearPendingAttach() {
@@ -2736,6 +2852,7 @@ function clearPendingAttach() {
   // Reset file inputs
   var fi = $('attach-file-input'); if (fi) fi.value = '';
   var ii = $('attach-image-input'); if (ii) ii.value = '';
+  updateSendState();
 }
 
 function renderAttachPreview() {
@@ -2775,7 +2892,7 @@ function renderConvList() {
       kind: 'channel', id: ch.channel_id,
       name: ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || '?',
       avatar: ch.remote_actor_avatar || '',
-      subtitle: ch.channel_type || lang.dm,
+      preview: lang.dm,
       unread: ch.unread_count || 0,
       status: ch.status,
       initiatedBy: ch.initiated_by,
@@ -2787,7 +2904,7 @@ function renderConvList() {
       kind: 'room', id: rm.room_id,
       name: rm.name || '?',
       avatar: rm.avatar_url || '',
-      subtitle: (rm.member_count || 0) + ' ' + lang.members,
+      preview: (rm.member_count || 0) + ' ' + lang.members,
       unread: rm.unread_count || 0,
       sortTime: rm.last_message_at || rm.created_at || '',
     });
@@ -2795,7 +2912,8 @@ function renderConvList() {
   items.sort(function (a, b) { return (b.sortTime || '').localeCompare(a.sortTime || ''); });
 
   if (items.length === 0) {
-    list.innerHTML = '<div class="conv-empty conv-empty-fill">' + esc(lang.noConv) + '</div>';
+    list.innerHTML = '<div class="conv-empty conv-empty-fill"><span>' + esc(lang.noConv)
+      + '<br><span style="font-size:11px;opacity:.75">' + esc(lang.noConvHint || '') + '</span></span></div>';
     return;
   }
 
@@ -2803,12 +2921,17 @@ function renderConvList() {
   items.forEach(function (item) {
     var isActive = item.id === state.activeId;
     var avatarClass = item.kind === 'channel' ? 'avatar-channel' : 'avatar-room';
-    html += '<button class="conv-item' + (isActive ? ' conv-active' : '') + '" data-kind="' + item.kind + '" data-id="' + esc(item.id) + '">'
+    var rel = item.sortTime ? relTimeStr(item.sortTime) : '';
+    html += '<button class="conv-item' + (isActive ? ' conv-active' : '') + (item.unread > 0 ? ' conv-unread' : '') + '" data-kind="' + item.kind + '" data-id="' + esc(item.id) + '">'
+      + '<span class="conv-accent" aria-hidden="true"></span>'
       + '<div class="conv-avatar ' + avatarClass + '">' + avatarContentHtml(item.avatar || '', item.name) + '</div>'
       + '<div class="conv-info">'
-      + '<div class="conv-name">' + esc(item.name) + '</div>'
-      + '<div class="conv-subtitle">' + esc(item.subtitle) + '</div>'
-      + '</div>';
+      + '<div class="conv-top">'
+      + '<span class="conv-name">' + esc(item.name) + '</span>'
+      + (rel ? '<span class="conv-time">' + esc(rel) + '</span>' : '')
+      + '</div>'
+      + '<div class="conv-bottom">'
+      + '<span class="conv-preview">' + esc(item.preview) + '</span>';
     if (item.unread > 0) {
       html += '<span class="conv-badge">' + (item.unread > 9 ? '9+' : item.unread) + '</span>';
     }
@@ -2818,7 +2941,7 @@ function renderConvList() {
     if (item.status === 'pending' && item.initiatedBy === 'remote') {
       html += '<span class="conv-pending">' + esc(lang.pending) + '</span>';
     }
-    html += '</button>';
+    html += '</div></div></button>';
   });
   list.innerHTML = html;
 
@@ -2852,7 +2975,7 @@ function renderPinnedBar() {
     + '<span class="pinned-bar-label">' + esc(lang.pinnedMsg) + (pinned.length > 1 ? ' (' + pinned.length + ')' : '') + '</span>'
     + '<span class="pinned-bar-text">' + esc(text) + '</span>'
     + '</div>'
-    + '<button class="pinned-bar-close" id="pinned-bar-close">&times;</button>';
+    + '<button class="pinned-bar-close" id="pinned-bar-close" aria-label="' + esc(lang.close || 'Close') + '">&times;</button>';
   var closeBtn = $('pinned-bar-close');
   if (closeBtn) closeBtn.addEventListener('click', function (e) {
     e.stopPropagation();
@@ -2868,10 +2991,25 @@ function renderPinnedBar() {
 // ==================== Message Context Menu ====================
 var _msgMenu = null;
 var _longPressTimer = null;
+var _msgMenuIgnoreUntil = 0;
 
 function closeMsgMenu() {
   if (_msgMenu) { _msgMenu.remove(); _msgMenu = null; }
 }
+
+function onMsgMenuOutside(e) {
+  if (!_msgMenu) return;
+  if (Date.now() < _msgMenuIgnoreUntil) return;
+  // Keep open when interacting with the menu itself
+  if (_msgMenu.contains(e.target)) return;
+  // Opening control (⋯) handles its own toggle
+  if (e.target && e.target.closest && e.target.closest('.msg-more-btn')) return;
+  closeMsgMenu();
+}
+
+// Single document listeners (not re-bound per render)
+document.addEventListener('click', onMsgMenuOutside);
+document.addEventListener('contextmenu', onMsgMenuOutside);
 
 function showMsgMenu(msgEl, x, y) {
   closeMsgMenu();
@@ -2884,16 +3022,21 @@ function showMsgMenu(msgEl, x, y) {
   if (!msg) return;
 
   var isPinned = !!msg.is_pinned;
+  var canPin = state.activeKind === 'room' && typeof Tapp.federation.pinRoomMessage === 'function';
   var pinSvg = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></svg>';
   var quoteSvg = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/></svg>';
   var forwardSvg = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/><path d="M14 9l3 3-3 3"/><path d="M17 12H9"/></svg>';
 
   var menu = document.createElement('div');
   menu.className = 'msg-ctx-menu';
-  menu.innerHTML =
-    '<button class="msg-ctx-item" data-action="pin">' + pinSvg + '<span>' + (isPinned ? esc(lang.msgUnpin) : esc(lang.msgPin)) + '</span></button>'
-    + '<button class="msg-ctx-item" data-action="quote">' + quoteSvg + '<span>' + esc(lang.msgQuote) + '</span></button>'
+  var html = '';
+  // Pin only for rooms — channel pin has no federation API
+  if (canPin) {
+    html += '<button class="msg-ctx-item" data-action="pin">' + pinSvg + '<span>' + (isPinned ? esc(lang.msgUnpin) : esc(lang.msgPin)) + '</span></button>';
+  }
+  html += '<button class="msg-ctx-item" data-action="quote">' + quoteSvg + '<span>' + esc(lang.msgQuote) + '</span></button>'
     + '<button class="msg-ctx-item" data-action="forward">' + forwardSvg + '<span>' + esc(lang.msgForward) + '</span></button>';
+  menu.innerHTML = html;
 
   document.body.appendChild(menu);
   var mw = menu.offsetWidth, mh = menu.offsetHeight;
@@ -2905,10 +3048,14 @@ function showMsgMenu(msgEl, x, y) {
   menu.style.left = left + 'px';
   menu.style.top = top + 'px';
   _msgMenu = menu;
+  // Ignore the opening gesture / synthetic click so long-press doesn't instantly dismiss
+  _msgMenuIgnoreUntil = Date.now() + 400;
 
   menu.addEventListener('click', function (e) {
     var btn = e.target.closest('[data-action]');
     if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
     var action = btn.dataset.action;
     closeMsgMenu();
     if (action === 'pin') doTogglePin(msg);
@@ -2917,9 +3064,11 @@ function showMsgMenu(msgEl, x, y) {
   });
 }
 
-document.addEventListener('click', function () { closeMsgMenu(); });
-
 function bindMsgContextMenu(container) {
+  // Bind once — renderMessages replaces innerHTML but reuses #messages
+  if (!container || container.dataset.msgMenuBound === '1') return;
+  container.dataset.msgMenuBound = '1';
+
   container.addEventListener('contextmenu', function (e) {
     var row = e.target.closest('.msg-row');
     if (!row) return;
@@ -2930,10 +3079,13 @@ function bindMsgContextMenu(container) {
     var row = e.target.closest('.msg-row');
     if (!row) return;
     if (e.target.closest('a, button, img')) return;
+    var touch = e.touches[0];
+    if (!touch) return;
+    var startX = touch.clientX;
+    var startY = touch.clientY;
     _longPressTimer = setTimeout(function () {
       _longPressTimer = null;
-      var touch = e.touches[0];
-      if (touch) showMsgMenu(row, touch.clientX, touch.clientY);
+      showMsgMenu(row, startX, startY);
     }, 500);
   }, { passive: true });
   container.addEventListener('touchend', function () {
@@ -2942,14 +3094,30 @@ function bindMsgContextMenu(container) {
   container.addEventListener('touchmove', function () {
     if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
   });
+  container.addEventListener('click', function (e) {
+    var more = e.target.closest('.msg-more-btn');
+    if (!more || !container.contains(more)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var row = more.closest('.msg-row');
+    if (!row) return;
+    // Toggle if already open for this message
+    if (_msgMenu && row.dataset.msgId && _msgMenu.dataset.forMsg === row.dataset.msgId) {
+      closeMsgMenu();
+      return;
+    }
+    var rect = more.getBoundingClientRect();
+    showMsgMenu(row, rect.left, rect.bottom + 4);
+    if (_msgMenu) _msgMenu.dataset.forMsg = row.dataset.msgId || '';
+  });
 }
 
 async function doTogglePin(msg) {
+  if (state.activeKind !== 'room' || !state.activeId) return;
+  if (typeof Tapp.federation.pinRoomMessage !== 'function') return;
   var newPinned = !msg.is_pinned;
   try {
-    if (state.activeKind === 'room') {
-      await Tapp.federation.pinRoomMessage(state.activeId, msg.message_id, newPinned);
-    }
+    await Tapp.federation.pinRoomMessage(state.activeId, msg.message_id, newPinned);
     msg.is_pinned = newPinned;
     state.messagesFp = messagesFingerprint(state.messages);
     state.pinnedBarDismissed = false;
@@ -3064,10 +3232,9 @@ function renderMessages() {
   }
 
   var html = '';
-  console.log('[Aro] renderMessages: count=' + state.messages.length + ', localActorUrl=' + state.localActorUrl + ', kind=' + state.activeKind + ', remoteActor=' + (state.channelDetail ? state.channelDetail.remote_actor_url : 'N/A'));
+  var lastDayKey = '';
   state.messages.forEach(function (msg, idx) {
     var local = isLocalActor(msg.sender_actor);
-    if (idx === 0) console.log('[Aro] msg[0] sender=' + msg.sender_actor + ' local=' + local);
     var sender = (msg.sender_actor || '').split('/').pop() || '?';
     var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
     var msgType = msg.message_type || 'text';
@@ -3083,8 +3250,6 @@ function renderMessages() {
         msgType = 'report';
       } else if (payload.data && payload.mime_type && payload.mime_type.indexOf('image/') === 0) {
         msgType = 'image';
-      } else if (payload.transfer_id && payload.filename) {
-        msgType = 'file-meta';
       } else if (payload.data && payload.filename) {
         msgType = 'file';
       }
@@ -3108,20 +3273,41 @@ function renderMessages() {
       }
     }
 
-    // Check if previous message is from same sender (skip avatar to reduce clutter)
+    // Day separators
+    var dayKey = '';
+    try {
+      var md = new Date(msg.created_at);
+      if (!isNaN(md)) dayKey = md.getFullYear() + '-' + md.getMonth() + '-' + md.getDate();
+    } catch (e) { dayKey = ''; }
+    if (dayKey && dayKey !== lastDayKey) {
+      lastDayKey = dayKey;
+      html += '<div class="msg-day-sep"><span class="msg-day-label">' + esc(dayLabel(msg.created_at)) + '</span></div>';
+    }
+
+    // Compact: same sender within ~5 minutes
     var prevMsg = idx > 0 ? state.messages[idx - 1] : null;
     var sameSender = prevMsg && sameActorUrl(prevMsg.sender_actor, msg.sender_actor);
+    var compact = false;
+    if (sameSender && prevMsg && prevMsg.created_at && msg.created_at) {
+      try {
+        var dt = Math.abs(new Date(msg.created_at) - new Date(prevMsg.created_at));
+        compact = dt < 5 * 60 * 1000;
+      } catch (e2) { compact = false; }
+    }
 
-    html += '<div class="msg-row ' + (local ? 'msg-local' : 'msg-remote') + '" data-msg-id="' + esc(msg.message_id || '') + '">';
+    html += '<div class="msg-row ' + (local ? 'msg-local' : 'msg-remote') + (compact ? ' msg-compact' : '') + '" data-msg-id="' + esc(msg.message_id || '') + '">';
     if (!local) {
-      if (sameSender) {
+      if (compact) {
         html += '<div class="msg-avatar-spacer"></div>';
       } else {
         html += '<div class="msg-avatar">' + avatarContentHtml(avatarUrl, displayName) + '</div>';
       }
     }
     html += '<div class="msg-bubble ' + (local ? 'bubble-local' : 'bubble-remote') + '">';
-    if (!local && !sameSender) {
+    html += '<button type="button" class="msg-more-btn" title="' + esc(lang.msgActions || 'Message actions') + '" aria-label="' + esc(lang.msgActions || 'Message actions') + '">'
+      + '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>'
+      + '</button>';
+    if (!local && !compact) {
       html += '<div class="msg-sender">' + esc(displayName) + '</div>';
     }
 
@@ -3139,19 +3325,13 @@ function renderMessages() {
     if (msgType === 'image' && payload.data) {
       html += '<img class="msg-image" src="' + esc(payload.data) + '" alt="' + esc(payload.filename || '') + '" />';
       if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
-    } else if (msgType === 'file' || msgType === 'file-meta') {
+    } else if (msgType === 'file') {
       var ext = (payload.filename || '').split('.').pop().toUpperCase();
-      var sizeLabel = payload.size ? formatFileSize(payload.size) : ext;
-      if (payload.transfer_id) {
-        sizeLabel = (sizeLabel ? sizeLabel + ' · ' : '') + 'transfer';
-      }
-      html += '<div class="msg-file-card"'
-        + (payload.transfer_id ? ' data-transfer-id="' + esc(payload.transfer_id) + '"' : '')
-        + '>'
+      html += '<div class="msg-file-card">'
         + '<div class="msg-file-icon">' + SVG_ICONS.file + '</div>'
         + '<div class="msg-file-info">'
         + '<div class="msg-file-name">' + esc(payload.filename || 'file') + '</div>'
-        + '<div class="msg-file-size">' + esc(sizeLabel || '') + '</div>'
+        + '<div class="msg-file-size">' + (payload.size ? formatFileSize(payload.size) : ext) + '</div>'
         + '</div></div>';
       if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
     } else if (msgType === 'tapp' || msgType === 'brew' || msgType === 'library' || msgType === 'report') {
@@ -3183,7 +3363,7 @@ function renderMessages() {
         + '>'
         + '<div class="msg-share-icon" style="background:' + (shareBgs[msgType] || '') + '">' + iconContent + '</div>'
         + '<div class="msg-share-body">'
-        + '<div class="msg-share-type">' + esc(msgType) + '</div>'
+        + '<div class="msg-share-type">' + esc(shareTypeLabel(msgType)) + '</div>'
         + '<div class="msg-share-title">' + esc(payload.title || '') + '</div>'
         + (payload.description ? '<div class="msg-share-desc">' + esc(payload.description) + '</div>' : '');
       // Version badge + status pill for tapp
@@ -3213,11 +3393,13 @@ function renderMessages() {
       html += '<div class="msg-text">' + esc(text) + '</div>';
     }
 
-    html += '<div class="msg-footer">' + pinned + '<span class="msg-time">' + timeStr(msg.created_at) + '</span></div>'
+    html += '<div class="msg-footer">' + pinned + '<span class="msg-time" title="' + esc(fullTimeStr(msg.created_at)) + '">' + timeStr(msg.created_at) + '</span></div>'
       + '</div></div>';
   });
   container.innerHTML = html;
   container.scrollTop = container.scrollHeight;
+
+  // ⋯ / long-press / contextmenu bound once via bindMsgContextMenu
 
   // Bind tapp accept/reject buttons
   container.querySelectorAll('.msg-share-btn-accept').forEach(function (btn) {
@@ -3434,11 +3616,13 @@ const PAGE_MOD_MEMBERS = `\
   var html = '';
   state.members.forEach(function (m) {
     var name = m.display_name || (m.actor_url || '').split('/').pop() || '?';
+    // 普通成员不显示角色，减少列表噪音；仅标出群主/管理员
+    var roleText = (m.role && m.role !== 'member') ? roleLabel(m.role) : '';
     html += '<div class="member-item">'
       + '<div class="member-avatar">' + avatarContentHtml(m.avatar_url || '', name) + '</div>'
       + '<div class="member-info">'
       + '<div class="member-name">' + esc(name) + '</div>'
-      + '<div class="member-role">' + esc(m.role || '') + '</div>'
+      + (roleText ? '<div class="member-role">' + esc(roleText) + '</div>' : '')
       + '</div>';
     if (m.is_local) {
       html += '<span class="member-local">' + esc(lang.local) + '</span>';
@@ -3502,7 +3686,7 @@ function renderChatHeader() {
     if (avatarEl) {
       avatarEl.innerHTML = avatarContentHtml(ch.remote_actor_avatar || '', chName);
     }
-    metaEl.innerHTML = '<span class="meta-badge badge-channel">' + esc(ch.channel_type || lang.dm) + '</span>'
+    metaEl.innerHTML = '<span class="meta-badge badge-channel">' + esc(lang.dm) + '</span>'
       + (ch.status === 'pending' ? '<span class="meta-badge badge-pending">' + esc(lang.pending) + '</span>' : '');
     var actionsHtml = '';
     if (ch.status === 'pending' && ch.initiated_by === 'remote') {
@@ -3525,7 +3709,7 @@ function renderChatHeader() {
       avatarEl.innerHTML = avatarContentHtml(rm.avatar_url || '', rm.name || '?');
     }
     metaEl.innerHTML = '<span class="meta-badge badge-room">' + (rm.member_count || 0) + ' ' + esc(lang.members) + '</span>'
-      + (rm.my_role ? '<span class="meta-badge badge-role">' + esc(rm.my_role) + '</span>' : '');
+      + (rm.my_role && rm.my_role !== 'member' ? '<span class="meta-badge badge-role">' + esc(roleLabel(rm.my_role)) + '</span>' : '');
     var menuItems = '';
     if (rm.my_role === 'owner' || rm.my_role === 'admin') {
       menuItems += '<button class="manage-item" id="action-edit-room">'
@@ -3568,6 +3752,8 @@ function renderChatHeader() {
   if (toggleBtn) toggleBtn.addEventListener('click', toggleManageDropdown);
   var memberToggle = $('member-toggle-btn');
   if (memberToggle) memberToggle.addEventListener('click', toggleMemberPanel);
+
+  if (typeof updateSendState === 'function') updateSendState();
 }
 
 // ==================== Member Panel Toggle ====================
@@ -3657,7 +3843,7 @@ async function openConversation(kind, id) {
     if (kind === 'channel') {
       var results = await Promise.all([
         Tapp.federation.getChannel(id),
-        Tapp.federation.getMessages(id, undefined, 200),
+        Tapp.federation.getMessages(id, undefined, 100),
       ]);
       if (results[0]) {
         state.channelDetail = results[0];
@@ -3681,7 +3867,7 @@ async function openConversation(kind, id) {
       var results = await Promise.all([
         Tapp.federation.getRoom(id),
         Tapp.federation.getRoomMembers(id),
-        Tapp.federation.getRoomMessages(id, undefined, 200),
+        Tapp.federation.getRoomMessages(id, undefined, 100),
       ]);
       if (results[0]) state.roomDetail = results[0];
       if (results[1]) {
@@ -3708,8 +3894,13 @@ async function openConversation(kind, id) {
   renderMessages();
   renderMembers();
   renderConvList();
+  updateSendState();
   startPolling();
   subscribeRealtime();
+  var focusInput = $('msg-input');
+  if (focusInput) {
+    try { focusInput.focus(); } catch (e) { /* ignore */ }
+  }
 }
 
 async function doSend() {
@@ -3721,66 +3912,53 @@ async function doSend() {
 
   // Need either text or attachment
   if ((!text && !attach) || !state.activeId || state.sending) return;
+  if (state.activeKind === 'channel' && state.channelDetail && state.channelDetail.status === 'closed') return;
 
   input.value = '';
   autoResizeInput(input);
   state.sending = true;
+  updateSendState();
   closeAttachMenu();
+  closeMsgMenu();
 
   try {
     var msgPayload;
     var msgType;
 
-    // Attach quote info if replying to a message
-    var replyTo = null;
-    if (state.quoteMsg) {
-      replyTo = state.quoteMsg.message_id;
-    }
-
-    if (attach && (attach.type === 'image' || attach.type === 'file')) {
-      var useChunked = attach.size > INLINE_ATTACH_MAX;
-      if (useChunked) {
-        if (state.activeKind !== 'channel') {
-          throw new Error(lang.fileTooLargeRoom || lang.fileTooLarge || 'File too large');
-        }
-        clearPendingAttach();
-        await sendChannelFileTransfer(attach, text, replyTo);
-        if (state.quoteMsg) clearQuote();
-        await pollMessages(true);
-        return;
+    if (attach) {
+      if (attach.type === 'image') {
+        msgType = 'image';
+        msgPayload = { data: attach.data, filename: attach.name, mime_type: attach.mime, size: attach.size, text: text || '' };
+      } else if (attach.type === 'file') {
+        msgType = 'file';
+        msgPayload = { data: attach.data, filename: attach.name, mime_type: attach.mime, size: attach.size, text: text || '' };
+      } else {
+        // Federation content: tapp, brew, library, report
+        msgType = attach.type;
+        msgPayload = { title: attach.name, description: attach.desc || '', content_type: attach.type, icon: attach.icon || '', text: text || '' };
+        // Include resource IDs so the receiver can fetch detail
+        if (attach.tappId) msgPayload.tapp_id = attach.tappId;
+        if (attach.tappVersion) msgPayload.tapp_version = attach.tappVersion;
+        if (attach.tappIcon) msgPayload.tapp_icon = attach.tappIcon;
+        if (attach.brewId) msgPayload.brew_id = attach.brewId;
+        if (attach.brewLink) msgPayload.brew_link = attach.brewLink;
+        if (attach.platformId) msgPayload.platform_id = attach.platformId;
+        if (attach.itemId) msgPayload.item_id = attach.itemId;
+        if (attach.reportId) msgPayload.report_id = attach.reportId;
       }
-
-      // Small files: inline base64 under backend 10 MiB payload budget
-      var dataUrl = attach.data;
-      if (!dataUrl && attach.file) {
-        dataUrl = await readFileAsDataURL(attach.file);
-      }
-      if (!dataUrl) throw new Error('Failed to read file');
-      msgType = attach.type === 'image' ? 'image' : 'file';
-      msgPayload = { data: dataUrl, filename: attach.name, mime_type: attach.mime, size: attach.size, text: text || '' };
-      clearPendingAttach();
-    } else if (attach) {
-      // Federation content: tapp, brew, library, report
-      msgType = attach.type;
-      msgPayload = { title: attach.name, description: attach.desc || '', content_type: attach.type, icon: attach.icon || '', text: text || '' };
-      if (attach.tappId) msgPayload.tapp_id = attach.tappId;
-      if (attach.tappVersion) msgPayload.tapp_version = attach.tappVersion;
-      if (attach.tappIcon) msgPayload.tapp_icon = attach.tappIcon;
-      if (attach.brewId) msgPayload.brew_id = attach.brewId;
-      if (attach.brewLink) msgPayload.brew_link = attach.brewLink;
-      if (attach.platformId) msgPayload.platform_id = attach.platformId;
-      if (attach.itemId) msgPayload.item_id = attach.itemId;
-      if (attach.reportId) msgPayload.report_id = attach.reportId;
       clearPendingAttach();
     } else {
       msgType = 'text';
       msgPayload = { text: text };
     }
 
+    // Attach quote info if replying to a message
+    var replyTo = null;
     if (state.quoteMsg) {
       msgPayload.quote_sender = state.quoteMsg.sender;
       msgPayload.quote_text = state.quoteMsg.text;
       msgPayload.quote_id = state.quoteMsg.message_id;
+      replyTo = state.quoteMsg.message_id;
       clearQuote();
     }
 
@@ -3797,6 +3975,7 @@ async function doSend() {
     notifyError(lang.sendFail, e);
   } finally {
     state.sending = false;
+    updateSendState();
     input.focus();
   }
 }
@@ -3837,9 +4016,9 @@ async function pollMessages(force) {
   try {
     var res;
     if (state.activeKind === 'channel') {
-      res = await Tapp.federation.getMessages(state.activeId, undefined, 200);
+      res = await Tapp.federation.getMessages(state.activeId, undefined, 100);
     } else {
-      res = await Tapp.federation.getRoomMessages(state.activeId, undefined, 200);
+      res = await Tapp.federation.getRoomMessages(state.activeId, undefined, 100);
     }
     if (res) {
       var msgs = res.messages || [];
@@ -3995,6 +4174,7 @@ function bindRealtimeListeners() {
 
 async function doCloseChannel() {
   if (!state.activeId || state.activeKind !== 'channel') return;
+  if (!(await aroConfirm(lang.closeChannelConfirm, true))) return;
   try {
     await unsubscribeRealtime();
     await Tapp.federation.closeChannel(state.activeId);
@@ -4201,6 +4381,7 @@ async function doSaveRoom() {
 // ==================== Kick Member ====================
 async function doKickMember(actorUrl) {
   if (!state.activeId || state.activeKind !== 'room') return;
+  if (!(await aroConfirm(lang.kickConfirm, true))) return;
   try {
     await Tapp.federation.removeMember(state.activeId, actorUrl);
     // Refresh members
@@ -4218,7 +4399,7 @@ async function doKickMember(actorUrl) {
 // ==================== Dissolve Room ====================
 async function doDissolveRoom() {
   if (!state.activeId || state.activeKind !== 'room') return;
-  if (!confirm(lang.dissolveConfirm)) return;
+  if (!(await aroConfirm(lang.dissolveConfirm, true))) return;
   try {
     await unsubscribeRealtime();
     await Tapp.federation.deleteRoom(state.activeId);
@@ -4482,20 +4663,11 @@ function updateFeedHeader() {
   var sub = state.feedSubTab;
   if (title) title.textContent = getFeedTitle(sub);
   if (!meta) return;
-  if (state.feedLoading && !state.feedLoaded[sub]) {
-    meta.textContent = lang.pickerLoading || '加载中...';
-    return;
-  }
-  if (state.feedError && !state.feedLoaded[sub]) {
-    meta.textContent = lang.feedLoadFail || lang.disconnected || '加载失败';
-    return;
-  }
+  // 加载/错误状态由骨架屏和空状态呈现，这里只在有数据时给出计数，避免文案闪换
   var items = getFeedItems(sub) || [];
-  if (state.feedLoaded[sub]) {
-    meta.textContent = items.length + ' ' + (lang.feedItems || '项');
-    return;
-  }
-  meta.textContent = getIdentityHandle() || '';
+  meta.textContent = (state.feedLoaded[sub] && items.length > 0)
+    ? items.length + ' ' + (lang.feedItems || '项')
+    : '';
 }
 
 function getFeedItems(sub) {
@@ -4520,8 +4692,17 @@ function showFeedEmpty(message, kind) {
   empty.style.display = '';
   empty.classList.toggle('feed-empty-error', kind === 'error');
   empty.classList.toggle('feed-empty-loading', kind === 'loading');
+  // 普通空态不重复视图标题（头部已有），只在错误时显示标题行
   var title = $('feed-empty-title');
-  if (title) title.textContent = kind === 'error' ? (lang.feedLoadFail || lang.disconnected || '加载失败') : getFeedTitle(state.feedSubTab);
+  if (title) {
+    if (kind === 'error') {
+      title.style.display = '';
+      title.textContent = lang.feedLoadFail || lang.disconnected || '加载失败';
+    } else {
+      title.style.display = 'none';
+      title.textContent = '';
+    }
+  }
   var text = $('feed-empty-text');
   if (text) text.textContent = message;
 }
@@ -4632,13 +4813,22 @@ function extractNoteAttachments(contentJson) {
 
 function renderTimelineMedia(attachments) {
   if (!attachments || !attachments.length) return '';
-  var h = '<div class="feed-item-media">';
+  var multi = attachments.length >= 2;
+  var h = '<div class="feed-item-media' + (multi ? ' feed-item-media-grid' : ' feed-item-media-single') + '">';
   attachments.forEach(function (att) {
     var url = att.url;
     var mime = (att.mediaType || att.media_type || '').toLowerCase();
     var type = (att.type || '').toLowerCase();
     var isVideo = type === 'video' || mime.indexOf('video/') === 0;
-    if (isVideo) {
+    if (multi) {
+      h += '<div class="feed-media-cell">';
+      if (isVideo) {
+        h += '<video src="' + esc(url) + '" controls playsinline preload="metadata"></video>';
+      } else {
+        h += '<img src="' + esc(url) + '" alt="" loading="lazy" />';
+      }
+      h += '</div>';
+    } else if (isVideo) {
       h += '<video src="' + esc(url) + '" controls playsinline preload="metadata"></video>';
     } else {
       h += '<img src="' + esc(url) + '" alt="" loading="lazy" />';
@@ -4679,10 +4869,6 @@ function renderTimelineItem(item) {
     h += '<div class="feed-item-text">' + esc(text) + '</div>';
   }
   h += renderTimelineMedia(attachments);
-  h += '<div class="feed-item-badges">';
-  h += '<span class="aro-badge aro-badge-type">' + esc(item.object_type || item.activity_type || lang.activityType) + '</span>';
-  if (item.visibility) h += '<span class="aro-badge aro-badge-vis">' + esc(item.visibility) + '</span>';
-  h += '</div>';
   h += '</div></div>';
   return h;
 }
@@ -4718,25 +4904,33 @@ function renderActorItem(actor, context) {
   return h;
 }
 
+/** 已发布内容的可读类型名 */
+function publishedTypeLabel(type) {
+  var map = {
+    'note': lang.composePost,
+    'tapp': lang.attachTapp,
+    'brew-article': lang.attachBrew,
+    'library': lang.attachLibrary,
+    'report': lang.attachReport,
+  };
+  return map[type] || type || '';
+}
+
 function renderPublishedItem(item) {
   var typeIcons = { 'report': SVG_ICONS.report, 'brew-article': SVG_ICONS.memo, 'tapp': SVG_ICONS.tapp, 'library': SVG_ICONS.library, 'note': SVG_ICONS.page };
   var icon = typeIcons[item.content_type] || SVG_ICONS.page;
   var dateStr = '';
   try { dateStr = timeAgo(item.published_at); } catch (e) {}
-  var label = item.content_type === 'note'
-    ? (lang.composePost || 'note') + ' #' + String(item.content_id || '').slice(0, 12)
-    : (item.content_type + ' #' + item.content_id);
+  // 优先展示内容本身（标题/摘要/预览），而不是裸 ID
+  var preview = stripHtmlPreview(item.title || item.name || item.summary || item.content_preview || '');
   var h = '<div class="feed-item">';
   h += '<div class="feed-item-icon">' + icon + '</div>';
   h += '<div class="feed-item-body">';
   h += '<div class="feed-item-header">';
-  h += '<span class="feed-item-name">' + esc(label) + '</span>';
+  h += '<span class="feed-item-name">' + esc(publishedTypeLabel(item.content_type)) + '</span>';
   if (dateStr) h += '<span class="feed-item-sep">&middot;</span><span class="feed-item-time">' + esc(dateStr) + '</span>';
   h += '</div>';
-  h += '<div class="feed-item-badges">';
-  h += '<span class="aro-badge aro-badge-type">' + esc(item.content_type) + '</span>';
-  if (item.visibility) h += '<span class="aro-badge aro-badge-vis">' + esc(item.visibility) + '</span>';
-  h += '</div>';
+  if (preview) h += '<div class="feed-item-text">' + esc(preview) + '</div>';
   h += '<div class="feed-item-actions">';
   h += '<button class="feed-item-action feed-item-action-danger" data-action-unpublish data-content-type="' + esc(item.content_type) + '" data-content-id="' + esc(item.content_id) + '">'
     + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
@@ -5036,7 +5230,7 @@ function renderRingsSidebar() {
       + '<div class="conv-avatar avatar-room" style="border-radius:8px;font-size:16px">' + icon + '</div>'
       + '<div class="conv-info">'
       + '<div class="conv-name">' + esc(name) + '</div>'
-      + '<div class="conv-subtitle">' + esc(ring.ring_type) + ' · ' + esc(peerText) + '</div>'
+      + '<div class="conv-subtitle">' + esc(ringTypeLabel(ring.ring_type)) + ' · ' + esc(peerText) + '</div>'
       + '</div>'
       + '</button>';
   });
@@ -5140,10 +5334,10 @@ function renderRingDetail() {
   var metaEl = $('ring-detail-meta');
   if (metaEl) {
     var parts = [];
-    parts.push('<span class="meta-badge">' + esc(ring.ring_type || '') + '</span>');
+    parts.push('<span class="meta-badge">' + esc(ringTypeLabel(ring.ring_type)) + '</span>');
     parts.push('<span class="meta-badge">' + esc(state.ringPeers.length + ' ' + lang.peers) + '</span>');
     if (ring.last_sync_at) {
-      try { parts.push('<span class="meta-badge">' + esc(new Date(ring.last_sync_at).toLocaleString(currentLocale)) + '</span>'); } catch (e) {}
+      try { parts.push('<span class="meta-badge">' + esc(timeAgo(ring.last_sync_at)) + '</span>'); } catch (e) {}
     }
     metaEl.innerHTML = parts.join('');
   }
@@ -5290,16 +5484,25 @@ const PAGE_MOD_EVENTS = `\
   var ringSyncBtn = $('ring-sync-btn');
   if (ringSyncBtn) ringSyncBtn.addEventListener('click', doTriggerSync);
   var ringManageBtn = $('ring-manage-btn');
-  if (ringManageBtn) ringManageBtn.addEventListener('click', function () {
+  if (ringManageBtn) ringManageBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
     var dd = $('ring-manage-dropdown');
     if (dd) dd.classList.toggle('open');
   });
   var ringLeaveBtn2 = $('ring-leave-btn');
-  if (ringLeaveBtn2) ringLeaveBtn2.addEventListener('click', function () {
+  if (ringLeaveBtn2) ringLeaveBtn2.addEventListener('click', async function () {
     var dd = $('ring-manage-dropdown'); if (dd) dd.classList.remove('open');
-    if (state.activeRingId && confirm(lang.leaveRingConfirm)) {
+    if (state.activeRingId && (await aroConfirm(lang.leaveRingConfirm, true))) {
       doLeaveRing(state.activeRingId);
     }
+  });
+  // Close ring manage menu on outside click
+  document.addEventListener('click', function (e) {
+    var dd = $('ring-manage-dropdown');
+    if (!dd || !dd.classList.contains('open')) return;
+    var wrap = dd.closest('.manage-wrap') || dd.parentElement;
+    if (wrap && wrap.contains(e.target)) return;
+    dd.classList.remove('open');
   });
   var ringAddPeerBtn = $('ring-add-peer-btn');
   if (ringAddPeerBtn) ringAddPeerBtn.addEventListener('click', doAddPeer);
@@ -5407,25 +5610,43 @@ const PAGE_MOD_EVENTS = `\
     input.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
     });
-    input.addEventListener('input', function () { autoResizeInput(this); });
+    input.addEventListener('input', function () {
+      autoResizeInput(this);
+      updateSendState();
+    });
   }
+  updateSendState();
 
   var backBtn = $('back-btn');
   if (backBtn) {
     backBtn.addEventListener('click', function () {
-      $('sidebar').classList.remove('sidebar-hidden-mobile');
-      $('chat-container').style.display = 'none';
-      $('member-panel').style.display = 'none';
-      $('member-panel').classList.remove('member-open-mobile');
-      $('empty-state').style.display = '';
+      var sidebar = $('sidebar');
+      var chat = $('chat-container');
+      var members = $('member-panel');
+      var empty = $('empty-state');
+      if (sidebar) sidebar.classList.remove('sidebar-hidden-mobile');
+      if (chat) chat.style.display = 'none';
+      if (members) {
+        members.style.display = 'none';
+        members.classList.remove('member-open-mobile');
+        members.classList.remove('member-expanded-tablet');
+      }
+      if (empty) empty.style.display = '';
       clearPendingAttach();
       closeAttachMenu();
+      if (typeof clearQuote === 'function') clearQuote();
+      closeMsgMenu();
       stopPolling();
       unsubscribeRealtime();
       state.activeKind = null;
       state.activeId = null;
       state.messages = [];
       state.messagesFp = '';
+      state.channelDetail = null;
+      state.roomDetail = null;
+      state.members = [];
+      renderConvList();
+      updateSendState();
     });
   }
 
@@ -5487,8 +5708,6 @@ const PAGE_MOD_EVENTS = `\
 
 // ==================== Init ====================
 async function init() {
-  console.log('[Aro] init, Tapp.federation:', typeof Tapp.federation, Tapp.federation ? Object.keys(Tapp.federation) : 'N/A');
-
   try {
     var user = await Tapp.context.getUser();
     var actorUrl = user ? normalizeFederationUrl(user.actor_url) : '';
@@ -5708,7 +5927,7 @@ const CORE_CODE = buildCoreCode()
 const manifest: TappManifest = {
   id: 'com.myriad.aro',
   name: 'Aro',
-  version: '1.0.2',
+  version: '1.0.0',
   minSystemVersion: '0.2.1',
   description: '社交中心，统一管理消息、时间线、环网与个人资料',
   category: 'social',
@@ -5724,7 +5943,6 @@ const manifest: TappManifest = {
     'federation:read',
     'federation:write',
     'federation:message',
-    'federation:files',
     'platform:read',
     'report:read',
     'tappList:read',
