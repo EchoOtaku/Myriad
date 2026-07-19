@@ -74,6 +74,39 @@ function userMatchesQuery(user: AdminUser, query: string): boolean {
   return fields.some((value) => value?.toLowerCase().includes(q))
 }
 
+/** Compact segmented chip control (radiogroup pattern). */
+function FilterChipGroup<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: Array<{ value: T; label: string }>
+  onChange: (next: T) => void
+}) {
+  return (
+    <div className="users-chip-group" role="radiogroup" aria-label={label}>
+      {options.map((option) => {
+        const selected = value === option.value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            className={`users-chip${selected ? ' active' : ''}`}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function ProviderBadge({ identity }: { identity: AdminUserIdentity }) {
   const { t } = useI18n()
   const iconSrc = KNOWN_PROVIDER_ICONS[identity.provider.toLowerCase()]
@@ -498,7 +531,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
                 <div className="users-actions">
                   <button
                     type="button"
-                    className="users-button"
+                    className="btn-base btn-secondary"
                     disabled={
                       busy ||
                       (!shown.local_login_disabled &&
@@ -520,7 +553,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
                   {isPrimaryAdmin && !shown.is_owner && (
                     <button
                       type="button"
-                      className={`users-button${shown.is_admin ? ' danger' : ''}`}
+                      className={`btn-base ${shown.is_admin ? 'btn-danger' : 'btn-secondary'}`}
                       disabled={busy || shown.id === currentUser?.id}
                       onClick={() => handleToggleAdmin(shown)}
                     >
@@ -532,7 +565,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
                   {canDeleteUser(shown) && (
                     <button
                       type="button"
-                      className="users-button danger"
+                      className="btn-base btn-danger"
                       disabled={busy}
                       onClick={() => handleDeleteUser(shown)}
                     >
@@ -554,22 +587,51 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
     setOnlineFilter('all')
   }, [])
 
+  const matchCountLabel = t.config.usersResultCount.replace(
+    '{count}',
+    String(filteredUsers.length),
+  )
+
+  // Hide empty groups while filtering; keep registered group for the switch.
+  const showAdminGroup = !hasActiveFilter || admins.length > 0
+  const showRegisteredList =
+    !hasActiveFilter || registered.length > 0 || admins.length === 0
+
   const emptyListMessage = (isAdminGroup: boolean) => {
     if (loading && users.length === 0) {
       return <div className="users-muted">…</div>
     }
     if (hasActiveFilter) {
+      // Only surface the no-match copy once (in the section that remains visible).
+      if (isAdminGroup) return null
+      if (filteredUsers.length > 0) return null
       return (
-        <div className="users-muted" role="status">
+        <div className="users-muted users-empty-state" role="status">
           {t.config.usersNoMatch}
         </div>
       )
     }
     if (!isAdminGroup) {
-      return <div className="users-muted">{t.config.usersEmpty}</div>
+      return (
+        <div className="users-muted users-empty-state">
+          {t.config.usersEmpty}
+        </div>
+      )
     }
     return null
   }
+
+  const roleOptions: Array<{ value: RoleFilter; label: string }> = [
+    { value: 'all', label: t.config.usersFilterAll },
+    { value: 'admin', label: t.config.usersRoleAdmin },
+    { value: 'user', label: t.config.usersRoleUser },
+  ]
+
+  const onlineOptions: Array<{ value: OnlineFilter; label: string }> = [
+    { value: 'all', label: t.config.usersFilterAll },
+    { value: 'online', label: t.config.usersOnline },
+    { value: 'offline', label: t.config.usersOffline },
+  ]
 
   return (
     <SettingSection
@@ -578,89 +640,179 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
       description={description}
       sectionId={sectionId}
     >
-      <div className="users-filter-bar" role="search">
-        <label className="users-search-field">
-          <span className="visually-hidden">{t.config.usersSearchLabel}</span>
-          <LuSearch className="users-search-icon" aria-hidden />
-          <input
-            type="search"
-            className="users-search-input"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t.config.usersSearchPlaceholder}
-            autoComplete="off"
-            spellCheck={false}
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              className="users-search-clear"
-              onClick={() => setSearchQuery('')}
-              aria-label={t.config.usersSearchClear}
-              title={t.config.usersSearchClear}
-            >
-              <LuX aria-hidden size={14} />
-            </button>
-          )}
-        </label>
+      <div className="users-control-strip">
+        <div className="users-control-main" role="search">
+          <label className="users-search-field">
+            <span className="visually-hidden">{t.config.usersSearchLabel}</span>
+            <LuSearch className="users-search-icon" aria-hidden />
+            <input
+              type="search"
+              className="field-input users-search-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t.config.usersSearchPlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="users-search-clear"
+                onClick={() => setSearchQuery('')}
+                aria-label={t.config.usersSearchClear}
+                title={t.config.usersSearchClear}
+              >
+                <LuX aria-hidden size={14} />
+              </button>
+            )}
+          </label>
 
-        <div className="users-filter-controls">
-          <label className="users-filter-select">
-            <span className="users-filter-label">{t.config.usersFilterRole}</span>
-            <select
+          <div className="users-filter-chips">
+            <FilterChipGroup
+              label={t.config.usersFilterRole}
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
-              aria-label={t.config.usersFilterRole}
-            >
-              <option value="all">{t.config.usersFilterAll}</option>
-              <option value="admin">{t.config.usersRoleAdmin}</option>
-              <option value="user">{t.config.usersRoleUser}</option>
-            </select>
-          </label>
-
-          <label className="users-filter-select">
-            <span className="users-filter-label">
-              {t.config.usersFilterStatus}
-            </span>
-            <select
+              options={roleOptions}
+              onChange={setRoleFilter}
+            />
+            <FilterChipGroup
+              label={t.config.usersFilterStatus}
               value={onlineFilter}
-              onChange={(e) =>
-                setOnlineFilter(e.target.value as OnlineFilter)
-              }
-              aria-label={t.config.usersFilterStatus}
-            >
-              <option value="all">{t.config.usersFilterAll}</option>
-              <option value="online">{t.config.usersOnline}</option>
-              <option value="offline">{t.config.usersOffline}</option>
-            </select>
-          </label>
+              options={onlineOptions}
+              onChange={setOnlineFilter}
+            />
+          </div>
 
-          {hasActiveFilter && (
+          <div className="users-control-actions">
+            <span
+              className={`users-match-count${hasActiveFilter ? ' visible' : ''}`}
+              role="status"
+              aria-live="polite"
+            >
+              {hasActiveFilter ? matchCountLabel : '\u00A0'}
+            </span>
             <button
               type="button"
-              className="users-button users-filter-reset"
+              className={`btn-base btn-secondary users-filter-reset${hasActiveFilter ? ' visible' : ''}`}
               onClick={clearFilters}
+              disabled={!hasActiveFilter}
+              aria-hidden={!hasActiveFilter}
+              tabIndex={hasActiveFilter ? 0 : -1}
             >
               {t.config.usersFilterClear}
             </button>
-          )}
+            <button
+              type="button"
+              className="btn-base btn-secondary"
+              disabled={loading}
+              onClick={loadUsers}
+            >
+              <LuRefreshCw aria-hidden className={loading ? 'spinning' : ''} />
+              {t.config.usersRefresh}
+            </button>
+            <button
+              type="button"
+              className="btn-base btn-primary"
+              onClick={() => setCreating((v) => !v)}
+            >
+              <LuPlus aria-hidden />
+              {t.config.usersCreateUser}
+            </button>
+          </div>
         </div>
       </div>
 
-      <SettingGroup
-        title={t.config.usersAdminGroup}
-        description={
-          isPrimaryAdmin
-            ? t.config.usersAdminGroupDesc
-            : `${t.config.usersAdminGroupDesc}. ${t.config.usersPrimaryAdminOnly}`
-        }
-      >
-        <div className="users-list">
-          {admins.length > 0
-            ? admins.map(renderUserRow)
-            : emptyListMessage(true)}
+      {creating && (
+        <div className="users-edit-form users-create-form">
+          <label>
+            <span className="setting-label-text">{t.config.usersCreateUsername}</span>
+            <input
+              type="text"
+              className="field-input"
+              autoComplete="off"
+              value={createDraft.username}
+              onChange={(e) =>
+                setCreateDraft((d) => ({ ...d, username: e.target.value }))
+              }
+            />
+          </label>
+          <label>
+            <span className="setting-label-text">{t.config.usersCreatePassword}</span>
+            <input
+              type="password"
+              className="field-input"
+              autoComplete="new-password"
+              value={createDraft.password}
+              onChange={(e) =>
+                setCreateDraft((d) => ({ ...d, password: e.target.value }))
+              }
+            />
+          </label>
+          <label>
+            <span className="setting-label-text">{t.config.usersEmail}</span>
+            <input
+              type="email"
+              className="field-input"
+              autoComplete="off"
+              value={createDraft.email}
+              onChange={(e) =>
+                setCreateDraft((d) => ({ ...d, email: e.target.value }))
+              }
+            />
+          </label>
+          {isPrimaryAdmin && (
+            <label className="users-checkbox">
+              <input
+                type="checkbox"
+                checked={createDraft.is_admin}
+                onChange={(e) =>
+                  setCreateDraft((d) => ({
+                    ...d,
+                    is_admin: e.target.checked,
+                  }))
+                }
+              />
+              {t.config.usersCreateIsAdmin}
+            </label>
+          )}
+          <div className="users-actions">
+            <button
+              type="button"
+              className="btn-base btn-primary"
+              disabled={
+                busy || !createDraft.username.trim() || !createDraft.password
+              }
+              onClick={handleCreate}
+            >
+              {t.config.usersCreateSubmit}
+            </button>
+            <button
+              type="button"
+              className="btn-base btn-secondary"
+              disabled={busy}
+              onClick={() => setCreating(false)}
+            >
+              {t.config.usersCancel}
+            </button>
+          </div>
         </div>
-      </SettingGroup>
+      )}
+
+      {showAdminGroup && (
+        <SettingGroup
+          title={t.config.usersAdminGroup}
+          description={
+            isPrimaryAdmin
+              ? t.config.usersAdminGroupDesc
+              : `${t.config.usersAdminGroupDesc}. ${t.config.usersPrimaryAdminOnly}`
+          }
+        >
+          <div className="users-list">
+            {admins.length > 0
+              ? admins.map(renderUserRow)
+              : emptyListMessage(true)}
+          </div>
+        </SettingGroup>
+      )}
 
       <SettingGroup
         title={t.config.usersRegisteredGroup}
@@ -676,104 +828,13 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
           onChange={onAllowRegisterChange}
         />
 
-        <div className="users-toolbar">
-          <button
-            type="button"
-            className="users-button"
-            disabled={loading}
-            onClick={loadUsers}
-          >
-            <LuRefreshCw aria-hidden className={loading ? 'spinning' : ''} />
-            {t.config.usersRefresh}
-          </button>
-          <button
-            type="button"
-            className="users-button primary"
-            onClick={() => setCreating((v) => !v)}
-          >
-            <LuPlus aria-hidden />
-            {t.config.usersCreateUser}
-          </button>
-        </div>
-
-        {creating && (
-          <div className="users-edit-form users-create-form">
-            <label>
-              {t.config.usersCreateUsername}
-              <input
-                type="text"
-                autoComplete="off"
-                value={createDraft.username}
-                onChange={(e) =>
-                  setCreateDraft((d) => ({ ...d, username: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              {t.config.usersCreatePassword}
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={createDraft.password}
-                onChange={(e) =>
-                  setCreateDraft((d) => ({ ...d, password: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              {t.config.usersEmail}
-              <input
-                type="email"
-                autoComplete="off"
-                value={createDraft.email}
-                onChange={(e) =>
-                  setCreateDraft((d) => ({ ...d, email: e.target.value }))
-                }
-              />
-            </label>
-            {isPrimaryAdmin && (
-              <label className="users-checkbox">
-                <input
-                  type="checkbox"
-                  checked={createDraft.is_admin}
-                  onChange={(e) =>
-                    setCreateDraft((d) => ({
-                      ...d,
-                      is_admin: e.target.checked,
-                    }))
-                  }
-                />
-                {t.config.usersCreateIsAdmin}
-              </label>
-            )}
-            <div className="users-actions">
-              <button
-                type="button"
-                className="users-button primary"
-                disabled={
-                  busy || !createDraft.username.trim() || !createDraft.password
-                }
-                onClick={handleCreate}
-              >
-                {t.config.usersCreateSubmit}
-              </button>
-              <button
-                type="button"
-                className="users-button"
-                disabled={busy}
-                onClick={() => setCreating(false)}
-              >
-                {t.config.usersCancel}
-              </button>
-            </div>
+        {showRegisteredList && (
+          <div className="users-list">
+            {registered.length > 0
+              ? registered.map(renderUserRow)
+              : emptyListMessage(false)}
           </div>
         )}
-
-        <div className="users-list">
-          {registered.length > 0
-            ? registered.map(renderUserRow)
-            : emptyListMessage(false)}
-        </div>
       </SettingGroup>
     </SettingSection>
   )
