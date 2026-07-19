@@ -181,8 +181,8 @@ const PAGE_HTML = `\
         <div class="feed-main-header">
           <div class="feed-header-leading">
             <div class="feed-main-heading">
-              <div id="feed-section-title" class="feed-section-title">动态</div>
-              <div id="feed-section-meta" class="feed-section-meta"></div>
+              <div id="feed-section-title" class="feed-section-title">首页</div>
+              <div id="feed-section-meta" class="feed-section-meta">关注的人与你的动态</div>
             </div>
           </div>
           <div class="feed-header-actions">
@@ -266,8 +266,8 @@ const PAGE_HTML = `\
         <div id="feed-content" class="feed-content"></div>
         <div id="feed-empty" class="feed-empty" style="display:none">
           <div class="aro-empty-mark feed-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a14 14 0 0114 14"/><path d="M5 11a8 8 0 018 8"/><circle cx="6" cy="18" r="1.6"/></svg></div>
-          <div id="feed-empty-title" class="feed-empty-title">动态</div>
-          <span id="feed-empty-text">暂无内容</span>
+          <div id="feed-empty-title" class="feed-empty-title">还没有动态</div>
+          <span id="feed-empty-text">关注别人或发帖，首页就会亮起来</span>
           <button type="button" id="feed-empty-retry" class="feed-empty-retry">重试</button>
         </div>
       </main>
@@ -466,8 +466,8 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .nav-feed-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px}
 
 /* ===== Aro Views ===== */
-.aro-view{display:none;flex:1;min-height:0;overflow:hidden}
-.aro-view-active{display:flex;flex-direction:column}
+.aro-view{display:none;flex:1;min-height:0;min-width:0;width:100%;overflow:hidden}
+.aro-view-active{display:flex;flex-direction:column;width:100%;max-width:none}
 
 /* ===== Panel Layout (sidebar+content, for rings) ===== */
 .aro-panel-layout{display:flex;flex:1;min-height:0;overflow:hidden}
@@ -484,10 +484,12 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .ring-sync-bar.ring-sync-ok{color:#22c55e;background:rgba(34,197,94,.04)}
 .ring-sync-bar.ring-sync-err{color:#ef4444;background:rgba(239,68,68,.04)}
 
-/* ===== Feed Layout (X-style sidebar + content) ===== */
-.feed-layout{display:flex;flex:1;min-height:0;overflow:hidden}
+/* ===== Feed Layout (X-style sidebar + content) =====
+   Two columns only: [sidebar | main]. Main MUST fill remaining width —
+   never cap with max-width / border-right (that creates a phantom right gutter). */
+.feed-layout{display:flex;flex:1 1 auto;width:100%;max-width:none;min-height:0;min-width:0;overflow:hidden}
 /* Feed Sidebar */
-.feed-sidebar{width:232px;flex-shrink:0;border-right:1px solid rgba(128,128,128,.08);display:flex;flex-direction:column;padding:14px 12px;overflow:hidden}
+.feed-sidebar{width:232px;flex:0 0 232px;flex-shrink:0;border-right:1px solid rgba(128,128,128,.08);display:flex;flex-direction:column;padding:14px 12px;overflow:hidden}
 .feed-avatar{width:36px;height:36px;border-radius:50%;background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#888);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;overflow:hidden}
 .feed-avatar img{width:100%;height:100%;object-fit:cover}
 .feed-display-name{font-size:13px;font-weight:700;color:var(--text-primary,#0f1419);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
@@ -523,8 +525,19 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .feed-profile-mobile{display:none;margin:10px 16px 0;flex-shrink:0}
 .feed-mobile-stats{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 16px 0;flex-shrink:0}
 .feed-mobile-stat{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;border-radius:10px;background:rgba(128,128,128,.04);color:var(--text-secondary,#536471);font-size:11px}
-/* Feed Main — sidebar + main only; main fills remaining width (no max-width / no fake border column) */
-.feed-main{flex:1;min-width:0;width:100%;display:flex;flex-direction:column;overflow-y:auto;position:relative}
+/* Feed Main — fills ALL remaining width after sidebar (P0: no 760px cap, no third-column border) */
+.feed-main{
+  flex:1 1 0%;
+  min-width:0;
+  max-width:none!important;
+  width:auto;
+  display:flex;
+  flex-direction:column;
+  overflow-y:auto;
+  position:relative;
+  border-right:none!important;
+  box-sizing:border-box;
+}
 /* Feed header */
 .feed-main-header{min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;background:rgba(255,255,255,.45);backdrop-filter:blur(12px);position:relative;z-index:5;overflow:visible}
 .feed-header-leading{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
@@ -608,9 +621,9 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 /* Follow dialog form (reuses create-dialog shell) */
 .feed-follow-input,.create-form #feed-follow-input{width:100%}
 #feed-follow-btn:disabled{opacity:.5;cursor:not-allowed}
-/* Feed content / empty — fill main column (no second dead strip from stream max-width) */
-.feed-content{flex:1;min-height:0;width:100%}
-.feed-empty{min-height:280px;padding:56px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-secondary,#536471);font-size:13px;line-height:1.5;width:100%;box-sizing:border-box}
+/* Feed content / empty — stretch with main column (readable measure only on text blocks if needed) */
+.feed-content{flex:1 1 auto;min-height:0;width:100%;max-width:none;box-sizing:border-box}
+.feed-empty{min-height:280px;padding:56px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-secondary,#536471);font-size:13px;line-height:1.5;width:100%;max-width:none;box-sizing:border-box}
 .feed-main.feed-empty-visible .feed-content{display:none}
 .feed-main.feed-empty-visible .feed-empty{flex:1;min-height:0}
 .aro-empty-mark{width:52px;height:52px;border-radius:16px;background:rgba(128,128,128,.06);color:var(--text-secondary,#536471);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -643,7 +656,8 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .feed-item-handle{font-size:13px;color:var(--text-secondary,#8b98a5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .feed-item-sep{font-size:13px;color:var(--text-secondary,#c0c0c0)}
 .feed-item-time{font-size:12px;color:var(--text-secondary,#8b98a5);white-space:nowrap;flex-shrink:0;margin-left:auto}
-.feed-item-text{font-size:14.5px;line-height:1.55;color:var(--text-primary,#1a1a1a);margin-top:6px;white-space:pre-wrap;overflow-wrap:break-word}
+/* Soft measure for long text only — column/background still full width */
+.feed-item-text{font-size:14.5px;line-height:1.55;color:var(--text-primary,#1a1a1a);margin-top:6px;white-space:pre-wrap;overflow-wrap:break-word;max-width:48rem}
 .feed-item-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .feed-item-actions{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .feed-item-action{display:inline-flex;align-items:center;gap:5px;background:none;border:1px solid transparent;color:var(--text-secondary,#8b98a5);font-size:12px;font-weight:500;cursor:pointer;padding:6px 10px;border-radius:8px;transition:color .12s,background .12s,border-color .12s}
@@ -1152,7 +1166,8 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 @media(min-width:769px) and (max-width:1024px){
   .member-panel{width:0;border-left:none;overflow:hidden}
   .member-panel.member-expanded-tablet{width:180px;border-left:1px solid rgba(128,128,128,.08);overflow:hidden}
-  .feed-sidebar{width:68px;padding:12px 8px;overflow:visible;position:relative;z-index:5}
+  .feed-sidebar{width:68px;flex:0 0 68px;padding:12px 8px;overflow:visible;position:relative;z-index:5}
+  .feed-main{max-width:none!important;border-right:none!important}
   .feed-nav-item span{display:none}
   .feed-nav-item{justify-content:center;padding:10px}
   .feed-sidebar-footer{align-items:center;position:relative}
@@ -1476,6 +1491,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composePost": "Post",
     "composePublish": "Publish",
     "composePublishing": "Publishing…",
+    "composerClosed": "This chat is closed — you can't send messages",
     "composeSuccess": "Published",
     "composeSuccessMedia": "Published with media",
     "composeTimelineMissing": "Published, but the post isn't on your timeline yet — try refresh",
@@ -1483,7 +1499,6 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composeUploadFail": "Media upload failed — not publishing",
     "composeUploadPartial": "Some media uploaded, then upload failed — not publishing (no half-post)",
     "composeUploading": "Uploading…",
-    "composerClosed": "This chat is closed — you can't send messages",
     "confirmCancel": "Cancel",
     "confirmOk": "OK",
     "connected": "Connected",
@@ -1511,10 +1526,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "editRoom": "Edit group",
     "emptyChatHint": "No messages yet — say hello",
     "emptyFollowers": "Share your profile link so others can follow you.",
-    "emptyFollowing": "Use Follow to add someone by handle or profile link.",
+    "emptyFollowing": "Tap + then Follow to add someone by handle or profile link.",
     "emptyPeers": "No peers yet — add one below",
-    "emptyPublished": "Tap Post to share a note or media.",
-    "emptyRings": "No rings yet",
+    "emptyPublished": "Switch to Home and tap + to publish a note or media.",
+    "emptyRings": "No rings yet — create one to get started.",
     "emptyRoomHint": "No messages yet — start the conversation",
     "emptyTimeline": "Follow people or publish a post to fill your home feed.",
     "emptyTitleFollowers": "No followers yet",
@@ -1525,14 +1540,25 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedFollowers": "Followers",
     "feedFollowing": "Following",
     "feedHintFollowers": "People who follow you",
-    "feedHintFollowing": "Accounts you follow",
-    "feedHintPublished": "What you've shared",
-    "feedHintTimeline": "Updates from people you follow",
+    "feedHintFollowing": "People you follow",
+    "feedHintGuest": "Public posts from this site",
+    "feedHintPublished": "Notes you've published",
+    "feedHintTimeline": "Posts from people you follow",
     "feedItems": "posts",
     "feedLoadFail": "Couldn't load feed",
+    "feedLoading": "Loading…",
+    "feedMetaFollowers": "People who follow you",
+    "feedMetaFollowing": "People you follow",
+    "feedMetaGuest": "Public posts from this site",
+    "feedMetaPublished": "Notes you've published",
+    "feedMetaTimeline": "Posts from people you follow",
     "feedPlus": "Add",
     "feedPublished": "Published",
     "feedRetry": "Try again",
+    "feedSubFollowers": "People who follow you",
+    "feedSubFollowing": "People you follow",
+    "feedSubPublished": "Notes you've published",
+    "feedSubTimeline": "Posts from people you follow",
     "feedTimeline": "Home",
     "fileTooLarge": "File too large (max 100 MB)",
     "fileTooLargeRoom": "File too large for group chat — use a DM for larger files",
@@ -1545,18 +1571,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardSuccess": "Forwarded",
     "forwardTo": "Forward to…",
     "installBtn": "Install",
-    "installFailed": "Install failed — tap to retry",
-    "installSuccess": "Installed",
     "installedAt": "Installed",
+    "installFailed": "Install failed — tap to retry",
     "installingBtn": "Installing…",
+    "installSuccess": "Installed",
     "invite": "Invite",
     "inviteBtn": "Invite",
+    "invited": "Invited",
     "inviteFail": "Couldn't invite",
     "inviteFromContacts": "From contacts",
     "inviteManual": "Invite by address",
     "invitePlaceholder": "@user@domain or profile link",
     "inviteSuccess": "Invite sent",
-    "invited": "Invited",
     "inviting": "Inviting…",
     "kick": "Remove",
     "kickConfirm": "Remove this member from the group?",
@@ -1588,7 +1614,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "newRoom": "New group",
     "noContacts": "No contacts to invite yet",
     "noConv": "No conversations",
-    "noConvHint": "Tap + to message someone or start a group",
+    "noConvHint": "Tap + to start a chat or group",
     "openOriginal": "Open original",
     "openTappBtn": "Open Tapp",
     "peers": "peers",
@@ -1639,14 +1665,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectHint": "Pick a conversation to start messaging",
     "selectLibrary": "Choose from library",
     "selectReport": "Choose a report",
-    "selectRing": "Select a ring to see peers and sync",
+    "selectRing": "Select a ring to view details",
     "selectTapp": "Choose a Tapp",
     "send": "Send",
     "sendFail": "Couldn't send",
     "syncBtn": "Sync",
     "syncFail": "Couldn't sync",
-    "syncSuccess": "Sync complete",
     "syncing": "Syncing…",
+    "syncSuccess": "Sync complete",
     "tappInstalled": "Installed",
     "tappNotInstalled": "Not installed",
     "tappReceived": "Tapp shared with you",
@@ -1712,6 +1738,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composePost": "投稿",
     "composePublish": "公開",
     "composePublishing": "公開中…",
+    "composerClosed": "このチャットは終了済みです — 送信できません",
     "composeSuccess": "公開しました",
     "composeSuccessMedia": "メディア付きで公開しました",
     "composeTimelineMissing": "公開済みですがタイムラインにまだ出ていません — 再読み込みしてください",
@@ -1719,7 +1746,6 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composeUploadFail": "メディアのアップロードに失敗しました — 公開しません",
     "composeUploadPartial": "一部のメディアは上がりましたが途中で失敗 — 途中公開はしません",
     "composeUploading": "アップロード中…",
-    "composerClosed": "このチャットは終了済みです — 送信できません",
     "confirmCancel": "キャンセル",
     "confirmOk": "OK",
     "connected": "接続中",
@@ -1746,13 +1772,13 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "downloadFile": "ダウンロード",
     "editRoom": "グループを編集",
     "emptyChatHint": "まだメッセージがありません。あいさつしてみましょう",
-    "emptyFollowers": "プロフィールを共有して、フォロワーを増やしましょう。",
-    "emptyFollowing": "フォローからハンドルまたはプロフィールURLで追加できます。",
+    "emptyFollowers": "プロフィールを共有してフォロワーを増やしましょう。",
+    "emptyFollowing": "右上の + からハンドルやプロフィールURLでフォローできます。",
     "emptyPeers": "ピアはまだありません。下から追加できます",
-    "emptyPublished": "投稿からノートやメディアを公開できます。",
-    "emptyRings": "リングはまだありません",
+    "emptyPublished": "ホームに切り替えて + から投稿できます。",
+    "emptyRings": "リングはまだありません。+ から作成できます。",
     "emptyRoomHint": "まだメッセージがありません。会話を始めましょう",
-    "emptyTimeline": "誰かをフォローするか投稿して、ホームを埋めましょう。",
+    "emptyTimeline": "フォローや投稿でホームを埋めましょう。",
     "emptyTitleFollowers": "フォロワーはまだいません",
     "emptyTitleFollowing": "まだ誰もフォローしていません",
     "emptyTitlePublished": "公開したコンテンツはありません",
@@ -1761,14 +1787,25 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedFollowers": "フォロワー",
     "feedFollowing": "フォロー中",
     "feedHintFollowers": "あなたをフォローしている人",
-    "feedHintFollowing": "フォローしているアカウント",
-    "feedHintPublished": "公開したコンテンツ",
-    "feedHintTimeline": "フォロー中の人の更新",
+    "feedHintFollowing": "フォロー中のアカウントを管理",
+    "feedHintGuest": "このサイトの公開投稿",
+    "feedHintPublished": "公開した投稿",
+    "feedHintTimeline": "フォロー中の人と自分の投稿",
     "feedItems": "件",
     "feedLoadFail": "フィードを読み込めませんでした",
+    "feedLoading": "読み込み中…",
+    "feedMetaFollowers": "あなたをフォローしている人",
+    "feedMetaFollowing": "フォロー中のアカウントを管理",
+    "feedMetaGuest": "このサイトの公開投稿",
+    "feedMetaPublished": "公開した投稿",
+    "feedMetaTimeline": "フォロー中の人と自分の投稿",
     "feedPlus": "追加",
     "feedPublished": "公開済み",
     "feedRetry": "再試行",
+    "feedSubFollowers": "あなたをフォローしている人",
+    "feedSubFollowing": "フォロー中のアカウントを管理",
+    "feedSubPublished": "公開した投稿",
+    "feedSubTimeline": "フォロー中の人と自分の投稿",
     "feedTimeline": "ホーム",
     "fileTooLarge": "ファイルが大きすぎます（最大100MB）",
     "fileTooLargeRoom": "グループチャットでは大きすぎます — 大きいファイルはDMを使ってください",
@@ -1781,18 +1818,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardSuccess": "転送しました",
     "forwardTo": "転送先…",
     "installBtn": "インストール",
-    "installFailed": "インストールに失敗しました。タップして再試行",
-    "installSuccess": "インストール完了",
     "installedAt": "インストール日",
+    "installFailed": "インストールに失敗しました。タップして再試行",
     "installingBtn": "インストール中…",
+    "installSuccess": "インストール完了",
     "invite": "招待",
     "inviteBtn": "招待",
+    "invited": "招待済み",
     "inviteFail": "招待に失敗しました",
     "inviteFromContacts": "連絡先から選ぶ",
     "inviteManual": "アドレスで招待",
     "invitePlaceholder": "@user@domain またはプロフィールURL",
     "inviteSuccess": "招待を送信しました",
-    "invited": "招待済み",
     "inviting": "招待中…",
     "kick": "削除",
     "kickConfirm": "このメンバーをグループから削除しますか？",
@@ -1824,7 +1861,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "newRoom": "新規グループ",
     "noContacts": "招待できる連絡先がありません",
     "noConv": "会話はまだありません",
-    "noConvHint": "+ をタップしてチャットやグループを開始",
+    "noConvHint": "+ からチャットやグループを開始",
     "openOriginal": "元記事を開く",
     "openTappBtn": "Tappを開く",
     "peers": "ピア",
@@ -1875,14 +1912,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectHint": "会話を選んでメッセージを始めましょう",
     "selectLibrary": "ライブラリから選択",
     "selectReport": "レポートを選択",
-    "selectRing": "リングを選択してピアと同期を表示",
+    "selectRing": "リングを選んで詳細を表示",
     "selectTapp": "Tappを選択",
     "send": "送信",
     "sendFail": "送信に失敗しました",
     "syncBtn": "同期",
     "syncFail": "同期に失敗しました",
-    "syncSuccess": "同期完了",
     "syncing": "同期中…",
+    "syncSuccess": "同期完了",
     "tappInstalled": "インストール済み",
     "tappNotInstalled": "未インストール",
     "tappReceived": "Tappが共有されました",
@@ -1948,6 +1985,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composePost": "发帖",
     "composePublish": "发布",
     "composePublishing": "发布中…",
+    "composerClosed": "会话已关闭，无法发送消息",
     "composeSuccess": "已发布",
     "composeSuccessMedia": "已发布（含媒体）",
     "composeTimelineMissing": "已发布，但时间线暂未出现 — 请刷新",
@@ -1955,7 +1993,6 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composeUploadFail": "媒体上传失败 — 未发布",
     "composeUploadPartial": "部分媒体已上传后失败 — 未半发布",
     "composeUploading": "上传中…",
-    "composerClosed": "会话已关闭，无法发送消息",
     "confirmCancel": "取消",
     "confirmOk": "确定",
     "connected": "已连接",
@@ -1983,12 +2020,12 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "editRoom": "编辑群聊",
     "emptyChatHint": "还没有消息，打个招呼吧",
     "emptyFollowers": "分享你的个人主页，让别人关注你。",
-    "emptyFollowing": "用「关注」添加对方的 handle 或个人主页链接。",
+    "emptyFollowing": "点右上角 +，用 handle 或个人主页链接关注别人。",
     "emptyPeers": "暂无节点，可在下方添加",
-    "emptyPublished": "点「发帖」分享文字或媒体。",
-    "emptyRings": "暂无环网",
+    "emptyPublished": "切到首页，点 + 发帖即可发布。",
+    "emptyRings": "暂无环网，点 + 创建一个吧。",
     "emptyRoomHint": "还没有消息，开始群聊吧",
-    "emptyTimeline": "关注一些人，或发一条动态，首页就会亮起来。",
+    "emptyTimeline": "关注别人或发帖，首页就会亮起来。",
     "emptyTitleFollowers": "还没有粉丝",
     "emptyTitleFollowing": "还没有关注任何人",
     "emptyTitlePublished": "还没有发布内容",
@@ -1997,14 +2034,25 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedFollowers": "粉丝",
     "feedFollowing": "关注",
     "feedHintFollowers": "关注你的人",
-    "feedHintFollowing": "你关注的账号",
-    "feedHintPublished": "你分享过的内容",
-    "feedHintTimeline": "你关注的人的更新",
+    "feedHintFollowing": "管理你关注的人",
+    "feedHintGuest": "本站的公开动态",
+    "feedHintPublished": "你发布的内容",
+    "feedHintTimeline": "关注的人与你的动态",
     "feedItems": "条",
     "feedLoadFail": "动态加载失败",
+    "feedLoading": "加载中…",
+    "feedMetaFollowers": "关注你的人",
+    "feedMetaFollowing": "管理你关注的人",
+    "feedMetaGuest": "本站的公开动态",
+    "feedMetaPublished": "你发布的内容",
+    "feedMetaTimeline": "关注的人与你的动态",
     "feedPlus": "添加",
     "feedPublished": "已发布",
     "feedRetry": "重试",
+    "feedSubFollowers": "关注你的人",
+    "feedSubFollowing": "管理你关注的人",
+    "feedSubPublished": "你发布的内容",
+    "feedSubTimeline": "关注的人与你的动态",
     "feedTimeline": "首页",
     "fileTooLarge": "文件过大（最大 100 MB）",
     "fileTooLargeRoom": "群聊不支持大文件 — 请通过私信发送",
@@ -2017,18 +2065,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardSuccess": "已转发",
     "forwardTo": "转发到…",
     "installBtn": "安装",
-    "installFailed": "安装失败，点击重试",
-    "installSuccess": "安装成功",
     "installedAt": "安装时间",
+    "installFailed": "安装失败，点击重试",
     "installingBtn": "安装中…",
+    "installSuccess": "安装成功",
     "invite": "邀请",
     "inviteBtn": "邀请",
+    "invited": "已邀请",
     "inviteFail": "邀请失败",
     "inviteFromContacts": "从联系人选择",
     "inviteManual": "通过地址邀请",
     "invitePlaceholder": "@用户@域名 或个人主页链接",
     "inviteSuccess": "邀请已发送",
-    "invited": "已邀请",
     "inviting": "邀请中…",
     "kick": "移除",
     "kickConfirm": "确定将此成员移出群聊？",
@@ -2060,7 +2108,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "newRoom": "新建群聊",
     "noContacts": "暂无可邀请的联系人",
     "noConv": "暂无会话",
-    "noConvHint": "点击 + 发起私信或创建群聊",
+    "noConvHint": "点 + 开始私信或群聊",
     "openOriginal": "查看原文",
     "openTappBtn": "打开 Tapp",
     "peers": "节点",
@@ -2111,14 +2159,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectHint": "选择一个会话开始聊天",
     "selectLibrary": "从资料库选择",
     "selectReport": "选择报告",
-    "selectRing": "选择一个环网查看节点与同步",
+    "selectRing": "选择一个环网查看详情",
     "selectTapp": "选择 Tapp",
     "send": "发送",
     "sendFail": "发送失败",
     "syncBtn": "同步",
     "syncFail": "同步失败",
-    "syncSuccess": "同步完成",
     "syncing": "同步中…",
+    "syncSuccess": "同步完成",
     "tappInstalled": "已安装",
     "tappNotInstalled": "未安装",
     "tappReceived": "收到 Tapp 分享",
@@ -2681,7 +2729,7 @@ async function loadUserRole() {
           var markedAuth = user.authenticated === true;
           var id = user.id != null ? String(user.id).trim() : '';
           var username = user.username != null ? String(user.username).trim() : '';
-          var anonId = !id || id === 'guest' || id === '0' || id === '-1' || /^user_?-\d+$/i.test(id);
+          var anonId = !id || id === 'guest' || id === '0' || id === '-1' || /^user_?-\\d+$/i.test(id);
           var hasIdentity = !anonId || !!username;
           if (isRoleUser || isAdminUser || markedAuth || (hasIdentity && !anonId)) {
             state.isAdmin = isAdminUser;
@@ -3061,9 +3109,25 @@ function applyLabels() {
   el = $('nav-rings-label'); if (el) el.textContent = lang.navRings;
   el = $('nav-feed-label'); if (el && !el.textContent) el.textContent = lang.navFeed || lang.feedTimeline;
   // Messenger sidebar (not ring sidebar)
-  el = document.querySelector('#view-messages .sidebar-title'); if (el) el.textContent = lang.title;
-  el = document.querySelector('#view-messages .empty-text'); if (el) el.textContent = lang.selectHint;
+  el = document.querySelector('#view-messages .sidebar-title'); if (el) el.textContent = lang.title || 'Messenger';
+  el = document.querySelector('#view-messages .empty-text'); if (el) el.textContent = lang.selectHint || 'Pick a conversation to start messaging';
   el = $('create-btn'); if (el) { el.setAttribute('title', lang.create); el.setAttribute('aria-label', lang.create); }
+  el = $('feed-empty-title');
+  if (el && typeof getFeedEmptyTitle === 'function') {
+    el.style.display = 'block';
+    el.hidden = false;
+    if (!$('feed-empty') || !$('feed-empty').classList.contains('feed-empty-error')) {
+      el.textContent = getFeedEmptyTitle(state.feedSubTab);
+    }
+  }
+  el = $('feed-empty-text');
+  if (el && typeof getFeedEmptyText === 'function') {
+    el.style.display = 'block';
+    el.hidden = false;
+    if (!$('feed-empty') || !$('feed-empty').classList.contains('feed-empty-error')) {
+      el.textContent = getFeedEmptyText(state.feedSubTab);
+    }
+  }
   el = $('feed-empty-retry'); if (el) el.textContent = lang.feedRetry || 'Try again';
   el = $('msg-input'); if (el) el.placeholder = lang.typing;
   el = $('attach-btn'); if (el) { el.setAttribute('title', lang.attach || lang.attachFile); el.setAttribute('aria-label', lang.attach || lang.attachFile); }
@@ -3115,8 +3179,9 @@ function applyLabels() {
   if (el && !el.hidden) el.textContent = lang.composeDraftTextOnly || '';
   el = $('refresh-feed-btn'); if (el) { el.setAttribute('title', lang.refresh); el.setAttribute('aria-label', lang.refresh); }
   el = $('refresh-feed-mobile-btn'); if (el) { el.setAttribute('title', lang.refresh); el.setAttribute('aria-label', lang.refresh); }
+  // Always set header title (even while loading) so HTML placeholders never stick in the wrong locale
   el = $('feed-section-title');
-  if (el && !state.feedLoading && typeof getFeedTitle === 'function') {
+  if (el && typeof getFeedTitle === 'function') {
     el.textContent = getFeedTitle(state.feedSubTab);
   }
   if (typeof updateFeedPlusVisibility === 'function') updateFeedPlusVisibility();
@@ -3125,9 +3190,9 @@ function applyLabels() {
   document.querySelectorAll('[data-fed-profile]').forEach(function (card) {
     setFeedProfileExpanded(card, card.classList.contains('feed-profile-expanded'));
   });
-  updateFeedHeader();
-  el = $('ring-sidebar-title'); if (el) el.textContent = lang.navRings;
-  el = $('ring-select-hint'); if (el) el.textContent = lang.selectRing;
+  if (typeof updateFeedHeader === 'function') updateFeedHeader();
+  el = $('ring-sidebar-title'); if (el) el.textContent = lang.navRings || 'Rings';
+  el = $('ring-select-hint'); if (el) el.textContent = lang.selectRing || lang.emptyRings || 'Select a ring';
   el = $('ring-create-title'); if (el) el.textContent = lang.createRingTitle;
   el = $('ring-create-open-btn'); if (el) { el.setAttribute('title', lang.create); el.setAttribute('aria-label', lang.create); }
   el = $('ring-name-input'); if (el) el.placeholder = lang.ringNamePlaceholder;
@@ -3982,8 +4047,8 @@ function renderConvList() {
 
   if (items.length === 0) {
     list.innerHTML = '<div class="conv-empty conv-empty-fill"><span style="display:flex;flex-direction:column;gap:6px;align-items:center;max-width:200px">'
-      + '<span style="font-weight:600;font-size:13px;color:var(--text-primary,#333)">' + esc(lang.noConv) + '</span>'
-      + '<span style="font-size:12px;line-height:1.45;opacity:.8">' + esc(lang.noConvHint || '') + '</span></span></div>';
+      + '<span style="font-weight:600;font-size:13px;color:var(--text-primary,#333)">' + esc(lang.noConv || lang.title || 'Messenger') + '</span>'
+      + '<span style="font-size:12px;line-height:1.45;opacity:.8">' + esc(lang.noConvHint || lang.selectHint || 'Start a chat with +') + '</span></span></div>';
     return;
   }
 
@@ -6177,39 +6242,53 @@ function updateFeedLoadingState() {
 }
 
 function getFeedTitle(sub) {
-  if (state.isGuest) return lang.publicFeed || lang.feedTimeline;
-  if (sub === 'following') return lang.feedFollowing;
-  if (sub === 'followers') return lang.feedFollowers;
-  if (sub === 'published') return lang.feedPublished;
-  return lang.feedTimeline;
+  if (state.isGuest) return lang.publicFeed || lang.feedTimeline || 'Home';
+  if (sub === 'following') return lang.feedFollowing || 'Following';
+  if (sub === 'followers') return lang.feedFollowers || 'Followers';
+  if (sub === 'published') return lang.feedPublished || 'Published';
+  return lang.feedTimeline || 'Home';
 }
 
+/**
+ * Header subtitle — always non-empty for the active tab.
+ * Keys: feedHint* (primary) / feedMeta* / feedSub* aliases.
+ */
 function getFeedHint(sub) {
-  // Prefer feedHint*; accept feedMeta* aliases (plus-menu branch) so meta never blanks
+  if (state.isGuest) {
+    return lang.feedHintGuest || lang.feedMetaGuest || lang.publicFeed
+      || 'Public posts from this site';
+  }
   if (sub === 'following') {
-    return lang.feedHintFollowing || lang.feedMetaFollowing || lang.feedFollowing || 'Accounts you follow';
+    return lang.feedHintFollowing || lang.feedMetaFollowing || lang.feedSubFollowing
+      || lang.feedFollowing || 'People you follow';
   }
   if (sub === 'followers') {
-    return lang.feedHintFollowers || lang.feedMetaFollowers || lang.feedFollowers || 'People who follow you';
+    return lang.feedHintFollowers || lang.feedMetaFollowers || lang.feedSubFollowers
+      || lang.feedFollowers || 'People who follow you';
   }
   if (sub === 'published') {
-    return lang.feedHintPublished || lang.feedMetaPublished || lang.feedPublished || "What you've shared";
+    return lang.feedHintPublished || lang.feedMetaPublished || lang.feedSubPublished
+      || lang.feedPublished || "Notes you've published";
   }
-  return lang.feedHintTimeline || lang.feedMetaTimeline || lang.feedTimeline || 'Updates from people you follow';
+  return lang.feedHintTimeline || lang.feedMetaTimeline || lang.feedSubTimeline
+    || lang.feedTimeline || 'Posts from people you follow';
 }
 
 function updateFeedHeader() {
   var title = $('feed-section-title');
   var meta = $('feed-section-meta');
   var sub = state.feedSubTab;
-  if (title) title.textContent = getFeedTitle(sub);
+  var pageTitle = getFeedTitle(sub);
+  if (title) title.textContent = pageTitle;
   if (!meta) return;
-  // Always set subtitle (never leave blank): helper text, and append count when loaded with items
+  // Never leave subtitle blank: helper, loading, or helper · count
   var items = getFeedItems(sub) || [];
-  var hint = getFeedHint(sub);
-  if (state.feedLoaded[sub] && items.length > 0) {
-    var countText = items.length + ' ' + (lang.feedItems || '项');
-    meta.textContent = hint ? (hint + ' · ' + countText) : countText;
+  var hint = getFeedHint(sub) || pageTitle || '—';
+  if (state.feedLoading && !state.feedLoaded[sub]) {
+    meta.textContent = lang.feedLoading || hint;
+  } else if (state.feedLoaded[sub] && items.length > 0) {
+    var countText = items.length + ' ' + (lang.feedItems || '');
+    meta.textContent = countText ? (hint + ' · ' + countText) : hint;
   } else {
     meta.textContent = hint;
   }
@@ -6222,18 +6301,35 @@ function getFeedItems(sub) {
   return state.timeline;
 }
 
+/** Empty-state title ≈ page title; dedicated emptyTitle* preferred when present. */
 function getFeedEmptyTitle(sub) {
-  if (sub === 'following') return lang.emptyTitleFollowing || lang.emptyFollowing || 'Not following anyone';
-  if (sub === 'followers') return lang.emptyTitleFollowers || lang.emptyFollowers || 'No followers yet';
-  if (sub === 'published') return lang.emptyTitlePublished || lang.emptyPublished || 'Nothing published yet';
-  return lang.emptyTitleTimeline || lang.emptyTimeline || 'No posts yet';
+  if (sub === 'following') {
+    return lang.emptyTitleFollowing || getFeedTitle(sub) || 'Not following anyone';
+  }
+  if (sub === 'followers') {
+    return lang.emptyTitleFollowers || getFeedTitle(sub) || 'No followers yet';
+  }
+  if (sub === 'published') {
+    return lang.emptyTitlePublished || getFeedTitle(sub) || 'Nothing published';
+  }
+  return lang.emptyTitleTimeline || getFeedTitle(sub) || 'No posts yet';
 }
 
 function getFeedEmptyText(sub) {
-  if (sub === 'following') return lang.emptyFollowing || 'Use Follow to add someone by handle or profile link.';
-  if (sub === 'followers') return lang.emptyFollowers || 'Share your profile link so others can follow you.';
-  if (sub === 'published') return lang.emptyPublished || 'Tap Post to share a note or media.';
-  return lang.emptyTimeline || 'Follow people or publish a post to fill your home feed.';
+  if (sub === 'following') {
+    return lang.emptyFollowing
+      || 'Tap + then Follow to add someone by handle or profile link.';
+  }
+  if (sub === 'followers') {
+    return lang.emptyFollowers
+      || 'Share your profile link so others can follow you.';
+  }
+  if (sub === 'published') {
+    return lang.emptyPublished
+      || 'Switch to Home and tap + to publish a note or media.';
+  }
+  return lang.emptyTimeline
+    || 'Follow people or publish a post to fill your home feed.';
 }
 
 function showFeedEmpty(message, kind) {
@@ -6244,13 +6340,15 @@ function showFeedEmpty(message, kind) {
   empty.style.display = '';
   empty.classList.toggle('feed-empty-error', kind === 'error');
   empty.classList.toggle('feed-empty-loading', kind === 'loading');
-  // Always show title + body (never hide title for normal empty)
+  // Always show title + body for default empty (not only on error)
   var title = $('feed-empty-title');
   if (title) {
     title.style.display = 'block';
     title.hidden = false;
     if (kind === 'error') {
       title.textContent = lang.feedLoadFail || lang.disconnected || 'Load failed';
+    } else if (kind === 'loading') {
+      title.textContent = getFeedTitle(state.feedSubTab);
     } else {
       title.textContent = getFeedEmptyTitle(state.feedSubTab) || getFeedTitle(state.feedSubTab);
     }
@@ -6259,7 +6357,11 @@ function showFeedEmpty(message, kind) {
   if (text) {
     text.style.display = 'block';
     text.hidden = false;
-    text.textContent = message || getFeedEmptyText(state.feedSubTab);
+    if (kind === 'loading') {
+      text.textContent = lang.feedLoading || message || '…';
+    } else {
+      text.textContent = message || getFeedEmptyText(state.feedSubTab);
+    }
   }
   var retry = $('feed-empty-retry');
   if (retry) {
@@ -7230,7 +7332,7 @@ function renderRingsSidebar() {
   if (!list) return;
   if (state.rings.length === 0) {
     list.innerHTML = '<div class="conv-empty conv-empty-fill"><span id="ring-empty-text">'
-      + esc(lang.emptyRings)
+      + esc(lang.emptyRings || 'No rings yet')
       + '<br><span style="font-size:11px;opacity:.75">' + esc(lang.createRingTitle || '') + '</span></span></div>';
     return;
   }
@@ -8100,7 +8202,6 @@ const manifest: TappManifest = {
     'federation:read',
     'federation:write',
     'federation:message',
-    'federation:files',
     'platform:read',
     'report:read',
     'tappList:read',
