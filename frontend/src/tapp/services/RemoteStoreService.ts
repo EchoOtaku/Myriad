@@ -6,7 +6,7 @@
  * 缓存仅保存在内存中，刷新页面后重新获取
  */
 
-import type { TappManifest } from '../types'
+import type { TappManifest, TappManifestLocales } from '../types'
 import api from '../../lib/api'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
 
@@ -60,6 +60,11 @@ export interface RemoteApp {
   description: string
   /** 详细描述（可选） */
   long_description?: string
+  /**
+   * name/description 的多语言覆盖（与 manifest.locales 同结构）。
+   * 键为 BCP-47；未命中时回退顶层 name/description。
+   */
+  locales?: TappManifestLocales
   /** 作者 */
   author: {
     name: string

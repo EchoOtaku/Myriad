@@ -1331,32 +1331,42 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
     }
   })
 
-  // 转换远程应用为统一格式
-  const remoteAppsUnified: UnifiedAppItem[] = remoteApps.map((app) => ({
-    id: app.id,
-    name: app.name,
-    version: app.version,
-    description: app.description,
-    longDescription: app.long_description,
-    author: app.author,
-    icon: app.icon,
-    iconSvg: app.icon_svg,
-    themeColor: app.theme_color,
-    category: normalizeTappCategory(app.category),
-    tags: app.tags || [],
-    permissions: app.permissions,
-    license: app.license,
-    homepage: app.homepage,
-    repository: app.repository,
-    size: app.size,
-    featured: app.featured,
-    verified: app.verified,
-    updatedAt: app.updated_at,
-    source: 'remote' as const,
-    remoteApp: app,
-  }))
+  // 转换远程应用为统一格式（name/description 按宿主语言解析 locales）
+  const remoteAppsUnified: UnifiedAppItem[] = remoteApps.map((app) => {
+    const text = resolveManifestText(
+      {
+        name: app.name,
+        description: app.description,
+        locales: app.locales,
+      },
+      locale,
+    )
+    return {
+      id: app.id,
+      name: text.name,
+      version: app.version,
+      description: text.description || '',
+      longDescription: app.long_description,
+      author: app.author,
+      icon: app.icon,
+      iconSvg: app.icon_svg,
+      themeColor: app.theme_color,
+      category: normalizeTappCategory(app.category),
+      tags: app.tags || [],
+      permissions: app.permissions,
+      license: app.license,
+      homepage: app.homepage,
+      repository: app.repository,
+      size: app.size,
+      featured: app.featured,
+      verified: app.verified,
+      updatedAt: app.updated_at,
+      source: 'remote' as const,
+      remoteApp: app,
+    }
+  })
 
-  // 合并应用列表（去重，远程优先�?
+  // 合并应用列表（去重，远程优先）
   const allApps: UnifiedAppItem[] = [...remoteAppsUnified]
   for (const localApp of localApps) {
     if (!remoteAppsUnified.some((r) => r.id === localApp.id)) {
@@ -1366,13 +1376,23 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
 
   // 过滤 Tapp
   const filteredApps = allApps.filter((app) => {
-    // 搜索过滤
+    // 搜索过滤：解析后文案 + 远程原始 name/description/locales 均可命中
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       const matchName = app.name.toLowerCase().includes(query)
       const matchDesc = app.description.toLowerCase().includes(query)
       const matchTags = app.tags.some((t) => t.toLowerCase().includes(query))
-      if (!matchName && !matchDesc && !matchTags) return false
+      const remote = app.remoteApp
+      const matchRaw =
+        !!remote &&
+        (remote.name.toLowerCase().includes(query) ||
+          remote.description.toLowerCase().includes(query) ||
+          Object.values(remote.locales ?? {}).some(
+            (entry) =>
+              (entry.name?.toLowerCase().includes(query) ?? false) ||
+              (entry.description?.toLowerCase().includes(query) ?? false),
+          ))
+      if (!matchName && !matchDesc && !matchTags && !matchRaw) return false
     }
     // 分类过滤
     if (selectedCategory === '__installed__') {
