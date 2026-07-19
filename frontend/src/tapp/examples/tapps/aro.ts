@@ -1389,6 +1389,21 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
   }
   .feed-skeleton-avatar,.feed-skeleton-line{animation:none!important;background:rgba(128,128,128,.1)}
 }
+
+/* Create / invite empty-submit feedback */
+.create-input-invalid,.invite-input.create-input-invalid{
+  border-color:#ef4444 !important;
+  box-shadow:0 0 0 2px rgba(239,68,68,.18);
+  animation:aroShake .35s ease;
+}
+@keyframes aroShake{
+  0%,100%{transform:translateX(0)}
+  25%{transform:translateX(-3px)}
+  75%{transform:translateX(3px)}
+}
+@media (prefers-reduced-motion:reduce){
+  .create-input-invalid,.invite-input.create-input-invalid{animation:none}
+}
 `
 
 const ARO_I18N: Record<string, Record<string, string>> = {
@@ -1417,11 +1432,13 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "attachTapp": "Tapp",
     "attachTappPrompt": "Tapp ID or name",
     "back": "Back",
+    "channelNotAccepted": "Accept the chat before sending files",
     "channelPlaceholder": "@user@domain or profile link",
     "close": "Close chat",
     "closeChannelConfirm": "Close this chat? You won't be able to send messages afterward.",
     "closeChannelFail": "Couldn't close chat",
     "closed": "Closed",
+    "closedComposer": "This chat is closed — you can't send messages",
     "collapseDetails": "Show less",
     "composeAddImage": "Image",
     "composeAddVideo": "Video",
@@ -1434,7 +1451,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composePublishing": "Publishing…",
     "composeSuccess": "Published",
     "composeUploading": "Uploading…",
-    "composerClosed": "This chat is closed",
+    "composerClosed": "This chat is closed — you can't send messages",
     "confirmCancel": "Cancel",
     "confirmOk": "OK",
     "connected": "Connected",
@@ -1485,7 +1502,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedPublished": "Published",
     "feedRetry": "Try again",
     "feedTimeline": "Home",
-    "fileTooLarge": "File too large (max 10 MB)",
+    "fileTooLarge": "File too large (max 100 MB)",
+    "fileTooLargeRoom": "File too large for group chat — use a DM for larger files",
     "followBtn": "Follow",
     "followDialogTitle": "Follow someone",
     "followFail": "Couldn't follow",
@@ -1495,18 +1513,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardSuccess": "Forwarded",
     "forwardTo": "Forward to…",
     "installBtn": "Install",
-    "installedAt": "Installed",
     "installFailed": "Install failed — tap to retry",
-    "installingBtn": "Installing…",
     "installSuccess": "Installed",
+    "installedAt": "Installed",
+    "installingBtn": "Installing…",
     "invite": "Invite",
     "inviteBtn": "Invite",
-    "invited": "Invited",
     "inviteFail": "Couldn't invite",
     "inviteFromContacts": "From contacts",
     "inviteManual": "Invite by address",
     "invitePlaceholder": "@user@domain or profile link",
     "inviteSuccess": "Invite sent",
+    "invited": "Invited",
     "inviting": "Inviting…",
     "kick": "Remove",
     "kickConfirm": "Remove this member from the group?",
@@ -1595,8 +1613,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "sendFail": "Couldn't send",
     "syncBtn": "Sync",
     "syncFail": "Couldn't sync",
-    "syncing": "Syncing…",
     "syncSuccess": "Sync complete",
+    "syncing": "Syncing…",
     "tappInstalled": "Installed",
     "tappNotInstalled": "Not installed",
     "tappReceived": "Tapp shared with you",
@@ -1605,6 +1623,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "tappShareRejected": "Declined",
     "tappUpdateAvail": "Update available",
     "title": "Messages",
+    "transferComplete": "File sent",
+    "transferFail": "Couldn't upload file",
+    "transferProgress": "Uploading… {pct}%",
+    "transferStarting": "Uploading file…",
     "typing": "Message…",
     "unfollowBtn": "Unfollow",
     "unfollowFail": "Couldn't unfollow",
@@ -1636,11 +1658,13 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "attachTapp": "Tapp",
     "attachTappPrompt": "Tapp IDまたは名前",
     "back": "戻る",
+    "channelNotAccepted": "ファイル送信前にチャットを承認してください",
     "channelPlaceholder": "@user@domain またはプロフィールURL",
     "close": "チャットを閉じる",
     "closeChannelConfirm": "このチャットを閉じますか？閉じると送信できなくなります。",
     "closeChannelFail": "チャットを閉じられませんでした",
     "closed": "終了済み",
+    "closedComposer": "このチャットは終了済みです — 送信できません",
     "collapseDetails": "閉じる",
     "composeAddImage": "画像",
     "composeAddVideo": "動画",
@@ -1653,7 +1677,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composePublishing": "公開中…",
     "composeSuccess": "公開しました",
     "composeUploading": "アップロード中…",
-    "composerClosed": "このチャットは終了しました",
+    "composerClosed": "このチャットは終了済みです — 送信できません",
     "confirmCancel": "キャンセル",
     "confirmOk": "OK",
     "connected": "接続中",
@@ -1704,7 +1728,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedPublished": "公開済み",
     "feedRetry": "再試行",
     "feedTimeline": "ホーム",
-    "fileTooLarge": "ファイルが大きすぎます（最大10MB）",
+    "fileTooLarge": "ファイルが大きすぎます（最大100MB）",
+    "fileTooLargeRoom": "グループチャットでは大きすぎます — 大きいファイルはDMを使ってください",
     "followBtn": "フォロー",
     "followDialogTitle": "フォローする",
     "followFail": "フォローに失敗しました",
@@ -1714,18 +1739,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardSuccess": "転送しました",
     "forwardTo": "転送先…",
     "installBtn": "インストール",
-    "installedAt": "インストール日",
     "installFailed": "インストールに失敗しました。タップして再試行",
-    "installingBtn": "インストール中…",
     "installSuccess": "インストール完了",
+    "installedAt": "インストール日",
+    "installingBtn": "インストール中…",
     "invite": "招待",
     "inviteBtn": "招待",
-    "invited": "招待済み",
     "inviteFail": "招待に失敗しました",
     "inviteFromContacts": "連絡先から選ぶ",
     "inviteManual": "アドレスで招待",
     "invitePlaceholder": "@user@domain またはプロフィールURL",
     "inviteSuccess": "招待を送信しました",
+    "invited": "招待済み",
     "inviting": "招待中…",
     "kick": "削除",
     "kickConfirm": "このメンバーをグループから削除しますか？",
@@ -1814,8 +1839,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "sendFail": "送信に失敗しました",
     "syncBtn": "同期",
     "syncFail": "同期に失敗しました",
-    "syncing": "同期中…",
     "syncSuccess": "同期完了",
+    "syncing": "同期中…",
     "tappInstalled": "インストール済み",
     "tappNotInstalled": "未インストール",
     "tappReceived": "Tappが共有されました",
@@ -1824,6 +1849,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "tappShareRejected": "拒否済み",
     "tappUpdateAvail": "更新あり",
     "title": "メッセージ",
+    "transferComplete": "ファイルを送信しました",
+    "transferFail": "ファイルをアップロードできませんでした",
+    "transferProgress": "アップロード中… {pct}%",
+    "transferStarting": "ファイルをアップロード中…",
     "typing": "メッセージを入力…",
     "unfollowBtn": "フォロー解除",
     "unfollowFail": "フォロー解除に失敗しました",
@@ -1855,11 +1884,13 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "attachTapp": "Tapp",
     "attachTappPrompt": "Tapp ID 或名称",
     "back": "返回",
+    "channelNotAccepted": "请先接受私信再发送文件",
     "channelPlaceholder": "@用户@域名 或个人主页链接",
     "close": "关闭会话",
     "closeChannelConfirm": "确定关闭此私信？关闭后将无法继续发送消息。",
     "closeChannelFail": "关闭会话失败",
     "closed": "已关闭",
+    "closedComposer": "会话已关闭，无法发送消息",
     "collapseDetails": "收起",
     "composeAddImage": "图片",
     "composeAddVideo": "视频",
@@ -1872,7 +1903,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "composePublishing": "发布中…",
     "composeSuccess": "已发布",
     "composeUploading": "上传中…",
-    "composerClosed": "会话已关闭",
+    "composerClosed": "会话已关闭，无法发送消息",
     "confirmCancel": "取消",
     "confirmOk": "确定",
     "connected": "已连接",
@@ -1923,7 +1954,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedPublished": "已发布",
     "feedRetry": "重试",
     "feedTimeline": "首页",
-    "fileTooLarge": "文件过大（最大 10 MB）",
+    "fileTooLarge": "文件过大（最大 100 MB）",
+    "fileTooLargeRoom": "群聊不支持大文件 — 请通过私信发送",
     "followBtn": "关注",
     "followDialogTitle": "关注用户",
     "followFail": "关注失败",
@@ -1933,18 +1965,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardSuccess": "已转发",
     "forwardTo": "转发到…",
     "installBtn": "安装",
-    "installedAt": "安装时间",
     "installFailed": "安装失败，点击重试",
-    "installingBtn": "安装中…",
     "installSuccess": "安装成功",
+    "installedAt": "安装时间",
+    "installingBtn": "安装中…",
     "invite": "邀请",
     "inviteBtn": "邀请",
-    "invited": "已邀请",
     "inviteFail": "邀请失败",
     "inviteFromContacts": "从联系人选择",
     "inviteManual": "通过地址邀请",
     "invitePlaceholder": "@用户@域名 或个人主页链接",
     "inviteSuccess": "邀请已发送",
+    "invited": "已邀请",
     "inviting": "邀请中…",
     "kick": "移除",
     "kickConfirm": "确定将此成员移出群聊？",
@@ -2033,8 +2065,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "sendFail": "发送失败",
     "syncBtn": "同步",
     "syncFail": "同步失败",
-    "syncing": "同步中…",
     "syncSuccess": "同步完成",
+    "syncing": "同步中…",
     "tappInstalled": "已安装",
     "tappNotInstalled": "未安装",
     "tappReceived": "收到 Tapp 分享",
@@ -2043,6 +2075,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "tappShareRejected": "已拒绝",
     "tappUpdateAvail": "有可用更新",
     "title": "消息",
+    "transferComplete": "文件已发送",
+    "transferFail": "上传文件失败",
+    "transferProgress": "上传中… {pct}%",
+    "transferStarting": "正在上传文件…",
     "typing": "输入消息…",
     "unfollowBtn": "取消关注",
     "unfollowFail": "取消关注失败",
@@ -2264,14 +2300,14 @@ function updateSendState() {
   if (input) {
     input.disabled = closed || !state.activeId;
     input.setAttribute('aria-disabled', input.disabled ? 'true' : 'false');
-    if (closed) input.placeholder = lang.composerClosed || lang.closed || lang.typing || '';
+    if (closed) input.placeholder = lang.closedComposer || lang.composerClosed || lang.closed || lang.typing || '';
     else if (lang.typing) input.placeholder = lang.typing;
   }
   if (attach) {
     attach.disabled = blocked;
     attach.setAttribute('aria-disabled', blocked ? 'true' : 'false');
     attach.title = closed
-      ? (lang.composerClosed || lang.closed || lang.attach)
+      ? (lang.closedComposer || lang.composerClosed || lang.closed || lang.attach)
       : (lang.attach || '');
   }
 
@@ -2282,7 +2318,7 @@ function updateSendState() {
   btn.classList.toggle('send-ready', ready);
   btn.setAttribute('aria-label', lang.send || 'Send');
   btn.title = closed
-    ? (lang.composerClosed || lang.closed || lang.send)
+    ? (lang.closedComposer || lang.composerClosed || lang.closed || lang.send)
     : (lang.send || 'Send');
 }
 function autoResizeInput(el) {
@@ -2973,7 +3009,12 @@ function applyDialogLabels() {
 const PAGE_MOD_ATTACHMENTS = `\
 // ==================== Attachment Menu ====================
 var _attachMenu = null;
-var MAX_ATTACH_SIZE = 10 * 1024 * 1024; // 10MB
+// Overall attach cap (large channel files use chunked transfer under federation:files).
+var MAX_ATTACH_SIZE = 100 * 1024 * 1024; // 100MB
+// Inline base64 only under this raw size so JSON payload stays under backend budget.
+var INLINE_ATTACH_MAX = 2 * 1024 * 1024; // 2 MiB raw
+// Must match backend federation file_transfer DEFAULT_CHUNK_SIZE (1 MiB).
+var TRANSFER_CHUNK_SIZE = 1024 * 1024;
 
 function toggleAttachMenu() {
   if (_attachMenu) { closeAttachMenu(); return; }
@@ -2982,6 +3023,8 @@ function toggleAttachMenu() {
   // Closed / no active conversation: attach disabled
   var btn = $('attach-btn');
   if (btn && btn.disabled) return;
+  var closed = !!(state.activeKind === 'channel' && state.channelDetail && state.channelDetail.status === 'closed');
+  if (!state.activeId || closed || state.sending) return;
   wrap.style.position = 'relative';
   if (btn) btn.classList.add('attach-btn-active');
 
@@ -3043,12 +3086,107 @@ function handleFileSelect(file, forceType) {
     try { Tapp.ui.showNotification({ title: lang.fileTooLarge, type: 'error' }); } catch (e) { /* ignore */ }
     return;
   }
-  var type = forceType || (file.type.startsWith('image/') ? 'image' : 'file');
-  var reader = new FileReader();
-  reader.onload = function () {
-    setPendingAttach({ type: type, data: reader.result, name: file.name, size: file.size, mime: file.type });
+  var type = forceType || (file.type && file.type.indexOf('image/') === 0 ? 'image' : 'file');
+  // Keep the File for chunked upload; dataURL preview only for images.
+  if (type === 'image') {
+    var reader = new FileReader();
+    reader.onload = function () {
+      setPendingAttach({ type: type, file: file, data: reader.result, name: file.name, size: file.size, mime: file.type || 'image/*' });
+    };
+    reader.onerror = function () {
+      setPendingAttach({ type: type, file: file, name: file.name, size: file.size, mime: file.type || 'image/*' });
+    };
+    reader.readAsDataURL(file);
+  } else {
+    setPendingAttach({ type: type, file: file, name: file.name, size: file.size, mime: file.type || 'application/octet-stream' });
+  }
+}
+
+function readFileAsDataURL(file) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () { resolve(reader.result); };
+    reader.onerror = function () { reject(reader.error || new Error('read failed')); };
+    reader.readAsDataURL(file);
+  });
+}
+
+function arrayBufferToBase64(buffer) {
+  var bytes = new Uint8Array(buffer);
+  var binary = '';
+  var step = 0x8000;
+  for (var i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+  }
+  return btoa(binary);
+}
+
+/** Chunked channel transfer for files above INLINE_ATTACH_MAX. */
+async function sendChannelFileTransfer(attach, text, replyTo) {
+  var file = attach.file;
+  if (!file) throw new Error('Missing file data');
+
+  var chStatus = state.channelDetail && state.channelDetail.status;
+  if (chStatus && chStatus !== 'active' && chStatus !== 'accepted') {
+    throw new Error(lang.channelNotAccepted || 'Channel must be accepted first');
+  }
+
+  try {
+    Tapp.ui.showNotification({ title: lang.transferStarting || 'Uploading…', type: 'info' });
+  } catch (e0) { /* ignore */ }
+
+  var transfer = await Tapp.federation.initiateTransfer(state.activeId, {
+    filename: attach.name,
+    file_size: attach.size,
+    mime_type: attach.mime || 'application/octet-stream',
+  });
+  var transferId = transfer && transfer.transfer_id;
+  if (!transferId) throw new Error('No transfer_id returned');
+
+  var buf = await file.arrayBuffer();
+  var bytes = new Uint8Array(buf);
+  var totalChunks = Math.max(1, Math.ceil(bytes.length / TRANSFER_CHUNK_SIZE));
+  var lastPct = -1;
+
+  for (var i = 0; i < totalChunks; i++) {
+    var start = i * TRANSFER_CHUNK_SIZE;
+    var end = Math.min(start + TRANSFER_CHUNK_SIZE, bytes.length);
+    var slice = bytes.subarray(start, end);
+    var chunkData = arrayBufferToBase64(slice);
+    await Tapp.federation.uploadChunk(transferId, {
+      chunk_index: i,
+      chunk_data: chunkData,
+      chunk_size: slice.length,
+    });
+    var pct = Math.round(((i + 1) / totalChunks) * 100);
+    if (pct >= lastPct + 20 || pct === 100) {
+      lastPct = pct;
+      try {
+        var prog = (lang.transferProgress || 'Uploading… {pct}%').replace('{pct}', String(pct));
+        Tapp.ui.showNotification({ title: prog, type: 'info' });
+      } catch (e1) { /* ignore */ }
+    }
+  }
+
+  var msgPayload = {
+    filename: attach.name,
+    size: attach.size,
+    mime_type: attach.mime || 'application/octet-stream',
+    transfer_id: transferId,
+    text: text || '',
   };
-  reader.readAsDataURL(file);
+  if (state.quoteMsg) {
+    msgPayload.quote_sender = state.quoteMsg.sender;
+    msgPayload.quote_text = state.quoteMsg.text;
+    msgPayload.quote_id = state.quoteMsg.message_id;
+  }
+  var sendReq = { payload: msgPayload, message_type: 'file-meta' };
+  if (replyTo) sendReq.reply_to = replyTo;
+  await Tapp.federation.sendMessage(state.activeId, sendReq);
+
+  try {
+    Tapp.ui.showNotification({ title: lang.transferComplete || 'File sent', type: 'success' });
+  } catch (e2) { /* ignore */ }
 }
 
 function pickFedContent(type) {
@@ -3436,7 +3574,7 @@ function formatReportContentBody(content, fallbackPreview) {
   } else if (typeof analysis === 'string' && analysis.trim()) {
     parts.push(analysis.trim());
   }
-  // Use fromCharCode so this survives PAGE_MOD template-literal embedding (avoids '\n' escape issues).
+  // Use fromCharCode so this survives PAGE_MOD template-literal embedding (avoids '\\n' escape issues).
   var nl = String.fromCharCode(10);
   if (parts.length) return parts.join(nl);
 
@@ -3745,7 +3883,7 @@ function renderPinnedBar() {
     + '<span class="pinned-bar-label">' + esc(lang.pinnedMsg) + (pinned.length > 1 ? ' (' + pinned.length + ')' : '') + '</span>'
     + '<span class="pinned-bar-text">' + esc(text) + '</span>'
     + '</div>'
-    + '<button class="pinned-bar-close" id="pinned-bar-close" aria-label="' + esc(lang.close || 'Close') + '">&times;</button>';
+    + '<button type="button" class="pinned-bar-close" id="pinned-bar-close" title="' + esc(lang.dismiss || 'Dismiss') + '" aria-label="' + esc(lang.dismiss || 'Dismiss') + '">&times;</button>';
   var closeBtn = $('pinned-bar-close');
   if (closeBtn) closeBtn.addEventListener('click', function (e) {
     e.stopPropagation();
@@ -4106,8 +4244,12 @@ function renderMessages(opts) {
         msgType = 'brew';
       } else if (payload.report_id) {
         msgType = 'report';
+      } else if (payload.platform_id && payload.item_id) {
+        msgType = 'library';
       } else if (payload.data && payload.mime_type && payload.mime_type.indexOf('image/') === 0) {
         msgType = 'image';
+      } else if (payload.transfer_id && payload.filename) {
+        msgType = 'file-meta';
       } else if (payload.data && payload.filename) {
         msgType = 'file';
       }
@@ -4185,14 +4327,24 @@ function renderMessages(opts) {
     if (msgType === 'image' && payload.data) {
       html += '<img class="msg-image" src="' + esc(payload.data) + '" alt="' + esc(payload.filename || '') + '" />';
       if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
-    } else if (msgType === 'file') {
+    } else if (msgType === 'file' || msgType === 'file-meta') {
       var ext = (payload.filename || '').split('.').pop().toUpperCase();
-      html += '<button type="button" class="msg-file-card" data-file-idx="' + idx + '" title="' + esc(lang.downloadFile || payload.filename || 'File') + '">'
-        + '<div class="msg-file-icon">' + SVG_ICONS.file + '</div>'
+      var hasInline = !!(payload.data);
+      var fileTitle = hasInline
+        ? (lang.downloadFile || payload.filename || 'File')
+        : (payload.filename || lang.previewFile || 'File');
+      // Inline data → downloadable button; file-meta (chunked transfer) → static card for now
+      if (hasInline) {
+        html += '<button type="button" class="msg-file-card" data-file-idx="' + idx + '" data-has-inline="1" title="' + esc(fileTitle) + '">';
+      } else {
+        html += '<div class="msg-file-card" data-file-idx="' + idx + '" title="' + esc(fileTitle) + '">';
+      }
+      html += '<div class="msg-file-icon">' + SVG_ICONS.file + '</div>'
         + '<div class="msg-file-info">'
         + '<div class="msg-file-name">' + esc(payload.filename || 'file') + '</div>'
         + '<div class="msg-file-size">' + (payload.size ? formatFileSize(payload.size) : ext) + '</div>'
-        + '</div></button>';
+        + '</div>'
+        + (hasInline ? '</button>' : '</div>');
       if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
     } else if (msgType === 'tapp' || msgType === 'brew' || msgType === 'library' || msgType === 'report') {
       var shareIcons = { tapp: SVG_ICONS.tapp, brew: SVG_ICONS.brew, library: SVG_ICONS.library, report: SVG_ICONS.report };
@@ -4315,8 +4467,8 @@ function renderMessages(opts) {
       renderMessages();
     });
   });
-  // File card → download when payload includes data URL
-  container.querySelectorAll('.msg-file-card[data-file-idx]').forEach(function (card) {
+  // File card → download only when inline data is present (not file-meta transfer stubs)
+  container.querySelectorAll('.msg-file-card[data-has-inline]').forEach(function (card) {
     card.addEventListener('click', function (e) {
       e.stopPropagation();
       var idx = parseInt(card.dataset.fileIdx, 10);
@@ -4946,46 +5098,69 @@ async function doSend() {
     var msgPayload;
     var msgType;
 
-    if (attach) {
-      if (attach.type === 'image') {
-        msgType = 'image';
-        msgPayload = { data: attach.data, filename: attach.name, mime_type: attach.mime, size: attach.size, text: text || '' };
-      } else if (attach.type === 'file') {
-        msgType = 'file';
-        msgPayload = { data: attach.data, filename: attach.name, mime_type: attach.mime, size: attach.size, text: text || '' };
-      } else {
-        // Federation content: tapp, brew, library, report
-        msgType = attach.type;
-        msgPayload = { title: attach.name, description: attach.desc || '', content_type: attach.type, icon: attach.icon || '', text: text || '' };
-        // Include resource IDs so the receiver can fetch detail
-        if (attach.tappId) msgPayload.tapp_id = attach.tappId;
-        if (attach.tappVersion) msgPayload.tapp_version = attach.tappVersion;
-        if (attach.tappIcon) msgPayload.tapp_icon = attach.tappIcon;
-        if (attach.brewId) msgPayload.brew_id = attach.brewId;
-        if (attach.brewLink) msgPayload.brew_link = attach.brewLink;
-        if (attach.platformId) msgPayload.platform_id = attach.platformId;
-        if (attach.itemId) msgPayload.item_id = attach.itemId;
-        if (attach.image) msgPayload.image = attach.image;
-        // Report share: always wire snapshot fields (never id-only).
-        // Field names: report_id, summary, platform, content_preview.
-        // Mirrored by wireReportSharePayload in reportShareSnapshot.ts.
-        if (attach.type === 'report') {
-          var reportSummary = (attach.summary || attach.name || '').trim() || 'Report';
-          var reportPlatform = (attach.platform || '').trim();
-          var reportPreview = (attach.contentPreview || attach.desc || '').trim();
-          msgPayload.report_id = attach.reportId != null && attach.reportId !== '' ? String(attach.reportId) : '';
-          msgPayload.summary = reportSummary;
-          msgPayload.platform = reportPlatform;
-          msgPayload.content_preview = reportPreview;
-          if (!msgPayload.title) msgPayload.title = reportSummary;
-          if (!msgPayload.description) {
-            msgPayload.description = reportPreview
-              ? (reportPlatform ? reportPlatform + ' · ' + reportPreview : reportPreview)
-              : reportPlatform;
-          }
-        } else if (attach.reportId) {
-          msgPayload.report_id = attach.reportId;
+    // Attach quote info if replying to a message
+    var replyTo = null;
+    if (state.quoteMsg) {
+      replyTo = state.quoteMsg.message_id;
+    }
+
+    if (attach && (attach.type === 'image' || attach.type === 'file')) {
+      var useChunked = attach.size > INLINE_ATTACH_MAX;
+      if (useChunked) {
+        if (state.activeKind !== 'channel') {
+          throw new Error(lang.fileTooLargeRoom || lang.fileTooLarge || 'File too large');
         }
+        if (typeof Tapp.federation.initiateTransfer !== 'function' || typeof Tapp.federation.uploadChunk !== 'function') {
+          throw new Error(lang.fileTooLarge || 'File too large');
+        }
+        clearPendingAttach();
+        await sendChannelFileTransfer(attach, text, replyTo);
+        if (state.quoteMsg) clearQuote();
+        await pollMessages(true);
+        return;
+      }
+
+      // Small files: inline base64 under backend payload budget
+      var dataUrl = attach.data;
+      if (!dataUrl && attach.file) {
+        dataUrl = await readFileAsDataURL(attach.file);
+      }
+      if (!dataUrl) throw new Error('Failed to read file');
+      msgType = attach.type === 'image' ? 'image' : 'file';
+      msgPayload = { data: dataUrl, filename: attach.name, mime_type: attach.mime, size: attach.size, text: text || '' };
+      clearPendingAttach();
+    } else if (attach) {
+      // Federation content: tapp, brew, library, report
+      msgType = attach.type;
+      msgPayload = { title: attach.name, description: attach.desc || '', content_type: attach.type, icon: attach.icon || '', text: text || '' };
+      // Include resource IDs so the receiver can fetch detail
+      if (attach.tappId) msgPayload.tapp_id = attach.tappId;
+      if (attach.tappVersion) msgPayload.tapp_version = attach.tappVersion;
+      if (attach.tappIcon) msgPayload.tapp_icon = attach.tappIcon;
+      if (attach.brewId) msgPayload.brew_id = attach.brewId;
+      if (attach.brewLink) msgPayload.brew_link = attach.brewLink;
+      if (attach.platformId) msgPayload.platform_id = attach.platformId;
+      if (attach.itemId) msgPayload.item_id = attach.itemId;
+      if (attach.image) msgPayload.image = attach.image;
+      // Report share: always wire snapshot fields (never id-only).
+      // Field names: report_id, summary, platform, content_preview.
+      // Mirrored by wireReportSharePayload in reportShareSnapshot.ts.
+      if (attach.type === 'report') {
+        var reportSummary = (attach.summary || attach.name || '').trim() || 'Report';
+        var reportPlatform = (attach.platform || '').trim();
+        var reportPreview = (attach.contentPreview || attach.desc || '').trim();
+        msgPayload.report_id = attach.reportId != null && attach.reportId !== '' ? String(attach.reportId) : '';
+        msgPayload.summary = reportSummary;
+        msgPayload.platform = reportPlatform;
+        msgPayload.content_preview = reportPreview;
+        if (!msgPayload.title) msgPayload.title = reportSummary;
+        if (!msgPayload.description) {
+          msgPayload.description = reportPreview
+            ? (reportPlatform ? reportPlatform + ' · ' + reportPreview : reportPreview)
+            : reportPlatform;
+        }
+      } else if (attach.reportId) {
+        msgPayload.report_id = attach.reportId;
       }
       clearPendingAttach();
     } else {
@@ -4993,13 +5168,10 @@ async function doSend() {
       msgPayload = { text: text };
     }
 
-    // Attach quote info if replying to a message
-    var replyTo = null;
     if (state.quoteMsg) {
       msgPayload.quote_sender = state.quoteMsg.sender;
       msgPayload.quote_text = state.quoteMsg.text;
       msgPayload.quote_id = state.quoteMsg.message_id;
-      replyTo = state.quoteMsg.message_id;
       clearQuote();
     }
 
@@ -5259,7 +5431,16 @@ async function doInviteMember(actorUrl) {
     var input = $('invite-input');
     actor = (input ? input.value : '').trim();
   }
-  if (!actor) return;
+  if (!actor) {
+    var emptyInput = $('invite-input');
+    if (emptyInput) {
+      emptyInput.classList.add('create-input-invalid');
+      try { emptyInput.focus(); } catch (e0) {}
+      setTimeout(function () { emptyInput.classList.remove('create-input-invalid'); }, 900);
+    }
+    try { Tapp.ui.showNotification({ title: lang.invitePlaceholder || lang.inviteFail, type: 'error' }); } catch (e1) {}
+    return;
+  }
   try {
     await Tapp.federation.inviteMember(state.activeId, { actor: actor });
     if (!actorUrl) { var input2 = $('invite-input'); if (input2) input2.value = ''; }
@@ -5396,7 +5577,7 @@ function renderInvitePopoverContacts() {
       + '<div class="invite-pop-contact-name">' + esc(c.name) + '</div>'
       + '<div class="invite-pop-contact-url">' + esc(shortUrl) + '</div>'
       + '</div>'
-      + (c.alreadyMember ? '<span class="invite-pop-contact-added">' + esc(lang.members) + '</span>' : '')
+      + (c.alreadyMember ? '<span class="invite-pop-contact-added">' + esc(lang.invited || lang.members) + '</span>' : '')
       + '</button>';
   });
   listEl.innerHTML = html;
@@ -5600,11 +5781,22 @@ function switchCreateTab(tab) {
   }
 }
 
+function flashCreateInput(input) {
+  if (!input) return;
+  input.classList.add('create-input-invalid');
+  try { input.focus(); } catch (e) { /* ignore */ }
+  setTimeout(function () { input.classList.remove('create-input-invalid'); }, 900);
+}
+
 async function doCreateChannel() {
   var input = $('create-channel-input');
   if (!input) return;
   var remoteActor = input.value.trim();
-  if (!remoteActor) return;
+  if (!remoteActor) {
+    flashCreateInput(input);
+    try { Tapp.ui.showNotification({ title: lang.channelPlaceholder || lang.createFail, type: 'error' }); } catch (e0) {}
+    return;
+  }
   var btn = $('create-channel-btn');
   if (btn) { btn.disabled = true; btn.textContent = lang.creating; }
   try {
@@ -5626,7 +5818,11 @@ async function doCreateRoom() {
   var input = $('create-room-input');
   if (!input) return;
   var name = input.value.trim();
-  if (!name) return;
+  if (!name) {
+    flashCreateInput(input);
+    try { Tapp.ui.showNotification({ title: lang.roomPlaceholder || lang.createFail, type: 'error' }); } catch (e0) {}
+    return;
+  }
   var btn = $('create-room-btn');
   if (btn) { btn.disabled = true; btn.textContent = lang.creating; }
   try {
@@ -7357,6 +7553,7 @@ const manifest: TappManifest = {
     'federation:read',
     'federation:write',
     'federation:message',
+    'federation:files',
     'platform:read',
     'report:read',
     'tappList:read',
