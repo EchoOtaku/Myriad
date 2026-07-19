@@ -19,6 +19,36 @@ Playground 项目至少需要 **Page** 或 **Widgets** 之一（允许 Widget-on
 - Page 沙箱（有可用 Page 时）运行在没有 `allow-same-origin` 的 sandboxed iframe 中，
   CSP 使用每实例 nonce。Widget-only 预览不挂载 Page 沙箱。
 
+## 宿主展示文案 vs 应用内 i18n（勿混淆）
+
+| 字段 | 用途 |
+| ---- | ---- |
+| 顶层 `manifest.name` / `description` | **兜底**标题与描述（商店/列表/详情未命中语言时） |
+| `manifest.locales` | **宿主 chrome / 商店目录**的多语言标题与描述（BCP-47 → `{ name?, description? }`） |
+| `code.i18n` + `Tapp.i18n.t()` | **应用内 UI** 字符串（按钮、标签、提示等） |
+
+规则：
+
+- 始终填写顶层 `name`（及建议的 `description`）作为主语言兜底（常用 `zh-CN` 文案或
+  指令语言的默认文案）。
+- **默认同时填写** `locales["en-US"]` 与 `locales["ja-JP"]` 的 `name`/`description`
+  （Myriad 宿主常用语言；简短标题也要翻译）。仅当用户明确要求单语包时才可省略。
+- `locales` **不能**替代 `code.i18n`；应用内文案仍走 `Tapp.i18n`。
+- 完整字段与回退链见 [MANIFEST · 多语言名称与描述](./MANIFEST.md#多语言名称与描述locales)。
+
+示例（顶层中文兜底 + 宿主多语言目录文案）：
+
+```json
+{
+  "name": "番茄钟",
+  "description": "专注计时与休息提醒",
+  "locales": {
+    "en-US": { "name": "Pomodoro", "description": "Focus timer and break reminders" },
+    "ja-JP": { "name": "ポモドーロ", "description": "集中タイマーと休憩リマインダー" }
+  }
+}
+```
+
 ## 生命周期
 
 ```javascript
@@ -54,13 +84,47 @@ await Tapp.storage.getAll();
 await Tapp.storage.clear();
 ```
 
-翻译资源通过 `code.i18n` 提供；Page、Widget 与 core 统一使用同步的 `Tapp.i18n.t()`。
-每个语言表既可使用 `{"app.title": "..."}` 这种扁平点号键，也可使用嵌套对象；SDK
-优先匹配完整键，再按点号读取嵌套路径。不要臆造其他 i18n SDK，也不要直接读取内部的
-`window._TAPP_I18N`。
+应用内翻译资源通过 `code.i18n` 提供；Page、Widget 与 core 统一使用同步的
+`Tapp.i18n.t()`。每个语言表既可使用 `{"app.title": "..."}` 这种扁平点号键，也可使用
+嵌套对象；SDK 优先匹配完整键，再按点号读取嵌套路径。不要臆造其他 i18n SDK，也不要
+直接读取内部的 `window._TAPP_I18N`。
+
+宿主列表/商店标题不要只靠 `Tapp.i18n`：请同时写好 `manifest.name` /
+`manifest.description` 与可选 `manifest.locales`（见上一节）。
 
 `Tapp.storage` 在正式运行中是 `(current_user_id, tapp_id)` 的用户私有空间；Playground
 预览只提供当前标签页内存实现。不要用 storage 模拟安装级设置或公开数据。
+
+## 正式安装才可用（预览不要依赖）
+
+临时预览 **不签发 Runtime Grant**。`playgroundPreviewHandlers.ts` 实际注册的大致是：
+内存 `storage` / `settings`、`ui` 主题·语言·确认·全屏（通知禁用）、`context.*` 预览桩、
+`assets.list`（空）/`assets.get`（失败）、`api.list`（空）/`api.execute`（禁用）。
+
+下列能力在完整 SDK 里可能有方法名，但 **Playground 预览中不可用**（失败或明确错误）：
+
+- **Federation** 全套（`uploadMedia` → `createNote` 附件 URL、Channel/Room/Ring 等）
+- **platform** / **report** / **brewList** / **tappList**（含商店安装）
+- **dataExchange**、**ai**、**agent**、**event** Broker、**scheduler**、宿主 **media** 控制
+- 声明式 **`Tapp.api` 执行**（预览仅 list 空表）
+- **`Tapp.background.require`**（预览无后台常驻；勿空写 `backgroundRequirements`）
+
+生成安装后才有意义的能力时：
+
+- 可在 Manifest 声明真实权限与正式运行时代码（见 [API_REFERENCE](./API_REFERENCE.md)）；
+- 预览只验证 UI、生命周期、主题、`code.i18n`、`manifest.locales` 与内存 storage；
+- **不要**臆造预览 mock 联邦 / Brew / platform API。
+
+Bridge 默认 payload 约 **1 MiB**；正式运行特例：`file.download` 内容 **10 MiB**，
+`federation.uploadMedia` 对齐图片 10 MiB / 视频 50 MiB 的 base64 预算（见
+[SANDBOX](./SANDBOX.md#payload-大小)）。预览侧勿假设可上传大媒体。
+
+## Manifest 质量字段（可选但推荐）
+
+- **`locales`**：见上文；默认 `en-US` + `ja-JP`。
+- **`iconSvg`**：生产包优先内联 SVG（优先于 emoji `icon`）；简单 demo 可用 emoji。
+- **`minSystemVersion`**：可选语义版本；声明后安装/更新会与宿主 Myriad 版本比较并拒绝过旧实例。新能力依赖新 runtime 时建议填写。
+- **`backgroundRequirements`**：仅当 `code.core` 真正依赖后台常驻（如 scheduler/sync）时填写；勿为「好看」空挂。
 
 ## 安全与兼容性
 
