@@ -1885,7 +1885,6 @@ export const jaJP: TranslationKeys = {
     discordReach: 'リーチ',
     discordConnections: '連携',
     discordMembers: 'メンバー',
-    discordOnline: 'オンライン',
     discordRoleOwner: 'オーナー',
     discordRoleAdmin: '管理者',
     discordRoleMod: 'モデレーター',

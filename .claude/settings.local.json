@@ -109,7 +109,8 @@
       "Bash(echo \"---exit $?---\")",
       "Bash(awk '/UpdaterPanel|updaterApi/,/^$/')",
       "Bash(pnpm exec *)",
-      "Bash(grep -n \"let api_router\\\\|^[[:space:]]*\\\\.layer\\\\b\\\\|^[[:space:]]*;[[:space:]]*$\" /Users/haru/Documents/GitHub/Myriad/backend/src/main.rs)"
+      "Bash(grep -n \"let api_router\\\\|^[[:space:]]*\\\\.layer\\\\b\\\\|^[[:space:]]*;[[:space:]]*$\" /Users/haru/Documents/GitHub/Myriad/backend/src/main.rs)",
+      "Bash(xargs -I{} basename {})"
     ],
     "deny": [],
     "ask": []

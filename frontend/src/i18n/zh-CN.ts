@@ -1809,7 +1809,6 @@ export const zhCN: TranslationKeys = {
     discordReach: '触达',
     discordConnections: '绑定',
     discordMembers: '成员',
-    discordOnline: '在线',
     discordRoleOwner: '服主',
     discordRoleAdmin: '管理员',
     discordRoleMod: '协管',

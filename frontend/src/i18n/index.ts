@@ -1730,7 +1730,6 @@ export interface TranslationKeys {
     discordReach: string
     discordConnections: string
     discordMembers: string
-    discordOnline: string
     discordRoleOwner: string
     discordRoleAdmin: string
     discordRoleMod: string

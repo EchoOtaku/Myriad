@@ -4025,6 +4025,19 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
     }
   }, [showOverview, flipItems.length])
 
+  // 头部第二行：@用户名与账号徽章共用一行，定时轮换（徽章太少不值得单占一行）
+  const hasHandle = Boolean(profile.username || profile.nitro)
+  const headerSlides = (hasHandle ? 1 : 0) + badges.length
+  const [headerIdx, setHeaderIdx] = useState(0)
+  useEffect(() => {
+    if (showOverview && headerSlides > 1) {
+      const timer = setInterval(() => {
+        setHeaderIdx((i) => (i + 1) % headerSlides)
+      }, 3200)
+      return () => clearInterval(timer)
+    }
+  }, [showOverview, headerSlides])
+
   // 详情态：左下角药丸承载当前服务器名；概览态药丸保持纯图标
   useEffect(() => {
     if (!showOverview && flipItems[slideIndex % flipItems.length]) {
@@ -4064,12 +4077,12 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
                 'linear-gradient(to left, rgba(0,0,0,1) 35%, transparent 88%)',
             }}
           >
-            <div className="absolute inset-y-0 left-0 right-0 flex items-start pt-[42px] justify-end pr-3 -rotate-6">
+            <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-end pr-3 -rotate-6">
               {iconWall.map((g: any, i: number) => (
                 <motion.div
                   key={g.id || i}
-                  className="w-9 h-9 shrink-0 -ml-2 rounded-2xl overflow-hidden shadow-md ring-2 ring-white/80 dark:ring-black/60"
-                  style={{ y: i % 2 === 0 ? -8 : 10 }}
+                  className="w-10 h-10 shrink-0 -ml-2 rounded-2xl overflow-hidden shadow-md ring-2 ring-white/80 dark:ring-black/60"
+                  style={{ y: i % 2 === 0 ? -9 : 11 }}
                   initial={{ x: 40, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   transition={{
@@ -4081,7 +4094,7 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
                   <DiscordGuildIcon
                     icon={g.icon}
                     name={String(g.name || g.title || '?')}
-                    size={36}
+                    size={40}
                   />
                 </motion.div>
               ))}
@@ -4117,45 +4130,51 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
               <div className="text-[11px] font-bold text-gray-900 dark:text-gray-100 leading-tight truncate">
                 {displayName}
               </div>
-              <div className="flex items-center gap-1">
-                {profile.username && (
-                  <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400 truncate">
-                    @{profile.username}
-                  </span>
-                )}
-                {profile.nitro && (
-                  <span className="text-[8px] px-1 rounded bg-[#5865F2]/15 text-[#5865F2] font-bold shrink-0">
-                    {profile.nitro}
-                  </span>
-                )}
-              </div>
+              {headerSlides > 0 && (
+                <div className="relative h-[15px] overflow-hidden">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={headerIdx % headerSlides}
+                      className="flex items-center gap-1 min-w-0"
+                      initial={{ y: 8, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: -8, opacity: 0 }}
+                      transition={{ duration: 0.28, ease: 'easeOut' }}
+                    >
+                      {hasHandle && headerIdx % headerSlides === 0 ? (
+                        <>
+                          {profile.username && (
+                            <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400 truncate">
+                              @{profile.username}
+                            </span>
+                          )}
+                          {profile.nitro && (
+                            <span className="text-[8px] px-1 rounded bg-[#5865F2]/15 text-[#5865F2] font-bold shrink-0">
+                              {profile.nitro}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-[9px] font-medium text-[#5865F2] dark:text-[#949CF7] truncate">
+                          {
+                            badges[
+                              (headerIdx % headerSlides) - (hasHandle ? 1 : 0)
+                            ]
+                          }
+                        </span>
+                      )}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
           </motion.div>
-
-          {/* 徽章行 */}
-          {badges.length > 0 && (
-            <motion.div
-              className="mt-1 flex flex-wrap gap-1 max-w-[62%]"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.25 }}
-            >
-              {badges.map((b) => (
-                <span
-                  key={b}
-                  className="text-[8px] px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-300 truncate"
-                >
-                  {b}
-                </span>
-              ))}
-            </motion.div>
-          )}
 
           {/* 主角：AI 社区人格 */}
           {(data?.vibe || data?.role_profile) && (
             <div className="flex-1 min-h-0 flex items-center pt-1.5 pb-4">
               <motion.div
-                className="max-w-[64%]"
+                className="max-w-[68%]"
                 initial={{ y: 8, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ duration: 0.4, delay: 0.2 }}
@@ -4163,11 +4182,6 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
                 <span className="block text-[16px] font-black text-gray-900 dark:text-gray-100 leading-snug line-clamp-2 text-balance">
                   {data?.vibe || data?.role_profile}
                 </span>
-                {data?.vibe && data?.role_profile && (
-                  <span className="mt-1 inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#5865F2]/15 text-[#5865F2]">
-                    {data.role_profile}
-                  </span>
-                )}
               </motion.div>
             </div>
           )}
@@ -4234,31 +4248,19 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
         transition={CONTENT_FADE_TRANSITION}
         className="relative h-full w-full overflow-hidden"
       >
-        <div
-          className="absolute inset-0"
-          style={{
-            background: `radial-gradient(circle at 76% 46%, ${DISCORD_BLURPLE}26, transparent 74%)`,
-          }}
-        />
-        {/* 服务器图标：贴右缘，径向渐隐 */}
+        {/* 服务器图标：右侧直接展示 */}
         <motion.div
-          className="absolute inset-y-0 right-0 w-[52%] flex items-center justify-center"
-          style={{
-            maskImage:
-              'radial-gradient(circle at 100% 50%, rgba(0,0,0,1) 42%, transparent 76%)',
-            WebkitMaskImage:
-              'radial-gradient(circle at 100% 50%, rgba(0,0,0,1) 42%, transparent 76%)',
-          }}
+          className="absolute inset-y-0 right-0 flex items-center pr-4"
           initial={{ opacity: 0, x: 14 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
         >
-          <div className="w-24 h-24 rounded-3xl overflow-hidden translate-x-[10%] shadow-xl">
+          <div className="h-[52%] max-h-28 aspect-square rounded-3xl overflow-hidden shadow-xl">
             <DiscordGuildIcon icon={item.icon} name={guildName} size={96} />
           </div>
         </motion.div>
-        {/* 前景：角色徽章 + 规模 */}
-        <div className="relative z-10 h-full p-3 pb-12 flex flex-col">
+        {/* 前景：角色徽章 + 规模，整块垂直居中与右侧图标平衡 */}
+        <div className="relative z-10 h-full p-3 pb-12 flex flex-col justify-center">
           {badge && (
             <motion.span
               className="self-start text-[10px] font-bold px-2 py-0.5 rounded-full text-white shadow-sm"
@@ -4291,13 +4293,6 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
                 {formatCompactNumber(Number(item.member_count))}
               </span>
               <span>{t.reportCardWidget.discordMembers}</span>
-              {Number(item.presence_count) > 0 && (
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#3BA55D]" />
-                  {formatCompactNumber(Number(item.presence_count))}{' '}
-                  {t.reportCardWidget.discordOnline}
-                </span>
-              )}
             </motion.div>
           )}
         </div>

@@ -1902,7 +1902,6 @@ export const enUS: TranslationKeys = {
     discordReach: 'reach',
     discordConnections: 'links',
     discordMembers: 'members',
-    discordOnline: 'online',
     discordRoleOwner: 'Owner',
     discordRoleAdmin: 'Admin',
     discordRoleMod: 'Mod',
