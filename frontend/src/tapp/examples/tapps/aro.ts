@@ -486,8 +486,7 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 
 /* ===== Feed Layout (X-style sidebar + content) =====
    Two columns only: [sidebar | main]. Main fills remaining width after sidebar
-   (no border-right phantom third column). Stream measure is capped on
-   .feed-content / .feed-empty, not on .feed-main itself. */
+   (no border-right phantom third column). Content stretches naturally inside main. */
 .feed-layout{display:flex;flex:1 1 auto;width:100%;max-width:none;min-height:0;min-width:0;overflow:hidden}
 /* Feed Sidebar */
 .feed-sidebar{width:232px;flex:0 0 232px;flex-shrink:0;border-right:1px solid rgba(128,128,128,.08);display:flex;flex-direction:column;padding:14px 12px;overflow:hidden}
@@ -622,9 +621,9 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 /* Follow dialog form (reuses create-dialog shell) */
 .feed-follow-input,.create-form #feed-follow-input{width:100%}
 #feed-follow-btn:disabled{opacity:.5;cursor:not-allowed}
-/* Feed content / empty — readable stream measure (~720px), left under header */
-.feed-content{flex:1 1 auto;min-height:0;width:100%;max-width:720px;box-sizing:border-box}
-.feed-empty{min-height:280px;padding:56px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-secondary,#536471);font-size:13px;line-height:1.5;width:100%;max-width:720px;box-sizing:border-box}
+/* Feed content / empty — fill main column naturally (host shell caps overall width) */
+.feed-content{flex:1 1 auto;min-height:0;width:100%;max-width:none;box-sizing:border-box}
+.feed-empty{min-height:280px;padding:56px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text-secondary,#536471);font-size:13px;line-height:1.5;width:100%;max-width:none;box-sizing:border-box}
 .feed-main.feed-empty-visible .feed-content{display:none}
 .feed-main.feed-empty-visible .feed-empty{display:flex;flex:1;min-height:0}
 .aro-empty-mark{width:52px;height:52px;border-radius:16px;background:rgba(128,128,128,.06);color:var(--text-secondary,#536471);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -657,7 +656,6 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .feed-item-handle{font-size:13px;color:var(--text-secondary,#8b98a5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .feed-item-sep{font-size:13px;color:var(--text-secondary,#c0c0c0)}
 .feed-item-time{font-size:12px;color:var(--text-secondary,#8b98a5);white-space:nowrap;flex-shrink:0;margin-left:auto}
-/* Measure follows .feed-content (~720px); no separate ultra-wide text column */
 .feed-item-text{font-size:14.5px;line-height:1.55;color:var(--text-primary,#1a1a1a);margin-top:6px;white-space:pre-wrap;overflow-wrap:break-word;max-width:100%}
 .feed-item-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .feed-item-actions{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
