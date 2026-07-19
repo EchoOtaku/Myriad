@@ -2687,31 +2687,45 @@ async function loadUserRole() {
   state.isAdmin = false;
   var resolved = false;
 
+  function isGuestUsername(name) {
+    var u = String(name || '').trim().toLowerCase();
+    return !u || u.indexOf('guest:') === 0 || u === 'guest' || u === 'anonymous';
+  }
+
+  function isGuestUserId(id) {
+    var s = id != null ? String(id).trim() : '';
+    if (!s) return true;
+    if (s === 'guest' || s === '0' || s === '-1') return true;
+    // user_-123 / user_--1 style guest subjects
+    if (/^user_?-?\\d+$/i.test(s)) {
+      var n = parseInt(s.replace(/^user_?/i, ''), 10);
+      return !Number.isFinite(n) || n <= 0;
+    }
+    if (/^-\\d+$/.test(s)) return true;
+    return false;
+  }
+
+  function applyMember(isAdminUser) {
+    state.isAdmin = !!isAdminUser;
+    state.userRole = isAdminUser ? 'admin' : 'user';
+    state.isGuest = false;
+    resolved = true;
+  }
+
   if (Tapp.user && typeof Tapp.user.getRole === 'function') {
     try {
       var role = await Tapp.user.getRole();
       if (role != null && String(role).trim() !== '') {
         var roleNorm = String(role).trim().toLowerCase();
         if (roleNorm === 'admin' || roleNorm === 'user') {
-          state.userRole = roleNorm;
-          state.isGuest = false;
-          state.isAdmin = roleNorm === 'admin';
-          resolved = true;
+          applyMember(roleNorm === 'admin');
         }
-        // roleNorm === 'guest' (or other): soft — do NOT set resolved; verify via isAdmin/getUser
+        // roleNorm === 'guest' (or other): soft — verify via getUser / isAdmin
       }
-    } catch (e) { /* fall through to isAdmin / getUser */ }
+    } catch (e) { /* fall through */ }
   }
 
-  if (!resolved && Tapp.user && typeof Tapp.user.isAdmin === 'function') {
-    try {
-      state.isAdmin = !!(await Tapp.user.isAdmin());
-      state.userRole = state.isAdmin ? 'admin' : 'user';
-      state.isGuest = false;
-      resolved = true;
-    } catch (e) { /* fall through to getUser */ }
-  }
-
+  // Prefer getUser before isAdmin: isAdmin(false) is ambiguous (guest OR non-admin member).
   if (!resolved) {
     try {
       var user = null;
@@ -2720,23 +2734,25 @@ async function loadUserRole() {
       }
       if (user && typeof user === 'object') {
         var rawRole = user.role != null ? String(user.role).trim().toLowerCase() : '';
-        if (rawRole === 'guest') {
-          // explicit guest on context — stay guest
-        } else {
-          var isAdminUser = !!(user.isAdmin === true || rawRole === 'admin');
-          var isRoleUser = rawRole === 'user' || rawRole === 'admin';
-          var markedAuth = user.authenticated === true;
-          var id = user.id != null ? String(user.id).trim() : '';
-          var username = user.username != null ? String(user.username).trim() : '';
-          var anonId = !id || id === 'guest' || id === '0' || id === '-1' || /^user_?-\\d+$/i.test(id);
-          var hasIdentity = !anonId || !!username;
-          if (isRoleUser || isAdminUser || markedAuth || (hasIdentity && !anonId)) {
-            state.isAdmin = isAdminUser;
-            state.userRole = isAdminUser ? 'admin' : 'user';
-            state.isGuest = false;
-            resolved = true;
-          }
+        var username = user.username != null ? String(user.username).trim() : '';
+        var id = user.id != null ? String(user.id).trim() : '';
+        var isAdminUser = !!(user.isAdmin === true || rawRole === 'admin');
+        var isExplicitGuest = rawRole === 'guest' || isGuestUsername(username) || isGuestUserId(id);
+        if (isAdminUser) {
+          applyMember(true);
+        } else if (!isExplicitGuest && (rawRole === 'user' || user.authenticated === true || (!isGuestUserId(id) && username))) {
+          applyMember(false);
         }
+        // else remain guest
+      }
+    } catch (e) { /* remain guest */ }
+  }
+
+  // Last resort: isAdmin true only. Do NOT treat isAdmin false as member.
+  if (!resolved && Tapp.user && typeof Tapp.user.isAdmin === 'function') {
+    try {
+      if (await Tapp.user.isAdmin()) {
+        applyMember(true);
       }
     } catch (e) { /* remain guest */ }
   }
@@ -6200,9 +6216,25 @@ async function loadFeedSubTab() {
 
   try {
     if (sub === 'timeline') {
-      var res = typeof Tapp.federation.getFeed === 'function'
-        ? await Tapp.federation.getFeed()
-        : await Tapp.federation.getTimeline();
+      var res = null;
+      var feedErr = null;
+      if (Tapp.federation && typeof Tapp.federation.getFeed === 'function') {
+        try {
+          res = await Tapp.federation.getFeed();
+        } catch (eFeed) {
+          feedErr = eFeed;
+          console.warn('[Aro] getFeed failed, trying getTimeline', eFeed);
+        }
+      }
+      if (!res && Tapp.federation && typeof Tapp.federation.getTimeline === 'function') {
+        try {
+          res = await Tapp.federation.getTimeline();
+        } catch (eTl) {
+          if (!feedErr) feedErr = eTl;
+          else console.warn('[Aro] getTimeline also failed', eTl);
+        }
+      }
+      if (!res && feedErr) throw feedErr;
       state.timeline = (res && res.items) || [];
     } else if (sub === 'following') {
       var res = await Tapp.federation.getFollowing();
@@ -6219,6 +6251,8 @@ async function loadFeedSubTab() {
     state.feedError = null;
   } catch (e) {
     if (state.feedSubTab !== sub) return;
+    // Mark loaded so UI never sticks on blank/skeleton; show error empty state.
+    state.feedLoaded[sub] = true;
     state.feedError = getErrorMessage(e) || lang.feedLoadFail || lang.disconnected || '加载失败';
     console.error('[Aro] loadFeedSubTab error:', e);
   } finally {
@@ -6333,10 +6367,17 @@ function getFeedEmptyText(sub) {
 
 function showFeedEmpty(message, kind) {
   var empty = $('feed-empty');
-  if (!empty) return;
+  if (!empty) {
+    console.warn('[Aro] #feed-empty missing');
+    return;
+  }
   var main = empty.closest('.feed-main');
   if (main) main.classList.add('feed-empty-visible');
-  empty.style.display = '';
+  // Inline style on page.html is display:none — force visible flex layout.
+  empty.style.display = 'flex';
+  empty.style.visibility = 'visible';
+  empty.hidden = false;
+  empty.removeAttribute('hidden');
   empty.classList.toggle('feed-empty-error', kind === 'error');
   empty.classList.toggle('feed-empty-loading', kind === 'loading');
   // Always show title + body for default empty (not only on error)
@@ -6418,15 +6459,17 @@ function renderFeedContent() {
     return;
   }
 
-  if (state.feedError && !hasLoaded) {
+  if (state.feedError) {
     content.innerHTML = '';
+    if (empty) empty.style.display = 'none';
     showFeedEmpty(state.feedError, 'error');
     return;
   }
 
   if (!items || items.length === 0) {
     content.innerHTML = '';
-    showFeedEmpty(getFeedEmptyText(sub), 'empty');
+    // Prefer empty UI even before first load completes (avoids pure white main).
+    showFeedEmpty(getFeedEmptyText(sub), hasLoaded ? 'empty' : (state.feedLoading ? 'loading' : 'empty'));
     return;
   }
 
@@ -7048,7 +7091,7 @@ function isValidFederationMediaUrl(url) {
     var u = new URL(trimmed);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
     if (u.pathname.indexOf('..') >= 0) return false;
-    var m = u.pathname.match(/^\/media\/federation\/(\d+)\/([A-Za-z0-9._-]+)$/);
+    var m = u.pathname.match(/^/media/federation/(d+)/([A-Za-z0-9._-]+)$/);
     return !!(m && m[1] && m[2]);
   } catch (e) {
     return false;
@@ -8061,6 +8104,25 @@ const PAGE_MOD_INDEX = `\
       } catch (e2) { /* ignore */ }
     }
   }
+  // Last resort: never leave avatar as bare "?" with empty name when we have something.
+  try {
+    var nameEl = document.querySelector('[data-feed-display-name]');
+    var av = document.querySelector('[data-feed-avatar]');
+    if (nameEl && !String(nameEl.textContent || '').trim()) {
+      var fallbackName = (state.identity && (state.identity.display_name || state.identity.username))
+        || (state.isGuest ? (lang.guest || '访客') : (lang.me || '我'));
+      nameEl.textContent = fallbackName;
+      if (av && (!av.innerHTML || av.textContent === '?' || av.textContent.trim() === '?')) {
+        av.textContent = (fallbackName[0] || '?').toUpperCase();
+      }
+      var navName = $('nav-feed-label');
+      if (navName && !String(navName.textContent || '').trim()) navName.textContent = fallbackName;
+      var navAv = $('nav-feed-avatar');
+      if (navAv && (navAv.textContent || '').trim() === '?') {
+        navAv.textContent = (fallbackName[0] || '?').toUpperCase();
+      }
+    }
+  } catch (e3) { /* ignore */ }
   renderFederationIdentity();
   applyAdminControls();
   applyRoleControls();

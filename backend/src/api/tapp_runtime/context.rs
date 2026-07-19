@@ -50,7 +50,14 @@ pub async fn get_context_user(
 
     let connected_platforms = get_available_platforms().await;
     let is_current_admin = claims.is_admin && ensure_current_admin(&claims).await.is_ok();
-    let role = if is_current_admin { "admin" } else { "user" };
+    // Guest sessions use negative subject ids — never report them as "user".
+    let role = if is_current_admin {
+        "admin"
+    } else if user_id <= 0 {
+        "guest"
+    } else {
+        "user"
+    };
     let mut display_name: Option<String> = None;
     let mut avatar_url: Option<String> = None;
 

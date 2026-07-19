@@ -113,10 +113,12 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
       setTapp(null)
       setCode(null)
       try {
-        await runtime.waitForSync()
+        // Force a fresh catalog sync so userRole matches the logged-in viewer
+        // (stale guest role from a public list freezes soft-guest UX).
+        await runtime.syncFromBackend(true)
         if (cancelled) return
 
-        const instance = runtime.getTapp(tappId)
+        let instance = runtime.getTapp(tappId)
         if (!instance) {
           setError(t.tapp.appNotExist)
           setLoading(false)
@@ -141,6 +143,9 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
           await runtime.startTapp(tappId)
         }
         if (cancelled) return
+
+        // Re-read after start/sync — sandbox must not keep a pre-start guest instance.
+        instance = runtime.getTapp(tappId) || instance
 
         setTapp(instance)
         setCode(tappCode)
