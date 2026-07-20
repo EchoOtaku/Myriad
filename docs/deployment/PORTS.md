@@ -35,7 +35,7 @@ else goes to the frontend SPA). Match path-only (no query):
 WebSocket: `proxy` detects `Upgrade: websocket` and bridges upgrades for any
 backend-routed path (in practice federation WS under `/api/federation/*/ws`).
 
-### Federation file transfer (Aro chat file-meta) via proxy
+### Federation file transfer (chat file-meta) via proxy
 
 These live under **`/api/*`**, so production Myriad `proxy` already routes them to
 backend (no extra allowlist entry). Operators still need correct **body size** and
@@ -57,7 +57,7 @@ small chat messages still work.
 Outer reverse proxies (Nginx/Caddy/CDN) must either pass the **whole site** to
 Myriad `proxy`, or explicitly allowlist the same ActivityPub **and media** paths
 above. Proxying only `/api` breaks remote WebFinger/inbox federation **and**
-Aro Note attachment images/videos (upload may still succeed via `/api/federation/media`,
+federation Note attachment images/videos (upload may still succeed via `/api/federation/media`,
 but public GET `/media/federation/{userId}/{file}` never reaches backend).
 
 Quick smoke (after deploy, replace host + a real uploaded file path):

@@ -64,7 +64,7 @@ export interface TimelineItem {
   bookmark_count?: number
   announce_count?: number
   reply_count?: number
-  /** ISO timestamp when the activity was received (preferred by Aro timeAgo) */
+  /** ISO timestamp when the activity was received (preferred for federated timeAgo) */
   created_at?: string
   received_at?: string
   timestamp?: string
@@ -186,13 +186,13 @@ export interface PublishedItem {
   activity_id: string
   visibility: string
   published_at: string
-  /** Plain-text body/title preview from joined Create object (Aro 已发布). */
+  /** Plain-text body/title preview from joined Create object (federated published list). */
   content_preview?: string
   /** AP object name / report title when present. */
   title?: string
   /** AP summary when present. */
   summary?: string
-  /** Note Image/Video attachments for Aro 已发布 media preview. */
+  /** Note Image/Video attachments for federated published media preview. */
   attachments?: PublishedAttachment[]
 }
 

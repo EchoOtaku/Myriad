@@ -3133,7 +3133,7 @@ export const zhCN: TranslationKeys = {
     sourceHeartbeat: '定时任务',
     sourceMcp: 'MCP 服务',
     sourceSystem: '系统',
-    sourceAro: 'Aro',
+    sourceAro: '联邦',
     settingsDesc: '控制每个来源和具体事件是否通知，以及通知的展示方式',
   },
 }

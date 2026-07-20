@@ -47,7 +47,7 @@ const SOURCE_TEXT: Record<
     brew: { title: 'Brew', description: '订阅源新内容与连续抓取错误' },
     tapp: { title: 'Tapp', description: 'Tapp 主动消息、警告和任务错误' },
     updater: { title: '系统更新', description: '更新、回滚及人工恢复状态' },
-    federation: { title: 'Aro', description: '联邦消息、关注和邀请' },
+    federation: { title: '联邦', description: '联邦消息、关注和邀请' },
     system: { title: '系统', description: 'Myriad 自身的重要信息' },
   },
   'en-US': {
@@ -73,7 +73,7 @@ const SOURCE_TEXT: Record<
       description: 'Update, rollback and recovery status',
     },
     federation: {
-      title: 'Aro',
+      title: 'Federation',
       description: 'Federated messages, follows and invitations',
     },
     system: {
@@ -97,7 +97,7 @@ const SOURCE_TEXT: Record<
       title: 'システム更新',
       description: '更新、ロールバック、復旧状態',
     },
-    federation: { title: 'Aro', description: '連合メッセージ、フォロー、招待' },
+    federation: { title: '連合', description: '連合メッセージ、フォロー、招待' },
     system: { title: 'システム', description: 'Myriad からの重要なお知らせ' },
   },
 }

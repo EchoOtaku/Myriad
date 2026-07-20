@@ -3274,7 +3274,7 @@ export const enUS: TranslationKeys = {
     sourceHeartbeat: 'Scheduled Task',
     sourceMcp: 'MCP Server',
     sourceSystem: 'System',
-    sourceAro: 'Aro',
+    sourceAro: 'Federation',
     settingsDesc:
       'Choose which sources and events notify you and how they are presented',
   },

@@ -42,7 +42,7 @@ client -> optional TLS entrypoint -> Myriad proxy:${HTTP_PORT:-80}
 | `/users/*` | Actor / outbox / followers / avatar |
 | `/media/federation/*` | **Note 附件媒体（图片/视频公开 GET）** |
 
-完整表见 [PORTS.md](../deployment/PORTS.md)。漏掉 `/media/federation/*` 时，Aro 发帖可成功，但时间线图片会空白（请求落到 SPA）。
+完整表见 [PORTS.md](../deployment/PORTS.md)。漏掉 `/media/federation/*` 时，联邦发帖可成功，但时间线图片会空白（请求落到 SPA）。
 只应信任实际代理节点，并在防火墙中限制 `HTTP_PORT` 不能被客户端绕过代理直连。
 
 ### Docker + 宿主反向代理（常见天气定位错误）

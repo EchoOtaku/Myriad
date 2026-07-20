@@ -97,9 +97,11 @@ function frame(ts) {
 
 ## 官方示例
 
-内置示例 `com.myriad.mini-game`（Orb Catcher）演示 Canvas 2D、assets、
-pause/resume 与可选包内 wav。可从 Tapp 列表安装内置示例体验。
+内置示例仅 **helloWorld**（`com.myriad.hello-world`）。社交客户端 **Aro**、
+联机 **斗地主** 等完整应用发布在官方
+[tapp-store](https://github.com/Myriad-You/tapp-store)
+（`apps/com.myriad.aro`、`apps/com.myriad.doudizhu`），经商店索引安装。
 
 ## 后续（非第一版）
 
-blob Worker、更大资源预算、WebGPU opt-in、受控联机房间等单独设计，不改变默认沙箱哲学。
+blob Worker、更大资源预算、WebGPU opt-in 等单独设计，不改变默认沙箱哲学。

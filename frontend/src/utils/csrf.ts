@@ -8,6 +8,9 @@ import { API_URL } from '../config'
 const CSRF_TOKEN_KEY = 'csrf_token'
 const CSRF_TOKEN_HEADER = 'X-CSRF-Token'
 
+/** 合流并发请求，避免多个调用方各打一次 /api/csrf-token */
+let inflight: Promise<string | null> | null = null
+
 /**
  * 从服务器获取 CSRF Token
  * ✅ 安全修复 P0: Token 由服务器生成并验证，防止伪造
@@ -21,7 +24,9 @@ async function fetchCSRFTokenFromServer(): Promise<string | null> {
 
     if (!response.ok) {
       if (response.status === 401) {
-        console.warn('Failed to fetch CSRF token: Not authenticated')
+        // 游客的正常状态，不是故障：后端没有 session 可绑定 token，
+        // csrf_middleware 也会跳过游客的写请求。
+        console.debug('[csrf] no session — CSRF token not applicable (guest)')
       } else {
         console.warn('Failed to fetch CSRF token from server:', response.status)
       }
@@ -57,8 +62,21 @@ export async function getCSRFToken(
     }
   }
 
-  // 从服务器获取新 Token
-  const token = await fetchCSRFTokenFromServer()
+  // 从服务器获取新 Token。
+  // 非强制请求之间合流，避免多个调用方各打一次；forceRefresh 必须自己发一次——
+  // 复用可能是会话变化之前发出的 inflight，正好违背 force 的语义
+  // （403 重试、登录后刷新都靠它）。
+  let request: Promise<string | null>
+  if (forceRefresh) {
+    request = fetchCSRFTokenFromServer()
+  } else {
+    inflight ||= fetchCSRFTokenFromServer().finally(() => {
+      inflight = null
+    })
+    request = inflight
+  }
+
+  const token = await request
   if (token) {
     sessionStorage.setItem(CSRF_TOKEN_KEY, token)
   }

@@ -396,7 +396,7 @@ export async function installFromStore(
 
 /**
  * Install from a peer-shared / playground direct package (source=direct).
- * Used by Aro chat share install and custom/example tapps not in the store.
+ * Used by chat share install and custom/example tapps not in the store.
  */
 export async function installDirect(
   packagePayload: DirectInstallPackage,

@@ -50,20 +50,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false) // 初始不加载
   const [hasChecked, setHasChecked] = useState(false) // 是否已检查过
 
-  const resetTappSubjectState = useCallback(() => {
-    // tapp runtime 动态加载：Auth 上下文是全站首屏必经之路，静态 import 会把
-    // runtime/调度器拖进每个页面的关键路径。身份切换是低频操作，模块已加载时
-    // import() 命中缓存（微任务级完成，先于任何后续网络往返）；
-    // 从未加载过时 reset 本身也没有状态可清。
-    void Promise.all([
-      import('../tapp/runtime/TappScheduler'),
-      import('../tapp/runtime/TappRuntimeGrant'),
-      import('../tapp/runtime/TappRuntime'),
-    ]).then(([{ TappScheduler }, { TappRuntimeGrant }, { TappRuntime }]) => {
-      TappScheduler.reset()
-      TappRuntimeGrant.destroyAll()
-      TappRuntime.reset()
-    })
+  // tapp runtime 动态加载：Auth 上下文是全站首屏必经之路，静态 import 会把
+  // runtime/调度器拖进每个页面的关键路径。身份切换是低频操作，多付一次
+  // chunk 加载换取首屏不含 runtime。
+  //
+  // 必须 await 后再拉新身份：reset 会 destroy 所有 TappRuntimeGrant，而
+  // destroy 是不可逆的（getToken 之后永远抛 'Tapp runtime has already
+  // stopped'）。若 reset 落在新会话之后，刚挂载的 tapp 会被打成 guest——
+  // 宿主 user.getRole / context.getUser 都吞掉该异常并回落 guest，
+  // 表现为联邦客户端加载不出用户信息。
+  const resetTappSubjectState = useCallback(async () => {
+    const [{ TappScheduler }, { TappRuntimeGrant }, { TappRuntime }] =
+      await Promise.all([
+        import('../tapp/runtime/TappScheduler'),
+        import('../tapp/runtime/TappRuntimeGrant'),
+        import('../tapp/runtime/TappRuntime'),
+      ])
+    TappScheduler.reset()
+    TappRuntimeGrant.destroyAll()
+    TappRuntime.reset()
   }, [])
 
   const checkAuth = useCallback(async () => {
@@ -100,7 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isLoading])
 
   const logout = useCallback(() => {
-    resetTappSubjectState()
+    // 登出不必等待：清空身份后没有新 tapp 会以已登录状态挂载，且这里的 reset
+    // 与随后可能的登录 reset 共享同一份 import 缓存，解析顺序即调用顺序。
+    void resetTappSubjectState()
     setUser(null)
     setIsAuthenticated(false)
     setIsAdmin(false)
@@ -142,8 +149,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleAuthChange = (e: Event) => {
       const isAuth = (e as CustomEvent).detail?.isAuthenticated ?? false
       if (isAuth) {
-        resetTappSubjectState()
-        checkAuth()
+        // 先清空旧 subject 的 runtime，再拉新身份：否则 reset 可能落在
+        // 新会话的 tapp 挂载之后，把它们的 Grant destroy 掉。
+        // reset 失败（chunk 加载不到等）不能挡住 checkAuth——身份刷新是主线，
+        // 丢掉它比 tapp 状态没清干净严重得多。
+        void resetTappSubjectState()
+          .catch((error) => {
+            console.warn('[AuthContext] tapp runtime reset failed:', error)
+          })
+          .finally(checkAuth)
       } else {
         logout()
       }

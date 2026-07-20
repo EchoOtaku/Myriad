@@ -1,8 +1,8 @@
 /**
  * Pure role resolution for Aro guest-lock.
  *
- * Mirrors the loadUserRole() algorithm in
- * frontend/src/tapp/examples/tapps/aro.ts (PAGE_MOD_HELPERS):
+ * Mirrors the loadUserRole() algorithm in official Aro
+ * (tapp-store apps/com.myriad.aro page/helpers.js):
  *   1. getRole user/admin → use it
  *   2. getRole 'guest' is SOFT — host often returns `userRole || 'guest'`
  *      when instance.userRole is unset; verify via isAdmin / getUser

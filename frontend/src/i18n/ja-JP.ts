@@ -3266,7 +3266,7 @@ export const jaJP: TranslationKeys = {
     sourceHeartbeat: '定期タスク',
     sourceMcp: 'MCPサーバー',
     sourceSystem: 'システム',
-    sourceAro: 'Aro',
+    sourceAro: '連合',
     settingsDesc: '通知する送信元とイベント、および表示方法を管理します',
   },
 }

@@ -465,8 +465,16 @@ async function resolveLiveUserRole(
     if (role !== 'guest') {
       tappInstance.userRole = role
     }
-  } catch {
+  } catch (error) {
     // Keep catalog role; Aro still has its own getUser fail-open path.
+    // A dead Grant silently degrades every tapp to guest, so make that
+    // specific cause visible instead of it looking like a logged-out user.
+    if (error instanceof Error && /runtime has already stopped/.test(error.message)) {
+      console.warn(
+        '[Tapp] runtime grant was destroyed while the tapp is live — falling back to guest.',
+        tappInstance.id,
+      )
+    }
   }
   return role
 }

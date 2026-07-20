@@ -22,7 +22,7 @@ and color communicate status, so the UI does not need 28 unrelated pictograms.
 | `brew`       | Brew             | `/icons/notifications/brew.png`      |
 | `tapp`       | Tapp runtime     | `/icons/notifications/tapp.png`      |
 | `updater`    | System updater   | `/icons/notifications/updater.png`   |
-| `federation` | Aro              | `/icons/notifications/aro.png`       |
+| `federation` | Federation       | `/icons/notifications/aro.png`       |
 | `system`     | Myriad system    | `/icons/notifications/system.png`    |
 
 The reusable implementation lives in
@@ -42,7 +42,7 @@ These are intentionally broader than event keys so old history remains readable:
 | Brew | `brew_new_items`, `brew_source_error` |
 | Tapp | `tapp_notification` |
 | Updater | `updater_status` |
-| Aro | `federation_message`, `federation_follow`, `federation_invite` |
+| Federation | `federation_message`, `federation_follow`, `federation_invite` |
 | System | `system_info` |
 
 ## Configurable events
@@ -69,13 +69,13 @@ These are intentionally broader than event keys so old history remains readable:
 | Updater | `updater.failed` | Update/rollback failed |
 | Updater | `updater.needs_manual` | Recovery requires an operator |
 | Updater | `updater.unknown` | Backend could not confirm the final state |
-| Aro | `federation.channel_message` | Incoming direct message |
-| Aro | `federation.room_message` | Incoming room message |
-| Aro | `federation.new_follower` | Incoming follow |
-| Aro | `federation.follow_accepted` | Outgoing follow accepted |
-| Aro | `federation.channel_invite` | Incoming direct-channel request |
-| Aro | `federation.room_invite` | Incoming room invitation |
-| Aro | `federation.channel_accepted` | Direct channel accepted |
+| Federation | `federation.channel_message` | Incoming direct message |
+| Federation | `federation.room_message` | Incoming room message |
+| Federation | `federation.new_follower` | Incoming follow |
+| Federation | `federation.follow_accepted` | Outgoing follow accepted |
+| Federation | `federation.channel_invite` | Incoming direct-channel request |
+| Federation | `federation.room_invite` | Incoming room invitation |
+| Federation | `federation.channel_accepted` | Direct channel accepted |
 | System | `system.info` | Reserved for Myriad system information |
 
 `system.info` remains in the catalog for compatibility and future system notices; there is no
