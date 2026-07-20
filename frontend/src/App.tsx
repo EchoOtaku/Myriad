@@ -536,6 +536,28 @@ export function App() {
   console.debug('[App] App component rendering...')
   const [_isLayoutReady, setIsLayoutReady] = useState(false)
 
+  // 后台 Tapp 宿主延后到首屏渲染 + 入场动画之后再挂载：
+  // 它会拉起整个 tapp runtime（含沙箱/SDK 代码），不应与首屏抢主线程。
+  // 后台 Tapp 本身无 UI，晚几秒启动对用户不可见。
+  const [backgroundTappsReady, setBackgroundTappsReady] = useState(false)
+  useEffect(() => {
+    let idleId: number | null = null
+    const start = () => setBackgroundTappsReady(true)
+    const timerId = window.setTimeout(() => {
+      if ('requestIdleCallback' in window) {
+        idleId = requestIdleCallback(start, { timeout: 4000 })
+      } else {
+        start()
+      }
+    }, 3000)
+    return () => {
+      window.clearTimeout(timerId)
+      if (idleId !== null && 'cancelIdleCallback' in window) {
+        cancelIdleCallback(idleId)
+      }
+    }
+  }, [])
+
   // 在 React 应用挂载完成后标记就绪状态
   // 注意：这只是通知基本框架已加载，各个组件会独立控制自己的淡入显示
   useEffect(() => {
@@ -561,10 +583,12 @@ export function App() {
 
   // 预加载关键路由 - 在空闲时加载Library和Config
   useEffect(() => {
-    // 延迟2秒后预加载,确保首屏已渲染完成
+    // 延迟6秒后预加载：低端设备上首屏渲染 + 小组件数据请求 + 入场动画
+    // 可持续数秒，过早预取会与首屏抢主线程（preloadRoutes 内部还有
+    // requestIdleCallback 二次让路）
     const timer = setTimeout(() => {
       preloadCriticalRoutes()
-    }, 2000)
+    }, 6000)
 
     return () => clearTimeout(timer)
   }, [])
@@ -588,9 +612,11 @@ export function App() {
                     </AgentAccessGate>
                     <RouteLoader />
                     <CustomScrollbar />
-                    <Suspense fallback={null}>
-                      <TappBackgroundRunner />
-                    </Suspense>
+                    {backgroundTappsReady && (
+                      <Suspense fallback={null}>
+                        <TappBackgroundRunner />
+                      </Suspense>
+                    )}
                     <TappDataExchangeConsentHost />
                     <AppLayout>
                       <AppRoutes />

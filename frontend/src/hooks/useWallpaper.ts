@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { API_URL } from '../config'
 import { fetchJsonWithRetry } from '../utils/apiRetry'
+import { getUIConfigDeduped } from '../utils/requestDedup'
 import { loadImagePooled } from '../utils/objectPool'
 import { getCacheInfo } from '../utils/wallpaperColorCache'
 import {
@@ -358,15 +359,19 @@ async function applyWallpaperToDOM(
 async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
   console.debug('[Wallpaper] Fetching wallpaper config...')
   try {
-    const data = await fetchJsonWithRetry<any>(`${API_URL}/api/config/ui`, {
-      maxRetries: 3,
-      timeout: 10000,
-      onRetry: (error, attempt, delay) => {
-        console.warn(
-          `壁纸配置获取失败 (尝试 ${attempt}): ${error.message}. ${delay}ms后重试...`,
-        )
-      },
-    })
+    // 先走去重缓存（启动时与其他 config/ui 消费方共享同一次请求），
+    // 失败再退回带重试的独立请求，保证壁纸这一视觉核心的健壮性
+    const data = await getUIConfigDeduped().catch(() =>
+      fetchJsonWithRetry<any>(`${API_URL}/api/config/ui`, {
+        maxRetries: 3,
+        timeout: 10000,
+        onRetry: (error, attempt, delay) => {
+          console.warn(
+            `壁纸配置获取失败 (尝试 ${attempt}): ${error.message}. ${delay}ms后重试...`,
+          )
+        },
+      }),
+    )
 
     console.debug('[Wallpaper] Config received:', {
       wallpaper_url: data.wallpaper_url,

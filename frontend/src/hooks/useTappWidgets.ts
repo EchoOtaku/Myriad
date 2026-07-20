@@ -9,9 +9,33 @@ import type {
   WidgetType,
 } from '../components/WidgetGrid'
 import type { RegisteredWidget } from '../tapp/types'
-import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
-import { TappWidgetComponent } from '../components/widgets/TappWidget'
-import { getTappRuntime } from '../tapp/runtime'
+import {
+  createElement,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+
+// TappWidget 与其背后的整个 tapp runtime / 沙箱体系（生产 ~300KB）按需加载：
+// 布局中没有 Tapp 小组件时，Home 首屏不需要执行这部分代码。
+// 渲染点的 Suspense 由 WidgetGrid 提供。
+const TappWidgetComponent = lazy(() =>
+  import('../components/widgets/TappWidget').then((m) => ({
+    default: m.TappWidgetComponent,
+  })),
+)
+
+type TappRuntimeModule = typeof import('../tapp/runtime')
+
+let runtimeModulePromise: Promise<TappRuntimeModule> | null = null
+
+/** 共享的 runtime 模块动态加载（模块级缓存，多个调用方只加载一次） */
+function loadTappRuntimeModule(): Promise<TappRuntimeModule> {
+  runtimeModulePromise ||= import('../tapp/runtime')
+  return runtimeModulePromise
+}
 
 // Tapp WidgetSize 到 WidgetGrid WidgetSize 的映射
 const TAPP_SIZE_MAP: Record<string, WidgetSize> = {
@@ -86,7 +110,8 @@ function createTappWidgetType(widget: RegisteredWidget): TappWidgetType {
  * useTappWidgets Hook
  * 监听 Tapp Runtime 的 Widget 注册事件并返回可用的 Widget 类型
  *
- * 重要：会等待 TappRuntime 同步完成后再加载小组件
+ * 重要：会等待 TappRuntime 同步完成后再加载小组件。
+ * runtime 模块本身为动态加载，不进入 Home 首屏关键路径。
  */
 export function useTappWidgets(): {
   tappWidgets: TappWidgetType[]
@@ -98,27 +123,11 @@ export function useTappWidgets(): {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // 加载已注册的 Widgets（同步方法，需要确保 runtime 已同步）
-  const loadWidgetsSync = useCallback(() => {
-    try {
-      const runtime = getTappRuntime()
-      const registeredWidgets = runtime.getRegisteredWidgets()
-
-      const widgetTypes = registeredWidgets.map(createTappWidgetType)
-      setTappWidgets(widgetTypes)
-      setError(null)
-    } catch (err) {
-      console.error('[useTappWidgets] Failed to load widgets:', err)
-      setError(err instanceof Error ? err.message : 'Failed to load widgets')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  // 异步加载：等待 runtime 同步完成后再加载
+  // 异步加载：等待 runtime 模块加载 + 同步完成后再读取
   const loadWidgetsAsync = useCallback(async () => {
     try {
       setIsLoading(true)
+      const { getTappRuntime } = await loadTappRuntimeModule()
       const runtime = getTappRuntime()
 
       // 等待 runtime 同步完成
@@ -126,6 +135,10 @@ export function useTappWidgets(): {
 
       const registeredWidgets = runtime.getRegisteredWidgets()
       const widgetTypes = registeredWidgets.map(createTappWidgetType)
+      // 有注册的 Tapp 小组件时提前预热组件模块，避免渲染时才拉 chunk
+      if (widgetTypes.length > 0) {
+        void import('../components/widgets/TappWidget').catch(() => {})
+      }
       setTappWidgets(widgetTypes)
       setError(null)
     } catch (err) {
@@ -143,29 +156,44 @@ export function useTappWidgets(): {
 
   // 监听 Widget 注册/注销事件 和 同步完成事件
   useEffect(() => {
-    const runtime = getTappRuntime()
+    let disposed = false
+    const unsubs: Array<() => void> = []
 
-    // 当有新的 widget 注册时更新
-    const unsubRegistered = runtime.on('widget:registered', () => {
-      loadWidgetsSync()
-    })
+    loadTappRuntimeModule()
+      .then(({ getTappRuntime }) => {
+        if (disposed) return
+        const runtime = getTappRuntime()
 
-    // 当有 widget 注销时更新
-    const unsubUnregistered = runtime.on('widget:unregistered', () => {
-      loadWidgetsSync()
-    })
+        // 同步方法：runtime 已就绪时直接读取注册表
+        const reloadSync = () => {
+          try {
+            const registeredWidgets = runtime.getRegisteredWidgets()
+            setTappWidgets(registeredWidgets.map(createTappWidgetType))
+            setError(null)
+          } catch (err) {
+            console.error('[useTappWidgets] Failed to load widgets:', err)
+            setError(
+              err instanceof Error ? err.message : 'Failed to load widgets',
+            )
+          } finally {
+            setIsLoading(false)
+          }
+        }
 
-    // 当后端同步完成时更新（确保获取最新数据）
-    const unsubSync = runtime.on('sync:complete', () => {
-      loadWidgetsSync()
-    })
+        // 当有新的 widget 注册/注销、后端同步完成时更新
+        unsubs.push(runtime.on('widget:registered', reloadSync))
+        unsubs.push(runtime.on('widget:unregistered', reloadSync))
+        unsubs.push(runtime.on('sync:complete', reloadSync))
+      })
+      .catch((err) => {
+        console.error('[useTappWidgets] Failed to load tapp runtime:', err)
+      })
 
     return () => {
-      unsubRegistered()
-      unsubUnregistered()
-      unsubSync()
+      disposed = true
+      unsubs.forEach((unsub) => unsub())
     }
-  }, [loadWidgetsSync])
+  }, [])
 
   return {
     tappWidgets,

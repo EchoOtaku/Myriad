@@ -7,8 +7,7 @@ import { SiCloudflare } from '@lib/icons'
 
 import React, { memo, useEffect, useState } from 'react'
 
-import { API_URL } from '../config'
-import { fetchJson } from '../utils/apiHelper'
+import { getUIConfigDeduped } from '../utils/requestDedup'
 import { getBuildInfo } from '../utils/buildInfo'
 import './SiteFooter.css'
 
@@ -117,9 +116,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
     useEffect(() => {
       const loadConfig = async () => {
         try {
-          const data = await fetchJson(`${API_URL}/api/config/ui`, {
-            credentials: 'include',
-          })
+          const data = await getUIConfigDeduped()
           console.debug('[SiteFooter] Config loaded:', data)
           setConfig(data)
         } catch (e) {

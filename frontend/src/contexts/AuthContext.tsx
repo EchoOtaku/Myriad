@@ -14,9 +14,6 @@ import {
   useState,
 } from 'react'
 import { API_URL } from '../config'
-import { TappRuntime } from '../tapp/runtime/TappRuntime'
-import { TappRuntimeGrant } from '../tapp/runtime/TappRuntimeGrant'
-import { TappScheduler } from '../tapp/runtime/TappScheduler'
 import { clearSessionHint } from '../utils/sessionDetection'
 
 export interface User {
@@ -54,9 +51,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [hasChecked, setHasChecked] = useState(false) // 是否已检查过
 
   const resetTappSubjectState = useCallback(() => {
-    TappScheduler.reset()
-    TappRuntimeGrant.destroyAll()
-    TappRuntime.reset()
+    // tapp runtime 动态加载：Auth 上下文是全站首屏必经之路，静态 import 会把
+    // runtime/调度器拖进每个页面的关键路径。身份切换是低频操作，模块已加载时
+    // import() 命中缓存（微任务级完成，先于任何后续网络往返）；
+    // 从未加载过时 reset 本身也没有状态可清。
+    void Promise.all([
+      import('../tapp/runtime/TappScheduler'),
+      import('../tapp/runtime/TappRuntimeGrant'),
+      import('../tapp/runtime/TappRuntime'),
+    ]).then(([{ TappScheduler }, { TappRuntimeGrant }, { TappRuntime }]) => {
+      TappScheduler.reset()
+      TappRuntimeGrant.destroyAll()
+      TappRuntime.reset()
+    })
   }, [])
 
   const checkAuth = useCallback(async () => {

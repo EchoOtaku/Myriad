@@ -140,6 +140,32 @@ const GlobalControlPanel: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showDynamicContent, setShowDynamicContent] = useState(true)
   const [showPanelContent, setShowPanelContent] = useState(false)
+
+  // 展开面板的重型内容（小组件网格 + 音乐播放器 UI）延后到首屏之后挂载：
+  // 面板收起时这些内容不可见，常挂载只会让启动期多拉一整套小组件目录。
+  // 用户在此之前点开面板时立即挂载（下方 isExpanded effect），
+  // 面板高度由既有的 control-panel-content-resize 事件重测兜底。
+  const [panelContentReady, setPanelContentReady] = useState(false)
+  useEffect(() => {
+    if (isExpanded) setPanelContentReady(true)
+  }, [isExpanded])
+  useEffect(() => {
+    let idleId: number | null = null
+    const mount = () => setPanelContentReady(true)
+    const timerId = window.setTimeout(() => {
+      if ('requestIdleCallback' in window) {
+        idleId = requestIdleCallback(mount, { timeout: 3000 })
+      } else {
+        mount()
+      }
+    }, 2500)
+    return () => {
+      window.clearTimeout(timerId)
+      if (idleId !== null && 'cancelIdleCallback' in window) {
+        cancelIdleCallback(idleId)
+      }
+    }
+  }, [])
   const [showOverlay, setShowOverlay] = useState(false)
   // 使用共享主题订阅器，避免创建多余的 MutationObserver
   const isDark = useThemeMode()
@@ -1635,12 +1661,14 @@ const GlobalControlPanel: React.FC = () => {
                   inert={panelTab === 'notifications'}
                 >
                   {/* 动态信息卡片 - 切换显示 */}
-                  <Suspense fallback={null}>
-                    <ControlPanelWidgets isAdmin={user?.is_admin} />
+                  {panelContentReady && (
+                    <Suspense fallback={null}>
+                      <ControlPanelWidgets isAdmin={user?.is_admin} />
 
-                    {/* 音乐播放器 */}
-                    <MusicPlayer player={musicPlayer} />
-                  </Suspense>
+                      {/* 音乐播放器 */}
+                      <MusicPlayer player={musicPlayer} />
+                    </Suspense>
+                  )}
 
                   {/* 控制项网格 - 一行两个 */}
                   <div className="control-items-grid">

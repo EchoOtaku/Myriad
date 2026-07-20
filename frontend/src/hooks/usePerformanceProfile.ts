@@ -88,6 +88,16 @@ export function getPerformanceProfileSync(): PerformanceProfile {
   return detectPerformanceProfile()
 }
 
+/** 将低端标记同步到 <html>，激活 performance.css 中的 [data-low-end-device] 规则 */
+function syncLowEndToDocument(lowEnd: boolean) {
+  if (typeof document === 'undefined') return
+  if (lowEnd) {
+    document.documentElement.dataset.lowEndDevice = 'true'
+  } else {
+    delete document.documentElement.dataset.lowEndDevice
+  }
+}
+
 export function usePerformanceProfile(): PerformanceProfile {
   // 🔧 SSR 安全：始终使用默认值作为初始状态，避免 hydration 不匹配
   const [profile, setProfile] = useState<PerformanceProfile>(DEFAULT_PROFILE)
@@ -99,6 +109,7 @@ export function usePerformanceProfile(): PerformanceProfile {
     hasInitialized.current = true
 
     const detected = detectPerformanceProfile()
+    syncLowEndToDocument(detected.lowEndDevice)
     // 只有在检测结果与默认值不同时才更新，避免不必要的重渲染
     if (
       detected.isMobile !== DEFAULT_PROFILE.isMobile ||
@@ -118,7 +129,9 @@ export function usePerformanceProfile(): PerformanceProfile {
       // 🔧 重置缓存，重新检测
       hasDetected = false
       cachedProfile = null
-      setProfile(detectPerformanceProfile())
+      const next = detectPerformanceProfile()
+      syncLowEndToDocument(next.lowEndDevice)
+      setProfile(next)
     }
 
     mediaQuery.addEventListener('change', handler)

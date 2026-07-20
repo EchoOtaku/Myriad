@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom'
 import { API_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import { cleanupTemporaryTapps } from '../../tapp/services/TappApiService'
 import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
 import {
@@ -200,7 +199,10 @@ export const UserSection: React.FC<UserSectionProps> = memo(
       )
 
       try {
-        // 先清理用户临时安装的 Tapp
+        // 先清理用户临时安装的 Tapp（服务层按需加载，登出是低频路径）
+        const { cleanupTemporaryTapps } = await import(
+          '../../tapp/services/TappApiService'
+        )
         await cleanupTemporaryTapps()
       } catch (error) {
         // 静默处理清理错误

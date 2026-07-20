@@ -11,7 +11,6 @@ import type {
   WordLyricLine,
 } from '../utils/musicPlayer'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { API_URL } from '../config'
 
 import { extractColorsFromImage } from '../utils/colorExtractor'
 import {
@@ -26,6 +25,7 @@ import {
   shouldPreserveNativeAudioOutput,
   throttle,
 } from '../utils/musicPlayer'
+import { getUIConfigDeduped } from '../utils/requestDedup'
 import { loadResource } from '../utils/resourceLoader'
 import { getCurrentAnimationConfig } from './useAnimationLevel'
 import { getPerformanceProfileSync } from './usePerformanceProfile'
@@ -1076,8 +1076,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       preloadErrorCountRef.current = 0
       preloadDisabledUntilRef.current = 0
 
-      const response = await fetch(`${API_URL}/api/config/ui?t=${Date.now()}`)
-      const data = await response.json()
+      // 走去重缓存：启动时与 Home/壁纸/页脚共享同一次 /api/config/ui 请求
+      const data = await getUIConfigDeduped()
 
       const enabled = data.music_enabled === 'true'
       const source = data.music_source || 'netease'

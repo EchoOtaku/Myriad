@@ -10,7 +10,14 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { createPortal } from 'react-dom'
 
 import { useI18n } from '../contexts/I18nContext'
@@ -21,6 +28,7 @@ import {
   usePerformanceProfile,
 } from '../hooks/usePerformanceProfile'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
+import { preloadBuiltinWidgets } from './widgets/builtinWidgets'
 import './WidgetGrid.css'
 
 // ⚗️ 移动端检测 - 使用统一的性能检测系统
@@ -347,11 +355,14 @@ const WidgetGridItem = React.memo(
             onMouseEnter={() => isEditMode && onMouseEnter(widget.id)}
             onMouseLeave={onMouseLeave}
           >
-            <WidgetComponent
-              config={widget}
-              isEditMode={isEditMode}
-              onConfigChange={onConfigChange}
-            />
+            {/* 非报告类 lazy 小组件的 Suspense 兜底；ReportCard 已同步加载不会挂起 */}
+            <Suspense fallback={null}>
+              <WidgetComponent
+                config={widget}
+                isEditMode={isEditMode}
+                onConfigChange={onConfigChange}
+              />
+            </Suspense>
           </div>
 
           {/* 删除按钮（编辑模式） */}
@@ -761,6 +772,14 @@ export default function WidgetGrid({
   // 小组件库横向滚动 - ref 本身不触发重渲染，滚动状态由独立子组件管理，
   // 避免每次滚动都重渲染整个小组件库（含所有预览小组件）导致卡顿
   const libraryScrollRef = useRef<HTMLDivElement>(null)
+
+  // 进入编辑模式：预热目录内全部类型（含报告壳 + 全 report-* 对应 face）
+  useEffect(() => {
+    if (!isEditMode) return
+    void preloadBuiltinWidgets(availableWidgets.map((w) => w.id)).catch(
+      () => {},
+    )
+  }, [isEditMode, availableWidgets])
 
   // RAF ref for drag handling
   const rafRef = useRef<number | null>(null)
@@ -1556,11 +1575,13 @@ export default function WidgetGrid({
                       transform: `scale(${scale})`,
                     }}
                   >
-                    <WidgetComponent
-                      config={previewConfig}
-                      isEditMode={true}
-                      isPreview={true}
-                    />
+                    <Suspense fallback={null}>
+                      <WidgetComponent
+                        config={previewConfig}
+                        isEditMode={true}
+                        isPreview={true}
+                      />
+                    </Suspense>
                   </div>
 
                   {/* 遮罩层 - 用于拖拽交互和高亮 */}
@@ -1758,11 +1779,13 @@ export default function WidgetGrid({
                     opacity: 0.95,
                   }}
                 >
-                  <dragPreview.widgetType.component
-                    config={dragPreview.widgetConfig}
-                    isEditMode={false}
-                    isPreview={true}
-                  />
+                  <Suspense fallback={null}>
+                    <dragPreview.widgetType.component
+                      config={dragPreview.widgetConfig}
+                      isEditMode={false}
+                      isPreview={true}
+                    />
+                  </Suspense>
                 </div>
               </motion.div>
             )

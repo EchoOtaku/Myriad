@@ -224,6 +224,23 @@ export function invalidateLatestReportCache(): void {
 }
 
 /**
+ * 获取公开平台配置（去重）
+ * 首页多个小组件（社交网络、报告卡片）都需要同一份数据
+ * 缓存 30 秒
+ */
+export async function getPublicConfigDeduped(): Promise<any> {
+  return dedupedFetch(
+    `${API_URL}/api/config/public`,
+    async () => {
+      const response = await fetch(`${API_URL}/api/config/public`)
+      if (!response.ok) throw new Error('Failed to fetch public config')
+      return response.json()
+    },
+    { cacheTTL: 30 * 1000 },
+  )
+}
+
+/**
  * 获取设置状态（去重）
  * 缓存 1 分钟
  */

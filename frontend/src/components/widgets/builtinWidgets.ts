@@ -3,19 +3,69 @@
  * Single source of truth for ids, components, sizes, and i18n name keys.
  */
 
+import type { ComponentType } from 'react'
 import type { TranslationKeys } from '../../i18n'
-import type { WidgetSize, WidgetType } from '../WidgetGrid'
-import { FriendLinksWidget } from './FriendLinksWidget'
-import { GamePresenceWidget } from './GamePresenceWidget'
-import { MusicPlayerWidget } from './MusicPlayerWidget'
-import { QuickStatsWidget } from './QuickStatsWidget'
-import { QuoteWidget } from './QuoteWidget'
-import { RecentActivityWidget } from './RecentActivityWidget'
-import { ReportCardWidget } from './ReportCardWidget'
-import { SocialNetworkWidget } from './SocialNetworkWidget'
-import { TappShortcutWidget } from './TappShortcutWidget'
-import { WeatherWidget } from './WeatherWidget'
-import { WelcomeWidget } from './WelcomeWidget'
+import type { WidgetComponentProps, WidgetSize, WidgetType } from '../WidgetGrid'
+import { lazy } from 'react'
+import {
+  preloadReportCardsForTypes,
+  ReportCardHost,
+} from './reportCardHost'
+
+// 非报告小组件：React.lazy + 与 preload 共用 Promise。
+// 报告卡见 ReportCardHost——禁止渲染期 lazy（会破坏多卡 face 入场）。
+function lazyWidget<K extends string>(
+  factory: () => Promise<Record<K, ComponentType<WidgetComponentProps>>>,
+  name: K,
+) {
+  let shared: Promise<{ default: ComponentType<WidgetComponentProps> }> | null =
+    null
+  const load = () => {
+    shared ||= factory().then((m) => ({ default: m[name] }))
+    return shared
+  }
+  const component = lazy(load)
+  ;(component as unknown as { preload: () => Promise<unknown> }).preload = load
+  return component
+}
+
+const FriendLinksWidget = lazyWidget(
+  () => import('./FriendLinksWidget'),
+  'FriendLinksWidget',
+)
+const GamePresenceWidget = lazyWidget(
+  () => import('./GamePresenceWidget'),
+  'GamePresenceWidget',
+)
+const MusicPlayerWidget = lazyWidget(
+  () => import('./MusicPlayerWidget'),
+  'MusicPlayerWidget',
+)
+const QuickStatsWidget = lazyWidget(
+  () => import('./QuickStatsWidget'),
+  'QuickStatsWidget',
+)
+const QuoteWidget = lazyWidget(() => import('./QuoteWidget'), 'QuoteWidget')
+const RecentActivityWidget = lazyWidget(
+  () => import('./RecentActivityWidget'),
+  'RecentActivityWidget',
+)
+const SocialNetworkWidget = lazyWidget(
+  () => import('./SocialNetworkWidget'),
+  'SocialNetworkWidget',
+)
+const TappShortcutWidget = lazyWidget(
+  () => import('./TappShortcutWidget'),
+  'TappShortcutWidget',
+)
+const WeatherWidget = lazyWidget(
+  () => import('./WeatherWidget'),
+  'WeatherWidget',
+)
+const WelcomeWidget = lazyWidget(
+  () => import('./WelcomeWidget'),
+  'WelcomeWidget',
+)
 
 type WidgetsI18n = TranslationKeys['widgets']
 
@@ -58,52 +108,52 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
   },
   'report-bilibili': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-steam': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-github': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-netease': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-bangumi': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-mal': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-x': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-discord': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-xbox': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'report-psn': {
     defaultSize: '4x2' as WidgetSize,
-    component: ReportCardWidget,
+    component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
   'social-network': {
@@ -171,6 +221,38 @@ const WIDGET_NAME_KEY: Record<BuiltinWidgetId, keyof WidgetsI18n> = {
   'social-network': 'socialNetwork',
   'tapp-shortcut': 'tappShortcut',
   'game-presence': 'gamePresence',
+}
+
+/**
+ * 预加载布局中用到的小组件实现（须在 setWidgets / 入场前 await）。
+ * - report-*：壳 + **仅布局出现的平台 face**（非全平台）
+ * - 其它：lazyWidget shared Promise
+ */
+export function preloadBuiltinWidgets(types: Iterable<string>): Promise<void> {
+  const typeList = Array.from(types)
+  const jobs: Promise<unknown>[] = []
+  const seen = new Set<unknown>()
+  let hasReport = false
+
+  for (const type of typeList) {
+    if (type.startsWith('report-')) {
+      hasReport = true
+      continue // 报告走下面专用预热，避免只 preload 壳漏 face
+    }
+    const base = BUILTIN_WIDGET_BASE_CONFIG[type as BuiltinWidgetId]
+    if (!base || seen.has(base.component)) continue
+    seen.add(base.component)
+    const preload = (
+      base.component as unknown as { preload?: () => Promise<unknown> }
+    ).preload
+    if (preload) jobs.push(preload().catch(() => {}))
+  }
+
+  if (hasReport) {
+    jobs.push(preloadReportCardsForTypes(typeList).catch(() => {}))
+  }
+
+  return Promise.all(jobs).then(() => undefined)
 }
 
 /**

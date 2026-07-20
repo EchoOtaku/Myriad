@@ -42,6 +42,20 @@ function loadFramerMotion() {
 }
 
 /**
+ * 确保 motion/react 已加载（可供首屏在挂载交错动画前 await）。
+ * 若在 motion 就绪前就驱动 canAnimate，shim 会用原生 div 吞掉交错，
+ * 等 motion 到齐时多卡同时换成 motion 组件 → 除首张外全部闪现。
+ */
+export function ensureMotionReady(): Promise<void> {
+  return loadFramerMotion()
+}
+
+/** 同步探测：motion 是否已在缓存中 */
+export function isMotionReady(): boolean {
+  return globalFM !== null
+}
+
+/**
  * 通用 framer-motion 按需加载工具：在确有动画需求时才动态引入
  * 使用全局单例状态，确保所有组件共享同一份加载状态
  * 返回占位元素：未加载时使用原生标签，已加载时使用 motion.*

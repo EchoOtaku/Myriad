@@ -35,7 +35,10 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useLoopAnimation } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
-import { getUIConfigDeduped } from '../../utils/requestDedup'
+import {
+  getPublicConfigDeduped,
+  getUIConfigDeduped,
+} from '../../utils/requestDedup'
 import { useThemeMode } from '../../utils/themeSubscriber'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
@@ -533,11 +536,8 @@ async function fetchPlatformUserIds(): Promise<PlatformUserIds> {
 
   fetchPromise = (async () => {
     try {
-      // 使用公开端点，不需要登录认证
-      const response = await fetch(`${API_URL}/api/config/public`)
-      if (!response.ok) return cachedPlatformUserIds || {}
-
-      const data = await response.json()
+      // 使用公开端点，不需要登录认证；去重缓存与报告卡片共享同一次请求
+      const data = await getPublicConfigDeduped()
       const result: PlatformUserIds = {}
 
       // 从 platforms 数组提取用户ID配置

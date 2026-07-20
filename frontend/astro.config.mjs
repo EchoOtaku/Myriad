@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -408,9 +408,117 @@ function backendDevProxyPlugin() {
   }
 }
 
+/**
+ * 首屏 CSS 瘦身：Astro/Vite 会把懒加载路由的 CSS 也写成 HTML <link>，
+ * 阻塞首页 FCP。将非首屏样式从 HTML 剥离，并在对应异步 JS chunk 执行时再注入。
+ *
+ * 保留（首屏/全局需要）：
+ * - tailwind / index / App 全局样式
+ * - Toast（全局通知）
+ * - MusicPlayer（控制面板常驻）
+ */
+function deferNonCriticalCssIntegration() {
+  /** CSS 文件名前缀 → 应注入该 CSS 的 JS chunk 前缀列表 */
+  const DEFER = [
+    { cssPrefix: 'AraelPanel-', jsPrefixes: ['AraelPanel-'] },
+    { cssPrefix: 'Config-', jsPrefixes: ['Config-'] },
+    { cssPrefix: 'ConfigForm-', jsPrefixes: ['Config-', 'DataManagement-'] },
+    { cssPrefix: 'Setup-', jsPrefixes: ['Setup-'] },
+    { cssPrefix: 'TappPlaygroundPage-', jsPrefixes: ['TappPlaygroundPage-'] },
+  ]
+
+  function cssInjectorSnippet(href) {
+    // 幂等：已存在则跳过（含 HTML 误保留或重复执行）
+    return `(function(){try{var h=${JSON.stringify(href)};if(document.querySelector('link[href="'+h+'"]'))return;var l=document.createElement("link");l.rel="stylesheet";l.href=h;document.head.appendChild(l)}catch(e){}})();`
+  }
+
+  return {
+    name: 'defer-non-critical-css',
+    hooks: {
+      'astro:build:done': async ({ dir }) => {
+        const outDir = fileURLToPath(dir)
+        const assetsDir = path.join(outDir, 'assets')
+        let assetFiles = []
+        try {
+          assetFiles = readdirSync(assetsDir)
+        } catch {
+          return
+        }
+
+        const cssFiles = assetFiles.filter((f) => f.endsWith('.css'))
+        const jsFiles = assetFiles.filter((f) => f.endsWith('.js'))
+
+        /** @type {Map<string, string[]>} jsFileName -> css hrefs to inject */
+        const injectMap = new Map()
+        /** @type {Set<string>} basenames stripped from HTML */
+        const stripCss = new Set()
+
+        for (const rule of DEFER) {
+          const matchedCss = cssFiles.filter((f) => f.startsWith(rule.cssPrefix))
+          for (const cssName of matchedCss) {
+            stripCss.add(cssName)
+            const href = `/assets/${cssName}`
+            for (const jsPrefix of rule.jsPrefixes) {
+              const matchedJs = jsFiles.filter((f) => f.startsWith(jsPrefix))
+              for (const jsName of matchedJs) {
+                const list = injectMap.get(jsName) || []
+                if (!list.includes(href)) list.push(href)
+                injectMap.set(jsName, list)
+              }
+            }
+          }
+        }
+
+        // 注入到异步 chunk 头部
+        for (const [jsName, hrefs] of injectMap) {
+          const jsPath = path.join(assetsDir, jsName)
+          const original = readFileSync(jsPath, 'utf8')
+          // 避免重复注入
+          if (hrefs.every((h) => original.includes(h) && original.includes('createElement("link")'))) {
+            // 可能已有 vite 注入；仍确保我们的幂等片段存在
+          }
+          const banner = hrefs.map(cssInjectorSnippet).join('')
+          if (!original.startsWith('(function(){try{var h=')) {
+            writeFileSync(jsPath, banner + original)
+          }
+        }
+
+        // 从所有 HTML 去掉对应 <link rel="stylesheet">
+        const stripRe = new RegExp(
+          `<link[^>]+href="/assets/(${[...stripCss].map((s) =>
+            s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+          ).join('|')})"[^>]*>`,
+          'g',
+        )
+
+        let htmlCount = 0
+        let removed = 0
+        for (const name of readdirSync(outDir)) {
+          if (!name.endsWith('.html')) continue
+          const htmlPath = path.join(outDir, name)
+          let html = readFileSync(htmlPath, 'utf8')
+          const before = html
+          html = html.replace(stripRe, () => {
+            removed++
+            return ''
+          })
+          if (html !== before) {
+            writeFileSync(htmlPath, html)
+            htmlCount++
+          }
+        }
+
+        console.log(
+          `[defer-non-critical-css] stripped ${removed} link(s) from ${htmlCount} html; injected into ${injectMap.size} js chunk(s)`,
+        )
+      },
+    },
+  }
+}
+
 // https://astro.build/config
 export default defineConfig({
-  integrations: [react()],
+  integrations: [react(), deferNonCriticalCssIntegration()],
   // 使用 hybrid 模式：默认静态预渲染，但允许特定页面动态渲染
   // 这样可以支持 /tapp/run/:id 等动态路由
   output: 'static',
@@ -561,7 +669,12 @@ export default defineConfig({
                   id.includes('node_modules/react/') ||
                   id.includes('node_modules/react-dom/') ||
                   id.includes('node_modules/react-router') ||
-                  id.includes('node_modules/@remix-run')
+                  id.includes('node_modules/@remix-run') ||
+                  // jsx-runtime 的模块 id 可能不带 node_modules/react/ 前缀
+                  // （pnpm 布局 / 虚拟模块）。不显式归类的话，Rolldown 会把它
+                  // 塞进任意 chunk（实测进了 motion），导致所有 JSX chunk
+                  // 为了 1KB 的 jsx-runtime 静态依赖整个 124K motion chunk
+                  id.includes('jsx-runtime')
                 ) {
                   return 'react-vendor'
                 }
@@ -572,7 +685,16 @@ export default defineConfig({
                 ) {
                   return 'chart-vendor'
                 }
-                // Motion
+                // Motion — 注意 motion-dom / motion-utils 是独立包，
+                // 路径同样含 node_modules/motion，若并入同一 chunk，
+                // 其中被共享的小工具会让整个 124K chunk 变成静态依赖，
+                // 破坏 lazyMotion 的动态加载设计
+                if (id.includes('node_modules/motion-utils')) {
+                  return 'motion-utils'
+                }
+                if (id.includes('node_modules/motion-dom')) {
+                  return 'motion-dom'
+                }
                 if (id.includes('node_modules/motion')) {
                   return 'motion'
                 }

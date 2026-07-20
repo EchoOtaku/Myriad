@@ -12,8 +12,12 @@ import { useEffect, useMemo, useState } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import { TitleFontSelector } from '../components/TitleFontSelector'
 import WidgetGrid from '../components/WidgetGrid'
-import { getBuiltinWidgets } from '../components/widgets/builtinWidgets'
+import {
+  getBuiltinWidgets,
+  preloadBuiltinWidgets,
+} from '../components/widgets/builtinWidgets'
 import { API_URL } from '../config'
+import { ensureMotionReady } from '../lib/lazyMotion'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useHomeScheduler, usePageReady } from '../hooks/animation'
@@ -138,7 +142,28 @@ export default function Home() {
     null,
   )
 
+  // motion 与配置请求并行；网格入场依赖真 motion，避免 shim 攒帧闪现
   useEffect(() => {
+    void ensureMotionReady()
+  }, [])
+
+  useEffect(() => {
+    // 挂载网格前预热：
+    // - 布局内 lazy 小组件（shared Promise）
+    // - 若含 report-*：整包报告卡（壳+全平台 face，禁止渲染期再拆）
+    // - motion/react
+    // 3s 超时兜底。
+    async function applyWidgets(list: WidgetConfig[]) {
+      await Promise.race([
+        Promise.all([
+          preloadBuiltinWidgets(list.map((w) => w.type)),
+          ensureMotionReady(),
+        ]),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ])
+      setWidgets(list)
+    }
+
     async function loadDashboardConfig() {
       try {
         const data = await getUIConfigDeduped()
@@ -156,16 +181,16 @@ export default function Home() {
               const loadedWidgets = parsedLayout.filter((w: WidgetConfig) =>
                 registeredWidgetIds.has(w.type),
               )
-              setWidgets(
+              await applyWidgets(
                 loadedWidgets.length > 0 ? loadedWidgets : DEFAULT_WIDGETS,
               )
             }
           } catch (e) {
             console.error('解析仪表盘布局失败:', e)
-            setWidgets(DEFAULT_WIDGETS)
+            await applyWidgets(DEFAULT_WIDGETS)
           }
         } else {
-          setWidgets(DEFAULT_WIDGETS)
+          await applyWidgets(DEFAULT_WIDGETS)
         }
 
         if (data.dashboard_title) {
@@ -173,7 +198,7 @@ export default function Home() {
         }
       } catch (err) {
         console.error('加载配置失败:', err)
-        setWidgets(DEFAULT_WIDGETS)
+        await applyWidgets(DEFAULT_WIDGETS)
       } finally {
         setIsLoading(false)
       }
@@ -192,9 +217,22 @@ export default function Home() {
       registeredWidgetIds.has(w.type),
     )
 
-    if (validWidgets.length > 0) {
-      setWidgets(validWidgets)
-    }
+    if (validWidgets.length === 0) return
+
+    // 成员未变时不要 setWidgets：新数组会牵动网格 index / 紧凑重排，
+    // 曾导致进行中的入场动画被 skip 成 opacity 0（平台卡片「丢失」）。
+    setWidgets((prev) => {
+      if (
+        prev.length === validWidgets.length &&
+        prev.every(
+          (w, i) =>
+            w.id === validWidgets[i].id && w.type === validWidgets[i].type,
+        )
+      ) {
+        return prev
+      }
+      return validWidgets
+    })
   }, [isTappWidgetsLoading, tappWidgets, rawLayoutData, ALL_AVAILABLE_WIDGETS])
 
   // 保存小组件配置到后端

@@ -228,20 +228,23 @@ img[loading='lazy'] {
   }
 }
 
-/* 低端设备优化 */
-[data-low-end-device='true'] {
-  /* 禁用模糊效果 */
+/* 低端设备优化（html[data-low-end-device] 由 usePerformanceProfile 写入）
+   不改写壁纸 filter；仅降级 UI 毛玻璃，减轻 GPU 合成压力。
+   手动选 light / none 时同样降级（data-perf-mode，与设备档位正交）。 */
+html[data-low-end-device='true'] .blur-effect,
+html[data-perf-mode='light'] .blur-effect,
+html[data-perf-mode='none'] .blur-effect {
   backdrop-filter: none !important;
-
-  /* 使用更简单的阴影 */
-  box-shadow: 0 2px 4px rgb(0 0 0 / 10%) !important;
-
-  /* 禁用复杂渐变 */
+  -webkit-backdrop-filter: none !important;
+  background-color: rgb(255 255 255 / 95%) !important;
 }
 
-[data-low-end-device='true'] .blur-effect {
+/* Tailwind backdrop-blur 工具类：低端 / light 下去掉昂贵合成 */
+html[data-low-end-device='true'] [class*='backdrop-blur'],
+html[data-perf-mode='light'] [class*='backdrop-blur'],
+html[data-perf-mode='none'] [class*='backdrop-blur'] {
   backdrop-filter: none !important;
-  background-color: rgb(255 255 255 / 95%) !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* ============================================
@@ -274,7 +277,9 @@ img[loading='lazy'] {
     background-size: 200% 100%;
   }
 
-  [data-low-end-device='true'] .blur-effect {
+  html[data-low-end-device='true'] .blur-effect,
+  html[data-perf-mode='light'] .blur-effect,
+  html[data-perf-mode='none'] .blur-effect {
     background-color: rgb(0 0 0 / 95%) !important;
   }
 }

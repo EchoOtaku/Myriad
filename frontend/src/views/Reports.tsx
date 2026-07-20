@@ -36,6 +36,7 @@ import AnimatedView from '../components/AnimatedView'
 import StageMode from '../components/StageMode'
 import Toast from '../components/Toast'
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
+import { preloadPlatformFaces } from '../components/widgets/reportCard/platformFaceLoaders'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -51,6 +52,7 @@ import {
 } from '../hooks/useTitleFont'
 import { getCSRFToken } from '../utils/csrf'
 import { notifyRecentActivityUpdated } from '../utils/recentActivity'
+import { REPORT_PLATFORM_IDS } from '../utils/reportCardVisuals'
 import { invalidateLatestReportCache } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
 import { ComprehensiveReportCard } from './reports/ComprehensiveReportCard'
@@ -76,6 +78,7 @@ function useDebounce<T>(value: T, delay: number): T {
 
   return debouncedValue
 }
+
 interface PlatformReport {
   platform: string
   metadata: any
@@ -338,6 +341,11 @@ const StagePlayingCardPlaceholder = memo(({
 export default function Reports() {
   // 🆕 初始化报告页调度器（Visibility + Interval + RAF + DOMBatch）
   useReportsScheduler()
+
+  // 进页即预热全部平台 face（非 React.lazy）：数据到达时可同步挂载，保住入场
+  useEffect(() => {
+    void preloadPlatformFaces(REPORT_PLATFORM_IDS).catch(() => {})
+  }, [])
 
   const { t } = useI18n()
   const isPageReady = usePageReady()

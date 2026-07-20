@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { API_URL } from '../config'
 import { usePrimaryColor } from '../utils/colorSubscriber'
+import { getUIConfigDeduped } from '../utils/requestDedup'
 import { deriveAdaptiveTitleColor } from '../utils/readableColor'
 import { useThemeMode } from '../utils/themeSubscriber'
 
@@ -286,10 +287,8 @@ async function initGlobalState(): Promise<void> {
 
   initPromise = (async () => {
     try {
-      const response = await fetch(`${API_URL}/api/config/ui`)
-      if (!response.ok) return
-
-      const data = await response.json()
+      const data = await getUIConfigDeduped()
+      if (!data) return
 
       // 批量更新状态
       const updates: Partial<TitleStyle> = {}

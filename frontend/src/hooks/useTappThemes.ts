@@ -20,7 +20,8 @@
 import type { WidgetGlowMode, WidgetSurface } from './useWidgetTheme'
 
 import { useEffect, useRef, useState } from 'react'
-import { listAllComponentsByType } from '../tapp/services/TappApiService'
+// TappApiService 动态加载：该 hook 被 TitleFontSelector（Home 编辑模式）引用，
+// 静态 import 会把整个 tapp 服务层拖进首屏关键路径
 import { GLOW_OPTIONS, SURFACE_OPTIONS } from './useWidgetTheme'
 
 // ==================== 类型 ====================
@@ -92,7 +93,8 @@ export function useTappThemes(enabled: boolean) {
     if (!enabled || fetchedRef.current) return
     fetchedRef.current = true
 
-    listAllComponentsByType('theme')
+    import('../tapp/services/TappApiService')
+      .then(({ listAllComponentsByType }) => listAllComponentsByType('theme'))
       .then((res) => {
         if (!mountedRef.current) return
         const list = Array.isArray(res?.components) ? res.components : []

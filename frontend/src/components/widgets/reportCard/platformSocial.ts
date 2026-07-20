@@ -1,4 +1,4 @@
-import { API_URL } from '../../../config'
+import { getPublicConfigDeduped } from '../../../utils/requestDedup'
 
 /** 各平台社交主页链接（长按设置里「打开社交主页」用） */
 export const PLATFORM_SOCIAL: Record<
@@ -68,23 +68,21 @@ export async function fetchPlatformUserIds(): Promise<Record<string, string>> {
   userIdsPromise = (async () => {
     const map: Record<string, string> = {}
     try {
-      const res = await fetch(`${API_URL}/api/config/public`)
-      if (res.ok) {
-        const data = await res.json()
-        if (Array.isArray(data.platforms)) {
-          for (const p of data.platforms) {
-            if (!p.enabled) continue
-            const entry = Object.entries(PLATFORM_SOCIAL).find(
-              ([, s]) => s.publicName === p.name,
-            )
-            if (!entry) continue
-            const [pid, s] = entry
-            const field = (p.config_fields || []).find(
-              (f: { key: string; value?: string }) =>
-                f.key === s.fieldKey && f.value,
-            )
-            if (field) map[pid] = field.value as string
-          }
+      // 去重缓存：与社交网络小组件共享同一次 /api/config/public 请求
+      const data = await getPublicConfigDeduped()
+      if (Array.isArray(data.platforms)) {
+        for (const p of data.platforms) {
+          if (!p.enabled) continue
+          const entry = Object.entries(PLATFORM_SOCIAL).find(
+            ([, s]) => s.publicName === p.name,
+          )
+          if (!entry) continue
+          const [pid, s] = entry
+          const field = (p.config_fields || []).find(
+            (f: { key: string; value?: string }) =>
+              f.key === s.fieldKey && f.value,
+          )
+          if (field) map[pid] = field.value as string
         }
       }
     } catch {
