@@ -365,6 +365,12 @@ pub struct RepoItem {
     pub stars: Option<i64>,
     pub forks: Option<i64>,
     pub description: Option<String>,
+    /// Repository page URL (html_url).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Open Graph preview image for library cards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -378,6 +384,15 @@ pub struct NeteaseAnalysis {
 pub struct SongItem {
     pub title: String,
     pub artist: String,
+    /// Netease song id (stable item id).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Album cover (al.picUrl).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover: Option<String>,
+    /// Album name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub album: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1039,20 +1054,56 @@ impl SmartFilter {
         let mut recent_repos = Vec::new();
         let mut language_distribution = std::collections::HashMap::new();
 
+        let owner = user
+            .and_then(|u| u.get("login"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
         if let Some(repo_list) = repos {
-            // 保留所有仓库
             for repo in repo_list {
                 if let Some(name) = repo.get("name").and_then(|v| v.as_str()) {
                     let language = repo
                         .get("language")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    let stars = repo.get("stargazers_count").and_then(|v| v.as_i64());
-                    let forks = repo.get("forks_count").and_then(|v| v.as_i64());
+                    let stars = repo
+                        .get("stargazers_count")
+                        .or_else(|| repo.get("stars"))
+                        .and_then(|v| v.as_i64());
+                    let forks = repo
+                        .get("forks_count")
+                        .or_else(|| repo.get("forks"))
+                        .and_then(|v| v.as_i64());
                     let description = repo
                         .get("description")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
+                    let url = repo
+                        .get("html_url")
+                        .or_else(|| repo.get("url"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .or_else(|| {
+                            if owner.is_empty() {
+                                None
+                            } else {
+                                Some(format!("https://github.com/{owner}/{name}"))
+                            }
+                        });
+                    // Open Graph card art (no local image in GitHub API).
+                    let image = if !owner.is_empty() {
+                        Some(format!(
+                            "https://opengraph.githubassets.com/1/{owner}/{name}"
+                        ))
+                    } else {
+                        url.as_ref().and_then(|u| {
+                            u.trim_start_matches("https://github.com/")
+                                .split_once('/')
+                                .map(|(o, r)| {
+                                    format!("https://opengraph.githubassets.com/1/{o}/{r}")
+                                })
+                        })
+                    };
 
                     recent_repos.push(RepoItem {
                         name: name.to_string(),
@@ -1060,25 +1111,15 @@ impl SmartFilter {
                         stars,
                         forks,
                         description,
+                        url,
+                        image,
                     });
 
-                    // 统计编程语言
                     if let Some(lang) = language {
                         *language_distribution.entry(lang).or_insert(0) += 1;
                     }
                 }
             }
-
-            // 统计所有仓库的语言分布 (Wait, I was iterating twice before, now I can just do it once if I remove the limit)
-            // Actually, the previous code iterated `take(10)` for `recent_repos` and then iterated ALL for `language_distribution`.
-            // Now I iterate ALL for `recent_repos`, so I can do language distribution in the same loop.
-            // But wait, the previous code had a second loop:
-            // for repo in repo_list { ... }
-            // If I merge them, I need to be careful.
-            // Let's just remove the limit in the first loop and remove the second loop if it's redundant.
-            // The first loop now iterates all repos.
-            // So `language_distribution` is populated for all repos in the first loop.
-            // The second loop is now redundant.
         }
 
         let repo_summary = format!(
@@ -1210,10 +1251,38 @@ impl SmartFilter {
 
                             song_list.push((name.to_string(), artist.to_string()));
 
-                            // 保留所有歌曲
+                            let song_id = track.get("id").map(|v| match v {
+                                Value::String(s) => s.trim().to_string(),
+                                Value::Number(n) => n.to_string(),
+                                _ => String::new(),
+                            }).filter(|s| !s.is_empty());
+                            let album = track
+                                .get("al")
+                                .and_then(|al| al.get("name"))
+                                .and_then(|v| v.as_str())
+                                .or_else(|| track.get("album").and_then(|v| v.as_str()))
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty());
+                            let cover = track
+                                .get("al")
+                                .and_then(|al| al.get("picUrl"))
+                                .and_then(|v| v.as_str())
+                                .or_else(|| {
+                                    track
+                                        .get("album")
+                                        .and_then(|a| a.get("picUrl"))
+                                        .and_then(|v| v.as_str())
+                                })
+                                .or_else(|| track.get("picUrl").and_then(|v| v.as_str()))
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty());
+
                             recent_songs.push(SongItem {
                                 title: name.to_string(),
                                 artist: artist.to_string(),
+                                id: song_id,
+                                cover,
+                                album,
                             });
                         }
                     }

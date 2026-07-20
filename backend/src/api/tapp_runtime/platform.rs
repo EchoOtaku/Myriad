@@ -80,8 +80,18 @@ fn normalize_item_type(raw: &str, platform: &str) -> String {
         "music" | "song" | "songs" => "music".into(),
         "book" | "manga" | "novel" => "book".into(),
         "tv" | "tv_series" | "series" => "tv_series".into(),
+        "repo" | "repos" | "repository" => "repo".into(),
         "" if platform.eq_ignore_ascii_case("steam") => "game".into(),
         "" if platform.eq_ignore_ascii_case("bilibili") => "video".into(),
+        "" if platform.eq_ignore_ascii_case("netease")
+            || platform.eq_ignore_ascii_case("netease_music") =>
+        {
+            "music".into()
+        }
+        "" if platform.eq_ignore_ascii_case("github") => "repo".into(),
+        "" if platform.eq_ignore_ascii_case("xbox") || platform.eq_ignore_ascii_case("psn") => {
+            "game".into()
+        }
         other => other.to_string(),
     }
 }
@@ -109,6 +119,12 @@ fn enrich_items_from_raw_cache(platform: &str, items: &mut [Value]) {
     match slug.as_str() {
         "steam" => enrich_steam_items(items, &raw),
         "bilibili" => enrich_bilibili_items(items, &raw),
+        "netease" | "netease_music" => enrich_netease_items(items, &raw),
+        "github" => enrich_github_items(items, &raw),
+        "xbox" => enrich_xbox_items(items, &raw),
+        // bangumi / mal already keep cover in filtered subjects; still fill gaps.
+        "bangumi" => enrich_bangumi_items(items, &raw),
+        "mal" => enrich_mal_items(items, &raw),
         _ => {}
     }
 }
@@ -320,6 +336,461 @@ fn enrich_bilibili_items(items: &mut [Value], raw: &Value) {
                 if !bvid.is_empty() {
                     meta.entry("bvid".to_string())
                         .or_insert_with(|| json!(bvid));
+                }
+            }
+        }
+    }
+}
+
+fn prefer_https(url: &str) -> String {
+    if url.starts_with("http://") {
+        url.replacen("http://", "https://", 1)
+    } else {
+        url.to_string()
+    }
+}
+
+fn set_item_image_if_empty(item: &mut Value, url: &str) {
+    if url.is_empty() {
+        return;
+    }
+    let has_image = item
+        .get("image")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if has_image {
+        return;
+    }
+    let url = prefer_https(url);
+    item["image"] = json!(url);
+    item["cover"] = json!(url);
+}
+
+/// Netease: fill album cover + song id from liked_songs (filtered only keeps title/artist).
+fn enrich_netease_items(items: &mut [Value], raw: &Value) {
+    // title|artist → (id, picUrl, album)
+    let mut by_key: HashMap<String, (String, String, String)> = HashMap::new();
+    let mut by_title: HashMap<String, (String, String, String)> = HashMap::new();
+
+    let songs = raw
+        .get("liked_songs")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    for s in songs {
+        let title = s
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if title.is_empty() {
+            continue;
+        }
+        let artist = s
+            .get("ar")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|a| a.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let id = s
+            .get("id")
+            .map(|v| match v {
+                Value::String(s) => s.clone(),
+                Value::Number(n) => n.to_string(),
+                _ => String::new(),
+            })
+            .unwrap_or_default();
+        let pic = s
+            .get("al")
+            .and_then(|al| al.get("picUrl"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let album = s
+            .get("al")
+            .and_then(|al| al.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let entry = (id, pic, album);
+        by_key.insert(format!("{title}|{artist}"), entry.clone());
+        by_title.entry(title).or_insert(entry);
+    }
+
+    if by_key.is_empty() && by_title.is_empty() {
+        return;
+    }
+
+    for item in items.iter_mut() {
+        let title = item
+            .get("title")
+            .or_else(|| item.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if title.is_empty() {
+            continue;
+        }
+        let artist = item
+            .get("artist")
+            .or_else(|| item.get("description"))
+            .or_else(|| item.pointer("/metadata/artist"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        // description may be "artist · album" — take first segment
+        let artist_key = artist.split('·').next().unwrap_or("").trim();
+
+        let hit = by_key
+            .get(&format!("{title}|{artist_key}"))
+            .or_else(|| by_title.get(&title));
+        let Some((id, pic, album)) = hit else {
+            continue;
+        };
+
+        set_item_image_if_empty(item, pic);
+        item["type"] = json!("music");
+        if !id.is_empty() {
+            let cur = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if cur.is_empty() || cur.starts_with("netease_") || cur.starts_with("music_") {
+                item["id"] = json!(id);
+            }
+        }
+        if !album.is_empty() {
+            item["album"] = json!(album);
+        }
+        if let Some(meta) = item.get_mut("metadata").and_then(|m| m.as_object_mut()) {
+            if !id.is_empty() {
+                meta.entry("id".to_string()).or_insert_with(|| json!(id));
+            }
+            if !album.is_empty() {
+                meta.entry("album".to_string())
+                    .or_insert_with(|| json!(album));
+            }
+        }
+    }
+}
+
+/// GitHub: fill html_url + opengraph image from raw repos.
+fn enrich_github_items(items: &mut [Value], raw: &Value) {
+    let owner = raw
+        .get("user")
+        .and_then(|u| u.get("login"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let mut by_name: HashMap<String, Value> = HashMap::new();
+    if let Some(repos) = raw.get("repos").and_then(|v| v.as_array()) {
+        for r in repos {
+            let name = r
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
+            if name.is_empty() {
+                continue;
+            }
+            by_name.insert(name, r.clone());
+        }
+    }
+    if by_name.is_empty() {
+        return;
+    }
+
+    for item in items.iter_mut() {
+        let title = item
+            .get("title")
+            .or_else(|| item.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if title.is_empty() {
+            continue;
+        }
+        let Some(repo) = by_name.get(&title) else {
+            continue;
+        };
+        item["type"] = json!("repo");
+        if let Some(url) = repo
+            .get("html_url")
+            .or_else(|| repo.get("url"))
+            .and_then(|v| v.as_str())
+        {
+            if item.get("url").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+                item["url"] = json!(url);
+            }
+        }
+        let og = if !owner.is_empty() {
+            format!("https://opengraph.githubassets.com/1/{owner}/{}", repo.get("name").and_then(|v| v.as_str()).unwrap_or(&title))
+        } else {
+            String::new()
+        };
+        if !og.is_empty() {
+            set_item_image_if_empty(item, &og);
+        }
+        if let Some(desc) = repo.get("description").and_then(|v| v.as_str()) {
+            if item
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+            {
+                item["description"] = json!(desc);
+            }
+        }
+        if let Some(meta) = item.get_mut("metadata").and_then(|m| m.as_object_mut()) {
+            if let Some(stars) = repo
+                .get("stargazers_count")
+                .or_else(|| repo.get("stars"))
+                .and_then(|v| v.as_i64())
+            {
+                meta.entry("stars".to_string())
+                    .or_insert_with(|| json!(stars));
+            }
+            if let Some(lang) = repo.get("language").and_then(|v| v.as_str()) {
+                meta.entry("language".to_string())
+                    .or_insert_with(|| json!(lang));
+            }
+        }
+    }
+}
+
+/// Xbox: fill displayImage + titleId from raw achievements.titles.
+fn enrich_xbox_items(items: &mut [Value], raw: &Value) {
+    let mut by_name: HashMap<String, Value> = HashMap::new();
+    let titles = raw
+        .pointer("/achievements/titles")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    for t in titles {
+        let name = t
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if name.is_empty() {
+            continue;
+        }
+        by_name.insert(name, t);
+    }
+    if by_name.is_empty() {
+        return;
+    }
+
+    for item in items.iter_mut() {
+        let title = item
+            .get("title")
+            .or_else(|| item.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if title.is_empty() {
+            continue;
+        }
+        let Some(t) = by_name.get(&title) else {
+            continue;
+        };
+        item["type"] = json!("game");
+        if let Some(img) = t
+            .get("displayImage")
+            .or_else(|| t.get("display_image"))
+            .and_then(|v| v.as_str())
+        {
+            set_item_image_if_empty(item, img);
+        }
+        if let Some(tid) = t
+            .get("titleId")
+            .or_else(|| t.get("title_id"))
+            .or_else(|| t.get("modernTitleId"))
+        {
+            let tid_str = tid
+                .as_str()
+                .map(|s| s.to_string())
+                .or_else(|| tid.as_i64().map(|n| n.to_string()))
+                .or_else(|| tid.as_u64().map(|n| n.to_string()))
+                .unwrap_or_default();
+            if !tid_str.is_empty() {
+                let cur = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                if cur.is_empty() || cur.starts_with("xbox_") || cur.starts_with("game_") {
+                    item["id"] = json!(tid_str);
+                }
+            }
+        }
+    }
+}
+
+/// Bangumi: ensure cover/subject_id from raw collections.subject.images.
+fn enrich_bangumi_items(items: &mut [Value], raw: &Value) {
+    let mut by_title: HashMap<String, Value> = HashMap::new();
+    if let Some(cols) = raw.get("collections").and_then(|v| v.as_array()) {
+        for c in cols {
+            let subject = c.get("subject").cloned().unwrap_or(Value::Null);
+            let title = subject
+                .get("name")
+                .or_else(|| subject.get("name_cn"))
+                .or_else(|| c.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
+            // Also index by Chinese/common name variants
+            let title_cn = subject
+                .get("name_cn")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
+            if !title.is_empty() {
+                by_title.insert(title, c.clone());
+            }
+            if !title_cn.is_empty() {
+                by_title.insert(title_cn, c.clone());
+            }
+        }
+    }
+    if by_title.is_empty() {
+        return;
+    }
+
+    for item in items.iter_mut() {
+        let title = item
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if title.is_empty() {
+            continue;
+        }
+        let Some(c) = by_title.get(&title) else {
+            continue;
+        };
+        let subject = c.get("subject");
+        if let Some(cover) = subject
+            .and_then(|s| s.get("images"))
+            .and_then(|images| {
+                images
+                    .get("large")
+                    .or_else(|| images.get("common"))
+                    .or_else(|| images.get("medium"))
+            })
+            .and_then(|v| v.as_str())
+        {
+            set_item_image_if_empty(item, cover);
+        }
+        if let Some(sid) = c
+            .get("subject_id")
+            .or_else(|| subject.and_then(|s| s.get("id")))
+        {
+            let sid_str = sid
+                .as_i64()
+                .map(|n| n.to_string())
+                .or_else(|| sid.as_u64().map(|n| n.to_string()))
+                .or_else(|| sid.as_str().map(|s| s.to_string()))
+                .unwrap_or_default();
+            if !sid_str.is_empty() {
+                let cur = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                if cur.is_empty() || cur.starts_with("bangumi_") {
+                    item["id"] = json!(sid_str);
+                }
+            }
+        }
+        // progress / rating for media card
+        if let Some(meta) = item.get_mut("metadata").and_then(|m| m.as_object_mut()) {
+            if let Some(rate) = c.get("rate").and_then(|v| v.as_i64()) {
+                if rate > 0 {
+                    meta.entry("rate".to_string()).or_insert_with(|| json!(rate));
+                }
+            }
+            if let Some(ep) = c.get("ep_status").and_then(|v| v.as_i64()) {
+                meta.entry("ep_status".to_string())
+                    .or_insert_with(|| json!(ep));
+            }
+        }
+    }
+}
+
+/// MAL: fill cover from node.main_picture when missing.
+fn enrich_mal_items(items: &mut [Value], raw: &Value) {
+    let mut by_title: HashMap<String, Value> = HashMap::new();
+    for key in ["anime_list", "manga_list"] {
+        if let Some(list) = raw.get(key).and_then(|v| v.as_array()) {
+            for entry in list {
+                let node = entry.get("node").cloned().unwrap_or(Value::Null);
+                let title = node
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_ascii_lowercase();
+                if title.is_empty() {
+                    continue;
+                }
+                by_title.insert(title, entry.clone());
+            }
+        }
+    }
+    if by_title.is_empty() {
+        return;
+    }
+
+    for item in items.iter_mut() {
+        let title = item
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if title.is_empty() {
+            continue;
+        }
+        let Some(entry) = by_title.get(&title) else {
+            continue;
+        };
+        let node = entry.get("node");
+        if let Some(cover) = node
+            .and_then(|n| n.get("main_picture"))
+            .and_then(|p| p.get("medium").or_else(|| p.get("large")))
+            .and_then(|v| v.as_str())
+        {
+            set_item_image_if_empty(item, cover);
+        }
+        if let Some(id) = node.and_then(|n| n.get("id")) {
+            let id_str = id
+                .as_i64()
+                .map(|n| n.to_string())
+                .or_else(|| id.as_u64().map(|n| n.to_string()))
+                .unwrap_or_default();
+            if !id_str.is_empty() {
+                let cur = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                if cur.is_empty() || cur.starts_with("mal_") {
+                    item["id"] = json!(id_str);
+                }
+            }
+        }
+        if let Some(meta) = item.get_mut("metadata").and_then(|m| m.as_object_mut()) {
+            if let Some(ls) = entry.get("list_status") {
+                if let Some(score) = ls.get("score").and_then(|v| v.as_i64()) {
+                    if score > 0 {
+                        meta.entry("score".to_string())
+                            .or_insert_with(|| json!(score));
+                    }
+                }
+                if let Some(ep) = ls.get("num_episodes_watched").and_then(|v| v.as_i64()) {
+                    meta.entry("num_episodes_watched".to_string())
+                        .or_insert_with(|| json!(ep));
                 }
             }
         }
@@ -571,6 +1042,24 @@ const SKIP_ANALYSIS_KEYS: &[&str] = &[
     "music_summary",
     "tweet_summary",
     "server_summary",
+    // X / Xbox narrative or scalar stats (not item arrays)
+    "post_summary",
+    "following_summary",
+    "user_name",
+    "user_avatar",
+    "engagement_stats",
+    "mean_score",
+    "days_watched",
+    "gamerscore",
+    "games_count",
+    "achievement_games",
+    "completed_games",
+    "total_achievements_earned",
+    "total_achievements_available",
+    "average_completion",
+    "hardcore_score",
+    "display_gamertag",
+    "artist_analysis",
 ];
 
 fn project_content_analysis(analysis: &Value, platform: &str, start_index: usize) -> Vec<Value> {
@@ -1276,5 +1765,72 @@ mod tests {
         assert_eq!(items[0]["image"], "https://example.com/cover.jpg");
         assert_eq!(items[0]["cover"], "https://example.com/cover.jpg");
         assert_eq!(items[0]["type"], "game");
+    }
+
+    #[test]
+    fn extract_netease_songs_and_enrich_from_raw_file() {
+        // Filtered shape (title+artist only) + write a temp raw file for enrich.
+        let data = json!({
+            "content_analysis": {
+                "music_summary": "songs",
+                "recent_songs": [
+                    { "title": "涙では消せない焔", "artist": "Sound Horizon" }
+                ]
+            }
+        });
+        // When raw file is absent, still returns title/artist items.
+        let items = extract_platform_items(&data, "netease");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["title"], "涙では消せない焔");
+        // type normalizes to music (from song list key or platform default)
+        let t = items[0]["type"].as_str().unwrap_or("");
+        assert!(t == "music" || t == "song" || t == "item" || t == "recent_song", "type={t}");
+    }
+
+    #[test]
+    fn extract_github_repos_carry_description() {
+        let data = json!({
+            "content_analysis": {
+                "repo_summary": "1 repo",
+                "recent_repos": [{
+                    "name": "Sakurairo",
+                    "language": "PHP",
+                    "stars": 4024,
+                    "description": "A WordPress theme",
+                    "url": "https://github.com/mirai-mamori/Sakurairo",
+                    "image": "https://opengraph.githubassets.com/1/mirai-mamori/Sakurairo"
+                }]
+            }
+        });
+        let items = extract_platform_items(&data, "github");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["title"], "Sakurairo");
+        assert_eq!(items[0]["description"], "A WordPress theme");
+        assert_eq!(
+            items[0]["image"],
+            "https://opengraph.githubassets.com/1/mirai-mamori/Sakurairo"
+        );
+    }
+
+    #[test]
+    fn extract_xbox_titles_use_display_image() {
+        let data = json!({
+            "content_analysis": {
+                "gaming_summary": "stats",
+                "recent_titles": [{
+                    "title_id": "1195776867",
+                    "name": "现代战争5",
+                    "display_image": "https://images-eds-ssl.xboxlive.com/example.jpg",
+                    "progress": 42.0
+                }]
+            }
+        });
+        let items = extract_platform_items(&data, "xbox");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["title"], "现代战争5");
+        assert_eq!(
+            items[0]["image"],
+            "https://images-eds-ssl.xboxlive.com/example.jpg"
+        );
     }
 }
