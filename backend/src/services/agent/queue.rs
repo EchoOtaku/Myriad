@@ -4,6 +4,7 @@
 //! 防止同一用户的并发请求竞态条件，控制系统整体负载。
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::{Mutex, OwnedMutexGuard, OwnedSemaphorePermit, RwLock, Semaphore};
@@ -27,6 +28,8 @@ pub struct LaneQueue {
     global_semaphore: Arc<Semaphore>,
     /// 最大并发数（用于状态查询）
     max_concurrent: usize,
+    /// 当前正在等待许可的请求数（排队深度）
+    waiting: AtomicUsize,
 }
 
 impl LaneQueue {
@@ -38,6 +41,7 @@ impl LaneQueue {
             lanes: RwLock::new(HashMap::new()),
             global_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             max_concurrent,
+            waiting: AtomicUsize::new(0),
         }
     }
 
@@ -112,6 +116,7 @@ impl LaneQueue {
         timeout: Option<std::time::Duration>,
     ) -> Result<LaneGuard, String> {
         let lane_mutex = self.get_or_create_lane(lane_key).await;
+        self.waiting.fetch_add(1, Ordering::Relaxed);
 
         let acquire_fut = async {
             // 先获取 lane 串行锁（同用户排队）
@@ -143,7 +148,7 @@ impl LaneQueue {
             })
         };
 
-        match timeout {
+        let result = match timeout {
             None => acquire_fut.await,
             Some(dur) => match tokio::time::timeout(dur, acquire_fut).await {
                 Ok(result) => result,
@@ -152,7 +157,9 @@ impl LaneQueue {
                     dur.as_secs().max(1)
                 )),
             },
-        }
+        };
+        self.waiting.fetch_sub(1, Ordering::Relaxed);
+        result
     }
 
     /// 获取队列状态
@@ -162,6 +169,7 @@ impl LaneQueue {
             total_lanes: lanes.len(),
             max_concurrent: self.max_concurrent,
             available_permits: self.global_semaphore.available_permits(),
+            waiting: self.waiting.load(Ordering::Relaxed),
         }
     }
 
@@ -201,6 +209,8 @@ pub struct QueueStatus {
     pub total_lanes: usize,
     pub max_concurrent: usize,
     pub available_permits: usize,
+    /// 正在排队等待许可的请求数
+    pub waiting: usize,
 }
 
 #[cfg(test)]

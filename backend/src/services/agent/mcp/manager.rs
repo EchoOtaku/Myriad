@@ -291,6 +291,22 @@ impl McpManager {
         all_tools
     }
 
+    /// 服务器健康/工具数一览（运维与 Manage UI）
+    pub async fn list_server_status(&self) -> Vec<McpServerStatus> {
+        let mut out = Vec::new();
+        let servers = self.servers.read().await;
+        for server in servers.iter() {
+            let mut srv = server.lock().await;
+            out.push(McpServerStatus {
+                id: srv.config.id.clone(),
+                healthy: srv.is_healthy(),
+                tool_count: srv.tools().len(),
+                auto_restart: srv.config.auto_restart,
+            });
+        }
+        out
+    }
+
     /// 优雅关闭所有 MCP 子进程（进程退出前调用）
     pub async fn shutdown_all(&self) {
         let servers = self.servers.read().await.clone();
@@ -300,6 +316,15 @@ impl McpManager {
         }
         tracing::info!("[MCP] All servers shut down");
     }
+}
+
+/// MCP 服务器状态快照
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct McpServerStatus {
+    pub id: String,
+    pub healthy: bool,
+    pub tool_count: usize,
+    pub auto_restart: bool,
 }
 
 /// 工具结果：若为 JSON 对象/数组则解析为结构化 Value，否则保留字符串。

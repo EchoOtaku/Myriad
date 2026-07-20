@@ -568,6 +568,8 @@ export interface QueueStatus {
   total_lanes: number
   max_concurrent: number
   available_permits: number
+  /** 正在排队等待许可的请求数 */
+  waiting?: number
 }
 
 // ============ Heartbeat (Phase 4) ============

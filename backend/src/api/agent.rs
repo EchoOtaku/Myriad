@@ -1393,6 +1393,20 @@ pub async fn process_stream(
     tokio::spawn(async move {
         // 获取 Lane Queue 执行许可（同一用户串行，全局并发上限 4）
         // 注意：进入 wait-for-input 后必须释放，否则最多 4 个等待任务会堵死全局槽位
+        {
+            let qs = queue.get_status().await;
+            if qs.available_permits == 0 || qs.waiting > 0 {
+                let ahead = qs.waiting.saturating_add(1);
+                let _ = tx
+                    .send(AgentProgressEvent::Progress {
+                        progress: 0,
+                        completed_steps: 0,
+                        total_steps: 0,
+                        message: format!("排队中（前方约 {} 个任务）…", ahead),
+                    })
+                    .await;
+            }
+        }
         let mut lane_guard = match queue.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await {
             Ok(guard) => Some(guard),
             Err(e) => {
@@ -3299,6 +3313,7 @@ async fn queue_status() -> Json<Value> {
         "total_lanes": status.total_lanes,
         "max_concurrent": status.max_concurrent,
         "available_permits": status.available_permits,
+        "waiting": status.waiting,
     }))
 }
 
@@ -3424,6 +3439,23 @@ async fn reload_mcp(
             Json(json!({ "error": e })),
         )),
     }
+}
+
+/// MCP 服务器状态列表
+async fn mcp_status(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    require_current_admin(&claims, &db).await?;
+    let manager = crate::services::agent::mcp::get_mcp_manager().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "MCP manager not initialized" })),
+        )
+    })?;
+    let servers = manager.list_server_status().await;
+    let tools = manager.list_tools().await.len();
+    Ok(Json(json!({ "servers": servers, "tool_count": tools })))
 }
 
 // ============ Skills & Memory ============
@@ -4786,6 +4818,11 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
         .route(
             "/mcp/reload",
             post(reload_mcp).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // MCP 服务器状态（需要认证）
+        .route(
+            "/mcp/status",
+            get(mcp_status).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // Agent 列表（需要认证）
         .route(

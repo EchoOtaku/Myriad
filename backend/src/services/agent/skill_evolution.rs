@@ -1013,17 +1013,14 @@ origin: agent_generated
         pruned
     }
 
-    /// 淘汰单个 Skill 文件
+    /// 淘汰单个 Skill：软删除到 `_trash/`，保留可恢复副本
     async fn prune_single_skill(&self, skill: &Skill) -> bool {
-        if !skill.file_path.exists() {
-            return false;
-        }
-        match tokio::fs::remove_file(&skill.file_path).await {
-            Ok(_) => {
+        match soft_delete_skill_file(skill).await {
+            Ok(dest) => {
                 tracing::info!(
                     skill_id = %skill.id,
-                    file = %skill.file_path.display(),
-                    "[SkillEvolution] Pruned skill file"
+                    trash = %dest.display(),
+                    "[SkillEvolution] Soft-deleted pruned skill"
                 );
                 if let Some(nm) =
                     crate::services::agent::notifications::get_notification_manager()
@@ -1032,13 +1029,12 @@ origin: agent_generated
                         &skill.id,
                         "pruned",
                         &format!(
-                            "自动技能「{}」因失败率过高被淘汰。",
+                            "自动技能「{}」因失败率过高被淘汰（已移入回收站）。",
                             skill.name
                         ),
                     )
                     .await;
                 }
-                // 关键路径立即落盘，避免重启丢失淘汰记录
                 self.flush().await;
                 true
             }
@@ -1046,7 +1042,7 @@ origin: agent_generated
                 tracing::warn!(
                     skill_id = %skill.id,
                     error = %e,
-                    "[SkillEvolution] Failed to prune skill file"
+                    "[SkillEvolution] Failed to soft-delete skill file"
                 );
                 false
             }
@@ -1066,6 +1062,8 @@ origin: agent_generated
     }
 
     /// 手动删除一个 Agent 生成的 Skill（不允许删除 manual Skill）
+    ///
+    /// 软删除：移动到 skills/_trash/，不物理抹除。
     pub async fn delete_skill(&self, skill_id: &str) -> Result<(), String> {
         let registry = get_skill_registry().ok_or("Skill registry not initialized")?;
         let skill = registry
@@ -1077,11 +1075,8 @@ origin: agent_generated
             return Err("Cannot delete manual skills".to_string());
         }
 
-        // 删除文件
         if skill.file_path.exists() {
-            tokio::fs::remove_file(&skill.file_path)
-                .await
-                .map_err(|e| format!("Failed to delete skill file: {}", e))?;
+            soft_delete_skill_file(&skill).await?;
         }
 
         // 清理统计
@@ -1090,6 +1085,7 @@ origin: agent_generated
             stats.remove(skill_id);
             self.mark_stats_dirty();
         }
+        self.flush().await;
 
         // 重新加载 registry
         if let Some(r) = get_skill_registry() {
@@ -1098,7 +1094,7 @@ origin: agent_generated
 
         tracing::info!(
             skill_id = skill_id,
-            "[SkillEvolution] Manually deleted skill"
+            "[SkillEvolution] Manually soft-deleted skill"
         );
         Ok(())
     }
@@ -1115,6 +1111,36 @@ origin: agent_generated
         }
         Ok(())
     }
+}
+
+/// 将 skill 文件移入 `skills/_trash/`（带时间戳前缀），避免物理删除无法恢复。
+/// `_trash` 以 `_` 开头，加载器会跳过该目录下的文件。
+async fn soft_delete_skill_file(skill: &Skill) -> Result<PathBuf, String> {
+    if !skill.file_path.exists() {
+        return Err(format!("Skill file missing: {}", skill.file_path.display()));
+    }
+    let parent = skill
+        .file_path
+        .parent()
+        .ok_or_else(|| "Skill file has no parent directory".to_string())?;
+    let trash_dir = parent.join("_trash");
+    tokio::fs::create_dir_all(&trash_dir)
+        .await
+        .map_err(|e| format!("Failed to create trash dir: {}", e))?;
+    let base_name = skill
+        .file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("skill.md");
+    let dest = trash_dir.join(format!(
+        "{}_{}",
+        Utc::now().format("%Y%m%d%H%M%S"),
+        base_name
+    ));
+    tokio::fs::rename(&skill.file_path, &dest)
+        .await
+        .map_err(|e| format!("Failed to move skill to trash: {}", e))?;
+    Ok(dest)
 }
 
 /// 从 AI 响应中提取 JSON 块（支持 ```json 包裹和裸 JSON）

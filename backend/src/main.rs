@@ -387,6 +387,9 @@ async fn run_server() -> anyhow::Result<()> {
                                         return;
                                     }
 
+                                    let _inflight =
+                                        services::agent::heartbeat::HeartbeatInflightGuard::enter();
+
                                     tracing::info!(
                                         task_id = %task.id,
                                         "[Heartbeat] Executing due task: {}",
@@ -6494,6 +6497,9 @@ async fn shutdown_signal() {
     // 停止调度器引擎
     api::tapp_scheduler::shutdown_scheduler().await;
     services::brew_scheduler::shutdown_brew_scheduler().await;
+
+    // 等待进行中的 heartbeat（最长 30s），减少杀进程时半途副作用
+    services::agent::heartbeat::wait_inflight_drain(std::time::Duration::from_secs(30)).await;
 
     // Agent 状态落盘 + MCP 子进程回收（滚动更新不丢最近记忆/技能统计）
     if let Some(memory) = services::agent::memory::get_memory() {
