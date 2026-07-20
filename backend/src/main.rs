@@ -4145,6 +4145,43 @@ async fn federation_retry_all_dead_delivery_wrapper(req: axum::extract::Request)
     }
 }
 
+/// POST /api/federation/delivery/cancel-pending — cancel all pending/delivering items for user
+async fn federation_cancel_all_pending_delivery_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let limit = req
+        .uri()
+        .query()
+        .and_then(|q| {
+            q.split('&')
+                .find_map(|p| p.strip_prefix("limit=").and_then(|v| v.parse::<i64>().ok()))
+        })
+        .unwrap_or(100);
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            match federation::delivery::cancel_all_pending_for_user(db, user_id, limit).await {
+                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+                Err((status, v)) => (status, Json(v)).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
 /// POST /api/federation/rooms/{room_id}/join — self-join open rooms
 async fn federation_join_room_wrapper(req: axum::extract::Request) -> Response {
     let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
@@ -5579,6 +5616,10 @@ fn federation_api_router() -> Router {
         .route(
             "/api/federation/delivery/retry-dead",
             post(federation_retry_all_dead_delivery_wrapper),
+        )
+        .route(
+            "/api/federation/delivery/cancel-pending",
+            post(federation_cancel_all_pending_delivery_wrapper),
         )
         .route(
             "/api/federation/delivery/{id}/retry",

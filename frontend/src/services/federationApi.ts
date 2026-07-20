@@ -1077,6 +1077,20 @@ export const federationApi = {
     )
   },
 
+  /** Cancel all pending/delivering delivery items (capped) */
+  cancelAllPendingDelivery(
+    limit?: number,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean; cancelled: number }> {
+    const qs =
+      limit != null ? `?limit=${encodeURIComponent(String(limit))}` : ''
+    return apiService.post(
+      `${PREFIX}/delivery/cancel-pending${qs}`,
+      {},
+      attributionOptions(runtimeGrant),
+    )
+  },
+
   /** Self-join an open-policy room */
   joinRoom(
     roomId: string,

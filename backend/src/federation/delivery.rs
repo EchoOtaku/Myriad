@@ -723,6 +723,67 @@ pub async fn retry_all_dead_for_user(
     }))
 }
 
+/// Cancel all pending/delivering delivery items for the user (capped).
+/// Marks matching rows `dead` with a user-cancelled error message.
+pub async fn cancel_all_pending_for_user(
+    db: &DatabaseConnection,
+    user_id: i32,
+    limit: i64,
+) -> Result<serde_json::Value, (axum::http::StatusCode, serde_json::Value)> {
+    use axum::http::StatusCode;
+
+    let limit = limit.clamp(1, 200);
+    let id_rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT dq.id
+               FROM federation_delivery_queue dq
+               JOIN federation_activities a ON a.id = dq.activity_id
+               WHERE a.user_id = $1 AND dq.status IN ('pending', 'delivering')
+               ORDER BY dq.created_at DESC
+               LIMIT $2"#,
+            [user_id.into(), limit.into()],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {e}")}),
+            )
+        })?;
+
+    let mut cancelled = 0u64;
+    for r in id_rows {
+        let Ok(id) = r.try_get::<i32>("", "id") else {
+            continue;
+        };
+        match db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"UPDATE federation_delivery_queue
+                   SET status = 'dead',
+                       error_message = 'cancelled: by user',
+                       last_attempt_at = NOW(),
+                       next_retry_at = NULL
+                   WHERE id = $1 AND status IN ('pending', 'delivering')"#,
+                [id.into()],
+            ))
+            .await
+        {
+            Ok(res) => cancelled += res.rows_affected(),
+            Err(e) => {
+                tracing::warn!("cancel_all_pending item {} failed: {}", id, e);
+            }
+        }
+    }
+
+    Ok(json!({
+        "success": true,
+        "cancelled": cancelled,
+        "limit": limit
+    }))
+}
+
 // ==================== 实际投递 ====================
 
 /// 投递 Activity 到目标 inbox

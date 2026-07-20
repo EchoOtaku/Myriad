@@ -347,6 +347,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['federation.retryDelivery', 'federation:write'],
     ['federation.cancelDelivery', 'federation:write'],
     ['federation.retryAllDeadDelivery', 'federation:write'],
+    ['federation.cancelAllPendingDelivery', 'federation:write'],
     ['federation.joinRoom', 'federation:write'],
     ['federation.updateInstanceTrust', 'federation:trust'],
     ['federation.toggleInstanceBlock', 'federation:trust'],

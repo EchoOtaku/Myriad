@@ -1347,6 +1347,26 @@ export function registerFederationHandlers(
   )
 
   bridge.registerHandler(
+    'federation.cancelAllPendingDelivery',
+    async (message: TappMessage) => {
+      const [limit] = (message.payload as { args: unknown[] }).args || []
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.cancelAllPendingDelivery(
+          typeof limit === 'number' ? limit : undefined,
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
     'federation.joinRoom',
     async (message: TappMessage) => {
       const [roomId] = (message.payload as { args: unknown[] }).args || []

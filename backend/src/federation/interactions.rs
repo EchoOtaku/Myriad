@@ -686,10 +686,12 @@ pub async fn list_bookmarks(
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
+            // content_json columns are `json`; activity object_json extracts are `jsonb`.
+            // COALESCE requires matching types — cast the timeline branch to jsonb.
             r#"SELECT i.object_id, i.created_at,
                       COALESCE(
                         (
-                          SELECT t.content_json FROM federation_timeline t
+                          SELECT t.content_json::jsonb FROM federation_timeline t
                           WHERE t.user_id = i.user_id
                             AND (
                               t.content_json->>'id' = i.object_id
