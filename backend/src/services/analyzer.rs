@@ -134,6 +134,35 @@ struct OpenAIResponseMessage {
     reasoning: Option<String>,
 }
 
+/// Format a failed OpenAI-compatible HTTP response for user-facing errors.
+///
+/// The transport is OpenAI-compatible (OpenRouter / DeepSeek / custom gateways),
+/// not necessarily official OpenAI — keep the wording accurate so region blocks
+/// and wrong models are not misread as "using OpenAI".
+fn format_openai_compatible_http_error(
+    status: reqwest::StatusCode,
+    endpoint: &str,
+    model: &str,
+    body: &str,
+) -> String {
+    let body = body.trim();
+    let region_blocked = body.to_ascii_lowercase().contains("not available in your region")
+        || body.contains("\"code\":403")
+        || body.contains("\"code\": 403");
+
+    let mut msg = format!(
+        "OpenAI-compatible API error {status} (endpoint: {endpoint}, model: {model}): {body}"
+    );
+
+    if region_blocked {
+        msg.push_str(
+            " — this is a provider geo-restriction on the server egress IP (common with OpenRouter for Claude / Grok / GPT / Gemini), not a wrong provider switch. Switch to a region-available model, or enable an outbound proxy in settings.",
+        );
+    }
+
+    msg
+}
+
 /// Extract assistant text from an OpenAI-compatible chat completion body.
 ///
 /// Never panics: returns clear anyhow errors for playground 502 paths.
@@ -447,7 +476,12 @@ impl AiAnalyzer {
             .json(&request_body)
             .send()
             .await
-            .context("Failed to send request to OpenAI API")?;
+            .with_context(|| {
+                format!(
+                    "Failed to send request to OpenAI-compatible API (endpoint: {url}, model: {})",
+                    self.model
+                )
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -455,17 +489,18 @@ impl AiAnalyzer {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(anyhow::anyhow!(
-                "OpenAI API error {}: {}",
+            return Err(anyhow::anyhow!(format_openai_compatible_http_error(
                 status,
-                error_text
-            ));
+                &url,
+                &self.model,
+                &error_text,
+            )));
         }
 
         let openai_response: OpenAIResponse = response
             .json()
             .await
-            .context("Failed to parse OpenAI API response")?;
+            .context("Failed to parse OpenAI-compatible API response")?;
 
         extract_openai_completion_text(&openai_response)
     }
@@ -533,7 +568,12 @@ impl AiAnalyzer {
                     .json(&request_body)
                     .send()
                     .await
-                    .context("Failed to send request to OpenAI API")?;
+                    .with_context(|| {
+                        format!(
+                            "Failed to send request to OpenAI-compatible API (endpoint: {url}, model: {})",
+                            self.model
+                        )
+                    })?;
 
                 if !response.status().is_success() {
                     let status = response.status();
@@ -541,17 +581,18 @@ impl AiAnalyzer {
                         .text()
                         .await
                         .unwrap_or_else(|_| "Unknown error".to_string());
-                    return Err(anyhow::anyhow!(
-                        "OpenAI API error {}: {}",
+                    return Err(anyhow::anyhow!(format_openai_compatible_http_error(
                         status,
-                        error_text
-                    ));
+                        &url,
+                        &self.model,
+                        &error_text,
+                    )));
                 }
 
                 let openai_response: OpenAIResponse = response
                     .json()
                     .await
-                    .context("Failed to parse OpenAI API response")?;
+                    .context("Failed to parse OpenAI-compatible API response")?;
 
                 extract_openai_completion_text(&openai_response)
             }
@@ -666,16 +707,22 @@ impl AiAnalyzer {
                     .json(&request_body)
                     .send()
                     .await
-                    .context("Failed to send streaming request to OpenAI API")?;
+                    .with_context(|| {
+                        format!(
+                            "Failed to send streaming request to OpenAI-compatible API (endpoint: {url}, model: {})",
+                            self.model
+                        )
+                    })?;
 
                 if !response.status().is_success() {
                     let status = response.status();
                     let error_text = response.text().await.unwrap_or_default();
-                    return Err(anyhow::anyhow!(
-                        "OpenAI streaming API error {}: {}",
+                    return Err(anyhow::anyhow!(format_openai_compatible_http_error(
                         status,
-                        error_text
-                    ));
+                        &url,
+                        &self.model,
+                        &error_text,
+                    )));
                 }
 
                 let mut buffer = String::new();
@@ -722,9 +769,25 @@ impl AiAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_openai_completion_text, flatten_messages_for_gemini, openai_chat_completions_url,
-        ChatMessage, OpenAIResponse,
+        extract_openai_completion_text, flatten_messages_for_gemini,
+        format_openai_compatible_http_error, openai_chat_completions_url, ChatMessage,
+        OpenAIResponse,
     };
+
+    #[test]
+    fn openai_compatible_error_does_not_claim_official_openai() {
+        let msg = format_openai_compatible_http_error(
+            reqwest::StatusCode::FORBIDDEN,
+            "https://openrouter.ai/api/v1/chat/completions",
+            "x-ai/grok-4.5",
+            r#"{"error":{"message":"This model is not available in your region.","code":403}}"#,
+        );
+        assert!(msg.contains("OpenAI-compatible API error"));
+        assert!(!msg.starts_with("OpenAI API error"));
+        assert!(msg.contains("x-ai/grok-4.5"));
+        assert!(msg.contains("openrouter.ai"));
+        assert!(msg.contains("geo-restriction"));
+    }
 
     #[test]
     fn flattens_multi_turn_messages_for_gemini() {

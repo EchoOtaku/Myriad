@@ -211,11 +211,23 @@ export function AppLayout({ children }: AppLayoutProps) {
   )
 
   // 初始化：加载壁纸（仅首次挂载执行）
+  // 先挂上呼吸占位，等图片预加载完成后再渐显壁纸（见 useWallpaper.applyWallpaperToDOM）
   const hasInitializedRef = useRef(false)
   useEffect(() => {
     // 防止重复初始化
     if (hasInitializedRef.current) return
     hasInitializedRef.current = true
+
+    // 首次进入：若壁纸尚未可见，挂上呼吸占位（勿写进 React className）
+    const bg = document.getElementById('bg-container')
+    const wallpaperEl = document.getElementById('wallpaper')
+    if (
+      bg &&
+      wallpaperEl &&
+      !wallpaperEl.classList.contains('wallpaper-visible')
+    ) {
+      bg.classList.add('wallpaper-awaiting')
+    }
 
     console.debug('[AppLayout] Initializing wallpaper load...')
     ;(async () => {
@@ -257,18 +269,29 @@ export function AppLayout({ children }: AppLayoutProps) {
         <GlobalControlPanel />
       </div>
 
-      {/* 背景 */}
-      <div id="bg-container" className="fixed inset-0 -z-10 overflow-hidden">
+      {/* 背景层叠（勿给 #wallpaper 设 z-index，否则会盖住涟漪 canvas 与 #bg-gradient 底部遮罩）：
+          呼吸占位 → 壁纸 → 涟漪(JS insert) → 底部渐变遮罩 → 网格
+          wallpaper-awaiting 仅由 useWallpaper JS 切换，不要写死在 className（避免 re-render 盖掉） */}
+      <div
+        id="bg-container"
+        className="fixed inset-0 -z-10 overflow-hidden"
+      >
+        {/* 首次加载呼吸占位：独立层，z-0，不占 ::before/::after */}
+        <div
+          id="wallpaper-awaiting-fx"
+          className="pointer-events-none absolute inset-0 z-0"
+          aria-hidden="true"
+        />
         <div
           id="wallpaper"
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ease-in-out"
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         ></div>
         <div
           id="bg-gradient"
-          className="absolute inset-0 bg-linear-to-b from-transparent from-35% via-white/40 via-55% to-white/90 to-85% transition-opacity duration-500 ease-out"
+          className="pointer-events-none absolute inset-0 z-[2] bg-linear-to-b from-transparent from-35% via-white/40 via-55% to-white/90 to-85% transition-opacity duration-500 ease-out"
         ></div>
         {anim.level !== 'none' && (
-          <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]"></div>
+          <div className="pointer-events-none absolute inset-0 z-[3] bg-grid-pattern opacity-[0.02]"></div>
         )}
       </div>
 

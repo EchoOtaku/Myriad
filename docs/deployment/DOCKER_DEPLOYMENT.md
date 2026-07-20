@@ -31,9 +31,10 @@ Networks:
 - Only `proxy` publishes a host port.
 - **Proxy routing**: SPA/static via frontend; `/api/*`, `/health`, and ActivityPub
   public paths (`/.well-known/webfinger`, `/.well-known/nodeinfo`, `/nodeinfo/2.1`,
-  `/inbox`, `/users/*`) via backend. WebSocket upgrades under `/api/*` are bridged
-  by proxy. See [PORTS.md](./PORTS.md). An outer TLS reverse proxy must pass the
-  whole site (or the same AP allowlist) — `/api`-only break federation discovery.
+  `/inbox`, `/users/*`, **`/media/federation/*`**) via backend. WebSocket upgrades
+  under `/api/*` are bridged by proxy. See [PORTS.md](./PORTS.md). An outer TLS
+  reverse proxy must pass the whole site (or the same AP + media allowlist) —
+  `/api`-only breaks federation discovery **and** Note attachment media display.
 - **Frontend/postgres cannot reach updater** (no shared L2 with updater).
 - The updater is not an A/B dual-live system. It uses one running business slot,
   maintenance mode, `pgdata` snapshots, and immutable image tags.

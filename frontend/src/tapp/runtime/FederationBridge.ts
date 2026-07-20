@@ -113,16 +113,31 @@ export function registerFederationHandlers(
       try {
         const data = JSON.parse(typeof ev.data === 'string' ? ev.data : '')
         bridge.emit('federation:message', { scope: 'room', roomId, data })
-        if (
-          data &&
-          typeof data === 'object' &&
-          data.event === 'governance_changed'
-        ) {
-          bridge.emit('federation:roomUpdate', {
-            roomId,
-            event: 'governance_changed',
-            changes: data.changes,
-          })
+        if (data && typeof data === 'object') {
+          if (data.event === 'governance_changed') {
+            bridge.emit('federation:roomUpdate', {
+              roomId,
+              event: 'governance_changed',
+              changes: data.changes,
+            })
+          } else if (data.type === 'room_deleted') {
+            bridge.emit('federation:roomUpdate', {
+              roomId,
+              event: 'deleted',
+            })
+          } else if (
+            data.event === 'member_joined' ||
+            data.event === 'member_left' ||
+            data.event === 'member_removed' ||
+            data.event === 'member_invited'
+          ) {
+            bridge.emit('federation:roomUpdate', {
+              roomId,
+              event: data.event,
+              actor: data.actor,
+              role: data.role,
+            })
+          }
         }
       } catch {
         /* ignore non-JSON */
@@ -476,6 +491,50 @@ export function registerFederationHandlers(
   )
 
   bridge.registerHandler(
+    'federation.acceptRoomInvite',
+    async (message: TappMessage) => {
+      const [roomId] = (message.payload as { args: unknown[] }).args || []
+      if (!roomId || typeof roomId !== 'string')
+        return { success: false, error: 'Room ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.acceptRoomInvite(roomId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to accept room invite',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.rejectRoomInvite',
+    async (message: TappMessage) => {
+      const [roomId] = (message.payload as { args: unknown[] }).args || []
+      if (!roomId || typeof roomId !== 'string')
+        return { success: false, error: 'Room ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.rejectRoomInvite(roomId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to reject room invite',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
     'federation.closeChannel',
     async (message: TappMessage) => {
       const [channelId] = (message.payload as { args: unknown[] }).args || []
@@ -732,6 +791,73 @@ export function registerFederationHandlers(
           success: false,
           error:
             error instanceof Error ? error.message : 'Failed to leave room',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.transferRoomOwnership',
+    async (message: TappMessage) => {
+      const [roomId, newOwner] =
+        (message.payload as { args: unknown[] }).args || []
+      if (!roomId || typeof roomId !== 'string')
+        return { success: false, error: 'Room ID is required' }
+      if (!newOwner || typeof newOwner !== 'string')
+        return { success: false, error: 'New owner is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.transferRoomOwnership(
+          roomId,
+          newOwner,
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.initiateChannelE2e',
+    async (message: TappMessage) => {
+      const [channelId] = (message.payload as { args: unknown[] }).args || []
+      if (!channelId || typeof channelId !== 'string')
+        return { success: false, error: 'Channel ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.initiateChannelE2e(
+          channelId,
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.initiateRoomE2e',
+    async (message: TappMessage) => {
+      const [roomId] = (message.payload as { args: unknown[] }).args || []
+      if (!roomId || typeof roomId !== 'string')
+        return { success: false, error: 'Room ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.initiateRoomE2e(roomId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
         }
       }
     },
@@ -1000,6 +1126,119 @@ export function registerFederationHandlers(
     }
   })
 
+  bridge.registerHandler(
+    'federation.updateTrustPolicy',
+    async (message: TappMessage) => {
+      const [req] = (message.payload as { args: unknown[] }).args || []
+      if (!req || typeof req !== 'object')
+        return { success: false, error: 'Policy update request is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.updateTrustPolicy(
+          req as Parameters<typeof federationApi.updateTrustPolicy>[0],
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler('federation.getDeliveryStats', async () => {
+    try {
+      const runtimeGrant = await bridge.getRuntimeGrant()
+      const data = await federationApi.getDeliveryStats(runtimeGrant)
+      return { success: true, data }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
+    }
+  })
+
+  bridge.registerHandler(
+    'federation.listDelivery',
+    async (message: TappMessage) => {
+      const [limit] = (message.payload as { args: unknown[] }).args || []
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.listDelivery(
+          typeof limit === 'number' ? limit : undefined,
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.retryDelivery',
+    async (message: TappMessage) => {
+      const [queueId] = (message.payload as { args: unknown[] }).args || []
+      if (typeof queueId !== 'number')
+        return { success: false, error: 'Delivery id is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.retryDelivery(queueId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.retryAllDeadDelivery',
+    async (message: TappMessage) => {
+      const [limit] = (message.payload as { args: unknown[] }).args || []
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.retryAllDeadDelivery(
+          typeof limit === 'number' ? limit : undefined,
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.joinRoom',
+    async (message: TappMessage) => {
+      const [roomId] = (message.payload as { args: unknown[] }).args || []
+      if (!roomId || typeof roomId !== 'string')
+        return { success: false, error: 'Room ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.joinRoom(roomId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to join room',
+        }
+      }
+    },
+  )
+
   bridge.registerHandler('federation.getInstances', async () => {
     try {
       const runtimeGrant = await bridge.getRuntimeGrant()
@@ -1112,6 +1351,88 @@ export function registerFederationHandlers(
   )
 
   bridge.registerHandler(
+    'federation.initiateRoomTransfer',
+    async (message: TappMessage) => {
+      const [roomId, req] =
+        (message.payload as { args: unknown[] }).args || []
+      if (
+        !roomId ||
+        typeof roomId !== 'string' ||
+        !req ||
+        typeof req !== 'object'
+      ) {
+        return {
+          success: false,
+          error: 'Room ID and transfer request are required',
+        }
+      }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.initiateRoomTransfer(
+          roomId,
+          req as Parameters<typeof federationApi.initiateRoomTransfer>[1],
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.listRoomTransfers',
+    async (message: TappMessage) => {
+      const [roomId] = (message.payload as { args: unknown[] }).args || []
+      if (!roomId || typeof roomId !== 'string')
+        return { success: false, error: 'Room ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.listRoomTransfers(roomId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.listRoomFiles',
+    async (message: TappMessage) => {
+      const [roomId, params] = (message.payload as { args: unknown[] }).args || []
+      if (!roomId || typeof roomId !== 'string')
+        return { success: false, error: 'Room ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.listRoomFiles(
+          roomId,
+          params && typeof params === 'object'
+            ? (params as {
+                before?: string
+                limit?: number
+                filter?: string
+                q?: string
+              })
+            : undefined,
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
     'federation.getTransfer',
     async (message: TappMessage) => {
       const [transferId] = (message.payload as { args: unknown[] }).args || []
@@ -1125,6 +1446,70 @@ export function registerFederationHandlers(
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  /**
+   * Download a completed channel transfer and trigger a browser save dialog
+   * in the host document (sandbox cannot reliably stream multi-MB blobs alone).
+   */
+  bridge.registerHandler(
+    'federation.downloadTransfer',
+    async (message: TappMessage) => {
+      const [transferId] = (message.payload as { args: unknown[] }).args || []
+      if (!transferId || typeof transferId !== 'string')
+        return { success: false, error: 'Transfer ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        // Prefer status check for clearer errors before streaming large bodies
+        try {
+          const meta = await federationApi.getTransfer(transferId, runtimeGrant)
+          if (meta && meta.status && meta.status !== 'completed') {
+            return {
+              success: false,
+              error: `Transfer is not ready (status=${meta.status})`,
+            }
+          }
+        } catch {
+          // fall through — content endpoint will return a precise error
+        }
+
+        const { blob, filename, contentType } =
+          await federationApi.downloadTransfer(transferId, runtimeGrant)
+        const name =
+          filename ||
+          `transfer-${transferId.slice(0, 8)}` ||
+          'download'
+
+        const objectUrl = URL.createObjectURL(blob)
+        try {
+          const a = document.createElement('a')
+          a.href = objectUrl
+          a.download = name
+          a.rel = 'noopener'
+          a.style.display = 'none'
+          document.body.appendChild(a)
+          a.click()
+          a.remove()
+        } finally {
+          // Revoke after the browser has a chance to start the download
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+        }
+
+        return {
+          success: true,
+          data: {
+            filename: name,
+            size: blob.size,
+            content_type: contentType || blob.type || undefined,
+          },
+        }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Download failed',
         }
       }
     },

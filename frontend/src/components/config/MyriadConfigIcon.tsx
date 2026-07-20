@@ -14,6 +14,7 @@ export type MyriadConfigIconKind =
   | 'advanced'
   | 'about'
   | 'users'
+  | 'federation'
 
 interface MyriadConfigIconProps {
   kind: MyriadConfigIconKind

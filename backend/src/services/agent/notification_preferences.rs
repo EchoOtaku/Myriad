@@ -27,7 +27,7 @@ pub struct NotificationEventDefinition {
     pub source: &'static str,
 }
 
-pub const EVENT_DEFINITIONS: [NotificationEventDefinition; 28] = [
+pub const EVENT_DEFINITIONS: [NotificationEventDefinition; 29] = [
     NotificationEventDefinition {
         key: "agent.task_progress",
         source: "agent",
@@ -134,6 +134,10 @@ pub const EVENT_DEFINITIONS: [NotificationEventDefinition; 28] = [
     },
     NotificationEventDefinition {
         key: "federation.channel_accepted",
+        source: "federation",
+    },
+    NotificationEventDefinition {
+        key: "federation.room_invite_accepted",
         source: "federation",
     },
     NotificationEventDefinition {

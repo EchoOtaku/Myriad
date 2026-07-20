@@ -195,10 +195,10 @@ pub async fn publish_content(
         "object": ap_object,
     });
 
-    let object_type = activity_json["object"]["type"]
-        .as_str()
-        .unwrap_or(content_type)
-        .to_string();
+    // Persist MFP content_type (report/tapp/library/…) for local indexing
+    // (Ring gossip filters on object_type = 'library'|'tapp'). The AP object
+    // still carries ActivityStreams type (Article/Application/Collection).
+    let object_type = content_type.to_string();
 
     // 存入 federation_activities
     let act_row = db
@@ -880,13 +880,101 @@ async fn build_ap_object(
             }))
         }
         "library" => {
-            // Library 条目 — library_items 表尚未创建，返回明确错误
-            Err((
-                StatusCode::NOT_IMPLEMENTED,
-                Json(
-                    json!({"error": "Library content publishing is not yet supported (library_items table not available)"}),
-                ),
-            ))
+            // Library 发布：content_id = platform_metadata.id（平台收藏快照）
+            // 或 platform 名（取该用户该平台最新一条 metadata）。
+            // 无独立 library_items 表；数据来自 platform_metadata.raw_data 摘要。
+            let (meta_id, platform_name, raw): (i32, String, serde_json::Value) =
+                if let Ok(id) = content_id.parse::<i32>() {
+                    let row = db
+                        .query_one(Statement::from_sql_and_values(
+                            DatabaseBackend::Postgres,
+                            r#"SELECT id, platform_name, raw_data
+                               FROM platform_metadata
+                               WHERE id = $1 AND user_id = $2"#,
+                            [id.into(), user_id.into()],
+                        ))
+                        .await
+                        .map_err(db_err)?
+                        .ok_or_else(|| not_found("Library metadata not found"))?;
+                    (
+                        row.try_get::<i32>("", "id").unwrap_or(id),
+                        row.try_get::<String>("", "platform_name")
+                            .unwrap_or_default(),
+                        row.try_get::<serde_json::Value>("", "raw_data")
+                            .unwrap_or(json!({})),
+                    )
+                } else {
+                    let platform = content_id.trim();
+                    if platform.is_empty() {
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({
+                                "error": "library content_id must be platform_metadata id or platform name"
+                            })),
+                        ));
+                    }
+                    let row = db
+                        .query_one(Statement::from_sql_and_values(
+                            DatabaseBackend::Postgres,
+                            r#"SELECT id, platform_name, raw_data
+                               FROM platform_metadata
+                               WHERE user_id = $1 AND lower(platform_name) = lower($2)
+                               ORDER BY fetched_at DESC NULLS LAST, id DESC
+                               LIMIT 1"#,
+                            [user_id.into(), platform.into()],
+                        ))
+                        .await
+                        .map_err(db_err)?
+                        .ok_or_else(|| {
+                            not_found(&format!(
+                                "No library metadata for platform '{}'",
+                                platform
+                            ))
+                        })?;
+                    (
+                        row.try_get::<i32>("", "id").unwrap_or(0),
+                        row.try_get::<String>("", "platform_name")
+                            .unwrap_or_else(|_| platform.to_string()),
+                        row.try_get::<serde_json::Value>("", "raw_data")
+                            .unwrap_or(json!({})),
+                    )
+                };
+
+            let (item_count, sample_titles) = summarize_library_raw(&raw);
+            let name = format!("{} library", platform_name);
+            let summary = if item_count > 0 {
+                format!(
+                    "{} items on {}{}",
+                    item_count,
+                    platform_name,
+                    if sample_titles.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" — e.g. {}", sample_titles.join(", "))
+                    }
+                )
+            } else {
+                format!("Library snapshot from {}", platform_name)
+            };
+
+            Ok(json!({
+                "type": "Collection",
+                "id": format!("{}/library/{}", base_url, meta_id),
+                "attributedTo": &local_actor,
+                "name": &name,
+                "summary": &summary,
+                "totalItems": item_count,
+                "published": now_iso8601(),
+                "to": to,
+                "cc": cc,
+                "mfp:contentType": "library",
+                "mfp:contentId": content_id,
+                "mfp:platform": &platform_name,
+                "mfp:metadataId": meta_id,
+                "mfp:sampleTitles": sample_titles,
+                "platform": &platform_name,
+                "item_count": item_count,
+            }))
         }
         _ => Err((
             StatusCode::BAD_REQUEST,
@@ -1312,6 +1400,96 @@ fn resolve_audience(
         "followers" => (vec![followers_url(base_url, username)], vec![]),
         _ => (vec![], vec![]),
     }
+}
+
+/// Best-effort summary of platform_metadata.raw_data for library publish.
+/// Returns (approx item count, up to 5 sample titles).
+fn summarize_library_raw(raw: &serde_json::Value) -> (usize, Vec<String>) {
+    let mut titles: Vec<String> = Vec::new();
+    let mut count = 0usize;
+
+    fn push_title(titles: &mut Vec<String>, v: &serde_json::Value) {
+        if titles.len() >= 5 {
+            return;
+        }
+        let t = v
+            .get("title")
+            .or_else(|| v.get("name"))
+            .or_else(|| v.get("subject_title"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim();
+        if !t.is_empty() && !titles.iter().any(|e| e == t) {
+            titles.push(t.chars().take(80).collect());
+        }
+    }
+
+    fn walk(v: &serde_json::Value, count: &mut usize, titles: &mut Vec<String>) {
+        match v {
+            serde_json::Value::Array(arr) => {
+                // Treat top-level-ish arrays of objects as item lists
+                let object_items: Vec<&serde_json::Value> =
+                    arr.iter().filter(|x| x.is_object()).collect();
+                if !object_items.is_empty() {
+                    *count += object_items.len();
+                    for item in object_items {
+                        // nested subject/node common in MAL/Bangumi
+                        if let Some(node) = item.get("node").or_else(|| item.get("subject")) {
+                            push_title(titles, node);
+                        } else {
+                            push_title(titles, item);
+                        }
+                    }
+                } else {
+                    for x in arr {
+                        walk(x, count, titles);
+                    }
+                }
+            }
+            serde_json::Value::Object(map) => {
+                // Prefer known collection keys
+                for key in [
+                    "games",
+                    "anime",
+                    "manga",
+                    "music",
+                    "collection",
+                    "items",
+                    "data",
+                    "list",
+                ] {
+                    if let Some(inner) = map.get(key) {
+                        walk(inner, count, titles);
+                    }
+                }
+                // If still empty, shallow-walk remaining arrays once
+                if *count == 0 {
+                    for (k, inner) in map {
+                        if matches!(
+                            k.as_str(),
+                            "games"
+                                | "anime"
+                                | "manga"
+                                | "music"
+                                | "collection"
+                                | "items"
+                                | "data"
+                                | "list"
+                        ) {
+                            continue;
+                        }
+                        if inner.is_array() {
+                            walk(inner, count, titles);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    walk(raw, &mut count, &mut titles);
+    (count, titles)
 }
 
 /// 从报告 JSON 中提取纯文本摘要（chat / mfp snapshot 用）

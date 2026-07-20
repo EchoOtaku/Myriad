@@ -805,8 +805,16 @@ export function generateFullSDK(
       sendRoomMessage: (roomId, req) => sendRequest('federation', 'sendRoomMessage', [roomId, req]),
       pinRoomMessage: (roomId, messageId, pinned) => sendRequest('federation', 'pinRoomMessage', [roomId, messageId, pinned]),
       inviteMember: (roomId, req) => sendRequest('federation', 'inviteMember', [roomId, req]),
+      acceptRoomInvite: (roomId) => sendRequest('federation', 'acceptRoomInvite', [roomId]),
+      rejectRoomInvite: (roomId) => sendRequest('federation', 'rejectRoomInvite', [roomId]),
       removeMember: (roomId, actorUrl) => sendRequest('federation', 'removeMember', [roomId, actorUrl]),
       leaveRoom: (roomId) => sendRequest('federation', 'leaveRoom', [roomId]),
+      transferRoomOwnership: (roomId, newOwner) =>
+        sendRequest('federation', 'transferRoomOwnership', [roomId, newOwner]),
+      initiateChannelE2e: (channelId) =>
+        sendRequest('federation', 'initiateChannelE2e', [channelId]),
+      initiateRoomE2e: (roomId) =>
+        sendRequest('federation', 'initiateRoomE2e', [roomId]),
       deleteRoom: (roomId) => sendRequest('federation', 'deleteRoom', [roomId]),
       // Ring
       getRings: () => sendRequest('federation', 'getRings', []),
@@ -819,13 +827,23 @@ export function generateFullSDK(
       triggerSync: (ringId) => sendRequest('federation', 'triggerSync', [ringId]),
       // Trust 策略
       getTrustPolicy: () => sendRequest('federation', 'getTrustPolicy', []),
+      updateTrustPolicy: (req) => sendRequest('federation', 'updateTrustPolicy', [req]),
       getInstances: () => sendRequest('federation', 'getInstances', []),
+      getDeliveryStats: () => sendRequest('federation', 'getDeliveryStats', []),
+      listDelivery: (limit) => sendRequest('federation', 'listDelivery', [limit]),
+      retryDelivery: (id) => sendRequest('federation', 'retryDelivery', [id]),
+      retryAllDeadDelivery: (limit) => sendRequest('federation', 'retryAllDeadDelivery', [limit]),
+      joinRoom: (roomId) => sendRequest('federation', 'joinRoom', [roomId]),
       updateInstanceTrust: (req) => sendRequest('federation', 'updateInstanceTrust', [req]),
       toggleInstanceBlock: (req) => sendRequest('federation', 'toggleInstanceBlock', [req]),
       // 文件传输
       initiateTransfer: (channelId, req) => sendRequest('federation', 'initiateTransfer', [channelId, req]),
       listTransfers: (channelId) => sendRequest('federation', 'listTransfers', [channelId]),
+      initiateRoomTransfer: (roomId, req) => sendRequest('federation', 'initiateRoomTransfer', [roomId, req]),
+      listRoomTransfers: (roomId) => sendRequest('federation', 'listRoomTransfers', [roomId]),
+      listRoomFiles: (roomId, params) => sendRequest('federation', 'listRoomFiles', [roomId, params]),
       getTransfer: (transferId) => sendRequest('federation', 'getTransfer', [transferId]),
+      downloadTransfer: (transferId) => sendRequest('federation', 'downloadTransfer', [transferId]),
       uploadChunk: (transferId, req) => sendRequest('federation', 'uploadChunk', [transferId, req]),
       cancelTransfer: (transferId) => sendRequest('federation', 'cancelTransfer', [transferId]),
       // 实时订阅

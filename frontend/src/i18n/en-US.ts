@@ -342,6 +342,10 @@ export const enUS: TranslationKeys = {
     musicDesc: 'Configure playlist playback',
     network: 'Network Proxy',
     networkDesc: 'Configure network proxy to access external services',
+    federation: 'Federation',
+    federationDesc:
+      'Trust policy, allowlist, instance blocks, and content filters',
+    federationPolicySaved: 'Trust policy saved',
     data: 'Data Management',
     dataDesc: 'Manage cache and platform data',
     about: 'About',

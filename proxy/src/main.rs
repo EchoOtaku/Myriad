@@ -350,6 +350,15 @@ async fn forward_websocket(
 }
 
 /// Paths served by the backend. Everything else goes to the frontend SPA.
+///
+/// Keep in sync with:
+/// - `backend` public federation routes in `main.rs` (non-`/api` ActivityPub + media)
+/// - frontend `isBackendDevProxyPath` in `astro.config.mjs`
+/// - docs/deployment/PORTS.md
+///
+/// Missing an entry silently serves the SPA HTML for that URL (broken media, broken
+/// WebFinger, etc.). Prefer whole-site outer reverse proxies so this list only needs
+/// to live in Myriad proxy.
 fn is_backend_path(path: &str) -> bool {
     path.starts_with("/api/")
         || path == "/health"
@@ -358,7 +367,11 @@ fn is_backend_path(path: &str) -> bool {
         || path == "/.well-known/nodeinfo"
         || path == "/nodeinfo/2.1"
         || path == "/inbox"
+        // Actor, outbox, followers, following, per-user inbox, avatar
         || path.starts_with("/users/")
+        // Note attachment media (Image/Video) under data/federation_media.
+        // Absolute URLs: /media/federation/{userId}/{filename} — must not hit SPA.
+        || path.starts_with("/media/federation/")
 }
 
 fn bad_gateway(err: anyhow::Error) -> Response {
@@ -733,19 +746,48 @@ mod tests {
 
     #[test]
     fn backend_paths_include_federation_endpoints() {
+        // REST / health
         assert!(is_backend_path("/api/federation/channels"));
+        assert!(is_backend_path("/api/federation/media"));
+        assert!(is_backend_path("/api/federation/avatar-cache/x.webp"));
+        // Chat file-meta (chunk upload + content download) — under /api/*
+        assert!(is_backend_path(
+            "/api/federation/channels/ch_x/transfers"
+        ));
+        assert!(is_backend_path("/api/federation/rooms/rm_x/transfers"));
+        assert!(is_backend_path(
+            "/api/federation/transfers/tr_x/chunks"
+        ));
+        assert!(is_backend_path(
+            "/api/federation/transfers/tr_x/content"
+        ));
         assert!(is_backend_path("/health"));
+        // Discovery
         assert!(is_backend_path("/.well-known/webfinger"));
         assert!(is_backend_path("/.well-known/nodeinfo"));
         assert!(is_backend_path("/nodeinfo/2.1"));
+        // Inbox + actor graph
         assert!(is_backend_path("/inbox"));
         assert!(is_backend_path("/users/misakimei"));
         assert!(is_backend_path("/users/misakimei/inbox"));
+        assert!(is_backend_path("/users/misakimei/outbox"));
+        assert!(is_backend_path("/users/misakimei/followers"));
+        assert!(is_backend_path("/users/misakimei/following"));
+        assert!(is_backend_path("/users/misakimei/avatar"));
+        // Note attachment media (the historical miss that blanked Aro feed images)
+        assert!(is_backend_path(
+            "/media/federation/1/abc-def_01.jpg"
+        ));
+        assert!(is_backend_path("/media/federation/42/uuid.mp4"));
 
+        // Must stay on SPA / ACME / non-backend
         assert!(!is_backend_path("/"));
         assert!(!is_backend_path("/users"));
         assert!(!is_backend_path("/settings"));
+        assert!(!is_backend_path("/tapp/com.myriad.aro"));
         assert!(!is_backend_path("/.well-known/acme-challenge/token"));
+        assert!(!is_backend_path("/media/federation")); // prefix requires trailing file path
+        assert!(!is_backend_path("/media/other/x.jpg"));
     }
 
     #[test]

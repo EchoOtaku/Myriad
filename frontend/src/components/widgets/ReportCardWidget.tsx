@@ -4009,12 +4009,12 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
     () => (Array.isArray(profile.badges) ? profile.badges.slice(0, 3) : []),
     [profile.badges],
   )
-  // 社区标签：优先 AI 的 community_tags，缺席时退回绑定平台
+  // 社区标签：优先 AI 的 community_tags，缺席时退回绑定平台；概览仅 1 行最多 3 个
   const tags: string[] = useMemo(() => {
     const ct = Array.isArray(data?.community_tags) ? data.community_tags : []
-    if (ct.length > 0) return ct.slice(0, 4)
+    if (ct.length > 0) return ct.slice(0, 3)
     const lp = Array.isArray(data?.linked_platforms) ? data.linked_platforms : []
-    return lp.slice(0, 4)
+    return lp.slice(0, 3)
   }, [data?.community_tags, data?.linked_platforms])
 
   // 图标墙素材（最多 7 个，后端已按 服主/管理/规模 排序）
@@ -4233,13 +4233,13 @@ const DiscordWidget = memo(({ data, showOverview, onContentChange }: any) => {
             </motion.div>
           )}
 
-          {/* 右下角：社区标签 */}
+          {/* 右下角：社区标签（单行截断，最多 3 个） */}
           {tags.length > 0 && (
-            <div className="absolute bottom-3 right-3 max-w-[55%] flex flex-wrap justify-end gap-1">
+            <div className="absolute bottom-3 right-3 max-w-[55%] flex flex-nowrap justify-end gap-1 overflow-hidden">
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#5865F2]/12 dark:bg-[#5865F2]/20 text-[#4752C4] dark:text-[#949CF7] font-medium"
+                  className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#5865F2]/12 dark:bg-[#5865F2]/20 text-[#4752C4] dark:text-[#949CF7] font-medium shrink-0 max-w-[5.5rem] truncate"
                 >
                   {tag}
                 </span>

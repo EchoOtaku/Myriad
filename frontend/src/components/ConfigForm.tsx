@@ -79,6 +79,7 @@ import {
   AiConfigSection,
   areLibrarySourcePreferencesEqual,
   DEFAULT_LIBRARY_SOURCE_PREFERENCES,
+  FederationConfigSection,
   ModuleConfigSection,
   MusicConfigSection,
   NetworkConfigSection,
@@ -287,7 +288,7 @@ QuickAccessCard.displayName = 'QuickAccessCard'
 const ModernConfigForm: React.FC = () => {
   const navigate = useNavigate()
   const { t } = useI18n()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const [config, setConfig] = useState<Config | null>(null)
   const [initialConfig, setInitialConfig] = useState<Config | null>(null)
   const [loading, setLoading] = useState(true)
@@ -620,6 +621,16 @@ const ModernConfigForm: React.FC = () => {
         icon: <MyriadConfigIcon kind="network" />,
         section: 'network',
       },
+      ...(isAdmin
+        ? [
+            {
+              id: 'federation',
+              label: t.config.federation,
+              icon: <MyriadConfigIcon kind="federation" />,
+              section: 'federation',
+            },
+          ]
+        : []),
       {
         id: 'permissions',
         label: t.config.permissions,
@@ -657,7 +668,7 @@ const ModernConfigForm: React.FC = () => {
         section: 'about',
       },
     ],
-    [t],
+    [t, isAdmin],
   )
 
   // 搜索功能
@@ -879,6 +890,28 @@ const ModernConfigForm: React.FC = () => {
         'register',
         'identity',
         '绑定',
+      ],
+    })
+
+    // 联邦信任（仅管理员侧栏出现，搜索仍可匹配）
+    items.push({
+      type: 'section',
+      section: 'federation',
+      title: t.config.federation,
+      description: t.config.federationDesc,
+      keywords: [
+        'federation',
+        '联邦',
+        'trust',
+        '信任',
+        'allowlist',
+        '白名单',
+        'block',
+        '封禁',
+        'filter',
+        '过滤',
+        'mfp',
+        'aro',
       ],
     })
 
@@ -1909,6 +1942,14 @@ const ModernConfigForm: React.FC = () => {
           <NetworkConfigSection
             configFields={config.ui_config.config_fields}
             updateValue={updateUiFieldValue}
+            {...props}
+          />
+        )
+      case 'federation':
+        if (!isAdmin) return null
+        return (
+          <FederationConfigSection
+            onMessage={(msg, type = 'info') => showMessage(msg, type)}
             {...props}
           />
         )

@@ -5,6 +5,7 @@
 export { default as AboutConfigSection } from './AboutConfigSection'
 export { AdvancedConfigSection } from './AdvancedConfigSection'
 export { default as AiConfigSection } from './AiConfigSection'
+export { default as FederationConfigSection } from './FederationConfigSection'
 export {
   areLibrarySourcePreferencesEqual,
   DEFAULT_LIBRARY_SOURCE_PREFERENCES,

@@ -53,6 +53,8 @@ pub struct UploadChunkRequest {
 pub struct TransferSummary {
     pub transfer_id: String,
     pub channel_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room_id: Option<String>,
     pub filename: String,
     pub file_size: i64,
     pub mime_type: Option<String>,
@@ -67,6 +69,8 @@ pub struct TransferSummary {
 pub struct TransferDetail {
     pub transfer_id: String,
     pub channel_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room_id: Option<String>,
     pub filename: String,
     pub file_size: i64,
     pub mime_type: Option<String>,
@@ -362,6 +366,119 @@ pub async fn initiate_transfer(
     Ok(TransferDetail {
         transfer_id,
         channel_id: channel_id.to_string(),
+        room_id: None,
+        filename: req.filename.clone(),
+        file_size: req.file_size,
+        mime_type: req.mime_type.clone(),
+        checksum: req.checksum.clone(),
+        status: "pending".to_string(),
+        direction: "outbound".to_string(),
+        chunks_total,
+        chunks_received: 0,
+        bytes_transferred: 0,
+        progress: 0.0,
+        created_at: now_iso8601(),
+        completed_at: None,
+    })
+}
+
+/// Room 分块传输：成员发起；完成后同实例成员可下；远程成员经 FileTransfer fan-out 收块。
+pub async fn initiate_room_transfer(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    db: &DatabaseConnection,
+    req: &InitTransferRequest,
+) -> Result<TransferDetail, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    let role = crate::federation::room::get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a room member"})),
+            )
+        })?;
+    if role == "observer" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Observers cannot upload files"})),
+        ));
+    }
+
+    if req.file_size <= 0 || req.file_size > MAX_FILE_SIZE {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(
+                json!({"error": format!("File size must be between 1 byte and {} bytes", MAX_FILE_SIZE)}),
+            ),
+        ));
+    }
+
+    let chunks_total =
+        ((req.file_size + DEFAULT_CHUNK_SIZE - 1) / DEFAULT_CHUNK_SIZE).max(1) as i32;
+    let transfer_id = generate_transfer_id();
+    let final_path = final_file_path(&transfer_id, &req.filename);
+    let local_path = path_to_db(&final_path);
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"INSERT INTO federation_file_transfers
+           (transfer_id, channel_id, room_id, owner_user_id, filename, file_size, mime_type,
+            checksum_sha256, status, direction, chunks_total, chunks_completed, local_path, created_at)
+           VALUES ($1, '', $2, $3, $4, $5, $6, $7, 'pending', 'outbound', $8, 0, $9, NOW())"#,
+        [
+            transfer_id.clone().into(),
+            room_id.into(),
+            user_id.into(),
+            req.filename.clone().into(),
+            req.file_size.into(),
+            req.mime_type.clone().into(),
+            req.checksum.clone().into(),
+            chunks_total.into(),
+            local_path.into(),
+        ],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    let activity_id = generate_activity_id(&base_url);
+    let file_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:FileTransfer",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:FileMeta",
+            "transferId": &transfer_id,
+            "roomId": room_id,
+            "filename": &req.filename,
+            "fileSize": req.file_size,
+            "mimeType": &req.mime_type,
+            "checksum": &req.checksum,
+            "chunksTotal": chunks_total,
+            "chunkSize": DEFAULT_CHUNK_SIZE,
+            "protocol": "mfp/1.0"
+        }
+    });
+    let _ = crate::federation::room::fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &file_activity,
+        "FileTransfer",
+        "FileMeta",
+    )
+    .await;
+
+    Ok(TransferDetail {
+        transfer_id: transfer_id.clone(),
+        channel_id: String::new(),
+        room_id: Some(room_id.to_string()),
         filename: req.filename.clone(),
         file_size: req.file_size,
         mime_type: req.mime_type.clone(),
@@ -385,16 +502,18 @@ pub async fn upload_chunk(
     db: &DatabaseConnection,
     req: &UploadChunkRequest,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
-    // 验证传输存在且状态正确
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT ft.status, ft.chunks_total, ft.chunks_completed,
-                      ft.file_size, ft.channel_id, ft.filename, ft.checksum_sha256,
-                      ft.local_path, c.user_id, ra.actor_url, ra.inbox_url
+                      ft.file_size, ft.channel_id, ft.room_id, ft.owner_user_id,
+                      ft.filename, ft.checksum_sha256, ft.local_path,
+                      c.user_id AS channel_user_id,
+                      ra.actor_url AS remote_actor_url, ra.inbox_url AS remote_inbox
                FROM federation_file_transfers ft
-               JOIN federation_channels c ON ft.channel_id = c.channel_id
-               JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+               LEFT JOIN federation_channels c
+                 ON c.channel_id = ft.channel_id AND ft.channel_id <> ''
+               LEFT JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE ft.transfer_id = $1"#,
             [transfer_id.into()],
         ))
@@ -407,13 +526,20 @@ pub async fn upload_chunk(
             )
         })?;
 
-    let channel_user: i32 = row.try_get("", "user_id").map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read channel ownership"})),
-        )
-    })?;
-    if channel_user != user_id {
+    let room_id: Option<String> = row
+        .try_get::<Option<String>>("", "room_id")
+        .unwrap_or(None)
+        .filter(|s| !s.is_empty());
+    let owner_user_id: Option<i32> = row.try_get::<Option<i32>>("", "owner_user_id").unwrap_or(None);
+    let channel_user_id: Option<i32> =
+        row.try_get::<Option<i32>>("", "channel_user_id").unwrap_or(None);
+
+    let allowed = if room_id.is_some() {
+        owner_user_id == Some(user_id)
+    } else {
+        channel_user_id == Some(user_id)
+    };
+    if !allowed {
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({"error": "Not your transfer"})),
@@ -438,9 +564,12 @@ pub async fn upload_chunk(
     let local_path: Option<String> = row
         .try_get::<Option<String>>("", "local_path")
         .unwrap_or(None);
-    let remote_actor_url: String = row.try_get("", "actor_url").unwrap_or_default();
+    let remote_actor_url: String = row
+        .try_get::<Option<String>>("", "remote_actor_url")
+        .unwrap_or(None)
+        .unwrap_or_default();
     let remote_inbox: Option<String> = row
-        .try_get::<Option<String>>("", "inbox_url")
+        .try_get::<Option<String>>("", "remote_inbox")
         .unwrap_or(None);
 
     if chunks_total <= 0 {
@@ -576,9 +705,37 @@ pub async fn upload_chunk(
         .unwrap_or_else(|_| new_status.to_string());
     new_status = &persisted_status;
 
-    if let Some(inbox) = remote_inbox.filter(|i| !i.is_empty()) {
-        let base_url = get_base_url().await;
-        let local_actor = actor_url(&base_url, username);
+    // Fan-out chunk: channel → single remote peer; room → all remote members
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+    if let Some(ref rid) = room_id {
+        let activity_id = generate_activity_id(&base_url);
+        let chunk_activity = json!({
+            "@context": build_context(),
+            "type": "myriad:FileTransfer",
+            "id": &activity_id,
+            "actor": &local_actor,
+            "object": {
+                "type": "myriad:FileChunk",
+                "transferId": transfer_id,
+                "roomId": rid,
+                "chunkIndex": req.chunk_index,
+                "chunkSize": req.chunk_size,
+                "chunkData": &req.chunk_data,
+                "isLast": is_last_chunk
+            }
+        });
+        let _ = crate::federation::room::fanout_to_remote_members(
+            db,
+            user_id,
+            rid,
+            &activity_id,
+            &chunk_activity,
+            "FileTransfer",
+            "FileChunk",
+        )
+        .await;
+    } else if let Some(inbox) = remote_inbox.filter(|i| !i.is_empty()) {
         let activity_id = generate_activity_id(&base_url);
         let chunk_activity = json!({
             "@context": build_context(),
@@ -637,21 +794,38 @@ pub async fn upload_chunk(
     }))
 }
 
-/// 获取传输进度
-pub async fn get_transfer(
+/// Resolved on-disk file for a completed transfer the user is allowed to read.
+#[derive(Debug)]
+pub struct TransferFileContent {
+    pub transfer_id: String,
+    pub filename: String,
+    pub mime_type: String,
+    pub file_size: u64,
+    pub path: PathBuf,
+}
+
+/// Open a completed transfer for download.
+///
+/// - Channel: only the local channel owner
+/// - Room: any local room member
+///
+/// Bytes live under `local_path` after chunk upload finishes; the message
+/// payload only carries `transfer_id` and is not self-contained.
+pub async fn open_transfer_file(
     transfer_id: &str,
     user_id: i32,
+    username: &str,
     db: &DatabaseConnection,
-) -> Result<TransferDetail, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<TransferFileContent, (StatusCode, Json<serde_json::Value>)> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT ft.transfer_id, ft.channel_id, ft.filename, ft.file_size,
-                      ft.mime_type, ft.checksum_sha256, ft.status, ft.direction,
-                      ft.chunks_total, ft.chunks_completed,
-                      ft.local_path, ft.created_at, ft.completed_at, c.user_id
+            r#"SELECT ft.transfer_id, ft.filename, ft.mime_type, ft.file_size,
+                      ft.status, ft.local_path, ft.room_id, ft.owner_user_id,
+                      c.user_id AS channel_user_id
                FROM federation_file_transfers ft
-               JOIN federation_channels c ON ft.channel_id = c.channel_id
+               LEFT JOIN federation_channels c
+                 ON c.channel_id = ft.channel_id AND ft.channel_id <> ''
                WHERE ft.transfer_id = $1"#,
             [transfer_id.into()],
         ))
@@ -664,12 +838,151 @@ pub async fn get_transfer(
             )
         })?;
 
-    let channel_user: i32 = row.try_get("", "user_id").unwrap_or(0);
-    if channel_user != user_id {
+    let room_id: Option<String> = row
+        .try_get::<Option<String>>("", "room_id")
+        .unwrap_or(None)
+        .filter(|s| !s.is_empty());
+    if let Some(ref rid) = room_id {
+        let base_url = get_base_url().await;
+        let local_actor = actor_url(&base_url, username);
+        let member = crate::federation::room::get_member_role(db, rid, &local_actor)
+            .await
+            .map_err(db_err)?;
+        if member.is_none() {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a room member"})),
+            ));
+        }
+    } else {
+        let channel_user: i32 = row.try_get::<Option<i32>>("", "channel_user_id").unwrap_or(None).unwrap_or(0);
+        if channel_user != user_id {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not your transfer"})),
+            ));
+        }
+    }
+
+    let status: String = row.try_get("", "status").unwrap_or_default();
+    if status != "completed" {
         return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({"error": "Not your transfer"})),
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": format!("Transfer is not ready for download (status={})", status),
+                "status": status,
+            })),
         ));
+    }
+
+    let filename: String = row.try_get("", "filename").unwrap_or_else(|_| "file".into());
+    let mime_type: String = row
+        .try_get::<Option<String>>("", "mime_type")
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "application/octet-stream".into());
+    let declared_size: i64 = row.try_get("", "file_size").unwrap_or(0);
+    let local_path: Option<String> = row
+        .try_get::<Option<String>>("", "local_path")
+        .unwrap_or(None);
+
+    let path = match local_path.as_deref().filter(|p| !p.is_empty()) {
+        Some(p) => PathBuf::from(p),
+        None => final_file_path(transfer_id, &filename),
+    };
+
+    let meta = fs::metadata(&path).await.map_err(|_| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "Transfer file missing on disk",
+                "transfer_id": transfer_id,
+            })),
+        )
+    })?;
+    if !meta.is_file() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Transfer path is not a file"})),
+        ));
+    }
+
+    let file_size = meta.len();
+    if declared_size > 0 && file_size == 0 {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({"error": "Transfer file is empty"})),
+        ));
+    }
+
+    Ok(TransferFileContent {
+        transfer_id: row.try_get("", "transfer_id").unwrap_or_default(),
+        filename: safe_filename(&filename),
+        mime_type,
+        file_size,
+        path,
+    })
+}
+
+/// 获取传输进度
+pub async fn get_transfer(
+    transfer_id: &str,
+    user_id: i32,
+    username: &str,
+    db: &DatabaseConnection,
+) -> Result<TransferDetail, (StatusCode, Json<serde_json::Value>)> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT ft.transfer_id, ft.channel_id, ft.room_id, ft.filename, ft.file_size,
+                      ft.mime_type, ft.checksum_sha256, ft.status, ft.direction,
+                      ft.chunks_total, ft.chunks_completed,
+                      ft.local_path, ft.created_at, ft.completed_at,
+                      c.user_id AS channel_user_id
+               FROM federation_file_transfers ft
+               LEFT JOIN federation_channels c
+                 ON c.channel_id = ft.channel_id AND ft.channel_id <> ''
+               WHERE ft.transfer_id = $1"#,
+            [transfer_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Transfer not found"})),
+            )
+        })?;
+
+    let room_id: Option<String> = row
+        .try_get::<Option<String>>("", "room_id")
+        .unwrap_or(None)
+        .filter(|s| !s.is_empty());
+    if let Some(ref rid) = room_id {
+        let base_url = get_base_url().await;
+        let local_actor = actor_url(&base_url, username);
+        if crate::federation::room::get_member_role(db, rid, &local_actor)
+            .await
+            .map_err(db_err)?
+            .is_none()
+        {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a room member"})),
+            ));
+        }
+    } else {
+        let channel_user: i32 = row
+            .try_get::<Option<i32>>("", "channel_user_id")
+            .unwrap_or(None)
+            .unwrap_or(0);
+        if channel_user != user_id {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not your transfer"})),
+            ));
+        }
     }
 
     let chunks_total: i32 = row.try_get("", "chunks_total").unwrap_or(1);
@@ -686,6 +999,7 @@ pub async fn get_transfer(
     Ok(TransferDetail {
         transfer_id: row.try_get("", "transfer_id").unwrap_or_default(),
         channel_id: row.try_get("", "channel_id").unwrap_or_default(),
+        room_id,
         filename: row.try_get("", "filename").unwrap_or_default(),
         file_size: row.try_get("", "file_size").unwrap_or(0),
         mime_type: row
@@ -772,6 +1086,7 @@ pub async fn list_transfers(
             TransferSummary {
                 transfer_id: r.try_get("", "transfer_id").unwrap_or_default(),
                 channel_id: r.try_get("", "channel_id").unwrap_or_default(),
+                room_id: None,
                 filename: r.try_get("", "filename").unwrap_or_default(),
                 file_size: r.try_get("", "file_size").unwrap_or(0),
                 mime_type: r.try_get::<Option<String>>("", "mime_type").unwrap_or(None),
@@ -789,19 +1104,88 @@ pub async fn list_transfers(
     Ok(transfers)
 }
 
-/// 取消文件传输
+/// 列出 Room 上的文件传输（成员可见）
+pub async fn list_room_transfers(
+    room_id: &str,
+    user_id: i32,
+    username: &str,
+    db: &DatabaseConnection,
+) -> Result<Vec<TransferSummary>, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+    if crate::federation::room::get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .is_none()
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Not a room member"})),
+        ));
+    }
+    let _ = user_id; // membership is the gate
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT transfer_id, channel_id, room_id, filename, file_size, mime_type,
+                      status, direction, chunks_total, chunks_completed, created_at
+               FROM federation_file_transfers
+               WHERE room_id = $1
+               ORDER BY created_at DESC"#,
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?;
+
+    let transfers = rows
+        .iter()
+        .map(|r| {
+            let ct: i32 = r.try_get("", "chunks_total").unwrap_or(1);
+            let cr: i32 = r.try_get("", "chunks_completed").unwrap_or(0);
+            let progress = if ct > 0 {
+                (cr as f64 / ct as f64) * 100.0
+            } else {
+                0.0
+            };
+            TransferSummary {
+                transfer_id: r.try_get("", "transfer_id").unwrap_or_default(),
+                channel_id: r.try_get("", "channel_id").unwrap_or_default(),
+                room_id: r.try_get::<Option<String>>("", "room_id").unwrap_or(None),
+                filename: r.try_get("", "filename").unwrap_or_default(),
+                file_size: r.try_get("", "file_size").unwrap_or(0),
+                mime_type: r.try_get::<Option<String>>("", "mime_type").unwrap_or(None),
+                status: r.try_get("", "status").unwrap_or_default(),
+                direction: r.try_get("", "direction").unwrap_or_default(),
+                progress,
+                created_at: r
+                    .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
+                    .map(|t| t.to_rfc3339())
+                    .unwrap_or_default(),
+            }
+        })
+        .collect();
+
+    Ok(transfers)
+}
+
+/// 取消文件传输（本机 + 联邦通知对端）
 pub async fn cancel_transfer(
     user_id: i32,
+    username: &str,
     transfer_id: &str,
     db: &DatabaseConnection,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
-    // 验证所有权
+    // 验证所有权（channel owner 或 room transfer owner）
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT ft.status, c.user_id
+            r#"SELECT ft.status, ft.owner_user_id, ft.room_id, ft.channel_id,
+                      c.user_id AS channel_user_id, ra.actor_url, ra.inbox_url
                FROM federation_file_transfers ft
-               JOIN federation_channels c ON ft.channel_id = c.channel_id
+               LEFT JOIN federation_channels c
+                 ON c.channel_id = ft.channel_id AND ft.channel_id <> ''
+               LEFT JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE ft.transfer_id = $1"#,
             [transfer_id.into()],
         ))
@@ -814,13 +1198,17 @@ pub async fn cancel_transfer(
             )
         })?;
 
-    let channel_user: i32 = row.try_get("", "user_id").map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read channel ownership"})),
-        )
-    })?;
-    if channel_user != user_id {
+    let room_id: Option<String> = row
+        .try_get::<Option<String>>("", "room_id")
+        .unwrap_or(None)
+        .filter(|s| !s.is_empty());
+    let channel_id: String = row.try_get("", "channel_id").unwrap_or_default();
+    let allowed = if room_id.is_some() {
+        row.try_get::<Option<i32>>("", "owner_user_id").unwrap_or(None) == Some(user_id)
+    } else {
+        row.try_get::<Option<i32>>("", "channel_user_id").unwrap_or(None) == Some(user_id)
+    };
+    if !allowed {
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({"error": "Not your transfer"})),
@@ -843,6 +1231,94 @@ pub async fn cancel_transfer(
     .await
     .map_err(db_err)?;
 
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+    let activity_id = generate_activity_id(&base_url);
+    let cancel_object = json!({
+        "type": "myriad:FileCancel",
+        "transferId": transfer_id,
+        "channelId": if channel_id.is_empty() { serde_json::Value::Null } else { json!(channel_id) },
+        "roomId": room_id.clone(),
+        "status": "cancelled"
+    });
+
+    if let Some(ref rid) = room_id {
+        let cancel_activity = json!({
+            "@context": build_context(),
+            "type": "myriad:FileTransfer",
+            "id": &activity_id,
+            "actor": &local_actor,
+            "object": cancel_object
+        });
+        let _ = crate::federation::room::fanout_to_remote_members(
+            db,
+            user_id,
+            rid,
+            &activity_id,
+            &cancel_activity,
+            "FileTransfer",
+            "FileCancel",
+        )
+        .await;
+        crate::federation::ws_gateway::broadcast_to_room(
+            rid,
+            &json!({
+                "type": "transfer_cancelled",
+                "room_id": rid,
+                "transfer_id": transfer_id
+            }),
+        )
+        .await;
+    } else if !channel_id.is_empty() {
+        let remote_inbox: Option<String> = row
+            .try_get::<Option<String>>("", "inbox_url")
+            .unwrap_or(None);
+        let remote_actor: String = row.try_get("", "actor_url").unwrap_or_default();
+        if let Some(inbox) = remote_inbox.filter(|s| !s.is_empty()) {
+            let cancel_activity = json!({
+                "@context": build_context(),
+                "type": "myriad:FileTransfer",
+                "id": &activity_id,
+                "actor": &local_actor,
+                "to": [&remote_actor],
+                "object": cancel_object
+            });
+            let domain = extract_domain(&inbox).unwrap_or_default();
+            if let Ok(Some(act_row)) = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"INSERT INTO federation_activities
+                       (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
+                       VALUES ($1, $2, 'FileTransfer', 'FileCancel', $3, true, NOW())
+                       RETURNING id"#,
+                    [activity_id.into(), user_id.into(), cancel_activity.into()],
+                ))
+                .await
+            {
+                if let Ok(act_id) = act_row.try_get::<i32>("", "id") {
+                    let _ = db
+                        .execute(Statement::from_sql_and_values(
+                            DatabaseBackend::Postgres,
+                            r#"INSERT INTO federation_delivery_queue
+                               (activity_id, target_inbox, target_domain, status, created_at)
+                               VALUES ($1, $2, $3, 'pending', NOW())"#,
+                            [act_id.into(), inbox.into(), domain.into()],
+                        ))
+                        .await;
+                }
+            }
+        }
+        crate::federation::ws_gateway::broadcast_to_channel(
+            &channel_id,
+            &json!({
+                "type": "transfer_cancelled",
+                "channel_id": channel_id,
+                "transfer_id": transfer_id
+            }),
+        )
+        .await;
+    }
+
     Ok(json!({
         "success": true,
         "transfer_id": transfer_id,
@@ -864,15 +1340,19 @@ pub async fn handle_file_transfer(
     if object_type == "myriad:FileChunk" {
         return handle_file_chunk(db, actor_url_str, object).await;
     }
+    if object_type == "myriad:FileCancel" {
+        return handle_file_cancel(db, actor_url_str, object).await;
+    }
 
     let transfer_id = object
         .get("transferId")
         .and_then(|v| v.as_str())
         .ok_or("Missing transferId")?;
-    let channel_id = object
-        .get("channelId")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing channelId")?;
+    let channel_id = object.get("channelId").and_then(|v| v.as_str());
+    let room_id = object.get("roomId").and_then(|v| v.as_str());
+    if channel_id.is_none() && room_id.is_none() {
+        return Err("Missing channelId or roomId".into());
+    }
     let filename = object
         .get("filename")
         .and_then(|v| v.as_str())
@@ -894,39 +1374,52 @@ pub async fn handle_file_transfer(
         return Err("Invalid chunksTotal".to_string());
     }
 
-    let channel_actor = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"SELECT ra.actor_url
-               FROM federation_channels c
-               JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
-               WHERE c.channel_id = $1"#,
-            [channel_id.into()],
-        ))
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Channel {} not found", channel_id))?;
-    let expected_actor: String = channel_actor.try_get("", "actor_url").unwrap_or_default();
-    if !crate::federation::types::same_actor_url(&expected_actor, actor_url_str) {
-        return Err(format!(
-            "File transfer sender mismatch: expected {}, got {}",
-            expected_actor, actor_url_str
-        ));
+    if let Some(cid) = channel_id {
+        let channel_actor = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT ra.actor_url
+                   FROM federation_channels c
+                   JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+                   WHERE c.channel_id = $1"#,
+                [cid.into()],
+            ))
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Channel {} not found", cid))?;
+        let expected_actor: String = channel_actor.try_get("", "actor_url").unwrap_or_default();
+        if !crate::federation::types::same_actor_url(&expected_actor, actor_url_str) {
+            return Err(format!(
+                "File transfer sender mismatch: expected {}, got {}",
+                expected_actor, actor_url_str
+            ));
+        }
+    } else if let Some(rid) = room_id {
+        // Sender must be a known room member (remote or local)
+        let member = crate::federation::room::get_member_role(db, rid, actor_url_str)
+            .await
+            .map_err(|e| e.to_string())?;
+        if member.is_none() {
+            return Err(format!(
+                "File transfer actor {} is not a member of room {}",
+                actor_url_str, rid
+            ));
+        }
     }
 
     let local_path = path_to_db(&final_file_path(transfer_id, filename));
 
-    // 创建入站传输记录
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_file_transfers
-           (transfer_id, channel_id, filename, file_size, mime_type,
+           (transfer_id, channel_id, room_id, filename, file_size, mime_type,
             checksum_sha256, status, direction, chunks_total, chunks_completed, local_path, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, 'pending', 'inbound', $7, 0, $8, NOW())
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 'inbound', $8, 0, $9, NOW())
            ON CONFLICT (transfer_id) DO NOTHING"#,
         [
             transfer_id.into(),
-            channel_id.into(),
+            channel_id.unwrap_or("").into(),
+            room_id.into(),
             filename.into(),
             file_size.into(),
             mime_type.into(),
@@ -977,10 +1470,12 @@ async fn handle_file_chunk(
             DatabaseBackend::Postgres,
             r#"SELECT ft.status, ft.chunks_total, ft.chunks_completed,
                       ft.file_size, ft.filename, ft.checksum_sha256, ft.local_path,
-                      ra.actor_url
+                      ft.room_id, ft.channel_id,
+                      ra.actor_url AS channel_remote_actor
                FROM federation_file_transfers ft
-               JOIN federation_channels c ON ft.channel_id = c.channel_id
-               JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+               LEFT JOIN federation_channels c
+                 ON c.channel_id = ft.channel_id AND ft.channel_id <> ''
+               LEFT JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE ft.transfer_id = $1"#,
             [transfer_id.into()],
         ))
@@ -988,12 +1483,31 @@ async fn handle_file_chunk(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Transfer {} not found", transfer_id))?;
 
-    let expected_actor: String = row.try_get("", "actor_url").unwrap_or_default();
-    if !crate::federation::types::same_actor_url(&expected_actor, actor_url_str) {
-        return Err(format!(
-            "File chunk sender mismatch: expected {}, got {}",
-            expected_actor, actor_url_str
-        ));
+    let room_id: Option<String> = row
+        .try_get::<Option<String>>("", "room_id")
+        .unwrap_or(None)
+        .filter(|s| !s.is_empty());
+    if let Some(ref rid) = room_id {
+        let member = crate::federation::room::get_member_role(db, rid, actor_url_str)
+            .await
+            .map_err(|e| e.to_string())?;
+        if member.is_none() {
+            return Err(format!(
+                "File chunk actor {} is not a member of room {}",
+                actor_url_str, rid
+            ));
+        }
+    } else {
+        let expected_actor: String = row
+            .try_get::<Option<String>>("", "channel_remote_actor")
+            .unwrap_or(None)
+            .unwrap_or_default();
+        if !crate::federation::types::same_actor_url(&expected_actor, actor_url_str) {
+            return Err(format!(
+                "File chunk sender mismatch: expected {}, got {}",
+                expected_actor, actor_url_str
+            ));
+        }
     }
 
     let status: String = row.try_get("", "status").unwrap_or_default();
@@ -1133,5 +1647,98 @@ async fn handle_file_chunk(
         actor_url_str
     );
 
+    // Live UI progress for open Aro clients
+    let ch_id: String = row.try_get("", "channel_id").unwrap_or_default();
+    let progress = if chunks_total > 0 {
+        (new_chunks as f64 / chunks_total as f64) * 100.0
+    } else {
+        0.0
+    };
+    let evt = json!({
+        "type": if new_status == "completed" { "transfer_completed" } else { "transfer_progress" },
+        "transfer_id": transfer_id,
+        "chunks_completed": new_chunks,
+        "chunks_total": chunks_total,
+        "progress": progress,
+        "status": new_status
+    });
+    if let Some(ref rid) = room_id {
+        let mut e = evt.clone();
+        e["room_id"] = json!(rid);
+        crate::federation::ws_gateway::broadcast_to_room(rid, &e).await;
+    } else if !ch_id.is_empty() {
+        let mut e = evt;
+        e["channel_id"] = json!(ch_id);
+        crate::federation::ws_gateway::broadcast_to_channel(&ch_id, &e).await;
+    }
+
+    Ok(())
+}
+
+/// Inbound cancel: mark transfer cancelled and notify local clients.
+async fn handle_file_cancel(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    object: &serde_json::Value,
+) -> Result<(), String> {
+    let transfer_id = object
+        .get("transferId")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing transferId")?;
+    let room_id = object.get("roomId").and_then(|v| v.as_str());
+    let channel_id = object.get("channelId").and_then(|v| v.as_str());
+
+    if let Some(rid) = room_id {
+        let member = crate::federation::room::get_member_role(db, rid, actor_url_str)
+            .await
+            .map_err(|e| e.to_string())?;
+        if member.is_none() {
+            return Err(format!(
+                "File cancel actor {} is not a member of room {}",
+                actor_url_str, rid
+            ));
+        }
+    }
+
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_file_transfers
+               SET status = 'cancelled'
+               WHERE transfer_id = $1
+                 AND status NOT IN ('completed', 'cancelled')"#,
+            [transfer_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if result.rows_affected() == 0 {
+        tracing::debug!(
+            "[FileTransfer] cancel no-op for {} (missing or already final)",
+            transfer_id
+        );
+        return Ok(());
+    }
+
+    let evt = json!({
+        "type": "transfer_cancelled",
+        "transfer_id": transfer_id,
+        "from": actor_url_str
+    });
+    if let Some(rid) = room_id {
+        let mut e = evt.clone();
+        e["room_id"] = json!(rid);
+        crate::federation::ws_gateway::broadcast_to_room(rid, &e).await;
+    } else if let Some(cid) = channel_id.filter(|s| !s.is_empty()) {
+        let mut e = evt;
+        e["channel_id"] = json!(cid);
+        crate::federation::ws_gateway::broadcast_to_channel(cid, &e).await;
+    }
+
+    tracing::info!(
+        "[FileTransfer] Transfer {} cancelled by remote {}",
+        transfer_id,
+        actor_url_str
+    );
     Ok(())
 }

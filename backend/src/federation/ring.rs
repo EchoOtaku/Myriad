@@ -587,8 +587,10 @@ pub async fn add_peer(
 pub async fn remove_peer(
     ring_id: &str,
     peer_url: &str,
+    username: &str,
     db: &DatabaseConnection,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
     // 使用子查询原子地从 JSON 数组中移除指定 peer（cast to jsonb for ops）
     let result = db
         .execute(Statement::from_sql_and_values(
@@ -610,6 +612,54 @@ pub async fn remove_peer(
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Ring not found"})),
         ));
+    }
+
+    // Notify removed peer so they drop us from known_peers (was local-only)
+    let local_actor = actor_url(&base_url, username);
+    let local_user_id = resolve_user_id(db, username).await?;
+    if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, peer_url).await {
+        if !remote.inbox_url.is_empty() {
+            let activity_id = generate_activity_id(&base_url);
+            let leave_activity = json!({
+                "@context": build_context(),
+                "type": "myriad:RingLeave",
+                "id": &activity_id,
+                "actor": &local_actor,
+                "object": {
+                    "type": "myriad:Ring",
+                    "id": ring_id,
+                    "removedPeer": peer_url
+                }
+            });
+            let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
+            if let Ok(Some(act_row)) = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"INSERT INTO federation_activities
+                       (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
+                       VALUES ($1, $2, 'RingLeave', 'Ring', $3, true, NOW())
+                       RETURNING id"#,
+                    [
+                        activity_id.into(),
+                        local_user_id.into(),
+                        leave_activity.into(),
+                    ],
+                ))
+                .await
+            {
+                if let Ok(act_id) = act_row.try_get::<i32>("", "id") {
+                    let _ = db
+                        .execute(Statement::from_sql_and_values(
+                            DatabaseBackend::Postgres,
+                            r#"INSERT INTO federation_delivery_queue
+                               (activity_id, target_inbox, target_domain, status, created_at)
+                               VALUES ($1, $2, $3, 'pending', NOW())"#,
+                            [act_id.into(), remote.inbox_url.into(), domain.into()],
+                        ))
+                        .await;
+                }
+            }
+        }
     }
 
     tracing::info!("[Ring] Removed peer {} from ring {}", peer_url, ring_id);
@@ -1179,6 +1229,8 @@ async fn collect_sync_entries(
                 .collect()
         }
         "library-exchange" => {
+            // Prefer federated Create(library) publishes; fall back to local platform_metadata snapshots
+            // so rings have something to gossip even before users explicitly publish.
             let rows = db
                 .query_all(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
@@ -1190,7 +1242,8 @@ async fn collect_sync_entries(
                 ))
                 .await
                 .unwrap_or_default();
-            rows.iter()
+            let mut entries: Vec<serde_json::Value> = rows
+                .iter()
                 .filter_map(|r| {
                     let obj: serde_json::Value = r.try_get("", "object_json").ok()?;
                     Some(json!({
@@ -1199,7 +1252,42 @@ async fn collect_sync_entries(
                         "data": obj
                     }))
                 })
-                .collect()
+                .collect();
+            if entries.is_empty() {
+                let meta_rows = db
+                    .query_all(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"SELECT id, platform_name, fetched_at
+                           FROM platform_metadata
+                           WHERE user_id = $1
+                           ORDER BY fetched_at DESC NULLS LAST, id DESC
+                           LIMIT 12"#,
+                        [user_id.into()],
+                    ))
+                    .await
+                    .unwrap_or_default();
+                for r in meta_rows {
+                    let id: i32 = r.try_get("", "id").unwrap_or(0);
+                    let platform: String = r.try_get("", "platform_name").unwrap_or_default();
+                    if platform.is_empty() {
+                        continue;
+                    }
+                    entries.push(json!({
+                        "type": "library",
+                        "activity_id": format!("local-library-meta-{}", id),
+                        "data": {
+                            "type": "Collection",
+                            "name": format!("{} library", platform),
+                            "summary": format!("Local {} library snapshot", platform),
+                            "mfp:contentType": "library",
+                            "mfp:platform": platform,
+                            "mfp:metadataId": id,
+                            "platform": platform,
+                        }
+                    }));
+                }
+            }
+            entries
         }
         "instance-directory" => {
             // 收集已知实例信息

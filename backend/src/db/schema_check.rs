@@ -15,6 +15,10 @@ use std::collections::HashSet;
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
 ///
 /// 变更日志：
+/// - 2026.07.20.4: federation_policy_settings（allowlist / min_trust / auto_discover）
+/// - 2026.07.20.3: room membership_status（邀请 pending/active）+ federation_content_filters
+/// - 2026.07.20.2: idx_file_transfers_room（群文件列表按 room_id 查 transfer）
+/// - 2026.07.20.1: federation_file_transfers.room_id + owner_user_id（群聊分块传输）
 /// - 2026.07.19.3: 删掉过期升级补齐（approved_permissions heal、整表 create 兜底）；只留权威结构列表 + 持续机制
 /// - 2026.07.19.2: 去掉 approved_permissions 专用 ADD COLUMN；缺列走 get_expected_schema
 /// - 2026.07.19.1: 退休 007–011 薄 ALTER 迁移；列并入 001/002 CREATE
@@ -23,7 +27,7 @@ use std::collections::HashSet;
 /// - 2026.07.17.1: tapp_ai_cost_ledger 表与索引
 /// - 2026.07.11.1: Discord 数据平台种子
 /// - 2026.07.10.1: 默认平台种子同步（含 X）
-const SCHEMA_VERSION: &str = "2026.07.19.3";
+const SCHEMA_VERSION: &str = "2026.07.20.4";
 
 /// 内置平台种子定义（与 migrations/001_initial_schema.rs 中 INSERT 保持同步）
 ///
@@ -3411,6 +3415,55 @@ fn get_expected_schema() -> Vec<TableDef> {
                     is_nullable: true,
                     default_value: None,
                 },
+                // active | pending (invite not yet accepted) | declined
+                ColumnDef {
+                    name: "membership_status".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'active'".into()),
+                },
+            ],
+        },
+        // ==================== federation_content_filters 表 ====================
+        TableDef {
+            name: "federation_content_filters".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "name".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "filter_type".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "value".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "enabled".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("true".into()),
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("now()".into()),
+                },
             ],
         },
         // ==================== federation_room_messages 表 ====================
@@ -3686,7 +3739,20 @@ fn get_expected_schema() -> Vec<TableDef> {
                 ColumnDef {
                     name: "channel_id".into(),
                     data_type: "text".into(),
+                    // Channel transfers set a real id; room transfers use empty string + room_id.
                     is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "room_id".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "owner_user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
                     default_value: None,
                 },
                 ColumnDef {
@@ -4308,6 +4374,13 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["thread_id".into()],
             is_unique: false,
         },
+        // Room attachment library / list_room_transfers (room_id may be null for DM transfers)
+        IndexDef {
+            name: "idx_file_transfers_room".into(),
+            table: "federation_file_transfers".into(),
+            columns: vec!["room_id".into(), "created_at".into()],
+            is_unique: false,
+        },
         IndexDef {
             name: "idx_published_user_type".into(),
             table: "federation_published_content".into(),
@@ -4337,6 +4410,43 @@ fn get_expected_indexes() -> Vec<IndexDef> {
 /// Whole-table CREATE fallbacks were removed (2026.07.19.3). Tables come from
 /// Migrator 001–006; schema_check only reconciles missing columns/indexes on
 /// tables that already exist, plus ongoing data/object heals.
+/// Create federation_content_filters if missing (new table beyond Migrator 005).
+async fn ensure_federation_content_filters_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS federation_content_filters (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    filter_type VARCHAR NOT NULL,
+    value TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+/// Singleton policy row: min_trust / allowlist / auto_discover.
+async fn ensure_federation_policy_settings_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS federation_policy_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    min_trust_level SMALLINT NOT NULL DEFAULT 0,
+    allowed_domains JSONB NOT NULL DEFAULT '[]'::jsonb,
+    auto_discover BOOLEAN NOT NULL DEFAULT true,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO federation_policy_settings (id) VALUES (1)
+ON CONFLICT (id) DO NOTHING;
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
 async fn ensure_tapp_storage_quota(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
@@ -4711,6 +4821,12 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     // Ongoing object/data heals (not historical one-shot upgrade paths).
     ensure_tapp_storage_quota(db).await?;
+    if let Err(e) = ensure_federation_content_filters_table(db).await {
+        tracing::warn!("federation_content_filters table ensure warning: {}", e);
+    }
+    if let Err(e) = ensure_federation_policy_settings_table(db).await {
+        tracing::warn!("federation_policy_settings table ensure warning: {}", e);
+    }
     if let Err(e) = ensure_single_owner(db).await {
         tracing::warn!("Site owner seed warning: {}", e);
     }
@@ -4849,6 +4965,18 @@ async fn do_force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     }
 
     ensure_tapp_storage_quota(db).await?;
+    if let Err(e) = ensure_federation_content_filters_table(db).await {
+        tracing::warn!(
+            "Force check: federation_content_filters table ensure warning: {}",
+            e
+        );
+    }
+    if let Err(e) = ensure_federation_policy_settings_table(db).await {
+        tracing::warn!(
+            "Force check: federation_policy_settings table ensure warning: {}",
+            e
+        );
+    }
     if let Err(e) = ensure_single_owner(db).await {
         tracing::warn!("Force check: site owner seed warning: {}", e);
     }

@@ -210,10 +210,49 @@ export interface MessageListResponse {
   total: number
 }
 
+/** Immediate outbound enqueue result (before HTTP delivery worker). */
+export interface DeliveryEnqueueInfo {
+  queued: number
+  remote_targets: number
+  unresolved?: number
+  warning?: string
+}
+
 export interface SendMessageResponse {
   success: boolean
   message_id: string
   channel_id: string
+  is_encrypted?: boolean
+  delivery?: DeliveryEnqueueInfo
+}
+
+export interface DeliveryStats {
+  pending: number
+  delivering: number
+  delivered: number
+  dead: number
+  active: number
+  failed: number
+}
+
+export interface DeliveryQueueItem {
+  id: number
+  status: string
+  target_domain: string
+  target_inbox: string
+  attempts: number
+  max_attempts: number
+  error_message?: string | null
+  activity_type: string
+  activity_id: string
+  created_at: string
+  last_attempt_at?: string | null
+  next_retry_at?: string | null
+}
+
+export interface DeliveryListResponse {
+  items: DeliveryQueueItem[]
+  total: number
 }
 
 /** WebSocket 消息类型 */
@@ -269,6 +308,8 @@ export interface RoomSummary {
   max_members: number
   is_public: boolean
   my_role?: string
+  /** active | pending (remote invite not yet accepted) */
+  my_membership_status?: string
   last_message_at?: string
   created_at: string
   unread_count: number
@@ -289,6 +330,8 @@ export interface RoomDetail {
   is_public: boolean
   enabled_tapps?: unknown
   my_role?: string
+  /** active | pending */
+  my_membership_status?: string
   member_count: number
   created_at: string
 }
@@ -304,6 +347,8 @@ export interface RoomMember {
   display_name?: string
   avatar_url?: string
   role: string
+  /** active | pending */
+  membership_status?: string
   joined_at: string
   invited_by?: string
 }
@@ -347,6 +392,8 @@ export interface SendRoomMessageResponse {
   success: boolean
   message_id: string
   room_id: string
+  is_encrypted?: boolean
+  delivery?: DeliveryEnqueueInfo
 }
 
 export interface PinRoomMessageResponse {
@@ -410,15 +457,15 @@ export interface AddPeerRequest {
 
 // ==================== Trust 策略管理 ====================
 
-/** Effective trust enforcement only — no fake allowlist/min_trust fields. */
+/** Effective trust enforcement snapshot from GET /trust/policy */
 export interface TrustPolicyResponse {
   /** What enforce_inbound / enforce_outbound actually apply today */
   enforcement: {
     domain_blocklist: boolean
     rate_limit: boolean
     content_filters: boolean
-    allowlist: false
-    min_trust_level: false
+    allowlist: boolean
+    min_trust_level: boolean
   }
   notes?: {
     domain_blocklist?: string
@@ -429,18 +476,49 @@ export interface TrustPolicyResponse {
   }
   /** Domains with federation_instances.is_blocked = true */
   blocked_domains: string[]
+  /** Empty = allow all non-blocked domains */
+  allowed_domains?: string[]
+  /** 0=Unknown … 4=Federated; floor for inbound */
+  min_trust_level?: number
+  auto_discover?: boolean
   rate_limit: {
     max_requests_per_window: number
     window_seconds: number
     trusted_multiplier: number
   }
-  /** Always empty until a persisted filter table is wired */
   content_filters: unknown[]
   stats: {
     total_instances: number
     trusted_count: number
     unknown_count: number
   }
+}
+
+export interface UpdateTrustPolicyRequest {
+  min_trust_level?: number
+  allowed_domains?: string[]
+  auto_discover?: boolean
+}
+
+export interface ContentFilterItem {
+  id: number
+  name: string
+  filter_type: string
+  value: string
+  enabled: boolean
+  created_at?: string
+}
+
+export interface ContentFilterListResponse {
+  filters: ContentFilterItem[]
+  total: number
+}
+
+export interface CreateContentFilterRequest {
+  name: string
+  filter_type: string
+  value: string
+  enabled?: boolean
 }
 
 export interface FederationInstance {
@@ -480,6 +558,7 @@ export interface InitTransferRequest {
 export interface TransferSummary {
   transfer_id: string
   channel_id: string
+  room_id?: string
   filename: string
   file_size: number
   mime_type?: string
@@ -492,6 +571,8 @@ export interface TransferSummary {
 export interface TransferDetail {
   transfer_id: string
   channel_id: string
+  /** Set for group (room) transfers; empty/omitted for DM channel transfers */
+  room_id?: string
   filename: string
   file_size: number
   mime_type?: string
@@ -509,6 +590,36 @@ export interface TransferDetail {
 export interface TransferListResponse {
   transfers: TransferSummary[]
   total: number
+}
+
+/** Group attachment library item (no payload bytes) */
+export interface RoomFileItem {
+  key: string
+  message_id: string
+  kind: 'image' | 'file' | string
+  filename: string
+  size: number
+  mime_type?: string
+  sender_actor: string
+  created_at: string
+  transfer_id?: string
+  has_inline: boolean
+  status: 'ready' | 'pending' | 'missing' | string
+}
+
+export interface RoomFileListResponse {
+  files: RoomFileItem[]
+  total: number
+  has_more: boolean
+}
+
+export interface ListRoomFilesParams {
+  before?: string
+  limit?: number
+  /** all | image | file */
+  filter?: string
+  /** filename substring */
+  q?: string
 }
 
 export interface UploadChunkRequest {

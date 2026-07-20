@@ -15,19 +15,90 @@
 //!   objects embedded in AP Notes. Do not put this path behind session middleware.
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use serde::Serialize;
+use serde_json::json;
 use std::time::Duration;
 
 use crate::federation::keys::KeyPair;
 use crate::federation::signature::{sign_request, SignatureParams};
 use crate::federation::types::*;
 
+/// Immediate enqueue result (send path observability — before HTTP delivery).
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct DeliveryEnqueueInfo {
+    /// Rows inserted into federation_delivery_queue
+    pub queued: u32,
+    /// Remote peers we intended to reach (members / channel peer)
+    pub remote_targets: u32,
+    /// Members present but missing remote_actors / empty inbox
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub unresolved: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+}
+
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
+}
+
+
+
+/// Fan-out enqueue stats for room activities.
+#[derive(Debug, Clone, Default)]
+pub struct FanoutResult {
+    pub enqueued: u32,
+    pub remote_with_inbox: u32,
+    pub skipped_empty_inbox: u32,
+    pub unresolved_members: u32,
+}
+
+impl FanoutResult {
+    pub fn to_enqueue_info(&self) -> DeliveryEnqueueInfo {
+        let mut info = DeliveryEnqueueInfo {
+            queued: self.enqueued,
+            remote_targets: self.remote_with_inbox + self.skipped_empty_inbox + self.unresolved_members,
+            unresolved: self.unresolved_members + self.skipped_empty_inbox,
+            warning: None,
+        };
+        if self.enqueued == 0 && info.remote_targets > 0 {
+            info.warning = Some(
+                "no_delivery_queued: remote members lack inbox or remote_actors row".into(),
+            );
+        } else if self.skipped_empty_inbox > 0 || self.unresolved_members > 0 {
+            info.warning = Some(format!(
+                "partial_enqueue: queued={} empty_inbox={} unresolved={}",
+                self.enqueued, self.skipped_empty_inbox, self.unresolved_members
+            ));
+        }
+        info
+    }
+}
+
+/// Delivery queue batch outcome (worker metrics).
+#[derive(Debug, Clone, Default)]
+pub struct DeliveryBatchStats {
+    pub delivered: u32,
+    pub dead: u32,
+    pub retried: u32,
+}
+
 /// 投递队列处理器 — 由后台任务驱动
 ///
 /// 每次调用处理一批待投递的 Activity（最多 batch_size 个）
+#[allow(dead_code)]
 pub async fn process_delivery_queue(
     db: &DatabaseConnection,
     batch_size: u32,
 ) -> Result<u32, String> {
+    let stats = process_delivery_queue_detailed(db, batch_size).await?;
+    Ok(stats.delivered)
+}
+
+/// Same as process_delivery_queue but returns full batch counters.
+pub async fn process_delivery_queue_detailed(
+    db: &DatabaseConnection,
+    batch_size: u32,
+) -> Result<DeliveryBatchStats, String> {
     // Atomic claim with FOR UPDATE SKIP LOCKED so concurrent workers do not
     // double-deliver the same row. Also reclaims stuck `delivering` rows from
     // crashed workers (#97 behaviour kept).
@@ -70,7 +141,7 @@ pub async fn process_delivery_queue(
         .await
         .map_err(|e| format!("Queue claim failed: {}", e))?;
 
-    let mut delivered = 0u32;
+    let mut stats = DeliveryBatchStats::default();
 
     for row in pending {
         let queue_id: i32 = row.try_get("", "id").unwrap_or(0);
@@ -87,13 +158,16 @@ pub async fn process_delivery_queue(
         // Reclaimed stuck delivering: attempts already incremented in the claim UPDATE
         let reclaim = prev_status == "delivering";
         if reclaim && attempts >= max_attempts {
+            let err = "Exceeded max attempts after reclaim";
             let _ = db
                 .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "UPDATE federation_delivery_queue SET status = 'dead', error_message = $1, last_attempt_at = NOW() WHERE id = $2",
-                    ["Exceeded max attempts after reclaim".into(), queue_id.into()],
+                    [err.into(), queue_id.into()],
                 ))
                 .await;
+            mark_delivery_dead(user_id, &activity_type, &target_domain, err).await;
+            stats.dead += 1;
             continue;
         }
 
@@ -113,6 +187,8 @@ pub async fn process_delivery_queue(
                 target_inbox,
                 reason
             );
+            mark_delivery_dead(user_id, &activity_type, &target_domain, &reason).await;
+            stats.dead += 1;
             continue;
         }
 
@@ -144,7 +220,7 @@ pub async fn process_delivery_queue(
                                 [queue_id.into()],
                             ))
                             .await;
-                        delivered += 1;
+                        stats.delivered += 1;
 
                         // 更新实例的 last_success_at，重置 failure_count
                         let _ = db
@@ -185,6 +261,8 @@ pub async fn process_delivery_queue(
                                     e
                                 );
                             }
+                            mark_delivery_dead(user_id, &activity_type, &target_domain, &e).await;
+                            stats.dead += 1;
                         } else {
                             // 指数退避：2^attempts 秒，最大 86400 秒 (24h)
                             let backoff_secs = std::cmp::min(2i64.pow(new_attempts as u32), 86400);
@@ -212,6 +290,7 @@ pub async fn process_delivery_queue(
                                 backoff_secs,
                                 e
                             );
+                            stats.retried += 1;
                         }
                     }
                 }
@@ -220,6 +299,7 @@ pub async fn process_delivery_queue(
                 tracing::error!("Failed to load keypair for user {}: {}", user_id, e);
                 // 密钥问题几乎不会自愈；按普通失败计数退避，避免 15s 热循环刷日志
                 let new_attempts = attempts + 1;
+                let err_msg = format!("Key load failed: {}", e);
                 if new_attempts >= max_attempts {
                     let _ = db
                         .execute(Statement::from_sql_and_values(
@@ -227,11 +307,13 @@ pub async fn process_delivery_queue(
                             "UPDATE federation_delivery_queue SET status = 'dead', attempts = $1, error_message = $2, last_attempt_at = NOW() WHERE id = $3",
                             [
                                 new_attempts.into(),
-                                format!("Key load failed: {}", e).into(),
+                                err_msg.clone().into(),
                                 queue_id.into(),
                             ],
                         ))
                         .await;
+                    mark_delivery_dead(user_id, &activity_type, &target_domain, &err_msg).await;
+                    stats.dead += 1;
                 } else {
                     let backoff_secs = std::cmp::min(2i64.pow(new_attempts as u32), 86400);
                     let _ = db
@@ -240,18 +322,42 @@ pub async fn process_delivery_queue(
                             "UPDATE federation_delivery_queue SET status = 'pending', attempts = $1, error_message = $2, last_attempt_at = NOW(), next_retry_at = NOW() + make_interval(secs => $4::double precision) WHERE id = $3",
                             [
                                 new_attempts.into(),
-                                format!("Key load failed: {}", e).into(),
+                                err_msg.into(),
                                 queue_id.into(),
                                 backoff_secs.into(),
                             ],
                         ))
                         .await;
+                    stats.retried += 1;
                 }
             }
         }
     }
 
-    Ok(delivered)
+    Ok(stats)
+}
+
+async fn mark_delivery_dead(
+    user_id: i32,
+    activity_type: &str,
+    target_domain: &str,
+    error: &str,
+) {
+    crate::federation::notify::notify_delivery_failed(
+        user_id,
+        activity_type,
+        target_domain,
+        error,
+    )
+    .await;
+    // Also log at error level for operator dashboards / log aggregators
+    tracing::error!(
+        user_id = user_id,
+        activity_type = activity_type,
+        target_domain = target_domain,
+        error = %error,
+        "federation delivery dead letter"
+    );
 }
 
 /// 启动投递队列后台循环
@@ -260,9 +366,14 @@ pub fn spawn_delivery_worker(db: DatabaseConnection) {
         let mut interval = tokio::time::interval(Duration::from_secs(15));
         loop {
             interval.tick().await;
-            match process_delivery_queue(&db, 20).await {
-                Ok(n) if n > 0 => {
-                    tracing::info!("📤 Delivery worker: delivered {} activities", n);
+            match process_delivery_queue_detailed(&db, 20).await {
+                Ok(s) if s.delivered > 0 || s.dead > 0 || s.retried > 0 => {
+                    tracing::info!(
+                        "📤 Delivery worker: delivered={} dead={} retried={}",
+                        s.delivered,
+                        s.dead,
+                        s.retried
+                    );
                 }
                 Err(e) => {
                     tracing::error!("Delivery worker error: {}", e);
@@ -271,6 +382,257 @@ pub fn spawn_delivery_worker(db: DatabaseConnection) {
             }
         }
     });
+}
+
+// ==================== Query API (user observability) ====================
+
+/// Per-user delivery queue summary.
+pub async fn delivery_stats_for_user(
+    db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<serde_json::Value, String> {
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT dq.status, COUNT(*)::int AS cnt
+               FROM federation_delivery_queue dq
+               JOIN federation_activities a ON a.id = dq.activity_id
+               WHERE a.user_id = $1
+               GROUP BY dq.status"#,
+            [user_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut pending = 0i32;
+    let mut delivering = 0i32;
+    let mut delivered = 0i32;
+    let mut dead = 0i32;
+    for r in rows {
+        let status: String = r.try_get("", "status").unwrap_or_default();
+        let cnt: i32 = r.try_get("", "cnt").unwrap_or(0);
+        match status.as_str() {
+            "pending" => pending = cnt,
+            "delivering" => delivering = cnt,
+            "delivered" => delivered = cnt,
+            "dead" => dead = cnt,
+            _ => {}
+        }
+    }
+    Ok(json!({
+        "pending": pending,
+        "delivering": delivering,
+        "delivered": delivered,
+        "dead": dead,
+        "active": pending + delivering,
+        "failed": dead,
+    }))
+}
+
+/// Recent delivery queue rows for the current user (failed first).
+pub async fn list_delivery_for_user(
+    db: &DatabaseConnection,
+    user_id: i32,
+    limit: i64,
+) -> Result<serde_json::Value, String> {
+    let limit = limit.clamp(1, 100);
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT dq.id, dq.status, dq.target_domain, dq.target_inbox,
+                      dq.attempts, dq.max_attempts, dq.error_message,
+                      dq.created_at, dq.last_attempt_at, dq.next_retry_at,
+                      a.activity_type, a.activity_id AS ap_id
+               FROM federation_delivery_queue dq
+               JOIN federation_activities a ON a.id = dq.activity_id
+               WHERE a.user_id = $1
+               ORDER BY
+                 CASE dq.status
+                   WHEN 'dead' THEN 0
+                   WHEN 'delivering' THEN 1
+                   WHEN 'pending' THEN 2
+                   ELSE 3
+                 END,
+                 dq.created_at DESC
+               LIMIT $2"#,
+            [user_id.into(), limit.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut items = Vec::with_capacity(rows.len());
+    for r in rows {
+        items.push(json!({
+            "id": r.try_get::<i32>("", "id").unwrap_or(0),
+            "status": r.try_get::<String>("", "status").unwrap_or_default(),
+            "target_domain": r.try_get::<String>("", "target_domain").unwrap_or_default(),
+            "target_inbox": r.try_get::<String>("", "target_inbox").unwrap_or_default(),
+            "attempts": r.try_get::<i32>("", "attempts").unwrap_or(0),
+            "max_attempts": r.try_get::<i32>("", "max_attempts").unwrap_or(12),
+            "error_message": r.try_get::<Option<String>>("", "error_message").unwrap_or(None),
+            "activity_type": r.try_get::<String>("", "activity_type").unwrap_or_default(),
+            "activity_id": r.try_get::<String>("", "ap_id").unwrap_or_default(),
+            "created_at": r.try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
+                .map(|t| t.to_rfc3339()).unwrap_or_default(),
+            "last_attempt_at": r.try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "last_attempt_at")
+                .ok().flatten().map(|t| t.to_rfc3339()),
+            "next_retry_at": r.try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "next_retry_at")
+                .ok().flatten().map(|t| t.to_rfc3339()),
+        }));
+    }
+    Ok(json!({ "items": items, "total": items.len() }))
+}
+
+/// Re-queue a single dead (or stuck) delivery item owned by the user.
+pub async fn retry_delivery_item(
+    db: &DatabaseConnection,
+    user_id: i32,
+    queue_id: i32,
+) -> Result<serde_json::Value, (axum::http::StatusCode, serde_json::Value)> {
+    use axum::http::StatusCode;
+
+    if queue_id <= 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"error": "Invalid delivery id"}),
+        ));
+    }
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT dq.id, dq.status
+               FROM federation_delivery_queue dq
+               JOIN federation_activities a ON a.id = dq.activity_id
+               WHERE dq.id = $1 AND a.user_id = $2"#,
+            [queue_id.into(), user_id.into()],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {e}")}),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                json!({"error": "Delivery item not found"}),
+            )
+        })?;
+
+    let status: String = row.try_get("", "status").unwrap_or_default();
+    if status != "dead" && status != "pending" {
+        // Allow re-queue of dead; pending is already waiting. Reject delivering/delivered.
+        if status == "delivered" {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                json!({"error": "Already delivered"}),
+            ));
+        }
+        if status == "delivering" {
+            return Err((
+                StatusCode::CONFLICT,
+                json!({"error": "Delivery currently in progress"}),
+            ));
+        }
+    }
+
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_delivery_queue
+               SET status = 'pending',
+                   attempts = 0,
+                   error_message = NULL,
+                   next_retry_at = NOW(),
+                   last_attempt_at = NULL
+               WHERE id = $1"#,
+            [queue_id.into()],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {e}")}),
+            )
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            json!({"error": "Delivery item not found"}),
+        ));
+    }
+
+    Ok(json!({
+        "success": true,
+        "id": queue_id,
+        "status": "pending",
+        "previous_status": status
+    }))
+}
+
+/// Re-queue all dead delivery items for the user (capped).
+pub async fn retry_all_dead_for_user(
+    db: &DatabaseConnection,
+    user_id: i32,
+    limit: i64,
+) -> Result<serde_json::Value, (axum::http::StatusCode, serde_json::Value)> {
+    use axum::http::StatusCode;
+
+    let limit = limit.clamp(1, 100);
+    // Select ids first (ORDER BY + LIMIT), then update — clearer than nested UPDATE.
+    let id_rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT dq.id
+               FROM federation_delivery_queue dq
+               JOIN federation_activities a ON a.id = dq.activity_id
+               WHERE a.user_id = $1 AND dq.status = 'dead'
+               ORDER BY dq.created_at DESC
+               LIMIT $2"#,
+            [user_id.into(), limit.into()],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {e}")}),
+            )
+        })?;
+
+    let mut retried = 0u64;
+    for r in id_rows {
+        let Ok(id) = r.try_get::<i32>("", "id") else {
+            continue;
+        };
+        match db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"UPDATE federation_delivery_queue
+                   SET status = 'pending',
+                       attempts = 0,
+                       error_message = NULL,
+                       next_retry_at = NOW(),
+                       last_attempt_at = NULL
+                   WHERE id = $1 AND status = 'dead'"#,
+                [id.into()],
+            ))
+            .await
+        {
+            Ok(res) => retried += res.rows_affected(),
+            Err(e) => {
+                tracing::warn!("retry_all_dead item {} failed: {}", id, e);
+            }
+        }
+    }
+
+    Ok(json!({
+        "success": true,
+        "retried": retried,
+        "limit": limit
+    }))
 }
 
 // ==================== 实际投递 ====================

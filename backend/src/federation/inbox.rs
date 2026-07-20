@@ -84,6 +84,7 @@ pub async fn post_inbox(
     match activity_type.as_str() {
         "Follow" => handle_follow(&db, user_id, &actor_url_str, &activity).await,
         "Accept" => handle_accept(&db, user_id, &activity).await,
+        "Reject" => handle_reject(&db, user_id, &actor_url_str, &activity).await,
         "Undo" => handle_undo(&db, user_id, &actor_url_str, &activity).await,
         "Create" | "Update" | "Delete" | "Announce" | "Like" => {
             handle_content_activity(&db, user_id, &actor_url_str, &activity_type, &activity).await
@@ -98,7 +99,9 @@ pub async fn post_inbox(
                 "myriad:RoomInvite",
                 "myriad:RoomJoin",
                 "myriad:RoomLeave",
+                "myriad:RoomDissolve",
                 "myriad:RoomMessage",
+                "myriad:RoomPin",
                 "myriad:RoomGovernance",
                 "myriad:RingJoin",
                 "myriad:RingSync",
@@ -175,7 +178,7 @@ pub async fn post_shared_inbox(
         actor_url_str
     );
 
-    // 对于公开活动，尝试添加到所有关注该 actor 的本地用户的 Timeline
+    // 公开内容 → 粉丝时间线
     if matches!(activity_type.as_str(), "Create" | "Announce") {
         let remote = fetch_remote_actor(&db, &actor_url_str).await.map_err(|e| {
             tracing::warn!("Failed to fetch remote actor {}: {}", actor_url_str, e);
@@ -185,6 +188,72 @@ pub async fn post_shared_inbox(
             )
         })?;
         distribute_to_followers(&db, remote.id, &activity_type, &activity).await?;
+        return Ok(StatusCode::ACCEPTED);
+    }
+
+    // MFP / social: route through same handlers as personal inbox when addressed
+    // to a local user (to/cc) or when object has room/channel ids.
+    if activity_type.starts_with("myriad:")
+        || matches!(
+            activity_type.as_str(),
+            "Follow" | "Accept" | "Undo" | "Delete" | "Update" | "Like"
+        )
+    {
+        // Prefer first local user in `to` / `cc`, else first local user (single-tenant)
+        let mut target_user_id: Option<i32> = None;
+        for key in ["to", "cc"] {
+            if let Some(arr) = activity.get(key).and_then(|v| v.as_array()) {
+                for t in arr {
+                    if let Some(url) = t.as_str() {
+                        if let Some(uname) = url.rsplit('/').next() {
+                            if let Ok(Some(row)) = db
+                                .query_one(Statement::from_sql_and_values(
+                                    DatabaseBackend::Postgres,
+                                    "SELECT id FROM users WHERE username = $1",
+                                    [uname.into()],
+                                ))
+                                .await
+                            {
+                                target_user_id = row.try_get::<i32>("", "id").ok();
+                                if target_user_id.is_some() {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if target_user_id.is_some() {
+                break;
+            }
+        }
+        if target_user_id.is_none() {
+            if let Ok(Some(row)) = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT id FROM users ORDER BY id LIMIT 1",
+                    [],
+                ))
+                .await
+            {
+                target_user_id = row.try_get::<i32>("", "id").ok();
+            }
+        }
+        if let Some(uid) = target_user_id {
+            if activity_type.starts_with("myriad:") {
+                return handle_mfp_activity(&db, &actor_url_str, &activity_type, &activity).await;
+            }
+            return match activity_type.as_str() {
+                "Follow" => handle_follow(&db, uid, &actor_url_str, &activity).await,
+                "Accept" => handle_accept(&db, uid, &activity).await,
+                "Undo" => handle_undo(&db, uid, &actor_url_str, &activity).await,
+                "Create" | "Update" | "Delete" | "Announce" | "Like" => {
+                    handle_content_activity(&db, uid, &actor_url_str, &activity_type, &activity)
+                        .await
+                }
+                _ => Ok(StatusCode::ACCEPTED),
+            };
+        }
     }
 
     Ok(StatusCode::ACCEPTED)
@@ -282,6 +351,34 @@ async fn handle_follow(
     Ok(StatusCode::ACCEPTED)
 }
 
+/// 处理 Reject（Room 邀请被拒绝等）
+async fn handle_reject(
+    db: &DatabaseConnection,
+    _local_user_id: i32,
+    actor_url_str: &str,
+    activity: &serde_json::Value,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    let object = &activity["object"];
+    let inner_type = object.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    if inner_type == "myriad:RoomInvite"
+        || inner_type == "myriad:Room"
+        || object.get("room").is_some()
+    {
+        crate::federation::room::handle_room_invite_reject(db, actor_url_str, activity)
+            .await
+            .map_err(|e| {
+                tracing::error!("Room invite Reject handling failed: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
+            })?;
+    } else {
+        tracing::debug!(
+            "Ignoring Reject for unsupported object type={}",
+            inner_type
+        );
+    }
+    Ok(StatusCode::ACCEPTED)
+}
+
 /// 处理 Accept（我们发出的 Follow 被接受）
 ///
 /// 授权绑定：状态变更仅在 Accept 的签名 actor 正是该 Channel/Follow 的
@@ -348,6 +445,16 @@ async fn handle_accept(
                         local_user_id,
                         channel_id,
                         &remote_label,
+                    )
+                    .await;
+                    // Unlock initiator's live Aro client (composer was pending-locked).
+                    // Mirrors handle_channel_accept WS path for myriad:ChannelAccept.
+                    crate::federation::ws_gateway::broadcast_to_channel(
+                        channel_id,
+                        &serde_json::json!({
+                            "type": "channel_accepted",
+                            "channel_id": channel_id
+                        }),
                     )
                     .await;
                     tracing::info!("✅ Channel accepted: {}", channel_id);
@@ -586,6 +693,30 @@ async fn handle_content_activity(
     ))
     .await
     .map_err(db_err)?;
+
+    // Delete: soft-remove prior Create of the same object from this user's timeline
+    if activity_type == "Delete" {
+        let object_id = activity["object"]["id"]
+            .as_str()
+            .or_else(|| activity["object"].as_str())
+            .unwrap_or("");
+        if !object_id.is_empty() {
+            let _ = db
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"DELETE FROM federation_timeline
+                       WHERE user_id = $1
+                         AND (
+                           content_json->>'id' = $2
+                           OR activity_id = $2
+                           OR content_json #>> '{object,id}' = $2
+                         )"#,
+                    [local_user_id.into(), object_id.into()],
+                ))
+                .await;
+        }
+        return Ok(StatusCode::ACCEPTED);
+    }
 
     // 添加到 Timeline — prefer plain source.content for Note objects
     let preview = timeline_preview_from_object(&activity["object"]);
@@ -1023,6 +1154,15 @@ async fn handle_mfp_activity(
                 })?;
             Ok(StatusCode::ACCEPTED)
         }
+        "myriad:RoomDissolve" => {
+            crate::federation::room::handle_room_dissolve(db, actor_url_str, activity)
+                .await
+                .map_err(|e| {
+                    tracing::error!("RoomDissolve handling failed: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
+                })?;
+            Ok(StatusCode::ACCEPTED)
+        }
         // Phase 5: Ring
         "myriad:RingJoin" => {
             crate::federation::ring::handle_ring_join(db, actor_url_str, activity)
@@ -1098,6 +1238,15 @@ async fn handle_mfp_activity(
                 .await
                 .map_err(|e| {
                     tracing::error!("RoomJoin handling failed: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
+                })?;
+            Ok(StatusCode::ACCEPTED)
+        }
+        "myriad:RoomPin" => {
+            crate::federation::room::handle_room_pin(db, actor_url_str, activity)
+                .await
+                .map_err(|e| {
+                    tracing::error!("RoomPin handling failed: {}", e);
                     (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
                 })?;
             Ok(StatusCode::ACCEPTED)

@@ -194,12 +194,14 @@ function createRippleCanvas(
     : 'center'
   const canvasTransform = buildCanvasTransform(wallpaperEl, parallaxEnabled)
 
+  // z-index:1 — 夹在 #wallpaper 与 #bg-gradient(z-2) 之间，保证涟漪可见且不挡底部遮罩
   canvas.style.cssText = `
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
+    z-index: 1;
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.15s ease-out;

@@ -93,7 +93,7 @@ docker compose -f docker-compose.dev.yml up -d postgres
 (cd backend && cp .env.example .env && cargo run)
 
 # 前端：监听 1102；Astro dev proxy 将 /api/*、/health 以及联邦公开路径
-# （webfinger、nodeinfo、/inbox、/users/*）转发到 1103（与生产 proxy 一致）
+# （webfinger、nodeinfo、/inbox、/users/*、/media/federation/*）转发到 1103（与生产 proxy 一致）
 (cd frontend && pnpm install && pnpm dev)
 ```
 

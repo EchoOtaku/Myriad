@@ -202,6 +202,9 @@ pub struct SendMessageResponse {
     /// 是否已对 payload 做 E2E 加密
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub is_encrypted: bool,
+    /// Outbound delivery enqueue observability (remote peer)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<crate::federation::delivery::DeliveryEnqueueInfo>,
 }
 
 /// 发起 E2E 密钥交换响应
@@ -583,6 +586,16 @@ pub async fn close_channel(
     .await
     .map_err(db_err)?;
 
+    // Notify other local tabs/devices immediately (remote path already broadcasts in handle_channel_close)
+    crate::federation::ws_gateway::broadcast_to_channel(
+        channel_id,
+        &json!({
+            "type": "channel_closed",
+            "channel_id": channel_id
+        }),
+    )
+    .await;
+
     // 通知远程方
     let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);
@@ -706,12 +719,14 @@ pub async fn send_message(
 
     // 可选：E2E 加密载荷
     let (stored_payload, is_encrypted) = if want_encrypt {
-        let session = load_e2e_session(channel_id, properties.as_ref()).map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": format!("E2E session unavailable: {e}")})),
-            )
-        })?;
+        let session = load_e2e_session(channel_id, properties.as_ref())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": format!("E2E session unavailable: {e}")})),
+                )
+            })?;
         if !session.established {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -789,7 +804,11 @@ pub async fn send_message(
         }
     });
 
-    if let Some(inbox) = remote_inbox {
+    let mut delivery = crate::federation::delivery::DeliveryEnqueueInfo {
+        remote_targets: 1,
+        ..Default::default()
+    };
+    if let Some(inbox) = remote_inbox.filter(|s| !s.is_empty()) {
         let domain = extract_domain(&inbox).unwrap_or_default();
         let act_row = db
             .query_one(Statement::from_sql_and_values(
@@ -808,7 +827,7 @@ pub async fn send_message(
             .map_err(db_err)?;
 
         if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
-            let _ = db
+            match db
                 .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
@@ -816,8 +835,28 @@ pub async fn send_message(
                        VALUES ($1, $2, $3, 'pending', NOW())"#,
                     [act_id.into(), inbox.into(), domain.into()],
                 ))
-                .await;
+                .await
+            {
+                Ok(_) => delivery.queued = 1,
+                Err(e) => {
+                    tracing::error!(
+                        "[Channel] enqueue delivery failed channel={}: {}",
+                        channel_id,
+                        e
+                    );
+                    delivery.warning = Some(format!("enqueue_failed: {}", e));
+                }
+            }
+        } else {
+            delivery.warning = Some("activity_insert_failed".into());
         }
+    } else {
+        delivery.warning = Some("remote_inbox_missing".into());
+        tracing::warn!(
+            "[Channel] message {} has no remote inbox for channel {}",
+            message_id,
+            channel_id
+        );
     }
 
     // 广播给该 Channel 的 WebSocket 连接
@@ -844,6 +883,7 @@ pub async fn send_message(
         message_id,
         channel_id: channel_id.to_string(),
         is_encrypted,
+        delivery: Some(delivery),
     })
 }
 
@@ -879,7 +919,7 @@ pub async fn get_messages(
         .try_get::<Option<serde_json::Value>>("", "properties")
         .ok()
         .flatten();
-    let e2e_session = load_e2e_session(channel_id, properties.as_ref()).ok();
+    let e2e_session = load_e2e_session(channel_id, properties.as_ref()).await.ok();
 
     let limit = limit.unwrap_or(50).min(200);
 
@@ -1407,6 +1447,10 @@ pub async fn accept_channel(
         }
     }
 
+    let notif_id =
+        crate::federation::notify::channel_invite_notification_id(channel_id, user_id);
+    crate::federation::notify::mark_invite_notification_read(user_id, &notif_id).await;
+
     Ok(json!({
         "success": true,
         "channel_id": channel_id,
@@ -1602,8 +1646,13 @@ pub async fn handle_key_exchange(
 
 // ==================== E2E 会话辅助 ====================
 
-/// 从 channel.properties.e2e 加载会话
-fn load_e2e_session(
+async fn jwt_secret_for_channel_e2e() -> String {
+    let config = crate::GLOBAL_CONFIG.read().await;
+    config.jwt_secret.clone()
+}
+
+/// 从 channel.properties.e2e 加载会话（private key may be sealed at rest）
+async fn load_e2e_session(
     channel_id: &str,
     properties: Option<&serde_json::Value>,
 ) -> Result<crate::federation::e2e::EncryptionSession, String> {
@@ -1614,12 +1663,14 @@ fn load_e2e_session(
         .get("local_public_key")
         .and_then(|v| v.as_str())
         .ok_or("Missing local_public_key in e2e state")?;
-    let local_sk = e2e
+    let local_sk_stored = e2e
         .get("local_private_key")
         .and_then(|v| v.as_str())
         .ok_or("Missing local_private_key in e2e state")?;
+    let jwt_secret = jwt_secret_for_channel_e2e().await;
+    let local_sk = crate::federation::e2e::unseal_private_key(local_sk_stored, &jwt_secret)?;
     let remote_pk = e2e.get("remote_public_key").and_then(|v| v.as_str());
-    crate::federation::e2e::session_from_stored(channel_id, local_pk, local_sk, remote_pk)
+    crate::federation::e2e::session_from_stored(channel_id, local_pk, &local_sk, remote_pk)
 }
 
 /// 发起 Channel E2E 密钥交换：生成 X25519 密钥对、写入 properties、投递 myriad:KeyExchange
@@ -1683,11 +1734,23 @@ pub async fn initiate_e2e_key_exchange(
         }
     }
 
+    let jwt_secret = jwt_secret_for_channel_e2e().await;
+    let sealed_sk = crate::federation::e2e::seal_private_key(
+        &session.local_keypair.private_key,
+        &jwt_secret,
+    )
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+        )
+    })?;
     let e2e_state = json!({
         "local_public_key": session.local_keypair.public_key,
-        "local_private_key": session.local_keypair.private_key,
+        "local_private_key": sealed_sk,
         "remote_public_key": existing_remote,
         "established": established,
+        "sealed": true,
         "algorithm": crate::federation::e2e::E2E_ALGORITHM,
     });
     properties["e2e"] = e2e_state;

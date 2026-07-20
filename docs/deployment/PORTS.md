@@ -28,15 +28,48 @@ else goes to the frontend SPA). Match path-only (no query):
 | `/nodeinfo/2.1` | NodeInfo document |
 | `/inbox` | Shared ActivityPub inbox |
 | `/users/*` | Actor documents and per-user inboxes |
+| `/media/federation/*` | Public Note attachment media (Image/Video); must hit backend, not SPA |
 
 `/.well-known/acme-challenge/*` is **not** backend-routed (leave to TLS/ACME).
 
 WebSocket: `proxy` detects `Upgrade: websocket` and bridges upgrades for any
 backend-routed path (in practice federation WS under `/api/federation/*/ws`).
 
+### Federation file transfer (Aro chat file-meta) via proxy
+
+These live under **`/api/*`**, so production Myriad `proxy` already routes them to
+backend (no extra allowlist entry). Operators still need correct **body size** and
+**read timeouts** on any *outer* reverse proxy:
+
+| Path | Role |
+| --- | --- |
+| `POST /api/federation/channels/{id}/transfers` | Start DM chunked upload |
+| `POST /api/federation/rooms/{id}/transfers` | Start group chunked upload |
+| `POST /api/federation/transfers/{id}/chunks` | Upload one base64 chunk (~1.4 MiB JSON) |
+| `GET /api/federation/transfers/{id}/content` | **Stream download** completed file (can be large) |
+| `GET /api/federation/transfers/{id}` | Transfer status |
+
+Production `proxy` **streams** request/response bodies (does not buffer full
+files). Outer Nginx/Caddy must not use a short `proxy_read_timeout` or a tiny
+`client_max_body_size` (default 1m) or chunk upload / download will fail while
+small chat messages still work.
+
 Outer reverse proxies (Nginx/Caddy/CDN) must either pass the **whole site** to
-Myriad `proxy`, or explicitly allowlist the same ActivityPub paths above.
-Proxying only `/api` breaks remote WebFinger/inbox federation.
+Myriad `proxy`, or explicitly allowlist the same ActivityPub **and media** paths
+above. Proxying only `/api` breaks remote WebFinger/inbox federation **and**
+Aro Note attachment images/videos (upload may still succeed via `/api/federation/media`,
+but public GET `/media/federation/{userId}/{file}` never reaches backend).
+
+Quick smoke (after deploy, replace host + a real uploaded file path):
+
+```bash
+curl -sI "https://your.domain/media/federation/1/<uuid>.jpg" | head -5
+# expect: HTTP/2 200 (or 404 if file missing) — NOT text/html SPA shell
+
+# Transfer download (auth cookie required; expect attachment headers, not SPA HTML)
+curl -sI -b 'session=...' "https://your.domain/api/federation/transfers/<transfer_id>/content" | head -10
+# expect: content-disposition: attachment; ...  content-type: <mime>
+```
 
 Production should not define `BACKEND_PORT` or `FRONTEND_PORT`. Set `HTTP_PORT`
 only when the proxy must listen on a non-default host port.

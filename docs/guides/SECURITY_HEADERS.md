@@ -31,8 +31,18 @@ client -> optional TLS entrypoint -> Myriad proxy:${HTTP_PORT:-80}
 
 外层 Nginx/Caddy/负载均衡器如果存在，应**整站**代理到 Myriad `proxy` 的宿主端口，
 不要直接代理到 backend `1103`，否则会绕过维护页和 updater 救援路径。
-不要只转发 `/api`：联邦还依赖 `/.well-known/webfinger`、`/.well-known/nodeinfo`、
-`/nodeinfo/2.1`、`/inbox`、`/users/*`（完整表见 [PORTS.md](../deployment/PORTS.md)）。
+不要只转发 `/api`：联邦还依赖：
+
+| 路径 | 用途 |
+| --- | --- |
+| `/.well-known/webfinger` | 发现 |
+| `/.well-known/nodeinfo` | NodeInfo 发现 |
+| `/nodeinfo/2.1` | NodeInfo 文档 |
+| `/inbox` | 共享 Inbox |
+| `/users/*` | Actor / outbox / followers / avatar |
+| `/media/federation/*` | **Note 附件媒体（图片/视频公开 GET）** |
+
+完整表见 [PORTS.md](../deployment/PORTS.md)。漏掉 `/media/federation/*` 时，Aro 发帖可成功，但时间线图片会空白（请求落到 SPA）。
 只应信任实际代理节点，并在防火墙中限制 `HTTP_PORT` 不能被客户端绕过代理直连。
 
 ### Docker + 宿主反向代理（常见天气定位错误）
@@ -73,22 +83,47 @@ server {
     ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
 
+    # Federation media upload is up to ~50MB (images 10MB / video 50MB).
+    # Chat file-meta chunks are ~1.4 MiB JSON each (still needs >1m default).
+    # Default nginx 1m will break POST /api/federation/media and transfer chunks.
+    client_max_body_size 55m;
+
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
+    # Prefer whole-site → Myriad proxy (handles SPA + AP + media routing).
     location / {
         proxy_pass http://127.0.0.1:80; # Myriad HTTP_PORT
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # WebSocket (federation WS under /api/federation/*/ws)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        # Long enough for WS + multi-minute file download streams
+        # (GET /api/federation/transfers/{id}/content is streamed, not buffered).
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        # Do not buffer large transfer downloads into temp files on the edge.
+        proxy_request_buffering off;
+        proxy_buffering off;
     }
 }
+
+# Optional map for Connection upgrade (http context):
+# map $http_upgrade $connection_upgrade {
+#     default upgrade;
+#     ''      close;
+# }
 ```
 
 如果 `.env` 中设置了 `HTTP_PORT=8080`，把 `proxy_pass` 改为
 `http://127.0.0.1:8080`。在 Docker 宿主 Nginx 场景下，默认空的
 `PROXY_TRUSTED_UPSTREAMS` 即可；仅在上游是公网 IP 或需要收紧信任范围时
 再填写显式 CIDR。
+
+**不要**写成分路径只放行 `/api`（除非你完整复制 [PORTS.md](../deployment/PORTS.md) 的 backend 白名单，且包含 `/media/federation/`）。
 
 ## 验证
 

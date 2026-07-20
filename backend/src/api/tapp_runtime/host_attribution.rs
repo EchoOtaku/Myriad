@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn federation_unmapped_routes_reject_attributed_calls() {
         // Raw WS upgrades stay unmapped for grant headers (ticket query is the
-        // Tapp path). E2E key exchange remains host-UI only.
+        // Tapp path). E2E key exchange is now federation:write for Tapps.
         assert_eq!(
             federation_permission(&Method::GET, "/api/federation/channels/{channel_id}/ws"),
             None
@@ -604,7 +604,7 @@ mod tests {
                 &Method::POST,
                 "/api/federation/rooms/{room_id}/e2e/key-exchange"
             ),
-            None
+            Some(TappPermission::FederationWrite)
         );
         // Method mismatches never fall back to a broader mapping.
         assert_eq!(

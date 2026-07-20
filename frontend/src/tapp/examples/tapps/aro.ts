@@ -44,6 +44,10 @@ const PAGE_HTML = `\
           <h2 class="sidebar-title">信使</h2>
           <button id="create-btn" class="create-btn" title="新建">+</button>
         </div>
+        <div class="aro-search-bar">
+          <span class="aro-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+          <input id="conv-search" class="aro-search-input" type="search" autocomplete="off" enterkeyhint="search" placeholder="搜索会话…" />
+        </div>
         <div id="conv-list" class="conv-list"></div>
       </aside>
 
@@ -85,6 +89,84 @@ const PAGE_HTML = `\
         </div>
       </main>
 
+      <!-- 群文件面板（仅群聊；覆盖在消息视图上，复用 history 侧栏壳） -->
+      <div id="room-files-overlay" class="history-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="room-files-title" hidden>
+        <div class="history-sheet" role="document">
+          <div class="history-grab" aria-hidden="true"><span class="history-grab-bar"></span></div>
+          <div class="history-header">
+            <div class="history-header-leading">
+              <div class="history-header-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+              </div>
+              <div class="history-header-text">
+                <h3 id="room-files-title" class="history-title">群文件</h3>
+                <div id="room-files-subtitle" class="history-subtitle"></div>
+              </div>
+            </div>
+            <button type="button" id="room-files-close" class="history-close" aria-label="Close">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="history-toolbar">
+            <div class="aro-search-bar history-search-bar">
+              <span class="aro-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+              <input id="room-files-search" class="aro-search-input" type="search" autocomplete="off" enterkeyhint="search" placeholder="搜索文件名…" />
+            </div>
+            <div id="room-files-filters" class="history-filters" role="tablist" aria-label="Filter">
+              <button type="button" class="history-filter history-filter-active" data-room-files-filter="all" role="tab" aria-selected="true">全部</button>
+              <button type="button" class="history-filter" data-room-files-filter="image" role="tab" aria-selected="false">图片</button>
+              <button type="button" class="history-filter" data-room-files-filter="file" role="tab" aria-selected="false">文件</button>
+            </div>
+          </div>
+          <div id="room-files-list" class="history-list"></div>
+          <div class="history-footer">
+            <div id="room-files-meta" class="history-meta"></div>
+            <button type="button" id="room-files-load-more" class="history-load-more" hidden>加载更多</button>
+            <p id="room-files-hint" class="room-files-hint"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 聊天记录面板（覆盖在消息视图上） -->
+      <div id="chat-history-overlay" class="history-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="history-title" hidden>
+        <div class="history-sheet" role="document">
+          <div class="history-grab" aria-hidden="true"><span class="history-grab-bar"></span></div>
+          <div class="history-header">
+            <div class="history-header-leading">
+              <div class="history-header-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              </div>
+              <div class="history-header-text">
+                <h3 id="history-title" class="history-title">聊天记录</h3>
+                <div id="history-subtitle" class="history-subtitle"></div>
+              </div>
+            </div>
+            <button type="button" id="history-close" class="history-close" aria-label="Close">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="history-toolbar">
+            <div class="aro-search-bar history-search-bar">
+              <span class="aro-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+              <input id="history-search" class="aro-search-input" type="search" autocomplete="off" enterkeyhint="search" placeholder="搜索聊天记录…" />
+            </div>
+            <div id="history-filters" class="history-filters" role="tablist" aria-label="Filter">
+              <button type="button" class="history-filter history-filter-active" data-history-filter="all" role="tab" aria-selected="true">全部</button>
+              <button type="button" class="history-filter" data-history-filter="text" role="tab" aria-selected="false">文字</button>
+              <button type="button" class="history-filter" data-history-filter="image" role="tab" aria-selected="false">图片</button>
+              <button type="button" class="history-filter" data-history-filter="file" role="tab" aria-selected="false">文件</button>
+              <button type="button" class="history-filter" data-history-filter="share" role="tab" aria-selected="false">分享</button>
+              <button type="button" class="history-filter" data-history-filter="pinned" role="tab" aria-selected="false">置顶</button>
+            </div>
+          </div>
+          <div id="history-list" class="history-list"></div>
+          <div class="history-footer">
+            <div id="history-meta" class="history-meta"></div>
+            <button type="button" id="history-load-more" class="history-load-more" hidden>加载更早消息</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 右侧：成员面板 -->
       <aside id="member-panel" class="member-panel" style="display:none">
         <div class="member-header">
@@ -95,6 +177,10 @@ const PAGE_HTML = `\
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
             </button>
           </div>
+        </div>
+        <div class="aro-search-bar aro-search-bar-compact">
+          <span class="aro-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+          <input id="member-search" class="aro-search-input" type="search" autocomplete="off" enterkeyhint="search" placeholder="搜索成员…" />
         </div>
         <div id="member-list" class="member-list"></div>
       </aside>
@@ -125,6 +211,10 @@ const PAGE_HTML = `\
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
             <span id="feed-nav-published">已发布</span>
             <span class="feed-nav-badge" id="feed-badge-published" hidden>0</span>
+          </button>
+          <button class="feed-nav-item" data-sub="backup">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
+            <span id="feed-nav-backup">备份</span>
           </button>
         </nav>
         <div class="feed-sidebar-footer">
@@ -216,6 +306,7 @@ const PAGE_HTML = `\
           <button class="feed-mobile-tab" data-sub="following"><span id="feed-tab-following">关注</span><span class="feed-nav-badge" id="feed-mobile-badge-following" hidden>0</span></button>
           <button class="feed-mobile-tab" data-sub="followers"><span id="feed-tab-followers">粉丝</span><span class="feed-nav-badge" id="feed-mobile-badge-followers" hidden>0</span></button>
           <button class="feed-mobile-tab" data-sub="published"><span id="feed-tab-published">已发布</span><span class="feed-nav-badge" id="feed-mobile-badge-published" hidden>0</span></button>
+          <button class="feed-mobile-tab" data-sub="backup"><span id="feed-tab-backup">备份</span></button>
           <button id="refresh-feed-mobile-btn" class="feed-mobile-refresh" title="刷新">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           </button>
@@ -238,6 +329,10 @@ const PAGE_HTML = `\
             <button class="feed-identity-actor" data-copy-fed="actor" type="button" data-fed-actor></button>
           </div>
         </div>
+        <div class="aro-search-bar feed-search-bar">
+          <span class="aro-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+          <input id="feed-search" class="aro-search-input" type="search" autocomplete="off" enterkeyhint="search" placeholder="搜索动态…" />
+        </div>
         <div id="feed-content" class="feed-content"></div>
         <div id="feed-empty" class="feed-empty" style="display:none">
           <div class="aro-empty-mark feed-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a14 14 0 0114 14"/><path d="M5 11a8 8 0 018 8"/><circle cx="6" cy="18" r="1.6"/></svg></div>
@@ -257,6 +352,10 @@ const PAGE_HTML = `\
         <div class="sidebar-header">
           <h2 id="ring-sidebar-title" class="sidebar-title">环网</h2>
           <button id="ring-create-open-btn" class="create-btn" title="新建">+</button>
+        </div>
+        <div class="aro-search-bar">
+          <span class="aro-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+          <input id="ring-search" class="aro-search-input" type="search" autocomplete="off" enterkeyhint="search" placeholder="搜索环网…" />
         </div>
         <div id="ring-list" class="conv-list"></div>
       </aside>
@@ -706,7 +805,7 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 }
 
 /* ===== Layout ===== */
-.messenger-app{display:flex;flex:1;min-height:0;overflow:hidden}
+.messenger-app{display:flex;flex:1;min-height:0;overflow:hidden;position:relative}
 .sidebar{display:flex;flex-direction:column;width:280px;border-right:1px solid rgba(128,128,128,.08);flex-shrink:0;overflow:hidden}
 .sidebar-header{padding:14px 14px 12px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:52px}
 .sidebar-title{margin:0;font-size:16px;font-weight:700;color:var(--text-primary,#1a1a1a);letter-spacing:-.02em}
@@ -714,6 +813,475 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .create-btn:hover{opacity:.9}
 .create-btn:active{transform:scale(.96)}
 .create-btn:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.5);outline-offset:2px}
+/* ===== Shared list search ===== */
+.aro-search-bar{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;flex-shrink:0;border-bottom:1px solid rgba(128,128,128,.05)}
+.aro-search-bar-compact{padding:6px 8px 4px}
+.aro-search-icon{display:flex;align-items:center;justify-content:center;color:var(--text-secondary,#999);flex-shrink:0;opacity:.75}
+.aro-search-icon svg{display:block}
+.aro-search-input{flex:1;min-width:0;height:34px;padding:0 10px;border:1px solid rgba(128,128,128,.12);border-radius:10px;background:rgba(128,128,128,.04);font-size:13px;color:var(--text-primary,#1a1a1a);outline:none;box-sizing:border-box;font-family:inherit}
+.aro-search-input::placeholder{color:var(--text-secondary,#999);opacity:.85}
+.aro-search-input:focus{border-color:var(--tapp-primary,#6366f1);background:transparent;box-shadow:0 0 0 3px rgba(var(--tapp-primary-rgb,99,102,241),.12)}
+.aro-search-empty{padding:24px 12px;font-size:12px;color:var(--text-secondary,#888);text-align:center}
+.feed-search-bar{padding:8px 14px 6px;border-bottom:1px solid rgba(128,128,128,.06);background:rgba(255,255,255,.35)}
+.dark .aro-search-input{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+.dark .aro-search-input:focus{background:rgba(255,255,255,.02);box-shadow:0 0 0 3px rgba(var(--tapp-primary-rgb,99,102,241),.18)}
+.dark .aro-search-icon{color:rgba(255,255,255,.45)}
+.dark .feed-search-bar{background:rgba(0,0,0,.12);border-color:rgba(255,255,255,.06)}
+.forward-search{padding:8px 12px 4px;flex-shrink:0}
+.forward-search .aro-search-input{width:100%;flex:none}
+
+/* ===== Chat history panel ===== */
+.history-overlay{
+  position:absolute;inset:0;z-index:40;display:none;align-items:stretch;justify-content:flex-end;
+  background:rgba(15,23,42,.22);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+}
+.history-overlay.aro-history-enter{animation:aroFadeIn var(--aro-dur) ease both}
+.history-overlay.aro-leaving{animation:aroFadeOut 150ms ease both;pointer-events:none}
+/* history open uses class on overlay (not aroPlayEnter generic) */
+.history-sheet{
+  width:min(400px,100%);max-width:100%;height:100%;
+  background:rgba(255,255,255,.96);border-left:1px solid rgba(128,128,128,.1);
+  box-shadow:-16px 0 48px rgba(15,23,42,.12);
+  display:flex;flex-direction:column;min-height:0;position:relative;
+}
+.history-overlay.aro-history-enter .history-sheet{animation:aroSlideInRight var(--aro-dur-view) var(--aro-ease) both}
+.history-overlay.aro-leaving .history-sheet{animation:aroHistorySheetOut 150ms ease both}
+@keyframes aroHistorySheetOut{from{opacity:1;transform:translateX(0)}to{opacity:.4;transform:translateX(18px)}}
+.history-grab{display:none;justify-content:center;padding:8px 0 2px;flex-shrink:0}
+.history-grab-bar{width:36px;height:4px;border-radius:999px;background:rgba(128,128,128,.22)}
+.history-header{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:12px 14px 10px;flex-shrink:0;
+}
+.history-header-leading{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.history-header-icon{
+  width:36px;height:36px;border-radius:11px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(var(--tapp-primary-rgb,99,102,241),.1);color:var(--tapp-primary,#6366f1);
+}
+.history-header-text{min-width:0;flex:1}
+.history-title{margin:0;font-size:15px;font-weight:700;color:var(--text-primary,#0f1419);letter-spacing:-.02em;line-height:1.25}
+.history-subtitle{margin-top:2px;font-size:12px;color:var(--text-secondary,#536471);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-close{
+  width:36px;height:36px;min-width:36px;border:none;border-radius:10px;
+  background:rgba(128,128,128,.06);color:var(--text-secondary,#666);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  transition:background .12s,color .12s,transform .1s;
+}
+.history-close:hover{background:rgba(128,128,128,.12);color:var(--text-primary,#222)}
+.history-close:active{transform:scale(.96)}
+.history-close:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.45);outline-offset:1px}
+.history-toolbar{
+  flex-shrink:0;padding:0 12px 10px;
+  border-bottom:1px solid rgba(128,128,128,.07);
+  background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(255,255,255,0));
+}
+.history-search-bar{padding:0 0 8px;border:none}
+.history-search-bar .aro-search-input{height:36px;border-radius:11px;background:rgba(128,128,128,.055)}
+.history-filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:1px}
+.history-filters::-webkit-scrollbar{display:none}
+.history-filter{
+  flex-shrink:0;border:1px solid transparent;background:rgba(128,128,128,.06);
+  color:var(--text-secondary,#536471);border-radius:999px;padding:6px 12px;
+  font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.2;
+  transition:background .12s,color .12s,border-color .12s,transform .1s;
+}
+.history-filter:hover{background:rgba(128,128,128,.1);color:var(--text-primary,#222)}
+.history-filter:active{transform:scale(.97)}
+.history-filter:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.4);outline-offset:1px}
+.history-filter-active{
+  background:rgba(var(--tapp-primary-rgb,99,102,241),.12)!important;
+  border-color:rgba(var(--tapp-primary-rgb,99,102,241),.22);
+  color:var(--tapp-primary,#6366f1)!important;
+}
+.history-list{flex:1;min-height:0;overflow-y:auto;padding:8px 10px 14px;display:flex;flex-direction:column;gap:5px}
+.history-day{
+  display:flex;align-items:center;gap:10px;padding:12px 4px 6px;
+  font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--text-secondary,#8b98a5);text-transform:none;
+}
+.history-day::before,.history-day::after{content:"";flex:1;height:1px;background:rgba(128,128,128,.1)}
+.history-item{
+  display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;border:1px solid transparent;
+  background:rgba(128,128,128,.035);border-radius:14px;padding:10px 11px;cursor:pointer;font-family:inherit;
+  transition:background .12s,border-color .12s,transform .1s,box-shadow .12s;
+}
+.history-item:hover{
+  background:rgba(var(--tapp-primary-rgb,99,102,241),.07);
+  border-color:rgba(var(--tapp-primary-rgb,99,102,241),.12);
+}
+.history-item:active{transform:scale(.985)}
+.history-item:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.4);outline-offset:1px}
+.history-item-static{cursor:default}
+.history-item-static:hover{background:rgba(128,128,128,.035);border-color:transparent}
+.history-item-static:active{transform:none}
+.history-item-local{background:rgba(var(--tapp-primary-rgb,99,102,241),.05)}
+.history-item-avatar{
+  width:32px;height:32px;border-radius:50%;flex-shrink:0;overflow:hidden;
+  background:rgba(var(--tapp-primary-rgb,128,128,128),.1);color:var(--tapp-primary,#6366f1);
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;
+}
+.history-item-avatar img{width:100%;height:100%;object-fit:cover}
+.history-item-avatar-local{background:rgba(var(--tapp-primary-rgb,99,102,241),.16)}
+.history-item-body{min-width:0;flex:1}
+.history-item-top{display:flex;align-items:center;gap:6px;margin-bottom:3px;min-width:0}
+.history-item-name{font-size:12.5px;font-weight:700;color:var(--text-primary,#0f1419);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-item-kind{
+  font-size:10px;font-weight:700;letter-spacing:.01em;color:var(--text-secondary,#8b98a5);
+  padding:2px 7px;border-radius:999px;background:rgba(128,128,128,.08);flex-shrink:0;
+}
+.history-item-kind-image{color:#0ea5e9;background:rgba(14,165,233,.1)}
+.history-item-kind-file{color:#f59e0b;background:rgba(245,158,11,.1)}
+.history-item-kind-share{color:var(--tapp-primary,#6366f1);background:rgba(var(--tapp-primary-rgb,99,102,241),.1)}
+.history-item-kind-system{color:#64748b;background:rgba(100,116,139,.1)}
+.history-item-time{margin-left:auto;font-size:11px;color:var(--text-secondary,#8b98a5);flex-shrink:0;font-variant-numeric:tabular-nums}
+.history-item-pin{
+  width:16px;height:16px;flex-shrink:0;color:#f59e0b;display:inline-flex;align-items:center;justify-content:center;
+}
+.history-item-pin svg{width:12px;height:12px}
+.history-item-text{
+  font-size:13px;line-height:1.45;color:var(--text-primary,#334155);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;
+}
+.history-empty{
+  flex:1;min-height:180px;padding:40px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  text-align:center;font-size:13px;line-height:1.5;color:var(--text-secondary,#8b98a5);
+}
+.history-empty .aro-empty-mark{margin-bottom:2px}
+.history-empty-title{font-size:14px;font-weight:700;color:var(--text-primary,#0f1419)}
+.history-footer{
+  display:flex;flex-direction:column;gap:8px;padding:10px 12px 14px;
+  border-top:1px solid rgba(128,128,128,.07);flex-shrink:0;
+  background:rgba(255,255,255,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.history-meta{font-size:11px;font-weight:600;color:var(--text-secondary,#8b98a5);text-align:center;letter-spacing:.01em}
+.history-meta-error{color:#ef4444}
+.history-load-more{
+  width:100%;height:38px;border:1px solid rgba(128,128,128,.12);border-radius:11px;
+  background:rgba(128,128,128,.04);color:var(--text-primary,#0f1419);
+  font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+  transition:background .12s,border-color .12s,color .12s,transform .1s;
+}
+.history-load-more:hover:not(:disabled){
+  background:rgba(var(--tapp-primary-rgb,99,102,241),.08);
+  border-color:rgba(var(--tapp-primary-rgb,99,102,241),.28);
+  color:var(--tapp-primary,#6366f1);
+}
+.history-load-more:active:not(:disabled){transform:scale(.985)}
+.history-load-more:disabled{opacity:.55;cursor:not-allowed}
+.history-load-more:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.45);outline-offset:1px}
+.msg-row.msg-highlight,.msg-highlight{
+  animation:msgHighlight 2s var(--aro-ease);
+  border-radius:14px;
+}
+@keyframes msgHighlight{
+  0%{box-shadow:0 0 0 0 rgba(var(--tapp-primary-rgb,99,102,241),.4)}
+  18%{box-shadow:0 0 0 3px rgba(var(--tapp-primary-rgb,99,102,241),.28);background:rgba(var(--tapp-primary-rgb,99,102,241),.08)}
+  100%{box-shadow:0 0 0 0 transparent;background:transparent}
+}
+.dark .history-overlay{background:rgba(0,0,0,.45)}
+.dark .history-sheet{background:rgba(18,18,18,.98);border-color:rgba(255,255,255,.08);box-shadow:-16px 0 48px rgba(0,0,0,.5)}
+.dark .history-toolbar{background:linear-gradient(180deg,rgba(18,18,18,.6),rgba(18,18,18,0));border-color:rgba(255,255,255,.06)}
+.dark .history-title,.dark .history-empty-title{color:rgba(255,255,255,.92)}
+.dark .history-subtitle,.dark .history-meta,.dark .history-item-time{color:rgba(255,255,255,.45)}
+.dark .history-close{background:rgba(255,255,255,.06);color:rgba(255,255,255,.55)}
+.dark .history-close:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+.dark .history-item{background:rgba(255,255,255,.035)}
+.dark .history-item:hover{background:rgba(var(--tapp-primary-rgb,99,102,241),.14);border-color:rgba(var(--tapp-primary-rgb,99,102,241),.2)}
+.dark .history-item-name,.dark .history-item-text{color:rgba(255,255,255,.88)}
+.dark .history-item-kind{background:rgba(255,255,255,.08);color:rgba(255,255,255,.5)}
+.dark .history-day::before,.dark .history-day::after{background:rgba(255,255,255,.08)}
+.dark .history-footer{background:rgba(18,18,18,.82);border-color:rgba(255,255,255,.06)}
+.dark .history-load-more{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.88)}
+.dark .history-search-bar .aro-search-input{background:rgba(255,255,255,.045)}
+@media(max-width:768px){
+  .history-overlay{position:fixed;z-index:90;align-items:flex-end;justify-content:stretch}
+  .history-grab{display:flex}
+  .history-sheet{
+    width:100%;border-left:none;border-radius:18px 18px 0 0;
+    max-height:min(92vh,820px);height:min(92vh,820px);margin-top:auto;align-self:flex-end;
+    box-shadow:0 -12px 40px rgba(0,0,0,.18);
+  }
+  .history-overlay.aro-history-enter .history-sheet{animation:aroSlideUp var(--aro-dur-view) var(--aro-ease) both}
+  .history-overlay.aro-leaving .history-sheet{animation:aroSheetOut 150ms ease both}
+}
+@media(prefers-reduced-motion:reduce){
+  .history-overlay.aro-history-enter,.history-overlay.aro-history-enter .history-sheet,
+  .history-overlay.aro-leaving,.history-overlay.aro-leaving .history-sheet,
+  .msg-highlight{animation:none!important}
+}
+
+/* Room files panel (reuses history shell) */
+.room-files-hint{
+  margin:0;padding:2px 6px 0;font-size:10.5px;line-height:1.45;color:var(--text-secondary,#8b98a5);text-align:center;
+  opacity:.92;
+}
+.room-file-item{
+  align-items:flex-start!important;gap:12px!important;padding:11px 12px!important;
+  border:1px solid transparent;border-radius:14px;
+  transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;
+}
+.room-file-item:hover{
+  background:rgba(128,128,128,.045)!important;
+  border-color:rgba(128,128,128,.08)!important;
+  box-shadow:0 1px 0 rgba(255,255,255,.35) inset;
+}
+.room-file-tile{
+  width:44px;height:44px;border-radius:12px;flex-shrink:0;position:relative;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 1px 2px rgba(0,0,0,.04) inset;
+}
+.room-file-tile-image{
+  background:linear-gradient(145deg,rgba(14,165,233,.16),rgba(56,189,248,.08));
+  color:#0284c7;
+}
+.room-file-tile-file{
+  background:linear-gradient(145deg,rgba(245,158,11,.16),rgba(251,191,36,.08));
+  color:#d97706;
+}
+.room-file-tile-icon{opacity:.92}
+.room-file-tile-ext{
+  position:absolute;right:3px;bottom:3px;
+  font-size:8px;font-weight:800;letter-spacing:.02em;line-height:1;
+  padding:2px 4px;border-radius:5px;
+  background:rgba(255,255,255,.82);color:inherit;
+  box-shadow:0 1px 2px rgba(0,0,0,.06);
+  max-width:34px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.room-file-body{min-width:0;flex:1;padding-top:1px}
+.room-file-top{flex-wrap:wrap;row-gap:4px}
+.room-file-name{font-size:13px!important;letter-spacing:-.015em;max-width:100%}
+.room-file-meta-line{opacity:.88;font-size:11.5px!important;margin-top:1px}
+.room-file-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.room-file-action-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  height:28px;padding:0 10px;border-radius:9px;border:1px solid transparent;
+  font-size:11.5px;font-weight:650;letter-spacing:-.01em;cursor:pointer;
+  transition:background .12s ease,border-color .12s ease,transform .1s ease,opacity .12s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.room-file-action-btn:active{transform:scale(.97)}
+.room-file-action-btn:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.45);outline-offset:1px}
+.room-file-action-btn svg{flex-shrink:0}
+.room-file-action-primary{
+  color:#fff;
+  background:var(--tapp-primary,#6366f1);
+  border-color:rgba(var(--tapp-primary-rgb,99,102,241),.35);
+  box-shadow:0 1px 2px rgba(var(--tapp-primary-rgb,99,102,241),.25);
+}
+.room-file-action-primary:hover{filter:brightness(1.05)}
+.room-file-action-ghost{
+  color:var(--text-secondary,#536471);
+  background:rgba(128,128,128,.06);
+  border-color:rgba(128,128,128,.1);
+}
+.room-file-action-ghost:hover{
+  color:var(--text-primary,#0f1419);
+  background:rgba(128,128,128,.1);
+}
+.room-file-status{
+  font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;flex-shrink:0;
+  letter-spacing:.01em;
+}
+.room-file-status-ready{color:#16a34a;background:rgba(22,163,74,.1)}
+.room-file-status-pending{color:#d97706;background:rgba(217,119,6,.12)}
+.room-file-status-missing{color:#94a3b8;background:rgba(148,163,184,.12)}
+.room-files-skeleton{display:flex;flex-direction:column;gap:10px;padding:6px 4px}
+.room-files-skel-row{
+  height:72px;border-radius:14px;
+  background:linear-gradient(90deg,rgba(128,128,128,.06) 0%,rgba(128,128,128,.12) 45%,rgba(128,128,128,.06) 100%);
+  background-size:200% 100%;
+  animation:roomFilesShimmer 1.15s ease-in-out infinite;
+}
+@keyframes roomFilesShimmer{
+  0%{background-position:100% 0}
+  100%{background-position:-100% 0}
+}
+@media(prefers-reduced-motion:reduce){
+  .room-files-skel-row{animation:none;background:rgba(128,128,128,.08)}
+}
+.dark .room-files-hint{color:rgba(255,255,255,.42)}
+.dark .room-file-item:hover{
+  background:rgba(255,255,255,.04)!important;
+  border-color:rgba(255,255,255,.08)!important;
+  box-shadow:none;
+}
+.dark .room-file-tile-image{background:linear-gradient(145deg,rgba(56,189,248,.18),rgba(14,165,233,.08));color:#38bdf8}
+.dark .room-file-tile-file{background:linear-gradient(145deg,rgba(251,191,36,.16),rgba(245,158,11,.08));color:#fbbf24}
+.dark .room-file-tile-ext{background:rgba(0,0,0,.35);color:inherit}
+.dark .room-file-action-ghost{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.08);color:rgba(255,255,255,.65)}
+.dark .room-file-action-ghost:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.92)}
+.dark .room-file-status-ready{color:#4ade80;background:rgba(74,222,128,.12)}
+.dark .room-file-status-pending{color:#fbbf24;background:rgba(251,191,36,.12)}
+.dark .room-file-status-missing{color:rgba(255,255,255,.4);background:rgba(255,255,255,.06)}
+.dark .room-files-skel-row{
+  background:linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 45%,rgba(255,255,255,.04) 100%);
+  background-size:200% 100%;
+}
+
+/* ===== Profile backup / export-import page ===== */
+.backup-page{
+  padding:16px 16px 36px;display:flex;flex-direction:column;gap:14px;
+  max-width:680px;margin:0 auto;width:100%;box-sizing:border-box;
+  animation:aroViewIn var(--aro-dur-view) var(--aro-ease) both;
+}
+.backup-hero{
+  display:flex;align-items:flex-start;gap:12px;padding:4px 2px 2px;
+}
+.backup-hero-icon{
+  width:44px;height:44px;border-radius:14px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(145deg,rgba(var(--tapp-primary-rgb,99,102,241),.16),rgba(var(--tapp-primary-rgb,99,102,241),.06));
+  color:var(--tapp-primary,#6366f1);
+}
+.backup-hero-icon svg{width:22px;height:22px}
+.backup-hero-text{min-width:0;flex:1;padding-top:2px}
+.backup-hero-title{margin:0;font-size:17px;font-weight:750;letter-spacing:-.025em;color:var(--text-primary,#0f1419);line-height:1.25}
+.backup-hero-desc{margin:4px 0 0;font-size:12.5px;line-height:1.5;color:var(--text-secondary,#536471)}
+.backup-card{
+  border:1px solid rgba(128,128,128,.1);border-radius:16px;
+  background:rgba(255,255,255,.62);padding:16px;
+  display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 1px 0 rgba(255,255,255,.5) inset;
+}
+.backup-card-flat{background:transparent;border:none;padding:0;box-shadow:none;gap:8px}
+.backup-card-muted{
+  background:rgba(128,128,128,.04);border-style:dashed;box-shadow:none;padding:12px 14px;
+}
+.backup-card-head{display:flex;align-items:flex-start;gap:10px}
+.backup-card-icon{
+  width:34px;height:34px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(128,128,128,.07);color:var(--text-secondary,#536471);
+}
+.backup-card-icon svg{width:16px;height:16px}
+.backup-card-icon-export{background:rgba(var(--tapp-primary-rgb,99,102,241),.1);color:var(--tapp-primary,#6366f1)}
+.backup-card-icon-import{background:rgba(14,165,233,.1);color:#0ea5e9}
+.backup-card-icon-archive{background:rgba(245,158,11,.1);color:#f59e0b}
+.backup-card-title{margin:0;font-size:14px;font-weight:700;color:var(--text-primary,#0f1419);letter-spacing:-.01em}
+.backup-card-desc{margin:0;font-size:12.5px;line-height:1.55;color:var(--text-secondary,#536471)}
+.backup-card-head .backup-card-desc{margin-top:3px}
+.backup-actions{display:flex;flex-wrap:wrap;gap:8px}
+.backup-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:38px;padding:0 14px;border-radius:11px;
+  border:1px solid rgba(128,128,128,.12);background:rgba(128,128,128,.04);
+  color:var(--text-primary,#0f1419);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+  transition:background .12s,border-color .12s,color .12s,transform .1s,filter .12s,box-shadow .12s;
+}
+.backup-btn svg{width:15px;height:15px;flex-shrink:0;opacity:.9}
+.backup-btn:hover{
+  background:rgba(var(--tapp-primary-rgb,99,102,241),.08);
+  border-color:rgba(var(--tapp-primary-rgb,99,102,241),.24);
+  color:var(--tapp-primary,#6366f1);
+}
+.backup-btn:active{transform:scale(.98)}
+.backup-btn:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.45);outline-offset:1px}
+.backup-btn-primary{
+  background:var(--tapp-primary,#6366f1);border-color:transparent;color:#fff;
+  box-shadow:0 6px 16px rgba(var(--tapp-primary-rgb,99,102,241),.22);
+}
+.backup-btn-primary:hover{
+  filter:brightness(1.04);color:#fff;background:var(--tapp-primary,#6366f1);
+  border-color:transparent;
+}
+.backup-btn-primary:disabled,.backup-btn:disabled{opacity:.55;cursor:not-allowed;transform:none;filter:none}
+.backup-btn-sm{min-height:32px;padding:0 11px;font-size:12px;border-radius:9px}
+.backup-btn-danger{color:var(--text-secondary,#888)}
+.backup-btn-danger:hover{color:#ef4444;border-color:rgba(239,68,68,.22);background:rgba(239,68,68,.07)}
+.backup-btn-ghost{
+  background:transparent;border-color:transparent;color:var(--text-secondary,#536471);padding:0 8px;min-height:34px;
+}
+.backup-btn-ghost:hover{background:rgba(128,128,128,.08);color:var(--text-primary,#222);border-color:transparent}
+.backup-check{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;
+  background:rgba(128,128,128,.04);border:1px solid rgba(128,128,128,.06);
+  font-size:12.5px;color:var(--text-secondary,#536471);cursor:pointer;user-select:none;
+  transition:background .12s,border-color .12s;
+}
+.backup-check:hover{background:rgba(128,128,128,.06)}
+.backup-check input{
+  width:16px;height:16px;margin:0;flex-shrink:0;accent-color:var(--tapp-primary,#6366f1);cursor:pointer;
+}
+.backup-status{
+  min-height:0;font-size:12px;font-weight:600;line-height:1.4;
+  color:var(--tapp-primary,#6366f1);padding:0;
+}
+.backup-status:not(:empty){
+  min-height:18px;padding:8px 11px;border-radius:10px;
+  background:rgba(var(--tapp-primary-rgb,99,102,241),.08);
+}
+.backup-status.backup-status-error{color:#ef4444;background:rgba(239,68,68,.08)}
+.backup-status.backup-status-ok{color:#16a34a;background:rgba(22,163,74,.08)}
+.backup-archive-list{display:flex;flex-direction:column;gap:8px}
+.backup-archive-item{
+  display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:13px;
+  background:rgba(128,128,128,.035);border:1px solid rgba(128,128,128,.06);
+  transition:background .12s,border-color .12s,transform .1s;
+}
+.backup-archive-link{
+  width:100%;border:none;cursor:pointer;font-family:inherit;text-align:left;background:rgba(128,128,128,.035);
+}
+.backup-archive-link:hover{
+  background:rgba(var(--tapp-primary-rgb,99,102,241),.07);
+  border-color:rgba(var(--tapp-primary-rgb,99,102,241),.16);
+}
+.backup-archive-link:active{transform:scale(.99)}
+.backup-archive-icon{
+  width:36px;height:36px;border-radius:11px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(128,128,128,.07);color:var(--text-secondary,#64748b);
+}
+.backup-archive-icon svg{width:16px;height:16px}
+.backup-archive-icon-dm{background:rgba(var(--tapp-primary-rgb,99,102,241),.1);color:var(--tapp-primary,#6366f1)}
+.backup-archive-icon-room{background:rgba(16,185,129,.1);color:#10b981}
+.backup-archive-icon-file{background:rgba(245,158,11,.1);color:#f59e0b}
+.backup-archive-info{min-width:0;flex:1}
+.backup-archive-name{font-size:13px;font-weight:700;color:var(--text-primary,#0f1419);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.backup-archive-meta{font-size:11.5px;color:var(--text-secondary,#8b98a5);margin-top:2px;line-height:1.35}
+.backup-archive-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.backup-chevron{color:var(--text-secondary,#99a1ad);display:flex;opacity:.75}
+.backup-toolbar{
+  display:flex;align-items:center;gap:8px;padding:2px 0 6px;position:sticky;top:0;z-index:2;
+  background:linear-gradient(180deg,rgba(255,255,255,.92) 60%,rgba(255,255,255,0));
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);margin:0 -4px;padding-left:4px;padding-right:4px;
+}
+.backup-toolbar-title{
+  font-size:14px;font-weight:700;color:var(--text-primary,#0f1419);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;
+}
+.backup-browse-meta{
+  font-size:11.5px;font-weight:600;color:var(--text-secondary,#8b98a5);
+  padding:2px 4px 8px;
+}
+.backup-history-list{max-height:none;padding:0;gap:6px}
+.backup-empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  padding:28px 16px;text-align:center;color:var(--text-secondary,#8b98a5);font-size:12.5px;line-height:1.5;
+}
+.backup-empty .aro-empty-mark{width:44px;height:44px;border-radius:14px}
+.dark .backup-page{color:rgba(255,255,255,.9)}
+.dark .backup-hero-title,.dark .backup-card-title,.dark .backup-toolbar-title,.dark .backup-archive-name{color:rgba(255,255,255,.92)}
+.dark .backup-hero-desc,.dark .backup-card-desc,.dark .backup-archive-meta,.dark .backup-browse-meta{color:rgba(255,255,255,.48)}
+.dark .backup-card{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08);box-shadow:none}
+.dark .backup-card-muted{background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.08)}
+.dark .backup-btn{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.88)}
+.dark .backup-btn-primary{background:var(--tapp-primary,#6366f1);border-color:transparent;color:#fff}
+.dark .backup-btn-ghost:hover{background:rgba(255,255,255,.08);color:rgba(255,255,255,.9)}
+.dark .backup-check{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.06);color:rgba(255,255,255,.55)}
+.dark .backup-archive-item,.dark .backup-archive-link{background:rgba(255,255,255,.035);border-color:rgba(255,255,255,.06)}
+.dark .backup-archive-link:hover{background:rgba(var(--tapp-primary-rgb,99,102,241),.14)}
+.dark .backup-toolbar{background:linear-gradient(180deg,rgba(10,10,10,.92) 55%,rgba(10,10,10,0))}
+@media(max-width:768px){
+  .backup-page{padding:12px 12px 32px;gap:12px}
+  .backup-actions{flex-direction:column}
+  .backup-actions .backup-btn{width:100%}
+  .backup-archive-item{padding:10px}
+  .backup-archive-actions{flex-direction:column;align-items:stretch}
+}
+@media(prefers-reduced-motion:reduce){
+  .backup-page{animation:none!important}
+}
+
 .conv-list{flex:1;min-height:0;overflow-y:auto;padding:6px 8px;display:flex;flex-direction:column;gap:2px}
 .chat-main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .member-panel{display:flex;flex-direction:column;width:220px;border-left:1px solid rgba(128,128,128,.08);flex-shrink:0;overflow:hidden;transition:width .2s}
@@ -828,6 +1396,10 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .action-btn{font-size:11px;padding:4px 10px;border-radius:10px;border:none;cursor:pointer;transition:background .15s}
 .action-accept{color:#fff;background:#22c55e}
 .action-accept:hover{background:#16a34a}
+.action-reject{color:#fff;background:#ef4444;margin-left:6px}
+.action-reject:hover{background:#dc2626}
+.member-pending{opacity:.72}
+.member-pending .member-role{color:#d97706}
 .manage-wrap{position:relative}
 .manage-dropdown{display:none;position:absolute;right:0;top:calc(100% + 4px);min-width:120px;background:var(--bg-primary,#fff);border:1px solid rgba(128,128,128,.1);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:50;padding:4px;overflow:hidden}
 .manage-dropdown.open{display:block}
@@ -941,53 +1513,204 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .composer-locked .quote-preview,.composer-locked .attach-preview{display:none !important}
 .dark .composer-locked .input-bar{background:rgba(255,255,255,.03)}
 
-/* ===== Content Picker Overlay ===== */
-.picker-overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:200;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.35);animation:pickerFadeIn .18s ease}
+/* ===================================================================
+   Bottom sheets — content picker (add) + share detail (open)
+   -------------------------------------------------------------------
+   One chrome for both: the detail overlay reuses .picker-sheet. Surface
+   tokens mirror the message-card system so a sheet reads as the same
+   material as the card that opened it, and --acc carries the platform
+   brand color through header, tabs, selection and primary action.
+   =================================================================== */
+.picker-overlay{
+  --acc:var(--tapp-primary-rgb,99,102,241);
+  --sheet-bg:#fff;
+  --sheet-hair:rgba(15,23,42,.09);
+  --sheet-chip:rgba(15,23,42,.05);
+  --sheet-chip-hover:rgba(15,23,42,.08);
+  --sheet-ink:var(--text-primary,#0f172a);
+  --sheet-ink-dim:rgba(15,23,42,.55);
+  position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
+  padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px));
+  padding-top:calc(24px + env(safe-area-inset-top,0px));
+  background:rgba(9,9,14,.5);
+  backdrop-filter:blur(10px) saturate(1.05);-webkit-backdrop-filter:blur(10px) saturate(1.05);
+  animation:pickerFadeIn .2s ease;
+}
+.dark .picker-overlay{
+  --sheet-bg:#15151a;
+  --sheet-hair:rgba(255,255,255,.09);
+  --sheet-chip:rgba(255,255,255,.06);
+  --sheet-chip-hover:rgba(255,255,255,.1);
+  --sheet-ink:rgba(255,255,255,.94);
+  --sheet-ink-dim:rgba(255,255,255,.55);
+  background:rgba(0,0,0,.6);
+}
+.picker-overlay[data-mark="brand"]{--acc:var(--acc-l,var(--tapp-primary-rgb,99,102,241))}
+.dark .picker-overlay[data-mark="brand"]{--acc:var(--acc-d,var(--acc-l,var(--tapp-primary-rgb,99,102,241)))}
 @keyframes pickerFadeIn{from{opacity:0}to{opacity:1}}
-@keyframes pickerSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
-.picker-sheet{width:100%;max-width:480px;max-height:70vh;background:var(--bg-primary,#fff);border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:pickerSlideUp .2s ease}
-.picker-header{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid rgba(128,128,128,.08);flex-shrink:0}
-.picker-header-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
-.picker-header-title{flex:1;font-size:15px;font-weight:600;color:var(--text-primary,#1a1a1a)}
-.picker-close-btn{width:28px;height:28px;border-radius:50%;border:none;background:rgba(128,128,128,.08);color:var(--text-secondary,#999);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:background .12s}
-.picker-close-btn:hover{background:rgba(128,128,128,.15)}
-.picker-search{padding:8px 16px;flex-shrink:0}
-.picker-search input{width:100%;padding:8px 12px;border:1px solid rgba(128,128,128,.12);border-radius:10px;background:rgba(128,128,128,.04);font-size:13px;color:var(--text-primary,#1a1a1a);outline:none;box-sizing:border-box}
-.picker-search input:focus{border-color:var(--tapp-primary,#6366f1);background:transparent}
-.picker-body{flex:1;overflow-y:auto;padding:4px 8px 8px}
-.picker-loading,.picker-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 16px;color:var(--text-secondary,#999);font-size:13px;gap:8px}
-.picker-loading-spinner{width:24px;height:24px;border:2px solid rgba(128,128,128,.15);border-top-color:var(--tapp-primary,#6366f1);border-radius:50%;animation:pickerSpin .7s linear infinite}
+@keyframes pickerPopIn{from{opacity:0;transform:scale(.94) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes pickerPopOut{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.96)}}
+.picker-sheet{
+  position:relative;width:100%;max-width:520px;max-height:100%;
+  background:var(--sheet-bg);color:var(--sheet-ink);
+  border-radius:24px;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 60px -20px rgba(0,0,0,.45),0 4px 14px -6px rgba(0,0,0,.2);
+  animation:pickerPopIn .24s cubic-bezier(.2,.8,.2,1);
+}
+/* Inset ring reads as an edge on every side now that the dialog floats free */
+.picker-sheet::before{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.5);pointer-events:none;z-index:3}
+.dark .picker-sheet::before{box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+
+.picker-header{display:flex;align-items:center;gap:12px;padding:18px 18px 12px;flex-shrink:0}
+.picker-header-icon{
+  width:44px;height:44px;flex-shrink:0;border-radius:14px;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+  color:rgb(var(--acc));
+  background:linear-gradient(150deg,rgba(var(--acc),.24),rgba(var(--acc),.09));
+  box-shadow:inset 0 0 0 1px rgba(var(--acc),.2);
+}
+.picker-header-icon svg{width:22px;height:22px}
+.picker-header-icon img{width:100%;height:100%;object-fit:cover}
+.picker-header-icon[data-mark="img"]{color:var(--sheet-ink);background:var(--sheet-chip);box-shadow:inset 0 0 0 1px var(--sheet-hair)}
+.picker-header-icon[data-mark="img"] img{width:24px;height:24px;object-fit:contain;border-radius:6px}
+.picker-header-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.picker-header-title{font-size:16.5px;font-weight:680;letter-spacing:-.01em;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.picker-header-sub{font-size:12px;color:var(--sheet-ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-header-sub:empty{display:none}
+.picker-close-btn{
+  width:34px;height:34px;flex-shrink:0;border-radius:50%;border:none;
+  background:var(--sheet-chip);color:var(--sheet-ink-dim);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:19px;line-height:1;font-family:inherit;transition:background .15s,color .15s,transform .12s;
+}
+.picker-close-btn:hover{background:var(--sheet-chip-hover);color:var(--sheet-ink)}
+.picker-close-btn:active{transform:scale(.93)}
+.picker-close-btn:focus-visible{outline:2px solid rgba(var(--acc),.55);outline-offset:2px}
+
+.picker-search{padding:2px 18px 10px;flex-shrink:0}
+.picker-search input{
+  width:100%;padding:10px 14px;border:1px solid transparent;border-radius:13px;
+  background:var(--sheet-chip);font-size:13.5px;color:var(--sheet-ink);
+  outline:none;box-sizing:border-box;font-family:inherit;transition:background .15s,border-color .15s,box-shadow .15s;
+}
+.picker-search input::placeholder{color:var(--sheet-ink-dim)}
+.picker-search input:focus{background:transparent;border-color:rgba(var(--acc),.45);box-shadow:0 0 0 3px rgba(var(--acc),.12)}
+
+.picker-tabs{display:flex;gap:6px;padding:0 18px 10px;flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+.picker-tabs::-webkit-scrollbar{display:none}
+.picker-tab{
+  padding:6px 13px;border:none;border-radius:10px;background:var(--sheet-chip);
+  color:var(--sheet-ink-dim);font-size:12.5px;font-weight:600;cursor:pointer;
+  transition:background .15s,color .15s;white-space:nowrap;font-family:inherit;
+}
+.picker-tab:hover{background:var(--sheet-chip-hover)}
+.picker-tab.active{background:rgba(var(--acc),.14);color:rgb(var(--acc))}
+.picker-tab:focus-visible{outline:2px solid rgba(var(--acc),.55);outline-offset:2px}
+
+.picker-body{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:2px 10px 10px}
+.picker-loading,.picker-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:44px 16px;color:var(--sheet-ink-dim);font-size:13px;gap:12px;text-align:center}
+.picker-loading-spinner{width:26px;height:26px;border:2.5px solid var(--sheet-chip);border-top-color:rgb(var(--acc));border-radius:50%;animation:pickerSpin .7s linear infinite}
 @keyframes pickerSpin{to{transform:rotate(360deg)}}
-.picker-item{display:flex;align-items:center;gap:10px;padding:10px 10px;border-radius:10px;cursor:pointer;transition:background .12s;border:none;background:none;width:100%;text-align:left;color:var(--text-primary,#1a1a1a);font-family:inherit}
-.picker-item:hover{background:rgba(128,128,128,.06)}
-.picker-item-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;background:rgba(128,128,128,.06)}
-.picker-item-body{flex:1;min-width:0}
-.picker-item-name{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.picker-item-meta{font-size:11px;color:var(--text-secondary,#999);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
-.picker-item-check{width:20px;height:20px;border-radius:50%;border:1.5px solid rgba(128,128,128,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .12s;font-size:12px;color:transparent}
-.picker-item.selected .picker-item-check{border-color:var(--tapp-primary,#6366f1);background:var(--tapp-primary,#6366f1);color:#fff}
-.picker-form{padding:12px 16px;display:flex;flex-direction:column;gap:10px}
-.picker-form label{font-size:12px;font-weight:500;color:var(--text-secondary,#999);display:flex;flex-direction:column;gap:4px}
-.picker-form input,.picker-form textarea{width:100%;padding:8px 12px;border:1px solid rgba(128,128,128,.12);border-radius:10px;background:rgba(128,128,128,.04);font-size:13px;color:var(--text-primary,#1a1a1a);outline:none;font-family:inherit;box-sizing:border-box}
-.picker-form input:focus,.picker-form textarea:focus{border-color:var(--tapp-primary,#6366f1);background:transparent}
-.picker-form textarea{min-height:60px;resize:vertical}
-.picker-footer{display:flex;gap:8px;padding:10px 16px;border-top:1px solid rgba(128,128,128,.08);flex-shrink:0}
-.picker-footer-btn{flex:1;padding:10px;border:none;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;transition:all .12s;font-family:inherit}
-.picker-btn-cancel{background:rgba(128,128,128,.08);color:var(--text-primary,#1a1a1a)}
-.picker-btn-cancel:hover{background:rgba(128,128,128,.14)}
-.picker-btn-confirm{background:var(--tapp-primary,#6366f1);color:#fff}
-.picker-btn-confirm:hover{filter:brightness(1.1)}
-.picker-btn-confirm:disabled{opacity:.4;cursor:not-allowed;filter:none}
-.picker-tabs{display:flex;gap:4px;padding:4px 14px 6px;flex-shrink:0;overflow-x:auto}
-.picker-tab{padding:5px 12px;border:none;border-radius:8px;background:rgba(128,128,128,.06);color:var(--text-secondary,#999);font-size:12px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap;font-family:inherit}
-.picker-tab.active{background:rgba(var(--tapp-primary-rgb,100,100,255),.1);color:var(--tapp-primary,#6366f1)}
-.dark .picker-sheet{background:var(--bg-primary,#1a1a1a)}
-.dark .picker-header{border-color:rgba(255,255,255,.06)}
-.dark .picker-footer{border-color:rgba(255,255,255,.06)}
-.dark .picker-item{color:rgba(255,255,255,.9)}
-.dark .picker-form input,.dark .picker-form textarea{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
-.dark .picker-search input{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
-.dark .picker-btn-cancel{background:rgba(255,255,255,.08);color:rgba(255,255,255,.9)}
+
+.picker-item{
+  display:flex;align-items:center;gap:12px;padding:10px 10px;margin-bottom:2px;
+  border-radius:14px;cursor:pointer;border:1px solid transparent;background:none;
+  width:100%;text-align:left;color:var(--sheet-ink);font-family:inherit;
+  transition:background .14s,border-color .14s;
+}
+.picker-item:hover{background:var(--sheet-chip)}
+.picker-item:focus-visible{outline:2px solid rgba(var(--acc),.5);outline-offset:-2px}
+.picker-item.selected{background:rgba(var(--acc),.09);border-color:rgba(var(--acc),.28)}
+.picker-item-icon{
+  width:40px;height:40px;flex-shrink:0;border-radius:12px;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  color:rgb(var(--acc));background:linear-gradient(150deg,rgba(var(--acc),.2),rgba(var(--acc),.08));
+  box-shadow:inset 0 0 0 1px rgba(var(--acc),.16);
+}
+.picker-item-icon svg{width:20px;height:20px}
+.picker-item-icon img{width:100%;height:100%;object-fit:cover}
+/* A row carrying a real brand mark uses that brand's color, not the sheet's */
+.picker-item-icon[data-mark="brand"]{--acc:var(--acc-l,var(--tapp-primary-rgb,99,102,241))}
+.dark .picker-item-icon[data-mark="brand"]{--acc:var(--acc-d,var(--acc-l,var(--tapp-primary-rgb,99,102,241)))}
+.picker-item-icon[data-mark="img"]{color:var(--sheet-ink);background:var(--sheet-chip);box-shadow:inset 0 0 0 1px var(--sheet-hair)}
+.picker-item-icon[data-mark="img"] img{width:22px;height:22px;object-fit:contain;border-radius:5px}
+.picker-item-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.picker-item-name{font-size:13.5px;font-weight:600;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-item-meta{font-size:11.5px;color:var(--sheet-ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.4}
+.picker-item-check{
+  width:22px;height:22px;flex-shrink:0;border-radius:50%;
+  border:1.5px solid var(--sheet-hair);display:flex;align-items:center;justify-content:center;
+  font-size:12px;color:transparent;transition:border-color .14s,background .14s,color .14s,transform .14s;
+}
+.picker-item.selected .picker-item-check{border-color:rgb(var(--acc));background:rgb(var(--acc));color:#fff;transform:scale(1.06)}
+
+.picker-form{padding:4px 18px 12px;display:flex;flex-direction:column;gap:12px}
+.picker-form label{font-size:12px;font-weight:600;color:var(--sheet-ink-dim);display:flex;flex-direction:column;gap:6px}
+.picker-form input,.picker-form textarea{
+  width:100%;padding:10px 14px;border:1px solid transparent;border-radius:13px;
+  background:var(--sheet-chip);font-size:13.5px;color:var(--sheet-ink);
+  outline:none;font-family:inherit;box-sizing:border-box;transition:background .15s,border-color .15s,box-shadow .15s;
+}
+.picker-form input:focus,.picker-form textarea:focus{background:transparent;border-color:rgba(var(--acc),.45);box-shadow:0 0 0 3px rgba(var(--acc),.12)}
+.picker-form textarea{min-height:72px;resize:vertical;line-height:1.55}
+
+.picker-footer{display:flex;gap:10px;padding:12px 18px 16px;flex-shrink:0;border-top:1px solid var(--sheet-hair);background:var(--sheet-bg)}
+.picker-footer-btn{flex:1;min-height:42px;padding:0 16px;border:none;border-radius:14px;font-size:14px;font-weight:650;cursor:pointer;font-family:inherit;transition:background .15s,filter .15s,transform .12s,opacity .15s}
+.picker-footer-btn:active{transform:scale(.985)}
+.picker-footer-btn:focus-visible{outline:2px solid rgba(var(--acc),.55);outline-offset:2px}
+.picker-btn-cancel{background:var(--sheet-chip);color:var(--sheet-ink-dim)}
+.picker-btn-cancel:hover{background:var(--sheet-chip-hover);color:var(--sheet-ink)}
+.picker-btn-confirm{background:linear-gradient(160deg,rgb(var(--acc)),rgba(var(--acc),.84));color:#fff;box-shadow:0 2px 8px -3px rgba(var(--acc),.5)}
+.picker-btn-confirm:hover:not(:disabled){filter:brightness(1.06)}
+.picker-btn-confirm:disabled{opacity:.35;cursor:not-allowed;filter:none;box-shadow:none}
+
+/* ----- Detail sheet body ----- */
+.sheet-pad{padding:4px 18px 22px;display:flex;flex-direction:column;gap:16px}
+.sheet-cover{width:100%;max-height:210px;object-fit:cover;border-radius:16px;display:block;background:var(--sheet-chip);box-shadow:inset 0 0 0 1px var(--sheet-hair)}
+.sheet-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:var(--sheet-ink-dim)}
+.sheet-meta-chip{padding:3px 9px;border-radius:8px;background:var(--sheet-chip);font-weight:600;font-variant-numeric:tabular-nums}
+.sheet-desc{font-size:13.5px;line-height:1.65;color:var(--sheet-ink-dim);overflow-wrap:anywhere;white-space:pre-wrap}
+.sheet-panel{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;background:var(--sheet-chip);border:1px solid var(--sheet-hair)}
+.sheet-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:12.5px}
+.sheet-row dt{color:var(--sheet-ink-dim);font-weight:600;flex-shrink:0}
+.sheet-row dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.sheet-status{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:650}
+.sheet-status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 18%,transparent)}
+.sheet-status-ok{color:#16a34a}.dark .sheet-status-ok{color:#4ade80}
+.sheet-status-warn{color:#d97706}.dark .sheet-status-warn{color:#fbbf24}
+.sheet-status-off{color:var(--sheet-ink-dim)}
+.sheet-section{display:flex;flex-direction:column;gap:7px}
+.sheet-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sheet-ink-dim)}
+.sheet-text{font-size:13.5px;line-height:1.65;overflow-wrap:anywhere}
+.sheet-text ul{margin:0;padding-left:18px}
+.sheet-text li{margin:5px 0}
+/* The dialog body owns scrolling; a nested scroller here just traps the wheel. */
+.sheet-scroll{min-width:0}
+.sheet-btn{width:100%;min-height:46px;border:none;border-radius:14px;font-size:14.5px;font-weight:650;cursor:pointer;font-family:inherit;color:#fff;background:linear-gradient(160deg,rgb(var(--acc)),rgba(var(--acc),.84));box-shadow:0 2px 8px -3px rgba(var(--acc),.5);transition:filter .15s,transform .12s,opacity .15s}
+.sheet-btn:hover:not(:disabled){filter:brightness(1.06)}
+.sheet-btn:active:not(:disabled){transform:scale(.99)}
+.sheet-btn:disabled{opacity:.6;cursor:default}
+.sheet-btn:focus-visible{outline:2px solid rgba(var(--acc),.55);outline-offset:2px}
+.sheet-btn-warn{background:linear-gradient(160deg,#f59e0b,#d97706);box-shadow:0 2px 8px -3px rgba(245,158,11,.5)}
+.sheet-btn-ok{background:linear-gradient(160deg,#22c55e,#16a34a);box-shadow:none}
+.sheet-btn-err{background:linear-gradient(160deg,#ef4444,#dc2626);box-shadow:none}
+.sheet-btn.is-busy{opacity:.7;cursor:progress}
+.sheet-link{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:rgb(var(--acc));text-decoration:none;align-self:flex-start;padding:7px 12px;border-radius:11px;background:rgba(var(--acc),.1);transition:background .15s}
+.sheet-link:hover{background:rgba(var(--acc),.18)}
+.sheet-note{font-size:11.5px;line-height:1.5;color:var(--sheet-ink-dim)}
+.sheet-note-warn{color:#d97706}.dark .sheet-note-warn{color:#fbbf24}
+.sheet-error{font-size:12.5px;line-height:1.5;color:#dc2626;overflow-wrap:anywhere}
+.dark .sheet-error{color:#f87171}
+.sheet-hint{text-align:center;font-size:12.5px;color:var(--sheet-ink-dim);padding:2px 0}
+
+@media(max-width:600px){
+  .picker-overlay{padding:16px 12px calc(16px + env(safe-area-inset-bottom,0px))}
+  .picker-sheet{max-width:none;border-radius:20px}
+  .picker-header{padding:16px 14px 10px}
+  .picker-search,.picker-tabs{padding-left:16px;padding-right:16px}
+  .sheet-pad{padding-left:16px;padding-right:16px}
+  .picker-footer{padding:12px 16px 16px}
+}
 
 /* ===== Rich Message Bubbles ===== */
 
@@ -1002,12 +1725,23 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .dark .msg-ctx-item{color:rgba(255,255,255,.9)}
 
 /* -- Quote Block inside message bubble -- */
-.msg-quote-block{display:flex;gap:0;margin-bottom:6px;border-radius:8px;overflow:hidden;background:rgba(128,128,128,.08);padding:6px 8px}
+.msg-quote-block{
+  display:flex;gap:0;margin-bottom:6px;border-radius:8px;overflow:hidden;
+  background:rgba(128,128,128,.08);padding:6px 8px;width:100%;max-width:100%;
+  border:none;text-align:left;font:inherit;color:inherit;cursor:pointer;
+  transition:background .12s ease,transform .1s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.msg-quote-block:hover{background:rgba(128,128,128,.12)}
+.msg-quote-block:active{transform:scale(.99)}
+.msg-quote-block:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.45);outline-offset:1px}
+.msg-quote-block:not([data-quote-id]){cursor:default}
 .msg-quote-bar{width:3px;border-radius:2px;background:var(--tapp-primary,#6366f1);flex-shrink:0;margin-right:8px}
 .msg-quote-content{min-width:0;flex:1}
 .msg-quote-sender{font-size:11px;font-weight:600;opacity:.7;margin-bottom:1px}
 .msg-quote-text{font-size:12px;opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
 .bubble-local .msg-quote-block{background:rgba(255,255,255,.15)}
+.bubble-local .msg-quote-block:hover{background:rgba(255,255,255,.22)}
 .bubble-local .msg-quote-bar{background:rgba(255,255,255,.6)}
 
 /* -- Quote Preview above input bar -- */
@@ -1037,37 +1771,241 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .dark .forward-title{color:rgba(255,255,255,.9)}
 .dark .forward-item{color:rgba(255,255,255,.9)}
 
-.msg-image{max-width:260px;max-height:200px;border-radius:10px;cursor:pointer;display:block}
-.msg-file-card{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:rgba(128,128,128,.06);min-width:200px;border:none;font:inherit;color:inherit;text-align:left;cursor:pointer;transition:background .12s}
-.msg-file-card:hover{background:rgba(128,128,128,.1)}
-.msg-file-card:active{background:rgba(128,128,128,.14)}
-.msg-file-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;background:rgba(128,128,128,.08)}
-.msg-file-info{flex:1;min-width:0}
-.msg-file-name{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.msg-file-size{font-size:11px;opacity:.55;margin-top:1px}
-.msg-share-card{display:flex;gap:12px;padding:14px;border-radius:14px;background:rgba(128,128,128,.06);min-width:240px;max-width:320px;cursor:pointer;transition:background .15s}
-.msg-share-card:active{background:rgba(128,128,128,.12)}
-.msg-share-icon{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
-.msg-share-icon svg{width:24px;height:24px}
-.msg-share-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.msg-share-type{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;opacity:.5}
-.msg-share-title{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.msg-share-desc{font-size:12px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
-.msg-share-meta{display:flex;align-items:center;gap:6px;margin-top:4px}
-.msg-share-ver{font-size:10px;padding:2px 6px;border-radius:5px;background:rgba(128,128,128,.1);font-weight:500;letter-spacing:.02em}
-.msg-share-status{font-size:10px;font-weight:600;padding:2px 8px;border-radius:5px}
-.msg-share-status-pending{background:rgba(245,158,11,.15);color:#f59e0b}
-.msg-share-status-accepted{background:rgba(34,197,94,.15);color:#22c55e}
-.msg-share-status-rejected{background:rgba(239,68,68,.15);color:#ef4444}
-.msg-share-actions{display:flex;gap:8px;margin-top:8px}
-.msg-share-actions button{flex:1;padding:8px 0;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s}
-.msg-share-actions button:active{opacity:.7}
-.msg-share-btn-accept{background:var(--tapp-primary,#6366f1);color:#fff}
-.msg-share-btn-reject{background:rgba(128,128,128,.1);color:var(--text-secondary,#888)}
-.bubble-local .msg-file-card,.bubble-local .msg-share-card{background:rgba(255,255,255,.15)}
-.bubble-local .msg-file-icon,.bubble-local .msg-share-icon{background:rgba(255,255,255,.15)}
-.bubble-local .msg-share-ver{background:rgba(255,255,255,.2)}
-.bubble-remote .msg-share-icon{background:rgba(128,128,128,.08)}
+/* ===================================================================
+   Message media & rich cards
+   -------------------------------------------------------------------
+   Two skins, one markup. A media message with no caption/quote drops
+   the bubble entirely (.bubble-media) and the card carries its own
+   surface. With a caption the card nests inside the bubble instead,
+   and on the tinted outgoing bubble it switches to a frosted skin.
+   Both skins are driven by the same token block below.
+   =================================================================== */
+.msg-bubble{
+  --card-surface:rgba(255,255,255,.72);
+  --card-surface-hover:rgba(255,255,255,.86);
+  --card-hair:rgba(15,23,42,.09);
+  --card-hair-strong:rgba(15,23,42,.14);
+  --card-shadow:0 2px 6px -3px rgba(15,23,42,.14),0 1px 1px rgba(15,23,42,.03);
+  --card-shadow-hover:0 5px 14px -7px rgba(15,23,42,.18),0 1px 2px rgba(15,23,42,.04);
+  --card-ink:var(--text-primary,#0f172a);
+  --card-ink-dim:rgba(15,23,42,.58);
+  --card-chip:rgba(15,23,42,.06);
+}
+.dark .msg-bubble{
+  --card-surface:rgba(255,255,255,.07);
+  --card-surface-hover:rgba(255,255,255,.11);
+  --card-hair:rgba(255,255,255,.1);
+  --card-hair-strong:rgba(255,255,255,.16);
+  --card-shadow:0 2px 8px -5px rgba(0,0,0,.5);
+  --card-shadow-hover:0 6px 16px -9px rgba(0,0,0,.6);
+  --card-ink:rgba(255,255,255,.94);
+  --card-ink-dim:rgba(255,255,255,.56);
+  --card-chip:rgba(255,255,255,.09);
+}
+/* Nested inside the tinted outgoing bubble → frosted-on-accent skin */
+.bubble-local:not(.bubble-media),.dark .bubble-local:not(.bubble-media){
+  --card-surface:rgba(255,255,255,.16);
+  --card-surface-hover:rgba(255,255,255,.24);
+  --card-hair:rgba(255,255,255,.24);
+  --card-hair-strong:rgba(255,255,255,.34);
+  --card-shadow:none;
+  --card-shadow-hover:none;
+  --card-ink:#fff;
+  --card-ink-dim:rgba(255,255,255,.74);
+  --card-chip:rgba(255,255,255,.2);
+}
+/* Card-as-bubble: strip the bubble chrome, keep the footer legible */
+.bubble-media{background:none!important;padding:0;max-width:min(340px,80%);border-radius:20px}
+.bubble-media .msg-sender{margin:0 4px 5px}
+.bubble-media .msg-footer{padding:0 4px}
+.bubble-media .msg-time,.bubble-media .msg-pin{color:var(--text-secondary,#94a3b8)}
+.bubble-media .msg-more-btn{top:6px;right:6px;color:var(--card-ink);background:var(--card-surface);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 1px 4px rgba(15,23,42,.12);width:28px;height:28px;min-width:28px;min-height:28px;border-radius:9px}
+/* The sender line lives inside the bubble; without a bubble the button must
+   clear it so it lands on the card rather than above it. */
+.bubble-media:has(.msg-sender) .msg-more-btn{top:28px}
+.msg-caption{margin-top:8px}
+
+/* ----- Image bubble ----- */
+/* The frame owns the size cap and the image fills it — an <img>'s max-content
+   contribution is its natural width, so capping the img instead leaves a gutter. */
+.msg-media{position:relative;margin:0;display:block;width:fit-content;max-width:min(300px,100%);border-radius:18px;overflow:hidden;cursor:zoom-in;line-height:0;background:var(--card-chip);box-shadow:var(--card-shadow);isolation:isolate}
+.msg-media::after{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px var(--card-hair);pointer-events:none}
+.msg-media:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.6);outline-offset:2px}
+.msg-image{display:block;width:100%;height:auto;max-height:330px;object-fit:cover;border-radius:inherit;transition:transform .35s cubic-bezier(.2,.7,.2,1)}
+.msg-media-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.28),transparent 42%,transparent 62%,rgba(0,0,0,.24));opacity:0;transition:opacity .2s;pointer-events:none}
+.msg-media-zoom{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;background:rgba(15,23,42,.42);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);opacity:0;transform:scale(.85);transition:opacity .18s,transform .18s;pointer-events:none}
+.msg-media:hover .msg-image{transform:scale(1.035)}
+.msg-media:hover .msg-media-veil,.msg-media:focus-visible .msg-media-veil{opacity:1}
+.msg-media:hover .msg-media-zoom,.msg-media:focus-visible .msg-media-zoom{opacity:1;transform:scale(1)}
+
+/* ----- File bubble ----- */
+.msg-file-card{
+  --acc:100,116,139;
+  display:flex;align-items:center;gap:12px;width:100%;min-width:min(250px,100%);
+  padding:11px 12px;border-radius:16px;border:1px solid var(--card-hair);
+  background:var(--card-surface);color:var(--card-ink);box-shadow:var(--card-shadow);
+  font:inherit;text-align:left;cursor:pointer;
+  transition:background .18s,border-color .18s,box-shadow .22s,transform .18s;
+}
+.msg-file-card[data-kind="image"]{--acc:59,130,246}
+.msg-file-card[data-kind="video"]{--acc:236,72,153}
+.msg-file-card[data-kind="audio"]{--acc:14,165,233}
+.msg-file-card[data-kind="archive"]{--acc:245,158,11}
+.msg-file-card[data-kind="doc"]{--acc:239,68,68}
+.msg-file-card[data-kind="sheet"]{--acc:34,197,94}
+.msg-file-card[data-kind="code"]{--acc:139,92,246}
+.msg-file-card[data-kind="text"]{--acc:100,116,139}
+button.msg-file-card:hover{background:var(--card-surface-hover);border-color:var(--card-hair-strong);box-shadow:var(--card-shadow-hover);transform:translateY(-1px)}
+button.msg-file-card:active{transform:translateY(0) scale(.99)}
+button.msg-file-card:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.55);outline-offset:2px}
+button.msg-file-card:disabled,.msg-file-card-disabled{opacity:.55;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+button.msg-file-card.msg-file-card-loading{opacity:.75;pointer-events:none;cursor:wait}
+button.msg-file-card.msg-file-card-loading .msg-file-action{animation:aroSpin .8s linear infinite}
+.msg-file-icon{position:relative;width:42px;height:42px;flex-shrink:0;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;color:rgb(var(--acc));background:linear-gradient(150deg,rgba(var(--acc),.24),rgba(var(--acc),.1));box-shadow:inset 0 0 0 1px rgba(var(--acc),.22)}
+.bubble-local:not(.bubble-media) .msg-file-icon{color:#fff;background:rgba(255,255,255,.22);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28)}
+.msg-file-ext{position:absolute;bottom:-3px;right:-3px;font-style:normal;font-size:8px;font-weight:800;letter-spacing:.02em;line-height:1;padding:3px 4px;border-radius:6px;color:#fff;background:rgb(var(--acc));box-shadow:0 0 0 2px var(--card-surface)}
+.bubble-local:not(.bubble-media) .msg-file-ext{color:var(--tapp-primary,#6366f1);background:#fff;box-shadow:none}
+.msg-file-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.msg-file-name{font-size:13.5px;font-weight:600;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-file-size{font-size:11px;font-weight:500;color:var(--card-ink-dim)}
+.msg-file-size:empty{display:none}
+.msg-file-action{flex-shrink:0;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--card-ink-dim);background:var(--card-chip);transition:background .18s,color .18s,transform .18s}
+button.msg-file-card:hover .msg-file-action{color:rgb(var(--acc));background:rgba(var(--acc),.16);transform:translateY(1px)}
+.bubble-local:not(.bubble-media) button.msg-file-card:hover .msg-file-action{color:#fff;background:rgba(255,255,255,.28)}
+
+/* ----- Share card (tapp / brew / library / report) ----- */
+.msg-share-card{
+  --acc:var(--tapp-primary-rgb,99,102,241);
+  position:relative;display:flex;flex-direction:column;overflow:hidden;
+  width:100%;min-width:min(260px,100%);
+  border-radius:18px;border:1px solid var(--card-hair);
+  background:var(--card-surface);color:var(--card-ink);box-shadow:var(--card-shadow);
+  cursor:pointer;transition:background .18s,border-color .18s,box-shadow .22s,transform .18s;
+}
+.msg-share-card[data-type="brew"]{--acc:34,197,94}
+.msg-share-card[data-type="library"]{--acc:168,85,247}
+.msg-share-card[data-type="report"]{--acc:239,68,68}
+.msg-share-card[data-pending]{cursor:default}
+.msg-share-card:hover{background:var(--card-surface-hover);border-color:rgba(var(--acc),.32);box-shadow:var(--card-shadow-hover);transform:translateY(-1px)}
+.msg-share-card[data-pending]:hover{transform:none}
+.msg-share-card:active{transform:translateY(0) scale(.995)}
+/* Accent wash: a soft corner bloom keyed to the content type */
+.msg-share-wash{position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 0% 0%,rgba(var(--acc),.16),transparent 62%);opacity:.9}
+/* A favicon states the source without giving us a color to match, so the card
+   stays near-neutral rather than tinting by message type. Brand-marked cards
+   keep a full wash — it is now the platform's own color. */
+.msg-share-card[data-mark="img"] .msg-share-wash{opacity:.2}
+.bubble-local:not(.bubble-media) .msg-share-wash{background:radial-gradient(120% 90% at 0% 0%,rgba(255,255,255,.16),transparent 62%)}
+.msg-share-main{position:relative;display:flex;gap:12px;align-items:flex-start;padding:14px}
+.msg-share-icon{position:relative;width:48px;height:48px;flex-shrink:0;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:21px;color:rgb(var(--acc));background:linear-gradient(150deg,rgba(var(--acc),.26),rgba(var(--acc),.1));box-shadow:inset 0 0 0 1px rgba(var(--acc),.22)}
+.msg-share-icon svg{width:23px;height:23px}
+.msg-share-icon[data-cover]{background:var(--card-chip);box-shadow:inset 0 0 0 1px var(--card-hair)}
+.msg-share-icon img{width:100%;height:100%;object-fit:cover;display:block}
+.bubble-local:not(.bubble-media) .msg-share-icon{color:#fff;background:rgba(255,255,255,.2);box-shadow:inset 0 0 0 1px rgba(255,255,255,.26)}
+.msg-share-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding-top:2px}
+/* Known platform → brand palette drives the tile, wash and hover border.
+   Set here (not inline) so the .dark variant can win the cascade. */
+.msg-share-card[data-mark="brand"]{--acc:var(--acc-l,var(--tapp-primary-rgb,99,102,241))}
+.dark .msg-share-card[data-mark="brand"]{--acc:var(--acc-d,var(--acc-l,var(--tapp-primary-rgb,99,102,241)))}
+.msg-share-icon[data-mark] svg{width:26px;height:26px}
+/* A favicon carries its own colors — keep its tile neutral so it doesn't clash */
+.msg-share-icon[data-mark="img"]{color:var(--card-ink);background:var(--card-chip);box-shadow:inset 0 0 0 1px var(--card-hair)}
+.bubble-local:not(.bubble-media) .msg-share-icon[data-mark="img"]{color:#fff}
+.msg-share-favicon{width:26px;height:26px;object-fit:contain;border-radius:6px}
+.msg-share-title{font-size:14.5px;font-weight:650;line-height:1.32;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.msg-share-title:empty::before{content:'—';opacity:.45;font-weight:500}
+.msg-share-desc{font-size:12px;line-height:1.42;color:var(--card-ink-dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.msg-share-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:3px}
+.msg-share-ver{font-size:10px;font-weight:700;letter-spacing:.02em;padding:3px 7px;border-radius:7px;background:var(--card-chip);color:var(--card-ink-dim);font-variant-numeric:tabular-nums}
+.msg-share-status{font-size:10px;font-weight:700;letter-spacing:.01em;padding:3px 9px;border-radius:7px}
+.msg-share-status-pending{background:rgba(245,158,11,.16);color:#d97706}
+.msg-share-status-accepted{background:rgba(34,197,94,.16);color:#16a34a}
+.msg-share-status-rejected{background:rgba(239,68,68,.16);color:#dc2626}
+.dark .msg-share-status-pending{color:#fbbf24}
+.dark .msg-share-status-accepted{color:#4ade80}
+.dark .msg-share-status-rejected{color:#f87171}
+.bubble-local:not(.bubble-media) .msg-share-status{background:rgba(255,255,255,.22);color:#fff}
+.msg-share-go{align-self:center;flex-shrink:0;font-size:15px;color:var(--card-ink-dim);opacity:.5;transition:transform .2s,opacity .2s}
+.msg-share-card:hover .msg-share-go{opacity:1;transform:translateX(2px)}
+.msg-share-actions{position:relative;display:flex;gap:8px;padding:0 14px 14px}
+.msg-share-actions button{flex:1;min-height:34px;padding:0 12px;border:none;border-radius:11px;font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;transition:filter .16s,background .16s,transform .12s}
+.msg-share-actions button:active{transform:scale(.98)}
+.msg-share-actions button:focus-visible{outline:2px solid rgba(var(--tapp-primary-rgb,99,102,241),.55);outline-offset:2px}
+.msg-share-btn-accept{background:linear-gradient(160deg,rgb(var(--acc)),rgba(var(--acc),.82));color:#fff;box-shadow:0 2px 6px -3px rgba(var(--acc),.45)}
+.msg-share-btn-accept:hover{filter:brightness(1.06)}
+.msg-share-btn-reject{background:var(--card-chip);color:var(--card-ink-dim)}
+.msg-share-btn-reject:hover{background:var(--card-hair)}
+
+/* ----- Media (library) share cards — image-forward poster layout -----------
+   A game / anime / music share carries its own cover art, so it renders as a
+   poster card: cover leads (platform logo as a corner mark), then just the
+   title + one compact meta row (kind · rating · sender playtime/progress) — no
+   source text, no separators. Orientation: games banner, music square, else
+   portrait, corrected from the loaded image's real aspect (chat.js). */
+.msg-media-card{
+  --acc:168,85,247;
+  position:relative;overflow:hidden;display:flex;align-items:stretch;
+  width:100%;min-width:min(210px,100%);max-width:330px;
+  border-radius:16px;border:1px solid var(--card-hair);
+  background:var(--card-surface);color:var(--card-ink);box-shadow:var(--card-shadow);
+  cursor:pointer;transition:border-color .18s,box-shadow .22s,transform .18s;
+}
+.msg-media-card[data-mark="brand"]{--acc:var(--acc-l,168,85,247)}
+.dark .msg-media-card[data-mark="brand"]{--acc:var(--acc-d,var(--acc-l,168,85,247))}
+.msg-media-card:hover{border-color:rgba(var(--acc),.34);box-shadow:var(--card-shadow-hover);transform:translateY(-1px)}
+.msg-media-card:active{transform:translateY(0) scale(.995)}
+
+.msg-media-cover{position:relative;flex-shrink:0;overflow:hidden;line-height:0;background:linear-gradient(150deg,rgba(var(--acc),.24),rgba(var(--acc),.08))}
+.msg-media-cover-img{position:relative;z-index:1;width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
+.msg-media-card:hover .msg-media-cover-img{transform:scale(1.04)}
+.msg-media-cover-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px;color:rgb(var(--acc));opacity:.92}
+.msg-media-cover[data-broken] .msg-media-cover-img{display:none}
+/* Platform logo as a small frosted mark on the cover (replaces source text). */
+.msg-media-logo{position:absolute;z-index:2;top:6px;left:6px;width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;background:rgba(15,23,42,.5);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.msg-media-logo svg{width:13px;height:13px}
+
+.msg-media-info{position:relative;z-index:1;flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:10px 30px 10px 12px}
+.msg-media-title{font-size:14.5px;font-weight:680;line-height:1.26;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.msg-media-meta{display:flex;align-items:center;flex-wrap:wrap;gap:9px;font-size:11.5px;line-height:1.2;font-variant-numeric:tabular-nums}
+.msg-media-kind{font-weight:600;color:var(--card-ink-dim)}
+.msg-media-sub{font-weight:500;color:var(--card-ink-dim);opacity:.72}
+.msg-media-rate{display:inline-flex;align-items:center;gap:3px;font-weight:700;color:#f59e0b}
+.dark .msg-media-rate{color:#fbbf24}
+.msg-media-rate svg{width:12px;height:12px}
+/* Progress / playtime row: pure monochrome ink (light=near-black, dark=near-white).
+   Never inherit platform --acc purple — force color on both the label and the SVG. */
+.msg-media-stat{display:inline-flex;align-items:center;gap:3.5px;font-weight:700;color:var(--card-ink)}
+.msg-media-stat svg{width:13px;height:13px;flex-shrink:0;color:var(--card-ink)}
+.msg-media-card .msg-media-stat,.msg-media-card .msg-media-stat svg{color:var(--card-ink)}
+.msg-media-go{position:absolute;z-index:2;top:50%;right:8px;transform:translateY(-50%);font-size:14px;color:var(--card-ink-dim);opacity:.4;transition:opacity .2s}
+.msg-media-card:hover .msg-media-go{opacity:.85}
+
+.msg-media-card[data-orient="landscape"]{flex-direction:column}
+.msg-media-card[data-orient="landscape"] .msg-media-cover{width:100%;aspect-ratio:16/9}
+.msg-media-card[data-orient="landscape"] .msg-media-go{top:auto;bottom:9px;transform:none}
+/* Portrait poster (anime / books): a large image on top with the text below,
+   so the cover reads as a proper poster instead of a thin side thumbnail. */
+.msg-media-card[data-orient="portrait"]{flex-direction:column;max-width:230px}
+.msg-media-card[data-orient="portrait"] .msg-media-cover{width:100%;aspect-ratio:3/4}
+.msg-media-card[data-orient="portrait"] .msg-media-go{top:auto;bottom:9px;transform:none}
+.msg-media-card[data-orient="square"] .msg-media-cover{width:92px;aspect-ratio:1/1}
+/* Music (square): stack artist over album instead of a gap-spaced row. */
+.msg-media-card[data-orient="square"] .msg-media-meta{flex-direction:column;align-items:flex-start;gap:1px}
+.msg-media-card[data-orient="square"] .msg-media-meta > span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){
+  .msg-media-card:hover .msg-media-cover-img{transform:none}
+}
+
+/* ----- Full-screen image viewer ----- */
+.img-viewer{position:fixed;inset:0;z-index:400;display:flex;flex-direction:column;background:rgba(9,9,14,.82);backdrop-filter:blur(22px) saturate(1.1);-webkit-backdrop-filter:blur(22px) saturate(1.1)}
+.img-viewer-bar{display:flex;align-items:center;gap:10px;padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top,0px));color:rgba(255,255,255,.9);flex-shrink:0}
+.img-viewer-name{flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.82)}
+.img-viewer-btn{width:36px;height:36px;flex-shrink:0;border:none;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:17px;color:#fff;background:rgba(255,255,255,.12);cursor:pointer;transition:background .15s,transform .12s}
+.img-viewer-btn:hover{background:rgba(255,255,255,.22)}
+.img-viewer-btn:active{transform:scale(.94)}
+.img-viewer-btn:focus-visible{outline:2px solid rgba(255,255,255,.65);outline-offset:2px}
+.img-viewer-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.img-viewer-img{max-width:100%;max-height:100%;object-fit:contain;border-radius:14px;box-shadow:0 30px 70px -30px rgba(0,0,0,.9);cursor:default}
 
 /* ===== Members ===== */
 .member-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;transition:background .15s;min-height:44px}
@@ -1140,9 +2078,6 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .dark .ring-id-value{background:rgba(255,255,255,.06);color:rgba(255,255,255,.68)}
 .dark .conv-avatar{color:var(--tapp-primary,#818cf8)}
 .dark .member-avatar{color:var(--tapp-primary,#818cf8)}
-.dark .msg-file-card{background:rgba(255,255,255,.08)}
-.dark .msg-file-icon{background:rgba(255,255,255,.1)}
-.dark .msg-share-card{background:rgba(255,255,255,.08)}
 
 /* ===== Responsive ===== */
 @media(max-width:768px){
@@ -1230,17 +2165,6 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .manage-item{min-height:36px;padding:8px 12px;font-size:13px}
 .msg-ctx-item{min-height:40px;padding:10px 14px}
 
-/* Share cards polish */
-.msg-share-card{border:1px solid rgba(128,128,128,.08);box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.msg-share-card:hover{background:rgba(128,128,128,.09)}
-.dark .msg-share-card{border-color:rgba(255,255,255,.06);box-shadow:none}
-.dark .msg-share-card:hover{background:rgba(255,255,255,.1)}
-.msg-share-icon{overflow:hidden}
-.msg-share-icon img{width:100%;height:100%;object-fit:cover;border-radius:12px}
-.msg-share-title:empty::before{content:'—';opacity:.45;font-weight:500}
-.msg-share-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;line-height:1.35;max-height:2.7em}
-.msg-image{border-radius:12px;max-width:min(280px,100%)}
-.msg-file-card{border:1px solid rgba(128,128,128,.06)}
 
 /* ===== In-app Confirm Dialog (native confirm() is blocked in the sandboxed iframe) ===== */
 .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:300;animation:ctxFadeIn .12s ease}
@@ -1304,13 +2228,17 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .confirm-overlay.aro-leaving .confirm-dialog{animation:aroScaleOut .14s ease both}
 
 .picker-overlay.aro-leaving{animation:aroFadeOut .16s ease both;pointer-events:none}
-.picker-overlay.aro-leaving .picker-sheet{animation:aroSheetOut .16s ease both}
+.picker-overlay.aro-leaving .picker-sheet{animation:pickerPopOut .16s ease both}
 
 .forward-sheet{animation:aroScaleIn .18s var(--aro-ease) both}
 .forward-overlay.aro-leaving{animation:aroFadeOut .14s ease both;pointer-events:none}
 .forward-overlay.aro-leaving .forward-sheet{animation:aroScaleOut .14s ease both}
 
 .msg-ctx-menu.aro-leaving{animation:aroFadeOut .1s ease both;pointer-events:none}
+.img-viewer.aro-viewer-enter{animation:aroFadeIn .18s ease both}
+.img-viewer.aro-viewer-enter .img-viewer-img{animation:aroScaleIn .22s var(--aro-ease) both}
+.img-viewer.aro-leaving{animation:aroFadeOut .16s ease both;pointer-events:none}
+.img-viewer.aro-leaving .img-viewer-img{animation:aroScaleOut .16s ease both}
 .manage-dropdown.open{animation:aroPopIn .14s var(--aro-ease) both}
 .feed-plus-menu.open{animation:aroPopIn .14s var(--aro-ease) both}
 .feed-plus-menu.aro-leaving{animation:aroFadeOut .1s ease both;pointer-events:none}
@@ -1417,9 +2345,12 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
   .feed-compose-overlay.aro-leaving .feed-compose-dialog,
   .confirm-overlay.aro-leaving .confirm-dialog,
   .picker-overlay.aro-leaving .picker-sheet,
+  .img-viewer.aro-leaving,
+  .img-viewer.aro-leaving .img-viewer-img,
   .forward-overlay.aro-leaving .forward-sheet{
     animation:none!important;
   }
+  .msg-media:hover .msg-image{transform:none}
   .conv-item:active,.feed-nav-item:active,.aro-nav-item:active,.feed-item-action:active,
   .manage-item:active,.msg-ctx-item:active,.create-btn:active,.create-submit:active:not(:disabled),
   .action-btn:active,.ring-action-sync:active,.feed-empty-retry:active,.confirm-btn:active,
@@ -1474,8 +2405,37 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "attachTapp": "Tapp",
     "attachTappPrompt": "Tapp ID or name",
     "back": "Back",
+    "backupBrowse": "Browse",
+    "backupDeleted": "Archive removed",
+    "backupExportActive": "Export open chat",
+    "backupExportAll": "Export all chats",
+    "backupExportCount": "{n} messages",
+    "backupExportDesc": "Download a JSON backup of your direct messages and group chats from this device.",
+    "backupExportFail": "Couldn't export",
+    "backupExportOk": "Export ready",
+    "backupExportProgress": "Exporting {done}/{total}…",
+    "backupExportTitle": "Export chat history",
+    "backupExporting": "Exporting…",
+    "backupGuest": "Sign in to export or import chat history.",
+    "backupHint": "Export and import your messenger history",
+    "backupImportBtn": "Choose JSON file",
+    "backupImportDesc": "Import a previously exported JSON file to browse offline. Import does not re-send messages to the server.",
+    "backupImportFail": "Couldn't import",
+    "backupImportFormat": "Unknown archive format",
+    "backupImportHint": "Browse under Imported archives",
+    "backupImportOk": "Import saved",
+    "backupImportTitle": "Import archive",
+    "backupImportedEmpty": "No imports yet.",
+    "backupImportedTitle": "Imported archives",
+    "backupImporting": "Importing…",
+    "backupIncludeMedia": "Include image data (larger file)",
+    "backupNeedConversation": "Open a chat first",
+    "backupPrivacyNote": "Exports stay on your device. Large image payloads are omitted unless you enable “Include image data”.",
+    "backupTitle": "Chat backup",
     "channelNotAccepted": "Accept the chat before sending",
     "channelPlaceholder": "@user@domain or profile link",
+    "channelRejectConfirm": "Decline this message request?",
+    "channelRejected": "Request declined",
     "close": "Close chat",
     "closeChannelConfirm": "Close this chat? You won't be able to send messages afterward.",
     "closeChannelFail": "Couldn't close chat",
@@ -1484,26 +2444,26 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "collapseDetails": "Show less",
     "composeAddImage": "Image",
     "composeAddVideo": "Video",
+    "composeBadMediaUrl": "Uploaded media URL looks invalid — not publishing",
     "composeCancel": "Cancel",
+    "composeDeliveryQueued": "Delivering to {n} followers",
     "composeDialogTitle": "New post",
     "composeDraftRestored": "Draft restored",
     "composeDraftTextOnly": "Draft kept text only — re-attach media if needed",
     "composeEmpty": "Write something or add media",
     "composeFail": "Couldn't publish",
-    "composeBadMediaUrl": "Uploaded media URL looks invalid — not publishing",
-    "composeDeliveryQueued": "Delivering to {n} followers",
+    "composeMediaMissingOnFeed": "Published, but media may not show on the feed yet",
     "composePlaceholder": "What's on your mind?",
     "composePost": "Post",
     "composePublish": "Publish",
     "composePublishing": "Publishing…",
-    "composerClosed": "This chat is closed — you can't send messages",
     "composeSuccess": "Published",
     "composeSuccessMedia": "Published with media",
     "composeTimelineMissing": "Published, but the post isn't on your timeline yet — try refresh",
-    "composeMediaMissingOnFeed": "Published, but media may not show on the feed yet",
     "composeUploadFail": "Media upload failed — not publishing",
     "composeUploadPartial": "Some media uploaded, then upload failed — not publishing (no half-post)",
     "composeUploading": "Uploading…",
+    "composerClosed": "This chat is closed — you can't send messages",
     "confirmCancel": "Cancel",
     "confirmOk": "OK",
     "connected": "Connected",
@@ -1516,13 +2476,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "createRingBtn": "Create ring",
     "createRingFail": "Couldn't create ring",
     "createRingTitle": "Create a ring",
-    "ringBrewCategoryLabel": "Brew category (optional)",
-    "ringBrewCategoryAll": "All my categories",
-    "ringBrewCategoryPlaceholder": "Or type a category name",
     "createRoom": "Create group",
     "creating": "Creating…",
     "dateToday": "Today",
     "dateYesterday": "Yesterday",
+    "deliveryDeadBody": "{n} outbound federation messages could not be delivered",
+    "deliveryDeadTitle": "Federation delivery failed",
+    "deliveryNotQueued": "Saved locally but could not queue for remote peers",
+    "deliveryRetryBody": "{n} messages re-queued for delivery",
+    "deliveryRetryConfirm": "Retry {n} failed federation deliveries?",
+    "deliveryRetryOk": "Retry queued",
+    "deliveryWarnBody": "Remote delivery may be incomplete",
+    "deliveryWarnTitle": "Delivery notice",
     "disconnected": "Offline",
     "dismiss": "Dismiss",
     "dissolve": "Dissolve group",
@@ -1531,6 +2496,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "dm": "Direct message",
     "downloadFail": "Couldn't download file",
     "downloadFile": "Download",
+    "e2eFail": "Couldn’t publish encryption key",
+    "e2ePublish": "Publish encryption key",
+    "e2ePublished": "Encryption key published",
     "editRoom": "Edit group",
     "emptyChatHint": "No messages yet — say hello",
     "emptyFollowers": "Share your profile link so others can follow you.",
@@ -1545,8 +2513,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "emptyTitlePublished": "Nothing published",
     "emptyTitleTimeline": "No posts yet",
     "expandDetails": "Show more",
+    "feedBackup": "Backup",
     "feedFollowers": "Followers",
     "feedFollowing": "Following",
+    "feedHintBackup": "Export and import messenger history",
     "feedHintFollowers": "People who follow you",
     "feedHintFollowing": "People you follow",
     "feedHintGuest": "Public posts from this site",
@@ -1578,39 +2548,70 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardEmpty": "No other conversations to forward to",
     "forwardSuccess": "Forwarded",
     "forwardTo": "Forward to…",
+    "forwardTooLarge": "Attachment too large to forward inline",
+    "forwardTransferOnly": "Large chunked files can’t be forwarded yet — download and re-send",
     "guest": "Guest",
+    "historyCount": "{n} messages",
+    "historyEmpty": "No messages in this chat yet",
+    "historyFilterAll": "All",
+    "historyFilterFile": "Files",
+    "historyFilterImage": "Images",
+    "historyFilterPinned": "Pinned",
+    "historyFilterShare": "Shares",
+    "historyFilterText": "Text",
+    "historyJumpMiss": "Couldn't find that message in the chat window",
+    "historyLoadFail": "Couldn't load history",
+    "historyLoadMore": "Load older messages",
+    "historyLoading": "Loading history…",
+    "historyMatchCount": "{n} / {total}",
+    "historySearchPlaceholder": "Search messages…",
+    "historyTitle": "Chat history",
     "installBtn": "Install",
-    "installedAt": "Installed",
     "installFailed": "Install failed — tap to retry",
-    "installingBtn": "Installing…",
     "installSuccess": "Installed",
-    "tappDirectInstall": "Install package included in share",
-    "tappStoreInstall": "Will install from store catalog",
-    "tappInstallNoPackage": "This shared Tapp is not in the store and no install package was attached. Ask the sender to re-share.",
-    "tappInstallNoStoreSource": "Share is missing store catalog URL. Ask the sender to re-share the Tapp from a current Aro build.",
+    "installedAt": "Installed",
+    "installingBtn": "Installing…",
     "invite": "Invite",
     "inviteBtn": "Invite",
-    "invited": "Invited",
     "inviteFail": "Couldn't invite",
     "inviteFromContacts": "From contacts",
     "inviteManual": "Invite by address",
     "invitePlaceholder": "@user@domain or profile link",
     "inviteSuccess": "Invite sent",
+    "invited": "Invited",
     "inviting": "Inviting…",
+    "joinRoom": "Join",
+    "joinRoomFail": "Failed to join",
+    "joinRoomOk": "Joined the group",
     "kick": "Remove",
     "kickConfirm": "Remove this member from the group?",
     "kickFail": "Couldn't remove member",
+    "kicked": "You were removed from the group",
     "leave": "Leave group",
     "leaveBtn": "Leave ring",
     "leaveConfirm": "Leave this group? You can rejoin if invited again.",
     "leaveFail": "Couldn't leave group",
     "leaveRingConfirm": "Leave this ring? You can rejoin later if invited.",
     "leaveRingFail": "Couldn't leave ring",
+    "libraryPickerEmpty": "No library items for this platform",
+    "libraryPickerLoadFail": "Couldn't load library data",
     "loadFail": "Couldn't load",
     "local": "You",
     "localVer": "Installed",
     "manage": "More",
     "me": "Me",
+    "mediaCh": "Ch {c}/{t}",
+    "mediaChOnly": "Ch {c}",
+    "mediaEp": "EP {c}/{t}",
+    "mediaEpOnly": "EP {c}",
+    "mediaHours": "{v}h",
+    "mediaKind_anime": "Anime",
+    "mediaKind_book": "Book",
+    "mediaKind_game": "Game",
+    "mediaKind_music": "Music",
+    "mediaKind_tv_series": "TV",
+    "mediaKind_video": "Video",
+    "mediaMinutes": "{v}m",
     "mediaTooLarge": "File too large (images max 10 MB, videos max 50 MB)",
     "mediaUnsupported": "Unsupported file type",
     "members": "Members",
@@ -1629,6 +2630,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "noContacts": "No contacts to invite yet",
     "noConv": "No conversations",
     "noConvHint": "Tap + to start a chat or group",
+    "openJoin": "Open",
     "openOriginal": "Open original",
     "openTappBtn": "Open Tapp",
     "peers": "peers",
@@ -1638,10 +2640,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "pickerConfirm": "Add",
     "pickerDesc": "Description (optional)",
     "pickerEmpty": "Nothing to show",
-    "libraryPickerEmpty": "No library items for this platform",
-    "libraryPickerLoadFail": "Couldn't load library data",
-    "shareUntitled": "Untitled",
     "pickerLoading": "Loading…",
+    "pickerPickOne": "Pick one to attach",
     "pickerSearchPlaceholder": "Search…",
     "pickerSelectPlatform": "Choose a platform",
     "pickerTitle": "Title",
@@ -1653,6 +2653,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "publicFeed": "Public feed",
     "quoteLabel": "Replying to",
     "refresh": "Refresh",
+    "reject": "Decline",
     "rejectTapp": "Decline",
     "remoteVer": "Shared version",
     "remove": "Remove",
@@ -1662,6 +2663,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "reportInsights": "Insights",
     "reportSummary": "Summary",
     "reportUnavailable": "Report details unavailable",
+    "ringBrewCategoryAll": "All my categories",
+    "ringBrewCategoryLabel": "Brew category (optional)",
+    "ringBrewCategoryPlaceholder": "Or type a category name",
     "ringId": "Ring ID",
     "ringIdCopied": "Ring ID copied",
     "ringNamePlaceholder": "Ring name",
@@ -1675,11 +2679,43 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "roleMember": "Member",
     "roleOwner": "Owner",
     "roomDesc": "Description",
+    "roomFilesCount": "{n} items",
+    "roomFilesDownload": "Download",
+    "roomFilesEmpty": "No files in this group yet",
+    "roomFilesEmptyHint": "Share a file or image from the composer (+).",
+    "roomFilesFilterAll": "All",
+    "roomFilesFilterFile": "Files",
+    "roomFilesFilterImage": "Images",
+    "roomFilesHint": "Files stay on the sender’s instance. This list is an index from group history.",
+    "roomFilesJump": "Show in chat",
+    "roomFilesLoadMore": "Load more",
+    "roomFilesLoading": "Loading files…",
+    "roomFilesMatchCount": "{n} / {total}",
+    "roomFilesNeedChat": "Open in chat to download this attachment",
+    "roomFilesOnlyRoom": "Group files are only available in rooms",
+    "roomFilesOpenInChat": "Open in chat",
+    "roomFilesSearch": "Search files…",
+    "roomFilesStatusMissing": "Unavailable",
+    "roomFilesStatusPending": "Uploading…",
+    "roomFilesStatusReady": "Ready",
+    "roomFilesTitle": "Group files",
+    "roomInviteAccepted": "Joined the group",
+    "roomInvitePending": "Accept the invite to chat in this group",
+    "roomInviteRejectConfirm": "Decline this group invite?",
+    "roomInviteRejected": "Invite declined",
     "roomName": "Group name",
     "roomPlaceholder": "Group name",
     "save": "Save",
     "saveFail": "Couldn't save",
     "saving": "Saving…",
+    "searchContacts": "Search contacts…",
+    "searchConversations": "Search chats…",
+    "searchFeed": "Search feed…",
+    "searchForward": "Search chats…",
+    "searchMembers": "Search members…",
+    "searchNoResults": "No matches",
+    "searchPlaceholder": "Search…",
+    "searchRings": "Search rings…",
     "selectBrew": "Choose a Brew article",
     "selectHint": "Pick a conversation to start messaging",
     "selectLibrary": "Choose from library",
@@ -1688,22 +2724,44 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectTapp": "Choose a Tapp",
     "send": "Send",
     "sendFail": "Couldn't send",
+    "shareUntitled": "Untitled",
     "syncBtn": "Sync",
     "syncFail": "Couldn't sync",
-    "syncing": "Syncing…",
     "syncSuccess": "Sync complete",
+    "syncing": "Syncing…",
+    "tappDirectInstall": "Install package included in share",
+    "tappInstallNoPackage": "This shared Tapp is not in the store and no install package was attached. Ask the sender to re-share.",
+    "tappInstallNoStoreSource": "Share is missing store catalog URL. Ask the sender to re-share the Tapp from a current Aro build.",
     "tappInstalled": "Installed",
     "tappNotInstalled": "Not installed",
     "tappReceived": "Tapp shared with you",
     "tappShareAccepted": "Accepted",
     "tappSharePending": "Waiting for reply",
     "tappShareRejected": "Declined",
+    "tappStoreInstall": "Will install from store catalog",
     "tappUpdateAvail": "Update available",
     "title": "Messages",
+    "transferCancelled": "Transfer cancelled",
     "transferComplete": "File sent",
+    "transferDownloadFail": "Couldn't download file",
+    "transferDownloadOk": "Download started",
+    "transferDownloadUnsupported": "Transfer download is not available in this runtime",
+    "transferDownloading": "Downloading…",
     "transferFail": "Couldn't upload file",
+    "transferFailed": "Transfer failed",
+    "transferOwner": "Transfer ownership",
+    "transferOwnerConfirm": "Transfer ownership to {name}?",
+    "transferOwnerEmpty": "No eligible member to transfer to",
+    "transferOwnerFail": "Couldn’t transfer ownership",
+    "transferOwnerInvalid": "Invalid choice",
+    "transferOwnerOk": "Ownership transferred",
+    "transferOwnerPrompt": "Transfer ownership to member number:",
+    "transferOwnerUnsupported": "Ownership transfer is not available",
+    "transferPreparing": "Waiting for file to finish transferring…",
     "transferProgress": "Uploading… {pct}%",
+    "transferReceived": "File received",
     "transferStarting": "Uploading file…",
+    "transferStillArriving": "File may still be arriving — trying download…",
     "typing": "Message…",
     "unfollowBtn": "Unfollow",
     "unfollowFail": "Couldn't unfollow",
@@ -1735,8 +2793,37 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "attachTapp": "Tapp",
     "attachTappPrompt": "Tapp IDまたは名前",
     "back": "戻る",
+    "backupBrowse": "閲覧",
+    "backupDeleted": "アーカイブを削除しました",
+    "backupExportActive": "開いているチャットをエクスポート",
+    "backupExportAll": "すべてのチャットをエクスポート",
+    "backupExportCount": "{n} 件のメッセージ",
+    "backupExportDesc": "この端末のダイレクトメッセージとグループチャットを JSON で保存します。",
+    "backupExportFail": "エクスポートに失敗しました",
+    "backupExportOk": "エクスポート完了",
+    "backupExportProgress": "エクスポート中 {done}/{total}…",
+    "backupExportTitle": "履歴をエクスポート",
+    "backupExporting": "エクスポート中…",
+    "backupGuest": "サインインして履歴をエクスポート／インポートできます。",
+    "backupHint": "メッセンジャー履歴をエクスポート／インポート",
+    "backupImportBtn": "JSON ファイルを選択",
+    "backupImportDesc": "以前エクスポートした JSON を読み込み、オフラインで閲覧できます。サーバーへ再送信はしません。",
+    "backupImportFail": "インポートに失敗しました",
+    "backupImportFormat": "不明なアーカイブ形式です",
+    "backupImportHint": "「インポート済み」から閲覧できます",
+    "backupImportOk": "インポートしました",
+    "backupImportTitle": "アーカイブをインポート",
+    "backupImportedEmpty": "まだインポートがありません。",
+    "backupImportedTitle": "インポート済みアーカイブ",
+    "backupImporting": "インポート中…",
+    "backupIncludeMedia": "画像データを含める（ファイルが大きくなります）",
+    "backupNeedConversation": "先にチャットを開いてください",
+    "backupPrivacyNote": "エクスポートは端末内に保存されます。大きな画像データは「画像データを含める」をオンにしない限り除外されます。",
+    "backupTitle": "チャットバックアップ",
     "channelNotAccepted": "送信前にチャットを承認してください",
     "channelPlaceholder": "@user@domain またはプロフィールURL",
+    "channelRejectConfirm": "このメッセージリクエストを辞退しますか？",
+    "channelRejected": "リクエストを辞退しました",
     "close": "チャットを閉じる",
     "closeChannelConfirm": "このチャットを閉じますか？閉じると送信できなくなります。",
     "closeChannelFail": "チャットを閉じられませんでした",
@@ -1745,26 +2832,26 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "collapseDetails": "閉じる",
     "composeAddImage": "画像",
     "composeAddVideo": "動画",
+    "composeBadMediaUrl": "アップロード先URLが不正です — 公開しません",
     "composeCancel": "キャンセル",
+    "composeDeliveryQueued": "{n}人のフォロワーへ配信中",
     "composeDialogTitle": "投稿を作成",
     "composeDraftRestored": "下書きを復元しました",
     "composeDraftTextOnly": "下書きは文字のみ保存されています — 必要ならメディアを再添付してください",
     "composeEmpty": "テキストか画像/動画を追加してください",
     "composeFail": "公開に失敗しました",
-    "composeBadMediaUrl": "アップロード先URLが不正です — 公開しません",
-    "composeDeliveryQueued": "{n}人のフォロワーへ配信中",
+    "composeMediaMissingOnFeed": "公開済みですがフィードにメディアが表示されない可能性があります",
     "composePlaceholder": "いまどうしてる？",
     "composePost": "投稿",
     "composePublish": "公開",
     "composePublishing": "公開中…",
-    "composerClosed": "このチャットは終了済みです — 送信できません",
     "composeSuccess": "公開しました",
     "composeSuccessMedia": "メディア付きで公開しました",
     "composeTimelineMissing": "公開済みですがタイムラインにまだ出ていません — 再読み込みしてください",
-    "composeMediaMissingOnFeed": "公開済みですがフィードにメディアが表示されない可能性があります",
     "composeUploadFail": "メディアのアップロードに失敗しました — 公開しません",
     "composeUploadPartial": "一部のメディアは上がりましたが途中で失敗 — 途中公開はしません",
     "composeUploading": "アップロード中…",
+    "composerClosed": "このチャットは終了済みです — 送信できません",
     "confirmCancel": "キャンセル",
     "confirmOk": "OK",
     "connected": "接続中",
@@ -1777,13 +2864,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "createRingBtn": "リングを作成",
     "createRingFail": "リングの作成に失敗しました",
     "createRingTitle": "リングを作成",
-    "ringBrewCategoryLabel": "Brewカテゴリ（任意）",
-    "ringBrewCategoryAll": "すべてのカテゴリ",
-    "ringBrewCategoryPlaceholder": "またはカテゴリ名を入力",
     "createRoom": "グループを作成",
     "creating": "作成中…",
     "dateToday": "今日",
     "dateYesterday": "昨日",
+    "deliveryDeadBody": "配信できなかった送信メッセージが {n} 件あります",
+    "deliveryDeadTitle": "連邦配信に失敗",
+    "deliveryNotQueued": "ローカルには保存されましたが、リモートへの配信キューに入れられませんでした",
+    "deliveryRetryBody": "{n} 件のメッセージを再配信キューに入れました",
+    "deliveryRetryConfirm": "失敗した {n} 件の連合配信を再試行しますか？",
+    "deliveryRetryOk": "再試行をキューに追加しました",
+    "deliveryWarnBody": "リモート配信が不完全な可能性があります",
+    "deliveryWarnTitle": "配信の通知",
     "disconnected": "オフライン",
     "dismiss": "閉じる",
     "dissolve": "グループを解散",
@@ -1792,6 +2884,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "dm": "ダイレクトメッセージ",
     "downloadFail": "ファイルをダウンロードできませんでした",
     "downloadFile": "ダウンロード",
+    "e2eFail": "暗号鍵を公開できませんでした",
+    "e2ePublish": "暗号鍵を公開",
+    "e2ePublished": "暗号鍵を公開しました",
     "editRoom": "グループを編集",
     "emptyChatHint": "まだメッセージがありません。あいさつしてみましょう",
     "emptyFollowers": "プロフィールを共有してフォロワーを増やしましょう。",
@@ -1806,8 +2901,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "emptyTitlePublished": "公開したコンテンツはありません",
     "emptyTitleTimeline": "投稿はまだありません",
     "expandDetails": "もっと見る",
+    "feedBackup": "バックアップ",
     "feedFollowers": "フォロワー",
     "feedFollowing": "フォロー中",
+    "feedHintBackup": "メッセンジャー履歴のエクスポート／インポート",
     "feedHintFollowers": "あなたをフォローしている人",
     "feedHintFollowing": "フォロー中のアカウントを管理",
     "feedHintGuest": "このサイトの公開投稿",
@@ -1839,39 +2936,70 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardEmpty": "転送できる他の会話がありません",
     "forwardSuccess": "転送しました",
     "forwardTo": "転送先…",
+    "forwardTooLarge": "添付が大きすぎて転送できません",
+    "forwardTransferOnly": "分割転送の大きなファイルはまだ転送できません。ダウンロードして再送してください",
     "guest": "ゲスト",
+    "historyCount": "{n} 件のメッセージ",
+    "historyEmpty": "このチャットにはまだメッセージがありません",
+    "historyFilterAll": "すべて",
+    "historyFilterFile": "ファイル",
+    "historyFilterImage": "画像",
+    "historyFilterPinned": "ピン留め",
+    "historyFilterShare": "共有",
+    "historyFilterText": "テキスト",
+    "historyJumpMiss": "チャット内でそのメッセージを見つけられませんでした",
+    "historyLoadFail": "履歴を読み込めませんでした",
+    "historyLoadMore": "さらに古いメッセージ",
+    "historyLoading": "履歴を読み込み中…",
+    "historyMatchCount": "{n} / {total}",
+    "historySearchPlaceholder": "メッセージを検索…",
+    "historyTitle": "チャット履歴",
     "installBtn": "インストール",
-    "installedAt": "インストール日",
     "installFailed": "インストールに失敗しました。タップして再試行",
-    "installingBtn": "インストール中…",
     "installSuccess": "インストール完了",
-    "tappDirectInstall": "共有にインストールパッケージが含まれています",
-    "tappStoreInstall": "ストアカタログからインストールします",
-    "tappInstallNoPackage": "この Tapp はストアになく、インストールパッケージもありません。送信者に再共有を依頼してください。",
-    "tappInstallNoStoreSource": "共有にストアカタログ URL がありません。送信者に最新の Aro から再共有を依頼してください。",
+    "installedAt": "インストール日",
+    "installingBtn": "インストール中…",
     "invite": "招待",
     "inviteBtn": "招待",
-    "invited": "招待済み",
     "inviteFail": "招待に失敗しました",
     "inviteFromContacts": "連絡先から選ぶ",
     "inviteManual": "アドレスで招待",
     "invitePlaceholder": "@user@domain またはプロフィールURL",
     "inviteSuccess": "招待を送信しました",
+    "invited": "招待済み",
     "inviting": "招待中…",
+    "joinRoom": "参加",
+    "joinRoomFail": "参加に失敗しました",
+    "joinRoomOk": "グループに参加しました",
     "kick": "削除",
     "kickConfirm": "このメンバーをグループから削除しますか？",
     "kickFail": "削除に失敗しました",
+    "kicked": "グループから削除されました",
     "leave": "グループを退出",
     "leaveBtn": "リングを退出",
     "leaveConfirm": "このグループを退出しますか？再参加には招待が必要です。",
     "leaveFail": "退出に失敗しました",
     "leaveRingConfirm": "このリングから退出しますか？招待があれば再参加できます。",
     "leaveRingFail": "退出に失敗しました",
+    "libraryPickerEmpty": "このプラットフォームのライブラリ項目がありません",
+    "libraryPickerLoadFail": "ライブラリデータを読み込めませんでした",
     "loadFail": "読み込みに失敗しました",
     "local": "自分",
     "localVer": "インストール済み",
     "manage": "その他",
     "me": "自分",
+    "mediaCh": "{c}/{t} 章",
+    "mediaChOnly": "{c} 章",
+    "mediaEp": "{c}/{t} 話",
+    "mediaEpOnly": "{c} 話",
+    "mediaHours": "{v} 時間",
+    "mediaKind_anime": "アニメ",
+    "mediaKind_book": "書籍",
+    "mediaKind_game": "ゲーム",
+    "mediaKind_music": "音楽",
+    "mediaKind_tv_series": "ドラマ",
+    "mediaKind_video": "動画",
+    "mediaMinutes": "{v} 分",
     "mediaTooLarge": "ファイルが大きすぎます（画像最大10MB、動画最大50MB）",
     "mediaUnsupported": "未対応のファイル形式です",
     "members": "メンバー",
@@ -1890,6 +3018,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "noContacts": "招待できる連絡先がありません",
     "noConv": "会話はまだありません",
     "noConvHint": "+ からチャットやグループを開始",
+    "openJoin": "オープン",
     "openOriginal": "元記事を開く",
     "openTappBtn": "Tappを開く",
     "peers": "ピア",
@@ -1899,10 +3028,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "pickerConfirm": "追加",
     "pickerDesc": "説明（任意）",
     "pickerEmpty": "表示する項目がありません",
-    "libraryPickerEmpty": "このプラットフォームのライブラリ項目がありません",
-    "libraryPickerLoadFail": "ライブラリデータを読み込めませんでした",
-    "shareUntitled": "無題",
     "pickerLoading": "読み込み中…",
+    "pickerPickOne": "添付する項目を選択",
     "pickerSearchPlaceholder": "検索…",
     "pickerSelectPlatform": "プラットフォームを選択",
     "pickerTitle": "タイトル",
@@ -1914,6 +3041,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "publicFeed": "公開フィード",
     "quoteLabel": "返信先",
     "refresh": "更新",
+    "reject": "辞退",
     "rejectTapp": "拒否",
     "remoteVer": "共有バージョン",
     "remove": "削除",
@@ -1923,6 +3051,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "reportInsights": "インサイト",
     "reportSummary": "概要",
     "reportUnavailable": "レポートの詳細を読み込めません",
+    "ringBrewCategoryAll": "すべてのカテゴリ",
+    "ringBrewCategoryLabel": "Brewカテゴリ（任意）",
+    "ringBrewCategoryPlaceholder": "またはカテゴリ名を入力",
     "ringId": "リングID",
     "ringIdCopied": "リングIDをコピーしました",
     "ringNamePlaceholder": "リング名",
@@ -1936,11 +3067,43 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "roleMember": "メンバー",
     "roleOwner": "オーナー",
     "roomDesc": "説明",
+    "roomFilesCount": "{n} 件",
+    "roomFilesDownload": "ダウンロード",
+    "roomFilesEmpty": "このグループにはまだファイルがありません",
+    "roomFilesEmptyHint": "入力欄の + からファイルや画像を共有できます。",
+    "roomFilesFilterAll": "すべて",
+    "roomFilesFilterFile": "ファイル",
+    "roomFilesFilterImage": "画像",
+    "roomFilesHint": "ファイルは送信元インスタンスに保存されます。一覧はグループ履歴の添付インデックスです。",
+    "roomFilesJump": "チャットで表示",
+    "roomFilesLoadMore": "さらに読み込む",
+    "roomFilesLoading": "ファイルを読み込み中…",
+    "roomFilesMatchCount": "{n} / {total}",
+    "roomFilesNeedChat": "チャットで開いてからダウンロードしてください",
+    "roomFilesOnlyRoom": "グループファイルはルームでのみ利用できます",
+    "roomFilesOpenInChat": "チャットで開く",
+    "roomFilesSearch": "ファイルを検索…",
+    "roomFilesStatusMissing": "利用不可",
+    "roomFilesStatusPending": "転送中…",
+    "roomFilesStatusReady": "ダウンロード可",
+    "roomFilesTitle": "グループファイル",
+    "roomInviteAccepted": "グループに参加しました",
+    "roomInvitePending": "招待を承認してからメッセージを送れます",
+    "roomInviteRejectConfirm": "このグループ招待を辞退しますか？",
+    "roomInviteRejected": "招待を辞退しました",
     "roomName": "グループ名",
     "roomPlaceholder": "グループ名",
     "save": "保存",
     "saveFail": "保存に失敗しました",
     "saving": "保存中…",
+    "searchContacts": "連絡先を検索…",
+    "searchConversations": "チャットを検索…",
+    "searchFeed": "フィードを検索…",
+    "searchForward": "チャットを検索…",
+    "searchMembers": "メンバーを検索…",
+    "searchNoResults": "一致する結果がありません",
+    "searchPlaceholder": "検索…",
+    "searchRings": "リングを検索…",
     "selectBrew": "Brew記事を選択",
     "selectHint": "会話を選んでメッセージを始めましょう",
     "selectLibrary": "ライブラリから選択",
@@ -1949,22 +3112,44 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectTapp": "Tappを選択",
     "send": "送信",
     "sendFail": "送信に失敗しました",
+    "shareUntitled": "無題",
     "syncBtn": "同期",
     "syncFail": "同期に失敗しました",
-    "syncing": "同期中…",
     "syncSuccess": "同期完了",
+    "syncing": "同期中…",
+    "tappDirectInstall": "共有にインストールパッケージが含まれています",
+    "tappInstallNoPackage": "この Tapp はストアになく、インストールパッケージもありません。送信者に再共有を依頼してください。",
+    "tappInstallNoStoreSource": "共有にストアカタログ URL がありません。送信者に最新の Aro から再共有を依頼してください。",
     "tappInstalled": "インストール済み",
     "tappNotInstalled": "未インストール",
     "tappReceived": "Tappが共有されました",
     "tappShareAccepted": "承認済み",
     "tappSharePending": "返信待ち",
     "tappShareRejected": "拒否済み",
+    "tappStoreInstall": "ストアカタログからインストールします",
     "tappUpdateAvail": "更新あり",
     "title": "メッセージ",
+    "transferCancelled": "転送がキャンセルされました",
     "transferComplete": "ファイルを送信しました",
+    "transferDownloadFail": "ファイルをダウンロードできませんでした",
+    "transferDownloadOk": "ダウンロードを開始しました",
+    "transferDownloadUnsupported": "この環境では転送ダウンロードを利用できません",
+    "transferDownloading": "ダウンロード中…",
     "transferFail": "ファイルをアップロードできませんでした",
+    "transferFailed": "転送に失敗しました",
+    "transferOwner": "オーナーを譲渡",
+    "transferOwnerConfirm": "{name} にオーナーを譲渡しますか？",
+    "transferOwnerEmpty": "譲渡できるメンバーがいません",
+    "transferOwnerFail": "オーナー譲渡に失敗しました",
+    "transferOwnerInvalid": "無効な選択です",
+    "transferOwnerOk": "オーナーを譲渡しました",
+    "transferOwnerPrompt": "譲渡先のメンバー番号：",
+    "transferOwnerUnsupported": "オーナー譲渡はこの環境では利用できません",
+    "transferPreparing": "ファイルの転送完了を待っています…",
     "transferProgress": "アップロード中… {pct}%",
+    "transferReceived": "ファイルを受信しました",
     "transferStarting": "ファイルをアップロード中…",
+    "transferStillArriving": "ファイルがまだ届いている可能性があります。ダウンロードを試します…",
     "typing": "メッセージを入力…",
     "unfollowBtn": "フォロー解除",
     "unfollowFail": "フォロー解除に失敗しました",
@@ -1996,8 +3181,37 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "attachTapp": "Tapp",
     "attachTappPrompt": "Tapp ID 或名称",
     "back": "返回",
+    "backupBrowse": "浏览",
+    "backupDeleted": "已删除备份",
+    "backupExportActive": "导出当前会话",
+    "backupExportAll": "导出全部会话",
+    "backupExportCount": "{n} 条消息",
+    "backupExportDesc": "将本机私信与群聊导出为 JSON 备份文件。",
+    "backupExportFail": "导出失败",
+    "backupExportOk": "导出完成",
+    "backupExportProgress": "导出中 {done}/{total}…",
+    "backupExportTitle": "导出聊天记录",
+    "backupExporting": "导出中…",
+    "backupGuest": "登录后可导出或导入聊天记录。",
+    "backupHint": "导出与导入你的聊天记录",
+    "backupImportBtn": "选择 JSON 文件",
+    "backupImportDesc": "导入先前导出的 JSON，可离线浏览。不会把消息重新发送到服务器。",
+    "backupImportFail": "导入失败",
+    "backupImportFormat": "无法识别的备份格式",
+    "backupImportHint": "可在「已导入备份」中浏览",
+    "backupImportOk": "导入成功",
+    "backupImportTitle": "导入备份",
+    "backupImportedEmpty": "暂无导入。",
+    "backupImportedTitle": "已导入备份",
+    "backupImporting": "导入中…",
+    "backupIncludeMedia": "包含图片数据（文件更大）",
+    "backupNeedConversation": "请先打开一个会话",
+    "backupPrivacyNote": "导出文件保存在你的设备上。除非勾选「包含图片数据」，否则会省略体积较大的图片内容。",
+    "backupTitle": "聊天备份",
     "channelNotAccepted": "请先接受私信再发送",
     "channelPlaceholder": "@用户@域名 或个人主页链接",
+    "channelRejectConfirm": "确定拒绝此私信请求？",
+    "channelRejected": "已拒绝请求",
     "close": "关闭会话",
     "closeChannelConfirm": "确定关闭此私信？关闭后将无法继续发送消息。",
     "closeChannelFail": "关闭会话失败",
@@ -2006,26 +3220,26 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "collapseDetails": "收起",
     "composeAddImage": "图片",
     "composeAddVideo": "视频",
+    "composeBadMediaUrl": "上传返回的媒体地址无效 — 已取消发布",
     "composeCancel": "取消",
+    "composeDeliveryQueued": "正在向 {n} 位关注者投递",
     "composeDialogTitle": "发帖",
     "composeDraftRestored": "已恢复草稿",
     "composeDraftTextOnly": "草稿仅保留文字，请重新添加附件",
     "composeEmpty": "写点文字或添加图片/视频",
     "composeFail": "发布失败",
-    "composeBadMediaUrl": "上传返回的媒体地址无效 — 已取消发布",
-    "composeDeliveryQueued": "正在向 {n} 位关注者投递",
+    "composeMediaMissingOnFeed": "已发布，但动态中可能暂未显示媒体",
     "composePlaceholder": "分享此刻的想法…",
     "composePost": "发帖",
     "composePublish": "发布",
     "composePublishing": "发布中…",
-    "composerClosed": "会话已关闭，无法发送消息",
     "composeSuccess": "已发布",
     "composeSuccessMedia": "已发布（含媒体）",
     "composeTimelineMissing": "已发布，但时间线暂未出现 — 请刷新",
-    "composeMediaMissingOnFeed": "已发布，但动态中可能暂未显示媒体",
     "composeUploadFail": "媒体上传失败 — 未发布",
     "composeUploadPartial": "部分媒体已上传后失败 — 未半发布",
     "composeUploading": "上传中…",
+    "composerClosed": "会话已关闭，无法发送消息",
     "confirmCancel": "取消",
     "confirmOk": "确定",
     "connected": "已连接",
@@ -2038,13 +3252,18 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "createRingBtn": "创建环网",
     "createRingFail": "创建环网失败",
     "createRingTitle": "创建环网",
-    "ringBrewCategoryLabel": "Brew 分类（可选）",
-    "ringBrewCategoryAll": "我的全部分类",
-    "ringBrewCategoryPlaceholder": "或输入分类名称",
     "createRoom": "创建群聊",
     "creating": "创建中…",
     "dateToday": "今天",
     "dateYesterday": "昨天",
+    "deliveryDeadBody": "有 {n} 条联邦出站消息无法投递",
+    "deliveryDeadTitle": "联邦投递失败",
+    "deliveryNotQueued": "已保存在本机，但未能加入远程投递队列",
+    "deliveryRetryBody": "已将 {n} 条消息重新加入投递队列",
+    "deliveryRetryConfirm": "重试 {n} 条失败的联邦投递？",
+    "deliveryRetryOk": "已重新排队",
+    "deliveryWarnBody": "远程投递可能不完整",
+    "deliveryWarnTitle": "投递提示",
     "disconnected": "未连接",
     "dismiss": "关闭",
     "dissolve": "解散群组",
@@ -2053,6 +3272,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "dm": "私信",
     "downloadFail": "无法下载文件",
     "downloadFile": "下载",
+    "e2eFail": "无法发布加密密钥",
+    "e2ePublish": "发布加密密钥",
+    "e2ePublished": "已发布加密密钥",
     "editRoom": "编辑群聊",
     "emptyChatHint": "还没有消息，打个招呼吧",
     "emptyFollowers": "分享你的个人主页，让别人关注你。",
@@ -2067,8 +3289,10 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "emptyTitlePublished": "还没有发布内容",
     "emptyTitleTimeline": "还没有动态",
     "expandDetails": "展开",
+    "feedBackup": "备份",
     "feedFollowers": "粉丝",
     "feedFollowing": "关注",
+    "feedHintBackup": "导出与导入聊天记录",
     "feedHintFollowers": "关注你的人",
     "feedHintFollowing": "管理你关注的人",
     "feedHintGuest": "本站的公开动态",
@@ -2100,39 +3324,70 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "forwardEmpty": "没有可转发的其他会话",
     "forwardSuccess": "已转发",
     "forwardTo": "转发到…",
+    "forwardTooLarge": "附件过大，无法直接转发",
+    "forwardTransferOnly": "分块大文件暂不支持转发，请下载后重新发送",
     "guest": "访客",
+    "historyCount": "{n} 条消息",
+    "historyEmpty": "此会话还没有消息",
+    "historyFilterAll": "全部",
+    "historyFilterFile": "文件",
+    "historyFilterImage": "图片",
+    "historyFilterPinned": "置顶",
+    "historyFilterShare": "分享",
+    "historyFilterText": "文字",
+    "historyJumpMiss": "无法在当前会话中定位该消息",
+    "historyLoadFail": "无法加载聊天记录",
+    "historyLoadMore": "加载更早消息",
+    "historyLoading": "加载记录中…",
+    "historyMatchCount": "{n} / {total}",
+    "historySearchPlaceholder": "搜索消息…",
+    "historyTitle": "聊天记录",
     "installBtn": "安装",
-    "installedAt": "安装时间",
     "installFailed": "安装失败，点击重试",
-    "installingBtn": "安装中…",
     "installSuccess": "安装成功",
-    "tappDirectInstall": "分享中已包含可安装包",
-    "tappStoreInstall": "将从商店目录安装",
-    "tappInstallNoPackage": "该 Tapp 不在商店中，且分享未附带安装包。请让对方重新分享。",
-    "tappInstallNoStoreSource": "分享缺少商店目录 URL。请让对方用最新版 Aro 重新分享。",
+    "installedAt": "安装时间",
+    "installingBtn": "安装中…",
     "invite": "邀请",
     "inviteBtn": "邀请",
-    "invited": "已邀请",
     "inviteFail": "邀请失败",
     "inviteFromContacts": "从联系人选择",
     "inviteManual": "通过地址邀请",
     "invitePlaceholder": "@用户@域名 或个人主页链接",
     "inviteSuccess": "邀请已发送",
+    "invited": "已邀请",
     "inviting": "邀请中…",
+    "joinRoom": "加入",
+    "joinRoomFail": "加入失败",
+    "joinRoomOk": "已加入群组",
     "kick": "移除",
     "kickConfirm": "确定将此成员移出群聊？",
     "kickFail": "移除失败",
+    "kicked": "你已被移出群聊",
     "leave": "退出群聊",
     "leaveBtn": "退出环网",
     "leaveConfirm": "确定离开此群组？如需重新加入需再次邀请。",
     "leaveFail": "离开失败",
     "leaveRingConfirm": "确定退出此环网？之后若获邀可再加入。",
     "leaveRingFail": "退出失败",
+    "libraryPickerEmpty": "该平台资料库暂无内容",
+    "libraryPickerLoadFail": "无法加载资料库数据",
     "loadFail": "加载失败",
     "local": "我",
     "localVer": "已安装",
     "manage": "更多",
     "me": "我",
+    "mediaCh": "{c}/{t} 章",
+    "mediaChOnly": "第 {c} 章",
+    "mediaEp": "{c}/{t} 话",
+    "mediaEpOnly": "第 {c} 话",
+    "mediaHours": "{v} 小时",
+    "mediaKind_anime": "番剧",
+    "mediaKind_book": "书籍",
+    "mediaKind_game": "游戏",
+    "mediaKind_music": "音乐",
+    "mediaKind_tv_series": "剧集",
+    "mediaKind_video": "视频",
+    "mediaMinutes": "{v} 分钟",
     "mediaTooLarge": "文件过大（图片最大 10 MB，视频最大 50 MB）",
     "mediaUnsupported": "不支持的文件类型",
     "members": "成员",
@@ -2151,6 +3406,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "noContacts": "暂无可邀请的联系人",
     "noConv": "暂无会话",
     "noConvHint": "点 + 开始私信或群聊",
+    "openJoin": "开放",
     "openOriginal": "查看原文",
     "openTappBtn": "打开 Tapp",
     "peers": "节点",
@@ -2160,10 +3416,8 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "pickerConfirm": "添加",
     "pickerDesc": "描述（可选）",
     "pickerEmpty": "暂无内容",
-    "libraryPickerEmpty": "该平台资料库暂无内容",
-    "libraryPickerLoadFail": "无法加载资料库数据",
-    "shareUntitled": "未命名",
     "pickerLoading": "加载中…",
+    "pickerPickOne": "选择一项添加到消息",
     "pickerSearchPlaceholder": "搜索…",
     "pickerSelectPlatform": "选择平台",
     "pickerTitle": "标题",
@@ -2175,6 +3429,7 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "publicFeed": "公开动态",
     "quoteLabel": "回复",
     "refresh": "刷新",
+    "reject": "拒绝",
     "rejectTapp": "拒绝",
     "remoteVer": "分享版本",
     "remove": "移除",
@@ -2184,6 +3439,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "reportInsights": "洞察",
     "reportSummary": "摘要",
     "reportUnavailable": "无法加载报告详情",
+    "ringBrewCategoryAll": "我的全部分类",
+    "ringBrewCategoryLabel": "Brew 分类（可选）",
+    "ringBrewCategoryPlaceholder": "或输入分类名称",
     "ringId": "环网 ID",
     "ringIdCopied": "已复制环网 ID",
     "ringNamePlaceholder": "环网名称",
@@ -2197,11 +3455,43 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "roleMember": "成员",
     "roleOwner": "群主",
     "roomDesc": "群聊描述",
+    "roomFilesCount": "{n} 项",
+    "roomFilesDownload": "下载",
+    "roomFilesEmpty": "此群还没有文件",
+    "roomFilesEmptyHint": "在输入框点 + 发送文件或图片。",
+    "roomFilesFilterAll": "全部",
+    "roomFilesFilterFile": "文件",
+    "roomFilesFilterImage": "图片",
+    "roomFilesHint": "文件保存在发送方实例。此列表是群聊历史中的附件索引。",
+    "roomFilesJump": "在聊天中定位",
+    "roomFilesLoadMore": "加载更多",
+    "roomFilesLoading": "加载文件中…",
+    "roomFilesMatchCount": "{n} / {total}",
+    "roomFilesNeedChat": "请在聊天中打开后下载",
+    "roomFilesOnlyRoom": "群文件仅在群聊中可用",
+    "roomFilesOpenInChat": "在聊天中打开",
+    "roomFilesSearch": "搜索文件名…",
+    "roomFilesStatusMissing": "不可用",
+    "roomFilesStatusPending": "传输中…",
+    "roomFilesStatusReady": "可下载",
+    "roomFilesTitle": "群文件",
+    "roomInviteAccepted": "已加入群组",
+    "roomInvitePending": "请先接受邀请后再发言",
+    "roomInviteRejectConfirm": "确定拒绝此群组邀请？",
+    "roomInviteRejected": "已拒绝邀请",
     "roomName": "群聊名称",
     "roomPlaceholder": "群聊名称",
     "save": "保存",
     "saveFail": "保存失败",
     "saving": "保存中…",
+    "searchContacts": "搜索联系人…",
+    "searchConversations": "搜索会话…",
+    "searchFeed": "搜索动态…",
+    "searchForward": "搜索会话…",
+    "searchMembers": "搜索成员…",
+    "searchNoResults": "无匹配结果",
+    "searchPlaceholder": "搜索…",
+    "searchRings": "搜索环网…",
     "selectBrew": "选择 Brew 文章",
     "selectHint": "选择一个会话开始聊天",
     "selectLibrary": "从资料库选择",
@@ -2210,22 +3500,44 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectTapp": "选择 Tapp",
     "send": "发送",
     "sendFail": "发送失败",
+    "shareUntitled": "未命名",
     "syncBtn": "同步",
     "syncFail": "同步失败",
-    "syncing": "同步中…",
     "syncSuccess": "同步完成",
+    "syncing": "同步中…",
+    "tappDirectInstall": "分享中已包含可安装包",
+    "tappInstallNoPackage": "该 Tapp 不在商店中，且分享未附带安装包。请让对方重新分享。",
+    "tappInstallNoStoreSource": "分享缺少商店目录 URL。请让对方用最新版 Aro 重新分享。",
     "tappInstalled": "已安装",
     "tappNotInstalled": "未安装",
     "tappReceived": "收到 Tapp 分享",
     "tappShareAccepted": "已接受",
     "tappSharePending": "等待对方回复",
     "tappShareRejected": "已拒绝",
+    "tappStoreInstall": "将从商店目录安装",
     "tappUpdateAvail": "有可用更新",
     "title": "消息",
+    "transferCancelled": "传输已取消",
     "transferComplete": "文件已发送",
+    "transferDownloadFail": "无法下载文件",
+    "transferDownloadOk": "已开始下载",
+    "transferDownloadUnsupported": "当前运行环境不支持分块文件下载",
+    "transferDownloading": "下载中…",
     "transferFail": "上传文件失败",
+    "transferFailed": "传输失败",
+    "transferOwner": "转让群主",
+    "transferOwnerConfirm": "将群主转让给 {name}？",
+    "transferOwnerEmpty": "没有可转让的成员",
+    "transferOwnerFail": "转让群主失败",
+    "transferOwnerInvalid": "无效选择",
+    "transferOwnerOk": "已转让群主",
+    "transferOwnerPrompt": "转让给第几位成员：",
+    "transferOwnerUnsupported": "当前环境不支持转让群主",
+    "transferPreparing": "等待文件传输完成…",
     "transferProgress": "上传中… {pct}%",
+    "transferReceived": "文件已接收",
     "transferStarting": "正在上传文件…",
+    "transferStillArriving": "文件可能仍在到达，正在尝试下载…",
     "typing": "输入消息…",
     "unfollowBtn": "取消关注",
     "unfollowFail": "取消关注失败",
@@ -2291,6 +3603,7 @@ var state = {
     following: false,
     followers: false,
     published: false,
+    backup: false,
   },
   timeline: [],
   following: [],
@@ -2306,9 +3619,126 @@ var state = {
   tappAcceptMap: {},
   // Quote reply
   quoteMsg: null,
+  // Client-side list search queries (not sent to server)
+  search: {
+    conv: '',
+    ring: '',
+    feed: '',
+    member: '',
+    invite: '',
+  },
+  /**
+   * Chat history browser (separate from live window).
+   * messages: ASC by created_at (same as main chat).
+   */
+  history: {
+    open: false,
+    kind: null,
+    id: null,
+    messages: [],
+    query: '',
+    filter: 'all', // all | text | image | file | share | pinned
+    loading: false,
+    loadingMore: false,
+    hasMore: false,
+    error: null,
+    /** Prevent concurrent load-older for main chat scroll. */
+    mainLoadingOlder: false,
+  },
+  /**
+   * Room files panel (group only).
+   * Prefer server listRoomFiles; fallback client scan of messages + transfers.
+   */
+  roomFiles: {
+    open: false,
+    roomId: null,
+    items: [],
+    query: '',
+    filter: 'all', // all | image | file
+    loading: false,
+    loadingMore: false,
+    hasMore: false,
+    error: null,
+    /** message_id cursor for older pages */
+    oldestMessageId: null,
+    /** 'server' | 'client' */
+    source: 'client',
+    searchTimer: null,
+  },
 };
 
 var $ = function (id) { return document.getElementById(id); };
+
+/**
+ * Brand logos for share-card icons, keyed by platform slug.
+ * Mirrors the host's PlatformIcon.tsx mapping (same react-icons glyphs) so a
+ * shared report/library item shows the same logo the rest of Myriad shows.
+ */
+var PLATFORM_LOGOS = {
+  github: '<svg viewBox="0 0 496 512" width="1em" height="1em" fill="currentColor"><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>',
+  steam: '<svg viewBox="0 0 496 512" width="1em" height="1em" fill="currentColor"><path d="M496 256c0 137-111.2 248-248.4 248-113.8 0-209.6-76.3-239-180.4l95.2 39.3c6.4 32.1 34.9 56.4 68.9 56.4 39.2 0 71.9-32.4 70.2-73.5l84.5-60.2c52.1 1.3 95.8-40.9 95.8-93.5 0-51.6-42-93.5-93.7-93.5s-93.7 42-93.7 93.5v1.2L176.6 279c-15.5-.9-30.7 3.4-43.5 12.1L0 236.1C10.2 108.4 117.1 8 247.6 8 384.8 8 496 119 496 256zM155.7 384.3l-30.5-12.6a52.79 52.79 0 0 0 27.2 25.8c26.9 11.2 57.8-1.6 69-28.4 5.4-13 5.5-27.3.1-40.3-5.4-13-15.5-23.2-28.5-28.6-12.9-5.4-26.7-5.2-38.9-.6l31.5 13c19.8 8.2 29.2 30.9 20.9 50.7-8.3 19.9-31 29.2-50.8 21zm173.8-129.9c-34.4 0-62.4-28-62.4-62.3s28-62.3 62.4-62.3 62.4 28 62.4 62.3-27.9 62.3-62.4 62.3zm.1-15.6c25.9 0 46.9-21 46.9-46.8 0-25.9-21-46.8-46.9-46.8s-46.9 21-46.9 46.8c.1 25.8 21.1 46.8 46.9 46.8z"/></svg>',
+  xbox: '<svg viewBox="0 0 512 512" width="1em" height="1em" fill="currentColor"><path d="M369.9 318.2c44.3 54.3 64.7 98.8 54.4 118.7-7.9 15.1-56.7 44.6-92.6 55.9-29.6 9.3-68.4 13.3-100.4 10.2-38.2-3.7-76.9-17.4-110.1-39C93.3 445.8 87 438.3 87 423.4c0-29.9 32.9-82.3 89.2-142.1 32-33.9 76.5-73.7 81.4-72.6 9.4 2.1 84.3 75.1 112.3 109.5zM188.6 143.8c-29.7-26.9-58.1-53.9-86.4-63.4-15.2-5.1-16.3-4.8-28.7 8.1-29.2 30.4-53.5 79.7-60.3 122.4-5.4 34.2-6.1 43.8-4.2 60.5 5.6 50.5 17.3 85.4 40.5 120.9 9.5 14.6 12.1 17.3 9.3 9.9-4.2-11-.3-37.5 9.5-64 14.3-39 53.9-112.9 120.3-194.4zm311.6 63.5C483.3 127.3 432.7 77 425.6 77c-7.3 0-24.2 6.5-36 13.9-23.3 14.5-41 31.4-64.3 52.8C367.7 197 427.5 283.1 448.2 346c6.8 20.7 9.7 41.1 7.4 52.3-1.7 8.5-1.7 8.5 1.4 4.6 6.1-7.7 19.9-31.3 25.4-43.5 7.4-16.2 15-40.2 18.6-58.7 4.3-22.5 3.9-70.8-.8-93.4zM141.3 43C189 40.5 251 77.5 255.6 78.4c.7.1 10.4-4.2 21.6-9.7 63.9-31.1 94-25.8 107.4-25.2-63.9-39.3-152.7-50-233.9-11.7-23.4 11.1-24 11.9-9.4 11.2z"/></svg>',
+  bilibili: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/></svg>',
+  discord: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>',
+  mal: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M14.921 6.479c-.82 0-3.683 0-4.947 3.156-.662 1.652-.986 4.812.876 7.886l1.934-1.41s-.767-1.095-1.083-3.191h2.897l.022 3.19h2.604V8.835h-2.581v2.043l-2.46-.023s.413-2.408 2.877-2.336h2.454l-.572-2.04ZM0 6.528v9.624h2.348v-5.84l2.031 2.664 2.047-2.652v5.828h2.336V6.528H6.437L4.368 9.474 2.31 6.528Zm18.447.022v9.583h5.022L24 14.09h-3.232V6.55Z"/></svg>',
+  netease: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M13.046 9.388a3.919 3.919 0 0 0-.66.19c-.809.312-1.447.991-1.666 1.775a2.269 2.269 0 0 0-.074.81c.048.546.333 1.05.764 1.35a1.483 1.483 0 0 0 2.01-.286c.406-.531.355-1.183.24-1.636-.098-.387-.22-.816-.345-1.249a64.76 64.76 0 0 1-.269-.954zm-.82 10.07c-3.984 0-7.224-3.24-7.224-7.223 0-.98.226-3.02 1.884-4.822A7.188 7.188 0 0 1 9.502 5.6a.792.792 0 1 1 .587 1.472 5.619 5.619 0 0 0-2.795 2.462 5.538 5.538 0 0 0-.707 2.7 5.645 5.645 0 0 0 5.638 5.638c1.844 0 3.627-.953 4.542-2.428 1.042-1.68.772-3.931-.627-5.238a3.299 3.299 0 0 0-1.437-.777c.172.589.334 1.18.494 1.772.284 1.12.1 2.181-.519 2.989-.39.51-.956.888-1.592 1.064a3.038 3.038 0 0 1-2.58-.44 3.45 3.45 0 0 1-1.44-2.514c-.04-.467.002-.93.128-1.376.35-1.256 1.356-2.339 2.622-2.826a5.5 5.5 0 0 1 .823-.246l-.134-.505c-.37-1.371.25-2.579 1.547-3.007.329-.109.68-.145 1.025-.105.792.09 1.476.592 1.709 1.023.258.507-.096 1.153-.706 1.153a.788.788 0 0 1-.54-.213c-.088-.08-.163-.174-.259-.247a.825.825 0 0 0-.632-.166.807.807 0 0 0-.634.551c-.056.191-.031.406.02.595.07.256.159.597.217.82 1.11.098 2.162.54 2.97 1.296 1.974 1.844 2.35 4.886.892 7.233-1.197 1.93-3.509 3.177-5.889 3.177zM0 12c0 6.627 5.373 12 12 12s12-5.373 12-12S18.627 0 12 0 0 5.373 0 12Z"/></svg>',
+  psn: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor"><path d="M8.984 2.596v17.547l3.915 1.261V6.688c0-.69.304-1.151.794-.991.636.18.76.814.76 1.505v5.875c2.441 1.193 4.362-.002 4.362-3.152 0-3.237-1.126-4.675-4.438-5.827-1.307-.448-3.728-1.186-5.39-1.502zm4.656 16.241l6.296-2.275c.715-.258.826-.625.246-.818-.586-.192-1.637-.139-2.357.123l-4.205 1.5V14.98l.24-.085s1.201-.42 2.913-.615c1.696-.18 3.785.03 5.437.661 1.848.601 2.04 1.472 1.576 2.072-.465.6-1.622 1.036-1.622 1.036l-8.544 3.107V18.86zM1.807 18.6c-1.9-.545-2.214-1.668-1.352-2.32.801-.586 2.16-1.052 2.16-1.052l5.615-2.013v2.313L4.205 17c-.705.271-.825.632-.239.826.586.195 1.637.15 2.343-.12L8.247 17v2.074c-.12.03-.256.044-.39.073-1.939.331-3.996.196-6.038-.479z"/></svg>',
+  x: '<svg viewBox="0 0 512 512" width="1em" height="1em" fill="currentColor"><path d="M389.2 48h70.6L305.6 224.2 487 464H345L233.7 318.6 106.5 464H35.8L200.7 275.5 26.8 48H172.4L272.9 180.9 389.2 48zM364.4 421.8h39.1L151.1 88h-42L364.4 421.8z"/></svg>',
+  bangumi: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8.55 6.75 5.95 2.25" stroke-width="2.15"/><path d="M15.45 6.75 18.05 2.25" stroke-width="2.15"/><path d="M4.25 6.85h15.5A2.95 2.95 0 0 1 22.7 9.8v7.25A2.95 2.95 0 0 1 19.75 20H11.35L6.8 23.05 7.85 20h-3.6a2.95 2.95 0 0 1-2.95-2.95V9.8a2.95 2.95 0 0 1 2.95-2.95Z" stroke-width="2.05"/><path d="m5.6 11.35 3.35 1.35-3.35 1.35" stroke-width="1.45"/><path d="m18.4 11.35-3.35 1.35 3.35 1.35" stroke-width="1.45"/><path d="M9.75 13.2h4.5L12 16.95Z" stroke-width="1.35"/></svg>',
+};
+
+/** Slug aliases, mirroring PlatformIcon.tsx's switch cases. */
+var PLATFORM_LOGO_ALIASES = {
+  twitter: 'x', 'x (twitter)': 'x',
+  myanimelist: 'mal',
+  playstation: 'psn',
+  'netease music': 'netease', '\\u7f51\\u6613\\u4e91\\u97f3\\u4e50': 'netease',
+};
+
+/**
+ * Official brand colors as "r,g,b" (consumed via rgba(var(--acc),a)).
+ * \`d\` is the dark-theme variant, only set where the light value would vanish
+ * against a dark card (GitHub / X are near-black) or read too muddy.
+ */
+var PLATFORM_COLORS = {
+  github: { l: '24,23,23', d: '230,237,243' },
+  x: { l: '0,0,0', d: '255,255,255' },
+  // Steam's dark-theme mark is its light grey-blue (#C7D5E0), not the store's
+  // link blue (#66C0F4) — the latter reads as a generic cyan, not as Steam.
+  steam: { l: '27,40,56', d: '199,213,224' },
+  bilibili: { l: '0,174,236' },
+  netease: { l: '194,12,12', d: '233,68,68' },
+  bangumi: { l: '240,145,153' },
+  mal: { l: '46,81,162', d: '110,145,225' },
+  discord: { l: '88,101,242' },
+  xbox: { l: '16,124,16', d: '58,181,58' },
+  psn: { l: '0,55,145', d: '0,112,209' },
+};
+
+/** Normalize a platform slug/name through the alias table. */
+function platformKey(slug) {
+  if (!slug) return '';
+  var key = String(slug).trim().toLowerCase();
+  return PLATFORM_LOGO_ALIASES[key] || key;
+}
+
+/** Resolve a platform slug/name to inline brand SVG, or '' when unknown. */
+function platformLogoSvg(slug) {
+  var key = platformKey(slug);
+  return (key && PLATFORM_LOGOS[key]) || '';
+}
+
+/**
+ * Brand accent for a platform as { l, d } rgb triples, or null when unknown.
+ * Callers fall back to the message-type accent.
+ */
+function platformAccent(slug) {
+  var key = platformKey(slug);
+  var c = key && PLATFORM_COLORS[key];
+  if (!c) return null;
+  return { l: c.l, d: c.d || c.l };
+}
+
 
 // SVG icon constants (replacing emoji for consistency)
 var SVG_ICONS = {
@@ -2326,14 +3756,79 @@ var SVG_ICONS = {
   globe: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>',
   ring: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M0 15L24 9"/></svg>',
   star: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" stroke="currentColor" stroke-width="1"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>',
+  gamepad: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>',
+  playCircle: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M10 8.5l5.5 3.5-5.5 3.5v-7z" fill="currentColor" stroke="none"/></svg>',
   mail: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>',
   antenna: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1l2.8-2.8M7 4l3.5 3.5M16.5 20l-3.5-3.5M2 12h3M19 12h3M12 2v3M12 19v3"/><circle cx="12" cy="12" r="4"/></svg>',
+  chevronRight: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>',
+  download: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>',
+  cloud: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 17a4 4 0 000-8h-.7A6 6 0 106 17.5"/><path d="M12 12v9M8.5 17.5L12 21l3.5-3.5"/></svg>',
+  expand: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
+  close: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>',
 };
 `
 
 const PAGE_MOD_HELPERS = `\
 // ==================== Helpers ====================
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+/** Normalize a search query for case-insensitive substring match. */
+function normalizeSearchQuery(q) {
+  return String(q == null ? '' : q).trim().toLowerCase();
+}
+
+/**
+ * True if query is empty or any of the text parts contains the query.
+ * @param {string} q already-normalized (lowercased) query, or raw (will normalize)
+ * @param {Array<string|null|undefined>} parts
+ */
+function matchesSearch(q, parts) {
+  var query = normalizeSearchQuery(q);
+  if (!query) return true;
+  if (!parts || !parts.length) return false;
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    if (p == null || p === '') continue;
+    if (String(p).toLowerCase().indexOf(query) !== -1) return true;
+  }
+  return false;
+}
+
+/** Empty-state markup when a filter has no hits (source list may still be non-empty). */
+function searchNoResultsHtml() {
+  return '<div class="conv-empty conv-empty-fill aro-search-empty"><span>'
+    + esc(lang.searchNoResults || lang.pickerEmpty || 'No results')
+    + '</span></div>';
+}
+
+/**
+ * Bind a list-search input once. Updates state.search[key] and calls onChange.
+ * @param {string} inputId
+ * @param {string} stateKey key under state.search
+ * @param {function} onChange
+ */
+function bindListSearch(inputId, stateKey, onChange) {
+  var input = $(inputId);
+  if (!input || input.dataset.searchBound === '1') return;
+  input.dataset.searchBound = '1';
+  if (state.search && state.search[stateKey]) {
+    input.value = state.search[stateKey];
+  }
+  input.addEventListener('input', function () {
+    if (!state.search) state.search = {};
+    state.search[stateKey] = input.value || '';
+    if (typeof onChange === 'function') onChange();
+  });
+}
+
+/** Apply i18n placeholder + aria to a search input. */
+function applySearchInputLabel(inputId, placeholder) {
+  var el = $(inputId);
+  if (!el) return;
+  var ph = placeholder || lang.pickerSearchPlaceholder || lang.searchPlaceholder || 'Search…';
+  el.placeholder = ph;
+  el.setAttribute('aria-label', ph);
+}
 
 /** True when the user prefers reduced motion (a11y). */
 function prefersReducedMotion() {
@@ -2446,6 +3941,18 @@ function isChannelComposerLocked() {
   return !isChannelStatusWritable(state.channelDetail.status);
 }
 
+function isRoomInvitePending() {
+  if (state.activeKind !== 'room' || !state.roomDetail) return false;
+  var st = state.roomDetail.my_membership_status
+    || state.roomDetail.membership_status
+    || 'active';
+  return st === 'pending';
+}
+
+function isRoomComposerLocked() {
+  return isRoomInvitePending();
+}
+
 function channelComposerLockReason() {
   if (!isChannelComposerLocked()) return '';
   var detail = state.channelDetail;
@@ -2469,14 +3976,21 @@ function channelComposerLockReason() {
   return lang.channelNotAccepted || lang.closedComposer || lang.composerClosed || '';
 }
 
+function roomComposerLockReason() {
+  if (!isRoomComposerLocked()) return '';
+  return lang.roomInvitePending || lang.channelNotAccepted || lang.pending || 'Accept the invite to chat';
+}
+
 /** 发送按钮/composer 状态：不可写会话、发送中、无内容时不可发送 */
 function updateSendState() {
   var btn = $('send-btn');
   var input = $('msg-input');
   var attach = $('attach-btn');
-  var locked = isChannelComposerLocked();
+  var locked = isChannelComposerLocked() || isRoomComposerLocked();
   var blocked = !state.activeId || locked || !!state.sending;
-  var lockMsg = locked ? channelComposerLockReason() : '';
+  var lockMsg = locked
+    ? (isRoomComposerLocked() ? roomComposerLockReason() : channelComposerLockReason())
+    : '';
   var floatWrap = document.querySelector('#chat-container .input-float-wrap');
   if (floatWrap) {
     floatWrap.classList.toggle('composer-locked', locked);
@@ -2507,13 +4021,76 @@ function autoResizeInput(el) {
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';
 }
+/**
+ * Human-readable text from a message payload.
+ * Never stringifies media blobs (data / transfer_id) — that used to dump base64 into quotes.
+ */
 function getPayloadText(payload) {
   if (payload == null) return '';
   if (typeof payload === 'string') return payload;
-  if (typeof payload === 'object' && payload.text) return String(payload.text);
-  if (typeof payload === 'object' && payload.content) return String(payload.content);
-  if (typeof payload === 'object' && payload.name) return String(payload.name);
-  try { return JSON.stringify(payload); } catch (e) { return ''; }
+  if (typeof payload !== 'object') {
+    try { return String(payload); } catch (e0) { return ''; }
+  }
+  if (payload.text != null && payload.text !== '') return String(payload.text);
+  if (typeof payload.content === 'string' && payload.content) return payload.content;
+  if (payload.summary != null && payload.summary !== '') return String(payload.summary);
+  if (payload.title != null && payload.title !== '') return String(payload.title);
+  if (payload.filename != null && payload.filename !== '') return String(payload.filename);
+  if (payload.name != null && payload.name !== '') return String(payload.name);
+  // Media / opaque objects: no dump
+  if (payload.data != null || payload.transfer_id) return '';
+  try {
+    var s = JSON.stringify(payload);
+    if (!s || s === '{}' || s === 'null') return '';
+    return s.length > 160 ? s.slice(0, 159) + '…' : s;
+  } catch (e) {
+    return '';
+  }
+}
+
+/** Short label for quote/reply preview (filename / type / text). */
+function quotePreviewText(msg) {
+  if (!msg) return '';
+  var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+  var text = getPayloadText(payload);
+  if (text) return text.length > 140 ? text.slice(0, 139) + '…' : text;
+  var mt = msg.message_type || '';
+  if (mt === 'image' || (payload.mime_type && String(payload.mime_type).indexOf('image/') === 0)) {
+    return payload.filename || lang.previewImage || 'Image';
+  }
+  if (mt === 'file' || mt === 'file-meta' || payload.filename || payload.transfer_id) {
+    return payload.filename || lang.previewFile || 'File';
+  }
+  if (mt === 'tapp' || mt === 'brew' || mt === 'library' || mt === 'report') {
+    return payload.title || payload.summary || payload.name || lang.previewShare || 'Share';
+  }
+  return lang.newMessage || 'Message';
+}
+
+/** Display name for the author of a quoted message (both parties). */
+function quoteSenderLabel(msg) {
+  if (!msg) return '?';
+  var actor = msg.sender_actor || '';
+  if (typeof isLocalActor === 'function' && isLocalActor(actor)) {
+    return lang.me || lang.local || 'Me';
+  }
+  if (state.activeKind === 'channel' && state.channelDetail) {
+    // Peer in DM
+    if (state.channelDetail.remote_actor_url && actor
+      && String(state.channelDetail.remote_actor_url) === String(actor)) {
+      return state.channelDetail.remote_actor_name
+        || actor.split('/').pop()
+        || '?';
+    }
+    if (state.channelDetail.remote_actor_name && !isLocalActor(actor)) {
+      return state.channelDetail.remote_actor_name;
+    }
+  }
+  if (typeof findMemberByActor === 'function') {
+    var m = findMemberByActor(actor);
+    if (m && m.display_name) return m.display_name;
+  }
+  return actor.split('/').pop() || '?';
 }
 
 /** 会话列表/通知用的短预览 */
@@ -2565,6 +4142,206 @@ function maybeNotifyIncomingMessage(scope, scopeId, msg) {
     Tapp.ui.showNotification({ title: title, message: preview, type: 'info' });
   } catch (e) { /* ignore */ }
 }
+/**
+ * Recover the live message payload behind a share card via its data-msg-idx.
+ * Detail sheets prefer this over DOM text: it keeps the full snapshot the
+ * sender attached (cover, favicon, install package) rather than the truncated
+ * strings the card displays.
+ */
+function shareCardPayload(card) {
+  if (!card || !card.dataset || card.dataset.msgIdx == null || !state.messages) return {};
+  var idx = parseInt(card.dataset.msgIdx, 10);
+  if (isNaN(idx) || !state.messages[idx]) return {};
+  var payload = state.messages[idx].payload;
+  return (payload && typeof payload === 'object') ? payload : {};
+}
+
+/** Meta chip row for detail sheets; skips empty parts and renders nothing if all are empty. */
+function sheetMetaHtml(parts) {
+  var chips = (parts || []).filter(function (p) { return p != null && String(p).trim() !== ''; });
+  if (!chips.length) return '';
+  return '<div class="sheet-meta">'
+    + chips.map(function (c) { return '<span class="sheet-meta-chip">' + esc(String(c)) + '</span>'; }).join('')
+    + '</div>';
+}
+
+/** "Open original" affordance; only https links are offered (sandbox blocks the rest). */
+function brewLinkHtml(url) {
+  var href = String(url || '').trim();
+  if (href.toLowerCase().indexOf('https://') !== 0) return '';
+  return '<a class="sheet-link" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">'
+    + esc(lang.openOriginal || 'Open original')
+    + '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
+    + '</a>';
+}
+
+/** Per-type sheet accents, matching the share-card palette. */
+var SHARE_TYPE_ACCENTS = {
+  brew: '34,197,94',
+  library: '168,85,247',
+  report: '239,68,68',
+};
+
+/**
+ * Resolve a bottom sheet's header icon and brand accent using the same rules as
+ * the share cards: cover art > raw svg > favicon > platform logo > type glyph.
+ *
+ * @returns {{icon:string, mark:string, accent:object|null}}
+ *   \`mark\` goes on the icon element so a favicon keeps a neutral tile;
+ *   \`accent\` is applied to the overlay by applySheetAccent().
+ */
+function sheetVisual(opts) {
+  opts = opts || {};
+  var favicon = safeIconUrl(opts.favicon);
+  var logo = platformLogoSvg(opts.slug);
+  var icon = '';
+  var mark = '';
+  var accent = null;
+
+  if (opts.cover) {
+    icon = '<img src="' + esc(opts.cover) + '" alt="" />';
+  } else if (opts.rawSvg) {
+    icon = opts.rawSvg;
+  } else if (favicon) {
+    icon = '<img src="' + esc(favicon) + '" alt="" />';
+    mark = 'img';
+  } else if (logo) {
+    icon = logo;
+    mark = 'brand';
+  } else {
+    icon = opts.fallback || SVG_ICONS.file;
+  }
+
+  if (mark === 'brand') {
+    var brand = platformAccent(opts.slug);
+    if (brand) accent = { brand: true, l: brand.l, d: brand.d };
+  }
+  if (!accent && opts.type && SHARE_TYPE_ACCENTS[opts.type]) {
+    accent = { brand: false, flat: SHARE_TYPE_ACCENTS[opts.type] };
+  }
+  return { icon: icon, mark: mark, accent: accent };
+}
+
+/**
+ * Terminal/among-flight states for a .sheet-btn, as classes rather than inline
+ * colors so the palette stays in one place.
+ * @param {'busy'|'ok'|'err'|'idle'} stateName
+ */
+function setSheetBtnState(btn, stateName) {
+  if (!btn) return;
+  btn.classList.remove('sheet-btn-ok', 'sheet-btn-err', 'is-busy');
+  if (stateName === 'busy') btn.classList.add('is-busy');
+  else if (stateName === 'ok') btn.classList.add('sheet-btn-ok');
+  else if (stateName === 'err') btn.classList.add('sheet-btn-err');
+}
+
+/**
+ * Inline attributes for an icon element built as an HTML string (picker rows).
+ * Emits the -l/-d accent pair so the element's own brand color wins per row,
+ * and marks favicons so a dead one can be swapped for a glyph.
+ */
+function sheetVisualAttrs(v, fallbackType) {
+  if (!v || !v.mark) return '';
+  var attrs = ' data-mark="' + esc(v.mark) + '"';
+  if (v.mark === 'img' && fallbackType) attrs += ' data-fallback="' + esc(fallbackType) + '"';
+  if (v.mark === 'brand' && v.accent && v.accent.brand) {
+    attrs += ' style="--acc-l:' + v.accent.l + ';--acc-d:' + v.accent.d + '"';
+  }
+  return attrs;
+}
+
+/**
+ * Swap dead favicons inside a container for the generic type glyph.
+ * Applies to picker rows; the message-card path has its own binding because it
+ * must also clear the accent on the surrounding card.
+ */
+function bindFaviconFallbacks(container) {
+  if (!container) return;
+  container.querySelectorAll('[data-mark="img"][data-fallback] img').forEach(function (img) {
+    img.addEventListener('error', function () {
+      var tile = img.closest('[data-fallback]');
+      if (!tile) return;
+      var glyphs = { tapp: SVG_ICONS.tapp, brew: SVG_ICONS.brew, library: SVG_ICONS.library, report: SVG_ICONS.report };
+      tile.removeAttribute('data-mark');
+      tile.innerHTML = glyphs[tile.dataset.fallback] || SVG_ICONS.file;
+    });
+  });
+}
+
+/** Apply a sheetVisual() accent to an overlay element. */
+function applySheetAccent(el, accent) {
+  if (!el || !accent) return;
+  if (accent.brand) {
+    // -l/-d pair, never --acc directly: an inline --acc would outrank the
+    // \`.dark .picker-overlay[data-mark="brand"]\` rule and freeze the theme.
+    el.dataset.mark = 'brand';
+    el.style.setProperty('--acc-l', accent.l);
+    el.style.setProperty('--acc-d', accent.d);
+  } else if (accent.flat) {
+    el.style.setProperty('--acc', accent.flat);
+  }
+}
+
+/**
+ * Keep only image URLs the sandbox CSP will actually load (img-src data: blob: https:).
+ * Anything else would render as a broken tile, so callers fall back to a glyph.
+ */
+function safeIconUrl(url) {
+  if (!url) return '';
+  var v = String(url).trim();
+  var lower = v.toLowerCase();
+  if (lower.indexOf('https://') === 0 || lower.indexOf('data:image/') === 0) return v;
+  return '';
+}
+
+/* ----- File bubble typing: accent slug + glyph + short extension label ----- */
+var FILE_KIND_RULES = [
+  { kind: 'image', re: /^(png|jpe?g|gif|webp|avif|bmp|svg|heic|heif|ico)$/ },
+  { kind: 'video', re: /^(mp4|mov|mkv|webm|avi|m4v|flv)$/ },
+  { kind: 'audio', re: /^(mp3|wav|flac|aac|m4a|ogg|opus|aiff?)$/ },
+  { kind: 'archive', re: /^(zip|rar|7z|tar|gz|tgz|bz2|xz|zst)$/ },
+  { kind: 'doc', re: /^(pdf|docx?|pages|rtf|odt|epub|mobi)$/ },
+  { kind: 'sheet', re: /^(xlsx?|csv|tsv|numbers|ods)$/ },
+  { kind: 'code', re: /^(js|mjs|cjs|ts|tsx|jsx|rs|go|py|rb|java|kt|swift|c|cc|cpp|h|hpp|sh|zsh|json|ya?ml|toml|html?|css|scss|sql)$/ },
+  { kind: 'text', re: /^(txt|md|markdown|log)$/ },
+];
+
+var FILE_KIND_GLYPHS = {
+  image: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-4.5-4.5L6 21"/></svg>',
+  video: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="4"/><path d="M10 9l5 3-5 3z"/></svg>',
+  audio: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>',
+  archive: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l1.5-3h15L21 7v12a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M3 7h18M12 11v5M10 13h4"/></svg>',
+  doc: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
+  sheet: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>',
+  code: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 8L4 12l4.5 4M15.5 8l4.5 4-4.5 4M13.5 5l-3 14"/></svg>',
+  text: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6M9 9h2"/></svg>',
+  file: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg>',
+};
+
+/** Map a filename/mime to { kind, ext, glyph } used by the file bubble. */
+function fileCardMeta(filename, mime) {
+  var name = String(filename || '');
+  var dot = name.lastIndexOf('.');
+  var ext = dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toLowerCase() : '';
+  var kind = '';
+  for (var i = 0; i < FILE_KIND_RULES.length && ext; i++) {
+    if (FILE_KIND_RULES[i].re.test(ext)) { kind = FILE_KIND_RULES[i].kind; break; }
+  }
+  if (!kind && mime) {
+    var m = String(mime);
+    if (m.indexOf('image/') === 0) kind = 'image';
+    else if (m.indexOf('video/') === 0) kind = 'video';
+    else if (m.indexOf('audio/') === 0) kind = 'audio';
+    else if (m.indexOf('text/') === 0) kind = 'text';
+  }
+  if (!kind) kind = 'file';
+  return {
+    kind: kind,
+    ext: ext ? ext.toUpperCase().slice(0, 4) : '',
+    glyph: FILE_KIND_GLYPHS[kind] || FILE_KIND_GLYPHS.file,
+  };
+}
+
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
@@ -2679,6 +4456,198 @@ function resolveShareCardView(msgType, payload) {
   return { title: title, description: description, image: image };
 }
 
+/* ---------------------------------------------------------------------------
+ * Media (library) share cards — image-forward layout with sender attribution.
+ * A game/anime/music share carries its own cover art, so it renders as a poster
+ * card rather than the compact icon+title row. Playtime / watch progress / the
+ * sender's rating travel as flat snapshot fields so recipients render without a
+ * re-fetch (mirrors frontend LibraryGrid + libraryWatchProgress conventions).
+ * ------------------------------------------------------------------------- */
+
+/** Parse a non-negative integer, tolerating strings; null when not usable. */
+function mediaInt(value) {
+  if (value == null || value === '') return null;
+  var n = typeof value === 'number' ? value : Number(value);
+  if (!isFinite(n) || n < 0) return null;
+  return Math.floor(n);
+}
+
+/** Parse "5/12", "5/?", "5" style progress → {cur,total|null} | null. */
+function parseProgressStr(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'number') {
+    var only = mediaInt(raw);
+    return only == null ? null : { cur: only, total: null };
+  }
+  if (typeof raw !== 'string') return null;
+  var s = raw.trim();
+  if (!s) return null;
+  var m = s.match(/^(\\d+)\\s*\\/\\s*(\\d+|\\?)$/);
+  if (m) {
+    var total = m[2] === '?' ? null : Number(m[2]);
+    return { cur: Number(m[1]), total: (total && total > 0) ? total : null };
+  }
+  var n = s.match(/^(\\d+)$/);
+  if (n) return { cur: Number(n[1]), total: null };
+  return null;
+}
+
+/** anime / video / tv_series are episode-tracked; book is chapter-tracked. */
+function isAnimeLikeType(itemType) {
+  return itemType === 'anime' || itemType === 'tv_series' || itemType === 'video';
+}
+
+/** Episode/chapter total from Bangumi/MAL-shaped metadata. */
+function mediaEpisodeTotal(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  var subject = (meta.subject && typeof meta.subject === 'object') ? meta.subject : {};
+  var node = (meta.node && typeof meta.node === 'object') ? meta.node : {};
+  return mediaInt(subject.eps) != null ? mediaInt(subject.eps)
+    : (mediaInt(node.num_episodes) != null ? mediaInt(node.num_episodes)
+      : mediaInt(meta.num_episodes));
+}
+
+/**
+ * Extract structured sender stats from a live library item at share time.
+ * @returns {{playtimeMin:(number|null), rating:(number|null),
+ *            progressCur:(number|null), progressTotal:(number|null)}}
+ */
+function extractLibraryStats(itemType, meta) {
+  var out = { playtimeMin: null, rating: null, progressCur: null, progressTotal: null };
+  if (!meta || typeof meta !== 'object') meta = {};
+  var ls = (meta.list_status && typeof meta.list_status === 'object') ? meta.list_status : {};
+
+  // Playtime (games): Steam stores minutes in playtime_forever.
+  var pt = mediaInt(meta.playtime_forever);
+  if (pt == null) pt = mediaInt(meta.playtime);
+  if (pt != null && pt > 0) out.playtimeMin = pt;
+
+  // Rating: Bangumi \`rate\` / MAL \`list_status.score\` (0 == unrated).
+  var rate = meta.rate != null ? Number(meta.rate) : Number(ls.score);
+  if (isFinite(rate) && rate > 0) out.rating = Math.round(rate * 10) / 10;
+
+  // Watch/read progress (anime-like → episodes, book → chapters).
+  var parts = parseProgressStr(meta.progress);
+  if (isAnimeLikeType(itemType)) {
+    if (!parts) {
+      var watched = mediaInt(meta.ep_status);
+      if (watched == null) watched = mediaInt(ls.num_episodes_watched);
+      if (watched == null) watched = mediaInt(meta.num_episodes_watched);
+      if (watched != null) parts = { cur: watched, total: mediaEpisodeTotal(meta) };
+    } else if (parts.total == null) {
+      var total = mediaEpisodeTotal(meta);
+      if (total != null) parts.total = total;
+    }
+  } else if (itemType === 'book') {
+    var ch = mediaInt(meta.ep_status);
+    if (ch == null) ch = mediaInt(ls.num_chapters_read);
+    if (ch == null) ch = mediaInt(meta.num_chapters_read);
+    if (ch != null) parts = { cur: ch, total: null };
+    else if (parts && parts.total == null) parts = { cur: parts.cur, total: null };
+  } else {
+    parts = null; // games/music carry no episode progress
+  }
+  // Suppress a meaningless 0 with no total (wishlist / untouched).
+  if (parts && !(parts.cur === 0 && parts.total == null)) {
+    out.progressCur = parts.cur;
+    out.progressTotal = parts.total;
+  }
+  return out;
+}
+
+/**
+ * Artist + album for a music item, from Netease-shaped (\`ar\`/\`al\`) or flat
+ * (\`artist\`/\`album\`) metadata. Empty strings when unknown.
+ */
+function extractMusicMeta(meta) {
+  var out = { artist: '', album: '' };
+  if (!meta || typeof meta !== 'object') return out;
+  var ar = meta.ar || meta.artists || meta.artist;
+  if (Array.isArray(ar)) {
+    out.artist = ar.map(function (a) { return (a && (a.name || (typeof a === 'string' ? a : ''))) || ''; })
+      .filter(Boolean).join(', ');
+  } else if (typeof ar === 'string') {
+    out.artist = ar.trim();
+  }
+  if (meta.al && typeof meta.al === 'object') out.album = String(meta.al.name || '').trim();
+  else if (typeof meta.album === 'string') out.album = meta.album.trim();
+  return out;
+}
+
+/** Localized playtime label: hours once past an hour, minutes below. */
+function formatPlaytime(min) {
+  var n = Number(min);
+  if (!isFinite(n) || n <= 0) return '';
+  if (n < 60) return (lang.mediaMinutes || '{v}m').replace('{v}', String(Math.round(n)));
+  return (lang.mediaHours || '{v}h').replace('{v}', String(Math.round(n / 60)));
+}
+
+/** Localized watch/read progress label from stored cur/total. */
+function formatWatchProgress(cur, total, itemType) {
+  var c = mediaInt(cur);
+  if (c == null) return '';
+  var t = mediaInt(total);
+  var isBook = itemType === 'book';
+  if (t != null && t > 0) {
+    return (isBook ? (lang.mediaCh || '{c}/{t}') : (lang.mediaEp || '{c}/{t}'))
+      .replace('{c}', String(c)).replace('{t}', String(t));
+  }
+  return (isBook ? (lang.mediaChOnly || '{c}') : (lang.mediaEpOnly || '{c}'))
+    .replace('{c}', String(c));
+}
+
+/**
+ * Render model for a library media card, read from a message payload's flat
+ * snapshot fields. \`stat\` is the sender-attributed line (playtime OR progress).
+ */
+function libraryMediaView(payload) {
+  payload = payload || {};
+  var base = resolveShareCardView('library', payload);
+  var itemType = String(payload.item_type || payload.content_type || '').trim();
+  if (itemType === 'library') itemType = '';
+  var ratingText = '';
+  var rating = Number(payload.rating);
+  if (isFinite(rating) && rating > 0) ratingText = String(Math.round(rating * 10) / 10);
+
+  var stat = null;
+  var ptText = formatPlaytime(payload.playtime_min);
+  if (ptText) {
+    stat = { icon: SVG_ICONS.gamepad, text: ptText };
+  } else {
+    var progText = formatWatchProgress(payload.progress_cur, payload.progress_total, itemType);
+    if (progText) stat = { icon: SVG_ICONS.playCircle, text: progText };
+  }
+  return {
+    image: base.image,
+    title: base.title,
+    description: base.description,
+    itemType: itemType,
+    platform: String(payload.platform_id || '').trim(),
+    ratingText: ratingText,
+    artist: String(payload.artist || '').trim(),
+    album: String(payload.album || '').trim(),
+    stat: stat,
+  };
+}
+
+/** Best-guess cover orientation before the image loads (games ship banners). */
+function mediaCoverOrient(itemType) {
+  return itemType === 'game' ? 'landscape' : 'portrait';
+}
+
+/** Localized content-kind label ("Game" / "番剧" / …); '' when unknown. */
+function mediaKindLabel(itemType) {
+  var t = String(itemType || '').trim();
+  if (!t) return '';
+  var k = lang['mediaKind_' + t];
+  if (k) return k;
+  var fallback = {
+    game: 'Game', anime: 'Anime', music: 'Music',
+    tv_series: 'TV', book: 'Book', video: 'Video',
+  };
+  return fallback[t] || (t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' '));
+}
+
 /**
  * 应用内确认对话框（沙箱 iframe 中原生 confirm() 会被浏览器拦截并静默返回 false）。
  * 返回 Promise<boolean>。
@@ -2743,9 +4712,11 @@ function applyRoleControls() {
   setAdminElementVisible('.feed-nav-item[data-sub="following"]', privateOnly);
   setAdminElementVisible('.feed-nav-item[data-sub="followers"]', privateOnly);
   setAdminElementVisible('.feed-nav-item[data-sub="published"]', privateOnly);
+  setAdminElementVisible('.feed-nav-item[data-sub="backup"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="following"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="followers"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="published"]', privateOnly);
+  setAdminElementVisible('.feed-mobile-tab[data-sub="backup"]', privateOnly);
   if (state.isGuest) {
     state.feedSubTab = 'timeline';
     state.currentView = 'feed';
@@ -3260,10 +5231,14 @@ function applyLabels() {
   el = $('feed-nav-following'); if (el) el.textContent = lang.feedFollowing;
   el = $('feed-nav-followers'); if (el) el.textContent = lang.feedFollowers;
   el = $('feed-nav-published'); if (el) el.textContent = lang.feedPublished;
+  el = $('feed-nav-backup'); if (el) el.textContent = lang.feedBackup || lang.backupTitle || 'Backup';
   el = $('feed-tab-timeline'); if (el) el.textContent = lang.feedTimeline;
   el = $('feed-tab-following'); if (el) el.textContent = lang.feedFollowing;
   el = $('feed-tab-followers'); if (el) el.textContent = lang.feedFollowers;
   el = $('feed-tab-published'); if (el) el.textContent = lang.feedPublished;
+  el = $('feed-tab-backup'); if (el) el.textContent = lang.feedBackup || lang.backupTitle || 'Backup';
+  if (typeof applyHistoryLabels === 'function') applyHistoryLabels();
+  if (typeof applyRoomFilesLabels === 'function') applyRoomFilesLabels();
   el = $('feed-follow-input'); if (el) el.placeholder = lang.followPlaceholder;
   el = $('feed-follow-btn'); if (el) el.textContent = lang.followBtn;
   el = $('feed-follow-dialog-title'); if (el) el.textContent = lang.followDialogTitle || lang.followBtn || 'Follow';
@@ -3293,6 +5268,11 @@ function applyLabels() {
   if (el && !el.hidden) el.textContent = lang.composeDraftTextOnly || '';
   el = $('refresh-feed-btn'); if (el) { el.setAttribute('title', lang.refresh); el.setAttribute('aria-label', lang.refresh); }
   el = $('refresh-feed-mobile-btn'); if (el) { el.setAttribute('title', lang.refresh); el.setAttribute('aria-label', lang.refresh); }
+  applySearchInputLabel('conv-search', lang.searchConversations || lang.pickerSearchPlaceholder);
+  applySearchInputLabel('ring-search', lang.searchRings || lang.pickerSearchPlaceholder);
+  applySearchInputLabel('feed-search', lang.searchFeed || lang.pickerSearchPlaceholder);
+  applySearchInputLabel('member-search', lang.searchMembers || lang.pickerSearchPlaceholder);
+  applySearchInputLabel('invite-contact-search', lang.searchContacts || lang.pickerSearchPlaceholder);
   // Always set header title (even while loading) so HTML placeholders never stick in the wrong locale
   el = $('feed-section-title');
   if (el && typeof getFeedTitle === 'function') {
@@ -3471,25 +5451,47 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-/** Chunked channel transfer for files above INLINE_ATTACH_MAX. */
-async function sendChannelFileTransfer(attach, text, replyTo) {
+/**
+ * Chunked transfer for files above INLINE_ATTACH_MAX.
+ * Supports both channel (DM) and room (group) via initiateTransfer / initiateRoomTransfer.
+ */
+async function sendChunkedFileTransfer(attach, text, replyTo) {
   var file = attach.file;
   if (!file) throw new Error('Missing file data');
 
-  var chStatus = state.channelDetail && state.channelDetail.status;
-  if (chStatus && chStatus !== 'active' && chStatus !== 'accepted') {
-    throw new Error(lang.channelNotAccepted || 'Channel must be accepted first');
+  var isRoom = state.activeKind === 'room';
+  var isChannel = state.activeKind === 'channel';
+  if (!isRoom && !isChannel) {
+    throw new Error(lang.fileTooLarge || 'File too large');
+  }
+
+  if (isChannel) {
+    var chStatus = state.channelDetail && state.channelDetail.status;
+    if (chStatus && chStatus !== 'active' && chStatus !== 'accepted') {
+      throw new Error(lang.channelNotAccepted || 'Channel must be accepted first');
+    }
+    if (typeof Tapp.federation.initiateTransfer !== 'function') {
+      throw new Error(lang.fileTooLarge || 'File too large');
+    }
+  } else if (typeof Tapp.federation.initiateRoomTransfer !== 'function') {
+    throw new Error(lang.fileTooLargeRoom || lang.fileTooLarge || 'File too large for group');
+  }
+  if (typeof Tapp.federation.uploadChunk !== 'function') {
+    throw new Error(lang.fileTooLarge || 'File too large');
   }
 
   try {
     Tapp.ui.showNotification({ title: lang.transferStarting || 'Uploading…', type: 'info' });
   } catch (e0) { /* ignore */ }
 
-  var transfer = await Tapp.federation.initiateTransfer(state.activeId, {
+  var meta = {
     filename: attach.name,
     file_size: attach.size,
     mime_type: attach.mime || 'application/octet-stream',
-  });
+  };
+  var transfer = isRoom
+    ? await Tapp.federation.initiateRoomTransfer(state.activeId, meta)
+    : await Tapp.federation.initiateTransfer(state.activeId, meta);
   var transferId = transfer && transfer.transfer_id;
   if (!transferId) throw new Error('No transfer_id returned');
 
@@ -3532,40 +5534,98 @@ async function sendChannelFileTransfer(attach, text, replyTo) {
   }
   var sendReq = { payload: msgPayload, message_type: 'file-meta' };
   if (replyTo) sendReq.reply_to = replyTo;
-  await Tapp.federation.sendMessage(state.activeId, sendReq);
+  if (isRoom) {
+    await Tapp.federation.sendRoomMessage(state.activeId, sendReq);
+  } else {
+    await Tapp.federation.sendMessage(state.activeId, sendReq);
+  }
 
   try {
     Tapp.ui.showNotification({ title: lang.transferComplete || 'File sent', type: 'success' });
   } catch (e2) { /* ignore */ }
 }
 
+/**
+ * Handle WS transfer_progress / transfer_completed / transfer_cancelled for
+ * inbound federated file transfers (and outbound multi-tab).
+ */
+function handleTransferWsEvent(data) {
+  if (!data || !data.type) return;
+  if (!state.transferUi) state.transferUi = {};
+  var tid = data.transfer_id || data.transferId || '';
+  if (tid) {
+    state.transferUi[tid] = {
+      status: data.status || data.type,
+      progress: data.progress != null ? Number(data.progress) : (state.transferUi[tid] && state.transferUi[tid].progress) || 0,
+      chunks_completed: data.chunks_completed,
+      chunks_total: data.chunks_total,
+      updatedAt: Date.now(),
+    };
+  }
+  try {
+    if (data.type === 'transfer_progress') {
+      var pct = Math.round(Number(data.progress) || 0);
+      // Throttle toasts: 25% steps only
+      var key = tid + ':' + Math.floor(pct / 25);
+      if (!state.transferUi._lastToastKey || state.transferUi._lastToastKey !== key) {
+        if (pct > 0 && pct < 100) {
+          state.transferUi._lastToastKey = key;
+          var prog = (lang.transferProgress || 'Receiving… {pct}%').replace('{pct}', String(pct));
+          Tapp.ui.showNotification({ title: prog, type: 'info' });
+        }
+      }
+    } else if (data.type === 'transfer_completed') {
+      Tapp.ui.showNotification({
+        title: lang.transferReceived || lang.transferComplete || 'File ready',
+        type: 'success',
+      });
+      // Reload messages so file-meta / ready status updates
+      if (typeof pollMessages === 'function') pollMessages(true);
+    } else if (data.type === 'transfer_cancelled') {
+      Tapp.ui.showNotification({
+        title: lang.transferCancelled || 'Transfer cancelled',
+        type: 'info',
+      });
+    }
+  } catch (e) { /* ignore toast errors */ }
+}
+
+/** @deprecated use sendChunkedFileTransfer */
+async function sendChannelFileTransfer(attach, text, replyTo) {
+  return sendChunkedFileTransfer(attach, text, replyTo);
+}
+
 function pickFedContent(type) {
   var icons = { tapp: SVG_ICONS.tapp, brew: SVG_ICONS.brew, library: SVG_ICONS.library, report: SVG_ICONS.report };
   var titles = { tapp: lang.selectTapp, brew: lang.selectBrew, library: lang.selectLibrary, report: lang.selectReport };
-  var iconColors = { tapp: 'attach-icon-tapp', brew: 'attach-icon-brew', library: 'attach-icon-library', report: 'attach-icon-report' };
 
-  if (type === 'tapp') { openTappPicker(icons, titles, iconColors); return; }
-  if (type === 'brew') { openBrewPicker(icons, titles, iconColors); return; }
-  if (type === 'library') { openLibraryPicker(icons, titles, iconColors); return; }
-  if (type === 'report') { openReportPicker(icons, titles, iconColors); return; }
+  if (type === 'tapp') { openTappPicker(icons, titles); return; }
+  if (type === 'brew') { openBrewPicker(icons, titles); return; }
+  if (type === 'library') { openLibraryPicker(icons, titles); return; }
+  if (type === 'report') { openReportPicker(icons, titles); return; }
 }
 
 /* ----- Shared overlay helpers ----- */
-function createPickerOverlay(type, icons, titles, iconColors) {
+function createPickerOverlay(type, icons, titles) {
   var overlay = document.createElement('div');
   overlay.className = 'picker-overlay';
+  var visual = sheetVisual({ type: type, rawSvg: icons[type], fallback: SVG_ICONS.file });
+  applySheetAccent(overlay, visual.accent);
   overlay.innerHTML =
-    '<div class="picker-sheet">'
+    '<div class="picker-sheet" role="dialog" aria-modal="true" aria-label="' + esc(titles[type]) + '">'
     + '<div class="picker-header">'
-    + '<div class="picker-header-icon ' + esc(iconColors[type]) + '">' + icons[type] + '</div>'
+    + '<div class="picker-header-icon">' + visual.icon + '</div>'
+    + '<div class="picker-header-text">'
     + '<div class="picker-header-title">' + esc(titles[type]) + '</div>'
-    + '<button class="picker-close-btn">&times;</button>'
+    + '<div class="picker-header-sub">' + esc(lang.pickerPickOne || '') + '</div>'
     + '</div>'
-    + '<div class="picker-search"><input placeholder="' + esc(lang.pickerSearchPlaceholder) + '" /></div>'
+    + '<button type="button" class="picker-close-btn" aria-label="' + esc(lang.dismiss || lang.close || 'Close') + '">&times;</button>'
+    + '</div>'
+    + '<div class="picker-search"><input placeholder="' + esc(lang.pickerSearchPlaceholder) + '" aria-label="' + esc(lang.pickerSearchPlaceholder) + '" /></div>'
     + '<div class="picker-body"></div>'
     + '<div class="picker-footer">'
-    + '<button class="picker-footer-btn picker-btn-cancel">' + esc(lang.pickerCancel) + '</button>'
-    + '<button class="picker-footer-btn picker-btn-confirm" disabled>' + esc(lang.pickerConfirm) + '</button>'
+    + '<button type="button" class="picker-footer-btn picker-btn-cancel">' + esc(lang.pickerCancel) + '</button>'
+    + '<button type="button" class="picker-footer-btn picker-btn-confirm" disabled>' + esc(lang.pickerConfirm) + '</button>'
     + '</div>'
     + '</div>';
   var dismissPicker = function () { dismissPickerOverlay(overlay); };
@@ -3603,6 +5663,7 @@ function dismissPickerOverlay(overlay) {
 }
 
 function bindPickerItems(body, items, confirmBtn, onSelect) {
+  bindFaviconFallbacks(body);
   body.querySelectorAll('.picker-item').forEach(function (el) {
     el.addEventListener('click', function () {
       body.querySelectorAll('.picker-item').forEach(function (e) { e.classList.remove('selected'); });
@@ -3614,9 +5675,9 @@ function bindPickerItems(body, items, confirmBtn, onSelect) {
 }
 
 /* ----- Tapp picker (real list from SDK) ----- */
-function openTappPicker(icons, titles, iconColors) {
+function openTappPicker(icons, titles) {
   var type = 'tapp';
-  var overlay = createPickerOverlay(type, icons, titles, iconColors);
+  var overlay = createPickerOverlay(type, icons, titles);
   var body = overlay.querySelector('.picker-body');
   var confirmBtn = overlay.querySelector('.picker-btn-confirm');
   var selectedTapp = null;
@@ -3634,10 +5695,9 @@ function openTappPicker(icons, titles, iconColors) {
     body.innerHTML = items.map(function (t, i) {
       var meta = t.version || '';
       if (t.status) meta += (meta ? ' · ' : '') + t.status;
-      return '<button class="picker-item" data-idx="' + i + '">'
-        + '<div class="picker-item-icon" style="background:rgba(var(--tapp-primary-rgb,100,100,255),.1);color:var(--tapp-primary,#6366f1)">'
-        + (t.iconSvg ? t.iconSvg : (t.icon ? '<img src="' + esc(t.icon) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" />' : SVG_ICONS.tapp))
-        + '</div>'
+      var tv = sheetVisual({ rawSvg: t.iconSvg || '', favicon: t.icon || '', fallback: SVG_ICONS.tapp });
+      return '<button type="button" class="picker-item" data-idx="' + i + '">'
+        + '<div class="picker-item-icon"' + sheetVisualAttrs(tv, 'tapp') + '>' + tv.icon + '</div>'
         + '<div class="picker-item-body"><div class="picker-item-name">' + esc(t.name) + '</div>'
         + '<div class="picker-item-meta">' + esc(t.id + (meta ? ' · ' + meta : '')) + '</div>'
         + (t.description ? '<div class="picker-item-meta">' + esc(t.description) + '</div>' : '')
@@ -3703,9 +5763,9 @@ function openTappPicker(icons, titles, iconColors) {
 }
 
 /* ----- Brew picker (real list from SDK) ----- */
-function openBrewPicker(icons, titles, iconColors) {
+function openBrewPicker(icons, titles) {
   var type = 'brew';
-  var overlay = createPickerOverlay(type, icons, titles, iconColors);
+  var overlay = createPickerOverlay(type, icons, titles);
   var body = overlay.querySelector('.picker-body');
   var confirmBtn = overlay.querySelector('.picker-btn-confirm');
   var selectedBrew = null;
@@ -3724,13 +5784,12 @@ function openBrewPicker(icons, titles, iconColors) {
       var meta = b.source_name || '';
       if (b.author) meta += (meta ? ' · ' : '') + b.author;
       if (b.published_at) meta += (meta ? ' · ' : '') + new Date(b.published_at).toLocaleDateString();
-      return '<button class="picker-item" data-idx="' + i + '">'
-        + '<div class="picker-item-icon" style="background:rgba(34,197,94,.1);color:#22c55e">'
-        + (b.image ? '<img src="' + esc(b.image) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" />' : (b.source_icon ? '<img src="' + esc(b.source_icon) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" />' : SVG_ICONS.brew))
-        + '</div>'
+      var bv = sheetVisual({ favicon: b.source_icon || '', slug: b.source_name || '', fallback: SVG_ICONS.brew });
+      return '<button type="button" class="picker-item" data-idx="' + i + '">'
+        + '<div class="picker-item-icon"' + sheetVisualAttrs(bv, 'brew') + '>' + bv.icon + '</div>'
         + '<div class="picker-item-body"><div class="picker-item-name">' + esc(b.title) + '</div>'
         + (meta ? '<div class="picker-item-meta">' + esc(meta) + '</div>' : '')
-        + (b.summary ? '<div class="picker-item-meta" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal">' + esc(b.summary) + '</div>' : '')
+        + (b.summary ? '<div class="picker-item-meta">' + esc(b.summary) + '</div>' : '')
         + '</div><div class="picker-item-check">✓</div></button>';
     }).join('');
     bindPickerItems(body, items, confirmBtn, function (b) { selectedBrew = b; });
@@ -3747,7 +5806,19 @@ function openBrewPicker(icons, titles, iconColors) {
     if (!selectedBrew) return;
     var desc = selectedBrew.source_name || '';
     if (selectedBrew.author) desc += (desc ? ' · ' : '') + selectedBrew.author;
-    setPendingAttach({ type: type, name: selectedBrew.title, desc: desc, icon: icons[type], label: lang.attachBrew || 'Brew', brewId: selectedBrew.id, brewLink: selectedBrew.link });
+    // Source mark travels with the message so the receiver renders the site's
+    // own icon without re-fetching a brew they may not have.
+    setPendingAttach({
+      type: type,
+      name: selectedBrew.title,
+      desc: desc,
+      icon: icons[type],
+      label: lang.attachBrew || 'Brew',
+      brewId: selectedBrew.id,
+      brewLink: selectedBrew.link,
+      sourceIcon: selectedBrew.source_icon || '',
+      sourceName: selectedBrew.source_name || '',
+    });
     dismissPickerOverlay(overlay);
   });
 }
@@ -3761,7 +5832,7 @@ function platformSlug(p) {
   if (!p) return '';
   if (p.key) return String(p.key);
   if (p.slug) return String(p.slug);
-  if (p.id != null && p.id !== '' && !/^\d+$/.test(String(p.id))) return String(p.id);
+  if (p.id != null && p.id !== '' && !/^d+$/.test(String(p.id))) return String(p.id);
   return p.id != null ? String(p.id) : '';
 }
 
@@ -3803,6 +5874,13 @@ function buildLibraryShareSnapshot(item, platformId) {
   }
   if (!description) description = descParts.join(' · ');
   else if (descParts.length) description = descParts.join(' · ') + (description ? ' · ' + description : '');
+  // Structured sender stats travel alongside the text snapshot so the recipient
+  // renders the media card (playtime / watch progress / rating) without refetch.
+  var statSource = {};
+  if (item) { for (var ik in item) if (Object.prototype.hasOwnProperty.call(item, ik)) statSource[ik] = item[ik]; }
+  if (meta) { for (var mk in meta) if (Object.prototype.hasOwnProperty.call(meta, mk)) statSource[mk] = meta[mk]; }
+  var stats = extractLibraryStats(contentType || (item && item.type) || '', statSource);
+  var music = extractMusicMeta(statSource);
   return {
     title: title,
     description: description,
@@ -3810,12 +5888,18 @@ function buildLibraryShareSnapshot(item, platformId) {
     item_id: itemId,
     image: image,
     content_type: contentType || 'library',
+    playtime_min: stats.playtimeMin,
+    rating: stats.rating,
+    progress_cur: stats.progressCur,
+    progress_total: stats.progressTotal,
+    artist: music.artist,
+    album: music.album,
   };
 }
 
-function openLibraryPicker(icons, titles, iconColors) {
+function openLibraryPicker(icons, titles) {
   var type = 'library';
-  var overlay = createPickerOverlay(type, icons, titles, iconColors);
+  var overlay = createPickerOverlay(type, icons, titles);
   var sheet = overlay.querySelector('.picker-sheet');
   var body = overlay.querySelector('.picker-body');
   var confirmBtn = overlay.querySelector('.picker-btn-confirm');
@@ -3898,8 +5982,9 @@ function openLibraryPicker(icons, titles, iconColors) {
       var name = item.title || item.name || item.username || item.id || ('Item ' + (i + 1));
       var meta = libraryItemMeta(item);
       var cover = libraryItemCover(item);
-      return '<button class="picker-item" data-idx="' + i + '">'
-        + '<div class="picker-item-icon" style="background:rgba(168,85,247,.1);color:#a855f7">' + (cover ? '<img src="' + esc(cover) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px" />' : SVG_ICONS.library) + '</div>'
+      var lv = sheetVisual({ cover: safeIconUrl(cover), slug: item.platform || activePlatform || '', fallback: SVG_ICONS.library });
+      return '<button type="button" class="picker-item" data-idx="' + i + '">'
+        + '<div class="picker-item-icon"' + sheetVisualAttrs(lv, 'library') + '>' + lv.icon + '</div>'
         + '<div class="picker-item-body"><div class="picker-item-name">' + esc(name) + '</div>'
         + (meta ? '<div class="picker-item-meta">' + esc(meta) + '</div>' : '')
         + '</div><div class="picker-item-check">✓</div></button>';
@@ -3927,15 +6012,21 @@ function openLibraryPicker(icons, titles, iconColors) {
       image: snap.image,
       contentType: snap.content_type,
       summary: snap.title,
+      playtimeMin: snap.playtime_min,
+      rating: snap.rating,
+      progressCur: snap.progress_cur,
+      progressTotal: snap.progress_total,
+      artist: snap.artist,
+      album: snap.album,
     });
     dismissPickerOverlay(overlay);
   });
 }
 
 /* ----- Report picker ----- */
-function openReportPicker(icons, titles, iconColors) {
+function openReportPicker(icons, titles) {
   var type = 'report';
-  var overlay = createPickerOverlay(type, icons, titles, iconColors);
+  var overlay = createPickerOverlay(type, icons, titles);
   var body = overlay.querySelector('.picker-body');
   var confirmBtn = overlay.querySelector('.picker-btn-confirm');
   var selectedReport = null;
@@ -3956,8 +6047,9 @@ function openReportPicker(icons, titles, iconColors) {
       if (r.platform) meta += r.platform;
       if (r.type) meta += (meta ? ' · ' : '') + r.type;
       if (r.createdAt) meta += (meta ? ' · ' : '') + new Date(r.createdAt).toLocaleDateString();
-      return '<button class="picker-item" data-idx="' + i + '">'
-        + '<div class="picker-item-icon" style="background:rgba(239,68,68,.1);color:#ef4444">' + SVG_ICONS.report + '</div>'
+      var rv = sheetVisual({ slug: r.platform || '', fallback: SVG_ICONS.report });
+      return '<button type="button" class="picker-item" data-idx="' + i + '">'
+        + '<div class="picker-item-icon"' + sheetVisualAttrs(rv, 'report') + '>' + rv.icon + '</div>'
         + '<div class="picker-item-body"><div class="picker-item-name">' + esc(name) + '</div>'
         + (meta ? '<div class="picker-item-meta">' + esc(meta) + '</div>' : '')
         + '</div><div class="picker-item-check">✓</div></button>';
@@ -4096,11 +6188,7 @@ function formatReportFieldValueHtml(value) {
       return v != null && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean');
     }).map(function (v) { return String(v).trim(); }).filter(Boolean);
     if (!items.length) return '';
-    return '<ul style="margin:0;padding-left:18px">'
-      + items.map(function (item) {
-        return '<li style="margin:4px 0;font-size:13px;line-height:1.5">' + esc(item) + '</li>';
-      }).join('')
-      + '</ul>';
+    return '<ul>' + items.map(function (item) { return '<li>' + esc(item) + '</li>'; }).join('') + '</ul>';
   }
   return '';
 }
@@ -4115,9 +6203,7 @@ function formatReportContentSectionsHtml(content) {
   if (content == null || content === '') return '';
   if (typeof content === 'string' || typeof content === 'number' || typeof content === 'boolean') {
     var plain = String(content).trim();
-    return plain
-      ? '<div style="font-size:13px;line-height:1.6;max-height:300px;overflow-y:auto">' + esc(plain) + '</div>'
-      : '';
+    return plain ? '<div class="sheet-text sheet-scroll">' + esc(plain) + '</div>' : '';
   }
   if (typeof content !== 'object') return '';
 
@@ -4125,8 +6211,8 @@ function formatReportContentSectionsHtml(content) {
   function pushSection(label, bodyHtml) {
     if (!bodyHtml) return;
     sections.push(
-      '<div style="display:flex;flex-direction:column;gap:6px">'
-      + (label ? '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888)">' + esc(label) + '</div>' : '')
+      '<div class="sheet-section">'
+      + (label ? '<div class="sheet-label">' + esc(label) + '</div>' : '')
       + bodyHtml
       + '</div>'
     );
@@ -4147,9 +6233,9 @@ function formatReportContentSectionsHtml(content) {
       var fieldHtml = formatReportFieldValueHtml(analysis[k]);
       if (!fieldHtml) return;
       analysisParts.push(
-        '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">'
-        + '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888)">' + esc(k) + '</div>'
-        + '<div style="font-size:13px;line-height:1.6">' + fieldHtml + '</div>'
+        '<div class="sheet-section" style="margin-bottom:10px">'
+        + '<div class="sheet-label">' + esc(k) + '</div>'
+        + '<div class="sheet-text">' + fieldHtml + '</div>'
         + '</div>'
       );
     });
@@ -4157,20 +6243,18 @@ function formatReportContentSectionsHtml(content) {
       pushSection(lang.reportAnalysis || 'Analysis', analysisParts.join(''));
     }
   } else if (typeof analysis === 'string' && analysis.trim()) {
-    pushSection(lang.reportAnalysis || 'Analysis', '<div style="font-size:13px;line-height:1.6">' + esc(analysis.trim()) + '</div>');
+    pushSection(lang.reportAnalysis || 'Analysis', '<div class="sheet-text">' + esc(analysis.trim()) + '</div>');
   }
 
   Object.keys(content).forEach(function (k) {
     if (isSkippedReportContentKey(k) || k === 'insights') return;
     var fieldHtml = formatReportFieldValueHtml(content[k]);
     if (!fieldHtml) return;
-    pushSection(k, '<div style="font-size:13px;line-height:1.6">' + fieldHtml + '</div>');
+    pushSection(k, '<div class="sheet-text">' + fieldHtml + '</div>');
   });
 
   if (!sections.length) return '';
-  return '<div style="display:flex;flex-direction:column;gap:12px;max-height:300px;overflow-y:auto">'
-    + sections.join('')
-    + '</div>';
+  return '<div class="sheet-section sheet-scroll" style="gap:14px">' + sections.join('') + '</div>';
 }
 
 /** Full structured detail HTML: summary / platform / type / date + sectioned content. */
@@ -4201,31 +6285,25 @@ function renderReportDetailBodyHtml(detail) {
     } catch (e) { /* ignore */ }
   }
 
-  var html = '<div style="padding:16px;display:flex;flex-direction:column;gap:12px">';
-  html += '<div style="font-size:18px;font-weight:600">' + esc(title) + '</div>';
-  if (metaParts.length) {
-    html += '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc(metaParts.join(' · ')) + '</div>';
-  }
+  var html = '<div class="sheet-pad">';
+  html += sheetMetaHtml(metaParts);
+  // When summary *is* the title the sheet header already shows it; only render
+  // it here when the header title came from somewhere else (name / type).
   if (summary && summary !== title) {
-    html += '<div style="display:flex;flex-direction:column;gap:6px">'
-      + '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888)">' + esc(lang.reportSummary || 'Summary') + '</div>'
-      + '<div style="font-size:13px;line-height:1.6">' + esc(summary) + '</div>'
+    html += '<div class="sheet-section">'
+      + '<div class="sheet-label">' + esc(lang.reportSummary || 'Summary') + '</div>'
+      + '<div class="sheet-text">' + esc(summary) + '</div>'
       + '</div>';
-  } else if (summary) {
-    html += '<div style="font-size:13px;line-height:1.6">' + esc(summary) + '</div>';
   }
 
   var contentHtml = formatReportContentSectionsHtml(content);
   if (contentHtml) {
     html += contentHtml;
   } else if (!summary) {
-    // Fall back to plain-text formatter when no sectionable fields
+    // Fall back to plain-text formatter when no sectionable fields.
+    // .sheet-desc is pre-wrap, so newlines survive without <br> splicing.
     var plain = formatReportContentBody(content, '');
-    if (plain) {
-      html += '<div style="font-size:13px;line-height:1.6;max-height:300px;overflow-y:auto;white-space:pre-wrap">'
-        + esc(plain).split(String.fromCharCode(10)).join('<br>')
-        + '</div>';
-    }
+    if (plain) html += '<div class="sheet-desc sheet-scroll">' + esc(plain) + '</div>';
   }
   html += '</div>';
   return html;
@@ -4275,10 +6353,7 @@ function renderAttachPreview() {
 
 const PAGE_MOD_CHAT = `\
 // ==================== Render: Conversation List ====================
-function renderConvList() {
-  var list = $('conv-list');
-  if (!list) return;
-
+function buildConversationItems() {
   var items = [];
   state.channels.forEach(function (ch) {
     items.push({
@@ -4290,24 +6365,54 @@ function renderConvList() {
       status: ch.status,
       initiatedBy: ch.initiated_by,
       sortTime: ch.last_activity_at || ch.created_at || '',
+      actorUrl: ch.remote_actor_url || '',
     });
   });
   state.rooms.forEach(function (rm) {
+    var mstatus = rm.my_membership_status || rm.membership_status || 'active';
     items.push({
       kind: 'room', id: rm.room_id,
       name: rm.name || '?',
       avatar: rm.avatar_url || '',
-      preview: (rm.member_count || 0) + ' ' + lang.members,
+      preview: mstatus === 'pending'
+        ? (lang.pending || 'Pending')
+        : ((rm.member_count || 0) + ' ' + lang.members),
       unread: rm.unread_count || 0,
+      status: mstatus === 'pending' ? 'pending' : undefined,
+      initiatedBy: mstatus === 'pending' ? 'remote' : undefined,
       sortTime: rm.last_message_at || rm.created_at || '',
+      actorUrl: '',
     });
   });
   items.sort(function (a, b) { return (b.sortTime || '').localeCompare(a.sortTime || ''); });
+  return items;
+}
 
-  if (items.length === 0) {
+function filterConversationItems(items, query) {
+  var q = normalizeSearchQuery(query);
+  if (!q) return items;
+  return items.filter(function (item) {
+    return matchesSearch(q, [item.name, item.preview, item.actorUrl, item.kind === 'channel' ? lang.dm : lang.members]);
+  });
+}
+
+function renderConvList() {
+  var list = $('conv-list');
+  if (!list) return;
+
+  var allItems = buildConversationItems();
+  var q = (state.search && state.search.conv) || '';
+  var items = filterConversationItems(allItems, q);
+
+  if (allItems.length === 0) {
     list.innerHTML = '<div class="conv-empty conv-empty-fill"><span style="display:flex;flex-direction:column;gap:6px;align-items:center;max-width:200px">'
       + '<span style="font-weight:600;font-size:13px;color:var(--text-primary,#333)">' + esc(lang.noConv || lang.title || 'Messenger') + '</span>'
       + '<span style="font-size:12px;line-height:1.45;opacity:.8">' + esc(lang.noConvHint || lang.selectHint || 'Start a chat with +') + '</span></span></div>';
+    return;
+  }
+
+  if (items.length === 0) {
+    list.innerHTML = searchNoResultsHtml();
     return;
   }
 
@@ -4542,10 +6647,17 @@ function doQuote(msg) {
     } catch (e) { /* ignore */ }
     return;
   }
-  var sender = (msg.sender_actor || '').split('/').pop() || '?';
-  var text = getPayloadText(msg.payload) || '';
-  if (!text && msg.payload) text = msg.payload.title || msg.payload.filename || '';
-  state.quoteMsg = { message_id: msg.message_id, sender: sender, text: text };
+  var sender = typeof quoteSenderLabel === 'function'
+    ? quoteSenderLabel(msg)
+    : ((msg.sender_actor || '').split('/').pop() || '?');
+  var text = typeof quotePreviewText === 'function'
+    ? quotePreviewText(msg)
+    : (getPayloadText(msg.payload) || (msg.payload && (msg.payload.title || msg.payload.filename)) || '');
+  state.quoteMsg = {
+    message_id: msg.message_id,
+    sender: sender,
+    text: text || (lang.newMessage || 'Message'),
+  };
   renderQuotePreview();
   var input = $('msg-input');
   if (input && !input.disabled) input.focus();
@@ -4610,7 +6722,66 @@ function renderQuotePreview() {
   aroPlayEnter(wrap, 'aro-attach-enter');
 }
 
+/**
+ * Build a self-contained payload for forwarding.
+ * - Copies content; strips reply/quote context (forward is a new message).
+ * - file-meta with only transfer_id is NOT portable across conversations
+ *   (transfer ACL is bound to original channel/room). Reject unless inline data exists.
+ */
+function buildForwardPayload(msg) {
+  var src = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+  var payload = {};
+  try {
+    payload = JSON.parse(JSON.stringify(src));
+  } catch (e) {
+    payload = Object.assign({}, src);
+  }
+  // Drop quote/reply snapshot from original (forward is not a reply)
+  delete payload.quote_sender;
+  delete payload.quote_text;
+  delete payload.quote_id;
+
+  var msgType = msg.message_type || 'text';
+  if (msgType === 'text' || !msgType) {
+    if (payload.transfer_id && payload.filename) msgType = 'file-meta';
+    else if (payload.data && payload.mime_type && String(payload.mime_type).indexOf('image/') === 0) msgType = 'image';
+    else if (payload.data && payload.filename) msgType = 'file';
+  }
+
+  // transfer_id alone: target conversation cannot download (wrong channel/room ACL)
+  if ((msgType === 'file-meta' || payload.transfer_id) && !payload.data) {
+    return {
+      ok: false,
+      error: lang.forwardTransferOnly
+        || lang.forwardFileMetaFail
+        || 'Large files cannot be forwarded yet — open the file and re-send it',
+    };
+  }
+
+  // Cap accidental giant payloads (safety)
+  if (payload.data && typeof payload.data === 'string' && payload.data.length > 6 * 1024 * 1024) {
+    return {
+      ok: false,
+      error: lang.forwardTooLarge || lang.mediaTooLarge || 'Attachment too large to forward',
+    };
+  }
+
+  return { ok: true, payload: payload, message_type: msgType };
+}
+
 function doForward(msg) {
+  var built = buildForwardPayload(msg);
+  if (!built.ok) {
+    try {
+      Tapp.ui.showNotification({
+        title: lang.msgForward || 'Forward',
+        message: built.error,
+        type: 'error',
+      });
+    } catch (eBlock) { /* ignore */ }
+    return;
+  }
+
   var items = [];
   state.channels.forEach(function (ch) {
     // Skip non-writable DMs (pending/closed/rejected) as forward targets
@@ -4623,6 +6794,8 @@ function doForward(msg) {
     });
   });
   state.rooms.forEach(function (rm) {
+    var mst = rm.my_membership_status || rm.membership_status || 'active';
+    if (mst === 'pending') return; // cannot forward into pending invite rooms
     items.push({
       kind: 'room',
       id: rm.room_id,
@@ -4641,45 +6814,78 @@ function doForward(msg) {
   var overlay = document.createElement('div');
   overlay.className = 'forward-overlay';
   overlay.dataset.aroDismissable = '1';
+  var searchPh = lang.searchForward || lang.searchConversations || lang.pickerSearchPlaceholder || 'Search…';
   overlay.innerHTML =
     '<div class="forward-sheet" role="dialog" aria-label="' + esc(lang.forwardTo) + '">'
     + '<div class="forward-header">'
     + '<div class="forward-title">' + esc(lang.forwardTo) + '</div>'
-    + '<button type="button" class="forward-close" aria-label="' + esc(lang.close || 'Close') + '">&times;</button>'
+    + '<button type="button" class="forward-close" aria-label="' + esc(lang.dismiss || lang.close || 'Close') + '">&times;</button>'
+    + '</div>'
+    + '<div class="forward-search">'
+    + '<input type="search" class="aro-search-input" autocomplete="off" enterkeyhint="search" placeholder="' + esc(searchPh) + '" aria-label="' + esc(searchPh) + '" />'
     + '</div>'
     + '<div class="forward-list"></div>'
     + '</div>';
   var listEl = overlay.querySelector('.forward-list');
+  var searchInput = overlay.querySelector('.forward-search input');
   var dismissForward = function () { aroDismiss(overlay, { remove: true, ms: 160 }); };
-  items.forEach(function (it) {
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'forward-item';
-    btn.innerHTML = '<div class="forward-item-avatar">' + avatarContentHtml(it.avatar || '', it.name) + '</div><span>' + esc(it.name) + '</span>';
-    btn.addEventListener('click', async function () {
-      if (btn.disabled) return;
-      btn.disabled = true;
-      dismissForward();
-      var payload = msg.payload;
-      var msgType = msg.message_type || 'text';
-      try {
-        if (it.kind === 'channel') {
-          await Tapp.federation.sendMessage(it.id, { payload: payload, message_type: msgType });
-        } else {
-          await Tapp.federation.sendRoomMessage(it.id, { payload: payload, message_type: msgType });
-        }
-        try { Tapp.ui.showNotification({ title: lang.forwardSuccess, type: 'success' }); } catch (e2) {}
-      } catch (e) {
-        notifyError(lang.sendFail, e);
-      }
+
+  function renderForwardItems(filterQ) {
+    var q = normalizeSearchQuery(filterQ);
+    var filtered = !q ? items : items.filter(function (it) {
+      return matchesSearch(q, [it.name, it.kind]);
     });
-    listEl.appendChild(btn);
-  });
+    listEl.innerHTML = '';
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<div class="aro-search-empty" style="text-align:center;padding:16px">'
+        + esc(lang.searchNoResults || lang.pickerEmpty || 'No matches') + '</div>';
+      return;
+    }
+    filtered.forEach(function (it) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'forward-item';
+      btn.innerHTML = '<div class="forward-item-avatar">' + avatarContentHtml(it.avatar || '', it.name) + '</div><span>' + esc(it.name) + '</span>';
+      btn.addEventListener('click', async function () {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        dismissForward();
+        try {
+          var sendReq = { payload: built.payload, message_type: built.message_type };
+          var fwdRes;
+          if (it.kind === 'channel') {
+            fwdRes = await Tapp.federation.sendMessage(it.id, sendReq);
+          } else {
+            fwdRes = await Tapp.federation.sendRoomMessage(it.id, sendReq);
+          }
+          if (typeof noteDeliveryEnqueue === 'function') noteDeliveryEnqueue(fwdRes);
+          try { Tapp.ui.showNotification({ title: lang.forwardSuccess, type: 'success' }); } catch (e2) {}
+          // If user is already in the target conversation, refresh
+          if (state.activeKind === it.kind && state.activeId === it.id && typeof pollMessages === 'function') {
+            try { await pollMessages(true); } catch (e3) { /* ignore */ }
+          }
+        } catch (e) {
+          notifyError(lang.sendFail, e);
+        }
+      });
+      listEl.appendChild(btn);
+    });
+  }
+
+  renderForwardItems('');
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      renderForwardItems(searchInput.value);
+    });
+  }
   overlay.querySelector('.forward-close').addEventListener('click', dismissForward);
   overlay.addEventListener('click', function (e) {
     if (e.target === overlay) dismissForward();
   });
   document.body.appendChild(overlay);
+  if (searchInput) {
+    try { searchInput.focus(); } catch (eFocus) { /* ignore */ }
+  }
 }
 
 // ==================== Render: Messages ====================
@@ -4800,7 +7006,15 @@ function renderMessages(opts) {
         html += '<div class="msg-avatar">' + avatarContentHtml(avatarUrl, displayName) + '</div>';
       }
     }
-    html += '<div class="msg-bubble ' + (local ? 'bubble-local' : 'bubble-remote') + '">';
+    // Rich media / share cards carry their own surface — the card *is* the bubble
+    // whenever there is no caption or quote to host alongside it.
+    var isMediaMsg = (msgType === 'image' && payload.data)
+      || msgType === 'file' || msgType === 'file-meta'
+      || msgType === 'tapp' || msgType === 'brew' || msgType === 'library' || msgType === 'report';
+    var bareMedia = isMediaMsg && !payload.text && !payload.quote_sender && !payload.quote_text;
+
+    html += '<div class="msg-bubble ' + (local ? 'bubble-local' : 'bubble-remote')
+      + (bareMedia ? ' bubble-media' : '') + '">';
     html += '<button type="button" class="msg-more-btn" title="' + esc(lang.msgActions || 'Message actions') + '" aria-label="' + esc(lang.msgActions || 'Message actions') + '">'
       + '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>'
       + '</button>';
@@ -4808,71 +7022,116 @@ function renderMessages(opts) {
       html += '<div class="msg-sender">' + esc(displayName) + '</div>';
     }
 
-    // Render quoted message if present
-    if (payload.quote_sender || payload.quote_text) {
-      html += '<div class="msg-quote-block">'
+    // Render quoted message if present (snapshot travels in payload for both parties)
+    if (payload.quote_sender || payload.quote_text || payload.quote_id) {
+      var qId = payload.quote_id || msg.reply_to || '';
+      html += '<button type="button" class="msg-quote-block"'
+        + (qId ? ' data-quote-id="' + esc(qId) + '"' : '')
+        + ' title="' + esc(lang.roomFilesJump || lang.historyJump || 'Show in chat') + '">'
         + '<div class="msg-quote-bar"></div>'
         + '<div class="msg-quote-content">'
         + '<div class="msg-quote-sender">' + esc(payload.quote_sender || '') + '</div>'
         + '<div class="msg-quote-text">' + esc(payload.quote_text || '') + '</div>'
-        + '</div></div>';
+        + '</div></button>';
     }
 
     // Render content based on message type
     if (msgType === 'image' && payload.data) {
-      html += '<img class="msg-image" src="' + esc(payload.data) + '" alt="' + esc(payload.filename || '') + '" />';
-      if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
+      html += '<figure class="msg-media" data-media-idx="' + idx + '" tabindex="0" role="button"'
+        + ' aria-label="' + esc(payload.filename || lang.attachImage || 'Image') + '">'
+        + '<img class="msg-image" src="' + esc(payload.data) + '" alt="' + esc(payload.filename || '') + '" loading="lazy" />'
+        + '<span class="msg-media-veil"></span>'
+        + '<span class="msg-media-zoom">' + SVG_ICONS.expand + '</span>'
+        + '</figure>';
+      if (payload.text) html += '<div class="msg-text msg-caption">' + esc(payload.text) + '</div>';
     } else if (msgType === 'file' || msgType === 'file-meta') {
-      var ext = (payload.filename || '').split('.').pop().toUpperCase();
+      var fileMeta = fileCardMeta(payload.filename, payload.mime_type);
       var hasInline = !!(payload.data);
-      var sizeLabel = payload.size ? formatFileSize(payload.size) : ext;
-      if (payload.transfer_id) {
-        sizeLabel = (sizeLabel ? sizeLabel + ' · ' : '') + (lang.attachFile || 'file');
-      }
-      var fileTitle = hasInline
+      var hasTransfer = !!(payload.transfer_id);
+      var canDownload = hasInline || hasTransfer;
+      var metaBits = [];
+      if (payload.size) metaBits.push(formatFileSize(payload.size));
+      if (fileMeta.ext) metaBits.push(fileMeta.ext);
+      if (hasTransfer && !hasInline) metaBits.push(lang.attachFile || 'file');
+      var sizeLabel = metaBits.join(' · ');
+      var fileTitle = canDownload
         ? (lang.downloadFile || payload.filename || 'File')
         : (payload.filename || lang.previewFile || 'File');
-      // Inline data → downloadable button; file-meta (chunked transfer) → static card for now
-      if (hasInline) {
-        html += '<button type="button" class="msg-file-card" data-file-idx="' + idx + '" data-has-inline="1" title="' + esc(fileTitle) + '">';
-      } else {
-        html += '<div class="msg-file-card" data-file-idx="' + idx + '"'
-          + (payload.transfer_id ? ' data-transfer-id="' + esc(payload.transfer_id) + '"' : '')
-          + ' title="' + esc(fileTitle) + '">';
-      }
-      html += '<div class="msg-file-icon">' + SVG_ICONS.file + '</div>'
-        + '<div class="msg-file-info">'
-        + '<div class="msg-file-name">' + esc(payload.filename || 'file') + '</div>'
-        + '<div class="msg-file-size">' + esc(sizeLabel || '') + '</div>'
-        + '</div>'
-        + (hasInline ? '</button>' : '</div>');
-      if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
+      // Inline base64 OR completed chunked transfer (transfer_id) → downloadable
+      html += '<button type="button" class="msg-file-card' + (canDownload ? '' : ' msg-file-card-disabled') + '"'
+        + ' data-kind="' + esc(fileMeta.kind) + '" data-file-idx="' + idx + '"'
+        + (hasInline ? ' data-has-inline="1"' : '')
+        + (hasTransfer ? ' data-transfer-id="' + esc(payload.transfer_id) + '"' : '')
+        + (canDownload ? '' : ' disabled')
+        + ' title="' + esc(fileTitle) + '">'
+        + '<span class="msg-file-icon">' + fileMeta.glyph
+        + (fileMeta.ext ? '<em class="msg-file-ext">' + esc(fileMeta.ext) + '</em>' : '') + '</span>'
+        + '<span class="msg-file-info">'
+        + '<span class="msg-file-name">' + esc(payload.filename || 'file') + '</span>'
+        + '<span class="msg-file-size">' + esc(sizeLabel) + '</span>'
+        + '</span>'
+        + '<span class="msg-file-action">' + (canDownload ? SVG_ICONS.download : SVG_ICONS.cloud) + '</span>'
+        + '</button>';
+      if (payload.text) html += '<div class="msg-text msg-caption">' + esc(payload.text) + '</div>';
     } else if (msgType === 'tapp' || msgType === 'brew' || msgType === 'library' || msgType === 'report') {
+      // A library share that carries cover art renders as an image-forward media
+      // card (poster + sender attribution); everything else stays the compact row.
+      var mediaView = (msgType === 'library') ? libraryMediaView(payload) : null;
+      if (mediaView && safeIconUrl(mediaView.image)) {
+        html += libraryMediaCardHtml(idx, payload, mediaView);
+        if (payload.text) html += '<div class="msg-text msg-caption">' + esc(payload.text) + '</div>';
+      } else {
       var shareIcons = { tapp: SVG_ICONS.tapp, brew: SVG_ICONS.brew, library: SVG_ICONS.library, report: SVG_ICONS.report };
-      var shareBgs = { tapp: 'rgba(var(--tapp-primary-rgb,100,100,255),.15)', brew: 'rgba(34,197,94,.1)', library: 'rgba(168,85,247,.1)', report: 'rgba(239,68,68,.1)' };
       var shareCardId = 'share-card-' + idx;
       // Unified share fields so cards never render blank (type label + title + optional desc/cover).
       var shareView = resolveShareCardView(msgType, payload);
       var shareTitle = shareView.title;
       var shareDesc = shareView.description;
       var shareCover = shareView.image;
-      // Determine icon content: cover image > tapp_icon SVG > type icon
+      // The icon carries the type, so it must be the real source mark where one
+      // exists: cover art > the tapp's own icon > the source site / platform
+      // logo > the generic type glyph (older messages carry no logo fields).
+      var shareSlug = '';
+      if (msgType === 'report') shareSlug = payload.platform || payload.platform_id || '';
+      else if (msgType === 'library') shareSlug = payload.platform_id || '';
+      else if (msgType === 'brew') shareSlug = payload.source_name || '';
+      var shareLogo = platformLogoSvg(shareSlug);
+      var shareFavicon = msgType === 'brew' ? safeIconUrl(payload.source_icon) : '';
       var iconContent = '';
+      // '' | 'brand' (known platform → brand palette) | 'img' (favicon supplies
+      // its own colors, so the card stays neutral)
+      var iconMark = '';
       if (shareCover) {
         iconContent = '<img src="' + esc(shareCover) + '" alt="" />';
       } else if (msgType === 'tapp' && payload.tapp_icon) {
         iconContent = payload.tapp_icon; // raw SVG string
+      } else if (shareFavicon) {
+        // data-fallback: swapped in on load error (dead favicon / hotlink block)
+        iconContent = '<img class="msg-share-favicon" src="' + esc(shareFavicon) + '" alt="" data-fallback="' + esc(msgType) + '" />';
+        iconMark = 'img';
+      } else if (shareLogo) {
+        iconContent = shareLogo;
+        iconMark = 'brand';
       } else {
         iconContent = payload.icon || shareIcons[msgType] || SVG_ICONS.file;
       }
+      // Brand accent drives --acc (tile, wash, hover border) for known platforms.
+      // Emitted as -l/-d pairs so the stylesheet — not inline style — picks the
+      // theme variant; an inline --acc would outrank the .dark rule.
+      var shareAccent = iconMark === 'brand' ? platformAccent(shareSlug) : null;
+      var shareAccentStyle = shareAccent
+        ? ';--acc-l:' + shareAccent.l + ';--acc-d:' + shareAccent.d
+        : '';
       // Determine tapp share acceptance status from storage
       var tappAcceptStatus = '';
       if (msgType === 'tapp' && payload.tapp_id) {
         var stKey = 'tapp_accept_' + payload.tapp_id + '_' + idx;
         tappAcceptStatus = (state.tappAcceptMap && state.tappAcceptMap[stKey]) || '';
       }
+      // Undecided incoming tapp share → decision card (no drill-in affordance yet)
+      var shareNeedsDecision = (msgType === 'tapp' && !local && !tappAcceptStatus);
       html += '<div class="msg-share-card" id="' + shareCardId + '"'
-        + ' style="cursor:pointer" data-type="' + esc(msgType) + '"'
+        + ' style="cursor:pointer' + shareAccentStyle + '" data-type="' + esc(msgType) + '"'
         + (payload.tapp_id ? ' data-tapp-id="' + esc(payload.tapp_id) + '"' : '')
         + (payload.tapp_version ? ' data-tapp-version="' + esc(payload.tapp_version) + '"' : '')
         + (payload.tapp_name ? ' data-tapp-name="' + esc(payload.tapp_name) + '"' : '')
@@ -4887,10 +7146,13 @@ function renderMessages(opts) {
         + (payload.platform ? ' data-report-platform="' + esc(payload.platform) + '"' : '')
         + (payload.content_preview ? ' data-report-content-preview="' + esc(payload.content_preview) + '"' : '')
         + ' data-msg-idx="' + idx + '"'
+        + (shareNeedsDecision ? ' data-pending="1"' : '')
+        + (iconMark ? ' data-mark="' + iconMark + '"' : '')
         + '>'
-        + '<div class="msg-share-icon" style="background:' + (shareBgs[msgType] || '') + '">' + iconContent + '</div>'
+        + '<span class="msg-share-wash" aria-hidden="true"></span>'
+        + '<div class="msg-share-main">'
+        + '<div class="msg-share-icon"' + (shareCover ? ' data-cover="1"' : '') + (iconMark ? ' data-mark="' + iconMark + '"' : '') + '>' + iconContent + '</div>'
         + '<div class="msg-share-body">'
-        + '<div class="msg-share-type">' + esc(shareTypeLabel(msgType)) + '</div>'
         + '<div class="msg-share-title">' + esc(shareTitle) + '</div>'
         + (shareDesc ? '<div class="msg-share-desc">' + esc(shareDesc) + '</div>' : '');
       // Version badge + status pill for tapp
@@ -4906,16 +7168,20 @@ function renderMessages(opts) {
           html += '<span class="msg-share-status msg-share-status-rejected">' + esc(lang.tappShareRejected) + '</span>';
         }
         html += '</div>';
-        // Receiver: show accept/reject buttons if not yet decided
-        if (!local && !tappAcceptStatus) {
-          html += '<div class="msg-share-actions">'
-            + '<button class="msg-share-btn-accept" data-accept-idx="' + idx + '">' + esc(lang.acceptTapp) + '</button>'
-            + '<button class="msg-share-btn-reject" data-reject-idx="' + idx + '">' + esc(lang.rejectTapp) + '</button>'
-            + '</div>';
-        }
       }
-      html += '</div></div>';
-      if (payload.text) html += '<div class="msg-text">' + esc(payload.text) + '</div>';
+      html += '</div>'
+        + (shareNeedsDecision ? '' : '<span class="msg-share-go" aria-hidden="true">' + SVG_ICONS.chevronRight + '</span>')
+        + '</div>';
+      // Receiver: accept/reject span the card footer, below the main row
+      if (shareNeedsDecision) {
+        html += '<div class="msg-share-actions">'
+          + '<button type="button" class="msg-share-btn-reject" data-reject-idx="' + idx + '">' + esc(lang.rejectTapp) + '</button>'
+          + '<button type="button" class="msg-share-btn-accept" data-accept-idx="' + idx + '">' + esc(lang.acceptTapp) + '</button>'
+          + '</div>';
+      }
+      html += '</div>';
+      if (payload.text) html += '<div class="msg-text msg-caption">' + esc(payload.text) + '</div>';
+      }
     } else {
       html += '<div class="msg-text">' + esc(text) + '</div>';
     }
@@ -4959,19 +7225,88 @@ function renderMessages(opts) {
       renderMessages();
     });
   });
-  // File card → download only when inline data is present (not file-meta transfer stubs)
-  container.querySelectorAll('.msg-file-card[data-has-inline]').forEach(function (card) {
+  // File card → inline data URL or chunked transfer_id download
+  container.querySelectorAll('.msg-file-card').forEach(function (card) {
+    if (card.disabled) return;
     card.addEventListener('click', function (e) {
       e.stopPropagation();
       var idx = parseInt(card.dataset.fileIdx, 10);
       var m = state.messages[idx];
       if (!m || !m.payload) return;
-      downloadMessageFile(m.payload);
+      downloadMessageFile(m.payload, card);
+    });
+  });
+
+  // Quote snapshot → jump to original message (same conversation, both parties)
+  container.querySelectorAll('.msg-quote-block[data-quote-id]').forEach(function (qEl) {
+    qEl.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var qid = qEl.getAttribute('data-quote-id');
+      if (!qid) return;
+      if (typeof jumpToHistoryMessage === 'function') {
+        jumpToHistoryMessage(qid);
+      } else {
+        var target = container.querySelector('[data-msg-id="' + qid.replace(/"/g, '') + '"]');
+        if (target) {
+          try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (eJ) {}
+          target.classList.add('msg-highlight');
+          setTimeout(function () {
+            try { target.classList.remove('msg-highlight'); } catch (eK) {}
+          }, 2200);
+        }
+      }
+    });
+  });
+
+  // Dead favicon → fall back to the generic type glyph rather than a broken tile
+  container.querySelectorAll('.msg-share-favicon[data-fallback]').forEach(function (img) {
+    img.addEventListener('error', function () {
+      var tile = img.parentNode;
+      if (!tile) return;
+      var glyphs = { tapp: SVG_ICONS.tapp, brew: SVG_ICONS.brew, library: SVG_ICONS.library, report: SVG_ICONS.report };
+      // Clear the mark on both tile and card: with no source mark left, the
+      // message type is the only identity again, so the type wash comes back.
+      tile.removeAttribute('data-mark');
+      var markedCard = tile.closest('.msg-share-card');
+      if (markedCard) markedCard.removeAttribute('data-mark');
+      tile.innerHTML = glyphs[img.dataset.fallback] || SVG_ICONS.file;
+    });
+  });
+
+  // Image bubbles → full-screen viewer
+  container.querySelectorAll('.msg-media[data-media-idx]').forEach(function (fig) {
+    var open = function (e) {
+      e.stopPropagation();
+      var m = state.messages[parseInt(fig.dataset.mediaIdx, 10)];
+      if (!m || !m.payload || !m.payload.data) return;
+      openImageViewer(m.payload.data, m.payload.filename || '');
+    };
+    fig.addEventListener('click', open);
+    fig.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e); }
+    });
+  });
+
+  // Media cards: tag real cover orientation once loaded so CSS can adapt the
+  // layout (games ship landscape banners, anime/music portrait posters), and
+  // fall back to the platform glyph if the cover fails to load.
+  container.querySelectorAll('.msg-media-card .msg-media-cover-img').forEach(function (img) {
+    var apply = function () {
+      var card = img.closest('.msg-media-card');
+      // Music stays square regardless of the source image's real aspect.
+      if (!card || card.dataset.orient === 'square' || !img.naturalWidth || !img.naturalHeight) return;
+      card.dataset.orient = (img.naturalWidth / img.naturalHeight >= 1.15) ? 'landscape' : 'portrait';
+    };
+    if (img.complete && img.naturalWidth) apply();
+    else img.addEventListener('load', apply);
+    img.addEventListener('error', function () {
+      var cover = img.closest('.msg-media-cover');
+      if (cover) cover.setAttribute('data-broken', '1');
     });
   });
 
   // Bind share card click handlers — open detail views
-  container.querySelectorAll('.msg-share-card[data-type]').forEach(function (card) {
+  container.querySelectorAll('.msg-share-card[data-type], .msg-media-card[data-type]').forEach(function (card) {
     card.addEventListener('click', function (e) {
       // Don't open detail if clicking on action buttons
       if (e.target.closest('.msg-share-actions')) return;
@@ -4999,44 +7334,291 @@ function renderMessages(opts) {
   bindMsgContextMenu(container);
 }
 
-function downloadMessageFile(payload) {
-  if (!payload || !payload.data) {
+/**
+ * Image-forward media card for a library share that carries cover art.
+ * The cover leads (with the platform's logo as a corner mark); beside/under it
+ * sit just the title and one compact meta row — kind, rating, and the sender's
+ * playtime / watch progress. No source text, no separators. Orientation: games
+ * banner, music square, everything else portrait (corrected once loaded).
+ */
+function libraryMediaCardHtml(idx, payload, view) {
+  var slug = view.platform || '';
+  var logo = platformLogoSvg(slug);
+  var accent = logo ? platformAccent(slug) : null;
+  var accentStyle = accent ? ';--acc-l:' + accent.l + ';--acc-d:' + accent.d : '';
+  var orient = view.itemType === 'music' ? 'square' : mediaCoverOrient(view.itemType);
+
+  // One meta row, gap-spaced (icons delimit — no dots/dividers). Music leads
+  // with the artist (and album when it differs from the title); other media
+  // show kind · rating · the sender's playtime/watch progress.
+  var meta = '';
+  if (view.itemType === 'music' && (view.artist || view.album)) {
+    if (view.artist) meta += '<span class="msg-media-kind">' + esc(view.artist) + '</span>';
+    if (view.album && view.album !== view.title) meta += '<span class="msg-media-sub">' + esc(view.album) + '</span>';
+  } else {
+    var kindLabel = mediaKindLabel(view.itemType);
+    if (kindLabel) meta += '<span class="msg-media-kind">' + esc(kindLabel) + '</span>';
+    if (view.ratingText) meta += '<span class="msg-media-rate">' + SVG_ICONS.star + esc(view.ratingText) + '</span>';
+    if (view.stat) meta += '<span class="msg-media-stat">' + view.stat.icon + esc(view.stat.text) + '</span>';
+  }
+
+  var cover = '<div class="msg-media-cover">'
+    + '<img class="msg-media-cover-img" src="' + esc(view.image) + '" alt="" loading="lazy" />'
+    + '<span class="msg-media-cover-fallback" aria-hidden="true">' + (logo || SVG_ICONS.library) + '</span>'
+    + (logo ? '<span class="msg-media-logo" data-mark="brand" aria-hidden="true">' + logo + '</span>' : '')
+    + '</div>';
+
+  return '<div class="msg-media-card" data-type="library" data-orient="' + orient + '"'
+    + ' data-msg-idx="' + idx + '"'
+    + (payload.platform_id ? ' data-platform-id="' + esc(payload.platform_id) + '"' : '')
+    + (payload.item_id ? ' data-item-id="' + esc(String(payload.item_id)) + '"' : '')
+    + (view.image ? ' data-image="' + esc(view.image) + '"' : '')
+    + (accent ? ' data-mark="brand"' : '')
+    + ' style="cursor:pointer' + accentStyle + '">'
+    + cover
+    + '<div class="msg-media-info">'
+    + '<div class="msg-media-title">' + esc(view.title) + '</div>'
+    + (meta ? '<div class="msg-media-meta">' + meta + '</div>' : '')
+    + '</div>'
+    + '<span class="msg-media-go" aria-hidden="true">' + SVG_ICONS.chevronRight + '</span>'
+    + '</div>';
+}
+
+/** Full-screen image viewer for image bubbles. */
+function openImageViewer(src, name) {
+  if (!src) return;
+  var overlay = document.createElement('div');
+  overlay.className = 'img-viewer';
+  overlay.dataset.aroDismissable = '1';
+  overlay.innerHTML = '<div class="img-viewer-bar">'
+    + '<span class="img-viewer-name"></span>'
+    + '<button type="button" class="img-viewer-btn" data-act="save" title="' + esc(lang.downloadFile || 'Download') + '" aria-label="' + esc(lang.downloadFile || 'Download') + '">' + SVG_ICONS.download + '</button>'
+    + '<button type="button" class="img-viewer-btn" data-act="close" title="' + esc(lang.dismiss || 'Close') + '" aria-label="' + esc(lang.dismiss || 'Close') + '">' + SVG_ICONS.close + '</button>'
+    + '</div>'
+    + '<div class="img-viewer-stage"><img class="img-viewer-img" alt="" /></div>';
+  // Assign untrusted values as properties, never through innerHTML.
+  overlay.querySelector('.img-viewer-name').textContent = name || '';
+  var img = overlay.querySelector('.img-viewer-img');
+  img.src = src;
+  img.alt = name || '';
+
+  var close = function () {
+    document.removeEventListener('keydown', onKey);
+    aroDismiss(overlay, { remove: true, ms: 170 });
+  };
+  var onKey = function (e) { if (e.key === 'Escape') close(); };
+
+  overlay.addEventListener('click', function (e) {
+    var act = e.target.closest('[data-act]');
+    if (act && act.dataset.act === 'save') {
+      downloadMessageFile({ data: src, filename: name || 'image' });
+      return;
+    }
+    if (act && act.dataset.act === 'close') { close(); return; }
+    if (!e.target.closest('.img-viewer-img')) close();
+  });
+  document.addEventListener('keydown', onKey);
+
+  document.body.appendChild(overlay);
+  aroPlayEnter(overlay, 'aro-viewer-enter');
+}
+
+/**
+ * Poll getTransfer until completed (or failed) so file-meta cards don't 409
+ * when meta arrives before federated chunks finish writing.
+ * @returns {'ready'|'failed'|'timeout'}
+ */
+async function waitForTransferReady(transferId, maxMs) {
+  maxMs = typeof maxMs === 'number' ? maxMs : 45000;
+  if (!transferId || typeof Tapp === 'undefined' || !Tapp.federation) return 'timeout';
+  if (typeof Tapp.federation.getTransfer !== 'function') return 'ready';
+  var start = Date.now();
+  var delay = 400;
+  while (Date.now() - start < maxMs) {
+    try {
+      var meta = await Tapp.federation.getTransfer(transferId);
+      var st = meta && meta.status;
+      if (st === 'completed') return 'ready';
+      if (st === 'failed' || st === 'cancelled') return 'failed';
+    } catch (e) {
+      // 404 while inbound chunks still arriving — keep waiting
+    }
+    await new Promise(function (r) { setTimeout(r, delay); });
+    delay = Math.min(delay + 200, 2000);
+  }
+  return 'timeout';
+}
+
+/**
+ * Download a message attachment.
+ * - Small files: payload.data is a data: URL → <a download>
+ * - Large channel files: payload.transfer_id → host federation.downloadTransfer
+ */
+async function downloadMessageFile(payload, triggerEl) {
+  if (!payload) {
     try { Tapp.ui.showNotification({ title: lang.downloadFail || lang.loadFail, type: 'error' }); } catch (e) { /* ignore */ }
     return;
   }
+
+  // Path A: inline data URL / base64
+  if (payload.data) {
+    try {
+      var a = document.createElement('a');
+      a.href = payload.data;
+      a.download = payload.filename || 'file';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e2) {
+      try { Tapp.ui.showNotification({ title: lang.downloadFail || lang.loadFail, type: 'error' }); } catch (e3) { /* ignore */ }
+    }
+    return;
+  }
+
+  // Path B: chunked transfer (file-meta)
+  var transferId = payload.transfer_id;
+  if (!transferId) {
+    try { Tapp.ui.showNotification({ title: lang.downloadFail || lang.loadFail, type: 'error' }); } catch (e4) { /* ignore */ }
+    return;
+  }
+
+  if (typeof Tapp === 'undefined' || !Tapp.federation || typeof Tapp.federation.downloadTransfer !== 'function') {
+    try {
+      Tapp.ui.showNotification({
+        title: lang.downloadFail || lang.loadFail,
+        message: lang.transferDownloadUnsupported || 'Transfer download unavailable',
+        type: 'error',
+      });
+    } catch (e5) { /* ignore */ }
+    return;
+  }
+
+  var busy = false;
+  if (triggerEl) {
+    busy = !!triggerEl.dataset.dlBusy;
+    if (busy) return;
+    triggerEl.dataset.dlBusy = '1';
+    triggerEl.classList.add('msg-file-card-loading');
+  }
   try {
-    var a = document.createElement('a');
-    a.href = payload.data;
-    a.download = payload.filename || 'file';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } catch (e2) {
-    try { Tapp.ui.showNotification({ title: lang.downloadFail || lang.loadFail, type: 'error' }); } catch (e3) { /* ignore */ }
+    try {
+      Tapp.ui.showNotification({
+        title: lang.transferPreparing || lang.transferDownloading || lang.transferStarting || 'Preparing…',
+        type: 'info',
+      });
+    } catch (e6) { /* ignore */ }
+
+    var ready = await waitForTransferReady(transferId, 45000);
+    if (ready === 'failed') {
+      try {
+        Tapp.ui.showNotification({
+          title: lang.transferDownloadFail || lang.downloadFail || lang.loadFail,
+          message: lang.transferFailed || undefined,
+          type: 'error',
+        });
+      } catch (eFail) { /* ignore */ }
+      return;
+    }
+    if (ready === 'timeout') {
+      try {
+        Tapp.ui.showNotification({
+          title: lang.transferDownloading || 'Downloading…',
+          message: lang.transferStillArriving || undefined,
+          type: 'info',
+        });
+      } catch (eTo) { /* ignore */ }
+    } else {
+      try {
+        Tapp.ui.showNotification({
+          title: lang.transferDownloading || lang.transferStarting || 'Downloading…',
+          type: 'info',
+        });
+      } catch (eDl) { /* ignore */ }
+    }
+
+    var result = await Tapp.federation.downloadTransfer(transferId);
+    var savedName = (result && result.filename) || payload.filename || 'file';
+    try {
+      Tapp.ui.showNotification({
+        title: lang.transferDownloadOk || lang.downloadFile || 'Downloaded',
+        message: savedName,
+        type: 'success',
+      });
+    } catch (e7) { /* ignore */ }
+  } catch (err) {
+    var msg = (err && (err.message || err.error)) || String(err || '');
+    if (/not ready|not completed|409|Transfer is not ready/i.test(msg) && transferId) {
+      try {
+        var again = await waitForTransferReady(transferId, 20000);
+        if (again === 'ready') {
+          var result2 = await Tapp.federation.downloadTransfer(transferId);
+          var saved2 = (result2 && result2.filename) || payload.filename || 'file';
+          try {
+            Tapp.ui.showNotification({
+              title: lang.transferDownloadOk || lang.downloadFile || 'Downloaded',
+              message: saved2,
+              type: 'success',
+            });
+          } catch (eOk2) { /* ignore */ }
+          return;
+        }
+      } catch (eRetry) {
+        msg = (eRetry && (eRetry.message || eRetry.error)) || msg;
+      }
+    }
+    try {
+      Tapp.ui.showNotification({
+        title: lang.transferDownloadFail || lang.downloadFail || lang.loadFail,
+        message: msg || undefined,
+        type: 'error',
+      });
+    } catch (e8) { /* ignore */ }
+  } finally {
+    if (triggerEl) {
+      delete triggerEl.dataset.dlBusy;
+      triggerEl.classList.remove('msg-file-card-loading');
+    }
   }
 }
 
 /* ----- Shared detail overlay for received content ----- */
-function createDetailOverlay(title, iconHtml, bgColor) {
+/**
+ * Bottom sheet shell for share detail views.
+ * @param {string} title
+ * @param {{type?:string, subtitle?:string, slug?:string, favicon?:string,
+ *          cover?:string, rawSvg?:string, fallback?:string}} opts
+ *   Icon + accent resolve exactly like the share card that opened the sheet.
+ */
+function createDetailOverlay(title, opts) {
+  opts = opts || {};
   var overlay = document.createElement('div');
   overlay.className = 'picker-overlay';
   overlay.dataset.aroDismissable = '1';
+  var visual = sheetVisual(opts);
+  applySheetAccent(overlay, visual.accent);
   overlay.innerHTML =
-    '<div class="picker-sheet" role="dialog" aria-label="' + esc(title) + '">'
+    '<div class="picker-sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">'
     + '<div class="picker-header">'
-    + '<div class="picker-header-icon" style="background:' + esc(bgColor) + '">' + iconHtml + '</div>'
+    + '<div class="picker-header-icon"' + (visual.mark ? ' data-mark="' + esc(visual.mark) + '"' : '') + '>' + visual.icon + '</div>'
+    + '<div class="picker-header-text">'
     + '<div class="picker-header-title">' + esc(title) + '</div>'
-    + '<button type="button" class="picker-close-btn" aria-label="' + esc(lang.close || 'Close') + '">&times;</button>'
+    + '<div class="picker-header-sub">' + esc(opts.subtitle || '') + '</div>'
+    + '</div>'
+    + '<button type="button" class="picker-close-btn" aria-label="' + esc(lang.dismiss || lang.close || 'Close') + '">&times;</button>'
     + '</div>'
     + '<div class="picker-body"></div>'
     + '</div>';
-  overlay.querySelector('.picker-close-btn').addEventListener('click', function () {
+
+  var close = function () {
+    document.removeEventListener('keydown', onKey);
     aroDismiss(overlay, { remove: true, ms: 170 });
-  });
-  overlay.addEventListener('click', function (e) {
-    if (e.target === overlay) aroDismiss(overlay, { remove: true, ms: 170 });
-  });
+  };
+  var onKey = function (e) { if (e.key === 'Escape') close(); };
+  overlay.querySelector('.picker-close-btn').addEventListener('click', close);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+
   document.body.appendChild(overlay);
   return overlay;
 }
@@ -5062,7 +7644,12 @@ function openTappDetail(tappId, card) {
     }
   }
 
-  var overlay = createDetailOverlay(remoteName, SVG_ICONS.tapp, 'rgba(var(--tapp-primary-rgb,100,100,255),.1)');
+  var overlay = createDetailOverlay(remoteName, {
+    type: 'tapp',
+    subtitle: tappId,
+    rawSvg: shareCardPayload(card).tapp_icon || '',
+    fallback: SVG_ICONS.tapp,
+  });
   var body = overlay.querySelector('.picker-body');
   showPickerLoading(body);
 
@@ -5086,47 +7673,45 @@ function isValidStoreSourceRef(ref) {
 }
 
 function renderTappDetailView(body, tappId, name, desc, remoteVer, installed, localVer, needsUpdate, installPackage, installOmitted, storeSource) {
-  var statusColor = installed ? (needsUpdate ? '#f59e0b' : '#22c55e') : '#ef4444';
   var statusText = installed ? (needsUpdate ? lang.tappUpdateAvail : lang.tappInstalled) : lang.tappNotInstalled;
-  var statusIcon = installed ? (needsUpdate ? '⚠️' : '✅') : '❌';
+  var statusClass = installed ? (needsUpdate ? 'sheet-status-warn' : 'sheet-status-ok') : 'sheet-status-off';
   var hasDirectPkg = !!(installPackage && installPackage.manifest && installPackage.code);
   var hasStoreSource = isValidStoreSourceRef(storeSource);
 
-  var html = '<div style="padding:16px;display:flex;flex-direction:column;gap:14px">'
-    + '<div style="font-size:18px;font-weight:700">' + esc(name) + '</div>'
-    + '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc(tappId) + '</div>'
-    + (desc ? '<div style="font-size:13px;line-height:1.6">' + esc(desc) + '</div>' : '')
-    // Version comparison
-    + '<div style="display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:10px;background:rgba(128,128,128,.06)">'
-    + '<div style="display:flex;align-items:center;gap:8px">'
-    + '<span style="font-size:14px">' + statusIcon + '</span>'
-    + '<span style="font-size:13px;font-weight:600;color:' + statusColor + '">' + esc(statusText) + '</span>'
-    + '</div>';
+  var html = '<div class="sheet-pad">';
+  if (desc) html += '<div class="sheet-desc">' + esc(desc) + '</div>';
 
-  if (remoteVer) {
-    html += '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc(lang.remoteVer) + ': v' + esc(remoteVer) + '</div>';
-  }
-  if (localVer) {
-    html += '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc(lang.localVer) + ': v' + esc(localVer) + '</div>';
+  // Install state panel: status line + version rows + provenance note
+  html += '<div class="sheet-panel">'
+    + '<div class="sheet-status ' + statusClass + '"><span class="sheet-status-dot" aria-hidden="true"></span>' + esc(statusText) + '</div>';
+  if (remoteVer || localVer) {
+    html += '<dl style="margin:0;display:flex;flex-direction:column;gap:6px">';
+    if (remoteVer) {
+      html += '<div class="sheet-row"><dt>' + esc(lang.remoteVer) + '</dt><dd>v' + esc(remoteVer) + '</dd></div>';
+    }
+    if (localVer) {
+      html += '<div class="sheet-row"><dt>' + esc(lang.localVer) + '</dt><dd>v' + esc(localVer) + '</dd></div>';
+    }
+    html += '</dl>';
   }
   if (!installed && hasStoreSource) {
-    html += '<div style="font-size:11px;color:var(--text-secondary,#888)">' + esc(lang.tappStoreInstall || 'Will install from store catalog') + '</div>';
+    html += '<div class="sheet-note">' + esc(lang.tappStoreInstall || 'Will install from store catalog') + '</div>';
   } else if (!installed && hasDirectPkg) {
-    html += '<div style="font-size:11px;color:var(--text-secondary,#888)">' + esc(lang.tappDirectInstall || 'Install package included in share') + '</div>';
+    html += '<div class="sheet-note">' + esc(lang.tappDirectInstall || 'Install package included in share') + '</div>';
   } else if (!installed && installOmitted) {
-    html += '<div style="font-size:11px;color:#f59e0b">' + esc(installOmitted) + '</div>';
+    html += '<div class="sheet-note sheet-note-warn">' + esc(installOmitted) + '</div>';
   }
   html += '</div>';
 
-  // Action button
+  // Action
   if (!installed) {
-    html += '<button class="tapp-action-btn" data-action="install" style="width:100%;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;background:var(--tapp-primary,#6366f1);color:#fff">' + esc(lang.installBtn) + '</button>';
-    html += '<div class="tapp-install-error" style="display:none;font-size:12px;color:#ef4444;line-height:1.4"></div>';
+    html += '<button type="button" class="sheet-btn tapp-action-btn" data-action="install">' + esc(lang.installBtn) + '</button>'
+      + '<div class="sheet-error tapp-install-error" style="display:none"></div>';
   } else if (needsUpdate) {
-    html += '<button class="tapp-action-btn" data-action="update" style="width:100%;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;background:#f59e0b;color:#fff">' + esc(lang.updatingBtn) + '</button>';
-    html += '<div class="tapp-install-error" style="display:none;font-size:12px;color:#ef4444;line-height:1.4"></div>';
+    html += '<button type="button" class="sheet-btn sheet-btn-warn tapp-action-btn" data-action="update">' + esc(lang.updatingBtn) + '</button>'
+      + '<div class="sheet-error tapp-install-error" style="display:none"></div>';
   } else {
-    html += '<div style="text-align:center;font-size:12px;color:var(--text-secondary,#888)">' + esc(lang.alreadyLatest) + '</div>';
+    html += '<div class="sheet-hint">' + esc(lang.alreadyLatest) + '</div>';
   }
 
   html += '</div>';
@@ -5140,7 +7725,7 @@ function renderTappDetailView(body, tappId, name, desc, remoteVer, installed, lo
       if (actionBtn.disabled) return;
       actionBtn.disabled = true;
       actionBtn.textContent = lang.installingBtn;
-      actionBtn.style.opacity = '0.7';
+      setSheetBtnState(actionBtn, 'busy');
       if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
 
       var installReq = null;
@@ -5170,8 +7755,7 @@ function renderTappDetailView(body, tappId, name, desc, remoteVer, installed, lo
 
       if (!installReq) {
         actionBtn.textContent = lang.installFailed;
-        actionBtn.style.background = '#ef4444';
-        actionBtn.style.opacity = '1';
+        setSheetBtnState(actionBtn, 'err');
         actionBtn.disabled = false;
         if (errEl) {
           errEl.style.display = 'block';
@@ -5183,8 +7767,7 @@ function renderTappDetailView(body, tappId, name, desc, remoteVer, installed, lo
 
       Tapp.tappList.install(installReq).then(function () {
         actionBtn.textContent = lang.installSuccess;
-        actionBtn.style.background = '#22c55e';
-        actionBtn.style.opacity = '1';
+        setSheetBtnState(actionBtn, 'ok');
         actionBtn.removeEventListener('click', handleInstallClick);
       }).catch(function (err) {
         var msg = (err && err.message) ? String(err.message) : (lang.installFailed || 'Install failed');
@@ -5206,21 +7789,18 @@ function renderTappDetailView(body, tappId, name, desc, remoteVer, installed, lo
           };
           return Tapp.tappList.install(directReq).then(function () {
             actionBtn.textContent = lang.installSuccess;
-            actionBtn.style.background = '#22c55e';
-            actionBtn.style.opacity = '1';
+            setSheetBtnState(actionBtn, 'ok');
             actionBtn.removeEventListener('click', handleInstallClick);
           }).catch(function (err2) {
             var msg2 = (err2 && err2.message) ? String(err2.message) : msg;
             actionBtn.textContent = lang.installFailed;
-            actionBtn.style.background = '#ef4444';
-            actionBtn.style.opacity = '1';
+            setSheetBtnState(actionBtn, 'err');
             actionBtn.disabled = false;
             if (errEl) { errEl.style.display = 'block'; errEl.textContent = msg2; }
           });
         }
         actionBtn.textContent = lang.installFailed;
-        actionBtn.style.background = '#ef4444';
-        actionBtn.style.opacity = '1';
+        setSheetBtnState(actionBtn, 'err');
         actionBtn.disabled = false;
         if (errEl) {
           errEl.style.display = 'block';
@@ -5233,29 +7813,40 @@ function renderTappDetailView(body, tappId, name, desc, remoteVer, installed, lo
 
 function openBrewDetail(brewId, brewLink, card) {
   var titleEl = card && card.querySelector('.msg-share-title');
-  var overlay = createDetailOverlay((titleEl && titleEl.textContent) || lang.attachBrew || 'Brew', SVG_ICONS.brew, 'rgba(34,197,94,.1)');
+  var brewSnap = shareCardPayload(card);
+  var overlay = createDetailOverlay((titleEl && titleEl.textContent) || lang.attachBrew || 'Brew', {
+    type: 'brew',
+    subtitle: brewSnap.source_name || '',
+    favicon: brewSnap.source_icon || '',
+    slug: brewSnap.source_name || '',
+    fallback: SVG_ICONS.brew,
+  });
   var body = overlay.querySelector('.picker-body');
   showPickerLoading(body);
   if (!brewId || typeof Tapp.brewList === 'undefined' || typeof Tapp.brewList.get !== 'function') {
     // Fall back to card payload / link only
     var descEl = card && card.querySelector('.msg-share-desc');
     body.innerHTML =
-      '<div style="padding:16px;display:flex;flex-direction:column;gap:12px">'
-      + '<div style="font-size:18px;font-weight:600">' + esc((titleEl && titleEl.textContent) || '') + '</div>'
-      + (descEl && descEl.textContent ? '<div style="font-size:13px;line-height:1.6">' + esc(descEl.textContent) + '</div>' : '')
-      + (brewLink ? '<a href="' + esc(brewLink) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--tapp-primary,#6366f1);text-decoration:none">' + esc(lang.openOriginal || 'Open original') + ' →</a>' : '')
+      '<div class="sheet-pad">'
+      + (descEl && descEl.textContent ? '<div class="sheet-desc">' + esc(descEl.textContent) + '</div>' : '')
+      + brewLinkHtml(brewLink)
       + '</div>';
     return;
   }
   Tapp.brewList.get(brewId).then(function (detail) {
     if (!detail) { body.innerHTML = '<div class="picker-empty">' + esc(lang.pickerEmpty) + '</div>'; return; }
+    var brewChips = [];
+    if (detail.source_name) brewChips.push(detail.source_name);
+    if (detail.author) brewChips.push(detail.author);
+    if (detail.published_at) {
+      try { brewChips.push(new Date(detail.published_at).toLocaleDateString(currentLocale)); } catch (e) { /* ignore */ }
+    }
     body.innerHTML =
-      '<div style="padding:16px;display:flex;flex-direction:column;gap:12px">'
-      + (detail.image ? '<img src="' + esc(detail.image) + '" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px" />' : '')
-      + '<div style="font-size:18px;font-weight:600">' + esc(detail.title) + '</div>'
-      + '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc((detail.source_name || '') + (detail.author ? ' · ' + detail.author : '') + (detail.published_at ? ' · ' + new Date(detail.published_at).toLocaleDateString() : '')) + '</div>'
-      + (detail.summary ? '<div style="font-size:13px;line-height:1.6">' + esc(detail.summary) + '</div>' : '')
-      + (brewLink ? '<a href="' + esc(brewLink) + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--tapp-primary,#6366f1);text-decoration:none">' + esc(lang.openOriginal || 'Open original') + ' →</a>' : '')
+      '<div class="sheet-pad">'
+      + (safeIconUrl(detail.image) ? '<img class="sheet-cover" src="' + esc(detail.image) + '" alt="" />' : '')
+      + sheetMetaHtml(brewChips)
+      + (detail.summary ? '<div class="sheet-desc">' + esc(detail.summary) + '</div>' : '')
+      + brewLinkHtml(brewLink)
       + '</div>';
   }).catch(function () {
     body.innerHTML = '<div class="picker-empty">' + esc(lang.pickerEmpty) + '</div>';
@@ -5264,14 +7855,7 @@ function openBrewDetail(brewId, brewLink, card) {
 
 function openLibraryDetail(card) {
   // Prefer live message payload snapshot, then data-* attrs, then DOM text.
-  var payloadSnap = {};
-  if (card && card.dataset && card.dataset.msgIdx != null && state.messages) {
-    var msgIdx = parseInt(card.dataset.msgIdx, 10);
-    if (!isNaN(msgIdx) && state.messages[msgIdx]) {
-      var msgPayload = state.messages[msgIdx].payload;
-      if (msgPayload && typeof msgPayload === 'object') payloadSnap = msgPayload;
-    }
-  }
+  var payloadSnap = shareCardPayload(card);
   var titleEl = card && card.querySelector('.msg-share-title');
   var descEl = card && card.querySelector('.msg-share-desc');
   var view = resolveShareCardView('library', payloadSnap);
@@ -5281,32 +7865,25 @@ function openLibraryDetail(card) {
   var itemId = payloadSnap.item_id != null ? String(payloadSnap.item_id) : ((card && card.dataset.itemId) || '');
   var image = view.image || (card && card.dataset.image) || '';
   var contentType = payloadSnap.item_type || (payloadSnap.content_type && payloadSnap.content_type !== 'library' ? payloadSnap.content_type : '') || '';
-  var overlay = createDetailOverlay(title, SVG_ICONS.library, 'rgba(168,85,247,.1)');
+  var overlay = createDetailOverlay(title, {
+    type: 'library',
+    subtitle: platformId,
+    slug: platformId,
+    fallback: SVG_ICONS.library,
+  });
   var body = overlay.querySelector('.picker-body');
-  var meta = '';
-  if (platformId) meta += platformId;
-  if (contentType) meta += (meta ? ' · ' : '') + contentType;
-  if (itemId) meta += (meta ? ' · ' : '') + itemId;
   body.innerHTML =
-    '<div style="padding:16px;display:flex;flex-direction:column;gap:12px">'
-    + (image ? '<img src="' + esc(image) + '" alt="" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px" />' : '')
-    + '<div style="font-size:18px;font-weight:600">' + esc(title) + '</div>'
-    + (meta ? '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc(meta) + '</div>' : '')
-    + (desc ? '<div style="font-size:13px;line-height:1.6;color:var(--text-secondary,#888)">' + esc(desc) + '</div>' : '')
+    '<div class="sheet-pad">'
+    + (safeIconUrl(image) ? '<img class="sheet-cover" src="' + esc(image) + '" alt="" />' : '')
+    + sheetMetaHtml([platformId, contentType, itemId])
+    + (desc ? '<div class="sheet-desc">' + esc(desc) + '</div>' : '')
     + '</div>';
 }
 
 function openReportDetail(reportId, card) {
   // Prefer live message payload (#120 snapshot fields), then data-* attrs, then DOM text.
   // getReport is user-scoped — recipients rely on the snapshot only.
-  var payloadSnap = {};
-  if (card && card.dataset && card.dataset.msgIdx != null && state.messages) {
-    var msgIdx = parseInt(card.dataset.msgIdx, 10);
-    if (!isNaN(msgIdx) && state.messages[msgIdx]) {
-      var msgPayload = state.messages[msgIdx].payload;
-      if (msgPayload && typeof msgPayload === 'object') payloadSnap = msgPayload;
-    }
-  }
+  var payloadSnap = shareCardPayload(card);
   var titleNode = card && card.querySelector ? card.querySelector('.msg-share-title') : null;
   var descNode = card && card.querySelector ? card.querySelector('.msg-share-desc') : null;
   var snapSummary = payloadSnap.summary
@@ -5322,27 +7899,26 @@ function openReportDetail(reportId, card) {
   if (!snapPreview && descNode && descNode.textContent) snapPreview = descNode.textContent;
   var snapType = payloadSnap.type || payloadSnap.content_type || '';
 
-  var overlay = createDetailOverlay(snapSummary || 'Report', SVG_ICONS.report, 'rgba(239,68,68,.1)');
+  var overlay = createDetailOverlay(snapSummary || 'Report', {
+    type: 'report',
+    subtitle: snapPlatform,
+    slug: snapPlatform,
+    fallback: SVG_ICONS.report,
+  });
   var body = overlay.querySelector('.picker-body');
 
   function renderReportSnapshot(summary, platform, contentText, createdAt, typeLabel) {
-    var meta = '';
-    if (platform) meta += platform;
-    if (typeLabel) meta += (meta ? ' · ' : '') + typeLabel;
+    var dateLabel = '';
     if (createdAt) {
-      try { meta += (meta ? ' · ' : '') + new Date(createdAt).toLocaleDateString(); } catch (e) { /* ignore */ }
+      try { dateLabel = new Date(createdAt).toLocaleDateString(currentLocale); } catch (e) { /* ignore */ }
     }
     // Plain-text snapshot path (share payload / recipients) — never esc(object)
     var bodyText = formatReportContentBody(contentText, snapPreview || '');
     bodyText = stripHtmlPreview(bodyText || '').trim();
-    var bodyHtml = bodyText
-      ? esc(bodyText).split(String.fromCharCode(10)).join('<br>')
-      : '';
     body.innerHTML =
-      '<div style="padding:16px;display:flex;flex-direction:column;gap:12px">'
-      + '<div style="font-size:18px;font-weight:600">' + esc(summary || 'Report') + '</div>'
-      + (meta ? '<div style="font-size:12px;color:var(--text-secondary,#888)">' + esc(meta) + '</div>' : '')
-      + (bodyHtml ? '<div style="font-size:13px;line-height:1.6;max-height:300px;overflow-y:auto;white-space:pre-wrap">' + bodyHtml + '</div>' : '')
+      '<div class="sheet-pad">'
+      + sheetMetaHtml([platform, typeLabel, dateLabel])
+      + (bodyText ? '<div class="sheet-desc sheet-scroll">' + esc(bodyText) + '</div>' : '')
       + '</div>';
   }
 
@@ -5375,6 +7951,7 @@ function openReportDetail(reportId, card) {
 }
 
 // ==================== Render: Members ====================
+// (function body continues in members.js — page modules are concatenated in order)
 function renderMembers() {
   var panel = $('member-panel');
   if (!panel) return;
@@ -5385,33 +7962,2213 @@ function renderMembers() {
   }
 `
 
+const PAGE_MOD_HISTORY = `\
+// ==================== Chat History Browser + Archive Export/Import ====================
+// Per-conversation history panel (search / filter / load older).
+// Profile sub-page \`backup\`: export all chats + import archives (local Tapp.storage).
+
+var ARO_ARCHIVE_FORMAT = 'myriad.aro.chat-archive';
+var ARO_ARCHIVE_VERSION = 1;
+var ARO_IMPORTED_ARCHIVES_KEY = 'aro.importedArchives.v1';
+var HISTORY_PAGE_LIMIT = 100;
+var HISTORY_MAX_EXPORT_PAGES = 40; // 40 * 100 = 4000 msgs/conversation safety cap
+
+function ensureHistoryState() {
+  if (!state.history) {
+    state.history = {
+      open: false,
+      kind: null,
+      id: null,
+      messages: [],
+      query: '',
+      filter: 'all',
+      loading: false,
+      loadingMore: false,
+      hasMore: false,
+      error: null,
+      mainLoadingOlder: false,
+    };
+  }
+  return state.history;
+}
+
+function unwrapMessagesResponse(res) {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.messages)) return res.messages;
+  if (res.data) {
+    if (Array.isArray(res.data)) return res.data;
+    if (Array.isArray(res.data.messages)) return res.data.messages;
+  }
+  return [];
+}
+
+/** Normalize message_type for filters (text | image | file | share | system). */
+function classifyHistoryMessage(msg) {
+  if (!msg) return 'text';
+  if (msg.is_pinned) { /* pin is orthogonal */ }
+  var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+  var mt = msg.message_type || 'text';
+  if (mt === 'text' || !mt) {
+    var knownShare = { tapp: 1, brew: 1, library: 1, report: 1, image: 1, file: 1, 'file-meta': 1 };
+    if (payload.content_type && knownShare[payload.content_type]) mt = payload.content_type;
+    else if (payload.tapp_id) mt = 'tapp';
+    else if (payload.brew_id || payload.brew_link) mt = 'brew';
+    else if (payload.report_id) mt = 'report';
+    else if (payload.platform_id && (payload.item_id || payload.title)) mt = 'library';
+    else if (payload.data && payload.mime_type && String(payload.mime_type).indexOf('image/') === 0) mt = 'image';
+    else if (payload.transfer_id && payload.filename) mt = 'file-meta';
+    else if (payload.data && payload.filename) mt = 'file';
+  }
+  if (mt === 'image') return 'image';
+  if (mt === 'file' || mt === 'file-meta') return 'file';
+  if (mt === 'tapp' || mt === 'brew' || mt === 'library' || mt === 'report') return 'share';
+  if (mt === 'system') return 'system';
+  return 'text';
+}
+
+function historyMessageSearchParts(msg) {
+  var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+  var text = '';
+  try {
+    text = (typeof getPayloadText === 'function' ? getPayloadText(msg.payload) : '') || '';
+  } catch (e) { text = ''; }
+  var sender = (msg.sender_actor || '').split('/').pop() || '';
+  var displayName = historySenderLabel(msg);
+  return [
+    text,
+    displayName,
+    sender,
+    msg.sender_actor,
+    msg.message_type,
+    classifyHistoryMessage(msg),
+    payload.title,
+    payload.filename,
+    payload.tapp_id,
+    payload.brew_link,
+    payload.name,
+    msg.message_id,
+  ];
+}
+
+function historySenderLabel(msg) {
+  if (!msg) return '?';
+  var sender = (msg.sender_actor || '').split('/').pop() || '?';
+  if (typeof isLocalActor === 'function' && isLocalActor(msg.sender_actor)) {
+    return lang.me || lang.local || 'Me';
+  }
+  if (state.activeKind === 'channel' && state.channelDetail) {
+    return state.channelDetail.remote_actor_name || sender;
+  }
+  if (state.activeKind === 'room' && typeof findMemberByActor === 'function') {
+    var m = findMemberByActor(msg.sender_actor);
+    if (m && m.display_name) return m.display_name;
+  }
+  return sender;
+}
+
+function historyPreviewText(msg) {
+  if (typeof messagePreview === 'function') {
+    try { return messagePreview(msg); } catch (e) { /* fall through */ }
+  }
+  var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+  var kind = classifyHistoryMessage(msg);
+  if (kind === 'image') return lang.previewImage || 'Image';
+  if (kind === 'file') return lang.previewFile || 'File';
+  if (kind === 'share') {
+    return payload.title || payload.name || payload.tapp_id || payload.brew_link || (lang.attach || 'Share');
+  }
+  var t = typeof getPayloadText === 'function' ? getPayloadText(msg.payload) : '';
+  if (!t && payload.title) t = String(payload.title);
+  if (!t && payload.filename) t = String(payload.filename);
+  if (!t) t = lang.newMessage || 'Message';
+  return t.length > 120 ? t.slice(0, 119) + '…' : t;
+}
+
+function filterHistoryMessages(messages, query, filter) {
+  var q = normalizeSearchQuery(query);
+  var f = filter || 'all';
+  return (messages || []).filter(function (msg) {
+    if (f === 'pinned' && !msg.is_pinned) return false;
+    if (f !== 'all' && f !== 'pinned') {
+      if (classifyHistoryMessage(msg) !== f) return false;
+    }
+    if (!q) return true;
+    return matchesSearch(q, historyMessageSearchParts(msg));
+  });
+}
+
+function mergeMessageListsAsc(existing, incoming) {
+  var map = {};
+  var out = [];
+  function push(msg) {
+    if (!msg || !msg.message_id) return;
+    if (map[msg.message_id]) {
+      // Prefer newer object fields
+      for (var i = 0; i < out.length; i++) {
+        if (out[i].message_id === msg.message_id) {
+          out[i] = Object.assign({}, out[i], msg);
+          break;
+        }
+      }
+      return;
+    }
+    map[msg.message_id] = true;
+    out.push(msg);
+  }
+  (existing || []).forEach(push);
+  (incoming || []).forEach(push);
+  out.sort(function (a, b) {
+    return String(a.created_at || '').localeCompare(String(b.created_at || ''));
+  });
+  return out;
+}
+
+async function fetchMessagesPage(kind, id, before, limit) {
+  limit = limit || HISTORY_PAGE_LIMIT;
+  var res = null;
+  if (kind === 'channel') {
+    res = await Tapp.federation.getMessages(id, before || undefined, limit);
+  } else {
+    res = await Tapp.federation.getRoomMessages(id, before || undefined, limit);
+  }
+  return unwrapMessagesResponse(res);
+}
+
+/** Fetch up to maxPages older pages for one conversation (ASC list). */
+async function fetchAllMessagesForConversation(kind, id, opts) {
+  opts = opts || {};
+  var maxPages = opts.maxPages || HISTORY_MAX_EXPORT_PAGES;
+  var limit = opts.limit || HISTORY_PAGE_LIMIT;
+  var onProgress = opts.onProgress;
+  var all = [];
+  var before = undefined;
+  var page = 0;
+  while (page < maxPages) {
+    var batch = await fetchMessagesPage(kind, id, before, limit);
+    page += 1;
+    if (!batch.length) break;
+    // API returns ASC; with \`before\`, still ASC older page
+    all = mergeMessageListsAsc(batch, all);
+    if (typeof onProgress === 'function') onProgress(all.length, kind, id);
+    if (batch.length < limit) break;
+    before = batch[0].message_id; // oldest in this page
+    if (!before) break;
+  }
+  return all;
+}
+
+// ---------- Per-conversation history panel ----------
+
+function historyConversationTitle() {
+  if (state.activeKind === 'channel' && state.channelDetail) {
+    return state.channelDetail.remote_actor_name
+      || (state.channelDetail.remote_actor_url || '').split('/').pop()
+      || lang.dm
+      || 'Chat';
+  }
+  if (state.activeKind === 'room' && state.roomDetail) {
+    return state.roomDetail.name || lang.members || 'Room';
+  }
+  return lang.historyTitle || 'Chat history';
+}
+
+function openChatHistory() {
+  ensureHistoryState();
+  if (!state.activeKind || !state.activeId) return;
+  var h = state.history;
+  h.open = true;
+  h.kind = state.activeKind;
+  h.id = state.activeId;
+  h.query = h.query || '';
+  h.filter = h.filter || 'all';
+  h.error = null;
+  // Seed from live window
+  h.messages = mergeMessageListsAsc([], state.messages || []);
+  h.hasMore = (state.messages || []).length >= 150; // likely more if near page size
+  h.loading = false;
+  h.loadingMore = false;
+
+  var overlay = $('chat-history-overlay');
+  if (!overlay) return;
+  overlay.hidden = false;
+  overlay.style.display = 'flex';
+  overlay.classList.remove('aro-leaving', 'aro-history-enter');
+  // Restart enter animation
+  try { void overlay.offsetWidth; } catch (eAnim) { /* ignore */ }
+  if (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) {
+    /* no enter class */
+  } else {
+    overlay.classList.add('aro-history-enter');
+    var clearEnter = function () {
+      overlay.classList.remove('aro-history-enter');
+      overlay.removeEventListener('animationend', clearEnter);
+    };
+    overlay.addEventListener('animationend', clearEnter);
+    setTimeout(clearEnter, 360);
+  }
+
+  applyHistoryLabels();
+  var search = $('history-search');
+  if (search) search.value = h.query || '';
+  syncHistoryFilterChips();
+  renderHistoryList();
+  updateHistoryFooter();
+
+  // If live window is short, still try one older page in background when empty/filter
+  if (h.messages.length === 0) {
+    loadMoreHistoryMessages();
+  }
+
+  if (search) {
+    try { search.focus(); } catch (e) { /* ignore */ }
+  }
+}
+
+function closeChatHistory() {
+  ensureHistoryState();
+  state.history.open = false;
+  var overlay = $('chat-history-overlay');
+  if (!overlay || overlay.style.display === 'none') return;
+  overlay.classList.remove('aro-history-enter');
+  if (typeof aroDismiss === 'function') {
+    aroDismiss(overlay, {
+      ms: 160,
+      onDone: function () {
+        overlay.hidden = true;
+      },
+    });
+  } else {
+    overlay.style.display = 'none';
+    overlay.hidden = true;
+  }
+}
+
+function isChatHistoryOpen() {
+  var overlay = $('chat-history-overlay');
+  return !!(overlay && overlay.style.display !== 'none' && !overlay.hidden);
+}
+
+function applyHistoryLabels() {
+  var el;
+  el = $('history-title');
+  if (el) el.textContent = lang.historyTitle || 'Chat history';
+  el = $('history-subtitle');
+  if (el) el.textContent = historyConversationTitle();
+  el = $('history-close');
+  if (el) el.setAttribute('aria-label', lang.close || lang.dismiss || 'Close');
+  applySearchInputLabel('history-search', lang.historySearchPlaceholder || lang.searchPlaceholder || 'Search…');
+  el = $('history-load-more');
+  if (el) el.textContent = lang.historyLoadMore || 'Load older messages';
+
+  var filterLabels = {
+    all: lang.historyFilterAll || 'All',
+    text: lang.historyFilterText || 'Text',
+    image: lang.historyFilterImage || 'Images',
+    file: lang.historyFilterFile || 'Files',
+    share: lang.historyFilterShare || 'Shares',
+    pinned: lang.historyFilterPinned || 'Pinned',
+  };
+  document.querySelectorAll('[data-history-filter]').forEach(function (btn) {
+    var key = btn.getAttribute('data-history-filter');
+    if (filterLabels[key]) btn.textContent = filterLabels[key];
+  });
+}
+
+function syncHistoryFilterChips() {
+  var h = ensureHistoryState();
+  document.querySelectorAll('[data-history-filter]').forEach(function (btn) {
+    var active = btn.getAttribute('data-history-filter') === h.filter;
+    btn.classList.toggle('history-filter-active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+}
+
+function historyEmptyHtml(title, body) {
+  var icon = '<div class="aro-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>';
+  return '<div class="history-empty">'
+    + icon
+    + (title ? '<div class="history-empty-title">' + esc(title) + '</div>' : '')
+    + '<div>' + esc(body || '') + '</div>'
+    + '</div>';
+}
+
+function historyPinSvg() {
+  return '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></svg>';
+}
+
+function historyAvatarForMsg(msg, displayName, local) {
+  var avatarUrl = '';
+  if (!local) {
+    if (state.activeKind === 'channel' && state.channelDetail) {
+      avatarUrl = state.channelDetail.remote_actor_avatar || '';
+    } else if (state.activeKind === 'room' && typeof findMemberByActor === 'function') {
+      var m = findMemberByActor(msg.sender_actor);
+      if (m) avatarUrl = m.avatar_url || '';
+    }
+  }
+  var cls = 'history-item-avatar' + (local ? ' history-item-avatar-local' : '');
+  if (typeof avatarContentHtml === 'function') {
+    return '<div class="' + cls + '">' + avatarContentHtml(avatarUrl, displayName || '?') + '</div>';
+  }
+  return '<div class="' + cls + '">' + esc((displayName || '?').charAt(0).toUpperCase()) + '</div>';
+}
+
+function updateHistoryFooter() {
+  var h = ensureHistoryState();
+  var meta = $('history-meta');
+  var loadBtn = $('history-load-more');
+  var filtered = filterHistoryMessages(h.messages, h.query, h.filter);
+  if (meta) {
+    meta.classList.toggle('history-meta-error', !!h.error && !h.loadingMore);
+    if (h.loadingMore) {
+      meta.textContent = lang.historyLoading || lang.pickerLoading || 'Loading…';
+    } else if (h.error) {
+      meta.textContent = h.error;
+    } else {
+      var q = normalizeSearchQuery(h.query);
+      var total = (h.messages || []).length;
+      if (q || (h.filter && h.filter !== 'all')) {
+        meta.textContent = (lang.historyMatchCount || '{n} / {total}')
+          .replace('{n}', String(filtered.length))
+          .replace('{total}', String(total));
+      } else {
+        meta.textContent = (lang.historyCount || '{n} messages').replace('{n}', String(total));
+      }
+    }
+  }
+  if (loadBtn) {
+    loadBtn.hidden = !h.hasMore;
+    loadBtn.disabled = !!h.loadingMore;
+    loadBtn.textContent = h.loadingMore
+      ? (lang.historyLoading || 'Loading…')
+      : (lang.historyLoadMore || 'Load older messages');
+  }
+}
+
+function renderHistoryList() {
+  var list = $('history-list');
+  if (!list) return;
+  var h = ensureHistoryState();
+  var filtered = filterHistoryMessages(h.messages, h.query, h.filter);
+  // Newest first for browsing
+  var view = filtered.slice().reverse();
+
+  if (h.loading && !h.messages.length) {
+    list.innerHTML = historyEmptyHtml(lang.historyLoading || lang.pickerLoading || 'Loading…', '');
+    return;
+  }
+  if (!h.messages.length) {
+    list.innerHTML = historyEmptyHtml(
+      lang.historyEmpty || 'No messages yet',
+      lang.emptyChatHint || ''
+    );
+    return;
+  }
+  if (!view.length) {
+    list.innerHTML = historyEmptyHtml(
+      lang.searchNoResults || 'No matches',
+      lang.historySearchPlaceholder || ''
+    );
+    return;
+  }
+
+  var html = '';
+  var lastDay = '';
+  view.forEach(function (msg) {
+    var day = '';
+    try {
+      var d = new Date(msg.created_at);
+      if (!isNaN(d)) day = d.toDateString();
+    } catch (e) { day = ''; }
+    if (day && day !== lastDay) {
+      lastDay = day;
+      html += '<div class="history-day"><span>' + esc(typeof dayLabel === 'function' ? dayLabel(msg.created_at) : day) + '</span></div>';
+    }
+    var kind = classifyHistoryMessage(msg);
+    var local = typeof isLocalActor === 'function' && isLocalActor(msg.sender_actor);
+    var time = typeof timeStr === 'function' ? timeStr(msg.created_at) : '';
+    var name = historySenderLabel(msg);
+    var kindClass = kind !== 'text' ? (' history-item-kind-' + kind) : '';
+    html += '<button type="button" class="history-item' + (local ? ' history-item-local' : '') + '" data-msg-id="' + esc(msg.message_id || '') + '">'
+      + historyAvatarForMsg(msg, name, local)
+      + '<div class="history-item-body">'
+      + '<div class="history-item-top">'
+      + '<span class="history-item-name">' + esc(name) + '</span>'
+      + (msg.is_pinned ? '<span class="history-item-pin" title="' + esc(lang.msgPin || 'Pinned') + '">' + historyPinSvg() + '</span>' : '')
+      + (kind !== 'text' ? '<span class="history-item-kind' + kindClass + '">' + esc(historyKindLabel(kind)) + '</span>' : '')
+      + (time ? '<span class="history-item-time">' + esc(time) + '</span>' : '')
+      + '</div>'
+      + '<div class="history-item-text">' + esc(historyPreviewText(msg)) + '</div>'
+      + '</div>'
+      + '</button>';
+  });
+  list.innerHTML = html;
+  list.querySelectorAll('.history-item').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      jumpToHistoryMessage(btn.getAttribute('data-msg-id'));
+    });
+  });
+  updateHistoryFooter();
+}
+
+function historyKindLabel(kind) {
+  if (kind === 'image') return lang.historyFilterImage || 'Image';
+  if (kind === 'file') return lang.historyFilterFile || 'File';
+  if (kind === 'share') return lang.historyFilterShare || 'Share';
+  if (kind === 'system') return lang.previewSystem || 'System';
+  return lang.historyFilterText || 'Text';
+}
+
+async function loadMoreHistoryMessages() {
+  var h = ensureHistoryState();
+  if (!h.open || !h.kind || !h.id || h.loadingMore) return;
+  if (!h.hasMore && h.messages.length) return;
+  h.loadingMore = true;
+  h.error = null;
+  updateHistoryFooter();
+  try {
+    var before = h.messages.length ? h.messages[0].message_id : undefined;
+    var batch = await fetchMessagesPage(h.kind, h.id, before, HISTORY_PAGE_LIMIT);
+    if (!batch.length) {
+      h.hasMore = false;
+    } else {
+      var prevLen = h.messages.length;
+      h.messages = mergeMessageListsAsc(h.messages, batch);
+      h.hasMore = batch.length >= HISTORY_PAGE_LIMIT && h.messages.length > prevLen;
+    }
+  } catch (e) {
+    h.error = (typeof getErrorMessage === 'function' ? getErrorMessage(e) : '') || lang.historyLoadFail || lang.loadFail || 'Load failed';
+    console.error('[Aro] loadMoreHistoryMessages', e);
+  } finally {
+    h.loadingMore = false;
+    renderHistoryList();
+  }
+}
+
+async function jumpToHistoryMessage(msgId) {
+  if (!msgId) return;
+  closeChatHistory();
+  // Ensure message is in the live window (load older pages if needed)
+  var found = false;
+  for (var i = 0; i < (state.messages || []).length; i++) {
+    if (state.messages[i].message_id === msgId) { found = true; break; }
+  }
+  if (!found && state.activeKind && state.activeId) {
+    var pages = 0;
+    while (pages < HISTORY_MAX_EXPORT_PAGES && !found) {
+      pages += 1;
+      var older = await loadOlderMessagesIntoChat({ silent: true });
+      if (!older || !older.loaded) break;
+      for (var j = 0; j < state.messages.length; j++) {
+        if (state.messages[j].message_id === msgId) { found = true; break; }
+      }
+      if (!older.hasMore) break;
+    }
+    if (found && typeof renderMessages === 'function') renderMessages();
+  }
+  var el = document.querySelector('[data-msg-id="' + msgId.replace(/"/g, '') + '"]');
+  if (el) {
+    try {
+      el.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
+    } catch (e2) {
+      try { el.scrollIntoView(); } catch (e3) {}
+    }
+    el.classList.add('msg-highlight');
+    setTimeout(function () {
+      try { el.classList.remove('msg-highlight'); } catch (e4) {}
+    }, 2200);
+  } else {
+    try {
+      Tapp.ui.showNotification({
+        title: lang.historyJumpMiss || lang.searchNoResults || 'Message not in view',
+        type: 'error',
+      });
+    } catch (e5) {}
+  }
+}
+
+/** Load one older page into the main chat window. Returns {loaded, hasMore}. */
+async function loadOlderMessagesIntoChat(opts) {
+  opts = opts || {};
+  var h = ensureHistoryState();
+  if (!state.activeKind || !state.activeId || h.mainLoadingOlder) {
+    return { loaded: 0, hasMore: false };
+  }
+  if (!(state.messages || []).length) return { loaded: 0, hasMore: false };
+  h.mainLoadingOlder = true;
+  var container = $('messages');
+  var prevHeight = container ? container.scrollHeight : 0;
+  var prevTop = container ? container.scrollTop : 0;
+  try {
+    var before = state.messages[0].message_id;
+    var batch = await fetchMessagesPage(state.activeKind, state.activeId, before, HISTORY_PAGE_LIMIT);
+    if (!batch.length) return { loaded: 0, hasMore: false };
+    var prevLen = state.messages.length;
+    state.messages = mergeMessageListsAsc(state.messages, batch);
+    var loaded = state.messages.length - prevLen;
+    if (loaded > 0) {
+      state.messagesFp = typeof messagesFingerprint === 'function'
+        ? messagesFingerprint(state.messages)
+        : state.messagesFp;
+      state.skipMsgAppear = true;
+      if (typeof renderMessages === 'function') renderMessages();
+      if (container) {
+        var newHeight = container.scrollHeight;
+        container.scrollTop = prevTop + (newHeight - prevHeight);
+      }
+    }
+    return { loaded: loaded, hasMore: batch.length >= HISTORY_PAGE_LIMIT };
+  } catch (e) {
+    if (!opts.silent) console.error('[Aro] loadOlderMessagesIntoChat', e);
+    return { loaded: 0, hasMore: false };
+  } finally {
+    h.mainLoadingOlder = false;
+  }
+}
+
+function bindMessagesScrollLoadOlder() {
+  var container = $('messages');
+  if (!container || container.dataset.historyScrollBound === '1') return;
+  container.dataset.historyScrollBound = '1';
+  container.addEventListener('scroll', function () {
+    if (container.scrollTop > 48) return;
+    if (!state.activeId || !state.messages || !state.messages.length) return;
+    var h = ensureHistoryState();
+    if (h.mainLoadingOlder) return;
+    loadOlderMessagesIntoChat({ silent: true });
+  });
+}
+
+function bindChatHistoryUi() {
+  if (bindChatHistoryUi._bound) return;
+  bindChatHistoryUi._bound = true;
+
+  var closeBtn = $('history-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeChatHistory);
+
+  var overlay = $('chat-history-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeChatHistory();
+    });
+  }
+
+  var search = $('history-search');
+  if (search) {
+    search.addEventListener('input', function () {
+      ensureHistoryState().query = search.value || '';
+      renderHistoryList();
+    });
+  }
+
+  document.querySelectorAll('[data-history-filter]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      ensureHistoryState().filter = btn.getAttribute('data-history-filter') || 'all';
+      syncHistoryFilterChips();
+      renderHistoryList();
+    });
+  });
+
+  var loadMore = $('history-load-more');
+  if (loadMore) loadMore.addEventListener('click', function () { loadMoreHistoryMessages(); });
+
+  bindMessagesScrollLoadOlder();
+}
+
+// ---------- Export / Import (profile backup sub-page) ----------
+
+function sanitizePayloadForExport(payload, opts) {
+  opts = opts || {};
+  if (payload == null || typeof payload !== 'object') return payload;
+  try {
+    var copy = JSON.parse(JSON.stringify(payload));
+  } catch (e) {
+    return payload;
+  }
+  // Strip huge data-URLs unless full media requested
+  if (!opts.includeMedia) {
+    if (copy.data && typeof copy.data === 'string' && copy.data.length > 2048) {
+      copy.data_omitted = true;
+      copy.data_bytes_estimate = copy.data.length;
+      delete copy.data;
+    }
+  }
+  return copy;
+}
+
+function serializeMessageForExport(msg, opts) {
+  return {
+    message_id: msg.message_id || '',
+    sender_actor: msg.sender_actor || '',
+    message_type: msg.message_type || 'text',
+    payload: sanitizePayloadForExport(msg.payload, opts),
+    reply_to: msg.reply_to || null,
+    is_encrypted: !!msg.is_encrypted,
+    is_pinned: !!msg.is_pinned,
+    created_at: msg.created_at || '',
+  };
+}
+
+function buildArchiveEnvelope(conversations, opts) {
+  opts = opts || {};
+  var identity = state.identity || {};
+  return {
+    format: ARO_ARCHIVE_FORMAT,
+    version: ARO_ARCHIVE_VERSION,
+    exported_at: new Date().toISOString(),
+    include_media: !!opts.includeMedia,
+    identity: {
+      actor_url: getIdentityActorUrl ? getIdentityActorUrl() : (identity.actor_url || state.localActorUrl || ''),
+      handle: typeof getIdentityHandle === 'function' ? getIdentityHandle() : (identity.handle || ''),
+      display_name: identity.display_name || identity.username || '',
+    },
+    conversations: conversations || [],
+  };
+}
+
+function downloadJsonFile(filename, obj) {
+  var json = JSON.stringify(obj, null, 2);
+  var blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () {
+    try { a.remove(); } catch (e) {}
+    try { URL.revokeObjectURL(url); } catch (e2) {}
+  }, 500);
+}
+
+function archiveFilename(prefix) {
+  var d = new Date();
+  var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+  var stamp = d.getFullYear()
+    + p2(d.getMonth() + 1)
+    + p2(d.getDate())
+    + '-'
+    + p2(d.getHours())
+    + p2(d.getMinutes());
+  return (prefix || 'aro-chat') + '-' + stamp + '.json';
+}
+
+async function exportActiveConversationArchive(opts) {
+  opts = opts || {};
+  if (!state.activeKind || !state.activeId) {
+    try { Tapp.ui.showNotification({ title: lang.backupNeedConversation || lang.noConv || 'Open a chat first', type: 'error' }); } catch (e0) {}
+    return;
+  }
+  try {
+    Tapp.ui.showNotification({ title: lang.backupExporting || 'Exporting…', type: 'info' });
+  } catch (e1) {}
+  try {
+    var msgs = await fetchAllMessagesForConversation(state.activeKind, state.activeId, {
+      includeMedia: opts.includeMedia,
+    });
+    // Prefer fullest of live window + fetched
+    msgs = mergeMessageListsAsc(state.messages || [], msgs);
+    var conv = {
+      kind: state.activeKind,
+      id: state.activeId,
+      name: historyConversationTitle(),
+      remote_actor_url: state.channelDetail && state.channelDetail.remote_actor_url || '',
+      member_count: state.roomDetail && state.roomDetail.member_count || undefined,
+      message_count: msgs.length,
+      messages: msgs.map(function (m) { return serializeMessageForExport(m, opts); }),
+    };
+    var archive = buildArchiveEnvelope([conv], opts);
+    downloadJsonFile(archiveFilename('aro-chat-' + (state.activeKind === 'room' ? 'room' : 'dm')), archive);
+    try {
+      Tapp.ui.showNotification({
+        title: lang.backupExportOk || 'Export ready',
+        message: (lang.backupExportCount || '{n} messages').replace('{n}', String(msgs.length)),
+        type: 'success',
+      });
+    } catch (e2) {}
+  } catch (e) {
+    notifyError(lang.backupExportFail || lang.loadFail || 'Export failed', e);
+  }
+}
+
+async function exportAllConversationsArchive(opts) {
+  opts = opts || {};
+  if (state.isGuest) {
+    try { Tapp.ui.showNotification({ title: lang.adminRequired || 'Sign in required', type: 'error' }); } catch (e0) {}
+    return;
+  }
+  var statusEl = $('backup-status');
+  var setStatus = function (t, kind) {
+    if (!statusEl) return;
+    statusEl.textContent = t || '';
+    statusEl.classList.remove('backup-status-ok', 'backup-status-error');
+    if (kind === 'ok') statusEl.classList.add('backup-status-ok');
+    if (kind === 'error') statusEl.classList.add('backup-status-error');
+  };
+
+  try {
+    setStatus(lang.backupExporting || 'Exporting…');
+    // Refresh conversation list
+    if (typeof loadConversations === 'function') {
+      try { await loadConversations(); } catch (eLc) {}
+    }
+    var conversations = [];
+    var channels = state.channels || [];
+    var rooms = state.rooms || [];
+    var totalTargets = channels.length + rooms.length;
+    var done = 0;
+
+    async function one(kind, id, name, extra) {
+      done += 1;
+      setStatus((lang.backupExportProgress || 'Exporting {done}/{total}…')
+        .replace('{done}', String(done))
+        .replace('{total}', String(totalTargets))
+        + (name ? ' · ' + name : ''));
+      var msgs = [];
+      try {
+        msgs = await fetchAllMessagesForConversation(kind, id, opts);
+      } catch (eFetch) {
+        console.warn('[Aro] export skip', kind, id, eFetch);
+      }
+      // If this is the active chat, merge live window
+      if (state.activeKind === kind && state.activeId === id) {
+        msgs = mergeMessageListsAsc(state.messages || [], msgs);
+      }
+      conversations.push(Object.assign({
+        kind: kind,
+        id: id,
+        name: name || id,
+        message_count: msgs.length,
+        messages: msgs.map(function (m) { return serializeMessageForExport(m, opts); }),
+      }, extra || {}));
+    }
+
+    for (var i = 0; i < channels.length; i++) {
+      var ch = channels[i];
+      await one(
+        'channel',
+        ch.channel_id,
+        ch.remote_actor_name || (ch.remote_actor_url || '').split('/').pop() || ch.channel_id,
+        { remote_actor_url: ch.remote_actor_url || '', status: ch.status || '' }
+      );
+    }
+    for (var j = 0; j < rooms.length; j++) {
+      var rm = rooms[j];
+      await one(
+        'room',
+        rm.room_id,
+        rm.name || rm.room_id,
+        { member_count: rm.member_count || 0 }
+      );
+    }
+
+    var archive = buildArchiveEnvelope(conversations, opts);
+    archive.summary = {
+      channels: channels.length,
+      rooms: rooms.length,
+      messages: conversations.reduce(function (n, c) { return n + (c.message_count || 0); }, 0),
+    };
+    downloadJsonFile(archiveFilename('aro-chat-all'), archive);
+    setStatus(
+      (lang.backupExportOk || 'Export ready') + ' · '
+        + (lang.backupExportCount || '{n} messages').replace('{n}', String(archive.summary.messages)),
+      'ok'
+    );
+    try {
+      Tapp.ui.showNotification({
+        title: lang.backupExportOk || 'Export ready',
+        message: (lang.backupExportCount || '{n} messages').replace('{n}', String(archive.summary.messages)),
+        type: 'success',
+      });
+    } catch (e2) {}
+  } catch (e) {
+    setStatus(lang.backupExportFail || lang.loadFail || 'Export failed', 'error');
+    notifyError(lang.backupExportFail || lang.loadFail || 'Export failed', e);
+  }
+}
+
+function parseChatArchive(raw) {
+  var data = raw;
+  if (typeof raw === 'string') {
+    data = JSON.parse(raw);
+  }
+  if (!data || typeof data !== 'object') throw new Error('Invalid archive');
+  // Accept envelope or bare conversation list
+  if (data.format && data.format !== ARO_ARCHIVE_FORMAT) {
+    // still allow if conversations array present
+    if (!Array.isArray(data.conversations)) {
+      throw new Error(lang.backupImportFormat || 'Unknown archive format');
+    }
+  }
+  if (!Array.isArray(data.conversations)) {
+    if (Array.isArray(data.messages) && data.id) {
+      data = {
+        format: ARO_ARCHIVE_FORMAT,
+        version: ARO_ARCHIVE_VERSION,
+        exported_at: data.exported_at || new Date().toISOString(),
+        conversations: [data],
+      };
+    } else {
+      throw new Error(lang.backupImportFormat || 'Unknown archive format');
+    }
+  }
+  return data;
+}
+
+async function loadImportedArchives() {
+  try {
+    if (!Tapp.storage || typeof Tapp.storage.get !== 'function') return [];
+    var list = await Tapp.storage.get(ARO_IMPORTED_ARCHIVES_KEY);
+    if (!list) return [];
+    if (typeof list === 'string') {
+      try { list = JSON.parse(list); } catch (e) { return []; }
+    }
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    console.warn('[Aro] loadImportedArchives', e);
+    return [];
+  }
+}
+
+async function saveImportedArchives(list) {
+  if (!Tapp.storage || typeof Tapp.storage.set !== 'function') {
+    throw new Error('storage unavailable');
+  }
+  // Cap stored archives to last 10 to protect storage quota
+  var trimmed = (list || []).slice(0, 10);
+  await Tapp.storage.set(ARO_IMPORTED_ARCHIVES_KEY, trimmed);
+  return trimmed;
+}
+
+async function importChatArchiveFromFile(file) {
+  if (!file) return;
+  var statusEl = $('backup-status');
+  var setStatus = function (t, kind) {
+    if (!statusEl) return;
+    statusEl.textContent = t || '';
+    statusEl.classList.remove('backup-status-ok', 'backup-status-error');
+    if (kind === 'ok') statusEl.classList.add('backup-status-ok');
+    if (kind === 'error') statusEl.classList.add('backup-status-error');
+  };
+  setStatus(lang.backupImporting || 'Importing…');
+  try {
+    var text = await new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result || '')); };
+      reader.onerror = function () { reject(reader.error || new Error('read failed')); };
+      reader.readAsText(file);
+    });
+    var archive = parseChatArchive(text);
+    var msgCount = 0;
+    (archive.conversations || []).forEach(function (c) {
+      msgCount += (c.messages && c.messages.length) || c.message_count || 0;
+    });
+    var entry = {
+      id: 'imp-' + Date.now().toString(36),
+      imported_at: new Date().toISOString(),
+      source_name: file.name || 'archive.json',
+      exported_at: archive.exported_at || '',
+      identity: archive.identity || null,
+      summary: archive.summary || {
+        channels: (archive.conversations || []).filter(function (c) { return c.kind === 'channel'; }).length,
+        rooms: (archive.conversations || []).filter(function (c) { return c.kind === 'room'; }).length,
+        messages: msgCount,
+      },
+      // Store full archive for offline browse
+      archive: archive,
+    };
+    var list = await loadImportedArchives();
+    list.unshift(entry);
+    await saveImportedArchives(list);
+    setStatus(
+      (lang.backupImportOk || 'Import saved') + ' · '
+        + (lang.backupExportCount || '{n} messages').replace('{n}', String(msgCount)),
+      'ok'
+    );
+    try {
+      Tapp.ui.showNotification({
+        title: lang.backupImportOk || 'Import saved',
+        message: (lang.backupImportHint || 'Browse under Imported archives'),
+        type: 'success',
+      });
+    } catch (e2) {}
+    renderBackupPage();
+  } catch (e) {
+    setStatus(lang.backupImportFail || 'Import failed', 'error');
+    notifyError(lang.backupImportFail || 'Import failed', e);
+  }
+}
+
+async function deleteImportedArchive(id) {
+  var list = await loadImportedArchives();
+  list = list.filter(function (a) { return a.id !== id; });
+  await saveImportedArchives(list);
+  if (state.history && state.history.browseArchiveId === id) {
+    state.history.browseArchiveId = null;
+    state.history.browseConversationId = null;
+  }
+  renderBackupPage();
+}
+
+function openImportedArchiveBrowser(entryId, conversationKey) {
+  ensureHistoryState();
+  state.history.browseArchiveId = entryId;
+  state.history.browseConversationId = conversationKey || null;
+  state.history.browseQuery = state.history.browseQuery || '';
+  renderBackupPage();
+}
+
+function backupConversationKey(conv, idx) {
+  return (conv.kind || 'x') + ':' + (conv.id || idx);
+}
+
+async function renderBackupPage() {
+  var content = $('feed-content');
+  var empty = $('feed-empty');
+  if (!content) return;
+  if (empty) empty.style.display = 'none';
+  var main = content.closest('.feed-main');
+  if (main) main.classList.remove('feed-empty-visible');
+
+  // Hide feed search on backup page
+  var searchBar = document.querySelector('.feed-search-bar');
+  if (searchBar) searchBar.style.display = 'none';
+
+  if (state.isGuest) {
+    content.innerHTML = '<div class="backup-page">'
+      + backupHeroHtml()
+      + '<div class="backup-card"><div class="backup-empty">'
+      + '<div class="aro-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg></div>'
+      + '<div class="history-empty-title">' + esc(lang.backupTitle || 'Chat backup') + '</div>'
+      + '<div>' + esc(lang.backupGuest || 'Sign in to export or import chat history.') + '</div>'
+      + '</div></div></div>';
+    return;
+  }
+
+  var h = ensureHistoryState();
+  var imported = await loadImportedArchives();
+
+  // Deep browse: archive → conversation messages
+  if (h.browseArchiveId) {
+    var entry = null;
+    for (var i = 0; i < imported.length; i++) {
+      if (imported[i].id === h.browseArchiveId) { entry = imported[i]; break; }
+    }
+    if (!entry) {
+      h.browseArchiveId = null;
+    } else if (h.browseConversationId) {
+      content.innerHTML = renderImportedConversationView(entry, h.browseConversationId);
+      bindBackupPageEvents(content);
+      return;
+    } else {
+      content.innerHTML = renderImportedArchiveView(entry);
+      bindBackupPageEvents(content);
+      return;
+    }
+  }
+
+  var html = '<div class="backup-page">';
+  html += backupHeroHtml();
+
+  html += '<div class="backup-card">';
+  html += '<div class="backup-card-head">'
+    + '<div class="backup-card-icon backup-card-icon-export">' + (SVG_ICONS.download || '') + '</div>'
+    + '<div><div class="backup-card-title">' + esc(lang.backupExportTitle || 'Export chat history') + '</div>'
+    + '<p class="backup-card-desc">' + esc(lang.backupExportDesc || 'Download a JSON backup of your direct messages and group chats from this device.') + '</p></div>'
+    + '</div>';
+  html += '<div class="backup-actions">';
+  html += '<button type="button" class="backup-btn backup-btn-primary" id="backup-export-all">'
+    + (SVG_ICONS.download || '') + '<span>' + esc(lang.backupExportAll || 'Export all chats') + '</span></button>';
+  html += '<button type="button" class="backup-btn" id="backup-export-active">'
+    + (SVG_ICONS.download || '') + '<span>' + esc(lang.backupExportActive || 'Export open chat') + '</span></button>';
+  html += '</div>';
+  html += '<label class="backup-check"><input type="checkbox" id="backup-include-media" /> '
+    + '<span>' + esc(lang.backupIncludeMedia || 'Include image data (larger file)') + '</span></label>';
+  html += '<div id="backup-status" class="backup-status" aria-live="polite"></div>';
+  html += '</div>';
+
+  html += '<div class="backup-card">';
+  html += '<div class="backup-card-head">'
+    + '<div class="backup-card-icon backup-card-icon-import">' + (SVG_ICONS.cloud || '') + '</div>'
+    + '<div><div class="backup-card-title">' + esc(lang.backupImportTitle || 'Import archive') + '</div>'
+    + '<p class="backup-card-desc">' + esc(lang.backupImportDesc || 'Import a previously exported JSON file to browse offline. Import does not re-send messages to the server.') + '</p></div>'
+    + '</div>';
+  html += '<div class="backup-actions">';
+  html += '<button type="button" class="backup-btn backup-btn-primary" id="backup-import-btn">'
+    + (SVG_ICONS.cloud || '') + '<span>' + esc(lang.backupImportBtn || 'Choose JSON file') + '</span></button>';
+  html += '<input type="file" id="backup-import-input" accept="application/json,.json" style="display:none" />';
+  html += '</div>';
+  html += '</div>';
+
+  html += '<div class="backup-card">';
+  html += '<div class="backup-card-head">'
+    + '<div class="backup-card-icon backup-card-icon-archive">' + (SVG_ICONS.page || '') + '</div>'
+    + '<div><div class="backup-card-title">' + esc(lang.backupImportedTitle || 'Imported archives') + '</div>'
+    + '<p class="backup-card-desc">' + esc(imported.length
+      ? (lang.backupImportHint || '')
+      : (lang.backupImportedEmpty || 'No imports yet.')) + '</p></div>'
+    + '</div>';
+  if (!imported.length) {
+    html += '<div class="backup-empty">'
+      + '<div class="aro-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></div>'
+      + '<div>' + esc(lang.backupImportedEmpty || 'No imports yet.') + '</div>'
+      + '</div>';
+  } else {
+    html += '<div class="backup-archive-list">';
+    imported.forEach(function (a) {
+      var sum = a.summary || {};
+      var meta = [];
+      if (sum.messages != null) meta.push((lang.backupExportCount || '{n} messages').replace('{n}', String(sum.messages)));
+      if (a.imported_at) {
+        try { meta.push(new Date(a.imported_at).toLocaleString(currentLocale)); } catch (e) { meta.push(a.imported_at); }
+      }
+      html += '<div class="backup-archive-item" data-archive-id="' + esc(a.id) + '">'
+        + '<div class="backup-archive-icon backup-archive-icon-file">' + (SVG_ICONS.page || '') + '</div>'
+        + '<div class="backup-archive-info">'
+        + '<div class="backup-archive-name">' + esc(a.source_name || a.id) + '</div>'
+        + '<div class="backup-archive-meta">' + esc(meta.join(' · ')) + '</div>'
+        + '</div>'
+        + '<div class="backup-archive-actions">'
+        + '<button type="button" class="backup-btn backup-btn-sm" data-open-archive="' + esc(a.id) + '">' + esc(lang.backupBrowse || 'Browse') + '</button>'
+        + '<button type="button" class="backup-btn backup-btn-sm backup-btn-danger" data-del-archive="' + esc(a.id) + '" title="' + esc(lang.remove || 'Remove') + '">' + esc(lang.remove || 'Remove') + '</button>'
+        + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="backup-card backup-card-muted">';
+  html += '<p class="backup-card-desc">' + esc(lang.backupPrivacyNote || 'Exports stay on your device. Large image payloads are omitted unless you enable “Include image data”.') + '</p>';
+  html += '</div>';
+  html += '</div>';
+
+  content.innerHTML = html;
+  bindBackupPageEvents(content);
+}
+
+function backupHeroHtml() {
+  return '<div class="backup-hero">'
+    + '<div class="backup-hero-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg></div>'
+    + '<div class="backup-hero-text">'
+    + '<h2 class="backup-hero-title">' + esc(lang.backupTitle || 'Chat backup') + '</h2>'
+    + '<p class="backup-hero-desc">' + esc(lang.backupHint || lang.feedHintBackup || 'Export and import your messenger history') + '</p>'
+    + '</div></div>';
+}
+
+function backupBackBtnHtml(id) {
+  return '<button type="button" class="backup-btn backup-btn-ghost" id="' + id + '">'
+    + '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'
+    + '<span>' + esc(lang.back || 'Back') + '</span></button>';
+}
+
+function renderImportedArchiveView(entry) {
+  var archive = entry.archive || {};
+  var convs = archive.conversations || [];
+  var html = '<div class="backup-page">';
+  html += '<div class="backup-toolbar">';
+  html += backupBackBtnHtml('backup-back-root');
+  html += '<div class="backup-toolbar-title">' + esc(entry.source_name || lang.backupImportedTitle || 'Archive') + '</div>';
+  html += '</div>';
+  html += '<div class="backup-card">';
+  if (!convs.length) {
+    html += '<div class="backup-empty">'
+      + '<div class="aro-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>'
+      + '<div>' + esc(lang.historyEmpty || 'No messages') + '</div></div>';
+  } else {
+    html += '<div class="backup-archive-list">';
+    convs.forEach(function (c, idx) {
+      var key = backupConversationKey(c, idx);
+      var count = (c.messages && c.messages.length) || c.message_count || 0;
+      var isRoom = c.kind === 'room';
+      var kindLabel = isRoom ? (lang.newRoom || 'Room') : (lang.dm || 'DM');
+      var iconCls = isRoom ? 'backup-archive-icon-room' : 'backup-archive-icon-dm';
+      var icon = isRoom ? (SVG_ICONS.room || '') : (SVG_ICONS.channel || '');
+      html += '<button type="button" class="backup-archive-item backup-archive-link" data-open-conv="' + esc(key) + '">'
+        + '<div class="backup-archive-icon ' + iconCls + '">' + icon + '</div>'
+        + '<div class="backup-archive-info">'
+        + '<div class="backup-archive-name">' + esc(c.name || c.id || key) + '</div>'
+        + '<div class="backup-archive-meta">' + esc(kindLabel + ' · ' + (lang.backupExportCount || '{n} messages').replace('{n}', String(count))) + '</div>'
+        + '</div>'
+        + '<span class="backup-chevron">' + (SVG_ICONS.chevronRight || '›') + '</span>'
+        + '</button>';
+    });
+    html += '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function renderImportedConversationView(entry, convKey) {
+  var archive = entry.archive || {};
+  var convs = archive.conversations || [];
+  var conv = null;
+  for (var i = 0; i < convs.length; i++) {
+    if (backupConversationKey(convs[i], i) === convKey) { conv = convs[i]; break; }
+  }
+  var h = ensureHistoryState();
+  var q = h.browseQuery || '';
+  var msgs = (conv && conv.messages) || [];
+  var filtered = filterHistoryMessages(msgs, q, 'all');
+  var view = filtered.slice().reverse();
+
+  var html = '<div class="backup-page">';
+  html += '<div class="backup-toolbar">';
+  html += backupBackBtnHtml('backup-back-archive');
+  html += '<div class="backup-toolbar-title">' + esc((conv && conv.name) || convKey) + '</div>';
+  html += '</div>';
+  html += '<div class="aro-search-bar history-search-bar" style="padding:0 0 10px;border:none">';
+  html += '<span class="aro-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>';
+  html += '<input id="backup-browse-search" class="aro-search-input" type="search" autocomplete="off" placeholder="' + esc(lang.historySearchPlaceholder || 'Search…') + '" value="' + esc(q) + '" />';
+  html += '</div>';
+  html += '<div class="backup-card backup-card-flat">';
+  html += '<div class="backup-browse-meta">' + esc((lang.historyMatchCount || '{n} / {total}')
+    .replace('{n}', String(filtered.length))
+    .replace('{total}', String(msgs.length))) + '</div>';
+  if (!view.length) {
+    html += historyEmptyHtml(
+      q ? (lang.searchNoResults || 'No matches') : (lang.historyEmpty || 'No messages'),
+      ''
+    );
+  } else {
+    html += '<div class="history-list backup-history-list">';
+    view.forEach(function (msg) {
+      var time = typeof timeStr === 'function' ? timeStr(msg.created_at) : (msg.created_at || '');
+      var sender = (msg.sender_actor || '').split('/').pop() || '?';
+      var kind = classifyHistoryMessage(msg);
+      var kindClass = kind !== 'text' ? (' history-item-kind-' + kind) : '';
+      html += '<div class="history-item history-item-static">'
+        + '<div class="history-item-avatar">' + esc((sender || '?').charAt(0).toUpperCase()) + '</div>'
+        + '<div class="history-item-body">'
+        + '<div class="history-item-top">'
+        + '<span class="history-item-name">' + esc(sender) + '</span>'
+        + (kind !== 'text' ? '<span class="history-item-kind' + kindClass + '">' + esc(historyKindLabel(kind)) + '</span>' : '')
+        + (time ? '<span class="history-item-time">' + esc(time) + '</span>' : '')
+        + '</div>'
+        + '<div class="history-item-text">' + esc(historyPreviewText(msg)) + '</div>'
+        + '</div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function bindBackupPageEvents(root) {
+  root = root || document;
+  var exportAll = root.querySelector('#backup-export-all') || $('backup-export-all');
+  if (exportAll) {
+    exportAll.addEventListener('click', function () {
+      var includeMedia = !!( $('backup-include-media') && $('backup-include-media').checked );
+      exportAllConversationsArchive({ includeMedia: includeMedia });
+    });
+  }
+  var exportActive = root.querySelector('#backup-export-active') || $('backup-export-active');
+  if (exportActive) {
+    exportActive.addEventListener('click', function () {
+      var includeMedia = !!( $('backup-include-media') && $('backup-include-media').checked );
+      exportActiveConversationArchive({ includeMedia: includeMedia });
+    });
+  }
+  var importBtn = root.querySelector('#backup-import-btn') || $('backup-import-btn');
+  var importInput = root.querySelector('#backup-import-input') || $('backup-import-input');
+  if (importBtn && importInput) {
+    importBtn.addEventListener('click', function () { importInput.click(); });
+    importInput.addEventListener('change', function () {
+      var file = importInput.files && importInput.files[0];
+      importInput.value = '';
+      if (file) importChatArchiveFromFile(file);
+    });
+  }
+  root.querySelectorAll('[data-open-archive]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openImportedArchiveBrowser(btn.getAttribute('data-open-archive'));
+    });
+  });
+  root.querySelectorAll('[data-del-archive]').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      var id = btn.getAttribute('data-del-archive');
+      try {
+        await deleteImportedArchive(id);
+        try { Tapp.ui.showNotification({ title: lang.backupDeleted || lang.remove || 'Removed', type: 'success' }); } catch (e0) {}
+      } catch (e) {
+        notifyError(lang.backupImportFail || 'Failed', e);
+      }
+    });
+  });
+  var backRoot = root.querySelector('#backup-back-root');
+  if (backRoot) {
+    backRoot.addEventListener('click', function () {
+      ensureHistoryState().browseArchiveId = null;
+      ensureHistoryState().browseConversationId = null;
+      renderBackupPage();
+    });
+  }
+  var backArch = root.querySelector('#backup-back-archive');
+  if (backArch) {
+    backArch.addEventListener('click', function () {
+      ensureHistoryState().browseConversationId = null;
+      renderBackupPage();
+    });
+  }
+  root.querySelectorAll('[data-open-conv]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openImportedArchiveBrowser(ensureHistoryState().browseArchiveId, btn.getAttribute('data-open-conv'));
+    });
+  });
+  var browseSearch = root.querySelector('#backup-browse-search');
+  if (browseSearch) {
+    browseSearch.addEventListener('input', function () {
+      ensureHistoryState().browseQuery = browseSearch.value || '';
+      renderBackupPage();
+    });
+  }
+}
+
+/** Inject history button into chat header actions (called from renderChatHeader). */
+function historyHeaderButtonHtml() {
+  var title = lang.historyTitle || 'Chat history';
+  return '<button type="button" class="aro-icon-btn" id="history-open-btn" title="' + esc(title) + '" aria-label="' + esc(title) + '">'
+    + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
+    + '</button>';
+}
+
+function wireHistoryHeaderButton() {
+  var btn = $('history-open-btn');
+  if (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openChatHistory();
+    });
+  }
+}
+
+// Reset history when leaving a conversation
+function resetHistoryOnConversationChange() {
+  ensureHistoryState();
+  if (state.history.open) closeChatHistory();
+  state.history.messages = [];
+  state.history.query = '';
+  state.history.filter = 'all';
+  state.history.hasMore = false;
+  state.history.error = null;
+  state.history.kind = null;
+  state.history.id = null;
+}
+`
+
+const PAGE_MOD_FILES = `\
+// ==================== Room files (group attachment library) ====================
+// Phase 1: prefer GET rooms/{id}/files (server index over messages + transfers).
+// Fallback: client aggregate of state.messages + listRoomTransfers.
+// Bytes live on the sender instance (transfer disk or message payload.data).
+
+var ROOM_FILES_PAGE_LIMIT = 50;
+
+function ensureRoomFilesState() {
+  if (!state.roomFiles) {
+    state.roomFiles = {
+      open: false,
+      roomId: null,
+      items: [],
+      query: '',
+      filter: 'all',
+      loading: false,
+      loadingMore: false,
+      hasMore: false,
+      error: null,
+      oldestMessageId: null,
+      source: 'client', // 'server' | 'client'
+      searchTimer: null,
+    };
+  }
+  return state.roomFiles;
+}
+
+function roomFilesHeaderButtonHtml() {
+  var title = lang.roomFilesTitle || 'Group files';
+  return '<button type="button" class="aro-icon-btn" id="room-files-open-btn" title="' + esc(title) + '" aria-label="' + esc(title) + '">'
+    + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>'
+    + '</button>';
+}
+
+function wireRoomFilesHeaderButton() {
+  var btn = $('room-files-open-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    openRoomFiles();
+  });
+}
+
+function applyRoomFilesLabels() {
+  var el;
+  el = $('room-files-title');
+  if (el) el.textContent = lang.roomFilesTitle || 'Group files';
+  el = $('room-files-close');
+  if (el) el.setAttribute('aria-label', lang.close || lang.dismiss || 'Close');
+  applySearchInputLabel('room-files-search', lang.roomFilesSearch || lang.pickerSearchPlaceholder || 'Search…');
+  el = $('room-files-load-more');
+  if (el) el.textContent = lang.roomFilesLoadMore || lang.historyLoadMore || 'Load more';
+  el = $('room-files-hint');
+  if (el) el.textContent = lang.roomFilesHint || '';
+  var map = {
+    all: lang.roomFilesFilterAll || lang.historyFilterAll || 'All',
+    image: lang.roomFilesFilterImage || lang.historyFilterImage || 'Images',
+    file: lang.roomFilesFilterFile || lang.historyFilterFile || 'Files',
+  };
+  document.querySelectorAll('[data-room-files-filter]').forEach(function (btn) {
+    var k = btn.getAttribute('data-room-files-filter');
+    if (map[k]) btn.textContent = map[k];
+  });
+}
+
+function syncRoomFilesFilterChips() {
+  var rf = ensureRoomFilesState();
+  document.querySelectorAll('[data-room-files-filter]').forEach(function (btn) {
+    var active = btn.getAttribute('data-room-files-filter') === rf.filter;
+    btn.classList.toggle('history-filter-active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+}
+
+function isRoomFilesOpen() {
+  var overlay = $('room-files-overlay');
+  return !!(overlay && overlay.style.display !== 'none' && !overlay.hidden);
+}
+
+function closeRoomFiles() {
+  var rf = ensureRoomFilesState();
+  rf.open = false;
+  if (rf.searchTimer) {
+    try { clearTimeout(rf.searchTimer); } catch (e) { /* ignore */ }
+    rf.searchTimer = null;
+  }
+  var overlay = $('room-files-overlay');
+  if (!overlay || overlay.style.display === 'none') return;
+  overlay.classList.remove('aro-history-enter');
+  if (typeof aroDismiss === 'function') {
+    aroDismiss(overlay, {
+      ms: 160,
+      onDone: function () { overlay.hidden = true; },
+    });
+  } else {
+    overlay.style.display = 'none';
+    overlay.hidden = true;
+  }
+}
+
+function resetRoomFilesOnConversationChange() {
+  var rf = ensureRoomFilesState();
+  if (rf.open) closeRoomFiles();
+  rf.roomId = null;
+  rf.items = [];
+  rf.query = '';
+  rf.filter = 'all';
+  rf.hasMore = false;
+  rf.error = null;
+  rf.oldestMessageId = null;
+  rf.loading = false;
+  rf.loadingMore = false;
+  rf.source = 'client';
+}
+
+/** Classify message as room-files kind: image | file | null */
+function roomFileKindFromMessage(msg) {
+  if (!msg) return null;
+  var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+  var mt = msg.message_type || 'text';
+  if (mt === 'text' || !mt) {
+    if (payload.transfer_id && payload.filename) mt = 'file-meta';
+    else if (payload.data && payload.mime_type && String(payload.mime_type).indexOf('image/') === 0) mt = 'image';
+    else if (payload.data && payload.filename) mt = 'file';
+  }
+  if (mt === 'image') return 'image';
+  if (mt === 'file' || mt === 'file-meta') return 'file';
+  return null;
+}
+
+function roomFileSenderLabel(actorOrMsg) {
+  var actor = '';
+  if (typeof actorOrMsg === 'string') actor = actorOrMsg;
+  else if (actorOrMsg) actor = actorOrMsg.sender_actor || '';
+  if (!actor) return '—';
+  if (typeof isLocalActor === 'function' && isLocalActor(actor)) {
+    return lang.me || lang.local || 'Me';
+  }
+  if (typeof findMemberByActor === 'function') {
+    var m = findMemberByActor(actor);
+    if (m && m.display_name) return m.display_name;
+  }
+  return actor.split('/').pop() || '?';
+}
+
+/**
+ * Status for list UI + download affordance.
+ * transfer_id without local list entry still counts as ready (same as message card).
+ */
+function roomFileStatusFromParts(hasInline, transferStatus, hasTransferId) {
+  if (hasInline) return 'ready';
+  if (transferStatus === 'completed') return 'ready';
+  if (transferStatus === 'pending' || transferStatus === 'in-progress' || transferStatus === 'transferring') {
+    return 'pending';
+  }
+  if (transferStatus === 'failed' || transferStatus === 'cancelled') return 'missing';
+  if (hasTransferId) return 'ready';
+  return 'missing';
+}
+
+function roomFileStatusLabel(status) {
+  if (status === 'ready') return lang.roomFilesStatusReady || 'Ready';
+  if (status === 'pending') return lang.roomFilesStatusPending || 'Uploading…';
+  return lang.roomFilesStatusMissing || 'Unavailable';
+}
+
+function roomFileExtBadge(filename, kind) {
+  var name = String(filename || '');
+  var ext = '';
+  var dot = name.lastIndexOf('.');
+  if (dot > 0 && dot < name.length - 1) {
+    ext = name.slice(dot + 1).toUpperCase();
+    if (ext.length > 5) ext = ext.slice(0, 4) + '…';
+  }
+  if (!ext) ext = kind === 'image' ? 'IMG' : 'FILE';
+  return ext;
+}
+
+/**
+ * Build list items from messages (attachments only).
+ * transferMap: transfer_id -> { status, filename, file_size, mime_type }
+ */
+function buildRoomFileItemsFromMessages(messages, transferMap) {
+  transferMap = transferMap || {};
+  var items = [];
+  (messages || []).forEach(function (msg) {
+    var kind = roomFileKindFromMessage(msg);
+    if (!kind) return;
+    var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+    var transferId = payload.transfer_id || '';
+    var tr = transferId ? transferMap[transferId] : null;
+    var hasInline = !!(payload.data);
+    var status = roomFileStatusFromParts(hasInline, tr && tr.status, !!transferId);
+    var filename = payload.filename || (tr && tr.filename) || (kind === 'image' ? 'image' : 'file');
+    var size = payload.size || (tr && tr.file_size) || 0;
+    var mime = payload.mime_type || (tr && tr.mime_type) || '';
+    var dlPayload = payload;
+    if (!hasInline && transferId && (!payload.transfer_id || !payload.filename)) {
+      dlPayload = {
+        transfer_id: transferId,
+        filename: filename,
+        size: size,
+        mime_type: mime,
+      };
+    }
+    items.push({
+      key: (msg.message_id || '') + ':' + (transferId || filename),
+      message_id: msg.message_id || '',
+      kind: kind,
+      filename: filename,
+      size: size,
+      mime: mime,
+      sender: roomFileSenderLabel(msg),
+      sender_actor: msg.sender_actor || '',
+      created_at: msg.created_at || '',
+      transfer_id: transferId,
+      has_inline: hasInline,
+      status: status,
+      payload: dlPayload,
+    });
+  });
+  return items;
+}
+
+/** Merge transfer-only rows that have no message yet (rare race). */
+function mergeOrphanTransfers(items, transfers, knownIds) {
+  knownIds = knownIds || {};
+  (transfers || []).forEach(function (tr) {
+    var id = tr.transfer_id || tr.id;
+    if (!id || knownIds[id]) return;
+    if (tr.status !== 'completed' && tr.status !== 'pending' && tr.status !== 'in-progress' && tr.status !== 'transferring') {
+      return;
+    }
+    items.push({
+      key: 'tr:' + id,
+      message_id: '',
+      kind: 'file',
+      filename: tr.filename || 'file',
+      size: tr.file_size || 0,
+      mime: tr.mime_type || '',
+      sender: '—',
+      sender_actor: '',
+      created_at: tr.created_at || '',
+      transfer_id: id,
+      has_inline: false,
+      status: roomFileStatusFromParts(false, tr.status, true),
+      payload: { transfer_id: id, filename: tr.filename, size: tr.file_size, mime_type: tr.mime_type },
+    });
+  });
+  return items;
+}
+
+function sortRoomFileItemsNewestFirst(items) {
+  items.sort(function (a, b) {
+    return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+  });
+  return items;
+}
+
+function filterRoomFileItems(items, query, filter) {
+  var q = normalizeSearchQuery(query);
+  var f = filter || 'all';
+  return (items || []).filter(function (it) {
+    if (f === 'image' && it.kind !== 'image') return false;
+    if (f === 'file' && it.kind !== 'file') return false;
+    if (!q) return true;
+    return matchesSearch(q, [it.filename, it.sender, it.mime, it.transfer_id, it.kind]);
+  });
+}
+
+function unwrapTransfersResponse(res) {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.transfers)) return res.transfers;
+  if (res.data && Array.isArray(res.data.transfers)) return res.data.transfers;
+  return [];
+}
+
+function unwrapMessagesResponse(res) {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.messages)) return res.messages;
+  if (res.data && Array.isArray(res.data.messages)) return res.data.messages;
+  return [];
+}
+
+function unwrapRoomFilesResponse(res) {
+  if (!res) return { files: [], hasMore: false, total: 0 };
+  var root = res;
+  if (res.data && (Array.isArray(res.data.files) || Array.isArray(res.data))) {
+    root = res.data;
+  }
+  var files = Array.isArray(root.files) ? root.files : (Array.isArray(root) ? root : []);
+  return {
+    files: files,
+    hasMore: !!root.has_more,
+    total: typeof root.total === 'number' ? root.total : files.length,
+  };
+}
+
+function mapServerRoomFileItem(raw) {
+  if (!raw) return null;
+  var kind = raw.kind === 'image' ? 'image' : 'file';
+  var transferId = raw.transfer_id || '';
+  var hasInline = !!raw.has_inline;
+  var status = raw.status || roomFileStatusFromParts(hasInline, null, !!transferId);
+  var filename = raw.filename || (kind === 'image' ? 'image' : 'file');
+  var size = raw.size || 0;
+  var mime = raw.mime_type || raw.mime || '';
+  return {
+    key: raw.key || ((raw.message_id || '') + ':' + (transferId || filename)),
+    message_id: raw.message_id || '',
+    kind: kind,
+    filename: filename,
+    size: size,
+    mime: mime,
+    sender: roomFileSenderLabel(raw.sender_actor || ''),
+    sender_actor: raw.sender_actor || '',
+    created_at: raw.created_at || '',
+    transfer_id: transferId,
+    has_inline: hasInline,
+    status: status,
+    payload: transferId
+      ? { transfer_id: transferId, filename: filename, size: size, mime_type: mime }
+      : null,
+  };
+}
+
+async function fetchRoomTransfersMap(roomId) {
+  var map = {};
+  if (!roomId || typeof Tapp === 'undefined' || !Tapp.federation) return map;
+  if (typeof Tapp.federation.listRoomTransfers !== 'function') return map;
+  try {
+    var res = await Tapp.federation.listRoomTransfers(roomId);
+    unwrapTransfersResponse(res).forEach(function (tr) {
+      var id = tr.transfer_id || tr.id;
+      if (id) map[id] = tr;
+    });
+  } catch (e) {
+    console.warn('[Aro] listRoomTransfers failed', e);
+  }
+  return map;
+}
+
+function rebuildRoomFilesFromStateMessages(transferMap) {
+  var rf = ensureRoomFilesState();
+  var items = buildRoomFileItemsFromMessages(state.messages || [], transferMap);
+  var known = {};
+  items.forEach(function (it) { if (it.transfer_id) known[it.transfer_id] = true; });
+  var transfers = Object.keys(transferMap).map(function (k) { return transferMap[k]; });
+  mergeOrphanTransfers(items, transfers, known);
+  sortRoomFileItemsNewestFirst(items);
+  rf.items = items;
+  rf.source = 'client';
+  if ((state.messages || []).length) {
+    rf.oldestMessageId = state.messages[0].message_id || null;
+    rf.hasMore = state.messages.length >= 100;
+  } else {
+    rf.oldestMessageId = null;
+    rf.hasMore = false;
+  }
+}
+
+function supportsListRoomFiles() {
+  return typeof Tapp !== 'undefined'
+    && Tapp.federation
+    && typeof Tapp.federation.listRoomFiles === 'function';
+}
+
+async function fetchRoomFilesPage(roomId, opts) {
+  opts = opts || {};
+  var res = await Tapp.federation.listRoomFiles(roomId, {
+    before: opts.before || undefined,
+    limit: opts.limit || ROOM_FILES_PAGE_LIMIT,
+    filter: opts.filter && opts.filter !== 'all' ? opts.filter : undefined,
+    q: opts.q || undefined,
+  });
+  var unwrapped = unwrapRoomFilesResponse(res);
+  var items = [];
+  unwrapped.files.forEach(function (raw) {
+    var it = mapServerRoomFileItem(raw);
+    if (it) items.push(it);
+  });
+  return {
+    items: items,
+    hasMore: unwrapped.hasMore,
+    total: unwrapped.total,
+  };
+}
+
+async function openRoomFiles() {
+  ensureRoomFilesState();
+  if (state.activeKind !== 'room' || !state.activeId) {
+    try {
+      Tapp.ui.showNotification({
+        title: lang.roomFilesOnlyRoom || lang.roomFilesTitle || 'Group files',
+        type: 'error',
+      });
+    } catch (e0) { /* ignore */ }
+    return;
+  }
+  if (typeof closeChatHistory === 'function' && typeof isChatHistoryOpen === 'function' && isChatHistoryOpen()) {
+    closeChatHistory();
+  }
+
+  var rf = state.roomFiles;
+  rf.open = true;
+  rf.roomId = state.activeId;
+  rf.error = null;
+  rf.loading = true;
+  rf.items = [];
+  rf.hasMore = false;
+  rf.oldestMessageId = null;
+
+  var overlay = $('room-files-overlay');
+  if (!overlay) return;
+  overlay.hidden = false;
+  overlay.style.display = 'flex';
+  overlay.classList.remove('aro-leaving', 'aro-history-enter');
+  try { void overlay.offsetWidth; } catch (eAnim) { /* ignore */ }
+  if (!(typeof prefersReducedMotion === 'function' && prefersReducedMotion())) {
+    overlay.classList.add('aro-history-enter');
+    var clearEnter = function () {
+      overlay.classList.remove('aro-history-enter');
+      overlay.removeEventListener('animationend', clearEnter);
+    };
+    overlay.addEventListener('animationend', clearEnter);
+    setTimeout(clearEnter, 360);
+  }
+
+  applyRoomFilesLabels();
+  var sub = $('room-files-subtitle');
+  if (sub) {
+    sub.textContent = (state.roomDetail && state.roomDetail.name)
+      || lang.roomFilesTitle
+      || 'Group files';
+  }
+  var search = $('room-files-search');
+  if (search) search.value = rf.query || '';
+  syncRoomFilesFilterChips();
+  renderRoomFilesList();
+
+  try {
+    await loadRoomFilesFirstPage();
+  } catch (e) {
+    rf.error = (typeof getErrorMessage === 'function' ? getErrorMessage(e) : '') || lang.roomFilesLoading || 'Load failed';
+  } finally {
+    rf.loading = false;
+    renderRoomFilesList();
+  }
+
+  if (search) {
+    try { search.focus(); } catch (eF) { /* ignore */ }
+  }
+}
+
+async function loadRoomFilesFirstPage() {
+  var rf = ensureRoomFilesState();
+  if (!rf.roomId) return;
+
+  if (supportsListRoomFiles()) {
+    try {
+      var page = await fetchRoomFilesPage(rf.roomId, {
+        filter: rf.filter,
+        q: normalizeSearchQuery(rf.query) || undefined,
+        limit: ROOM_FILES_PAGE_LIMIT,
+      });
+      rf.items = page.items;
+      rf.hasMore = page.hasMore;
+      rf.source = 'server';
+      rf.oldestMessageId = oldestMessageIdFromItems(page.items);
+      return;
+    } catch (e) {
+      console.warn('[Aro] listRoomFiles failed, falling back to client scan', e);
+    }
+  }
+
+  // Phase 0 fallback
+  var transferMap = await fetchRoomTransfersMap(rf.roomId);
+  rebuildRoomFilesFromStateMessages(transferMap);
+}
+
+function oldestMessageIdFromItems(items) {
+  var oldest = null;
+  var oldestTs = '';
+  (items || []).forEach(function (it) {
+    if (!it.message_id) return;
+    var ts = it.created_at || '';
+    if (!oldest || String(ts).localeCompare(String(oldestTs)) < 0) {
+      oldest = it.message_id;
+      oldestTs = ts;
+    }
+  });
+  return oldest;
+}
+
+async function loadMoreRoomFiles() {
+  var rf = ensureRoomFilesState();
+  if (!rf.open || !rf.roomId || rf.loadingMore || !rf.hasMore) return;
+  rf.loadingMore = true;
+  rf.error = null;
+  updateRoomFilesFooter();
+  try {
+    if (rf.source === 'server' && supportsListRoomFiles()) {
+      var before = rf.oldestMessageId || undefined;
+      var page = await fetchRoomFilesPage(rf.roomId, {
+        before: before,
+        filter: rf.filter,
+        q: normalizeSearchQuery(rf.query) || undefined,
+        limit: ROOM_FILES_PAGE_LIMIT,
+      });
+      if (!page.items.length) {
+        rf.hasMore = false;
+      } else {
+        var seen = {};
+        rf.items.forEach(function (it) { seen[it.key] = true; });
+        page.items.forEach(function (it) {
+          if (!seen[it.key]) rf.items.push(it);
+        });
+        rf.hasMore = page.hasMore;
+        var nextOldest = oldestMessageIdFromItems(page.items);
+        if (nextOldest) rf.oldestMessageId = nextOldest;
+      }
+    } else {
+      // Client: page older room messages into live window
+      if (typeof Tapp === 'undefined' || !Tapp.federation || typeof Tapp.federation.getRoomMessages !== 'function') {
+        rf.hasMore = false;
+        return;
+      }
+      var beforeMsg = rf.oldestMessageId || undefined;
+      var res = await Tapp.federation.getRoomMessages(rf.roomId, beforeMsg, 100);
+      var batch = unwrapMessagesResponse(res);
+      if (!batch.length) {
+        rf.hasMore = false;
+      } else {
+        if (state.activeKind === 'room' && state.activeId === rf.roomId) {
+          var existing = {};
+          (state.messages || []).forEach(function (m) {
+            if (m.message_id) existing[m.message_id] = true;
+          });
+          var older = [];
+          batch.forEach(function (m) {
+            if (m.message_id && !existing[m.message_id]) older.push(m);
+          });
+          if (older.length && typeof mergeMessageListsAsc === 'function') {
+            state.messages = mergeMessageListsAsc(state.messages || [], older);
+            if (typeof messagesFingerprint === 'function') {
+              state.messagesFp = messagesFingerprint(state.messages);
+            }
+            state.skipMsgAppear = true;
+            if (typeof renderMessages === 'function') renderMessages();
+          } else if (older.length) {
+            state.messages = older.concat(state.messages || []);
+          }
+          rf.oldestMessageId = state.messages.length ? state.messages[0].message_id : rf.oldestMessageId;
+        } else {
+          rf.oldestMessageId = batch[0].message_id || rf.oldestMessageId;
+        }
+        rf.hasMore = batch.length >= 100;
+        var transferMap = await fetchRoomTransfersMap(rf.roomId);
+        rebuildRoomFilesFromStateMessages(transferMap);
+      }
+    }
+  } catch (e) {
+    rf.error = (typeof getErrorMessage === 'function' ? getErrorMessage(e) : '') || lang.loadFail || 'Load failed';
+    console.error('[Aro] loadMoreRoomFiles', e);
+  } finally {
+    rf.loadingMore = false;
+    renderRoomFilesList();
+  }
+}
+
+async function refreshRoomFilesFromServer() {
+  var rf = ensureRoomFilesState();
+  if (!rf.open || !rf.roomId || rf.loading || rf.loadingMore) return;
+  rf.loading = true;
+  rf.error = null;
+  updateRoomFilesFooter();
+  try {
+    await loadRoomFilesFirstPage();
+  } catch (e) {
+    rf.error = (typeof getErrorMessage === 'function' ? getErrorMessage(e) : '') || lang.loadFail || 'Load failed';
+  } finally {
+    rf.loading = false;
+    renderRoomFilesList();
+  }
+}
+
+function scheduleRoomFilesSearchRefresh() {
+  var rf = ensureRoomFilesState();
+  if (rf.searchTimer) {
+    try { clearTimeout(rf.searchTimer); } catch (e) { /* ignore */ }
+  }
+  // Server search when using index; client filter is instant (no debounce needed for client-only)
+  if (rf.source === 'server' || supportsListRoomFiles()) {
+    rf.searchTimer = setTimeout(function () {
+      rf.searchTimer = null;
+      if (!rf.open) return;
+      refreshRoomFilesFromServer();
+    }, 280);
+  } else {
+    renderRoomFilesList();
+  }
+}
+
+function updateRoomFilesFooter() {
+  var rf = ensureRoomFilesState();
+  var meta = $('room-files-meta');
+  var loadBtn = $('room-files-load-more');
+  var displayItems = rf.source === 'server'
+    ? (rf.items || [])
+    : filterRoomFileItems(rf.items, rf.query, rf.filter);
+  if (meta) {
+    meta.classList.toggle('history-meta-error', !!rf.error && !rf.loadingMore && !rf.loading);
+    if (rf.loadingMore || rf.loading) {
+      meta.textContent = lang.roomFilesLoading || lang.pickerLoading || 'Loading…';
+    } else if (rf.error) {
+      meta.textContent = rf.error;
+    } else {
+      var q = normalizeSearchQuery(rf.query);
+      var total = (rf.items || []).length;
+      if (rf.source === 'client' && (q || (rf.filter && rf.filter !== 'all'))) {
+        meta.textContent = (lang.roomFilesMatchCount || lang.historyMatchCount || '{n} / {total}')
+          .replace('{n}', String(displayItems.length))
+          .replace('{total}', String(total));
+      } else {
+        meta.textContent = (lang.roomFilesCount || '{n} items').replace('{n}', String(displayItems.length));
+      }
+    }
+  }
+  if (loadBtn) {
+    loadBtn.hidden = !rf.hasMore;
+    loadBtn.disabled = !!rf.loadingMore || !!rf.loading;
+    loadBtn.textContent = rf.loadingMore
+      ? (lang.roomFilesLoading || 'Loading…')
+      : (lang.roomFilesLoadMore || 'Load more');
+  }
+}
+
+function roomFileCanDownload(item) {
+  if (!item || item.status === 'pending' || item.status === 'missing') return false;
+  if (item.transfer_id) return true;
+  if (item.has_inline) {
+    // Need live payload.data or will jump-to-chat instead
+    if (item.payload && item.payload.data) return true;
+    if (item.message_id && state.messages) {
+      for (var i = 0; i < state.messages.length; i++) {
+        if (state.messages[i].message_id === item.message_id
+          && state.messages[i].payload
+          && state.messages[i].payload.data) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function roomFileResolvePayload(item) {
+  if (!item) return null;
+  if (item.message_id && state.messages) {
+    for (var j = 0; j < state.messages.length; j++) {
+      if (state.messages[j].message_id === item.message_id && state.messages[j].payload) {
+        return state.messages[j].payload;
+      }
+    }
+  }
+  if (item.payload) return item.payload;
+  if (item.transfer_id) {
+    return {
+      transfer_id: item.transfer_id,
+      filename: item.filename,
+      size: item.size,
+      mime_type: item.mime,
+    };
+  }
+  return null;
+}
+
+function renderRoomFilesList() {
+  var list = $('room-files-list');
+  if (!list) return;
+  var rf = ensureRoomFilesState();
+  var filtered = rf.source === 'server'
+    ? (rf.items || [])
+    : filterRoomFileItems(rf.items, rf.query, rf.filter);
+
+  if (rf.loading && !rf.items.length) {
+    list.innerHTML = '<div class="room-files-skeleton" aria-hidden="true">'
+      + '<div class="room-files-skel-row"></div>'
+      + '<div class="room-files-skel-row"></div>'
+      + '<div class="room-files-skel-row"></div>'
+      + '</div>';
+    updateRoomFilesFooter();
+    return;
+  }
+  if (!rf.items.length) {
+    list.innerHTML = typeof historyEmptyHtml === 'function'
+      ? historyEmptyHtml(lang.roomFilesEmpty || 'No files yet', lang.roomFilesEmptyHint || '')
+      : '<div class="history-empty">' + esc(lang.roomFilesEmpty || 'No files') + '</div>';
+    updateRoomFilesFooter();
+    return;
+  }
+  if (!filtered.length) {
+    list.innerHTML = typeof historyEmptyHtml === 'function'
+      ? historyEmptyHtml(lang.searchNoResults || 'No matches', '')
+      : '<div class="history-empty">' + esc(lang.searchNoResults || 'No matches') + '</div>';
+    updateRoomFilesFooter();
+    return;
+  }
+
+  var html = '';
+  var lastDay = '';
+  filtered.forEach(function (it) {
+    var day = '';
+    try {
+      var d = new Date(it.created_at);
+      if (!isNaN(d)) day = d.toDateString();
+    } catch (e) { day = ''; }
+    if (day && day !== lastDay) {
+      lastDay = day;
+      html += '<div class="history-day"><span>'
+        + esc(typeof dayLabel === 'function' ? dayLabel(it.created_at) : day)
+        + '</span></div>';
+    }
+    var time = typeof timeStr === 'function' ? timeStr(it.created_at) : '';
+    var sizeLabel = it.size && typeof formatFileSize === 'function' ? formatFileSize(it.size) : (it.size ? String(it.size) : '');
+    var statusClass = 'room-file-status room-file-status-' + (it.status || 'missing');
+    var canDl = roomFileCanDownload(it);
+    var canJump = !!it.message_id;
+    var badge = roomFileExtBadge(it.filename, it.kind);
+    var kindClass = it.kind === 'image' ? 'room-file-tile-image' : 'room-file-tile-file';
+    var metaBits = [it.sender, sizeLabel].filter(Boolean).join(' · ');
+
+    html += '<div class="history-item history-item-static room-file-item" data-file-key="' + esc(it.key) + '">'
+      + '<div class="room-file-tile ' + kindClass + '" aria-hidden="true">'
+      + '<span class="room-file-tile-ext">' + esc(badge) + '</span>'
+      + (it.kind === 'image'
+        ? '<svg class="room-file-tile-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>'
+        : '<svg class="room-file-tile-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>')
+      + '</div>'
+      + '<div class="history-item-body room-file-body">'
+      + '<div class="history-item-top room-file-top">'
+      + '<span class="history-item-name room-file-name" title="' + esc(it.filename) + '">' + esc(it.filename) + '</span>'
+      + '<span class="' + statusClass + '">' + esc(roomFileStatusLabel(it.status)) + '</span>'
+      + (time ? '<span class="history-item-time">' + esc(time) + '</span>' : '')
+      + '</div>'
+      + (metaBits
+        ? '<div class="history-item-text room-file-meta-line">' + esc(metaBits) + '</div>'
+        : '')
+      + '<div class="room-file-actions">'
+      + (canDl
+        ? '<button type="button" class="room-file-action-btn room-file-action-primary room-file-dl" data-file-key="' + esc(it.key) + '">'
+          + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>'
+          + '<span>' + esc(lang.roomFilesDownload || lang.downloadFile || 'Download') + '</span></button>'
+        : '')
+      + (canJump
+        ? '<button type="button" class="room-file-action-btn '
+          + (canDl ? 'room-file-action-ghost' : 'room-file-action-primary')
+          + ' room-file-jump" data-msg-id="' + esc(it.message_id) + '">'
+          + (canDl
+            ? ''
+            : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>')
+          + '<span>' + esc(canDl
+            ? (lang.roomFilesJump || 'Show in chat')
+            : (lang.roomFilesOpenInChat || lang.roomFilesJump || 'Open in chat'))
+          + '</span></button>'
+        : '')
+      + '</div>'
+      + '</div></div>';
+  });
+  list.innerHTML = html;
+
+  list.querySelectorAll('.room-file-dl').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var key = btn.getAttribute('data-file-key');
+      var item = null;
+      for (var i = 0; i < rf.items.length; i++) {
+        if (rf.items[i].key === key) { item = rf.items[i]; break; }
+      }
+      if (!item || typeof downloadMessageFile !== 'function') return;
+      var payload = roomFileResolvePayload(item);
+      if (!payload || (!payload.data && !payload.transfer_id)) {
+        try {
+          Tapp.ui.showNotification({
+            title: lang.roomFilesNeedChat || lang.roomFilesJump || 'Open in chat to download',
+            type: 'info',
+          });
+        } catch (eN) { /* ignore */ }
+        if (item.message_id) {
+          closeRoomFiles();
+          if (typeof jumpToHistoryMessage === 'function') jumpToHistoryMessage(item.message_id);
+        }
+        return;
+      }
+      downloadMessageFile(payload, btn);
+    });
+  });
+  list.querySelectorAll('.room-file-jump').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var msgId = btn.getAttribute('data-msg-id');
+      if (!msgId) return;
+      closeRoomFiles();
+      if (typeof jumpToHistoryMessage === 'function') {
+        jumpToHistoryMessage(msgId);
+      } else {
+        var el = document.querySelector('[data-msg-id="' + msgId.replace(/"/g, '') + '"]');
+        if (el) {
+          try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e2) {}
+          el.classList.add('msg-highlight');
+          setTimeout(function () { try { el.classList.remove('msg-highlight'); } catch (e3) {} }, 2200);
+        }
+      }
+    });
+  });
+
+  updateRoomFilesFooter();
+}
+
+function bindRoomFilesUi() {
+  if (bindRoomFilesUi._bound) return;
+  bindRoomFilesUi._bound = true;
+
+  var closeBtn = $('room-files-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeRoomFiles);
+
+  var overlay = $('room-files-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeRoomFiles();
+    });
+  }
+
+  var search = $('room-files-search');
+  if (search) {
+    search.addEventListener('input', function () {
+      ensureRoomFilesState().query = search.value || '';
+      if (ensureRoomFilesState().source === 'server' || supportsListRoomFiles()) {
+        scheduleRoomFilesSearchRefresh();
+      } else {
+        renderRoomFilesList();
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-room-files-filter]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var rf = ensureRoomFilesState();
+      rf.filter = btn.getAttribute('data-room-files-filter') || 'all';
+      syncRoomFilesFilterChips();
+      if (rf.source === 'server' || supportsListRoomFiles()) {
+        refreshRoomFilesFromServer();
+      } else {
+        renderRoomFilesList();
+      }
+    });
+  });
+
+  var loadMore = $('room-files-load-more');
+  if (loadMore) loadMore.addEventListener('click', function () { loadMoreRoomFiles(); });
+}
+`
+
 const PAGE_MOD_MEMBERS = `\
   panel.style.display = '';
   $('member-title').textContent = lang.members + ' (' + state.members.length + ')';
 
   var myRole = state.roomDetail.my_role || '';
-  var canKick = (myRole === 'owner' || myRole === 'admin');
+  var myPending = (state.roomDetail.my_membership_status || state.roomDetail.membership_status || 'active') === 'pending';
+  var canKick = !myPending && (myRole === 'owner' || myRole === 'admin');
+  var memberQ = (state.search && state.search.member) || '';
+  var memberQuery = normalizeSearchQuery(memberQ);
+  var filteredMembers = !memberQuery ? state.members : state.members.filter(function (m) {
+    var name = m.display_name || (m.actor_url || '').split('/').pop() || '';
+    return matchesSearch(memberQuery, [name, m.actor_url, m.role, m.username, m.membership_status]);
+  });
 
   var html = '';
-  state.members.forEach(function (m) {
-    var name = m.display_name || (m.actor_url || '').split('/').pop() || '?';
-    // 普通成员不显示角色，减少列表噪音；仅标出群主/管理员
-    var roleText = (m.role && m.role !== 'member') ? roleLabel(m.role) : '';
-    html += '<div class="member-item">'
-      + '<div class="member-avatar">' + avatarContentHtml(m.avatar_url || '', name) + '</div>'
-      + '<div class="member-info">'
-      + '<div class="member-name">' + esc(name) + '</div>'
-      + (roleText ? '<div class="member-role">' + esc(roleText) + '</div>' : '')
-      + '</div>';
-    if (m.is_local) {
-      html += '<span class="member-local">' + esc(lang.local) + '</span>';
-    } else if (canKick && m.role !== 'owner') {
-      html += '<button type="button" class="member-kick" data-actor="' + esc(m.actor_url || '') + '" title="' + esc(lang.kick) + '" aria-label="' + esc(lang.kick) + '">'
-        + '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
-        + '</button>';
-    }
-    html += '</div>';
-  });
+  if (state.members.length > 0 && filteredMembers.length === 0) {
+    html = searchNoResultsHtml();
+  } else {
+    filteredMembers.forEach(function (m) {
+      var name = m.display_name || (m.actor_url || '').split('/').pop() || '?';
+      // 普通成员不显示角色，减少列表噪音；仅标出群主/管理员
+      var roleText = (m.role && m.role !== 'member') ? roleLabel(m.role) : '';
+      var mStatus = m.membership_status || 'active';
+      if (mStatus === 'pending') {
+        roleText = roleText
+          ? (roleText + ' · ' + (lang.pending || 'Pending'))
+          : (lang.pending || 'Pending');
+      }
+      html += '<div class="member-item' + (mStatus === 'pending' ? ' member-pending' : '') + '">'
+        + '<div class="member-avatar">' + avatarContentHtml(m.avatar_url || '', name) + '</div>'
+        + '<div class="member-info">'
+        + '<div class="member-name">' + esc(name) + '</div>'
+        + (roleText ? '<div class="member-role">' + esc(roleText) + '</div>' : '')
+        + '</div>';
+      if (m.is_local) {
+        html += '<span class="member-local">' + esc(lang.local) + '</span>';
+      } else if (canKick && m.role !== 'owner') {
+        html += '<button type="button" class="member-kick" data-actor="' + esc(m.actor_url || '') + '" title="' + esc(lang.kick) + '" aria-label="' + esc(lang.kick) + '">'
+          + '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+          + '</button>';
+      }
+      html += '</div>';
+    });
+  }
   $('member-list').innerHTML = html;
 
   // Wire kick buttons
@@ -5425,10 +10182,10 @@ const PAGE_MOD_MEMBERS = `\
     });
   }
 
-  // Show invite icon for any room member
+  // Show invite icon for active room members only
   var inviteWrap = $('invite-wrap');
   if (inviteWrap) {
-    inviteWrap.style.display = (state.roomDetail && myRole) ? '' : 'none';
+    inviteWrap.style.display = (!myPending && state.roomDetail && myRole) ? '' : 'none';
   }
 }
 
@@ -5468,8 +10225,10 @@ function renderChatHeader() {
     metaEl.innerHTML = '<span class="meta-badge badge-channel">' + esc(lang.dm) + '</span>'
       + (ch.status === 'pending' ? '<span class="meta-badge badge-pending">' + esc(lang.pending) + '</span>' : '');
     var actionsHtml = '';
+    if (typeof historyHeaderButtonHtml === 'function') actionsHtml += historyHeaderButtonHtml();
     if (ch.status === 'pending' && ch.initiated_by === 'remote') {
       actionsHtml += '<button class="action-btn action-accept" id="action-accept">' + esc(lang.accept) + '</button>';
+      actionsHtml += '<button class="action-btn action-reject" id="action-reject-channel">' + esc(lang.reject || 'Decline') + '</button>';
     }
     if (ch.status !== 'closed') {
       actionsHtml += '<div class="manage-wrap"><button type="button" class="aro-icon-btn manage-btn" id="manage-toggle" title="' + esc(lang.manage) + '" aria-label="' + esc(lang.manage) + '">⋯</button>'
@@ -5483,42 +10242,86 @@ function renderChatHeader() {
     actionsEl.innerHTML = actionsHtml;
   } else if (state.activeKind === 'room' && state.roomDetail) {
     var rm = state.roomDetail;
+    var roomPending = (rm.my_membership_status || rm.membership_status || 'active') === 'pending';
+    // Public/open rooms may open without membership (browse); offer join when invite_policy=open
+    var canSelfJoin = !roomPending
+      && !rm.my_role
+      && (rm.invite_policy === 'open')
+      && typeof Tapp !== 'undefined'
+      && Tapp.federation
+      && typeof Tapp.federation.joinRoom === 'function';
     nameEl.textContent = rm.name || '?';
     if (avatarEl) {
       avatarEl.innerHTML = avatarContentHtml(rm.avatar_url || '', rm.name || '?');
     }
     metaEl.innerHTML = '<span class="meta-badge badge-room">' + (rm.member_count || 0) + ' ' + esc(lang.members) + '</span>'
-      + (rm.my_role && rm.my_role !== 'member' ? '<span class="meta-badge badge-role">' + esc(roleLabel(rm.my_role)) + '</span>' : '');
+      + (roomPending ? '<span class="meta-badge badge-pending">' + esc(lang.pending || 'Pending') + '</span>' : '')
+      + (canSelfJoin ? '<span class="meta-badge badge-pending">' + esc(lang.openJoin || 'Open') + '</span>' : '')
+      + (!roomPending && rm.my_role && rm.my_role !== 'member' ? '<span class="meta-badge badge-role">' + esc(roleLabel(rm.my_role)) + '</span>' : '');
     var menuItems = '';
-    if (rm.my_role === 'owner' || rm.my_role === 'admin') {
+    if (!roomPending && (rm.my_role === 'owner' || rm.my_role === 'admin')) {
       menuItems += '<button type="button" class="manage-item" id="action-edit-room" role="menuitem">'
         + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
         + esc(lang.editRoom) + '</button>';
     }
-    if (rm.my_role !== 'owner') {
+    if (!roomPending && rm.my_role !== 'owner') {
       menuItems += '<button type="button" class="manage-item manage-item-danger" id="action-leave" role="menuitem">'
         + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>'
         + esc(lang.leave) + '</button>';
     }
-    if (rm.my_role === 'owner') {
+    if (!roomPending && rm.my_role === 'owner') {
+      menuItems += '<button type="button" class="manage-item" id="action-transfer-owner" role="menuitem">'
+        + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 3l-7 7"/><path d="M3 3l7 7"/><path d="M12 14v7"/><path d="M9 18l3 3 3-3"/></svg>'
+        + esc(lang.transferOwner || 'Transfer ownership') + '</button>';
       menuItems += '<button type="button" class="manage-item manage-item-danger" id="action-dissolve" role="menuitem">'
         + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M10 11v6M14 11v6"/></svg>'
         + esc(lang.dissolve) + '</button>';
     }
-    // Member toggle button + manage menu
+    // E2E key publish (best-effort; enables encrypt when peers publish too)
+    if (!roomPending && typeof Tapp !== 'undefined' && Tapp.federation && typeof Tapp.federation.initiateRoomE2e === 'function') {
+      menuItems += '<button type="button" class="manage-item" id="action-room-e2e" role="menuitem">'
+        + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
+        + esc(lang.e2ePublish || 'Publish encryption key') + '</button>';
+    }
+    // History + group files + member toggle + manage menu
+    var historyBtn = typeof historyHeaderButtonHtml === 'function' ? historyHeaderButtonHtml() : '';
+    var filesBtn = typeof roomFilesHeaderButtonHtml === 'function' ? roomFilesHeaderButtonHtml() : '';
     var memberToggleHtml = '<button type="button" class="aro-icon-btn member-toggle-btn" id="member-toggle-btn" title="' + esc(lang.members) + '" aria-label="' + esc(lang.members) + '">'
       + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>'
       + '</button>';
-    if (menuItems) {
-      actionsEl.innerHTML = memberToggleHtml + '<div class="manage-wrap"><button type="button" class="aro-icon-btn manage-btn" id="manage-toggle" title="' + esc(lang.manage) + '" aria-label="' + esc(lang.manage) + '">⋯</button>'
+    var roomInviteActions = '';
+    if (roomPending) {
+      roomInviteActions = '<button class="action-btn action-accept" id="action-accept-room">' + esc(lang.accept) + '</button>'
+        + '<button class="action-btn action-reject" id="action-reject-room">' + esc(lang.reject || lang.leave || 'Reject') + '</button>';
+      actionsEl.innerHTML = roomInviteActions;
+    } else if (canSelfJoin) {
+      actionsEl.innerHTML = '<button class="action-btn action-accept" id="action-join-room">' + esc(lang.joinRoom || lang.accept || 'Join') + '</button>';
+    } else if (menuItems) {
+      actionsEl.innerHTML = historyBtn + filesBtn + memberToggleHtml + '<div class="manage-wrap"><button type="button" class="aro-icon-btn manage-btn" id="manage-toggle" title="' + esc(lang.manage) + '" aria-label="' + esc(lang.manage) + '">⋯</button>'
         + '<div class="manage-dropdown" id="manage-dropdown" role="menu">' + menuItems + '</div></div>';
     } else {
-      actionsEl.innerHTML = memberToggleHtml;
+      actionsEl.innerHTML = historyBtn + filesBtn + memberToggleHtml;
     }
   }
 
   var acceptBtn = $('action-accept');
   if (acceptBtn) acceptBtn.addEventListener('click', doAcceptChannel);
+  var rejectChBtn = $('action-reject-channel');
+  if (rejectChBtn) rejectChBtn.addEventListener('click', function () {
+    if (typeof doRejectChannel === 'function') doRejectChannel();
+  });
+  var acceptRoomBtn = $('action-accept-room');
+  if (acceptRoomBtn) acceptRoomBtn.addEventListener('click', function () {
+    if (typeof doAcceptRoomInvite === 'function') doAcceptRoomInvite();
+  });
+  var rejectRoomBtn = $('action-reject-room');
+  if (rejectRoomBtn) rejectRoomBtn.addEventListener('click', function () {
+    if (typeof doRejectRoomInvite === 'function') doRejectRoomInvite();
+  });
+  var joinRoomBtn = $('action-join-room');
+  if (joinRoomBtn) joinRoomBtn.addEventListener('click', function () {
+    if (typeof doJoinOpenRoom === 'function') doJoinOpenRoom();
+  });
   var closeBtn = $('action-close');
   if (closeBtn) closeBtn.addEventListener('click', function () { closeManageDropdown(); doCloseChannel(); });
   var leaveBtn = $('action-leave');
@@ -5527,10 +10330,16 @@ function renderChatHeader() {
   if (editRoomBtn) editRoomBtn.addEventListener('click', function () { closeManageDropdown(); showEditRoomDialog(); });
   var dissolveBtn = $('action-dissolve');
   if (dissolveBtn) dissolveBtn.addEventListener('click', function () { closeManageDropdown(); doDissolveRoom(); });
+  var transferBtn = $('action-transfer-owner');
+  if (transferBtn) transferBtn.addEventListener('click', function () { closeManageDropdown(); doTransferOwnership(); });
+  var roomE2eBtn = $('action-room-e2e');
+  if (roomE2eBtn) roomE2eBtn.addEventListener('click', function () { closeManageDropdown(); doRoomE2eExchange(); });
   var toggleBtn = $('manage-toggle');
   if (toggleBtn) toggleBtn.addEventListener('click', toggleManageDropdown);
   var memberToggle = $('member-toggle-btn');
   if (memberToggle) memberToggle.addEventListener('click', toggleMemberPanel);
+  if (typeof wireHistoryHeaderButton === 'function') wireHistoryHeaderButton();
+  if (typeof wireRoomFilesHeaderButton === 'function') wireRoomFilesHeaderButton();
 
   if (typeof updateSendState === 'function') updateSendState();
 }
@@ -5576,7 +10385,10 @@ async function loadConversations() {
     var errors = [];
     if (results[0].status === 'fulfilled' && results[0].value) {
       state.channels = results[0].value.channels || [];
-`
+    // soft delivery health check (dead letters) — non-blocking
+    if (typeof refreshDeliveryHealth === 'function') {
+      refreshDeliveryHealth().catch(function () {});
+    }`
 
 const PAGE_MOD_API = `\
     } else if (results[0].status === 'rejected') {
@@ -5598,6 +10410,10 @@ const PAGE_MOD_API = `\
           + '<div style="opacity:.85;white-space:pre-wrap">' + esc(errors.join('\\n')) + '</div></div>';
       }
     }
+    // Soft dead-letter check (host notification center is primary)
+    if (typeof refreshDeliveryHealth === 'function') {
+      refreshDeliveryHealth().catch(function () {});
+    }
   } catch (e) {
     console.error('[Aro] loadConversations error:', e);
   }
@@ -5606,6 +10422,8 @@ const PAGE_MOD_API = `\
 async function openConversation(kind, id) {
   // Drop previous realtime subscription before switching
   await unsubscribeRealtime();
+  if (typeof resetHistoryOnConversationChange === 'function') resetHistoryOnConversationChange();
+  if (typeof resetRoomFilesOnConversationChange === 'function') resetRoomFilesOnConversationChange();
 
   state.activeKind = kind;
   state.activeId = id;
@@ -5658,14 +10476,19 @@ async function openConversation(kind, id) {
         state.messagesFp = messagesFingerprint(state.messages);
       }
     } else {
-      var results = await Promise.all([
+      // Pending invites cannot load messages (403) — use allSettled so detail/members still open
+      var roomParts = await Promise.allSettled([
         Tapp.federation.getRoom(id),
         Tapp.federation.getRoomMembers(id),
         Tapp.federation.getRoomMessages(id, undefined, 200),
       ]);
-      if (results[0]) state.roomDetail = results[0];
-      if (results[1]) {
-        state.members = unwrapRoomMembers(results[1]);
+      if (roomParts[0].status === 'fulfilled' && roomParts[0].value) {
+        state.roomDetail = roomParts[0].value;
+      } else if (roomParts[0].status === 'rejected') {
+        throw roomParts[0].reason;
+      }
+      if (roomParts[1].status === 'fulfilled' && roomParts[1].value) {
+        state.members = unwrapRoomMembers(roomParts[1].value);
         // Extract local actor URL from members list
         if (!state.localActorUrl) {
           for (var i = 0; i < state.members.length; i++) {
@@ -5674,9 +10497,13 @@ async function openConversation(kind, id) {
           }
         }
       }
-      if (results[2]) {
-        state.messages = results[2].messages || [];
+      if (roomParts[2].status === 'fulfilled' && roomParts[2].value) {
+        state.messages = roomParts[2].value.messages || [];
         state.messagesFp = messagesFingerprint(state.messages);
+      } else {
+        // pending membership: empty transcript is expected
+        state.messages = [];
+        state.messagesFp = '';
       }
     }
   } catch (e) {
@@ -5692,9 +10519,118 @@ async function openConversation(kind, id) {
   updateSendState();
   startPolling();
   subscribeRealtime();
+  // Best-effort E2E key publish after open (non-blocking)
+  if (typeof maybePublishE2eKeys === 'function') {
+    maybePublishE2eKeys().catch(function () {});
+  }
   var focusInput = $('msg-input');
   if (focusInput && !focusInput.disabled) {
     try { focusInput.focus(); } catch (e) { /* ignore */ }
+  }
+}
+
+/** Auto-publish E2E keys when opening an active channel/room (if API present). */
+async function maybePublishE2eKeys() {
+  if (typeof Tapp === 'undefined' || !Tapp.federation) return;
+  if (state.activeKind === 'channel' && state.activeId
+    && typeof Tapp.federation.initiateChannelE2e === 'function') {
+    var st = state.channelDetail && state.channelDetail.status;
+    if (st === 'active' || st === 'accepted') {
+      try {
+        await Tapp.federation.initiateChannelE2e(state.activeId);
+      } catch (e) {
+        console.debug('[Aro] channel E2E exchange skipped', e);
+      }
+    }
+  } else if (state.activeKind === 'room' && state.activeId
+    && typeof Tapp.federation.initiateRoomE2e === 'function') {
+    try {
+      await Tapp.federation.initiateRoomE2e(state.activeId);
+    } catch (e) {
+      console.debug('[Aro] room E2E publish skipped', e);
+    }
+  }
+}
+
+async function doRoomE2eExchange() {
+  if (!state.activeId || state.activeKind !== 'room') return;
+  if (typeof Tapp.federation.initiateRoomE2e !== 'function') return;
+  try {
+    var res = await Tapp.federation.initiateRoomE2e(state.activeId);
+    var n = (res && (res.published_key_count != null ? res.published_key_count : res.data && res.data.published_key_count)) || '';
+    try {
+      Tapp.ui.showNotification({
+        title: lang.e2ePublished || 'Encryption key published',
+        message: n ? String(n) : undefined,
+        type: 'success',
+      });
+    } catch (e0) { /* ignore */ }
+  } catch (e) {
+    notifyError(lang.e2eFail || lang.sendFail || 'E2E failed', e);
+  }
+}
+
+async function doTransferOwnership() {
+  if (!state.activeId || state.activeKind !== 'room') return;
+  if (typeof Tapp.federation.transferRoomOwnership !== 'function') {
+    try {
+      Tapp.ui.showNotification({ title: lang.transferOwnerUnsupported || 'Not available', type: 'error' });
+    } catch (e0) { /* ignore */ }
+    return;
+  }
+  var candidates = (state.members || []).filter(function (m) {
+    return m.role !== 'owner' && m.role !== 'observer' && !(typeof isLocalActor === 'function' && isLocalActor(m.actor_url));
+  });
+  // Include local non-self members too
+  candidates = (state.members || []).filter(function (m) {
+    return m.role !== 'owner' && m.role !== 'observer';
+  });
+  if (!candidates.length) {
+    try {
+      Tapp.ui.showNotification({
+        title: lang.transferOwnerEmpty || 'No member to transfer to',
+        type: 'error',
+      });
+    } catch (e1) { /* ignore */ }
+    return;
+  }
+  var lines = candidates.map(function (m, i) {
+    var name = m.display_name || (m.actor_url || '').split('/').pop() || m.actor_url;
+    return (i + 1) + '. ' + name;
+  }).join('\\n');
+  var pick = window.prompt(
+    (lang.transferOwnerPrompt || 'Transfer ownership to member number:') + '\\n' + lines,
+    '1'
+  );
+  if (!pick) return;
+  var idx = parseInt(pick, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= candidates.length) {
+    try {
+      Tapp.ui.showNotification({ title: lang.transferOwnerInvalid || 'Invalid choice', type: 'error' });
+    } catch (e2) { /* ignore */ }
+    return;
+  }
+  var target = candidates[idx];
+  var label = target.display_name || target.actor_url;
+  if (!(await aroConfirm((lang.transferOwnerConfirm || 'Transfer ownership to {name}?').replace('{name}', label), true))) {
+    return;
+  }
+  try {
+    await Tapp.federation.transferRoomOwnership(state.activeId, target.actor_url);
+    var detail = await Tapp.federation.getRoom(state.activeId);
+    if (detail) state.roomDetail = detail;
+    var membersRes = await Tapp.federation.getRoomMembers(state.activeId);
+    state.members = unwrapRoomMembers(membersRes);
+    renderMembers();
+    renderChatHeader();
+    try {
+      Tapp.ui.showNotification({
+        title: lang.transferOwnerOk || 'Ownership transferred',
+        type: 'success',
+      });
+    } catch (e3) { /* ignore */ }
+  } catch (e) {
+    notifyError(lang.transferOwnerFail || lang.sendFail || 'Transfer failed', e);
   }
 }
 
@@ -5732,14 +10668,11 @@ async function doSend() {
     if (attach && (attach.type === 'image' || attach.type === 'file')) {
       var useChunked = attach.size > INLINE_ATTACH_MAX;
       if (useChunked) {
-        if (state.activeKind !== 'channel') {
-          throw new Error(lang.fileTooLargeRoom || lang.fileTooLarge || 'File too large');
-        }
-        if (typeof Tapp.federation.initiateTransfer !== 'function' || typeof Tapp.federation.uploadChunk !== 'function') {
+        if (state.activeKind !== 'channel' && state.activeKind !== 'room') {
           throw new Error(lang.fileTooLarge || 'File too large');
         }
         clearPendingAttach();
-        await sendChannelFileTransfer(attach, text, replyTo);
+        await sendChunkedFileTransfer(attach, text, replyTo);
         if (state.quoteMsg) clearQuote();
         await pollMessages(true);
         return;
@@ -5776,6 +10709,9 @@ async function doSend() {
       if (attach.installPackageOmitted) msgPayload.install_package_omitted = attach.installPackageOmitted;
       if (attach.brewId) msgPayload.brew_id = attach.brewId;
       if (attach.brewLink) msgPayload.brew_link = attach.brewLink;
+      // Source mark for the share card icon (favicon URL / brand slug).
+      if (attach.sourceIcon) msgPayload.source_icon = attach.sourceIcon;
+      if (attach.sourceName) msgPayload.source_name = attach.sourceName;
       // Library share: title, description, platform_id, item_id, image, content_type (like report snapshot).
       // content_type stays "library" (message kind); item kind goes in item_type / description.
       if (attach.type === 'library') {
@@ -5794,6 +10730,14 @@ async function doSend() {
         msgPayload.content_type = 'library';
         if (libItemType) msgPayload.item_type = libItemType;
         msgPayload.summary = libTitle;
+        // Structured sender stats for the media card (omit empties so old
+        // recipients ignore them and the card falls back cleanly).
+        if (attach.playtimeMin != null) msgPayload.playtime_min = attach.playtimeMin;
+        if (attach.rating != null) msgPayload.rating = attach.rating;
+        if (attach.progressCur != null) msgPayload.progress_cur = attach.progressCur;
+        if (attach.progressTotal != null) msgPayload.progress_total = attach.progressTotal;
+        if (attach.artist) msgPayload.artist = attach.artist;
+        if (attach.album) msgPayload.album = attach.album;
       } else {
         if (attach.platformId) msgPayload.platform_id = attach.platformId;
         if (attach.itemId) msgPayload.item_id = attach.itemId;
@@ -5834,11 +10778,32 @@ async function doSend() {
 
     var sendReq = { payload: msgPayload, message_type: msgType };
     if (replyTo) sendReq.reply_to = replyTo;
-    if (state.activeKind === 'channel') {
-      await Tapp.federation.sendMessage(state.activeId, sendReq);
-    } else {
-      await Tapp.federation.sendRoomMessage(state.activeId, sendReq);
+    // Prefer E2E when session may be established (server no-ops if keys missing)
+    if (state.e2ePreferEncrypt !== false) {
+      sendReq.encrypt = true;
     }
+    var sendRes;
+    if (state.activeKind === 'channel') {
+      try {
+        sendRes = await Tapp.federation.sendMessage(state.activeId, sendReq);
+      } catch (eEnc) {
+        // Fallback plaintext if peer has no E2E session yet
+        if (sendReq.encrypt) {
+          delete sendReq.encrypt;
+          sendRes = await Tapp.federation.sendMessage(state.activeId, sendReq);
+        } else throw eEnc;
+      }
+    } else {
+      try {
+        sendRes = await Tapp.federation.sendRoomMessage(state.activeId, sendReq);
+      } catch (eEnc2) {
+        if (sendReq.encrypt) {
+          delete sendReq.encrypt;
+          sendRes = await Tapp.federation.sendRoomMessage(state.activeId, sendReq);
+        } else throw eEnc2;
+      }
+    }
+    if (typeof noteDeliveryEnqueue === 'function') noteDeliveryEnqueue(sendRes);
     await pollMessages(true);
   } catch (e) {
     if (text) input.value = text;
@@ -5847,6 +10812,87 @@ async function doSend() {
     state.sending = false;
     updateSendState();
     input.focus();
+  }
+}
+
+/**
+ * Surface outbound enqueue warnings (remote may not receive even though send returned 200).
+ * Full dead-letter failures also land in the host notification center via the delivery worker.
+ */
+function noteDeliveryEnqueue(sendRes) {
+  if (!sendRes) return;
+  var d = sendRes.delivery || (sendRes.data && sendRes.data.delivery) || null;
+  if (!d || !d.warning) return;
+  var title = lang.deliveryWarnTitle || 'Delivery notice';
+  var msg = lang.deliveryWarnBody || d.warning;
+  if (d.queued === 0 && d.remote_targets > 0) {
+    msg = lang.deliveryNotQueued
+      || 'Message saved locally but could not be queued for remote peers';
+  }
+  try {
+    Tapp.ui.showNotification({ title: title, message: msg, type: 'error' });
+  } catch (e) { /* ignore */ }
+  console.warn('[Aro] delivery enqueue warning', d);
+}
+
+/** Soft check for dead letters (host notifications are primary; this is in-app). */
+async function refreshDeliveryHealth() {
+  if (typeof Tapp === 'undefined' || !Tapp.federation) return;
+  if (typeof Tapp.federation.getDeliveryStats !== 'function') return;
+  try {
+    var stats = await Tapp.federation.getDeliveryStats();
+    var root = stats && stats.data ? stats.data : stats;
+    if (!root) return;
+    var dead = root.dead || root.failed || 0;
+    if (dead > 0 && !refreshDeliveryHealth._warned) {
+      refreshDeliveryHealth._warned = true;
+      try {
+        Tapp.ui.showNotification({
+          title: lang.deliveryDeadTitle || 'Federation delivery failed',
+          message: (lang.deliveryDeadBody || '{n} outbound messages could not be delivered')
+            .replace('{n}', String(dead)),
+          type: 'error',
+        });
+      } catch (e2) { /* ignore */ }
+      // Offer re-queue of dead letters (one-shot; cooldown 2 min)
+      if (
+        typeof Tapp.federation.retryAllDeadDelivery === 'function'
+        && !refreshDeliveryHealth._retryOffered
+        && typeof aroConfirm === 'function'
+      ) {
+        refreshDeliveryHealth._retryOffered = true;
+        try {
+          var ok = await aroConfirm(
+            (lang.deliveryRetryConfirm || 'Retry {n} failed deliveries?').replace('{n}', String(dead)),
+            false
+          );
+          if (ok) {
+            var retryRes = await Tapp.federation.retryAllDeadDelivery(Math.min(dead, 50));
+            var retried = 0;
+            if (retryRes) {
+              retried = retryRes.retried != null
+                ? retryRes.retried
+                : (retryRes.data && retryRes.data.retried) || 0;
+            }
+            try {
+              Tapp.ui.showNotification({
+                title: lang.deliveryRetryOk || 'Retry queued',
+                message: (lang.deliveryRetryBody || '{n} messages re-queued').replace('{n}', String(retried)),
+                type: 'success',
+              });
+            } catch (e3) { /* ignore */ }
+            refreshDeliveryHealth._warned = false;
+          }
+        } catch (e4) { /* ignore */ }
+        setTimeout(function () { refreshDeliveryHealth._retryOffered = false; }, 120000);
+      }
+    }
+    if (dead === 0) {
+      refreshDeliveryHealth._warned = false;
+      refreshDeliveryHealth._retryOffered = false;
+    }
+  } catch (e) {
+    /* stats API optional */
   }
 }
 
@@ -5997,16 +11043,77 @@ function handleRealtimeMessage(ev) {
     pollMessages(true);
     return;
   }
-  if (data.event === 'member_invited' || data.event === 'member_left' || data.event === 'member_kicked' || data.type === 'room_deleted') {
-    if (state.activeKind === 'room') {
-      Tapp.federation.getRoomMembers(state.activeId).then(function (res) {
-        state.members = unwrapRoomMembers(res);
-        renderMembers();
-        renderChatHeader();
-      }).catch(function () {});
-      if (data.type === 'room_deleted') {
-        notifyError(lang.dissolve || 'Room deleted');
-      }
+  // Federated file transfer live progress (incoming chunks / cancel / complete)
+  if (
+    data.type === 'transfer_progress'
+    || data.type === 'transfer_completed'
+    || data.type === 'transfer_cancelled'
+  ) {
+    if (typeof handleTransferWsEvent === 'function') {
+      handleTransferWsEvent(data);
+    } else {
+      // lightweight toast fallback
+      try {
+        if (data.type === 'transfer_progress' && data.progress != null) {
+          var pct = Math.round(Number(data.progress) || 0);
+          if (pct > 0 && pct < 100 && pct % 25 === 0) {
+            var prog = (lang.transferProgress || 'Receiving… {pct}%').replace('{pct}', String(pct));
+            Tapp.ui.showNotification({ title: prog, type: 'info' });
+          }
+        } else if (data.type === 'transfer_completed') {
+          Tapp.ui.showNotification({
+            title: lang.transferReceived || lang.transferComplete || 'File ready',
+            type: 'success',
+          });
+        } else if (data.type === 'transfer_cancelled') {
+          Tapp.ui.showNotification({
+            title: lang.transferCancelled || 'Transfer cancelled',
+            type: 'info',
+          });
+        }
+      } catch (eProg) { /* ignore */ }
+    }
+    // Refresh group files panel if open
+    if (typeof isRoomFilesOpen === 'function' && isRoomFilesOpen() && typeof loadRoomFiles === 'function') {
+      loadRoomFiles({ append: false }).catch(function () {});
+    }
+    return;
+  }
+  // Membership / room lifecycle (local WS + federated RoomJoin/Leave/Pin paths)
+  if (
+    data.event === 'member_invited'
+    || data.event === 'member_left'
+    || data.event === 'member_joined'
+    || data.event === 'member_removed'
+    || data.event === 'member_kicked'
+    || data.type === 'room_deleted'
+  ) {
+    if (state.activeKind !== 'room' || !state.activeId) {
+      if (typeof loadConversations === 'function') loadConversations().catch(function () {});
+      return;
+    }
+    // Room dissolved remotely → leave UI like local dissolve
+    if (data.type === 'room_deleted') {
+      exitActiveConversationUi(lang.dissolve || lang.dissolveFail || 'Room deleted', true);
+      return;
+    }
+    // Kicked / forced leave of self
+    if (
+      (data.event === 'member_removed' || data.event === 'member_left' || data.event === 'member_kicked')
+      && data.actor
+      && typeof isLocalActor === 'function'
+      && isLocalActor(data.actor)
+    ) {
+      exitActiveConversationUi(lang.kicked || lang.leave || 'You left the group', true);
+      return;
+    }
+    Tapp.federation.getRoomMembers(state.activeId).then(function (res) {
+      state.members = unwrapRoomMembers(res);
+      renderMembers();
+      renderChatHeader();
+    }).catch(function () {});
+    if (typeof loadConversations === 'function') {
+      loadConversations().catch(function () {});
     }
     return;
   }
@@ -6057,7 +11164,16 @@ function bindRealtimeListeners() {
   }
   if (typeof Tapp.federation.onRoomUpdate === 'function') {
     Tapp.federation.onRoomUpdate(function (ev) {
-      if (!ev || ev.roomId !== state.activeId || state.activeKind !== 'room') return;
+      if (!ev || !ev.roomId) return;
+      if (ev.event === 'deleted') {
+        if (state.activeKind === 'room' && state.activeId === ev.roomId) {
+          exitActiveConversationUi(lang.dissolve || 'Room deleted', true);
+        } else if (typeof loadConversations === 'function') {
+          loadConversations().catch(function () {});
+        }
+        return;
+      }
+      if (ev.roomId !== state.activeId || state.activeKind !== 'room') return;
       if (ev.event === 'disconnected') pollMessages(true);
       else if (ev.event === 'governance_changed') {
         Tapp.federation.getRoom(state.activeId).then(function (detail) {
@@ -6074,6 +11190,17 @@ function bindRealtimeListeners() {
           }
           renderChatHeader();
           renderConvList();
+        }).catch(function () {});
+      } else if (
+        ev.event === 'member_joined'
+        || ev.event === 'member_left'
+        || ev.event === 'member_removed'
+        || ev.event === 'member_invited'
+      ) {
+        Tapp.federation.getRoomMembers(state.activeId).then(function (res) {
+          state.members = unwrapRoomMembers(res);
+          renderMembers();
+          renderChatHeader();
         }).catch(function () {});
       }
     });
@@ -6149,8 +11276,12 @@ function ensureInvitePopover() {
   div.id = 'invite-popover';
   div.className = 'invite-popover';
   div.style.display = 'none';
+  var contactSearchPh = lang.searchContacts || lang.pickerSearchPlaceholder || 'Search…';
   div.innerHTML = '<div class="invite-pop-section">'
     + '<div class="invite-pop-label" id="invite-pop-contacts-label">' + esc(lang.inviteFromContacts) + '</div>'
+    + '<div class="aro-search-bar aro-search-bar-compact" style="padding:0 0 6px;border:none">'
+    + '<input id="invite-contact-search" class="aro-search-input" type="search" autocomplete="off" enterkeyhint="search" placeholder="' + esc(contactSearchPh) + '" aria-label="' + esc(contactSearchPh) + '" />'
+    + '</div>'
     + '<div id="invite-pop-list" class="invite-pop-list"></div>'
     + '<div id="invite-pop-empty" class="invite-pop-empty" style="display:none">' + esc(lang.noContacts) + '</div>'
     + '</div>'
@@ -6172,6 +11303,14 @@ function ensureInvitePopover() {
   if (inviteInput) inviteInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); doInviteMember(); }
   });
+  var contactSearch = div.querySelector('#invite-contact-search');
+  if (contactSearch) {
+    contactSearch.addEventListener('input', function () {
+      if (!state.search) state.search = {};
+      state.search.invite = contactSearch.value || '';
+      renderInvitePopoverContacts();
+    });
+  }
   _invitePopover = div;
   return div;
 }
@@ -6241,6 +11380,20 @@ function renderInvitePopoverContacts() {
     listEl.innerHTML = '';
     emptyEl.style.display = '';
     emptyEl.textContent = lang.noContacts;
+    return;
+  }
+
+  var inviteQ = normalizeSearchQuery((state.search && state.search.invite) || '');
+  if (inviteQ) {
+    contacts = contacts.filter(function (c) {
+      return matchesSearch(inviteQ, [c.name, c.actorUrl]);
+    });
+  }
+
+  if (contacts.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.style.display = '';
+    emptyEl.textContent = lang.searchNoResults || lang.noContacts;
     return;
   }
 
@@ -6336,37 +11489,67 @@ async function doKickMember(actorUrl) {
 }
 
 // ==================== Dissolve Room ====================
+/**
+ * Leave the open chat UI (dissolve / kicked / remote room_deleted).
+ * @param {string} [toastTitle]
+ * @param {boolean} [asError]
+ */
+function exitActiveConversationUi(toastTitle, asError) {
+  try {
+    if (typeof unsubscribeRealtime === 'function') unsubscribeRealtime();
+  } catch (e0) { /* ignore */ }
+  state.activeKind = null;
+  state.activeId = null;
+  state.channelDetail = null;
+  state.roomDetail = null;
+  state.members = [];
+  state.messages = [];
+  state.messagesFp = '';
+  if (typeof stopPolling === 'function') stopPolling();
+  if (typeof clearPendingAttach === 'function') clearPendingAttach();
+  if (typeof clearQuote === 'function') clearQuote();
+  if (typeof closeAttachMenu === 'function') closeAttachMenu();
+  if (typeof closeInvitePopover === 'function') closeInvitePopover();
+  if (typeof resetHistoryOnConversationChange === 'function') resetHistoryOnConversationChange();
+  if (typeof resetRoomFilesOnConversationChange === 'function') resetRoomFilesOnConversationChange();
+  var chat = $('chat-container');
+  if (chat) chat.style.display = 'none';
+  var panel = $('member-panel');
+  if (panel) {
+    panel.style.display = 'none';
+    panel.classList.remove('member-open-mobile');
+  }
+  var emptyAfter = $('empty-state');
+  if (emptyAfter) {
+    emptyAfter.style.display = '';
+    if (typeof aroPlayEnter === 'function') aroPlayEnter(emptyAfter, 'aro-panel-enter');
+  }
+  var sideAfter = $('sidebar');
+  if (sideAfter) {
+    sideAfter.classList.remove('sidebar-hidden-mobile');
+    if (typeof aroPlayEnter === 'function') aroPlayEnter(sideAfter, 'aro-panel-enter');
+  }
+  if (typeof updateSendState === 'function') updateSendState();
+  if (typeof loadConversations === 'function') loadConversations();
+  if (toastTitle) {
+    try {
+      Tapp.ui.showNotification({
+        title: toastTitle,
+        type: asError ? 'error' : 'info',
+      });
+    } catch (e1) {
+      if (asError && typeof notifyError === 'function') notifyError(toastTitle);
+    }
+  }
+}
+
 async function doDissolveRoom() {
   if (!state.activeId || state.activeKind !== 'room') return;
   if (!(await aroConfirm(lang.dissolveConfirm, true))) return;
   try {
     await unsubscribeRealtime();
     await Tapp.federation.deleteRoom(state.activeId);
-    state.activeKind = null;
-    state.activeId = null;
-    state.channelDetail = null;
-    state.roomDetail = null;
-    state.members = [];
-    stopPolling();
-    clearPendingAttach();
-    if (typeof clearQuote === 'function') clearQuote();
-    closeAttachMenu();
-    closeInvitePopover();
-    $('chat-container').style.display = 'none';
-    $('member-panel').style.display = 'none';
-    $('member-panel').classList.remove('member-open-mobile');
-    var emptyAfter = $('empty-state');
-    if (emptyAfter) {
-      emptyAfter.style.display = '';
-      aroPlayEnter(emptyAfter, 'aro-panel-enter');
-    }
-    var sideAfter = $('sidebar');
-    if (sideAfter) {
-      sideAfter.classList.remove('sidebar-hidden-mobile');
-      aroPlayEnter(sideAfter, 'aro-panel-enter');
-    }
-    updateSendState();
-    loadConversations();
+    exitActiveConversationUi(null, false);
   } catch (e) {
     notifyError(lang.dissolveFail, e);
   }
@@ -6387,8 +11570,113 @@ async function doAcceptChannel() {
     renderConvList();
     // Unlock attach/send after accept (pending was composer-locked).
     updateSendState();
+    if (typeof maybePublishE2eKeys === 'function') {
+      maybePublishE2eKeys().catch(function () {});
+    }
   } catch (e) {
     notifyError(lang.acceptFail, e);
+  }
+}
+
+/** Decline a remote-initiated pending channel (close without chatting). */
+async function doRejectChannel() {
+  if (!state.activeId || state.activeKind !== 'channel') return;
+  if (!(await aroConfirm(lang.channelRejectConfirm || lang.closeChannelConfirm || 'Decline this request?', true))) return;
+  try {
+    await unsubscribeRealtime();
+    await Tapp.federation.closeChannel(state.activeId);
+    exitActiveConversationUi(lang.channelRejected || lang.closed || null, false);
+  } catch (e) {
+    notifyError(lang.closeChannelFail || lang.acceptFail || 'Reject failed', e);
+  }
+}
+
+/** Self-join an open-policy room (no invite required). */
+async function doJoinOpenRoom() {
+  if (!state.activeId || state.activeKind !== 'room') return;
+  if (!Tapp.federation || typeof Tapp.federation.joinRoom !== 'function') {
+    notifyError(lang.joinRoomFail || lang.acceptFail || 'Join not available');
+    return;
+  }
+  try {
+    await Tapp.federation.joinRoom(state.activeId);
+    if (state.roomDetail) {
+      state.roomDetail.my_membership_status = 'active';
+      state.roomDetail.my_role = state.roomDetail.my_role || 'member';
+    }
+    try {
+      var detail = await Tapp.federation.getRoom(state.activeId);
+      if (detail) state.roomDetail = detail;
+      var membersRes = await Tapp.federation.getRoomMembers(state.activeId);
+      state.members = unwrapRoomMembers(membersRes);
+    } catch (e2) { /* ignore */ }
+    renderChatHeader();
+    renderMembers();
+    renderConvList();
+    updateSendState();
+    if (typeof maybePublishE2eKeys === 'function') {
+      maybePublishE2eKeys().catch(function () {});
+    }
+    try {
+      Tapp.ui.showNotification({
+        title: lang.joinRoomOk || lang.roomInviteAccepted || 'Joined',
+        type: 'success',
+      });
+    } catch (e3) { /* ignore */ }
+  } catch (e) {
+    notifyError(lang.joinRoomFail || lang.acceptFail || 'Join failed', e);
+  }
+}
+
+async function doAcceptRoomInvite() {
+  if (!state.activeId || state.activeKind !== 'room') return;
+  if (!Tapp.federation || typeof Tapp.federation.acceptRoomInvite !== 'function') {
+    notifyError(lang.acceptFail || 'Accept not available');
+    return;
+  }
+  try {
+    await Tapp.federation.acceptRoomInvite(state.activeId);
+    if (state.roomDetail) state.roomDetail.my_membership_status = 'active';
+    for (var i = 0; i < state.rooms.length; i++) {
+      if (state.rooms[i].room_id === state.activeId) {
+        state.rooms[i].my_membership_status = 'active';
+        break;
+      }
+    }
+    try {
+      var detail = await Tapp.federation.getRoom(state.activeId);
+      if (detail) state.roomDetail = detail;
+      var membersRes = await Tapp.federation.getRoomMembers(state.activeId);
+      state.members = unwrapRoomMembers(membersRes);
+    } catch (e2) { /* ignore refresh errors */ }
+    renderChatHeader();
+    renderMembers();
+    renderConvList();
+    updateSendState();
+    if (typeof maybePublishE2eKeys === 'function') {
+      maybePublishE2eKeys().catch(function () {});
+    }
+    try {
+      Tapp.ui.showNotification({ title: lang.roomInviteAccepted || lang.accept || 'Joined', type: 'success' });
+    } catch (e3) { /* ignore */ }
+  } catch (e) {
+    notifyError(lang.acceptFail, e);
+  }
+}
+
+async function doRejectRoomInvite() {
+  if (!state.activeId || state.activeKind !== 'room') return;
+  if (!(await aroConfirm(lang.roomInviteRejectConfirm || lang.leaveConfirm || 'Decline this invite?', true))) return;
+  try {
+    if (Tapp.federation && typeof Tapp.federation.rejectRoomInvite === 'function') {
+      await Tapp.federation.rejectRoomInvite(state.activeId);
+    } else {
+      await Tapp.federation.leaveRoom(state.activeId);
+    }
+    await unsubscribeRealtime();
+    exitActiveConversationUi(lang.roomInviteRejected || null, false);
+  } catch (e) {
+    notifyError(lang.acceptFail || lang.leaveFail || 'Reject failed', e);
   }
 }
 
@@ -6398,32 +11686,7 @@ async function doLeaveRoom() {
   try {
     await unsubscribeRealtime();
     await Tapp.federation.leaveRoom(state.activeId);
-    state.activeKind = null;
-    state.activeId = null;
-    state.channelDetail = null;
-    state.roomDetail = null;
-    state.members = [];
-    stopPolling();
-    clearPendingAttach();
-    if (typeof clearQuote === 'function') clearQuote();
-    closeAttachMenu();
-    closeInvitePopover();
-    $('chat-container').style.display = 'none';
-    $('member-panel').style.display = 'none';
-    $('member-panel').classList.remove('member-open-mobile');
-    updateSendState();
-    var emptyLeave = $('empty-state');
-    if (emptyLeave) {
-      emptyLeave.style.display = '';
-      aroPlayEnter(emptyLeave, 'aro-panel-enter');
-    }
-    var sideLeave = $('sidebar');
-    if (sideLeave) {
-      sideLeave.classList.remove('sidebar-hidden-mobile');
-      aroPlayEnter(sideLeave, 'aro-panel-enter');
-    }
-    updateSendState();
-    loadConversations();
+    exitActiveConversationUi(null, false);
   } catch (e) {
     notifyError(lang.leaveFail || lang.sendFail || 'Leave failed', e);
   }
@@ -6694,6 +11957,9 @@ async function loadFeedSubTab() {
       var res = await Tapp.federation.getPublished();
       state.published = unwrapListResponse(res);
       updateFeedCountBadges();
+    } else if (sub === 'backup') {
+      // Local export/import page — no network list load
+      state.feedError = null;
     }
     if (state.feedSubTab !== sub) return;
     state.feedLoaded[sub] = true;
@@ -6728,6 +11994,7 @@ function getFeedTitle(sub) {
   if (sub === 'following') return lang.feedFollowing || 'Following';
   if (sub === 'followers') return lang.feedFollowers || 'Followers';
   if (sub === 'published') return lang.feedPublished || 'Published';
+  if (sub === 'backup') return lang.backupTitle || lang.feedBackup || 'Chat backup';
   return lang.feedTimeline || 'Home';
 }
 
@@ -6748,6 +12015,10 @@ function getFeedHint(sub) {
     return lang.feedHintFollowers || lang.feedMetaFollowers || lang.feedSubFollowers
       || lang.feedFollowers || 'People who follow you';
   }
+  if (sub === 'backup') {
+    return lang.feedHintBackup || lang.backupHint
+      || 'Export and import your messenger history';
+  }
   if (sub === 'published') {
     return lang.feedHintPublished || lang.feedMetaPublished || lang.feedSubPublished
       || lang.feedPublished || "Notes you've published";
@@ -6764,13 +12035,23 @@ function updateFeedHeader() {
   if (title) title.textContent = pageTitle;
   if (!meta) return;
   // Never leave subtitle blank: helper, loading, or helper · count
-  var items = getFeedItems(sub) || [];
   var hint = getFeedHint(sub) || pageTitle || '—';
+  if (sub === 'backup') {
+    meta.textContent = hint;
+    return;
+  }
+  var allItems = getFeedItems(sub) || [];
+  var items = filterFeedItems(sub, allItems);
+  var q = normalizeSearchQuery((state.search && state.search.feed) || '');
   if (state.feedLoading && !state.feedLoaded[sub]) {
     meta.textContent = lang.feedLoading || hint;
-  } else if (state.feedLoaded[sub] && items.length > 0) {
-    var countText = items.length + ' ' + (lang.feedItems || '');
-    meta.textContent = countText ? (hint + ' · ' + countText) : hint;
+  } else if (state.feedLoaded[sub] && allItems.length > 0) {
+    if (q) {
+      meta.textContent = (items.length + ' / ' + allItems.length) + (lang.feedItems ? ' ' + lang.feedItems : '');
+    } else {
+      var countText = allItems.length + ' ' + (lang.feedItems || '');
+      meta.textContent = countText ? (hint + ' · ' + countText) : hint;
+    }
   } else {
     meta.textContent = hint;
   }
@@ -6781,6 +12062,73 @@ function getFeedItems(sub) {
   if (sub === 'followers') return state.followers;
   if (sub === 'published') return state.published;
   return state.timeline;
+}
+
+function actorSearchParts(actor) {
+  if (!actor) return [];
+  var handle = actor.username
+    ? '@' + actor.username + (actor.domain ? '@' + actor.domain : '')
+    : '';
+  return [
+    actor.display_name,
+    actor.username,
+    actor.domain,
+    handle,
+    actor.actor_url,
+    actor.bio,
+  ];
+}
+
+function timelineItemSearchParts(item) {
+  var actor = (item && item.actor) || {};
+  var contentJson = (item && (item.content_json || item.content || item.object)) || null;
+  if (contentJson && contentJson.object && typeof contentJson.object === 'object'
+      && !contentJson.content && !(contentJson.source && contentJson.source.content)
+      && !contentJson.summary && !contentJson.name) {
+    contentJson = contentJson.object;
+  }
+  var text = '';
+  if (contentJson) {
+    text = stripHtmlPreview(
+      contentJson.title ||
+      contentJson.name ||
+      (contentJson.source && typeof contentJson.source === 'object' && contentJson.source.content) ||
+      contentJson.content ||
+      contentJson.summary ||
+      contentJson.content_preview ||
+      ''
+    );
+  }
+  if (!text && item && item.content_preview) text = stripHtmlPreview(item.content_preview);
+  return actorSearchParts(actor).concat([text, item && item.content_preview]);
+}
+
+function publishedItemSearchParts(item) {
+  if (!item) return [];
+  return [
+    item.title,
+    item.name,
+    item.content_preview,
+    item.summary,
+    item.content_type,
+    item.content_id,
+    publishedTypeLabel(item.content_type),
+  ];
+}
+
+/** Apply current feed search query to a sub-tab list. */
+function filterFeedItems(sub, items) {
+  var q = normalizeSearchQuery((state.search && state.search.feed) || '');
+  if (!q || !items || !items.length) return items || [];
+  return items.filter(function (item) {
+    if (sub === 'following' || sub === 'followers') {
+      return matchesSearch(q, actorSearchParts(item));
+    }
+    if (sub === 'published') {
+      return matchesSearch(q, publishedItemSearchParts(item));
+    }
+    return matchesSearch(q, timelineItemSearchParts(item));
+  });
 }
 
 /** Empty-state title ≈ page title; dedicated emptyTitle* preferred when present. */
@@ -6898,8 +12246,26 @@ function renderFeedContent() {
   if (main) main.classList.remove('feed-empty-visible');
 
   var sub = state.feedSubTab;
-  var items = getFeedItems(sub);
+  var searchBar = document.querySelector('.feed-search-bar');
+
+  // Profile → chat backup sub-page (export / import)
+  if (sub === 'backup') {
+    if (searchBar) searchBar.style.display = 'none';
+    if (empty) empty.style.display = 'none';
+    if (typeof renderBackupPage === 'function') {
+      renderBackupPage();
+    } else {
+      content.innerHTML = '<div class="backup-page"><div class="backup-card"><p class="backup-card-desc">'
+        + esc(lang.backupTitle || 'Chat backup') + '</p></div></div>';
+    }
+    return;
+  }
+  if (searchBar) searchBar.style.display = '';
+
+  var allItems = getFeedItems(sub) || [];
+  var items = filterFeedItems(sub, allItems);
   var hasLoaded = !!state.feedLoaded[sub];
+  var q = normalizeSearchQuery((state.search && state.search.feed) || '');
   var html = '';
 
   if (state.feedLoading && !hasLoaded) {
@@ -6915,10 +12281,16 @@ function renderFeedContent() {
     return;
   }
 
-  if (!items || items.length === 0) {
+  if (!allItems || allItems.length === 0) {
     content.innerHTML = '';
     // Prefer empty UI even before first load completes (avoids pure white main).
     showFeedEmpty(getFeedEmptyText(sub), hasLoaded ? 'empty' : (state.feedLoading ? 'loading' : 'empty'));
+    return;
+  }
+
+  if (items.length === 0 && q) {
+    content.innerHTML = searchNoResultsHtml();
+    if (empty) empty.style.display = 'none';
     return;
   }
 
@@ -7882,9 +13254,22 @@ function renderRingsSidebar() {
       + '<br><span style="font-size:11px;opacity:.75">' + esc(lang.createRingTitle || '') + '</span></span></div>';
     return;
   }
+  var q = normalizeSearchQuery((state.search && state.search.ring) || '');
+  var rings = !q ? state.rings : state.rings.filter(function (ring) {
+    return matchesSearch(q, [
+      ring.ring_name,
+      ring.ring_id,
+      ring.ring_type,
+      ringTypeLabel(ring.ring_type),
+    ]);
+  });
+  if (rings.length === 0) {
+    list.innerHTML = searchNoResultsHtml();
+    return;
+  }
   var typeIcons = { 'brew-recommend': SVG_ICONS.coffee, 'tapp-store': SVG_ICONS.puzzle, 'library-exchange': SVG_ICONS.library, 'instance-directory': SVG_ICONS.globe };
   var html = '';
-  state.rings.forEach(function (ring) {
+  rings.forEach(function (ring) {
     var icon = typeIcons[ring.ring_type] || SVG_ICONS.ring;
     var name = ring.ring_name || ring.ring_id;
     var peerText = (ring.peer_count || 0) + ' ' + lang.peers;
@@ -8571,6 +13956,26 @@ const PAGE_MOD_EVENTS = `\
   var inviteToggle = $('invite-toggle');
   if (inviteToggle) inviteToggle.addEventListener('click', toggleInvitePopover);
 
+  // List search (client-side filter)
+  bindListSearch('conv-search', 'conv', function () {
+    if (typeof renderConvList === 'function') renderConvList();
+  });
+  bindListSearch('ring-search', 'ring', function () {
+    if (typeof renderRingsSidebar === 'function') renderRingsSidebar();
+  });
+  bindListSearch('feed-search', 'feed', function () {
+    if (typeof renderFeedContent === 'function') renderFeedContent();
+    if (typeof updateFeedHeader === 'function') updateFeedHeader();
+  });
+  bindListSearch('member-search', 'member', function () {
+    if (typeof renderMembers === 'function') renderMembers();
+  });
+
+  // Chat history browser (search / filter / load older)
+  if (typeof bindChatHistoryUi === 'function') bindChatHistoryUi();
+  // Room files panel (group attachment library)
+  if (typeof bindRoomFilesUi === 'function') bindRoomFilesUi();
+
   // Edit room dialog events
   var editRoomOverlay = $('edit-room-dialog');
   if (editRoomOverlay) editRoomOverlay.addEventListener('click', function (e) {
@@ -8599,6 +14004,18 @@ const PAGE_MOD_EVENTS = `\
     // Invite popover
     if (typeof closeInvitePopover === 'function' && typeof _invitePopover !== 'undefined' && _invitePopover && _invitePopover.style.display !== 'none') {
       closeInvitePopover();
+      e.preventDefault();
+      return;
+    }
+    // Chat history panel
+    if (typeof isChatHistoryOpen === 'function' && isChatHistoryOpen()) {
+      closeChatHistory();
+      e.preventDefault();
+      return;
+    }
+    // Room files panel
+    if (typeof isRoomFilesOpen === 'function' && isRoomFilesOpen()) {
+      closeRoomFiles();
       e.preventDefault();
       return;
     }
@@ -8813,6 +14230,8 @@ const PAGE_MODULES: Record<string, string> = {
   'helpers.js': PAGE_MOD_HELPERS,
   'attachments.js': PAGE_MOD_ATTACHMENTS,
   'chat.js': PAGE_MOD_CHAT,
+  'history.js': PAGE_MOD_HISTORY,
+  'files.js': PAGE_MOD_FILES,
   'members.js': PAGE_MOD_MEMBERS,
   'api.js': PAGE_MOD_API,
   'views.js': PAGE_MOD_VIEWS,
@@ -8846,6 +14265,8 @@ function buildCoreCode(): string {
     PAGE_MOD_HELPERS,
     PAGE_MOD_ATTACHMENTS,
     PAGE_MOD_CHAT,
+    PAGE_MOD_HISTORY,
+    PAGE_MOD_FILES,
     PAGE_MOD_MEMBERS,
     PAGE_MOD_API,
     PAGE_MOD_VIEWS,

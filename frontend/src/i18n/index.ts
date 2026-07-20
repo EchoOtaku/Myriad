@@ -297,6 +297,10 @@ export interface TranslationKeys {
     musicDesc: string
     network: string
     networkDesc: string
+    /** Admin: federation trust policy section */
+    federation: string
+    federationDesc: string
+    federationPolicySaved: string
     data: string
     dataDesc: string
     about: string

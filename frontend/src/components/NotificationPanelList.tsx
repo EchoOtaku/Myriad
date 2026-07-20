@@ -8,12 +8,75 @@ import type { NotificationSourceKey } from '../services/notificationPreferencesA
  * 页头为问候语 + 日期，右侧清理按钮先展示 X 图标，
  * 点击后变为文本二次确认（3 秒未确认自动还原）。
  * 点击通知直接跳转对应内容（任务类 → Arael 会话），无落点时展开详情。
+ * 联邦邀请类通知可从 metadata.actions 一键 Accept / Reject。
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
+import { federationApi } from '../services/federationApi'
 import { notificationSourceFor } from '../services/notificationDelivery'
 import { getGreeting } from '../utils/dynamicContent'
 import { NotificationSourceIcon } from './notifications/NotificationIcons'
+
+/** metadata.actions 单项（后端 notify 写入） */
+interface NotifAction {
+  id: string
+  label?: string
+  api?: string
+}
+
+function parseNotifActions(n: AppNotification): NotifAction[] {
+  const raw = n.metadata?.actions
+  if (!Array.isArray(raw)) return []
+  const out: NotifAction[] = []
+  for (const a of raw) {
+    if (!a || typeof a !== 'object') continue
+    const o = a as Record<string, unknown>
+    const id = typeof o.id === 'string' ? o.id : ''
+    if (!id) continue
+    out.push({
+      id,
+      label: typeof o.label === 'string' ? o.label : undefined,
+      api: typeof o.api === 'string' ? o.api : undefined,
+    })
+  }
+  return out
+}
+
+/** 根据 kind + action id 调用联邦 API */
+async function runFederationInviteAction(
+  n: AppNotification,
+  actionId: string,
+): Promise<void> {
+  const kind = n.metadata?.kind
+  const roomId =
+    typeof n.metadata?.room_id === 'string' ? n.metadata.room_id : ''
+  const channelId =
+    typeof n.metadata?.channel_id === 'string' ? n.metadata.channel_id : ''
+
+  if (kind === 'room_invite' || (roomId && !channelId)) {
+    if (!roomId) throw new Error('Missing room_id')
+    if (actionId === 'accept') {
+      await federationApi.acceptRoomInvite(roomId)
+      return
+    }
+    if (actionId === 'reject') {
+      await federationApi.rejectRoomInvite(roomId)
+      return
+    }
+  }
+  if (kind === 'channel_invite' || channelId) {
+    if (!channelId) throw new Error('Missing channel_id')
+    if (actionId === 'accept') {
+      await federationApi.acceptChannel(channelId)
+      return
+    }
+    if (actionId === 'reject') {
+      await federationApi.closeChannel(channelId)
+      return
+    }
+  }
+  throw new Error(`Unsupported invite action: ${actionId}`)
+}
 
 /** Apple 风格胶囊按钮基础样式 */
 const PILL_BTN =
@@ -79,6 +142,8 @@ function NotificationPanelList({
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [notifPermission, setNotifPermission] = useState<string>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
   )
@@ -152,6 +217,31 @@ function NotificationPanelList({
       setExpandedId((prev) => (prev === n.id ? null : n.id))
     },
     [onOpenSession, onNavigate, onOpenAraelManage],
+  )
+
+  const handleInviteAction = useCallback(
+    async (n: AppNotification, actionId: string) => {
+      if (actionBusyId) return
+      setActionBusyId(`${n.id}:${actionId}`)
+      setActionError(null)
+      try {
+        await runFederationInviteAction(n, actionId)
+        void removeItem(n)
+        // 接受后若有 route，顺带打开对应会话
+        if (actionId === 'accept') {
+          const route = n.metadata?.route
+          if (typeof route === 'string' && route.startsWith('/') && onNavigate) {
+            onNavigate(route)
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Action failed'
+        setActionError(msg)
+      } finally {
+        setActionBusyId(null)
+      }
+    },
+    [actionBusyId, removeItem, onNavigate, t],
   )
 
   const relativeTime = useCallback(
@@ -261,6 +351,7 @@ function NotificationPanelList({
         ) : (
           items.map((n) => {
             const source = notificationSourceFor(n)
+            const inviteActions = parseNotifActions(n)
             return (
               <div
                 key={n.id}
@@ -317,6 +408,48 @@ function NotificationPanelList({
                         />
                       </div>
                     )}
+                  {inviteActions.length > 0 && (
+                    <div
+                      className="mt-2 flex flex-wrap gap-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      {inviteActions.map((act) => {
+                        const busy =
+                          actionBusyId === `${n.id}:${act.id}`
+                        const isAccept = act.id === 'accept'
+                        const isReject = act.id === 'reject'
+                        return (
+                          <button
+                            key={act.id}
+                            type="button"
+                            disabled={!!actionBusyId}
+                            onClick={() => void handleInviteAction(n, act.id)}
+                            className={
+                              'rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ' +
+                              (isAccept
+                                ? 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-300'
+                                : isReject
+                                  ? 'bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:text-red-300'
+                                  : 'bg-black/5 text-gray-600 hover:bg-black/10 dark:bg-white/10 dark:text-gray-300')
+                            }
+                          >
+                            {busy
+                              ? '…'
+                              : act.label ||
+                                (isAccept
+                                  ? t.common?.confirm || 'Accept'
+                                  : isReject
+                                    ? t.common?.cancel || 'Decline'
+                                    : act.id)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {actionError && expandedId === n.id && (
+                    <p className="mt-1 text-[11px] text-red-500">{actionError}</p>
+                  )}
                 </div>
 
                 <button

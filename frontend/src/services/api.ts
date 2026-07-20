@@ -186,6 +186,89 @@ async function request<T>(
   }
 }
 
+/** Binary GET (file download). Returns blob + optional Content-Disposition filename. */
+async function requestBlob(
+  endpoint: string,
+  options: ApiRequestOptions = {},
+): Promise<{ blob: Blob; filename?: string; contentType?: string }> {
+  const {
+    requireAuth: _requireAuth = false,
+    timeout = 120000,
+    params,
+    ...fetchOptions
+  } = options
+
+  const headers: Record<string, string> = {
+    ...(fetchOptions.headers as Record<string, string>),
+  }
+  // Do not force application/json Accept for binary bodies
+  delete headers['Content-Type']
+
+  const url = buildUrl(endpoint, params)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    const response = await fetch(url, {
+      ...fetchOptions,
+      method: 'GET',
+      headers,
+      credentials: 'include',
+      signal: controller.signal,
+    })
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      let errorMessage = `API Error: ${response.status}`
+      try {
+        const errorBody = (await response.json()) as {
+          message?: string
+          error?: string
+        }
+        errorMessage =
+          (typeof errorBody?.message === 'string' && errorBody.message) ||
+          (typeof errorBody?.error === 'string' && errorBody.error) ||
+          errorMessage
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(errorMessage, response.status)
+    }
+
+    const disposition = response.headers.get('content-disposition') || ''
+    let filename: string | undefined
+    const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
+    const plainMatch = /filename="([^"]+)"/i.exec(disposition)
+    if (utf8Match?.[1]) {
+      try {
+        filename = decodeURIComponent(utf8Match[1])
+      } catch {
+        filename = utf8Match[1]
+      }
+    } else if (plainMatch?.[1]) {
+      filename = plainMatch[1]
+    }
+
+    const blob = await response.blob()
+    return {
+      blob,
+      filename,
+      contentType: response.headers.get('content-type') || undefined,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    if (error instanceof ApiError) throw error
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError('Request timeout', 408, 'TIMEOUT')
+    }
+    throw new ApiError(
+      error instanceof Error ? error.message : 'Unknown error',
+      0,
+      'NETWORK_ERROR',
+    )
+  }
+}
+
 /**
  * API 服务实例
  */
@@ -195,6 +278,16 @@ export const apiService = {
    */
   get<T>(endpoint: string, options?: ApiRequestOptions): Promise<T> {
     return request<T>(endpoint, { ...options, method: 'GET' })
+  },
+
+  /**
+   * GET binary body (downloads)
+   */
+  getBlob(
+    endpoint: string,
+    options?: ApiRequestOptions,
+  ): Promise<{ blob: Blob; filename?: string; contentType?: string }> {
+    return requestBlob(endpoint, options)
   },
 
   /**

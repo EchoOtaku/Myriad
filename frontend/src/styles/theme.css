@@ -71,6 +71,52 @@ body {
 
   /* 隔离背景层：布局/绘制变化不会影响主内容树的 reflow/repaint */
   contain: strict;
+  background:
+    radial-gradient(120% 80% at 50% 20%, rgb(255 255 255 / 55%), transparent 55%),
+    linear-gradient(160deg, #e8eef8 0%, #f4f1ea 48%, #e6ebe7 100%);
+}
+
+/*
+ * 层叠约定（与 AppLayout / useEvocativeWallpaper 对齐）：
+ *   #wallpaper-awaiting-fx (z-0, 仅 awaiting)
+ *   #wallpaper            (无 z-index — 切勿加 z-index，否则盖住涟漪与遮罩)
+ *   #wallpaper-ripple-canvas (JS insert，z-1)
+ *   #bg-gradient          (z-2 底部渐变遮罩)
+ *   grid                  (z-3)
+ */
+
+/* 首次壁纸加载：呼吸占位（真实 DOM 层，不占用 ::before/::after） */
+#wallpaper-awaiting-fx {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s ease-out, visibility 0.4s;
+}
+
+#bg-container.wallpaper-awaiting #wallpaper-awaiting-fx {
+  opacity: 1;
+  visibility: visible;
+  background:
+    radial-gradient(ellipse 70% 55% at 30% 35%, rgb(99 102 241 / 18%), transparent 60%),
+    radial-gradient(ellipse 65% 50% at 72% 60%, rgb(14 165 233 / 14%), transparent 58%),
+    radial-gradient(ellipse 50% 40% at 50% 80%, rgb(245 158 11 / 10%), transparent 55%);
+  animation: wallpaper-breathe 3.6s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+#bg-container.wallpaper-awaiting #wallpaper-awaiting-fx::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgb(255 255 255 / 22%) 45%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: wallpaper-sheen 4.8s ease-in-out infinite;
+  opacity: 0.55;
 }
 
 /* 壁纸视差效果样式 */
@@ -78,14 +124,54 @@ body {
   /* 确保放大后的壁纸不会露出边缘 */
   transform-origin: center center;
 
-  /* GPU 加速 */
-  will-change: transform;
+  /* GPU 加速：transform 给视差；opacity 仅用于首次/切换渐显
+     不要对 filter 做 CSS transition —— 动态模糊由 JS 每帧写入 */
+  will-change: transform, opacity;
   backface-visibility: hidden;
+  opacity: 0;
 
-  /* 禁用 CSS transition，由 JS 控制平滑动画 */
-  transition:
-    background-image 0.7s ease-in-out,
-    opacity 0.7s ease-in-out !important;
+  /* 由 JS 切换 .wallpaper-visible 做渐显，避免突兀出现 */
+  transition: opacity 0.95s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+#wallpaper.wallpaper-visible {
+  opacity: 1;
+}
+
+#wallpaper.wallpaper-fading {
+  opacity: 0;
+  transition: opacity 0.28s ease-out;
+}
+
+/* 涟漪 canvas：夹在壁纸与底部遮罩之间 */
+#wallpaper-ripple-canvas {
+  z-index: 1;
+}
+
+/* 底部渐变遮罩始终盖在壁纸/涟漪之上 */
+#bg-gradient {
+  z-index: 2;
+}
+
+@keyframes wallpaper-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.035);
+  }
+}
+
+@keyframes wallpaper-sheen {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -40% 0;
+  }
 }
 
 /* 低端设备禁用视差动画 */
@@ -93,7 +179,41 @@ body {
   #wallpaper {
     transform: scale(1.02) !important;
     will-change: auto;
+    transition: opacity 0.35s ease;
   }
+
+  #bg-container.wallpaper-awaiting #wallpaper-awaiting-fx {
+    animation: none;
+    opacity: 0.7;
+    transform: none;
+  }
+
+  #bg-container.wallpaper-awaiting #wallpaper-awaiting-fx::after {
+    animation: none;
+  }
+}
+
+html.dark #bg-container {
+  background:
+    radial-gradient(120% 80% at 50% 15%, rgb(30 41 59 / 70%), transparent 55%),
+    linear-gradient(165deg, #0b1220 0%, #12161f 50%, #0f1412 100%);
+}
+
+html.dark #bg-container.wallpaper-awaiting #wallpaper-awaiting-fx {
+  background:
+    radial-gradient(ellipse 70% 55% at 30% 35%, rgb(99 102 241 / 22%), transparent 60%),
+    radial-gradient(ellipse 65% 50% at 72% 60%, rgb(56 189 248 / 12%), transparent 58%),
+    radial-gradient(ellipse 50% 40% at 50% 80%, rgb(251 191 36 / 8%), transparent 55%);
+}
+
+html.dark #bg-container.wallpaper-awaiting #wallpaper-awaiting-fx::after {
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgb(255 255 255 / 6%) 45%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
 }
 
 /* ============================================
@@ -374,10 +494,7 @@ html.dark .bg-grid-pattern {
     linear-gradient(90deg, rgb(255 255 255 / 2%) 1px, transparent 1px);
 }
 
-html.dark #bg-container {
-  background: #0a0a0a;
-  transition: background 0.5s ease-out;
-}
+/* dark #bg-container base is defined with wallpaper-awaiting styles above */
 
 html.dark #bg-gradient {
   background: linear-gradient(

@@ -123,12 +123,15 @@ export function generateCSP(
     ? `script-src 'nonce-${nonce}'${wasmPart}`
     : `script-src 'unsafe-inline'${wasmPart}`
 
-  const mediaSrc = allowMediaBlob ? 'media-src blob: data:' : "media-src 'none'"
-
   // Tapp 按受信任应用处理：允许公开 HTTPS 图片直接加载。
   // 显式宿主源兼容本地 HTTP 开发环境与包内资源。
+  // Federation Note 附件（/media/federation/*）与远程 https 媒体也需能在时间线播放。
   const origin = hostOrigin()
   const imgSrc = `img-src data: blob: https:${origin ? ` ${origin}` : ''}`
+  // video/audio: 始终允许 https + 宿主同源；blob/data 仅在 media:audio 授权时放行
+  const mediaSrc = allowMediaBlob
+    ? `media-src data: blob: https:${origin ? ` ${origin}` : ''}`
+    : `media-src https:${origin ? ` ${origin}` : ''}`
 
   const directives = [
     scriptSrc,

@@ -72,6 +72,9 @@ pub struct RoomSummary {
     pub max_members: i32,
     pub is_public: bool,
     pub my_role: Option<String>,
+    /// active | pending (invite not yet accepted)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub my_membership_status: Option<String>,
     pub last_message_at: Option<String>,
     pub created_at: String,
     pub unread_count: i64,
@@ -94,6 +97,9 @@ pub struct RoomDetail {
     pub is_public: bool,
     pub enabled_tapps: Option<serde_json::Value>,
     pub my_role: Option<String>,
+    /// active | pending
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub my_membership_status: Option<String>,
     pub member_count: i64,
     pub created_at: String,
 }
@@ -107,6 +113,8 @@ pub struct RoomMember {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
     pub role: String,
+    /// active | pending
+    pub membership_status: String,
     pub joined_at: String,
     pub invited_by: Option<String>,
 }
@@ -126,6 +134,36 @@ pub struct RoomMessageItem {
     pub created_at: String,
 }
 
+/// Room 附件库条目（群文件索引；不含 payload 字节）
+#[derive(Debug, Clone, Serialize)]
+pub struct RoomFileItem {
+    /// Stable client key: message_id:transfer_id|filename or tr:transfer_id
+    pub key: String,
+    pub message_id: String,
+    /// image | file
+    pub kind: String,
+    pub filename: String,
+    pub size: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    pub sender_actor: String,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transfer_id: Option<String>,
+    /// True when original message payload has inline data (bytes not returned here)
+    pub has_inline: bool,
+    /// ready | pending | missing
+    pub status: String,
+}
+
+/// 群文件列表结果（含是否还有更早条目）
+#[derive(Debug, Serialize)]
+pub struct RoomFileListResult {
+    pub files: Vec<RoomFileItem>,
+    pub total: usize,
+    pub has_more: bool,
+}
+
 /// 发送消息响应
 #[derive(Debug, Serialize)]
 pub struct SendRoomMessageResponse {
@@ -134,6 +172,9 @@ pub struct SendRoomMessageResponse {
     pub room_id: String,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub is_encrypted: bool,
+    /// Outbound fan-out enqueue observability
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<crate::federation::delivery::DeliveryEnqueueInfo>,
 }
 
 /// 发起 Room E2E 密钥发布响应
@@ -156,34 +197,54 @@ pub struct PinRoomMessageRequest {
 // ==================== 辅助函数 ====================
 
 /// 检查用户在 Room 中的角色
-async fn get_member_role(
+pub(crate) async fn get_member_role(
     db: &DatabaseConnection,
     room_id: &str,
     actor_url: &str,
 ) -> Result<Option<String>, sea_orm::DbErr> {
+    // Only *active* members can act (pending invites cannot send/download).
+    // Legacy rows without membership_status column heal to default 'active'.
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT role FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
+            r#"SELECT role, COALESCE(membership_status, 'active') AS membership_status
+               FROM federation_room_members
+               WHERE room_id = $1 AND actor_url = $2"#,
             [room_id.into(), actor_url.into()],
         ))
         .await?;
 
-    if let Some(role) = row.and_then(|r| r.try_get::<String>("", "role").ok()) {
-        return Ok(Some(role));
+    if let Some(r) = row {
+        let status: String = r
+            .try_get("", "membership_status")
+            .unwrap_or_else(|_| "active".into());
+        if status == "active" {
+            if let Ok(role) = r.try_get::<String>("", "role") {
+                return Ok(Some(role));
+            }
+        } else {
+            return Ok(None);
+        }
     }
 
     // Fallback: host case / trailing-slash differences (exact SQL match fails).
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT actor_url, role FROM federation_room_members WHERE room_id = $1",
+            r#"SELECT actor_url, role, COALESCE(membership_status, 'active') AS membership_status
+               FROM federation_room_members WHERE room_id = $1"#,
             [room_id.into()],
         ))
         .await?;
     for r in rows {
         let url: String = r.try_get("", "actor_url").unwrap_or_default();
         if same_actor_url(&url, actor_url) {
+            let status: String = r
+                .try_get("", "membership_status")
+                .unwrap_or_else(|_| "active".into());
+            if status != "active" {
+                return Ok(None);
+            }
             return Ok(r.try_get::<String>("", "role").ok());
         }
     }
@@ -191,7 +252,53 @@ async fn get_member_role(
     Ok(None)
 }
 
-/// Upsert a remote (non-local) room member row.
+/// Lookup membership role + status (any status, including pending).
+/// Returns `None` if no row; status defaults to `active` for legacy rows.
+pub(crate) async fn get_membership(
+    db: &DatabaseConnection,
+    room_id: &str,
+    actor_url: &str,
+) -> Result<Option<(String, String)>, sea_orm::DbErr> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT role, COALESCE(membership_status, 'active') AS membership_status
+               FROM federation_room_members
+               WHERE room_id = $1 AND actor_url = $2"#,
+            [room_id.into(), actor_url.into()],
+        ))
+        .await?;
+
+    if let Some(r) = row {
+        let role: String = r.try_get("", "role").unwrap_or_else(|_| "member".into());
+        let status: String = r
+            .try_get("", "membership_status")
+            .unwrap_or_else(|_| "active".into());
+        return Ok(Some((role, status)));
+    }
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT actor_url, role, COALESCE(membership_status, 'active') AS membership_status
+               FROM federation_room_members WHERE room_id = $1"#,
+            [room_id.into()],
+        ))
+        .await?;
+    for r in rows {
+        let url: String = r.try_get("", "actor_url").unwrap_or_default();
+        if same_actor_url(&url, actor_url) {
+            let role: String = r.try_get("", "role").unwrap_or_else(|_| "member".into());
+            let status: String = r
+                .try_get("", "membership_status")
+                .unwrap_or_else(|_| "active".into());
+            return Ok(Some((role, status)));
+        }
+    }
+    Ok(None)
+}
+
+/// Upsert a remote (non-local) room member row (defaults to *active*).
 async fn upsert_remote_room_member(
     db: &DatabaseConnection,
     room_id: &str,
@@ -199,21 +306,43 @@ async fn upsert_remote_room_member(
     role: &str,
     invited_by: Option<&str>,
 ) -> Result<(), String> {
+    upsert_remote_room_member_with_status(db, room_id, actor_url, role, invited_by, "active").await
+}
+
+/// Upsert a remote room member with explicit membership_status.
+async fn upsert_remote_room_member_with_status(
+    db: &DatabaseConnection,
+    room_id: &str,
+    actor_url: &str,
+    role: &str,
+    invited_by: Option<&str>,
+    membership_status: &str,
+) -> Result<(), String> {
     let role = if ["owner", "admin", "member", "observer"].contains(&role) {
         role
     } else {
         "member"
     };
+    let status = if membership_status == "pending" {
+        "pending"
+    } else {
+        "active"
+    };
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_room_members
-           (room_id, actor_url, is_local, role, invited_by, joined_at)
-           VALUES ($1, $2, false, $3, $4, NOW())
+           (room_id, actor_url, is_local, role, invited_by, joined_at, membership_status)
+           VALUES ($1, $2, false, $3, $4, NOW(), $5)
            ON CONFLICT (room_id, actor_url) DO UPDATE SET
                role = CASE
                    WHEN federation_room_members.role = 'owner' THEN federation_room_members.role
                    WHEN EXCLUDED.role = 'owner' THEN EXCLUDED.role
                    ELSE EXCLUDED.role
+               END,
+               membership_status = CASE
+                   WHEN EXCLUDED.membership_status = 'active' THEN 'active'
+                   WHEN federation_room_members.membership_status = 'active' THEN 'active'
+                   ELSE EXCLUDED.membership_status
                END,
                joined_at = COALESCE(federation_room_members.joined_at, NOW())"#,
         [
@@ -221,6 +350,7 @@ async fn upsert_remote_room_member(
             actor_url.into(),
             role.into(),
             invited_by.into(),
+            status.into(),
         ],
     ))
     .await
@@ -332,7 +462,7 @@ fn is_missing_or_fallback_room_name(name: &str, room_id: &str) -> bool {
 }
 
 /// 向 Room 的所有远程成员 fan-out 一个 Activity
-async fn fanout_to_remote_members(
+pub(crate) async fn fanout_to_remote_members(
     db: &DatabaseConnection,
     user_id: i32,
     room_id: &str,
@@ -340,7 +470,33 @@ async fn fanout_to_remote_members(
     activity_json: &serde_json::Value,
     activity_type: &str,
     object_type: &str,
-) -> Result<(), sea_orm::DbErr> {
+) -> Result<crate::federation::delivery::FanoutResult, sea_orm::DbErr> {
+    fanout_to_remote_members_excluding(
+        db,
+        user_id,
+        room_id,
+        activity_id,
+        activity_json,
+        activity_type,
+        object_type,
+        &[],
+    )
+    .await
+}
+
+/// Fan-out with optional actor URL exclusions (e.g. skip invitee on RoomJoin roster announce).
+pub(crate) async fn fanout_to_remote_members_excluding(
+    db: &DatabaseConnection,
+    user_id: i32,
+    room_id: &str,
+    activity_id: &str,
+    activity_json: &serde_json::Value,
+    activity_type: &str,
+    object_type: &str,
+    exclude_actors: &[&str],
+) -> Result<crate::federation::delivery::FanoutResult, sea_orm::DbErr> {
+    let mut result = crate::federation::delivery::FanoutResult::default();
+
     // 记录 Activity
     let act_row = db
         .query_one(Statement::from_sql_and_values(
@@ -361,17 +517,42 @@ async fn fanout_to_remote_members(
 
     let act_db_id = match act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
         Some(id) => id,
-        None => return Ok(()),
+        None => {
+            tracing::error!(
+                "[Room] fanout failed to insert activity {} for room {}",
+                activity_id,
+                room_id
+            );
+            return Ok(result);
+        }
     };
 
-    // 获取所有远程成员的 inbox
+    // Count remote *active* members missing remote_actors (cannot resolve inbox)
+    let unresolved_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT COUNT(*)::int AS cnt
+               FROM federation_room_members rm
+               LEFT JOIN federation_remote_actors ra ON rm.actor_url = ra.actor_url
+               WHERE rm.room_id = $1 AND rm.is_local = false
+                 AND COALESCE(rm.membership_status, 'active') = 'active'
+                 AND ra.id IS NULL"#,
+            [room_id.into()],
+        ))
+        .await?;
+    result.unresolved_members = unresolved_row
+        .and_then(|r| r.try_get::<i32>("", "cnt").ok())
+        .unwrap_or(0) as u32;
+
+    // 获取所有 *active* 远程成员的 inbox（pending 邀请不参与 fan-out）
     let remote_members = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT DISTINCT ra.inbox_url, ra.domain
+            r#"SELECT DISTINCT ra.inbox_url, ra.domain, ra.actor_url
                FROM federation_room_members rm
                JOIN federation_remote_actors ra ON rm.actor_url = ra.actor_url
-               WHERE rm.room_id = $1 AND rm.is_local = false"#,
+               WHERE rm.room_id = $1 AND rm.is_local = false
+                 AND COALESCE(rm.membership_status, 'active') = 'active'"#,
             [room_id.into()],
         ))
         .await?;
@@ -379,20 +560,68 @@ async fn fanout_to_remote_members(
     for member_row in remote_members {
         let inbox: String = member_row.try_get("", "inbox_url").unwrap_or_default();
         let domain: String = member_row.try_get("", "domain").unwrap_or_default();
-        if !inbox.is_empty() {
-            let _ = db
-                .execute(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    r#"INSERT INTO federation_delivery_queue
-                       (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
-                    [act_db_id.into(), inbox.into(), domain.into()],
-                ))
-                .await;
+        let actor: String = member_row.try_get("", "actor_url").unwrap_or_default();
+        if exclude_actors
+            .iter()
+            .any(|ex| !ex.is_empty() && same_actor_url(ex, &actor))
+        {
+            continue;
+        }
+        if inbox.is_empty() {
+            result.skipped_empty_inbox += 1;
+            tracing::warn!(
+                "[Room] fanout skip empty inbox for {} in room {}",
+                actor,
+                room_id
+            );
+            continue;
+        }
+        result.remote_with_inbox += 1;
+        match db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"INSERT INTO federation_delivery_queue
+                   (activity_id, target_inbox, target_domain, status, created_at)
+                   VALUES ($1, $2, $3, 'pending', NOW())"#,
+                [act_db_id.into(), inbox.into(), domain.into()],
+            ))
+            .await
+        {
+            Ok(_) => result.enqueued += 1,
+            Err(e) => {
+                tracing::error!(
+                    "[Room] fanout enqueue failed room={} actor={}: {}",
+                    room_id,
+                    actor,
+                    e
+                );
+            }
         }
     }
 
-    Ok(())
+    if result.enqueued == 0
+        && (result.remote_with_inbox > 0
+            || result.skipped_empty_inbox > 0
+            || result.unresolved_members > 0)
+    {
+        tracing::warn!(
+            "[Room] fanout queued 0 for room {} type={} unresolved={} empty_inbox={} with_inbox={}",
+            room_id,
+            activity_type,
+            result.unresolved_members,
+            result.skipped_empty_inbox,
+            result.remote_with_inbox
+        );
+    } else {
+        tracing::debug!(
+            "[Room] fanout room={} type={} enqueued={}",
+            room_id,
+            activity_type,
+            result.enqueued
+        );
+    }
+
+    Ok(result)
 }
 
 // ==================== Room CRUD ====================
@@ -477,8 +706,8 @@ pub async fn create_room(
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_room_members
-           (room_id, actor_url, is_local, local_user_id, role, joined_at)
-           VALUES ($1, $2, true, $3, 'owner', NOW())"#,
+           (room_id, actor_url, is_local, local_user_id, role, joined_at, membership_status)
+           VALUES ($1, $2, true, $3, 'owner', NOW(), 'active')"#,
         [
             room_id.clone().into(),
             local_actor.clone().into(),
@@ -505,6 +734,7 @@ pub async fn create_room(
         is_public,
         enabled_tapps: None,
         my_role: Some("owner".to_string()),
+        my_membership_status: Some("active".to_string()),
         member_count: 1,
         created_at: now_iso8601(),
     })
@@ -750,6 +980,32 @@ pub async fn delete_room(
         ));
     }
 
+    // Fan-out dissolve while remote members still exist for delivery targets
+    let activity_id = generate_activity_id(&base_url);
+    let dissolve_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomDissolve",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:Room",
+            "id": room_id
+        }
+    });
+    if let Err(e) = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &dissolve_activity,
+        "RoomDissolve",
+        "Room",
+    )
+    .await
+    {
+        tracing::warn!("[Room] dissolve fanout failed for {}: {}", room_id, e);
+    }
+
     let delete_notice = json!({
         "type": "room_deleted",
         "room_id": room_id,
@@ -783,8 +1039,86 @@ pub async fn delete_room(
 
     tracing::info!("[Room] Deleted room {} by {}", room_id, username);
 
-    let _ = user_id;
     Ok(json!({ "success": true, "room_id": room_id }))
+}
+
+/// Remote owner dissolved the room — wipe local copy and notify open clients.
+pub async fn handle_room_dissolve(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    let object = activity.get("object").ok_or("Missing object")?;
+    let room_id = object
+        .get("id")
+        .and_then(|v| v.as_str())
+        .or_else(|| object.get("room").and_then(|v| v.as_str()))
+        .ok_or("Missing room id")?;
+
+    // Prefer owner check; tolerate missing local room row (already gone)
+    let owner_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT owner_actor FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(row) = owner_row.as_ref() {
+        let owner: String = row.try_get("", "owner_actor").unwrap_or_default();
+        if !owner.is_empty() && !same_actor_url(&owner, actor_url_str) {
+            // Also accept if actor is local owner role member (roster lag)
+            let role = get_member_role(db, room_id, actor_url_str)
+                .await
+                .map_err(|e| e.to_string())?;
+            if role.as_deref() != Some("owner") {
+                return Err(format!(
+                    "Actor {} is not owner of room {} (owner={})",
+                    actor_url_str, room_id, owner
+                ));
+            }
+        }
+    }
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "room_deleted",
+            "room_id": room_id,
+            "deleted_by": actor_url_str
+        }),
+    )
+    .await;
+
+    let _ = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM federation_room_messages WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await;
+    let _ = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM federation_room_members WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await;
+    let _ = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await;
+
+    tracing::info!(
+        "[Room] Dissolved room {} (remote notice from {})",
+        room_id,
+        actor_url_str
+    );
+    Ok(())
 }
 
 /// 获取用户参与的所有 Room
@@ -803,7 +1137,10 @@ pub async fn list_rooms(
                       r.governance_type, r.invite_policy, r.max_members, r.is_public,
                       r.created_at,
                       rm.role AS my_role,
-                      (SELECT COUNT(*) FROM federation_room_members WHERE room_id = r.room_id) AS member_count,
+                      COALESCE(rm.membership_status, 'active') AS my_membership_status,
+                      (SELECT COUNT(*) FROM federation_room_members
+                       WHERE room_id = r.room_id
+                         AND COALESCE(membership_status, 'active') = 'active') AS member_count,
                       (SELECT MAX(created_at) FROM federation_room_messages WHERE room_id = r.room_id) AS last_message_at,
                       COALESCE((SELECT COUNT(*) FROM federation_room_messages msg
                                 WHERE msg.room_id = r.room_id
@@ -842,6 +1179,9 @@ pub async fn list_rooms(
             max_members: row.try_get::<i32>("", "max_members").unwrap_or(50),
             is_public: row.try_get::<bool>("", "is_public").unwrap_or(false),
             my_role: row.try_get::<Option<String>>("", "my_role").unwrap_or(None),
+            my_membership_status: row
+                .try_get::<Option<String>>("", "my_membership_status")
+                .unwrap_or(None),
             last_message_at: row
                 .try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "last_message_at")
                 .ok()
@@ -876,7 +1216,10 @@ pub async fn get_room(
                       r.distribution_strategy, r.max_members, r.is_public,
                       r.enabled_tapps, r.created_at,
                       rm.role AS my_role,
-                      (SELECT COUNT(*) FROM federation_room_members WHERE room_id = r.room_id) AS member_count
+                      COALESCE(rm.membership_status, 'active') AS my_membership_status,
+                      (SELECT COUNT(*) FROM federation_room_members
+                       WHERE room_id = r.room_id
+                         AND COALESCE(membership_status, 'active') = 'active') AS member_count
                FROM federation_rooms r
                LEFT JOIN federation_room_members rm ON rm.room_id = r.room_id AND rm.actor_url = $3
                WHERE r.room_id = $1
@@ -914,6 +1257,9 @@ pub async fn get_room(
             .try_get::<Option<serde_json::Value>>("", "enabled_tapps")
             .unwrap_or(None),
         my_role: row.try_get::<Option<String>>("", "my_role").unwrap_or(None),
+        my_membership_status: row
+            .try_get::<Option<String>>("", "my_membership_status")
+            .unwrap_or(None),
         member_count: row.try_get::<i64>("", "member_count").unwrap_or(0),
         created_at: row
             .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
@@ -932,11 +1278,11 @@ pub async fn get_members(
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
 
-    // 验证用户是成员
-    let is_member = get_member_role(db, room_id, &local_actor)
+    // Allow active *or* pending members (invitees need roster + accept UI)
+    let membership = get_membership(db, room_id, &local_actor)
         .await
         .map_err(db_err)?;
-    if is_member.is_none() {
+    if membership.is_none() {
         // 检查是否是公开 Room
         let is_public = db
             .query_one(Statement::from_sql_and_values(
@@ -958,6 +1304,7 @@ pub async fn get_members(
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT rm.actor_url, rm.is_local, rm.role, rm.joined_at, rm.invited_by,
+                      COALESCE(rm.membership_status, 'active') AS membership_status,
                       COALESCE(
                           NULLIF(ra.display_name, ''),
                           ra.username,
@@ -991,6 +1338,7 @@ pub async fn get_members(
                LEFT JOIN users u ON rm.local_user_id = u.id
                WHERE rm.room_id = $1
                ORDER BY
+                 CASE COALESCE(rm.membership_status, 'active') WHEN 'active' THEN 0 ELSE 1 END,
                  CASE rm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'member' THEN 2 ELSE 3 END,
                  rm.joined_at"#,
             [room_id.into()],
@@ -1011,6 +1359,9 @@ pub async fn get_members(
                 .try_get::<Option<String>>("", "avatar_url")
                 .unwrap_or(None),
             role: r.try_get("", "role").unwrap_or_default(),
+            membership_status: r
+                .try_get::<String>("", "membership_status")
+                .unwrap_or_else(|_| "active".into()),
             joined_at: r
                 .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "joined_at")
                 .map(|t| t.to_rfc3339())
@@ -1087,11 +1438,12 @@ pub async fn invite_member(
         _ => {}
     }
 
-    // 检查成员上限
+    // 检查成员上限（仅 active 占用名额；pending 邀请不计入）
     let count_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT COUNT(*)::int AS cnt FROM federation_room_members WHERE room_id = $1",
+            r#"SELECT COUNT(*)::int AS cnt FROM federation_room_members
+               WHERE room_id = $1 AND COALESCE(membership_status, 'active') = 'active'"#,
             [room_id.into()],
         ))
         .await
@@ -1134,6 +1486,7 @@ pub async fn invite_member(
     } else {
         None
     };
+    let is_remote_invite = resolved_remote_actor.is_some();
 
     if let Some(target_actor) = resolved_remote_actor {
         if same_actor_url(&target_actor, &local_actor) {
@@ -1154,13 +1507,13 @@ pub async fn invite_member(
                 )
             })?;
 
-        // 添加远程成员
+        // Remote invitee stays *pending* until they accept (no RoomJoin fan-out yet).
         let insert_result = db
             .execute(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"INSERT INTO federation_room_members
-	               (room_id, actor_url, is_local, role, invited_by, joined_at)
-               VALUES ($1, $2, false, $3, $4, NOW())
+	               (room_id, actor_url, is_local, role, invited_by, joined_at, membership_status)
+               VALUES ($1, $2, false, $3, $4, NOW(), 'pending')
                ON CONFLICT (room_id, actor_url) DO NOTHING"#,
                 [
                     room_id.into(),
@@ -1179,12 +1532,13 @@ pub async fn invite_member(
             ));
         }
 
-        // Snapshot members so the invitee can seed federation_room_members
+        // Snapshot *active* members so the invitee can seed federation_room_members
         // (especially the inviter/owner). Without this, remote rejects RoomMessage.
         let member_rows = db
             .query_all(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT actor_url, role FROM federation_room_members WHERE room_id = $1",
+                r#"SELECT actor_url, role FROM federation_room_members
+                   WHERE room_id = $1 AND COALESCE(membership_status, 'active') = 'active'"#,
                 [room_id.into()],
             ))
             .await
@@ -1271,8 +1625,23 @@ pub async fn invite_member(
             }
         }
 
+        // Do NOT fan-out RoomJoin until the invitee accepts (pending handshake).
+        // Local WS: show pending invite on inviter's open clients.
+        crate::federation::ws_gateway::broadcast_to_room(
+            room_id,
+            &json!({
+                "type": "system",
+                "room_id": room_id,
+                "event": "member_invited",
+                "actor": &remote.actor_url,
+                "role": role,
+                "membership_status": "pending"
+            }),
+        )
+        .await;
+
         tracing::info!(
-            "[Room] Invited remote {} to room {} as {}",
+            "[Room] Invited remote {} to room {} as {} (pending accept)",
             remote.actor_url,
             room_id,
             role
@@ -1305,16 +1674,17 @@ pub async fn invite_member(
             )
         })?;
 
+        // Same-instance invite: auto-join as *active* (no accept hop).
         let insert_result = db
             .execute(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"INSERT INTO federation_room_members
-	               (room_id, actor_url, is_local, local_user_id, role, invited_by, joined_at)
-               VALUES ($1, $2, true, $3, $4, $5, NOW())
+	               (room_id, actor_url, is_local, local_user_id, role, invited_by, joined_at, membership_status)
+               VALUES ($1, $2, true, $3, $4, $5, NOW(), 'active')
                ON CONFLICT (room_id, actor_url) DO NOTHING"#,
                 [
                     room_id.into(),
-                    local_target_actor.into(),
+                    local_target_actor.clone().into(),
                     target_user_id.into(),
                     role.into(),
                     local_actor.clone().into(),
@@ -1330,15 +1700,60 @@ pub async fn invite_member(
             ));
         }
 
+        // Tell remote members about this same-instance join (3+ federated roster)
+        let join_activity_id = generate_activity_id(&base_url);
+        let join_activity = json!({
+            "@context": build_context(),
+            "type": "myriad:RoomJoin",
+            "id": &join_activity_id,
+            "actor": &local_actor,
+            "object": {
+                "type": "myriad:Room",
+                "id": room_id,
+                "member": &local_target_actor,
+                "role": role
+            }
+        });
+        if let Err(e) = fanout_to_remote_members(
+            db,
+            user_id,
+            room_id,
+            &join_activity_id,
+            &join_activity,
+            "RoomJoin",
+            "Room",
+        )
+        .await
+        {
+            tracing::warn!(
+                "[Room] local-invite RoomJoin fanout failed for {}: {}",
+                room_id,
+                e
+            );
+        }
+
+        crate::federation::ws_gateway::broadcast_to_room(
+            room_id,
+            &json!({
+                "type": "system",
+                "room_id": room_id,
+                "event": "member_joined",
+                "actor": &local_target_actor,
+                "role": role,
+                "membership_status": "active"
+            }),
+        )
+        .await;
+
         tracing::info!(
-            "[Room] Invited local {} to room {} as {}",
+            "[Room] Invited local {} to room {} as {} (active)",
             raw_target_actor,
             room_id,
             role
         );
     }
 
-    // 广播系统消息
+    // 广播系统消息（远程路径已发 member_invited；本地再发一次无害）
     let system_msg = json!({
         "type": "system",
         "room_id": room_id,
@@ -1353,7 +1768,410 @@ pub async fn invite_member(
         "success": true,
         "room_id": room_id,
         "invited": &req.actor,
+        "role": role,
+        "membership_status": if is_remote_invite { "pending" } else { "active" }
+    }))
+}
+
+/// Self-join a room when `invite_policy = open` (or public open rooms).
+pub async fn join_room(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    db: &DatabaseConnection,
+) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    // Already active?
+    if let Ok(Some((role, status))) = get_membership(db, room_id, &local_actor).await {
+        if status == "active" {
+            return Ok(json!({
+                "success": true,
+                "room_id": room_id,
+                "membership_status": "active",
+                "role": role,
+                "already_member": true
+            }));
+        }
+        if status == "pending" {
+            // Pending invite: accept instead
+            return accept_room_invite(user_id, username, room_id, db).await;
+        }
+    }
+
+    let room_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT invite_policy, max_members, is_public, name
+               FROM federation_rooms WHERE room_id = $1"#,
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Room not found"})),
+            )
+        })?;
+
+    let invite_policy: String = room_row.try_get("", "invite_policy").unwrap_or_default();
+    let is_public: bool = room_row.try_get("", "is_public").unwrap_or(false);
+    let max_members: i32 = room_row.try_get("", "max_members").unwrap_or(50);
+
+    // Only open policy (or public+open) allows self-join without invite
+    if invite_policy != "open" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "This room requires an invite",
+                "invite_policy": invite_policy
+            })),
+        ));
+    }
+    // Non-public open rooms still allow join if caller knows the id (link share).
+    let _ = is_public;
+
+    let count_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT COUNT(*)::int AS cnt FROM federation_room_members
+               WHERE room_id = $1 AND COALESCE(membership_status, 'active') = 'active'"#,
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?;
+    let current: i32 = count_row
+        .and_then(|r| r.try_get::<i32>("", "cnt").ok())
+        .unwrap_or(0);
+    if current >= max_members {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Room is full"})),
+        ));
+    }
+
+    let insert_result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_room_members
+               (room_id, actor_url, is_local, local_user_id, role, joined_at, membership_status)
+               VALUES ($1, $2, true, $3, 'member', NOW(), 'active')
+               ON CONFLICT (room_id, actor_url) DO UPDATE SET
+                   membership_status = 'active',
+                   is_local = true,
+                   local_user_id = EXCLUDED.local_user_id,
+                   joined_at = COALESCE(federation_room_members.joined_at, NOW())"#,
+            [
+                room_id.into(),
+                local_actor.clone().into(),
+                user_id.into(),
+            ],
+        ))
+        .await
+        .map_err(db_err)?;
+
+    if insert_result.rows_affected() == 0 {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({"error": "Could not join room"})),
+        ));
+    }
+
+    let join_activity_id = generate_activity_id(&base_url);
+    let join_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomJoin",
+        "id": &join_activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:Room",
+            "id": room_id,
+            "member": &local_actor,
+            "role": "member"
+        }
+    });
+    if let Err(e) = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &join_activity_id,
+        &join_activity,
+        "RoomJoin",
+        "Room",
+    )
+    .await
+    {
+        tracing::warn!("[Room] open-join RoomJoin fanout failed for {}: {}", room_id, e);
+    }
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "member_joined",
+            "actor": &local_actor,
+            "role": "member",
+            "membership_status": "active"
+        }),
+    )
+    .await;
+
+    tracing::info!(
+        "[Room] {} self-joined open room {}",
+        local_actor,
+        room_id
+    );
+
+    Ok(json!({
+        "success": true,
+        "room_id": room_id,
+        "membership_status": "active",
+        "role": "member"
+    }))
+}
+
+/// Accept a pending room invite (local user → active + RoomJoin fan-out).
+pub async fn accept_room_invite(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    db: &DatabaseConnection,
+) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    let membership = get_membership(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "No membership for this room"})),
+            )
+        })?;
+    let (role, status) = membership;
+    if status == "active" {
+        return Ok(json!({
+            "success": true,
+            "room_id": room_id,
+            "membership_status": "active",
+            "role": role,
+            "already_active": true
+        }));
+    }
+    if status != "pending" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("Cannot accept invite in status {}", status)})),
+        ));
+    }
+
+    // Activate local membership
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"UPDATE federation_room_members
+           SET membership_status = 'active', joined_at = NOW()
+           WHERE room_id = $1 AND actor_url = $2"#,
+        [room_id.into(), local_actor.clone().into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    // Announce join to all *active* remote peers (inviter + others)
+    let join_activity_id = generate_activity_id(&base_url);
+    let join_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomJoin",
+        "id": &join_activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:Room",
+            "id": room_id,
+            "member": &local_actor,
+            "role": &role
+        }
+    });
+    if let Err(e) = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &join_activity_id,
+        &join_activity,
+        "RoomJoin",
+        "Room",
+    )
+    .await
+    {
+        tracing::warn!(
+            "[Room] accept RoomJoin fanout failed for {}: {}",
+            room_id,
+            e
+        );
+    }
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "member_joined",
+            "actor": &local_actor,
+            "role": &role,
+            "membership_status": "active"
+        }),
+    )
+    .await;
+
+    // Dismiss pending invite notification
+    let notif_id =
+        crate::federation::notify::room_invite_notification_id(room_id, user_id);
+    crate::federation::notify::mark_invite_notification_read(user_id, &notif_id).await;
+
+    tracing::info!(
+        "[Room] {} accepted invite to room {} as {}",
+        local_actor,
+        room_id,
+        role
+    );
+
+    Ok(json!({
+        "success": true,
+        "room_id": room_id,
+        "membership_status": "active",
         "role": role
+    }))
+}
+
+/// Reject a pending room invite (delete membership + notify inviter).
+pub async fn reject_room_invite(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    db: &DatabaseConnection,
+) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT role, invited_by, COALESCE(membership_status, 'active') AS membership_status
+               FROM federation_room_members
+               WHERE room_id = $1 AND actor_url = $2 AND is_local = true AND local_user_id = $3"#,
+            [room_id.into(), local_actor.clone().into(), user_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "No local membership for this room"})),
+            )
+        })?;
+
+    let status: String = row
+        .try_get("", "membership_status")
+        .unwrap_or_else(|_| "active".into());
+    if status != "pending" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Only pending invites can be rejected"})),
+        ));
+    }
+    let invited_by: Option<String> = row.try_get("", "invited_by").ok().flatten();
+    let role: String = row.try_get("", "role").unwrap_or_else(|_| "member".into());
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"DELETE FROM federation_room_members
+           WHERE room_id = $1 AND actor_url = $2 AND COALESCE(membership_status, 'active') = 'pending'"#,
+        [room_id.into(), local_actor.clone().into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    // Notify inviter (if remote) via standard AP Reject
+    if let Some(ref inviter) = invited_by {
+        if !same_actor_url(inviter, &local_actor) {
+            if let Ok(remote) = crate::federation::actor::fetch_remote_actor(db, inviter).await {
+                let inbox = remote.inbox_url.clone();
+                if !inbox.is_empty() {
+                    let activity_id = generate_activity_id(&base_url);
+                    let reject_activity = json!({
+                        "@context": build_context(),
+                        "type": "Reject",
+                        "id": &activity_id,
+                        "actor": &local_actor,
+                        "to": [inviter],
+                        "object": {
+                            "type": "myriad:RoomInvite",
+                            "id": room_id,
+                            "room": room_id,
+                            "role": &role
+                        }
+                    });
+                    let domain = extract_domain(&inbox).unwrap_or_default();
+                    if let Ok(Some(act_row)) = db
+                        .query_one(Statement::from_sql_and_values(
+                            DatabaseBackend::Postgres,
+                            r#"INSERT INTO federation_activities
+                               (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
+                               VALUES ($1, $2, 'Reject', 'RoomInvite', $3, true, NOW())
+                               RETURNING id"#,
+                            [
+                                activity_id.into(),
+                                user_id.into(),
+                                reject_activity.into(),
+                            ],
+                        ))
+                        .await
+                    {
+                        if let Ok(act_id) = act_row.try_get::<i32>("", "id") {
+                            let _ = db
+                                .execute(Statement::from_sql_and_values(
+                                    DatabaseBackend::Postgres,
+                                    r#"INSERT INTO federation_delivery_queue
+                                       (activity_id, target_inbox, target_domain, status, created_at)
+                                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                                    [act_id.into(), inbox.into(), domain.into()],
+                                ))
+                                .await;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "member_removed",
+            "actor": &local_actor,
+            "reason": "invite_rejected"
+        }),
+    )
+    .await;
+
+    let notif_id =
+        crate::federation::notify::room_invite_notification_id(room_id, user_id);
+    crate::federation::notify::mark_invite_notification_read(user_id, &notif_id).await;
+
+    tracing::info!(
+        "[Room] {} rejected invite to room {}",
+        local_actor,
+        room_id
+    );
+
+    Ok(json!({
+        "success": true,
+        "room_id": room_id,
+        "membership_status": "rejected"
     }))
 }
 
@@ -1400,6 +2218,36 @@ pub async fn remove_member(
 
     let _ = user_id; // validated via my_role check
 
+    // Fan-out kick before local delete so remotes still have membership for delivery targets
+    // (fanout uses remaining remote members; kicked target is still in the list here —
+    // we send RoomLeave with object.member so remotes remove the target, not the admin).
+    let activity_id = generate_activity_id(&base_url);
+    let leave_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomLeave",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:Room",
+            "id": room_id,
+            "member": target_actor,
+            "removedBy": &local_actor
+        }
+    });
+    if let Err(e) = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &leave_activity,
+        "RoomLeave",
+        "Room",
+    )
+    .await
+    {
+        tracing::warn!("[Room] kick fanout failed for {}: {}", room_id, e);
+    }
+
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "DELETE FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
@@ -1423,6 +2271,160 @@ pub async fn remove_member(
     Ok(json!({ "success": true, "room_id": room_id, "removed": target_actor }))
 }
 
+/// Transfer room ownership to another member (local or remote actor URL).
+pub async fn transfer_room_ownership(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    new_owner_actor: &str,
+    db: &DatabaseConnection,
+) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+    let new_owner = new_owner_actor.trim();
+    if new_owner.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "new_owner is required"})),
+        ));
+    }
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT owner_actor FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Room not found"})),
+            )
+        })?;
+    let owner_actor: String = row.try_get("", "owner_actor").unwrap_or_default();
+    if !same_actor_url(&owner_actor, &local_actor) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Only the room owner can transfer ownership"})),
+        ));
+    }
+    if same_actor_url(&owner_actor, new_owner) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Already the owner"})),
+        ));
+    }
+
+    // Resolve target: full actor URL or local username
+    let target_actor = if new_owner.starts_with("http://")
+        || new_owner.starts_with("https://")
+        || new_owner.starts_with("acct:")
+        || new_owner.contains('@')
+    {
+        crate::federation::follow::resolve_actor_reference(new_owner).await?
+    } else {
+        actor_url(&base_url, new_owner)
+    };
+
+    let target_role = get_member_role(db, room_id, &target_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "New owner must already be a room member"})),
+            )
+        })?;
+    if target_role == "observer" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Cannot transfer ownership to an observer"})),
+        ));
+    }
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_rooms SET owner_actor = $2, updated_at = NOW() WHERE room_id = $1",
+        [room_id.into(), target_actor.clone().into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    let _ = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_room_members
+               SET role = 'admin'
+               WHERE room_id = $1 AND actor_url = $2 AND role = 'owner'"#,
+            [room_id.into(), owner_actor.clone().into()],
+        ))
+        .await;
+    let _ = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_room_members
+               SET role = 'owner'
+               WHERE room_id = $1 AND actor_url = $2"#,
+            [room_id.into(), target_actor.clone().into()],
+        ))
+        .await;
+
+    let changes = json!({ "transfer_owner": &target_actor });
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "governance_changed",
+            "actor": &local_actor,
+            "changes": &changes
+        }),
+    )
+    .await;
+
+    let activity_id = generate_activity_id(&base_url);
+    let gov_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomGovernance",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:RoomGovernance",
+            "room": room_id,
+            "changes": changes
+        }
+    });
+    if let Err(e) = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &gov_activity,
+        "RoomGovernance",
+        "RoomGovernance",
+    )
+    .await
+    {
+        tracing::warn!("[Room] ownership transfer fanout failed: {}", e);
+    }
+
+    tracing::info!(
+        "[Room] ownership of {} transferred {} → {}",
+        room_id,
+        owner_actor,
+        target_actor
+    );
+
+    Ok(json!({
+        "success": true,
+        "room_id": room_id,
+        "previous_owner": owner_actor,
+        "new_owner": target_actor
+    }))
+}
+
 /// 离开 Room
 pub async fn leave_room(
     user_id: i32,
@@ -1432,6 +2434,13 @@ pub async fn leave_room(
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
+
+    // Pending invite → reject path (no RoomLeave spam to peers who never saw us)
+    if let Ok(Some((_, status))) = get_membership(db, room_id, &local_actor).await {
+        if status == "pending" {
+            return reject_room_invite(user_id, username, room_id, db).await;
+        }
+    }
 
     let my_role = get_member_role(db, room_id, &local_actor)
         .await
@@ -1451,6 +2460,32 @@ pub async fn leave_room(
     }
 
     let _ = user_id;
+
+    // Fan-out leave while we still appear as a member (delivery targets = other remotes)
+    let activity_id = generate_activity_id(&base_url);
+    let leave_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomLeave",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:Room",
+            "id": room_id
+        }
+    });
+    if let Err(e) = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &leave_activity,
+        "RoomLeave",
+        "Room",
+    )
+    .await
+    {
+        tracing::warn!("[Room] leave fanout failed for {}: {}", room_id, e);
+    }
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -1622,7 +2657,7 @@ pub async fn send_room_message(
         }
     });
 
-    let _ = fanout_to_remote_members(
+    let fanout = match fanout_to_remote_members(
         db,
         user_id,
         room_id,
@@ -1631,13 +2666,22 @@ pub async fn send_room_message(
         "RoomMessage",
         "RoomMessage",
     )
-    .await;
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("[Room] fanout error room={}: {}", room_id, e);
+            crate::federation::delivery::FanoutResult::default()
+        }
+    };
+    let delivery = fanout.to_enqueue_info();
 
     Ok(SendRoomMessageResponse {
         success: true,
         message_id,
         room_id: room_id.to_string(),
         is_encrypted,
+        delivery: Some(delivery),
     })
 }
 
@@ -1734,6 +2778,357 @@ pub async fn get_room_messages(
     Ok(messages)
 }
 
+/// Classify attachment kind from message_type + payload (mirrors Aro client).
+fn room_file_kind(message_type: &str, payload: &serde_json::Value) -> Option<&'static str> {
+    let mut mt = message_type;
+    if mt.is_empty() || mt == "text" {
+        if payload.get("transfer_id").and_then(|v| v.as_str()).is_some()
+            && payload.get("filename").and_then(|v| v.as_str()).is_some()
+        {
+            mt = "file-meta";
+        } else if payload
+            .get("mime_type")
+            .and_then(|v| v.as_str())
+            .map(|m| m.starts_with("image/"))
+            .unwrap_or(false)
+            && payload.get("data").is_some()
+        {
+            mt = "image";
+        } else if payload.get("data").is_some()
+            && payload.get("filename").and_then(|v| v.as_str()).is_some()
+        {
+            mt = "file";
+        }
+    }
+    match mt {
+        "image" => Some("image"),
+        "file" | "file-meta" => Some("file"),
+        _ => None,
+    }
+}
+
+fn room_file_status(has_inline: bool, transfer_status: Option<&str>, has_transfer_id: bool) -> String {
+    if has_inline {
+        return "ready".into();
+    }
+    match transfer_status {
+        Some("completed") => "ready".into(),
+        Some("pending") | Some("transferring") | Some("in-progress") => "pending".into(),
+        Some("failed") | Some("cancelled") => "missing".into(),
+        _ if has_transfer_id => "ready".into(),
+        _ => "missing".into(),
+    }
+}
+
+/// 群文件索引：从 room 消息（image/file/file-meta）+ 本机 transfers 聚合。
+/// 不返回 payload.data 字节；客户端下载走 transfer 或聊天窗口内联。
+///
+/// Query params (caller):
+/// - `before`: message_id cursor (older than that message's created_at)
+/// - `limit`: page size (default 50, max 200)
+/// - `filter`: all | image | file
+/// - `q`: case-insensitive filename substring
+pub async fn list_room_files(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    db: &DatabaseConnection,
+    before: Option<&str>,
+    limit: Option<i64>,
+    filter: Option<&str>,
+    q: Option<&str>,
+) -> Result<RoomFileListResult, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    if get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .is_none()
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Not a member"})),
+        ));
+    }
+    let _ = user_id;
+
+    let limit = limit.unwrap_or(50).clamp(1, 200);
+    let filter = filter.unwrap_or("all").to_ascii_lowercase();
+    let q_norm = q
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+    let my_keys = load_member_e2e_keys(db, room_id, &local_actor).await.ok();
+
+    // Local transfer status map for this room
+    let transfer_rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT transfer_id, filename, file_size, mime_type, status, created_at
+               FROM federation_file_transfers
+               WHERE room_id = $1"#,
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?;
+
+    let mut transfer_map: std::collections::HashMap<String, (String, String, i64, Option<String>, String)> =
+        std::collections::HashMap::new();
+    // transfer_id -> (status, filename, file_size, mime, created_at)
+    for r in &transfer_rows {
+        let tid: String = r.try_get("", "transfer_id").unwrap_or_default();
+        if tid.is_empty() {
+            continue;
+        }
+        transfer_map.insert(
+            tid,
+            (
+                r.try_get("", "status").unwrap_or_else(|_| "pending".into()),
+                r.try_get("", "filename").unwrap_or_else(|_| "file".into()),
+                r.try_get("", "file_size").unwrap_or(0),
+                r.try_get::<Option<String>>("", "mime_type").unwrap_or(None),
+                r.try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
+                    .map(|t| t.to_rfc3339())
+                    .unwrap_or_default(),
+            ),
+        );
+    }
+
+    // Fetch a bit more than limit so client-side filter still fills a page when possible
+    let fetch_limit = if q_norm.is_some() || (filter != "all") {
+        (limit * 3).min(200)
+    } else {
+        limit
+    };
+
+    // payload column is json (not jsonb); cast for containment / ->> operators.
+    let rows = if let Some(before_id) = before {
+        db.query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT message_id, sender_actor, message_type, payload, is_encrypted, created_at
+               FROM federation_room_messages
+               WHERE room_id = $1
+                 AND created_at < (SELECT created_at FROM federation_room_messages WHERE message_id = $2)
+                 AND (
+                   message_type IN ('image', 'file', 'file-meta')
+                   OR (
+                     message_type IN ('text', '')
+                     AND (
+                       (payload::jsonb) ? 'transfer_id'
+                       OR ((payload::jsonb) ? 'data' AND (payload::jsonb) ? 'filename')
+                       OR ((payload::jsonb) ? 'data'
+                           AND COALESCE(payload::jsonb->>'mime_type','') LIKE 'image/%')
+                     )
+                   )
+                 )
+               ORDER BY created_at DESC
+               LIMIT $3"#,
+            [room_id.into(), before_id.into(), fetch_limit.into()],
+        ))
+        .await
+        .map_err(db_err)?
+    } else {
+        db.query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT message_id, sender_actor, message_type, payload, is_encrypted, created_at
+               FROM federation_room_messages
+               WHERE room_id = $1
+                 AND (
+                   message_type IN ('image', 'file', 'file-meta')
+                   OR (
+                     message_type IN ('text', '')
+                     AND (
+                       (payload::jsonb) ? 'transfer_id'
+                       OR ((payload::jsonb) ? 'data' AND (payload::jsonb) ? 'filename')
+                       OR ((payload::jsonb) ? 'data'
+                           AND COALESCE(payload::jsonb->>'mime_type','') LIKE 'image/%')
+                     )
+                   )
+                 )
+               ORDER BY created_at DESC
+               LIMIT $2"#,
+            [room_id.into(), fetch_limit.into()],
+        ))
+        .await
+        .map_err(db_err)?
+    };
+
+    let raw_count = rows.len() as i64;
+    let mut known_transfer_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut files: Vec<RoomFileItem> = Vec::with_capacity(rows.len());
+
+    for r in rows {
+        let is_encrypted: bool = r.try_get("", "is_encrypted").unwrap_or(false);
+        let mut payload: serde_json::Value = r.try_get("", "payload").unwrap_or(json!({}));
+        if is_encrypted {
+            if let Some((pk, sk)) = my_keys.as_ref() {
+                if let Ok(plain) = crate::federation::e2e::decrypt_json_for_recipient(
+                    &payload,
+                    sk,
+                    pk,
+                    room_id.as_bytes(),
+                ) {
+                    payload = plain;
+                } else {
+                    // Cannot index ciphertext body
+                    continue;
+                }
+            } else {
+                continue;
+            }
+        }
+        if !payload.is_object() {
+            payload = json!({});
+        }
+
+        let message_type: String = r.try_get("", "message_type").unwrap_or_default();
+        let kind = match room_file_kind(&message_type, &payload) {
+            Some(k) => k,
+            None => continue,
+        };
+        if filter == "image" && kind != "image" {
+            continue;
+        }
+        if filter == "file" && kind != "file" {
+            continue;
+        }
+
+        let transfer_id = payload
+            .get("transfer_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let has_inline = payload.get("data").map(|d| !d.is_null()).unwrap_or(false)
+            && payload
+                .get("data")
+                .and_then(|d| d.as_str())
+                .map(|s| !s.is_empty())
+                .unwrap_or(true); // non-string data still counts as present
+
+        let tr = transfer_id
+            .as_ref()
+            .and_then(|id| transfer_map.get(id));
+        let filename = payload
+            .get("filename")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .or_else(|| tr.map(|t| t.1.clone()))
+            .unwrap_or_else(|| if kind == "image" { "image".into() } else { "file".into() });
+
+        if let Some(ref qn) = q_norm {
+            if !filename.to_lowercase().contains(qn) {
+                continue;
+            }
+        }
+
+        let size = payload
+            .get("size")
+            .and_then(|v| v.as_i64())
+            .or_else(|| payload.get("size").and_then(|v| v.as_u64()).map(|u| u as i64))
+            .or_else(|| tr.map(|t| t.2))
+            .unwrap_or(0);
+        let mime_type = payload
+            .get("mime_type")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| tr.and_then(|t| t.3.clone()));
+        let status = room_file_status(
+            has_inline,
+            tr.map(|t| t.0.as_str()),
+            transfer_id.is_some(),
+        );
+        let message_id: String = r.try_get("", "message_id").unwrap_or_default();
+        let sender_actor: String = r.try_get("", "sender_actor").unwrap_or_default();
+        let created_at = r
+            .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
+            .map(|t| t.to_rfc3339())
+            .unwrap_or_default();
+
+        if let Some(ref tid) = transfer_id {
+            known_transfer_ids.insert(tid.clone());
+        }
+
+        let key = format!(
+            "{}:{}",
+            message_id,
+            transfer_id.as_deref().unwrap_or(&filename)
+        );
+        files.push(RoomFileItem {
+            key,
+            message_id,
+            kind: kind.into(),
+            filename,
+            size,
+            mime_type,
+            sender_actor,
+            created_at,
+            transfer_id,
+            has_inline,
+            status,
+        });
+
+        if files.len() as i64 >= limit {
+            break;
+        }
+    }
+
+    // First page only: orphan transfers not yet linked by a file-meta message
+    if before.is_none() {
+        let mut orphans: Vec<RoomFileItem> = Vec::new();
+        for (tid, (status, filename, size, mime, created_at)) in &transfer_map {
+            if known_transfer_ids.contains(tid) {
+                continue;
+            }
+            if !matches!(
+                status.as_str(),
+                "completed" | "pending" | "transferring" | "in-progress"
+            ) {
+                continue;
+            }
+            if filter == "image" {
+                continue; // orphans are always file kind
+            }
+            if let Some(ref qn) = q_norm {
+                if !filename.to_lowercase().contains(qn) {
+                    continue;
+                }
+            }
+            orphans.push(RoomFileItem {
+                key: format!("tr:{}", tid),
+                message_id: String::new(),
+                kind: "file".into(),
+                filename: filename.clone(),
+                size: *size,
+                mime_type: mime.clone(),
+                sender_actor: String::new(),
+                created_at: created_at.clone(),
+                transfer_id: Some(tid.clone()),
+                has_inline: false,
+                status: room_file_status(false, Some(status.as_str()), true),
+            });
+        }
+        orphans.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        // Prepend orphans (newest first merge)
+        if !orphans.is_empty() {
+            files.extend(orphans);
+            files.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            if files.len() as i64 > limit {
+                files.truncate(limit as usize);
+            }
+        }
+    }
+
+    let has_more = raw_count >= fetch_limit;
+    let total = files.len();
+    Ok(RoomFileListResult {
+        files,
+        total,
+        has_more,
+    })
+}
+
 /// Pin/Unpin Room 消息（owner/admin 可操作）
 pub async fn pin_room_message(
     user_id: i32,
@@ -1790,6 +3185,34 @@ pub async fn pin_room_message(
     });
     crate::federation::ws_gateway::broadcast_to_room(room_id, &ws_msg).await;
 
+    // Fan-out pin state to remote members (was local-only)
+    let activity_id = generate_activity_id(&base_url);
+    let pin_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomPin",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:RoomPin",
+            "room": room_id,
+            "messageId": message_id,
+            "pinned": req.pinned
+        }
+    });
+    if let Err(e) = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &pin_activity,
+        "RoomPin",
+        "RoomPin",
+    )
+    .await
+    {
+        tracing::warn!("[Room] pin fanout failed for {}: {}", room_id, e);
+    }
+
     tracing::info!(
         "[Room] {} set pinned={} for message {} in room {}",
         username,
@@ -1798,13 +3221,86 @@ pub async fn pin_room_message(
         room_id
     );
 
-    let _ = user_id;
     Ok(json!({
         "success": true,
         "room_id": room_id,
         "message_id": message_id,
         "is_pinned": req.pinned
     }))
+}
+
+/// Inbound pin/unpin for federated rooms.
+pub async fn handle_room_pin(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    let object = activity.get("object").ok_or("Missing object")?;
+    let room_id = object
+        .get("room")
+        .and_then(|v| v.as_str())
+        .or_else(|| object.get("id").and_then(|v| v.as_str()))
+        .ok_or("Missing room id")?;
+    let message_id = object
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing messageId")?;
+    let pinned = object
+        .get("pinned")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    // Best-effort: actor should be admin; tolerate roster lag
+    let role = get_member_role(db, room_id, actor_url_str)
+        .await
+        .map_err(|e| e.to_string())?;
+    if role.as_deref() != Some("owner") && role.as_deref() != Some("admin") {
+        tracing::warn!(
+            "[Room] pin from non-admin {} in room {} (applying anyway if message exists)",
+            actor_url_str,
+            room_id
+        );
+    }
+
+    let updated = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_room_messages
+               SET is_pinned = $3
+               WHERE room_id = $1 AND message_id = $2"#,
+            [room_id.into(), message_id.into(), pinned.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if updated.rows_affected() == 0 {
+        tracing::debug!(
+            "[Room] pin for unknown message {} in room {}",
+            message_id,
+            room_id
+        );
+        return Ok(());
+    }
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "room_message_pinned",
+            "room_id": room_id,
+            "message_id": message_id,
+            "is_pinned": pinned
+        }),
+    )
+    .await;
+
+    tracing::info!(
+        "[Room] remote pin message {} in {} pinned={} by {}",
+        message_id,
+        room_id,
+        pinned,
+        actor_url_str
+    );
+    Ok(())
 }
 
 // ==================== Inbox 处理（远程 Room 事件）====================
@@ -1978,13 +3474,13 @@ pub async fn handle_room_invite(
         }
     }
 
-    // 添加本地用户作为成员
+    // Local invitee is *pending* until they accept (does not auto-join).
     let inserted = db
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_room_members
-           (room_id, actor_url, is_local, local_user_id, role, invited_by, joined_at)
-           VALUES ($1, $2, true, $3, $4, $5, NOW())
+           (room_id, actor_url, is_local, local_user_id, role, invited_by, joined_at, membership_status)
+           VALUES ($1, $2, true, $3, $4, $5, NOW(), 'pending')
            ON CONFLICT (room_id, actor_url) DO NOTHING"#,
             [
                 room_id.into(),
@@ -2008,10 +3504,24 @@ pub async fn handle_room_invite(
             &label,
         )
         .await;
+        // Surface pending room in invitee's Aro (list_rooms will include it).
+        crate::federation::ws_gateway::broadcast_to_room(
+            room_id,
+            &json!({
+                "type": "system",
+                "room_id": room_id,
+                "event": "member_invited",
+                "actor": &local_actor,
+                "role": role,
+                "membership_status": "pending",
+                "invited_by": actor_url_str
+            }),
+        )
+        .await;
     }
 
     tracing::info!(
-        "[Room] Received invite to room {} from {} (seeded remote members)",
+        "[Room] Received invite to room {} from {} (pending local member, seeded remotes)",
         room_id,
         actor_url_str
     );
@@ -2146,7 +3656,10 @@ pub async fn handle_room_message(
     Ok(())
 }
 
-/// 处理远程 RoomLeave
+/// 处理远程 RoomLeave（自愿离开或被踢）
+///
+/// - 自愿离开：`actor` 即离开者
+/// - 踢人：`object.member` = 被踢者，`actor` = 操作者（admin）
 pub async fn handle_room_leave(
     db: &DatabaseConnection,
     actor_url_str: &str,
@@ -2156,34 +3669,72 @@ pub async fn handle_room_leave(
     let room_id = object
         .get("id")
         .and_then(|v| v.as_str())
+        .or_else(|| object.get("room").and_then(|v| v.as_str()))
         .ok_or("Missing room id")?;
+
+    let removed = object
+        .get("member")
+        .and_then(|v| v.as_str())
+        .unwrap_or(actor_url_str);
+    let is_kick = object.get("member").and_then(|v| v.as_str()).is_some()
+        && !same_actor_url(removed, actor_url_str);
+
+    if is_kick {
+        // Kicker must be admin/owner on this instance's roster (best-effort)
+        let kicker_role = get_member_role(db, room_id, actor_url_str)
+            .await
+            .map_err(|e| e.to_string())?;
+        if kicker_role.as_deref() != Some("owner")
+            && kicker_role.as_deref() != Some("admin")
+        {
+            // Still allow if kicker not known locally (roster lag) — log and proceed
+            tracing::warn!(
+                "[Room] kick from {} without local admin role in room {}",
+                actor_url_str,
+                room_id
+            );
+        }
+    }
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "DELETE FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
-        [room_id.into(), actor_url_str.into()],
+        [room_id.into(), removed.into()],
     ))
     .await
     .map_err(|e| e.to_string())?;
 
+    let event = if is_kick {
+        "member_removed"
+    } else {
+        "member_left"
+    };
     crate::federation::ws_gateway::broadcast_to_room(
         room_id,
         &json!({
             "type": "system",
             "room_id": room_id,
-            "event": "member_left",
-            "actor": actor_url_str
+            "event": event,
+            "actor": removed,
+            "removed_by": if is_kick { serde_json::Value::String(actor_url_str.to_string()) } else { serde_json::Value::Null }
         }),
     )
     .await;
 
-    tracing::info!("[Room] {} left room {}", actor_url_str, room_id);
+    tracing::info!(
+        "[Room] {} {} room {} ({})",
+        removed,
+        if is_kick { "removed from" } else { "left" },
+        room_id,
+        actor_url_str
+    );
     Ok(())
 }
 
 /// 处理远程 RoomJoin (myriad:RoomJoin)
 ///
-/// 远程方接受 Invite，加入 Room。本地 home server 把成员激活，并向其他成员广播。
+/// - 自报加入：`actor` = 新成员
+/// - 名册同步：`object.member` = 新成员，`actor` = 邀请者（3+ 方 roster）
 pub async fn handle_room_join(
     db: &DatabaseConnection,
     actor_url_str: &str,
@@ -2199,6 +3750,10 @@ pub async fn handle_room_join(
         .get("role")
         .and_then(|v| v.as_str())
         .unwrap_or("member");
+    let joining = object
+        .get("member")
+        .and_then(|v| v.as_str())
+        .unwrap_or(actor_url_str);
 
     // 验证 Room 存在
     let room_exists = db
@@ -2211,19 +3766,48 @@ pub async fn handle_room_join(
         .map_err(|e| e.to_string())?;
 
     if room_exists.is_none() {
-        return Err(format!("Room {} not found", room_id));
+        // Soft-ack: RoomJoin can race ahead of RoomInvite on slow links; invite will create room.
+        tracing::warn!(
+            "[Room] RoomJoin for unknown room {} from {} (joining={}) — ignored pending invite",
+            room_id,
+            actor_url_str,
+            joining
+        );
+        return Ok(());
     }
 
-    // 加入/激活成员
+    // Ensure remote_actors row so future fanout can resolve inbox
+    if !joining.is_empty() {
+        if let Err(e) = crate::federation::actor::fetch_remote_actor(db, joining).await {
+            tracing::warn!(
+                "[Room] fetch_remote_actor for join {} failed: {} (membership still recorded)",
+                joining,
+                e
+            );
+        }
+    }
+
+    // Was this a pending invite on our roster? (inviter-side accept signal)
+    let prior = get_membership(db, room_id, joining)
+        .await
+        .map_err(|e| e.to_string())?;
+    let was_pending = prior
+        .as_ref()
+        .map(|(_, st)| st == "pending")
+        .unwrap_or(false);
+    let is_new = prior.is_none();
+
+    // 加入/激活成员（pending → active on accept-side RoomJoin)
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_room_members
-           (room_id, actor_url, is_local, role, joined_at)
-           VALUES ($1, $2, false, $3, NOW())
+           (room_id, actor_url, is_local, role, joined_at, membership_status)
+           VALUES ($1, $2, false, $3, NOW(), 'active')
            ON CONFLICT (room_id, actor_url) DO UPDATE SET
                role = EXCLUDED.role,
+               membership_status = 'active',
                joined_at = COALESCE(federation_room_members.joined_at, NOW())"#,
-        [room_id.into(), actor_url_str.into(), role.into()],
+        [room_id.into(), joining.into(), role.into()],
     ))
     .await
     .map_err(|e| e.to_string())?;
@@ -2234,17 +3818,176 @@ pub async fn handle_room_join(
             "type": "system",
             "room_id": room_id,
             "event": "member_joined",
+            "actor": joining,
+            "role": role,
+            "membership_status": "active"
+        }),
+    )
+    .await;
+
+    // Notify local inviter / owner when a pending invite is accepted
+    if was_pending || is_new {
+        notify_local_members_of_join(db, room_id, joining).await;
+    }
+
+    tracing::info!(
+        "[Room] {} joined room {} as {} (announced by {}, status=active)",
+        joining,
+        room_id,
+        role,
+        actor_url_str
+    );
+    Ok(())
+}
+
+/// Notify local users (inviter preferred, else owner) that someone joined/accepted.
+async fn notify_local_members_of_join(
+    db: &DatabaseConnection,
+    room_id: &str,
+    joining_actor: &str,
+) {
+    // Prefer invited_by local user; fall back to local owner/admin members
+    let inviter_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT invited_by FROM federation_room_members
+               WHERE room_id = $1 AND actor_url = $2"#,
+            [room_id.into(), joining_actor.into()],
+        ))
+        .await
+        .ok()
+        .flatten();
+    let invited_by: Option<String> = inviter_row
+        .and_then(|r| r.try_get::<Option<String>>("", "invited_by").ok())
+        .flatten();
+
+    let mut targets: Vec<(i32, bool)> = Vec::new(); // (user_id, is_inviter)
+
+    if let Some(ref inv) = invited_by {
+        if let Ok(Some(row)) = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT local_user_id FROM federation_room_members
+                   WHERE room_id = $1 AND is_local = true AND actor_url = $2
+                     AND local_user_id IS NOT NULL"#,
+                [room_id.into(), inv.clone().into()],
+            ))
+            .await
+        {
+            if let Ok(uid) = row.try_get::<i32>("", "local_user_id") {
+                targets.push((uid, true));
+            }
+        }
+    }
+
+    if targets.is_empty() {
+        // Fall back: notify all local owners/admins (cap 5)
+        if let Ok(rows) = db
+            .query_all(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT local_user_id FROM federation_room_members
+                   WHERE room_id = $1 AND is_local = true
+                     AND local_user_id IS NOT NULL
+                     AND role IN ('owner', 'admin')
+                     AND COALESCE(membership_status, 'active') = 'active'
+                   LIMIT 5"#,
+                [room_id.into()],
+            ))
+            .await
+        {
+            for r in rows {
+                if let Ok(uid) = r.try_get::<i32>("", "local_user_id") {
+                    targets.push((uid, false));
+                }
+            }
+        }
+    }
+
+    if targets.is_empty() {
+        return;
+    }
+
+    let label = crate::federation::notify::actor_label(db, joining_actor).await;
+    let name = crate::federation::notify::room_name(db, room_id).await;
+    for (uid, _) in targets {
+        crate::federation::notify::notify_room_invite_accepted(
+            uid,
+            room_id,
+            &name,
+            joining_actor,
+            &label,
+        )
+        .await;
+    }
+}
+
+/// Inbound Reject for a room invite: remove pending remote member on inviter's side.
+pub async fn handle_room_invite_reject(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    let object = activity.get("object").ok_or("Missing object")?;
+    let room_id = object
+        .get("id")
+        .and_then(|v| v.as_str())
+        .or_else(|| object.get("room").and_then(|v| v.as_str()))
+        .ok_or("Missing room id on Reject")?;
+
+    // Only delete if this actor was pending on our side
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"DELETE FROM federation_room_members
+               WHERE room_id = $1 AND actor_url = $2
+                 AND COALESCE(membership_status, 'active') = 'pending'"#,
+            [room_id.into(), actor_url_str.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if result.rows_affected() == 0 {
+        // Fallback same_actor_url match
+        let rows = db
+            .query_all(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT actor_url FROM federation_room_members
+                   WHERE room_id = $1 AND COALESCE(membership_status, 'active') = 'pending'"#,
+                [room_id.into()],
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
+        for r in rows {
+            let url: String = r.try_get("", "actor_url").unwrap_or_default();
+            if same_actor_url(&url, actor_url_str) {
+                let _ = db
+                    .execute(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        "DELETE FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
+                        [room_id.into(), url.into()],
+                    ))
+                    .await;
+                break;
+            }
+        }
+    }
+
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "member_removed",
             "actor": actor_url_str,
-            "role": role
+            "reason": "invite_rejected"
         }),
     )
     .await;
 
     tracing::info!(
-        "[Room] {} joined room {} as {}",
+        "[Room] Invite rejected by {} for room {}",
         actor_url_str,
-        room_id,
-        role
+        room_id
     );
     Ok(())
 }
@@ -2299,18 +4042,40 @@ pub async fn handle_room_governance(
         ));
     }
 
-    // 转移 owner — 仅 owner 可发
+    // 转移 owner — 仅 owner 可发；同步成员 role 字段避免双 owner
     if let Some(new_owner) = changes.get("transfer_owner").and_then(|v| v.as_str()) {
         if !is_owner {
             return Err("Only owner can transfer ownership".to_string());
         }
+        let old_owner = owner.clone();
         db.execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "UPDATE federation_rooms SET owner_actor = $2 WHERE room_id = $1",
+            "UPDATE federation_rooms SET owner_actor = $2, updated_at = NOW() WHERE room_id = $1",
             [room_id.into(), new_owner.into()],
         ))
         .await
         .map_err(|e| e.to_string())?;
+        // Demote previous owner role if still a member
+        if !old_owner.is_empty() && !same_actor_url(&old_owner, new_owner) {
+            let _ = db
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"UPDATE federation_room_members
+                       SET role = 'admin'
+                       WHERE room_id = $1 AND actor_url = $2 AND role = 'owner'"#,
+                    [room_id.into(), old_owner.into()],
+                ))
+                .await;
+        }
+        let _ = db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"UPDATE federation_room_members
+                   SET role = 'owner'
+                   WHERE room_id = $1 AND actor_url = $2"#,
+                [room_id.into(), new_owner.into()],
+            ))
+            .await;
     }
 
     // 字段更新（白名单）
@@ -2372,6 +4137,11 @@ pub async fn handle_room_governance(
 
 // ==================== Room E2E 多方加密 ====================
 
+async fn jwt_secret_for_e2e_seal() -> String {
+    let config = crate::GLOBAL_CONFIG.read().await;
+    config.jwt_secret.clone()
+}
+
 /// 从成员 custom_permissions 读取本地 E2E 密钥对
 async fn load_member_e2e_keys(
     db: &DatabaseConnection,
@@ -2399,11 +4169,12 @@ async fn load_member_e2e_keys(
         .and_then(|v| v.as_str())
         .ok_or("Missing local_public_key")?
         .to_string();
-    let sk = e2e
+    let sk_stored = e2e
         .get("local_private_key")
         .and_then(|v| v.as_str())
-        .ok_or("Missing local_private_key")?
-        .to_string();
+        .ok_or("Missing local_private_key")?;
+    let jwt_secret = jwt_secret_for_e2e_seal().await;
+    let sk = crate::federation::e2e::unseal_private_key(sk_stored, &jwt_secret)?;
     Ok((pk, sk))
 }
 
@@ -2476,6 +4247,16 @@ pub async fn initiate_e2e_key_exchange(
     let session = crate::federation::e2e::create_session(room_id);
     let public_key = session.local_keypair.public_key.clone();
     let private_key = session.local_keypair.private_key.clone();
+    // Seal private key at rest (AES-GCM from jwt_secret); public key stays plain for fan-out.
+    let jwt_secret = jwt_secret_for_e2e_seal().await;
+    let sealed_sk = crate::federation::e2e::seal_private_key(&private_key, &jwt_secret).map_err(
+        |e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+            )
+        },
+    )?;
 
     // 1) 写入本成员 custom_permissions.e2e
     let member_row = db
@@ -2500,7 +4281,8 @@ pub async fn initiate_e2e_key_exchange(
         .unwrap_or_else(|| json!({}));
     perms["e2e"] = json!({
         "local_public_key": public_key,
-        "local_private_key": private_key,
+        "local_private_key": sealed_sk,
+        "sealed": true,
         "algorithm": crate::federation::e2e::E2E_ALGORITHM,
     });
 

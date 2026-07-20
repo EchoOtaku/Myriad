@@ -295,6 +295,21 @@
     },
     {
       "domain": "federation",
+      "action": "federation.acceptRoomInvite",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.rejectRoomInvite",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.joinRoom",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
       "action": "federation.removeMember",
       "permission": "federation:write"
     },
@@ -305,8 +320,48 @@
     },
     {
       "domain": "federation",
+      "action": "federation.transferRoomOwnership",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.initiateChannelE2e",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.initiateRoomE2e",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
       "action": "federation.pinRoomMessage",
       "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.getDeliveryStats",
+      "permission": "federation:read"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.listDelivery",
+      "permission": "federation:read"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.retryDelivery",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.retryAllDeadDelivery",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.listRoomFiles",
+      "permission": "federation:files"
     },
     {
       "domain": "federation",
@@ -370,6 +425,11 @@
     },
     {
       "domain": "federation",
+      "action": "federation.updateTrustPolicy",
+      "permission": "federation:trust"
+    },
+    {
+      "domain": "federation",
       "action": "federation.getInstances",
       "permission": "federation:trust"
     },
@@ -385,12 +445,27 @@
     },
     {
       "domain": "federation",
+      "action": "federation.downloadTransfer",
+      "permission": "federation:files"
+    },
+    {
+      "domain": "federation",
       "action": "federation.initiateTransfer",
       "permission": "federation:files"
     },
     {
       "domain": "federation",
       "action": "federation.listTransfers",
+      "permission": "federation:files"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.initiateRoomTransfer",
+      "permission": "federation:files"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.listRoomTransfers",
       "permission": "federation:files"
     },
     {

@@ -63,6 +63,8 @@ const BACKEND_TARGET = 'http://127.0.0.1:1103'
 // Node http.request timeout is socket-idle; playground holds the connection
 // with no response bytes until generation finishes.
 const PLAYGROUND_PROXY_TIMEOUT_MS = 20 * 60 * 1000
+// Federation file-meta downloads / chunk uploads can exceed the default 30s.
+const FEDERATION_TRANSFER_PROXY_TIMEOUT_MS = 10 * 60 * 1000
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -75,6 +77,22 @@ const HOP_BY_HOP_HEADERS = new Set([
   'upgrade',
   'host',
 ])
+
+/** Path-only (no query). Completed transfer byte stream — must not buffer. */
+function isFederationTransferContentPath(urlPath) {
+  const path = (urlPath || '').split('?')[0] || ''
+  return /^\/api\/federation\/transfers\/[^/]+\/content$/.test(path)
+}
+
+/** Long-running federation transfer REST (initiate / list / chunk / cancel / get). */
+function isFederationTransferApiPath(urlPath) {
+  const path = (urlPath || '').split('?')[0] || ''
+  if (path.startsWith('/api/federation/transfers/')) return true
+  return (
+    /^\/api\/federation\/channels\/[^/]+\/transfers$/.test(path) ||
+    /^\/api\/federation\/rooms\/[^/]+\/transfers$/.test(path)
+  )
+}
 
 async function readRequestBody(req) {
   const chunks = []
@@ -253,7 +271,9 @@ function isBackendDevProxyPath(urlPath) {
     path === '/.well-known/nodeinfo' ||
     path === '/nodeinfo/2.1' ||
     path === '/inbox' ||
-    path.startsWith('/users/')
+    path.startsWith('/users/') ||
+    // Federation Note attachment media (must match proxy is_backend_path)
+    path.startsWith('/media/federation/')
   )
 }
 
@@ -298,12 +318,17 @@ function backendDevProxyPlugin() {
           const retryable = method === 'GET' || method === 'HEAD'
           const timeoutMs = originalUrl.startsWith('/api/tapp-playground/')
             ? PLAYGROUND_PROXY_TIMEOUT_MS
-            : 30000
-          // SSE must be piped. Buffering a long-lived EventSource response hits
-          // the ordinary 30s proxy timeout and turns a healthy stream into 502.
+            : isFederationTransferApiPath(originalUrl) ||
+                isFederationTransferContentPath(originalUrl)
+              ? FEDERATION_TRANSFER_PROXY_TIMEOUT_MS
+              : 30000
+          // SSE and large transfer downloads must be piped. Buffering a multi-MB
+          // GET /transfers/{id}/content (or a long-lived EventSource) hits the
+          // ordinary timeout / memory path and turns a healthy stream into 502.
           const streamResponse =
             headers.get('accept')?.toLowerCase().includes('text/event-stream') ||
-            originalUrl.startsWith('/api/tapp-playground/generate-stream')
+            originalUrl.startsWith('/api/tapp-playground/generate-stream') ||
+            isFederationTransferContentPath(originalUrl)
 
           if (streamResponse) {
             await proxyBackendRequestStreaming(
@@ -311,7 +336,10 @@ function backendDevProxyPlugin() {
               method,
               headers,
               body,
-              0,
+              // content download: idle timeout 10m; SSE playground still uses 0
+              isFederationTransferContentPath(originalUrl)
+                ? FEDERATION_TRANSFER_PROXY_TIMEOUT_MS
+                : 0,
               req,
               res,
             )

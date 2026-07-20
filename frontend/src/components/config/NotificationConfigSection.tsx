@@ -131,6 +131,7 @@ const EVENT_TEXT: Record<Locale, Record<NotificationEventKey, string>> = {
     'federation.channel_invite': '私信邀请',
     'federation.room_invite': '群组邀请',
     'federation.channel_accepted': '私信通道已建立',
+    'federation.room_invite_accepted': '群组邀请已接受',
     'system.info': '系统信息',
   },
   'en-US': {
@@ -161,6 +162,7 @@ const EVENT_TEXT: Record<Locale, Record<NotificationEventKey, string>> = {
     'federation.channel_invite': 'Direct-message invitation',
     'federation.room_invite': 'Room invitation',
     'federation.channel_accepted': 'Direct channel established',
+    'federation.room_invite_accepted': 'Room invite accepted',
     'system.info': 'System information',
   },
   'ja-JP': {
@@ -191,6 +193,7 @@ const EVENT_TEXT: Record<Locale, Record<NotificationEventKey, string>> = {
     'federation.channel_invite': 'DM 招待',
     'federation.room_invite': 'ルーム招待',
     'federation.channel_accepted': 'DM チャンネル確立',
+    'federation.room_invite_accepted': 'ルーム招待が承認されました',
     'system.info': 'システム情報',
   },
 }

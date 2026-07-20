@@ -21,6 +21,7 @@ import type {
   InitTransferRequest,
   InstanceListResponse,
   InviteMemberRequest,
+  ListRoomFilesParams,
   MediaUploadResponse,
   MessageListResponse,
   PublishedListResponse,
@@ -30,6 +31,7 @@ import type {
   RingListResponse,
   RingPeersResponse,
   RoomDetail,
+  RoomFileListResponse,
   RoomListResponse,
   RoomMembersResponse,
   RoomMessageListResponse,
@@ -38,12 +40,15 @@ import type {
   SendRoomMessageRequest,
   SendRoomMessageResponse,
   TimelineResponse,
+  ContentFilterListResponse,
+  CreateContentFilterRequest,
   ToggleBlockRequest,
   TransferDetail,
   TransferListResponse,
   TrustPolicyResponse,
   UnpublishRequest,
   UpdateRoomRequest,
+  UpdateTrustPolicyRequest,
   UpdateTrustRequest,
   UploadChunkRequest,
 } from '../types/federation'
@@ -579,6 +584,38 @@ export const federationApi = {
     )
   },
 
+  /** 接受群组邀请（pending → active） */
+  acceptRoomInvite(
+    roomId: string,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean; membership_status?: string }> {
+    return withDevFallback(
+      () =>
+        apiService.post<{ success: boolean; membership_status?: string }>(
+          `${PREFIX}/rooms/${roomId}/accept`,
+          {},
+          attributionOptions(runtimeGrant),
+        ),
+      async () => ({ success: true, membership_status: 'active' }),
+    )
+  },
+
+  /** 拒绝群组邀请 */
+  rejectRoomInvite(
+    roomId: string,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean }> {
+    return withDevFallback(
+      () =>
+        apiService.post<{ success: boolean }>(
+          `${PREFIX}/rooms/${roomId}/reject`,
+          {},
+          attributionOptions(runtimeGrant),
+        ),
+      async () => ({ success: true }),
+    )
+  },
+
   /** 移除成员 */
   removeMember(
     roomId: string,
@@ -848,6 +885,23 @@ export const federationApi = {
     )
   },
 
+  /** 更新实例级策略（allowlist / min_trust / auto_discover）— admin */
+  updateTrustPolicy(
+    req: UpdateTrustPolicyRequest,
+    runtimeGrant?: string,
+  ): Promise<{
+    success: boolean
+    min_trust_level?: number
+    allowed_domains?: string[]
+    auto_discover?: boolean
+  }> {
+    return apiService.put(
+      `${PREFIX}/trust/policy`,
+      req,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
   /** 列出所有已知实例 */
   getInstances(runtimeGrant?: string): Promise<InstanceListResponse> {
     return apiService.get<InstanceListResponse>(
@@ -880,9 +934,52 @@ export const federationApi = {
     )
   },
 
+  /** 内容过滤规则列表（admin） */
+  listContentFilters(
+    runtimeGrant?: string,
+  ): Promise<ContentFilterListResponse> {
+    return apiService.get<ContentFilterListResponse>(
+      `${PREFIX}/trust/filters`,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  createContentFilter(
+    req: CreateContentFilterRequest,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean; id: number }> {
+    return apiService.post(
+      `${PREFIX}/trust/filters`,
+      req,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  updateContentFilter(
+    id: number,
+    req: Partial<CreateContentFilterRequest & { enabled: boolean }>,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean }> {
+    return apiService.put(
+      `${PREFIX}/trust/filters/${id}`,
+      req,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  deleteContentFilter(
+    id: number,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean }> {
+    return apiService.delete(
+      `${PREFIX}/trust/filters/${id}`,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
   // ==================== 文件传输 ====================
 
-  /** 发起文件传输 */
+  /** 发起文件传输（私信 Channel） */
   initiateTransfer(
     channelId: string,
     req: InitTransferRequest,
@@ -902,6 +999,51 @@ export const federationApi = {
   ): Promise<TransferListResponse> {
     return apiService.get<TransferListResponse>(
       `${PREFIX}/channels/${channelId}/transfers`,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** 发起文件传输（群聊 Room） */
+  initiateRoomTransfer(
+    roomId: string,
+    req: InitTransferRequest,
+    runtimeGrant?: string,
+  ): Promise<TransferDetail> {
+    return apiService.post<TransferDetail>(
+      `${PREFIX}/rooms/${roomId}/transfers`,
+      req,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** 列出 Room 的文件传输 */
+  listRoomTransfers(
+    roomId: string,
+    runtimeGrant?: string,
+  ): Promise<TransferListResponse> {
+    return apiService.get<TransferListResponse>(
+      `${PREFIX}/rooms/${roomId}/transfers`,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /**
+   * Group attachment library index (messages + local transfers).
+   * Does not return payload.data; download via transfer_id or live chat payload.
+   */
+  listRoomFiles(
+    roomId: string,
+    params?: ListRoomFilesParams,
+    runtimeGrant?: string,
+  ): Promise<RoomFileListResponse> {
+    const qs = new URLSearchParams()
+    if (params?.before) qs.set('before', params.before)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.filter) qs.set('filter', params.filter)
+    if (params?.q) qs.set('q', params.q)
+    const query = qs.toString()
+    return apiService.get<RoomFileListResponse>(
+      `${PREFIX}/rooms/${roomId}/files${query ? `?${query}` : ''}`,
       attributionOptions(runtimeGrant),
     )
   },
@@ -939,6 +1081,147 @@ export const federationApi = {
       `${PREFIX}/transfers/${transferId}/cancel`,
       {},
       attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Transfer room ownership to another member (actor URL or local username) */
+  transferRoomOwnership(
+    roomId: string,
+    newOwner: string,
+    runtimeGrant?: string,
+  ): Promise<{
+    success: boolean
+    room_id: string
+    previous_owner: string
+    new_owner: string
+  }> {
+    return apiService.post(
+      `${PREFIX}/rooms/${roomId}/transfer-ownership`,
+      { new_owner: newOwner },
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Start channel E2E key exchange (publishes local pubkey to peer) */
+  initiateChannelE2e(
+    channelId: string,
+    runtimeGrant?: string,
+  ): Promise<{
+    success: boolean
+    channel_id: string
+    public_key: string
+    algorithm: string
+    established: boolean
+  }> {
+    return apiService.post(
+      `${PREFIX}/channels/${channelId}/e2e/key-exchange`,
+      {},
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Publish room E2E public key to other members */
+  initiateRoomE2e(
+    roomId: string,
+    runtimeGrant?: string,
+  ): Promise<{
+    success: boolean
+    room_id: string
+    public_key: string
+    algorithm: string
+    published_key_count: number
+  }> {
+    return apiService.post(
+      `${PREFIX}/rooms/${roomId}/e2e/key-exchange`,
+      {},
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /**
+   * Download completed transfer bytes.
+   * - Channel (DM): channel owner
+   * - Room (group): any room member on this instance
+   * Used for file-meta messages that only store transfer_id in payload.
+   * Routed via /api/* so production Myriad proxy already forwards to backend;
+   * response is streamed (do not buffer in outer proxies).
+   */
+  downloadTransfer(
+    transferId: string,
+    runtimeGrant?: string,
+  ): Promise<{ blob: Blob; filename?: string; contentType?: string }> {
+    return apiService.getBlob(
+      `${PREFIX}/transfers/${transferId}/content`,
+      {
+        ...attributionOptions(runtimeGrant),
+        // Large files: 10 min
+        timeout: 600_000,
+      },
+    )
+  },
+
+  /** Outbound delivery queue stats for the current user */
+  getDeliveryStats(
+    runtimeGrant?: string,
+  ): Promise<import('../types/federation').DeliveryStats> {
+    return apiService.get<import('../types/federation').DeliveryStats>(
+      `${PREFIX}/delivery/stats`,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Recent delivery queue rows (dead first) */
+  listDelivery(
+    limit?: number,
+    runtimeGrant?: string,
+  ): Promise<import('../types/federation').DeliveryListResponse> {
+    const qs =
+      limit != null ? `?limit=${encodeURIComponent(String(limit))}` : ''
+    return apiService.get<import('../types/federation').DeliveryListResponse>(
+      `${PREFIX}/delivery${qs}`,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Re-queue a single dead/stuck delivery item */
+  retryDelivery(
+    queueId: number,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean; id: number; status: string }> {
+    return apiService.post(
+      `${PREFIX}/delivery/${queueId}/retry`,
+      {},
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Re-queue all dead delivery items (capped) */
+  retryAllDeadDelivery(
+    limit?: number,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean; retried: number }> {
+    const qs =
+      limit != null ? `?limit=${encodeURIComponent(String(limit))}` : ''
+    return apiService.post(
+      `${PREFIX}/delivery/retry-dead${qs}`,
+      {},
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Self-join an open-policy room */
+  joinRoom(
+    roomId: string,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean; membership_status?: string }> {
+    return withDevFallback(
+      () =>
+        apiService.post(
+          `${PREFIX}/rooms/${roomId}/join`,
+          {},
+          attributionOptions(runtimeGrant),
+        ),
+      async () => ({ success: true, membership_status: 'active' }),
     )
   },
 }

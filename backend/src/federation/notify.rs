@@ -254,6 +254,11 @@ pub async fn notify_channel_invite(
         "kind": "channel_invite",
         "channel_id": channel_id,
         "actor_url": actor_url,
+        // Hint for host UI / Aro deep-link actions
+        "actions": [
+            { "id": "accept", "label": "接受", "api": format!("POST /api/federation/channels/{}/accept", channel_id) },
+            { "id": "reject", "label": "拒绝", "api": format!("POST /api/federation/channels/{}/close", channel_id) }
+        ],
     }));
     notification.id = format!("fed_inv_ch_{}_u{}", stable_hash(channel_id), user_id);
     notification.read = false;
@@ -290,8 +295,69 @@ pub async fn notify_room_invite(
         "kind": "room_invite",
         "room_id": room_id,
         "actor_url": actor_url,
+        "actions": [
+            { "id": "accept", "label": "接受", "api": format!("POST /api/federation/rooms/{}/accept", room_id) },
+            { "id": "reject", "label": "拒绝", "api": format!("POST /api/federation/rooms/{}/reject", room_id) }
+        ],
     }));
     notification.id = format!("fed_inv_rm_{}_u{}", stable_hash(room_id), user_id);
+    notification.read = false;
+    manager.upsert(notification).await;
+}
+
+/// Mark a stable invite notification as read (after accept/reject).
+pub async fn mark_invite_notification_read(user_id: i32, notif_id: &str) {
+    let Some(manager) = get_notification_manager() else {
+        return;
+    };
+    let _ = manager.mark_read(notif_id, user_id).await;
+}
+
+pub fn room_invite_notification_id(room_id: &str, user_id: i32) -> String {
+    format!("fed_inv_rm_{}_u{}", stable_hash(room_id), user_id)
+}
+
+pub fn channel_invite_notification_id(channel_id: &str, user_id: i32) -> String {
+    format!("fed_inv_ch_{}_u{}", stable_hash(channel_id), user_id)
+}
+
+/// 远程成员接受了群组邀请（邀请方本地通知）
+pub async fn notify_room_invite_accepted(
+    user_id: i32,
+    room_id: &str,
+    room_name: &str,
+    actor_url: &str,
+    actor_label: &str,
+) {
+    let Some(manager) = get_notification_manager() else {
+        return;
+    };
+    let body = if room_name.is_empty() {
+        format!("{} 已接受你的群组邀请", actor_label)
+    } else {
+        format!("{} 已加入「{}」", actor_label, room_name)
+    };
+    let mut notification = Notification::new(
+        user_id,
+        NotificationType::FederationInvite,
+        NotificationPriority::Normal,
+        "群组邀请已接受",
+        body,
+    )
+    .with_metadata(json!({
+        "event_key": "federation.room_invite_accepted",
+        "route": aro_route("room", room_id),
+        "tapp_id": ARO_TAPP_ID,
+        "kind": "room_invite_accepted",
+        "room_id": room_id,
+        "actor_url": actor_url,
+    }));
+    notification.id = format!(
+        "fed_rm_ok_{}_{}_u{}",
+        stable_hash(room_id),
+        stable_hash(actor_url),
+        user_id
+    );
     notification.read = false;
     manager.upsert(notification).await;
 }
@@ -321,6 +387,60 @@ pub async fn notify_channel_accepted(user_id: i32, channel_id: &str, actor_label
         "channel_id": channel_id,
     }));
     notification.id = format!("fed_ch_ok_{}_u{}", stable_hash(channel_id), user_id);
+    notification.read = false;
+    manager.upsert(notification).await;
+}
+
+/// 出站投递最终失败（dead letter）— 按 domain+activity_type upsert，避免刷屏
+pub async fn notify_delivery_failed(
+    user_id: i32,
+    activity_type: &str,
+    target_domain: &str,
+    error: &str,
+) {
+    if user_id <= 0 {
+        return;
+    }
+    let Some(manager) = get_notification_manager() else {
+        return;
+    };
+    let domain = if target_domain.is_empty() {
+        "remote"
+    } else {
+        target_domain
+    };
+    let kind = if activity_type.is_empty() {
+        "Activity"
+    } else {
+        activity_type
+    };
+    let err_short = truncate(error, 140);
+    let body = format!(
+        "投递到 {} 的 {} 已放弃：{}",
+        domain, kind, err_short
+    );
+    let mut notification = Notification::new(
+        user_id,
+        NotificationType::SystemInfo,
+        NotificationPriority::High,
+        "联邦投递失败",
+        body,
+    )
+    .with_metadata(json!({
+        "event_key": "federation.delivery_failed",
+        "route": "/tapp/run/com.myriad.aro?view=messages",
+        "tapp_id": ARO_TAPP_ID,
+        "kind": "delivery_failed",
+        "activity_type": kind,
+        "target_domain": domain,
+        "error": err_short,
+    }));
+    // Same domain+type collapses into one unread entry (latest error wins)
+    notification.id = format!(
+        "fed_dlv_dead_u{}_{}",
+        user_id,
+        stable_hash(&format!("{}|{}", domain, kind))
+    );
     notification.read = false;
     manager.upsert(notification).await;
 }

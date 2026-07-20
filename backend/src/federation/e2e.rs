@@ -549,6 +549,85 @@ pub fn decrypt_json_for_recipient(
     serde_json::from_slice(&plain).map_err(|e| format!("plaintext json parse: {e}"))
 }
 
+// ==================== At-rest private key sealing ====================
+// AES-256-GCM with key = SHA-256("myriad-e2e-key-seal:" || jwt_secret)
+// Stored form: "sealed:v1:" + base64(nonce || ciphertext)
+// Legacy plaintext base64 private keys still load for one-release migration.
+
+const E2E_SK_SEAL_PREFIX: &str = "sealed:v1:";
+/// KDF domain for current seals (channel + room)
+const E2E_SEAL_KDF_LABEL: &[u8] = b"myriad-e2e-key-seal:";
+/// Brief room-only label used before helpers were shared — still accepted on unseal.
+const E2E_SEAL_KDF_LABEL_LEGACY_ROOM: &[u8] = b"myriad-room-e2e-key-seal:";
+
+fn derive_seal_aes_key(jwt_secret: &str, label: &[u8]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(label);
+    hasher.update(jwt_secret.as_bytes());
+    hasher.finalize().into()
+}
+
+/// Seal an E2E X25519 private key (base64) for DB storage.
+pub fn seal_private_key(plain_b64: &str, jwt_secret: &str) -> Result<String, String> {
+    use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+
+    let key = derive_seal_aes_key(jwt_secret, E2E_SEAL_KDF_LABEL);
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())?;
+    let nonce_bytes = rand::random::<[u8; 12]>();
+    let nonce = Nonce::from(nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(&nonce, plain_b64.as_bytes())
+        .map_err(|e| format!("e2e seal failed: {e}"))?;
+    let mut combined = Vec::with_capacity(12 + ciphertext.len());
+    combined.extend_from_slice(&nonce_bytes);
+    combined.extend_from_slice(&ciphertext);
+    Ok(format!("{}{}", E2E_SK_SEAL_PREFIX, B64.encode(&combined)))
+}
+
+/// Unseal a stored E2E private key. Plain (legacy) values pass through.
+pub fn unseal_private_key(stored: &str, jwt_secret: &str) -> Result<String, String> {
+    use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+
+    let Some(rest) = stored.strip_prefix(E2E_SK_SEAL_PREFIX) else {
+        return Ok(stored.to_string());
+    };
+    let combined = B64
+        .decode(rest)
+        .map_err(|e| format!("e2e unseal b64: {e}"))?;
+    if combined.len() < 13 {
+        return Err("e2e sealed key too short".into());
+    }
+    let (nonce_bytes, ciphertext) = combined.split_at(12);
+    let nonce_bytes: [u8; 12] = nonce_bytes
+        .try_into()
+        .map_err(|_| "invalid e2e seal nonce".to_string())?;
+    let nonce = Nonce::from(nonce_bytes);
+
+    // Try current KDF label, then legacy room-only label.
+    for label in [E2E_SEAL_KDF_LABEL, E2E_SEAL_KDF_LABEL_LEGACY_ROOM] {
+        let key = derive_seal_aes_key(jwt_secret, label);
+        let cipher = match Aes256Gcm::new_from_slice(&key) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        if let Ok(plain) = cipher.decrypt(&nonce, ciphertext) {
+            if let Ok(s) = String::from_utf8(plain) {
+                return Ok(s);
+            }
+        }
+    }
+    Err("e2e unseal failed".into())
+}
+
+/// True when value looks like a sealed blob (not legacy plain base64).
+#[allow(dead_code)]
+pub fn is_sealed_private_key(stored: &str) -> bool {
+    stored.starts_with(E2E_SK_SEAL_PREFIX)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -561,6 +640,19 @@ mod tests {
         assert_eq!(pk.len(), 32);
         assert_eq!(sk.len(), 32);
         assert_ne!(pk, sk);
+    }
+
+    #[test]
+    fn seal_unseal_roundtrip_and_legacy_plain() {
+        let secret = "test-jwt-secret";
+        let plain = "dGVzdC1wcml2YXRlLWtleS1iYXNlNjQ=";
+        let sealed = seal_private_key(plain, secret).unwrap();
+        assert!(is_sealed_private_key(&sealed));
+        assert_eq!(unseal_private_key(&sealed, secret).unwrap(), plain);
+        // Legacy plain passes through
+        assert_eq!(unseal_private_key(plain, secret).unwrap(), plain);
+        // Wrong secret fails
+        assert!(unseal_private_key(&sealed, "other").is_err());
     }
 
     #[test]

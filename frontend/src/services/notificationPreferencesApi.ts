@@ -41,6 +41,7 @@ export const NOTIFICATION_EVENT_KEYS = [
   'federation.channel_invite',
   'federation.room_invite',
   'federation.channel_accepted',
+  'federation.room_invite_accepted',
   'system.info',
 ] as const
 

@@ -12,8 +12,14 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
+    /// Channel (DM) transfers set a real id; room transfers use empty string + room_id.
     #[sea_orm(column_type = "Text")]
     pub channel_id: String,
+    /// Group transfer scope (null for DM)
+    #[sea_orm(column_type = "Text", nullable)]
+    pub room_id: Option<String>,
+    /// Local uploader user id (room outbound ACL)
+    pub owner_user_id: Option<i32>,
     #[sea_orm(column_type = "Text")]
     pub transfer_id: String,
     #[sea_orm(column_type = "Text")]
@@ -22,7 +28,7 @@ pub struct Model {
     pub mime_type: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub checksum_sha256: Option<String>,
-    /// send, receive
+    /// outbound / inbound
     pub direction: String,
     /// pending, transferring, completed, failed, cancelled
     pub status: String,

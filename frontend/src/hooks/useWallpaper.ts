@@ -223,8 +223,15 @@ function preloadImage(
   return loadImagePooled(url, { timeout })
 }
 
+function setWallpaperAwaiting(active: boolean) {
+  const bg = document.getElementById('bg-container')
+  if (!bg) return
+  bg.classList.toggle('wallpaper-awaiting', active)
+}
+
 /**
  * 应用壁纸到DOM并更新全局状态
+ * 首次加载：预加载完成后淡入，背景层用呼吸占位避免白屏突兀。
  * @param imageUrl 目标图片URL
  * @param blur 模糊度
  * @param forceRefresh 是否强制刷新（即使URL相同）
@@ -252,17 +259,34 @@ async function applyWallpaperToDOM(
     }
     // 确保状态同步
     wallpaperState.updateState(imageUrl, blur)
+    wallpaperEl.classList.add('wallpaper-visible')
+    setWallpaperAwaiting(false)
     return imageUrl
   }
 
-  // 标记加载状态
+  const hadVisibleWallpaper =
+    wallpaperEl.classList.contains('wallpaper-visible') && !!currentUrl
+
+  // 标记加载状态 + 首次加载呼吸占位
   wallpaperState.setLoading(true)
+  if (!hadVisibleWallpaper) {
+    setWallpaperAwaiting(true)
+    wallpaperEl.classList.remove('wallpaper-visible')
+  } else {
+    // 切换壁纸时先轻微淡出，再换图淡入
+    wallpaperEl.classList.add('wallpaper-fading')
+    wallpaperEl.classList.remove('wallpaper-visible')
+  }
 
   try {
     // 预加载图片
     const loaded = await preloadImage(imageUrl)
     if (!loaded) {
       wallpaperState.setError('图片加载失败')
+      wallpaperEl.classList.remove('wallpaper-fading')
+      if (hadVisibleWallpaper) {
+        wallpaperEl.classList.add('wallpaper-visible')
+      }
       return null
     }
 
@@ -274,18 +298,25 @@ async function applyWallpaperToDOM(
       areUrlsEquivalent(currentUrlAfterLoad, imageUrl)
     ) {
       wallpaperState.updateState(imageUrl, blur)
+      wallpaperEl.classList.remove('wallpaper-fading')
+      wallpaperEl.classList.add('wallpaper-visible')
+      setWallpaperAwaiting(false)
       return imageUrl
     }
 
-    // 应用到DOM（使用渐变过渡减少闪烁）
+    // 应用到 DOM（先不可见，再渐显）
     wallpaperEl.style.backgroundImage = `url(${imageUrl})`
     wallpaperEl.style.filter = `blur(${blur}px)`
+    wallpaperEl.classList.remove('wallpaper-fading')
 
     // 更新全局状态
     wallpaperState.updateState(imageUrl, blur)
 
-    // 等待下一帧验证DOM更新
+    // 等两帧再淡入，保证 background-image 已提交绘制
     await new Promise((resolve) => requestAnimationFrame(resolve))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    wallpaperEl.classList.add('wallpaper-visible')
+    setWallpaperAwaiting(false)
 
     // 验证DOM是否已更新
     const appliedUrl = extractBackgroundUrl(WALLPAPER_ELEMENT_ID)
@@ -307,9 +338,17 @@ async function applyWallpaperToDOM(
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误'
     wallpaperState.setError(message)
+    wallpaperEl.classList.remove('wallpaper-fading')
+    if (hadVisibleWallpaper) {
+      wallpaperEl.classList.add('wallpaper-visible')
+    }
     return null
   } finally {
     wallpaperState.setLoading(false)
+    // Keep awaiting if we never got a visible wallpaper (failed first load)
+    if (!wallpaperEl.classList.contains('wallpaper-visible')) {
+      setWallpaperAwaiting(true)
+    }
   }
 }
 

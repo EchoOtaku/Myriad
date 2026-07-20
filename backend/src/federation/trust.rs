@@ -1,11 +1,10 @@
 //! 联邦信任策略模块（Phase 5 补全 — Layer 2 安全增强）
 //!
-//! 实际入站 enforcement（`enforce_inbound`）仅执行：
+//! 实际入站 enforcement（`enforce_inbound`）执行：
 //! 1. 域名黑名单（`federation_instances.is_blocked`）
 //! 2. 速率限制（进程内窗口计数 + DB `received_at` 统计）
-//!
-//! `check_instance_policy` 的 allowlist / min_trust 逻辑 **未** 接入 enforce 路径；
-//! `get_policy` 只报告 *有效* 执行项，不伪造未接线的 allowlist/min_trust/content filters。
+//! 3. allowlist / min_trust（`federation_policy_settings`，空 allowlist = 不限制）
+//! 4. 内容过滤（`federation_content_filters`）
 
 #![allow(dead_code)]
 
@@ -112,15 +111,20 @@ pub struct PolicyCheckResult {
 ///
 /// 优先级：blocked_domains > allowed_domains > min_trust_level
 ///
-/// **注意**：当前 `enforce_inbound` **不** 调用本函数。入站仅执行 DB 黑名单
-///（`is_blocked`）与速率限制。保留本函数供管理/测试或未来接线使用。
+/// `enforce_inbound` 会在 DB 黑名单与速率限制之后调用本函数
+///（blocked_domains 字段通常为空，DB `is_blocked` 已先检查）。
 pub async fn check_instance_policy(
     db: &DatabaseConnection,
     domain: &str,
     policy: &InstancePolicy,
 ) -> PolicyCheckResult {
+    let domain_lc = domain.to_lowercase();
     // 1. 黑名单检查（最高优先级）
-    if policy.blocked_domains.iter().any(|d| d == domain) {
+    if policy
+        .blocked_domains
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(&domain_lc))
+    {
         return PolicyCheckResult {
             allowed: false,
             reason: Some(format!("Domain {} is blocked", domain)),
@@ -129,7 +133,12 @@ pub async fn check_instance_policy(
     }
 
     // 2. 白名单检查（如果白名单非空，则只允许白名单中的域名）
-    if !policy.allowed_domains.is_empty() && !policy.allowed_domains.iter().any(|d| d == domain) {
+    if !policy.allowed_domains.is_empty()
+        && !policy
+            .allowed_domains
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(&domain_lc))
+    {
         return PolicyCheckResult {
             allowed: false,
             reason: Some(format!("Domain {} is not in allowed list", domain)),
@@ -353,8 +362,7 @@ pub async fn check_rate_limit(
 /// - block_keyword: 阻止包含特定关键词的内容
 /// - require_trust_level: 特定操作要求最低信任层级
 ///
-/// **注意**：`load_content_filter_rules` 当前返回空列表；`enforce_inbound` 因此
-/// 不会因内容过滤拒绝任何请求。`get_policy` 如实报告 content_filters 未启用。
+/// 对入站 Activity 套用 `federation_content_filters` 规则（见 `load_content_filter_rules`）。
 pub fn apply_content_filters(
     activity: &serde_json::Value,
     domain_trust: TrustLevel,
@@ -406,9 +414,6 @@ pub fn apply_content_filters(
 // ==================== API 端点 ====================
 
 /// 获取当前 *有效* 实例策略（管理员）
-///
-/// 只报告实际由 `enforce_inbound` / `enforce_outbound` 执行的能力，
-/// 不返回未接线的 allowlist / min_trust / content_filters 作为“策略配置”。
 pub async fn get_policy(
     db: &DatabaseConnection,
 ) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
@@ -447,32 +452,152 @@ pub async fn get_policy(
     };
 
     let rate_limit = RateLimitPolicy::default();
+    let policy = load_instance_policy(db).await;
+    let allowlist_active = !policy.allowed_domains.is_empty();
+    let min_trust_active = (policy.min_trust_level as i16) > 0;
+    let filter_rules = load_content_filter_rules(db).await;
+    let filters_enabled = filter_rules.iter().any(|r| r.enabled);
+    let filters_json: Vec<serde_json::Value> = filter_rules
+        .iter()
+        .map(|r| {
+            json!({
+                "name": r.name,
+                "filter_type": r.filter_type,
+                "value": r.value,
+                "enabled": r.enabled,
+            })
+        })
+        .collect();
 
     Ok(json!({
-        // What enforce_inbound / enforce_outbound actually do today
         "enforcement": {
             "domain_blocklist": true,
             "rate_limit": true,
-            "content_filters": false,
-            "allowlist": false,
-            "min_trust_level": false,
+            "content_filters": filters_enabled,
+            "allowlist": allowlist_active,
+            "min_trust_level": min_trust_active,
         },
         "notes": {
             "domain_blocklist": "federation_instances.is_blocked is checked on inbound and outbound",
             "rate_limit": "per-domain window: process-local counter + federation_activities.received_at",
-            "content_filters": "no persisted rules loaded; apply_content_filters receives an empty list",
-            "allowlist": "InstancePolicy.allowed_domains is not consulted by enforce_inbound",
-            "min_trust_level": "InstancePolicy.min_trust_level is not consulted by enforce_inbound",
+            "content_filters": "federation_content_filters rows are loaded and applied in enforce_inbound",
+            "allowlist": "empty allowed_domains = allow all non-blocked; non-empty = only listed domains",
+            "min_trust_level": "domains below min_trust_level are rejected on inbound (0 = Unknown, no floor)",
         },
         "blocked_domains": blocked_list,
+        "allowed_domains": policy.allowed_domains,
+        "min_trust_level": policy.min_trust_level as i16,
+        "auto_discover": policy.auto_discover,
         "rate_limit": rate_limit,
-        "content_filters": [],
+        "content_filters": filters_json,
         "stats": {
             "total_instances": total,
             "trusted_count": trusted,
             "unknown_count": unknown
         }
     }))
+}
+
+/// 更新实例级策略（allowlist / min_trust / auto_discover）— 管理员
+pub async fn update_policy(
+    db: &DatabaseConnection,
+    min_trust_level: Option<i16>,
+    allowed_domains: Option<Vec<String>>,
+    auto_discover: Option<bool>,
+) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
+    let mut current = load_instance_policy(db).await;
+    if let Some(level) = min_trust_level {
+        if !(0..=4).contains(&level) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                json!({"error": "min_trust_level must be 0..=4"}),
+            ));
+        }
+        current.min_trust_level = TrustLevel::from_i16(level);
+    }
+    if let Some(domains) = allowed_domains {
+        current.allowed_domains = domains
+            .into_iter()
+            .map(|d| d.trim().to_lowercase())
+            .filter(|d| !d.is_empty())
+            .collect();
+    }
+    if let Some(ad) = auto_discover {
+        current.auto_discover = ad;
+    }
+
+    let domains_json = serde_json::to_value(&current.allowed_domains).unwrap_or_else(|_| json!([]));
+    let level = current.min_trust_level as i16;
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"INSERT INTO federation_policy_settings
+               (id, min_trust_level, allowed_domains, auto_discover, updated_at)
+           VALUES (1, $1, $2, $3, NOW())
+           ON CONFLICT (id) DO UPDATE SET
+               min_trust_level = EXCLUDED.min_trust_level,
+               allowed_domains = EXCLUDED.allowed_domains,
+               auto_discover = EXCLUDED.auto_discover,
+               updated_at = NOW()"#,
+        [
+            level.into(),
+            domains_json.into(),
+            current.auto_discover.into(),
+        ],
+    ))
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"error": format!("DB error: {}", e)}),
+        )
+    })?;
+
+    Ok(json!({
+        "success": true,
+        "min_trust_level": level,
+        "allowed_domains": current.allowed_domains,
+        "auto_discover": current.auto_discover
+    }))
+}
+
+/// Load persisted InstancePolicy (defaults if row missing).
+async fn load_instance_policy(db: &DatabaseConnection) -> InstancePolicy {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT min_trust_level, allowed_domains, auto_discover
+               FROM federation_policy_settings WHERE id = 1"#,
+            [],
+        ))
+        .await
+        .ok()
+        .flatten();
+
+    let Some(r) = row else {
+        return InstancePolicy::default();
+    };
+
+    let min_level: i16 = r.try_get("", "min_trust_level").unwrap_or(0);
+    let domains_val: serde_json::Value = r
+        .try_get("", "allowed_domains")
+        .unwrap_or_else(|_| json!([]));
+    let allowed_domains: Vec<String> = domains_val
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let auto_discover: bool = r.try_get("", "auto_discover").unwrap_or(true);
+
+    InstancePolicy {
+        min_trust_level: TrustLevel::from_i16(min_level),
+        allowed_domains,
+        blocked_domains: Vec::new(), // DB is_blocked is authoritative
+        auto_discover,
+    }
 }
 
 /// 更新实例信任层级（管理员）
@@ -618,8 +743,7 @@ async fn is_domain_blocked(db: &DatabaseConnection, domain: &str) -> bool {
 
 /// 入站请求策略检查（inbox 调用）
 ///
-/// 顺序：实例黑名单 → 速率限制
-/// （内容过滤规则表未接线，不在此假装过滤）
+/// 顺序：实例黑名单 → allowlist/min_trust → 速率限制 → 内容过滤
 /// 返回 `Err(reason)` 表示拒绝。
 pub async fn enforce_inbound(
     db: &DatabaseConnection,
@@ -634,13 +758,21 @@ pub async fn enforce_inbound(
         return Err(format!("Instance {} is blocked", domain));
     }
 
+    // allowlist + min_trust from federation_policy_settings
+    let policy = load_instance_policy(db).await;
+    let verdict = check_instance_policy(db, domain, &policy).await;
+    if !verdict.allowed {
+        return Err(verdict
+            .reason
+            .unwrap_or_else(|| format!("Domain {} rejected by instance policy", domain)));
+    }
+
     let rate = check_rate_limit(db, domain, &RateLimitPolicy::default()).await;
     if !rate.allowed {
         return Err(rate.reason.unwrap_or_else(|| "Rate limited".to_string()));
     }
 
-    // Content filters: only run if rules are non-empty (currently always empty).
-    // Kept as a stable hook; get_policy reports content_filters=false until rules exist.
+    // Content filters from federation_content_filters (enabled rows only applied inside).
     let trust = get_instance_trust_level(db, domain).await;
     if let FilterVerdict::Reject(reason) =
         apply_content_filters(activity, trust, &load_content_filter_rules(db).await)
@@ -664,11 +796,225 @@ pub async fn enforce_outbound(db: &DatabaseConnection, target_domain: &str) -> R
     Ok(())
 }
 
-/// 加载当前生效的内容过滤规则
-///
-/// 当前实现：返回空列表（无持久化规则表）。保留入口确保 inbox 调用稳定。
-async fn load_content_filter_rules(_db: &DatabaseConnection) -> Vec<ContentFilterRule> {
-    Vec::new()
+/// 加载当前生效的内容过滤规则（`federation_content_filters`）
+async fn load_content_filter_rules(db: &DatabaseConnection) -> Vec<ContentFilterRule> {
+    let rows = match db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT name, filter_type, value, enabled
+               FROM federation_content_filters
+               ORDER BY id ASC"#,
+            [],
+        ))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            // Table may not exist yet on brand-new DBs before schema heal.
+            tracing::debug!("load_content_filter_rules: {}", e);
+            return Vec::new();
+        }
+    };
+    rows.iter()
+        .map(|r| ContentFilterRule {
+            name: r.try_get("", "name").unwrap_or_default(),
+            filter_type: r.try_get("", "filter_type").unwrap_or_default(),
+            value: r.try_get("", "value").unwrap_or_default(),
+            enabled: r.try_get::<bool>("", "enabled").unwrap_or(true),
+        })
+        .collect()
+}
+
+/// List content filter rules (admin API)
+pub async fn list_content_filters(
+    db: &DatabaseConnection,
+) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT id, name, filter_type, value, enabled, created_at
+               FROM federation_content_filters
+               ORDER BY id ASC"#,
+            [],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {}", e)}),
+            )
+        })?;
+    let filters: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<i32>("", "id").unwrap_or(0),
+                "name": r.try_get::<String>("", "name").unwrap_or_default(),
+                "filter_type": r.try_get::<String>("", "filter_type").unwrap_or_default(),
+                "value": r.try_get::<String>("", "value").unwrap_or_default(),
+                "enabled": r.try_get::<bool>("", "enabled").unwrap_or(true),
+                "created_at": r
+                    .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
+                    .ok()
+                    .map(|t| t.to_rfc3339())
+                    .unwrap_or_default(),
+            })
+        })
+        .collect();
+    Ok(json!({ "filters": filters, "total": filters.len() }))
+}
+
+/// Create a content filter rule (admin)
+pub async fn create_content_filter(
+    db: &DatabaseConnection,
+    name: &str,
+    filter_type: &str,
+    value: &str,
+    enabled: bool,
+) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
+    let name = name.trim();
+    let filter_type = filter_type.trim();
+    let value = value.trim();
+    if name.is_empty() || filter_type.is_empty() || value.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"error": "name, filter_type, and value are required"}),
+        ));
+    }
+    if !["block_activity_type", "block_keyword", "require_trust_level"].contains(&filter_type) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"error": "filter_type must be block_activity_type | block_keyword | require_trust_level"}),
+        ));
+    }
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_content_filters (name, filter_type, value, enabled, created_at)
+               VALUES ($1, $2, $3, $4, NOW())
+               RETURNING id"#,
+            [
+                name.into(),
+                filter_type.into(),
+                value.into(),
+                enabled.into(),
+            ],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {}", e)}),
+            )
+        })?;
+    let id = row
+        .and_then(|r| r.try_get::<i32>("", "id").ok())
+        .unwrap_or(0);
+    Ok(json!({
+        "success": true,
+        "id": id,
+        "name": name,
+        "filter_type": filter_type,
+        "value": value,
+        "enabled": enabled
+    }))
+}
+
+/// Update enabled flag or fields of a content filter (admin)
+pub async fn update_content_filter(
+    db: &DatabaseConnection,
+    id: i32,
+    name: Option<&str>,
+    filter_type: Option<&str>,
+    value: Option<&str>,
+    enabled: Option<bool>,
+) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
+    if id <= 0 {
+        return Err((StatusCode::BAD_REQUEST, json!({"error": "invalid id"})));
+    }
+    if let Some(ft) = filter_type {
+        if !["block_activity_type", "block_keyword", "require_trust_level"].contains(&ft) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                json!({"error": "invalid filter_type"}),
+            ));
+        }
+    }
+    let existing = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT name, filter_type, value, enabled FROM federation_content_filters WHERE id = $1",
+            [id.into()],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {}", e)}),
+            )
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, json!({"error": "filter not found"})))?;
+
+    let new_name = name
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| existing.try_get("", "name").unwrap_or_default());
+    let new_type = filter_type
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| existing.try_get("", "filter_type").unwrap_or_default());
+    let new_value = value
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| existing.try_get("", "value").unwrap_or_default());
+    let new_enabled = enabled.unwrap_or_else(|| {
+        existing
+            .try_get::<bool>("", "enabled")
+            .unwrap_or(true)
+    });
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"UPDATE federation_content_filters
+           SET name = $2, filter_type = $3, value = $4, enabled = $5
+           WHERE id = $1"#,
+        [
+            id.into(),
+            new_name.into(),
+            new_type.into(),
+            new_value.into(),
+            new_enabled.into(),
+        ],
+    ))
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"error": format!("DB error: {}", e)}),
+        )
+    })?;
+    Ok(json!({ "success": true, "id": id }))
+}
+
+/// Delete a content filter rule (admin)
+pub async fn delete_content_filter(
+    db: &DatabaseConnection,
+    id: i32,
+) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM federation_content_filters WHERE id = $1",
+            [id.into()],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {}", e)}),
+            )
+        })?;
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, json!({"error": "filter not found"})));
+    }
+    Ok(json!({ "success": true, "id": id }))
 }
 
 #[cfg(test)]

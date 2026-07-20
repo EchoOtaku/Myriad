@@ -365,6 +365,18 @@
     },
     {
       "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/rooms/{room_id}/accept",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/rooms/{room_id}/reject",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
       "method": "DELETE",
       "path": "/api/federation/rooms/{room_id}/members/{actor}",
       "permission": "federation:write"
@@ -378,8 +390,62 @@
     {
       "domain": "federation",
       "method": "POST",
+      "path": "/api/federation/rooms/{room_id}/transfer-ownership",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/channels/{channel_id}/e2e/key-exchange",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/rooms/{room_id}/e2e/key-exchange",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
       "path": "/api/federation/rooms/{room_id}/messages/{message_id}/pin",
       "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "GET",
+      "path": "/api/federation/delivery",
+      "permission": "federation:read"
+    },
+    {
+      "domain": "federation",
+      "method": "GET",
+      "path": "/api/federation/delivery/stats",
+      "permission": "federation:read"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/delivery/retry-dead",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/delivery/{id}/retry",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/rooms/{room_id}/join",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "GET",
+      "path": "/api/federation/rooms/{room_id}/files",
+      "permission": "federation:files"
     },
     {
       "domain": "federation",
@@ -443,6 +509,12 @@
     },
     {
       "domain": "federation",
+      "method": "PUT",
+      "path": "/api/federation/trust/policy",
+      "permission": "federation:trust"
+    },
+    {
+      "domain": "federation",
       "method": "GET",
       "path": "/api/federation/trust/instances",
       "permission": "federation:trust"
@@ -462,6 +534,30 @@
     {
       "domain": "federation",
       "method": "GET",
+      "path": "/api/federation/trust/filters",
+      "permission": "federation:trust"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/trust/filters",
+      "permission": "federation:trust"
+    },
+    {
+      "domain": "federation",
+      "method": "PUT",
+      "path": "/api/federation/trust/filters/{id}",
+      "permission": "federation:trust"
+    },
+    {
+      "domain": "federation",
+      "method": "DELETE",
+      "path": "/api/federation/trust/filters/{id}",
+      "permission": "federation:trust"
+    },
+    {
+      "domain": "federation",
+      "method": "GET",
       "path": "/api/federation/channels/{channel_id}/transfers",
       "permission": "federation:files"
     },
@@ -474,7 +570,25 @@
     {
       "domain": "federation",
       "method": "GET",
+      "path": "/api/federation/rooms/{room_id}/transfers",
+      "permission": "federation:files"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/rooms/{room_id}/transfers",
+      "permission": "federation:files"
+    },
+    {
+      "domain": "federation",
+      "method": "GET",
       "path": "/api/federation/transfers/{transfer_id}",
+      "permission": "federation:files"
+    },
+    {
+      "domain": "federation",
+      "method": "GET",
+      "path": "/api/federation/transfers/{transfer_id}/content",
       "permission": "federation:files"
     },
     {
