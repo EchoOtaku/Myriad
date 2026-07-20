@@ -1040,8 +1040,8 @@ fn root_quoted_object_id(obj: Option<&serde_json::Value>, fallback_id: &str) -> 
 ///
 /// Quote-repost: requires non-empty `content` commentary. Stores a Create Note
 /// with `inReplyTo` / `quoteUrl` pointing at the original object, fans out as
-/// Create, and records `kind=announce` for local counts. Does **not** insert
-/// into `federation_published_content` (reposts must not appear in 已发布).
+/// Create, records `kind=announce` for local counts, and inserts into
+/// `federation_published_content` so reposts appear under 已发布.
 pub async fn announce_object(
     user_id: i32,
     username: &str,
@@ -1166,7 +1166,7 @@ pub async fn announce_object(
         "object": note,
     });
 
-    // Persist as Create / repost — never into federation_published_content.
+    // Persist as Create / repost activity + published_content (for 已发布 list).
     let act_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -1186,6 +1186,22 @@ pub async fn announce_object(
     let act_db_id: i32 = act_row
         .map(|r| r.try_get("", "id").unwrap_or(0))
         .unwrap_or(0);
+
+    // Surface under 已发布 (content_type=repost; list_published includes it).
+    let _ = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_published_content
+                   (user_id, content_type, content_id, activity_id, visibility, published_at)
+               VALUES ($1, 'repost', $2, $3, 'public', NOW())
+               ON CONFLICT (content_type, content_id) DO NOTHING"#,
+            [
+                user_id.into(),
+                note_content_id.clone().into(),
+                activity_id.clone().into(),
+            ],
+        ))
+        .await;
 
     // Author timeline: show the quote-repost as a Create Note (user's commentary).
     let preview: Option<String> = Some(content.chars().take(200).collect::<String>());

@@ -1291,8 +1291,14 @@ export function registerFederationHandlers(
   bridge.registerHandler(
     'federation.retryDelivery',
     async (message: TappMessage) => {
-      const [queueId] = (message.payload as { args: unknown[] }).args || []
-      if (typeof queueId !== 'number')
+      const [queueIdRaw] = (message.payload as { args: unknown[] }).args || []
+      const queueId =
+        typeof queueIdRaw === 'number'
+          ? queueIdRaw
+          : typeof queueIdRaw === 'string'
+            ? Number.parseInt(queueIdRaw, 10)
+            : Number.NaN
+      if (!Number.isFinite(queueId) || queueId <= 0)
         return { success: false, error: 'Delivery id is required' }
       try {
         const runtimeGrant = await bridge.getRuntimeGrant()
@@ -1310,8 +1316,15 @@ export function registerFederationHandlers(
   bridge.registerHandler(
     'federation.cancelDelivery',
     async (message: TappMessage) => {
-      const [queueId] = (message.payload as { args: unknown[] }).args || []
-      if (typeof queueId !== 'number')
+      const [queueIdRaw] = (message.payload as { args: unknown[] }).args || []
+      // Sandbox may pass string ids from data attributes; accept number | numeric string.
+      const queueId =
+        typeof queueIdRaw === 'number'
+          ? queueIdRaw
+          : typeof queueIdRaw === 'string'
+            ? Number.parseInt(queueIdRaw, 10)
+            : Number.NaN
+      if (!Number.isFinite(queueId) || queueId <= 0)
         return { success: false, error: 'Delivery id is required' }
       try {
         const runtimeGrant = await bridge.getRuntimeGrant()

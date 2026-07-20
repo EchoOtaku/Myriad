@@ -556,7 +556,7 @@ pub async fn list_published(
                FROM federation_published_content p
                LEFT JOIN federation_activities a ON a.activity_id = p.activity_id
                WHERE p.user_id = $1
-                 AND p.content_type NOT IN ('repost', 'announce')
+                 AND p.content_type NOT IN ('announce')
                ORDER BY p.published_at DESC
                LIMIT 200"#,
             [user_id.into()],
@@ -1584,10 +1584,54 @@ fn published_fields_from_activity_json(
         .map(|s| strip_tags_preview(s, 300))
         .filter(|s| !s.is_empty());
 
-    let content_preview = preview_from_ap_object(object).or_else(|| summary.clone());
+    // Quote-repost: commentary from source/content_preview; keep quoted snippet in summary.
+    let is_repost = object
+        .get("mfp:kind")
+        .and_then(|v| v.as_str())
+        .map(|s| s == "repost")
+        .unwrap_or(false)
+        || object
+            .get("mfp:contentType")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "repost")
+            .unwrap_or(false);
+
+    let mut content_preview = preview_from_ap_object(object).or_else(|| summary.clone());
+    let mut summary_out = summary;
+
+    if is_repost {
+        if content_preview.is_none() {
+            content_preview = object
+                .get("source")
+                .and_then(|s| s.get("content"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().take(200).collect::<String>())
+                .filter(|s| !s.is_empty());
+        }
+        if summary_out.is_none() {
+            if let Some(quoted) = object.get("mfp:quotedObject") {
+                let q = quoted
+                    .get("content_preview")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| quoted.get("summary").and_then(|v| v.as_str()))
+                    .or_else(|| {
+                        quoted
+                            .get("source")
+                            .and_then(|s| s.get("content"))
+                            .and_then(|v| v.as_str())
+                    })
+                    .map(|s| s.chars().take(160).collect::<String>())
+                    .filter(|s| !s.is_empty());
+                if let Some(q) = q {
+                    summary_out = Some(format!("↪ {q}"));
+                }
+            }
+        }
+    }
+
     let attachments = attachments_from_ap_object(object);
 
-    (title, summary, content_preview, attachments)
+    (title, summary_out, content_preview, attachments)
 }
 
 /// Extract Image/Video (etc.) attachments from an AP Note/Article object.
