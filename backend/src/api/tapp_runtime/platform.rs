@@ -61,7 +61,269 @@ fn extract_platform_items(data: &Value, platform: &str) -> Vec<Value> {
         }
     }
 
+    // Older filtered caches dropped covers/appids — fill from cache/raw/{platform}.json.
+    enrich_items_from_raw_cache(platform, &mut items);
     items
+}
+
+/// Steam CDN header art from appid (reliable for library picker / share cards).
+fn steam_header_image(appid: i64) -> String {
+    format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg")
+}
+
+fn normalize_item_type(raw: &str, platform: &str) -> String {
+    let t = raw.trim().to_ascii_lowercase();
+    match t.as_str() {
+        "game" | "games" => "game".into(),
+        "bangumi" | "anime" | "番剧" => "anime".into(),
+        "video" | "videos" => "video".into(),
+        "music" | "song" | "songs" => "music".into(),
+        "book" | "manga" | "novel" => "book".into(),
+        "tv" | "tv_series" | "series" => "tv_series".into(),
+        "" if platform.eq_ignore_ascii_case("steam") => "game".into(),
+        "" if platform.eq_ignore_ascii_case("bilibili") => "video".into(),
+        other => other.to_string(),
+    }
+}
+
+/// Merge cover/appid/playtime from the platform raw fetch when filtered items are sparse.
+/// Works on existing caches without re-running smart_filter.
+fn enrich_items_from_raw_cache(platform: &str, items: &mut [Value]) {
+    if items.is_empty() {
+        return;
+    }
+    let slug = platform.to_ascii_lowercase();
+    // netease_music catalog → netease_filtered / raw/netease.json
+    let raw_slug = match slug.as_str() {
+        "netease_music" => "netease",
+        other => other,
+    };
+    let raw_path = format!("cache/raw/{raw_slug}.json");
+    let Ok(content) = std::fs::read_to_string(&raw_path) else {
+        return;
+    };
+    let Ok(raw) = serde_json::from_str::<Value>(&content) else {
+        return;
+    };
+
+    match slug.as_str() {
+        "steam" => enrich_steam_items(items, &raw),
+        "bilibili" => enrich_bilibili_items(items, &raw),
+        _ => {}
+    }
+}
+
+fn enrich_steam_items(items: &mut [Value], raw: &Value) {
+    // name (lower) → (appid, playtime_forever)
+    let mut by_name: HashMap<String, (i64, i64)> = HashMap::new();
+    if let Some(games) = raw.get("games").and_then(|v| v.as_array()) {
+        for g in games {
+            let name = g
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
+            if name.is_empty() {
+                continue;
+            }
+            let appid = g.get("appid").and_then(|v| v.as_i64()).unwrap_or(0);
+            let playtime = g
+                .get("playtime_forever")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            if appid > 0 {
+                by_name.insert(name, (appid, playtime));
+            }
+        }
+    }
+    if by_name.is_empty() {
+        return;
+    }
+
+    for item in items.iter_mut() {
+        let title = item
+            .get("title")
+            .or_else(|| item.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if title.is_empty() {
+            continue;
+        }
+        let Some(&(appid, playtime)) = by_name.get(&title) else {
+            continue;
+        };
+
+        let has_image = item
+            .get("image")
+            .and_then(|v| v.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        if !has_image {
+            let img = steam_header_image(appid);
+            item["image"] = json!(img);
+            item["cover"] = json!(img);
+        }
+        // Prefer numeric appid as stable id when current id is synthetic.
+        let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        if id.is_empty() || id.starts_with("steam_") || id.starts_with("game_") {
+            item["id"] = json!(appid.to_string());
+        }
+        item["type"] = json!("game");
+        if let Some(meta) = item.get_mut("metadata").and_then(|m| m.as_object_mut()) {
+            meta.entry("appid".to_string())
+                .or_insert_with(|| json!(appid.to_string()));
+            if playtime > 0 {
+                meta.entry("playtime".to_string())
+                    .or_insert_with(|| json!(playtime.to_string()));
+            }
+        }
+    }
+}
+
+fn enrich_bilibili_items(items: &mut [Value], raw: &Value) {
+    // title (lower) → cover / season_id / progress / bvid
+    let mut by_title: HashMap<String, Value> = HashMap::new();
+
+    if let Some(bangumi) = raw.get("bangumi").and_then(|v| v.as_array()) {
+        for b in bangumi {
+            let title = b
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
+            if title.is_empty() {
+                continue;
+            }
+            by_title.insert(
+                title,
+                json!({
+                    "kind": "anime",
+                    "cover": b.get("cover").and_then(|v| v.as_str()).unwrap_or(""),
+                    "season_id": b.get("season_id"),
+                    "progress": b.get("progress").and_then(|v| v.as_str()).unwrap_or(""),
+                }),
+            );
+        }
+    }
+
+    if let Some(favorites) = raw.get("favorites").and_then(|v| v.as_array()) {
+        for fav in favorites {
+            if let Some(videos) = fav.get("videos").and_then(|v| v.as_array()) {
+                for v in videos {
+                    let title = v
+                        .get("title")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .to_ascii_lowercase();
+                    if title.is_empty() {
+                        continue;
+                    }
+                    by_title.entry(title).or_insert_with(|| {
+                        json!({
+                            "kind": "video",
+                            "cover": v.get("cover").and_then(|c| c.as_str()).unwrap_or(""),
+                            "bvid": v.get("bvid").and_then(|c| c.as_str()).unwrap_or(""),
+                            "id": v.get("id"),
+                        })
+                    });
+                }
+            }
+        }
+    }
+
+    if by_title.is_empty() {
+        return;
+    }
+
+    for item in items.iter_mut() {
+        let title = item
+            .get("title")
+            .or_else(|| item.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if title.is_empty() {
+            continue;
+        }
+        let Some(extra) = by_title.get(&title) else {
+            continue;
+        };
+
+        let has_image = item
+            .get("image")
+            .and_then(|v| v.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        if !has_image {
+            if let Some(cover) = extra.get("cover").and_then(|v| v.as_str()) {
+                if !cover.is_empty() {
+                    // Prefer https for mixed-content-safe chat cards
+                    let cover = if cover.starts_with("http://") {
+                        cover.replacen("http://", "https://", 1)
+                    } else {
+                        cover.to_string()
+                    };
+                    item["image"] = json!(cover);
+                    item["cover"] = json!(cover);
+                }
+            }
+        }
+
+        if let Some(kind) = extra.get("kind").and_then(|v| v.as_str()) {
+            let cur = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if cur.is_empty()
+                || cur.eq_ignore_ascii_case("item")
+                || cur.eq_ignore_ascii_case("bangumi")
+                || cur.eq_ignore_ascii_case("video")
+            {
+                item["type"] = json!(kind);
+            }
+        }
+
+        // Stable ids
+        if let Some(sid) = extra.get("season_id") {
+            let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if id.is_empty() || id.starts_with("bilibili_") || id.starts_with("anime_") {
+                let sid_str = sid
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .or_else(|| sid.as_i64().map(|n| n.to_string()))
+                    .or_else(|| sid.as_u64().map(|n| n.to_string()))
+                    .unwrap_or_default();
+                if !sid_str.is_empty() {
+                    item["id"] = json!(sid_str);
+                }
+            }
+        } else if let Some(bvid) = extra.get("bvid").and_then(|v| v.as_str()) {
+            if !bvid.is_empty() {
+                let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                if id.is_empty() || id.starts_with("bilibili_") || id.starts_with("video_") {
+                    item["id"] = json!(bvid);
+                }
+            }
+        }
+
+        if let Some(meta) = item.get_mut("metadata").and_then(|m| m.as_object_mut()) {
+            if let Some(p) = extra.get("progress").and_then(|v| v.as_str()) {
+                if !p.is_empty() {
+                    meta.entry("progress".to_string())
+                        .or_insert_with(|| json!(p));
+                }
+            }
+            if let Some(bvid) = extra.get("bvid").and_then(|v| v.as_str()) {
+                if !bvid.is_empty() {
+                    meta.entry("bvid".to_string())
+                        .or_insert_with(|| json!(bvid));
+                }
+            }
+        }
+    }
 }
 
 fn item_dedupe_key(item: &Value) -> String {
@@ -106,25 +368,51 @@ fn normalize_platform_item(item: &Value, platform: &str, index: usize) -> Value 
     let title = obj
         .and_then(|o| first_string(o, &["title", "name", "username", "label"]))
         .unwrap_or_else(|| format!("Item {}", index + 1));
-    let item_type = obj
-        .and_then(|o| first_string(o, &["type", "content_type", "subject_type"]))
-        .unwrap_or_else(|| "item".to_string());
+    let item_type = normalize_item_type(
+        &obj
+            .and_then(|o| first_string(o, &["type", "content_type", "subject_type"]))
+            .unwrap_or_else(|| "item".to_string()),
+        platform,
+    );
     let id = obj
-        .and_then(|o| first_string(o, &["id", "title_id", "subject_id", "item_id"]))
+        .and_then(|o| {
+            first_string(
+                o,
+                &["id", "title_id", "subject_id", "item_id", "appid", "bvid", "season_id"],
+            )
+        })
         .unwrap_or_else(|| format!("{platform}_{index}"));
-    let image = obj.and_then(|o| {
-        first_string(
-            o,
-            &[
-                "image",
-                "cover",
-                "display_image",
-                "profile_image_url",
-                "thumbnail",
-                "poster",
-            ],
-        )
-    });
+    let image = obj
+        .and_then(|o| {
+            first_string(
+                o,
+                &[
+                    "image",
+                    "cover",
+                    "display_image",
+                    "profile_image_url",
+                    "thumbnail",
+                    "poster",
+                ],
+            )
+        })
+        .or_else(|| {
+            item.get("metadata")
+                .and_then(|m| m.as_object())
+                .and_then(|m| first_string(m, &["image", "cover", "display_image", "thumbnail"]))
+        })
+        .or_else(|| {
+            // Steam: derive CDN art from appid when cover was stripped by older filters.
+            let appid = obj
+                .and_then(|o| first_string(o, &["appid"]))
+                .or_else(|| {
+                    item.get("metadata")
+                        .and_then(|m| m.as_object())
+                        .and_then(|m| first_string(m, &["appid"]))
+                })
+                .and_then(|s| s.parse::<i64>().ok());
+            appid.filter(|id| *id > 0).map(steam_header_image)
+        });
     let metadata = item.get("metadata").cloned().unwrap_or_else(|| {
         // Promote remaining scalar fields into metadata for richer picker/detail.
         let mut meta = Map::new();
@@ -155,6 +443,11 @@ fn normalize_platform_item(item: &Value, platform: &str, index: usize) -> Value 
         "metadata": metadata,
     });
     if let Some(img) = image {
+        let img = if img.starts_with("http://") {
+            img.replacen("http://", "https://", 1)
+        } else {
+            img
+        };
         out["image"] = json!(img);
         out["cover"] = out["image"].clone();
     }
@@ -180,23 +473,40 @@ fn project_unknown_content(entry: &Value, platform: &str, index: usize) -> Value
     let title = obj
         .and_then(|o| first_string(o, &["title", "name"]))
         .unwrap_or_else(|| format!("Item {}", index + 1));
-    let item_type = obj
-        .and_then(|o| first_string(o, &["content_type", "type"]))
-        .unwrap_or_else(|| "item".to_string());
+    let item_type = normalize_item_type(
+        &obj
+            .and_then(|o| first_string(o, &["content_type", "type"]))
+            .unwrap_or_else(|| "item".to_string()),
+        platform,
+    );
     let metadata = entry
         .get("metadata")
         .cloned()
         .unwrap_or_else(|| json!({}));
-    let image = obj.and_then(|o| {
-        first_string(o, &["image", "cover", "display_image", "profile_image_url"])
-    })
-    .or_else(|| {
-        metadata.as_object().and_then(|m| {
-            first_string(m, &["image", "cover", "display_image", "profile_image_url"])
+    let image = obj
+        .and_then(|o| {
+            first_string(o, &["image", "cover", "display_image", "profile_image_url"])
         })
-    });
+        .or_else(|| {
+            metadata.as_object().and_then(|m| {
+                first_string(m, &["image", "cover", "display_image", "profile_image_url"])
+            })
+        })
+        .or_else(|| {
+            metadata
+                .as_object()
+                .and_then(|m| first_string(m, &["appid"]))
+                .and_then(|s| s.parse::<i64>().ok())
+                .filter(|id| *id > 0)
+                .map(steam_header_image)
+        });
     let id = obj
-        .and_then(|o| first_string(o, &["id", "title_id", "subject_id"]))
+        .and_then(|o| first_string(o, &["id", "title_id", "subject_id", "appid", "bvid", "season_id"]))
+        .or_else(|| {
+            metadata
+                .as_object()
+                .and_then(|m| first_string(m, &["id", "appid", "bvid", "season_id"]))
+        })
         .unwrap_or_else(|| format!("{platform}_{}_{}", slugify_fragment(&item_type), index));
 
     let mut out = json!({
@@ -207,8 +517,22 @@ fn project_unknown_content(entry: &Value, platform: &str, index: usize) -> Value
         "metadata": metadata,
     });
     if let Some(img) = image {
+        let img = if img.starts_with("http://") {
+            img.replacen("http://", "https://", 1)
+        } else {
+            img
+        };
         out["image"] = json!(img);
         out["cover"] = out["image"].clone();
+    }
+    // Promote playtime / progress from metadata for extractLibraryStats consumers.
+    if let Some(m) = metadata.as_object() {
+        if let Some(pt) = first_string(m, &["playtime", "playtime_forever"]) {
+            out["playtime"] = json!(pt);
+        }
+        if let Some(p) = first_string(m, &["progress"]) {
+            out["progress"] = json!(p);
+        }
     }
     out
 }
@@ -308,11 +632,22 @@ fn project_content_analysis(analysis: &Value, platform: &str, start_index: usize
                 Some(t) => t,
                 None => continue,
             };
-            let item_type = first_string(entry_obj, &["content_type", "type", "subject_type"])
-                .unwrap_or_else(|| default_type.to_string());
+            let item_type = normalize_item_type(
+                &first_string(entry_obj, &["content_type", "type", "subject_type"])
+                    .unwrap_or_else(|| default_type.to_string()),
+                platform,
+            );
             let id = first_string(
                 entry_obj,
-                &["id", "title_id", "subject_id", "item_id", "appid"],
+                &[
+                    "id",
+                    "title_id",
+                    "subject_id",
+                    "item_id",
+                    "appid",
+                    "bvid",
+                    "season_id",
+                ],
             )
             .unwrap_or_else(|| format!("{platform}_{}_{}", slugify_fragment(&item_type), index));
             let image = first_string(
@@ -325,7 +660,14 @@ fn project_content_analysis(analysis: &Value, platform: &str, start_index: usize
                     "thumbnail",
                     "poster",
                 ],
-            );
+            )
+            .or_else(|| {
+                first_string(entry_obj, &["appid"])
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .or_else(|| entry_obj.get("appid").and_then(|v| v.as_i64()))
+                    .filter(|id| *id > 0)
+                    .map(steam_header_image)
+            });
             let description =
                 first_string(entry_obj, &["description", "summary", "desc", "artist"]);
 
@@ -837,10 +1179,29 @@ mod tests {
         let items = extract_platform_items(&data, "steam");
         assert_eq!(items.len(), 2);
         assert_eq!(items[0]["title"], "Left 4 Dead 2");
-        assert_eq!(items[0]["type"], "Game");
+        assert_eq!(items[0]["type"], "game");
         assert_eq!(items[0]["platform"], "steam");
         assert!(items[0].get("id").and_then(|v| v.as_str()).is_some());
         assert_eq!(items[0]["metadata"]["playtime"], "3324");
+    }
+
+    #[test]
+    fn extract_promotes_steam_appid_image_from_metadata() {
+        let data = json!({
+            "raw_unknown_content": [{
+                "content_type": "Game",
+                "title": "Hades",
+                "metadata": { "playtime": "120", "appid": "1145360", "image": "https://cdn.cloudflare.steamstatic.com/steam/apps/1145360/header.jpg" }
+            }]
+        });
+        let items = extract_platform_items(&data, "steam");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["id"], "1145360");
+        assert_eq!(
+            items[0]["image"],
+            "https://cdn.cloudflare.steamstatic.com/steam/apps/1145360/header.jpg"
+        );
+        assert_eq!(items[0]["type"], "game");
     }
 
     #[test]

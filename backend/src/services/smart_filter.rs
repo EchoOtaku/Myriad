@@ -314,6 +314,15 @@ pub struct BilibiliAnalysis {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoItem {
     pub title: String,
+    /// Bilibili cover URL (preserved for library picker / share cards).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover: Option<String>,
+    /// Bilibili video id (bvid) when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bvid: Option<String>,
+    /// Numeric/media id when bvid is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -327,6 +336,12 @@ pub struct SteamAnalysis {
 pub struct GameItem {
     pub name: String,
     pub playtime: i64,
+    /// Steam app id — needed for cover URLs and stable item ids.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appid: Option<i64>,
+    /// CDN header image derived from appid (or upstream cover).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -720,24 +735,50 @@ impl SmartFilter {
             },
         };
 
-        // 2. 收集所有视频信息
+        // 2. 收集所有视频信息（保留 cover / bvid，供资料库分享卡片使用）
         let videos = data.get("videos").and_then(|v| v.as_array());
         let mut recent_videos = Vec::new();
 
         if let Some(vids) = videos {
-            // 保留所有视频
             for video in vids {
                 if let Some(title) = video.get("title").and_then(|v| v.as_str()) {
+                    let cover = video
+                        .get("cover")
+                        .or_else(|| video.get("pic"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                    let bvid = video
+                        .get("bvid")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                    let id = video
+                        .get("id")
+                        .map(|v| match v {
+                            Value::String(s) => s.trim().to_string(),
+                            Value::Number(n) => n.to_string(),
+                            _ => String::new(),
+                        })
+                        .filter(|s| !s.is_empty());
                     recent_videos.push(VideoItem {
                         title: title.to_string(),
+                        cover,
+                        bvid,
+                        id,
                     });
                 }
             }
         }
 
-        // 3. 使用动画数据库分析番剧/电视剧/电影
+        // 3. 使用动画数据库分析番剧/电视剧/电影（顺带保留封面/进度）
         let bangumi = data.get("bangumi").and_then(|v| v.as_array());
         let mut watch_list = Vec::new();
+        // title → (cover, season_id, progress, season_type)
+        let mut bangumi_meta: std::collections::HashMap<
+            String,
+            (Option<String>, Option<String>, Option<String>, Option<String>),
+        > = std::collections::HashMap::new();
 
         if let Some(items) = bangumi {
             for item in items {
@@ -747,6 +788,30 @@ impl SmartFilter {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
+                    let cover = item
+                        .get("cover")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                    let season_id = item.get("season_id").map(|v| match v {
+                        Value::String(s) => s.trim().to_string(),
+                        Value::Number(n) => n.to_string(),
+                        _ => String::new(),
+                    }).filter(|s| !s.is_empty());
+                    let progress = item
+                        .get("progress")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                    let season_type = item.get("season_type").map(|v| match v {
+                        Value::String(s) => s.trim().to_string(),
+                        Value::Number(n) => n.to_string(),
+                        _ => String::new(),
+                    }).filter(|s| !s.is_empty());
+                    bangumi_meta.insert(
+                        title.to_string(),
+                        (cover, season_id, progress, season_type),
+                    );
                     watch_list.push((title.to_string(), author));
                 }
             }
@@ -755,14 +820,29 @@ impl SmartFilter {
         let anime_db = AnimeDatabase::new();
         let anime_analysis = anime_db.analyze(watch_list.clone());
 
-        // 找出未知的番剧内容
+        // 找出未知的番剧内容（写入 cover / season_id / progress 到 metadata）
         let mut raw_unknown_content = Vec::new();
         for (title, _author) in watch_list.iter() {
             if anime_db.find(title).is_none() {
-                let metadata = std::collections::HashMap::new();
-                // metadata.insert("author".to_string(), author.clone()); // 不需要具体的metadata
+                let mut metadata = std::collections::HashMap::new();
+                if let Some((cover, season_id, progress, season_type)) = bangumi_meta.get(title) {
+                    if let Some(c) = cover {
+                        metadata.insert("cover".to_string(), c.clone());
+                        metadata.insert("image".to_string(), c.clone());
+                    }
+                    if let Some(sid) = season_id {
+                        metadata.insert("season_id".to_string(), sid.clone());
+                        metadata.insert("id".to_string(), sid.clone());
+                    }
+                    if let Some(p) = progress {
+                        metadata.insert("progress".to_string(), p.clone());
+                    }
+                    if let Some(st) = season_type {
+                        metadata.insert("season_type".to_string(), st.clone());
+                    }
+                }
                 raw_unknown_content.push(UnknownContent {
-                    content_type: "Bangumi".to_string(),
+                    content_type: "anime".to_string(),
                     title: title.clone(),
                     metadata,
                 });
@@ -828,23 +908,36 @@ impl SmartFilter {
             .and_then(|v| v.get("games"))
             .and_then(|v| v.as_array());
 
+        // name → (playtime, appid)
         let mut game_list = Vec::new();
+        let mut name_to_appid: std::collections::HashMap<String, i64> =
+            std::collections::HashMap::new();
         let mut recent_games = Vec::new();
+
+        let push_game = |game: &Value,
+                         game_list: &mut Vec<(String, i64)>,
+                         name_to_appid: &mut std::collections::HashMap<String, i64>| {
+            if let Some(name) = game.get("name").and_then(|v| v.as_str()) {
+                let playtime = game
+                    .get("playtime_forever")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let appid = game.get("appid").and_then(|v| v.as_i64());
+                if let Some(id) = appid {
+                    name_to_appid.insert(name.to_string(), id);
+                }
+                game_list.push((name.to_string(), playtime));
+            }
+        };
 
         // 收集所有拥有的游戏
         if let Some(games) = owned_games {
             for game in games {
-                if let Some(name) = game.get("name").and_then(|v| v.as_str()) {
-                    let playtime = game
-                        .get("playtime_forever")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0);
-                    game_list.push((name.to_string(), playtime));
-                }
+                push_game(game, &mut game_list, &mut name_to_appid);
             }
         }
 
-        // 收集最近玩的游戏
+        // 收集最近玩的游戏（保留 appid + Steam CDN 封面）
         if let Some(games) = recently_played {
             for game in games {
                 if let Some(name) = game.get("name").and_then(|v| v.as_str()) {
@@ -852,9 +945,22 @@ impl SmartFilter {
                         .get("playtime_forever")
                         .and_then(|v| v.as_i64())
                         .unwrap_or(0);
+                    let appid = game.get("appid").and_then(|v| v.as_i64()).or_else(|| {
+                        name_to_appid.get(name).copied()
+                    });
+                    if let Some(id) = appid {
+                        name_to_appid.insert(name.to_string(), id);
+                    }
+                    let image = appid.map(|id| {
+                        format!(
+                            "https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/header.jpg"
+                        )
+                    });
                     recent_games.push(GameItem {
                         name: name.to_string(),
                         playtime,
+                        appid,
+                        image,
                     });
                 }
             }
@@ -864,13 +970,23 @@ impl SmartFilter {
         let game_db = GameDatabase::new();
         let game_analysis = game_db.analyze(game_list);
 
-        // 收集未知的游戏内容
+        // 收集未知的游戏内容（写入 appid / playtime / image）
         let mut raw_unknown_content = Vec::new();
         for (name, playtime) in game_analysis.unknown_games {
             let mut metadata = std::collections::HashMap::new();
             metadata.insert("playtime".to_string(), playtime.to_string());
+            if let Some(appid) = name_to_appid.get(&name).copied() {
+                metadata.insert("appid".to_string(), appid.to_string());
+                metadata.insert(
+                    "image".to_string(),
+                    format!(
+                        "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"
+                    ),
+                );
+                metadata.insert("id".to_string(), appid.to_string());
+            }
             raw_unknown_content.push(UnknownContent {
-                content_type: "Game".to_string(),
+                content_type: "game".to_string(),
                 title: name,
                 metadata,
             });
