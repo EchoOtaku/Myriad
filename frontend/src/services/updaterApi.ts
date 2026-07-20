@@ -504,6 +504,22 @@ export function makeUpdaterApi(
         // backend mode: 走 backend 代理；direct mode: 直接命中 updater /admin/self-update
         mode === 'backend' ? '/self-update' : '/admin/self-update',
       ),
+    /**
+     * 手动升级 proxy 镜像（改 PROXY_TAG + compose up proxy）。
+     * 不在业务自动更新路径内；短暂边缘 downtime（通常 <10s）。
+     */
+    triggerProxyUpdate: (targetVersion?: string) =>
+      wrap<{
+        ok: boolean
+        previous_proxy_tag: string
+        new_proxy_tag: string
+        image_ref: string
+        pulled_digest: string
+      }>(
+        'POST',
+        mode === 'backend' ? '/proxy-update' : '/admin/proxy-update',
+        targetVersion ? { target_version: targetVersion } : {},
+      ),
   }
 }
 

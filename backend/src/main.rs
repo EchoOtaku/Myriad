@@ -298,6 +298,11 @@ async fn run_server() -> anyhow::Result<()> {
                 services::agent::init_task_store(db.clone()).await;
                 tracing::info!("✅ Agent task store initialized");
 
+                // Re-create run hubs + wait-loops for waiting_for_input tasks so
+                // answer/subscribe work after process restart.
+                api::agent::restore_waiting_runs_after_boot().await;
+                tracing::info!("✅ Agent waiting-task run hubs restored");
+
                 // Expire persisted Tapp Agent interactions and resume their
                 // waiting Executor tasks. Every replica runs this; DB CAS
                 // ensures a single terminal transition.
@@ -329,9 +334,20 @@ async fn run_server() -> anyhow::Result<()> {
                             tokio::time::interval(std::time::Duration::from_secs(60));
                         // 系统休眠恢复后跳过积压的 tick，避免同一分钟内连续触发
                         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                        let mut tick_count: u64 = 0;
 
                         loop {
                             interval.tick().await;
+                            tick_count = tick_count.wrapping_add(1);
+
+                            // 每小时清理过期认领桶（保留 48h）
+                            if tick_count.is_multiple_of(60) {
+                                services::agent::heartbeat::HeartbeatManager::cleanup_old_claims(
+                                    &heartbeat_db,
+                                    48,
+                                )
+                                .await;
+                            }
 
                             let hb = match services::agent::heartbeat::get_heartbeat() {
                                 Some(hb) => hb,
@@ -357,6 +373,20 @@ async fn run_server() -> anyhow::Result<()> {
                                             return;
                                         }
                                     };
+
+                                    let minute_bucket =
+                                        services::agent::heartbeat::HeartbeatManager::current_minute_bucket();
+                                    // 多副本 CAS：未抢到则跳过（另一实例已执行或已完成）
+                                    if !services::agent::heartbeat::HeartbeatManager::try_claim_execution(
+                                        &task_db,
+                                        &task.id,
+                                        minute_bucket,
+                                    )
+                                    .await
+                                    {
+                                        return;
+                                    }
+
                                     tracing::info!(
                                         task_id = %task.id,
                                         "[Heartbeat] Executing due task: {}",
@@ -370,10 +400,14 @@ async fn run_server() -> anyhow::Result<()> {
                                         context: None,
                                     };
 
-                                    let agent = services::agent::Agent::new(task_db).await;
+                                    let agent = services::agent::Agent::new(task_db.clone()).await;
                                     let task_name = task.name.clone();
-                                    match agent.process(request).await {
-                                        Ok(response) => {
+                                    let timeout = std::time::Duration::from_secs(
+                                        services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS,
+                                    );
+                                    let outcome = tokio::time::timeout(timeout, agent.process(request)).await;
+                                    match outcome {
+                                        Ok(Ok(response)) => {
                                             let succeeded = response.is_successful_outcome();
                                             // 任务卡片显示用的短摘要
                                             let response_summary = response
@@ -411,10 +445,9 @@ async fn run_server() -> anyhow::Result<()> {
                                                 );
                                             }
                                         }
-                                        Err(e) => {
+                                        Ok(Err(e)) => {
                                             let err_msg = format!("ERROR: {}", e);
                                             hb_ref.record_result(&task.id, &err_msg).await;
-                                            // 推送失败通知
                                             if let Some(nm) = services::agent::notifications::get_notification_manager() {
                                                 nm.notify_heartbeat_result(&task_name, &err_msg, false).await;
                                             }
@@ -424,7 +457,28 @@ async fn run_server() -> anyhow::Result<()> {
                                                 "[Heartbeat] Task failed"
                                             );
                                         }
+                                        Err(_elapsed) => {
+                                            let err_msg = format!(
+                                                "ERROR: heartbeat task timed out after {}s",
+                                                services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS
+                                            );
+                                            hb_ref.record_result(&task.id, &err_msg).await;
+                                            if let Some(nm) = services::agent::notifications::get_notification_manager() {
+                                                nm.notify_heartbeat_result(&task_name, &err_msg, false).await;
+                                            }
+                                            tracing::warn!(
+                                                task_id = %task.id,
+                                                timeout_secs = services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS,
+                                                "[Heartbeat] Task timed out"
+                                            );
+                                        }
                                     }
+                                    services::agent::heartbeat::HeartbeatManager::complete_claim(
+                                        &task_db,
+                                        &task.id,
+                                        minute_bucket,
+                                    )
+                                    .await;
                                 });
                             }
                         }
@@ -6116,6 +6170,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 post(api::updater_admin::self_update).route_layer(from_fn(admin_middleware)),
             )
             .route(
+                "/api/admin/updater/proxy-update",
+                post(api::updater_admin::proxy_update).route_layer(from_fn(admin_middleware)),
+            )
+            .route(
                 "/api/admin/updater/self-update/last",
                 get(api::updater_admin::self_update_last).route_layer(from_fn(admin_middleware)),
             );
@@ -6395,4 +6453,15 @@ async fn shutdown_signal() {
     // 停止调度器引擎
     api::tapp_scheduler::shutdown_scheduler().await;
     services::brew_scheduler::shutdown_brew_scheduler().await;
+
+    // Agent 状态落盘 + MCP 子进程回收（滚动更新不丢最近记忆/技能统计）
+    if let Some(memory) = services::agent::memory::get_memory() {
+        memory.force_flush().await;
+        tracing::info!("[Shutdown] Agent memory flushed");
+    }
+    if let Some(evolution) = services::agent::skill_evolution::get_skill_evolution() {
+        evolution.flush().await;
+        tracing::info!("[Shutdown] Skill evolution stats flushed");
+    }
+    services::agent::mcp::shutdown_mcp().await;
 }

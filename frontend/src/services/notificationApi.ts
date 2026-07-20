@@ -61,6 +61,8 @@ export type NotificationStreamEvent =
   | { event: 'notifications_read_all'; user_id: number }
   | { event: 'notification_deleted'; id: string; user_id: number }
   | { event: 'notifications_cleared'; user_id: number }
+  /** 订阅方落后丢消息：应重新 list() 补全 */
+  | { event: 'resync'; lagged_by: number }
 
 const BASE = '/agent/notifications'
 

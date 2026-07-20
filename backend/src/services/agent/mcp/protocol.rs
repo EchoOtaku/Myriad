@@ -29,12 +29,15 @@ impl JsonRpcRequest {
 }
 
 /// JSON-RPC 2.0 响应
+///
+/// `id` 允许 number / string（部分 MCP server 用字符串 id），反序列化时尽量宽松。
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcResponse {
     #[allow(dead_code)]
     pub jsonrpc: String,
     #[allow(dead_code)]
-    pub id: u64,
+    #[serde(default)]
+    pub id: Option<Value>,
     pub result: Option<Value>,
     pub error: Option<JsonRpcError>,
 }

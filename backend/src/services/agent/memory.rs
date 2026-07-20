@@ -1644,9 +1644,16 @@ impl AgentMemory {
 
     /// 若有未落盘的低优先级变更（访问计数、短期记忆清理）则写盘
     pub async fn flush_if_dirty(&self) {
-        if self.dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        // 不在此处 swap dirty：由 save_all 在快照循环内安全清除，
+        // 避免「并发写入重新置脏 → save_all 开头再清掉」的丢失。
+        if self.dirty.load(std::sync::atomic::Ordering::Relaxed) {
             self.save_all().await;
         }
+    }
+
+    /// 关机路径：无论 dirty 与否尝试落盘当前内存状态
+    pub async fn force_flush(&self) {
+        self.save_all().await;
     }
 
     // ==================== 清理 ====================
@@ -1744,67 +1751,81 @@ impl AgentMemory {
     }
 
     /// 保存全部状态（memory_index.json + memory.md）
+    ///
+    /// 使用「清 dirty → 快照 → 写盘 → 若期间再次 dirty 则重试」循环，
+    /// 保证并发写入不会因过早清 dirty 而丢失。
     async fn save_all(&self) {
         let _persist_guard = self.persist_lock.lock().await;
-        // 清除的是即将进入本次快照的变更；快照期间的新变更会重新置脏，
-        // 成功后不能覆盖该状态。
-        self.dirty
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-        // 快照数据后立即释放读锁，避免持锁做 I/O
-        let (json_opt, md) = {
-            let entries = self.entries.read().await;
 
-            // 1. 序列化全量 JSON
-            let all_entries: Vec<&MemoryEntry> = entries.values().collect();
-            let json_opt = serde_json::to_string_pretty(&all_entries).ok();
+        // 有限重试，防止极端持续写入时无限循环
+        for _ in 0..8 {
+            self.dirty
+                .store(false, std::sync::atomic::Ordering::Relaxed);
 
-            // 2. 构建 memory.md（仅 LongTerm）
-            let mut md = String::from("# Agent Long-term Memory\n\n");
-            let mut long_term: Vec<&MemoryEntry> = entries
-                .values()
-                .filter(|e| e.tier == MemoryTier::LongTerm)
-                .collect();
-            long_term.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+            // 快照数据后立即释放读锁，避免持锁做 I/O
+            let (json_opt, md) = {
+                let entries = self.entries.read().await;
 
-            for entry in long_term {
-                let type_str = match entry.memory_type {
-                    MemoryType::Preference => "preference",
-                    MemoryType::EntityKnowledge => "knowledge",
-                    MemoryType::ExecutionLesson => "lesson",
-                    MemoryType::EffectivePattern => "pattern",
-                    MemoryType::Fact => "fact",
-                    MemoryType::Interaction => "interaction",
-                    MemoryType::Decision => "decision",
-                    MemoryType::SessionInsight => "insight",
-                    MemoryType::SessionSummary => "session",
-                };
-                md.push_str(&format!(
-                    "- [{}] [{}] {}\n",
-                    entry.created_at, type_str, entry.content
-                ));
+                // 1. 序列化全量 JSON
+                let all_entries: Vec<&MemoryEntry> = entries.values().collect();
+                let json_opt = serde_json::to_string_pretty(&all_entries).ok();
+
+                // 2. 构建 memory.md（仅 LongTerm）
+                let mut md = String::from("# Agent Long-term Memory\n\n");
+                let mut long_term: Vec<&MemoryEntry> = entries
+                    .values()
+                    .filter(|e| e.tier == MemoryTier::LongTerm)
+                    .collect();
+                long_term.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+                for entry in long_term {
+                    let type_str = match entry.memory_type {
+                        MemoryType::Preference => "preference",
+                        MemoryType::EntityKnowledge => "knowledge",
+                        MemoryType::ExecutionLesson => "lesson",
+                        MemoryType::EffectivePattern => "pattern",
+                        MemoryType::Fact => "fact",
+                        MemoryType::Interaction => "interaction",
+                        MemoryType::Decision => "decision",
+                        MemoryType::SessionInsight => "insight",
+                        MemoryType::SessionSummary => "session",
+                    };
+                    md.push_str(&format!(
+                        "- [{}] [{}] {}\n",
+                        entry.created_at, type_str, entry.content
+                    ));
+                }
+
+                (json_opt, md)
+            }; // 读锁在此释放
+
+            // 写文件（无锁状态）
+            let Some(json) = json_opt else {
+                self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                tracing::error!("[Memory] Failed to serialize memory_index.json");
+                return;
+            };
+
+            let index_path = self.memory_dir.join(INDEX_FILE);
+            let memory_path = self.memory_dir.join("memory.md");
+            if let Err(e) = Self::atomic_write(&index_path, json.as_bytes()).await {
+                self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                tracing::error!(error = %e, "[Memory] Failed to persist memory_index.json");
+                return;
+            }
+            if let Err(e) = Self::atomic_write(&memory_path, md.as_bytes()).await {
+                self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                tracing::error!(error = %e, "[Memory] Failed to persist memory.md");
+                return;
             }
 
-            (json_opt, md)
-        }; // 读锁在此释放
-
-        // 写文件（无锁状态）
-        let Some(json) = json_opt else {
-            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
-            tracing::error!("[Memory] Failed to serialize memory_index.json");
-            return;
-        };
-
-        let index_path = self.memory_dir.join(INDEX_FILE);
-        let memory_path = self.memory_dir.join("memory.md");
-        if let Err(e) = Self::atomic_write(&index_path, json.as_bytes()).await {
-            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
-            tracing::error!(error = %e, "[Memory] Failed to persist memory_index.json");
-            return;
+            // 快照/写盘期间若有新变更，继续下一轮
+            if !self.dirty.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
         }
-        if let Err(e) = Self::atomic_write(&memory_path, md.as_bytes()).await {
-            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
-            tracing::error!(error = %e, "[Memory] Failed to persist memory.md");
-        }
+
+        tracing::warn!("[Memory] save_all exited with dirty flag still set after retries");
     }
 
     async fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {

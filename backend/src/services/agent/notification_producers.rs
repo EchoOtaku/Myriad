@@ -102,6 +102,49 @@ impl NotificationManager {
         self.notify(notification).await;
     }
 
+    /// Skill 自动淘汰 / AI 改进完成时通知管理员
+    pub async fn notify_skill_evolution(
+        &self,
+        skill_id: &str,
+        action: &str,
+        detail: &str,
+    ) {
+        let (title, event_key, priority) = match action {
+            "pruned" => (
+                format!("技能已自动淘汰: {}", skill_id),
+                "skill.pruned",
+                NotificationPriority::Normal,
+            ),
+            "improved" => (
+                format!("技能已自动改进: {}", skill_id),
+                "skill.improved",
+                NotificationPriority::Low,
+            ),
+            other => (
+                format!("技能变更 ({}): {}", other, skill_id),
+                "skill.changed",
+                NotificationPriority::Low,
+            ),
+        };
+        for user_id in self.admin_user_ids().await {
+            let notification = Notification::new(
+                user_id,
+                NotificationType::SystemInfo,
+                priority,
+                title.clone(),
+                detail,
+            )
+            .with_metadata(serde_json::json!({
+                "event_key": event_key,
+                "action": "open_arael_manage",
+                "tab": "skills",
+                "skill_id": skill_id,
+                "status": action,
+            }));
+            self.notify(notification).await;
+        }
+    }
+
     pub async fn notify_mcp_server_status(&self, server_id: &str, connected: bool, detail: &str) {
         for user_id in self.admin_user_ids().await {
             let mut notification = Notification::new(

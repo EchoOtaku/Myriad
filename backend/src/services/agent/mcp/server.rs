@@ -221,6 +221,13 @@ impl McpServer {
         self.start().await
     }
 
+    /// 维护路径强制重启：重置计数后重新 start（用于启动失败后的周期恢复）
+    pub async fn force_restart(&mut self) -> Result<(), String> {
+        self.restart_count = 0;
+        self.shutdown().await;
+        self.start().await
+    }
+
     /// 优雅关闭
     pub async fn shutdown(&mut self) {
         if let Some(ref mut transport) = self.transport {

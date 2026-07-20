@@ -671,6 +671,29 @@ pub async fn self_update(headers: HeaderMap) -> Response {
     }
 }
 
+/// Manual proxy image upgrade (spec §12.3). Optional body `{ "target_version": "vX.Y.Z" }`.
+pub async fn proxy_update(headers: HeaderMap, body: Option<Json<Value>>) -> Response {
+    let c = match require_mutate() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    log_admin_actor("proxy-update", &headers);
+    let actor = actor_from_headers(&headers);
+    let payload = body.map(|Json(v)| v).unwrap_or_else(|| json!({}));
+    match c
+        .post_json_with_actor::<Value>(
+            "/admin/proxy-update",
+            Some(&payload),
+            None,
+            actor.as_deref(),
+        )
+        .await
+    {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
 /// Last TCB self-update helper outcome (`state/self-update-last.json`). Also on GET /status.
 pub async fn self_update_last() -> Response {
     let c = match require() {

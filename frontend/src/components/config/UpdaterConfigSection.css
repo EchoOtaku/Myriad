@@ -1336,3 +1336,65 @@ html.dark .updater-select {
 html.dark .updater-progress-hint.muted {
   color: #9ca3af;
 }
+
+/* ===== 边缘与更新器组件 ===== */
+.updater-infra-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.updater-infra-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgb(148 163 184 / 18%);
+}
+
+.updater-infra-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.updater-infra-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.updater-infra-meta strong {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+html.dark .updater-infra-meta strong {
+  color: #f3f4f6;
+}
+
+.updater-infra-desc,
+.updater-infra-current {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #6b7280;
+}
+
+html.dark .updater-infra-desc,
+html.dark .updater-infra-current {
+  color: #9ca3af;
+}
+
+.updater-infra-row .btn-base {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .updater-infra-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

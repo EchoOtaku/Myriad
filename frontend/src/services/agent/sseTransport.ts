@@ -2,6 +2,7 @@
  * Agent SSE 订阅传输层。
  *
  * 只负责读取/重连后端 run 事件；它不会创建、取消或拥有任务生命周期。
+ * 用户主动中断与网络断线分开处理：前者不自动 re-subscribe，后者会。
  */
 import type {
   AgentResponse,
@@ -14,6 +15,42 @@ import type {
 } from './types'
 
 import { getCSRFToken } from '../../utils/csrf'
+
+/** Why a stream AbortController was aborted. */
+export type StreamAbortIntent = 'user' | 'replace' | 'timeout'
+
+const controllerIntents = new WeakMap<AbortController, StreamAbortIntent>()
+
+export type StreamDropAction =
+  | 'use_final'
+  | 'resume_run'
+  | 'poll_task'
+  | 'reject_user_abort'
+  | 'reject_replace'
+  | 'reject_error'
+  | 'reject_empty'
+
+/**
+ * Pure decision for what to do when an SSE body ends without a final response.
+ * Unit-tested; called by the real `executeSSERequest` path.
+ */
+export function decideStreamDropAction(input: {
+  hasFinalResponse: boolean
+  capturedRunId: string | null
+  capturedTaskId: string | null
+  abortIntent: StreamAbortIntent | null | undefined
+  hasStreamError: boolean
+}): StreamDropAction {
+  if (input.hasFinalResponse) return 'use_final'
+  // Intentional client stop must never re-subscribe the same run.
+  if (input.abortIntent === 'user') return 'reject_user_abort'
+  if (input.abortIntent === 'replace') return 'reject_replace'
+  // Transport drop / idle timeout / server close → recover without re-POSTing.
+  if (input.capturedRunId) return 'resume_run'
+  if (input.capturedTaskId) return 'poll_task'
+  if (input.hasStreamError) return 'reject_error'
+  return 'reject_empty'
+}
 
 interface ExecuteSseOptions {
   url: string
@@ -32,10 +69,18 @@ interface ExecuteSseOptions {
   ) => Promise<TaskDetail>
 }
 
+/**
+ * Abort all active SSE subscriptions.
+ * @param intent - `user` = intentional interrupt (no resume); `replace` = new request supersedes.
+ */
 export function abortSseSubscriptions(
   activeControllers: Set<AbortController>,
+  intent: StreamAbortIntent = 'user',
 ): void {
-  for (const controller of activeControllers) controller.abort()
+  for (const controller of activeControllers) {
+    controllerIntents.set(controller, intent)
+    controller.abort()
+  }
   activeControllers.clear()
 }
 
@@ -48,18 +93,23 @@ export async function executeSSERequest({
   activeControllers,
   pollTaskUntilComplete,
 }: ExecuteSseOptions): Promise<AgentResponse> {
-  if (abortPrevious) abortSseSubscriptions(activeControllers)
+  if (abortPrevious) abortSseSubscriptions(activeControllers, 'replace')
 
   const csrfToken = method === 'POST' ? await getCSRFToken() : null
 
   return new Promise((resolve, reject) => {
     const controller = new AbortController()
     activeControllers.add(controller)
-    const timeoutId = setTimeout(() => controller.abort(), 600000)
+    const timeoutId = setTimeout(() => {
+      controllerIntents.set(controller, 'timeout')
+      controller.abort()
+    }, 600000)
     const cleanup = () => {
       clearTimeout(timeoutId)
       activeControllers.delete(controller)
     }
+    const readAbortIntent = (): StreamAbortIntent | null =>
+      controllerIntents.get(controller) ?? null
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -135,63 +185,92 @@ export async function executeSSERequest({
           cleanup()
         }
 
-        if (finalResponse) {
-          resolve(finalResponse)
-        } else if (capturedRunId) {
-          // 只重新订阅同一个后端 run，绝不重放 POST 用户请求。
-          try {
-            resolve(
-              await executeSSERequest({
-                url: `/api/agent/runs/${encodeURIComponent(capturedRunId)}/stream`,
-                method: 'GET',
-                onProgress,
-                abortPrevious: false,
-                activeControllers,
-                pollTaskUntilComplete,
-              }),
-            )
-          } catch (resumeError) {
-            reject(resumeError)
-          }
-        } else if (capturedTaskId) {
-          try {
-            const task = await pollTaskUntilComplete(capturedTaskId, {
-              intervalMs: 2000,
-              timeoutMs: 300000,
-              onProgress: onProgress
-                ? (current) => {
-                    onProgress({
-                      type: 'progress',
-                      progress: current.progress,
-                      completedSteps: 0,
-                      totalSteps: 0,
-                      message: '',
-                    })
-                  }
-                : undefined,
-            })
-            if (task.status === 'completed' && task.results) {
-              resolve(buildPolledResponse(task))
-            } else {
-              reject(
-                new Error(
-                  `Task ${capturedTaskId} ended with status ${task.status}`,
-                ),
+        const action = decideStreamDropAction({
+          hasFinalResponse: !!finalResponse,
+          capturedRunId,
+          capturedTaskId,
+          abortIntent: readAbortIntent(),
+          hasStreamError: streamError != null,
+        })
+
+        switch (action) {
+          case 'use_final':
+            resolve(finalResponse!)
+            return
+          case 'reject_user_abort':
+            reject(new Error('Request interrupted by user'))
+            return
+          case 'reject_replace':
+            reject(new Error('Request superseded by a newer request'))
+            return
+          case 'resume_run':
+            try {
+              resolve(
+                await executeSSERequest({
+                  url: `/api/agent/runs/${encodeURIComponent(capturedRunId!)}/stream`,
+                  method: 'GET',
+                  onProgress,
+                  abortPrevious: false,
+                  activeControllers,
+                  pollTaskUntilComplete,
+                }),
               )
+            } catch (resumeError) {
+              reject(resumeError)
             }
-          } catch (pollError) {
-            reject(pollError)
-          }
-        } else if (streamError) {
-          reject(streamError)
-        } else {
-          reject(new Error('No completion response received'))
+            return
+          case 'poll_task':
+            try {
+              const task = await pollTaskUntilComplete(capturedTaskId!, {
+                intervalMs: 2000,
+                timeoutMs: 300000,
+                onProgress: onProgress
+                  ? (current) => {
+                      onProgress({
+                        type: 'progress',
+                        progress: current.progress,
+                        completedSteps: 0,
+                        totalSteps: 0,
+                        message: '',
+                      })
+                    }
+                  : undefined,
+              })
+              if (
+                task.status === 'completed' ||
+                task.status === 'waiting_for_input'
+              ) {
+                resolve(buildPolledResponse(task))
+              } else {
+                reject(
+                  new Error(
+                    `Task ${capturedTaskId} ended with status ${task.status}`,
+                  ),
+                )
+              }
+            } catch (pollError) {
+              reject(pollError)
+            }
+            return
+          case 'reject_error':
+            reject(streamError)
+            return
+          case 'reject_empty':
+          default:
+            reject(new Error('No completion response received'))
         }
       })
       .catch((error) => {
         cleanup()
+        const intent = readAbortIntent()
         if (error.name === 'AbortError') {
-          reject(new Error('Request timed out or interrupted'))
+          if (intent === 'user') {
+            reject(new Error('Request interrupted by user'))
+          } else if (intent === 'replace') {
+            reject(new Error('Request superseded by a newer request'))
+          } else {
+            reject(new Error('Request timed out or interrupted'))
+          }
         } else {
           reject(error)
         }
@@ -218,12 +297,20 @@ function buildPolledResponse(task: TaskDetail): AgentResponse {
       .find((value): value is string => typeof value === 'string') ??
     (task.status === 'completed'
       ? 'Task completed'
-      : stepResults.find((result) => result.error)?.error ||
-        `Task ${task.status}`)
+      : task.status === 'waiting_for_input'
+        ? 'Waiting for input'
+        : stepResults.find((result) => result.error)?.error ||
+          `Task ${task.status}`)
 
   return {
-    success: task.status === 'completed',
-    responseType: task.status === 'completed' ? 'task_completed' : 'error',
+    success:
+      task.status === 'completed' || task.status === 'waiting_for_input',
+    responseType:
+      task.status === 'waiting_for_input'
+        ? 'task_progress'
+        : task.status === 'completed'
+          ? 'task_completed'
+          : 'error',
     message,
     data,
     suggestions: [],
@@ -231,6 +318,7 @@ function buildPolledResponse(task: TaskDetail): AgentResponse {
       taskId: task.taskId,
       status: task.status as TaskInfo['status'],
       progress: task.progress,
+      pendingQuestion: task.pendingQuestion,
     },
   }
 }

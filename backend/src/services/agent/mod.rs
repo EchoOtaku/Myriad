@@ -102,6 +102,8 @@ const CONFIRMATION_REGISTRY_NAMESPACE: &str = "agent_recipe_confirmation";
 pub struct ConfirmationResumeContext {
     pub lane_key: Option<String>,
     pub session_id: Option<String>,
+    /// Original process run id when confirmation was requested (may be reused on confirm/stream).
+    pub run_id: Option<String>,
 }
 
 /// Extract session id from a lane key of the form `user:{id}:session:{session_id}`.
@@ -126,6 +128,9 @@ struct PendingRecipeConfirmation {
     /// 发起确认时的会话 ID（确认续跑需写回同一 session 历史）
     #[serde(default)]
     pub session_id: Option<String>,
+    /// 发起确认时的 run id（确认续跑复用同一 run hub / 通知）
+    #[serde(default)]
+    pub run_id: Option<String>,
 }
 
 /// Agent 主入口
@@ -287,6 +292,7 @@ impl Agent {
                         .context
                         .as_ref()
                         .and_then(|c| c.session_id.clone());
+                    let run_id = request.context.as_ref().and_then(|c| c.run_id.clone());
                     return self
                         .request_confirmation_v2(
                             &recipe,
@@ -294,6 +300,7 @@ impl Agent {
                             user_id,
                             sensitive_steps,
                             session_id,
+                            run_id,
                         )
                         .await;
                 }
@@ -677,6 +684,7 @@ impl Agent {
                         .context
                         .as_ref()
                         .and_then(|c| c.session_id.clone());
+                    let run_id = request.context.as_ref().and_then(|c| c.run_id.clone());
                     return self
                         .request_confirmation_v2(
                             &recipe,
@@ -684,6 +692,7 @@ impl Agent {
                             user_id,
                             sensitive_steps,
                             session_id,
+                            run_id,
                         )
                         .await;
                 }
@@ -1081,6 +1090,7 @@ impl Agent {
                         .lane_key
                         .as_deref()
                         .and_then(session_id_from_lane_key);
+                    // Saved recipes don't carry the original process run_id.
                     return self
                         .request_confirmation_v2(
                             &recipe,
@@ -1088,6 +1098,7 @@ impl Agent {
                             user_id,
                             sensitive_steps,
                             session_id,
+                            None,
                         )
                         .await;
                 }
@@ -1391,6 +1402,7 @@ impl Agent {
                         .as_deref()
                         .and_then(session_id_from_lane_key)
                 }),
+                run_id: pending.run_id.clone(),
             }))
     }
 
@@ -1768,6 +1780,7 @@ impl Agent {
         user_id: i32,
         sensitive_steps: Vec<PendingConfirmation>,
         session_id: Option<String>,
+        run_id: Option<String>,
     ) -> Result<AgentResponse, String> {
         let confirmation_id = uuid::Uuid::new_v4().to_string();
 
@@ -1804,6 +1817,7 @@ impl Agent {
             user_id,
             planner_output: planner_output.clone(),
             session_id: session_id.filter(|s| !s.is_empty()),
+            run_id: run_id.filter(|s| !s.is_empty()),
         };
         crate::api::tapp_runtime::shared_registry::put(
             &self.db,

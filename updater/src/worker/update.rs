@@ -319,6 +319,13 @@ pub async fn run(
     Ok(())
 }
 
+/// Pin both backend and frontend `:{previous_tag}` images as `*:myriad-rollback`.
+///
+/// **Pair integrity**: never leave one component pinned and the other not. Both
+/// sources must exist first; after tagging, both aliases are re-inspected. A mid-way
+/// tag failure aborts without updating `rollback_version` (caller only writes state
+/// on `Ok(true)`), and attempts to re-pin the whole pair from `previous_tag` so the
+/// slot does not mix two versions.
 async fn pin_rollback_images(worker: &Arc<Worker>, previous_tag: &str) -> Result<bool> {
     let env = EnvFile::load(&worker.cli().env_file)?;
     let backend = env
@@ -333,10 +340,9 @@ async fn pin_rollback_images(worker: &Arc<Worker>, previous_tag: &str) -> Result
         .ok_or_else(|| {
             UpdaterError::Precondition("FRONTEND_IMAGE missing; cannot pin rollback image".into())
         })?;
-    let pairs = [("backend", backend), ("frontend", frontend)];
+    let pairs: [(&str, String); 2] = [("backend", backend), ("frontend", frontend)];
 
-    // Do not create a split rollback slot where backend and frontend point at
-    // different versions. Verify the complete pair before changing either alias.
+    // Phase 1: both version tags must exist locally (avoid half-pin).
     for (comp, repo) in &pairs {
         let source = format!("{repo}:{previous_tag}");
         if !worker.docker().image_exists_local(&source).await {
@@ -345,16 +351,90 @@ async fn pin_rollback_images(worker: &Arc<Worker>, previous_tag: &str) -> Result
         }
     }
 
+    // Phase 2: tag both. On any error, re-tag both from previous_tag to heal split slots.
+    for (comp, repo) in &pairs {
+        let source = format!("{repo}:{previous_tag}");
+        if let Err(e) = worker
+            .docker()
+            .tag_image(&source, repo, ROLLBACK_IMAGE_TAG)
+            .await
+        {
+            tracing::error!(
+                %comp,
+                %source,
+                err = %e,
+                "rollback pin failed mid-pair; re-pinning full pair from previous tag"
+            );
+            let _ = heal_rollback_pair_from_version(worker, &pairs, previous_tag).await;
+            return Err(UpdaterError::Docker(format!(
+                "pin rollback {comp} ({source}): {e}"
+            )));
+        }
+        info!(
+            %comp,
+            %source,
+            pin = %format!("{repo}:{ROLLBACK_IMAGE_TAG}"),
+            "pinned rollback image"
+        );
+    }
+
+    // Phase 3: both aliases must resolve (detect docker/tag oddities).
+    if let Err(missing) = verify_rollback_pair_local(worker, &pairs).await {
+        tracing::error!(
+            ?missing,
+            prev = %previous_tag,
+            "rollback pin incomplete after tag; healing from previous tag"
+        );
+        let _ = heal_rollback_pair_from_version(worker, &pairs, previous_tag).await;
+        return Err(UpdaterError::Docker(format!(
+            "rollback pin incomplete after tag: missing {missing:?}"
+        )));
+    }
+
+    Ok(true)
+}
+
+/// Ensure both `repo:myriad-rollback` refs exist locally. Returns missing component names.
+async fn verify_rollback_pair_local(
+    worker: &Arc<Worker>,
+    pairs: &[(&str, String); 2],
+) -> std::result::Result<(), Vec<String>> {
+    let mut missing = Vec::new();
+    for (comp, repo) in pairs {
+        let pin = format!("{repo}:{ROLLBACK_IMAGE_TAG}");
+        if !worker.docker().image_exists_local(&pin).await {
+            missing.push((*comp).to_string());
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
+
+/// Re-tag both components' `previous_tag` → `myriad-rollback` to repair a split slot.
+async fn heal_rollback_pair_from_version(
+    worker: &Arc<Worker>,
+    pairs: &[(&str, String); 2],
+    previous_tag: &str,
+) -> Result<()> {
     for (comp, repo) in pairs {
         let source = format!("{repo}:{previous_tag}");
+        if !worker.docker().image_exists_local(&source).await {
+            warn!(%comp, %source, "heal rollback pair: source still missing");
+            continue;
+        }
         worker
             .docker()
-            .tag_image(&source, &repo, ROLLBACK_IMAGE_TAG)
+            .tag_image(&source, repo, ROLLBACK_IMAGE_TAG)
             .await
-            .map_err(|e| UpdaterError::Docker(format!("pin rollback {comp} ({source}): {e}")))?;
-        info!(%comp, %source, pin = %format!("{repo}:{ROLLBACK_IMAGE_TAG}"), "pinned rollback image");
+            .map_err(|e| {
+                UpdaterError::Docker(format!("heal rollback pin {comp} ({source}): {e}"))
+            })?;
+        info!(%comp, %source, "healed rollback pin from version tag");
     }
-    Ok(true)
+    Ok(())
 }
 
 fn record_successful_deploy(

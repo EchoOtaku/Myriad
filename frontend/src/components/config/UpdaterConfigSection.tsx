@@ -580,7 +580,10 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       return
     }
     const target = status?.latest_available?.version ?? ''
-    if (!target) return
+    if (!target) {
+      setToast({ kind: 'error', text: u.updaterInfraNeedCheck })
+      return
+    }
     if (!confirm(format(u.updaterSelfUpdateConfirm, { version: target }))) {
       return
     }
@@ -589,6 +592,37 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     try {
       await api.triggerSelfUpdate()
       setToast({ kind: 'ok', text: u.updaterSelfUpdateDispatched })
+    } catch (e) {
+      setToast({ kind: 'error', text: explain(e) })
+    } finally {
+      setBusy(null)
+    }
+  }, [api, status, tokenRequired, explain, u])
+
+  const triggerProxyUpdate = useCallback(async () => {
+    if (tokenRequired) {
+      setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+      return
+    }
+    const target = status?.latest_available?.version ?? ''
+    if (!target) {
+      setToast({ kind: 'error', text: u.updaterInfraNeedCheck })
+      return
+    }
+    if (!confirm(format(u.updaterInfraProxyConfirm, { version: target }))) {
+      return
+    }
+    setBusy('proxy-update')
+    setToast(null)
+    try {
+      const report = await api.triggerProxyUpdate(target)
+      setToast({
+        kind: 'ok',
+        text: format(u.updaterInfraProxyDispatched, {
+          version: report.new_proxy_tag,
+          previous: report.previous_proxy_tag || '—',
+        }),
+      })
     } catch (e) {
       setToast({ kind: 'error', text: explain(e) })
     } finally {
@@ -923,6 +957,73 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
               )
             }
           />
+        </SettingGroup>
+      )}
+
+      {/* ===== 边缘与更新器（常驻入口）===== */}
+      {!showProgress && (
+        <SettingGroup
+          title={u.updaterInfraGroupTitle}
+          description={u.updaterInfraGroupDesc}
+          collapsible
+          defaultExpanded={requiresSelfUpdate}
+        >
+          <div className="updater-infra-list">
+            <div className="updater-infra-row">
+              <div className="updater-infra-meta">
+                <strong>{u.updaterInfraUpdaterTitle}</strong>
+                <p className="updater-infra-desc">{u.updaterInfraUpdaterDesc}</p>
+                <p className="updater-infra-current">
+                  {u.updaterInfraUpdaterCurrent}{' '}
+                  <code>{status?.updater_version ?? '—'}</code>
+                  {status?.latest_available?.min_updater_version && (
+                    <>
+                      {' '}
+                      · min{' '}
+                      <code>{status.latest_available.min_updater_version}</code>
+                    </>
+                  )}
+                  {requiresSelfUpdate && (
+                    <span className="updater-hero-warning"> · required</span>
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={
+                  requiresSelfUpdate
+                    ? 'btn-base btn-primary'
+                    : 'btn-base btn-secondary'
+                }
+                disabled={
+                  !!busy || tokenRequired || !status?.latest_available?.version
+                }
+                onClick={() => triggerSelfUpdate()}
+              >
+                {busy === 'self-update'
+                  ? u.updaterProcessing
+                  : u.updaterSelfUpdateButton}
+              </button>
+            </div>
+            <div className="updater-infra-row">
+              <div className="updater-infra-meta">
+                <strong>{u.updaterInfraProxyTitle}</strong>
+                <p className="updater-infra-desc">{u.updaterInfraProxyDesc}</p>
+              </div>
+              <button
+                type="button"
+                className="btn-base btn-secondary"
+                disabled={
+                  !!busy || tokenRequired || !status?.latest_available?.version
+                }
+                onClick={() => triggerProxyUpdate()}
+              >
+                {busy === 'proxy-update'
+                  ? u.updaterProcessing
+                  : u.updaterInfraProxyUpdateButton}
+              </button>
+            </div>
+          </div>
         </SettingGroup>
       )}
 

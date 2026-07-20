@@ -40,6 +40,9 @@ pub struct RequestContext {
     /// Lane key（由 LaneQueue 分配，用于队列追踪）
     #[serde(default)]
     pub lane_key: Option<String>,
+    /// 当前后端 run id（确认续跑时复用同一 run，避免通知身份漂移）
+    #[serde(default)]
+    pub run_id: Option<String>,
 }
 
 /// 对话消息
@@ -589,6 +592,9 @@ pub struct StepTrace {
     pub is_dynamic: bool,
 }
 
+/// 等待用户输入的默认最长时长（分钟）。无后或缺少 expires_at 的历史问题统一按此补齐。
+pub const DEFAULT_QUESTION_TTL_MINUTES: i64 = 30;
+
 /// 用户问题 - Agent 向用户提出的澄清问题
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserQuestion {
@@ -610,6 +616,26 @@ pub struct UserQuestion {
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// 过期时间
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl UserQuestion {
+    /// 保证有过期时间：缺失时用 created_at + DEFAULT_QUESTION_TTL_MINUTES。
+    pub fn ensure_expires_at(&mut self) {
+        if self.expires_at.is_none() {
+            self.expires_at = Some(
+                self.created_at
+                    + chrono::Duration::minutes(DEFAULT_QUESTION_TTL_MINUTES),
+            );
+        }
+    }
+
+    /// 是否已过期（无 expires_at 时按默认 TTL 从 created_at 推算）。
+    pub fn is_expired(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+        let exp = self.expires_at.unwrap_or_else(|| {
+            self.created_at + chrono::Duration::minutes(DEFAULT_QUESTION_TTL_MINUTES)
+        });
+        now > exp
+    }
 }
 
 /// 问题类型
@@ -975,7 +1001,8 @@ impl TaskState {
     }
 
     /// 设置待回答的问题，并将状态改为等待输入
-    pub fn set_pending_question(&mut self, question: UserQuestion) {
+    pub fn set_pending_question(&mut self, mut question: UserQuestion) {
+        question.ensure_expires_at();
         self.pending_question = Some(question);
         self.status = TaskStatus::WaitingForInput;
     }
@@ -1438,7 +1465,9 @@ impl UserQuestion {
             required,
             default_value: None,
             created_at: chrono::Utc::now(),
-            expires_at: Some(chrono::Utc::now() + chrono::Duration::minutes(30)),
+            expires_at: Some(
+                chrono::Utc::now() + chrono::Duration::minutes(DEFAULT_QUESTION_TTL_MINUTES),
+            ),
         }
     }
 
@@ -1459,7 +1488,9 @@ impl UserQuestion {
             required,
             default_value: None,
             created_at: chrono::Utc::now(),
-            expires_at: Some(chrono::Utc::now() + chrono::Duration::minutes(30)),
+            expires_at: Some(
+                chrono::Utc::now() + chrono::Duration::minutes(DEFAULT_QUESTION_TTL_MINUTES),
+            ),
         }
     }
 
@@ -1486,8 +1517,56 @@ impl UserQuestion {
             required: true,
             default_value: None,
             created_at: chrono::Utc::now(),
-            expires_at: Some(chrono::Utc::now() + chrono::Duration::minutes(30)),
+            expires_at: Some(
+                chrono::Utc::now() + chrono::Duration::minutes(DEFAULT_QUESTION_TTL_MINUTES),
+            ),
         }
+    }
+}
+
+#[cfg(test)]
+mod question_ttl_tests {
+    use super::*;
+
+    #[test]
+    fn ensure_expires_at_fills_default_ttl() {
+        let mut q = UserQuestion {
+            question_id: "q1".into(),
+            question_type: QuestionType::FreeText,
+            question: "x".into(),
+            context: String::new(),
+            options: None,
+            required: true,
+            default_value: None,
+            created_at: chrono::Utc::now() - chrono::Duration::minutes(5),
+            expires_at: None,
+        };
+        assert!(!q.is_expired(chrono::Utc::now()));
+        q.ensure_expires_at();
+        assert!(q.expires_at.is_some());
+        let exp = q.expires_at.unwrap();
+        assert!(exp > chrono::Utc::now());
+        assert_eq!(
+            (exp - q.created_at).num_minutes(),
+            DEFAULT_QUESTION_TTL_MINUTES
+        );
+    }
+
+    #[test]
+    fn is_expired_uses_default_when_missing() {
+        let q = UserQuestion {
+            question_id: "q2".into(),
+            question_type: QuestionType::FreeText,
+            question: "old".into(),
+            context: String::new(),
+            options: None,
+            required: false,
+            default_value: None,
+            created_at: chrono::Utc::now()
+                - chrono::Duration::minutes(DEFAULT_QUESTION_TTL_MINUTES + 1),
+            expires_at: None,
+        };
+        assert!(q.is_expired(chrono::Utc::now()));
     }
 }
 

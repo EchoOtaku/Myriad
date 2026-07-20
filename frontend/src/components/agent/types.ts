@@ -150,7 +150,9 @@ export interface ChatMessage {
 /** 嵌入式任务执行状态 */
 export interface TaskExecution {
   taskId: string
-  status: 'processing' | 'waiting' | 'completed' | 'error'
+  /** 后端 run id；用于断线/刷新后 re-subscribe，不重新 POST 创建任务 */
+  runId?: string
+  status: 'processing' | 'waiting' | 'cancelling' | 'completed' | 'error'
   progress: number
   steps: ExecutionStep[]
   executionTrace?: ExecutionTrace

@@ -360,7 +360,8 @@ export const AraelChatMessage: React.FC<AraelChatMessageProps> = React.memo(
 
     // ============ Assistant ============
     const exec = message.taskExecution
-    const isProcessing = exec?.status === 'processing'
+    const isProcessing =
+      exec?.status === 'processing' || exec?.status === 'cancelling'
     const isCompleted = exec?.status === 'completed'
     const isError = exec?.status === 'error'
 

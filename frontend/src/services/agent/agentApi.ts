@@ -40,12 +40,29 @@ class AgentService {
   private activeAbortControllers = new Set<AbortController>()
 
   /**
-   * 中断当前正在进行的 SSE 请求（客户端侧）
+   * 中断当前正在进行的 SSE 请求（客户端侧，用户意图）。
    *
-   * 调用后 executeSSERequest 的 Promise 将 reject 并释放连接。
+   * 调用后 executeSSERequest 的 Promise 将 reject，且**不会**自动 re-subscribe 同一 run。
    */
   abortCurrentRequest(): void {
-    abortSseSubscriptions(this.activeAbortControllers)
+    abortSseSubscriptions(this.activeAbortControllers, 'user')
+  }
+
+  /**
+   * 重新订阅一个已存在的后端 run（页面刷新 / 通知打开后恢复进度）。
+   * 不会创建新任务。
+   */
+  async subscribeRun(
+    runId: string,
+    onProgress: ProgressCallback,
+  ): Promise<AgentResponse> {
+    return this.executeSSERequest(
+      `/api${this.baseUrl}/runs/${encodeURIComponent(runId)}/stream`,
+      'GET',
+      undefined,
+      onProgress,
+      false,
+    )
   }
 
   /**
@@ -147,7 +164,9 @@ class AgentService {
   async getTask(taskId: string): Promise<TaskDetail> {
     const response = await apiService.get<{
       success: boolean
-      task: TaskInfo
+      task: TaskInfo & {
+        pendingQuestion?: TaskInfo['pendingQuestion']
+      }
       results: Record<string, unknown>
       startedAt: string
       completedAt?: string
@@ -161,6 +180,7 @@ class AgentService {
       startedAt: response.startedAt,
       completedAt: response.completedAt,
       results: response.results,
+      pendingQuestion: response.task.pendingQuestion,
     }
   }
 
@@ -270,7 +290,8 @@ class AgentService {
       if (
         task.status === 'completed' ||
         task.status === 'failed' ||
-        task.status === 'cancelled'
+        task.status === 'cancelled' ||
+        task.status === 'waiting_for_input'
       ) {
         return task
       }
@@ -413,6 +434,25 @@ class AgentService {
     taskId: string,
   ): Promise<{ task_id: string; enabled: boolean }> {
     return apiService.post(`${this.baseUrl}/heartbeat/${taskId}/toggle`)
+  }
+
+  /**
+   * 更新 Heartbeat 任务字段
+   */
+  async updateHeartbeat(
+    taskId: string,
+    patch: {
+      name?: string
+      schedule?: string
+      action?: string
+      enabled?: boolean
+    },
+  ): Promise<HeartbeatTask> {
+    const response = await apiService.put<{ task: HeartbeatTask }>(
+      `${this.baseUrl}/heartbeat/${encodeURIComponent(taskId)}`,
+      patch,
+    )
+    return response.task
   }
 
   // ============ 执行追踪 ============

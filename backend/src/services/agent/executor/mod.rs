@@ -1557,27 +1557,17 @@ impl Executor {
             "[Executor] Executing step"
         );
 
-        // 分发到具体 handler（带超时保护）
-        tokio::time::timeout(
-            std::time::Duration::from_secs(timeout_secs),
-            handlers::execute_capability(
-                &step.capability_id,
-                &step.action,
-                &capability_category,
-                &resolved_params,
-                handler_ctx,
-            ),
+        // 分发到具体 handler（超时 + 执行中取消轮询，避免长步骤只能等步间检查）
+        execute_capability_with_timeout_and_cancel(
+            &step.capability_id,
+            &step.action,
+            &capability_category,
+            &resolved_params,
+            handler_ctx,
+            timeout_secs,
+            handler_ctx.task_id.as_deref(),
         )
         .await
-        .map_err(|_| {
-            tracing::error!(
-                step_id = %step.id,
-                capability = %step.capability_id,
-                timeout_secs = timeout_secs,
-                "[Executor] Step timed out"
-            );
-            crate::services::agent::response_agent::step_timeout(&step.capability_id, timeout_secs)
-        })?
     }
 
     /// 执行 Skill 步骤
@@ -4026,6 +4016,124 @@ fn tapp_interaction_wait_question(output: &Value) -> Option<UserQuestion> {
         created_at: chrono::Utc::now(),
         expires_at,
     })
+}
+
+/// Run a capability with wall-clock timeout and cooperative mid-step cancel.
+///
+/// Cancel is polled every 500ms while the handler future is in flight so a user
+/// interrupt does not wait for the full step timeout (handlers themselves are
+/// still non-preemptive until they complete or hit their own HTTP timeouts).
+async fn execute_capability_with_timeout_and_cancel(
+    capability_id: &str,
+    action: &str,
+    category: &CapabilityCategory,
+    params: &std::collections::HashMap<String, Value>,
+    handler_ctx: &HandlerContext<'_>,
+    timeout_secs: u64,
+    task_id: Option<&str>,
+) -> Result<Value, String> {
+    let work = handlers::execute_capability(capability_id, action, category, params, handler_ctx);
+    tokio::pin!(work);
+
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    let mut cancel_tick = tokio::time::interval(std::time::Duration::from_millis(500));
+    cancel_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // Skip the immediate first tick so we don't cancel-check before start.
+    cancel_tick.tick().await;
+
+    loop {
+        tokio::select! {
+            biased;
+            result = &mut work => {
+                return result;
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                tracing::error!(
+                    capability = %capability_id,
+                    timeout_secs = timeout_secs,
+                    "[Executor] Step timed out"
+                );
+                return Err(crate::services::agent::response_agent::step_timeout(
+                    capability_id,
+                    timeout_secs,
+                ));
+            }
+            _ = cancel_tick.tick(), if task_id.is_some() => {
+                if let Some(tid) = task_id {
+                    if is_cancelled(tid).await {
+                        tracing::info!(
+                            task_id = %tid,
+                            capability = %capability_id,
+                            "[Executor] Mid-step cancel observed"
+                        );
+                        return Err(
+                            crate::services::agent::response_agent::task_cancelled_by_user(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod cancel_during_step_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn mid_step_cancel_returns_before_timeout() {
+        // Synthetic long future + cancel flag: must fail with cancel, not timeout.
+        let task_id = format!("cancel_test_{}", uuid::Uuid::new_v4().simple());
+        {
+            let mut tokens = task_store::CANCELLATION_TOKENS.write().await;
+            tokens.insert(task_id.clone());
+        }
+
+        let started = std::time::Instant::now();
+        // Use a tiny local future via the select helper pattern (inline).
+        let work = async {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            Ok::<Value, String>(json!({}))
+        };
+        tokio::pin!(work);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut cancel_tick = tokio::time::interval(std::time::Duration::from_millis(50));
+        cancel_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        cancel_tick.tick().await;
+
+        let result = loop {
+            tokio::select! {
+                biased;
+                result = &mut work => break result,
+                _ = tokio::time::sleep_until(deadline) => {
+                    break Err("timeout".to_string());
+                }
+                _ = cancel_tick.tick() => {
+                    if is_cancelled(&task_id).await {
+                        break Err(crate::services::agent::response_agent::task_cancelled_by_user());
+                    }
+                }
+            }
+        };
+
+        {
+            let mut tokens = task_store::CANCELLATION_TOKENS.write().await;
+            tokens.remove(&task_id);
+        }
+
+        assert!(
+            result
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("取消") || e.contains("cancel")),
+            "expected cancel error, got {result:?}"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "cancel should win quickly, elapsed {:?}",
+            started.elapsed()
+        );
+    }
 }
 
 #[cfg(test)]

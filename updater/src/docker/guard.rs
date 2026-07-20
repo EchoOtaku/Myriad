@@ -81,6 +81,7 @@ impl GuardConfig {
             [
                 "docker.io/somekawahitomi/myriad-backend",
                 "docker.io/somekawahitomi/myriad-frontend",
+                "docker.io/somekawahitomi/myriad-proxy",
                 "docker.io/somekawahitomi/myriad-updater",
                 "postgres",
             ]
@@ -323,7 +324,7 @@ fn validate_container_rename(state: &GuardState, uri: &Uri) -> std::result::Resu
         .filter(|(prefix, _)| prefix.len() == 12 && prefix.chars().all(|c| c.is_ascii_hexdigit()))
         .map(|(_, base)| base)
         .unwrap_or(requested);
-    let allowed = ["backend", "frontend", "postgres", "updater"]
+    let allowed = ["backend", "frontend", "postgres", "proxy", "updater"]
         .into_iter()
         .any(|service| {
             base == format!("{}-{service}-1", state.config.project)
@@ -357,7 +358,7 @@ fn validate_container_create(state: &GuardState, body: &Bytes) -> std::result::R
         .ok_or_else(|| "container is missing Compose service label".to_string())?;
     if !matches!(
         service,
-        "backend" | "backend-volume-init" | "frontend" | "postgres" | "updater"
+        "backend" | "backend-volume-init" | "frontend" | "postgres" | "proxy" | "updater"
     ) {
         return Err("Compose service is not managed by updater".into());
     }
@@ -389,17 +390,22 @@ fn validate_container_create(state: &GuardState, body: &Bytes) -> std::result::R
         return Err("explicit root user is allowed only for the backend volume initializer".into());
     }
     reject_true(&host, "Privileged")?;
-    reject_nonempty_fields(
-        &host,
-        &[
-            "CapAdd",
-            "Devices",
-            "DeviceRequests",
-            "VolumesFrom",
-            "PortBindings",
-            "Sysctls",
-        ],
-    )?;
+    // PortBindings are forbidden for internal services. Proxy is the edge entry and must
+    // publish host ports (80/443); validate those bindings separately below.
+    let mut host_forbidden = vec![
+        "CapAdd",
+        "Devices",
+        "DeviceRequests",
+        "VolumesFrom",
+        "Sysctls",
+    ];
+    if service != "proxy" {
+        host_forbidden.push("PortBindings");
+    }
+    reject_nonempty_fields(&host, &host_forbidden)?;
+    if service == "proxy" {
+        authorize_proxy_port_bindings(host.get("PortBindings"))?;
+    }
     for field in [
         "PidMode",
         "IpcMode",
@@ -669,8 +675,35 @@ fn validate_mount_pair(
             }
             validate_visible_host_directory(state, "")
         }
+        "proxy" => {
+            // Proxy only needs the maintenance state file (read-only).
+            if !host_bind || !exact_host_pair("state", "/state") {
+                return Err("proxy may only bind the project state directory at /state".into());
+            }
+            validate_visible_host_directory(state, "state")
+        }
         _ => Err("service mount policy is undefined".into()),
     }
+}
+
+/// Proxy may only publish container ports 80 and/or 443 to the host.
+fn authorize_proxy_port_bindings(bindings: Option<&Value>) -> std::result::Result<(), String> {
+    let Some(obj) = bindings.and_then(Value::as_object) else {
+        return Ok(());
+    };
+    if obj.is_empty() {
+        return Ok(());
+    }
+    for key in obj.keys() {
+        // Docker API keys look like "80/tcp" or "443/tcp".
+        let port = key.split('/').next().unwrap_or(key);
+        if port != "80" && port != "443" {
+            return Err(format!(
+                "proxy may only publish ports 80/443, got HostConfig.PortBindings key {key}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_mount_options(options: &str) -> std::result::Result<(), String> {
@@ -773,7 +806,7 @@ fn managed_project_service(inspect: &Value, config: &GuardConfig) -> Option<Stri
     if project == config.project
         && matches!(
             service,
-            "backend" | "backend-volume-init" | "frontend" | "postgres" | "updater"
+            "backend" | "backend-volume-init" | "frontend" | "postgres" | "proxy" | "updater"
         )
     {
         Some(service.to_string())

@@ -530,6 +530,7 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 | POST | `/update` | token | `{target_version, allow_skip_versions: false}` |
 | POST | `/rollback` | token | `{snapshot_id}` |
 | POST | `/admin/self-update` | token | updater 自更新 |
+| POST | `/admin/proxy-update` | token | 手动升级 proxy（可选 body `{target_version}`；默认频道最新 release） |
 | GET | `/snapshots` | token | 可恢复快照 |
 | POST | `/rescue/exit-maintenance` | token + manual | 强制清维护 |
 | POST | `/rescue/continue` | token | 一键回退：对 stuck job 的 snapshot 执行与 `/rollback` 相同的恢复（pgdata + MYRIAD_TAG） |

@@ -80,7 +80,10 @@ impl StdioTransport {
         })
     }
 
-    /// 发送 JSON-RPC 请求并等待响应
+    /// 发送 JSON-RPC 请求并等待**匹配 id** 的响应
+    ///
+    /// 跳过 server 推送的 notification（无 id）以及 id 不匹配的消息，
+    /// 避免把通知或乱序行当成工具结果。
     pub async fn send_request(
         &mut self,
         method: &str,
@@ -104,33 +107,81 @@ impl StdioTransport {
             .await
             .map_err(|e| format!("Failed to flush MCP stdin: {}", e))?;
 
-        // 读取响应（30 秒超时）
-        let mut line = String::new();
-        let read_result = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            self.read_response(&mut line),
-        )
-        .await
-        .map_err(|_| format!("MCP server timeout (30s) for method '{}'", method))?;
+        // 在总超时内读到匹配 id 的响应
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(format!("MCP server timeout (30s) for method '{}'", method));
+            }
 
-        read_result?;
+            let mut line = String::new();
+            let read_result =
+                tokio::time::timeout(remaining, self.read_response_line(&mut line)).await;
+            match read_result {
+                Err(_) => {
+                    return Err(format!("MCP server timeout (30s) for method '{}'", method));
+                }
+                Ok(Err(e)) => return Err(e),
+                Ok(Ok(())) => {}
+            }
 
-        // 解析 JSON-RPC 响应
-        let response: JsonRpcResponse = serde_json::from_str(line.trim()).map_err(|e| {
-            format!(
-                "Invalid JSON-RPC response: {} | raw: {}",
-                e,
-                &line[..line.len().min(200)]
-            )
-        })?;
+            let trimmed = line.trim();
+            let value: Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::debug!(
+                        "[MCP] skip non-JSON line: {} | raw: {}",
+                        e,
+                        &trimmed[..trimmed.len().min(120)]
+                    );
+                    continue;
+                }
+            };
 
-        if let Some(err) = response.error {
-            return Err(format!("MCP error ({}): {}", err.code, err.message));
+            // Notification: has method, no result/error pair as response — skip
+            if value.get("method").is_some()
+                && value.get("result").is_none()
+                && value.get("error").is_none()
+            {
+                tracing::debug!(
+                    method = %value.get("method").and_then(|m| m.as_str()).unwrap_or("?"),
+                    "[MCP] skip server notification while waiting for response"
+                );
+                continue;
+            }
+
+            // Match request id (number or string form of number)
+            let resp_id = match value.get("id") {
+                Some(Value::Number(n)) => n.as_u64(),
+                Some(Value::String(s)) => s.parse::<u64>().ok(),
+                _ => None,
+            };
+            if resp_id != Some(id) {
+                tracing::debug!(
+                    expected = id,
+                    got = ?resp_id,
+                    "[MCP] skip response with mismatched id"
+                );
+                continue;
+            }
+
+            let response: JsonRpcResponse = serde_json::from_value(value).map_err(|e| {
+                format!(
+                    "Invalid JSON-RPC response: {} | raw: {}",
+                    e,
+                    &trimmed[..trimmed.len().min(200)]
+                )
+            })?;
+
+            if let Some(err) = response.error {
+                return Err(format!("MCP error ({}): {}", err.code, err.message));
+            }
+
+            return response
+                .result
+                .ok_or_else(|| "MCP response has no result".to_string());
         }
-
-        response
-            .result
-            .ok_or_else(|| "MCP response has no result".to_string())
     }
 
     /// 发送 JSON-RPC 通知（无 id，不期望响应）
@@ -163,8 +214,8 @@ impl StdioTransport {
         Ok(())
     }
 
-    /// 从 stdout 读取一行 JSON-RPC 响应（跳过非 JSON 行）
-    async fn read_response(&mut self, buf: &mut String) -> Result<(), String> {
+    /// 从 stdout 读取一行 JSON 对象（跳过空行与非 JSON 前缀）
+    async fn read_response_line(&mut self, buf: &mut String) -> Result<(), String> {
         loop {
             buf.clear();
             let bytes_read = self
@@ -217,5 +268,29 @@ impl Drop for StdioTransport {
     fn drop(&mut self) {
         // 尽力 kill — 非 async，不能等待
         let _ = self.child.start_kill();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn response_id_matches_number_and_string() {
+        let id = 3u64;
+        let num = serde_json::json!({"jsonrpc":"2.0","id":3,"result":{}});
+        let s = serde_json::json!({"jsonrpc":"2.0","id":"3","result":{}});
+        let wrong = serde_json::json!({"jsonrpc":"2.0","id":4,"result":{}});
+        let notif = serde_json::json!({"jsonrpc":"2.0","method":"notifications/progress"});
+
+        let extract = |v: &Value| match v.get("id") {
+            Some(Value::Number(n)) => n.as_u64(),
+            Some(Value::String(s)) => s.parse::<u64>().ok(),
+            _ => None,
+        };
+        assert_eq!(extract(&num), Some(id));
+        assert_eq!(extract(&s), Some(id));
+        assert_ne!(extract(&wrong), Some(id));
+        assert!(notif.get("method").is_some() && notif.get("result").is_none());
     }
 }

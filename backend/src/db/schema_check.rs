@@ -15,6 +15,7 @@ use std::collections::HashSet;
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
 ///
 /// 变更日志：
+/// - 2026.07.20.5: heartbeat_claims（多副本 heartbeat 分钟桶认领）
 /// - 2026.07.20.4: federation_policy_settings（allowlist / min_trust / auto_discover）
 /// - 2026.07.20.3: room membership_status（邀请 pending/active）+ federation_content_filters
 /// - 2026.07.20.2: idx_file_transfers_room（群文件列表按 room_id 查 transfer）
@@ -27,7 +28,7 @@ use std::collections::HashSet;
 /// - 2026.07.17.1: tapp_ai_cost_ledger 表与索引
 /// - 2026.07.11.1: Discord 数据平台种子
 /// - 2026.07.10.1: 默认平台种子同步（含 X）
-const SCHEMA_VERSION: &str = "2026.07.20.4";
+const SCHEMA_VERSION: &str = "2026.07.20.5";
 
 /// 内置平台种子定义（与 migrations/001_initial_schema.rs 中 INSERT 保持同步）
 ///
@@ -2389,6 +2390,43 @@ fn get_expected_schema() -> Vec<TableDef> {
                 },
             ],
         },
+        // ==================== heartbeat_claims 表 ====================
+        // 多副本 heartbeat 按 (task_id, minute_bucket) CAS 认领，防止重复执行
+        TableDef {
+            name: "heartbeat_claims".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "task_id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "minute_bucket".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "status".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'running'".into()),
+                },
+                ColumnDef {
+                    name: "claimed_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+                ColumnDef {
+                    name: "completed_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+            ],
+        },
         // ==================== agent_sessions 表 ====================
         TableDef {
             name: "agent_sessions".to_string(),
@@ -4447,6 +4485,26 @@ ON CONFLICT (id) DO NOTHING;
     Ok(())
 }
 
+/// Multi-replica heartbeat minute-bucket claims (beyond Migrator 004).
+async fn ensure_heartbeat_claims_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS heartbeat_claims (
+    task_id VARCHAR(128) NOT NULL,
+    minute_bucket BIGINT NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'running',
+    claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    PRIMARY KEY (task_id, minute_bucket)
+);
+CREATE INDEX IF NOT EXISTS idx_heartbeat_claims_claimed_at
+    ON heartbeat_claims (claimed_at);
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
 async fn ensure_tapp_storage_quota(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
@@ -4827,6 +4885,9 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     if let Err(e) = ensure_federation_policy_settings_table(db).await {
         tracing::warn!("federation_policy_settings table ensure warning: {}", e);
     }
+    if let Err(e) = ensure_heartbeat_claims_table(db).await {
+        tracing::warn!("heartbeat_claims table ensure warning: {}", e);
+    }
     if let Err(e) = ensure_single_owner(db).await {
         tracing::warn!("Site owner seed warning: {}", e);
     }
@@ -4976,6 +5037,9 @@ async fn do_force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
             "Force check: federation_policy_settings table ensure warning: {}",
             e
         );
+    }
+    if let Err(e) = ensure_heartbeat_claims_table(db).await {
+        tracing::warn!("Force check: heartbeat_claims table ensure warning: {}", e);
     }
     if let Err(e) = ensure_single_owner(db).await {
         tracing::warn!("Force check: site owner seed warning: {}", e);

@@ -142,23 +142,34 @@ async fn materialize_pinned_rollback_images(ctx: &Context, version: &str) -> Res
         .get("FRONTEND_IMAGE")
         .context("FRONTEND_IMAGE missing; cannot restore pinned rollback image")?;
 
-    for (component, repo) in [("backend", backend), ("frontend", frontend)] {
+    // Pair integrity: only materialize when BOTH components have *:myriad-rollback.
+    let pair = [
+        ("backend", backend.to_string()),
+        ("frontend", frontend.to_string()),
+    ];
+    let mut missing_pins = Vec::new();
+    for (component, repo) in &pair {
+        let rollback_ref = format!("{repo}:{ROLLBACK_IMAGE_TAG}");
+        if !docker_image_exists(&rollback_ref).await {
+            missing_pins.push((*component).to_string());
+        }
+    }
+    if !missing_pins.is_empty() {
+        tracing::warn!(
+            %version,
+            missing = ?missing_pins,
+            "incomplete local rollback slot; rescue will not materialize a split pair"
+        );
+        return Ok(());
+    }
+
+    for (component, repo) in &pair {
         let version_ref = format!("{repo}:{version}");
         if docker_image_exists(&version_ref).await {
             continue;
         }
 
         let rollback_ref = format!("{repo}:{ROLLBACK_IMAGE_TAG}");
-        if !docker_image_exists(&rollback_ref).await {
-            tracing::warn!(
-                %component,
-                %version_ref,
-                %rollback_ref,
-                "recorded rescue rollback image is not available locally"
-            );
-            continue;
-        }
-
         let status = tokio::process::Command::new("docker")
             .args(["image", "tag", &rollback_ref, &version_ref])
             .status()

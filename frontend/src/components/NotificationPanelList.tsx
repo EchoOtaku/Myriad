@@ -86,12 +86,17 @@ const PILL_BTN =
 
 /** 通知的跳转目标 */
 type NotifTarget =
-  | { kind: 'session'; sessionId: string }
+  | {
+      kind: 'session'
+      sessionId: string
+      runId?: string
+      taskId?: string
+    }
   | { kind: 'route'; path: string }
   | { kind: 'arael_manage' }
   | null
 
-/** 解析点击落点：任务类通知带 session_id 时跳回对应 Arael 会话 */
+/** 解析点击落点：任务类通知带 session_id 时跳回对应 Arael 会话（可带 run/task 以 reattach） */
 function resolveTarget(n: AppNotification): NotifTarget {
   if (
     n.notification_type === 'task_progress' ||
@@ -102,7 +107,11 @@ function resolveTarget(n: AppNotification): NotifTarget {
   ) {
     const sid = n.metadata?.session_id
     if (typeof sid === 'string' && sid) {
-      return { kind: 'session', sessionId: sid }
+      const runId =
+        typeof n.metadata?.run_id === 'string' ? n.metadata.run_id : undefined
+      const taskId =
+        typeof n.metadata?.task_id === 'string' ? n.metadata.task_id : undefined
+      return { kind: 'session', sessionId: sid, runId, taskId }
     }
   }
   const route = n.metadata?.route
@@ -120,7 +129,10 @@ interface Props {
   /** 填满父容器高度（覆盖层模式：继承控制面板高度，列表内部滚动） */
   fill?: boolean
   /** 打开 Arael 会话（由 GlobalControlPanel 注入：收起面板 + 派发打开事件） */
-  onOpenSession?: (sessionId: string) => void
+  onOpenSession?: (
+    sessionId: string,
+    opts?: { runId?: string; taskId?: string },
+  ) => void
   /** 打开普通应用路由（如 Brew 新内容） */
   onNavigate?: (path: string) => void
   /** 打开 Arael 管理面板（Heartbeat 通知） */
@@ -202,7 +214,10 @@ function NotificationPanelList({
     (n: AppNotification) => {
       const target = resolveTarget(n)
       if (target?.kind === 'session' && onOpenSession) {
-        onOpenSession(target.sessionId)
+        onOpenSession(target.sessionId, {
+          runId: target.runId,
+          taskId: target.taskId,
+        })
         return
       }
       if (target?.kind === 'route' && onNavigate) {

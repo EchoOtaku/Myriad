@@ -8,7 +8,7 @@ use chrono::Utc;
 use once_cell::sync::Lazy;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Statement,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
 };
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
@@ -278,10 +278,46 @@ WHERE status IN ('pending', 'running')
     }
 
     if interrupted > 0 {
-        tracing::info!("标记了 {} 个重启中断任务为 Cancelled", interrupted);
+        tracing::info!(
+            interrupted = interrupted,
+            waiting_restored = store.tasks.len(),
+            "[TaskStore] Boot: cancelled in-flight pending/running; restored waiting_for_input tasks (answer path works; original wait-loop must re-register on next answer)"
+        );
+    } else {
+        tracing::info!(
+            waiting_restored = store.tasks.len(),
+            "[TaskStore] Boot: restored waiting_for_input tasks from database"
+        );
     }
-    tracing::info!("从数据库加载了 {} 个待处理任务", store.tasks.len());
     Ok(())
+}
+
+/// Statuses that interrupt/cancel should target (public for API alignment tests).
+pub fn is_cancellable_task_status(status: &TaskStatus) -> bool {
+    matches!(
+        status,
+        TaskStatus::Pending
+            | TaskStatus::Running
+            | TaskStatus::WaitingForInput
+            | TaskStatus::Paused
+    )
+}
+
+/// Snapshot of waiting tasks currently in memory (after boot load).
+/// Used to re-create run hubs + WAITING_TASKS loops.
+pub async fn list_waiting_tasks_snapshot() -> Vec<(i32, TaskState)> {
+    let store = TASK_STORE.read().await;
+    let mut out = Vec::new();
+    for (user_id, ids) in &store.user_tasks {
+        for id in ids {
+            if let Some(task) = store.tasks.get(id) {
+                if task.status == TaskStatus::WaitingForInput {
+                    out.push((*user_id, task.clone()));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// 将数据库模型转换为任务状态
@@ -300,10 +336,13 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
     let step_results: HashMap<String, StepResult> =
         serde_json::from_value(model.step_results.clone()).unwrap_or_default();
 
-    let pending_question: Option<UserQuestion> = model
+    let mut pending_question: Option<UserQuestion> = model
         .pending_question
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok());
+    if let Some(ref mut q) = pending_question {
+        q.ensure_expires_at();
+    }
 
     let execution_context: Option<ExecutionContext> = model
         .execution_context
@@ -314,6 +353,15 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
         .recipe
         .as_ref()
         .and_then(|value| serde_json::from_value(value.clone()).ok());
+
+    // Prefer stored lane_id; fall back to reconstructing from session_id for older rows.
+    let lane_id = model.lane_id.clone().or_else(|| {
+        model
+            .session_id
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|sid| format!("user:{}:session:{}", model.user_id, sid))
+    });
 
     Ok(TaskState {
         task_id: model.id.clone(),
@@ -327,10 +375,18 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
         progress: model.progress as u8,
         pending_question,
         execution_context,
-        lane_id: None,
+        lane_id,
         execution_trace: None,
         recipe,
     })
+}
+
+/// Session id embedded in `user:{id}:session:{session_id}` lane keys.
+pub fn session_id_from_lane_id(lane_id: Option<&str>) -> Option<String> {
+    lane_id
+        .and_then(|lane| lane.split_once(":session:"))
+        .map(|(_, session_id)| session_id.to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// 保存任务到数据库
@@ -366,6 +422,10 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
         active_model.pending_question = Set(task.pending_question.as_ref().map(|q| json!(q)));
         active_model.execution_context = Set(task.execution_context.as_ref().map(|c| json!(c)));
         active_model.recipe = Set(task.recipe.as_ref().map(|recipe| json!(recipe)));
+        active_model.lane_id = Set(task.lane_id.clone());
+        if let Some(sid) = session_id_from_lane_id(task.lane_id.as_deref()) {
+            active_model.session_id = Set(Some(sid));
+        }
 
         active_model
             .update(db)
@@ -373,6 +433,7 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
             .map_err(|e| format!("更新任务失败: {}", e))?;
     } else {
         // 创建新任务
+        let session_id = session_id_from_lane_id(task.lane_id.as_deref());
         let new_task = agent_tasks::ActiveModel {
             id: Set(task.task_id.clone()),
             user_id: Set(user_id),
@@ -389,7 +450,7 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
             recipe: Set(task.recipe.as_ref().map(|recipe| json!(recipe))),
             original_request: Set(None),
             updated_at: Set(chrono::Utc::now().into()),
-            session_id: Set(None),
+            session_id: Set(session_id),
             lane_id: Set(task.lane_id.clone()),
             name: Set(None),
             total_steps: Set(Some(
@@ -561,10 +622,49 @@ WHERE id = $1 AND user_id = $2
     true
 }
 
-/// 获取用户的所有任务
+/// 获取用户的任务列表（内存 + 数据库合并）。
+///
+/// 内存中的非终态任务优先（更新鲜）；数据库补充重启后仅落库的完成/失败/取消任务，
+/// 避免 list_tasks 在进程重启后「空列表」造成前端无法恢复。
 pub async fn get_user_tasks(user_id: i32) -> Vec<TaskState> {
-    let store = TASK_STORE.read().await;
-    store.get_user_tasks(user_id).into_iter().cloned().collect()
+    let mut by_id: HashMap<String, TaskState> = HashMap::new();
+
+    {
+        let store = TASK_STORE.read().await;
+        for task in store.get_user_tasks(user_id) {
+            by_id.insert(task.task_id.clone(), task.clone());
+        }
+    }
+
+    if let Some(db) = DB_FOR_TASKS.read().await.clone() {
+        match agent_tasks::Entity::find()
+            .filter(agent_tasks::Column::UserId.eq(user_id))
+            .order_by_desc(agent_tasks::Column::StartedAt)
+            .limit(100)
+            .all(&db)
+            .await
+        {
+            Ok(models) => {
+                for model in models {
+                    if let Ok(task) = task_model_to_state(&model) {
+                        // 已有内存副本则保留（活跃执行路径）
+                        by_id.entry(task.task_id.clone()).or_insert(task);
+                    }
+                }
+            }
+            Err(error) => {
+                tracing::warn!(
+                    user_id = user_id,
+                    %error,
+                    "[TaskStore] Failed to list tasks from database; returning memory only"
+                );
+            }
+        }
+    }
+
+    let mut tasks: Vec<TaskState> = by_id.into_values().collect();
+    tasks.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    tasks
 }
 
 /// 以约 5% 的概率触发一次过期任务清理（请求驱动，避免独立定时任务）
@@ -588,6 +688,17 @@ pub async fn maybe_cleanup_tasks() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancellable_statuses_include_waiting_and_paused() {
+        assert!(is_cancellable_task_status(&TaskStatus::Running));
+        assert!(is_cancellable_task_status(&TaskStatus::WaitingForInput));
+        assert!(is_cancellable_task_status(&TaskStatus::Paused));
+        assert!(is_cancellable_task_status(&TaskStatus::Pending));
+        assert!(!is_cancellable_task_status(&TaskStatus::Completed));
+        assert!(!is_cancellable_task_status(&TaskStatus::Failed));
+        assert!(!is_cancellable_task_status(&TaskStatus::Cancelled));
+    }
 
     #[test]
     fn test_task_store() {

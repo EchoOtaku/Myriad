@@ -27,3 +27,18 @@ pub async fn init_mcp(config_path: &Path) {
 pub fn get_mcp_manager() -> Option<&'static Arc<McpManager>> {
     MCP_MANAGER.get()
 }
+
+/// 关闭所有 MCP 子进程（graceful shutdown）
+pub async fn shutdown_mcp() {
+    if let Some(manager) = MCP_MANAGER.get() {
+        manager.shutdown_all().await;
+    }
+}
+
+/// 强制从磁盘重载 MCP 配置（管理 API）
+pub async fn reload_mcp() -> Result<(), String> {
+    let manager = MCP_MANAGER
+        .get()
+        .ok_or_else(|| "MCP manager not initialized".to_string())?;
+    manager.reload_from_disk().await
+}

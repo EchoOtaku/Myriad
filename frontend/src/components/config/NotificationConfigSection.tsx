@@ -133,6 +133,9 @@ const EVENT_TEXT: Record<Locale, Record<NotificationEventKey, string>> = {
     'federation.channel_accepted': '私信通道已建立',
     'federation.room_invite_accepted': '群组邀请已接受',
     'system.info': '系统信息',
+    'skill.pruned': '技能自动淘汰',
+    'skill.improved': '技能自动改进',
+    'skill.changed': '技能变更',
   },
   'en-US': {
     'agent.task_progress': 'Task progress',
@@ -164,6 +167,9 @@ const EVENT_TEXT: Record<Locale, Record<NotificationEventKey, string>> = {
     'federation.channel_accepted': 'Direct channel established',
     'federation.room_invite_accepted': 'Room invite accepted',
     'system.info': 'System information',
+    'skill.pruned': 'Skill auto-pruned',
+    'skill.improved': 'Skill auto-improved',
+    'skill.changed': 'Skill changed',
   },
   'ja-JP': {
     'agent.task_progress': 'タスクの進行状況',
@@ -195,6 +201,9 @@ const EVENT_TEXT: Record<Locale, Record<NotificationEventKey, string>> = {
     'federation.channel_accepted': 'DM チャンネル確立',
     'federation.room_invite_accepted': 'ルーム招待が承認されました',
     'system.info': 'システム情報',
+    'skill.pruned': 'スキル自動淘汰',
+    'skill.improved': 'スキル自動改善',
+    'skill.changed': 'スキル変更',
   },
 }
 

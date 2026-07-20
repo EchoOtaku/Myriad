@@ -342,6 +342,17 @@ impl SkillEvolution {
                                             entry.last_improved_at = Some(Utc::now());
                                         }
                                         evo.mark_stats_dirty();
+                                        drop(stats);
+                                        evo.flush().await;
+                                        if let Some(nm) = crate::services::agent::notifications::get_notification_manager()
+                                        {
+                                            nm.notify_skill_evolution(
+                                                &skill_id_owned,
+                                                "improved",
+                                                "AI 已根据近期失败原因改写该自动技能。",
+                                            )
+                                            .await;
+                                        }
                                     }
                                     Err(e) => {
                                         tracing::warn!(
@@ -1014,6 +1025,21 @@ origin: agent_generated
                     file = %skill.file_path.display(),
                     "[SkillEvolution] Pruned skill file"
                 );
+                if let Some(nm) =
+                    crate::services::agent::notifications::get_notification_manager()
+                {
+                    nm.notify_skill_evolution(
+                        &skill.id,
+                        "pruned",
+                        &format!(
+                            "自动技能「{}」因失败率过高被淘汰。",
+                            skill.name
+                        ),
+                    )
+                    .await;
+                }
+                // 关键路径立即落盘，避免重启丢失淘汰记录
+                self.flush().await;
                 true
             }
             Err(e) => {

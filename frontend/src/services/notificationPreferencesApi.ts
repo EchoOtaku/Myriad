@@ -43,6 +43,9 @@ export const NOTIFICATION_EVENT_KEYS = [
   'federation.channel_accepted',
   'federation.room_invite_accepted',
   'system.info',
+  'skill.pruned',
+  'skill.improved',
+  'skill.changed',
 ] as const
 
 export type NotificationEventKey = (typeof NOTIFICATION_EVENT_KEYS)[number]

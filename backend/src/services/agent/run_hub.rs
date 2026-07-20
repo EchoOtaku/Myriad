@@ -356,7 +356,11 @@ WHERE namespace = $1 AND runtime_id = $2
         new_events
     }
 
-    pub async fn publish(&self, event: AgentProgressEvent) {
+    /// Publish a progress event to live subscribers first, then durable storage.
+    ///
+    /// Live SSE must not wait on registry DB writes: a slow persist would fill the
+    /// mpsc forwarder and freeze step progress. Persistence is best-effort async.
+    pub async fn publish(self: &Arc<Self>, event: AgentProgressEvent) {
         let mut notify = false;
         let (envelope, task_id, status, progress, message, success) = {
             let mut state = self.state.lock().await;
@@ -483,8 +487,15 @@ WHERE namespace = $1 AND runtime_id = $2
             )
         };
 
+        // Live path: broadcast immediately so SSE subscribers never wait on DB.
         let _ = self.events_tx.send(envelope.clone());
-        self.persist(&envelope).await;
+
+        // Durable path: best-effort, off the hot path.
+        let this = Arc::clone(self);
+        let envelope_for_persist = envelope;
+        tokio::spawn(async move {
+            this.persist(&envelope_for_persist).await;
+        });
 
         if notify {
             if let Some(manager) = get_notification_manager() {
@@ -620,5 +631,27 @@ mod tests {
         assert_eq!(restored_history.len(), 3);
         assert_eq!(restored_sequence, 3);
         assert!(restored_completed);
+    }
+
+    #[tokio::test]
+    async fn publish_delivers_to_subscribers_without_waiting_on_persist() {
+        // Live broadcast must complete even when durable registry is unavailable.
+        let run = AgentRun::new("run_live".to_string(), 1, None);
+        let mut sub = run.subscribe();
+        run.publish(AgentProgressEvent::Progress {
+            progress: 10,
+            completed_steps: 0,
+            total_steps: 1,
+            message: "hot path".to_string(),
+        })
+        .await;
+        let envelope = tokio::time::timeout(std::time::Duration::from_millis(200), sub.recv())
+            .await
+            .expect("live subscriber must receive without DB")
+            .expect("channel open");
+        assert!(matches!(
+            envelope.event,
+            AgentProgressEvent::Progress { progress: 10, .. }
+        ));
     }
 }

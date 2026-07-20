@@ -77,9 +77,63 @@ fn agent_run_event_is_terminal(event: &AgentProgressEvent) -> bool {
     }
 }
 
+/// Terminal payload when the wait-loop oneshot is dropped without a normal answer.
+/// Re-subscribers must not hang forever on a non-completed run.
+fn wait_loop_channel_dropped_response(task_id: &str) -> Value {
+    json!({
+        "success": false,
+        "responseType": "error",
+        "message": "任务等待通道已断开",
+        "streamTerminal": true,
+        "task": {
+            "taskId": task_id,
+            "status": "failed",
+            "progress": 0
+        }
+    })
+}
+
+/// Build the TaskCompleted event published when a wait-loop oneshot is dropped.
+fn wait_loop_channel_dropped_event(task_id: &str) -> AgentProgressEvent {
+    AgentProgressEvent::TaskCompleted {
+        task_id: task_id.to_string(),
+        success: false,
+        response: Box::new(wait_loop_channel_dropped_response(task_id)),
+    }
+}
+
+/// Ensure session-message metadata always carries top-level run/task ids for reattach.
+/// Merges into an existing JSON object (e.g. ApiResponse value) without dropping fields.
+fn session_metadata_with_run_identity(
+    base: Option<Value>,
+    run_id: &str,
+    task_id: &str,
+) -> Value {
+    let mut meta = match base {
+        Some(Value::Object(map)) => Value::Object(map),
+        Some(other) => json!({ "data": other }),
+        None => json!({}),
+    };
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("runId".to_string(), json!(run_id));
+        obj.insert("taskId".to_string(), json!(task_id));
+        // snake_case aliases for notification / legacy readers
+        obj.insert("run_id".to_string(), json!(run_id));
+        obj.insert("task_id".to_string(), json!(task_id));
+        if !obj.contains_key("task") {
+            obj.insert(
+                "task".to_string(),
+                json!({ "taskId": task_id, "status": "running" }),
+            );
+        }
+    }
+    meta
+}
+
 fn agent_run_event_stream(run: Arc<AgentRun>) -> impl Stream<Item = Result<Event, Infallible>> {
     async_stream::stream! {
         // 先订阅再读取快照；sequence 去重消除两者之间的竞态。
+        // mut: Lagged 时会重新 subscribe 同一 run。
         let mut receiver = run.subscribe();
         let (history, mut last_sequence, already_completed) = run.snapshot().await;
 
@@ -120,8 +174,27 @@ fn agent_run_event_stream(run: Arc<AgentRun>) -> impl Stream<Item = Result<Event
                     }
                     Ok(_) => {}
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                        // 客户端随后可重新 GET，同一 run 的共享历史会补齐最近事件。
-                        return;
+                        // 不关流：从内存快照补发遗漏事件，避免前端必须重开连接。
+                        let (history, snap_seq, completed) = run.snapshot().await;
+                        for envelope in history {
+                            if envelope.sequence <= last_sequence {
+                                continue;
+                            }
+                            last_sequence = envelope.sequence;
+                            let terminal = agent_run_event_is_terminal(&envelope.event);
+                            let data = serde_json::to_string(&envelope.event)
+                                .unwrap_or_else(|_| "{}".to_string());
+                            yield Ok(Event::default().id(envelope.sequence.to_string()).data(data));
+                            if terminal {
+                                return;
+                            }
+                        }
+                        last_sequence = last_sequence.max(snap_seq);
+                        // 重新订阅，丢弃 lag 的 receiver
+                        receiver = run.subscribe();
+                        if completed {
+                            return;
+                        }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
                 },
@@ -688,6 +761,72 @@ mod api_contract_tests {
     }
 
     #[test]
+    fn wait_loop_oneshot_drop_publishes_terminal_event() {
+        let event = wait_loop_channel_dropped_event("task_orphaned");
+        assert!(
+            agent_run_event_is_terminal(&event),
+            "oneshot drop must terminalize the run for re-subscribers"
+        );
+        match &event {
+            AgentProgressEvent::TaskCompleted {
+                success, response, ..
+            } => {
+                assert!(!*success);
+                assert_eq!(
+                    response.pointer("/task/status").and_then(|v| v.as_str()),
+                    Some("failed")
+                );
+                assert_eq!(
+                    response.get("streamTerminal").and_then(|v| v.as_bool()),
+                    Some(true)
+                );
+            }
+            other => panic!("expected TaskCompleted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn answer_lane_key_matches_process_session_lane() {
+        // Regression: answer stream must not use user-only key when session exists.
+        let process_key = LaneQueue::make_lane_key(42, Some("sess_live"));
+        let answer_key =
+            LaneQueue::resolve_answer_lane_key(42, Some(&process_key), Some("ignored"));
+        assert_eq!(answer_key, process_key);
+        let answer_from_session = LaneQueue::resolve_answer_lane_key(42, None, Some("sess_live"));
+        assert_eq!(answer_from_session, process_key);
+    }
+
+    #[test]
+    fn multi_round_wait_metadata_keeps_top_level_run_and_task_ids() {
+        // Simulates answer path value (ApiResponse-shaped) without identity fields.
+        let answer_payload = json!({
+            "success": true,
+            "message": "还需要补充一点",
+            "task": {
+                "taskId": "task_multi",
+                "status": "waiting_for_input",
+                "pendingQuestion": { "questionId": "q2", "question": "再确认？" }
+            }
+        });
+        let meta = session_metadata_with_run_identity(
+            Some(answer_payload),
+            "run_abc",
+            "task_multi",
+        );
+        assert_eq!(meta.get("runId").and_then(|v| v.as_str()), Some("run_abc"));
+        assert_eq!(meta.get("taskId").and_then(|v| v.as_str()), Some("task_multi"));
+        assert_eq!(
+            meta.pointer("/task/status").and_then(|v| v.as_str()),
+            Some("waiting_for_input")
+        );
+        // Original fields preserved
+        assert_eq!(
+            meta.get("message").and_then(|v| v.as_str()),
+            Some("还需要补充一点")
+        );
+    }
+
+    #[test]
     fn frontend_action_payload_is_preserved_without_field_loss() {
         let action = json!({
             "type": "music_load_playlist",
@@ -873,6 +1012,7 @@ fn build_request_context(ctx: ProcessContext) -> RequestContext {
         conversation_history,
         custom_data: ctx.custom_data,
         lane_key: None, // 由 API 层在调用处注入
+        run_id: None,   // 由 process_stream 在 create_run 后注入
     }
 }
 
@@ -1050,7 +1190,7 @@ pub async fn process(
     }
 
     // 获取 Lane Queue 执行许可（同一用户串行，全局并发上限 4）
-    let _guard = LANE_QUEUE.acquire(&lane_key).await.map_err(|e| {
+    let _guard = LANE_QUEUE.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await.map_err(|e| {
         tracing::warn!(error = %e, "[Agent API] Queue acquisition failed");
         (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e })))
     })?;
@@ -1178,14 +1318,68 @@ pub async fn process_stream(
 
     // 后端 run 独立于本次 HTTP 连接；前端只订阅事件。
     let run = create_run(user_id, has_session.then_some(session_id.clone())).await;
+    let run_id_for_meta = run.run_id().to_string();
+    // 注入 run_id，供确认手持（confirmation）复用同一 run hub / 通知身份
+    if let Some(ref mut ctx) = user_request.context {
+        ctx.run_id = Some(run_id_for_meta.clone());
+    }
 
     // Agent/executor 继续使用有背压的 mpsc；独立转发器负责写入 run hub。
+    // On TaskCreated, persist runId/taskId into session history so mid-run
+    // panel refresh can reattach (criterion 4) before wait/final complete.
     let (tx, rx) = tokio::sync::mpsc::channel::<ProgressEvent>(32);
     let run_for_forwarder = run.clone();
+    let session_for_identity = session_id.clone();
+    let db_for_identity = db.clone();
+    let run_id_for_identity = run_id_for_meta.clone();
     tokio::spawn(async move {
         let mut rx = rx;
+        let mut mid_run_identity_persisted = false;
         while let Some(event) = rx.recv().await {
+            // Snapshot identity fields before moving event into publish.
+            let mid_run_identity = if !mid_run_identity_persisted
+                && !session_for_identity.is_empty()
+            {
+                match &event {
+                    AgentProgressEvent::TaskCreated {
+                        task_id, message, ..
+                    } => Some((task_id.clone(), message.clone())),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+
+            // Criterion 5: live fanout first — never await DB on this hot path.
             run_for_forwarder.publish(event).await;
+
+            // Criterion 4: best-effort session identity for reattach; fire-and-forget.
+            if let Some((task_id, message)) = mid_run_identity {
+                mid_run_identity_persisted = true;
+                let db = db_for_identity.clone();
+                let session_id = session_for_identity.clone();
+                let run_id = run_id_for_identity.clone();
+                tokio::spawn(async move {
+                    let metadata = session_metadata_with_run_identity(
+                        Some(json!({
+                            "task": {
+                                "taskId": task_id,
+                                "status": "running",
+                            },
+                        })),
+                        &run_id,
+                        &task_id,
+                    );
+                    let _ = persist_assistant_message(
+                        &db,
+                        &session_id,
+                        Some(&task_id),
+                        &message,
+                        Some(metadata),
+                    )
+                    .await;
+                });
+            }
         }
     });
 
@@ -1197,7 +1391,7 @@ pub async fn process_stream(
     tokio::spawn(async move {
         // 获取 Lane Queue 执行许可（同一用户串行，全局并发上限 4）
         // 注意：进入 wait-for-input 后必须释放，否则最多 4 个等待任务会堵死全局槽位
-        let mut lane_guard = match queue.acquire(&lane_key).await {
+        let mut lane_guard = match queue.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await {
             Ok(guard) => Some(guard),
             Err(e) => {
                 let _ = tx
@@ -1250,12 +1444,21 @@ pub async fn process_stream(
                         "[Agent API] Released lane permit while waiting for user input"
                     );
 
-                    // 持久化首次问题消息
+                    // 持久化首次问题消息（含 runId，供刷新后 reattach）
                     if !session_id_clone.is_empty() {
-                        let metadata = json!({
-                            "suggestions": &api_response.suggestions,
-                            "data": &api_response.data,
-                        });
+                        let metadata = session_metadata_with_run_identity(
+                            Some(json!({
+                                "suggestions": &api_response.suggestions,
+                                "data": &api_response.data,
+                                "task": {
+                                    "taskId": task_id,
+                                    "status": "waiting_for_input",
+                                    "pendingQuestion": api_response.task.as_ref().and_then(|t| t.pending_question.clone()),
+                                },
+                            })),
+                            &run_id_for_meta,
+                            &task_id,
+                        );
                         let _ = persist_assistant_message(
                             &db_clone,
                             &session_id_clone,
@@ -1297,17 +1500,24 @@ pub async fn process_stream(
 
                                 if still_waiting {
                                     // 仍有新问题需要用户回答，持久化中间状态后继续等待
+                                    // 必须带 top-level runId/taskId（与首次 wait 一致），否则
+                                    // 多轮后最新消息缺少 run 身份，刷新无法 re-subscribe。
                                     if !session_id_clone.is_empty() {
                                         let msg = response_value
                                             .get("message")
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("需要更多信息");
+                                        let metadata = session_metadata_with_run_identity(
+                                            Some(response_value.clone()),
+                                            &run_id_for_meta,
+                                            &task_id,
+                                        );
                                         let _ = persist_assistant_message(
                                             &db_clone,
                                             &session_id_clone,
                                             Some(&task_id),
                                             msg,
-                                            Some(response_value.clone()),
+                                            Some(metadata),
                                         )
                                         .await;
                                     }
@@ -1327,18 +1537,23 @@ pub async fn process_stream(
                                     .and_then(|v| v.as_bool())
                                     .unwrap_or(true);
 
-                                // 持久化最终结果
+                                // 持久化最终结果（同样带 runId/taskId）
                                 if !session_id_clone.is_empty() {
                                     let final_msg = response_value
                                         .get("message")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("任务已完成");
+                                    let metadata = session_metadata_with_run_identity(
+                                        Some(response_value.clone()),
+                                        &run_id_for_meta,
+                                        &task_id,
+                                    );
                                     let _ = persist_assistant_message(
                                         &db_clone,
                                         &session_id_clone,
                                         Some(&task_id),
                                         final_msg,
-                                        Some(response_value.clone()),
+                                        Some(metadata),
                                     )
                                     .await;
                                 }
@@ -1360,9 +1575,15 @@ pub async fn process_stream(
                                 break;
                             }
                             Ok(Err(_)) => {
-                                // done_tx 被丢弃（answer stream 未找到对应的等待条目）
-                                tracing::warn!("[Agent API] Answer sender dropped unexpectedly");
+                                // done_tx 被丢弃：必须发布终态，否则 re-subscribe 会永久挂起
+                                tracing::warn!(
+                                    task_id = %task_id,
+                                    "[Agent API] Answer sender dropped unexpectedly; terminalizing run"
+                                );
                                 let _ = take_waiting_task(&task_id, user_id).await;
+                                let _ = tx
+                                    .send(wait_loop_channel_dropped_event(&task_id))
+                                    .await;
                                 break;
                             }
                             Err(_) => {
@@ -1385,8 +1606,7 @@ pub async fn process_stream(
                                         let expired = task
                                             .pending_question
                                             .as_ref()
-                                            .and_then(|q| q.expires_at)
-                                            .is_some_and(|exp| chrono::Utc::now() > exp);
+                                            .is_some_and(|q| q.is_expired(chrono::Utc::now()));
                                         if expired {
                                             tracing::warn!(
                                                 task_id = %task_id,
@@ -1395,6 +1615,7 @@ pub async fn process_stream(
                                             let response_value = json!({
                                                 "success": false,
                                                 "message": "等待用户输入已超时",
+                                                "streamTerminal": true,
                                                 "task": {
                                                     "taskId": task_id.clone(),
                                                     "status": "failed"
@@ -1507,13 +1728,15 @@ pub async fn process_stream(
                     let _ = lane_guard.take();
                     // 正常流程：立即发送 TaskCompleted
 
-                    // 持久化 assistant 消息
+                    // 持久化 assistant 消息（含 runId/taskId，供会话恢复）
                     if !session_id_clone.is_empty() {
                         let metadata = json!({
                             "suggestions": &api_response.suggestions,
                             "dataDisplay": &api_response.data_display,
                             "frontendAction": &api_response.frontend_action,
                             "data": &api_response.data,
+                            "runId": run_id_for_meta,
+                            "taskId": if task_id.is_empty() { Value::Null } else { json!(task_id) },
                         });
                         if let Err(e) = persist_assistant_message(
                             &db_clone,
@@ -1692,12 +1915,12 @@ pub async fn list_tasks(
     );
 
     let agent = Agent::new(db).await;
+    // get_user_tasks 已按 started_at 降序（最新在前），并合并 DB
     let all_tasks = agent.get_user_tasks(user_id).await;
     let total = all_tasks.len();
 
     let task_list: Vec<Value> = all_tasks
         .iter()
-        .rev() // 最新任务优先
         .skip(offset)
         .take(limit)
         .map(|t| {
@@ -1735,10 +1958,9 @@ pub async fn list_traces(
     let agent = Agent::new(db).await;
     let all_tasks = agent.get_user_tasks(user_id).await;
 
-    // 只返回有 execution_trace 的已完成任务
+    // 只返回有 execution_trace 的已完成任务（all_tasks 已按最新优先）
     let traces: Vec<Value> = all_tasks
         .iter()
-        .rev()
         .filter_map(|t| {
             t.execution_trace.as_ref().map(|trace| {
                 json!({
@@ -1903,10 +2125,25 @@ pub async fn answer_task_question_stream(
 
     let db_clone = db.clone();
     tokio::spawn(async move {
+        // Resolve session/lane BEFORE take so we match process_stream's session lane.
+        let session_from_waiting = {
+            let map = WAITING_TASKS.read().await;
+            map.get(&task_id)
+                .filter(|ctx| ctx.user_id == user_id)
+                .map(|ctx| ctx.session_id.clone())
+                .filter(|s| !s.is_empty())
+        };
+        let task_for_lane =
+            crate::services::agent::executor::get_task_for_user(&task_id, user_id).await;
+        let lane_key = LaneQueue::resolve_answer_lane_key(
+            user_id,
+            task_for_lane.as_ref().and_then(|t| t.lane_id.as_deref()),
+            session_from_waiting.as_deref(),
+        );
+
         // resume 执行前重新获取 lane 许可（process_stream 在 wait-for-input 时已释放）
         let queue = LANE_QUEUE.clone();
-        let lane_key = LaneQueue::make_lane_key(user_id, None);
-        let _lane_guard = match queue.acquire(&lane_key).await {
+        let _lane_guard = match queue.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await {
             Ok(guard) => guard,
             Err(e) => {
                 let _ = tx
@@ -1929,6 +2166,7 @@ pub async fn answer_task_question_stream(
         let ctx_session_id = waiting_ctx
             .as_ref()
             .map(|ctx| ctx.session_id.clone())
+            .or(session_from_waiting)
             .unwrap_or_default();
         if !ctx_session_id.is_empty() {
             let _ = persist_user_message(&db_clone, &ctx_session_id, &req.answer).await;
@@ -2123,7 +2361,7 @@ pub async fn confirm_operation(
             )
         })?
         .unwrap_or_else(|| LaneQueue::make_lane_key(user_id, None));
-    let _guard = LANE_QUEUE.acquire(&lane_key).await.map_err(|error| {
+    let _guard = LANE_QUEUE.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await.map_err(|error| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "error": error })),
@@ -2173,11 +2411,23 @@ pub async fn confirm_operation_stream(
         .as_ref()
         .and_then(|ctx| ctx.session_id.clone())
         .filter(|s| !s.is_empty());
+    let original_run_id = resume_ctx
+        .as_ref()
+        .and_then(|ctx| ctx.run_id.clone())
+        .filter(|s| !s.is_empty());
     let lane_key = resume_ctx
         .and_then(|ctx| ctx.lane_key)
         .unwrap_or_else(|| LaneQueue::make_lane_key(user_id, session_id.as_deref()));
 
-    let run = create_run(user_id, session_id.clone()).await;
+    // Prefer the original process run so notifications/UI stay on one identity.
+    let run = if let Some(ref rid) = original_run_id {
+        match get_run_for_user(rid, user_id).await {
+            Some(existing) => existing,
+            None => create_run(user_id, session_id.clone()).await,
+        }
+    } else {
+        create_run(user_id, session_id.clone()).await
+    };
     let run_for_task = run.clone();
     let db_clone = db.clone();
     tokio::spawn(async move {
@@ -2191,7 +2441,7 @@ pub async fn confirm_operation_stream(
         });
 
         let agent = Agent::new(db_clone.clone()).await;
-        let _guard = match LANE_QUEUE.acquire(&lane_key).await {
+        let _guard = match LANE_QUEUE.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await {
             Ok(guard) => guard,
             Err(error) => {
                 let _ = tx
@@ -2315,12 +2565,18 @@ pub async fn confirm_operation_stream(
                                             .get("message")
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("需要更多信息");
+                                        let run_id = run_for_task.run_id();
+                                        let metadata = session_metadata_with_run_identity(
+                                            Some(response_value.clone()),
+                                            run_id,
+                                            &task_id,
+                                        );
                                         let _ = persist_assistant_message(
                                             &db_clone,
                                             sid,
                                             Some(&task_id),
                                             msg,
-                                            Some(response_value.clone()),
+                                            Some(metadata),
                                         )
                                         .await;
                                     }
@@ -2333,12 +2589,18 @@ pub async fn confirm_operation_stream(
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("");
                                     if !msg.is_empty() {
+                                        let run_id = run_for_task.run_id();
+                                        let metadata = session_metadata_with_run_identity(
+                                            Some(response_value.clone()),
+                                            run_id,
+                                            &task_id,
+                                        );
                                         let _ = persist_assistant_message(
                                             &db_clone,
                                             sid,
                                             Some(&task_id),
                                             msg,
-                                            Some(response_value.clone()),
+                                            Some(metadata),
                                         )
                                         .await;
                                     }
@@ -2359,9 +2621,13 @@ pub async fn confirm_operation_stream(
                             }
                             Ok(Err(_)) => {
                                 tracing::warn!(
-                                    "[Agent API] Confirmation answer sender dropped unexpectedly"
+                                    task_id = %task_id,
+                                    "[Agent API] Confirmation answer sender dropped; terminalizing run"
                                 );
                                 let _ = take_waiting_task(&task_id, user_id).await;
+                                let _ = tx
+                                    .send(wait_loop_channel_dropped_event(&task_id))
+                                    .await;
                                 break;
                             }
                             Err(_) => {
@@ -2958,7 +3224,7 @@ pub async fn execute_preset(
     let lane_key = LaneQueue::make_lane_key(user_id, None);
     tokio::spawn(async move {
         // 获取 Lane Queue 执行许可
-        let _guard = match queue.acquire(&lane_key).await {
+        let _guard = match queue.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await {
             Ok(guard) => guard,
             Err(e) => {
                 let _ = tx
@@ -3092,6 +3358,70 @@ async fn reload_heartbeat(
     manager.reload().await;
     let tasks = manager.get_tasks().await;
     Ok(Json(json!({ "reloaded": true, "task_count": tasks.len() })))
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateHeartbeatBody {
+    name: Option<String>,
+    schedule: Option<String>,
+    action: Option<String>,
+    enabled: Option<bool>,
+}
+
+/// 更新 Heartbeat 任务（name / schedule / action / enabled）
+async fn update_heartbeat(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Path(task_id): Path<String>,
+    Json(body): Json<UpdateHeartbeatBody>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    require_current_admin(&claims, &db).await?;
+    let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "Heartbeat not initialized" })),
+        )
+    })?;
+
+    match manager
+        .update_task(
+            &task_id,
+            body.name,
+            body.schedule,
+            body.action,
+            body.enabled,
+        )
+        .await
+    {
+        Ok(task) => Ok(Json(json!({ "task": task }))),
+        Err(e) if e.contains("not found") => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": e })),
+        )),
+        Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({ "error": e })))),
+    }
+}
+
+/// 热重载 MCP 配置（mcp_servers.json）
+async fn reload_mcp(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    require_current_admin(&claims, &db).await?;
+    match crate::services::agent::mcp::reload_mcp().await {
+        Ok(()) => {
+            let tools = if let Some(m) = crate::services::agent::mcp::get_mcp_manager() {
+                m.list_tools().await.len()
+            } else {
+                0
+            };
+            Ok(Json(json!({ "reloaded": true, "tool_count": tools })))
+        }
+        Err(e) => Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": e })),
+        )),
+    }
 }
 
 // ============ Skills & Memory ============
@@ -3310,21 +3640,37 @@ async fn interrupt_session(
         })?
         .to_string();
 
-    // 取消当前用户所有运行中的任务
+    // 取消当前用户所有非终态任务（running / waiting / paused / pending）
     let agent = Agent::new(db.clone()).await;
     let tasks = agent.get_user_tasks(user_id).await;
     let mut cancelled_count = 0;
     for task in &tasks {
-        if task.status == crate::services::agent::types::TaskStatus::Running {
-            agent.cancel_task_for_user(&task.task_id, user_id).await;
-            cancelled_count += 1;
+        if crate::services::agent::executor::task_store::is_cancellable_task_status(&task.status)
+        {
+            if agent.cancel_task_for_user(&task.task_id, user_id).await {
+                cancelled_count += 1;
+                // 立即唤醒 wait-loop，避免通知/run 仍卡在 waiting
+                if let Some(waiting) = take_waiting_task(&task.task_id, user_id).await {
+                    let _ = waiting.done_tx.send(json!({
+                        "success": false,
+                        "responseType": "error",
+                        "message": "任务已取消",
+                        "streamTerminal": true,
+                        "task": {
+                            "taskId": task.task_id,
+                            "status": "cancelled",
+                            "progress": 0
+                        }
+                    }));
+                }
+            }
         }
     }
 
     // 提交新请求（通过 LaneQueue 保护并发）
     let lane_key = LaneQueue::make_lane_key(user_id, None);
     let _guard = LANE_QUEUE
-        .acquire(&lane_key)
+        .acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS))
         .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))))?;
 
@@ -4002,6 +4348,15 @@ async fn notification_stream(
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!("Notification stream lagged by {} messages", n);
+                    // 告知客户端丢事件，前端应重新 list() 补全历史
+                    let resync =
+                        crate::services::agent::notifications::NotificationEvent::Resync {
+                            lagged_by: n,
+                        };
+                    let data = serde_json::to_string(&resync).unwrap_or_default();
+                    if tx.send(Ok(Event::default().data(data))).await.is_err() {
+                        break;
+                    }
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -4131,9 +4486,265 @@ struct NotificationListParams {
     limit: Option<usize>,
 }
 
+// ============ Boot recovery for waiting tasks ============
+
+/// After process restart, re-create run hubs and wait-loops for
+/// `waiting_for_input` tasks so answer/subscribe keep working and notifications
+/// stay consistent. Called once from `main` after `init_task_store`.
+pub async fn restore_waiting_runs_after_boot() {
+    let waiting =
+        crate::services::agent::executor::task_store::list_waiting_tasks_snapshot().await;
+    if waiting.is_empty() {
+        tracing::info!("[Agent API] Boot restore: no waiting_for_input tasks");
+        return;
+    }
+
+    tracing::info!(
+        count = waiting.len(),
+        "[Agent API] Boot restore: re-creating run hubs for waiting tasks"
+    );
+
+    for (user_id, mut task) in waiting {
+        // Drop already-expired questions immediately so they don't block forever.
+        if task
+            .pending_question
+            .as_ref()
+            .is_some_and(|q| q.is_expired(chrono::Utc::now()))
+        {
+            tracing::warn!(
+                task_id = %task.task_id,
+                "[Agent API] Boot restore: expiring abandoned waiting question"
+            );
+            task.status = crate::services::agent::types::TaskStatus::Failed;
+            task.error = Some("等待用户输入已超时（服务重启后发现已过期）".into());
+            task.completed_at = Some(chrono::Utc::now());
+            task.pending_question = None;
+            {
+                let mut store = crate::services::agent::executor::TASK_STORE.write().await;
+                store.store(user_id, task.clone());
+            }
+            crate::services::agent::executor::persist_task_async(user_id, task);
+            continue;
+        }
+
+        let session_id = crate::services::agent::executor::task_store::session_id_from_lane_id(
+            task.lane_id.as_deref(),
+        );
+        let run = create_run(user_id, session_id.clone()).await;
+        let run_id = run.run_id().to_string();
+        let task_id = task.task_id.clone();
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentProgressEvent>(32);
+        let run_for_forwarder = run.clone();
+        tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                run_for_forwarder.publish(event).await;
+            }
+        });
+
+        // Surface waiting state so re-subscribers get a usable snapshot.
+        if let Some(ref q) = task.pending_question {
+            let q_type = serde_json::to_value(&q.question_type)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_else(|| "free_text".to_string());
+            let options = q.options.as_ref().map(|opts| {
+                opts.iter()
+                    .map(|o| crate::services::agent::types::QuestionOptionCompact {
+                        value: o.value.clone(),
+                        label: o.label.clone(),
+                        description: o.description.clone(),
+                    })
+                    .collect()
+            });
+            let _ = tx
+                .send(AgentProgressEvent::TaskCreated {
+                    task_id: task_id.clone(),
+                    message: q.question.clone(),
+                    total_steps: 1,
+                    step_descriptions: Vec::new(),
+                })
+                .await;
+            let _ = tx
+                .send(AgentProgressEvent::WaitingForInput {
+                    task_id: task_id.clone(),
+                    question_id: q.question_id.clone(),
+                    question_type: q_type,
+                    question: q.question.clone(),
+                    context: if q.context.is_empty() {
+                        None
+                    } else {
+                        Some(q.context.clone())
+                    },
+                    options,
+                    required: q.required,
+                    default_value: q.default_value.clone(),
+                })
+                .await;
+        }
+
+        let session_id_loop = session_id.unwrap_or_default();
+        tokio::spawn(async move {
+            spawn_restored_wait_loop(user_id, task_id, session_id_loop, run_id, tx).await;
+        });
+    }
+}
+
+/// Lightweight wait-loop for boot-restored tasks (same terminal guarantees as process_stream).
+async fn spawn_restored_wait_loop(
+    user_id: i32,
+    task_id: String,
+    session_id: String,
+    run_id: String,
+    tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
+) {
+    loop {
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<serde_json::Value>();
+        {
+            let mut map = WAITING_TASKS.write().await;
+            map.insert(
+                task_id.clone(),
+                WaitingTaskCtx {
+                    user_id,
+                    progress_tx: tx.clone(),
+                    done_tx,
+                    session_id: session_id.clone(),
+                },
+            );
+        }
+        tracing::info!(
+            task_id = %task_id,
+            run_id = %run_id,
+            "[Agent API] Restored wait-loop registered"
+        );
+
+        match tokio::time::timeout(tokio::time::Duration::from_secs(2), done_rx).await {
+            Ok(Ok(response_value)) => {
+                let still_waiting = response_value
+                    .pointer("/task/status")
+                    .and_then(|s| s.as_str())
+                    == Some("waiting_for_input");
+                if still_waiting {
+                    continue;
+                }
+                let task_success = response_value
+                    .get("success")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                let _ = tx
+                    .send(AgentProgressEvent::TaskCompleted {
+                        task_id: task_id.clone(),
+                        success: task_success,
+                        response: Box::new(response_value),
+                    })
+                    .await;
+                break;
+            }
+            Ok(Err(_)) => {
+                let _ = take_waiting_task(&task_id, user_id).await;
+                let _ = tx
+                    .send(wait_loop_channel_dropped_event(&task_id))
+                    .await;
+                break;
+            }
+            Err(_) => {
+                let _ = take_waiting_task(&task_id, user_id).await;
+                let current_task =
+                    crate::services::agent::executor::refresh_task_for_user(&task_id, user_id)
+                        .await;
+
+                if let Some(task) = current_task.as_ref() {
+                    if task.status
+                        == crate::services::agent::types::TaskStatus::WaitingForInput
+                        && task
+                            .pending_question
+                            .as_ref()
+                            .is_some_and(|q| q.is_expired(chrono::Utc::now()))
+                    {
+                        let response_value = json!({
+                            "success": false,
+                            "message": "等待用户输入已超时",
+                            "streamTerminal": true,
+                            "task": { "taskId": task_id, "status": "failed" }
+                        });
+                        let _ = tx
+                            .send(AgentProgressEvent::TaskCompleted {
+                                task_id: task_id.clone(),
+                                success: false,
+                                response: Box::new(response_value),
+                            })
+                            .await;
+                        if let Some(mut t) =
+                            crate::services::agent::executor::get_task_for_user(&task_id, user_id)
+                                .await
+                        {
+                            t.status = crate::services::agent::types::TaskStatus::Failed;
+                            t.error = Some("等待用户输入已超时".into());
+                            t.completed_at = Some(chrono::Utc::now());
+                            t.pending_question = None;
+                            {
+                                let mut store =
+                                    crate::services::agent::executor::TASK_STORE.write().await;
+                                store.store(user_id, t.clone());
+                            }
+                            crate::services::agent::executor::persist_task_async(user_id, t);
+                        }
+                        break;
+                    }
+                }
+
+                if current_task.as_ref().is_some_and(|task| {
+                    matches!(
+                        task.status,
+                        crate::services::agent::types::TaskStatus::Pending
+                            | crate::services::agent::types::TaskStatus::Running
+                            | crate::services::agent::types::TaskStatus::WaitingForInput
+                            | crate::services::agent::types::TaskStatus::Paused
+                    )
+                }) {
+                    continue;
+                }
+
+                let (response_value, task_success) = if let Some(task) = current_task {
+                    let task_success =
+                        task.status == crate::services::agent::types::TaskStatus::Completed;
+                    let message = task.error.clone().unwrap_or_else(|| {
+                        if task_success {
+                            "任务已完成".into()
+                        } else {
+                            "任务未完成".into()
+                        }
+                    });
+                    (
+                        json!({ "success": task_success, "message": message, "task": task }),
+                        task_success,
+                    )
+                } else {
+                    (
+                        json!({
+                            "success": false,
+                            "message": "任务状态已不可用",
+                            "task": { "taskId": task_id, "status": "failed" }
+                        }),
+                        false,
+                    )
+                };
+                let _ = tx
+                    .send(AgentProgressEvent::TaskCompleted {
+                        task_id: task_id.clone(),
+                        success: task_success,
+                        response: Box::new(response_value),
+                    })
+                    .await;
+                break;
+            }
+        }
+    }
+}
+
 // ============ 路由构建 ============
 
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 
 /// 创建 Agent API 路由
@@ -4159,10 +4770,20 @@ pub fn create_agent_routes() -> Router<DatabaseConnection> {
             "/heartbeat/{task_id}/toggle",
             post(toggle_heartbeat).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
+        // 更新 Heartbeat 任务字段（需要认证）
+        .route(
+            "/heartbeat/{task_id}",
+            put(update_heartbeat).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
         // 重新加载 Heartbeat 配置（需要认证）
         .route(
             "/heartbeat/reload",
             post(reload_heartbeat).route_layer(from_fn(middleware::auth::auth_middleware)),
+        )
+        // 热重载 MCP 配置（需要认证）
+        .route(
+            "/mcp/reload",
+            post(reload_mcp).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // Agent 列表（需要认证）
         .route(

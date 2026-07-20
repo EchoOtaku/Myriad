@@ -82,11 +82,24 @@ impl Planner {
         let user_prompt = self.build_user_prompt(request, escalation_hint);
         let full_prompt = format!("{}\n\n---\n\n{}", system_prompt, user_prompt);
 
-        // 调用 Pro AI
-        let response = ai_analyzer
-            .analyze(&full_prompt)
-            .await
-            .map_err(|e| format!("Planner AI error: {}", e))?;
+        // 调用 Pro AI（失败时有限重试，仍失败则规则 fallback，避免整次对话硬失败）
+        let response = match ai_analyzer.analyze(&full_prompt).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(error = %e, "[Planner] AI call failed, retrying once");
+                tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                match ai_analyzer.analyze(&full_prompt).await {
+                    Ok(r) => r,
+                    Err(e2) => {
+                        tracing::warn!(
+                            error = %e2,
+                            "[Planner] AI call failed after retry, using fallback plan"
+                        );
+                        return Ok(self.fallback_plan(request));
+                    }
+                }
+            }
+        };
 
         // 解析响应
         let mut output = self.parse_response(&response)?;

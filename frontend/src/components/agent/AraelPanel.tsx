@@ -42,6 +42,10 @@ import { useLocation } from 'react-router-dom'
 import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 import { agentService, executeFrontendAction } from '../../services/agent'
+import {
+  collectReattachCandidates,
+  isNonTerminalTaskStatus,
+} from '../../services/agent/reattach'
 
 import { AraelChatMessage } from './components/AraelChatMessage'
 import { AraelDebugPanel } from './components/AraelDebugPanel'
@@ -161,6 +165,9 @@ export const AraelPanel: React.FC = () => {
   // Refs
   const handleAgentResponseRef =
     useRef<(messageId: string, response: AgentResponse) => Promise<void>>(null)
+  const createProgressHandlerRef = useRef<
+    ((assistantMessageId: string) => (event: ProgressEvent) => void) | null
+  >(null)
   const answerQuestionRef =
     useRef<(messageId: string, answer: string) => void>(null)
   const sessionTitleSetRef = useRef(false)
@@ -235,7 +242,8 @@ export const AraelPanel: React.FC = () => {
       messages.some(
         (m) =>
           m.taskExecution?.status === 'processing' ||
-          m.taskExecution?.status === 'waiting',
+          m.taskExecution?.status === 'waiting' ||
+          m.taskExecution?.status === 'cancelling',
       ),
     [messages],
   )
@@ -360,68 +368,236 @@ export const AraelPanel: React.FC = () => {
     setSessionTitle(null)
   }, [])
 
-  const loadSession = useCallback(async (session: ChatSession) => {
-    setPanelView('chat')
-    setSessionId(session.id)
-    setSessionTitle(session.title || null)
-    sessionTitleSetRef.current = !!session.title
-
-    try {
-      const sessionMessages = await agentService.getSessionMessages(
-        session.id,
-        1,
-        50,
+  /**
+   * 将已加载会话中的非终态任务重新挂到 UI，并订阅 run 进度流。
+   * 不重新 POST process；仅 GET run stream / task 状态。
+   * Candidate 合并逻辑见 `collectReattachCandidates`（跨消息补 runId、runId-only 通知）。
+   */
+  const reattachLiveWork = useCallback(
+    async (
+      messagesToScan: ChatMessage[],
+      hints?: { runId?: string; taskId?: string },
+    ) => {
+      const candidates = collectReattachCandidates(
+        messagesToScan.map((m) => ({
+          id: m.id,
+          role: m.role,
+          taskId: m.taskExecution?.taskId,
+          runId: m.taskExecution?.runId,
+        })),
+        hints,
       )
-      const loaded: ChatMessage[] = sessionMessages.map((m, idx) => {
-        const meta = m.metadata as Record<string, unknown> | undefined
-        const data = meta?.data as Record<string, unknown> | undefined
-        // 从 data / steps 中提取图片 URL
-        const imageUrls: string[] = []
-        if (data && typeof data.imageUrl === 'string') {
-          imageUrls.push(data.imageUrl)
+
+      for (const candidate of candidates) {
+        try {
+          let taskId = candidate.taskId
+          let runId = candidate.runId
+          let progress = 0
+          let isWaiting = false
+          let pendingQ: PendingQuestion | undefined
+
+          if (taskId) {
+            const task = await agentService.getTask(taskId)
+            if (!isNonTerminalTaskStatus(task.status)) continue
+            isWaiting = task.status === 'waiting_for_input'
+            progress = task.progress ?? 0
+            if (task.pendingQuestion) {
+              pendingQ = {
+                questionId: task.pendingQuestion.questionId,
+                questionType: task.pendingQuestion.questionType,
+                question: task.pendingQuestion.question,
+                context: task.pendingQuestion.context,
+                options: task.pendingQuestion.options,
+                required: task.pendingQuestion.required,
+                defaultValue: task.pendingQuestion.defaultValue,
+              }
+            }
+          } else if (!runId) {
+            continue
+          }
+
+          // runId-only：没有 task 时也挂 processing，靠 SSE 回放补全
+          updateMessage(candidate.messageId, {
+            pendingQuestion: pendingQ,
+            taskExecution: {
+              taskId: taskId || '',
+              runId,
+              status: isWaiting ? 'waiting' : 'processing',
+              progress,
+              steps: [],
+            },
+          })
+
+          if (!runId) continue
+
+          loadingMessageIdRef.current = candidate.messageId
+          setIsLoading(true)
+          const onProgress =
+            createProgressHandlerRef.current?.(candidate.messageId)
+          if (!onProgress) continue
+          void agentService
+            .subscribeRun(runId, onProgress)
+            .then((response) => {
+              handleAgentResponseRef.current?.(candidate.messageId, response)
+            })
+            .catch((error) => {
+              console.warn('[AraelPanel] reattach stream ended:', error)
+            })
+            .finally(() => {
+              if (loadingMessageIdRef.current === candidate.messageId) {
+                loadingMessageIdRef.current = null
+                setIsLoading(false)
+              }
+            })
+          // 同一时刻只恢复一条 live stream
+          break
+        } catch (error) {
+          console.warn('[AraelPanel] reattach task probe failed:', error)
         }
-        // 多步骤可能产生多张图片
-        const stepHistory = (meta?.task as Record<string, unknown> | undefined)
-          ?.stepHistory as Array<Record<string, unknown>> | undefined
-        if (stepHistory) {
-          for (const s of stepHistory) {
-            if (
-              typeof s.imageUrl === 'string' &&
-              !imageUrls.includes(s.imageUrl)
-            ) {
-              imageUrls.push(s.imageUrl)
+      }
+    },
+    [updateMessage],
+  )
+
+  const loadSession = useCallback(
+    async (
+      session: ChatSession,
+      reattachHints?: { runId?: string; taskId?: string },
+    ) => {
+      setPanelView('chat')
+      setSessionId(session.id)
+      setSessionTitle(session.title || null)
+      sessionTitleSetRef.current = !!session.title
+
+      try {
+        const sessionMessages = await agentService.getSessionMessages(
+          session.id,
+          1,
+          50,
+        )
+        const loaded: ChatMessage[] = sessionMessages.map((m, idx) => {
+          const meta = m.metadata as Record<string, unknown> | undefined
+          const data = meta?.data as Record<string, unknown> | undefined
+          const imageUrls: string[] = []
+          if (data && typeof data.imageUrl === 'string') {
+            imageUrls.push(data.imageUrl)
+          }
+          const stepHistory = (
+            meta?.task as Record<string, unknown> | undefined
+          )?.stepHistory as Array<Record<string, unknown>> | undefined
+          if (stepHistory) {
+            for (const s of stepHistory) {
+              if (
+                typeof s.imageUrl === 'string' &&
+                !imageUrls.includes(s.imageUrl)
+              ) {
+                imageUrls.push(s.imageUrl)
+              }
             }
           }
-        }
-        return {
-          id: `loaded_${m.id}_${idx}`,
-          sessionId: session.id,
-          role: m.role as ChatMessage['role'],
-          content: m.content,
-          createdAt: new Date(m.createdAt),
-          suggestions: meta?.suggestions as string[] | undefined,
-          data: data ?? undefined,
-          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-        }
-      })
-      setMessages(loaded)
-    } catch (error) {
-      console.error('[AraelPanel] 加载会话消息失败:', error)
-    }
-  }, [])
 
-  // 外部打开指定会话（通知中心点击任务通知跳转）
+          const metaTaskId =
+            (typeof meta?.taskId === 'string' && meta.taskId) ||
+            (typeof meta?.task_id === 'string' && meta.task_id) ||
+            m.taskId ||
+            undefined
+          const metaRunId =
+            (typeof meta?.runId === 'string' && meta.runId) ||
+            (typeof meta?.run_id === 'string' && meta.run_id) ||
+            undefined
+          const taskMeta = meta?.task as Record<string, unknown> | undefined
+          const statusFromMeta =
+            typeof taskMeta?.status === 'string' ? taskMeta.status : undefined
+
+          let taskExecution: TaskExecution | undefined
+          if (metaTaskId || metaRunId) {
+            const waiting =
+              statusFromMeta === 'waiting_for_input' ||
+              !!taskMeta?.pendingQuestion
+            taskExecution = {
+              taskId: metaTaskId || '',
+              runId: metaRunId,
+              status: waiting ? 'waiting' : 'completed',
+              progress:
+                typeof taskMeta?.progress === 'number'
+                  ? (taskMeta.progress as number)
+                  : waiting
+                    ? 50
+                    : 100,
+              steps: [],
+            }
+          }
+
+          // 从持久化 metadata 恢复等待中的问题（reattach 会再与后端对齐）
+          let pendingQuestion: PendingQuestion | undefined
+          const pq =
+            (meta?.pendingQuestion as Record<string, unknown> | undefined) ||
+            (taskMeta?.pendingQuestion as Record<string, unknown> | undefined)
+          if (pq && typeof pq.question === 'string') {
+            pendingQuestion = {
+              questionId: String(pq.questionId ?? pq.question_id ?? ''),
+              questionType: String(pq.questionType ?? pq.question_type ?? 'free_text'),
+              question: pq.question,
+              context:
+                typeof pq.context === 'string' ? pq.context : undefined,
+              options: pq.options as PendingQuestion['options'],
+              required: typeof pq.required === 'boolean' ? pq.required : undefined,
+              defaultValue:
+                typeof pq.defaultValue === 'string'
+                  ? pq.defaultValue
+                  : typeof pq.default_value === 'string'
+                    ? pq.default_value
+                    : undefined,
+            }
+            if (taskExecution) taskExecution.status = 'waiting'
+          }
+
+          return {
+            id: `loaded_${m.id}_${idx}`,
+            sessionId: session.id,
+            role: m.role as ChatMessage['role'],
+            content: m.content,
+            createdAt: new Date(m.createdAt),
+            suggestions: meta?.suggestions as string[] | undefined,
+            data: data ?? undefined,
+            imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+            taskExecution,
+            pendingQuestion,
+          }
+        })
+        setMessages(loaded)
+        // 刷新 / 通知打开：探测非终态任务并 re-subscribe
+        void reattachLiveWork(loaded, reattachHints)
+      } catch (error) {
+        console.error('[AraelPanel] 加载会话消息失败:', error)
+      }
+    },
+    [reattachLiveWork],
+  )
+
+  // 外部打开指定会话（通知中心点击任务通知跳转，可带 runId/taskId）
   useEffect(() => {
     const handleOpenSession = (e: Event) => {
-      const sid = (e as CustomEvent).detail?.sessionId
+      const detail = (e as CustomEvent).detail as {
+        sessionId?: string
+        runId?: string
+        taskId?: string
+      } | null
+      const sid = detail?.sessionId
       if (typeof sid !== 'string' || !sid) return
       setVisibility('visible')
-      void loadSession({
-        id: sid,
-        title: null,
-        messageCount: 0,
-        lastActiveAt: '',
-      })
+      void loadSession(
+        {
+          id: sid,
+          title: null,
+          messageCount: 0,
+          lastActiveAt: '',
+        },
+        {
+          runId: typeof detail?.runId === 'string' ? detail.runId : undefined,
+          taskId: typeof detail?.taskId === 'string' ? detail.taskId : undefined,
+        },
+      )
     }
     window.addEventListener('arael-open-session', handleOpenSession)
     return () =>
@@ -441,33 +617,50 @@ export const AraelPanel: React.FC = () => {
   // ============ 中断 ============
 
   const interruptCurrentTask = useCallback(async () => {
-    // 客户端侧中断 SSE 连接（防止连接泄露）
+    // 用户意图中断：标记 abort intent=user，SSE 层不会 re-subscribe 同一 run
     agentService.abortCurrentRequest()
 
     const processingMsgs = messages.filter(
       (m) =>
         m.taskExecution?.status === 'processing' ||
-        m.taskExecution?.status === 'waiting',
+        m.taskExecution?.status === 'waiting' ||
+        m.taskExecution?.status === 'cancelling',
     )
     for (const msg of processingMsgs) {
       const taskId = msg.taskExecution?.taskId
-      if (taskId) {
+      // 先进入 cancelling，避免乐观地显示 error 而后端仍在跑
+      updateMessageExecution(msg.id, { status: 'cancelling' })
+      if (taskId && !taskId.startsWith('confirmation:')) {
         try {
           await agentService.cancelTask(taskId)
+          updateMessage(msg.id, {
+            taskExecution: msg.taskExecution
+              ? { ...msg.taskExecution, status: 'error' }
+              : undefined,
+            content: msg.content || t.arael.interrupted,
+          })
         } catch {
-          /* ignore */
+          updateMessage(msg.id, {
+            taskExecution: msg.taskExecution
+              ? { ...msg.taskExecution, status: 'error' }
+              : undefined,
+            content:
+              msg.content ||
+              `${t.arael.interrupted} (${t.arael.unknownError})`,
+          })
         }
+      } else {
+        updateMessage(msg.id, {
+          taskExecution: msg.taskExecution
+            ? { ...msg.taskExecution, status: 'error' }
+            : undefined,
+          content: msg.content || t.arael.interrupted,
+        })
       }
-      updateMessage(msg.id, {
-        taskExecution: msg.taskExecution
-          ? { ...msg.taskExecution, status: 'error' }
-          : undefined,
-        content: msg.content || t.arael.interrupted,
-      })
     }
     loadingMessageIdRef.current = null
     setIsLoading(false)
-  }, [messages, updateMessage])
+  }, [messages, updateMessage, updateMessageExecution])
 
   // ============ 面板控制 ============
 
@@ -498,11 +691,15 @@ export const AraelPanel: React.FC = () => {
   useEffect(() => {
     if (visibility === 'hidden') return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closePanel()
+      // 与点击外部一致：执行中禁止 Escape 关掉面板，避免用户以为任务已停
+      if (e.key === 'Escape') {
+        if (hasActiveExecution) return
+        closePanel()
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [visibility, closePanel])
+  }, [visibility, closePanel, hasActiveExecution])
 
   useEffect(() => {
     if (visibility === 'visible' && inputRef.current) {
@@ -531,6 +728,11 @@ export const AraelPanel: React.FC = () => {
             if (event.sessionId) {
               setSessionId(event.sessionId)
               sessionIdRef.current = event.sessionId
+            }
+            if (event.runId) {
+              updateMessageExecution(assistantMessageId, {
+                runId: event.runId,
+              })
             }
             break
           }
@@ -826,6 +1028,8 @@ export const AraelPanel: React.FC = () => {
       pushDebugLog,
     ],
   )
+
+  createProgressHandlerRef.current = createProgressHandler
 
   // ============ 发送消息 ============
 

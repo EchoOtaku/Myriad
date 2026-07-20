@@ -44,6 +44,8 @@ pub fn build(state: ApiState) -> Router {
         .route("/admin/self-update", post(self_update))
         // Durable last self-update outcome (also embedded in GET /status as self_update_last).
         .route("/self-update/last", get(self_update_last))
+        // Manual proxy upgrade (spec §12.3; not part of business auto-update).
+        .route("/admin/proxy-update", post(proxy_update))
         .route("/diagnostics", get(diagnostics))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -769,6 +771,44 @@ async fn self_update(
     })))
 }
 
+#[derive(Deserialize, Default)]
+struct ProxyUpdateBody {
+    /// Optional release tag (e.g. v0.3.5). When omitted, uses latest for the current channel.
+    #[serde(default)]
+    target_version: Option<String>,
+}
+
+async fn proxy_update(
+    State(st): State<ApiState>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<ProxyUpdateBody>,
+) -> Result<Json<Value>, ApiError> {
+    let actor = extract_actor(&headers);
+    let explicit = body
+        .target_version
+        .filter(|s| !s.trim().is_empty());
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    st.worker
+        .sender()
+        .send(WorkerCmd::ProxyUpdate {
+            actor,
+            explicit_tag: explicit,
+            reply: tx,
+        })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
+    let report = rx
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
+    Ok(Json(json!({
+        "ok": true,
+        "previous_proxy_tag": report.previous_proxy_tag,
+        "new_proxy_tag": report.new_proxy_tag,
+        "image_ref": report.image_ref,
+        "pulled_digest": report.pulled_digest,
+    })))
+}
+
 async fn rollback(
     State(st): State<ApiState>,
     headers: axum::http::HeaderMap,
@@ -801,6 +841,9 @@ async fn diagnostics(State(st): State<ApiState>) -> Result<Json<Value>, ApiError
         .and_then(|s| serde_json::from_str::<Value>(&s).ok());
     let history =
         crate::state::history::tail(&st.state.root().join("history.log"), 100).unwrap_or_default();
+
+    // Local *:myriad-rollback pair health (backend + frontend must both exist).
+    let rollback_pair = probe_rollback_pair(&st).await;
     Ok(Json(json!({
         "updater_version": crate::self_version(),
         "config": {
@@ -814,8 +857,60 @@ async fn diagnostics(State(st): State<ApiState>) -> Result<Json<Value>, ApiError
             "snapshots": snapshots,
             "env_probe": env_probe,
             "history_tail": history,
+            "rollback_pair": rollback_pair,
         }
     })))
+}
+
+/// Report whether local `backend:myriad-rollback` and `frontend:myriad-rollback` both exist.
+async fn probe_rollback_pair(st: &ApiState) -> Value {
+    use crate::docker::ROLLBACK_IMAGE_TAG;
+    let env = match crate::env_file::EnvFile::load(&st.worker.cli().env_file) {
+        Ok(e) => e,
+        Err(e) => {
+            return json!({
+                "ok": false,
+                "error": format!("load .env: {e}"),
+            });
+        }
+    };
+    let backend = env.get("BACKEND_IMAGE").unwrap_or_default().to_string();
+    let frontend = env.get("FRONTEND_IMAGE").unwrap_or_default().to_string();
+    if backend.is_empty() || frontend.is_empty() {
+        return json!({
+            "ok": false,
+            "error": "BACKEND_IMAGE or FRONTEND_IMAGE missing",
+        });
+    }
+    let docker = st.worker.docker();
+    let be_pin = format!("{backend}:{ROLLBACK_IMAGE_TAG}");
+    let fe_pin = format!("{frontend}:{ROLLBACK_IMAGE_TAG}");
+    let be_ok = docker.image_exists_local(&be_pin).await;
+    let fe_ok = docker.image_exists_local(&fe_pin).await;
+    let recorded = st
+        .state
+        .read_updater()
+        .ok()
+        .and_then(|u| u.rollback_version.map(|v| v.as_str().to_string()));
+    json!({
+        "ok": be_ok && fe_ok,
+        "rollback_version": recorded,
+        "backend": { "ref": be_pin, "present": be_ok },
+        "frontend": { "ref": fe_pin, "present": fe_ok },
+        "pair_complete": be_ok && fe_ok,
+        "hint": if be_ok && fe_ok {
+            Value::Null
+        } else if be_ok != fe_ok {
+            Value::String(
+                "split rollback slot: only one of backend/frontend has *:myriad-rollback"
+                    .into(),
+            )
+        } else {
+            Value::String(
+                "no local *:myriad-rollback pair (next successful update will re-pin)".into(),
+            )
+        },
+    })
 }
 
 async fn rescue_exit(

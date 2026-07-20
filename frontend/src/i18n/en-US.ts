@@ -549,6 +549,22 @@ export const enUS: TranslationKeys = {
       'Upgrade the updater to {version}? A few seconds; site unaffected.',
     updaterSelfUpdateDispatched:
       'Updater upgrade started; continue updating when it finishes.',
+    updaterInfraGroupTitle: 'Edge & updater components',
+    updaterInfraGroupDesc:
+      'The updater and reverse proxy are not upgraded by the normal app update — trigger them here.',
+    updaterInfraUpdaterTitle: 'Updater',
+    updaterInfraUpdaterDesc:
+      'Includes docker-guard / updater-gateway. Self-update uses a separate TCB path and does not stop business containers.',
+    updaterInfraUpdaterCurrent: 'Running updater',
+    updaterInfraProxyTitle: 'Reverse proxy',
+    updaterInfraProxyDesc:
+      'Edge entrypoint; a few seconds of downtime is expected. Not part of automatic app updates.',
+    updaterInfraProxyUpdateButton: 'Upgrade proxy',
+    updaterInfraProxyConfirm:
+      'Upgrade proxy to {version}? The edge entry will briefly interrupt (usually <10s).',
+    updaterInfraProxyDispatched: 'Proxy upgraded to {version} (was {previous}).',
+    updaterInfraNeedCheck:
+      'Run “Check for updates” first to resolve a target version.',
     updaterTargetGroupTitle: 'Install a specific version (advanced)',
     updaterTargetGroupDesc:
       'Past releases or a specific commit. Not for daily use.',
@@ -3094,6 +3110,13 @@ export const enUS: TranslationKeys = {
     emptyHeartbeat: 'No scheduled tasks',
     emptySkills: 'No skills',
     emptyMemory: 'No memories',
+    manageLoadError: 'Failed to load. Please retry.',
+    manageActionError: 'Action failed. Please retry.',
+    editHeartbeat: 'Edit',
+    saveHeartbeat: 'Save',
+    heartbeatName: 'Name',
+    heartbeatSchedule: 'Cron',
+    heartbeatAction: 'Action',
     cronEveryMinutes: 'Every {n} min',
     cronDaily: 'Daily {time}',
     originManual: 'Manual',

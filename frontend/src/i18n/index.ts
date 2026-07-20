@@ -491,6 +491,18 @@ export interface TranslationKeys {
     updaterSelfUpdateButton: string
     updaterSelfUpdateConfirm: string
     updaterSelfUpdateDispatched: string
+    // 边缘与更新器组件（常驻入口）
+    updaterInfraGroupTitle: string
+    updaterInfraGroupDesc: string
+    updaterInfraUpdaterTitle: string
+    updaterInfraUpdaterDesc: string
+    updaterInfraUpdaterCurrent: string
+    updaterInfraProxyTitle: string
+    updaterInfraProxyDesc: string
+    updaterInfraProxyUpdateButton: string
+    updaterInfraProxyConfirm: string
+    updaterInfraProxyDispatched: string
+    updaterInfraNeedCheck: string
     // 安装指定版本（高级，折叠）
     updaterTargetGroupTitle: string
     updaterTargetGroupDesc: string
@@ -2878,6 +2890,13 @@ export interface TranslationKeys {
     emptyHeartbeat: string
     emptySkills: string
     emptyMemory: string
+    manageLoadError: string
+    manageActionError: string
+    editHeartbeat: string
+    saveHeartbeat: string
+    heartbeatName: string
+    heartbeatSchedule: string
+    heartbeatAction: string
     cronEveryMinutes: string
     cronDaily: string
     originManual: string

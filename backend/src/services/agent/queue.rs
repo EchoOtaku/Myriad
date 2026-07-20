@@ -46,9 +46,27 @@ impl LaneQueue {
     /// 同一用户的请求串行执行；不同用户可并行（受全局上限约束）。
     pub fn make_lane_key(user_id: i32, session_id: Option<&str>) -> String {
         match session_id {
-            Some(sid) => format!("user:{}:session:{}", user_id, sid),
-            None => format!("user:{}", user_id),
+            Some(sid) if !sid.is_empty() => format!("user:{}:session:{}", user_id, sid),
+            _ => format!("user:{}", user_id),
         }
+    }
+
+    /// Resolve the lane key for answer / resume paths so they match the original
+    /// process/stream lane (session-scoped when the task belongs to a session).
+    ///
+    /// Priority:
+    /// 1. Stored task lane_id (set from recipe.lane_key at execute time)
+    /// 2. Explicit session id (from WAITING_TASKS or caller)
+    /// 3. User-only lane (legacy / no session)
+    pub fn resolve_answer_lane_key(
+        user_id: i32,
+        task_lane_id: Option<&str>,
+        session_id: Option<&str>,
+    ) -> String {
+        if let Some(lane) = task_lane_id.map(str::trim).filter(|s| !s.is_empty()) {
+            return lane.to_string();
+        }
+        Self::make_lane_key(user_id, session_id)
     }
 
     /// 获取或创建 lane 的串行锁
@@ -68,42 +86,73 @@ impl LaneQueue {
             .clone()
     }
 
-    /// 获取执行许可
+    /// Default max wait for a free execution slot (user-visible, avoids silent hang).
+    pub const DEFAULT_ACQUIRE_TIMEOUT_SECS: u64 = 60;
+
+    /// 获取执行许可（无限等待，仅在系统关闭时失败）。
     ///
-    /// 1. 获取 lane 内串行锁（同一用户的请求排队等待）
-    /// 2. 获取全局并发许可（控制系统整体负载）
-    ///
-    /// 返回的 `LaneGuard` drop 时自动释放两把锁。
+    /// 用户路径请优先使用 [`Self::acquire_timeout`]。保留无超时入口供测试与内部调用。
+    #[allow(dead_code)]
     pub async fn acquire(&self, lane_key: &str) -> Result<LaneGuard, String> {
+        self.acquire_inner(lane_key, None).await
+    }
+
+    /// 获取执行许可，超时后返回可展示的错误（避免排队无限挂起）。
+    pub async fn acquire_timeout(
+        &self,
+        lane_key: &str,
+        timeout: std::time::Duration,
+    ) -> Result<LaneGuard, String> {
+        self.acquire_inner(lane_key, Some(timeout)).await
+    }
+
+    async fn acquire_inner(
+        &self,
+        lane_key: &str,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<LaneGuard, String> {
         let lane_mutex = self.get_or_create_lane(lane_key).await;
 
-        // 先获取 lane 串行锁（同用户排队）
-        let lane_lock = lane_mutex.lock_owned().await;
+        let acquire_fut = async {
+            // 先获取 lane 串行锁（同用户排队）
+            let lane_lock = lane_mutex.lock_owned().await;
 
-        tracing::debug!(
-            lane = %lane_key,
-            "[LaneQueue] Lane lock acquired, waiting for global permit"
-        );
+            tracing::debug!(
+                lane = %lane_key,
+                "[LaneQueue] Lane lock acquired, waiting for global permit"
+            );
 
-        // 再获取全局并发许可
-        let permit = self
-            .global_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| "系统正在关闭".to_string())?;
+            // 再获取全局并发许可
+            let permit = self
+                .global_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|_| "系统正在关闭".to_string())?;
 
-        tracing::debug!(
-            lane = %lane_key,
-            available = self.global_semaphore.available_permits(),
-            "[LaneQueue] Execution slot acquired"
-        );
+            tracing::debug!(
+                lane = %lane_key,
+                available = self.global_semaphore.available_permits(),
+                "[LaneQueue] Execution slot acquired"
+            );
 
-        Ok(LaneGuard {
-            _lane_lock: lane_lock,
-            _permit: permit,
-            lane_key: lane_key.to_string(),
-        })
+            Ok::<LaneGuard, String>(LaneGuard {
+                _lane_lock: lane_lock,
+                _permit: permit,
+                lane_key: lane_key.to_string(),
+            })
+        };
+
+        match timeout {
+            None => acquire_fut.await,
+            Some(dur) => match tokio::time::timeout(dur, acquire_fut).await {
+                Ok(result) => result,
+                Err(_) => Err(format!(
+                    "系统繁忙，排队超过 {} 秒仍未获得执行许可，请稍后重试",
+                    dur.as_secs().max(1)
+                )),
+            },
+        }
     }
 
     /// 获取队列状态
@@ -192,6 +241,46 @@ mod tests {
         drop(waiting_guard);
         queue.cleanup_idle_lanes().await;
         assert_eq!(queue.get_status().await.total_lanes, 0);
+    }
+
+    #[tokio::test]
+    async fn acquire_timeout_returns_error_when_slots_exhausted() {
+        let queue = Arc::new(LaneQueue::new(1));
+        let held = queue.acquire("holder").await.unwrap();
+        let err = match queue
+            .acquire_timeout("waiter", std::time::Duration::from_millis(80))
+            .await
+        {
+            Err(e) => e,
+            Ok(_) => panic!("should time out while slot held"),
+        };
+        assert!(
+            err.contains("繁忙") || err.contains("排队"),
+            "user-visible queue message, got: {err}"
+        );
+        drop(held);
+    }
+
+    #[test]
+    fn resolve_answer_lane_key_prefers_stored_task_lane() {
+        let key = LaneQueue::resolve_answer_lane_key(
+            7,
+            Some("user:7:session:sess_abc"),
+            Some("other_session"),
+        );
+        assert_eq!(key, "user:7:session:sess_abc");
+    }
+
+    #[test]
+    fn resolve_answer_lane_key_includes_session_when_no_task_lane() {
+        let key = LaneQueue::resolve_answer_lane_key(3, None, Some("sess_xyz"));
+        assert_eq!(key, "user:3:session:sess_xyz");
+        // Empty session falls back to user-only
+        assert_eq!(
+            LaneQueue::resolve_answer_lane_key(3, Some(""), Some("")),
+            "user:3"
+        );
+        assert_eq!(LaneQueue::make_lane_key(3, Some("sess_xyz")), key);
     }
 
     /// P1-3: 等待用户输入时必须释放全局 permit，否则 max=N 个 waiting 会堵死队列

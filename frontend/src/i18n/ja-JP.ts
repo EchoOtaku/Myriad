@@ -540,6 +540,22 @@ export const jaJP: TranslationKeys = {
       'アップデーターを {version} へ更新しますか？数秒で完了しサイト影響なし。',
     updaterSelfUpdateDispatched:
       'アップデーター更新を開始。完了後に更新を続行できます。',
+    updaterInfraGroupTitle: 'エッジとアップデーター',
+    updaterInfraGroupDesc:
+      'アップデーターとリバースプロキシは通常のアプリ更新では上がりません。ここで個別に実行します。',
+    updaterInfraUpdaterTitle: 'アップデーター',
+    updaterInfraUpdaterDesc:
+      'docker-guard / updater-gateway を含む。自己更新は独立した TCB 経路で、業務コンテナは止めません。',
+    updaterInfraUpdaterCurrent: '稼働中のアップデーター',
+    updaterInfraProxyTitle: 'リバースプロキシ',
+    updaterInfraProxyDesc:
+      'エッジ入口。数秒の中断があります。自動アプリ更新には含まれません。',
+    updaterInfraProxyUpdateButton: 'proxy を更新',
+    updaterInfraProxyConfirm:
+      'proxy を {version} へ更新しますか？エッジ入口が短時間中断します（通常 10 秒未満）。',
+    updaterInfraProxyDispatched:
+      'proxy を {version} に更新しました（以前: {previous}）。',
+    updaterInfraNeedCheck: '先に「更新を確認」して目標バージョンを取得してください。',
     updaterTargetGroupTitle: '特定バージョンのインストール（上級者向け）',
     updaterTargetGroupDesc: '過去のリリースや特定コミット。通常は不要。',
     updaterTargetReleaseHead: '選択可能なバージョン（クリックで選択）',
@@ -3087,6 +3103,13 @@ export const jaJP: TranslationKeys = {
     emptyHeartbeat: 'タスクはありません',
     emptySkills: 'スキルはありません',
     emptyMemory: 'メモリはありません',
+    manageLoadError: '読み込みに失敗しました。再試行してください。',
+    manageActionError: '操作に失敗しました。再試行してください。',
+    editHeartbeat: '編集',
+    saveHeartbeat: '保存',
+    heartbeatName: '名前',
+    heartbeatSchedule: 'Cron',
+    heartbeatAction: '指示',
     cronEveryMinutes: '{n}分ごと',
     cronDaily: '毎日 {time}',
     originManual: '手動',

@@ -6,13 +6,23 @@
 //! Cron 匹配按**服务器本地时间**，支持标准 5 字段语法：
 //! `*`、数字、列表 `a,b,c`、区间 `a-b`、步进 `*/n` / `a-b/n` / `a/n`。
 //! 星期字段 0 和 7 均表示周日；日/星期同时受限时按标准 cron 语义取"或"。
+//!
+//! 多副本：通过 `heartbeat_claims` 表按 (task_id, minute_bucket) CAS 认领，
+//! 避免同一分钟被多个 backend 重复执行。崩溃后超过 STALE 窗口可重认领。
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::{DateTime, Datelike, Local, Timelike, Utc};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+
+/// 单次 heartbeat 任务墙钟超时（秒）
+pub const HEARTBEAT_TASK_TIMEOUT_SECS: u64 = 600;
+
+/// 认领卡住后允许重认领的阈值（秒），略长于执行超时
+const CLAIM_STALE_SECS: i64 = 900;
 
 /// Heartbeat 任务定义
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,12 +38,15 @@ pub struct HeartbeatTask {
     /// 是否启用
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// 上次执行时间（运行时状态，不从文件加载；序列化为 lastRun 供前端展示）
+    /// 上次**完成**执行时间（运行时状态，不从文件加载；序列化为 lastRun 供前端展示）
     #[serde(skip_deserializing, rename = "lastRun")]
     pub last_run: Option<DateTime<Utc>>,
     /// 上次执行结果（运行时状态）
     #[serde(skip_deserializing, rename = "lastResult")]
     pub last_result: Option<String>,
+    /// 本进程内上次**调度认领**时间（仅用于同分钟本地去重；不落盘、不序列化）
+    #[serde(skip)]
+    pub last_reserved: Option<DateTime<Utc>>,
 }
 
 fn default_true() -> bool {
@@ -208,6 +221,85 @@ impl HeartbeatManager {
         Some(new_state)
     }
 
+    /// 更新任务字段（name / schedule / action / enabled），校验 cron 后持久化
+    pub async fn update_task(
+        &self,
+        task_id: &str,
+        name: Option<String>,
+        schedule: Option<String>,
+        action: Option<String>,
+        enabled: Option<bool>,
+    ) -> Result<HeartbeatTask, String> {
+        self.maybe_reload_if_changed().await;
+        if let Some(ref s) = schedule {
+            if !is_valid_cron_expr(s) {
+                return Err(format!(
+                    "Invalid cron schedule '{}': expected 5 fields (min hour dom month dow)",
+                    s
+                ));
+            }
+        }
+        if let Some(ref a) = action {
+            if a.trim().is_empty() {
+                return Err("action must not be empty".to_string());
+            }
+        }
+        let updated = {
+            let mut tasks = self.tasks.write().await;
+            let task = tasks
+                .iter_mut()
+                .find(|t| t.id == task_id)
+                .ok_or_else(|| format!("Task '{}' not found", task_id))?;
+            if let Some(n) = name {
+                let n = n.trim().to_string();
+                if n.is_empty() {
+                    return Err("name must not be empty".to_string());
+                }
+                task.name = n;
+            }
+            if let Some(s) = schedule {
+                task.schedule = s.trim().to_string();
+            }
+            if let Some(a) = action {
+                task.action = a;
+            }
+            if let Some(e) = enabled {
+                task.enabled = e;
+            }
+            task.clone()
+        };
+        self.persist().await;
+        tracing::info!(task_id = %task_id, "[Heartbeat] Task updated");
+        Ok(updated)
+    }
+
+    /// 清理过期认领记录，防止表无限增长（默认保留 48 小时）
+    pub async fn cleanup_old_claims(db: &DatabaseConnection, keep_hours: i64) -> u64 {
+        let hours = keep_hours.max(1);
+        let sql = format!(
+            r#"
+            DELETE FROM heartbeat_claims
+            WHERE claimed_at < NOW() - INTERVAL '{hours} hours'
+            "#
+        );
+        match db
+            .execute(Statement::from_string(DbBackend::Postgres, sql))
+            .await
+        {
+            Ok(result) => {
+                let n = result.rows_affected();
+                if n > 0 {
+                    tracing::info!(deleted = n, keep_hours = hours, "[Heartbeat] Cleaned old claims");
+                }
+                n
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "[Heartbeat] Claim cleanup failed");
+                0
+            }
+        }
+    }
+
     /// 记录任务执行结果
     pub async fn record_result(&self, task_id: &str, result: &str) {
         let mut tasks = self.tasks.write().await;
@@ -219,8 +311,9 @@ impl HeartbeatManager {
 
     /// 检查哪些任务应该在当前分钟执行
     ///
-    /// 返回到期任务的同时立即记录 last_run（调度即去重），
-    /// 避免长任务执行期间同一分钟被重复触发。
+    /// 仅标记本地 `last_reserved`（调度去重），**不**写 `last_run`。
+    /// `last_run` 只在 `record_result`（任务完成/失败）时更新，避免崩溃后 UI
+    /// 显示“已跑”而实际未完成。多副本去重由 `try_claim_execution` 负责。
     pub async fn check_due_tasks(&self) -> Vec<HeartbeatTask> {
         // 每分钟一次的 stat 调用，代价可忽略；让手动编辑的配置在下个调度周期生效
         self.maybe_reload_if_changed().await;
@@ -236,19 +329,104 @@ impl HeartbeatManager {
             if !cron_matches(&task.schedule, &now_local) {
                 continue;
             }
-            // 同一日历分钟内不重复触发
-            if let Some(last) = &task.last_run {
-                if last.timestamp() / 60 == now_utc.timestamp() / 60 {
-                    continue;
-                }
+            // 同一日历分钟内本进程不重复调度（含已在跑 / 已完成）
+            let already_reserved = task
+                .last_reserved
+                .map(|t| t.timestamp() / 60 == now_utc.timestamp() / 60)
+                .unwrap_or(false);
+            let already_completed = task
+                .last_run
+                .map(|t| t.timestamp() / 60 == now_utc.timestamp() / 60)
+                .unwrap_or(false);
+            if already_reserved || already_completed {
+                continue;
             }
-            task.last_run = Some(now_utc);
+            task.last_reserved = Some(now_utc);
             due.push(task.clone());
         }
         due
     }
 
-    /// 重新加载配置（保留运行时状态：last_run / last_result）
+    /// 多副本 CAS 认领：同一 (task_id, minute_bucket) 仅一个副本执行。
+    ///
+    /// - 新认领 / 卡住超过 `CLAIM_STALE_SECS` 的 running 可重认领
+    /// - 已 `done` 的桶不再执行
+    /// - DB 不可用时返回 `true`（单机降级，依赖进程内 last_reserved）
+    pub async fn try_claim_execution(
+        db: &DatabaseConnection,
+        task_id: &str,
+        minute_bucket: i64,
+    ) -> bool {
+        let sql = format!(
+            r#"
+            INSERT INTO heartbeat_claims (task_id, minute_bucket, status, claimed_at)
+            VALUES ($1, $2, 'running', NOW())
+            ON CONFLICT (task_id, minute_bucket) DO UPDATE
+            SET status = 'running',
+                claimed_at = NOW(),
+                completed_at = NULL
+            WHERE heartbeat_claims.status = 'running'
+              AND heartbeat_claims.claimed_at < NOW() - INTERVAL '{stale} seconds'
+            RETURNING task_id
+            "#,
+            stale = CLAIM_STALE_SECS
+        );
+        match db
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                [task_id.into(), minute_bucket.into()],
+            ))
+            .await
+        {
+            Ok(Some(_)) => true,
+            Ok(None) => {
+                tracing::debug!(
+                    task_id = %task_id,
+                    minute_bucket,
+                    "[Heartbeat] Claim skipped (held by another replica or already done)"
+                );
+                false
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = %task_id,
+                    error = %e,
+                    "[Heartbeat] Claim query failed; allowing local execution"
+                );
+                true
+            }
+        }
+    }
+
+    /// 将认领标记为完成（成功或失败都算 done，防止同分钟重复）。
+    pub async fn complete_claim(db: &DatabaseConnection, task_id: &str, minute_bucket: i64) {
+        let result = db
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                r#"
+                UPDATE heartbeat_claims
+                SET status = 'done', completed_at = NOW()
+                WHERE task_id = $1 AND minute_bucket = $2
+                "#,
+                [task_id.into(), minute_bucket.into()],
+            ))
+            .await;
+        if let Err(e) = result {
+            tracing::warn!(
+                task_id = %task_id,
+                error = %e,
+                "[Heartbeat] Failed to complete claim"
+            );
+        }
+    }
+
+    /// 当前 UTC 分钟桶（unix_ts / 60）
+    pub fn current_minute_bucket() -> i64 {
+        Utc::now().timestamp() / 60
+    }
+
+    /// 重新加载配置（保留运行时状态：last_run / last_result / last_reserved）
     pub async fn reload(&self) {
         if let Some((mut new_tasks, new_body)) = Self::load_file(&self.config_path).await {
             let mut current = self.tasks.write().await;
@@ -256,6 +434,7 @@ impl HeartbeatManager {
                 if let Some(old) = current.iter().find(|t| t.id == task.id) {
                     task.last_run = old.last_run;
                     task.last_result = old.last_result.clone();
+                    task.last_reserved = old.last_reserved;
                 }
             }
             *current = new_tasks;
@@ -268,6 +447,42 @@ impl HeartbeatManager {
 }
 
 // ==================== Cron 匹配 ====================
+
+/// 校验 5 字段 cron 表达式语法（不求值）
+fn is_valid_cron_expr(expr: &str) -> bool {
+    let parts: Vec<&str> = expr.split_whitespace().collect();
+    if parts.len() != 5 {
+        return false;
+    }
+    // 用一个固定时刻试匹配：解析失败的字段会返回 false 对任意时刻，
+    // 但合法 `*` 恒 true。更稳妥：逐字段检查 item 解析。
+    parts.iter().all(|field| {
+        field.split(',').all(|item| {
+            let item = item.trim();
+            if item.is_empty() {
+                return false;
+            }
+            let (base, step) = match item.split_once('/') {
+                Some((b, s)) => match s.parse::<u32>() {
+                    Ok(n) if n > 0 => (b, Some(n)),
+                    _ => return false,
+                },
+                None => (item, None),
+            };
+            let _ = step;
+            if base == "*" {
+                return true;
+            }
+            if let Some((a, b)) = base.split_once('-') {
+                return match (a.parse::<u32>(), b.parse::<u32>()) {
+                    (Ok(lo), Ok(hi)) => lo <= hi,
+                    _ => false,
+                };
+            }
+            base.parse::<u32>().is_ok()
+        })
+    })
+}
 
 /// 完整 5 字段 cron 匹配（分 时 日 月 星期）
 fn cron_matches(expr: &str, now: &DateTime<Local>) -> bool {
@@ -451,6 +666,16 @@ mod tests {
         assert!(!cron_matches("*/0 * * * *", &local(2026, 7, 11, 0, 0))); // 步进为 0
     }
 
+    #[test]
+    fn test_is_valid_cron_expr() {
+        assert!(is_valid_cron_expr("* * * * *"));
+        assert!(is_valid_cron_expr("0 */6 * * *"));
+        assert!(is_valid_cron_expr("0,30 9-17 * * 1-5"));
+        assert!(!is_valid_cron_expr("0 0 * *")); // 4 字段
+        assert!(!is_valid_cron_expr("*/0 * * * *"));
+        assert!(!is_valid_cron_expr(""));
+    }
+
     #[tokio::test]
     async fn test_toggle_persists_and_reload_keeps_runtime_state() {
         let dir = std::env::temp_dir().join(format!("hb_test_{}", std::process::id()));
@@ -549,9 +774,19 @@ mod tests {
         let mgr = HeartbeatManager::new(path).await;
         let first = mgr.check_due_tasks().await;
         assert_eq!(first.len(), 1, "首次检查应返回到期任务");
+        // 调度只写 last_reserved，不写 last_run
+        let tasks = mgr.get_tasks().await;
+        assert!(tasks[0].last_run.is_none(), "调度不应写 last_run");
+        assert!(tasks[0].last_reserved.is_some());
         // 同一分钟内第二次检查不应重复触发（即使任务尚未完成）
         let second = mgr.check_due_tasks().await;
         assert!(second.is_empty(), "同一分钟内不应重复触发");
+
+        // 完成后 last_run 才更新
+        mgr.record_result("every", "ok").await;
+        let tasks = mgr.get_tasks().await;
+        assert!(tasks[0].last_run.is_some());
+        assert_eq!(tasks[0].last_result.as_deref(), Some("ok"));
 
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }

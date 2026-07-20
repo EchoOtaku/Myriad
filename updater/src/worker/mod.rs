@@ -8,6 +8,7 @@
 pub mod bootstrap_self;
 pub mod machine;
 pub mod preflight;
+pub mod proxy_update;
 pub mod rollback;
 pub mod self_update;
 pub mod update;
@@ -101,6 +102,13 @@ pub enum Command {
     SelfUpdate {
         actor: Option<String>,
         reply: tokio::sync::oneshot::Sender<Result<self_update::SelfUpdateReport>>,
+    },
+    /// Manual proxy image upgrade (not part of business auto-update).
+    ProxyUpdate {
+        actor: Option<String>,
+        /// When set, fetch this release's proxy image; otherwise latest for channel.
+        explicit_tag: Option<String>,
+        reply: tokio::sync::oneshot::Sender<Result<proxy_update::ProxyUpdateReport>>,
     },
     Shutdown,
 }
@@ -650,6 +658,14 @@ impl Worker {
                 }
                 Command::SelfUpdate { actor, reply } => {
                     let res = self_update::run(self.clone(), actor).await;
+                    let _ = reply.send(res);
+                }
+                Command::ProxyUpdate {
+                    actor,
+                    explicit_tag,
+                    reply,
+                } => {
+                    let res = proxy_update::run(self.clone(), actor, explicit_tag).await;
                     let _ = reply.send(res);
                 }
             }

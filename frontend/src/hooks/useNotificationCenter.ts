@@ -44,6 +44,22 @@ export function useNotificationCenter({
   const userIdRef = useRef(userId)
   userIdRef.current = userId
 
+  const loadHistory = useCallback(async () => {
+    const requestedUserId = userId
+    try {
+      const res = await notificationApi.list(50)
+      if (!enabledRef.current || userIdRef.current !== requestedUserId) return
+      setItems(res.notifications)
+      setLoaded(true)
+    } catch (e) {
+      console.warn('[NotificationCenter] Failed to load history:', e)
+    }
+  }, [userId])
+
+  // 用 ref 暴露最新 loadHistory，避免 SSE 回调闭包过期
+  const loadHistoryRef = useRef(loadHistory)
+  loadHistoryRef.current = loadHistory
+
   // SSE 订阅（断线自动重连）
   useEffect(() => {
     if (!enabled) {
@@ -75,6 +91,9 @@ export function useNotificationCenter({
         } else if (event.event === 'notifications_cleared') {
           if (event.user_id !== userIdRef.current) return
           setItems([])
+        } else if (event.event === 'resync') {
+          // broadcast 丢事件后后端发 resync；补拉历史避免漏通知
+          void loadHistoryRef.current()
         }
         // init / notification_read / notifications_read_all：
         // 已读概念已移除，忽略（后端事件保留以兼容其他客户端）
@@ -82,18 +101,6 @@ export function useNotificationCenter({
     )
     return close
   }, [enabled, userId])
-
-  const loadHistory = useCallback(async () => {
-    const requestedUserId = userId
-    try {
-      const res = await notificationApi.list(50)
-      if (!enabledRef.current || userIdRef.current !== requestedUserId) return
-      setItems(res.notifications)
-      setLoaded(true)
-    } catch (e) {
-      console.warn('[NotificationCenter] Failed to load history:', e)
-    }
-  }, [userId])
 
   // 启用即拉取历史：此前列表要等打开通知页才加载，
   // 页面刷新后的历史通知完全无感知

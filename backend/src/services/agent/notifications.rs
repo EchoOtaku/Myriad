@@ -217,6 +217,8 @@ pub enum NotificationEvent {
     NotificationDeleted { id: String, user_id: i32 },
     /// 通知被批量清空（SSE 端按 user_id 过滤转发）
     NotificationsCleared { user_id: i32 },
+    /// 订阅方落后丢弃了消息：客户端应重新拉取历史列表
+    Resync { lagged_by: u64 },
 }
 
 pub fn event_is_for_user(event: &NotificationEvent, user_id: i32) -> bool {
@@ -228,6 +230,8 @@ pub fn event_is_for_user(event: &NotificationEvent, user_id: i32) -> bool {
         | NotificationEvent::NotificationDeleted { user_id: owner, .. }
         | NotificationEvent::NotificationsReadAll { user_id: owner }
         | NotificationEvent::NotificationsCleared { user_id: owner } => *owner == user_id,
+        // resync 对所有订阅者广播；由 SSE 转发层无条件下发
+        NotificationEvent::Resync { .. } => true,
     }
 }
 
@@ -276,7 +280,8 @@ impl NotificationManager {
 
     /// 创建带持久化的管理器，并从 DB 恢复最近历史
     pub async fn new_with_db(max_history: usize, db: DatabaseConnection) -> Self {
-        let (tx, _) = broadcast::channel(128);
+        // 512：降低高扇出时 Lagged 频率；仍会在 Lagged 时发 resync
+        let (tx, _) = broadcast::channel(512);
         let mut history = VecDeque::with_capacity(max_history);
 
         // 旧版本把 user_id=NULL 当作共享广播；该记录允许任意用户删除，且可能包含
@@ -1018,6 +1023,11 @@ mod tests {
         };
         assert!(event_is_for_user(&deleted, 2));
         assert!(!event_is_for_user(&deleted, 1));
+
+        // resync is broadcast to every subscriber so clients can re-list history
+        let resync = NotificationEvent::Resync { lagged_by: 3 };
+        assert!(event_is_for_user(&resync, 1));
+        assert!(event_is_for_user(&resync, 99));
     }
 
     #[tokio::test]

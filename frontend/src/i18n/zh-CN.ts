@@ -512,6 +512,22 @@ export const zhCN: TranslationKeys = {
     updaterSelfUpdateConfirm:
       '升级更新器到 {version}？几秒完成，站点不受影响。',
     updaterSelfUpdateDispatched: '更新器升级已开始，完成后可继续更新。',
+    updaterInfraGroupTitle: '边缘与更新器组件',
+    updaterInfraGroupDesc:
+      '更新器与反向代理（proxy）不随业务「更新」自动升级，请在此单独触发。',
+    updaterInfraUpdaterTitle: '更新器（updater）',
+    updaterInfraUpdaterDesc:
+      '含 docker-guard / updater-gateway。自更新走独立 TCB 路径，不会停业务容器。',
+    updaterInfraUpdaterCurrent: '当前更新器',
+    updaterInfraProxyTitle: '反向代理（proxy）',
+    updaterInfraProxyDesc:
+      '边缘入口；升级有约数秒中断。不在业务自动更新里，需手动触发。',
+    updaterInfraProxyUpdateButton: '升级 proxy',
+    updaterInfraProxyConfirm:
+      '升级 proxy 到 {version}？边缘入口会短暂中断（通常 <10 秒）。',
+    updaterInfraProxyDispatched:
+      'proxy 已升级到 {version}（原 {previous}）。',
+    updaterInfraNeedCheck: '请先「检查更新」以获取目标版本。',
     updaterTargetGroupTitle: '安装指定版本（高级）',
     updaterTargetGroupDesc: '安装历史正式版或指定提交。日常无需使用。',
     updaterTargetReleaseHead: '可选版本（点击选择）',
@@ -2957,6 +2973,13 @@ export const zhCN: TranslationKeys = {
     emptyHeartbeat: '暂无定时任务',
     emptySkills: '暂无技能',
     emptyMemory: '暂无记忆',
+    manageLoadError: '加载失败，请重试',
+    manageActionError: '操作失败，请重试',
+    editHeartbeat: '编辑',
+    saveHeartbeat: '保存',
+    heartbeatName: '名称',
+    heartbeatSchedule: 'Cron',
+    heartbeatAction: '指令',
     cronEveryMinutes: '每 {n} 分钟',
     cronDaily: '每天 {time}',
     originManual: '手动',

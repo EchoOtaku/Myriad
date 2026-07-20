@@ -50,12 +50,24 @@ export type TaskStatus =
   | 'failed'
   | 'cancelled'
 
+/** 任务上的待回答问题（与后端 TaskInfo.pendingQuestion 对齐） */
+export interface TaskPendingQuestion {
+  questionId: string
+  questionType: string
+  question: string
+  context?: string
+  options?: Array<{ value: string; label: string; description?: string }>
+  required?: boolean
+  defaultValue?: string
+}
+
 /** 任务信息 */
 export interface TaskInfo {
   taskId: string
   status: TaskStatus
   progress: number
   error?: string
+  pendingQuestion?: TaskPendingQuestion
 }
 
 /** 任务详情 */
@@ -67,6 +79,8 @@ export interface TaskDetail {
   startedAt: string
   completedAt?: string
   results?: Record<string, unknown>
+  pendingQuestion?: TaskPendingQuestion
+  runId?: string
 }
 
 // ============ 澄清相关 ============

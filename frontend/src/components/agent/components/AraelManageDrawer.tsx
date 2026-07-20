@@ -151,60 +151,138 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [memories, setMemories] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null)
+  const [editingHbId, setEditingHbId] = useState<string | null>(null)
+  const [hbDraft, setHbDraft] = useState<{
+    name: string
+    schedule: string
+    action: string
+  } | null>(null)
+  const [hbSaving, setHbSaving] = useState(false)
 
-  const loadTabData = useCallback(async (currentTab: ManageTab) => {
-    setLoading(true)
-    try {
-      switch (currentTab) {
-        case 'heartbeat': {
-          const tasks = await agentService.getHeartbeatTasks()
-          setHeartbeatTasks(tasks)
-          break
+  const loadTabData = useCallback(
+    async (currentTab: ManageTab) => {
+      setLoading(true)
+      setError(null)
+      try {
+        switch (currentTab) {
+          case 'heartbeat': {
+            const tasks = await agentService.getHeartbeatTasks()
+            setHeartbeatTasks(tasks)
+            break
+          }
+          case 'skills': {
+            const s = await agentService.getSkills()
+            setSkills(s)
+            break
+          }
+          case 'memory': {
+            const m = await agentService.getMemories()
+            setMemories(m)
+            break
+          }
         }
-        case 'skills': {
-          const s = await agentService.getSkills()
-          setSkills(s)
-          break
-        }
-        case 'memory': {
-          const m = await agentService.getMemories()
-          setMemories(m)
-          break
-        }
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : i18n.arael.manageLoadError
+        setError(msg)
+      } finally {
+        setLoading(false)
       }
-    } catch {
-      // API may not be implemented
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+    },
+    [i18n.arael.manageLoadError],
+  )
 
   useEffect(() => {
     loadTabData(tab)
   }, [tab, loadTabData])
 
-  const handleToggleHeartbeat = useCallback(async (taskId: string) => {
-    try {
-      const result = await agentService.toggleHeartbeat(taskId)
-      setHeartbeatTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId ? { ...t, enabled: result.enabled } : t,
+  const handleToggleHeartbeat = useCallback(
+    async (taskId: string) => {
+      const prev = heartbeatTasks.find((t) => t.id === taskId)
+      // 乐观更新
+      setHeartbeatTasks((list) =>
+        list.map((t) =>
+          t.id === taskId ? { ...t, enabled: !t.enabled } : t,
         ),
       )
-    } catch {
-      // ignore
-    }
+      try {
+        const result = await agentService.toggleHeartbeat(taskId)
+        setHeartbeatTasks((list) =>
+          list.map((t) =>
+            t.id === taskId ? { ...t, enabled: result.enabled } : t,
+          ),
+        )
+      } catch (e) {
+        // 回滚
+        if (prev) {
+          setHeartbeatTasks((list) =>
+            list.map((t) =>
+              t.id === taskId ? { ...t, enabled: prev.enabled } : t,
+            ),
+          )
+        }
+        setError(
+          e instanceof Error ? e.message : i18n.arael.manageActionError,
+        )
+      }
+    },
+    [heartbeatTasks, i18n.arael.manageActionError],
+  )
+
+  const startEditHeartbeat = useCallback((task: HeartbeatTask) => {
+    setEditingHbId(task.id)
+    setHbDraft({
+      name: task.name,
+      schedule: task.schedule,
+      action: task.action,
+    })
   }, [])
 
-  const handleDeleteMemory = useCallback(async (memoryId: string) => {
-    try {
-      await agentService.deleteMemory(memoryId)
-      setMemories((prev) => prev.filter((m) => m.id !== memoryId))
-    } catch {
-      // ignore
-    }
+  const cancelEditHeartbeat = useCallback(() => {
+    setEditingHbId(null)
+    setHbDraft(null)
   }, [])
+
+  const handleSaveHeartbeat = useCallback(async () => {
+    if (!editingHbId || !hbDraft) return
+    setHbSaving(true)
+    try {
+      const updated = await agentService.updateHeartbeat(editingHbId, {
+        name: hbDraft.name.trim(),
+        schedule: hbDraft.schedule.trim(),
+        action: hbDraft.action,
+      })
+      setHeartbeatTasks((list) =>
+        list.map((t) => (t.id === editingHbId ? { ...t, ...updated } : t)),
+      )
+      setEditingHbId(null)
+      setHbDraft(null)
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : i18n.arael.manageActionError,
+      )
+    } finally {
+      setHbSaving(false)
+    }
+  }, [editingHbId, hbDraft, i18n.arael.manageActionError])
+
+  const handleDeleteMemory = useCallback(
+    async (memoryId: string) => {
+      const snapshot = memories
+      setMemories((prev) => prev.filter((m) => m.id !== memoryId))
+      try {
+        await agentService.deleteMemory(memoryId)
+      } catch (e) {
+        setMemories(snapshot)
+        setError(
+          e instanceof Error ? e.message : i18n.arael.manageActionError,
+        )
+      }
+    },
+    [memories, i18n.arael.manageActionError],
+  )
 
   const handleUpdateMemory = useCallback(
     async (memoryId: string, newContent: string) => {
@@ -214,21 +292,30 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
         // Reload to get updated data (id may change)
         const m = await agentService.getMemories()
         setMemories(m)
-      } catch {
-        // ignore
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : i18n.arael.manageActionError,
+        )
       }
     },
-    [],
+    [i18n.arael.manageActionError],
   )
 
-  const handleDeleteSkill = useCallback(async (skillId: string) => {
-    try {
-      await agentService.deleteSkill(skillId)
+  const handleDeleteSkill = useCallback(
+    async (skillId: string) => {
+      const snapshot = skills
       setSkills((prev) => prev.filter((s) => s.id !== skillId))
-    } catch {
-      // ignore
-    }
-  }, [])
+      try {
+        await agentService.deleteSkill(skillId)
+      } catch (e) {
+        setSkills(snapshot)
+        setError(
+          e instanceof Error ? e.message : i18n.arael.manageActionError,
+        )
+      }
+    },
+    [skills, i18n.arael.manageActionError],
+  )
 
   const memoryTypeLabel = (type: string) => {
     switch (type) {
@@ -281,8 +368,21 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
             </div>
           )}
 
+          {!loading && error && (
+            <div className="arael-manage-error" role="alert">
+              <span>{error}</span>
+              <button
+                type="button"
+                className="arael-manage-error-retry"
+                onClick={() => loadTabData(tab)}
+              >
+                {i18n.common.retry}
+              </button>
+            </div>
+          )}
+
           {/* Heartbeat */}
-          {!loading && tab === 'heartbeat' && (
+          {!loading && !error && tab === 'heartbeat' && (
             <div className="arael-manage-section">
               {heartbeatTasks.length === 0 ? (
                 <div className="arael-manage-empty">
@@ -291,23 +391,106 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
               ) : (
                 heartbeatTasks.map((task) => (
                   <div key={task.id} className="arael-hb-item">
-                    <div className="arael-hb-info">
-                      <span className="arael-hb-name">{task.name}</span>
-                      <span className="arael-hb-schedule">
-                        {humanizeCron(task.schedule, format, i18n.arael)}
-                      </span>
-                      {task.lastResult && (
-                        <div className="arael-hb-result">{task.lastResult}</div>
-                      )}
-                    </div>
-                    <button
-                      className={`arael-hb-toggle ${task.enabled ? 'on' : 'off'}`}
-                      onClick={() => handleToggleHeartbeat(task.id)}
-                    >
-                      {task.enabled
-                        ? i18n.arael.toggleOn
-                        : i18n.arael.toggleOff}
-                    </button>
+                    {editingHbId === task.id && hbDraft ? (
+                      <div className="arael-hb-edit">
+                        <label className="arael-hb-edit-field">
+                          <span>{i18n.arael.heartbeatName}</span>
+                          <input
+                            type="text"
+                            value={hbDraft.name}
+                            onChange={(e) =>
+                              setHbDraft((d) =>
+                                d ? { ...d, name: e.target.value } : d,
+                              )
+                            }
+                          />
+                        </label>
+                        <label className="arael-hb-edit-field">
+                          <span>{i18n.arael.heartbeatSchedule}</span>
+                          <input
+                            type="text"
+                            value={hbDraft.schedule}
+                            placeholder="0 */6 * * *"
+                            onChange={(e) =>
+                              setHbDraft((d) =>
+                                d ? { ...d, schedule: e.target.value } : d,
+                              )
+                            }
+                          />
+                        </label>
+                        <label className="arael-hb-edit-field">
+                          <span>{i18n.arael.heartbeatAction}</span>
+                          <textarea
+                            rows={2}
+                            value={hbDraft.action}
+                            onChange={(e) =>
+                              setHbDraft((d) =>
+                                d ? { ...d, action: e.target.value } : d,
+                              )
+                            }
+                          />
+                        </label>
+                        <div className="arael-hb-edit-actions">
+                          <button
+                            type="button"
+                            className="arael-hb-edit-save"
+                            disabled={
+                              hbSaving ||
+                              !hbDraft.name.trim() ||
+                              !hbDraft.schedule.trim() ||
+                              !hbDraft.action.trim()
+                            }
+                            onClick={() => void handleSaveHeartbeat()}
+                          >
+                            {i18n.arael.saveHeartbeat}
+                          </button>
+                          <button
+                            type="button"
+                            className="arael-hb-edit-cancel"
+                            disabled={hbSaving}
+                            onClick={cancelEditHeartbeat}
+                          >
+                            {i18n.common.cancel}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="arael-hb-info">
+                          <span className="arael-hb-name">{task.name}</span>
+                          <span className="arael-hb-schedule">
+                            {humanizeCron(task.schedule, format, i18n.arael)}
+                          </span>
+                          {task.action && (
+                            <div className="arael-hb-action">{task.action}</div>
+                          )}
+                          {task.lastResult && (
+                            <div className="arael-hb-result">
+                              {task.lastResult}
+                            </div>
+                          )}
+                        </div>
+                        <div className="arael-hb-actions">
+                          <button
+                            type="button"
+                            className="arael-hb-edit-btn"
+                            onClick={() => startEditHeartbeat(task)}
+                            title={i18n.arael.editHeartbeat}
+                          >
+                            {i18n.arael.editHeartbeat}
+                          </button>
+                          <button
+                            type="button"
+                            className={`arael-hb-toggle ${task.enabled ? 'on' : 'off'}`}
+                            onClick={() => handleToggleHeartbeat(task.id)}
+                          >
+                            {task.enabled
+                              ? i18n.arael.toggleOn
+                              : i18n.arael.toggleOff}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))
               )}
@@ -315,7 +498,7 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
           )}
 
           {/* Skills */}
-          {!loading && tab === 'skills' && (
+          {!loading && !error && tab === 'skills' && (
             <div className="arael-manage-section">
               {skills.length === 0 ? (
                 <div className="arael-manage-empty">
@@ -382,7 +565,7 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
           )}
 
           {/* Memory */}
-          {!loading && tab === 'memory' && (
+          {!loading && !error && tab === 'memory' && (
             <div className="arael-manage-section">
               {memories.length === 0 ? (
                 <div className="arael-manage-empty">

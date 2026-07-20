@@ -258,23 +258,36 @@ async fn materialize_pinned_rollback_images(worker: &Worker, version: &DeployTag
         )
     })?;
 
-    for (component, repo) in [("backend", backend), ("frontend", frontend)] {
+    // Require a complete pair of `*:myriad-rollback` before rewriting either
+    // version ref. A half-pin (one component only) used to look like "one image
+    // occupies the rollback tag, the other does not" and left Compose broken.
+    let pair = [
+        ("backend", backend.to_string()),
+        ("frontend", frontend.to_string()),
+    ];
+    let mut missing_pins = Vec::new();
+    for (component, repo) in &pair {
+        let rollback_ref = format!("{repo}:{ROLLBACK_IMAGE_TAG}");
+        if !worker.docker().image_exists_local(&rollback_ref).await {
+            missing_pins.push((*component).to_string());
+        }
+    }
+    if !should_materialize_rollback_pair(&missing_pins) {
+        warn!(
+            version = %version.as_str(),
+            missing = ?missing_pins,
+            "incomplete local rollback slot (*:myriad-rollback); will not materialize a split pair"
+        );
+        return Ok(());
+    }
+
+    for (component, repo) in &pair {
         let version_ref = format!("{repo}:{}", version.as_str());
         if worker.docker().image_exists_local(&version_ref).await {
             continue;
         }
 
         let rollback_ref = format!("{repo}:{ROLLBACK_IMAGE_TAG}");
-        if !worker.docker().image_exists_local(&rollback_ref).await {
-            warn!(
-                %component,
-                %version_ref,
-                %rollback_ref,
-                "recorded rollback image is not available locally; Compose may need to pull it"
-            );
-            continue;
-        }
-
         worker
             .docker()
             .tag_image(&rollback_ref, repo, version.as_str())
@@ -297,6 +310,26 @@ async fn materialize_pinned_rollback_images(worker: &Worker, version: &DeployTag
 
 fn rollback_slot_matches(state: &UpdaterStateFile, version: &DeployTag) -> bool {
     state.rollback_version.as_ref() == Some(version)
+}
+
+/// Pure helper: incomplete pairs must not materialize (avoids one-sided version retag).
+pub(crate) fn should_materialize_rollback_pair(missing_pins: &[String]) -> bool {
+    missing_pins.is_empty()
+}
+
+#[cfg(test)]
+mod pair_integrity_tests {
+    use super::*;
+
+    #[test]
+    fn incomplete_pair_blocks_materialize() {
+        assert!(!should_materialize_rollback_pair(&["frontend".into()]));
+        assert!(!should_materialize_rollback_pair(&[
+            "backend".into(),
+            "frontend".into()
+        ]));
+        assert!(should_materialize_rollback_pair(&[]));
+    }
 }
 
 /// Wait until backend answers /health with db_connected over the compose network.
