@@ -442,6 +442,19 @@ fn fallback_room_name(room_id: &str) -> String {
 }
 
 /// Blank / whitespace-only names are treated as missing.
+/// Public rooms are one-way: once public, they cannot become private again.
+fn validate_public_transition(
+    currently_public: bool,
+    requested: Option<bool>,
+) -> Result<(), &'static str> {
+    match requested {
+        Some(false) if currently_public => {
+            Err("Public rooms cannot be made private again")
+        }
+        _ => Ok(()),
+    }
+}
+
 fn non_empty_room_name(name: Option<&str>) -> Option<String> {
     name.map(str::trim)
         .filter(|s| !s.is_empty())
@@ -811,6 +824,22 @@ pub async fn update_room(
         }
     }
 
+    // Public is one-way: once public, cannot go private again.
+    let currently_public: bool = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT is_public FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .and_then(|r| r.try_get::<bool>("", "is_public").ok())
+        .unwrap_or(false);
+
+    if let Err(msg) = validate_public_transition(currently_public, req.is_public) {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))));
+    }
+
     // 构建动态 SET 子句
     let mut set_parts = Vec::new();
     let mut values: Vec<sea_orm::Value> = Vec::new();
@@ -841,9 +870,10 @@ pub async fn update_room(
         values.push(max.into());
         idx += 1;
     }
-    if let Some(public) = req.is_public {
+    // Only allow true (or no-op true→true). false is blocked when already public.
+    if let Some(true) = req.is_public {
         set_parts.push(format!("is_public = ${}", idx));
-        values.push(public.into());
+        values.push(true.into());
         idx += 1;
     }
 
@@ -889,8 +919,9 @@ pub async fn update_room(
     if let Some(max) = req.max_members {
         changes.insert("max_members".into(), json!(max));
     }
-    if let Some(public) = req.is_public {
-        changes.insert("is_public".into(), json!(public));
+    // Only fan-out successful public=true transitions (never public→private).
+    if req.is_public == Some(true) {
+        changes.insert("is_public".into(), json!(true));
     }
 
     if !changes.is_empty() {
@@ -1820,18 +1851,17 @@ pub async fn join_room(
     let is_public: bool = room_row.try_get("", "is_public").unwrap_or(false);
     let max_members: i32 = room_row.try_get("", "max_members").unwrap_or(50);
 
-    // Only open policy (or public+open) allows self-join without invite
-    if invite_policy != "open" {
+    // Self-join without invite: open policy OR public rooms (join by room id).
+    if invite_policy != "open" && !is_public {
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({
                 "error": "This room requires an invite",
-                "invite_policy": invite_policy
+                "invite_policy": invite_policy,
+                "is_public": is_public
             })),
         ));
     }
-    // Non-public open rooms still allow join if caller knows the id (link share).
-    let _ = is_public;
 
     let count_row = db
         .query_one(Statement::from_sql_and_values(
@@ -4097,7 +4127,30 @@ pub async fn handle_room_governance(
         updates.push(("max_members", (v as i32).into()));
     }
     if let Some(v) = changes.get("is_public").and_then(|v| v.as_bool()) {
-        updates.push(("is_public", v.into()));
+        // Remote governance: never allow public → private.
+        if !v {
+            let currently_public: bool = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT is_public FROM federation_rooms WHERE room_id = $1",
+                    [room_id.into()],
+                ))
+                .await
+                .ok()
+                .flatten()
+                .and_then(|r| r.try_get::<bool>("", "is_public").ok())
+                .unwrap_or(false);
+            if currently_public {
+                tracing::warn!(
+                    room_id = %room_id,
+                    "[Room] Ignoring remote governance that would un-public a room"
+                );
+            } else {
+                // still private; no-op false is fine to skip
+            }
+        } else {
+            updates.push(("is_public", true.into()));
+        }
     }
 
     for (col, val) in updates {
@@ -4485,6 +4538,16 @@ pub async fn handle_key_exchange(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_transition_is_one_way() {
+        assert!(validate_public_transition(false, None).is_ok());
+        assert!(validate_public_transition(false, Some(true)).is_ok());
+        assert!(validate_public_transition(false, Some(false)).is_ok()); // still private
+        assert!(validate_public_transition(true, Some(true)).is_ok()); // no-op
+        assert!(validate_public_transition(true, None).is_ok());
+        assert!(validate_public_transition(true, Some(false)).is_err());
+    }
 
     #[test]
     fn non_empty_room_name_trims_and_rejects_blank() {

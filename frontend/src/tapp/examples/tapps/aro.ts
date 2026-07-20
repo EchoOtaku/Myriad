@@ -508,7 +508,15 @@ const PAGE_HTML = `\
       </div>
       <div id="create-form-room" class="create-form" style="display:none">
         <input id="create-room-input" class="create-input" type="text" placeholder="房间名称" />
+        <label class="edit-check-row" id="create-room-public-row">
+          <input type="checkbox" id="create-room-public" />
+          <span id="create-room-public-label">创建为公开群（可展示 ID，不可再私有）</span>
+        </label>
         <button id="create-room-btn" class="create-submit">创建房间</button>
+        <div class="create-divider" id="create-join-divider"></div>
+        <label class="edit-label" id="join-room-id-label">加入公开群</label>
+        <input id="join-room-id-input" class="create-input" type="text" placeholder="输入 room id" autocomplete="off" />
+        <button id="join-room-id-btn" class="create-submit create-submit-secondary" type="button">加入</button>
       </div>
     </div>
   </div>
@@ -525,6 +533,18 @@ const PAGE_HTML = `\
         <input id="edit-room-name" class="create-input" type="text" />
         <label class="edit-label" id="edit-desc-label">房间描述</label>
         <input id="edit-room-desc" class="create-input" type="text" />
+        <label class="edit-check-row" id="edit-room-public-row">
+          <input type="checkbox" id="edit-room-public" />
+          <span id="edit-room-public-label">公开群组</span>
+        </label>
+        <p class="edit-hint" id="edit-room-public-hint" style="display:none"></p>
+        <div class="edit-room-id-box" id="edit-room-id-box" style="display:none">
+          <label class="edit-label" id="edit-room-id-label">群组 ID</label>
+          <div class="edit-room-id-row">
+            <code id="edit-room-id-value" class="edit-room-id-value"></code>
+            <button type="button" class="edit-room-id-copy" id="edit-room-id-copy">复制</button>
+          </div>
+        </div>
         <button id="edit-room-save" class="create-submit">保存</button>
       </div>
     </div>
@@ -2219,6 +2239,21 @@ button.msg-file-card:hover .msg-file-action{color:rgb(var(--acc));background:rgb
 /* Dialogs / sheets / confirm / menus */
 .create-overlay{animation:aroFadeIn var(--aro-dur) ease both}
 .create-dialog{animation:aroScaleIn var(--aro-dur) var(--aro-ease) both}
+.edit-check-row{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.4;color:var(--text-primary,#1a1a1a);cursor:pointer;user-select:none}
+.edit-check-row input{margin-top:2px;flex-shrink:0}
+.edit-hint{margin:0;font-size:11.5px;line-height:1.4;color:var(--text-secondary,#999)}
+.edit-room-id-box{display:flex;flex-direction:column;gap:6px}
+.edit-room-id-row{display:flex;align-items:center;gap:8px}
+.edit-room-id-value{flex:1;min-width:0;padding:8px 10px;border-radius:8px;background:rgba(128,128,128,.08);font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.edit-room-id-copy{flex-shrink:0;padding:6px 10px;border:none;border-radius:8px;background:rgba(var(--tapp-primary-rgb,100,100,255),.12);color:var(--tapp-primary,#6366f1);font-size:12px;font-weight:500;cursor:pointer}
+.edit-room-id-copy:hover{filter:brightness(1.05)}
+.create-divider{height:1px;background:rgba(128,128,128,.12);margin:4px 0}
+.create-submit-secondary{background:rgba(128,128,128,.1)!important;color:var(--text-primary,#1a1a1a)!important;box-shadow:none!important}
+.meta-badge.badge-public{background:rgba(34,197,94,.12);color:#16a34a}
+.chat-room-id-btn{display:inline-flex;align-items:center;gap:4px;max-width:min(220px,42vw);margin-top:2px;padding:2px 6px;border:none;border-radius:6px;background:rgba(128,128,128,.08);color:var(--text-secondary,#666);font-size:10.5px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-room-id-btn:hover{background:rgba(128,128,128,.14);color:var(--text-primary,#1a1a1a)}
+.dark .edit-room-id-value,.dark .chat-room-id-btn{background:rgba(255,255,255,.06)}
+.dark .meta-badge.badge-public{background:rgba(34,197,94,.18);color:#4ade80}
 .create-overlay.aro-leaving{animation:aroFadeOut 160ms ease both;pointer-events:none}
 .create-overlay.aro-leaving .create-dialog{animation:aroScaleOut 160ms ease both}
 
@@ -2583,6 +2618,16 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "joinRoom": "Join",
     "joinRoomFail": "Failed to join",
     "joinRoomOk": "Joined the group",
+    "joinRoomById": "Join public group",
+    "joinRoomIdPlaceholder": "Paste room id",
+    "joinRoomIdMissing": "Enter a room id",
+    "makePublic": "Make group public",
+    "makePublicHint": "Public groups show a shareable room id. This cannot be undone.",
+    "makePublicLocked": "This group is public and cannot be made private again.",
+    "createPublic": "Create as public (shows room id; cannot go private later)",
+    "publicGroup": "Public",
+    "roomId": "Room ID",
+    "copyRoomId": "Copy room id",
     "kick": "Remove",
     "kickConfirm": "Remove this member from the group?",
     "kickFail": "Couldn't remove member",
@@ -2971,6 +3016,16 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "joinRoom": "参加",
     "joinRoomFail": "参加に失敗しました",
     "joinRoomOk": "グループに参加しました",
+    "joinRoomById": "公開グループに参加",
+    "joinRoomIdPlaceholder": "room id を貼り付け",
+    "joinRoomIdMissing": "room id を入力してください",
+    "makePublic": "グループを公開する",
+    "makePublicHint": "公開すると room id を共有できます。非公開には戻せません。",
+    "makePublicLocked": "このグループは公開済みで、非公開には戻せません。",
+    "createPublic": "公開グループとして作成（room id 表示・非公開不可）",
+    "publicGroup": "公開",
+    "roomId": "ルーム ID",
+    "copyRoomId": "room id をコピー",
     "kick": "削除",
     "kickConfirm": "このメンバーをグループから削除しますか？",
     "kickFail": "削除に失敗しました",
@@ -3359,6 +3414,16 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "joinRoom": "加入",
     "joinRoomFail": "加入失败",
     "joinRoomOk": "已加入群组",
+    "joinRoomById": "加入公开群",
+    "joinRoomIdPlaceholder": "粘贴 room id",
+    "joinRoomIdMissing": "请输入 room id",
+    "makePublic": "设为公开群组",
+    "makePublicHint": "公开后会展示可分享的群组 ID，且无法再改回私有。",
+    "makePublicLocked": "该群已公开，无法再改回私有。",
+    "createPublic": "创建为公开群（展示 ID，不可再私有）",
+    "publicGroup": "公开",
+    "roomId": "群组 ID",
+    "copyRoomId": "复制群组 ID",
     "kick": "移除",
     "kickConfirm": "确定将此成员移出群聊？",
     "kickFail": "移除失败",
@@ -5353,12 +5418,19 @@ function applyDialogLabels() {
   el = $('create-room-btn'); if (el) el.textContent = lang.createRoom;
   el = $('create-tab-channel'); if (el) el.textContent = lang.newChannel;
   el = $('create-tab-room'); if (el) el.textContent = lang.newRoom;
+  el = $('create-room-public-label'); if (el) el.textContent = lang.createPublic || lang.makePublic;
+  el = $('join-room-id-label'); if (el) el.textContent = lang.joinRoomById || lang.joinRoom;
+  el = $('join-room-id-input'); if (el) el.placeholder = lang.joinRoomIdPlaceholder || 'room id';
+  el = $('join-room-id-btn'); if (el) el.textContent = lang.joinRoom || 'Join';
   el = $('invite-input'); if (el) el.placeholder = lang.invitePlaceholder;
   el = $('invite-pop-contacts-label'); if (el) el.textContent = lang.inviteFromContacts;
   el = $('invite-pop-manual-label'); if (el) el.textContent = lang.inviteManual;
   el = $('edit-room-title'); if (el) el.textContent = lang.editRoom;
   el = $('edit-name-label'); if (el) el.textContent = lang.roomName;
   el = $('edit-desc-label'); if (el) el.textContent = lang.roomDesc;
+  el = $('edit-room-public-label'); if (el) el.textContent = lang.makePublic;
+  el = $('edit-room-id-label'); if (el) el.textContent = lang.roomId || 'Room ID';
+  el = $('edit-room-id-copy'); if (el) el.textContent = lang.copy || 'Copy';
   el = $('edit-room-save'); if (el) el.textContent = lang.save;
 }
 `
@@ -10272,10 +10344,10 @@ function renderChatHeader() {
   } else if (state.activeKind === 'room' && state.roomDetail) {
     var rm = state.roomDetail;
     var roomPending = (rm.my_membership_status || rm.membership_status || 'active') === 'pending';
-    // Public/open rooms may open without membership (browse); offer join when invite_policy=open
+    // Public rooms or open invite_policy can be joined without a prior invite.
     var canSelfJoin = !roomPending
       && !rm.my_role
-      && (rm.invite_policy === 'open')
+      && (rm.is_public || rm.invite_policy === 'open')
       && typeof Tapp !== 'undefined'
       && Tapp.federation
       && typeof Tapp.federation.joinRoom === 'function';
@@ -10283,10 +10355,17 @@ function renderChatHeader() {
     if (avatarEl) {
       avatarEl.innerHTML = avatarContentHtml(rm.avatar_url || '', rm.name || '?');
     }
-    metaEl.innerHTML = '<span class="meta-badge badge-room">' + (rm.member_count || 0) + ' ' + esc(lang.members) + '</span>'
+    var metaHtml = '<span class="meta-badge badge-room">' + (rm.member_count || 0) + ' ' + esc(lang.members) + '</span>'
+      + (rm.is_public ? '<span class="meta-badge badge-public">' + esc(lang.publicGroup || 'Public') + '</span>' : '')
       + (roomPending ? '<span class="meta-badge badge-pending">' + esc(lang.pending || 'Pending') + '</span>' : '')
       + (canSelfJoin ? '<span class="meta-badge badge-pending">' + esc(lang.openJoin || 'Open') + '</span>' : '')
       + (!roomPending && rm.my_role && rm.my_role !== 'member' ? '<span class="meta-badge badge-role">' + esc(roleLabel(rm.my_role)) + '</span>' : '');
+    if (rm.is_public && rm.room_id) {
+      metaHtml += '<button type="button" class="chat-room-id-btn" id="chat-room-id-btn" title="'
+        + esc(lang.copyRoomId || lang.copy || 'Copy') + '">'
+        + esc((lang.roomId || 'ID') + ': ' + rm.room_id) + '</button>';
+    }
+    metaEl.innerHTML = metaHtml;
     var menuItems = '';
     if (!roomPending && (rm.my_role === 'owner' || rm.my_role === 'admin')) {
       menuItems += '<button type="button" class="manage-item" id="action-edit-room" role="menuitem">'
@@ -10369,6 +10448,17 @@ function renderChatHeader() {
   if (memberToggle) memberToggle.addEventListener('click', toggleMemberPanel);
   if (typeof wireHistoryHeaderButton === 'function') wireHistoryHeaderButton();
   if (typeof wireRoomFilesHeaderButton === 'function') wireRoomFilesHeaderButton();
+  var roomIdBtn = $('chat-room-id-btn');
+  if (roomIdBtn && state.roomDetail && state.roomDetail.room_id) {
+    roomIdBtn.addEventListener('click', function () {
+      var id = state.roomDetail.room_id;
+      if (typeof copyTextToClipboard === 'function') {
+        copyTextToClipboard(id, { okTitle: lang.copied || 'Copied' });
+      } else if (typeof fallbackCopyText === 'function') {
+        fallbackCopyText(id);
+      }
+    });
+  }
 
   if (typeof updateSendState === 'function') updateSendState();
 }
@@ -11461,6 +11551,31 @@ function showEditRoomDialog() {
   if (!overlay) return;
   $('edit-room-name').value = state.roomDetail.name || '';
   $('edit-room-desc').value = state.roomDetail.description || '';
+  var pubCb = $('edit-room-public');
+  var pubHint = $('edit-room-public-hint');
+  var idBox = $('edit-room-id-box');
+  var idVal = $('edit-room-id-value');
+  var alreadyPublic = !!state.roomDetail.is_public;
+  if (pubCb) {
+    pubCb.checked = alreadyPublic;
+    pubCb.disabled = alreadyPublic; // one-way: cannot uncheck once public
+    pubCb.setAttribute('aria-disabled', alreadyPublic ? 'true' : 'false');
+  }
+  if (pubHint) {
+    pubHint.style.display = '';
+    pubHint.textContent = alreadyPublic
+      ? (lang.makePublicLocked || 'Public rooms cannot be made private again.')
+      : (lang.makePublicHint || 'Public groups show a shareable room id. This cannot be undone.');
+  }
+  if (idBox && idVal) {
+    if (alreadyPublic && state.roomDetail.room_id) {
+      idBox.style.display = '';
+      idVal.textContent = state.roomDetail.room_id;
+    } else {
+      idBox.style.display = 'none';
+      idVal.textContent = '';
+    }
+  }
   overlay.classList.remove('aro-leaving');
   overlay.style.display = 'flex';
 }
@@ -11476,22 +11591,45 @@ async function doSaveRoom() {
   var nameVal = ($('edit-room-name').value || '').trim();
   var descVal = ($('edit-room-desc').value || '').trim();
   if (!nameVal) return;
+  var pubCb = $('edit-room-public');
+  var wantPublic = !!(pubCb && pubCb.checked);
+  var alreadyPublic = !!state.roomDetail.is_public;
   var btn = $('edit-room-save');
   btn && (btn.disabled = true, btn.textContent = lang.saving);
   try {
-    var updated = await Tapp.federation.updateRoom(state.activeId, { name: nameVal, description: descVal });
+    var payload = { name: nameVal, description: descVal };
+    // Only send is_public when turning private→public (never send false once public).
+    if (!alreadyPublic && wantPublic) {
+      payload.is_public = true;
+    }
+    var updated = await Tapp.federation.updateRoom(state.activeId, payload);
     if (updated) state.roomDetail = updated;
+    else {
+      state.roomDetail.name = nameVal;
+      state.roomDetail.description = descVal;
+      if (!alreadyPublic && wantPublic) state.roomDetail.is_public = true;
+    }
     // Sync to room list
     for (var i = 0; i < state.rooms.length; i++) {
       if (state.rooms[i].room_id === state.activeId) {
         state.rooms[i].name = nameVal;
         state.rooms[i].description = descVal;
+        if (!alreadyPublic && wantPublic) state.rooms[i].is_public = true;
         break;
       }
     }
     hideEditRoomDialog();
     renderChatHeader();
     renderConvList();
+    if (!alreadyPublic && wantPublic) {
+      try {
+        Tapp.ui.showNotification({
+          title: lang.publicGroup || 'Public',
+          message: (lang.roomId || 'Room ID') + ': ' + state.activeId,
+          type: 'success',
+        });
+      } catch (eN) { /* ignore */ }
+    }
   } catch (e) {
     notifyError(lang.saveFail, e);
   } finally {
@@ -11807,20 +11945,77 @@ async function doCreateRoom() {
     try { Tapp.ui.showNotification({ title: lang.roomPlaceholder || lang.createFail, type: 'error' }); } catch (e0) {}
     return;
   }
+  var pubCb = $('create-room-public');
+  var isPublic = !!(pubCb && pubCb.checked);
   var btn = $('create-room-btn');
   if (btn) { btn.disabled = true; btn.textContent = lang.creating; }
   try {
-    var result = await Tapp.federation.createRoom({ name: name });
+    var result = await Tapp.federation.createRoom({
+      name: name,
+      is_public: isPublic,
+      // Public rooms are joinable by id even if invite_policy stays default.
+      invite_policy: isPublic ? 'open' : undefined,
+    });
     hideCreateDialog();
+    if (pubCb) pubCb.checked = false;
     await loadConversations();
     if (result && result.room_id) {
       openConversation('room', result.room_id);
+      if (isPublic) {
+        try {
+          Tapp.ui.showNotification({
+            title: lang.publicGroup || 'Public',
+            message: (lang.roomId || 'Room ID') + ': ' + result.room_id,
+            type: 'success',
+          });
+        } catch (eN) { /* ignore */ }
+      }
     }
   } catch (e) {
     console.error('[Aro] createRoom error:', e);
     notifyError(lang.createFail, e);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = lang.createRoom; }
+  }
+}
+
+/** Join a public (or open) room by room id. */
+async function doJoinRoomById() {
+  var input = $('join-room-id-input');
+  if (!input) return;
+  var roomId = (input.value || '').trim();
+  if (!roomId) {
+    flashCreateInput(input);
+    try {
+      Tapp.ui.showNotification({
+        title: lang.joinRoomIdMissing || lang.joinRoomFail || 'Enter room id',
+        type: 'error',
+      });
+    } catch (e0) {}
+    return;
+  }
+  if (!Tapp.federation || typeof Tapp.federation.joinRoom !== 'function') {
+    notifyError(lang.joinRoomFail || 'Join not available');
+    return;
+  }
+  var btn = $('join-room-id-btn');
+  if (btn) { btn.disabled = true; btn.textContent = lang.joining || lang.creating || '…'; }
+  try {
+    await Tapp.federation.joinRoom(roomId);
+    hideCreateDialog();
+    input.value = '';
+    await loadConversations();
+    openConversation('room', roomId);
+    try {
+      Tapp.ui.showNotification({
+        title: lang.joinRoomOk || 'Joined',
+        type: 'success',
+      });
+    } catch (eN) { /* ignore */ }
+  } catch (e) {
+    notifyError(lang.joinRoomFail || 'Join failed', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = lang.joinRoom || 'Join'; }
   }
 }
 
@@ -13970,6 +14165,8 @@ const PAGE_MOD_EVENTS = `\
 
   var createRoomBtn = $('create-room-btn');
   if (createRoomBtn) createRoomBtn.addEventListener('click', doCreateRoom);
+  var joinRoomIdBtn = $('join-room-id-btn');
+  if (joinRoomIdBtn) joinRoomIdBtn.addEventListener('click', doJoinRoomById);
 
   // Enter key in create inputs
   var channelInput = $('create-channel-input');
@@ -13979,6 +14176,10 @@ const PAGE_MOD_EVENTS = `\
   var roomInput = $('create-room-input');
   if (roomInput) roomInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); doCreateRoom(); }
+  });
+  var joinRoomIdInput = $('join-room-id-input');
+  if (joinRoomIdInput) joinRoomIdInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doJoinRoomById(); }
   });
 
   // Invite popover events
@@ -14014,6 +14215,16 @@ const PAGE_MOD_EVENTS = `\
   if (editRoomCloseBtn) editRoomCloseBtn.addEventListener('click', hideEditRoomDialog);
   var editRoomSaveBtn = $('edit-room-save');
   if (editRoomSaveBtn) editRoomSaveBtn.addEventListener('click', doSaveRoom);
+  var editRoomIdCopy = $('edit-room-id-copy');
+  if (editRoomIdCopy) editRoomIdCopy.addEventListener('click', function () {
+    var id = state.roomDetail && state.roomDetail.room_id;
+    if (!id) return;
+    if (typeof copyTextToClipboard === 'function') {
+      copyTextToClipboard(id, { okTitle: lang.copied || 'Copied' });
+    } else if (typeof fallbackCopyText === 'function') {
+      fallbackCopyText(id);
+    }
+  });
 
   // Esc closes topmost messenger overlays/menus (menus → pickers → dialogs)
   document.addEventListener('keydown', function (e) {
@@ -14327,7 +14538,7 @@ const CORE_CODE = buildCoreCode()
 const manifest: TappManifest = {
   id: 'com.myriad.aro',
   name: 'Aro',
-  version: '1.0.0',
+  version: '1.0.1',
   minSystemVersion: '0.2.1',
   description: '社交中心，统一管理消息、时间线、环网与个人资料',
   locales: {
