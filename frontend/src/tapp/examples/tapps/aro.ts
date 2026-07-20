@@ -4772,9 +4772,10 @@ async function loadUserRole() {
     var s = id != null ? String(id).trim() : '';
     if (!s) return true;
     if (s === 'guest' || s === '0' || s === '-1') return true;
-    // user_-123 / user_--1 style guest subjects
-    if (/^user_?-?\\d+$/i.test(s)) {
-      var n = parseInt(s.replace(/^user_?/i, ''), 10);
+    // user_-123 style guest subjects (negative numeric id)
+    var m = /^user_(-?\\d+)$/i.exec(s);
+    if (m) {
+      var n = parseInt(m[1], 10);
       return !Number.isFinite(n) || n <= 0;
     }
     if (/^-\\d+$/.test(s)) return true;
@@ -4788,6 +4789,8 @@ async function loadUserRole() {
     resolved = true;
   }
 
+  // 1) getRole: host may soft-default to guest when instance.userRole unset —
+  //    host now re-probes context/user, so user/admin here is authoritative.
   if (Tapp.user && typeof Tapp.user.getRole === 'function') {
     try {
       var role = await Tapp.user.getRole();
@@ -4796,12 +4799,12 @@ async function loadUserRole() {
         if (roleNorm === 'admin' || roleNorm === 'user') {
           applyMember(roleNorm === 'admin');
         }
-        // roleNorm === 'guest' (or other): soft — verify via getUser / isAdmin
+        // roleNorm === 'guest': soft — verify via getUser / isLoggedIn
       }
     } catch (e) { /* fall through */ }
   }
 
-  // Prefer getUser before isAdmin: isAdmin(false) is ambiguous (guest OR non-admin member).
+  // 2) getUser — strongest session signal (JWT cookie + grant)
   if (!resolved) {
     try {
       var user = null;
@@ -4816,21 +4819,47 @@ async function loadUserRole() {
         var isExplicitGuest = rawRole === 'guest' || isGuestUsername(username) || isGuestUserId(id);
         if (isAdminUser) {
           applyMember(true);
-        } else if (!isExplicitGuest && (rawRole === 'user' || user.authenticated === true || (!isGuestUserId(id) && username))) {
+        } else if (!isExplicitGuest && (
+          rawRole === 'user'
+          || user.authenticated === true
+          || (!isGuestUserId(id) && username)
+        )) {
           applyMember(false);
         }
-        // else remain guest
+      }
+    } catch (e) {
+      console.warn('[Aro] context.getUser failed during role resolve:', e);
+    }
+  }
+
+  // 3) isLoggedIn after host re-probe (true only when role is not guest)
+  if (!resolved && Tapp.user && typeof Tapp.user.isLoggedIn === 'function') {
+    try {
+      if (await Tapp.user.isLoggedIn()) {
+        var adminFlag = false;
+        try {
+          if (typeof Tapp.user.isAdmin === 'function') {
+            adminFlag = !!(await Tapp.user.isAdmin());
+          }
+        } catch (e2) { /* non-admin member */ }
+        applyMember(adminFlag);
       }
     } catch (e) { /* remain guest */ }
   }
 
-  // Last resort: isAdmin true only. Do NOT treat isAdmin false as member.
+  // 4) Last resort: isAdmin true only
   if (!resolved && Tapp.user && typeof Tapp.user.isAdmin === 'function') {
     try {
       if (await Tapp.user.isAdmin()) {
         applyMember(true);
       }
     } catch (e) { /* remain guest */ }
+  }
+
+  if (resolved) {
+    console.info('[Aro] role resolved', state.userRole);
+  } else {
+    console.warn('[Aro] remaining guest — messenger/rings locked');
   }
 
   applyAdminControls();
@@ -14347,6 +14376,8 @@ const manifest: TappManifest = {
     'helpers.js',
     'attachments.js',
     'chat.js',
+    'history.js',
+    'files.js',
     'members.js',
     'api.js',
     'views.js',

@@ -424,6 +424,54 @@ export function registerStorageHandlers(
 }
 
 /**
+ * When the catalog left userRole as guest (stale list / race), re-probe
+ * context/user so logged-in viewers are not permanently guest-locked in Aro.
+ */
+async function resolveLiveUserRole(
+  bridge: TappBridge,
+  tappInstance: TappInstance,
+): Promise<'guest' | 'user' | 'admin'> {
+  let role = (tappInstance.userRole || 'guest') as 'guest' | 'user' | 'admin'
+  if (role === 'user' || role === 'admin') return role
+
+  try {
+    const grant = await bridge.getRuntimeGrant()
+    const user = (await TappApiService.getContextUser(grant)) as {
+      role?: string
+      isAdmin?: boolean
+      id?: string | number
+      username?: string
+      authenticated?: boolean
+    } | null
+    if (!user || typeof user !== 'object') return role
+
+    const rawRole =
+      user.role != null ? String(user.role).trim().toLowerCase() : ''
+    if (rawRole === 'admin' || user.isAdmin === true) {
+      role = 'admin'
+    } else if (rawRole === 'user' || user.authenticated === true) {
+      role = 'user'
+    } else {
+      const id = user.id != null ? String(user.id) : ''
+      const username = user.username != null ? String(user.username).trim() : ''
+      // Positive user_* ids from /context/user mean a real session.
+      const m = /^user_(-?\d+)$/i.exec(id)
+      const n = m ? parseInt(m[1], 10) : NaN
+      if (Number.isFinite(n) && n > 0 && username) {
+        role = 'user'
+      }
+    }
+
+    if (role !== 'guest') {
+      tappInstance.userRole = role
+    }
+  } catch {
+    // Keep catalog role; Aro still has its own getUser fail-open path.
+  }
+  return role
+}
+
+/**
  * 注册用户角色处理器
  */
 export function registerUserHandlers(
@@ -431,22 +479,26 @@ export function registerUserHandlers(
   tappInstance: TappInstance,
 ): void {
   bridge.registerHandler('user.getRole', async () => {
-    return { success: true, data: tappInstance.userRole || 'guest' }
+    const role = await resolveLiveUserRole(bridge, tappInstance)
+    return { success: true, data: role }
   })
 
   bridge.registerHandler('user.isAdmin', async () => {
-    return { success: true, data: tappInstance.userRole === 'admin' }
+    const role = await resolveLiveUserRole(bridge, tappInstance)
+    return { success: true, data: role === 'admin' }
   })
 
   bridge.registerHandler('user.isGuest', async () => {
+    const role = await resolveLiveUserRole(bridge, tappInstance)
     return {
       success: true,
-      data: (tappInstance.userRole || 'guest') === 'guest',
+      data: role === 'guest',
     }
   })
 
   bridge.registerHandler('user.isLoggedIn', async () => {
-    return { success: true, data: tappInstance.userRole !== 'guest' }
+    const role = await resolveLiveUserRole(bridge, tappInstance)
+    return { success: true, data: role !== 'guest' }
   })
 
   bridge.registerHandler('user.getAllowedPermissionLevels', async () => {

@@ -107,6 +107,8 @@ pub async fn get_context_user(
         "avatar_url": avatar_url,
         "isAdmin": is_current_admin,
         "role": role,
+        // Aro / soft-guest paths treat this as a strong "not guest" signal.
+        "authenticated": user_id > 0,
         "connectedPlatforms": connected_platforms,
         "preferences": {
             "language": "zh-CN",
