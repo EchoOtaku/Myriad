@@ -11,6 +11,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { API_URL } from '../config'
@@ -71,38 +72,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     TappRuntime.reset()
   }, [])
 
+  // Serialize concurrent checkAuth calls. Wait for any in-flight check, then
+  // always run a fresh /auth/me — login after page-load check must not no-op.
+  const checkAuthInflight = useRef<Promise<void> | null>(null)
+
   const checkAuth = useCallback(async () => {
-    // 如果已经在检查中，避免重复
-    if (isLoading) return
+    while (checkAuthInflight.current) {
+      try {
+        await checkAuthInflight.current
+      } catch {
+        // previous attempt failed; still run a fresh probe
+      }
+    }
 
     setIsLoading(true)
-    try {
-      const response = await fetch(`${API_URL}/api/auth/me`, {
-        credentials: 'include',
-        signal: AbortSignal.timeout(5000),
-      })
+    const run = (async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+          credentials: 'include',
+          signal: AbortSignal.timeout(5000),
+        })
 
-      if (response.ok) {
-        const userData = await response.json()
-        setUser(userData)
-        setIsAuthenticated(true)
-        setIsAdmin(userData.is_admin || false)
-      } else {
-        // 401 是正常的未登录状态，静默处理
+        if (response.ok) {
+          const userData = await response.json()
+          setUser(userData)
+          setIsAuthenticated(true)
+          setIsAdmin(userData.is_admin || false)
+        } else {
+          // 401 是正常的未登录状态，静默处理
+          setUser(null)
+          setIsAuthenticated(false)
+          setIsAdmin(false)
+        }
+      } catch (_error) {
+        // 网络错误时静默处理
         setUser(null)
         setIsAuthenticated(false)
         setIsAdmin(false)
+      } finally {
+        setIsLoading(false)
+        setHasChecked(true)
+        if (checkAuthInflight.current === run) {
+          checkAuthInflight.current = null
+        }
       }
-    } catch (_error) {
-      // 网络错误时静默处理
-      setUser(null)
-      setIsAuthenticated(false)
-      setIsAdmin(false)
-    } finally {
-      setIsLoading(false)
-      setHasChecked(true)
-    }
-  }, [isLoading])
+    })()
+    checkAuthInflight.current = run
+    await run
+  }, [])
 
   const logout = useCallback(() => {
     // 登出不必等待：清空身份后没有新 tapp 会以已登录状态挂载，且这里的 reset
@@ -149,17 +166,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleAuthChange = (e: Event) => {
       const isAuth = (e as CustomEvent).detail?.isAuthenticated ?? false
       if (isAuth) {
-        // 先清空旧 subject 的 runtime，再拉新身份：否则 reset 可能落在
-        // 新会话的 tapp 挂载之后，把它们的 Grant destroy 掉。
-        // reset 失败（chunk 加载不到等）不能挡住 checkAuth——身份刷新是主线，
-        // 丢掉它比 tapp 状态没清干净严重得多。
-        void resetTappSubjectState()
-          .catch((error) => {
+        // 1) destroyAll old grants (irreversible)
+        // 2) refresh session identity
+        // 3) tell open sandboxes to remount AFTER grants are cleared and
+        //    user is known — otherwise Aro keeps a dead grant and stays guest.
+        void (async () => {
+          try {
+            await resetTappSubjectState()
+          } catch (error) {
             console.warn('[AuthContext] tapp runtime reset failed:', error)
-          })
-          .finally(checkAuth)
+          }
+          try {
+            await checkAuth()
+          } finally {
+            window.dispatchEvent(
+              new CustomEvent('tapp-subject-ready', {
+                detail: { isAuthenticated: true },
+              }),
+            )
+          }
+        })()
       } else {
         logout()
+        window.dispatchEvent(
+          new CustomEvent('tapp-subject-ready', {
+            detail: { isAuthenticated: false },
+          }),
+        )
       }
     }
     window.addEventListener('auth-state-changed', handleAuthChange)

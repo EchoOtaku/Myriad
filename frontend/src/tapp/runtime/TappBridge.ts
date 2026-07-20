@@ -9,6 +9,7 @@
  * - 会话内请求 ID 防重放
  */
 
+import type { RuntimeGrantKind } from '../services/TappApiService'
 import type {
   TappAPIRequest,
   TappAPIResponse,
@@ -16,9 +17,9 @@ import type {
   TappMessage,
   TappPermission,
 } from '../types'
-import type { TappRuntimeGrant } from './TappRuntimeGrant'
 import { getQuotaManager } from '../services/QuotaManager'
 import { PERMISSION_MAP } from './permissionConfig'
+import { TappRuntimeGrant } from './TappRuntimeGrant'
 
 type MessageHandler = (message: TappMessage) => Promise<TappAPIResponse>
 
@@ -81,6 +82,16 @@ export class TappBridge {
   /** Host-only backend identity for this concrete Page/Widget/headless runtime. */
   private runtimeGrant: TappRuntimeGrant | null = null
 
+  /**
+   * Params to mint a replacement grant after subject reset (`destroyAll`).
+   * Destroyed grants cannot issue tokens; live sandboxes re-mint with these.
+   */
+  private grantSeed: {
+    tappId: string
+    instanceId: string
+    kind: RuntimeGrantKind
+  } | null = null
+
   constructor() {
     // 绑定消息处理器
     this.handleMessage = this.handleMessage.bind(this)
@@ -102,6 +113,13 @@ export class TappBridge {
     this.iframe = iframe
     this.tappInstance = tappInstance
     this.runtimeGrant = runtimeGrant ?? null
+    this.grantSeed = runtimeGrant
+      ? {
+          tappId: runtimeGrant.getTappId(),
+          instanceId: runtimeGrant.getInstanceId(),
+          kind: runtimeGrant.getKind(),
+        }
+      : null
 
     // 设置会话 token（如果未提供则生成一个）
     if (sessionToken) {
@@ -126,11 +144,28 @@ export class TappBridge {
     return this.sessionToken
   }
 
-  async getRuntimeGrant(): Promise<string> {
-    if (!this.runtimeGrant) {
+  /**
+   * After AuthContext `destroyAll()` (login/logout), previous grants are dead.
+   * Re-mint from seed so open Aro (and others) can call context.getUser /
+   * federation again without requiring a full browser reload.
+   */
+  private ensureLiveRuntimeGrant(): TappRuntimeGrant {
+    if (this.runtimeGrant && !this.runtimeGrant.isDestroyed()) {
+      return this.runtimeGrant
+    }
+    if (!this.grantSeed) {
       throw new Error('Tapp runtime grant is not initialized')
     }
-    return this.runtimeGrant.getToken()
+    this.runtimeGrant = new TappRuntimeGrant(
+      this.grantSeed.tappId,
+      this.grantSeed.instanceId,
+      this.grantSeed.kind,
+    )
+    return this.runtimeGrant
+  }
+
+  async getRuntimeGrant(): Promise<string> {
+    return this.ensureLiveRuntimeGrant().getToken()
   }
 
   /**
@@ -139,22 +174,18 @@ export class TappBridge {
    * （请求按宿主自身身份执行，与旧行为一致）。
    */
   async hostAttributionHeaders(): Promise<Record<string, string> | undefined> {
-    if (!this.runtimeGrant) return undefined
-    return { 'X-Tapp-Runtime-Grant': await this.runtimeGrant.getToken() }
+    if (!this.runtimeGrant && !this.grantSeed) return undefined
+    return {
+      'X-Tapp-Runtime-Grant': await this.getRuntimeGrant(),
+    }
   }
 
   async getRuntimeOwnerId(): Promise<number> {
-    if (!this.runtimeGrant) {
-      throw new Error('Tapp runtime grant is not initialized')
-    }
-    return this.runtimeGrant.getOwnerId()
+    return this.ensureLiveRuntimeGrant().getOwnerId()
   }
 
   async getRuntimeId(): Promise<string> {
-    if (!this.runtimeGrant) {
-      throw new Error('Tapp runtime grant is not initialized')
-    }
-    return this.runtimeGrant.getRuntimeId()
+    return this.ensureLiveRuntimeGrant().getRuntimeId()
   }
 
   /**
@@ -171,6 +202,7 @@ export class TappBridge {
     this.tappInstance = null
     this.runtimeGrant?.destroy()
     this.runtimeGrant = null
+    this.grantSeed = null
   }
 
   /**
@@ -620,7 +652,7 @@ export class TappBridge {
     }
 
     if (SERVER_AUTHORITATIVE_HOST_PERMISSIONS.has(requiredPermission)) {
-      if (!this.runtimeGrant) {
+      if (!this.runtimeGrant && !this.grantSeed) {
         return {
           allowed: false,
           reason: 'Runtime grant is not initialized',
@@ -628,7 +660,8 @@ export class TappBridge {
         }
       }
       try {
-        await this.runtimeGrant.authorize(requiredPermission)
+        // Re-mint if subject reset destroyed the previous grant.
+        await this.ensureLiveRuntimeGrant().authorize(requiredPermission)
       } catch {
         return {
           allowed: false,

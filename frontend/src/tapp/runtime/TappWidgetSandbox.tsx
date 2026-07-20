@@ -268,6 +268,15 @@ export const TappWidgetSandbox = memo(
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const bridgeRef = useRef<TappBridge | null>(null)
     const [isReady, setIsReady] = useState(false)
+    /** Bumps when host identity settles after login/logout so iframe remounts. */
+    const [subjectEpoch, setSubjectEpoch] = useState(0)
+
+    useEffect(() => {
+      const onSubjectReady = () => setSubjectEpoch((n) => n + 1)
+      window.addEventListener('tapp-subject-ready', onSubjectReady)
+      return () =>
+        window.removeEventListener('tapp-subject-ready', onSubjectReady)
+    }, [])
 
     // 🎯 性能优化：使用 ref 存储对象引用，避免依赖变化触发 iframe 重建
     // 这些对象的内容变化通过 ID 来追踪，而不是对象引用
@@ -696,6 +705,7 @@ export const TappWidgetSandbox = memo(
       codeFingerprint,
       handleReady,
       stableWidgetProps,
+      subjectEpoch,
     ])
 
     // 语言变化监听

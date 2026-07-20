@@ -153,10 +153,17 @@ export function registerFederationHandlers(
   // ==================== 身份 ====================
 
   bridge.registerHandler('federation.getIdentity', async () => {
+    // Prefer grant-attributed call; session-only works for this endpoint and
+    // unblocks Aro after runtime-grant destroy/mint failures.
     try {
-      const runtimeGrant = await bridge.getRuntimeGrant()
-      const data = await federationApi.getIdentity(runtimeGrant)
-      return { success: true, data }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.getIdentity(runtimeGrant)
+        return { success: true, data }
+      } catch {
+        const data = await federationApi.getIdentity()
+        return { success: true, data }
+      }
     } catch (error) {
       return {
         success: false,

@@ -94,6 +94,22 @@ export class TappRuntimeGrant {
     await authorizeTappRuntimePermission(this.tappId, permission, token)
   }
 
+  isDestroyed(): boolean {
+    return this.destroyed
+  }
+
+  getTappId(): string {
+    return this.tappId
+  }
+
+  getInstanceId(): string {
+    return this.instanceId
+  }
+
+  getKind(): RuntimeGrantKind {
+    return this.kind
+  }
+
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true

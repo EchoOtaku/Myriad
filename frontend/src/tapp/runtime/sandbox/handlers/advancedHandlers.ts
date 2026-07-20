@@ -1090,6 +1090,9 @@ export function registerContextHandlers(
   })
 
   bridge.registerHandler('context.getUser', async () => {
+    // Prefer grant-scoped context (includes connectedPlatforms, etc.).
+    // If grant is dead/unissuable after auth reset, fall back to session cookie
+    // so Aro can still resolve identity and unlock messenger.
     try {
       return {
         success: true,
@@ -1097,10 +1100,39 @@ export function registerContextHandlers(
           await bridge.getRuntimeGrant(),
         ),
       }
-    } catch (error) {
+    } catch (grantError) {
+      try {
+        const { fetchSessionUserSnapshot } = await import(
+          '../../sessionUserFallback',
+        )
+        const snap = await fetchSessionUserSnapshot()
+        if (snap) {
+          return {
+            success: true,
+            data: {
+              id: snap.id,
+              username: snap.username,
+              display_name: snap.display_name,
+              avatar: snap.avatar,
+              avatar_url: snap.avatar_url,
+              isAdmin: snap.isAdmin,
+              role: snap.role,
+              authenticated: snap.authenticated,
+              connectedPlatforms: [],
+              preferences: {
+                language: 'zh-CN',
+                timezone: 'Asia/Shanghai',
+              },
+            },
+          }
+        }
+      } catch {
+        // fall through to grant error
+      }
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error:
+          grantError instanceof Error ? grantError.message : 'Failed',
       }
     }
   })

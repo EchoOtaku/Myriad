@@ -431,8 +431,17 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const bridgeRef = useRef<TappBridge | null>(null)
   const [isReady, setIsReady] = useState(false)
+  /** Bumps when host identity settles after login/logout so iframe remounts. */
+  const [subjectEpoch, setSubjectEpoch] = useState(0)
   const previewStorageRef = useRef(new Map<string, unknown>())
   const previewSettingsRef = useRef(new Map<string, unknown>())
+
+  useEffect(() => {
+    if (previewMode) return
+    const onSubjectReady = () => setSubjectEpoch((n) => n + 1)
+    window.addEventListener('tapp-subject-ready', onSubjectReady)
+    return () => window.removeEventListener('tapp-subject-ready', onSubjectReady)
+  }, [previewMode])
 
   const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
   const { locale } = useI18n()
@@ -891,6 +900,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     handleReady,
     headless,
     previewMode,
+    subjectEpoch,
   ])
 
   return (

@@ -426,6 +426,10 @@ export function registerStorageHandlers(
 /**
  * When the catalog left userRole as guest (stale list / race), re-probe
  * context/user so logged-in viewers are not permanently guest-locked in Aro.
+ *
+ * Order:
+ *  1) Runtime-grant context user (normal path)
+ *  2) Session cookie /api/auth/me (works after destroyAll / grant mint failure)
  */
 async function resolveLiveUserRole(
   bridge: TappBridge,
@@ -433,6 +437,35 @@ async function resolveLiveUserRole(
 ): Promise<'guest' | 'user' | 'admin'> {
   let role = (tappInstance.userRole || 'guest') as 'guest' | 'user' | 'admin'
   if (role === 'user' || role === 'admin') return role
+
+  const applyUser = (user: {
+    role?: string
+    isAdmin?: boolean
+    id?: string | number
+    username?: string
+    authenticated?: boolean
+  } | null): 'guest' | 'user' | 'admin' => {
+    if (!user || typeof user !== 'object') return role
+    const rawRole =
+      user.role != null ? String(user.role).trim().toLowerCase() : ''
+    if (rawRole === 'admin' || user.isAdmin === true) {
+      role = 'admin'
+    } else if (rawRole === 'user' || user.authenticated === true) {
+      role = 'user'
+    } else {
+      const id = user.id != null ? String(user.id) : ''
+      const username = user.username != null ? String(user.username).trim() : ''
+      const m = /^user_(-?\d+)$/i.exec(id)
+      const n = m ? Number.parseInt(m[1]!, 10) : Number.NaN
+      if (Number.isFinite(n) && n > 0 && username) {
+        role = 'user'
+      }
+    }
+    if (role !== 'guest') {
+      tappInstance.userRole = role
+    }
+    return role
+  }
 
   try {
     const grant = await bridge.getRuntimeGrant()
@@ -443,39 +476,40 @@ async function resolveLiveUserRole(
       username?: string
       authenticated?: boolean
     } | null
-    if (!user || typeof user !== 'object') return role
-
-    const rawRole =
-      user.role != null ? String(user.role).trim().toLowerCase() : ''
-    if (rawRole === 'admin' || user.isAdmin === true) {
-      role = 'admin'
-    } else if (rawRole === 'user' || user.authenticated === true) {
-      role = 'user'
-    } else {
-      const id = user.id != null ? String(user.id) : ''
-      const username = user.username != null ? String(user.username).trim() : ''
-      // Positive user_* ids from /context/user mean a real session.
-      const m = /^user_(-?\d+)$/i.exec(id)
-      const n = m ? parseInt(m[1], 10) : NaN
-      if (Number.isFinite(n) && n > 0 && username) {
-        role = 'user'
-      }
-    }
-
-    if (role !== 'guest') {
-      tappInstance.userRole = role
-    }
+    applyUser(user)
+    if (role !== 'guest') return role
   } catch (error) {
-    // Keep catalog role; Aro still has its own getUser fail-open path.
-    // A dead Grant silently degrades every tapp to guest, so make that
-    // specific cause visible instead of it looking like a logged-out user.
-    if (error instanceof Error && /runtime has already stopped/.test(error.message)) {
+    if (
+      error instanceof Error &&
+      /runtime has already stopped|not initialized|grant/i.test(error.message)
+    ) {
       console.warn(
-        '[Tapp] runtime grant was destroyed while the tapp is live — falling back to guest.',
+        '[Tapp] runtime grant unavailable — probing session cookie for role',
         tappInstance.id,
+        error.message,
       )
     }
   }
+
+  // Session fallback: host cookie, no grant required
+  try {
+    const {
+      fetchSessionUserSnapshot,
+    } = await import('../../sessionUserFallback')
+    const snap = await fetchSessionUserSnapshot()
+    if (snap) {
+      applyUser({
+        role: snap.role,
+        isAdmin: snap.isAdmin,
+        id: snap.id,
+        username: snap.username,
+        authenticated: snap.authenticated,
+      })
+    }
+  } catch {
+    // remain catalog role
+  }
+
   return role
 }
 
