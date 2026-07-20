@@ -1897,19 +1897,19 @@ pub async fn initiate_e2e_key_exchange(
 
     let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);
+    let kx_object = crate::federation::e2e::KeyExchangePayload::for_channel(
+        channel_id,
+        &public_key,
+        Some(now_iso8601()),
+    )
+    .to_json();
     let kx_activity = json!({
         "@context": build_context(),
         "type": "myriad:KeyExchange",
         "id": &activity_id,
         "actor": &local_actor,
         "to": [&remote_actor_url],
-        "object": {
-            "type": "myriad:KeyExchange",
-            "channel": channel_id,
-            "publicKey": &public_key,
-            "algorithm": crate::federation::e2e::E2E_ALGORITHM,
-            "timestamp": now_iso8601()
-        }
+        "object": kx_object
     });
 
     // 本地历史：仅在新生成密钥时记一条（复用密钥时重复写入会刷屏且误导）

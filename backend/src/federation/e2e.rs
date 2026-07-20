@@ -41,16 +41,51 @@ pub struct EncryptedEnvelope {
     pub ciphertext: String,
 }
 
-/// 密钥交换请求（通过 ChannelMessage 发送）
+/// Activity `object` for `myriad:KeyExchange` (Channel or Room fan-out).
+///
+/// Wire shape matches channel/room handlers: camelCase `publicKey` + algorithm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KeyExchangePayload {
-    /// 消息类型标识
     #[serde(rename = "type")]
-    pub payload_type: String, // "myriad:KeyExchange"
-    /// 本方 X25519 公钥 (Base64)
+    pub payload_type: String,
+    /// Set exactly one of channel / room
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room: Option<String>,
     pub public_key: String,
-    /// 签名（使用 Actor RSA 密钥签名公钥）
-    pub signature: Option<String>,
+    pub algorithm: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+}
+
+impl KeyExchangePayload {
+    pub fn for_channel(channel_id: &str, public_key: &str, timestamp: Option<String>) -> Self {
+        Self {
+            payload_type: "myriad:KeyExchange".to_string(),
+            channel: Some(channel_id.to_string()),
+            room: None,
+            public_key: public_key.to_string(),
+            algorithm: E2E_ALGORITHM.to_string(),
+            timestamp,
+        }
+    }
+
+    pub fn for_room(room_id: &str, public_key: &str, timestamp: Option<String>) -> Self {
+        Self {
+            payload_type: "myriad:KeyExchange".to_string(),
+            channel: None,
+            room: Some(room_id.to_string()),
+            public_key: public_key.to_string(),
+            algorithm: E2E_ALGORITHM.to_string(),
+            timestamp,
+        }
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or_else(|_| serde_json::json!({}))
+    }
 }
 
 /// 加密会话状态
@@ -218,15 +253,6 @@ pub fn create_session(target_id: &str) -> EncryptionSession {
         local_keypair: kp,
         remote_public_key: None,
         established: false,
-    }
-}
-
-/// 生成密钥交换载荷（用于通过 ChannelMessage 发送）
-pub fn build_key_exchange_payload(session: &EncryptionSession) -> KeyExchangePayload {
-    KeyExchangePayload {
-        payload_type: "myriad:KeyExchange".to_string(),
-        public_key: session.local_keypair.public_key.clone(),
-        signature: None, // RSA 签名在调用层添加
     }
 }
 
@@ -732,11 +758,36 @@ mod tests {
     }
 
     #[test]
-    fn build_key_exchange_payload_type() {
+    fn key_exchange_payload_channel_wire_shape() {
         let session = create_session("ch-kx");
-        let payload = build_key_exchange_payload(&session);
+        let payload = KeyExchangePayload::for_channel(
+            &session.target_id,
+            &session.local_keypair.public_key,
+            Some("2026-01-01T00:00:00Z".into()),
+        );
         assert_eq!(payload.payload_type, "myriad:KeyExchange");
+        assert_eq!(payload.channel.as_deref(), Some("ch-kx"));
+        assert!(payload.room.is_none());
         assert!(!payload.public_key.is_empty());
+        assert_eq!(payload.algorithm, E2E_ALGORITHM);
+        let v = payload.to_json();
+        assert_eq!(v["publicKey"], payload.public_key);
+        assert_eq!(v["channel"], "ch-kx");
+        assert_eq!(v["timestamp"], "2026-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn key_exchange_payload_room_wire_shape() {
+        let session = create_session("rm-kx");
+        let payload = KeyExchangePayload::for_room(
+            &session.target_id,
+            &session.local_keypair.public_key,
+            None,
+        );
+        assert_eq!(payload.room.as_deref(), Some("rm-kx"));
+        assert!(payload.channel.is_none());
+        assert_eq!(payload.to_json()["room"], "rm-kx");
+        assert!(payload.to_json().get("timestamp").is_none());
     }
 
     #[test]

@@ -4010,19 +4010,19 @@ async fn refanout_local_e2e_keys_to_member(
         };
 
         let activity_id = generate_activity_id(&base_url);
+        let kx_object = crate::federation::e2e::KeyExchangePayload::for_room(
+            room_id,
+            &public_key,
+            Some(now_iso8601()),
+        )
+        .to_json();
         let kx_activity = json!({
             "@context": build_context(),
             "type": "myriad:KeyExchange",
             "id": &activity_id,
             "actor": &local_actor,
             "to": [target_actor],
-            "object": {
-                "type": "myriad:KeyExchange",
-                "room": room_id,
-                "publicKey": &public_key,
-                "algorithm": crate::federation::e2e::E2E_ALGORITHM,
-                "timestamp": now_iso8601()
-            }
+            "object": kx_object
         });
 
         let act_row = db
@@ -4636,18 +4636,18 @@ pub async fn initiate_e2e_key_exchange(
 
     // 3) Fan-out KeyExchange activity
     let activity_id = generate_activity_id(&base_url);
+    let kx_object = crate::federation::e2e::KeyExchangePayload::for_room(
+        room_id,
+        &public_key,
+        Some(now_iso8601()),
+    )
+    .to_json();
     let kx_activity = json!({
         "@context": build_context(),
         "type": "myriad:KeyExchange",
         "id": &activity_id,
         "actor": &local_actor,
-        "object": {
-            "type": "myriad:KeyExchange",
-            "room": room_id,
-            "publicKey": &public_key,
-            "algorithm": crate::federation::e2e::E2E_ALGORITHM,
-            "timestamp": now_iso8601()
-        }
+        "object": kx_object
     });
 
     let _ = fanout_to_remote_members(
