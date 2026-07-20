@@ -1317,6 +1317,8 @@ pub async fn process_stream(
     }
 
     // 后端 run 独立于本次 HTTP 连接；前端只订阅事件。
+    // 刻意不在 SSE 断连时取消任务：刷新 / reattach 依赖 run 继续存活；
+    // 用户中断走 cancelTask API + is_cancelled 协作取消。
     let run = create_run(user_id, has_session.then_some(session_id.clone())).await;
     let run_id_for_meta = run.run_id().to_string();
     // 注入 run_id，供确认手持（confirmation）复用同一 run hub / 通知身份

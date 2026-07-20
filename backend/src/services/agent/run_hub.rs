@@ -18,7 +18,8 @@ use crate::api::tapp_runtime::shared_registry;
 use super::notifications::get_notification_manager;
 use super::AgentProgressEvent;
 
-const EVENT_HISTORY_LIMIT: usize = 256;
+/// 单 run 内存事件环：加长以减少超长任务 re-subscribe 丢中间步骤
+const EVENT_HISTORY_LIMIT: usize = 512;
 const RUN_REGISTRY_NAMESPACE: &str = "agent_run";
 const RUN_EVENT_REGISTRY_NAMESPACE: &str = "agent_run_event";
 const RUN_RETENTION_HOURS: i64 = 24;

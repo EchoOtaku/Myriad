@@ -1,12 +1,9 @@
 //! MCP Manager
 //!
-//! 拥有所有 MCP 服务器实例，维护 server_id.tool_name → server 的路由索引，
+//! 拥有所有 MCP 服务器实例，维护 `server_id.tool_name → SharedMcpServer` 的路由索引，
 //! 提供统一的 call_tool 入口。
 //!
-//! 支持：
-//! - 配置文件 mtime 热重载
-//! - 未就绪服务器周期重试
-//! - 进程退出时 graceful shutdown
+//! 索引存 **服务器句柄** 而非 Vec 下标，热重载与 call_tool 并发时不会错路由。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -24,8 +21,8 @@ pub struct McpManager {
     config_path: PathBuf,
     /// 服务器列表（热重载时整表替换）
     servers: RwLock<Vec<SharedMcpServer>>,
-    /// server_id.tool_name → server index
-    tool_index: Mutex<HashMap<String, usize>>,
+    /// server_id.tool_name → 服务器句柄（非下标，抗 reload 竞态）
+    tool_index: Mutex<HashMap<String, SharedMcpServer>>,
     /// 上次加载配置时的 mtime
     loaded_mtime: Mutex<Option<SystemTime>>,
     /// 串行化 reload，避免并发双启子进程
@@ -60,11 +57,9 @@ impl McpManager {
             reload_lock: Mutex::new(()),
         });
 
-        // 后台启动所有服务器（不阻塞 main）
         let mgr = manager.clone();
         tokio::spawn(async move {
             mgr.start_all().await;
-            // 维护循环：配置热重载 + 未就绪重试
             mgr.run_maintenance_loop().await;
         });
 
@@ -82,16 +77,15 @@ impl McpManager {
         }
     }
 
-    /// 启动当前列表中的所有服务器并建立工具索引
     async fn start_all(&self) {
         let servers = self.servers.read().await.clone();
-        for (idx, server) in servers.iter().enumerate() {
+        for server in servers.iter() {
             let mut srv = server.lock().await;
             let server_id = srv.config.id.clone();
 
             match srv.start().await {
                 Ok(()) => {
-                    self.reindex_server(idx, &server_id, srv.tools()).await;
+                    self.reindex_server(server, &server_id, srv.tools()).await;
                     if let Some(manager) =
                         crate::services::agent::notifications::get_notification_manager()
                     {
@@ -131,11 +125,18 @@ impl McpManager {
         }
     }
 
-    async fn reindex_server(&self, idx: usize, server_id: &str, tools: &[McpToolDef]) {
+    async fn reindex_server(
+        &self,
+        server: &SharedMcpServer,
+        server_id: &str,
+        tools: &[McpToolDef],
+    ) {
         let mut index = self.tool_index.lock().await;
-        index.retain(|_, &mut i| i != idx);
+        // 移除该 server_id 下旧工具名（用前缀匹配）
+        let prefix = format!("{}.", server_id);
+        index.retain(|k, _| !k.starts_with(&prefix));
         for tool in tools {
-            index.insert(format!("{}.{}", server_id, tool.name), idx);
+            index.insert(format!("{}.{}", server_id, tool.name), server.clone());
         }
     }
 
@@ -172,7 +173,6 @@ impl McpManager {
             .map(|cfg| Arc::new(Mutex::new(McpServer::new(cfg))))
             .collect();
 
-        // 取出旧列表，换上新列表
         let old_servers = {
             let mut servers = self.servers.write().await;
             std::mem::replace(&mut *servers, new_servers)
@@ -183,13 +183,11 @@ impl McpManager {
         }
         *self.loaded_mtime.lock().await = file_mtime(&self.config_path).await;
 
-        // 关闭旧子进程（在新列表之外，不阻塞新启动）
         for server in old_servers {
             let mut srv = server.lock().await;
             srv.shutdown().await;
         }
 
-        // 启动新配置
         self.start_all().await;
         Ok(())
     }
@@ -197,7 +195,7 @@ impl McpManager {
     /// 对未就绪 / 不健康且允许 auto_restart 的服务器做一次恢复尝试
     pub async fn retry_unhealthy(&self) {
         let servers = self.servers.read().await.clone();
-        for (idx, server) in servers.iter().enumerate() {
+        for server in servers.iter() {
             let mut srv = server.lock().await;
             if srv.is_healthy() {
                 continue;
@@ -209,7 +207,7 @@ impl McpManager {
             tracing::info!(server = %server_id, "[MCP] Maintenance: retrying unhealthy server");
             match srv.force_restart().await {
                 Ok(()) => {
-                    self.reindex_server(idx, &server_id, srv.tools()).await;
+                    self.reindex_server(server, &server_id, srv.tools()).await;
                     if let Some(manager) =
                         crate::services::agent::notifications::get_notification_manager()
                     {
@@ -237,24 +235,16 @@ impl McpManager {
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         let qualified_name = format!("{}.{}", server_id, tool_name);
-        let server_idx = {
-            let index = self.tool_index.lock().await;
-            *index
-                .get(&qualified_name)
-                .ok_or_else(|| format!("MCP tool '{}' not found", qualified_name))?
-        };
-
         let server = {
-            let servers = self.servers.read().await;
-            servers
-                .get(server_idx)
+            let index = self.tool_index.lock().await;
+            index
+                .get(&qualified_name)
                 .cloned()
-                .ok_or_else(|| format!("MCP server index {} out of range", server_idx))?
+                .ok_or_else(|| format!("MCP tool '{}' not found", qualified_name))?
         };
 
         let mut srv = server.lock().await;
 
-        // 健康检查 + 自动重启
         if !srv.is_healthy() && srv.config.auto_restart {
             tracing::warn!(tool = %qualified_name, "MCP server unhealthy, attempting restart");
             let restarted_server_id = srv.config.id.clone();
@@ -275,13 +265,16 @@ impl McpManager {
                     .await;
             }
 
-            self.reindex_server(server_idx, &restarted_server_id, srv.tools())
+            // 重新索引同一句柄（工具列表可能变化）
+            let tools = srv.tools().to_vec();
+            drop(srv);
+            self.reindex_server(&server, &restarted_server_id, &tools)
                 .await;
+            srv = server.lock().await;
         }
 
         let result_text = srv.call_tool(tool_name, arguments).await?;
-
-        Ok(serde_json::Value::String(result_text))
+        Ok(parse_mcp_tool_result(&result_text))
     }
 
     /// 获取所有已注册的 MCP 工具定义（用于 Planner 的能力索引）
@@ -309,6 +302,37 @@ impl McpManager {
     }
 }
 
+/// 工具结果：若为 JSON 对象/数组则解析为结构化 Value，否则保留字符串。
+fn parse_mcp_tool_result(text: &str) -> serde_json::Value {
+    let trimmed = text.trim();
+    if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+    {
+        if let Ok(value) = serde_json::from_str(trimmed) {
+            return value;
+        }
+    }
+    serde_json::Value::String(text.to_string())
+}
+
 async fn file_mtime(path: &Path) -> Option<SystemTime> {
     tokio::fs::metadata(path).await.ok()?.modified().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_mcp_tool_result_object() {
+        let v = parse_mcp_tool_result(r#"{"ok":true,"n":1}"#);
+        assert_eq!(v, json!({"ok": true, "n": 1}));
+    }
+
+    #[test]
+    fn parse_mcp_tool_result_plain_string() {
+        let v = parse_mcp_tool_result("hello");
+        assert_eq!(v, json!("hello"));
+    }
 }

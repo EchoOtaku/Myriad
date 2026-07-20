@@ -602,24 +602,68 @@ WHERE id = $1 AND user_id = $2
         return false;
     }
 
-    // 设置取消标记
+    mark_cancelled_in_memory(task_id, &cancellation_error).await;
+
+    tracing::info!(task_id = %task_id, user_id = user_id, "[TaskStore] Task cancelled by user");
+    true
+}
+
+/// 系统路径请求协作式取消（Heartbeat 超时等），不校验 user_id。
+///
+/// 写入取消标记 + DB 状态，执行器在步骤边界通过 [`is_cancelled`] 退出。
+pub async fn request_cancel(task_id: &str, reason: &str) -> bool {
     {
         let mut tokens = CANCELLATION_TOKENS.write().await;
         tokens.insert(task_id.to_string());
     }
 
-    // 更新内存中的任务状态
-    {
-        let mut store = TASK_STORE.write().await;
-        if let Some(task) = store.get_mut(task_id) {
-            task.status = TaskStatus::Cancelled;
-            task.error = Some(cancellation_error);
-            task.completed_at = Some(Utc::now());
-        }
-    }
+    let Some(db) = DB_FOR_TASKS.read().await.clone() else {
+        // 无 DB 时仍保留内存标记，执行器可协作退出
+        mark_cancelled_in_memory(task_id, reason).await;
+        return true;
+    };
 
-    tracing::info!(task_id = %task_id, user_id = user_id, "[TaskStore] Task cancelled by user");
+    let cancelled = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE agent_tasks
+SET status = 'cancelled',
+    error = $2,
+    completed_at = COALESCE(completed_at, NOW()),
+    updated_at = NOW()
+WHERE id = $1
+  AND status IN ('pending', 'running', 'waiting_for_input', 'paused')
+"#,
+            vec![task_id.to_string().into(), reason.to_string().into()],
+        ))
+        .await
+        .is_ok_and(|result| result.rows_affected() == 1);
+
+    mark_cancelled_in_memory(task_id, reason).await;
+    if cancelled {
+        tracing::info!(task_id = %task_id, reason = %reason, "[TaskStore] Task cancel requested (system)");
+    } else {
+        tracing::debug!(
+            task_id = %task_id,
+            reason = %reason,
+            "[TaskStore] request_cancel: no active row (already terminal or missing)"
+        );
+    }
     true
+}
+
+async fn mark_cancelled_in_memory(task_id: &str, reason: &str) {
+    {
+        let mut tokens = CANCELLATION_TOKENS.write().await;
+        tokens.insert(task_id.to_string());
+    }
+    let mut store = TASK_STORE.write().await;
+    if let Some(task) = store.get_mut(task_id) {
+        task.status = TaskStatus::Cancelled;
+        task.error = Some(reason.to_string());
+        task.completed_at = Some(Utc::now());
+    }
 }
 
 /// 获取用户的任务列表（内存 + 数据库合并）。

@@ -349,7 +349,9 @@ impl HeartbeatManager {
 
     /// 多副本 CAS 认领：同一 (task_id, minute_bucket) 仅一个副本执行。
     ///
-    /// - 新认领 / 卡住超过 `CLAIM_STALE_SECS` 的 running 可重认领
+    /// - 新认领
+    /// - `failed` 可立即重认领（超时/失败后允许同桶恢复，由调度侧 last_reserved 防风暴）
+    /// - 卡住超过 `CLAIM_STALE_SECS` 的 running 可重认领
     /// - 已 `done` 的桶不再执行
     /// - DB 不可用时返回 `true`（单机降级，依赖进程内 last_reserved）
     pub async fn try_claim_execution(
@@ -365,8 +367,11 @@ impl HeartbeatManager {
             SET status = 'running',
                 claimed_at = NOW(),
                 completed_at = NULL
-            WHERE heartbeat_claims.status = 'running'
-              AND heartbeat_claims.claimed_at < NOW() - INTERVAL '{stale} seconds'
+            WHERE heartbeat_claims.status = 'failed'
+               OR (
+                    heartbeat_claims.status = 'running'
+                    AND heartbeat_claims.claimed_at < NOW() - INTERVAL '{stale} seconds'
+               )
             RETURNING task_id
             "#,
             stale = CLAIM_STALE_SECS
@@ -399,17 +404,26 @@ impl HeartbeatManager {
         }
     }
 
-    /// 将认领标记为完成（成功或失败都算 done，防止同分钟重复）。
-    pub async fn complete_claim(db: &DatabaseConnection, task_id: &str, minute_bucket: i64) {
+    /// 将认领标记为终态。
+    ///
+    /// - `done`：成功完成，同分钟桶不可再认领  
+    /// - `failed`：超时/失败，允许后续重认领（见 try_claim）
+    pub async fn complete_claim(
+        db: &DatabaseConnection,
+        task_id: &str,
+        minute_bucket: i64,
+        status: &str,
+    ) {
+        let status = if status == "failed" { "failed" } else { "done" };
         let result = db
             .execute(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 UPDATE heartbeat_claims
-                SET status = 'done', completed_at = NOW()
+                SET status = $3, completed_at = NOW()
                 WHERE task_id = $1 AND minute_bucket = $2
                 "#,
-                [task_id.into(), minute_bucket.into()],
+                [task_id.into(), minute_bucket.into(), status.into()],
             ))
             .await;
         if let Err(e) = result {

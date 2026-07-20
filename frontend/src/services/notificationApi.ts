@@ -66,6 +66,14 @@ export type NotificationStreamEvent =
 
 const BASE = '/agent/notifications'
 
+export interface NotificationSubscribeOptions {
+  /**
+   * EventSource 断线后浏览器自动重连成功时回调（首次 open 不触发）。
+   * 用于 list() 补拉断线窗口内漏掉的通知。
+   */
+  onReconnect?: () => void
+}
+
 export const notificationApi = {
   async list(limit = 50): Promise<NotificationListResponse> {
     return apiService.get<NotificationListResponse>(`${BASE}?limit=${limit}`)
@@ -90,11 +98,31 @@ export const notificationApi = {
   /**
    * 订阅实时通知流。返回关闭函数。
    * EventSource 断线自动重连；认证走 cookie（withCredentials）。
+   * 重连成功后触发 onReconnect（若提供），便于补拉历史。
    */
-  subscribe(onEvent: (event: NotificationStreamEvent) => void): () => void {
+  subscribe(
+    onEvent: (event: NotificationStreamEvent) => void,
+    options?: NotificationSubscribeOptions,
+  ): () => void {
     const source = new EventSource(`${API_URL}/api${BASE}/stream`, {
       withCredentials: true,
     })
+
+    let hasOpenedOnce = false
+    let wasError = false
+
+    source.onopen = () => {
+      if (hasOpenedOnce && wasError) {
+        options?.onReconnect?.()
+      }
+      hasOpenedOnce = true
+      wasError = false
+    }
+
+    source.onerror = () => {
+      // 浏览器会自动重连；标记后 onopen 触发 onReconnect
+      wasError = true
+    }
 
     source.onmessage = (msg) => {
       if (!msg.data) return

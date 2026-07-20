@@ -28,6 +28,7 @@ pub mod utils;
 pub use task_store::{
     cancel_task_for_user, claim_task_for_resume, clear_cancellation, enqueue_steering,
     get_task_for_user, get_user_tasks, init_task_store_db, is_cancelled, maybe_cleanup_tasks,
+    request_cancel,
     persist_task_async, refresh_task_for_user, take_steering, TASK_STORE,
 };
 pub use utils::{extract_image_url, summarize_output, truncate_str};

@@ -98,6 +98,12 @@ export function useNotificationCenter({
         // init / notification_read / notifications_read_all：
         // 已读概念已移除，忽略（后端事件保留以兼容其他客户端）
       },
+      {
+        // EventSource 闪断重连后补拉，覆盖 resync 之外的丢包窗口
+        onReconnect: () => {
+          void loadHistoryRef.current()
+        },
+      },
     )
     return close
   }, [enabled, userId])

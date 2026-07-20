@@ -405,11 +405,37 @@ async fn run_server() -> anyhow::Result<()> {
                                     let timeout = std::time::Duration::from_secs(
                                         services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS,
                                     );
-                                    let outcome = tokio::time::timeout(timeout, agent.process(request)).await;
+
+                                    // 捕获 TaskCreated 的 executor task_id，超时后协作取消
+                                    let (progress_tx, mut progress_rx) =
+                                        tokio::sync::mpsc::channel::<
+                                            services::agent::types::AgentProgressEvent,
+                                        >(64);
+                                    let captured_exec_task =
+                                        std::sync::Arc::new(tokio::sync::Mutex::new(None::<String>));
+                                    let captured_for_fwd = captured_exec_task.clone();
+                                    tokio::spawn(async move {
+                                        while let Some(event) = progress_rx.recv().await {
+                                            if let services::agent::types::AgentProgressEvent::TaskCreated {
+                                                task_id,
+                                                ..
+                                            } = &event
+                                            {
+                                                *captured_for_fwd.lock().await = Some(task_id.clone());
+                                            }
+                                        }
+                                    });
+
+                                    let outcome = tokio::time::timeout(
+                                        timeout,
+                                        agent.process_with_progress(request, progress_tx),
+                                    )
+                                    .await;
+
+                                    let mut claim_status = "done";
                                     match outcome {
                                         Ok(Ok(response)) => {
                                             let succeeded = response.is_successful_outcome();
-                                            // 任务卡片显示用的短摘要
                                             let response_summary = response
                                                 .message
                                                 .chars()
@@ -418,11 +444,10 @@ async fn run_server() -> anyhow::Result<()> {
                                             let result_summary = if succeeded {
                                                 response_summary
                                             } else {
+                                                claim_status = "failed";
                                                 format!("ERROR: {}", response_summary)
                                             };
                                             hb_ref.record_result(&task.id, &result_summary).await;
-                                            // 通知携带完整内容（上限 4000 字符），
-                                            // 简报类任务的产出通过通知中心完整送达
                                             let full_body = response
                                                 .message
                                                 .chars()
@@ -446,6 +471,7 @@ async fn run_server() -> anyhow::Result<()> {
                                             }
                                         }
                                         Ok(Err(e)) => {
+                                            claim_status = "failed";
                                             let err_msg = format!("ERROR: {}", e);
                                             hb_ref.record_result(&task.id, &err_msg).await;
                                             if let Some(nm) = services::agent::notifications::get_notification_manager() {
@@ -458,6 +484,20 @@ async fn run_server() -> anyhow::Result<()> {
                                             );
                                         }
                                         Err(_elapsed) => {
+                                            claim_status = "failed";
+                                            // 硬取消：协作式 is_cancelled，打断 executor 步骤环
+                                            if let Some(exec_tid) =
+                                                captured_exec_task.lock().await.clone()
+                                            {
+                                                services::agent::executor::request_cancel(
+                                                    &exec_tid,
+                                                    &format!(
+                                                        "heartbeat timed out after {}s",
+                                                        services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS
+                                                    ),
+                                                )
+                                                .await;
+                                            }
                                             let err_msg = format!(
                                                 "ERROR: heartbeat task timed out after {}s",
                                                 services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS
@@ -469,7 +509,7 @@ async fn run_server() -> anyhow::Result<()> {
                                             tracing::warn!(
                                                 task_id = %task.id,
                                                 timeout_secs = services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS,
-                                                "[Heartbeat] Task timed out"
+                                                "[Heartbeat] Task timed out; cancel requested"
                                             );
                                         }
                                     }
@@ -477,6 +517,7 @@ async fn run_server() -> anyhow::Result<()> {
                                         &task_db,
                                         &task.id,
                                         minute_bucket,
+                                        claim_status,
                                     )
                                     .await;
                                 });
