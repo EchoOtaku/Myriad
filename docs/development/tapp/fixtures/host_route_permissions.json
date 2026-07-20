@@ -312,6 +312,48 @@
     {
       "domain": "federation",
       "method": "POST",
+      "path": "/api/federation/like",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/unlike",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/bookmark",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/unbookmark",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "GET",
+      "path": "/api/federation/bookmarks",
+      "permission": "federation:read"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/announce",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
+      "path": "/api/federation/unannounce",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "method": "POST",
       "path": "/api/federation/media",
       "permission": "federation:write"
     },

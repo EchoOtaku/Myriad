@@ -347,6 +347,72 @@ export function registerFederationHandlers(
     },
   )
 
+  const objectIdHandler =
+    (
+      action: string,
+      fn: (
+        objectId: string,
+        runtimeGrant?: string,
+      ) => Promise<unknown>,
+    ) =>
+    async (message: TappMessage) => {
+      const [objectId] = (message.payload as { args: unknown[] }).args || []
+      if (!objectId || typeof objectId !== 'string')
+        return { success: false, error: 'object_id is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await fn(objectId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : `Failed to ${action}`,
+        }
+      }
+    }
+
+  bridge.registerHandler(
+    'federation.like',
+    objectIdHandler('like', (id, g) => federationApi.like(id, g)),
+  )
+  bridge.registerHandler(
+    'federation.unlike',
+    objectIdHandler('unlike', (id, g) => federationApi.unlike(id, g)),
+  )
+  bridge.registerHandler(
+    'federation.bookmark',
+    objectIdHandler('bookmark', (id, g) => federationApi.bookmark(id, g)),
+  )
+  bridge.registerHandler(
+    'federation.unbookmark',
+    objectIdHandler('unbookmark', (id, g) => federationApi.unbookmark(id, g)),
+  )
+  bridge.registerHandler(
+    'federation.announce',
+    objectIdHandler('announce', (id, g) => federationApi.announce(id, g)),
+  )
+  bridge.registerHandler(
+    'federation.unannounce',
+    objectIdHandler('unannounce', (id, g) => federationApi.unannounce(id, g)),
+  )
+
+  bridge.registerHandler('federation.getBookmarks', async () => {
+    try {
+      const runtimeGrant = await bridge.getRuntimeGrant()
+      const data = await federationApi.getBookmarks(runtimeGrant)
+      return { success: true, data }
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to get bookmarks',
+      }
+    }
+  })
+
   bridge.registerHandler(
     'federation.uploadMedia',
     async (message: TappMessage) => {

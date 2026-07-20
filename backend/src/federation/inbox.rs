@@ -13,11 +13,23 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
 
 use crate::federation::actor::fetch_remote_actor;
+use crate::federation::errors::{is_permanent_federation_error, map_inbox_handler_error};
 use crate::federation::signature::{
     parse_signature_header, require_covered_headers, verify_date_freshness, verify_digest,
     verify_signature,
 };
 use crate::federation::types::*;
+
+/// Map handler errors to HTTP status; permanent peer-state mismatches → 4xx.
+fn inbox_err(context: &str, e: String) -> (StatusCode, Json<serde_json::Value>) {
+    if is_permanent_federation_error(&e) {
+        tracing::warn!("{}: {}", context, e);
+    } else {
+        tracing::error!("{}: {}", context, e);
+    }
+    let (status, body) = map_inbox_handler_error(e);
+    (status, body)
+}
 
 /// POST /users/{username}/inbox
 ///
@@ -366,10 +378,7 @@ async fn handle_reject(
     {
         crate::federation::room::handle_room_invite_reject(db, actor_url_str, activity)
             .await
-            .map_err(|e| {
-                tracing::error!("Room invite Reject handling failed: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-            })?;
+            .map_err(|e| inbox_err("Room invite Reject handling failed", e))?;
     } else {
         tracing::debug!(
             "Ignoring Reject for unsupported object type={}",
@@ -476,11 +485,50 @@ async fn handle_accept(
     Ok(StatusCode::ACCEPTED)
 }
 
+/// Loose actor match: exact `same_actor_url`, or same host+port + `/users/{name}`.
+///
+/// Handles path-capitalization / alias drift between WebFinger-resolved URLs and
+/// Accept.actor built from the remote's base_url + preferredUsername.
+fn same_actor_or_user(left: &str, right: &str) -> bool {
+    if same_actor_url(left, right) {
+        return true;
+    }
+    let l = normalize_actor_url(left);
+    let r = normalize_actor_url(right);
+    let (l_host, l_user) = split_actor_host_user(&l);
+    let (r_host, r_user) = split_actor_host_user(&r);
+    !l_host.is_empty()
+        && l_host == r_host
+        && !l_user.is_empty()
+        && l_user.eq_ignore_ascii_case(&r_user)
+}
+
+fn split_actor_host_user(normalized: &str) -> (String, String) {
+    // normalized form: scheme://host[:port]/users/name
+    let Ok(url) = url::Url::parse(normalized) else {
+        return (String::new(), String::new());
+    };
+    let host = match (url.host_str(), url.port()) {
+        (Some(h), Some(p)) => format!("{}:{}", h.to_ascii_lowercase(), p),
+        (Some(h), None) => h.to_ascii_lowercase(),
+        _ => String::new(),
+    };
+    let path = url.path().trim_end_matches('/');
+    let user = path
+        .strip_prefix("/users/")
+        .filter(|rest| !rest.is_empty() && !rest.contains('/'))
+        .unwrap_or("")
+        .to_string();
+    (host, user)
+}
+
 /// Resolve which outgoing Follow an Accept refers to.
 ///
 /// 1. Prefer exact `activity_id` match (trim trailing slash) where Accept.actor
-///    is the remote peer (`same_actor_url`).
-/// 2. Fallback: exactly one pending outgoing follow to Accept.actor.
+///    is the remote peer (`same_actor_url` / host+username).
+/// 2. Unique `activity_id` match even if actor URL drifted (still requires the
+///    id we generated — high entropy).
+/// 3. Fallback: exactly one pending outgoing follow to Accept.actor.
 ///
 /// Returns `(activity_id, remote_actor_url, already_accepted)`.
 pub fn resolve_follow_accept_target(
@@ -490,19 +538,43 @@ pub fn resolve_follow_accept_target(
 ) -> Option<(String, String, bool)> {
     let follow_norm = follow_id.trim().trim_end_matches('/');
     if !follow_norm.is_empty() {
+        // Prefer actor-authorized id match
         for (aid, remote, status) in candidates {
             if aid.trim().trim_end_matches('/') == follow_norm
-                && same_actor_url(accept_actor, remote)
+                && same_actor_or_user(accept_actor, remote)
             {
                 return Some((aid.clone(), remote.clone(), status == "accepted"));
             }
+        }
+        // Unique id match with same host (actor path/alias drift only)
+        let id_hits: Vec<_> = candidates
+            .iter()
+            .filter(|(aid, remote, _)| {
+                aid.trim().trim_end_matches('/') == follow_norm
+                    && {
+                        let (ah, _) = split_actor_host_user(&normalize_actor_url(accept_actor));
+                        let (rh, _) = split_actor_host_user(&normalize_actor_url(remote));
+                        !ah.is_empty() && ah == rh
+                    }
+            })
+            .collect();
+        if id_hits.len() == 1 {
+            let (aid, remote, status) = id_hits[0];
+            tracing::info!(
+                follow_id = follow_id,
+                activity_id = %aid,
+                accept_actor = accept_actor,
+                remote = %remote,
+                "Follow Accept: unique activity_id + host match (actor path drift)"
+            );
+            return Some((aid.clone(), remote.clone(), status == "accepted"));
         }
     }
 
     let pending_to_actor: Vec<_> = candidates
         .iter()
         .filter(|(_, remote, status)| {
-            status == "pending" && same_actor_url(accept_actor, remote)
+            *status == "pending" && same_actor_or_user(accept_actor, remote)
         })
         .collect();
     if pending_to_actor.len() == 1 {
@@ -622,7 +694,7 @@ async fn handle_follow_accept(
     Ok(())
 }
 
-/// 处理 Undo（包括 Undo Follow）
+/// 处理 Undo（包括 Undo Follow / Like / Announce）
 async fn handle_undo(
     db: &DatabaseConnection,
     local_user_id: i32,
@@ -651,6 +723,14 @@ async fn handle_undo(
                 actor_url_str,
                 local_user_id
             );
+        }
+        "Like" | "Announce" => {
+            crate::federation::interactions::handle_inbound_undo_interaction(
+                db,
+                local_user_id,
+                activity,
+            )
+            .await;
         }
         _ => {
             tracing::debug!("Undo for unsupported type: {}", inner_type);
@@ -718,7 +798,20 @@ async fn handle_content_activity(
         return Ok(StatusCode::ACCEPTED);
     }
 
+    // Like: record activity only — do not pollute home feed (counts via activities).
+    if activity_type == "Like" {
+        crate::federation::interactions::handle_inbound_like(
+            db,
+            local_user_id,
+            actor_url_str,
+            activity,
+        )
+        .await;
+        return Ok(StatusCode::ACCEPTED);
+    }
+
     // 添加到 Timeline — prefer plain source.content for Note objects
+    // Announce / Create / Update land on the feed.
     let preview = timeline_preview_from_object(&activity["object"]);
 
     db.execute(Statement::from_sql_and_values(
@@ -779,6 +872,11 @@ async fn distribute_to_followers(
     activity_type: &str,
     activity: &serde_json::Value,
 ) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    // Likes are recorded in federation_activities only — not home feed.
+    if activity_type == "Like" {
+        return Ok(());
+    }
+
     let activity_id_str = activity["id"].as_str().unwrap_or("");
     let object_type = activity["object"]["type"].as_str().map(|s| s.to_string());
     let preview = timeline_preview_from_object(&activity["object"]);
@@ -958,7 +1056,12 @@ async fn verify_request_signature(
 
 // ==================== 投递入队 ====================
 
-/// 将 Activity 入库并加入投递队列
+/// 将 Activity 入库并加入投递队列。
+///
+/// Same-instance inboxes are processed in-process (no HTTP). The delivery worker
+/// refuses localhost/private targets, so without this shortcut Follow Accept
+/// never lands and the initiator stays stuck on `pending` while the followee
+/// already shows the follower as accepted.
 async fn enqueue_delivery(
     db: &DatabaseConnection,
     user_id: i32,
@@ -968,6 +1071,7 @@ async fn enqueue_delivery(
     // 序列化完整 Activity（含 @context/type/id/actor/object），供 delivery.rs 直接发送
     let activity_json = serde_json::to_value(activity).unwrap_or_default();
     let domain = extract_domain(target_inbox).unwrap_or_default();
+    let base_url = get_base_url();
 
     // 存 Activity 记录
     let act_row = db
@@ -981,7 +1085,7 @@ async fn enqueue_delivery(
                 activity.id.clone().into(),
                 user_id.into(),
                 activity.activity_type.clone().into(),
-                activity_json.into(),
+                activity_json.clone().into(),
             ],
         ))
         .await
@@ -991,7 +1095,45 @@ async fn enqueue_delivery(
         .map(|r| r.try_get("", "id").unwrap_or(0))
         .unwrap_or(0);
 
-    // 加入投递队列
+    // Same-instance inbox → handle directly (Follow / Accept / Undo / …).
+    // Box::pin breaks the async recursion cycle:
+    //   deliver_activity_locally → handle_follow → enqueue_delivery → …
+    if let Some(local_username) = local_username_from_inbox_url(&base_url, target_inbox) {
+        match Box::pin(deliver_activity_locally(db, &local_username, &activity_json)).await {
+            Ok(()) => {
+                tracing::info!(
+                    activity_type = %activity.activity_type,
+                    target = %local_username,
+                    "📬 Local inbox delivery (no HTTP)"
+                );
+                // Mark as delivered for observability (queue row optional)
+                let _ = db
+                    .execute(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"INSERT INTO federation_delivery_queue
+                               (activity_id, target_inbox, target_domain, status, created_at, last_attempt_at)
+                           VALUES ($1, $2, $3, 'delivered', NOW(), NOW())"#,
+                        [
+                            act_id.into(),
+                            target_inbox.into(),
+                            domain.into(),
+                        ],
+                    ))
+                    .await;
+                return Ok(());
+            }
+            Err(e) => {
+                tracing::warn!(
+                    activity_type = %activity.activity_type,
+                    target = %local_username,
+                    error = %e,
+                    "Local inbox delivery failed; falling back to HTTP queue"
+                );
+            }
+        }
+    }
+
+    // 加入投递队列（远程 / local fallback）
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_delivery_queue
@@ -1003,6 +1145,55 @@ async fn enqueue_delivery(
     .map_err(db_err)?;
 
     Ok(())
+}
+
+/// If inbox is `{base}/users/{username}/inbox`, return username.
+fn local_username_from_inbox_url(base_url: &str, inbox_url: &str) -> Option<String> {
+    let trimmed = inbox_url.trim().trim_end_matches('/');
+    let actor = trimmed.strip_suffix("/inbox")?;
+    local_username_from_actor_url(base_url, actor)
+}
+
+/// Process an Activity for a local user as if it arrived at their personal inbox
+/// (skips HTTP Signature — caller is trusted in-process).
+///
+/// Used for same-instance Follow/Accept so initiator outgoing status flips to
+/// `accepted` without waiting on the delivery worker (which refuses internal URLs).
+pub async fn deliver_activity_locally(
+    db: &DatabaseConnection,
+    username: &str,
+    activity: &serde_json::Value,
+) -> Result<(), String> {
+    let (user_id, _) = get_local_user(db, username)
+        .await
+        .map_err(|(_, j)| j.0.get("error").and_then(|v| v.as_str()).unwrap_or("user not found").to_string())?;
+
+    let activity_type = activity["type"].as_str().unwrap_or("");
+    let actor_url_str = activity["actor"].as_str().unwrap_or("");
+    if activity_type.is_empty() || actor_url_str.is_empty() {
+        return Err("Missing actor or type in activity".into());
+    }
+
+    let result = match activity_type {
+        "Follow" => handle_follow(db, user_id, actor_url_str, activity).await,
+        "Accept" => handle_accept(db, user_id, activity).await,
+        "Reject" => handle_reject(db, user_id, actor_url_str, activity).await,
+        "Undo" => handle_undo(db, user_id, actor_url_str, activity).await,
+        "Create" | "Update" | "Delete" | "Announce" | "Like" => {
+            handle_content_activity(db, user_id, actor_url_str, activity_type, activity).await
+        }
+        other => {
+            tracing::debug!(activity_type = other, "Local delivery: unsupported type, ignoring");
+            Ok(StatusCode::ACCEPTED)
+        }
+    };
+
+    result.map(|_| ()).map_err(|(_, j)| {
+        j.0.get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("local delivery failed")
+            .to_string()
+    })
 }
 
 // ==================== 辅助函数 ====================
@@ -1090,123 +1281,75 @@ async fn handle_mfp_activity(
         "myriad:ChannelOpen" => {
             crate::federation::channel::handle_channel_open(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("ChannelOpen handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("ChannelOpen handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:ChannelMessage" => {
             crate::federation::channel::handle_channel_message(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("ChannelMessage handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("ChannelMessage handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:ChannelClose" => {
             crate::federation::channel::handle_channel_close(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("ChannelClose handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("ChannelClose handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         // Phase 4: Room
         "myriad:RoomInvite" => {
             crate::federation::room::handle_room_invite(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("RoomInvite handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("RoomInvite handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:RoomMessage" => {
-            match crate::federation::room::handle_room_message(db, actor_url_str, activity).await
-            {
-                Ok(()) => Ok(StatusCode::ACCEPTED),
-                Err(e) => {
-                    // Permanent auth/sync failures must be 4xx so delivery does not
-                    // retry every ~15s forever. Transient/internal stay 5xx.
-                    let status = if e.starts_with("not_member:") {
-                        tracing::warn!("RoomMessage rejected (not member): {}", e);
-                        StatusCode::FORBIDDEN
-                    } else if e.starts_with("not_found:") {
-                        tracing::warn!("RoomMessage rejected (not found): {}", e);
-                        StatusCode::NOT_FOUND
-                    } else {
-                        tracing::error!("RoomMessage handling failed: {}", e);
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    };
-                    Err((status, Json(json!({"error": e}))))
-                }
-            }
+            crate::federation::room::handle_room_message(db, actor_url_str, activity)
+                .await
+                .map_err(|e| inbox_err("RoomMessage handling failed", e))?;
+            Ok(StatusCode::ACCEPTED)
         }
         "myriad:RoomLeave" => {
             crate::federation::room::handle_room_leave(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("RoomLeave handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("RoomLeave handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:RoomDissolve" => {
             crate::federation::room::handle_room_dissolve(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("RoomDissolve handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("RoomDissolve handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         // Phase 5: Ring
         "myriad:RingJoin" => {
             crate::federation::ring::handle_ring_join(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("RingJoin handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("RingJoin handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:RingSync" => {
             crate::federation::ring::handle_ring_sync(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("RingSync handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("RingSync handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:RingLeave" => {
             crate::federation::ring::handle_ring_leave(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("RingLeave handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("RingLeave handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:FileTransfer" => {
             crate::federation::file_transfer::handle_file_transfer(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("FileTransfer handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("FileTransfer handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:ChannelAccept" => {
             crate::federation::channel::handle_channel_accept(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("ChannelAccept handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("ChannelAccept handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:KeyExchange" => {
@@ -1219,45 +1362,30 @@ async fn handle_mfp_activity(
             if is_room {
                 crate::federation::room::handle_key_exchange(db, actor_url_str, activity)
                     .await
-                    .map_err(|e| {
-                        tracing::error!("Room KeyExchange handling failed: {}", e);
-                        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                    })?;
+                    .map_err(|e| inbox_err("Room KeyExchange handling failed", e))?;
             } else {
                 crate::federation::channel::handle_key_exchange(db, actor_url_str, activity)
                     .await
-                    .map_err(|e| {
-                        tracing::error!("Channel KeyExchange handling failed: {}", e);
-                        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                    })?;
+                    .map_err(|e| inbox_err("Channel KeyExchange handling failed", e))?;
             }
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:RoomJoin" => {
             crate::federation::room::handle_room_join(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("RoomJoin handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("RoomJoin handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:RoomPin" => {
             crate::federation::room::handle_room_pin(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("RoomPin handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("RoomPin handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         "myriad:RoomGovernance" => {
             crate::federation::room::handle_room_governance(db, actor_url_str, activity)
                 .await
-                .map_err(|e| {
-                    tracing::error!("RoomGovernance handling failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))
-                })?;
+                .map_err(|e| inbox_err("RoomGovernance handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
         _ => {
@@ -1377,5 +1505,38 @@ mod tests {
             &candidates,
         );
         assert_eq!(got.map(|(_, _, already)| already), Some(true));
+    }
+
+    #[test]
+    fn accept_matches_username_case_drift_on_same_host() {
+        let candidates = vec![(
+            "https://a.example/activities/1".into(),
+            "https://b.example/users/Bob".into(),
+            "pending".into(),
+        )];
+        let got = resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/bob",
+            &candidates,
+        );
+        assert!(got.is_some());
+    }
+
+    #[test]
+    fn accept_unique_id_same_host_path_drift() {
+        // Same host, different path form still matches via host+id uniqueness.
+        let candidates = vec![(
+            "https://a.example/activities/1".into(),
+            "https://b.example/users/bob".into(),
+            "pending".into(),
+        )];
+        let got = resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/bob.extra", // different user path → host match only if /users/x
+            &candidates,
+        );
+        // bob.extra is not under /users/ only as single segment — actually path is /users/bob.extra
+        // which is a different username; same_actor_or_user fails; host matches so unique id works.
+        assert!(got.is_some());
     }
 }

@@ -20,7 +20,7 @@ use crate::federation::types::TrustLevel;
 
 // ==================== 类型定义 ====================
 
-/// 实例策略配置（历史/辅助结构；**未**全部接入 `enforce_inbound`）
+/// 实例策略（allowlist / min_trust / auto_discover + 入站限流）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstancePolicy {
     /// 全局最低信任层级（低于此层级的实例请求将被拒绝）
@@ -29,8 +29,10 @@ pub struct InstancePolicy {
     pub allowed_domains: Vec<String>,
     /// 封禁的域名列表（优先级最高）
     pub blocked_domains: Vec<String>,
-    /// 是否自动信任新发现的实例（设为 Discovered）
+    /// 是否自动登记新发现的实例（设为 Discovered）
     pub auto_discover: bool,
+    /// 入站限流（可在管理后台「高级」中配置）
+    pub rate_limit: RateLimitPolicy,
 }
 
 impl Default for InstancePolicy {
@@ -40,6 +42,7 @@ impl Default for InstancePolicy {
             allowed_domains: Vec::new(),
             blocked_domains: Vec::new(),
             auto_discover: true,
+            rate_limit: RateLimitPolicy::default(),
         }
     }
 }
@@ -451,7 +454,6 @@ pub async fn get_policy(
         None => (0, 0, 0, json!([])),
     };
 
-    let rate_limit = RateLimitPolicy::default();
     let policy = load_instance_policy(db).await;
     let allowlist_active = !policy.allowed_domains.is_empty();
     let min_trust_active = (policy.min_trust_level as i16) > 0;
@@ -479,7 +481,7 @@ pub async fn get_policy(
         },
         "notes": {
             "domain_blocklist": "federation_instances.is_blocked is checked on inbound and outbound",
-            "rate_limit": "per-domain window: process-local counter + federation_activities.received_at",
+            "rate_limit": "per-domain window from federation_policy_settings; Trusted+ uses trusted_multiplier",
             "content_filters": "federation_content_filters rows are loaded and applied in enforce_inbound",
             "allowlist": "empty allowed_domains = allow all non-blocked; non-empty = only listed domains",
             "min_trust_level": "domains below min_trust_level are rejected on inbound (0 = Unknown, no floor)",
@@ -488,7 +490,11 @@ pub async fn get_policy(
         "allowed_domains": policy.allowed_domains,
         "min_trust_level": policy.min_trust_level as i16,
         "auto_discover": policy.auto_discover,
-        "rate_limit": rate_limit,
+        "rate_limit": {
+            "max_requests_per_window": policy.rate_limit.max_requests_per_window,
+            "window_seconds": policy.rate_limit.window_seconds,
+            "trusted_multiplier": policy.rate_limit.trusted_multiplier,
+        },
         "content_filters": filters_json,
         "stats": {
             "total_instances": total,
@@ -498,12 +504,15 @@ pub async fn get_policy(
     }))
 }
 
-/// 更新实例级策略（allowlist / min_trust / auto_discover）— 管理员
+/// 更新实例级策略（allowlist / min_trust / auto_discover / rate limit）— 管理员
 pub async fn update_policy(
     db: &DatabaseConnection,
     min_trust_level: Option<i16>,
     allowed_domains: Option<Vec<String>>,
     auto_discover: Option<bool>,
+    rate_max_requests: Option<i64>,
+    rate_window_seconds: Option<i64>,
+    rate_trusted_multiplier: Option<i64>,
 ) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
     let mut current = load_instance_policy(db).await;
     if let Some(level) = min_trust_level {
@@ -525,6 +534,33 @@ pub async fn update_policy(
     if let Some(ad) = auto_discover {
         current.auto_discover = ad;
     }
+    if let Some(max) = rate_max_requests {
+        if !(1..=1_000_000).contains(&max) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                json!({"error": "rate_max_requests must be 1..=1000000"}),
+            ));
+        }
+        current.rate_limit.max_requests_per_window = max;
+    }
+    if let Some(win) = rate_window_seconds {
+        if !(1..=86_400).contains(&win) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                json!({"error": "rate_window_seconds must be 1..=86400"}),
+            ));
+        }
+        current.rate_limit.window_seconds = win;
+    }
+    if let Some(mul) = rate_trusted_multiplier {
+        if !(1..=100).contains(&mul) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                json!({"error": "rate_trusted_multiplier must be 1..=100"}),
+            ));
+        }
+        current.rate_limit.trusted_multiplier = mul;
+    }
 
     let domains_json = serde_json::to_value(&current.allowed_domains).unwrap_or_else(|_| json!([]));
     let level = current.min_trust_level as i16;
@@ -532,17 +568,24 @@ pub async fn update_policy(
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_policy_settings
-               (id, min_trust_level, allowed_domains, auto_discover, updated_at)
-           VALUES (1, $1, $2, $3, NOW())
+               (id, min_trust_level, allowed_domains, auto_discover,
+                rate_max_requests, rate_window_seconds, rate_trusted_multiplier, updated_at)
+           VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
            ON CONFLICT (id) DO UPDATE SET
                min_trust_level = EXCLUDED.min_trust_level,
                allowed_domains = EXCLUDED.allowed_domains,
                auto_discover = EXCLUDED.auto_discover,
+               rate_max_requests = EXCLUDED.rate_max_requests,
+               rate_window_seconds = EXCLUDED.rate_window_seconds,
+               rate_trusted_multiplier = EXCLUDED.rate_trusted_multiplier,
                updated_at = NOW()"#,
         [
             level.into(),
             domains_json.into(),
             current.auto_discover.into(),
+            current.rate_limit.max_requests_per_window.into(),
+            current.rate_limit.window_seconds.into(),
+            current.rate_limit.trusted_multiplier.into(),
         ],
     ))
     .await
@@ -557,7 +600,12 @@ pub async fn update_policy(
         "success": true,
         "min_trust_level": level,
         "allowed_domains": current.allowed_domains,
-        "auto_discover": current.auto_discover
+        "auto_discover": current.auto_discover,
+        "rate_limit": {
+            "max_requests_per_window": current.rate_limit.max_requests_per_window,
+            "window_seconds": current.rate_limit.window_seconds,
+            "trusted_multiplier": current.rate_limit.trusted_multiplier,
+        }
     }))
 }
 
@@ -566,7 +614,8 @@ async fn load_instance_policy(db: &DatabaseConnection) -> InstancePolicy {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT min_trust_level, allowed_domains, auto_discover
+            r#"SELECT min_trust_level, allowed_domains, auto_discover,
+                      rate_max_requests, rate_window_seconds, rate_trusted_multiplier
                FROM federation_policy_settings WHERE id = 1"#,
             [],
         ))
@@ -591,12 +640,28 @@ async fn load_instance_policy(db: &DatabaseConnection) -> InstancePolicy {
         })
         .unwrap_or_default();
     let auto_discover: bool = r.try_get("", "auto_discover").unwrap_or(true);
+    let defaults = RateLimitPolicy::default();
+    let rate_limit = RateLimitPolicy {
+        max_requests_per_window: r
+            .try_get::<i64>("", "rate_max_requests")
+            .unwrap_or(defaults.max_requests_per_window)
+            .max(1),
+        window_seconds: r
+            .try_get::<i64>("", "rate_window_seconds")
+            .unwrap_or(defaults.window_seconds)
+            .max(1),
+        trusted_multiplier: r
+            .try_get::<i64>("", "rate_trusted_multiplier")
+            .unwrap_or(defaults.trusted_multiplier)
+            .max(1),
+    };
 
     InstancePolicy {
         min_trust_level: TrustLevel::from_i16(min_level),
         allowed_domains,
         blocked_domains: Vec::new(), // DB is_blocked is authoritative
         auto_discover,
+        rate_limit,
     }
 }
 
@@ -767,7 +832,7 @@ pub async fn enforce_inbound(
             .unwrap_or_else(|| format!("Domain {} rejected by instance policy", domain)));
     }
 
-    let rate = check_rate_limit(db, domain, &RateLimitPolicy::default()).await;
+    let rate = check_rate_limit(db, domain, &policy.rate_limit).await;
     if !rate.allowed {
         return Err(rate.reason.unwrap_or_else(|| "Rate limited".to_string()));
     }

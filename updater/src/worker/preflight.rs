@@ -143,7 +143,7 @@ async fn try_fetch_release_manifest(
     };
     match gh.fetch_manifest(tag).await {
         Ok(manifest) => Ok(Some((gh, manifest))),
-        Err(e) if github_release_json_unavailable(&e) => {
+        Err(e) if crate::release::GithubClient::is_release_json_unavailable(&e) => {
             warn!(
                 err = %e,
                 tag = %tag,
@@ -152,24 +152,6 @@ async fn try_fetch_release_manifest(
             Ok(None)
         }
         Err(e) => Err(e),
-    }
-}
-
-/// True when the error means release.json cannot be obtained (fall back to Docker Hub).
-/// Cosign failures and invalid downloaded JSON must **not** fall back — fail closed.
-fn github_release_json_unavailable(err: &UpdaterError) -> bool {
-    match err {
-        UpdaterError::Github(_) | UpdaterError::Io(_) => true,
-        // Cosign enforce returns Precondition("cosign: ...") — never fall back.
-        UpdaterError::Precondition(msg) if msg.starts_with("cosign:") => false,
-        // Manifest::from_json / validate after a successful download — fail closed.
-        UpdaterError::Json(_) | UpdaterError::Precondition(_) => false,
-        other => {
-            // Network / client build oddities may surface as Internal(anyhow).
-            crate::release::GithubClient::is_expected_unauthenticated_failure(other)
-                || other.to_string().to_ascii_lowercase().contains("timeout")
-                || other.to_string().to_ascii_lowercase().contains("connection")
-        }
     }
 }
 
@@ -879,19 +861,19 @@ mod github_manifest_fallback_tests {
         let err = UpdaterError::Github(
             "GET release v0.3.3 failed: 404 Not Found {\"message\":\"Not Found\"}".into(),
         );
-        assert!(github_release_json_unavailable(&err));
+        assert!(crate::release::GithubClient::is_release_json_unavailable(&err));
     }
 
     #[test]
     fn github_missing_release_json_asset_is_unavailable() {
         let err = UpdaterError::Github("release v0.3.3 has no release.json asset".into());
-        assert!(github_release_json_unavailable(&err));
+        assert!(crate::release::GithubClient::is_release_json_unavailable(&err));
     }
 
     #[test]
     fn github_401_is_unavailable() {
         let err = UpdaterError::Github("GET release v1.0.0 failed: 401 Unauthorized".into());
-        assert!(github_release_json_unavailable(&err));
+        assert!(crate::release::GithubClient::is_release_json_unavailable(&err));
     }
 
     #[test]
@@ -900,7 +882,7 @@ mod github_manifest_fallback_tests {
             std::io::ErrorKind::ConnectionReset,
             "connection reset",
         ));
-        assert!(github_release_json_unavailable(&err));
+        assert!(crate::release::GithubClient::is_release_json_unavailable(&err));
     }
 
     #[test]
@@ -908,19 +890,19 @@ mod github_manifest_fallback_tests {
         let err = UpdaterError::Precondition(
             "cosign: signature verification failed: no matching signatures".into(),
         );
-        assert!(!github_release_json_unavailable(&err));
+        assert!(!crate::release::GithubClient::is_release_json_unavailable(&err));
     }
 
     #[test]
     fn invalid_manifest_json_must_not_fall_back() {
         let err = UpdaterError::Json(serde_json::from_str::<serde_json::Value>("not-json").unwrap_err());
-        assert!(!github_release_json_unavailable(&err));
+        assert!(!crate::release::GithubClient::is_release_json_unavailable(&err));
     }
 
     #[test]
     fn manifest_validation_precondition_must_not_fall_back() {
         let err = UpdaterError::Precondition("manifest missing images.backend".into());
-        assert!(!github_release_json_unavailable(&err));
+        assert!(!crate::release::GithubClient::is_release_json_unavailable(&err));
     }
 
     #[test]

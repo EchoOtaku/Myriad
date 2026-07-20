@@ -5,17 +5,15 @@
  * - 内容过滤规则 CRUD
  */
 
-import React, { useCallback, useEffect, useState } from 'react'
-import { useI18n } from '../../contexts/I18nContext'
-import { federationApi } from '../../services/federationApi'
 import type {
   ContentFilterItem,
   FederationInstance,
-  TrustPolicyResponse,
 } from '../../types/federation'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useI18n } from '../../contexts/I18nContext'
+import { federationApi } from '../../services/federationApi'
 import {
   ButtonItem,
-  InfoCard,
   InputItem,
   SettingGroup,
   SettingSection,
@@ -33,14 +31,6 @@ interface FederationConfigSectionProps {
   ) => void
 }
 
-const TRUST_LEVELS = [
-  { value: 0, label: 'Unknown (0)' },
-  { value: 1, label: 'Discovered (1)' },
-  { value: 2, label: 'Followed (2)' },
-  { value: 3, label: 'Trusted (3)' },
-  { value: 4, label: 'Federated (4)' },
-]
-
 const FILTER_TYPES = [
   'block_activity_type',
   'block_keyword',
@@ -51,9 +41,9 @@ export const FederationConfigSection: React.FC<
   FederationConfigSectionProps
 > = ({ title, icon, description, sectionId, onMessage }) => {
   const { t } = useI18n()
+  const c = t.config
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [policy, setPolicy] = useState<TrustPolicyResponse | null>(null)
   const [instances, setInstances] = useState<FederationInstance[]>([])
   const [filters, setFilters] = useState<ContentFilterItem[]>([])
 
@@ -61,6 +51,11 @@ export const FederationConfigSection: React.FC<
   const [minTrust, setMinTrust] = useState(0)
   const [allowlistText, setAllowlistText] = useState('')
   const [autoDiscover, setAutoDiscover] = useState(true)
+  // Advanced rate limit (defaults match backend RateLimitPolicy)
+  const [rateMax, setRateMax] = useState(100)
+  const [rateWindow, setRateWindow] = useState(60)
+  const [rateTrustedMul, setRateTrustedMul] = useState(5)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   // New filter draft
   const [newFilterName, setNewFilterName] = useState('')
@@ -68,29 +63,54 @@ export const FederationConfigSection: React.FC<
     useState<(typeof FILTER_TYPES)[number]>('block_keyword')
   const [newFilterValue, setNewFilterValue] = useState('')
 
+  const trustLevels = useMemo(
+    () => [
+      { value: 0, label: c.federationTrustUnknown },
+      { value: 1, label: c.federationTrustDiscovered },
+      { value: 2, label: c.federationTrustFollowed },
+      { value: 3, label: c.federationTrustTrusted },
+      { value: 4, label: c.federationTrustFederated },
+    ],
+    [c],
+  )
+
+  const filterTypeLabels: Record<(typeof FILTER_TYPES)[number], string> =
+    useMemo(
+      () => ({
+        block_activity_type: c.federationFilterTypeBlockActivity,
+        block_keyword: c.federationFilterTypeBlockKeyword,
+        require_trust_level: c.federationFilterTypeRequireTrust,
+      }),
+      [c],
+    )
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const [p, inst, f] = await Promise.all([
         federationApi.getTrustPolicy(),
         federationApi.getInstances().catch(() => ({ instances: [], total: 0 })),
-        federationApi.listContentFilters().catch(() => ({ filters: [], total: 0 })),
+        federationApi
+          .listContentFilters()
+          .catch(() => ({ filters: [], total: 0 })),
       ])
-      setPolicy(p)
       setMinTrust(p.min_trust_level ?? 0)
       setAllowlistText((p.allowed_domains || []).join('\n'))
       setAutoDiscover(p.auto_discover !== false)
+      setRateMax(p.rate_limit?.max_requests_per_window ?? 100)
+      setRateWindow(p.rate_limit?.window_seconds ?? 60)
+      setRateTrustedMul(p.rate_limit?.trusted_multiplier ?? 5)
       setInstances(inst.instances || [])
       setFilters(f.filters || [])
     } catch (e) {
       onMessage?.(
-        e instanceof Error ? e.message : 'Failed to load trust policy',
+        e instanceof Error ? e.message : c.federationLoadFailed,
         'error',
       )
     } finally {
       setLoading(false)
     }
-  }, [onMessage])
+  }, [onMessage, c.federationLoadFailed])
 
   useEffect(() => {
     void load()
@@ -107,17 +127,28 @@ export const FederationConfigSection: React.FC<
         min_trust_level: minTrust,
         allowed_domains: domains,
         auto_discover: autoDiscover,
+        rate_limit: {
+          max_requests_per_window: rateMax,
+          window_seconds: rateWindow,
+          trusted_multiplier: rateTrustedMul,
+        },
       })
-      onMessage?.(t.config.federationPolicySaved || 'Trust policy saved', 'success')
+      onMessage?.(c.federationPolicySaved, 'success')
       await load()
     } catch (e) {
       onMessage?.(
-        e instanceof Error ? e.message : 'Save failed',
+        e instanceof Error ? e.message : c.federationSaveFailed,
         'error',
       )
     } finally {
       setSaving(false)
     }
+  }
+
+  const resetRateDefaults = () => {
+    setRateMax(100)
+    setRateWindow(60)
+    setRateTrustedMul(5)
   }
 
   const setInstanceTrust = async (domain: string, level: number) => {
@@ -129,7 +160,10 @@ export const FederationConfigSection: React.FC<
         ),
       )
     } catch (e) {
-      onMessage?.(e instanceof Error ? e.message : 'Update failed', 'error')
+      onMessage?.(
+        e instanceof Error ? e.message : c.federationUpdateFailed,
+        'error',
+      )
     }
   }
 
@@ -142,13 +176,16 @@ export const FederationConfigSection: React.FC<
         ),
       )
     } catch (e) {
-      onMessage?.(e instanceof Error ? e.message : 'Block failed', 'error')
+      onMessage?.(
+        e instanceof Error ? e.message : c.federationBlockFailed,
+        'error',
+      )
     }
   }
 
   const addFilter = async () => {
     if (!newFilterName.trim() || !newFilterValue.trim()) {
-      onMessage?.('Name and value required', 'warning')
+      onMessage?.(c.federationFilterNameValueRequired, 'warning')
       return
     }
     try {
@@ -161,9 +198,12 @@ export const FederationConfigSection: React.FC<
       setNewFilterName('')
       setNewFilterValue('')
       await load()
-      onMessage?.('Filter added', 'success')
+      onMessage?.(c.federationFilterAdded, 'success')
     } catch (e) {
-      onMessage?.(e instanceof Error ? e.message : 'Add filter failed', 'error')
+      onMessage?.(
+        e instanceof Error ? e.message : c.federationAddFilterFailed,
+        'error',
+      )
     }
   }
 
@@ -176,7 +216,10 @@ export const FederationConfigSection: React.FC<
         ),
       )
     } catch (e) {
-      onMessage?.(e instanceof Error ? e.message : 'Update failed', 'error')
+      onMessage?.(
+        e instanceof Error ? e.message : c.federationUpdateFailed,
+        'error',
+      )
     }
   }
 
@@ -185,7 +228,10 @@ export const FederationConfigSection: React.FC<
       await federationApi.deleteContentFilter(id)
       setFilters((prev) => prev.filter((x) => x.id !== id))
     } catch (e) {
-      onMessage?.(e instanceof Error ? e.message : 'Delete failed', 'error')
+      onMessage?.(
+        e instanceof Error ? e.message : c.federationUpdateFailed,
+        'error',
+      )
     }
   }
 
@@ -197,12 +243,10 @@ export const FederationConfigSection: React.FC<
         description={description}
         sectionId={sectionId}
       >
-        <p className="text-sm text-gray-500">{t.common?.loading || 'Loading…'}</p>
+        <p className="text-sm text-gray-500">{t.common?.loading || '…'}</p>
       </SettingSection>
     )
   }
-
-  const enforcement = policy?.enforcement
 
   return (
     <SettingSection
@@ -211,51 +255,30 @@ export const FederationConfigSection: React.FC<
       description={description}
       sectionId={sectionId}
     >
-      <InfoCard
-        title="Active enforcement"
-        content={
-          <ul className="list-disc pl-4 text-sm space-y-0.5">
-            <li>
-              Blocklist:{' '}
-              {enforcement?.domain_blocklist ? 'on' : 'off'}
-            </li>
-            <li>
-              Rate limit: {enforcement?.rate_limit ? 'on' : 'off'}
-            </li>
-            <li>
-              Allowlist:{' '}
-              {enforcement?.allowlist
-                ? `on (${(policy?.allowed_domains || []).length} domains)`
-                : 'off (empty = allow all non-blocked)'}
-            </li>
-            <li>
-              Min trust:{' '}
-              {enforcement?.min_trust_level
-                ? `≥ ${policy?.min_trust_level ?? 0}`
-                : 'off (0)'}
-            </li>
-            <li>
-              Content filters:{' '}
-              {enforcement?.content_filters
-                ? `on (${filters.filter((f) => f.enabled).length} enabled)`
-                : 'off'}
-            </li>
-          </ul>
-        }
-      />
+      {/*
+        Only surface controls the admin can change.
+        Advanced rate-limit knobs are in the collapsible section below;
+        no decorative on/off line for rate-limit.
+      */}
 
-      <SettingGroup title="Instance policy">
+      <SettingGroup title={c.federationInstancePolicy}>
         <div className="space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+            {c.federationTrustLevelHelp}
+          </p>
           <label className="block text-sm">
             <span className="text-gray-600 dark:text-gray-400">
-              Minimum trust level (inbound)
+              {c.federationMinTrustInbound}
             </span>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+              {c.federationMinTrustInboundDesc}
+            </p>
             <select
-              className="mt-1 w-full rounded-lg border border-black/10 bg-white/50 px-3 py-2 text-sm dark:border-white/10 dark:bg-black/20"
+              className="mt-1.5 w-full rounded-lg border border-black/10 bg-white/50 px-3 py-2 text-sm dark:border-white/10 dark:bg-black/20"
               value={minTrust}
               onChange={(e) => setMinTrust(Number(e.target.value))}
             >
-              {TRUST_LEVELS.map((l) => (
+              {trustLevels.map((l) => (
                 <option key={l.value} value={l.value}>
                   {l.label}
                 </option>
@@ -265,28 +288,33 @@ export const FederationConfigSection: React.FC<
 
           <label className="block text-sm">
             <span className="text-gray-600 dark:text-gray-400">
-              Allowlist domains (one per line; empty = no restriction)
+              {c.federationAllowlistDomains}
             </span>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+              {c.federationAllowlistDomainsDesc}
+            </p>
             <textarea
-              className="mt-1 w-full rounded-lg border border-black/10 bg-white/50 px-3 py-2 text-sm font-mono dark:border-white/10 dark:bg-black/20"
+              className="mt-1.5 w-full rounded-lg border border-black/10 bg-white/50 px-3 py-2 text-sm font-mono dark:border-white/10 dark:bg-black/20"
               rows={4}
               value={allowlistText}
               onChange={(e) => setAllowlistText(e.target.value)}
-              placeholder="friend.example.com"
+              placeholder={c.federationAllowlistPlaceholder}
             />
           </label>
 
           <SwitchItem
             itemKey="fed-auto-discover"
-            label="Auto-discover instances"
-            description="Unknown domains become Discovered on first contact"
+            label={c.federationAutoDiscover}
+            description={c.federationAutoDiscoverDesc}
             value={autoDiscover}
             onChange={setAutoDiscover}
           />
 
           <ButtonItem
-            label="Instance policy"
-            buttonText={saving ? '…' : t.common?.save || 'Save policy'}
+            label={c.federationInstancePolicy}
+            buttonText={
+              saving ? '…' : c.federationSavePolicy || t.common?.save || 'Save'
+            }
             onClick={() => void savePolicy()}
             disabled={saving}
             loading={saving}
@@ -294,9 +322,12 @@ export const FederationConfigSection: React.FC<
         </div>
       </SettingGroup>
 
-      <SettingGroup title="Known instances">
+      <SettingGroup title={c.federationKnownInstances}>
+        <p className="mb-2 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+          {c.federationKnownInstancesDesc}
+        </p>
         {instances.length === 0 ? (
-          <p className="text-sm text-gray-500">No instances recorded yet.</p>
+          <p className="text-sm text-gray-500">{c.federationNoInstances}</p>
         ) : (
           <ul className="space-y-2">
             {instances.map((inst) => (
@@ -307,7 +338,9 @@ export const FederationConfigSection: React.FC<
                 <span className="min-w-0 flex-1 font-medium truncate">
                   {inst.domain}
                   {inst.blocked && (
-                    <span className="ml-2 text-xs text-red-500">blocked</span>
+                    <span className="ml-2 text-xs text-red-500">
+                      {c.federationBlocked}
+                    </span>
                   )}
                 </span>
                 <select
@@ -317,7 +350,7 @@ export const FederationConfigSection: React.FC<
                     void setInstanceTrust(inst.domain, Number(e.target.value))
                   }
                 >
-                  {TRUST_LEVELS.map((l) => (
+                  {trustLevels.map((l) => (
                     <option key={l.value} value={l.value}>
                       {l.label}
                     </option>
@@ -326,14 +359,14 @@ export const FederationConfigSection: React.FC<
                 <button
                   type="button"
                   className={
-                    'rounded-full px-2.5 py-1 text-xs ' +
-                    (inst.blocked
+                    `rounded-full px-2.5 py-1 text-xs ${
+                    inst.blocked
                       ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                      : 'bg-red-500/10 text-red-600 dark:text-red-300')
+                      : 'bg-red-500/10 text-red-600 dark:text-red-300'}`
                   }
                   onClick={() => void toggleBlock(inst.domain, !inst.blocked)}
                 >
-                  {inst.blocked ? 'Unblock' : 'Block'}
+                  {inst.blocked ? c.federationUnblock : c.federationBlock}
                 </button>
               </li>
             ))}
@@ -341,17 +374,22 @@ export const FederationConfigSection: React.FC<
         )}
       </SettingGroup>
 
-      <SettingGroup title="Content filters">
+      <SettingGroup title={c.federationContentFilters}>
+        <p className="mb-2 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+          {c.federationContentFiltersDesc}
+        </p>
         <div className="space-y-2 mb-3">
           <InputItem
             itemKey="fed-filter-name"
-            label="Name"
+            label={c.federationFilterName}
             value={newFilterName}
             onChange={setNewFilterName}
             placeholder="spam-keyword"
           />
           <label className="block text-sm">
-            <span className="text-gray-600 dark:text-gray-400">Type</span>
+            <span className="text-gray-600 dark:text-gray-400">
+              {c.federationFilterType}
+            </span>
             <select
               className="mt-1 w-full rounded-lg border border-black/10 bg-white/50 px-3 py-2 text-sm dark:border-white/10 dark:bg-black/20"
               value={newFilterType}
@@ -363,26 +401,26 @@ export const FederationConfigSection: React.FC<
             >
               {FILTER_TYPES.map((ft) => (
                 <option key={ft} value={ft}>
-                  {ft}
+                  {filterTypeLabels[ft]}
                 </option>
               ))}
             </select>
           </label>
           <InputItem
             itemKey="fed-filter-value"
-            label="Value"
+            label={c.federationFilterValue}
             value={newFilterValue}
             onChange={setNewFilterValue}
-            placeholder="keyword or activity type or trust number"
+            placeholder={c.federationFilterValuePlaceholder}
           />
           <ButtonItem
-            label="Content filters"
-            buttonText="Add filter"
+            label={c.federationContentFilters}
+            buttonText={c.federationAddFilter}
             onClick={() => void addFilter()}
           />
         </div>
         {filters.length === 0 ? (
-          <p className="text-sm text-gray-500">No content filters.</p>
+          <p className="text-sm text-gray-500">{c.federationNoFilters}</p>
         ) : (
           <ul className="space-y-1.5">
             {filters.map((f) => (
@@ -393,7 +431,10 @@ export const FederationConfigSection: React.FC<
                 <span className="min-w-0 flex-1 truncate">
                   <strong>{f.name}</strong>{' '}
                   <span className="text-xs text-gray-500">
-                    {f.filter_type}={f.value}
+                    {(filterTypeLabels as Record<string, string>)[
+                      f.filter_type
+                    ] || f.filter_type}
+                    ={f.value}
                   </span>
                 </span>
                 <button
@@ -401,7 +442,9 @@ export const FederationConfigSection: React.FC<
                   className="text-xs rounded-full px-2 py-0.5 bg-black/5 dark:bg-white/10"
                   onClick={() => void toggleFilter(f)}
                 >
-                  {f.enabled ? 'On' : 'Off'}
+                  {f.enabled
+                    ? c.federationFilterEnabled
+                    : c.federationFilterDisabled}
                 </button>
                 <button
                   type="button"
@@ -413,6 +456,102 @@ export const FederationConfigSection: React.FC<
               </li>
             ))}
           </ul>
+        )}
+      </SettingGroup>
+
+      <SettingGroup title={c.federationAdvanced}>
+        <p className="mb-2 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+          {c.federationAdvancedDesc}
+        </p>
+        <button
+          type="button"
+          className="mb-3 text-sm font-medium text-[var(--tapp-primary,#6366f1)] hover:underline"
+          onClick={() => setAdvancedOpen((o) => !o)}
+          aria-expanded={advancedOpen}
+        >
+          {advancedOpen ? '▾ ' : '▸ '}
+          {c.federationRateLimit}
+        </button>
+        {advancedOpen && (
+          <div className="space-y-3 rounded-lg border border-black/5 bg-black/[0.02] p-3 dark:border-white/5 dark:bg-white/[0.03]">
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+              {c.federationRateLimitDesc}
+            </p>
+            <label className="block text-sm">
+              <span className="text-gray-600 dark:text-gray-400">
+                {c.federationRateMaxRequests}
+              </span>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {c.federationRateMaxRequestsDesc}
+              </p>
+              <input
+                type="number"
+                min={1}
+                max={1_000_000}
+                className="mt-1.5 w-full rounded-lg border border-black/10 bg-white/50 px-3 py-2 text-sm tabular-nums dark:border-white/10 dark:bg-black/20"
+                value={rateMax}
+                onChange={(e) =>
+                  setRateMax(Math.max(1, Number(e.target.value) || 1))
+                }
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-600 dark:text-gray-400">
+                {c.federationRateWindowSeconds}
+              </span>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {c.federationRateWindowSecondsDesc}
+              </p>
+              <input
+                type="number"
+                min={1}
+                max={86_400}
+                className="mt-1.5 w-full rounded-lg border border-black/10 bg-white/50 px-3 py-2 text-sm tabular-nums dark:border-white/10 dark:bg-black/20"
+                value={rateWindow}
+                onChange={(e) =>
+                  setRateWindow(Math.max(1, Number(e.target.value) || 1))
+                }
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-600 dark:text-gray-400">
+                {c.federationRateTrustedMultiplier}
+              </span>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {c.federationRateTrustedMultiplierDesc}
+              </p>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                className="mt-1.5 w-full rounded-lg border border-black/10 bg-white/50 px-3 py-2 text-sm tabular-nums dark:border-white/10 dark:bg-black/20"
+                value={rateTrustedMul}
+                onChange={(e) =>
+                  setRateTrustedMul(Math.max(1, Number(e.target.value) || 1))
+                }
+              />
+            </label>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-black/5 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                onClick={resetRateDefaults}
+              >
+                {c.federationRateResetDefaults}
+              </button>
+              <ButtonItem
+                label={c.federationRateLimit}
+                buttonText={
+                  saving
+                    ? '…'
+                    : c.federationSavePolicy || t.common?.save || 'Save'
+                }
+                onClick={() => void savePolicy()}
+                disabled={saving}
+                loading={saving}
+              />
+            </div>
+          </div>
         )}
       </SettingGroup>
     </SettingSection>

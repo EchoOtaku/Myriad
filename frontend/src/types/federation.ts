@@ -53,7 +53,17 @@ export interface TimelineItem {
   content_preview?: string
   /** AP Note/Article object (or Create envelope) for rich render. */
   content_json?: Record<string, unknown> | null
+  /** Canonical AP object id (Note URL) when resolved. */
+  object_id?: string
   is_read: boolean
+  is_bookmarked?: boolean
+  liked_by_me?: boolean
+  bookmarked_by_me?: boolean
+  announced_by_me?: boolean
+  like_count?: number
+  bookmark_count?: number
+  announce_count?: number
+  reply_count?: number
   /** ISO timestamp when the activity was received (preferred by Aro timeAgo) */
   created_at?: string
   received_at?: string
@@ -88,12 +98,41 @@ export interface PublishRequest {
   /** Freeform note body when content_type is `note`. */
   text?: string
   attachments?: NoteAttachmentInput[]
+  /** Parent object id for replies (AP inReplyTo). */
+  in_reply_to?: string
+  inReplyTo?: string
 }
 
 export interface CreateNoteRequest {
   text?: string
   attachments?: NoteAttachmentInput[]
   visibility?: 'public' | 'followers' | 'direct'
+  /** Parent Note/Article id for replies (AP inReplyTo). */
+  in_reply_to?: string
+  inReplyTo?: string
+}
+
+export interface ObjectIdRequest {
+  object_id: string
+}
+
+export interface InteractionResponse {
+  success: boolean
+  object_id: string
+  kind: string
+  activity_id?: string
+  liked_by_me?: boolean
+  bookmarked_by_me?: boolean
+  announced_by_me?: boolean
+  like_count?: number
+  bookmark_count?: number
+  announce_count?: number
+  reply_count?: number
+}
+
+export interface BookmarkListResponse {
+  items: TimelineItem[]
+  total: number
 }
 
 export interface MediaUploadResponse {
@@ -121,6 +160,15 @@ export interface UnpublishRequest {
   content_id: string
 }
 
+/** Media on a published Note (from joined Create object.attachment). */
+export interface PublishedAttachment {
+  url: string
+  media_type?: string
+  /** AP attachment type (`Image` / `Video`). */
+  type?: string
+  name?: string
+}
+
 export interface PublishedItem {
   id: number
   content_type: string
@@ -134,6 +182,8 @@ export interface PublishedItem {
   title?: string
   /** AP summary when present. */
   summary?: string
+  /** Note Image/Video attachments for Aro 已发布 media preview. */
+  attachments?: PublishedAttachment[]
 }
 
 export interface PublishedListResponse {
@@ -498,6 +548,12 @@ export interface UpdateTrustPolicyRequest {
   min_trust_level?: number
   allowed_domains?: string[]
   auto_discover?: boolean
+  /** Inbound rate limit (advanced). Trusted+ domains use trusted_multiplier. */
+  rate_limit?: {
+    max_requests_per_window?: number
+    window_seconds?: number
+    trusted_multiplier?: number
+  }
 }
 
 export interface ContentFilterItem {

@@ -251,6 +251,14 @@ const MOCK_PUBLISHED: PublishedItem[] = [
     visibility: 'public',
     published_at: '2026-03-12T09:00:00Z',
     content_preview: 'Hello from freeform note — preview text for 已发布',
+    attachments: [
+      {
+        url: 'https://picsum.photos/seed/myriad-published/640/360',
+        media_type: 'image/jpeg',
+        type: 'Image',
+        name: 'preview.jpg',
+      },
+    ],
   },
 ]
 

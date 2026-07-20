@@ -112,6 +112,16 @@ pub struct DockerBuild {
     pub frontend_url: String,
 }
 
+/// Single-component immutable tag from Docker Hub (proxy / updater fallback).
+#[derive(Debug, Clone, Serialize)]
+pub struct ComponentTag {
+    pub tag: String,
+    /// `commit` (`dev-<sha>`) or `release` (`vX.Y.Z`).
+    pub kind: &'static str,
+    pub pushed_at: Option<String>,
+    pub digest: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct TagPage {
     #[serde(default)]
@@ -211,6 +221,21 @@ impl DockerHubClient {
         ))
     }
 
+    /// List immutable tags (`dev-<sha>` / `vX.Y.Z`) for a single Docker Hub image, newest first.
+    ///
+    /// Used by proxy/self-update when GitHub release.json is unavailable and no explicit
+    /// target tag was provided.
+    pub async fn list_immutable_tags(
+        &self,
+        image: &str,
+        limit: u32,
+    ) -> Result<Vec<ComponentTag>> {
+        let repo = DockerHubRepository::parse(image)?;
+        let page_size = ((limit.max(1) as usize) * 4).clamp(50, 100);
+        let page = self.fetch_tags(&repo, page_size).await?;
+        Ok(immutable_component_tags(page.results, limit.max(1) as usize))
+    }
+
     async fn fetch_tags(
         &self,
         repository: &DockerHubRepository,
@@ -236,6 +261,45 @@ impl DockerHubClient {
             .await
             .map_err(|error| UpdaterError::DockerHub(format!("decode {url}: {error}")))
     }
+}
+
+fn immutable_component_tags(tags: Vec<TagResult>, limit: usize) -> Vec<ComponentTag> {
+    let mut out: Vec<ComponentTag> = tags
+        .into_iter()
+        .filter_map(|tag| {
+            let deploy_tag = DeployTag::parse(&tag.name).ok()?;
+            let kind = match deploy_tag.kind() {
+                DeployTagKind::Commit => "commit",
+                DeployTagKind::Release => "release",
+                DeployTagKind::Branch => return None,
+            };
+            Some(ComponentTag {
+                tag: tag.name.clone(),
+                kind,
+                pushed_at: tag.pushed_at(),
+                digest: tag.preferred_digest(),
+            })
+        })
+        .collect();
+    out.sort_by(|left, right| right.pushed_at.cmp(&left.pushed_at));
+    out.truncate(limit);
+    out
+}
+
+/// Prefer a tag matching the effective update mode for proxy/self Docker Hub fallback.
+///
+/// - Commit/dev: newest immutable tag overall (dev-* or v*), same tip policy as backend.
+/// - Release: newest formal `vX.Y.Z` release tag; if none, fall through to newest immutable.
+pub fn select_component_tip(
+    tags: &[ComponentTag],
+    prefer_release: bool,
+) -> Option<&ComponentTag> {
+    if prefer_release {
+        if let Some(rel) = tags.iter().find(|t| t.kind == "release") {
+            return Some(rel);
+        }
+    }
+    tags.first()
 }
 
 fn common_builds(
@@ -670,6 +734,43 @@ mod tests {
         assert!(!commit.is_upgrade);
         assert!(!commit.is_downgrade);
         assert_eq!(commit.relation, "identical");
+    }
+
+    #[test]
+    fn immutable_component_tags_skip_branch_tips_newest_first() {
+        let tags = immutable_component_tags(
+            vec![
+                tag("preview", "2026-07-16T12:00:00Z", "sha256:branch"),
+                tag("dev-aaaaaaa", "2026-07-15T09:00:00Z", "sha256:dev"),
+                tag("v0.3.6", "2026-07-16T08:00:00Z", "sha256:rel"),
+                tag("latest", "2026-07-17T08:00:00Z", "sha256:latest"),
+            ],
+            10,
+        );
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].tag, "v0.3.6");
+        assert_eq!(tags[0].kind, "release");
+        assert_eq!(tags[1].tag, "dev-aaaaaaa");
+        assert_eq!(tags[1].kind, "commit");
+    }
+
+    #[test]
+    fn select_component_tip_prefers_release_when_requested() {
+        let tags = immutable_component_tags(
+            vec![
+                tag("dev-bbbbbbb", "2026-07-17T12:00:00Z", "sha256:dev"),
+                tag("v0.3.6", "2026-07-16T08:00:00Z", "sha256:rel"),
+            ],
+            10,
+        );
+        assert_eq!(
+            select_component_tip(&tags, true).map(|t| t.tag.as_str()),
+            Some("v0.3.6")
+        );
+        assert_eq!(
+            select_component_tip(&tags, false).map(|t| t.tag.as_str()),
+            Some("dev-bbbbbbb")
+        );
     }
 
     #[test]

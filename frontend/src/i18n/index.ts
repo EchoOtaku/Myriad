@@ -301,6 +301,70 @@ export interface TranslationKeys {
     federation: string
     federationDesc: string
     federationPolicySaved: string
+    federationLoadFailed: string
+    federationSaveFailed: string
+    federationUpdateFailed: string
+    federationBlockFailed: string
+    federationFilterNameValueRequired: string
+    federationFilterAdded: string
+    federationAddFilterFailed: string
+    federationActiveEnforcement: string
+    federationBlocklist: string
+    federationAllowlist: string
+    federationAllowlistOn: string
+    federationAllowlistOff: string
+    federationMinTrust: string
+    federationMinTrustOn: string
+    federationMinTrustOff: string
+    federationContentFiltersOn: string
+    federationContentFiltersOff: string
+    federationOn: string
+    federationOff: string
+    federationInstancePolicy: string
+    federationMinTrustInbound: string
+    federationMinTrustInboundDesc: string
+    federationAllowlistDomains: string
+    federationAllowlistDomainsDesc: string
+    federationAllowlistPlaceholder: string
+    federationAutoDiscover: string
+    federationAutoDiscoverDesc: string
+    federationSavePolicy: string
+    federationKnownInstances: string
+    federationKnownInstancesDesc: string
+    federationNoInstances: string
+    federationBlocked: string
+    federationBlock: string
+    federationUnblock: string
+    federationContentFilters: string
+    federationContentFiltersDesc: string
+    federationFilterName: string
+    federationFilterType: string
+    federationFilterValue: string
+    federationFilterValuePlaceholder: string
+    federationAddFilter: string
+    federationNoFilters: string
+    federationFilterEnabled: string
+    federationFilterDisabled: string
+    federationTrustUnknown: string
+    federationTrustDiscovered: string
+    federationTrustFollowed: string
+    federationTrustTrusted: string
+    federationTrustFederated: string
+    federationTrustLevelHelp: string
+    federationFilterTypeBlockActivity: string
+    federationFilterTypeBlockKeyword: string
+    federationFilterTypeRequireTrust: string
+    federationAdvanced: string
+    federationAdvancedDesc: string
+    federationRateLimit: string
+    federationRateLimitDesc: string
+    federationRateMaxRequests: string
+    federationRateMaxRequestsDesc: string
+    federationRateWindowSeconds: string
+    federationRateWindowSecondsDesc: string
+    federationRateTrustedMultiplier: string
+    federationRateTrustedMultiplierDesc: string
+    federationRateResetDefaults: string
     data: string
     dataDesc: string
     about: string

@@ -26,6 +26,10 @@ interface ApiPlatformRow {
  * List enabled platforms for Tapp SDK.
  * Maps `id`/`key` to the stable slug so `platform.getData(id)` hits
  * `cache/platforms/{slug}_filtered.json`. Display name stays in `name`.
+ *
+ * Backend marks `enabled` when the catalog flag is on OR when a filtered
+ * library cache exists (seed defaults only enable GitHub; Steam/MAL/etc.
+ * become available once they have library data).
  */
 export async function listEnabledPlatforms(
   runtimeGrant?: string,

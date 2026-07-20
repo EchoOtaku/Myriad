@@ -784,6 +784,13 @@ export function generateFullSDK(
       // 发布
       publish: (req) => sendRequest('federation', 'publish', [req]),
       createNote: (req) => sendRequest('federation', 'createNote', [req]),
+      like: (objectId) => sendRequest('federation', 'like', [objectId]),
+      unlike: (objectId) => sendRequest('federation', 'unlike', [objectId]),
+      bookmark: (objectId) => sendRequest('federation', 'bookmark', [objectId]),
+      unbookmark: (objectId) => sendRequest('federation', 'unbookmark', [objectId]),
+      getBookmarks: () => sendRequest('federation', 'getBookmarks', []),
+      announce: (objectId) => sendRequest('federation', 'announce', [objectId]),
+      unannounce: (objectId) => sendRequest('federation', 'unannounce', [objectId]),
       uploadMedia: (req) => sendRequest('federation', 'uploadMedia', [req]),
       unpublish: (req) => sendRequest('federation', 'unpublish', [req]),
       getPublished: () => sendRequest('federation', 'getPublished', []),

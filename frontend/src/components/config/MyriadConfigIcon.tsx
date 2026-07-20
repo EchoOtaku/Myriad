@@ -25,6 +25,8 @@ const SHARED_CONFIG_ICON_ASSETS: Partial<Record<MyriadConfigIconKind, string>> =
   {
     ui: '/icons/control-panel/config.png',
     music: '/icons/dynamic/music.png',
+    // Same Aro mark as notification center federation source
+    federation: '/icons/notifications/aro.png',
   }
 
 /**

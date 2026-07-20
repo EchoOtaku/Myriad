@@ -386,7 +386,11 @@ async fn ensure_room_message_sender_member(
         .map_err(|e| e.to_string())?;
 
     let Some(room_row) = room_row else {
-        return Err(format!("not_found: Room {} not found", room_id));
+        // Distinguish ordering race (invite still in flight) from permanent absence.
+        // Callers that already verified the room exists never hit this branch.
+        return Err(format!(
+            "Room {room_id} not yet present; retry after RoomInvite"
+        ));
     };
 
     let owner: String = room_row.try_get("", "owner_actor").unwrap_or_default();
@@ -1068,6 +1072,14 @@ pub async fn delete_room(
     .await
     .map_err(db_err)?;
 
+    // Stop outbound KeyExchange / Room* retries aimed at this id
+    let _ = crate::federation::delivery::cancel_pending_deliveries_for_resource(
+        db,
+        room_id,
+        "cancelled: local room dissolved",
+    )
+    .await;
+
     tracing::info!("[Room] Deleted room {} by {}", room_id, username);
 
     Ok(json!({ "success": true, "room_id": room_id }))
@@ -1143,6 +1155,13 @@ pub async fn handle_room_dissolve(
             [room_id.into()],
         ))
         .await;
+
+    let _ = crate::federation::delivery::cancel_pending_deliveries_for_resource(
+        db,
+        room_id,
+        "cancelled: remote room dissolved",
+    )
+    .await;
 
     tracing::info!(
         "[Room] Dissolved room {} (remote notice from {})",
@@ -2587,23 +2606,19 @@ pub async fn send_room_message(
         ));
     }
 
+    // E2E 未就绪时降级明文，避免 Aro 默认 encrypt=true 导致发消息 400
     let (stored_payload, is_encrypted) = if want_encrypt {
-        let recipients = collect_room_e2e_recipients(db, room_id, &local_actor)
-            .await
-            .map_err(|e| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": format!("E2E recipients unavailable: {e}")})),
-                )
-            })?;
+        let recipients = match collect_room_e2e_recipients(db, room_id, &local_actor).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::debug!(room_id = %room_id, error = %e, "E2E recipients unavailable; plaintext");
+                Vec::new()
+            }
+        };
         if recipients.is_empty() {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "No peer E2E public keys yet; members must POST .../e2e/key-exchange"
-                })),
-            ));
-        }
+            tracing::debug!(room_id = %room_id, "No peer E2E keys yet; sending plaintext");
+            (req.payload.clone(), false)
+        } else {
         // 也给自己 wrap 一份，便于本端历史解密
         let mut all = recipients;
         if let Ok((my_pk, _)) = load_member_e2e_keys(db, room_id, &local_actor).await {
@@ -2611,18 +2626,18 @@ pub async fn send_room_message(
                 all.push((local_actor.clone(), my_pk));
             }
         }
-        let encrypted = crate::federation::e2e::encrypt_json_for_recipients(
+        match crate::federation::e2e::encrypt_json_for_recipients(
             &req.payload,
             room_id.as_bytes(),
             &all,
-        )
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("E2E encrypt failed: {e}")})),
-            )
-        })?;
-        (encrypted, true)
+        ) {
+            Ok(encrypted) => (encrypted, true),
+            Err(e) => {
+                tracing::warn!(room_id = %room_id, error = %e, "E2E encrypt failed; plaintext");
+                (req.payload.clone(), false)
+            }
+        }
+        }
     } else {
         (req.payload.clone(), false)
     };
@@ -3584,6 +3599,22 @@ pub async fn handle_room_message(
         ));
     }
 
+    // Room may still be in-flight (invite race) — ask peer to retry (503), not permanent 404
+    let room_exists = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .is_some();
+    if !room_exists {
+        return Err(format!(
+            "Room {room_id} not yet present; retry after RoomInvite"
+        ));
+    }
+
     // Membership check + self-heal for invitee missing inviter/owner rows
     ensure_room_message_sender_member(db, room_id, actor_url_str).await?;
 
@@ -3796,14 +3827,17 @@ pub async fn handle_room_join(
         .map_err(|e| e.to_string())?;
 
     if room_exists.is_none() {
-        // Soft-ack: RoomJoin can race ahead of RoomInvite on slow links; invite will create room.
-        tracing::warn!(
-            "[Room] RoomJoin for unknown room {} from {} (joining={}) — ignored pending invite",
+        // Alignment: RoomJoin can race ahead of RoomInvite. Soft-ack used to drop the
+        // join forever (202) so inviter never saw accept. Signal retry instead.
+        tracing::info!(
+            "[Room] RoomJoin for {} from {} (joining={}) — room not yet present; signaling retry",
             room_id,
             actor_url_str,
             joining
         );
-        return Ok(());
+        return Err(format!(
+            "Room {room_id} not yet present; retry after RoomInvite"
+        ));
     }
 
     // Ensure remote_actors row so future fanout can resolve inbox
@@ -3858,6 +3892,16 @@ pub async fn handle_room_join(
     // Notify local inviter / owner when a pending invite is accepted
     if was_pending || is_new {
         notify_local_members_of_join(db, room_id, joining).await;
+        // Alignment: pending invitees were skipped by KeyExchange fan-out (active-only).
+        // When they become active, push any locally published E2E keys so they can decrypt.
+        if let Err(e) = refanout_local_e2e_keys_to_member(db, room_id, joining).await {
+            tracing::warn!(
+                "[Room] E2E key re-fanout to new member {} in {} failed: {}",
+                joining,
+                room_id,
+                e
+            );
+        }
     }
 
     tracing::info!(
@@ -3867,6 +3911,157 @@ pub async fn handle_room_join(
         role,
         actor_url_str
     );
+    Ok(())
+}
+
+/// After a remote member becomes active, deliver KeyExchange for every *local*
+/// published room E2E key (skipped earlier while they were pending).
+async fn refanout_local_e2e_keys_to_member(
+    db: &DatabaseConnection,
+    room_id: &str,
+    target_actor: &str,
+) -> Result<(), String> {
+    if target_actor.is_empty() {
+        return Ok(());
+    }
+
+    let room_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(room_row) = room_row else {
+        return Ok(());
+    };
+    let shared = room_row
+        .try_get::<Option<serde_json::Value>>("", "shared_data_config")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({}));
+    let keys = shared
+        .get("e2e")
+        .and_then(|e| e.get("published_keys"))
+        .and_then(|v| v.as_object())
+        .cloned();
+    let Some(keys) = keys else {
+        return Ok(());
+    };
+    if keys.is_empty() {
+        return Ok(());
+    }
+
+    // Resolve target inbox
+    let target = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT inbox_url, domain FROM federation_remote_actors WHERE actor_url = $1",
+            [target_actor.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(target) = target else {
+        // Try fetch once
+        let _ = crate::federation::actor::fetch_remote_actor(db, target_actor).await;
+        return Ok(());
+    };
+    let inbox: String = target.try_get("", "inbox_url").unwrap_or_default();
+    let domain: String = target.try_get("", "domain").unwrap_or_default();
+    if inbox.is_empty() {
+        return Ok(());
+    }
+
+    // Local active members that own a published key
+    let local_members = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT actor_url, local_user_id FROM federation_room_members
+               WHERE room_id = $1 AND is_local = true
+                 AND COALESCE(membership_status, 'active') = 'active'
+                 AND local_user_id IS NOT NULL"#,
+            [room_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let base_url = get_base_url().await;
+    let mut sent = 0u32;
+    for lm in local_members {
+        let local_actor: String = lm.try_get("", "actor_url").unwrap_or_default();
+        let user_id: i32 = match lm.try_get::<i32>("", "local_user_id") {
+            Ok(id) => id,
+            Err(_) => continue,
+        };
+        if local_actor.is_empty() {
+            continue;
+        }
+        // Match published key by actor URL (same_actor_url for host variants)
+        let public_key = keys.iter().find_map(|(k, v)| {
+            if same_actor_url(k, &local_actor) {
+                v.as_str().map(|s| s.to_string())
+            } else {
+                None
+            }
+        });
+        let Some(public_key) = public_key else {
+            continue;
+        };
+
+        let activity_id = generate_activity_id(&base_url);
+        let kx_activity = json!({
+            "@context": build_context(),
+            "type": "myriad:KeyExchange",
+            "id": &activity_id,
+            "actor": &local_actor,
+            "to": [target_actor],
+            "object": {
+                "type": "myriad:KeyExchange",
+                "room": room_id,
+                "publicKey": &public_key,
+                "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+                "timestamp": now_iso8601()
+            }
+        });
+
+        let act_row = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"INSERT INTO federation_activities
+                   (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
+                   VALUES ($1, $2, 'KeyExchange', 'KeyExchange', $3, true, NOW())
+                   RETURNING id"#,
+                [
+                    activity_id.clone().into(),
+                    user_id.into(),
+                    kx_activity.into(),
+                ],
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
+            let _ = db
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"INSERT INTO federation_delivery_queue
+                       (activity_id, target_inbox, target_domain, status, created_at)
+                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                    [act_id.into(), inbox.clone().into(), domain.clone().into()],
+                ))
+                .await;
+            sent += 1;
+        }
+    }
+
+    if sent > 0 {
+        tracing::info!(
+            "[Room] Re-fanout {} E2E key(s) to new member {} in {}",
+            sent,
+            target_actor,
+            room_id
+        );
+    }
     Ok(())
 }
 
@@ -4281,7 +4476,7 @@ pub async fn initiate_e2e_key_exchange(
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
 
-    let my_role = get_member_role(db, room_id, &local_actor)
+    let membership = get_membership(db, room_id, &local_actor)
         .await
         .map_err(db_err)?
         .ok_or_else(|| {
@@ -4290,6 +4485,18 @@ pub async fn initiate_e2e_key_exchange(
                 Json(json!({"error": "Not a member"})),
             )
         })?;
+    let (my_role, my_status) = membership;
+    // Alignment: pending invitees must not fan-out KeyExchange (remote may lack room row)
+    if my_status != "active" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!(
+                    "Membership is {my_status}; accept the invite before E2E key exchange"
+                )
+            })),
+        ));
+    }
     if my_role == "observer" {
         return Err((
             StatusCode::FORBIDDEN,
@@ -4297,21 +4504,7 @@ pub async fn initiate_e2e_key_exchange(
         ));
     }
 
-    let session = crate::federation::e2e::create_session(room_id);
-    let public_key = session.local_keypair.public_key.clone();
-    let private_key = session.local_keypair.private_key.clone();
-    // Seal private key at rest (AES-GCM from jwt_secret); public key stays plain for fan-out.
-    let jwt_secret = jwt_secret_for_e2e_seal().await;
-    let sealed_sk = crate::federation::e2e::seal_private_key(&private_key, &jwt_secret).map_err(
-        |e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
-            )
-        },
-    )?;
-
-    // 1) 写入本成员 custom_permissions.e2e
+    // 1) 读取成员行；已有本地密钥则复用，避免每次打开会话轮换公钥导致解密失败
     let member_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -4332,6 +4525,53 @@ pub async fn initiate_e2e_key_exchange(
         .ok()
         .flatten()
         .unwrap_or_else(|| json!({}));
+
+    let jwt_secret = jwt_secret_for_e2e_seal().await;
+    let existing_pk = perms
+        .get("e2e")
+        .and_then(|e| e.get("local_public_key"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let existing_sk = perms
+        .get("e2e")
+        .and_then(|e| e.get("local_private_key"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let (public_key, sealed_sk) =
+        if let (Some(pk), Some(sk_stored)) = (existing_pk, existing_sk) {
+            match crate::federation::e2e::unseal_private_key(&sk_stored, &jwt_secret) {
+                Ok(_) => (pk, sk_stored),
+                Err(_) => {
+                    let session = crate::federation::e2e::create_session(room_id);
+                    let sealed = crate::federation::e2e::seal_private_key(
+                        &session.local_keypair.private_key,
+                        &jwt_secret,
+                    )
+                    .map_err(|e| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+                        )
+                    })?;
+                    (session.local_keypair.public_key, sealed)
+                }
+            }
+        } else {
+            let session = crate::federation::e2e::create_session(room_id);
+            let sealed = crate::federation::e2e::seal_private_key(
+                &session.local_keypair.private_key,
+                &jwt_secret,
+            )
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+                )
+            })?;
+            (session.local_keypair.public_key, sealed)
+        };
+
     perms["e2e"] = json!({
         "local_public_key": public_key,
         "local_private_key": sealed_sk,
@@ -4474,6 +4714,24 @@ pub async fn handle_key_exchange(
     crate::federation::e2e::validate_public_key_b64(public_key)
         .map_err(|e| format!("Invalid remote E2E public key: {e}"))?;
 
+    // Room may not exist yet if RoomInvite is still in flight — ask peer to retry
+    // (transient). Permanent not_found only after room row is known-absent and we
+    // already completed invite handling (see ensure below).
+    let room_exists = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .is_some();
+    if !room_exists {
+        return Err(format!(
+            "Room {room_id} not yet present; retry after RoomInvite"
+        ));
+    }
+
     // 发送方必须是成员（含 inviter/owner self-heal）
     ensure_room_message_sender_member(db, room_id, actor_url_str).await?;
 
@@ -4485,7 +4743,7 @@ pub async fn handle_key_exchange(
         ))
         .await
         .map_err(|e| e.to_string())?
-        .ok_or("Room not found")?;
+        .ok_or_else(|| format!("not_found: Room {room_id} not found"))?;
 
     let mut shared = room_row
         .try_get::<Option<serde_json::Value>>("", "shared_data_config")

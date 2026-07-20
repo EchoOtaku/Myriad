@@ -267,6 +267,47 @@ impl Worker {
         Ok((backend, frontend))
     }
 
+    /// Proxy image repository (no tag). Prefer `.env` `PROXY_IMAGE`; else compose default.
+    pub fn proxy_image_repo(&self) -> Result<String> {
+        self.optional_image_repo(
+            "PROXY_IMAGE",
+            "docker.io/somekawahitomi/myriad-proxy",
+        )
+    }
+
+    /// Updater image repository (no tag). Prefer `.env` `UPDATER_IMAGE`; else compose default.
+    pub fn updater_image_repo(&self) -> Result<String> {
+        self.optional_image_repo(
+            "UPDATER_IMAGE",
+            "docker.io/somekawahitomi/myriad-updater",
+        )
+    }
+
+    fn optional_image_repo(&self, key: &str, default: &str) -> Result<String> {
+        let env = crate::env_file::EnvFile::load(&self.cli.env_file)?;
+        let raw = env
+            .get(key)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(default);
+        // Normalize: strip accidental `:tag` so we never emit `repo:tag:other`.
+        // Host:port is preserved (e.g. localhost:5000/ns/name) — only strip the
+        // last `:` segment when a path is present and it is not a bare host:port.
+        let value = strip_image_repo_tag(raw);
+        if value.is_empty() {
+            return Err(UpdaterError::Precondition(format!(
+                "{key} must be an image repository without tag, got {raw}"
+            )));
+        }
+        // Bare "v1.2.3" or similar without a path
+        if value.contains(':') && !value.contains('/') {
+            return Err(UpdaterError::Precondition(format!(
+                "{key} must be an image repository without tag, got {raw}"
+            )));
+        }
+        Ok(value)
+    }
+
     pub fn docker(&self) -> &Arc<DockerClient> {
         &self.docker
     }
@@ -1812,6 +1853,24 @@ mod auto_install_gate_tests {
     }
 }
 
+/// Strip a trailing image tag from a repository reference.
+///
+/// - `docker.io/org/name:v0.3.6` → `docker.io/org/name`
+/// - `localhost:5000/org/name:dev-abc` → `localhost:5000/org/name`
+/// - `localhost:5000/org/name` → unchanged (host:port kept)
+/// - `registry:5000/ns/img` → unchanged (colon is host:port, after has `/`)
+fn strip_image_repo_tag(raw: &str) -> String {
+    let s = raw.trim();
+    let Some((before, after)) = s.rsplit_once(':') else {
+        return s.to_string();
+    };
+    // Tag form: path present before last `:`, and after has no `/` (not host:port/path).
+    if before.contains('/') && !after.is_empty() && !after.contains('/') {
+        return before.to_string();
+    }
+    s.to_string()
+}
+
 fn rewrite_with_mirror(image_ref: &str, mirror: &str) -> String {
     // image_ref looks like "docker.io/foo/bar:v1". Replace the registry host with `mirror`.
     let mirror = mirror.trim_end_matches('/');
@@ -1843,6 +1902,41 @@ pub(crate) fn set_phase(
         message_key: message_key.to_string(),
     };
     state.write_maintenance(&m)
+}
+
+#[cfg(test)]
+mod image_repo_tests {
+    use super::*;
+
+    #[test]
+    fn strip_tag_from_full_repo() {
+        assert_eq!(
+            strip_image_repo_tag("docker.io/org/name:v0.3.6"),
+            "docker.io/org/name"
+        );
+        assert_eq!(
+            strip_image_repo_tag("localhost:5000/org/name:dev-abc"),
+            "localhost:5000/org/name"
+        );
+    }
+
+    #[test]
+    fn preserves_host_port_without_tag() {
+        assert_eq!(
+            strip_image_repo_tag("localhost:5000/org/name"),
+            "localhost:5000/org/name"
+        );
+        assert_eq!(
+            strip_image_repo_tag("registry:5000/ns/img"),
+            "registry:5000/ns/img"
+        );
+    }
+
+    #[test]
+    fn leaves_unpathed_values() {
+        assert_eq!(strip_image_repo_tag("v0.3.6"), "v0.3.6");
+        assert_eq!(strip_image_repo_tag("myriad-backend"), "myriad-backend");
+    }
 }
 
 #[cfg(test)]

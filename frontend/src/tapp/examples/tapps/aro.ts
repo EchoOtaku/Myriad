@@ -67,6 +67,7 @@ const PAGE_HTML = `\
             </div>
             <div id="chat-actions" class="chat-actions"></div>
           </div>
+          <div id="e2e-ready-banner" class="e2e-ready-banner" hidden role="status" aria-live="polite"></div>
           <div id="pinned-bar" class="pinned-bar" style="display:none"></div>
           <div id="messages" class="messages-area"></div>
           <div class="input-float-wrap">
@@ -212,6 +213,11 @@ const PAGE_HTML = `\
             <span id="feed-nav-published">已发布</span>
             <span class="feed-nav-badge" id="feed-badge-published" hidden>0</span>
           </button>
+          <button class="feed-nav-item" data-sub="bookmarks">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+            <span id="feed-nav-bookmarks">收藏</span>
+            <span class="feed-nav-badge" id="feed-badge-bookmarks" hidden>0</span>
+          </button>
           <button class="feed-nav-item" data-sub="backup">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
             <span id="feed-nav-backup">备份</span>
@@ -306,6 +312,7 @@ const PAGE_HTML = `\
           <button class="feed-mobile-tab" data-sub="following"><span id="feed-tab-following">关注</span><span class="feed-nav-badge" id="feed-mobile-badge-following" hidden>0</span></button>
           <button class="feed-mobile-tab" data-sub="followers"><span id="feed-tab-followers">粉丝</span><span class="feed-nav-badge" id="feed-mobile-badge-followers" hidden>0</span></button>
           <button class="feed-mobile-tab" data-sub="published"><span id="feed-tab-published">已发布</span><span class="feed-nav-badge" id="feed-mobile-badge-published" hidden>0</span></button>
+          <button class="feed-mobile-tab" data-sub="bookmarks"><span id="feed-tab-bookmarks">收藏</span><span class="feed-nav-badge" id="feed-mobile-badge-bookmarks" hidden>0</span></button>
           <button class="feed-mobile-tab" data-sub="backup"><span id="feed-tab-backup">备份</span></button>
           <button id="refresh-feed-mobile-btn" class="feed-mobile-refresh" title="刷新">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -777,6 +784,20 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .feed-item-action:hover{color:var(--tapp-primary,#6366f1);background:rgba(var(--tapp-primary-rgb,99,102,241),.06)}
 .feed-item-action-danger{color:var(--text-secondary,#999)}
 .feed-item-action-danger:hover{color:#ef4444;background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.12)}
+.feed-item-action.is-active{color:var(--tapp-primary,#6366f1)}
+.feed-item-action.is-liked{color:#f43f5e}
+.feed-item-action.is-liked:hover{color:#e11d48;background:rgba(244,63,94,.08)}
+.feed-item-action.is-bookmarked{color:#eab308}
+.feed-item-action.is-announced{color:#22c55e}
+.feed-item-action-count{font-variant-numeric:tabular-nums;min-width:1ch}
+.feed-reply-box{margin-top:10px;padding:10px 12px;border:1px solid rgba(128,128,128,.12);border-radius:12px;background:rgba(128,128,128,.03)}
+.feed-reply-box textarea{width:100%;min-height:64px;resize:vertical;border:none;outline:none;background:transparent;color:var(--text-primary,#1a1a1a);font:inherit;font-size:13.5px;line-height:1.45}
+.feed-reply-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+.feed-reply-actions button{border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.feed-reply-cancel{background:rgba(128,128,128,.1);color:var(--text-secondary,#666)}
+.feed-reply-submit{background:var(--tapp-primary,#6366f1);color:#fff}
+.feed-reply-submit:disabled{opacity:.55;cursor:not-allowed}
+.feed-item-inreply{font-size:12px;color:var(--text-secondary,#8b98a5);margin-top:4px}
 
 /* ===== Aro Badges ===== */
 .aro-badge{font-size:10px;padding:2px 8px;border-radius:8px;font-weight:500;white-space:nowrap}
@@ -1409,6 +1430,22 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .badge-role{}
 .badge-closed{background:rgba(128,128,128,.08);color:var(--text-secondary,#999)}
 .badge-pending{background:rgba(245,158,11,.1);color:#f59e0b}
+/* E2E status badges — clear, non-cryptic */
+.badge-e2e-on{background:rgba(34,197,94,.14);color:#15803d;display:inline-flex;align-items:center;gap:4px}
+.dark .badge-e2e-on{background:rgba(34,197,94,.18);color:#4ade80}
+.badge-e2e-wait{background:rgba(245,158,11,.12);color:#b45309;display:inline-flex;align-items:center;gap:4px}
+.dark .badge-e2e-wait{background:rgba(245,158,11,.16);color:#fbbf24}
+.badge-e2e-on svg,.badge-e2e-wait svg{flex-shrink:0}
+/* One-shot banner under header when encryption is live */
+.e2e-ready-banner{
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:8px 14px;font-size:12px;font-weight:600;letter-spacing:-.01em;
+  color:#15803d;background:rgba(34,197,94,.1);
+  border-bottom:1px solid rgba(34,197,94,.18);
+}
+.dark .e2e-ready-banner{color:#4ade80;background:rgba(34,197,94,.12);border-bottom-color:rgba(34,197,94,.22)}
+.e2e-ready-banner svg{flex-shrink:0}
+.e2e-ready-banner[hidden]{display:none!important}
 .chat-actions{display:flex;gap:6px;flex-shrink:0;align-items:center}
 /* Muted header chrome — same family as .aro-icon-btn (size from shared rule above) */
 .member-toggle-btn,.manage-btn{background:rgba(128,128,128,.06);color:var(--text-secondary,#999);font-size:16px}
@@ -2531,9 +2568,15 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "dm": "Direct message",
     "downloadFail": "Couldn't download file",
     "downloadFile": "Download",
-    "e2eFail": "Couldn’t publish encryption key",
-    "e2ePublish": "Publish encryption key",
-    "e2ePublished": "Encryption key published",
+    "e2eFail": "Couldn’t enable end-to-end encryption",
+    "e2ePublish": "Enable end-to-end encryption",
+    "e2ePublishDesc": "Share your encryption key with this group so only members can read messages. Does nothing if keys are already set.",
+    "e2ePublished": "Encryption key shared with this chat",
+    "e2eKeyReceived": "Peer shared their encryption key",
+    "e2eEstablished": "End-to-end encryption active",
+    "e2eEstablishedBanner": "Messages in this chat are end-to-end encrypted",
+    "e2eWaitingPeer": "Waiting for peer encryption key",
+    "e2eLocalOnly": "Your key is ready — waiting for peer",
     "editRoom": "Edit group",
     "emptyChatHint": "No messages yet — say hello",
     "emptyFollowers": "Share your profile link so others can follow you.",
@@ -2567,6 +2610,34 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedMetaTimeline": "Posts from people you follow",
     "feedPlus": "Add",
     "feedPublished": "Published",
+    "feedBookmarks": "Bookmarks",
+    "feedMetaBookmarks": "Posts you've bookmarked",
+    "feedHintBookmarks": "Posts you've bookmarked",
+    "feedSubBookmarks": "Posts you've bookmarked",
+    "feedEmptyBookmarks": "No bookmarks yet — tap the bookmark icon on a post",
+    "emptyTitleBookmarks": "No bookmarks yet",
+    "composeMedia": "Media",
+    "previewShare": "Share",
+    "historyJump": "Show in chat",
+    "joining": "Joining…",
+    "forwardFileMetaFail": "Can't forward this file yet — download and re-send",
+    "likeBtn": "Like",
+    "unlikeBtn": "Unlike",
+    "bookmarkBtn": "Bookmark",
+    "unbookmarkBtn": "Remove bookmark",
+    "replyBtn": "Reply",
+    "repostBtn": "Repost",
+    "unrepostBtn": "Undo repost",
+    "replyPlaceholder": "Write a reply…",
+    "replySubmit": "Reply",
+    "replyCancel": "Cancel",
+    "replyFail": "Couldn't post reply",
+    "replySuccess": "Reply posted",
+    "likeFail": "Couldn't like",
+    "bookmarkFail": "Couldn't bookmark",
+    "repostFail": "Couldn't repost",
+    "repostSuccess": "Reposted",
+    "inReplyTo": "Replying to a post",
     "feedRetry": "Try again",
     "feedSubFollowers": "People who follow you",
     "feedSubFollowing": "People you follow",
@@ -2929,9 +3000,15 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "dm": "ダイレクトメッセージ",
     "downloadFail": "ファイルをダウンロードできませんでした",
     "downloadFile": "ダウンロード",
-    "e2eFail": "暗号鍵を公開できませんでした",
-    "e2ePublish": "暗号鍵を公開",
-    "e2ePublished": "暗号鍵を公開しました",
+    "e2eFail": "エンドツーエンド暗号化を有効にできませんでした",
+    "e2ePublish": "エンドツーエンド暗号化を有効化",
+    "e2ePublishDesc": "このグループに暗号鍵を共有し、メンバーだけがメッセージを読めるようにします。既に設定済みなら何もしません。",
+    "e2ePublished": "この会話に暗号鍵を共有しました",
+    "e2eKeyReceived": "相手が暗号鍵を共有しました",
+    "e2eEstablished": "エンドツーエンド暗号化が有効",
+    "e2eEstablishedBanner": "この会話のメッセージはエンドツーエンドで暗号化されています",
+    "e2eWaitingPeer": "相手の暗号鍵を待っています",
+    "e2eLocalOnly": "自分の鍵は準備済み — 相手の鍵待ち",
     "editRoom": "グループを編集",
     "emptyChatHint": "まだメッセージがありません。あいさつしてみましょう",
     "emptyFollowers": "プロフィールを共有してフォロワーを増やしましょう。",
@@ -2965,6 +3042,34 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedMetaTimeline": "フォロー中の人と自分の投稿",
     "feedPlus": "追加",
     "feedPublished": "公開済み",
+    "feedBookmarks": "ブックマーク",
+    "feedMetaBookmarks": "保存した投稿",
+    "feedHintBookmarks": "保存した投稿",
+    "feedSubBookmarks": "保存した投稿",
+    "feedEmptyBookmarks": "ブックマークはまだありません。投稿のブックマークをタップ",
+    "emptyTitleBookmarks": "ブックマークはまだありません",
+    "composeMedia": "メディア",
+    "previewShare": "共有",
+    "historyJump": "チャットで表示",
+    "joining": "参加中…",
+    "forwardFileMetaFail": "このファイルはまだ転送できません。ダウンロードして再送してください",
+    "likeBtn": "いいね",
+    "unlikeBtn": "いいね解除",
+    "bookmarkBtn": "ブックマーク",
+    "unbookmarkBtn": "ブックマーク解除",
+    "replyBtn": "返信",
+    "repostBtn": "リポスト",
+    "unrepostBtn": "リポストを取り消す",
+    "replyPlaceholder": "返信を書く…",
+    "replySubmit": "返信する",
+    "replyCancel": "キャンセル",
+    "replyFail": "返信に失敗しました",
+    "replySuccess": "返信しました",
+    "likeFail": "いいねに失敗しました",
+    "bookmarkFail": "ブックマークに失敗しました",
+    "repostFail": "リポストに失敗しました",
+    "repostSuccess": "リポストしました",
+    "inReplyTo": "投稿への返信",
     "feedRetry": "再試行",
     "feedSubFollowers": "あなたをフォローしている人",
     "feedSubFollowing": "フォロー中のアカウントを管理",
@@ -3327,9 +3432,15 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "dm": "私信",
     "downloadFail": "无法下载文件",
     "downloadFile": "下载",
-    "e2eFail": "无法发布加密密钥",
-    "e2ePublish": "发布加密密钥",
-    "e2ePublished": "已发布加密密钥",
+    "e2eFail": "无法开启端到端加密",
+    "e2ePublish": "开启端到端加密",
+    "e2ePublishDesc": "向本群共享加密密钥，仅成员可阅读消息。密钥已就绪时不会重复生成。",
+    "e2ePublished": "已向本会话共享加密密钥",
+    "e2eKeyReceived": "对方已共享加密密钥",
+    "e2eEstablished": "已建立端到端加密",
+    "e2eEstablishedBanner": "本会话消息已端到端加密",
+    "e2eWaitingPeer": "等待对方加密密钥",
+    "e2eLocalOnly": "本机密钥已就绪 — 等待对方",
     "editRoom": "编辑群聊",
     "emptyChatHint": "还没有消息，打个招呼吧",
     "emptyFollowers": "分享你的个人主页，让别人关注你。",
@@ -3363,6 +3474,34 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedMetaTimeline": "关注的人与你的动态",
     "feedPlus": "添加",
     "feedPublished": "已发布",
+    "feedBookmarks": "收藏推文",
+    "feedMetaBookmarks": "你收藏的帖子",
+    "feedHintBookmarks": "你收藏的帖子",
+    "feedSubBookmarks": "你收藏的帖子",
+    "feedEmptyBookmarks": "还没有收藏 — 在帖子上点收藏图标即可",
+    "emptyTitleBookmarks": "还没有收藏",
+    "composeMedia": "媒体",
+    "previewShare": "分享",
+    "historyJump": "在聊天中定位",
+    "joining": "加入中…",
+    "forwardFileMetaFail": "暂不支持转发此文件，请下载后重新发送",
+    "likeBtn": "点赞",
+    "unlikeBtn": "取消点赞",
+    "bookmarkBtn": "收藏",
+    "unbookmarkBtn": "取消收藏",
+    "replyBtn": "评论",
+    "repostBtn": "转发",
+    "unrepostBtn": "取消转发",
+    "replyPlaceholder": "写一条评论…",
+    "replySubmit": "发送评论",
+    "replyCancel": "取消",
+    "replyFail": "评论失败",
+    "replySuccess": "评论已发布",
+    "likeFail": "点赞失败",
+    "bookmarkFail": "收藏失败",
+    "repostFail": "转发失败",
+    "repostSuccess": "已转发",
+    "inReplyTo": "回复帖子",
     "feedRetry": "重试",
     "feedSubFollowers": "关注你的人",
     "feedSubFollowing": "管理你关注的人",
@@ -3668,12 +3807,16 @@ var state = {
     following: false,
     followers: false,
     published: false,
+    bookmarks: false,
     backup: false,
   },
   timeline: [],
   following: [],
   followers: [],
   published: [],
+  bookmarks: [],
+  /** object_id currently showing inline reply composer */
+  replyOpenObjectId: null,
   // Rings
   rings: [],
   // Ring detail
@@ -4087,8 +4230,49 @@ function autoResizeInput(el) {
   el.style.height = el.scrollHeight + 'px';
 }
 /**
+ * Federation E2E key-exchange system events (myriad:KeyExchange).
+ * Backend stores { algorithm, publicKey, direction? } as channel/room history —
+ * must never fall through to JSON.stringify or users see crypto material in chat.
+ */
+function isE2eKeyExchangeMessage(msg, msgType, payload) {
+  var mt = msgType || (msg && msg.message_type) || '';
+  if (mt === 'myriad:KeyExchange' || mt === 'KeyExchange') return true;
+  var p = payload;
+  if (p == null && msg && typeof msg.payload === 'object') p = msg.payload;
+  if (!p || typeof p !== 'object') return false;
+  // Envelope shape from channel/room key-exchange handlers
+  if (p.publicKey && (p.algorithm === 'x25519-aes256gcm' || p.algorithm)) return true;
+  if (p.public_key && p.algorithm) return true;
+  return false;
+}
+
+function e2eKeyExchangeLabel(msg, payload) {
+  var p = payload || (msg && typeof msg.payload === 'object' ? msg.payload : {}) || {};
+  var dir = String(p.direction || '').toLowerCase();
+  var outbound = dir === 'outbound' || (msg && isLocalActor(msg.sender_actor));
+  // If session is already fully up, prefer the strong “established” wording
+  // so history lines don’t look like incomplete half-handshakes.
+  try {
+    if (typeof getE2eStatusForActive === 'function'
+      && getE2eStatusForActive().status === 'established') {
+      return lang.e2eEstablished || 'End-to-end encryption active';
+    }
+  } catch (e0) { /* ignore */ }
+  if (outbound) {
+    return lang.e2eLocalOnly
+      || lang.e2ePublished
+      || lang.e2ePublish
+      || 'Encryption key published';
+  }
+  return lang.e2eKeyReceived
+    || lang.e2ePublished
+    || 'Encryption key received';
+}
+
+/**
  * Human-readable text from a message payload.
  * Never stringifies media blobs (data / transfer_id) — that used to dump base64 into quotes.
+ * Never stringifies E2E key-exchange payloads (algorithm + publicKey).
  */
 function getPayloadText(payload) {
   if (payload == null) return '';
@@ -4104,9 +4288,13 @@ function getPayloadText(payload) {
   if (payload.name != null && payload.name !== '') return String(payload.name);
   // Media / opaque objects: no dump
   if (payload.data != null || payload.transfer_id) return '';
+  // E2E key material must not appear as chat text
+  if (isE2eKeyExchangeMessage(null, '', payload)) return '';
   try {
     var s = JSON.stringify(payload);
     if (!s || s === '{}' || s === 'null') return '';
+    // Defensive: still suppress crypto-looking envelopes without message_type
+    if (s.indexOf('publicKey') !== -1 && s.indexOf('x25519') !== -1) return '';
     return s.length > 160 ? s.slice(0, 159) + '…' : s;
   } catch (e) {
     return '';
@@ -4117,9 +4305,12 @@ function getPayloadText(payload) {
 function quotePreviewText(msg) {
   if (!msg) return '';
   var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+  var mt = msg.message_type || '';
+  if (isE2eKeyExchangeMessage(msg, mt, payload)) {
+    return e2eKeyExchangeLabel(msg, payload);
+  }
   var text = getPayloadText(payload);
   if (text) return text.length > 140 ? text.slice(0, 139) + '…' : text;
-  var mt = msg.message_type || '';
   if (mt === 'image' || (payload.mime_type && String(payload.mime_type).indexOf('image/') === 0)) {
     return payload.filename || lang.previewImage || 'Image';
   }
@@ -4162,6 +4353,10 @@ function quoteSenderLabel(msg) {
 function messagePreview(msg) {
   if (!msg) return lang.newMessage || '新消息';
   var mt = msg.message_type || 'text';
+  var payload = (typeof msg.payload === 'object' && msg.payload) ? msg.payload : {};
+  if (isE2eKeyExchangeMessage(msg, mt, payload)) {
+    return e2eKeyExchangeLabel(msg, payload);
+  }
   if (mt === 'image') return lang.previewImage || '📷 图片';
   if (mt === 'file' || mt === 'file-meta') return lang.previewFile || '📎 文件';
   if (mt === 'system') return lang.previewSystem || '系统消息';
@@ -4777,10 +4972,12 @@ function applyRoleControls() {
   setAdminElementVisible('.feed-nav-item[data-sub="following"]', privateOnly);
   setAdminElementVisible('.feed-nav-item[data-sub="followers"]', privateOnly);
   setAdminElementVisible('.feed-nav-item[data-sub="published"]', privateOnly);
+  setAdminElementVisible('.feed-nav-item[data-sub="bookmarks"]', privateOnly);
   setAdminElementVisible('.feed-nav-item[data-sub="backup"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="following"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="followers"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="published"]', privateOnly);
+  setAdminElementVisible('.feed-mobile-tab[data-sub="bookmarks"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="backup"]', privateOnly);
   if (state.isGuest) {
     state.feedSubTab = 'timeline';
@@ -5325,11 +5522,13 @@ function applyLabels() {
   el = $('feed-nav-following'); if (el) el.textContent = lang.feedFollowing;
   el = $('feed-nav-followers'); if (el) el.textContent = lang.feedFollowers;
   el = $('feed-nav-published'); if (el) el.textContent = lang.feedPublished;
+  el = $('feed-nav-bookmarks'); if (el) el.textContent = lang.feedBookmarks || 'Bookmarks';
   el = $('feed-nav-backup'); if (el) el.textContent = lang.feedBackup || lang.backupTitle || 'Backup';
   el = $('feed-tab-timeline'); if (el) el.textContent = lang.feedTimeline;
   el = $('feed-tab-following'); if (el) el.textContent = lang.feedFollowing;
   el = $('feed-tab-followers'); if (el) el.textContent = lang.feedFollowers;
   el = $('feed-tab-published'); if (el) el.textContent = lang.feedPublished;
+  el = $('feed-tab-bookmarks'); if (el) el.textContent = lang.feedBookmarks || 'Bookmarks';
   el = $('feed-tab-backup'); if (el) el.textContent = lang.feedBackup || lang.backupTitle || 'Backup';
   if (typeof applyHistoryLabels === 'function') applyHistoryLabels();
   if (typeof applyRoomFilesLabels === 'function') applyRoomFilesLabels();
@@ -5933,7 +6132,9 @@ function platformSlug(p) {
   if (!p) return '';
   if (p.key) return String(p.key);
   if (p.slug) return String(p.slug);
-  if (p.id != null && p.id !== '' && !/^d+$/.test(String(p.id))) return String(p.id);
+  // Skip pure numeric PKs — getData needs the stable slug (steam), not "3".
+  // Prefer [0-9] over digit-class escapes: this block is embedded in a template string.
+  if (p.id != null && p.id !== '' && !/^[0-9]+$/.test(String(p.id))) return String(p.id);
   return p.id != null ? String(p.id) : '';
 }
 
@@ -7056,6 +7257,14 @@ function renderMessages(opts) {
         msgType = 'file';
       }
     }
+    // E2E key exchange is protocol traffic stored as history — show as system
+    // separator, never as a bubble of raw {algorithm, publicKey, direction}.
+    if (isE2eKeyExchangeMessage(msg, msgType, payload)) {
+      var kxLabel = e2eKeyExchangeLabel(msg, payload);
+      html += '<div class="msg-day-sep msg-e2e-sep" data-msg-id="' + esc(msg.message_id || '') + '">'
+        + '<span class="msg-day-label">' + esc(kxLabel) + '</span></div>';
+      return;
+    }
     var text = getPayloadText(msg.payload);
     var pinned = msg.is_pinned ? '<span class="msg-pin"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 011-1h4a1 1 0 011 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></svg></span>' : '';
 
@@ -8121,6 +8330,7 @@ function classifyHistoryMessage(msg) {
     else if (payload.transfer_id && payload.filename) mt = 'file-meta';
     else if (payload.data && payload.filename) mt = 'file';
   }
+  if (isE2eKeyExchangeMessage(msg, mt, payload)) return 'system';
   if (mt === 'image') return 'image';
   if (mt === 'file' || mt === 'file-meta') return 'file';
   if (mt === 'tapp' || mt === 'brew' || mt === 'library' || mt === 'report') return 'share';
@@ -9639,13 +9849,8 @@ function unwrapTransfersResponse(res) {
   return [];
 }
 
-function unwrapMessagesResponse(res) {
-  if (!res) return [];
-  if (Array.isArray(res)) return res;
-  if (Array.isArray(res.messages)) return res.messages;
-  if (res.data && Array.isArray(res.data.messages)) return res.data.messages;
-  return [];
-}
+// unwrapMessagesResponse: single definition lives in history module (PAGE_MOD_HISTORY).
+// Do not redeclare here — concatenated scripts would overwrite the stronger helper.
 
 function unwrapRoomFilesResponse(res) {
   if (!res) return { files: [], hasMore: false, total: 0 };
@@ -10324,7 +10529,8 @@ function renderChatHeader() {
       avatarEl.innerHTML = avatarContentHtml(ch.remote_actor_avatar || '', chName);
     }
     metaEl.innerHTML = '<span class="meta-badge badge-channel">' + esc(lang.dm) + '</span>'
-      + (ch.status === 'pending' ? '<span class="meta-badge badge-pending">' + esc(lang.pending) + '</span>' : '');
+      + (ch.status === 'pending' ? '<span class="meta-badge badge-pending">' + esc(lang.pending) + '</span>' : '')
+      + e2eStatusBadgeHtml();
     var actionsHtml = '';
     if (typeof historyHeaderButtonHtml === 'function') actionsHtml += historyHeaderButtonHtml();
     if (ch.status === 'pending' && ch.initiated_by === 'remote') {
@@ -10359,7 +10565,8 @@ function renderChatHeader() {
       + (rm.is_public ? '<span class="meta-badge badge-public">' + esc(lang.publicGroup || 'Public') + '</span>' : '')
       + (roomPending ? '<span class="meta-badge badge-pending">' + esc(lang.pending || 'Pending') + '</span>' : '')
       + (canSelfJoin ? '<span class="meta-badge badge-pending">' + esc(lang.openJoin || 'Open') + '</span>' : '')
-      + (!roomPending && rm.my_role && rm.my_role !== 'member' ? '<span class="meta-badge badge-role">' + esc(roleLabel(rm.my_role)) + '</span>' : '');
+      + (!roomPending && rm.my_role && rm.my_role !== 'member' ? '<span class="meta-badge badge-role">' + esc(roleLabel(rm.my_role)) + '</span>' : '')
+      + e2eStatusBadgeHtml();
     if (rm.is_public && rm.room_id) {
       metaHtml += '<button type="button" class="chat-room-id-btn" id="chat-room-id-btn" title="'
         + esc(lang.copyRoomId || lang.copy || 'Copy') + '">'
@@ -10385,11 +10592,15 @@ function renderChatHeader() {
         + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M10 11v6M14 11v6"/></svg>'
         + esc(lang.dissolve) + '</button>';
     }
-    // E2E key publish (best-effort; enables encrypt when peers publish too)
+    // E2E: share keys so group messages can be encrypted end-to-end
     if (!roomPending && typeof Tapp !== 'undefined' && Tapp.federation && typeof Tapp.federation.initiateRoomE2e === 'function') {
-      menuItems += '<button type="button" class="manage-item" id="action-room-e2e" role="menuitem">'
+      var e2eMenuLabel = lang.e2ePublish || 'Enable end-to-end encryption';
+      var e2eMenuTitle = lang.e2ePublishDesc
+        || 'Share your encryption key with this group so only members can read messages.';
+      menuItems += '<button type="button" class="manage-item" id="action-room-e2e" role="menuitem" title="'
+        + esc(e2eMenuTitle) + '">'
         + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
-        + esc(lang.e2ePublish || 'Publish encryption key') + '</button>';
+        + esc(e2eMenuLabel) + '</button>';
     }
     // History + group files + member toggle + manage menu
     var historyBtn = typeof historyHeaderButtonHtml === 'function' ? historyHeaderButtonHtml() : '';
@@ -10448,6 +10659,7 @@ function renderChatHeader() {
   if (memberToggle) memberToggle.addEventListener('click', toggleMemberPanel);
   if (typeof wireHistoryHeaderButton === 'function') wireHistoryHeaderButton();
   if (typeof wireRoomFilesHeaderButton === 'function') wireRoomFilesHeaderButton();
+  if (typeof renderE2eReadyBanner === 'function') renderE2eReadyBanner();
   var roomIdBtn = $('chat-room-id-btn');
   if (roomIdBtn && state.roomDetail && state.roomDetail.room_id) {
     roomIdBtn.addEventListener('click', function () {
@@ -10640,7 +10852,11 @@ async function openConversation(kind, id) {
   subscribeRealtime();
   // Best-effort E2E key publish after open (non-blocking)
   if (typeof maybePublishE2eKeys === 'function') {
-    maybePublishE2eKeys().catch(function () {});
+    maybePublishE2eKeys().then(function () {
+      if (typeof maybeAnnounceE2eEstablished === 'function') maybeAnnounceE2eEstablished();
+    }).catch(function () {});
+  } else if (typeof maybeAnnounceE2eEstablished === 'function') {
+    maybeAnnounceE2eEstablished();
   }
   var focusInput = $('msg-input');
   if (focusInput && !focusInput.disabled) {
@@ -10648,23 +10864,188 @@ async function openConversation(kind, id) {
   }
 }
 
+/**
+ * E2E readiness for active conversation.
+ * @returns {{ status: 'none'|'waiting'|'established', label: string, peerCount?: number }}
+ */
+function getE2eStatusForActive() {
+  try {
+    if (state.activeKind === 'channel' && state.channelDetail) {
+      var props = state.channelDetail.properties || {};
+      var e2e = props.e2e || props.E2E || null;
+      if (!e2e) return { status: 'none', label: '' };
+      var hasLocal = !!(e2e.local_public_key);
+      var hasRemote = !!(e2e.remote_public_key);
+      var established = e2e.established === true || e2e.established === 'true' || (hasLocal && hasRemote);
+      if (established && hasLocal && hasRemote) {
+        return {
+          status: 'established',
+          label: lang.e2eEstablished || 'End-to-end encryption active',
+        };
+      }
+      if (hasLocal && !hasRemote) {
+        return {
+          status: 'waiting',
+          label: lang.e2eLocalOnly || lang.e2eWaitingPeer || 'Waiting for peer encryption key',
+        };
+      }
+      if (!hasLocal && hasRemote) {
+        return {
+          status: 'waiting',
+          label: lang.e2eWaitingPeer || 'Waiting for peer encryption key',
+        };
+      }
+      return { status: 'none', label: '' };
+    }
+    if (state.activeKind === 'room') {
+      // Room multi-recipient: only encrypt when we already published and at least
+      // one peer key is known (best-effort from detail if present).
+      var rd = state.roomDetail || {};
+      var shared = rd.shared_data_config || rd.sharedDataConfig || {};
+      var re2e = (shared.e2e || {});
+      var keys = re2e.published_keys || re2e.publishedKeys || {};
+      var n = 0;
+      if (keys && typeof keys === 'object') {
+        for (var k in keys) {
+          if (Object.prototype.hasOwnProperty.call(keys, k) && keys[k]) n++;
+        }
+      }
+      if (n >= 2) {
+        return {
+          status: 'established',
+          label: lang.e2eEstablished || 'End-to-end encryption active',
+          peerCount: n,
+        };
+      }
+      if (n === 1) {
+        return {
+          status: 'waiting',
+          label: lang.e2eLocalOnly || lang.e2eWaitingPeer || 'Waiting for peer encryption key',
+          peerCount: n,
+        };
+      }
+      return { status: 'none', label: '', peerCount: 0 };
+    }
+  } catch (e0) { /* ignore */ }
+  return { status: 'none', label: '' };
+}
+
+/**
+ * Whether active channel/room can encrypt (both sides have keys / room has peers).
+ * Used so we do not force encrypt=true into a half-open session.
+ */
+function isE2eReadyForActive() {
+  return getE2eStatusForActive().status === 'established';
+}
+
+var E2E_LOCK_SVG = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>';
+
+/** Header meta badge HTML for current E2E status (empty when none). */
+function e2eStatusBadgeHtml() {
+  var st = getE2eStatusForActive();
+  if (st.status === 'established') {
+    return '<span class="meta-badge badge-e2e-on" title="' + esc(st.label) + '">'
+      + E2E_LOCK_SVG + esc(st.label) + '</span>';
+  }
+  if (st.status === 'waiting') {
+    return '<span class="meta-badge badge-e2e-wait" title="' + esc(st.label) + '">'
+      + E2E_LOCK_SVG + esc(st.label) + '</span>';
+  }
+  return '';
+}
+
+/** Banner under chat header when encryption is live. */
+function renderE2eReadyBanner() {
+  var el = $('e2e-ready-banner');
+  if (!el) return;
+  var st = getE2eStatusForActive();
+  if (st.status === 'established') {
+    var text = lang.e2eEstablishedBanner || st.label
+      || 'Messages in this chat are end-to-end encrypted';
+    el.innerHTML = E2E_LOCK_SVG + '<span>' + esc(text) + '</span>';
+    el.hidden = false;
+    el.setAttribute('aria-label', text);
+  } else {
+    el.innerHTML = '';
+    el.hidden = true;
+  }
+}
+
+/**
+ * After key publish / open: if session just became established, toast once per conversation.
+ */
+function maybeAnnounceE2eEstablished() {
+  var st = getE2eStatusForActive();
+  if (st.status !== 'established') return;
+  if (!state._e2eAnnounced) state._e2eAnnounced = {};
+  var key = (state.activeKind || '') + ':' + (state.activeId || '');
+  if (state._e2eAnnounced[key]) return;
+  state._e2eAnnounced[key] = true;
+  try {
+    Tapp.ui.showNotification({
+      title: lang.e2eEstablished || 'End-to-end encryption active',
+      message: lang.e2eEstablishedBanner || '',
+      type: 'success',
+    });
+  } catch (e0) { /* ignore */ }
+}
+
 /** Auto-publish E2E keys when opening an active channel/room (if API present). */
 async function maybePublishE2eKeys() {
   if (typeof Tapp === 'undefined' || !Tapp.federation) return;
+  // Dedupe per open: opening chat used to mint a NEW keypair every time, which
+  // broke decrypt and left a trail of outbound KeyExchange JSON in the transcript.
+  if (!state._e2ePublishOnce) state._e2ePublishOnce = {};
+  var onceKey = (state.activeKind || '') + ':' + (state.activeId || '');
+  if (state._e2ePublishOnce[onceKey]) return;
+
   if (state.activeKind === 'channel' && state.activeId
     && typeof Tapp.federation.initiateChannelE2e === 'function') {
     var st = state.channelDetail && state.channelDetail.status;
+    // Only after channel is accepted/active — pending means remote may lack ChannelOpen
     if (st === 'active' || st === 'accepted') {
+      // Already have local key → backend will reuse; skip noisy re-publish if established
+      var chE2e = state.channelDetail && state.channelDetail.properties
+        && state.channelDetail.properties.e2e;
+      if (chE2e && chE2e.local_public_key && chE2e.remote_public_key) {
+        state._e2ePublishOnce[onceKey] = true;
+        return;
+      }
       try {
         await Tapp.federation.initiateChannelE2e(state.activeId);
+        state._e2ePublishOnce[onceKey] = true;
+        // Refresh channel detail so e2e.established / keys appear in header
+        if (typeof Tapp.federation.getChannel === 'function') {
+          try {
+            var chFresh = await Tapp.federation.getChannel(state.activeId);
+            if (chFresh) state.channelDetail = chFresh.data || chFresh;
+          } catch (eRef) { /* ignore */ }
+        }
+        if (typeof renderChatHeader === 'function') renderChatHeader();
+        if (typeof maybeAnnounceE2eEstablished === 'function') maybeAnnounceE2eEstablished();
       } catch (e) {
         console.debug('[Aro] channel E2E exchange skipped', e);
       }
     }
   } else if (state.activeKind === 'room' && state.activeId
     && typeof Tapp.federation.initiateRoomE2e === 'function') {
+    // Only after membership is active — pending invite means remote may lack RoomJoin
+    var rmSt = state.roomDetail
+      && (state.roomDetail.my_membership_status || state.roomDetail.membership_status);
+    if (rmSt && rmSt !== 'active') {
+      return;
+    }
     try {
       await Tapp.federation.initiateRoomE2e(state.activeId);
+      state._e2ePublishOnce[onceKey] = true;
+      if (typeof Tapp.federation.getRoom === 'function') {
+        try {
+          var rmFresh = await Tapp.federation.getRoom(state.activeId);
+          if (rmFresh) state.roomDetail = rmFresh.data || rmFresh;
+        } catch (eRef2) { /* ignore */ }
+      }
+      if (typeof renderChatHeader === 'function') renderChatHeader();
+      if (typeof maybeAnnounceE2eEstablished === 'function') maybeAnnounceE2eEstablished();
     } catch (e) {
       console.debug('[Aro] room E2E publish skipped', e);
     }
@@ -10677,12 +11058,31 @@ async function doRoomE2eExchange() {
   try {
     var res = await Tapp.federation.initiateRoomE2e(state.activeId);
     var n = (res && (res.published_key_count != null ? res.published_key_count : res.data && res.data.published_key_count)) || '';
+    if (typeof Tapp.federation.getRoom === 'function') {
+      try {
+        var rm2 = await Tapp.federation.getRoom(state.activeId);
+        if (rm2) state.roomDetail = rm2.data || rm2;
+      } catch (eR) { /* ignore */ }
+    }
+    if (typeof renderChatHeader === 'function') renderChatHeader();
+    var est = getE2eStatusForActive();
     try {
-      Tapp.ui.showNotification({
-        title: lang.e2ePublished || 'Encryption key published',
-        message: n ? String(n) : undefined,
-        type: 'success',
-      });
+      if (est.status === 'established') {
+        Tapp.ui.showNotification({
+          title: lang.e2eEstablished || 'End-to-end encryption active',
+          message: lang.e2eEstablishedBanner || '',
+          type: 'success',
+        });
+        if (typeof maybeAnnounceE2eEstablished === 'function') maybeAnnounceE2eEstablished();
+      } else {
+        Tapp.ui.showNotification({
+          title: lang.e2ePublished || 'Encryption key shared with this chat',
+          message: est.label
+            || lang.e2ePublishDesc
+            || (n ? String(n) : undefined),
+          type: 'success',
+        });
+      }
     } catch (e0) { /* ignore */ }
   } catch (e) {
     notifyError(lang.e2eFail || lang.sendFail || 'E2E failed', e);
@@ -10897,8 +11297,9 @@ async function doSend() {
 
     var sendReq = { payload: msgPayload, message_type: msgType };
     if (replyTo) sendReq.reply_to = replyTo;
-    // Prefer E2E when session may be established (server no-ops if keys missing)
-    if (state.e2ePreferEncrypt !== false) {
+    // Prefer E2E only when session looks established. Backend also soft-falls
+    // back to plaintext if keys are incomplete (hard 400 used to fail every send).
+    if (state.e2ePreferEncrypt !== false && isE2eReadyForActive()) {
       sendReq.encrypt = true;
     }
     var sendRes;
@@ -10906,7 +11307,7 @@ async function doSend() {
       try {
         sendRes = await Tapp.federation.sendMessage(state.activeId, sendReq);
       } catch (eEnc) {
-        // Fallback plaintext if peer has no E2E session yet
+        // Fallback plaintext if peer has no E2E session yet / encrypt rejected
         if (sendReq.encrypt) {
           delete sendReq.encrypt;
           sendRes = await Tapp.federation.sendMessage(state.activeId, sendReq);
@@ -12074,12 +12475,13 @@ function formatFeedBadgeCount(n) {
   return String(n);
 }
 
-/** Sync following/followers/published counts into nav + mobile tab badges. Hidden when 0. */
+/** Sync following/followers/published/bookmarks counts into nav + mobile tab badges. Hidden when 0. */
 function updateFeedCountBadges() {
   var pairs = [
     { count: (state.following && state.following.length) || 0, ids: ['feed-badge-following', 'feed-mobile-badge-following'] },
     { count: (state.followers && state.followers.length) || 0, ids: ['feed-badge-followers', 'feed-mobile-badge-followers'] },
-    { count: (state.published && state.published.length) || 0, ids: ['feed-badge-published', 'feed-mobile-badge-published'] }
+    { count: (state.published && state.published.length) || 0, ids: ['feed-badge-published', 'feed-mobile-badge-published'] },
+    { count: (state.bookmarks && state.bookmarks.length) || 0, ids: ['feed-badge-bookmarks', 'feed-mobile-badge-bookmarks'] }
   ];
   if (state.isGuest) {
     pairs.forEach(function (p) { p.count = 0; });
@@ -12116,6 +12518,7 @@ function updateFeedProfileHeader() {
     state.following = [];
     state.followers = [];
     state.published = [];
+    state.bookmarks = [];
     updateFeedCountBadges();
     updateFeedHeader();
     return;
@@ -12181,6 +12584,14 @@ async function loadFeedSubTab() {
       var res = await Tapp.federation.getPublished();
       state.published = unwrapListResponse(res);
       updateFeedCountBadges();
+    } else if (sub === 'bookmarks') {
+      if (typeof Tapp.federation.getBookmarks === 'function') {
+        var resBm = await Tapp.federation.getBookmarks();
+        state.bookmarks = unwrapListResponse(resBm);
+      } else {
+        state.bookmarks = [];
+      }
+      updateFeedCountBadges();
     } else if (sub === 'backup') {
       // Local export/import page — no network list load
       state.feedError = null;
@@ -12218,6 +12629,7 @@ function getFeedTitle(sub) {
   if (sub === 'following') return lang.feedFollowing || 'Following';
   if (sub === 'followers') return lang.feedFollowers || 'Followers';
   if (sub === 'published') return lang.feedPublished || 'Published';
+  if (sub === 'bookmarks') return lang.feedBookmarks || 'Bookmarks';
   if (sub === 'backup') return lang.backupTitle || lang.feedBackup || 'Chat backup';
   return lang.feedTimeline || 'Home';
 }
@@ -12246,6 +12658,10 @@ function getFeedHint(sub) {
   if (sub === 'published') {
     return lang.feedHintPublished || lang.feedMetaPublished || lang.feedSubPublished
       || lang.feedPublished || "Notes you've published";
+  }
+  if (sub === 'bookmarks') {
+    return lang.feedHintBookmarks || lang.feedMetaBookmarks || lang.feedSubBookmarks
+      || lang.feedBookmarks || "Posts you've bookmarked";
   }
   return lang.feedHintTimeline || lang.feedMetaTimeline || lang.feedSubTimeline
     || lang.feedTimeline || 'Posts from people you follow';
@@ -12285,6 +12701,7 @@ function getFeedItems(sub) {
   if (sub === 'following') return state.following;
   if (sub === 'followers') return state.followers;
   if (sub === 'published') return state.published;
+  if (sub === 'bookmarks') return state.bookmarks;
   return state.timeline;
 }
 
@@ -12366,6 +12783,9 @@ function getFeedEmptyTitle(sub) {
   if (sub === 'published') {
     return lang.emptyTitlePublished || getFeedTitle(sub) || 'Nothing published';
   }
+  if (sub === 'bookmarks') {
+    return lang.emptyTitleBookmarks || getFeedTitle(sub) || 'No bookmarks yet';
+  }
   return lang.emptyTitleTimeline || getFeedTitle(sub) || 'No posts yet';
 }
 
@@ -12381,6 +12801,10 @@ function getFeedEmptyText(sub) {
   if (sub === 'published') {
     return lang.emptyPublished
       || 'Switch to Home and tap + to publish a note or media.';
+  }
+  if (sub === 'bookmarks') {
+    return lang.feedEmptyBookmarks
+      || 'No bookmarks yet — tap the bookmark icon on a post';
   }
   return lang.emptyTimeline
     || 'Follow people or publish a post to fill your home feed.';
@@ -12460,6 +12884,251 @@ function bindFeedContentActions(content) {
       doUnpublish(btn.dataset.contentType, btn.dataset.contentId);
     });
   });
+  content.querySelectorAll('[data-action-like]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      doToggleLike(btn.dataset.actionLike, btn.dataset.liked === '1');
+    });
+  });
+  content.querySelectorAll('[data-action-bookmark]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      doToggleBookmark(btn.dataset.actionBookmark, btn.dataset.bookmarked === '1');
+    });
+  });
+  content.querySelectorAll('[data-action-announce]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      doToggleAnnounce(btn.dataset.actionAnnounce, btn.dataset.announced === '1');
+    });
+  });
+  content.querySelectorAll('[data-action-reply]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleReplyComposer(btn.dataset.actionReply);
+    });
+  });
+  content.querySelectorAll('[data-action-reply-cancel]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      state.replyOpenObjectId = null;
+      renderFeedContent();
+    });
+  });
+  content.querySelectorAll('[data-action-reply-submit]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var oid = btn.dataset.actionReplySubmit;
+      var card = btn.closest('.feed-item');
+      var box = card ? card.querySelector('.feed-reply-box textarea') : null;
+      var text = box ? box.value : '';
+      doSubmitReply(oid, text);
+    });
+  });
+}
+
+function resolveObjectId(item) {
+  if (!item) return '';
+  if (item.object_id) return String(item.object_id);
+  var cj = item.content_json || item.content || item.object || null;
+  if (cj && cj.object && typeof cj.object === 'object'
+      && !cj.content && !(cj.source && cj.source.content)
+      && !cj.summary && !cj.name) {
+    cj = cj.object;
+  }
+  if (cj && cj.id) return String(cj.id);
+  if (cj && cj.url && typeof cj.url === 'string') return cj.url;
+  return '';
+}
+
+function applyInteractionToLists(objectId, patch) {
+  function patchItem(it) {
+    if (!it) return;
+    var oid = resolveObjectId(it);
+    if (oid !== objectId) return;
+    Object.keys(patch).forEach(function (k) { it[k] = patch[k]; });
+  }
+  (state.timeline || []).forEach(patchItem);
+  (state.bookmarks || []).forEach(patchItem);
+}
+
+async function doToggleLike(objectId, currentlyLiked) {
+  if (!objectId || state.isGuest) return;
+  if (!Tapp.federation || typeof Tapp.federation.like !== 'function') return;
+  // Optimistic
+  var next = !currentlyLiked;
+  applyInteractionToLists(objectId, {
+    liked_by_me: next,
+    like_count: Math.max(0, ((findFeedItem(objectId) || {}).like_count || 0) + (next ? 1 : -1))
+  });
+  renderFeedContent();
+  try {
+    var res = next
+      ? await Tapp.federation.like(objectId)
+      : await Tapp.federation.unlike(objectId);
+    var data = (res && res.data) || res || {};
+    applyInteractionToLists(objectId, {
+      liked_by_me: data.liked_by_me != null ? data.liked_by_me : next,
+      like_count: data.like_count != null ? data.like_count : undefined,
+      bookmarked_by_me: data.bookmarked_by_me,
+      announced_by_me: data.announced_by_me,
+      announce_count: data.announce_count,
+      reply_count: data.reply_count
+    });
+    renderFeedContent();
+  } catch (e) {
+    applyInteractionToLists(objectId, {
+      liked_by_me: currentlyLiked,
+      like_count: Math.max(0, ((findFeedItem(objectId) || {}).like_count || 0) + (next ? -1 : 1))
+    });
+    renderFeedContent();
+    notifyError(lang.likeFail || 'Like failed', e);
+  }
+}
+
+async function doToggleBookmark(objectId, currentlyBookmarked) {
+  if (!objectId || state.isGuest) return;
+  if (!Tapp.federation || typeof Tapp.federation.bookmark !== 'function') return;
+  var next = !currentlyBookmarked;
+  applyInteractionToLists(objectId, {
+    bookmarked_by_me: next,
+    is_bookmarked: next
+  });
+  renderFeedContent();
+  try {
+    var res = next
+      ? await Tapp.federation.bookmark(objectId)
+      : await Tapp.federation.unbookmark(objectId);
+    var data = (res && res.data) || res || {};
+    applyInteractionToLists(objectId, {
+      bookmarked_by_me: data.bookmarked_by_me != null ? data.bookmarked_by_me : next,
+      is_bookmarked: data.bookmarked_by_me != null ? data.bookmarked_by_me : next
+    });
+    // Refresh bookmarks list if open or after unbookmark
+    state.feedLoaded.bookmarks = false;
+    if (state.feedSubTab === 'bookmarks') {
+      await loadFeedSubTab();
+    } else {
+      renderFeedContent();
+      if (typeof Tapp.federation.getBookmarks === 'function') {
+        Tapp.federation.getBookmarks().then(function (r) {
+          state.bookmarks = unwrapListResponse(r);
+          updateFeedCountBadges();
+        }).catch(function () {});
+      }
+    }
+  } catch (e) {
+    applyInteractionToLists(objectId, {
+      bookmarked_by_me: currentlyBookmarked,
+      is_bookmarked: currentlyBookmarked
+    });
+    renderFeedContent();
+    notifyError(lang.bookmarkFail || 'Bookmark failed', e);
+  }
+}
+
+async function doToggleAnnounce(objectId, currentlyAnnounced) {
+  if (!objectId || state.isGuest) return;
+  if (!Tapp.federation || typeof Tapp.federation.announce !== 'function') return;
+  var next = !currentlyAnnounced;
+  applyInteractionToLists(objectId, {
+    announced_by_me: next,
+    announce_count: Math.max(0, ((findFeedItem(objectId) || {}).announce_count || 0) + (next ? 1 : -1))
+  });
+  renderFeedContent();
+  try {
+    var res = next
+      ? await Tapp.federation.announce(objectId)
+      : await Tapp.federation.unannounce(objectId);
+    var data = (res && res.data) || res || {};
+    applyInteractionToLists(objectId, {
+      announced_by_me: data.announced_by_me != null ? data.announced_by_me : next,
+      announce_count: data.announce_count != null ? data.announce_count : undefined
+    });
+    // New repost should appear on home feed
+    state.feedLoaded.timeline = false;
+    if (next && state.feedSubTab === 'timeline') {
+      try { await loadFeedSubTab(); } catch (e2) { renderFeedContent(); }
+    } else {
+      renderFeedContent();
+    }
+    if (next) {
+      try {
+        Tapp.ui.showNotification({
+          title: lang.repostSuccess || 'Reposted',
+          type: 'success'
+        });
+      } catch (e3) {}
+    }
+  } catch (e) {
+    applyInteractionToLists(objectId, {
+      announced_by_me: currentlyAnnounced,
+      announce_count: Math.max(0, ((findFeedItem(objectId) || {}).announce_count || 0) + (next ? -1 : 1))
+    });
+    renderFeedContent();
+    notifyError(lang.repostFail || 'Repost failed', e);
+  }
+}
+
+function toggleReplyComposer(objectId) {
+  if (!objectId || state.isGuest) return;
+  if (state.replyOpenObjectId === objectId) {
+    state.replyOpenObjectId = null;
+  } else {
+    state.replyOpenObjectId = objectId;
+  }
+  renderFeedContent();
+}
+
+async function doSubmitReply(objectId, text) {
+  if (!objectId || state.isGuest) return;
+  text = String(text || '').trim();
+  if (!text) return;
+  if (!Tapp.federation || typeof Tapp.federation.createNote !== 'function') {
+    notifyError(lang.replyFail || 'Reply failed');
+    return;
+  }
+  try {
+    var raw = await Tapp.federation.createNote({
+      text: text,
+      visibility: 'public',
+      in_reply_to: objectId
+    });
+    var publishRes = unwrapPublishResult(raw);
+    if (publishRes && publishRes.success === false) {
+      throw new Error(publishRes.error || lang.replyFail || 'Reply failed');
+    }
+    state.replyOpenObjectId = null;
+    applyInteractionToLists(objectId, {
+      reply_count: ((findFeedItem(objectId) || {}).reply_count || 0) + 1
+    });
+    state.feedLoaded.timeline = false;
+    state.feedLoaded.published = false;
+    try {
+      Tapp.ui.showNotification({
+        title: lang.replySuccess || 'Reply posted',
+        type: 'success'
+      });
+    } catch (e2) {}
+    if (state.feedSubTab === 'timeline') {
+      await loadFeedSubTab();
+    } else {
+      renderFeedContent();
+    }
+  } catch (e) {
+    notifyError(lang.replyFail || 'Reply failed', e);
+  }
+}
+
+function findFeedItem(objectId) {
+  var lists = [state.timeline, state.bookmarks];
+  for (var i = 0; i < lists.length; i++) {
+    var list = lists[i] || [];
+    for (var j = 0; j < list.length; j++) {
+      if (resolveObjectId(list[j]) === objectId) return list[j];
+    }
+  }
+  return null;
 }
 
 function renderFeedContent() {
@@ -12520,7 +13189,7 @@ function renderFeedContent() {
 
   if (empty) empty.style.display = 'none';
 
-  if (sub === 'timeline') {
+  if (sub === 'timeline' || sub === 'bookmarks') {
     items.forEach(function (item) {
       html += renderTimelineItem(item);
     });
@@ -12620,6 +13289,7 @@ function renderTimelineItem(item) {
   }
   var text = '';
   var linkUrl = '';
+  var inReplyTo = '';
   if (contentJson) {
     text = stripHtmlPreview(
       contentJson.title ||
@@ -12634,6 +13304,8 @@ function renderTimelineItem(item) {
     if (typeof linkUrl !== 'string') linkUrl = '';
     // Ring brew entries often put source as a string name
     if (!text && contentJson.summary) text = stripHtmlPreview(contentJson.summary);
+    inReplyTo = contentJson.inReplyTo || contentJson.in_reply_to || '';
+    if (typeof inReplyTo !== 'string') inReplyTo = '';
   }
   if (!text && item.content_preview) text = stripHtmlPreview(item.content_preview);
   var attachments = extractNoteAttachments(contentJson);
@@ -12641,7 +13313,15 @@ function renderTimelineItem(item) {
   if (!text && attachments.length) {
     text = lang.composeMedia || '📎';
   }
-  var h = '<div class="feed-item">';
+  var objectId = resolveObjectId(item);
+  var liked = !!(item.liked_by_me);
+  var bookmarked = !!(item.bookmarked_by_me || item.is_bookmarked);
+  var announced = !!(item.announced_by_me);
+  var likeCount = item.like_count || 0;
+  var replyCount = item.reply_count || 0;
+  var announceCount = item.announce_count || 0;
+  var canInteract = !state.isGuest && !!objectId;
+  var h = '<div class="feed-item" data-object-id="' + esc(objectId) + '">';
   h += '<div class="feed-item-avatar">' + avatarContentHtml(actor.avatar_url || '', name) + '</div>';
   h += '<div class="feed-item-body">';
   h += '<div class="feed-item-header">';
@@ -12649,6 +13329,12 @@ function renderTimelineItem(item) {
   if (handle) h += '<span class="feed-item-handle">' + esc(handle) + '</span>';
   if (ts) h += '<span class="feed-item-sep">&middot;</span><span class="feed-item-time">' + esc(ts) + '</span>';
   h += '</div>';
+  if (inReplyTo) {
+    h += '<div class="feed-item-inreply">' + esc(lang.inReplyTo || 'Replying to a post') + '</div>';
+  }
+  if (item.activity_type === 'Announce') {
+    h += '<div class="feed-item-inreply">' + esc(lang.repostBtn || 'Repost') + '</div>';
+  }
   if (text) {
     if (linkUrl) {
       h += '<div class="feed-item-text"><a href="' + esc(linkUrl) + '" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">' + esc(text) + '</a></div>';
@@ -12657,6 +13343,41 @@ function renderTimelineItem(item) {
     }
   }
   h += renderTimelineMedia(attachments);
+  if (canInteract) {
+    h += '<div class="feed-item-actions">';
+    // Reply
+    h += '<button type="button" class="feed-item-action" data-action-reply="' + esc(objectId) + '" title="' + esc(lang.replyBtn || 'Reply') + '">'
+      + '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg>'
+      + (replyCount ? '<span class="feed-item-action-count">' + esc(String(replyCount)) + '</span>' : '')
+      + '</button>';
+    // Repost
+    h += '<button type="button" class="feed-item-action' + (announced ? ' is-active is-announced' : '') + '" data-action-announce="' + esc(objectId) + '" data-announced="' + (announced ? '1' : '0') + '" title="' + esc(announced ? (lang.unrepostBtn || 'Undo repost') : (lang.repostBtn || 'Repost')) + '">'
+      + '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>'
+      + (announceCount ? '<span class="feed-item-action-count">' + esc(String(announceCount)) + '</span>' : '')
+      + '</button>';
+    // Like
+    h += '<button type="button" class="feed-item-action' + (liked ? ' is-active is-liked' : '') + '" data-action-like="' + esc(objectId) + '" data-liked="' + (liked ? '1' : '0') + '" title="' + esc(liked ? (lang.unlikeBtn || 'Unlike') : (lang.likeBtn || 'Like')) + '">'
+      + (liked
+        ? '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 000-7.8z"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 000-7.8z"/></svg>')
+      + (likeCount ? '<span class="feed-item-action-count">' + esc(String(likeCount)) + '</span>' : '')
+      + '</button>';
+    // Bookmark
+    h += '<button type="button" class="feed-item-action' + (bookmarked ? ' is-active is-bookmarked' : '') + '" data-action-bookmark="' + esc(objectId) + '" data-bookmarked="' + (bookmarked ? '1' : '0') + '" title="' + esc(bookmarked ? (lang.unbookmarkBtn || 'Remove bookmark') : (lang.bookmarkBtn || 'Bookmark')) + '">'
+      + (bookmarked
+        ? '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>')
+      + '</button>';
+    h += '</div>';
+    if (state.replyOpenObjectId === objectId) {
+      h += '<div class="feed-reply-box" data-reply-for="' + esc(objectId) + '">';
+      h += '<textarea placeholder="' + esc(lang.replyPlaceholder || 'Write a reply…') + '" rows="3"></textarea>';
+      h += '<div class="feed-reply-actions">';
+      h += '<button type="button" class="feed-reply-cancel" data-action-reply-cancel="' + esc(objectId) + '">' + esc(lang.replyCancel || 'Cancel') + '</button>';
+      h += '<button type="button" class="feed-reply-submit" data-action-reply-submit="' + esc(objectId) + '">' + esc(lang.replySubmit || 'Reply') + '</button>';
+      h += '</div></div>';
+    }
+  }
   h += '</div></div>';
   return h;
 }
@@ -12713,9 +13434,15 @@ function renderPublishedItem(item) {
   var dateStr = '';
   try { dateStr = timeAgo(item.published_at); } catch (e) {}
   // Prefer title as header line when useful; body uses summary/content_preview.
+  // attachments come from list_published (joined Create object) — same shape as Note AP.
+  var attachments = extractNoteAttachments(item);
   var titleLine = stripHtmlPreview(item.title || item.name || '');
   var preview = stripHtmlPreview(item.content_preview || item.summary || '');
   if (!preview && titleLine) preview = titleLine;
+  // Media-only Note: still show a short placeholder so the card is not blank.
+  if (!preview && attachments.length) {
+    preview = lang.composeMedia || '📎';
+  }
   if (!preview) preview = stripHtmlPreview(item.content_id || '');
   var h = '<div class="feed-item">';
   h += '<div class="feed-item-icon">' + icon + '</div>';
@@ -12729,6 +13456,8 @@ function renderPublishedItem(item) {
   } else if (preview) {
     h += '<div class="feed-item-text">' + esc(preview) + '</div>';
   }
+  // Same media strip as timeline so Note images/videos appear on 已发布.
+  h += renderTimelineMedia(attachments);
   if (titleLine && item.content_type && item.content_type !== 'note') {
     h += '<div class="feed-item-meta" style="font-size:11px;color:var(--text-secondary,#888)">' + esc(publishedTypeLabel(item.content_type)) + '</div>';
   }
@@ -12774,6 +13503,48 @@ function switchFeedSubTab(sub) {
   loadFeedSubTab();
 }
 
+/**
+ * After Follow, remote auto-Accept may land a few seconds later (delivery worker
+ * ~15s, or same-instance local Accept is immediate). Poll following list so the
+ * pending badge clears to "following" without a manual refresh.
+ */
+async function refreshFollowingUntilAccepted(targetHint, maxAttempts, intervalMs) {
+  var attempts = Math.max(1, maxAttempts || 6);
+  var delay = intervalMs || 2500;
+  var hint = String(targetHint || '').trim().toLowerCase();
+  for (var i = 0; i < attempts; i++) {
+    try {
+      if (state.currentView === 'feed' && state.feedSubTab === 'following') {
+        await loadFeedSubTab();
+      } else {
+        var res = await Tapp.federation.getFollowing();
+        state.following = unwrapListResponse(res);
+        updateFeedCountBadges();
+        if (state.currentView === 'feed' && state.feedSubTab === 'following') {
+          renderFeedContent();
+        }
+      }
+      updateFeedProfileHeader();
+      var list = state.following || [];
+      var pendingLeft = list.filter(function (a) {
+        if (!a || a.status !== 'pending') return false;
+        if (!hint) return true;
+        var url = String(a.actor_url || '').toLowerCase();
+        var handle = ((a.username || '') + '@' + (a.domain || '')).toLowerCase();
+        return url.indexOf(hint) !== -1 || handle.indexOf(hint.replace(/^@/, '')) !== -1 || hint.indexOf(url) !== -1;
+      });
+      // Done when no pending match for this target (accepted / gone).
+      if (!pendingLeft.length) return true;
+    } catch (ePoll) {
+      console.warn('[Aro] follow status poll failed', ePoll);
+    }
+    if (i < attempts - 1) {
+      await new Promise(function (r) { setTimeout(r, delay); });
+    }
+  }
+  return false;
+}
+
 async function doFollow() {
   var input = $('feed-follow-input');
   var btn = $('feed-follow-btn');
@@ -12782,7 +13553,7 @@ async function doFollow() {
   if (!target) return;
   if (btn) { btn.disabled = true; }
   try {
-    await Tapp.federation.follow(target);
+    var followRes = await Tapp.federation.follow(target);
     input.value = '';
     if (typeof closeFollowDialog === 'function') closeFollowDialog();
     // Refresh following list; auto-accept is remote (no manual approve UI).
@@ -12793,13 +13564,24 @@ async function doFollow() {
       loadFeedSubTab();
     }
     updateFeedProfileHeader();
+    // Same-instance / fast Accept may already be accepted in the API response.
+    var immediateStatus = '';
+    try {
+      immediateStatus = (followRes && (followRes.status || (followRes.data && followRes.data.status))) || '';
+    } catch (eSt) { immediateStatus = ''; }
     try {
       Tapp.ui.showNotification({
         title: lang.followBtn || 'Follow',
-        message: lang.followQueued || '',
+        message: immediateStatus === 'accepted'
+          ? (lang.feedFollowing || lang.followQueued || '')
+          : (lang.followQueued || ''),
         type: 'info'
       });
     } catch (e2) { /* ignore */ }
+    // If still pending, poll until Accept lands (or give up quietly).
+    if (immediateStatus !== 'accepted') {
+      refreshFollowingUntilAccepted(target, 8, 2000).catch(function () { /* ignore */ });
+    }
   } catch (e) {
     notifyError(lang.followFail, e);
   } finally {

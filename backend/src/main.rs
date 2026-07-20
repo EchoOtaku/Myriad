@@ -2046,6 +2046,233 @@ async fn federation_publish_wrapper(req: axum::extract::Request) -> Response {
     }
 }
 
+/// Shared body parse helper for object-id interaction endpoints.
+async fn federation_object_id_from_body(
+    req: axum::extract::Request,
+) -> Result<(middleware::auth::Claims, federation::interactions::ObjectIdRequest), Response> {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response())
+        }
+    };
+    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
+        Ok(b) => b,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid body"})),
+            )
+                .into_response())
+        }
+    };
+    let payload: federation::interactions::ObjectIdRequest =
+        match serde_json::from_slice(&body_bytes) {
+            Ok(p) => p,
+            Err(_) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "Invalid JSON (expect { object_id })"})),
+                )
+                    .into_response())
+            }
+        };
+    Ok((claims, payload))
+}
+
+async fn federation_like_wrapper(req: axum::extract::Request) -> Response {
+    let (claims, payload) = match federation_object_id_from_body(req).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::interactions::like_object(
+                user_id,
+                &claims.username,
+                db,
+                &payload.object_id,
+            )
+            .await
+            {
+                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn federation_unlike_wrapper(req: axum::extract::Request) -> Response {
+    let (claims, payload) = match federation_object_id_from_body(req).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::interactions::unlike_object(
+                user_id,
+                &claims.username,
+                db,
+                &payload.object_id,
+            )
+            .await
+            {
+                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn federation_bookmark_wrapper(req: axum::extract::Request) -> Response {
+    let (claims, payload) = match federation_object_id_from_body(req).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::interactions::bookmark_object(user_id, db, &payload.object_id).await {
+                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn federation_unbookmark_wrapper(req: axum::extract::Request) -> Response {
+    let (claims, payload) = match federation_object_id_from_body(req).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::interactions::unbookmark_object(user_id, db, &payload.object_id).await
+            {
+                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn federation_bookmarks_list_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::interactions::list_bookmarks(user_id, db).await {
+                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn federation_announce_wrapper(req: axum::extract::Request) -> Response {
+    let (claims, payload) = match federation_object_id_from_body(req).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::interactions::announce_object(
+                user_id,
+                &claims.username,
+                db,
+                &payload.object_id,
+            )
+            .await
+            {
+                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn federation_unannounce_wrapper(req: axum::extract::Request) -> Response {
+    let (claims, payload) = match federation_object_id_from_body(req).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::interactions::unannounce_object(
+                user_id,
+                &claims.username,
+                db,
+                &payload.object_id,
+            )
+            .await
+            {
+                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
 /// POST /api/federation/notes — 创建 freeform Note（文本 + 附件）
 async fn federation_create_note_wrapper(req: axum::extract::Request) -> Response {
     let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
@@ -3930,10 +4157,33 @@ async fn federation_update_trust_policy_wrapper(req: axum::extract::Request) -> 
         })
     });
     let auto_discover = payload.get("auto_discover").and_then(|v| v.as_bool());
+    // Prefer nested rate_limit { max_requests_per_window, window_seconds, trusted_multiplier }
+    // with flat keys as fallback for older clients.
+    let rate_obj = payload.get("rate_limit");
+    let rate_max = rate_obj
+        .and_then(|r| r.get("max_requests_per_window"))
+        .or_else(|| payload.get("rate_max_requests"))
+        .and_then(|v| v.as_i64());
+    let rate_window = rate_obj
+        .and_then(|r| r.get("window_seconds"))
+        .or_else(|| payload.get("rate_window_seconds"))
+        .and_then(|v| v.as_i64());
+    let rate_mul = rate_obj
+        .and_then(|r| r.get("trusted_multiplier"))
+        .or_else(|| payload.get("rate_trusted_multiplier"))
+        .and_then(|v| v.as_i64());
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
-            match federation::trust::update_policy(db, min_trust, allowed_domains, auto_discover)
+            match federation::trust::update_policy(
+                db,
+                min_trust,
+                allowed_domains,
+                auto_discover,
+                rate_max,
+                rate_window,
+                rate_mul,
+            )
                 .await
             {
                 Ok(v) => (StatusCode::OK, Json(v)).into_response(),
@@ -4816,25 +5066,78 @@ async fn get_federation_timeline(
 ) -> Result<serde_json::Value, String> {
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
     let base_url = federation::types::get_base_url().await;
+    let base = base_url.trim_end_matches('/');
+    let local_domain = federation::types::extract_domain(&base_url).unwrap_or_default();
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT t.activity_id, t.activity_type, t.object_type,
                       t.content_preview, t.content_json, t.is_read, t.received_at,
-                      ra.actor_url, ra.username, ra.domain, ra.display_name, ra.avatar_url,
-                      u.username AS local_username
+                      ra.actor_url AS remote_actor_url,
+                      ra.username AS remote_username,
+                      ra.domain AS remote_domain,
+                      ra.display_name AS remote_display_name,
+                      ra.avatar_url AS remote_avatar_url,
+                      author.username AS author_username,
+                      author.display_name AS author_display_name,
+                      peer.username AS peer_username,
+                      peer.display_name AS peer_display_name,
+                      CASE
+                          WHEN ra.id IS NOT NULL THEN
+                              CASE
+                                  WHEN peer.username IS NOT NULL
+                                       AND (
+                                           (peer.avatar_url IS NOT NULL AND peer.avatar_url <> ''
+                                            AND peer.avatar_url NOT LIKE 'https://ui-avatars.com/%'
+                                            AND peer.avatar_url NOT LIKE 'http://ui-avatars.com/%')
+                                           OR EXISTS (
+                                               SELECT 1 FROM user_identities ui
+                                               WHERE ui.user_id = peer.id
+                                                 AND ui.avatar_url IS NOT NULL AND ui.avatar_url <> ''
+                                           )
+                                       )
+                                  THEN $2 || '/users/' || peer.username || '/avatar'
+                                  ELSE NULL
+                              END
+                          ELSE
+                              CASE
+                                  WHEN author.username IS NOT NULL
+                                       AND (
+                                           (author.avatar_url IS NOT NULL AND author.avatar_url <> ''
+                                            AND author.avatar_url NOT LIKE 'https://ui-avatars.com/%'
+                                            AND author.avatar_url NOT LIKE 'http://ui-avatars.com/%')
+                                           OR EXISTS (
+                                               SELECT 1 FROM user_identities ui
+                                               WHERE ui.user_id = author.id
+                                                 AND ui.avatar_url IS NOT NULL AND ui.avatar_url <> ''
+                                           )
+                                       )
+                                  THEN $2 || '/users/' || author.username || '/avatar'
+                                  ELSE NULL
+                              END
+                      END AS local_avatar_proxy
                FROM federation_timeline t
                LEFT JOIN federation_remote_actors ra ON ra.id = t.remote_actor_id
-               LEFT JOIN users u ON u.id = t.user_id
+               -- Self-authored rows only — do NOT join viewer profile onto remote posts.
+               LEFT JOIN users author ON ra.id IS NULL AND author.id = t.user_id
+               -- Same-instance remote_actor stubs → local user profile enrichment.
+               LEFT JOIN users peer ON ra.id IS NOT NULL
+                   AND ra.username IS NOT NULL
+                   AND peer.username = ra.username
+                   AND (
+                       ra.actor_url LIKE ($2 || '/users/%')
+                       OR ra.domain = $3
+                   )
                WHERE t.user_id = $1
+                 AND (t.activity_type IS NULL OR t.activity_type <> 'Like')
                ORDER BY t.received_at DESC
                LIMIT 50"#,
-            [user_id.into()],
+            [user_id.into(), base.into(), local_domain.clone().into()],
         ))
         .await
         .map_err(|e| format!("DB error: {}", e))?;
 
-    let items: Vec<serde_json::Value> = rows
+    let mut items: Vec<serde_json::Value> = rows
         .iter()
         .map(|r| {
             let received_at = r
@@ -4842,7 +5145,7 @@ async fn get_federation_timeline(
                 .ok()
                 .map(|t| t.to_rfc3339());
             let remote_actor_url = r
-                .try_get::<Option<String>>("", "actor_url")
+                .try_get::<Option<String>>("", "remote_actor_url")
                 .ok()
                 .flatten()
                 .filter(|s| !s.is_empty());
@@ -4850,21 +5153,57 @@ async fn get_federation_timeline(
                 .try_get::<Option<serde_json::Value>>("", "content_json")
                 .ok()
                 .flatten();
-            // Local author posts have remote_actor_id = NULL — fill actor from local user.
+            let local_avatar_proxy = r
+                .try_get::<Option<String>>("", "local_avatar_proxy")
+                .ok()
+                .flatten()
+                .filter(|s| !s.is_empty());
+            // Prefer the post author's remote_actor; never the viewer's profile.
             let actor = if let Some(url) = remote_actor_url {
+                let remote_display = r
+                    .try_get::<Option<String>>("", "remote_display_name")
+                    .ok()
+                    .flatten()
+                    .filter(|s| !s.is_empty());
+                let peer_display = r
+                    .try_get::<Option<String>>("", "peer_display_name")
+                    .ok()
+                    .flatten()
+                    .filter(|s| !s.is_empty());
+                let remote_username = r
+                    .try_get::<Option<String>>("", "remote_username")
+                    .ok()
+                    .flatten();
+                let peer_username = r
+                    .try_get::<Option<String>>("", "peer_username")
+                    .ok()
+                    .flatten();
+                let remote_avatar = r
+                    .try_get::<Option<String>>("", "remote_avatar_url")
+                    .ok()
+                    .flatten()
+                    .filter(|s| !s.is_empty());
                 json!({
                     "actor_url": url,
-                    "username": r.try_get::<Option<String>>("", "username").ok().flatten(),
-                    "domain": r.try_get::<Option<String>>("", "domain").ok().flatten(),
-                    "display_name": r.try_get::<Option<String>>("", "display_name").ok().flatten(),
-                    "avatar_url": r.try_get::<Option<String>>("", "avatar_url").ok().flatten(),
+                    "username": remote_username.clone().or(peer_username.clone()),
+                    "domain": r.try_get::<Option<String>>("", "remote_domain").ok().flatten(),
+                    "display_name": remote_display
+                        .or(peer_display)
+                        .or(remote_username)
+                        .or(peer_username),
+                    "avatar_url": remote_avatar.or(local_avatar_proxy),
                 })
             } else {
                 let local_username = r
-                    .try_get::<Option<String>>("", "local_username")
+                    .try_get::<Option<String>>("", "author_username")
                     .ok()
                     .flatten()
                     .unwrap_or_default();
+                let local_display = r
+                    .try_get::<Option<String>>("", "author_display_name")
+                    .ok()
+                    .flatten()
+                    .filter(|s| !s.is_empty());
                 let actor_url = if local_username.is_empty() {
                     String::new()
                 } else {
@@ -4875,17 +5214,21 @@ async fn get_federation_timeline(
                     "actor_url": actor_url,
                     "username": local_username,
                     "domain": domain,
-                    "display_name": null,
-                    "avatar_url": null,
+                    "display_name": local_display,
+                    "avatar_url": local_avatar_proxy,
                     "is_local": true,
                 })
             };
+            let object_id = content_json
+                .as_ref()
+                .and_then(federation::interactions::extract_object_id);
             json!({
                 "activity_id": r.try_get::<String>("", "activity_id").unwrap_or_default(),
                 "activity_type": r.try_get::<Option<String>>("", "activity_type").ok().flatten(),
                 "object_type": r.try_get::<Option<String>>("", "object_type").ok().flatten(),
                 "content_preview": r.try_get::<Option<String>>("", "content_preview").ok().flatten(),
                 "content_json": content_json,
+                "object_id": object_id,
                 "is_read": r.try_get::<bool>("", "is_read").unwrap_or(false),
                 // Frontend (Aro) expects created_at / timestamp for timeAgo()
                 "created_at": received_at.clone(),
@@ -4894,6 +5237,40 @@ async fn get_federation_timeline(
             })
         })
         .collect();
+
+    // Enrich like/bookmark/announce/reply counts and me-flags
+    let object_ids: Vec<String> = items
+        .iter()
+        .filter_map(|it| {
+            it.get("object_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
+    if let Ok(stats_map) =
+        federation::interactions::interaction_stats_for_objects(db, user_id, &object_ids).await
+    {
+        for item in &mut items {
+            if let Some(oid) = item
+                .get("object_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+            {
+                if let Some(st) = stats_map.get(&oid) {
+                    if let Some(obj) = item.as_object_mut() {
+                        obj.insert("liked_by_me".into(), json!(st.liked_by_me));
+                        obj.insert("bookmarked_by_me".into(), json!(st.bookmarked_by_me));
+                        obj.insert("announced_by_me".into(), json!(st.announced_by_me));
+                        obj.insert("like_count".into(), json!(st.like_count));
+                        obj.insert("bookmark_count".into(), json!(st.bookmark_count));
+                        obj.insert("announce_count".into(), json!(st.announce_count));
+                        obj.insert("reply_count".into(), json!(st.reply_count));
+                        obj.insert("is_bookmarked".into(), json!(st.bookmarked_by_me));
+                    }
+                }
+            }
+        }
+    }
 
     Ok(json!({"items": items, "total": items.len()}))
 }
@@ -4923,6 +5300,22 @@ fn federation_api_router() -> Router {
         .route("/api/federation/timeline", get(federation_timeline_wrapper))
         .route("/api/federation/publish", post(federation_publish_wrapper))
         .route("/api/federation/notes", post(federation_create_note_wrapper))
+        .route("/api/federation/like", post(federation_like_wrapper))
+        .route("/api/federation/unlike", post(federation_unlike_wrapper))
+        .route("/api/federation/bookmark", post(federation_bookmark_wrapper))
+        .route(
+            "/api/federation/unbookmark",
+            post(federation_unbookmark_wrapper),
+        )
+        .route(
+            "/api/federation/bookmarks",
+            get(federation_bookmarks_list_wrapper),
+        )
+        .route("/api/federation/announce", post(federation_announce_wrapper))
+        .route(
+            "/api/federation/unannounce",
+            post(federation_unannounce_wrapper),
+        )
         .route(
             "/api/federation/unpublish",
             post(federation_unpublish_wrapper),

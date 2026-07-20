@@ -57,6 +57,26 @@ impl GithubClient {
             || s.contains("API rate limit")
     }
 
+    /// True when `release.json` cannot be obtained and callers may fall back to Docker Hub.
+    ///
+    /// Cosign failures and invalid downloaded JSON must **not** fall back — fail closed.
+    /// Used by release preflight, proxy-update, and self-update.
+    pub fn is_release_json_unavailable(err: &UpdaterError) -> bool {
+        match err {
+            UpdaterError::Github(_) | UpdaterError::Io(_) => true,
+            // Cosign enforce returns Precondition("cosign: ...") — never fall back.
+            UpdaterError::Precondition(msg) if msg.starts_with("cosign:") => false,
+            // Manifest::from_json / validate after a successful download — fail closed.
+            UpdaterError::Json(_) | UpdaterError::Precondition(_) => false,
+            other => {
+                // Network / client build oddities may surface as Internal(anyhow).
+                Self::is_expected_unauthenticated_failure(other)
+                    || other.to_string().to_ascii_lowercase().contains("timeout")
+                    || other.to_string().to_ascii_lowercase().contains("connection")
+            }
+        }
+    }
+
     pub fn new(
         repo: impl Into<String>,
         token: Option<SecretString>,

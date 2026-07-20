@@ -250,6 +250,41 @@
     },
     {
       "domain": "federation",
+      "action": "federation.like",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.unlike",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.bookmark",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.unbookmark",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.getBookmarks",
+      "permission": "federation:read"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.announce",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.unannounce",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
       "action": "federation.uploadMedia",
       "permission": "federation:write"
     },

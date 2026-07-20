@@ -235,9 +235,9 @@ pub async fn process_delivery_queue_detailed(
                     }
                     Err(e) => {
                         let new_attempts = attempts + 1;
-                        // 4xx client errors (except 408/429) are permanent — do not
-                        // retry forever (was causing ~15s RoomMessage not-member storms).
-                        let permanent = e.starts_with("PERMANENT ");
+                        // Permanent: 4xx from peer, OR 5xx body that is really
+                        // not_found / not_member (legacy peers still return 500).
+                        let permanent = crate::federation::errors::is_permanent_delivery_error(&e);
                         if permanent || new_attempts >= max_attempts {
                             // 放弃
                             let _ = db
@@ -719,6 +719,58 @@ async fn deliver_activity(
 }
 
 // ==================== 辅助函数 ====================
+
+/// Cancel pending/delivering queue rows whose activity body mentions `resource_id`
+/// (room_id or channel_id). Call when the local resource is closed or deleted so
+/// we stop fan-out KeyExchange / messages at a peer that will never accept them.
+pub async fn cancel_pending_deliveries_for_resource(
+    db: &DatabaseConnection,
+    resource_id: &str,
+    reason: &str,
+) -> u64 {
+    if resource_id.is_empty() {
+        return 0;
+    }
+    let needle = format!("%{}%", resource_id);
+    let res = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_delivery_queue dq
+               SET status = 'dead',
+                   error_message = $2,
+                   last_attempt_at = NOW()
+               FROM federation_activities a
+               WHERE dq.activity_id = a.id
+                 AND dq.status IN ('pending', 'delivering')
+                 AND (
+                   a.object_json::text LIKE $1
+                   OR a.activity_id LIKE $1
+                 )"#,
+            [needle.into(), reason.into()],
+        ))
+        .await;
+    match res {
+        Ok(r) => {
+            let n = r.rows_affected();
+            if n > 0 {
+                tracing::info!(
+                    resource_id = %resource_id,
+                    cancelled = n,
+                    "Cancelled pending federation deliveries for removed resource"
+                );
+            }
+            n
+        }
+        Err(e) => {
+            tracing::warn!(
+                resource_id = %resource_id,
+                error = %e,
+                "Failed to cancel pending deliveries"
+            );
+            0
+        }
+    }
+}
 
 /// 加载用户的密钥对
 async fn load_user_keypair(db: &DatabaseConnection, user_id: i32) -> Result<KeyPair, String> {

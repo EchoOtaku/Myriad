@@ -13,13 +13,13 @@ use std::time::{Duration, Instant};
 
 use crate::federation::types::*;
 
-// ==================== Early ChannelMessage buffer ====================
+// ==================== Early channel activity buffer ====================
 //
-// ChannelOpen and ChannelMessage can race on the remote: messages may arrive
-// before the channel row exists. Buffer briefly so we do not drop them; if the
-// buffer is full or the entry expires, return an error so the remote retries.
+// ChannelOpen can race with ChannelMessage / KeyExchange: the latter may arrive
+// before the channel row exists. Buffer briefly; on ChannelOpen flush in order.
+// If the buffer is full or the entry expires, return an error so the peer retries.
 
-struct BufferedChannelMessage {
+struct BufferedChannelActivity {
     actor_url: String,
     activity: serde_json::Value,
     buffered_at: Instant,
@@ -29,12 +29,12 @@ const EARLY_MSG_TTL: Duration = Duration::from_secs(120);
 const EARLY_MSG_MAX_PER_CHANNEL: usize = 64;
 const EARLY_MSG_MAX_TOTAL: usize = 256;
 
-fn early_message_buffer() -> &'static Mutex<HashMap<String, Vec<BufferedChannelMessage>>> {
-    static BUF: OnceLock<Mutex<HashMap<String, Vec<BufferedChannelMessage>>>> = OnceLock::new();
+fn early_activity_buffer() -> &'static Mutex<HashMap<String, Vec<BufferedChannelActivity>>> {
+    static BUF: OnceLock<Mutex<HashMap<String, Vec<BufferedChannelActivity>>>> = OnceLock::new();
     BUF.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn purge_expired_early_messages(map: &mut HashMap<String, Vec<BufferedChannelMessage>>) {
+fn purge_expired_early_activities(map: &mut HashMap<String, Vec<BufferedChannelActivity>>) {
     let now = Instant::now();
     map.retain(|_, msgs| {
         msgs.retain(|m| now.duration_since(m.buffered_at) < EARLY_MSG_TTL);
@@ -42,17 +42,16 @@ fn purge_expired_early_messages(map: &mut HashMap<String, Vec<BufferedChannelMes
     });
 }
 
-/// Buffer a ChannelMessage that arrived before the channel row exists.
-/// Returns true if buffered (caller should ACK); false if buffer is full.
-fn buffer_early_channel_message(
+/// Buffer ChannelMessage or KeyExchange that arrived before the channel row exists.
+fn buffer_early_channel_activity(
     channel_id: &str,
     actor_url: &str,
     activity: &serde_json::Value,
 ) -> bool {
-    let Ok(mut map) = early_message_buffer().lock() else {
+    let Ok(mut map) = early_activity_buffer().lock() else {
         return false;
     };
-    purge_expired_early_messages(&mut map);
+    purge_expired_early_activities(&mut map);
 
     let total: usize = map.values().map(|v| v.len()).sum();
     if total >= EARLY_MSG_MAX_TOTAL {
@@ -64,25 +63,31 @@ fn buffer_early_channel_message(
         return false;
     }
 
-    // Deduplicate by messageId when present
-    if let Some(mid) = activity
-        .get("object")
-        .and_then(|o| o.get("messageId"))
+    // Deduplicate by AP activity id or messageId
+    let dedupe_key = activity
+        .get("id")
         .and_then(|v| v.as_str())
-    {
-        let already = entry.iter().any(|m| {
-            m.activity
+        .or_else(|| {
+            activity
                 .get("object")
                 .and_then(|o| o.get("messageId"))
                 .and_then(|v| v.as_str())
-                == Some(mid)
+        });
+    if let Some(key) = dedupe_key {
+        let already = entry.iter().any(|m| {
+            m.activity.get("id").and_then(|v| v.as_str()) == Some(key)
+                || m.activity
+                    .get("object")
+                    .and_then(|o| o.get("messageId"))
+                    .and_then(|v| v.as_str())
+                    == Some(key)
         });
         if already {
             return true;
         }
     }
 
-    entry.push(BufferedChannelMessage {
+    entry.push(BufferedChannelActivity {
         actor_url: actor_url.to_string(),
         activity: activity.clone(),
         buffered_at: Instant::now(),
@@ -90,28 +95,48 @@ fn buffer_early_channel_message(
     true
 }
 
-fn take_early_channel_messages(channel_id: &str) -> Vec<BufferedChannelMessage> {
-    let Ok(mut map) = early_message_buffer().lock() else {
+/// Backward-compatible name used by ChannelMessage path.
+fn buffer_early_channel_message(
+    channel_id: &str,
+    actor_url: &str,
+    activity: &serde_json::Value,
+) -> bool {
+    buffer_early_channel_activity(channel_id, actor_url, activity)
+}
+
+fn take_early_channel_activities(channel_id: &str) -> Vec<BufferedChannelActivity> {
+    let Ok(mut map) = early_activity_buffer().lock() else {
         return Vec::new();
     };
-    purge_expired_early_messages(&mut map);
+    purge_expired_early_activities(&mut map);
     map.remove(channel_id).unwrap_or_default()
 }
 
 async fn flush_early_channel_messages(db: &DatabaseConnection, channel_id: &str) {
-    let msgs = take_early_channel_messages(channel_id);
-    if msgs.is_empty() {
+    let items = take_early_channel_activities(channel_id);
+    if items.is_empty() {
         return;
     }
     tracing::info!(
-        "[Channel] Flushing {} buffered message(s) for {}",
-        msgs.len(),
+        "[Channel] Flushing {} buffered activit(y/ies) for {}",
+        items.len(),
         channel_id
     );
-    for m in msgs {
-        if let Err(e) = handle_channel_message(db, &m.actor_url, &m.activity).await {
+    for m in items {
+        let ty = m
+            .activity
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let result = if ty == "myriad:KeyExchange" || ty == "KeyExchange" {
+            handle_key_exchange(db, &m.actor_url, &m.activity).await
+        } else {
+            handle_channel_message(db, &m.actor_url, &m.activity).await
+        };
+        if let Err(e) = result {
             tracing::warn!(
-                "[Channel] Failed to apply buffered message for {}: {}",
+                "[Channel] Failed to apply buffered {} for {}: {}",
+                ty,
                 channel_id,
                 e
             );
@@ -586,6 +611,14 @@ pub async fn close_channel(
     .await
     .map_err(db_err)?;
 
+    // Drop pending KeyExchange / messages for this channel (remote will not accept after close)
+    let _ = crate::federation::delivery::cancel_pending_deliveries_for_resource(
+        db,
+        channel_id,
+        "cancelled: local channel closed",
+    )
+    .await;
+
     // Notify other local tabs/devices immediately (remote path already broadcasts in handle_channel_close)
     crate::federation::ws_gateway::broadcast_to_channel(
         channel_id,
@@ -717,32 +750,39 @@ pub async fn send_message(
         .try_get::<Option<serde_json::Value>>("", "properties")
         .unwrap_or(None);
 
-    // 可选：E2E 加密载荷
+    // 可选：E2E 加密载荷。
+    // 会话未就绪时降级明文（Aro 默认 encrypt=true，硬失败会导致「发消息失败」）。
     let (stored_payload, is_encrypted) = if want_encrypt {
-        let session = load_e2e_session(channel_id, properties.as_ref())
-            .await
-            .map_err(|e| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": format!("E2E session unavailable: {e}")})),
-                )
-            })?;
-        if !session.established {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "E2E session not established; call POST .../e2e/key-exchange first and wait for peer key"
-                })),
-            ));
+        match load_e2e_session(channel_id, properties.as_ref()).await {
+            Ok(session) if session.established => {
+                match crate::federation::e2e::encrypt_json_payload(&session, &req.payload) {
+                    Ok(encrypted) => (encrypted, true),
+                    Err(e) => {
+                        tracing::warn!(
+                            channel_id = %channel_id,
+                            error = %e,
+                            "E2E encrypt failed; falling back to plaintext"
+                        );
+                        (req.payload.clone(), false)
+                    }
+                }
+            }
+            Ok(_) => {
+                tracing::debug!(
+                    channel_id = %channel_id,
+                    "E2E not established yet; sending plaintext"
+                );
+                (req.payload.clone(), false)
+            }
+            Err(e) => {
+                tracing::debug!(
+                    channel_id = %channel_id,
+                    error = %e,
+                    "E2E session unavailable; sending plaintext"
+                );
+                (req.payload.clone(), false)
+            }
         }
-        let encrypted = crate::federation::e2e::encrypt_json_payload(&session, &req.payload)
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": format!("E2E encrypt failed: {e}")})),
-                )
-            })?;
-        (encrypted, true)
     } else {
         (req.payload.clone(), false)
     };
@@ -1555,19 +1595,55 @@ pub async fn handle_key_exchange(
     let ch_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT c.properties FROM federation_channels c
+            r#"SELECT c.properties, c.status FROM federation_channels c
                JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE c.channel_id = $1 AND ra.actor_url = $2"#,
             [channel_id.into(), actor_url_str.into()],
         ))
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| {
-            format!(
+        .map_err(|e| e.to_string())?;
+
+    let ch_row = match ch_row {
+        Some(r) => r,
+        None => {
+            // Align with ChannelMessage: Open may still be in flight.
+            let channel_exists = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT 1 FROM federation_channels WHERE channel_id = $1",
+                    [channel_id.into()],
+                ))
+                .await
+                .map_err(|e| e.to_string())?
+                .is_some();
+            if !channel_exists {
+                let buffered =
+                    buffer_early_channel_activity(channel_id, actor_url_str, activity);
+                if buffered {
+                    tracing::info!(
+                        "[Channel] Buffered early KeyExchange for {} from {} (channel not yet present)",
+                        channel_id,
+                        actor_url_str
+                    );
+                }
+                return Err(format!(
+                    "Channel {} not yet present; retry after ChannelOpen",
+                    channel_id
+                ));
+            }
+            return Err(format!(
                 "Channel {} not found or actor {} is not the remote party",
                 channel_id, actor_url_str
-            )
-        })?;
+            ));
+        }
+    };
+
+    let ch_status: String = ch_row
+        .try_get("", "status")
+        .unwrap_or_else(|_| "pending".into());
+    if ch_status == "closed" {
+        return Err(format!("Channel {channel_id} is closed"));
+    }
 
     let mut properties = ch_row
         .try_get::<Option<serde_json::Value>>("", "properties")
@@ -1701,10 +1777,16 @@ pub async fn initiate_e2e_key_exchange(
         })?;
 
     let status: String = ch_row.try_get("", "status").unwrap_or_default();
-    if !["active", "accepted", "pending"].contains(&status.as_str()) {
+    // Alignment: do not fan-out KeyExchange while local channel is still pending
+    // (remote may not have applied ChannelOpen yet → not_found storm).
+    if !["active", "accepted"].contains(&status.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("Channel is {status}, cannot start E2E")})),
+            Json(json!({
+                "error": format!(
+                    "Channel is {status}; wait until active/accepted before E2E key exchange"
+                )
+            })),
         ));
     }
 
@@ -1725,28 +1807,78 @@ pub async fn initiate_e2e_key_exchange(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let mut session = crate::federation::e2e::create_session(channel_id);
-    let kx = crate::federation::e2e::build_key_exchange_payload(&session);
-    let mut established = false;
-    if let Some(ref remote_pk) = existing_remote {
-        if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk).is_ok() {
-            established = true;
-        }
-    }
+    // 已有本地密钥则复用：打开会话时自动 key-exchange 若每次轮换密钥，
+    // 对端仍握旧公钥 → 解密失败，且历史里堆满 outbound KeyExchange。
+    let existing_local_pk = properties
+        .get("e2e")
+        .and_then(|e| e.get("local_public_key"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let existing_local_sk = properties
+        .get("e2e")
+        .and_then(|e| e.get("local_private_key"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let jwt_secret = jwt_secret_for_channel_e2e().await;
-    let sealed_sk = crate::federation::e2e::seal_private_key(
-        &session.local_keypair.private_key,
-        &jwt_secret,
-    )
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
-        )
-    })?;
+    // new_keypair: only write a history KeyExchange bubble when the local key is mint-new
+    let (public_key, sealed_sk, established, new_keypair) =
+        if let (Some(pk), Some(sk_stored)) = (existing_local_pk, existing_local_sk) {
+            // Validate we can still unseal; if seal secret rotated, mint a new pair.
+            match crate::federation::e2e::unseal_private_key(&sk_stored, &jwt_secret) {
+                Ok(_sk) => {
+                    let established = existing_remote
+                        .as_ref()
+                        .map(|r| crate::federation::e2e::validate_public_key_b64(r).is_ok())
+                        .unwrap_or(false);
+                    (pk, sk_stored, established, false)
+                }
+                Err(_) => {
+                    let mut session = crate::federation::e2e::create_session(channel_id);
+                    let mut established = false;
+                    if let Some(ref remote_pk) = existing_remote {
+                        if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk)
+                            .is_ok()
+                        {
+                            established = true;
+                        }
+                    }
+                    let sealed = crate::federation::e2e::seal_private_key(
+                        &session.local_keypair.private_key,
+                        &jwt_secret,
+                    )
+                    .map_err(|e| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+                        )
+                    })?;
+                    (session.local_keypair.public_key, sealed, established, true)
+                }
+            }
+        } else {
+            let mut session = crate::federation::e2e::create_session(channel_id);
+            let mut established = false;
+            if let Some(ref remote_pk) = existing_remote {
+                if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk).is_ok() {
+                    established = true;
+                }
+            }
+            let sealed = crate::federation::e2e::seal_private_key(
+                &session.local_keypair.private_key,
+                &jwt_secret,
+            )
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+                )
+            })?;
+            (session.local_keypair.public_key, sealed, established, true)
+        };
+
     let e2e_state = json!({
-        "local_public_key": session.local_keypair.public_key,
+        "local_public_key": public_key,
         "local_private_key": sealed_sk,
         "remote_public_key": existing_remote,
         "established": established,
@@ -1774,33 +1906,35 @@ pub async fn initiate_e2e_key_exchange(
         "object": {
             "type": "myriad:KeyExchange",
             "channel": channel_id,
-            "publicKey": &kx.public_key,
+            "publicKey": &public_key,
             "algorithm": crate::federation::e2e::E2E_ALGORITHM,
             "timestamp": now_iso8601()
         }
     });
 
-    // 本地历史：记录我们发出的公钥（不含私钥）
-    let message_id = generate_message_id();
-    let _ = db
-        .execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"INSERT INTO federation_channel_messages
+    // 本地历史：仅在新生成密钥时记一条（复用密钥时重复写入会刷屏且误导）
+    if new_keypair {
+        let message_id = generate_message_id();
+        let _ = db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"INSERT INTO federation_channel_messages
                (channel_id, message_id, sender_actor, message_type, payload, is_encrypted, created_at)
                VALUES ($1, $2, $3, 'myriad:KeyExchange', $4, false, NOW())"#,
-            [
-                channel_id.into(),
-                message_id.into(),
-                local_actor.clone().into(),
-                json!({
-                    "publicKey": &kx.public_key,
-                    "algorithm": crate::federation::e2e::E2E_ALGORITHM,
-                    "direction": "outbound"
-                })
-                .into(),
-            ],
-        ))
-        .await;
+                [
+                    channel_id.into(),
+                    message_id.into(),
+                    local_actor.clone().into(),
+                    json!({
+                        "publicKey": &public_key,
+                        "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+                        "direction": "outbound"
+                    })
+                    .into(),
+                ],
+            ))
+            .await;
+    }
 
     if let Some(inbox) = remote_inbox {
         let domain = extract_domain(&inbox).unwrap_or_default();
@@ -1839,7 +1973,7 @@ pub async fn initiate_e2e_key_exchange(
             "type": "key_exchange",
             "channel_id": channel_id,
             "from": local_actor,
-            "publicKey": &kx.public_key,
+            "publicKey": &public_key,
             "algorithm": crate::federation::e2e::E2E_ALGORITHM,
             "established": established,
             "direction": "outbound"
@@ -1848,15 +1982,16 @@ pub async fn initiate_e2e_key_exchange(
     .await;
 
     tracing::info!(
-        "[Channel] E2E key exchange initiated for {} (established={})",
+        "[Channel] E2E key exchange initiated for {} (established={}, new_keypair={})",
         channel_id,
-        established
+        established,
+        new_keypair
     );
 
     Ok(E2eKeyExchangeResponse {
         success: true,
         channel_id: channel_id.to_string(),
-        public_key: kx.public_key,
+        public_key,
         algorithm: crate::federation::e2e::E2E_ALGORITHM.to_string(),
         established,
     })

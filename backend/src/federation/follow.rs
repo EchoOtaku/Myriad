@@ -115,7 +115,7 @@ pub async fn follow_remote(
             [
                 activity_id.clone().into(),
                 user_id.into(),
-                follow_activity.into(),
+                follow_activity.clone().into(),
             ],
         ))
         .await
@@ -125,26 +125,98 @@ pub async fn follow_remote(
         .map(|r| r.try_get("", "id").unwrap_or(0))
         .unwrap_or(0);
 
-    // 入队投递
     let domain = extract_domain(&remote.inbox_url).unwrap_or_default();
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"INSERT INTO federation_delivery_queue
-               (activity_id, target_inbox, target_domain, status, created_at)
-           VALUES ($1, $2, $3, 'pending', NOW())"#,
-        [
-            act_db_id.into(),
-            remote.inbox_url.clone().into(),
-            domain.into(),
-        ],
-    ))
-    .await
-    .map_err(db_err)?;
 
-    tracing::info!("📤 Follow queued: {} → {}", username, target_url);
+    // Same-instance Follow: deliver in-process. HTTP delivery refuses
+    // localhost/private inboxes, so without this the followee never records
+    // the follower and never emits Accept — initiator stays pending forever
+    // while (if HTTP somehow worked one-way) the remote side looks accepted.
+    let mut final_status = "pending".to_string();
+    if let Some(target_username) = local_username_from_actor_url(&base_url, &target_url) {
+        match crate::federation::inbox::deliver_activity_locally(
+            db,
+            &target_username,
+            &follow_activity,
+        )
+        .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    "📬 Follow delivered locally: {} → {}",
+                    username,
+                    target_username
+                );
+                let _ = db
+                    .execute(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"INSERT INTO federation_delivery_queue
+                               (activity_id, target_inbox, target_domain, status, created_at, last_attempt_at)
+                           VALUES ($1, $2, $3, 'delivered', NOW(), NOW())"#,
+                        [
+                            act_db_id.into(),
+                            remote.inbox_url.clone().into(),
+                            domain.clone().into(),
+                        ],
+                    ))
+                    .await;
+                // Local auto-Accept flips our outgoing row to accepted immediately.
+                if let Ok(Some(row)) = db
+                    .query_one(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"SELECT status FROM federation_follows
+                           WHERE user_id = $1 AND remote_actor_id = $2 AND direction = 'outgoing'"#,
+                        [user_id.into(), remote.id.into()],
+                    ))
+                    .await
+                {
+                    let s: String = row.try_get("", "status").unwrap_or_default();
+                    if !s.is_empty() {
+                        final_status = s;
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Local Follow delivery failed ({} → {}): {}; queueing HTTP",
+                    username,
+                    target_username,
+                    e
+                );
+                db.execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"INSERT INTO federation_delivery_queue
+                           (activity_id, target_inbox, target_domain, status, created_at)
+                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                    [
+                        act_db_id.into(),
+                        remote.inbox_url.clone().into(),
+                        domain.into(),
+                    ],
+                ))
+                .await
+                .map_err(db_err)?;
+            }
+        }
+    } else {
+        // 远程：入队投递
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_delivery_queue
+                   (activity_id, target_inbox, target_domain, status, created_at)
+               VALUES ($1, $2, $3, 'pending', NOW())"#,
+            [
+                act_db_id.into(),
+                remote.inbox_url.clone().into(),
+                domain.into(),
+            ],
+        ))
+        .await
+        .map_err(db_err)?;
+        tracing::info!("📤 Follow queued: {} → {}", username, target_url);
+    }
 
     Ok(FollowResponse {
-        status: "pending".to_string(),
+        status: final_status,
         target_actor: target_url,
         activity_id,
     })

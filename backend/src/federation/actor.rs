@@ -352,6 +352,14 @@ pub async fn fetch_remote_actor(
         }
     }
 
+    // Same-instance actors: build from local DB (no HTTP). Required for
+    // multi-user Follow/Accept on localhost / private base_url — outbound
+    // SSRF guards refuse those hosts.
+    let base_url = get_base_url().await;
+    if let Some(local_username) = local_username_from_actor_url(&base_url, actor_url_str) {
+        return upsert_local_actor_as_remote(db, &base_url, &local_username, actor_url_str).await;
+    }
+
     // 从远程获取 Actor JSON
     // SSRF 防护：阻止请求内网地址
     if is_internal_url(actor_url_str) {
@@ -507,6 +515,129 @@ pub struct RemoteActorInfo {
     pub public_key_pem: Option<String>,
     pub public_key_id: Option<String>,
     pub mfp_version: Option<String>,
+}
+
+/// Cache a same-instance user as federation_remote_actors without HTTP fetch.
+///
+/// Enables multi-user Follow/Accept when base_url is localhost or otherwise
+/// blocked by outbound SSRF guards.
+async fn upsert_local_actor_as_remote(
+    db: &DatabaseConnection,
+    base_url: &str,
+    username: &str,
+    actor_url_str: &str,
+) -> Result<RemoteActorInfo, String> {
+    let user_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT id, username, display_name,
+                      COALESCE(
+                          NULLIF(
+                              CASE
+                                  WHEN avatar_url LIKE 'https://ui-avatars.com/%'
+                                       OR avatar_url LIKE 'http://ui-avatars.com/%'
+                                  THEN NULL
+                                  ELSE avatar_url
+                              END,
+                              ''
+                          ),
+                          (
+                              SELECT NULLIF(ui.avatar_url, '')
+                              FROM user_identities ui
+                              WHERE ui.user_id = users.id
+                                AND ui.avatar_url IS NOT NULL
+                                AND ui.avatar_url <> ''
+                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
+                              LIMIT 1
+                          ),
+                          NULLIF(avatar_url, '')
+                      ) AS avatar_url
+               FROM users
+               WHERE username = $1
+               LIMIT 1"#,
+            [username.into()],
+        ))
+        .await
+        .map_err(|e| format!("DB error: {}", e))?
+        .ok_or_else(|| format!("Local user not found: {}", username))?;
+
+    let display_name: Option<String> = user_row
+        .try_get::<Option<String>>("", "display_name")
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty());
+    let has_avatar = user_row
+        .try_get::<Option<String>>("", "avatar_url")
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty())
+        .is_some();
+    let avatar_url = if has_avatar {
+        Some(format!(
+            "{}/users/{}/avatar",
+            base_url.trim_end_matches('/'),
+            urlencoding::encode(username)
+        ))
+    } else {
+        None
+    };
+
+    let canonical = actor_url(base_url, username);
+    let domain = extract_domain(&canonical).unwrap_or_default();
+    let inbox = inbox_url(base_url, username);
+    let mfp_ver = Some(env!("CARGO_PKG_VERSION").to_string());
+
+    // Prefer the requested URL for cache key stability when it already matches.
+    let store_url = if same_actor_url(actor_url_str, &canonical) {
+        actor_url_str.to_string()
+    } else {
+        canonical.clone()
+    };
+
+    let actor_id = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_remote_actors
+                   (actor_url, username, domain, display_name, avatar_url,
+                    inbox_url, mfp_version, last_fetched_at, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), NOW())
+               ON CONFLICT (actor_url) DO UPDATE SET
+                   username = EXCLUDED.username,
+                   domain = EXCLUDED.domain,
+                   display_name = COALESCE(EXCLUDED.display_name, federation_remote_actors.display_name),
+                   avatar_url = COALESCE(EXCLUDED.avatar_url, federation_remote_actors.avatar_url),
+                   inbox_url = EXCLUDED.inbox_url,
+                   mfp_version = EXCLUDED.mfp_version,
+                   last_fetched_at = NOW(),
+                   updated_at = NOW()
+               RETURNING id"#,
+            [
+                store_url.clone().into(),
+                username.to_string().into(),
+                domain.clone().into(),
+                display_name.clone().into(),
+                avatar_url.clone().into(),
+                inbox.clone().into(),
+                mfp_ver.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(|e| format!("Failed to cache local actor: {}", e))?
+        .map(|r| r.try_get::<i32>("", "id").unwrap_or(0))
+        .unwrap_or(0);
+
+    Ok(RemoteActorInfo {
+        id: actor_id,
+        actor_url: store_url,
+        username: Some(username.to_string()),
+        domain,
+        display_name,
+        avatar_url,
+        inbox_url: inbox,
+        public_key_pem: None,
+        public_key_id: None,
+        mfp_version: mfp_ver,
+    })
 }
 
 /// Extract avatar URL from ActivityPub Actor `icon` field.

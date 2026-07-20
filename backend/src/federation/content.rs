@@ -27,6 +27,9 @@ pub struct PublishRequest {
     pub text: Option<String>,
     /// Freeform Note 附件（已上传的公开 URL）
     pub attachments: Option<Vec<NoteAttachmentInput>>,
+    /// Parent object id for replies (AP `inReplyTo`). Accepts camelCase alias.
+    #[serde(default, alias = "inReplyTo")]
+    pub in_reply_to: Option<String>,
 }
 
 /// Freeform Note 创建请求（POST /api/federation/notes）
@@ -35,6 +38,9 @@ pub struct CreateNoteRequest {
     pub text: Option<String>,
     pub attachments: Option<Vec<NoteAttachmentInput>>,
     pub visibility: Option<String>,
+    /// Parent object id for replies (AP `inReplyTo`). Accepts camelCase alias.
+    #[serde(default, alias = "inReplyTo")]
+    pub in_reply_to: Option<String>,
 }
 
 /// 附件输入（来自 media 上传返回的公开 URL）
@@ -64,6 +70,20 @@ pub struct PublishResponse {
     pub author_timeline: bool,
 }
 
+/// Media attachment preview for Aro「已发布」cards (from joined Create object).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PublishedAttachment {
+    pub url: String,
+    /// MIME type (image/jpeg, video/mp4, …). Accepts AP `mediaType` on input.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    /// AP attachment type (`Image` / `Video`).
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub attachment_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
 /// 已发布内容列表项
 #[derive(Debug, Serialize)]
 pub struct PublishedItem {
@@ -82,6 +102,9 @@ pub struct PublishedItem {
     /// Short summary when present (AP `summary` / report summary).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    /// Note Image/Video attachments so Aro can render media on 已发布 cards.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<PublishedAttachment>,
 }
 
 /// 媒体上传响应
@@ -175,6 +198,7 @@ pub async fn publish_content(
         visibility,
         req.text.as_deref(),
         req.attachments.as_deref(),
+        req.in_reply_to.as_deref(),
     )
     .await?;
 
@@ -287,6 +311,7 @@ pub async fn create_note(
         visibility: req.visibility.clone(),
         text: req.text.clone(),
         attachments: req.attachments.clone(),
+        in_reply_to: req.in_reply_to.clone(),
     };
     publish_content(user_id, username, db, &publish_req).await
 }
@@ -396,7 +421,7 @@ pub async fn unpublish_content(
 /// 获取用户已发布的内容列表
 ///
 /// Joins `federation_activities.object_json` so clients (Aro) can render
-/// title / summary / content_preview instead of bare content_type + id.
+/// title / summary / content_preview / attachments instead of bare content_type + id.
 pub async fn list_published(
     user_id: i32,
     db: &DatabaseConnection,
@@ -423,7 +448,7 @@ pub async fn list_published(
                 .try_get::<Option<serde_json::Value>>("", "object_json")
                 .ok()
                 .flatten();
-            let (title, summary, content_preview) =
+            let (title, summary, content_preview, attachments) =
                 published_fields_from_activity_json(object_json.as_ref());
             PublishedItem {
                 id: r.try_get("", "id").unwrap_or(0),
@@ -438,6 +463,7 @@ pub async fn list_published(
                 content_preview,
                 title,
                 summary,
+                attachments,
             }
         })
         .collect();
@@ -625,6 +651,7 @@ async fn build_ap_object(
     visibility: &str,
     note_text: Option<&str>,
     note_attachments: Option<&[NoteAttachmentInput]>,
+    in_reply_to: Option<&str>,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
     let local_actor = actor_url(base_url, username);
     let (to, cc) = resolve_audience(visibility, base_url, username);
@@ -691,7 +718,7 @@ async fn build_ap_object(
                 format!("<p>{}</p>", escape_html(text))
             };
 
-            Ok(json!({
+            let mut note = json!({
                 "type": "Note",
                 "id": format!("{}/notes/{}", base_url.trim_end_matches('/'), content_id),
                 "attributedTo": &local_actor,
@@ -707,7 +734,11 @@ async fn build_ap_object(
                 "attachment": ap_attachments,
                 "mfp:contentType": "note",
                 "mfp:contentId": content_id,
-            }))
+            });
+            if let Some(parent) = in_reply_to.map(str::trim).filter(|s| !s.is_empty()) {
+                note["inReplyTo"] = json!(parent);
+            }
+            Ok(note)
         }
         "report" => {
             // 综合报告 → AP Article
@@ -999,7 +1030,7 @@ async fn build_ap_object(
 /// Actual HTTP delivery for remote followers is performed by
 /// `delivery::process_delivery_queue`, started via
 /// `delivery::spawn_delivery_worker` from main on full-mode boot.
-async fn fan_out_to_followers(
+pub(crate) async fn fan_out_to_followers(
     db: &DatabaseConnection,
     user_id: i32,
     activity_db_id: i32,
@@ -1189,9 +1220,19 @@ async fn deliver_create_to_local_follower(
         .as_str()
         .unwrap_or("Create")
         .to_string();
+    // Likes are not home-timeline items (counts come from interactions / activities).
+    if activity_type == "Like" {
+        return Ok(true);
+    }
     let object = &activity_json["object"];
     let object_type = object["type"].as_str().map(|s| s.to_string());
     let preview = preview_from_ap_object(object);
+    // For Announce with a bare object id string, store as-is; Create stores the Note.
+    let content_json = if object.is_string() {
+        object.clone()
+    } else {
+        object.clone()
+    };
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -1209,7 +1250,7 @@ async fn deliver_create_to_local_follower(
             activity_type.into(),
             object_type.into(),
             preview.into(),
-            object.clone().into(),
+            content_json.into(),
         ],
     ))
     .await
@@ -1220,25 +1261,13 @@ async fn deliver_create_to_local_follower(
 
 /// Ensure a federation_remote_actors row exists for a local (or already-known) actor
 /// without HTTP fetch — used when fan-out short-circuits same-instance delivery.
+///
+/// For same-instance publishers, fill display_name + avatar proxy so followers'
+/// personal feeds attribute posts to the author (not the viewer).
 async fn ensure_remote_actor_stub(
     db: &DatabaseConnection,
     actor_url_str: &str,
 ) -> Result<i32, String> {
-    let existing = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT id FROM federation_remote_actors WHERE actor_url = $1",
-            [actor_url_str.into()],
-        ))
-        .await
-        .map_err(|e| format!("DB error: {}", e))?;
-    if let Some(row) = existing {
-        let id: i32 = row.try_get("", "id").unwrap_or(0);
-        if id != 0 {
-            return Ok(id);
-        }
-    }
-
     let domain = extract_domain(actor_url_str).unwrap_or_default();
     let username = actor_url_str
         .trim_end_matches('/')
@@ -1248,21 +1277,95 @@ async fn ensure_remote_actor_stub(
         .map(|s| s.to_string());
     let inbox = format!("{}/inbox", actor_url_str.trim_end_matches('/'));
 
+    // Prefer local profile when this actor_url is on our instance.
+    let base_url = get_base_url().await;
+    let base = base_url.trim_end_matches('/');
+    let is_local = actor_url_str
+        .trim_end_matches('/')
+        .starts_with(&format!("{}/users/", base));
+    let mut display_name: Option<String> = None;
+    let mut avatar_url: Option<String> = None;
+    if is_local {
+        if let Some(ref uname) = username {
+            if let Ok(Some(row)) = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"SELECT display_name,
+                              COALESCE(
+                                  NULLIF(
+                                      CASE
+                                          WHEN avatar_url LIKE 'https://ui-avatars.com/%'
+                                               OR avatar_url LIKE 'http://ui-avatars.com/%'
+                                          THEN NULL
+                                          ELSE avatar_url
+                                      END,
+                                      ''
+                                  ),
+                                  (
+                                      SELECT NULLIF(ui.avatar_url, '')
+                                      FROM user_identities ui
+                                      WHERE ui.user_id = users.id
+                                        AND ui.avatar_url IS NOT NULL
+                                        AND ui.avatar_url <> ''
+                                      ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
+                                      LIMIT 1
+                                  ),
+                                  NULLIF(avatar_url, '')
+                              ) AS avatar_url
+                       FROM users
+                       WHERE username = $1
+                       LIMIT 1"#,
+                    [uname.clone().into()],
+                ))
+                .await
+            {
+                display_name = row
+                    .try_get::<Option<String>>("", "display_name")
+                    .ok()
+                    .flatten()
+                    .filter(|s| !s.is_empty());
+                let has_avatar = row
+                    .try_get::<Option<String>>("", "avatar_url")
+                    .ok()
+                    .flatten()
+                    .filter(|s| !s.is_empty())
+                    .is_some();
+                if has_avatar {
+                    avatar_url = Some(format!(
+                        "{}/users/{}/avatar",
+                        base,
+                        urlencoding::encode(uname)
+                    ));
+                }
+            }
+        }
+    }
+
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_remote_actors
-                   (actor_url, username, domain, inbox_url, last_fetched_at, created_at)
-               VALUES ($1, $2, $3, $4, NOW(), NOW())
+                   (actor_url, username, domain, display_name, avatar_url, inbox_url, last_fetched_at, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
                ON CONFLICT (actor_url) DO UPDATE SET
                    username = COALESCE(EXCLUDED.username, federation_remote_actors.username),
                    domain = COALESCE(NULLIF(EXCLUDED.domain, ''), federation_remote_actors.domain),
+                   display_name = COALESCE(
+                       NULLIF(EXCLUDED.display_name, ''),
+                       federation_remote_actors.display_name
+                   ),
+                   avatar_url = COALESCE(
+                       NULLIF(EXCLUDED.avatar_url, ''),
+                       federation_remote_actors.avatar_url
+                   ),
                    inbox_url = COALESCE(NULLIF(EXCLUDED.inbox_url, ''), federation_remote_actors.inbox_url)
                RETURNING id"#,
             [
                 actor_url_str.into(),
                 username.into(),
                 domain.into(),
+                display_name.into(),
+                avatar_url.into(),
                 inbox.into(),
             ],
         ))
@@ -1325,13 +1428,18 @@ fn preview_from_ap_object(object: &serde_json::Value) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// title / summary / content_preview from a stored Create activity JSON
+/// title / summary / content_preview / attachments from a stored Create activity JSON
 /// (`object_json` column holds the full Create envelope).
 fn published_fields_from_activity_json(
     activity_json: Option<&serde_json::Value>,
-) -> (Option<String>, Option<String>, Option<String>) {
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Vec<PublishedAttachment>,
+) {
     let Some(root) = activity_json else {
-        return (None, None, None);
+        return (None, None, None, vec![]);
     };
     // Prefer nested object (Create envelope); fall back to root if it is already the object.
     let object = if root.get("object").map(|o| o.is_object()).unwrap_or(false) {
@@ -1354,8 +1462,62 @@ fn published_fields_from_activity_json(
         .filter(|s| !s.is_empty());
 
     let content_preview = preview_from_ap_object(object).or_else(|| summary.clone());
+    let attachments = attachments_from_ap_object(object);
 
-    (title, summary, content_preview)
+    (title, summary, content_preview, attachments)
+}
+
+/// Extract Image/Video (etc.) attachments from an AP Note/Article object.
+fn attachments_from_ap_object(object: &serde_json::Value) -> Vec<PublishedAttachment> {
+    let Some(att) = object
+        .get("attachment")
+        .or_else(|| object.get("attachments"))
+    else {
+        return vec![];
+    };
+
+    let items: Vec<&serde_json::Value> = if let Some(arr) = att.as_array() {
+        arr.iter().collect()
+    } else if att.is_object() {
+        vec![att]
+    } else {
+        return vec![];
+    };
+
+    items
+        .into_iter()
+        .filter_map(|a| {
+            let url = a
+                .get("url")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())?
+                .to_string();
+            let media_type = a
+                .get("mediaType")
+                .or_else(|| a.get("media_type"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            let attachment_type = a
+                .get("type")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            let name = a
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            Some(PublishedAttachment {
+                url,
+                media_type,
+                attachment_type,
+                name,
+            })
+        })
+        .collect()
 }
 
 fn strip_tags_preview(s: &str, max_chars: usize) -> String {
@@ -1698,10 +1860,12 @@ mod tests {
                 "name": null
             }
         });
-        let (title, summary, preview) = published_fields_from_activity_json(Some(&create));
+        let (title, summary, preview, attachments) =
+            published_fields_from_activity_json(Some(&create));
         assert!(title.is_none());
         assert!(summary.is_none());
         assert_eq!(preview.as_deref(), Some("Hello world post"));
+        assert!(attachments.is_empty());
     }
 
     #[test]
@@ -1714,10 +1878,74 @@ mod tests {
                 "summary": "A short summary of the report body text"
             }
         });
-        let (title, summary, preview) = published_fields_from_activity_json(Some(&create));
+        let (title, summary, preview, attachments) =
+            published_fields_from_activity_json(Some(&create));
         assert_eq!(title.as_deref(), Some("Spring Report"));
         assert!(summary.as_ref().is_some_and(|s| s.contains("short summary")));
         assert!(preview.is_some());
+        assert!(attachments.is_empty());
+    }
+
+    #[test]
+    fn published_fields_include_note_image_attachments() {
+        let create = json!({
+            "type": "Create",
+            "object": {
+                "type": "Note",
+                "source": { "content": "with photo", "mediaType": "text/plain" },
+                "attachment": [
+                    {
+                        "type": "Image",
+                        "mediaType": "image/jpeg",
+                        "url": "https://example.com/media/federation/1/photo.jpg",
+                        "name": "photo.jpg"
+                    },
+                    {
+                        "type": "Video",
+                        "mediaType": "video/mp4",
+                        "url": "https://example.com/media/federation/1/clip.mp4"
+                    },
+                    {
+                        "type": "Image",
+                        "mediaType": "image/png",
+                        "url": "   "
+                    }
+                ]
+            }
+        });
+        let (title, summary, preview, attachments) =
+            published_fields_from_activity_json(Some(&create));
+        assert!(title.is_none());
+        assert!(summary.is_none());
+        assert_eq!(preview.as_deref(), Some("with photo"));
+        assert_eq!(attachments.len(), 2);
+        assert_eq!(
+            attachments[0].url,
+            "https://example.com/media/federation/1/photo.jpg"
+        );
+        assert_eq!(attachments[0].media_type.as_deref(), Some("image/jpeg"));
+        assert_eq!(attachments[0].attachment_type.as_deref(), Some("Image"));
+        assert_eq!(attachments[0].name.as_deref(), Some("photo.jpg"));
+        assert_eq!(
+            attachments[1].url,
+            "https://example.com/media/federation/1/clip.mp4"
+        );
+        assert_eq!(attachments[1].attachment_type.as_deref(), Some("Video"));
+    }
+
+    #[test]
+    fn published_fields_single_attachment_object() {
+        let note = json!({
+            "type": "Note",
+            "attachment": {
+                "type": "Image",
+                "media_type": "image/webp",
+                "url": "https://example.com/media/federation/2/a.webp"
+            }
+        });
+        let (_t, _s, _p, attachments) = published_fields_from_activity_json(Some(&note));
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].media_type.as_deref(), Some("image/webp"));
     }
 
     #[test]

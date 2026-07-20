@@ -8,6 +8,7 @@
 //! - Layer 5: Application Tapps（联邦应用）
 
 // Phase 0: 基础设施
+pub mod errors;
 pub mod keys;
 pub mod signature;
 pub mod types;
@@ -22,6 +23,7 @@ pub mod outbox;
 
 // Phase 2: 内容发布
 pub mod content;
+pub mod interactions;
 
 // Phase 3: Channel 实时通信
 pub mod channel;

@@ -11,6 +11,7 @@ import type {
   ChannelDetail,
   ChannelListResponse,
   CreateChannelRequest,
+  BookmarkListResponse,
   CreateNoteRequest,
   CreateRingRequest,
   CreateRoomRequest,
@@ -20,10 +21,12 @@ import type {
   FollowResponse,
   InitTransferRequest,
   InstanceListResponse,
+  InteractionResponse,
   InviteMemberRequest,
   ListRoomFilesParams,
   MediaUploadResponse,
   MessageListResponse,
+  ObjectIdRequest,
   PublishedListResponse,
   PublishRequest,
   PublishResponse,
@@ -91,6 +94,27 @@ async function withDevFallback<T>(
 ): Promise<T> {
   if (shouldUseMock()) return mockCall()
   return realCall()
+}
+
+/** Dev-mock response for like / bookmark / announce toggles. */
+function mockInteraction(
+  objectId: string,
+  kind: string,
+  flags: Partial<InteractionResponse> = {},
+): InteractionResponse {
+  return {
+    success: true,
+    object_id: objectId,
+    kind,
+    liked_by_me: flags.liked_by_me ?? false,
+    bookmarked_by_me: flags.bookmarked_by_me ?? false,
+    announced_by_me: flags.announced_by_me ?? false,
+    like_count: flags.like_count ?? (flags.liked_by_me ? 1 : 0),
+    bookmark_count: flags.bookmark_count ?? (flags.bookmarked_by_me ? 1 : 0),
+    announce_count: flags.announce_count ?? (flags.announced_by_me ? 1 : 0),
+    reply_count: flags.reply_count ?? 0,
+    ...flags,
+  }
 }
 
 function dispatchMockWsListener(
@@ -266,6 +290,118 @@ export const federationApi = {
       `${PREFIX}/notes`,
       req,
       attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Like an AP object (Note id / URL) */
+  like(
+    objectId: string,
+    runtimeGrant?: string,
+  ): Promise<InteractionResponse> {
+    return withDevFallback(
+      () =>
+        apiService.post<InteractionResponse>(
+          `${PREFIX}/like`,
+          { object_id: objectId } satisfies ObjectIdRequest,
+          attributionOptions(runtimeGrant),
+        ),
+      async () => mockInteraction(objectId, 'like', { liked_by_me: true }),
+    )
+  },
+
+  /** Unlike an AP object */
+  unlike(
+    objectId: string,
+    runtimeGrant?: string,
+  ): Promise<InteractionResponse> {
+    return withDevFallback(
+      () =>
+        apiService.post<InteractionResponse>(
+          `${PREFIX}/unlike`,
+          { object_id: objectId } satisfies ObjectIdRequest,
+          attributionOptions(runtimeGrant),
+        ),
+      async () => mockInteraction(objectId, 'like', { liked_by_me: false }),
+    )
+  },
+
+  /** Bookmark (local-first) */
+  bookmark(
+    objectId: string,
+    runtimeGrant?: string,
+  ): Promise<InteractionResponse> {
+    return withDevFallback(
+      () =>
+        apiService.post<InteractionResponse>(
+          `${PREFIX}/bookmark`,
+          { object_id: objectId } satisfies ObjectIdRequest,
+          attributionOptions(runtimeGrant),
+        ),
+      async () =>
+        mockInteraction(objectId, 'bookmark', { bookmarked_by_me: true }),
+    )
+  },
+
+  /** Remove bookmark */
+  unbookmark(
+    objectId: string,
+    runtimeGrant?: string,
+  ): Promise<InteractionResponse> {
+    return withDevFallback(
+      () =>
+        apiService.post<InteractionResponse>(
+          `${PREFIX}/unbookmark`,
+          { object_id: objectId } satisfies ObjectIdRequest,
+          attributionOptions(runtimeGrant),
+        ),
+      async () =>
+        mockInteraction(objectId, 'bookmark', { bookmarked_by_me: false }),
+    )
+  },
+
+  /** List bookmarked posts for current user */
+  getBookmarks(runtimeGrant?: string): Promise<BookmarkListResponse> {
+    return withDevFallback(
+      () =>
+        apiService.get<BookmarkListResponse>(
+          `${PREFIX}/bookmarks`,
+          attributionOptions(runtimeGrant),
+        ),
+      async () => ({ items: [], total: 0 }),
+    )
+  },
+
+  /** Announce / repost an object */
+  announce(
+    objectId: string,
+    runtimeGrant?: string,
+  ): Promise<InteractionResponse> {
+    return withDevFallback(
+      () =>
+        apiService.post<InteractionResponse>(
+          `${PREFIX}/announce`,
+          { object_id: objectId } satisfies ObjectIdRequest,
+          attributionOptions(runtimeGrant),
+        ),
+      async () =>
+        mockInteraction(objectId, 'announce', { announced_by_me: true }),
+    )
+  },
+
+  /** Undo announce / unrepost */
+  unannounce(
+    objectId: string,
+    runtimeGrant?: string,
+  ): Promise<InteractionResponse> {
+    return withDevFallback(
+      () =>
+        apiService.post<InteractionResponse>(
+          `${PREFIX}/unannounce`,
+          { object_id: objectId } satisfies ObjectIdRequest,
+          attributionOptions(runtimeGrant),
+        ),
+      async () =>
+        mockInteraction(objectId, 'announce', { announced_by_me: false }),
     )
   },
 
@@ -885,7 +1021,7 @@ export const federationApi = {
     )
   },
 
-  /** 更新实例级策略（allowlist / min_trust / auto_discover）— admin */
+  /** 更新实例级策略（allowlist / min_trust / auto_discover / rate limit）— admin */
   updateTrustPolicy(
     req: UpdateTrustPolicyRequest,
     runtimeGrant?: string,
@@ -894,6 +1030,11 @@ export const federationApi = {
     min_trust_level?: number
     allowed_domains?: string[]
     auto_discover?: boolean
+    rate_limit?: {
+      max_requests_per_window: number
+      window_seconds: number
+      trusted_multiplier: number
+    }
   }> {
     return apiService.put(
       `${PREFIX}/trust/policy`,
