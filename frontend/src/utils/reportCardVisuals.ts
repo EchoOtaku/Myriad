@@ -188,6 +188,28 @@ export function hasRenderableCardVisuals(
   return Object.keys(visuals).length > 0
 }
 
+/**
+ * Whether home ReportCard auto-flip (overview ⇄ detail) has a real detail face.
+ *
+ * Most platforms use `library_items` (covers / guilds / titles). X does not:
+ * detail is following highlights/sample after tweet carousel was removed.
+ * Gating only on library_items (#155 Discord empty-face fix) stuck X on overview.
+ */
+export function hasReportDetailContent(
+  visuals: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!visuals || typeof visuals !== 'object') return false
+  const nonEmpty = (key: string) => {
+    const v = visuals[key]
+    return Array.isArray(v) && v.length > 0
+  }
+  return (
+    nonEmpty('library_items') ||
+    nonEmpty('following_highlights') ||
+    nonEmpty('following_sample')
+  )
+}
+
 function platformMatches(candidate: unknown, platformId: string): boolean {
   if (typeof candidate !== 'string') return false
   return (
@@ -303,6 +325,9 @@ export function coerceReportVisuals(
   const merged: Record<string, unknown> = { ...visuals }
   for (const key of [
     'library_items',
+    'following_highlights',
+    'following_sample',
+    'interest_circles',
     'top_titles',
     'profile',
     'stats',

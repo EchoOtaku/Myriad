@@ -38,6 +38,7 @@ import { extractColorsFromLoadedImage } from '../../utils/colorExtractor'
 import {
   coerceReportVisuals,
   hasRenderableCardVisuals,
+  hasReportDetailContent,
   isKnownReportPlatformId,
   pickPlatformCardVisuals,
   resolveReportPlatformId,
@@ -5468,12 +5469,13 @@ export const ReportCardWidget = memo(
       }
     }, [platformId, isPreview, externalData])
 
-    // Detail faces need library_items (covers/guilds). Without them, auto-flip to
-    // detail paints an empty card even when report JSON/stats exist (owner home bug).
-    const hasDetailContent = useMemo(() => {
-      const items = reportData?.library_items
-      return Array.isArray(items) && items.length > 0
-    }, [reportData])
+    // Detail faces need real material. library_items covers most platforms
+    // (covers/guilds); X uses following_highlights/sample after tweet carousel
+    // removal. Gating only on library_items stuck low-post X cards on overview.
+    const hasDetailContent = useMemo(
+      () => hasReportDetailContent(reportData),
+      [reportData],
+    )
 
     useEffect(() => {
       // 预览态 / 外部控制概览态时不启用内部自动轮播

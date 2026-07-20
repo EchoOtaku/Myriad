@@ -6,6 +6,7 @@ import {
   coerceReportVisuals,
   extractCardVisuals,
   hasRenderableCardVisuals,
+  hasReportDetailContent,
   pickPlatformCardVisuals,
   resolveReportPlatformId,
 } from './reportCardVisuals'
@@ -289,5 +290,56 @@ describe('coerceReportVisuals (report JSON exists but nested)', () => {
     })
     assert.equal(visuals?.hardcore_score, 60)
     assert.deepEqual(visuals?.library_items, [{ title: 'Outer' }])
+  })
+
+  it('merges sibling X following fields onto visuals when missing inside', () => {
+    const visuals = coerceReportVisuals({
+      card_visuals: { vibe: '沉浸观察者' },
+      following_sample: [{ username: 'a', name: 'A' }],
+      following_highlights: [{ username: 'a', tag: '品味' }],
+    })
+    assert.equal(visuals?.vibe, '沉浸观察者')
+    assert.equal((visuals?.following_sample as unknown[])?.length, 1)
+    assert.equal((visuals?.following_highlights as unknown[])?.length, 1)
+  })
+})
+
+describe('hasReportDetailContent', () => {
+  it('is true for library_items (covers / guilds / posts)', () => {
+    assert.equal(
+      hasReportDetailContent({ library_items: [{ title: 'A' }] }),
+      true,
+    )
+  })
+
+  it('is true for X following highlights/sample even when library_items empty', () => {
+    // Regression: #155 Discord empty-face gate only checked library_items,
+    // so low-post X cards never auto-flipped to the following carousel.
+    assert.equal(
+      hasReportDetailContent({
+        library_items: [],
+        following_highlights: [{ username: 'foo', tag: '创作者' }],
+      }),
+      true,
+    )
+    assert.equal(
+      hasReportDetailContent({
+        following_sample: [{ username: 'bar' }],
+      }),
+      true,
+    )
+  })
+
+  it('is false when only overview stats exist', () => {
+    assert.equal(
+      hasReportDetailContent({
+        vibe: '沉浸观察者',
+        stats: { followers: 10 },
+        library_items: [],
+        following_sample: [],
+      }),
+      false,
+    )
+    assert.equal(hasReportDetailContent(null), false)
   })
 })
