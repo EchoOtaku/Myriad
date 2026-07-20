@@ -26,6 +26,7 @@ import type {
   ListRoomFilesParams,
   MediaUploadResponse,
   MessageListResponse,
+  AnnounceRequest,
   ObjectIdRequest,
   PublishedListResponse,
   PublishRequest,
@@ -371,16 +372,20 @@ export const federationApi = {
     )
   },
 
-  /** Announce / repost an object */
+  /** Quote-repost an object (requires non-empty commentary). */
   announce(
     objectId: string,
+    content?: string,
     runtimeGrant?: string,
   ): Promise<InteractionResponse> {
     return withDevFallback(
       () =>
         apiService.post<InteractionResponse>(
           `${PREFIX}/announce`,
-          { object_id: objectId } satisfies ObjectIdRequest,
+          {
+            object_id: objectId,
+            content: content ?? '',
+          } satisfies AnnounceRequest,
           attributionOptions(runtimeGrant),
         ),
       async () =>
@@ -524,6 +529,21 @@ export const federationApi = {
           attributionOptions(runtimeGrant),
         ),
       () => federationMock.closeChannel(channelId),
+    )
+  },
+
+  /** 删除已关闭的 Channel（本地硬删除） */
+  deleteChannel(
+    channelId: string,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean }> {
+    return withDevFallback(
+      () =>
+        apiService.delete<{ success: boolean }>(
+          `${PREFIX}/channels/${channelId}`,
+          attributionOptions(runtimeGrant),
+        ),
+      () => federationMock.deleteChannel(channelId),
     )
   },
 
@@ -1331,6 +1351,18 @@ export const federationApi = {
   ): Promise<{ success: boolean; id: number; status: string }> {
     return apiService.post(
       `${PREFIX}/delivery/${queueId}/retry`,
+      {},
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Cancel a pending/delivering delivery item (marks dead) */
+  cancelDelivery(
+    queueId: number,
+    runtimeGrant?: string,
+  ): Promise<{ success: boolean; id: number; status: string }> {
+    return apiService.post(
+      `${PREFIX}/delivery/${queueId}/cancel`,
       {},
       attributionOptions(runtimeGrant),
     )

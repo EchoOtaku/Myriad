@@ -2215,8 +2215,45 @@ async fn federation_bookmarks_list_wrapper(req: axum::extract::Request) -> Respo
     }
 }
 
+async fn federation_announce_from_body(
+    req: axum::extract::Request,
+) -> Result<(middleware::auth::Claims, federation::interactions::AnnounceRequest), Response> {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response())
+        }
+    };
+    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
+        Ok(b) => b,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid body"})),
+            )
+                .into_response())
+        }
+    };
+    let payload: federation::interactions::AnnounceRequest =
+        match serde_json::from_slice(&body_bytes) {
+            Ok(p) => p,
+            Err(_) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "Invalid JSON (expect { object_id, content })"})),
+                )
+                    .into_response())
+            }
+        };
+    Ok((claims, payload))
+}
+
 async fn federation_announce_wrapper(req: axum::extract::Request) -> Response {
-    let (claims, payload) = match federation_object_id_from_body(req).await {
+    let (claims, payload) = match federation_announce_from_body(req).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -2224,11 +2261,13 @@ async fn federation_announce_wrapper(req: axum::extract::Request) -> Response {
     match db_opt.as_ref() {
         Some(db) => {
             let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            let content = payload.content.as_deref().unwrap_or("");
             match federation::interactions::announce_object(
                 user_id,
                 &claims.username,
                 db,
                 &payload.object_id,
+                content,
             )
             .await
             {
@@ -2422,12 +2461,17 @@ async fn federation_unpublish_wrapper(req: axum::extract::Request) -> Response {
                 .into_response()
         }
     };
-    let content_type = payload["content_type"].as_str().unwrap_or("");
-    let content_id = payload["content_id"].as_str().unwrap_or("");
-    if content_type.is_empty() || content_id.is_empty() {
+    let content_type = payload["content_type"].as_str().unwrap_or("").trim();
+    let content_id = payload["content_id"].as_str().unwrap_or("").trim();
+    let activity_id = payload["activity_id"].as_str().unwrap_or("").trim();
+    let has_activity = !activity_id.is_empty();
+    let has_content = !content_id.is_empty(); // content_type optional when activity_id or inferable
+    if !has_activity && !has_content {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "content_type and content_id required"})),
+            Json(json!({
+                "error": "Provide activity_id, or content_type + content_id"
+            })),
         )
             .into_response();
     }
@@ -2439,8 +2483,9 @@ async fn federation_unpublish_wrapper(req: axum::extract::Request) -> Response {
                 user_id,
                 &claims.username,
                 db,
-                content_type,
-                content_id,
+                if content_type.is_empty() { None } else { Some(content_type) },
+                if content_id.is_empty() { None } else { Some(content_id) },
+                if activity_id.is_empty() { None } else { Some(activity_id) },
             )
             .await
             {
@@ -2644,6 +2689,44 @@ async fn federation_close_channel_wrapper(req: axum::extract::Request) -> Respon
             match federation::channel::close_channel(user_id, &claims.username, &channel_id, db)
                 .await
             {
+                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+/// 删除已关闭的 Channel（本地硬删除）
+async fn federation_delete_channel_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+    let channel_id = req
+        .uri()
+        .path()
+        .strip_prefix("/api/federation/channels/")
+        .unwrap_or("")
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .to_string();
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => {
+            let user_id: i32 = claims.sub.parse().unwrap_or(0);
+            match federation::channel::delete_channel(user_id, &channel_id, db).await {
                 Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
                 Err((status, json)) => (status, json).into_response(),
             }
@@ -3972,6 +4055,49 @@ async fn federation_retry_delivery_wrapper(req: axum::extract::Request) -> Respo
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => match federation::delivery::retry_delivery_item(db, user_id, queue_id).await {
+            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+            Err((status, v)) => (status, Json(v)).into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/federation/delivery/{id}/cancel — cancel pending/delivering item
+async fn federation_cancel_delivery_wrapper(req: axum::extract::Request) -> Response {
+    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Not authenticated"})),
+            )
+                .into_response()
+        }
+    };
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let path = req.uri().path().to_string();
+    let id_str = path
+        .strip_prefix("/api/federation/delivery/")
+        .unwrap_or("")
+        .strip_suffix("/cancel")
+        .unwrap_or("");
+    let queue_id: i32 = match id_str.parse() {
+        Ok(i) => i,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid delivery id"})),
+            )
+                .into_response()
+        }
+    };
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match federation::delivery::cancel_delivery_item(db, user_id, queue_id).await {
             Ok(v) => (StatusCode::OK, Json(v)).into_response(),
             Err((status, v)) => (status, Json(v)).into_response(),
         },
@@ -5330,7 +5456,7 @@ fn federation_api_router() -> Router {
         )
         .route(
             "/api/federation/channels/{channel_id}",
-            get(federation_get_channel_wrapper),
+            get(federation_get_channel_wrapper).delete(federation_delete_channel_wrapper),
         )
         .route(
             "/api/federation/channels/{channel_id}/close",
@@ -5457,6 +5583,10 @@ fn federation_api_router() -> Router {
         .route(
             "/api/federation/delivery/{id}/retry",
             post(federation_retry_delivery_wrapper),
+        )
+        .route(
+            "/api/federation/delivery/{id}/cancel",
+            post(federation_cancel_delivery_wrapper),
         )
         .route(
             "/api/federation/trust/policy",

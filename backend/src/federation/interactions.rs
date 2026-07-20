@@ -20,6 +20,16 @@ pub struct ObjectIdRequest {
     pub object_id: String,
 }
 
+/// Quote-repost (announce) body. Commentary is required (non-empty after trim).
+#[derive(Debug, Deserialize)]
+pub struct AnnounceRequest {
+    /// Canonical AP object id / URL being quote-reposted.
+    pub object_id: String,
+    /// Required user commentary for the quote-repost.
+    #[serde(default)]
+    pub content: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct InteractionResponse {
     pub success: bool,
@@ -319,7 +329,7 @@ pub async fn interaction_stats_for_objects(
         }
     }
 
-    // Reply counts (Create with inReplyTo)
+    // Reply counts (Create with inReplyTo). Exclude quote-reposts (mfp:kind=repost).
     let replies = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -331,6 +341,8 @@ pub async fn interaction_stats_for_objects(
                  COUNT(*)::bigint AS cnt
                FROM federation_activities
                WHERE activity_type = 'Create'
+                 AND COALESCE(object_json::jsonb #>> '{object,mfp:kind}', '') <> 'repost'
+                 AND COALESCE(object_json::jsonb ->> 'mfp:kind', '') <> 'repost'
                  AND (
                    object_json::jsonb #>> '{object,inReplyTo}' = ANY($1)
                    OR object_json::jsonb ->> 'inReplyTo' = ANY($1)
@@ -687,10 +699,10 @@ pub async fn list_bookmarks(
                         ),
                         (
                           SELECT CASE
-                                   WHEN a.object_json ? 'object'
-                                        AND jsonb_typeof(a.object_json->'object') = 'object'
-                                     THEN a.object_json->'object'
-                                   ELSE a.object_json
+                                   WHEN a.object_json::jsonb ? 'object'
+                                        AND jsonb_typeof(a.object_json::jsonb->'object') = 'object'
+                                     THEN a.object_json::jsonb->'object'
+                                   ELSE a.object_json::jsonb
                                  END
                           FROM federation_activities a
                           WHERE a.activity_type = 'Create'
@@ -847,19 +859,212 @@ pub async fn list_bookmarks(
     Ok(BookmarkListResponse { items, total })
 }
 
-// ==================== Announce (repost) ====================
+// ==================== Announce (quote-repost) ====================
+
+fn escape_html_lite(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Max nested quote depth embedded into a repost card (root + chain).
+const MAX_QUOTE_NEST_DEPTH: usize = 3;
+
+fn plain_preview_from_object(obj: &serde_json::Value) -> String {
+    obj.pointer("/source/content")
+        .and_then(|v| v.as_str())
+        .or_else(|| obj.get("content_preview").and_then(|v| v.as_str()))
+        .or_else(|| obj.get("content").and_then(|v| v.as_str()))
+        .or_else(|| obj.get("summary").and_then(|v| v.as_str()))
+        .or_else(|| obj.get("name").and_then(|v| v.as_str()))
+        .map(|s| {
+            let plain = s
+                .replace("<br>", " ")
+                .replace("<br/>", " ")
+                .replace("<br />", " ");
+            let mut out = String::new();
+            let mut in_tag = false;
+            for c in plain.chars() {
+                match c {
+                    '<' => in_tag = true,
+                    '>' => in_tag = false,
+                    _ if !in_tag => out.push(c),
+                    _ => {}
+                }
+            }
+            out.chars().take(200).collect::<String>()
+        })
+        .unwrap_or_default()
+}
+
+fn is_repost_object(obj: &serde_json::Value) -> bool {
+    obj.get("mfp:kind")
+        .and_then(|v| v.as_str())
+        .map(|s| s == "repost")
+        .unwrap_or(false)
+        || obj
+            .get("mfp:contentType")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "repost")
+            .unwrap_or(false)
+}
+
+/// Slim preview of the quoted object for local timeline / UI cards.
+///
+/// Nested quote-reposts are preserved up to [`MAX_QUOTE_NEST_DEPTH`] levels so
+/// re-quoting a repost embeds the chain (each level's commentary + author),
+/// not only a bare id pointer to the intermediate post.
+fn slim_quoted_object(obj: &serde_json::Value) -> serde_json::Value {
+    slim_quoted_object_depth(obj, 0)
+}
+
+fn slim_quoted_object_depth(obj: &serde_json::Value, depth: usize) -> serde_json::Value {
+    let id = obj
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let attributed = obj
+        .get("attributedTo")
+        .cloned()
+        .unwrap_or(json!(null));
+    let preview = plain_preview_from_object(obj);
+    let kind_repost = is_repost_object(obj);
+
+    let mut slim = json!({
+        "id": id,
+        "type": obj.get("type").cloned().unwrap_or(json!("Note")),
+        "attributedTo": attributed,
+        "content_preview": preview,
+        "name": obj.get("name").cloned().unwrap_or(json!(null)),
+        "summary": obj.get("summary").cloned().unwrap_or(json!(null)),
+    });
+
+    if kind_repost {
+        slim["mfp:kind"] = json!("repost");
+        slim["mfp:contentType"] = json!("repost");
+    }
+
+    // Preserve existing nested quote chain (depth-limited).
+    if depth < MAX_QUOTE_NEST_DEPTH {
+        if let Some(inner) = obj
+            .get("mfp:quotedObject")
+            .filter(|v| v.is_object())
+            .cloned()
+            .or_else(|| {
+                obj.get("mfp:quotedObject")
+                    .and_then(|v| v.as_object())
+                    .map(|o| json!(o))
+            })
+        {
+            slim["mfp:quotedObject"] = slim_quoted_object_depth(&inner, depth + 1);
+        } else if let Some(inner_id) = obj
+            .get("mfp:quotedObjectId")
+            .and_then(|v| v.as_str())
+            .or_else(|| obj.get("quoteUrl").and_then(|v| v.as_str()))
+            .or_else(|| obj.get("inReplyTo").and_then(|v| v.as_str()))
+            .filter(|s| !s.is_empty())
+        {
+            // Intermediate repost without embedded body — keep id so UI can label it.
+            slim["mfp:quotedObjectId"] = json!(inner_id);
+        }
+        if let Some(qid) = obj.get("mfp:quotedObjectId").and_then(|v| v.as_str()) {
+            slim["mfp:quotedObjectId"] = json!(qid);
+        }
+        if let Some(root) = obj.get("mfp:rootQuotedObjectId").and_then(|v| v.as_str()) {
+            slim["mfp:rootQuotedObjectId"] = json!(root);
+        }
+    } else {
+        // Cap: point at deepest known root id without further expansion.
+        if let Some(root) = obj
+            .get("mfp:rootQuotedObjectId")
+            .and_then(|v| v.as_str())
+            .or_else(|| obj.get("mfp:quotedObjectId").and_then(|v| v.as_str()))
+            .or_else(|| obj.get("quoteUrl").and_then(|v| v.as_str()))
+        {
+            slim["mfp:rootQuotedObjectId"] = json!(root);
+            slim["mfp:quoteTruncated"] = json!(true);
+        }
+    }
+
+    slim
+}
+
+/// Resolve root original id when quoting a (possibly nested) repost.
+fn root_quoted_object_id(obj: Option<&serde_json::Value>, fallback_id: &str) -> String {
+    let Some(obj) = obj else {
+        return fallback_id.to_string();
+    };
+    if let Some(root) = obj.get("mfp:rootQuotedObjectId").and_then(|v| v.as_str()) {
+        if !root.is_empty() {
+            return root.to_string();
+        }
+    }
+    // Walk embedded chain to the innermost id.
+    let mut cur = obj;
+    let mut guard = 0;
+    while guard < MAX_QUOTE_NEST_DEPTH + 2 {
+        if let Some(inner) = cur.get("mfp:quotedObject").filter(|v| v.is_object()) {
+            cur = inner;
+            guard += 1;
+            continue;
+        }
+        break;
+    }
+    if is_repost_object(obj) {
+        if let Some(qid) = cur
+            .get("mfp:quotedObjectId")
+            .and_then(|v| v.as_str())
+            .or_else(|| cur.get("id").and_then(|v| v.as_str()))
+            .filter(|s| !s.is_empty())
+        {
+            // If we only have the intermediate, prefer explicit quotedObjectId on outer.
+            if let Some(outer_q) = obj.get("mfp:quotedObjectId").and_then(|v| v.as_str()) {
+                if cur.get("mfp:quotedObject").is_none() {
+                    return outer_q.to_string();
+                }
+            }
+            return qid.to_string();
+        }
+    }
+    obj.get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or(fallback_id)
+        .to_string()
+}
 
 /// POST /api/federation/announce
+///
+/// Quote-repost: requires non-empty `content` commentary. Stores a Create Note
+/// with `inReplyTo` / `quoteUrl` pointing at the original object, fans out as
+/// Create, and records `kind=announce` for local counts. Does **not** insert
+/// into `federation_published_content` (reposts must not appear in 已发布).
 pub async fn announce_object(
     user_id: i32,
     username: &str,
     db: &DatabaseConnection,
     object_id_raw: &str,
+    content_raw: &str,
 ) -> Result<InteractionResponse, (StatusCode, Json<serde_json::Value>)> {
     let object_id = require_object_id(object_id_raw)?;
+    let content = content_raw.trim();
+    if content.is_empty() {
+        return Err(bad_request("content required for repost"));
+    }
+    if content.chars().count() > 10_000 {
+        return Err(bad_request("content too long (max 10000 chars)"));
+    }
+
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);
+    let note_content_id = format!("repost_{}", uuid::Uuid::new_v4());
+    let note_id = format!(
+        "{}/notes/{}",
+        base_url.trim_end_matches('/'),
+        note_content_id
+    );
 
     let inserted = db
         .execute(Statement::from_sql_and_values(
@@ -894,45 +1099,83 @@ pub async fn announce_object(
         });
     }
 
-    // Prefer embedding the full object for local timeline render
-    let object_value = resolve_local_object(db, &object_id)
-        .await
-        .unwrap_or_else(|| json!(object_id.clone()));
+    // Embed a *copy* of the quoted post (slim + nested chain), not a live pointer-only ref.
+    // Re-quoting a repost nests the intermediate commentary under mfp:quotedObject.
+    let object_value = resolve_local_object(db, &object_id).await;
+    let quoted_slim = object_value
+        .as_ref()
+        .map(slim_quoted_object)
+        .unwrap_or_else(|| json!({ "id": object_id.clone(), "type": "Note" }));
+    let root_id = root_quoted_object_id(object_value.as_ref(), &object_id);
+    let quote_depth = object_value
+        .as_ref()
+        .and_then(|o| o.get("mfp:quoteDepth").and_then(|v| v.as_u64()))
+        .map(|d| d.saturating_add(1))
+        .unwrap_or_else(|| {
+            if object_value
+                .as_ref()
+                .map(is_repost_object)
+                .unwrap_or(false)
+            {
+                1
+            } else {
+                0
+            }
+        })
+        .min(MAX_QUOTE_NEST_DEPTH as u64);
 
-    let announce_json = json!({
-        "@context": build_ap_context(),
-        "type": "Announce",
+    let content_html = format!("<p>{}</p>", escape_html_lite(content));
+    let published = now_iso8601();
+
+    let mut note = json!({
+        "type": "Note",
+        "id": &note_id,
+        "attributedTo": &local_actor,
+        "content": content_html,
+        "source": {
+            "content": content,
+            "mediaType": "text/plain",
+        },
+        "mediaType": "text/html",
+        "published": &published,
+        "to": [AP_PUBLIC],
+        // Quote the immediate parent (may itself be a repost); root is tracked separately.
+        "inReplyTo": &object_id,
+        "quoteUrl": &object_id,
+        "mfp:kind": "repost",
+        "mfp:contentType": "repost",
+        "mfp:contentId": &note_content_id,
+        "mfp:quotedObjectId": &object_id,
+        "mfp:rootQuotedObjectId": &root_id,
+        "mfp:quoteDepth": quote_depth,
+        "mfp:quotedObject": quoted_slim,
+        "attachment": [],
+    });
+    // Keep a plain content_preview for timeline list UIs (commentary only — not the quote body).
+    note["content_preview"] = json!(content.chars().take(200).collect::<String>());
+
+    let create_json = json!({
+        "@context": build_context(),
+        "type": "Create",
         "id": &activity_id,
         "actor": &local_actor,
-        "object": if object_value.is_string() {
-            object_value.clone()
-        } else {
-            json!(object_id.clone())
-        },
-        "published": now_iso8601(),
+        "published": &published,
         "to": [AP_PUBLIC],
+        "object": note,
     });
 
-    // Store full activity with resolved object for timeline preview
-    let store_json = {
-        let mut v = announce_json.clone();
-        if object_value.is_object() {
-            v["object"] = object_value.clone();
-        }
-        v
-    };
-
+    // Persist as Create / repost — never into federation_published_content.
     let act_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_activities
                    (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
-               VALUES ($1, $2, 'Announce', 'Note', $3, true, NOW())
+               VALUES ($1, $2, 'Create', 'repost', $3, true, NOW())
                RETURNING id"#,
             [
                 activity_id.clone().into(),
                 user_id.into(),
-                store_json.clone().into(),
+                create_json.clone().into(),
             ],
         ))
         .await
@@ -942,26 +1185,19 @@ pub async fn announce_object(
         .map(|r| r.try_get("", "id").unwrap_or(0))
         .unwrap_or(0);
 
-    // Author timeline: show the repost
-    let preview = object_value
-        .pointer("/source/content")
-        .and_then(|v| v.as_str())
-        .or_else(|| object_value.get("content").and_then(|v| v.as_str()))
-        .or_else(|| object_value.get("summary").and_then(|v| v.as_str()))
-        .map(|s| s.chars().take(200).collect::<String>());
-
-    let content_for_tl = if object_value.is_object() {
-        object_value.clone()
-    } else {
-        json!({"id": object_id, "type": "Note", "content": preview.clone().unwrap_or_default()})
-    };
+    // Author timeline: show the quote-repost as a Create Note (user's commentary).
+    let preview: Option<String> = Some(content.chars().take(200).collect::<String>());
+    let content_for_tl = create_json
+        .get("object")
+        .cloned()
+        .unwrap_or(json!({}));
 
     let _ = db
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_timeline
                    (user_id, activity_id, remote_actor_id, activity_type, object_type, content_preview, content_json, received_at)
-               SELECT $1, $2, NULL, 'Announce', 'Note', $3, $4, NOW()
+               SELECT $1, $2, NULL, 'Create', 'repost', $3, $4, NOW()
                WHERE NOT EXISTS (
                    SELECT 1 FROM federation_timeline
                    WHERE user_id = $1 AND activity_id = $2
@@ -976,10 +1212,9 @@ pub async fn announce_object(
         .await;
 
     if act_db_id > 0 {
-        // Fan-out with resolved object when available (better same-instance timeline render).
-        // Remote peers still accept either string id or embedded object.
-        let _ = content::fan_out_to_followers(db, user_id, act_db_id, &store_json).await;
-        deliver_to_object_author(db, act_db_id, &announce_json, &object_id).await;
+        // Fan-out Create to followers + notify original author.
+        let _ = content::fan_out_to_followers(db, user_id, act_db_id, &create_json).await;
+        deliver_to_object_author(db, act_db_id, &create_json, &object_id).await;
     }
 
     let st = stats_for_one(db, user_id, &object_id).await;
@@ -998,7 +1233,7 @@ pub async fn announce_object(
     })
 }
 
-/// POST /api/federation/unannounce — unrepost
+/// POST /api/federation/unannounce — undo quote-repost
 pub async fn unannounce_object(
     user_id: i32,
     username: &str,
@@ -1041,31 +1276,82 @@ pub async fn unannounce_object(
             ))
             .await;
 
+        // Load original activity to decide Undo(Announce) vs Delete(Create Note).
+        let orig_act = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT activity_type, object_json FROM federation_activities
+                   WHERE activity_id = $1 LIMIT 1"#,
+                [ann_id.clone().into()],
+            ))
+            .await
+            .ok()
+            .flatten();
+
+        let (act_type, object_json): (String, Option<serde_json::Value>) =
+            if let Some(r) = orig_act {
+                (
+                    r.try_get::<String>("", "activity_type")
+                        .unwrap_or_else(|_| "Announce".into()),
+                    r.try_get::<Option<serde_json::Value>>("", "object_json")
+                        .ok()
+                        .flatten(),
+                )
+            } else {
+                ("Announce".into(), None)
+            };
+
         let undo_id = generate_activity_id(&base_url);
-        let undo_json = json!({
-            "@context": build_ap_context(),
-            "type": "Undo",
-            "id": &undo_id,
-            "actor": &local_actor,
-            "object": {
-                "type": "Announce",
-                "id": &ann_id,
+        let undo_json = if act_type == "Create" {
+            // Quote-repost path: Delete the Note we created.
+            let note_id = object_json
+                .as_ref()
+                .and_then(|v| v.pointer("/object/id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(ann_id.as_str())
+                .to_string();
+            json!({
+                "@context": build_ap_context(),
+                "type": "Delete",
+                "id": &undo_id,
                 "actor": &local_actor,
-                "object": &object_id,
-            },
-            "published": now_iso8601(),
-        });
+                "object": &note_id,
+                "published": now_iso8601(),
+                "to": [AP_PUBLIC],
+            })
+        } else {
+            // Legacy bare Announce path.
+            json!({
+                "@context": build_ap_context(),
+                "type": "Undo",
+                "id": &undo_id,
+                "actor": &local_actor,
+                "object": {
+                    "type": "Announce",
+                    "id": &ann_id,
+                    "actor": &local_actor,
+                    "object": &object_id,
+                },
+                "published": now_iso8601(),
+            })
+        };
 
         if let Ok(Some(act_row)) = db
             .query_one(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"INSERT INTO federation_activities
                        (activity_id, user_id, activity_type, object_json, is_local, published_at)
-                   VALUES ($1, $2, 'Undo', $3, true, NOW())
+                   VALUES ($1, $2, $3, $4, true, NOW())
                    RETURNING id"#,
                 [
                     undo_id.clone().into(),
                     user_id.into(),
+                    undo_json
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Undo")
+                        .to_string()
+                        .into(),
                     undo_json.clone().into(),
                 ],
             ))
@@ -1074,7 +1360,6 @@ pub async fn unannounce_object(
             let act_db_id: i32 = act_row.try_get("", "id").unwrap_or(0);
             if act_db_id > 0 {
                 let _ = content::fan_out_to_followers(db, user_id, act_db_id, &undo_json).await;
-                // Align with unlike: notify the original author as well as followers
                 deliver_to_object_author(db, act_db_id, &undo_json, &object_id).await;
             }
         }
@@ -1276,5 +1561,78 @@ mod tests {
             .as_deref(),
             Some("https://ex.com/notes/3")
         );
+    }
+
+    #[test]
+    fn slim_quoted_preserves_nested_repost_chain() {
+        let root = json!({
+            "id": "https://ex.com/notes/root",
+            "type": "Note",
+            "attributedTo": "https://ex.com/users/alice",
+            "content": "original post"
+        });
+        let mid = json!({
+            "id": "https://ex.com/notes/mid",
+            "type": "Note",
+            "attributedTo": "https://ex.com/users/bob",
+            "source": { "content": "bob's commentary" },
+            "mfp:kind": "repost",
+            "mfp:quotedObjectId": "https://ex.com/notes/root",
+            "mfp:rootQuotedObjectId": "https://ex.com/notes/root",
+            "mfp:quotedObject": root,
+        });
+        let slim = slim_quoted_object(&mid);
+        assert_eq!(slim["id"], "https://ex.com/notes/mid");
+        assert_eq!(slim["mfp:kind"], "repost");
+        assert!(
+            slim["content_preview"]
+                .as_str()
+                .unwrap_or("")
+                .contains("bob")
+        );
+        let nested = &slim["mfp:quotedObject"];
+        assert_eq!(nested["id"], "https://ex.com/notes/root");
+        assert!(
+            nested["content_preview"]
+                .as_str()
+                .unwrap_or("")
+                .contains("original")
+        );
+        assert_eq!(
+            root_quoted_object_id(Some(&mid), "fallback"),
+            "https://ex.com/notes/root"
+        );
+    }
+
+    #[test]
+    fn slim_quoted_caps_deep_nesting() {
+        // Build a chain deeper than MAX_QUOTE_NEST_DEPTH.
+        let mut cur = json!({
+            "id": "https://ex.com/notes/0",
+            "type": "Note",
+            "content": "level 0",
+            "attributedTo": "https://ex.com/users/u0",
+        });
+        for i in 1..=5 {
+            cur = json!({
+                "id": format!("https://ex.com/notes/{i}"),
+                "type": "Note",
+                "source": { "content": format!("level {i}") },
+                "attributedTo": format!("https://ex.com/users/u{i}"),
+                "mfp:kind": "repost",
+                "mfp:quotedObject": cur,
+                "mfp:rootQuotedObjectId": "https://ex.com/notes/0",
+            });
+        }
+        let slim = slim_quoted_object(&cur);
+        // Walk embedded chain; should stop without panicking and mark truncation at leaf.
+        let mut node = &slim;
+        let mut depth = 0;
+        while let Some(inner) = node.get("mfp:quotedObject").filter(|v| v.is_object()) {
+            node = inner;
+            depth += 1;
+            assert!(depth <= MAX_QUOTE_NEST_DEPTH + 1);
+        }
+        assert!(depth <= MAX_QUOTE_NEST_DEPTH);
     }
 }

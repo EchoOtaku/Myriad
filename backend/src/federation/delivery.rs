@@ -573,6 +573,94 @@ pub async fn retry_delivery_item(
     }))
 }
 
+/// Cancel a pending/delivering queue row owned by the user (marks `dead`).
+pub async fn cancel_delivery_item(
+    db: &DatabaseConnection,
+    user_id: i32,
+    queue_id: i32,
+) -> Result<serde_json::Value, (axum::http::StatusCode, serde_json::Value)> {
+    use axum::http::StatusCode;
+
+    if queue_id <= 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"error": "Invalid delivery id"}),
+        ));
+    }
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT dq.id, dq.status
+               FROM federation_delivery_queue dq
+               JOIN federation_activities a ON a.id = dq.activity_id
+               WHERE dq.id = $1 AND a.user_id = $2"#,
+            [queue_id.into(), user_id.into()],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {e}")}),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                json!({"error": "Delivery item not found"}),
+            )
+        })?;
+
+    let status: String = row.try_get("", "status").unwrap_or_default();
+    if status == "delivered" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"error": "Already delivered"}),
+        ));
+    }
+    if status == "dead" {
+        return Ok(json!({
+            "success": true,
+            "id": queue_id,
+            "status": "dead",
+            "already": true,
+        }));
+    }
+    // pending / delivering → dead (user cancelled)
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_delivery_queue
+               SET status = 'dead',
+                   error_message = 'cancelled: by user',
+                   last_attempt_at = NOW(),
+                   next_retry_at = NULL
+               WHERE id = $1 AND status IN ('pending', 'delivering')"#,
+            [queue_id.into()],
+        ))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": format!("DB error: {e}")}),
+            )
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err((
+            StatusCode::CONFLICT,
+            json!({"error": "Could not cancel delivery (status changed)"}),
+        ));
+    }
+
+    Ok(json!({
+        "success": true,
+        "id": queue_id,
+        "status": "dead",
+        "previous_status": status
+    }))
+}
+
 /// Re-queue all dead delivery items for the user (capped).
 pub async fn retry_all_dead_for_user(
     db: &DatabaseConnection,

@@ -218,9 +218,9 @@ const PAGE_HTML = `\
             <span id="feed-nav-bookmarks">收藏</span>
             <span class="feed-nav-badge" id="feed-badge-bookmarks" hidden>0</span>
           </button>
-          <button class="feed-nav-item" data-sub="backup">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
-            <span id="feed-nav-backup">备份</span>
+          <button class="feed-nav-item" data-sub="settings">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
+            <span id="feed-nav-settings">设置</span>
           </button>
         </nav>
         <div class="feed-sidebar-footer">
@@ -313,7 +313,7 @@ const PAGE_HTML = `\
           <button class="feed-mobile-tab" data-sub="followers"><span id="feed-tab-followers">粉丝</span><span class="feed-nav-badge" id="feed-mobile-badge-followers" hidden>0</span></button>
           <button class="feed-mobile-tab" data-sub="published"><span id="feed-tab-published">已发布</span><span class="feed-nav-badge" id="feed-mobile-badge-published" hidden>0</span></button>
           <button class="feed-mobile-tab" data-sub="bookmarks"><span id="feed-tab-bookmarks">收藏</span><span class="feed-nav-badge" id="feed-mobile-badge-bookmarks" hidden>0</span></button>
-          <button class="feed-mobile-tab" data-sub="backup"><span id="feed-tab-backup">备份</span></button>
+          <button class="feed-mobile-tab" data-sub="settings"><span id="feed-tab-settings">设置</span></button>
           <button id="refresh-feed-mobile-btn" class="feed-mobile-refresh" title="刷新">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           </button>
@@ -492,6 +492,26 @@ const PAGE_HTML = `\
           <div class="feed-compose-submit">
             <button type="button" id="feed-compose-cancel" class="feed-compose-cancel">取消</button>
             <button type="button" id="feed-compose-publish" class="feed-compose-publish">发布</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 引用转发对话框 -->
+  <div id="quote-repost-dialog" class="create-overlay feed-compose-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="quote-repost-title" hidden>
+    <div class="create-dialog feed-compose-dialog quote-repost-dialog">
+      <div class="create-dialog-header">
+        <h3 id="quote-repost-title" class="create-dialog-title">Quote repost</h3>
+        <button id="quote-repost-close" class="create-dialog-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="feed-compose-body">
+        <textarea id="quote-repost-text" class="feed-compose-text" rows="3" placeholder="Add a comment…"></textarea>
+        <div id="quote-repost-preview" class="quote-repost-preview" hidden></div>
+        <div class="feed-compose-actions quote-repost-actions">
+          <div class="feed-compose-submit">
+            <button type="button" id="quote-repost-cancel" class="feed-compose-cancel">Cancel</button>
+            <button type="button" id="quote-repost-submit" class="feed-compose-publish">Repost</button>
           </div>
         </div>
       </div>
@@ -1323,6 +1343,101 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
   .backup-page{animation:none!important}
 }
 
+/* ===== Settings page (reuses backup-card patterns) ===== */
+.settings-page{
+  display:flex;flex-direction:column;gap:14px;padding:16px 16px 36px;max-width:640px;margin:0 auto;width:100%;box-sizing:border-box;
+}
+.settings-hero{display:flex;align-items:flex-start;gap:12px;padding:2px 2px 4px}
+.settings-hero-icon{
+  width:44px;height:44px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(var(--tapp-primary-rgb,99,102,241),.12);color:var(--tapp-primary,#6366f1);
+}
+.settings-hero-icon svg{width:22px;height:22px}
+.settings-hero-text{min-width:0;flex:1;padding-top:2px}
+.settings-hero-title{margin:0;font-size:17px;font-weight:750;letter-spacing:-.025em;color:var(--text-primary,#0f1419);line-height:1.25}
+.settings-hero-desc{margin:4px 0 0;font-size:12.5px;line-height:1.5;color:var(--text-secondary,#536471)}
+.settings-section-title{
+  margin:4px 0 0;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary,#8b98a5);
+}
+.settings-row{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:10px 0;border-top:1px solid rgba(128,128,128,.1);
+}
+.settings-row:first-of-type{border-top:none;padding-top:0}
+.settings-row-text{min-width:0;flex:1}
+.settings-row-label{margin:0;font-size:13.5px;font-weight:650;color:var(--text-primary,#0f1419)}
+.settings-row-hint{margin:3px 0 0;font-size:12px;line-height:1.45;color:var(--text-secondary,#8b98a5)}
+.settings-radio-group{display:flex;flex-direction:column;gap:6px;margin-top:2px}
+.settings-radio{
+  display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border-radius:10px;
+  border:1px solid rgba(128,128,128,.14);background:rgba(128,128,128,.04);cursor:pointer;
+  transition:border-color .15s,background .15s;
+}
+.settings-radio:hover{background:rgba(128,128,128,.07)}
+.settings-radio.is-selected{
+  border-color:rgba(var(--tapp-primary-rgb,99,102,241),.45);
+  background:rgba(var(--tapp-primary-rgb,99,102,241),.08);
+}
+.settings-radio input{margin-top:2px;accent-color:var(--tapp-primary,#6366f1)}
+.settings-radio-body{min-width:0;flex:1}
+.settings-radio-title{font-size:13px;font-weight:650;color:var(--text-primary,#0f1419)}
+.settings-radio-desc{margin-top:2px;font-size:11.5px;line-height:1.4;color:var(--text-secondary,#8b98a5)}
+.settings-toggle{
+  position:relative;width:42px;height:24px;flex-shrink:0;border-radius:999px;border:none;
+  background:rgba(128,128,128,.28);cursor:pointer;transition:background .15s;padding:0;margin-top:1px;
+}
+.settings-toggle[aria-checked="true"]{background:var(--tapp-primary,#6366f1)}
+.settings-toggle-knob{
+  position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .15s;
+}
+.settings-toggle[aria-checked="true"] .settings-toggle-knob{transform:translateX(18px)}
+.settings-toggle:disabled{opacity:.45;cursor:not-allowed}
+.settings-note{
+  margin:0;font-size:12px;line-height:1.5;color:var(--text-secondary,#8b98a5);
+  padding:10px 12px;border-radius:10px;background:rgba(128,128,128,.06);border:1px dashed rgba(128,128,128,.16);
+}
+.settings-backup-block{display:flex;flex-direction:column;gap:12px}
+.dark .settings-hero-title,.dark .settings-row-label,.dark .settings-radio-title{color:rgba(255,255,255,.92)}
+.dark .settings-hero-desc,.dark .settings-row-hint,.dark .settings-section-title,.dark .settings-radio-desc,.dark .settings-note{color:rgba(255,255,255,.48)}
+.dark .settings-radio{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08)}
+.dark .settings-radio.is-selected{background:rgba(var(--tapp-primary-rgb,99,102,241),.16);border-color:rgba(var(--tapp-primary-rgb,99,102,241),.4)}
+.dark .settings-row{border-top-color:rgba(255,255,255,.08)}
+.dark .settings-toggle{background:rgba(255,255,255,.18)}
+.dark .settings-note{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1)}
+.settings-delivery-stats{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}
+.settings-delivery-chip{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;
+  font-size:11.5px;font-weight:650;background:rgba(128,128,128,.08);color:var(--text-secondary,#666)
+}
+.settings-delivery-chip strong{font-weight:750;color:var(--text-primary,#111)}
+.settings-delivery-chip.is-dead{background:rgba(239,68,68,.1);color:#b91c1c}
+.settings-delivery-chip.is-active{background:rgba(var(--tapp-primary-rgb,99,102,241),.12);color:var(--tapp-primary,#6366f1)}
+.settings-delivery-list{display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto}
+.settings-delivery-item{
+  display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:12px;
+  border:1px solid rgba(128,128,128,.12);background:rgba(128,128,128,.03)
+}
+.settings-delivery-item-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.settings-delivery-item-meta{font-size:11px;color:var(--text-secondary,#888);line-height:1.35;word-break:break-word}
+.settings-delivery-item-err{font-size:11px;color:#b91c1c;line-height:1.35;word-break:break-word}
+.settings-delivery-item-actions{display:flex;flex-wrap:wrap;gap:6px}
+.settings-delivery-badge{
+  font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;
+  padding:2px 7px;border-radius:6px;background:rgba(128,128,128,.1);color:var(--text-secondary,#666);flex-shrink:0
+}
+.settings-delivery-badge.pending,.settings-delivery-badge.delivering{background:rgba(var(--tapp-primary-rgb,99,102,241),.12);color:var(--tapp-primary,#6366f1)}
+.settings-delivery-badge.dead{background:rgba(239,68,68,.12);color:#b91c1c}
+.settings-delivery-badge.delivered{background:rgba(34,197,94,.12);color:#15803d}
+.dark .settings-delivery-item{border-color:rgba(255,255,255,.1);background:rgba(255,255,255,.03)}
+.dark .settings-delivery-chip{background:rgba(255,255,255,.06)}
+@media(max-width:640px){
+  .settings-page{padding:12px 12px 32px;gap:12px}
+}
+@media(prefers-reduced-motion:reduce){
+  .settings-page{animation:none!important}
+}
+
 .conv-list{flex:1;min-height:0;overflow-y:auto;padding:6px 8px;display:flex;flex-direction:column;gap:2px}
 .chat-main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .member-panel{display:flex;flex-direction:column;width:220px;border-left:1px solid rgba(128,128,128,.08);flex-shrink:0;overflow:hidden;transition:width .2s}
@@ -1446,7 +1561,10 @@ body.dark{background:#0a0a0a;color:rgba(255,255,255,.92)}
 .dark .e2e-ready-banner{color:#4ade80;background:rgba(34,197,94,.12);border-bottom-color:rgba(34,197,94,.22)}
 .e2e-ready-banner svg{flex-shrink:0}
 .e2e-ready-banner[hidden]{display:none!important}
-.chat-actions{display:flex;gap:6px;flex-shrink:0;align-items:center}
+.chat-actions{display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap;min-width:0;max-width:min(100%,52vw);justify-content:flex-end}
+.chat-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(128,128,128,.06);flex-shrink:0;min-width:0}
+.chat-header-info{min-width:0;flex:1;overflow:hidden}
+#history-open-btn,#room-files-open-btn{flex-shrink:0}
 /* Muted header chrome — same family as .aro-icon-btn (size from shared rule above) */
 .member-toggle-btn,.manage-btn{background:rgba(128,128,128,.06);color:var(--text-secondary,#999);font-size:16px}
 .member-toggle-btn:hover,.manage-btn:hover{background:rgba(128,128,128,.12)}
@@ -2449,6 +2567,30 @@ button.msg-file-card:hover .msg-file-action{color:rgb(var(--acc));background:rgb
 @media (prefers-reduced-motion:reduce){
   .create-input-invalid,.invite-input.create-input-invalid{animation:none}
 }
+
+/* Quote repost sheet */
+.quote-repost-dialog .quote-repost-actions{justify-content:flex-end;margin-top:12px}
+.quote-repost-preview{
+  margin-top:10px;padding:10px 12px;border-radius:12px;
+  border:1px solid rgba(128,128,128,.14);background:rgba(128,128,128,.04);
+  font-size:12px;line-height:1.45;color:var(--text-secondary,#666);
+  max-height:96px;overflow:hidden;
+}
+.quote-repost-preview-label{font-size:11px;font-weight:600;color:var(--tapp-primary,#6366f1);margin-bottom:4px}
+.quote-repost-preview-text{white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.dark .quote-repost-preview{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}
+.feed-item-quoted{
+  margin-top:8px;padding:8px 10px;border-radius:10px;
+  border-left:3px solid var(--tapp-primary,#6366f1);
+  background:rgba(128,128,128,.05);font-size:12px;line-height:1.4;
+  color:var(--text-secondary,#666);
+}
+.feed-item-quoted-meta{font-size:11px;font-weight:600;color:var(--tapp-primary,#6366f1);margin-bottom:3px;opacity:.95}
+.feed-item-quoted-text{white-space:pre-wrap;word-break:break-word}
+.feed-item-quoted .feed-item-quoted{margin-top:6px;margin-left:2px;border-left-color:rgba(var(--tapp-primary-rgb,99,102,241),.45)}
+.feed-item-quoted-truncated{font-size:11px;opacity:.7;margin-top:4px;font-style:italic}
+.dark .feed-item-quoted{background:rgba(255,255,255,.04);color:rgba(255,255,255,.65)}
+.quote-repost-preview .feed-item-quoted{max-height:none;-webkit-line-clamp:unset}
 `
 
 const ARO_I18N: Record<string, Record<string, string>> = {
@@ -2561,6 +2703,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "deliveryWarnBody": "Remote delivery may be incomplete",
     "deliveryWarnTitle": "Delivery notice",
     "disconnected": "Offline",
+    "deletePost": "Delete",
+    "deletePostConfirm": "Delete this post? It will be removed from your timeline and unpublished.",
+    "deletePostFail": "Couldn't delete post",
     "dismiss": "Dismiss",
     "dissolve": "Dissolve group",
     "dissolveConfirm": "Dissolve this group? Everyone will lose access. This can't be undone.",
@@ -2592,9 +2737,11 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "emptyTitleTimeline": "No posts yet",
     "expandDetails": "Show more",
     "feedBackup": "Backup",
+    "feedSettings": "Settings",
     "feedFollowers": "Followers",
     "feedFollowing": "Following",
     "feedHintBackup": "Export and import messenger history",
+    "feedHintSettings": "Posting defaults, privacy, and chat backup",
     "feedHintFollowers": "People who follow you",
     "feedHintFollowing": "People you follow",
     "feedHintGuest": "Public posts from this site",
@@ -2615,12 +2762,6 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedHintBookmarks": "Posts you've bookmarked",
     "feedSubBookmarks": "Posts you've bookmarked",
     "feedEmptyBookmarks": "No bookmarks yet — tap the bookmark icon on a post",
-    "emptyTitleBookmarks": "No bookmarks yet",
-    "composeMedia": "Media",
-    "previewShare": "Share",
-    "historyJump": "Show in chat",
-    "joining": "Joining…",
-    "forwardFileMetaFail": "Can't forward this file yet — download and re-send",
     "likeBtn": "Like",
     "unlikeBtn": "Unlike",
     "bookmarkBtn": "Bookmark",
@@ -2840,6 +2981,50 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectTapp": "Choose a Tapp",
     "send": "Send",
     "sendFail": "Couldn't send",
+    "settingsAutoE2e": "Auto-enable E2E when opening chat",
+    "settingsAutoE2eHint": "Share your encryption key when you open a direct or group chat (if the API is available).",
+    "settingsDataBackup": "Data & backup",
+    "settingsDefaultVisibility": "Default post visibility",
+    "settingsDefaultVisibilityHint": "Used when you publish a new post or reply.",
+    "settingsFeedPrefs": "Feed preferences",
+    "settingsGuest": "Sign in to change settings.",
+    "settingsHint": "Posting defaults, privacy, and chat backup",
+    "settingsPostingDefaults": "Posting defaults",
+    "settingsPrivacy": "Privacy",
+    "settingsSaved": "Settings saved",
+    "settingsShowReposts": "Show reposts in home",
+    "settingsShowRepostsHint": "When off, reposts from people you follow are hidden on Home.",
+    "settingsTitle": "Settings",
+    "settingsVisFollowers": "Followers only",
+    "settingsVisFollowersDesc": "Only people who follow you can see the post.",
+    "settingsVisPublic": "Public",
+    "settingsVisPublicDesc": "Anyone can see this post; delivered to followers.",
+    "settingsVisUnlisted": "Unlisted",
+    "settingsVisUnlistedDesc": "Not listed as public; audience is limited on this server.",
+    "settingsWhoCanMessage": "Who can message you",
+    "settingsWhoCanMessageHint": "Server-side messaging limits are not available yet. Preference is stored on this device only.",
+    "settingsDelivery": "Outbound delivery",
+    "settingsDeliveryHint": "Federation messages waiting to send, failed deliveries, and recent queue items. Cancel pending items or retry failed ones.",
+    "settingsDeliveryPending": "Pending",
+    "settingsDeliveryDelivering": "Sending",
+    "settingsDeliveryDelivered": "Delivered",
+    "settingsDeliveryDead": "Failed",
+    "settingsDeliveryEmpty": "No recent delivery tasks",
+    "settingsDeliveryRefresh": "Refresh",
+    "settingsDeliveryRetry": "Retry",
+    "settingsDeliveryCancel": "Cancel",
+    "settingsDeliveryRetryAll": "Retry all failed",
+    "settingsDeliveryCancelOk": "Delivery cancelled",
+    "settingsDeliveryCancelFail": "Couldn't cancel delivery",
+    "settingsDeliveryRetryFail": "Couldn't retry delivery",
+    "settingsDeliveryLoadFail": "Couldn't load delivery status",
+    "deleteChannel": "Delete chat",
+    "deleteChannelConfirm": "Delete this closed chat permanently? Message history on this device will be removed.",
+    "deleteChannelFail": "Couldn't delete chat",
+    "deleteChannelOk": "Chat deleted",
+    "settingsWhoEveryone": "Everyone",
+    "settingsWhoFollowers": "Followers",
+    "settingsWhoNobody": "Nobody",
     "shareUntitled": "Untitled",
     "syncBtn": "Sync",
     "syncFail": "Couldn't sync",
@@ -2883,6 +3068,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "unfollowFail": "Couldn't unfollow",
     "unpublishFail": "Couldn't unpublish",
     "updatingBtn": "Update",
+    "quoteRepostTitle": "Quote repost",
+    "quoteRepostPlaceholder": "Add a comment…",
+    "quoteRepostSubmit": "Repost",
+    "quoteRepostNeedContent": "Write something before reposting",
+    "quoteRepostFail": "Couldn't quote repost",
+    "quoteRepostQuoted": "Quoted post",
+    "quoteRepostNested": "Quoted repost",
+    "quoteRepostTruncated": "Earlier quotes not shown",
   },
   "ja": {
     "accept": "承認",
@@ -2993,6 +3186,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "deliveryWarnBody": "リモート配信が不完全な可能性があります",
     "deliveryWarnTitle": "配信の通知",
     "disconnected": "オフライン",
+    "deletePost": "削除",
+    "deletePostConfirm": "この投稿を削除しますか？タイムラインから削除され、公開が取り消されます。",
+    "deletePostFail": "投稿を削除できませんでした",
     "dismiss": "閉じる",
     "dissolve": "グループを解散",
     "dissolveConfirm": "このグループを解散しますか？メンバーはアクセスできなくなり、元に戻せません。",
@@ -3024,9 +3220,11 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "emptyTitleTimeline": "投稿はまだありません",
     "expandDetails": "もっと見る",
     "feedBackup": "バックアップ",
+    "feedSettings": "設定",
     "feedFollowers": "フォロワー",
     "feedFollowing": "フォロー中",
     "feedHintBackup": "メッセンジャー履歴のエクスポート／インポート",
+    "feedHintSettings": "投稿の既定値、プライバシー、チャットのバックアップ",
     "feedHintFollowers": "あなたをフォローしている人",
     "feedHintFollowing": "フォロー中のアカウントを管理",
     "feedHintGuest": "このサイトの公開投稿",
@@ -3047,12 +3245,6 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedHintBookmarks": "保存した投稿",
     "feedSubBookmarks": "保存した投稿",
     "feedEmptyBookmarks": "ブックマークはまだありません。投稿のブックマークをタップ",
-    "emptyTitleBookmarks": "ブックマークはまだありません",
-    "composeMedia": "メディア",
-    "previewShare": "共有",
-    "historyJump": "チャットで表示",
-    "joining": "参加中…",
-    "forwardFileMetaFail": "このファイルはまだ転送できません。ダウンロードして再送してください",
     "likeBtn": "いいね",
     "unlikeBtn": "いいね解除",
     "bookmarkBtn": "ブックマーク",
@@ -3272,6 +3464,50 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectTapp": "Tappを選択",
     "send": "送信",
     "sendFail": "送信に失敗しました",
+    "settingsAutoE2e": "チャットを開いたら E2E を自動有効化",
+    "settingsAutoE2eHint": "ダイレクト／グループを開いたときに暗号鍵を共有します（API がある場合）。",
+    "settingsDataBackup": "データとバックアップ",
+    "settingsDefaultVisibility": "投稿のデフォルト公開範囲",
+    "settingsDefaultVisibilityHint": "新規投稿や返信の公開時に使われます。",
+    "settingsFeedPrefs": "フィード設定",
+    "settingsGuest": "サインインして設定を変更できます。",
+    "settingsHint": "投稿の既定値、プライバシー、チャットのバックアップ",
+    "settingsPostingDefaults": "投稿の既定値",
+    "settingsPrivacy": "プライバシー",
+    "settingsSaved": "設定を保存しました",
+    "settingsShowReposts": "ホームにリポストを表示",
+    "settingsShowRepostsHint": "オフにすると、フォロー中の人のリポストをホームから隠します。",
+    "settingsTitle": "設定",
+    "settingsVisFollowers": "フォロワーのみ",
+    "settingsVisFollowersDesc": "フォロワーだけが投稿を見られます。",
+    "settingsVisPublic": "公開",
+    "settingsVisPublicDesc": "誰でも閲覧でき、フォロワーへ配信されます。",
+    "settingsVisUnlisted": "未収載",
+    "settingsVisUnlistedDesc": "公開一覧には載せず、このサーバーでは限定的な配信になります。",
+    "settingsWhoCanMessage": "メッセージを送れる相手",
+    "settingsWhoCanMessageHint": "サーバー側のメッセージ制限はまだありません。端末内の設定として保存されます。",
+    "settingsDelivery": "送信・配信状況",
+    "settingsDeliveryHint": "送信待ち・失敗した連邦配信を確認し、キャンセルまたは再試行できます。",
+    "settingsDeliveryPending": "待機中",
+    "settingsDeliveryDelivering": "送信中",
+    "settingsDeliveryDelivered": "配信済み",
+    "settingsDeliveryDead": "失敗",
+    "settingsDeliveryEmpty": "最近の配信タスクはありません",
+    "settingsDeliveryRefresh": "更新",
+    "settingsDeliveryRetry": "再試行",
+    "settingsDeliveryCancel": "キャンセル",
+    "settingsDeliveryRetryAll": "失敗をすべて再試行",
+    "settingsDeliveryCancelOk": "配信をキャンセルしました",
+    "settingsDeliveryCancelFail": "キャンセルに失敗しました",
+    "settingsDeliveryRetryFail": "再試行に失敗しました",
+    "settingsDeliveryLoadFail": "配信状況を読み込めませんでした",
+    "deleteChannel": "チャットを削除",
+    "deleteChannelConfirm": "終了したチャットを完全に削除しますか？この端末の履歴も消えます。",
+    "deleteChannelFail": "削除に失敗しました",
+    "deleteChannelOk": "チャットを削除しました",
+    "settingsWhoEveryone": "全員",
+    "settingsWhoFollowers": "フォロワー",
+    "settingsWhoNobody": "誰も不可",
     "shareUntitled": "無題",
     "syncBtn": "同期",
     "syncFail": "同期に失敗しました",
@@ -3315,6 +3551,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "unfollowFail": "フォロー解除に失敗しました",
     "unpublishFail": "公開の取り消しに失敗しました",
     "updatingBtn": "更新",
+    "quoteRepostTitle": "引用リポスト",
+    "quoteRepostPlaceholder": "コメントを追加…",
+    "quoteRepostSubmit": "リポスト",
+    "quoteRepostNeedContent": "リポストする前にコメントを書いてください",
+    "quoteRepostFail": "引用リポストに失敗しました",
+    "quoteRepostQuoted": "引用元の投稿",
+    "quoteRepostNested": "引用されたリポスト",
+    "quoteRepostTruncated": "これより前の引用は省略",
   },
   "zh": {
     "accept": "接受",
@@ -3425,6 +3669,9 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "deliveryWarnBody": "远程投递可能不完整",
     "deliveryWarnTitle": "投递提示",
     "disconnected": "未连接",
+    "deletePost": "删除",
+    "deletePostConfirm": "删除这条动态？将从时间线移除并取消发布。",
+    "deletePostFail": "删除动态失败",
     "dismiss": "关闭",
     "dissolve": "解散群组",
     "dissolveConfirm": "确定解散此群组？所有成员将失去访问权限，且无法撤销。",
@@ -3456,9 +3703,11 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "emptyTitleTimeline": "还没有动态",
     "expandDetails": "展开",
     "feedBackup": "备份",
+    "feedSettings": "设置",
     "feedFollowers": "粉丝",
     "feedFollowing": "关注",
     "feedHintBackup": "导出与导入聊天记录",
+    "feedHintSettings": "发帖默认值、隐私与聊天备份",
     "feedHintFollowers": "关注你的人",
     "feedHintFollowing": "管理你关注的人",
     "feedHintGuest": "本站的公开动态",
@@ -3474,17 +3723,11 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "feedMetaTimeline": "关注的人与你的动态",
     "feedPlus": "添加",
     "feedPublished": "已发布",
-    "feedBookmarks": "收藏推文",
+    "feedBookmarks": "收藏",
     "feedMetaBookmarks": "你收藏的帖子",
     "feedHintBookmarks": "你收藏的帖子",
     "feedSubBookmarks": "你收藏的帖子",
     "feedEmptyBookmarks": "还没有收藏 — 在帖子上点收藏图标即可",
-    "emptyTitleBookmarks": "还没有收藏",
-    "composeMedia": "媒体",
-    "previewShare": "分享",
-    "historyJump": "在聊天中定位",
-    "joining": "加入中…",
-    "forwardFileMetaFail": "暂不支持转发此文件，请下载后重新发送",
     "likeBtn": "点赞",
     "unlikeBtn": "取消点赞",
     "bookmarkBtn": "收藏",
@@ -3704,6 +3947,50 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "selectTapp": "选择 Tapp",
     "send": "发送",
     "sendFail": "发送失败",
+    "settingsAutoE2e": "打开聊天时自动启用端到端加密",
+    "settingsAutoE2eHint": "打开私信或群聊时共享加密密钥（若接口可用）。",
+    "settingsDataBackup": "数据与备份",
+    "settingsDefaultVisibility": "默认帖子可见性",
+    "settingsDefaultVisibilityHint": "发布新帖或回复时使用。",
+    "settingsFeedPrefs": "动态偏好",
+    "settingsGuest": "登录后可修改设置。",
+    "settingsHint": "发帖默认值、隐私与聊天备份",
+    "settingsPostingDefaults": "发帖默认",
+    "settingsPrivacy": "隐私",
+    "settingsSaved": "设置已保存",
+    "settingsShowReposts": "在首页显示转发",
+    "settingsShowRepostsHint": "关闭后，首页将隐藏你关注的人的转发。",
+    "settingsTitle": "设置",
+    "settingsVisFollowers": "仅关注者",
+    "settingsVisFollowersDesc": "只有关注你的人可以看到。",
+    "settingsVisPublic": "公开",
+    "settingsVisPublicDesc": "所有人可见，并投递给关注者。",
+    "settingsVisUnlisted": "不公开列出",
+    "settingsVisUnlistedDesc": "不作为公开内容列出；本站受众范围受限。",
+    "settingsWhoCanMessage": "谁可以私信你",
+    "settingsWhoCanMessageHint": "服务端消息限制尚未提供。偏好仅保存在本设备。",
+    "settingsDelivery": "发送投递状态",
+    "settingsDeliveryHint": "查看等待发送、投递失败与近期队列。可取消待发送任务或重试失败项。",
+    "settingsDeliveryPending": "等待中",
+    "settingsDeliveryDelivering": "发送中",
+    "settingsDeliveryDelivered": "已投递",
+    "settingsDeliveryDead": "失败",
+    "settingsDeliveryEmpty": "暂无近期投递任务",
+    "settingsDeliveryRefresh": "刷新",
+    "settingsDeliveryRetry": "重试",
+    "settingsDeliveryCancel": "取消",
+    "settingsDeliveryRetryAll": "重试全部失败",
+    "settingsDeliveryCancelOk": "已取消投递",
+    "settingsDeliveryCancelFail": "取消失败",
+    "settingsDeliveryRetryFail": "重试失败",
+    "settingsDeliveryLoadFail": "无法加载投递状态",
+    "deleteChannel": "删除会话",
+    "deleteChannelConfirm": "永久删除此已关闭会话？本机消息记录将一并移除。",
+    "deleteChannelFail": "删除失败",
+    "deleteChannelOk": "会话已删除",
+    "settingsWhoEveryone": "所有人",
+    "settingsWhoFollowers": "关注者",
+    "settingsWhoNobody": "不可私信",
     "shareUntitled": "未命名",
     "syncBtn": "同步",
     "syncFail": "同步失败",
@@ -3747,6 +4034,14 @@ const ARO_I18N: Record<string, Record<string, string>> = {
     "unfollowFail": "取消关注失败",
     "unpublishFail": "取消发布失败",
     "updatingBtn": "更新",
+    "quoteRepostTitle": "引用转发",
+    "quoteRepostPlaceholder": "写点什么再转发…",
+    "quoteRepostSubmit": "转发",
+    "quoteRepostNeedContent": "请先写一些内容再转发",
+    "quoteRepostFail": "转发失败",
+    "quoteRepostQuoted": "被引用的帖子",
+    "quoteRepostNested": "被引用的转发",
+    "quoteRepostTruncated": "更早的引用已折叠",
   },
 }
 
@@ -3808,7 +4103,14 @@ var state = {
     followers: false,
     published: false,
     bookmarks: false,
-    backup: false,
+    settings: false,
+  },
+  /** Client settings (localStorage aro.settings). See loadAroSettings. */
+  aroSettings: {
+    defaultVisibility: 'public',
+    showRepostsInHome: true,
+    autoE2eOnOpen: true,
+    whoCanMessage: 'everyone',
   },
   timeline: [],
   following: [],
@@ -4973,12 +5275,12 @@ function applyRoleControls() {
   setAdminElementVisible('.feed-nav-item[data-sub="followers"]', privateOnly);
   setAdminElementVisible('.feed-nav-item[data-sub="published"]', privateOnly);
   setAdminElementVisible('.feed-nav-item[data-sub="bookmarks"]', privateOnly);
-  setAdminElementVisible('.feed-nav-item[data-sub="backup"]', privateOnly);
+  setAdminElementVisible('.feed-nav-item[data-sub="settings"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="following"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="followers"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="published"]', privateOnly);
   setAdminElementVisible('.feed-mobile-tab[data-sub="bookmarks"]', privateOnly);
-  setAdminElementVisible('.feed-mobile-tab[data-sub="backup"]', privateOnly);
+  setAdminElementVisible('.feed-mobile-tab[data-sub="settings"]', privateOnly);
   if (state.isGuest) {
     state.feedSubTab = 'timeline';
     state.currentView = 'feed';
@@ -5523,13 +5825,13 @@ function applyLabels() {
   el = $('feed-nav-followers'); if (el) el.textContent = lang.feedFollowers;
   el = $('feed-nav-published'); if (el) el.textContent = lang.feedPublished;
   el = $('feed-nav-bookmarks'); if (el) el.textContent = lang.feedBookmarks || 'Bookmarks';
-  el = $('feed-nav-backup'); if (el) el.textContent = lang.feedBackup || lang.backupTitle || 'Backup';
+  el = $('feed-nav-settings'); if (el) el.textContent = lang.feedSettings || lang.settingsTitle || 'Settings';
   el = $('feed-tab-timeline'); if (el) el.textContent = lang.feedTimeline;
   el = $('feed-tab-following'); if (el) el.textContent = lang.feedFollowing;
   el = $('feed-tab-followers'); if (el) el.textContent = lang.feedFollowers;
   el = $('feed-tab-published'); if (el) el.textContent = lang.feedPublished;
   el = $('feed-tab-bookmarks'); if (el) el.textContent = lang.feedBookmarks || 'Bookmarks';
-  el = $('feed-tab-backup'); if (el) el.textContent = lang.feedBackup || lang.backupTitle || 'Backup';
+  el = $('feed-tab-settings'); if (el) el.textContent = lang.feedSettings || lang.settingsTitle || 'Settings';
   if (typeof applyHistoryLabels === 'function') applyHistoryLabels();
   if (typeof applyRoomFilesLabels === 'function') applyRoomFilesLabels();
   el = $('feed-follow-input'); if (el) el.placeholder = lang.followPlaceholder;
@@ -5555,6 +5857,7 @@ function applyLabels() {
   el = $('feed-compose-video-btn'); if (el) el.setAttribute('title', lang.composeAddVideo || 'Video');
   el = $('feed-compose-cancel'); if (el) el.textContent = lang.composeCancel || 'Cancel';
   el = $('feed-compose-publish'); if (el) el.textContent = lang.composePublish || 'Publish';
+  if (typeof applyQuoteRepostLabels === 'function') applyQuoteRepostLabels();
   el = $('feed-compose-draft-hint');
   if (el && !el.hidden) el.textContent = lang.composeDraftRestored || 'Draft restored';
   el = $('feed-compose-draft-notice');
@@ -8260,16 +8563,39 @@ function openReportDetail(reportId, card) {
   });
 }
 
-// ==================== Render: Members ====================
-// (function body continues in members.js — page modules are concatenated in order)
-function renderMembers() {
-  var panel = $('member-panel');
-  if (!panel) return;
+// Header chrome buttons (must stay in chat.js so they are global — not nested inside
+// another function if module order shifts). Used by renderChatHeader in members.js.
+function historyHeaderButtonHtml() {
+  var title = lang.historyTitle || 'Chat history';
+  return '<button type="button" class="aro-icon-btn" id="history-open-btn" title="' + esc(title) + '" aria-label="' + esc(title) + '">'
+    + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
+    + '</button>';
+}
 
-  if (state.activeKind !== 'room' || !state.roomDetail) {
-    panel.style.display = 'none';
-    return;
-  }
+function roomFilesHeaderButtonHtml() {
+  var title = lang.roomFilesTitle || 'Group files';
+  return '<button type="button" class="aro-icon-btn" id="room-files-open-btn" title="' + esc(title) + '" aria-label="' + esc(title) + '">'
+    + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>'
+    + '</button>';
+}
+
+function wireHistoryHeaderButton() {
+  var btn = $('history-open-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (typeof openChatHistory === 'function') openChatHistory();
+  });
+}
+
+function wireRoomFilesHeaderButton() {
+  var btn = $('room-files-open-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (typeof openRoomFiles === 'function') openRoomFiles();
+  });
+}
 `
 
 const PAGE_MOD_HISTORY = `\
@@ -9205,7 +9531,7 @@ async function importChatArchiveFromFile(file) {
         type: 'success',
       });
     } catch (e2) {}
-    renderBackupPage();
+    refreshSettingsOrBackupPage();
   } catch (e) {
     setStatus(lang.backupImportFail || 'Import failed', 'error');
     notifyError(lang.backupImportFail || 'Import failed', e);
@@ -9220,7 +9546,7 @@ async function deleteImportedArchive(id) {
     state.history.browseArchiveId = null;
     state.history.browseConversationId = null;
   }
-  renderBackupPage();
+  refreshSettingsOrBackupPage();
 }
 
 function openImportedArchiveBrowser(entryId, conversationKey) {
@@ -9228,61 +9554,100 @@ function openImportedArchiveBrowser(entryId, conversationKey) {
   state.history.browseArchiveId = entryId;
   state.history.browseConversationId = conversationKey || null;
   state.history.browseQuery = state.history.browseQuery || '';
-  renderBackupPage();
+  refreshSettingsOrBackupPage();
 }
 
 function backupConversationKey(conv, idx) {
   return (conv.kind || 'x') + ':' + (conv.id || idx);
 }
 
-async function renderBackupPage() {
-  var content = $('feed-content');
-  var empty = $('feed-empty');
-  if (!content) return;
-  if (empty) empty.style.display = 'none';
-  var main = content.closest('.feed-main');
-  if (main) main.classList.remove('feed-empty-visible');
+// ---------- Aro client settings (localStorage key: aro.settings) ----------
+// Schema:
+// {
+//   defaultVisibility: 'public' | 'unlisted' | 'followers',
+//     // sent to createNote/publish; backend resolve_audience special-cases
+//     // "public" and "followers" (other values e.g. unlisted → empty audience)
+//   showRepostsInHome: boolean,   // local filter on home timeline
+//   autoE2eOnOpen: boolean,       // maybePublishE2eKeys on open chat
+//   whoCanMessage: 'everyone' | 'followers' | 'nobody'  // local-only (no backend)
+// }
+var ARO_SETTINGS_KEY = 'aro.settings';
+var ARO_VISIBILITY_VALUES = { public: 1, unlisted: 1, followers: 1 };
+var ARO_WHO_VALUES = { everyone: 1, followers: 1, nobody: 1 };
 
-  // Hide feed search on backup page
-  var searchBar = document.querySelector('.feed-search-bar');
-  if (searchBar) searchBar.style.display = 'none';
+function defaultAroSettings() {
+  return {
+    defaultVisibility: 'public',
+    showRepostsInHome: true,
+    autoE2eOnOpen: true,
+    whoCanMessage: 'everyone',
+  };
+}
 
-  if (state.isGuest) {
-    content.innerHTML = '<div class="backup-page">'
-      + backupHeroHtml()
-      + '<div class="backup-card"><div class="backup-empty">'
-      + '<div class="aro-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg></div>'
-      + '<div class="history-empty-title">' + esc(lang.backupTitle || 'Chat backup') + '</div>'
-      + '<div>' + esc(lang.backupGuest || 'Sign in to export or import chat history.') + '</div>'
-      + '</div></div></div>';
-    return;
-  }
+function normalizeAroSettings(raw) {
+  var d = defaultAroSettings();
+  if (!raw || typeof raw !== 'object') return d;
+  var vis = String(raw.defaultVisibility || d.defaultVisibility);
+  if (!ARO_VISIBILITY_VALUES[vis]) vis = d.defaultVisibility;
+  var who = String(raw.whoCanMessage || d.whoCanMessage);
+  if (!ARO_WHO_VALUES[who]) who = d.whoCanMessage;
+  return {
+    defaultVisibility: vis,
+    showRepostsInHome: raw.showRepostsInHome !== false,
+    autoE2eOnOpen: raw.autoE2eOnOpen !== false,
+    whoCanMessage: who,
+  };
+}
 
-  var h = ensureHistoryState();
-  var imported = await loadImportedArchives();
-
-  // Deep browse: archive → conversation messages
-  if (h.browseArchiveId) {
-    var entry = null;
-    for (var i = 0; i < imported.length; i++) {
-      if (imported[i].id === h.browseArchiveId) { entry = imported[i]; break; }
+function loadAroSettings() {
+  var next = defaultAroSettings();
+  try {
+    if (typeof localStorage !== 'undefined') {
+      var raw = localStorage.getItem(ARO_SETTINGS_KEY);
+      if (raw) next = normalizeAroSettings(JSON.parse(raw));
     }
-    if (!entry) {
-      h.browseArchiveId = null;
-    } else if (h.browseConversationId) {
-      content.innerHTML = renderImportedConversationView(entry, h.browseConversationId);
-      bindBackupPageEvents(content);
-      return;
-    } else {
-      content.innerHTML = renderImportedArchiveView(entry);
-      bindBackupPageEvents(content);
-      return;
+  } catch (e0) { /* ignore */ }
+  state.aroSettings = next;
+  state.e2ePreferEncrypt = next.autoE2eOnOpen !== false;
+  return next;
+}
+
+function saveAroSettings(partial) {
+  var cur = normalizeAroSettings(state.aroSettings || loadAroSettings());
+  var merged = normalizeAroSettings(Object.assign({}, cur, partial || {}));
+  state.aroSettings = merged;
+  state.e2ePreferEncrypt = merged.autoE2eOnOpen !== false;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(ARO_SETTINGS_KEY, JSON.stringify(merged));
     }
+  } catch (e1) { /* ignore */ }
+  try {
+    if (Tapp.storage && typeof Tapp.storage.set === 'function') {
+      Tapp.storage.set(ARO_SETTINGS_KEY, merged).catch(function () {});
+    }
+  } catch (e2) { /* ignore */ }
+  return merged;
+}
+
+function getDefaultPostVisibility() {
+  var s = state.aroSettings || loadAroSettings();
+  var v = (s && s.defaultVisibility) || 'public';
+  return ARO_VISIBILITY_VALUES[v] ? v : 'public';
+}
+
+function refreshSettingsOrBackupPage() {
+  if (state.feedSubTab === 'settings' && typeof renderSettingsPage === 'function') {
+    return renderSettingsPage();
   }
+  if (typeof renderBackupPage === 'function') {
+    return renderBackupPage();
+  }
+}
 
-  var html = '<div class="backup-page">';
-  html += backupHeroHtml();
-
+function renderBackupCardsHtml(imported) {
+  imported = imported || [];
+  var html = '';
   html += '<div class="backup-card">';
   html += '<div class="backup-card-head">'
     + '<div class="backup-card-icon backup-card-icon-export">' + (SVG_ICONS.download || '') + '</div>'
@@ -9354,10 +9719,404 @@ async function renderBackupPage() {
   html += '<div class="backup-card backup-card-muted">';
   html += '<p class="backup-card-desc">' + esc(lang.backupPrivacyNote || 'Exports stay on your device. Large image payloads are omitted unless you enable “Include image data”.') + '</p>';
   html += '</div>';
+  return html;
+}
+
+async function renderBackupPage(opts) {
+  opts = opts || {};
+  var embedded = !!opts.embedded;
+  var content = $('feed-content');
+  var empty = $('feed-empty');
+  if (!content && !embedded) return;
+  if (empty) empty.style.display = 'none';
+  var main = content && content.closest('.feed-main');
+  if (main) main.classList.remove('feed-empty-visible');
+
+  var searchBar = document.querySelector('.feed-search-bar');
+  if (searchBar) searchBar.style.display = 'none';
+
+  if (state.isGuest) {
+    var guestBody = '<div class="backup-card"><div class="backup-empty">'
+      + '<div class="aro-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg></div>'
+      + '<div class="history-empty-title">' + esc(lang.backupTitle || 'Chat backup') + '</div>'
+      + '<div>' + esc(lang.backupGuest || 'Sign in to export or import chat history.') + '</div>'
+      + '</div></div>';
+    if (embedded) return guestBody;
+    content.innerHTML = '<div class="backup-page">' + backupHeroHtml() + guestBody + '</div>';
+    return;
+  }
+
+  var h = ensureHistoryState();
+  var imported = await loadImportedArchives();
+
+  // Deep browse: archive → conversation messages
+  if (h.browseArchiveId) {
+    var entry = null;
+    for (var i = 0; i < imported.length; i++) {
+      if (imported[i].id === h.browseArchiveId) { entry = imported[i]; break; }
+    }
+    if (!entry) {
+      h.browseArchiveId = null;
+    } else if (h.browseConversationId) {
+      if (content) {
+        content.innerHTML = renderImportedConversationView(entry, h.browseConversationId);
+        bindBackupPageEvents(content);
+      }
+      return;
+    } else {
+      if (content) {
+        content.innerHTML = renderImportedArchiveView(entry);
+        bindBackupPageEvents(content);
+      }
+      return;
+    }
+  }
+
+  var cards = renderBackupCardsHtml(imported);
+  if (embedded) return cards;
+
+  content.innerHTML = '<div class="backup-page">' + backupHeroHtml() + cards + '</div>';
+  bindBackupPageEvents(content);
+}
+
+async function renderSettingsPage() {
+  var content = $('feed-content');
+  var empty = $('feed-empty');
+  if (!content) return;
+  if (empty) empty.style.display = 'none';
+  var main = content.closest('.feed-main');
+  if (main) main.classList.remove('feed-empty-visible');
+  var searchBar = document.querySelector('.feed-search-bar');
+  if (searchBar) searchBar.style.display = 'none';
+
+  var s = state.aroSettings || loadAroSettings();
+
+  // Archive browser takes over the whole settings content area
+  if (!state.isGuest) {
+    var h = ensureHistoryState();
+    if (h.browseArchiveId) {
+      await renderBackupPage({ embedded: false });
+      return;
+    }
+  }
+
+  if (state.isGuest) {
+    content.innerHTML = '<div class="settings-page">'
+      + settingsHeroHtml()
+      + '<div class="backup-card"><div class="backup-empty">'
+      + '<div class="aro-empty-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/></svg></div>'
+      + '<div class="history-empty-title">' + esc(lang.settingsTitle || 'Settings') + '</div>'
+      + '<div>' + esc(lang.settingsGuest || 'Sign in to change settings.') + '</div>'
+      + '</div></div></div>';
+    return;
+  }
+
+  var vis = s.defaultVisibility || 'public';
+  var who = s.whoCanMessage || 'everyone';
+  var html = '<div class="settings-page">';
+  html += settingsHeroHtml();
+
+  // Posting defaults
+  html += '<div class="backup-card">';
+  html += '<div class="backup-card-head"><div><div class="backup-card-title">'
+    + esc(lang.settingsPostingDefaults || 'Posting defaults') + '</div>'
+    + '<p class="backup-card-desc">' + esc(lang.settingsDefaultVisibilityHint || 'Used when you publish a new post or reply.') + '</p></div></div>';
+  html += '<div class="settings-radio-group" role="radiogroup" aria-label="' + esc(lang.settingsDefaultVisibility || 'Default post visibility') + '">';
+  var visOpts = [
+    { id: 'public', title: lang.settingsVisPublic || 'Public', desc: lang.settingsVisPublicDesc || '' },
+    { id: 'unlisted', title: lang.settingsVisUnlisted || 'Unlisted', desc: lang.settingsVisUnlistedDesc || '' },
+    { id: 'followers', title: lang.settingsVisFollowers || 'Followers only', desc: lang.settingsVisFollowersDesc || '' },
+  ];
+  visOpts.forEach(function (opt) {
+    var sel = vis === opt.id;
+    html += '<label class="settings-radio' + (sel ? ' is-selected' : '') + '">'
+      + '<input type="radio" name="aro-default-visibility" value="' + esc(opt.id) + '"' + (sel ? ' checked' : '') + ' />'
+      + '<span class="settings-radio-body"><span class="settings-radio-title">' + esc(opt.title) + '</span>'
+      + (opt.desc ? '<div class="settings-radio-desc">' + esc(opt.desc) + '</div>' : '')
+      + '</span></label>';
+  });
+  html += '</div></div>';
+
+  // Feed preferences
+  html += '<div class="backup-card">';
+  html += '<div class="backup-card-title" style="margin-bottom:4px">' + esc(lang.settingsFeedPrefs || 'Feed preferences') + '</div>';
+  html += settingsToggleRowHtml(
+    'settings-show-reposts',
+    lang.settingsShowReposts || 'Show reposts in home',
+    lang.settingsShowRepostsHint || '',
+    s.showRepostsInHome !== false
+  );
+  html += settingsToggleRowHtml(
+    'settings-auto-e2e',
+    lang.settingsAutoE2e || 'Auto-enable E2E when opening chat',
+    lang.settingsAutoE2eHint || '',
+    s.autoE2eOnOpen !== false
+  );
   html += '</div>';
 
+  // Privacy
+  html += '<div class="backup-card">';
+  html += '<div class="backup-card-head"><div><div class="backup-card-title">'
+    + esc(lang.settingsPrivacy || 'Privacy') + '</div></div></div>';
+  html += '<p class="settings-note">' + esc(lang.settingsWhoCanMessageHint || 'Server-side messaging limits are not available yet. Preference is stored on this device only.') + '</p>';
+  html += '<div class="settings-radio-group" style="margin-top:10px" role="radiogroup" aria-label="' + esc(lang.settingsWhoCanMessage || 'Who can message you') + '">';
+  var whoOpts = [
+    { id: 'everyone', title: lang.settingsWhoEveryone || 'Everyone' },
+    { id: 'followers', title: lang.settingsWhoFollowers || 'Followers' },
+    { id: 'nobody', title: lang.settingsWhoNobody || 'Nobody' },
+  ];
+  whoOpts.forEach(function (opt) {
+    var sel = who === opt.id;
+    html += '<label class="settings-radio' + (sel ? ' is-selected' : '') + '">'
+      + '<input type="radio" name="aro-who-can-message" value="' + esc(opt.id) + '"' + (sel ? ' checked' : '') + ' />'
+      + '<span class="settings-radio-body"><span class="settings-radio-title">' + esc(opt.title) + '</span></span></label>';
+  });
+  html += '</div></div>';
+
+  // Outbound delivery status
+  html += '<div class="backup-card" id="settings-delivery-card">';
+  html += '<div class="backup-card-head"><div><div class="backup-card-title">'
+    + esc(lang.settingsDelivery || 'Outbound delivery') + '</div>'
+    + '<p class="backup-card-desc">' + esc(lang.settingsDeliveryHint || '') + '</p></div></div>';
+  html += '<div id="settings-delivery-body" class="settings-delivery-body">'
+    + '<div class="settings-note">' + esc(lang.feedLoading || 'Loading…') + '</div></div>';
+  html += '<div class="backup-actions" style="margin-top:10px">';
+  html += '<button type="button" class="backup-btn" id="settings-delivery-refresh">'
+    + esc(lang.settingsDeliveryRefresh || 'Refresh') + '</button>';
+  html += '<button type="button" class="backup-btn backup-btn-primary" id="settings-delivery-retry-all">'
+    + esc(lang.settingsDeliveryRetryAll || 'Retry all failed') + '</button>';
+  html += '</div></div>';
+
+  // Data & backup
+  html += '<div class="settings-section-title">' + esc(lang.settingsDataBackup || 'Data & backup') + '</div>';
+  html += '<div class="settings-backup-block">';
+  var backupCards = await renderBackupPage({ embedded: true });
+  if (typeof backupCards === 'string') html += backupCards;
+  html += '</div>';
+
+  html += '</div>';
   content.innerHTML = html;
+  bindSettingsPageEvents(content);
   bindBackupPageEvents(content);
+  loadSettingsDeliveryPanel();
+}
+
+function deliveryStatusLabel(status) {
+  var s = String(status || '').toLowerCase();
+  if (s === 'pending') return lang.settingsDeliveryPending || 'Pending';
+  if (s === 'delivering') return lang.settingsDeliveryDelivering || 'Sending';
+  if (s === 'delivered') return lang.settingsDeliveryDelivered || 'Delivered';
+  if (s === 'dead') return lang.settingsDeliveryDead || 'Failed';
+  return status || '';
+}
+
+function renderSettingsDeliveryHtml(stats, items) {
+  stats = stats || {};
+  items = items || [];
+  var h = '';
+  h += '<div class="settings-delivery-stats">';
+  h += '<span class="settings-delivery-chip is-active"><strong>' + esc(String(stats.pending || 0)) + '</strong> '
+    + esc(lang.settingsDeliveryPending || 'Pending') + '</span>';
+  h += '<span class="settings-delivery-chip is-active"><strong>' + esc(String(stats.delivering || 0)) + '</strong> '
+    + esc(lang.settingsDeliveryDelivering || 'Sending') + '</span>';
+  h += '<span class="settings-delivery-chip"><strong>' + esc(String(stats.delivered || 0)) + '</strong> '
+    + esc(lang.settingsDeliveryDelivered || 'Delivered') + '</span>';
+  h += '<span class="settings-delivery-chip is-dead"><strong>' + esc(String(stats.dead || 0)) + '</strong> '
+    + esc(lang.settingsDeliveryDead || 'Failed') + '</span>';
+  h += '</div>';
+  if (!items.length) {
+    h += '<div class="settings-note">' + esc(lang.settingsDeliveryEmpty || 'No recent delivery tasks') + '</div>';
+    return h;
+  }
+  h += '<div class="settings-delivery-list">';
+  items.forEach(function (it) {
+    var st = String(it.status || '').toLowerCase();
+    var canCancel = st === 'pending' || st === 'delivering';
+    var canRetry = st === 'dead';
+    h += '<div class="settings-delivery-item" data-delivery-id="' + esc(String(it.id || '')) + '">';
+    h += '<div class="settings-delivery-item-top">';
+    h += '<div class="settings-delivery-item-meta">';
+    h += '<strong>' + esc(it.activity_type || 'Activity') + '</strong>';
+    if (it.target_domain) h += ' · ' + esc(it.target_domain);
+    h += '<br/>' + esc(lang.settingsDelivery || 'Delivery') + ' #' + esc(String(it.id || ''));
+    if (it.attempts != null) {
+      h += ' · ' + esc(String(it.attempts)) + '/' + esc(String(it.max_attempts || '?'));
+    }
+    h += '</div>';
+    h += '<span class="settings-delivery-badge ' + esc(st) + '">' + esc(deliveryStatusLabel(st)) + '</span>';
+    h += '</div>';
+    if (it.error_message) {
+      h += '<div class="settings-delivery-item-err">' + esc(String(it.error_message).slice(0, 200)) + '</div>';
+    }
+    if (canCancel || canRetry) {
+      h += '<div class="settings-delivery-item-actions">';
+      if (canRetry) {
+        h += '<button type="button" class="backup-btn backup-btn-sm" data-delivery-retry="' + esc(String(it.id)) + '">'
+          + esc(lang.settingsDeliveryRetry || 'Retry') + '</button>';
+      }
+      if (canCancel) {
+        h += '<button type="button" class="backup-btn backup-btn-sm backup-btn-danger" data-delivery-cancel="' + esc(String(it.id)) + '">'
+          + esc(lang.settingsDeliveryCancel || 'Cancel') + '</button>';
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+async function loadSettingsDeliveryPanel() {
+  var body = $('settings-delivery-body');
+  if (!body) return;
+  if (!Tapp.federation || typeof Tapp.federation.getDeliveryStats !== 'function') {
+    body.innerHTML = '<div class="settings-note">' + esc(lang.settingsDeliveryLoadFail || 'Unavailable') + '</div>';
+    return;
+  }
+  body.innerHTML = '<div class="settings-note">' + esc(lang.feedLoading || 'Loading…') + '</div>';
+  try {
+    var statsRes = await Tapp.federation.getDeliveryStats();
+    var listRes = typeof Tapp.federation.listDelivery === 'function'
+      ? await Tapp.federation.listDelivery(40)
+      : { items: [] };
+    var stats = (statsRes && statsRes.data) || statsRes || {};
+    var list = (listRes && listRes.data) || listRes || {};
+    var items = list.items || list.deliveries || [];
+    body.innerHTML = renderSettingsDeliveryHtml(stats, items);
+  } catch (e) {
+    console.error('[Aro] delivery panel', e);
+    body.innerHTML = '<div class="settings-note settings-status-error">'
+      + esc(lang.settingsDeliveryLoadFail || 'Couldn't load delivery status') + '</div>';
+  }
+}
+
+function settingsHeroHtml() {
+  return '<div class="settings-hero">'
+    + '<div class="settings-hero-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg></div>'
+    + '<div class="settings-hero-text">'
+    + '<h2 class="settings-hero-title">' + esc(lang.settingsTitle || 'Settings') + '</h2>'
+    + '<p class="settings-hero-desc">' + esc(lang.settingsHint || lang.feedHintSettings || 'Posting defaults, privacy, and chat backup') + '</p>'
+    + '</div></div>';
+}
+
+function settingsToggleRowHtml(id, label, hint, on) {
+  return '<div class="settings-row">'
+    + '<div class="settings-row-text">'
+    + '<div class="settings-row-label">' + esc(label) + '</div>'
+    + (hint ? '<p class="settings-row-hint">' + esc(hint) + '</p>' : '')
+    + '</div>'
+    + '<button type="button" class="settings-toggle" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" aria-label="' + esc(label) + '">'
+    + '<span class="settings-toggle-knob" aria-hidden="true"></span></button>'
+    + '</div>';
+}
+
+function bindSettingsPageEvents(root) {
+  root = root || document;
+  root.querySelectorAll('input[name="aro-default-visibility"]').forEach(function (input) {
+    input.addEventListener('change', function () {
+      if (!input.checked) return;
+      saveAroSettings({ defaultVisibility: input.value });
+      root.querySelectorAll('input[name="aro-default-visibility"]').forEach(function (inp) {
+        var lab = inp.closest('.settings-radio');
+        if (lab) lab.classList.toggle('is-selected', !!inp.checked);
+      });
+    });
+  });
+  root.querySelectorAll('input[name="aro-who-can-message"]').forEach(function (input) {
+    input.addEventListener('change', function () {
+      if (!input.checked) return;
+      saveAroSettings({ whoCanMessage: input.value });
+      root.querySelectorAll('input[name="aro-who-can-message"]').forEach(function (inp) {
+        var lab = inp.closest('.settings-radio');
+        if (lab) lab.classList.toggle('is-selected', !!inp.checked);
+      });
+    });
+  });
+  var repostBtn = root.querySelector('#settings-show-reposts');
+  if (repostBtn) {
+    repostBtn.addEventListener('click', function () {
+      var next = repostBtn.getAttribute('aria-checked') !== 'true';
+      repostBtn.setAttribute('aria-checked', next ? 'true' : 'false');
+      saveAroSettings({ showRepostsInHome: next });
+    });
+  }
+  var e2eBtn = root.querySelector('#settings-auto-e2e');
+  if (e2eBtn) {
+    e2eBtn.addEventListener('click', function () {
+      var next = e2eBtn.getAttribute('aria-checked') !== 'true';
+      e2eBtn.setAttribute('aria-checked', next ? 'true' : 'false');
+      saveAroSettings({ autoE2eOnOpen: next });
+    });
+  }
+  var refreshDel = root.querySelector('#settings-delivery-refresh');
+  if (refreshDel) {
+    refreshDel.addEventListener('click', function () { loadSettingsDeliveryPanel(); });
+  }
+  var retryAll = root.querySelector('#settings-delivery-retry-all');
+  if (retryAll) {
+    retryAll.addEventListener('click', async function () {
+      if (typeof Tapp.federation.retryAllDeadDelivery !== 'function') return;
+      try {
+        await Tapp.federation.retryAllDeadDelivery(50);
+        try {
+          Tapp.ui.showNotification({ title: lang.deliveryRetryOk || 'Retry queued', type: 'success' });
+        } catch (e0) {}
+        loadSettingsDeliveryPanel();
+      } catch (e) {
+        notifyError(lang.settingsDeliveryRetryFail || 'Retry failed', e);
+      }
+    });
+  }
+  root.querySelectorAll('[data-delivery-retry]').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      var id = parseInt(btn.getAttribute('data-delivery-retry') || '0', 10);
+      if (!id || typeof Tapp.federation.retryDelivery !== 'function') return;
+      try {
+        await Tapp.federation.retryDelivery(id);
+        loadSettingsDeliveryPanel();
+      } catch (e) {
+        notifyError(lang.settingsDeliveryRetryFail || 'Retry failed', e);
+      }
+    });
+  });
+  // Event delegation for dynamic cancel/retry after refresh
+  var delBody = root.querySelector('#settings-delivery-body');
+  if (delBody && !delBody._aroDeliveryBound) {
+    delBody._aroDeliveryBound = true;
+    delBody.addEventListener('click', async function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var retryBtn = t.closest('[data-delivery-retry]');
+      var cancelBtn = t.closest('[data-delivery-cancel]');
+      if (retryBtn) {
+        var rid = parseInt(retryBtn.getAttribute('data-delivery-retry') || '0', 10);
+        if (!rid || typeof Tapp.federation.retryDelivery !== 'function') return;
+        try {
+          await Tapp.federation.retryDelivery(rid);
+          loadSettingsDeliveryPanel();
+        } catch (err) {
+          notifyError(lang.settingsDeliveryRetryFail || 'Retry failed', err);
+        }
+        return;
+      }
+      if (cancelBtn) {
+        var cid = parseInt(cancelBtn.getAttribute('data-delivery-cancel') || '0', 10);
+        if (!cid || typeof Tapp.federation.cancelDelivery !== 'function') return;
+        try {
+          await Tapp.federation.cancelDelivery(cid);
+          try {
+            Tapp.ui.showNotification({
+              title: lang.settingsDeliveryCancelOk || 'Delivery cancelled',
+              type: 'success'
+            });
+          } catch (e1) {}
+          loadSettingsDeliveryPanel();
+        } catch (err2) {
+          notifyError(lang.settingsDeliveryCancelFail || 'Cancel failed', err2);
+        }
+      }
+    });
+  }
 }
 
 function backupHeroHtml() {
@@ -9514,14 +10273,14 @@ function bindBackupPageEvents(root) {
     backRoot.addEventListener('click', function () {
       ensureHistoryState().browseArchiveId = null;
       ensureHistoryState().browseConversationId = null;
-      renderBackupPage();
+      refreshSettingsOrBackupPage();
     });
   }
   var backArch = root.querySelector('#backup-back-archive');
   if (backArch) {
     backArch.addEventListener('click', function () {
       ensureHistoryState().browseConversationId = null;
-      renderBackupPage();
+      refreshSettingsOrBackupPage();
     });
   }
   root.querySelectorAll('[data-open-conv]').forEach(function (btn) {
@@ -9533,28 +10292,12 @@ function bindBackupPageEvents(root) {
   if (browseSearch) {
     browseSearch.addEventListener('input', function () {
       ensureHistoryState().browseQuery = browseSearch.value || '';
-      renderBackupPage();
+      refreshSettingsOrBackupPage();
     });
   }
 }
 
-/** Inject history button into chat header actions (called from renderChatHeader). */
-function historyHeaderButtonHtml() {
-  var title = lang.historyTitle || 'Chat history';
-  return '<button type="button" class="aro-icon-btn" id="history-open-btn" title="' + esc(title) + '" aria-label="' + esc(title) + '">'
-    + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
-    + '</button>';
-}
-
-function wireHistoryHeaderButton() {
-  var btn = $('history-open-btn');
-  if (btn) {
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      openChatHistory();
-    });
-  }
-}
+// historyHeaderButtonHtml / wireHistoryHeaderButton live in chat.js (global).
 
 // Reset history when leaving a conversation
 function resetHistoryOnConversationChange() {
@@ -9598,21 +10341,7 @@ function ensureRoomFilesState() {
   return state.roomFiles;
 }
 
-function roomFilesHeaderButtonHtml() {
-  var title = lang.roomFilesTitle || 'Group files';
-  return '<button type="button" class="aro-icon-btn" id="room-files-open-btn" title="' + esc(title) + '" aria-label="' + esc(title) + '">'
-    + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>'
-    + '</button>';
-}
-
-function wireRoomFilesHeaderButton() {
-  var btn = $('room-files-open-btn');
-  if (!btn) return;
-  btn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    openRoomFiles();
-  });
-}
+// roomFilesHeaderButtonHtml / wireRoomFilesHeaderButton live in chat.js (global).
 
 function applyRoomFilesLabels() {
   var el;
@@ -9849,8 +10578,13 @@ function unwrapTransfersResponse(res) {
   return [];
 }
 
-// unwrapMessagesResponse: single definition lives in history module (PAGE_MOD_HISTORY).
-// Do not redeclare here — concatenated scripts would overwrite the stronger helper.
+function unwrapMessagesResponse(res) {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.messages)) return res.messages;
+  if (res.data && Array.isArray(res.data.messages)) return res.data.messages;
+  return [];
+}
 
 function unwrapRoomFilesResponse(res) {
   if (!res) return { files: [], hasMore: false, total: 0 };
@@ -10432,6 +11166,16 @@ function bindRoomFilesUi() {
 `
 
 const PAGE_MOD_MEMBERS = `\
+// ==================== Render: Members ====================
+// Full function lives here (must not be split across history/files modules).
+function renderMembers() {
+  var panel = $('member-panel');
+  if (!panel) return;
+
+  if (state.activeKind !== 'room' || !state.roomDetail) {
+    panel.style.display = 'none';
+    return;
+  }
   panel.style.display = '';
   $('member-title').textContent = lang.members + ' (' + state.members.length + ')';
 
@@ -10531,8 +11275,10 @@ function renderChatHeader() {
     metaEl.innerHTML = '<span class="meta-badge badge-channel">' + esc(lang.dm) + '</span>'
       + (ch.status === 'pending' ? '<span class="meta-badge badge-pending">' + esc(lang.pending) + '</span>' : '')
       + e2eStatusBadgeHtml();
-    var actionsHtml = '';
-    if (typeof historyHeaderButtonHtml === 'function') actionsHtml += historyHeaderButtonHtml();
+    // Always show history (chat.js defines the helper — never nest it inside another fn).
+    var actionsHtml = (typeof historyHeaderButtonHtml === 'function')
+      ? historyHeaderButtonHtml()
+      : '';
     if (ch.status === 'pending' && ch.initiated_by === 'remote') {
       actionsHtml += '<button class="action-btn action-accept" id="action-accept">' + esc(lang.accept) + '</button>';
       actionsHtml += '<button class="action-btn action-reject" id="action-reject-channel">' + esc(lang.reject || 'Decline') + '</button>';
@@ -10545,6 +11291,14 @@ function renderChatHeader() {
         + esc(lang.close) + '</button></div></div>';
     } else {
       actionsHtml += '<span class="meta-badge badge-closed">' + esc(lang.closed) + '</span>';
+      // Closed DMs: allow local delete when API is present
+      if (typeof Tapp !== 'undefined' && Tapp.federation && typeof Tapp.federation.deleteChannel === 'function') {
+        actionsHtml += '<div class="manage-wrap"><button type="button" class="aro-icon-btn manage-btn" id="manage-toggle" title="' + esc(lang.manage) + '" aria-label="' + esc(lang.manage) + '">⋯</button>'
+          + '<div class="manage-dropdown" id="manage-dropdown" role="menu">'
+          + '<button type="button" class="manage-item manage-item-danger" id="action-delete-channel" role="menuitem">'
+          + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>'
+          + esc(lang.deleteChannel || lang.remove || 'Delete') + '</button></div></div>';
+      }
     }
     actionsEl.innerHTML = actionsHtml;
   } else if (state.activeKind === 'room' && state.roomDetail) {
@@ -10602,24 +11356,23 @@ function renderChatHeader() {
         + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
         + esc(e2eMenuLabel) + '</button>';
     }
-    // History + group files + member toggle + manage menu
+    // History + group files always when room is open (not invite/join-only chrome).
     var historyBtn = typeof historyHeaderButtonHtml === 'function' ? historyHeaderButtonHtml() : '';
     var filesBtn = typeof roomFilesHeaderButtonHtml === 'function' ? roomFilesHeaderButtonHtml() : '';
     var memberToggleHtml = '<button type="button" class="aro-icon-btn member-toggle-btn" id="member-toggle-btn" title="' + esc(lang.members) + '" aria-label="' + esc(lang.members) + '">'
       + '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>'
       + '</button>';
-    var roomInviteActions = '';
+    var roomChrome = historyBtn + filesBtn + memberToggleHtml;
     if (roomPending) {
-      roomInviteActions = '<button class="action-btn action-accept" id="action-accept-room">' + esc(lang.accept) + '</button>'
+      actionsEl.innerHTML = '<button class="action-btn action-accept" id="action-accept-room">' + esc(lang.accept) + '</button>'
         + '<button class="action-btn action-reject" id="action-reject-room">' + esc(lang.reject || lang.leave || 'Reject') + '</button>';
-      actionsEl.innerHTML = roomInviteActions;
     } else if (canSelfJoin) {
       actionsEl.innerHTML = '<button class="action-btn action-accept" id="action-join-room">' + esc(lang.joinRoom || lang.accept || 'Join') + '</button>';
     } else if (menuItems) {
-      actionsEl.innerHTML = historyBtn + filesBtn + memberToggleHtml + '<div class="manage-wrap"><button type="button" class="aro-icon-btn manage-btn" id="manage-toggle" title="' + esc(lang.manage) + '" aria-label="' + esc(lang.manage) + '">⋯</button>'
+      actionsEl.innerHTML = roomChrome + '<div class="manage-wrap"><button type="button" class="aro-icon-btn manage-btn" id="manage-toggle" title="' + esc(lang.manage) + '" aria-label="' + esc(lang.manage) + '">⋯</button>'
         + '<div class="manage-dropdown" id="manage-dropdown" role="menu">' + menuItems + '</div></div>';
     } else {
-      actionsEl.innerHTML = historyBtn + filesBtn + memberToggleHtml;
+      actionsEl.innerHTML = roomChrome;
     }
   }
 
@@ -10643,6 +11396,11 @@ function renderChatHeader() {
   });
   var closeBtn = $('action-close');
   if (closeBtn) closeBtn.addEventListener('click', function () { closeManageDropdown(); doCloseChannel(); });
+  var delChBtn = $('action-delete-channel');
+  if (delChBtn) delChBtn.addEventListener('click', function () {
+    closeManageDropdown();
+    if (typeof doDeleteChannel === 'function') doDeleteChannel();
+  });
   var leaveBtn = $('action-leave');
   if (leaveBtn) leaveBtn.addEventListener('click', function () { closeManageDropdown(); doLeaveRoom(); });
   var editRoomBtn = $('action-edit-room');
@@ -10705,7 +11463,9 @@ function closeMemberPanel() {
   }
   state.memberPanelOpen = false;
 }
+`
 
+const PAGE_MOD_API = `\
 // ==================== API ====================
 async function loadConversations() {
   try {
@@ -10716,12 +11476,6 @@ async function loadConversations() {
     var errors = [];
     if (results[0].status === 'fulfilled' && results[0].value) {
       state.channels = results[0].value.channels || [];
-    // soft delivery health check (dead letters) — non-blocking
-    if (typeof refreshDeliveryHealth === 'function') {
-      refreshDeliveryHealth().catch(function () {});
-    }`
-
-const PAGE_MOD_API = `\
     } else if (results[0].status === 'rejected') {
       console.error('[Aro] getChannels failed:', results[0].reason);
       errors.push(String(results[0].reason));
@@ -10993,6 +11747,8 @@ function maybeAnnounceE2eEstablished() {
 /** Auto-publish E2E keys when opening an active channel/room (if API present). */
 async function maybePublishE2eKeys() {
   if (typeof Tapp === 'undefined' || !Tapp.federation) return;
+  var s = state.aroSettings || (typeof loadAroSettings === 'function' ? loadAroSettings() : null);
+  if (s && s.autoE2eOnOpen === false) return;
   // Dedupe per open: opening chat used to mint a NEW keypair every time, which
   // broke decrypt and left a trail of outbound KeyExchange JSON in the transcript.
   if (!state._e2ePublishOnce) state._e2ePublishOnce = {};
@@ -11002,7 +11758,6 @@ async function maybePublishE2eKeys() {
   if (state.activeKind === 'channel' && state.activeId
     && typeof Tapp.federation.initiateChannelE2e === 'function') {
     var st = state.channelDetail && state.channelDetail.status;
-    // Only after channel is accepted/active — pending means remote may lack ChannelOpen
     if (st === 'active' || st === 'accepted') {
       // Already have local key → backend will reuse; skip noisy re-publish if established
       var chE2e = state.channelDetail && state.channelDetail.properties
@@ -11029,12 +11784,6 @@ async function maybePublishE2eKeys() {
     }
   } else if (state.activeKind === 'room' && state.activeId
     && typeof Tapp.federation.initiateRoomE2e === 'function') {
-    // Only after membership is active — pending invite means remote may lack RoomJoin
-    var rmSt = state.roomDetail
-      && (state.roomDetail.my_membership_status || state.roomDetail.membership_status);
-    if (rmSt && rmSt !== 'active') {
-      return;
-    }
     try {
       await Tapp.federation.initiateRoomE2e(state.activeId);
       state._e2ePublishOnce[onceKey] = true;
@@ -11749,6 +12498,33 @@ async function doCloseChannel() {
     loadConversations();
   } catch (e) {
     notifyError(lang.closeChannelFail || lang.sendFail || 'Close failed', e);
+  }
+}
+
+async function doDeleteChannel() {
+  if (!state.activeId || state.activeKind !== 'channel') return;
+  if (typeof Tapp.federation.deleteChannel !== 'function') return;
+  if (!(await aroConfirm(lang.deleteChannelConfirm || 'Delete this closed chat permanently?', true))) return;
+  var id = state.activeId;
+  try {
+    await unsubscribeRealtime();
+    await Tapp.federation.deleteChannel(id);
+    state.channels = (state.channels || []).filter(function (c) {
+      return c.channel_id !== id;
+    });
+    if (typeof exitActiveConversationUi === 'function') {
+      exitActiveConversationUi(lang.deleteChannelOk || lang.closed || 'Deleted', true);
+    } else {
+      state.activeId = null;
+      state.activeKind = null;
+      state.channelDetail = null;
+      $('chat-container').style.display = 'none';
+      $('empty-state').style.display = '';
+    }
+    renderConvList();
+    loadConversations();
+  } catch (e) {
+    notifyError(lang.deleteChannelFail || lang.closeChannelFail || 'Delete failed', e);
   }
 }
 
@@ -12592,8 +13368,8 @@ async function loadFeedSubTab() {
         state.bookmarks = [];
       }
       updateFeedCountBadges();
-    } else if (sub === 'backup') {
-      // Local export/import page — no network list load
+    } else if (sub === 'settings' || sub === 'backup') {
+      // Local settings + backup page — no network list load
       state.feedError = null;
     }
     if (state.feedSubTab !== sub) return;
@@ -12630,7 +13406,7 @@ function getFeedTitle(sub) {
   if (sub === 'followers') return lang.feedFollowers || 'Followers';
   if (sub === 'published') return lang.feedPublished || 'Published';
   if (sub === 'bookmarks') return lang.feedBookmarks || 'Bookmarks';
-  if (sub === 'backup') return lang.backupTitle || lang.feedBackup || 'Chat backup';
+  if (sub === 'settings' || sub === 'backup') return lang.settingsTitle || lang.feedSettings || 'Settings';
   return lang.feedTimeline || 'Home';
 }
 
@@ -12651,9 +13427,9 @@ function getFeedHint(sub) {
     return lang.feedHintFollowers || lang.feedMetaFollowers || lang.feedSubFollowers
       || lang.feedFollowers || 'People who follow you';
   }
-  if (sub === 'backup') {
-    return lang.feedHintBackup || lang.backupHint
-      || 'Export and import your messenger history';
+  if (sub === 'settings' || sub === 'backup') {
+    return lang.feedHintSettings || lang.settingsHint
+      || 'Posting defaults, privacy, and chat backup';
   }
   if (sub === 'published') {
     return lang.feedHintPublished || lang.feedMetaPublished || lang.feedSubPublished
@@ -12757,10 +13533,21 @@ function publishedItemSearchParts(item) {
   ];
 }
 
-/** Apply current feed search query to a sub-tab list. */
+/** Apply current feed search query (and home preferences) to a sub-tab list. */
 function filterFeedItems(sub, items) {
+  items = items || [];
+  if (!items.length) return items;
+  // Home: optionally hide reposts (Announce activities)
+  if (sub === 'timeline' || !sub) {
+    var s = state.aroSettings || (typeof loadAroSettings === 'function' ? loadAroSettings() : null);
+    if (s && s.showRepostsInHome === false) {
+      items = items.filter(function (item) {
+        return item && item.activity_type !== 'Announce';
+      });
+    }
+  }
   var q = normalizeSearchQuery((state.search && state.search.feed) || '');
-  if (!q || !items || !items.length) return items || [];
+  if (!q) return items;
   return items.filter(function (item) {
     if (sub === 'following' || sub === 'followers') {
       return matchesSearch(q, actorSearchParts(item));
@@ -12884,6 +13671,17 @@ function bindFeedContentActions(content) {
       doUnpublish(btn.dataset.contentType, btn.dataset.contentId);
     });
   });
+  content.querySelectorAll('[data-action-delete-post]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      doDeleteTimelinePost({
+        content_type: btn.dataset.contentType || '',
+        content_id: btn.dataset.contentId || '',
+        activity_id: btn.dataset.activityId || '',
+        object_id: btn.dataset.objectId || '',
+      });
+    });
+  });
   content.querySelectorAll('[data-action-like]').forEach(function (btn) {
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -12899,7 +13697,13 @@ function bindFeedContentActions(content) {
   content.querySelectorAll('[data-action-announce]').forEach(function (btn) {
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
-      doToggleAnnounce(btn.dataset.actionAnnounce, btn.dataset.announced === '1');
+      var oid = btn.dataset.actionAnnounce;
+      var isAnnounced = btn.dataset.announced === '1';
+      if (isAnnounced) {
+        doUnannounce(oid);
+      } else {
+        openQuoteRepostModal(oid);
+      }
     });
   });
   content.querySelectorAll('[data-action-reply]').forEach(function (btn) {
@@ -12925,6 +13729,80 @@ function bindFeedContentActions(content) {
       doSubmitReply(oid, text);
     });
   });
+}
+
+/** True when timeline item was authored by the local identity. */
+function isOwnTimelineItem(item) {
+  if (!item || state.isGuest) return false;
+  var actor = item.actor || {};
+  if (actor.is_local) return true;
+  var myActor = typeof getIdentityActorUrl === 'function' ? getIdentityActorUrl() : (state.localActorUrl || '');
+  var actorUrl = typeof normalizeFederationUrl === 'function'
+    ? normalizeFederationUrl(actor.actor_url)
+    : String(actor.actor_url || '').trim();
+  if (myActor && actorUrl && myActor === actorUrl) return true;
+  // Fallback: username (+ domain when both present)
+  var identity = state.identity || {};
+  var myUser = identity.username || '';
+  var theirUser = actor.username || '';
+  if (myUser && theirUser && myUser === theirUser) {
+    var myDomain = identity.domain || '';
+    var theirDomain = actor.domain || '';
+    if (!myDomain || !theirDomain || myDomain === theirDomain) return true;
+  }
+  return false;
+}
+
+/** Unwrap content_json / object envelope to the AP object. */
+function timelineContentObject(item) {
+  if (!item) return null;
+  var cj = item.content_json || item.content || item.object || null;
+  if (cj && cj.object && typeof cj.object === 'object'
+      && !cj.content && !(cj.source && cj.source.content)
+      && !cj.summary && !cj.name && !cj['mfp:contentId']) {
+    cj = cj.object;
+  }
+  return cj;
+}
+
+/** Extract unpublish target from a timeline item (note / library / report / …). */
+function extractPublishTarget(item) {
+  var cj = timelineContentObject(item);
+  var contentType = '';
+  var contentId = '';
+  if (cj) {
+    contentType = cj['mfp:contentType'] || cj.mfp_contentType || cj.content_type || '';
+    contentId = cj['mfp:contentId'] || cj.mfp_contentId || cj.content_id || '';
+    if (!contentId && cj.id && typeof cj.id === 'string') {
+      var idPath = String(cj.id).split('?')[0].replace(/\\/+$/, '');
+      var segs = idPath.split('/').filter(Boolean);
+      contentId = segs.length ? segs[segs.length - 1] : '';
+      if (!contentType) {
+        var prev = segs.length >= 2 ? segs[segs.length - 2] : '';
+        if (prev === 'notes') contentType = 'note';
+        else if (prev === 'reports') contentType = 'report';
+        else if (prev === 'library') contentType = 'library';
+        else if (prev === 'tapps') contentType = 'tapp';
+        else if (prev === 'articles' && segs.length >= 3 && segs[segs.length - 3] === 'brew') contentType = 'brew-article';
+      }
+    }
+  }
+  if (!contentType && item.object_type) {
+    // Timeline stores MFP content type on object_type for local Creates.
+    var ot = String(item.object_type);
+    if (ot === 'note' || ot === 'report' || ot === 'library' || ot === 'tapp' || ot === 'brew-article') {
+      contentType = ot;
+    } else if (ot === 'Note') contentType = 'note';
+    else if (ot === 'Article' && contentId) contentType = contentType || 'report';
+    else if (ot === 'Collection') contentType = contentType || 'library';
+    else if (ot === 'Application') contentType = contentType || 'tapp';
+  }
+  if (!contentType) contentType = 'note';
+  return {
+    content_type: contentType,
+    content_id: contentId || '',
+    activity_id: item && item.activity_id ? String(item.activity_id) : '',
+  };
 }
 
 function resolveObjectId(item) {
@@ -13027,43 +13905,256 @@ async function doToggleBookmark(objectId, currentlyBookmarked) {
   }
 }
 
-async function doToggleAnnounce(objectId, currentlyAnnounced) {
+var quoteRepostObjectId = null;
+var quoteRepostSubmitting = false;
+
+function feedItemPreviewText(item) {
+  if (!item) return '';
+  var cj = item.content_json || item.content || item.object || null;
+  if (cj && cj.object && typeof cj.object === 'object'
+      && !cj.content && !(cj.source && cj.source.content)
+      && !cj.summary && !cj.name) {
+    cj = cj.object;
+  }
+  var text = '';
+  if (cj) {
+    text = stripHtmlPreview(
+      (cj.source && typeof cj.source === 'object' && cj.source.content) ||
+      cj.content ||
+      cj.summary ||
+      cj.name ||
+      cj.content_preview ||
+      ''
+    );
+  }
+  if (!text && item.content_preview) text = stripHtmlPreview(item.content_preview);
+  return String(text || '').trim();
+}
+
+/** Max nested quote cards rendered in feed / modal (matches backend). */
+var MAX_QUOTE_RENDER_DEPTH = 3;
+
+function attributedToLabel(attributed) {
+  if (!attributed) return '';
+  if (typeof attributed === 'string') {
+    return actorLabelFromUrl(attributed) || attributed;
+  }
+  if (typeof attributed === 'object') {
+    return attributed.name || attributed.preferredUsername || attributed.username
+      || actorLabelFromUrl(attributed.id || attributed.url || '') || '';
+  }
+  return '';
+}
+
+function quotedObjectText(quoted) {
+  if (!quoted || typeof quoted !== 'object') return '';
+  return stripHtmlPreview(
+    (quoted.source && quoted.source.content) ||
+    quoted.content_preview ||
+    quoted.content ||
+    quoted.summary ||
+    quoted.name ||
+    ''
+  );
+}
+
+/**
+ * Render nested mfp:quotedObject chain as distinct cards.
+ * Each level is a snapshot embedded at repost time (not a live pointer).
+ */
+function renderQuotedObjectHtml(quoted, depth) {
+  depth = depth || 0;
+  if (!quoted || typeof quoted !== 'object') return '';
+  if (depth >= MAX_QUOTE_RENDER_DEPTH) {
+    return '<div class="feed-item-quoted feed-item-quoted-truncated">'
+      + esc(lang.quoteRepostTruncated || 'Earlier quotes not shown') + '</div>';
+  }
+  var author = attributedToLabel(quoted.attributedTo);
+  var text = quotedObjectText(quoted);
+  var isNestedRepost = quoted['mfp:kind'] === 'repost' || quoted.mfp_kind === 'repost'
+    || quoted['mfp:contentType'] === 'repost';
+  var label = isNestedRepost
+    ? (lang.quoteRepostNested || lang.quoteRepostQuoted || 'Quoted repost')
+    : (lang.quoteRepostQuoted || 'Quoted post');
+  if (author) label = label + ' · ' + author;
+  var h = '<div class="feed-item-quoted" data-quote-depth="' + depth + '">';
+  h += '<div class="feed-item-quoted-meta">' + esc(label) + '</div>';
+  if (text) {
+    h += '<div class="feed-item-quoted-text">' + esc(String(text).slice(0, 280)) + '</div>';
+  } else if (quoted.id) {
+    h += '<div class="feed-item-quoted-text" style="opacity:.65">' + esc(String(quoted.id).slice(0, 80)) + '</div>';
+  }
+  var inner = quoted['mfp:quotedObject'] || quoted.mfp_quotedObject || null;
+  if (inner && typeof inner === 'object') {
+    h += renderQuotedObjectHtml(inner, depth + 1);
+  } else if (quoted['mfp:quoteTruncated'] || quoted.mfp_quoteTruncated) {
+    h += '<div class="feed-item-quoted-truncated">'
+      + esc(lang.quoteRepostTruncated || 'Earlier quotes not shown') + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function openQuoteRepostModal(objectId) {
   if (!objectId || state.isGuest) return;
   if (!Tapp.federation || typeof Tapp.federation.announce !== 'function') return;
-  var next = !currentlyAnnounced;
+  quoteRepostObjectId = objectId;
+  var dlg = $('quote-repost-dialog');
+  var ta = $('quote-repost-text');
+  var preview = $('quote-repost-preview');
+  if (ta) ta.value = '';
+  if (preview) {
+    var item = findFeedItem(objectId);
+    var cj = typeof timelineContentObject === 'function' ? timelineContentObject(item) : null;
+    var text = feedItemPreviewText(item);
+    var body = '';
+    // Show the post being quoted as a snapshot card; if it is itself a repost, nest.
+    if (cj && (cj['mfp:kind'] === 'repost' || cj.mfp_kind === 'repost' || item && item.object_type === 'repost')) {
+      var snap = {
+        id: resolveObjectId(item) || objectId,
+        attributedTo: (item && item.actor && item.actor.actor_url) || (cj && cj.attributedTo) || '',
+        content_preview: text,
+        'mfp:kind': 'repost',
+        'mfp:quotedObject': cj['mfp:quotedObject'] || cj.mfp_quotedObject || null
+      };
+      body = renderQuotedObjectHtml(snap, 0);
+    } else if (text || (cj && cj.id)) {
+      body = renderQuotedObjectHtml({
+        id: objectId,
+        attributedTo: (item && item.actor && item.actor.actor_url) || (cj && cj.attributedTo) || '',
+        content_preview: text || '',
+        type: 'Note'
+      }, 0);
+    }
+    if (body) {
+      preview.hidden = false;
+      preview.innerHTML = body;
+    } else {
+      preview.hidden = true;
+      preview.innerHTML = '';
+    }
+  }
+  applyQuoteRepostLabels();
+  if (dlg) {
+    dlg.hidden = false;
+    dlg.classList.remove('aro-leaving');
+    dlg.style.display = 'flex';
+  }
+  if (ta) {
+    try { ta.focus(); } catch (e) {}
+  }
+}
+
+function closeQuoteRepostModal() {
+  quoteRepostObjectId = null;
+  quoteRepostSubmitting = false;
+  var dlg = $('quote-repost-dialog');
+  var ta = $('quote-repost-text');
+  var preview = $('quote-repost-preview');
+  if (ta) ta.value = '';
+  if (preview) { preview.hidden = true; preview.innerHTML = ''; }
+  if (!dlg) return;
+  if (typeof aroDismiss === 'function') {
+    aroDismiss(dlg, { ms: 160 });
+  } else {
+    dlg.style.display = 'none';
+    dlg.hidden = true;
+  }
+}
+
+function applyQuoteRepostLabels() {
+  var el;
+  el = $('quote-repost-title'); if (el) el.textContent = lang.quoteRepostTitle || lang.repostBtn || 'Quote repost';
+  el = $('quote-repost-close'); if (el) el.setAttribute('aria-label', lang.composeCancel || lang.close || 'Close');
+  el = $('quote-repost-text'); if (el) el.placeholder = lang.quoteRepostPlaceholder || 'Add a comment…';
+  el = $('quote-repost-cancel'); if (el) el.textContent = lang.replyCancel || lang.composeCancel || 'Cancel';
+  el = $('quote-repost-submit'); if (el) el.textContent = lang.quoteRepostSubmit || lang.repostBtn || 'Repost';
+}
+
+async function doSubmitQuoteRepost() {
+  var objectId = quoteRepostObjectId;
+  if (!objectId || state.isGuest || quoteRepostSubmitting) return;
+  if (!Tapp.federation || typeof Tapp.federation.announce !== 'function') return;
+  var ta = $('quote-repost-text');
+  var content = ta ? String(ta.value || '').trim() : '';
+  if (!content) {
+    try {
+      Tapp.ui.showNotification({
+        title: lang.quoteRepostNeedContent || 'Write something before reposting',
+        type: 'warning'
+      });
+    } catch (e0) {
+      notifyError(lang.quoteRepostNeedContent || 'Write something before reposting');
+    }
+    if (ta) try { ta.focus(); } catch (e1) {}
+    return;
+  }
+  quoteRepostSubmitting = true;
+  var submitBtn = $('quote-repost-submit');
+  if (submitBtn) submitBtn.disabled = true;
+  // Optimistic
   applyInteractionToLists(objectId, {
-    announced_by_me: next,
-    announce_count: Math.max(0, ((findFeedItem(objectId) || {}).announce_count || 0) + (next ? 1 : -1))
+    announced_by_me: true,
+    announce_count: Math.max(0, ((findFeedItem(objectId) || {}).announce_count || 0) + 1)
   });
   renderFeedContent();
   try {
-    var res = next
-      ? await Tapp.federation.announce(objectId)
-      : await Tapp.federation.unannounce(objectId);
+    var res = await Tapp.federation.announce(objectId, content);
     var data = (res && res.data) || res || {};
+    if (data && data.success === false) {
+      throw new Error(data.error || lang.quoteRepostFail || lang.repostFail || 'Repost failed');
+    }
     applyInteractionToLists(objectId, {
-      announced_by_me: data.announced_by_me != null ? data.announced_by_me : next,
+      announced_by_me: data.announced_by_me != null ? data.announced_by_me : true,
       announce_count: data.announce_count != null ? data.announce_count : undefined
     });
-    // New repost should appear on home feed
+    closeQuoteRepostModal();
     state.feedLoaded.timeline = false;
-    if (next && state.feedSubTab === 'timeline') {
+    if (state.feedSubTab === 'timeline') {
       try { await loadFeedSubTab(); } catch (e2) { renderFeedContent(); }
     } else {
       renderFeedContent();
     }
-    if (next) {
-      try {
-        Tapp.ui.showNotification({
-          title: lang.repostSuccess || 'Reposted',
-          type: 'success'
-        });
-      } catch (e3) {}
-    }
+    try {
+      Tapp.ui.showNotification({
+        title: lang.repostSuccess || 'Reposted',
+        type: 'success'
+      });
+    } catch (e3) {}
   } catch (e) {
     applyInteractionToLists(objectId, {
-      announced_by_me: currentlyAnnounced,
-      announce_count: Math.max(0, ((findFeedItem(objectId) || {}).announce_count || 0) + (next ? -1 : 1))
+      announced_by_me: false,
+      announce_count: Math.max(0, ((findFeedItem(objectId) || {}).announce_count || 0) - 1)
+    });
+    renderFeedContent();
+    notifyError(lang.quoteRepostFail || lang.repostFail || 'Repost failed', e);
+  } finally {
+    quoteRepostSubmitting = false;
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function doUnannounce(objectId) {
+  if (!objectId || state.isGuest) return;
+  if (!Tapp.federation || typeof Tapp.federation.unannounce !== 'function') return;
+  applyInteractionToLists(objectId, {
+    announced_by_me: false,
+    announce_count: Math.max(0, ((findFeedItem(objectId) || {}).announce_count || 0) - 1)
+  });
+  renderFeedContent();
+  try {
+    var res = await Tapp.federation.unannounce(objectId);
+    var data = (res && res.data) || res || {};
+    applyInteractionToLists(objectId, {
+      announced_by_me: data.announced_by_me != null ? data.announced_by_me : false,
+      announce_count: data.announce_count != null ? data.announce_count : undefined
+    });
+    state.feedLoaded.timeline = false;
+    renderFeedContent();
+  } catch (e) {
+    applyInteractionToLists(objectId, {
+      announced_by_me: true,
+      announce_count: Math.max(0, ((findFeedItem(objectId) || {}).announce_count || 0) + 1)
     });
     renderFeedContent();
     notifyError(lang.repostFail || 'Repost failed', e);
@@ -13091,7 +14182,7 @@ async function doSubmitReply(objectId, text) {
   try {
     var raw = await Tapp.federation.createNote({
       text: text,
-      visibility: 'public',
+      visibility: (typeof getDefaultPostVisibility === 'function' ? getDefaultPostVisibility() : 'public'),
       in_reply_to: objectId
     });
     var publishRes = unwrapPublishResult(raw);
@@ -13141,15 +14232,17 @@ function renderFeedContent() {
   var sub = state.feedSubTab;
   var searchBar = document.querySelector('.feed-search-bar');
 
-  // Profile → chat backup sub-page (export / import)
-  if (sub === 'backup') {
+  // Profile → settings (includes backup subsection)
+  if (sub === 'settings' || sub === 'backup') {
     if (searchBar) searchBar.style.display = 'none';
     if (empty) empty.style.display = 'none';
-    if (typeof renderBackupPage === 'function') {
+    if (typeof renderSettingsPage === 'function') {
+      renderSettingsPage();
+    } else if (typeof renderBackupPage === 'function') {
       renderBackupPage();
     } else {
-      content.innerHTML = '<div class="backup-page"><div class="backup-card"><p class="backup-card-desc">'
-        + esc(lang.backupTitle || 'Chat backup') + '</p></div></div>';
+      content.innerHTML = '<div class="settings-page"><div class="backup-card"><p class="backup-card-desc">'
+        + esc(lang.settingsTitle || 'Settings') + '</p></div></div>';
     }
     return;
   }
@@ -13321,7 +14414,14 @@ function renderTimelineItem(item) {
   var replyCount = item.reply_count || 0;
   var announceCount = item.announce_count || 0;
   var canInteract = !state.isGuest && !!objectId;
-  var h = '<div class="feed-item" data-object-id="' + esc(objectId) + '">';
+  // Own Create posts (notes / library / report shares) can be quick-deleted.
+  var isOwn = typeof isOwnTimelineItem === 'function' && isOwnTimelineItem(item);
+  var publishTarget = isOwn && typeof extractPublishTarget === 'function' ? extractPublishTarget(item) : null;
+  var canDelete = !state.isGuest && isOwn && item.activity_type !== 'Announce'
+    && publishTarget && (publishTarget.content_id || publishTarget.activity_id);
+  var h = '<div class="feed-item" data-object-id="' + esc(objectId) + '"'
+    + (item.activity_id ? ' data-activity-id="' + esc(String(item.activity_id)) + '"' : '')
+    + '>';
   h += '<div class="feed-item-avatar">' + avatarContentHtml(actor.avatar_url || '', name) + '</div>';
   h += '<div class="feed-item-body">';
   h += '<div class="feed-item-header">';
@@ -13329,7 +14429,14 @@ function renderTimelineItem(item) {
   if (handle) h += '<span class="feed-item-handle">' + esc(handle) + '</span>';
   if (ts) h += '<span class="feed-item-sep">&middot;</span><span class="feed-item-time">' + esc(ts) + '</span>';
   h += '</div>';
-  if (inReplyTo) {
+  var isQuoteRepost = !!(contentJson && (
+    contentJson['mfp:kind'] === 'repost' ||
+    contentJson.mfp_kind === 'repost' ||
+    item.object_type === 'repost'
+  ));
+  if (isQuoteRepost) {
+    h += '<div class="feed-item-inreply">' + esc(lang.repostBtn || 'Repost') + '</div>';
+  } else if (inReplyTo) {
     h += '<div class="feed-item-inreply">' + esc(lang.inReplyTo || 'Replying to a post') + '</div>';
   }
   if (item.activity_type === 'Announce') {
@@ -13342,9 +14449,22 @@ function renderTimelineItem(item) {
       h += '<div class="feed-item-text">' + esc(text) + '</div>';
     }
   }
+  // Nested quote chain: each level is an embedded snapshot (mfp:quotedObject).
+  if (isQuoteRepost && contentJson) {
+    var quoted = contentJson['mfp:quotedObject'] || contentJson.mfp_quotedObject || null;
+    if (quoted && typeof quoted === 'object') {
+      h += renderQuotedObjectHtml(quoted, 0);
+    } else if (contentJson.quoteUrl || contentJson.inReplyTo || contentJson['mfp:quotedObjectId']) {
+      var fallbackId = contentJson['mfp:quotedObjectId'] || contentJson.quoteUrl || contentJson.inReplyTo || '';
+      h += '<div class="feed-item-quoted"><div class="feed-item-quoted-meta">'
+        + esc(lang.quoteRepostQuoted || 'Quoted post') + '</div>'
+        + '<div class="feed-item-quoted-text" style="opacity:.65">' + esc(String(fallbackId).slice(0, 96)) + '</div></div>';
+    }
+  }
   h += renderTimelineMedia(attachments);
-  if (canInteract) {
+  if (canInteract || canDelete) {
     h += '<div class="feed-item-actions">';
+    if (canInteract) {
     // Reply
     h += '<button type="button" class="feed-item-action" data-action-reply="' + esc(objectId) + '" title="' + esc(lang.replyBtn || 'Reply') + '">'
       + '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg>'
@@ -13368,8 +14488,20 @@ function renderTimelineItem(item) {
         ? '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>'
         : '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>')
       + '</button>';
+    }
+    // Delete own post (timeline quick-delete)
+    if (canDelete) {
+      h += '<button type="button" class="feed-item-action feed-item-action-danger" data-action-delete-post'
+        + ' data-content-type="' + esc(publishTarget.content_type || '') + '"'
+        + ' data-content-id="' + esc(publishTarget.content_id || '') + '"'
+        + ' data-activity-id="' + esc(publishTarget.activity_id || '') + '"'
+        + ' data-object-id="' + esc(objectId) + '"'
+        + ' title="' + esc(lang.deletePost || 'Delete') + '">'
+        + '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>'
+        + '</button>';
+    }
     h += '</div>';
-    if (state.replyOpenObjectId === objectId) {
+    if (canInteract && state.replyOpenObjectId === objectId) {
       h += '<div class="feed-reply-box" data-reply-for="' + esc(objectId) + '">';
       h += '<textarea placeholder="' + esc(lang.replyPlaceholder || 'Write a reply…') + '" rows="3"></textarea>';
       h += '<div class="feed-reply-actions">';
@@ -13485,6 +14617,16 @@ function timeAgo(iso) {
 }
 
 function switchFeedSubTab(sub) {
+  if (state.feedSubTab === 'settings' && sub !== 'settings' && typeof ensureHistoryState === 'function') {
+    try {
+      var hs = ensureHistoryState();
+      hs.browseArchiveId = null;
+      hs.browseConversationId = null;
+      hs.browseQuery = '';
+    } catch (eHs) { /* ignore */ }
+  }
+  // Migrate legacy backup tab id
+  if (sub === 'backup') sub = 'settings';
   state.feedSubTab = sub;
   updateFeedHeader();
   // Update sidebar nav
@@ -14156,18 +15298,19 @@ async function publishComposeNote() {
     }
     if (publishBtn) publishBtn.textContent = lang.composePublishing || '…';
     var rawPublish;
+    var postVis = (typeof getDefaultPostVisibility === 'function' ? getDefaultPostVisibility() : 'public');
     if (typeof Tapp.federation.createNote === 'function') {
       rawPublish = await Tapp.federation.createNote({
         text: text,
         attachments: attachments,
-        visibility: 'public'
+        visibility: postVis
       });
     } else if (typeof Tapp.federation.publish === 'function') {
       rawPublish = await Tapp.federation.publish({
         content_type: 'note',
         text: text,
         attachments: attachments,
-        visibility: 'public'
+        visibility: postVis
       });
     } else {
       console.error('[Aro] createNote/publish not available');
@@ -14233,10 +15376,72 @@ async function doUnfollow(actorUrl) {
 async function doUnpublish(contentType, contentId) {
   try {
     await Tapp.federation.unpublish({ content_type: contentType, content_id: contentId });
+    // Keep published + timeline caches coherent after unpublish.
+    if (contentType && contentId && state.published) {
+      state.published = (state.published || []).filter(function (it) {
+        return !(it.content_type === contentType && String(it.content_id) === String(contentId));
+      });
+    }
+    if (contentType && contentId && state.timeline) {
+      state.timeline = (state.timeline || []).filter(function (it) {
+        var t = typeof extractPublishTarget === 'function' ? extractPublishTarget(it) : null;
+        if (t && t.content_type === contentType && String(t.content_id) === String(contentId)) return false;
+        return true;
+      });
+    }
+    state.feedLoaded.published = false;
+    state.feedLoaded.timeline = false;
     loadFeedSubTab();
     updateFeedProfileHeader();
   } catch (e) {
     notifyError(lang.unpublishFail, e);
+  }
+}
+
+/** Quick-delete own post from Home timeline (confirm + optimistic remove + unpublish). */
+async function doDeleteTimelinePost(target) {
+  target = target || {};
+  var contentType = target.content_type || '';
+  var contentId = target.content_id || '';
+  var activityId = target.activity_id || '';
+  var objectId = target.object_id || '';
+  if (!contentId && !activityId) return;
+  if (typeof aroConfirm === 'function') {
+    var ok = await aroConfirm(lang.deletePostConfirm || 'Delete this post?', true);
+    if (!ok) return;
+  }
+  // Optimistic: drop from timeline (and published if present).
+  var prevTimeline = state.timeline ? state.timeline.slice() : null;
+  var prevPublished = state.published ? state.published.slice() : null;
+  state.timeline = (state.timeline || []).filter(function (it) {
+    if (activityId && it.activity_id && String(it.activity_id) === String(activityId)) return false;
+    if (objectId && resolveObjectId(it) === objectId) return false;
+    if (contentType && contentId) {
+      var t = typeof extractPublishTarget === 'function' ? extractPublishTarget(it) : null;
+      if (t && t.content_type === contentType && String(t.content_id) === String(contentId)) return false;
+    }
+    return true;
+  });
+  if (contentType && contentId && state.published) {
+    state.published = (state.published || []).filter(function (it) {
+      return !(it.content_type === contentType && String(it.content_id) === String(contentId));
+    });
+  }
+  renderFeedContent();
+  try {
+    var req = {};
+    if (contentType) req.content_type = contentType;
+    if (contentId) req.content_id = contentId;
+    if (activityId) req.activity_id = activityId;
+    await Tapp.federation.unpublish(req);
+    state.feedLoaded.published = false;
+    updateFeedProfileHeader();
+  } catch (e) {
+    if (prevTimeline) state.timeline = prevTimeline;
+    if (prevPublished) state.published = prevPublished;
+    state.feedLoaded.timeline = false;
+    renderFeedContent();
+    notifyError(lang.deletePostFail || lang.unpublishFail, e);
   }
 }
 
@@ -14766,6 +15971,12 @@ const PAGE_MOD_EVENTS = `\
       closeFeedPlusMenu();
       return;
     }
+    var quoteDlg = $('quote-repost-dialog');
+    if (quoteDlg && quoteDlg.style.display !== 'none') {
+      e.preventDefault();
+      if (typeof closeQuoteRepostModal === 'function') closeQuoteRepostModal();
+      return;
+    }
     var composeDlg = $('feed-compose-dialog');
     if (composeDlg && composeDlg.style.display !== 'none') {
       e.preventDefault();
@@ -14776,6 +15987,31 @@ const PAGE_MOD_EVENTS = `\
     if (followDlg && followDlg.style.display !== 'none') {
       e.preventDefault();
       closeFollowDialog();
+    }
+  });
+
+  // Quote-repost composer (modal)
+  var quoteCancel = $('quote-repost-cancel');
+  if (quoteCancel) quoteCancel.addEventListener('click', function () {
+    if (typeof closeQuoteRepostModal === 'function') closeQuoteRepostModal();
+  });
+  var quoteClose = $('quote-repost-close');
+  if (quoteClose) quoteClose.addEventListener('click', function () {
+    if (typeof closeQuoteRepostModal === 'function') closeQuoteRepostModal();
+  });
+  var quoteOverlay = $('quote-repost-dialog');
+  if (quoteOverlay) quoteOverlay.addEventListener('click', function (e) {
+    if (e.target === quoteOverlay && typeof closeQuoteRepostModal === 'function') closeQuoteRepostModal();
+  });
+  var quoteSubmit = $('quote-repost-submit');
+  if (quoteSubmit) quoteSubmit.addEventListener('click', function () {
+    if (typeof doSubmitQuoteRepost === 'function') doSubmitQuoteRepost();
+  });
+  var quoteTa = $('quote-repost-text');
+  if (quoteTa) quoteTa.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (typeof doSubmitQuoteRepost === 'function') doSubmitQuoteRepost();
     }
   });
 
@@ -15102,6 +16338,22 @@ const PAGE_MOD_INDEX = `\
     }
   } catch (e) { /* ignore */ }
 
+  // Client aro.settings (visibility defaults, feed prefs, etc.)
+  try {
+    if (typeof loadAroSettings === 'function') loadAroSettings();
+    // Optional: merge from Tapp.storage if localStorage was empty
+    if (Tapp.storage && typeof Tapp.storage.get === 'function') {
+      var storedAro = await Tapp.storage.get('aro.settings');
+      if (storedAro && typeof storedAro === 'object') {
+        var hasLocal = false;
+        try { hasLocal = !!(typeof localStorage !== 'undefined' && localStorage.getItem('aro.settings')); } catch (eL) {}
+        if (!hasLocal && typeof saveAroSettings === 'function') {
+          saveAroSettings(storedAro);
+        }
+      }
+    }
+  } catch (eAroSet) { /* ignore */ }
+
   // Load tapp acceptance states from storage
   try {
     var allStorage = await Tapp.storage.getAll();
@@ -15252,9 +16504,9 @@ const PAGE_MODULES: Record<string, string> = {
   'helpers.js': PAGE_MOD_HELPERS,
   'attachments.js': PAGE_MOD_ATTACHMENTS,
   'chat.js': PAGE_MOD_CHAT,
+  'members.js': PAGE_MOD_MEMBERS,
   'history.js': PAGE_MOD_HISTORY,
   'files.js': PAGE_MOD_FILES,
-  'members.js': PAGE_MOD_MEMBERS,
   'api.js': PAGE_MOD_API,
   'views.js': PAGE_MOD_VIEWS,
   'events.js': PAGE_MOD_EVENTS,
@@ -15287,9 +16539,9 @@ function buildCoreCode(): string {
     PAGE_MOD_HELPERS,
     PAGE_MOD_ATTACHMENTS,
     PAGE_MOD_CHAT,
+    PAGE_MOD_MEMBERS,
     PAGE_MOD_HISTORY,
     PAGE_MOD_FILES,
-    PAGE_MOD_MEMBERS,
     PAGE_MOD_API,
     PAGE_MOD_VIEWS,
     PAGE_MOD_EVENTS,
@@ -15369,9 +16621,9 @@ const manifest: TappManifest = {
     'helpers.js',
     'attachments.js',
     'chat.js',
+    'members.js',
     'history.js',
     'files.js',
-    'members.js',
     'api.js',
     'views.js',
     'events.js',

@@ -316,25 +316,138 @@ pub async fn create_note(
     publish_content(user_id, username, db, &publish_req).await
 }
 
+/// Normalize a content_id that may be a bare id, object URL, or path.
+/// Returns (optional content_type hint, bare content_id).
+fn normalize_unpublish_target(
+    content_type: Option<&str>,
+    content_id: &str,
+) -> (Option<String>, String) {
+    let raw = content_id.trim();
+    if raw.is_empty() {
+        return (content_type.map(|s| s.to_string()), String::new());
+    }
+
+    // Already bare id (note_uuid / numeric / tapp id)
+    if !raw.contains("://") && !raw.contains('/') {
+        return (
+            content_type
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string()),
+            raw.to_string(),
+        );
+    }
+
+    // Object URL or path: …/notes/{id}, …/reports/{id}, …/library/{id}, …
+    let path = raw.split('?').next().unwrap_or(raw).trim_end_matches('/');
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let trailing = segments.last().copied().unwrap_or(raw).to_string();
+
+    let inferred = if segments.len() >= 2 {
+        let prev = segments[segments.len() - 2];
+        match prev {
+            "notes" => Some("note".to_string()),
+            "reports" => Some("report".to_string()),
+            "library" => Some("library".to_string()),
+            "tapps" => Some("tapp".to_string()),
+            "articles" if segments.len() >= 3 && segments[segments.len() - 3] == "brew" => {
+                Some("brew-article".to_string())
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    let ct = content_type
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or(inferred);
+
+    (ct, trailing)
+}
+
 /// 取消发布（Delete Activity）
+///
+/// Accepts either:
+/// - `content_type` + `content_id` (content_id may be bare id, Note object URL, or path)
+/// - `activity_id` of the original Create (timeline convenience)
 pub async fn unpublish_content(
     user_id: i32,
     username: &str,
     db: &DatabaseConnection,
-    content_type: &str,
-    content_id: &str,
+    content_type: Option<&str>,
+    content_id: Option<&str>,
+    activity_id: Option<&str>,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
 
-    // 查找已发布记录
-    let row = db
-        .query_one(Statement::from_sql_and_values(
+    let activity_id = activity_id.map(str::trim).filter(|s| !s.is_empty());
+    let content_id_raw = content_id.map(str::trim).filter(|s| !s.is_empty());
+
+    // 查找已发布记录 — activity_id first, then content_type+content_id (URL-tolerant)
+    let row = if let Some(aid) = activity_id {
+        db.query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, activity_id FROM federation_published_content WHERE user_id = $1 AND content_type = $2 AND content_id = $3",
-            [user_id.into(), content_type.into(), content_id.into()],
+            "SELECT id, activity_id, content_type, content_id FROM federation_published_content WHERE user_id = $1 AND activity_id = $2",
+            [user_id.into(), aid.into()],
         ))
         .await
-        .map_err(db_err)?;
+        .map_err(db_err)?
+    } else if let Some(cid_raw) = content_id_raw {
+        let (ct_opt, bare_id) = normalize_unpublish_target(content_type, cid_raw);
+        if bare_id.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "content_id required"})),
+            ));
+        }
+        if let Some(ct) = ct_opt.as_deref().filter(|s| !s.is_empty()) {
+            // Exact type + id
+            let found = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT id, activity_id, content_type, content_id FROM federation_published_content WHERE user_id = $1 AND content_type = $2 AND content_id = $3",
+                    [user_id.into(), ct.into(), bare_id.clone().into()],
+                ))
+                .await
+                .map_err(db_err)?;
+            if found.is_some() {
+                found
+            } else {
+                // content_id may have been passed as full object URL while stored bare
+                db.query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT id, activity_id, content_type, content_id FROM federation_published_content WHERE user_id = $1 AND content_type = $2 AND (content_id = $3 OR content_id = $4)",
+                    [
+                        user_id.into(),
+                        ct.into(),
+                        bare_id.clone().into(),
+                        cid_raw.into(),
+                    ],
+                ))
+                .await
+                .map_err(db_err)?
+            }
+        } else {
+            // content_id only — unique match for this user
+            db.query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT id, activity_id, content_type, content_id FROM federation_published_content WHERE user_id = $1 AND (content_id = $2 OR content_id = $3) LIMIT 2",
+                [user_id.into(), bare_id.into(), cid_raw.into()],
+            ))
+            .await
+            .map_err(db_err)?
+        }
+    } else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Provide activity_id, or content_type + content_id"
+            })),
+        ));
+    };
 
     let row = row.ok_or_else(|| {
         (
@@ -345,6 +458,12 @@ pub async fn unpublish_content(
 
     let pub_id: i32 = row.try_get("", "id").unwrap_or(0);
     let original_activity_id: String = row.try_get("", "activity_id").unwrap_or_default();
+    let content_type: String = row
+        .try_get::<String>("", "content_type")
+        .unwrap_or_else(|_| content_type.unwrap_or("").to_string());
+    let content_id: String = row
+        .try_get::<String>("", "content_id")
+        .unwrap_or_else(|_| content_id_raw.unwrap_or("").to_string());
 
     // 创建 Delete Activity
     let delete_activity_id = generate_activity_id(&base_url);
@@ -371,7 +490,7 @@ pub async fn unpublish_content(
             [
                 delete_activity_id.clone().into(),
                 user_id.into(),
-                content_type.into(),
+                content_type.clone().into(),
                 delete_json.clone().into(),
             ],
         ))
@@ -415,6 +534,9 @@ pub async fn unpublish_content(
     Ok(json!({
         "success": true,
         "delete_activity_id": delete_activity_id,
+        "content_type": content_type,
+        "content_id": content_id,
+        "activity_id": original_activity_id,
     }))
 }
 
@@ -434,6 +556,7 @@ pub async fn list_published(
                FROM federation_published_content p
                LEFT JOIN federation_activities a ON a.activity_id = p.activity_id
                WHERE p.user_id = $1
+                 AND p.content_type NOT IN ('repost', 'announce')
                ORDER BY p.published_at DESC
                LIMIT 200"#,
             [user_id.into()],

@@ -116,6 +116,12 @@ export interface ObjectIdRequest {
   object_id: string
 }
 
+/** Quote-repost body. `content` is required by the backend (non-empty). */
+export interface AnnounceRequest {
+  object_id: string
+  content: string
+}
+
 export interface InteractionResponse {
   success: boolean
   object_id: string
@@ -156,8 +162,12 @@ export interface PublishResponse {
 }
 
 export interface UnpublishRequest {
-  content_type: string
-  content_id: string
+  /** Content kind: note, report, library, brew-article, tapp… */
+  content_type?: string
+  /** Bare id, or Note object URL (`…/notes/{id}`). */
+  content_id?: string
+  /** Original Create activity_id — alternative to content_type+content_id. */
+  activity_id?: string
 }
 
 /** Media on a published Note (from joined Create object.attachment). */

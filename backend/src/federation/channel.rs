@@ -684,6 +684,91 @@ pub async fn close_channel(
     }))
 }
 
+/// Hard-delete a closed Channel (local row only; no remote notification).
+///
+/// Requires the channel to belong to the user and to already be `closed`.
+/// Deletes messages, related file-transfer rows, cancels pending deliveries,
+/// then removes the channel row.
+pub async fn delete_channel(
+    user_id: i32,
+    channel_id: &str,
+    db: &DatabaseConnection,
+) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT status FROM federation_channels WHERE user_id = $1 AND channel_id = $2",
+            [user_id.into(), channel_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Channel not found"})),
+            )
+        })?;
+
+    let status: String = row.try_get("", "status").unwrap_or_default();
+    if status != "closed" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Channel must be closed before delete"})),
+        ));
+    }
+
+    // Messages first
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM federation_channel_messages WHERE channel_id = $1",
+        [channel_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    // Related transfer rows (channel_id is not always FK-enforced)
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM federation_file_transfers WHERE channel_id = $1",
+        [channel_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    // Stop any leftover outbound deliveries for this channel id
+    let _ = crate::federation::delivery::cancel_pending_deliveries_for_resource(
+        db,
+        channel_id,
+        "cancelled: local channel deleted",
+    )
+    .await;
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM federation_channels WHERE user_id = $1 AND channel_id = $2",
+        [user_id.into(), channel_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    // Notify other local tabs/devices so they drop the conversation
+    crate::federation::ws_gateway::broadcast_to_channel(
+        channel_id,
+        &json!({
+            "type": "channel_deleted",
+            "channel_id": channel_id
+        }),
+    )
+    .await;
+
+    tracing::info!("[Channel] Deleted channel {}", channel_id);
+
+    Ok(json!({
+        "success": true,
+        "channel_id": channel_id
+    }))
+}
+
 // ==================== 消息功能 ====================
 
 /// 最大消息载荷大小: 32 MiB（JSON 序列化后字符串长度）。

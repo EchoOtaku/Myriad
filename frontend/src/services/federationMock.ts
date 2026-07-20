@@ -1440,6 +1440,14 @@ export const federationMock = {
     return { success: true }
   },
 
+  async deleteChannel(channelId: string): Promise<{ success: boolean }> {
+    await delay()
+    const idx = MOCK_CHANNELS.findIndex((c) => c.channel_id === channelId)
+    if (idx !== -1) MOCK_CHANNELS.splice(idx, 1)
+    delete MOCK_CHANNEL_DETAILS[channelId]
+    return { success: true }
+  },
+
   async acceptChannel(channelId: string): Promise<{ success: boolean }> {
     await delay()
     const ch = MOCK_CHANNELS.find((c) => c.channel_id === channelId)

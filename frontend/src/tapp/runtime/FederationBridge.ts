@@ -390,10 +390,24 @@ export function registerFederationHandlers(
     'federation.unbookmark',
     objectIdHandler('unbookmark', (id, g) => federationApi.unbookmark(id, g)),
   )
-  bridge.registerHandler(
-    'federation.announce',
-    objectIdHandler('announce', (id, g) => federationApi.announce(id, g)),
-  )
+  bridge.registerHandler('federation.announce', async (message: TappMessage) => {
+    const args = (message.payload as { args: unknown[] }).args || []
+    const objectId = args[0]
+    const content = typeof args[1] === 'string' ? args[1] : ''
+    if (!objectId || typeof objectId !== 'string')
+      return { success: false, error: 'object_id is required' }
+    try {
+      const runtimeGrant = await bridge.getRuntimeGrant()
+      const data = await federationApi.announce(objectId, content, runtimeGrant)
+      return { success: true, data }
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to announce',
+      }
+    }
+  })
   bridge.registerHandler(
     'federation.unannounce',
     objectIdHandler('unannounce', (id, g) => federationApi.unannounce(id, g)),
@@ -615,6 +629,26 @@ export function registerFederationHandlers(
           success: false,
           error:
             error instanceof Error ? error.message : 'Failed to close channel',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.deleteChannel',
+    async (message: TappMessage) => {
+      const [channelId] = (message.payload as { args: unknown[] }).args || []
+      if (!channelId || typeof channelId !== 'string')
+        return { success: false, error: 'Channel ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.deleteChannel(channelId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Failed to delete channel',
         }
       }
     },
@@ -1256,6 +1290,25 @@ export function registerFederationHandlers(
       try {
         const runtimeGrant = await bridge.getRuntimeGrant()
         const data = await federationApi.retryDelivery(queueId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.cancelDelivery',
+    async (message: TappMessage) => {
+      const [queueId] = (message.payload as { args: unknown[] }).args || []
+      if (typeof queueId !== 'number')
+        return { success: false, error: 'Delivery id is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.cancelDelivery(queueId, runtimeGrant)
         return { success: true, data }
       } catch (error) {
         return {

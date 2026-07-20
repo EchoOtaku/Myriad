@@ -310,6 +310,11 @@
     },
     {
       "domain": "federation",
+      "action": "federation.deleteChannel",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
       "action": "federation.createRoom",
       "permission": "federation:write"
     },
@@ -386,6 +391,11 @@
     {
       "domain": "federation",
       "action": "federation.retryDelivery",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.cancelDelivery",
       "permission": "federation:write"
     },
     {
