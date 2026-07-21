@@ -469,8 +469,8 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
               </div>
             </div>
 
-            {/* 翻页指示器 - 多页或编辑模式下显示，可点击跳页 / 翻页 */}
-            {(maxPage > 0 || isEditMode) && (
+            {/* 翻页按钮 - 仅编辑模式显示；浏览模式依赖自动轮播与滚轮切页 */}
+            {isEditMode && (
               <div
                 className="relative z-30 flex items-center justify-between px-1 pt-1.5 pb-0.5 select-none"
                 onMouseDown={(e) => e.stopPropagation()}
