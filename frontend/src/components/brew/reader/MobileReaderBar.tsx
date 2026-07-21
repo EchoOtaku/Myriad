@@ -16,7 +16,6 @@ import {
   LuEye as Eye,
   LuEyeOff as EyeOff,
   LuList as List,
-  LuLoader2 as Loader2,
   LuMessageSquare as MessageSquare,
   LuMic as Mic,
   LuMinus as Minus,
@@ -41,6 +40,7 @@ import {
 import { memo, useState } from 'react'
 import * as brewliaApi from '../../../services/brewliaApi'
 
+import { Spinner } from '../../Spinner'
 import { STYLE_MAX_HEIGHT_60VH, THEMES } from './constants'
 
 export const MobileReaderBar = memo(
@@ -275,7 +275,7 @@ export const MobileReaderBar = memo(
                                   }
                                 >
                                   {annotationsLoading ? (
-                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    <Spinner size="sm" color="current" />
                                   ) : (
                                     <Sparkles className="w-5 h-5" />
                                   )}
@@ -306,7 +306,7 @@ export const MobileReaderBar = memo(
                                 }
                               >
                                 {podcastLoading || cloudTtsLoading ? (
-                                  <Loader2 className="w-5 h-5 animate-spin" />
+                                  <Spinner size="sm" color="current" />
                                 ) : (
                                   <Mic className="w-5 h-5" />
                                 )}
@@ -577,7 +577,7 @@ export const MobileReaderBar = memo(
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${currentTheme.secondary} ${isDark ? 'bg-white/5' : 'bg-black/5'} disabled:opacity-50`}
                           >
                             {annotationsLoading ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <Spinner size="sm" color="current" />
                             ) : (
                               <RefreshCw className="w-4 h-4" />
                             )}
@@ -593,7 +593,7 @@ export const MobileReaderBar = memo(
                         >
                           {annotationsLoading ? (
                             <div className="flex flex-col items-center gap-2">
-                              <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+                              <Spinner size="lg" className="text-purple-500" />
                               <p className="text-sm">{t.brew.analyzing}</p>
                             </div>
                           ) : (
@@ -701,11 +701,8 @@ export const MobileReaderBar = memo(
                                   : `${currentTheme.secondary} ${isDark ? 'bg-white/5' : 'bg-black/5'} opacity-60`
                             } disabled:opacity-50`}
                           >
-                            {cloudTtsLoading ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Cloud className="w-4 h-4" />
-                            )}
+                            {/* 加载环由下方带进度的状态行独担，按钮不再重复转圈 */}
+                            <Cloud className="w-4 h-4" />
                             {t.brew.cloudTts}
                           </button>
                         </div>
@@ -716,7 +713,7 @@ export const MobileReaderBar = memo(
                         <div
                           className={`mb-3 px-3 py-2 text-sm ${currentTheme.secondary} bg-emerald-500/10 rounded-lg flex items-center gap-2`}
                         >
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <Spinner size="sm" color="current" />
                           <span>
                             {t.brew.loadingCloudVoice}{' '}
                             {cloudTtsLoadProgress.loaded}/
@@ -780,7 +777,7 @@ export const MobileReaderBar = memo(
                         >
                           {podcastLoading ? (
                             <div className="flex flex-col items-center gap-2">
-                              <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+                              <Spinner size="lg" className="text-emerald-500" />
                               <p className="text-sm">
                                 {t.brew.generatingPodcast}
                               </p>

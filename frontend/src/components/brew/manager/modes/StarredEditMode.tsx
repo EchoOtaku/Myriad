@@ -6,13 +6,13 @@ import type { StarredModeConfig } from './types'
 
 import {
   LuCheckSquare as CheckSquare,
-  LuLoader2 as Loader2,
   LuMinusSquare as MinusSquare,
   LuSquare as Square,
   LuStar as Star,
   LuX as X,
 } from '@lib/icons'
 import { IslandShell } from '../../../shared/control-island'
+import { Spinner } from '../../../Spinner'
 import { ISLAND_BTN, ISLAND_DIVIDER } from './constants'
 
 export interface StarredEditModeProps {
@@ -82,7 +82,7 @@ export function StarredEditMode({
         aria-label={t.unstar}
       >
         {starredMode.isProcessing ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
+          <Spinner size="sm" color="current" />
         ) : (
           <Star className="w-4 h-4" />
         )}

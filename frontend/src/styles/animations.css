@@ -119,16 +119,8 @@
   }
 }
 
-/* 旋转加载动画 */
-@keyframes spin {
-  from {
-    transform: rotate(0deg) translateZ(0);
-  }
-
-  to {
-    transform: rotate(360deg) translateZ(0);
-  }
-}
+/* 旋转加载动画：全站唯一 @keyframes spin 定义在 PageLoader.astro
+   的 is:global 块（首屏内联，水合前后可用），此处不再重复声明 */
 
 /* 脉冲动画 */
 @keyframes pulse {

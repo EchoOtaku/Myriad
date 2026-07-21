@@ -11,7 +11,6 @@ import {
   LuChevronDown as ChevronDown,
   LuEdit3 as Edit3,
   LuEyeOff as EyeOff,
-  LuRefreshCw as RefreshCw,
   LuRss as Rss,
   LuSparkles as Sparkles,
   LuTag as Tag,
@@ -28,6 +27,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { generateStyleTags } from '../../../services/brewApi'
+import { Spinner } from '../../Spinner'
 
 // Framer Motion transition 配置常量
 const TRANSITION_FAST = { duration: 0.1 } as const
@@ -807,7 +807,7 @@ export default function EditModal({
                   >
                     {generatingTags ? (
                       <>
-                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        <Spinner size="xs" color="current" />
                         {t.brew.generating}
                       </>
                     ) : (
@@ -969,7 +969,7 @@ export default function EditModal({
           >
             {saving ? (
               <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
+                <Spinner size="sm" color="current" />
                 {t.brew.saving}
               </>
             ) : (

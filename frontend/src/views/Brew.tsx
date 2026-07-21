@@ -31,6 +31,7 @@ import BrewFeedList from '../components/brew/BrewFeedList'
 import BrewReader from '../components/brew/BrewReader'
 import BrewSourceGrid from '../components/brew/BrewSourceGrid'
 import ControlIsland from '../components/brew/manager/ControlIsland'
+import { Spinner } from '../components/Spinner'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
@@ -1180,7 +1181,7 @@ export default function Brew() {
     return (
       <AnimatedView className="min-h-screen flex items-center justify-center pt-20 pb-28 sm:pb-24 md:pb-12">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+          <Spinner size="lg" className="text-orange-500" />
           <p className="text-gray-500">加载中...</p>
         </div>
       </AnimatedView>

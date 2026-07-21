@@ -27,6 +27,7 @@ import {
 import Prism from 'prismjs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
 import { useNavigation } from '../../contexts/NavigationContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
@@ -1569,14 +1570,7 @@ export function TappPlaygroundPage() {
             className="absolute inset-0 z-30 grid place-items-center bg-white/40 dark:bg-black/40 backdrop-blur-sm"
           >
             <div className="flex items-center gap-2.5 rounded-full px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white/85 dark:bg-black/70 backdrop-blur-xl shadow-lg ring-1 ring-inset ring-black/5 dark:ring-white/10">
-              <span
-                className="w-4 h-4 border-2 rounded-full animate-spin"
-                style={{
-                  borderColor:
-                    'color-mix(in srgb, var(--color-primary) 30%, transparent)',
-                  borderTopColor: 'var(--color-primary)',
-                }}
-              />
+              <Spinner size="sm" color="primary" />
               {busyMode === 'runtime-repair'
                 ? t.tapp.playgroundRepairingRuntime
                 : t.tapp.playgroundGenerating}

@@ -13,6 +13,7 @@ import type { ChatSession } from '../types'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
+import { Spinner } from '../../Spinner'
 
 /** 格式化相对时间 */
 function formatRelativeTime(
@@ -153,7 +154,7 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
       {/* Loading */}
       {loading && (
         <div className="arael-sessions-loading">
-          <span className="arael-spinner-small" />
+          <Spinner size="xs" color="primary" />
         </div>
       )}
 
@@ -205,7 +206,7 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
                 disabled={deletingId === session.id}
               >
                 {deletingId === session.id ? (
-                  <span className="arael-spinner-tiny" />
+                  <Spinner size="xs" color="primary" />
                 ) : (
                   <svg
                     width="12"

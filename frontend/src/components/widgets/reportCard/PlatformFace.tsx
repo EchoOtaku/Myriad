@@ -7,6 +7,7 @@
  */
 import { createElement, useEffect, useReducer } from 'react'
 import { isKnownReportPlatformId } from '../../../utils/reportCardVisuals'
+import { Spinner } from '../../Spinner'
 import { PLATFORM_CONFIG } from './platformConfig'
 import {
   getPlatformFace,
@@ -74,7 +75,7 @@ export function PlatformFace({
   if (!Face) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-500" />
+        <Spinner size="lg" color="primary" />
       </div>
     )
   }

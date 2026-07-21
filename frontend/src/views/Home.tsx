@@ -17,7 +17,6 @@ import {
   preloadBuiltinWidgets,
 } from '../components/widgets/builtinWidgets'
 import { API_URL } from '../config'
-import { ensureMotionReady } from '../lib/lazyMotion'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useHomeScheduler, usePageReady } from '../hooks/animation'
@@ -26,6 +25,7 @@ import {
   useResolvedTitleColor,
   useTitleFont,
 } from '../hooks/useTitleFont'
+import { ensureMotionReady } from '../lib/lazyMotion'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
 import {
@@ -41,10 +41,11 @@ export default function Home() {
   const { t } = useI18n()
   const isPageReady = usePageReady()
   const [widgets, setWidgets] = useState<WidgetConfig[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [isEditMode, setIsEditMode] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
-  const [dashboardTitle, setDashboardTitle] = useState('Dashboard')
+  // 空字符串代表「尚未拿到服务端真实值」，不用写死的 'Dashboard' 占位
+  // 文本，避免每个访客首次加载都要闪一下错误文字再跳到真实标题
+  const [dashboardTitle, setDashboardTitle] = useState('')
   const [csrfToken, setCsrfToken] = useState<string>('')
 
   // 标题字体 Hook
@@ -193,14 +194,11 @@ export default function Home() {
           await applyWidgets(DEFAULT_WIDGETS)
         }
 
-        if (data.dashboard_title) {
-          setDashboardTitle(data.dashboard_title)
-        }
+        setDashboardTitle(data.dashboard_title || 'Dashboard')
       } catch (err) {
         console.error('加载配置失败:', err)
         await applyWidgets(DEFAULT_WIDGETS)
-      } finally {
-        setIsLoading(false)
+        setDashboardTitle('Dashboard')
       }
     }
     loadDashboardConfig()
@@ -360,7 +358,7 @@ export default function Home() {
                 />
               ) : (
                 <div
-                  className="absolute left-1 whitespace-nowrap pointer-events-none z-0 hidden md:block"
+                  className="absolute left-1 whitespace-nowrap pointer-events-none z-0 hidden md:block transition-opacity duration-300"
                   style={{
                     top: `calc(30px - ${7.5 * titleFontSize}rem)`,
                     fontSize: `${6 * titleFontSize}rem`,
@@ -368,6 +366,8 @@ export default function Home() {
                     WebkitTextStroke: `0.5px color-mix(in srgb, ${titleColorCss} 30%, transparent)`,
                     fontFamily: currentFont.family,
                     fontWeight: 700,
+                    // 服务端真实标题拿到前不显现，宁可留白也不闪错字
+                    opacity: dashboardTitle ? 1 : 0,
                   }}
                 >
                   {dashboardTitle}
@@ -461,13 +461,6 @@ export default function Home() {
               </motion.div>
             </div>
           </WidgetGrid>
-
-          {/* Loading Overlay */}
-          {isLoading && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/5 backdrop-blur-[1px] rounded-xl">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200/20 border-t-white/80"></div>
-            </div>
-          )}
         </div>
       </div>
     </AnimatedView>

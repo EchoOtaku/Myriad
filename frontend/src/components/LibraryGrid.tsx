@@ -137,9 +137,7 @@ if (
             }
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        /* 旋转复用全局 @keyframes spin（PageLoader.astro is:global 首屏内联） */
 
         .playing-indicator {
             position: absolute;
@@ -1470,7 +1468,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
               className="flex justify-center mt-8 mb-4 py-4 w-full"
             >
               <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                <Spinner size="sm" variant="primary" />
+                <Spinner size="xs" color="primary" />
                 <span className="text-sm">{t.library.loadingMore}</span>
               </div>
             </div>

@@ -158,7 +158,6 @@ export const SourceCard = React.memo(
       ref,
     ) => {
       const [isHovered, setIsHovered] = useState(false)
-      const [refreshing, setRefreshing] = useState(false)
       // Soft-fail proxy returns 1×1 PNG (HTTP 200) for dead favicons — treat as missing
       const [iconBroken, setIconBroken] = useState(false)
       const { t } = useI18n()
@@ -217,16 +216,12 @@ export const SourceCard = React.memo(
         [source.id, source.theme_color, source.icon, onThemeColorExtracted],
       )
 
-      // 刷新处理
+      // 刷新处理（fire-and-forget：结果由未读计数/信息流更新体现，
+      // 此处不设 loading 态——历史上的 refreshing 状态因未 await 从未渲染过）
       const handleRefresh = useCallback(
         (e: React.MouseEvent) => {
           e.stopPropagation()
-          setRefreshing(true)
-          try {
-            onRefreshSource(source.id)
-          } finally {
-            setRefreshing(false)
-          }
+          onRefreshSource(source.id)
         },
         [source.id, onRefreshSource],
       )
@@ -570,10 +565,9 @@ export const SourceCard = React.memo(
                       className={`${size === 'tiny' ? 'p-1' : 'p-1.5'} rounded-lg transition-all duration-200 ease-out text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-500/10`}
                       title={t.brew.refreshSubscription}
                       aria-label={t.brew.refreshSubscription}
-                      disabled={refreshing}
                     >
                       <RefreshCw
-                        className={`${size === 'tiny' ? 'w-3.5 h-3.5' : 'w-4 h-4'} ${refreshing ? 'animate-spin' : ''}`}
+                        className={size === 'tiny' ? 'w-3.5 h-3.5' : 'w-4 h-4'}
                       />
                     </button>
                   )}

@@ -16,6 +16,7 @@ import {
   resolveReportPlatformId,
 } from '../../../utils/reportCardVisuals'
 import { getLatestReportDeduped } from '../../../utils/requestDedup'
+import { Spinner } from '../../Spinner'
 import { GlowBackground } from '../shared/GlowBackground'
 import { WidgetShell } from '../shared/WidgetShell'
 import { CardLogoPill } from './CardLogoPill'
@@ -291,7 +292,7 @@ export const ReportCardWidget = memo(
     if (loading) {
       return (
         <div className="h-full w-full flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+          <Spinner size="lg" color="primary" />
         </div>
       )
     }

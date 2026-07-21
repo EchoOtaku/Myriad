@@ -441,12 +441,12 @@ function NotificationPanelList({
                             disabled={!!actionBusyId}
                             onClick={() => void handleInviteAction(n, act.id)}
                             className={
-                              'rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ' +
-                              (isAccept
+                              `rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+                              isAccept
                                 ? 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-300'
                                 : isReject
                                   ? 'bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:text-red-300'
-                                  : 'bg-black/5 text-gray-600 hover:bg-black/10 dark:bg-white/10 dark:text-gray-300')
+                                  : 'bg-black/5 text-gray-600 hover:bg-black/10 dark:bg-white/10 dark:text-gray-300'}`
                             }
                           >
                             {busy

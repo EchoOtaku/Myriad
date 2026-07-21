@@ -16,13 +16,13 @@ import {
   FaLock,
   FaPause,
   FaPlay,
-  FaSpinner,
   FaTrash,
 } from '@lib/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../../components/AnimatedView'
+import { Spinner } from '../../components/Spinner'
 import Toast from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
@@ -315,7 +315,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
       <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
         <div className="max-w-4xl mx-auto">
           <div className="glass rounded-xl p-8 md:p-12 text-center">
-            <FaSpinner className="w-12 h-12 mx-auto text-indigo-500 animate-spin mb-4" />
+            <Spinner size="xl" color="primary" center className="mb-4" />
             <h3 className="text-lg font-medium text-gray-800 dark:text-gray-100 mb-2">
               {t.tapp.loading}
             </h3>

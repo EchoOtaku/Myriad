@@ -496,7 +496,7 @@ export default function DataManagement() {
                     >
                       {refreshingPlatform === platform.id ? (
                         <>
-                          <ButtonSpinner size="sm" />
+                          <ButtonSpinner />
                           <span>{t.dataManagement.refreshing}</span>
                         </>
                       ) : (
@@ -559,7 +559,7 @@ export default function DataManagement() {
                     >
                       {isProcessing ? (
                         <>
-                          <ButtonSpinner size="sm" />
+                          <ButtonSpinner />
                           <span>{t.dataManagement.processing}</span>
                         </>
                       ) : (
@@ -589,7 +589,7 @@ export default function DataManagement() {
                       >
                         {clearingPlatform === platform.id ? (
                           <>
-                            <ButtonSpinner size="sm" />
+                            <ButtonSpinner />
                             <span>{t.dataManagement.clearing}</span>
                           </>
                         ) : (

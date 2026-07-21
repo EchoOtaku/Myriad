@@ -9,6 +9,7 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 import { useCallback, useState } from 'react'
+import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
 
 export interface UninstallConfirmDialogProps {
@@ -126,7 +127,7 @@ export function UninstallConfirmDialog({
               >
                 {uninstalling ? (
                   <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <Spinner size="sm" color="white" />
                     {t.tapp.uninstalling}
                   </>
                 ) : (

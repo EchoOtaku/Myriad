@@ -14,7 +14,6 @@ import {
   LuFileText as FileText,
   LuFolderOpen as FolderOpen,
   LuLink as Link,
-  LuLoader2 as Loader2,
   NotionIcon,
   LuRss as Rss,
   RSSHubIcon,
@@ -28,6 +27,7 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 import { useRef, useState } from 'react'
+import { Spinner } from '../../../Spinner'
 import { ISLAND_GLASS, SPRING_SMOOTH, TRANSITION_QUICK } from './constants'
 
 interface DiscoveredFeed {
@@ -592,7 +592,7 @@ export function AddMode({
                       className="px-2.5 py-2 bg-gray-100 dark:bg-neutral-700/80 border border-gray-200/80 dark:border-neutral-600/80 rounded-xl text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-600 disabled:opacity-50 transition-colors"
                     >
                       {discovering ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Spinner size="xs" color="current" />
                       ) : (
                         t.discover
                       )}
@@ -821,7 +821,7 @@ export function AddMode({
                       : 'bg-linear-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:from-orange-300 disabled:to-amber-300'
               }`}
             >
-              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {loading && <Spinner size="xs" color="current" />}
               {sourceType === 'link'
                 ? t.addLink
                 : sourceType === 'brewlia'
@@ -876,7 +876,7 @@ export function AddMode({
                 className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-linear-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 text-white rounded-xl text-sm font-medium transition-all"
               >
                 {opmlLoading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Spinner size="xs" color="current" />
                 ) : (
                   <Upload className="w-3.5 h-3.5" />
                 )}
@@ -891,7 +891,7 @@ export function AddMode({
               className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 disabled:opacity-50 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium transition-all"
             >
               {exporting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Spinner size="xs" color="current" />
               ) : (
                 <Download className="w-3.5 h-3.5" />
               )}

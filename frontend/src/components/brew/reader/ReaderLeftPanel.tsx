@@ -15,7 +15,6 @@ import {
   LuEye as Eye,
   LuEyeOff as EyeOff,
   LuList as List,
-  LuLoader2 as Loader2,
   LuMic as Mic,
   LuMonitor as Monitor,
   LuPause as Pause,
@@ -38,6 +37,7 @@ import {
 import { memo, useMemo, useRef } from 'react'
 
 import * as brewliaApi from '../../../services/brewliaApi'
+import { Spinner } from '../../Spinner'
 import { STYLE_MAX_HEIGHT_320 } from './constants'
 
 export default memo(
@@ -306,7 +306,7 @@ export default memo(
                 title={annotationsLoading ? `${t.brew.loading}...` : 'AI'}
               >
                 {annotationsLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Spinner size="sm" color="current" />
                 ) : (
                   <Sparkles
                     className={`w-5 h-5 ${showAnnotations && annotations.length > 0 ? 'fill-current' : ''}`}
@@ -354,7 +354,7 @@ export default memo(
                 }
               >
                 {podcastLoading || cloudTtsLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Spinner size="sm" color="current" />
                 ) : (
                   <Mic
                     className={`w-5 h-5 ${podcastState === 'playing' || (showPodcastPlayer && podcastDialogues.length > 0) ? 'fill-current' : ''}`}
@@ -503,7 +503,7 @@ export default memo(
                         title={t.brew.regenerate}
                       >
                         {annotationsLoading ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <Spinner size="xs" color="current" />
                         ) : (
                           <RefreshCw className="w-3.5 h-3.5" />
                         )}
@@ -520,7 +520,7 @@ export default memo(
                     >
                       {annotationsLoading ? (
                         <div className="flex flex-col items-center gap-2">
-                          <Loader2 className="w-6 h-6 animate-spin text-purple-500" />
+                          <Spinner size="md" className="text-purple-500" />
                           <p className="text-xs">{t.brew.analyzing}</p>
                         </div>
                       ) : (
@@ -676,11 +676,8 @@ export default memo(
                               : cloudTtsError || t.brew.cloudTtsUnavailable
                         }
                       >
-                        {cloudTtsLoading && ttsEngine === 'cloud' ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Cloud className="w-3.5 h-3.5" />
-                        )}
+                        {/* 加载环由下方带进度的状态行独担，按钮不再重复转圈 */}
+                        <Cloud className="w-3.5 h-3.5" />
                       </button>
                     </div>
                     {/* 设置按钮 - 仅管理员可见 */}
@@ -712,7 +709,7 @@ export default memo(
                   <div
                     className={`px-3 py-2 text-xs ${currentTheme.secondary} bg-emerald-500/5 flex items-center gap-2 shrink-0`}
                   >
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <Spinner size="xs" color="current" />
                     <span>
                       {t.brew.loadingCloudVoice} {cloudTtsLoadProgress.loaded}/
                       {cloudTtsLoadProgress.total}
@@ -1004,7 +1001,7 @@ export default memo(
                                     title={t.brew.clearCache}
                                   >
                                     {clearingVoiceId === voice.voice_id ? (
-                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                      <Spinner size="xs" color="current" />
                                     ) : (
                                       <Trash2 className="w-3 h-3" />
                                     )}
@@ -1016,7 +1013,7 @@ export default memo(
                               <div
                                 className={`flex items-center gap-1 mt-1.5 text-xs ${currentTheme.secondary}`}
                               >
-                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <Spinner size="xs" color="current" />
                                 {t.brew.loadingCache}
                               </div>
                             )}

@@ -390,8 +390,8 @@ export const AraelPanel: React.FC = () => {
 
       for (const candidate of candidates) {
         try {
-          let taskId = candidate.taskId
-          let runId = candidate.runId
+          const taskId = candidate.taskId
+          const runId = candidate.runId
           let progress = 0
           let isWaiting = false
           let pendingQ: PendingQuestion | undefined

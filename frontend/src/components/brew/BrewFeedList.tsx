@@ -15,6 +15,7 @@ import type { TimeTranslations } from './types'
 import { LuFileText as FileText } from '@lib/icons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
+import { Spinner } from '../Spinner'
 import { ItemCard } from './cards'
 import { DEFAULT_THEME_COLOR, getPlainText } from './constants'
 
@@ -231,7 +232,7 @@ export default function BrewFeedList({
       {/* 加载中 */}
       {loading && (
         <div className="flex justify-center py-8">
-          <div className="w-7 h-7 border-2 border-gray-300 dark:border-gray-600 border-t-gray-500 dark:border-t-gray-300 rounded-full animate-spin" />
+          <Spinner size="md" />
         </div>
       )}
 

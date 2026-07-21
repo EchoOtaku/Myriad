@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 import { useManagedFetch } from '../hooks/useManagedFetch'
+import { Spinner } from './Spinner'
 
 export interface Task {
   id: string
@@ -184,7 +185,7 @@ export function TaskStatus({
     return (
       <div className="bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-lg p-4">
         <div className="flex items-center gap-3">
-          <FaSpinner className="w-5 h-5 text-gray-400 animate-spin" />
+          <Spinner size="sm" />
           <span className="text-gray-600 dark:text-gray-300">
             {t.task.loadingInfo}
           </span>
@@ -235,11 +236,15 @@ export function TaskStatus({
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-start gap-3">
-          <Icon
-            className={`w-5 h-5 ${config.color} shrink-0 mt-0.5 ${
-              shouldAnimate ? 'animate-spin' : ''
-            }`}
-          />
+          {shouldAnimate ? (
+            <Spinner
+              size="sm"
+              color="current"
+              className={`${config.color} shrink-0 mt-0.5`}
+            />
+          ) : (
+            <Icon className={`w-5 h-5 ${config.color} shrink-0 mt-0.5`} />
+          )}
           <div>
             <h3 className="font-medium text-gray-900 dark:text-gray-100">
               {task.platform} -{config.label}

@@ -271,32 +271,7 @@ html.dark .arael-header-btn:hover {
    3. Shared Spinners & Animations
    ========================================== */
 
-.arael-spinner-small {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2px solid
-    color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent);
-  border-top-color: var(--color-primary, #10b981);
-  border-radius: 50%;
-  animation: arael-spin 0.7s linear infinite;
-}
-
-.arael-spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgb(255 255 255 / 30%);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: arael-spin 0.7s linear infinite;
-}
-
-@keyframes arael-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* 加载环已统一使用 Spinner 组件 */
 
 @keyframes arael-msg-in {
   from {
@@ -1671,16 +1646,6 @@ html.dark .arael-sessions-item-title {
   opacity: 1;
   color: #ef4444;
   background: rgb(239 68 68 / 10%);
-}
-
-.arael-spinner-tiny {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid rgb(0 0 0 / 10%);
-  border-top-color: var(--color-primary, #10b981);
-  border-radius: 50%;
-  animation: arael-spin 0.6s linear infinite;
 }
 
 .arael-sessions-empty {

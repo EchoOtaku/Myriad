@@ -22,8 +22,8 @@ import RouteLoader from './components/RouteLoader'
 import { AgentGlobalActions } from './contexts/AgentGlobalActions'
 import { AnimationPreferenceProvider } from './contexts/AnimationPreferenceContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { I18nProvider } from './contexts/I18nContext'
 
+import { I18nProvider } from './contexts/I18nContext'
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext'
 import { NavigationProvider } from './contexts/NavigationContext'
 import { PageContentProvider } from './contexts/PageContentContext'
@@ -48,7 +48,6 @@ import './styles/utility.css'
 import './styles/modals.css'
 import './styles/overrides.css'
 import './styles/performance.css'
-import './styles/global.css'
 
 // TappBackgroundRunner 懒加载，避免其错误阻塞主应用
 const TappBackgroundRunner = lazy(
@@ -92,7 +91,7 @@ function RequireAuth({
 
   // AuthContext 尚未完成首次检查
   if (!hasChecked) {
-    return <LoadingFallback />
+    return null
   }
 
   // 未认证
@@ -120,7 +119,7 @@ function GuestOnly({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, hasChecked } = useAuth()
 
   if (!hasChecked) {
-    return <LoadingFallback />
+    return null
   }
 
   if (isAuthenticated) {
@@ -142,7 +141,7 @@ function ModuleVisibilityGuard({
   const visibility = preferences.modules[moduleKey]
 
   if (!hasChecked || isLoading) {
-    return <LoadingFallback />
+    return null
   }
 
   if (
@@ -221,25 +220,16 @@ function AgentAccessGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * 加载指示器 - 纯光效
- * 无背景遮罩，只有优雅的光
- * 包装在 AnimatedView 中以参与页面切换动画
- */
-function LoadingFallback() {
-  return (
-    <div className="fixed inset-0 z-9999 pointer-events-none flex items-center justify-center">
-      {/* 纯光效 - 跟随壁纸色 */}
-      <div className="loading-fallback-light" />
-    </div>
-  )
-}
-
-/**
  * 带 Suspense 的懒加载页面包装器
  * 确保每个页面独立处理加载状态，避免切换时闪屏
+ *
+ * fallback 为 null：引导加载器（PageLoader.astro）与各页面自己的数据
+ * 加载态（如 Home 的 dashboard 配置 Spinner）已覆盖真实等待场景；
+ * 这中间曾插入一个路由级小环，只在「引导屏刚谢幕、下一路由代码块
+ * 还没取到」的窄缝里出现，观感上是无意义的第三次闪烁，故移除。
  */
 function SuspensePage({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<LoadingFallback />}>{children}</Suspense>
+  return <Suspense fallback={null}>{children}</Suspense>
 }
 
 /**

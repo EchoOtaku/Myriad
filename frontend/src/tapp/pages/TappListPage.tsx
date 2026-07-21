@@ -37,6 +37,7 @@ import {
 
 import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../../components/AnimatedView'
+import { Spinner } from '../../components/Spinner'
 import Toast from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
@@ -547,7 +548,7 @@ function InstallTappModal({
             />
             {loading ? (
               <>
-                <span className="w-12 h-12 mx-auto mb-4 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin block" />
+                <Spinner size="xl" color="primary" center className="mb-4" />
                 <p className="text-gray-600 dark:text-gray-300 font-medium">
                   {t.tapp.installing}
                 </p>

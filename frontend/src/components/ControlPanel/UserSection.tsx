@@ -201,7 +201,7 @@ export const UserSection: React.FC<UserSectionProps> = memo(
       try {
         // 先清理用户临时安装的 Tapp（服务层按需加载，登出是低频路径）
         const { cleanupTemporaryTapps } = await import(
-          '../../tapp/services/TappApiService'
+          '../../tapp/services/TappApiService',
         )
         await cleanupTemporaryTapps()
       } catch (error) {

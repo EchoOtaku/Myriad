@@ -31,6 +31,7 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 import { useEffect, useRef, useState } from 'react'
+import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { PlaygroundTraceIcon } from './PlaygroundIcons'
@@ -1539,7 +1540,7 @@ export function PlaygroundComposer({
                   aria-label={t.tapp.playgroundExport}
                 >
                   {exporting ? (
-                    <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                    <Spinner size="xs" color="current" />
                   ) : (
                     <FaDownload className="w-3 h-3" />
                   )}
@@ -1569,7 +1570,7 @@ export function PlaygroundComposer({
                   aria-label={t.tapp.playgroundInstall}
                 >
                   {installing ? (
-                    <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                    <Spinner size="xs" color="current" />
                   ) : (
                     <FaDownload className="w-3 h-3" />
                   )}
@@ -1622,7 +1623,7 @@ export function PlaygroundComposer({
                 }
               >
                 {busy ? (
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <Spinner size="xs" color="white" />
                 ) : (
                   <FaArrowUp className="w-3 h-3" />
                 )}

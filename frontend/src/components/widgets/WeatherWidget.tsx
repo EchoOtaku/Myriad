@@ -23,6 +23,7 @@ import {
   WEATHER_DETAIL_ICON_ASSETS,
   WEATHER_ICON_ASSETS,
 } from '../../utils/dynamicContent'
+import { Spinner } from '../Spinner'
 import { WeatherAssetIcon } from '../weather/WeatherAssetIcon'
 import { FitText } from './shared/FitText'
 import { GlowBackground } from './shared/GlowBackground'
@@ -242,7 +243,7 @@ export const WeatherWidget = memo(
     if (loading) {
       return (
         <div className="h-full w-full flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+          <Spinner size="lg" color="primary" />
         </div>
       )
     }

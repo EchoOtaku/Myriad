@@ -370,7 +370,7 @@ const SetupWizard: React.FC = () => {
     return (
       <div className="setup-state-card glass" role="status">
         <img src="/logo.webp" alt="Myriad" className="setup-state-logo" />
-        <Spinner size="md" />
+        <Spinner size="md" color="primary" />
         <p>{t.setup.checkingStatus}</p>
       </div>
     )
@@ -680,7 +680,7 @@ const SetupWizard: React.FC = () => {
                         className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg setup-save-button"
                       >
                         {savingDb ? (
-                          <Spinner size="sm" variant="white" />
+                          <Spinner size="xs" color="white" />
                         ) : (
                           <LuDatabase size={16} />
                         )}
@@ -750,7 +750,7 @@ const SetupWizard: React.FC = () => {
                               className="w-full py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-migrate-button"
                             >
                               {migratingDb ? (
-                                <Spinner size="sm" variant="white" />
+                                <Spinner size="xs" color="white" />
                               ) : (
                                 <FaDatabase />
                               )}
@@ -849,7 +849,7 @@ const SetupWizard: React.FC = () => {
                           className="w-full py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-create-admin-button"
                         >
                           {creatingAdmin ? (
-                            <Spinner size="sm" variant="white" />
+                            <Spinner size="xs" color="white" />
                           ) : (
                             <FaUser />
                           )}

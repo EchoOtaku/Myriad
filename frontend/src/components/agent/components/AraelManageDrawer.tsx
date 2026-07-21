@@ -15,6 +15,7 @@ import type {
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
+import { Spinner } from '../../Spinner'
 
 type ManageTab = 'heartbeat' | 'skills' | 'memory'
 
@@ -364,7 +365,7 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
         <div className="arael-manage-main-content">
           {loading && (
             <div className="arael-manage-loading">
-              <span className="arael-spinner-small" />
+              <Spinner size="xs" color="primary" />
             </div>
           )}
 

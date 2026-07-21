@@ -6,6 +6,7 @@
 
 import React, { useEffect, useRef } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import { Spinner } from '../../Spinner'
 
 export interface AraelInputProps {
   value: string
@@ -91,7 +92,7 @@ export const AraelInput: React.FC<AraelInputProps> = ({
             }
           >
             {isProcessingVoice ? (
-              <span className="arael-spinner-small" />
+              <Spinner size="xs" color="primary" />
             ) : (
               <svg
                 width="16"

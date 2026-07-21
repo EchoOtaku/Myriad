@@ -690,21 +690,7 @@ html.dark .user-modal-tapps-count-btn:hover {
   color: #9ca3af;
 }
 
-.user-modal-tapps-loading {
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 2px solid
-    color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent);
-  border-top-color: var(--color-primary, #94a3b8);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* 加载环已统一使用 Spinner 组件 */
 
 /* 最近使用的 Tapp */
 .user-modal-recent-tapps {

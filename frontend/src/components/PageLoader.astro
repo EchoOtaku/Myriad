@@ -6,15 +6,97 @@
 ---
 
 <div id="page-loader" class="page-loader" aria-live="polite" aria-busy="true">
-  <div class="loader-content">
-    <!-- 简洁的旋转圆环 -->
-    <div class="loader-spinner" aria-hidden="true"></div>
-    <h1 class="loader-brand">Myriad</h1>
-  </div>
+  <!-- 统一 Spinner（正典定义见下方 is:global 块），屏幕居中 -->
+  <span class="spinner page-loader-spinner" aria-hidden="true"></span>
+  <!-- 品牌字：独立锚定屏幕底部居中，不参与环的居中布局 -->
+  <h1 class="loader-brand">Myriad</h1>
 </div>
 
 <!-- React 应用占位容器，初始隐藏，等待完全加载后显示 -->
 <style is:global>
+  /* ============================================================
+     统一 Spinner 正典（全站唯一定义）
+     内联于首屏 HTML：水合前的引导加载器与水合后的 React
+     <Spinner> 组件（components/Spinner.tsx）共用这一份。
+     尺寸/颜色/粗细/速度由 CSS 变量注入。
+     全站唯一的 @keyframes spin 也在此声明，供 .is-spinning 等
+     旋转类复用（tapp 沙箱因 DOM 隔离持有自己的副本，属 SDK 契约）。
+     ============================================================ */
+  .spinner {
+    --spinner-size: 16px;
+    --spinner-color: currentcolor;
+    --spinner-track: color-mix(in srgb, var(--spinner-color) 20%, transparent);
+    --spinner-thickness: 2px;
+    --spinner-speed: 0.8s;
+
+    box-sizing: border-box;
+    display: inline-block;
+    flex-shrink: 0;
+    width: var(--spinner-size);
+    height: var(--spinner-size);
+    border: var(--spinner-thickness) solid var(--spinner-track);
+    border-top-color: var(--spinner-color);
+    border-radius: 50%;
+
+    /* spinner-reveal（0s + backwards）令环在 --spinner-delay 内保持
+       不可见：快于该时长完成的加载全程不闪环。默认 0s 无任何影响 */
+    animation:
+      spin var(--spinner-speed) linear infinite,
+      spinner-reveal 0s linear var(--spinner-delay, 0s) backwards;
+
+    /* GPU 合成层，避免旋转触发所在卡片重绘 */
+    transform: translateZ(0);
+  }
+
+  @keyframes spinner-reveal {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* 区块/页面级加载位：flex 居中容器 */
+  .spinner-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg) translateZ(0);
+    }
+
+    to {
+      transform: rotate(360deg) translateZ(0);
+    }
+  }
+
+  /* 尊重用户动画偏好：放慢而非停止（停止会让加载态不可辨） */
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation-duration: 1.5s, 0s;
+    }
+  }
+
+  /* 引导加载环参数（须与 .spinner 同处首屏内联，避免 dev 下
+     scoped 样式经 Vite 模块晚到造成的尺寸闪变；双类压过默认值） */
+  .page-loader .page-loader-spinner {
+    --spinner-size: 48px;
+    --spinner-thickness: 3px;
+    --spinner-color: var(--color-primary, #94a3b8);
+  }
+
+  html.dark .page-loader .page-loader-spinner {
+    box-shadow: 0 0 20px color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent);
+  }
+
+  @media (max-width: 768px) {
+    .page-loader .page-loader-spinner {
+      --spinner-size: 40px;
+      --spinner-thickness: 2.5px;
+    }
+  }
+
   /* 应用容器初始状态：不可见但保留布局 */
   #app-root {
     opacity: 0;
@@ -64,15 +146,11 @@
       visibility 0s linear 0.5s;
   }
 
-  .loader-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-  }
-
   .loader-brand {
+    position: absolute;
+    left: 50%;
+    bottom: max(3rem, calc(2rem + env(safe-area-inset-bottom)));
+    transform: translateX(-50%);
     color: var(--text-primary, #1f2937);
     font-family: var(--font-qwitcher-grypen), cursive;
     font-size: 2rem;
@@ -81,48 +159,7 @@
     margin: 0;
   }
 
-  /* 简洁的旋转圆环 - GPU优化 */
-  .loader-spinner {
-    width: 48px;
-    height: 48px;
-    border: 3px solid rgba(148, 163, 184, 0.2);
-    border-top-color: var(--color-primary, #94a3b8);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    /* 使用translateZ替代will-change减少内存占用 */
-    transform: translateZ(0);
-  }
-
-  /* 深色模式旋转圆环 */
-  html.dark .loader-spinner {
-    border: 3px solid rgba(148, 163, 184, 0.15);
-    border-top-color: var(--color-primary, #94a3b8);
-    box-shadow: 0 0 20px color-mix(in srgb, var(--color-primary, #94a3b8) 30%, transparent);
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg) translateZ(0);
-    }
-  }
-
-  /* 移动端适配 */
-  @media (max-width: 768px) {
-    .loader-spinner {
-      width: 40px;
-      height: 40px;
-      border-width: 2.5px;
-    }
-  }
-
-  /* 减少动画（无障碍） */
-  @media (prefers-reduced-motion: reduce) {
-    .loader-spinner {
-      animation: none;
-      border-top-color: var(--color-primary, #94a3b8);
-      border-right-color: var(--color-primary, #94a3b8);
-    }
-  }
+  /* 引导加载环参数在上方 is:global 块（须首屏内联，见彼处注释） */
 </style>
 
 <script>

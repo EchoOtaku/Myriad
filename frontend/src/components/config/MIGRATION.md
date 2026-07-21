@@ -24,7 +24,6 @@ import {
   MusicConfigSection,
   NetworkConfigSection,
   OAuthConfigSection,
-  UiConfigSection,
   PermissionsConfigSection,
 } from './config'
 ```
@@ -43,7 +42,7 @@ import {
       updateValue={updateUiFieldValue}
       onMessage={(msg) => {
         setMessage(msg)
-        setTimeout(() => setMessage(''), 3000)
+        setTimeout(setMessage, 3000, '')
       }}
     />
   )
@@ -153,7 +152,7 @@ import {
 ### ConfigField 接口
 
 ```typescript
-interface ConfigField {
+export interface ConfigField {
   key: string
   value: string
 }
@@ -162,7 +161,7 @@ interface ConfigField {
 ### 标准 Props 模式
 
 ```typescript
-interface XxxConfigSectionProps {
+export interface XxxConfigSectionProps {
   configFields: ConfigField[]
   updateValue: (key: string, value: string) => void
   onMessage?: (message: string) => void

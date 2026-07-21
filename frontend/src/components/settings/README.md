@@ -34,7 +34,7 @@ settings/
 ### SettingItemConfig
 
 ```typescript
-interface SettingItemConfig {
+export interface SettingItemConfig {
   // 基础属性
   key: string // 唯一标识
   label: string // 显示标签
@@ -78,7 +78,7 @@ interface SettingItemConfig {
 ### SettingType 枚举
 
 ```typescript
-type SettingType =
+export type SettingType =
   | 'switch' // 开关
   | 'input' // 文本输入
   | 'number' // 数字输入
@@ -130,13 +130,13 @@ type SettingType =
   description="配置 AI 服务相关参数"
 >
   <SettingGroup title="基础设置">
-    <SettingItem type="provider" ... />
-    <SettingItem type="input" key="api_key" ... />
+    <SettingItem type="provider" {...props} />
+    <SettingItem type="input" key="api_key" {...props} />
   </SettingGroup>
 
   <SettingGroup title="高级设置">
-    <SettingItem type="number" key="max_tokens" ... />
-    <SettingItem type="slider" key="temperature" ... />
+    <SettingItem type="number" key="max_tokens" {...props} />
+    <SettingItem type="slider" key="temperature" {...props} />
   </SettingGroup>
 </SettingSection>
 ```

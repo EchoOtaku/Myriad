@@ -613,15 +613,10 @@ html.dark .users-muted {
   gap: 0.5rem;
 }
 
+/* 复用 animations.css 的全局 spin 关键帧（App.tsx 全局导入） */
 .users-control-actions .btn-base svg.spinning,
 .users-actions .btn-base svg.spinning {
-  animation: users-spin 0.9s linear infinite;
-}
-
-@keyframes users-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: spin 0.9s linear infinite;
 }
 
 .users-link-button {

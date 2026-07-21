@@ -2706,11 +2706,7 @@ html.dark .modal-footer {
    数据管理页面专用样式
    ========================================== */
 
-/* 加载状态 */
-
-.spinner-center {
-  margin: 0 auto;
-}
+/* 加载状态（spinner-center 死类已删，加载环统一 Spinner 组件） */
 
 .loading-text {
   margin-top: 1rem;

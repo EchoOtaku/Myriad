@@ -223,7 +223,7 @@ const LoginForm: FC = () => {
           >
             {submitting ? (
               <>
-                <Spinner size="sm" variant="white" />
+                <Spinner size="xs" color="white" />
                 <span>{t.auth.loggingIn}</span>
               </>
             ) : (

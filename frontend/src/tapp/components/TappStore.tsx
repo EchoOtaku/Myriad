@@ -48,6 +48,7 @@ import {
   useState,
 } from 'react'
 
+import { Spinner } from '../../components/Spinner'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
@@ -524,7 +525,7 @@ const UnifiedAppCard = forwardRef<
                 title={t.tapp.update}
               >
                 {updating ? (
-                  <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin block" />
+                  <Spinner size="sm" color="current" />
                 ) : (
                   <FaArrowUp className="w-4 h-4" />
                 )}
@@ -568,7 +569,7 @@ const UnifiedAppCard = forwardRef<
                 }
               >
                 {installing ? (
-                  <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin block" />
+                  <Spinner size="sm" color="current" />
                 ) : isInstalled ? (
                   <FaCheckCircle className="w-4 h-4" />
                 ) : (
@@ -772,7 +773,7 @@ function AppDetailView({
                 className="flex h-9 items-center gap-2 rounded-full bg-amber-500 px-5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
               >
                 {updating ? (
-                  <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin block" />
+                  <Spinner size="xs" color="current" />
                 ) : (
                   <FaArrowUp className="w-3.5 h-3.5" />
                 )}
@@ -791,7 +792,7 @@ function AppDetailView({
                 style={{ background: 'var(--color-primary)' }}
               >
                 {installing ? (
-                  <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin block" />
+                  <Spinner size="xs" color="current" />
                 ) : (
                   <FaDownload className="w-3.5 h-3.5" />
                 )}
@@ -1032,9 +1033,11 @@ function SourcesSettingsModal({
                 }`}
                 title={t.tapp.refreshAllStores}
               >
-                <FaSync
-                  className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}
-                />
+                {refreshing ? (
+                  <Spinner size="sm" color="current" />
+                ) : (
+                  <FaSync className="w-4 h-4" />
+                )}
               </button>
             )}
             <button
@@ -1814,9 +1817,11 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
                           }`}
                           title={t.tapp.refreshStore}
                         >
-                          <FaSync
-                            className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
-                          />
+                          {loading ? (
+                            <Spinner size="sm" color="current" />
+                          ) : (
+                            <FaSync className="w-4 h-4" />
+                          )}
                         </button>
                       </>
                     )}
@@ -1951,13 +1956,11 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
                 <div ref={contentHeight.attachContent} className="p-4 sm:p-6">
                   {loading && remoteApps.length === 0 ? (
                     <div className="text-center py-12">
-                      <span
-                        className="w-12 h-12 mx-auto border-4 rounded-full animate-spin block mb-4"
-                        style={{
-                          borderColor:
-                            'color-mix(in srgb, var(--color-primary) 20%, transparent)',
-                          borderTopColor: 'var(--color-primary)',
-                        }}
+                      <Spinner
+                        size="xl"
+                        color="primary"
+                        center
+                        className="mb-4"
                       />
                       <p className="text-gray-500 dark:text-gray-400">
                         {t.tapp.loadingRemoteApps}

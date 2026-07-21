@@ -12,6 +12,7 @@ import {
   LuRss as Rss,
 } from '@lib/icons'
 import { IslandShell } from '../../../shared/control-island'
+import { Spinner } from '../../../Spinner'
 import { ISLAND_BTN, ISLAND_DIVIDER } from './constants'
 
 export interface FeedModeProps {
@@ -101,9 +102,11 @@ export function FeedMode({
           title={t.refreshSource}
           aria-label={t.refreshSource}
         >
-          <RefreshCw
-            className={`w-4 h-4 ${feedMode.isRefreshing ? 'animate-spin' : ''}`}
-          />
+          {feedMode.isRefreshing ? (
+            <Spinner size="sm" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
         </button>
       )}
 

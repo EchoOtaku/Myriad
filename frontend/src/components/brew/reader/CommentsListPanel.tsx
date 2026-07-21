@@ -19,6 +19,7 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
+import { Spinner } from '../../Spinner'
 import { DATE_FORMAT_FULL, STYLE_MAX_HEIGHT_60VH } from './constants'
 
 interface CommentsListPanelProps {
@@ -138,7 +139,7 @@ export default function CommentsListPanel({
             <div className="overflow-x-auto overflow-y-hidden p-4">
               {commentsLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+                  <Spinner size="md" className="text-amber-500" />
                 </div>
               ) : comments.length === 0 ? (
                 <div className={`text-center py-8 ${currentTheme.secondary}`}>

@@ -28,6 +28,7 @@ import { loadWidgetResources } from '../../tapp/runtime/sandbox/resourceLoader'
 import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
 import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
+import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 
@@ -739,9 +740,7 @@ function TappWidgetRuntime({
         className="w-full h-full flex items-center justify-center bg-white/50 dark:bg-neutral-900/50 rounded-xl"
         style={pointerEventsStyle}
       >
-        <div className="animate-pulse text-gray-400 dark:text-gray-500">
-          Loading...
-        </div>
+        <Spinner size="md" />
       </div>
     )
   }

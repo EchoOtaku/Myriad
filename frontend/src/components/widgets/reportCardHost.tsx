@@ -1,3 +1,5 @@
+import type { ComponentType } from 'react'
+import type { WidgetComponentProps } from '../WidgetGrid'
 /**
  * 首页目录用的报告卡宿主。
  *
@@ -11,12 +13,12 @@
  *    再 setWidgets，同步渲染，不挂起
  */
 import {
+
   createElement,
   useEffect,
   useReducer,
-  type ComponentType,
 } from 'react'
-import type { WidgetComponentProps } from '../WidgetGrid'
+import { Spinner } from '../Spinner'
 import { preloadPlatformFacesForWidgetTypes } from './reportCard/platformFaceLoaders'
 
 type ReportCardModule = typeof import('./ReportCardWidget')
@@ -85,7 +87,7 @@ function ReportCardHost(props: WidgetComponentProps) {
   if (!Impl) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-500" />
+        <Spinner size="lg" color="primary" />
       </div>
     )
   }

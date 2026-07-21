@@ -21,6 +21,7 @@ import {
 } from '@lib/motionShim'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as brewliaApi from '../../../services/brewliaApi'
+import { Spinner } from '../../Spinner'
 import { DATE_FORMAT_SHORT } from './constants'
 
 // ================== AI 注释 Tooltip ==================
@@ -430,7 +431,7 @@ export function CommentInputPopup({
                     >
                       {commentSubmitting ? (
                         <>
-                          <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <Spinner size="xs" color="white" />
                           {t.brew.saving}
                         </>
                       ) : (

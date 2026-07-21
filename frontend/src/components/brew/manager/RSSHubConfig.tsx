@@ -42,6 +42,7 @@ import { API_URL } from '../../../config'
 import { useI18n } from '../../../contexts/I18nContext'
 
 import { getCSRFHeaderName, getCSRFToken } from '../../../utils/csrf'
+import { Spinner } from '../../Spinner'
 
 // Framer Motion transition 配置常量
 const TRANSITION_NORMAL = { duration: 0.15 } as const
@@ -960,7 +961,7 @@ export default function RSSHubConfigComponent({
             <div className="min-w-0">
               {loadingInstances ? (
                 <div className="flex items-center gap-2">
-                  <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                  <Spinner size="xs" />
                   <span className="text-gray-400">{t.brew.loading}</span>
                 </div>
               ) : currentInstance ? (
@@ -1029,9 +1030,11 @@ export default function RSSHubConfigComponent({
                       disabled={checkingAllHealth || loadingInstances}
                       className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-neutral-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:opacity-50"
                     >
-                      <RefreshCw
-                        className={`w-3 h-3 ${checkingAllHealth ? 'animate-spin' : ''}`}
-                      />
+                      {checkingAllHealth ? (
+                        <Spinner size="xs" color="current" />
+                      ) : (
+                        <RefreshCw className="w-3 h-3" />
+                      )}
                       {t.brew.rsshubCheckAll}
                     </button>
                     <button
@@ -1126,7 +1129,7 @@ export default function RSSHubConfigComponent({
                             className="flex-1 px-2.5 py-1.5 text-xs bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-700 dark:hover:bg-gray-200 disabled:opacity-50 flex items-center justify-center gap-1"
                           >
                             {adding && (
-                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              <Spinner size="xs" color="current" />
                             )}
                             {t.brew.add}
                           </button>
@@ -1139,7 +1142,7 @@ export default function RSSHubConfigComponent({
                 {/* 实例列表 */}
                 {loadingInstances ? (
                   <div className="flex items-center justify-center py-6">
-                    <RefreshCw className="w-5 h-5 text-orange-500 animate-spin" />
+                    <Spinner size="sm" className="text-orange-500" />
                   </div>
                 ) : instances.length === 0 ? (
                   <div className="text-center py-6 text-gray-400">
@@ -1351,9 +1354,11 @@ export default function RSSHubConfigComponent({
                                   disabled={checkingHealth === instance.id}
                                   className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1 text-[10px] border border-gray-200 dark:border-neutral-600 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:opacity-50"
                                 >
-                                  <RefreshCw
-                                    className={`w-2.5 h-2.5 ${checkingHealth === instance.id ? 'animate-spin' : ''}`}
-                                  />
+                                  {checkingHealth === instance.id ? (
+                                    <Spinner size={10} />
+                                  ) : (
+                                    <RefreshCw className="w-2.5 h-2.5" />
+                                  )}
                                   {t.brew.rsshubCheck}
                                 </button>
                                 <button
@@ -1891,7 +1896,7 @@ export default function RSSHubConfigComponent({
               className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-neutral-600 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:opacity-50"
             >
               {testing ? (
-                <RefreshCw className="w-3 h-3 animate-spin" />
+                <Spinner size="xs" color="current" />
               ) : (
                 <Check className="w-3 h-3" />
               )}

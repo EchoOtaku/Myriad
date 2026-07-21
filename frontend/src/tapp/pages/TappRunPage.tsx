@@ -20,7 +20,6 @@ import {
   FaExpand,
   FaPause,
   FaRedo,
-  FaSpinner,
   FaTh,
 } from '@lib/icons'
 import {
@@ -30,6 +29,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
 import { useNavigation } from '../../contexts/NavigationContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
@@ -401,7 +401,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                       transition={transitions.stateSwitch}
                     >
                       <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-neutral-700 flex items-center justify-center shrink-0">
-                        <FaSpinner className="w-4 h-4 text-gray-400 animate-spin" />
+                        <Spinner size="sm" />
                       </div>
                       <span className="text-sm text-gray-500 dark:text-gray-400">
                         {t.tapp.loadingApp}

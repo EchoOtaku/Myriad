@@ -9,7 +9,6 @@ import {
   LuCheckCircle as CheckCircle,
   LuCheckSquare as CheckSquare,
   LuDownload as Download,
-  LuLoader2 as Loader2,
   LuMinusSquare as MinusSquare,
   LuRefreshCw as RefreshCw,
   LuSquare as Square,
@@ -23,6 +22,7 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 import { IslandShell } from '../../../shared/control-island'
+import { Spinner } from '../../../Spinner'
 import { ISLAND_BTN, ISLAND_BTN_DANGER, ISLAND_DIVIDER } from './constants'
 
 export interface EditModeProps {
@@ -124,9 +124,11 @@ export function EditMode({
             title={t.refreshAllSources}
             aria-label={t.refreshAllSources}
           >
-            <RefreshCw
-              className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`}
-            />
+            {isRefreshing ? (
+              <Spinner size="sm" color="current" />
+            ) : (
+              <RefreshCw className="w-4.5 h-4.5" />
+            )}
           </button>
         )}
         {isAuthenticated && onMarkAllSourcesRead && (
@@ -197,9 +199,11 @@ export function EditMode({
           title={t.refreshAllSources}
           aria-label={t.refreshAllSources}
         >
-          <RefreshCw
-            className={`w-4.5 h-4.5 ${isRefreshing ? 'animate-spin' : ''}`}
-          />
+          {isRefreshing ? (
+            <Spinner size="sm" color="current" />
+          ) : (
+            <RefreshCw className="w-4.5 h-4.5" />
+          )}
         </button>
       )}
 
@@ -265,7 +269,7 @@ export function EditMode({
             transition={{ duration: 0.2 }}
             className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50"
           >
-            <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" />
+            <Spinner size="xs" color="current" className="shrink-0" />
             <span className="truncate max-w-40">{importProgress.step}</span>
             {importProgress.total > 0 && (
               <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40">

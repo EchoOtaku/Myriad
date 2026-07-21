@@ -17,6 +17,7 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { RECENT_ACTIVITY_UPDATED_EVENT } from '../../utils/recentActivity'
 import { useThemeMode } from '../../utils/themeSubscriber'
 import PlatformIcon from '../PlatformIcon'
+import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 
@@ -497,9 +498,11 @@ export const RecentActivityWidget = memo(
               aria-label={t.common.refresh}
               className="flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-black/5 hover:text-violet-500 disabled:opacity-50 dark:hover:bg-white/8"
             >
-              <LuRefreshCw
-                className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`}
-              />
+              {refreshing ? (
+                <Spinner size="xs" color="current" />
+              ) : (
+                <LuRefreshCw className="h-3 w-3" />
+              )}
             </button>
           )}
         </div>

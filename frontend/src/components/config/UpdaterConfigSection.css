@@ -1253,14 +1253,9 @@ html.dark .updater-select {
   opacity: 0.5;
 }
 
+/* 复用 animations.css 的全局 spin 关键帧（App.tsx 全局导入） */
 .is-spinning {
-  animation: updater-spin 0.85s linear infinite;
-}
-
-@keyframes updater-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: spin 0.85s linear infinite;
 }
 
 @keyframes updater-feedback-in {

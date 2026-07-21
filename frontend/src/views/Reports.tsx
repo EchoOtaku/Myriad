@@ -33,10 +33,11 @@ import {
   useState,
 } from 'react'
 import AnimatedView from '../components/AnimatedView'
+import { Spinner } from '../components/Spinner'
 import StageMode from '../components/StageMode'
 import Toast from '../components/Toast'
-import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
 import { preloadPlatformFaces } from '../components/widgets/reportCard/platformFaceLoaders'
+import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -289,7 +290,7 @@ function PlatformReportGeneratingSpin({
 }: {
   className?: string
 }) {
-  return <FaSync size={18} className={`${className} animate-spin`} />
+  return <Spinner size="sm" className={className} />
 }
 
 const STAGE_PLACEHOLDER_EASE = [0.4, 0, 0.2, 1] as const

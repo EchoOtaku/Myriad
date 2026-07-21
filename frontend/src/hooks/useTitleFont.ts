@@ -13,8 +13,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { API_URL } from '../config'
 import { usePrimaryColor } from '../utils/colorSubscriber'
-import { getUIConfigDeduped } from '../utils/requestDedup'
 import { deriveAdaptiveTitleColor } from '../utils/readableColor'
+import { getUIConfigDeduped } from '../utils/requestDedup'
 import { useThemeMode } from '../utils/themeSubscriber'
 
 // ==================== 类型定义 ====================

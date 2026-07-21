@@ -3,6 +3,7 @@
  * 图标 + 输入框 + 可选 slot + 提交按钮
  */
 
+import { Spinner } from '../../Spinner'
 import {
   ISLAND_BTN_PRIMARY,
   ISLAND_INPUT,
@@ -74,7 +75,7 @@ export function IslandInput({
         className={ISLAND_BTN_PRIMARY}
       >
         {loading ? (
-          <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+          <Spinner size="xs" color="white" />
         ) : (
           buttonLabel
         )}

@@ -17,6 +17,7 @@ import { resolveManifestText } from '../../tapp/utils/manifestLocale'
 import { getCSRFToken } from '../../utils/csrf'
 import { normalizeOAuthIconUrl } from '../../utils/oauthIcons'
 import OAuthIconImage from '../OAuthIconImage'
+import { Spinner } from '../Spinner'
 import '../UserModal.css'
 
 interface OAuthProviderInfo {
@@ -751,7 +752,7 @@ export const UserModal: FC<UserModalProps> = ({
                   title={t.userModal.viewAllTapps || 'View all Tapps'}
                 >
                   {tappsLoading ? (
-                    <span className="user-modal-tapps-loading" />
+                    <Spinner size="sm" color="primary" />
                   ) : (
                     <>
                       <span className="user-modal-tapps-number">

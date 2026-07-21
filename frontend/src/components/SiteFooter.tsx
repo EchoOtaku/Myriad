@@ -7,8 +7,8 @@ import { SiCloudflare } from '@lib/icons'
 
 import React, { memo, useEffect, useState } from 'react'
 
-import { getUIConfigDeduped } from '../utils/requestDedup'
 import { getBuildInfo } from '../utils/buildInfo'
+import { getUIConfigDeduped } from '../utils/requestDedup'
 import './SiteFooter.css'
 
 interface SiteConfig {

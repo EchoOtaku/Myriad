@@ -15,7 +15,6 @@ import {
   FaGripVertical,
   FaPlus,
   FaSave,
-  FaSpinner,
   FaTh,
   FaTimes,
   FaTrash,
@@ -26,6 +25,7 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Spinner } from '../../components/Spinner'
 // API 配置
 import { API_URL as CONFIG_API_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
@@ -522,10 +522,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
                   className="w-6 h-6 rounded-lg flex items-center justify-center"
                   style={{ backgroundColor: 'var(--bg-hover)' }}
                 >
-                  <FaSpinner
-                    className="w-3 h-3 animate-spin"
-                    style={{ color: 'var(--text-muted)' }}
-                  />
+                  <Spinner size="xs" color="var(--text-muted)" />
                 </div>
                 <span
                   className="text-xs"
@@ -601,7 +598,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
           )}
           {window.loading ? (
             <div className="w-full h-full flex items-center justify-center">
-              <FaSpinner className="w-8 h-8 text-gray-400 animate-spin" />
+              <Spinner size="lg" />
             </div>
           ) : window.error ? (
             <div className="w-full h-full flex items-center justify-center">
@@ -1306,10 +1303,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                           }}
                         >
                           {isSaving ? (
-                            <FaSpinner
-                              className="w-4 h-4 animate-spin"
-                              style={{ color: 'var(--color-primary)' }}
-                            />
+                            <Spinner size="sm" color="primary" />
                           ) : (
                             <FaSave
                               className="w-4 h-4"

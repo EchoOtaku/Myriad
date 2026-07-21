@@ -13,6 +13,7 @@ import { useHomeVisibilityInterval } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getRandomQuote } from '../../utils/dynamicContent'
+import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 
@@ -155,7 +156,7 @@ export const QuoteWidget = memo(
     if (loading) {
       return (
         <div className="h-full w-full flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500" />
+          <Spinner size="lg" color="primary" />
         </div>
       )
     }
