@@ -15,7 +15,12 @@ import {
   useState,
 } from 'react'
 import { API_URL } from '../config'
-import { clearSessionHint } from '../utils/sessionDetection'
+import { isAuthMeHttpOk, parseAuthMeResponse } from '../utils/authMe'
+import {
+  clearSessionHint,
+  hasSessionHint,
+  setSessionHint,
+} from '../utils/sessionDetection'
 
 export interface User {
   id: number
@@ -86,24 +91,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setIsLoading(true)
-    const run = (async () => {
+    // Holder so the async body can compare against the same Promise without
+    // TS "used before assigned" / ESLint prefer-const friction.
+    const inflight = { current: null as Promise<void> | null }
+    inflight.current = (async () => {
       try {
         const response = await fetch(`${API_URL}/api/auth/me`, {
           credentials: 'include',
           signal: AbortSignal.timeout(5000),
         })
 
-        if (response.ok) {
-          const userData = await response.json()
-          setUser(userData)
-          setIsAuthenticated(true)
-          setIsAdmin(userData.is_admin || false)
-        } else {
-          // 401 是正常的未登录状态，静默处理
-          setUser(null)
-          setIsAuthenticated(false)
-          setIsAdmin(false)
+        // Durable contract: guest/expired session → HTTP 200 + authenticated:false
+        // (never 401). Parse body; do not treat status alone as "logged in".
+        if (isAuthMeHttpOk(response.status)) {
+          const parsed = parseAuthMeResponse(await response.json())
+          if (parsed.authenticated) {
+            const u = parsed.user
+            setSessionHint()
+            setUser({
+              id: u.id,
+              username: u.username,
+              display_name: u.display_name,
+              is_admin: u.is_admin,
+              is_owner: u.is_owner,
+              auth_provider: u.auth_provider,
+              linked_github_id: u.linked_github_id,
+              github_id: u.github_id,
+              avatar_url: u.avatar_url,
+              bio: u.bio,
+              has_password: u.has_password,
+            })
+            setIsAuthenticated(true)
+            setIsAdmin(u.is_admin || false)
+            return
+          }
         }
+
+        clearSessionHint()
+        setUser(null)
+        setIsAuthenticated(false)
+        setIsAdmin(false)
       } catch (_error) {
         // 网络错误时静默处理
         setUser(null)
@@ -112,13 +139,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } finally {
         setIsLoading(false)
         setHasChecked(true)
-        if (checkAuthInflight.current === run) {
+        if (checkAuthInflight.current === inflight.current) {
           checkAuthInflight.current = null
         }
       }
     })()
-    checkAuthInflight.current = run
-    await run
+    checkAuthInflight.current = inflight.current
+    await inflight.current
   }, [])
 
   const logout = useCallback(() => {
@@ -133,8 +160,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [resetTappSubjectState])
 
   // 页面加载时检查认证状态，包括：
-  // 1. OAuth 回调（auth=success 或 link=success）
-  // 2. 页面刷新时恢复登录状态（通过 Cookie 持久化）
+  // 1. OAuth 回调（auth=success 或 link=success）— 始终探测
+  // 2. 有 session hint 时恢复登录（Cookie 持久化）
+  // 3. 纯游客（无 hint）可跳过探测（optimization only）
+  //
+  // Backend safety net: /api/auth/me returns 200 + authenticated:false for guests,
+  // so stale hints / new callers no longer paint Network 401 red.
   // link=* query params are cleaned by useAuthUrlFeedback (toasts need them first).
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
@@ -144,7 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (authSuccess || linkSuccess) {
       // OAuth 登录/绑定成功，立即检查认证状态
       console.debug('[AuthContext] OAuth callback detected, checking auth...')
-      checkAuth()
+      void checkAuth()
 
       // Strip only auth=success; leave link=* for the feedback toast hook
       if (authSuccess) {
@@ -153,11 +184,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const path = window.location.pathname
         window.history.replaceState({}, '', next ? `${path}?${next}` : path)
       }
+    } else if (hasSessionHint()) {
+      // May have a session (or a stale hint) — probe is safe (200 guest body).
+      console.debug('[AuthContext] Session hint present, checking auth...')
+      void checkAuth()
     } else {
-      // 页面加载时自动检查认证状态（恢复登录会话）
-      // 这确保了刷新页面后登录状态能够持久化
-      console.debug('[AuthContext] Page load, checking auth session...')
-      checkAuth()
+      // Optimization: pure guest without hint skips the network probe.
+      // Any other caller that still hits /api/auth/me gets 200 guest body.
+      console.debug('[AuthContext] No session hint — guest, skip auth probe')
+      setUser(null)
+      setIsAuthenticated(false)
+      setIsAdmin(false)
+      setIsLoading(false)
+      setHasChecked(true)
     }
   }, [])
 
