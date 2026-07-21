@@ -46,6 +46,7 @@ import {
   collectReattachCandidates,
   isNonTerminalTaskStatus,
 } from '../../services/agent/reattach'
+import { isImeComposing } from '../../utils/ime'
 
 import { AraelChatMessage } from './components/AraelChatMessage'
 import { AraelDebugPanel } from './components/AraelDebugPanel'
@@ -1594,10 +1595,14 @@ export const AraelPanel: React.FC = () => {
     answerQuestionRef.current = answerQuestion
   }, [answerQuestion])
 
-  // 键盘事件
+  // 键盘事件（IME 组字中确认候选时不发送）
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (
+        e.key === 'Enter' &&
+        !e.shiftKey &&
+        !isImeComposing(e)
+      ) {
         e.preventDefault()
         handleSend()
       }
